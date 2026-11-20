@@ -561,8 +561,10 @@ public class ItalianAgencyScenarioTests
         Assert.True(run.Ran, run.NotRunReason);
         Assert.Equal((1, 1, 0), (run.DraftsCreated, run.DocumentsIssued, run.Skipped));
         var receipt = await AssertReceiptAsync(world, booking, "RIC2026/1", Day(10, 6), [(FiscalLineType.Accommodation, 450.00m, 0m, "N2.2", 0m)], 450.00m, FiscalPaymentChannel.Portal, FiscalDocumentPaymentState.Paid);
+        // The document says the portal collected the tax and that the exemptions are asked of the portal (FIX/BE-IT-TOURISTTAX-DEFAULTS), without naming the portal, and nothing is «da pagare in struttura».
         var text = TextOf(await world.PdfContentAsync(receipt.Id));
-        Assert.DoesNotContain("Imposta di soggiorno", text, StringComparison.Ordinal);
+        Assert.Contains("Imposta di soggiorno incassata dal portale (per le esenzioni rivolgersi al portale)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("da pagare in struttura", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Airbnb", text, StringComparison.OrdinalIgnoreCase);
 
         var month = await world.CloseMonthAsync(2026, 10, EndOfOctober, world.FlatA);
@@ -979,7 +981,11 @@ public class ItalianAgencyScenarioTests
         Assert.Contains(World.OwnerAName, text, StringComparison.Ordinal);
         Assert.Contains($"Codice fiscale: {World.OwnerAFiscalCode}", text, StringComparison.Ordinal);
         Assert.Contains($"Emessa tramite {World.ItalianAgencyLegalName} per conto del proprietario", text, StringComparison.Ordinal);
-        Assert.Contains("Imposta di soggiorno riscossa per conto del comune", text, StringComparison.Ordinal);
+
+        // The line of the tax the host collected, or the one a portal left to the host (FIX/BE-IT-TOURISTTAX-DEFAULTS: «da pagare in struttura», never «riscossa»).
+        Assert.True(
+            text.Contains("Imposta di soggiorno riscossa per conto del comune", StringComparison.Ordinal) || text.Contains("Imposta di soggiorno da pagare in struttura", StringComparison.Ordinal),
+            "The receipt has the line of the tourist tax.");
         Assert.Contains($"Imposta di bollo | {totals.StampDuty}", text, StringComparison.Ordinal);
         Assert.Contains($"Totale documento | {totals.Total}", text, StringComparison.Ordinal);
         Assert.Contains("Imposta di bollo assolta: AUT-BOLLO-TEST-2026", text, StringComparison.Ordinal);
@@ -1059,15 +1065,17 @@ public class ItalianAgencyScenarioTests
     }
 
     /// <summary>
-    /// FIX/BE-PORTAL-TAXLINE: the document of a booking of a portal says that the tourist tax the portal did not collect is to collect at the property (12.00), in a paragraph of its own and as the
-    /// note of its line; the total of the document is not touched. The scenario records nothing of the collection of the tax in E25 (it sets only the channel rule of the comune, which says the host collects,
-    /// and never confirms, declares or collects the tax of a stay), so the whole 12.00 is still to collect: the case of «no record» (a recorded collection comes off it, <c>PortalBookingDocument_*</c>).
+    /// FIX/BE-PORTAL-TAXLINE: the document of a booking of a portal says that the tourist tax the portal did not collect is to collect at the property (12.00), in a paragraph of its own and as its
+    /// line, with the receipt the property issues when it collects it (FIX/BE-IT-TOURISTTAX-DEFAULTS); the total of the document is not touched. The scenario records nothing of the collection of the tax in E25
+    /// (it sets only the channel rule of the comune, which says the host collects, and never confirms, declares or collects the tax of a stay), so the whole 12.00 is still to collect: the case of «no record»
+    /// (a recorded collection comes off it, <c>PortalBookingDocument_*</c>).
     /// </summary>
     private static async Task AssertTheTaxIsToCollectAsync(World world, FiscalDocument document)
     {
         var text = TextOf(await world.PdfContentAsync(document.Id));
         Assert.Contains("Imposta di soggiorno da pagare in struttura: EUR 12,00", text, StringComparison.Ordinal);
-        Assert.Contains("Imposta di soggiorno riscossa per conto del comune - da pagare in struttura", text, StringComparison.Ordinal);
+        Assert.Contains("una ricevuta separata e numerata", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("riscossa per conto del comune", text, StringComparison.Ordinal);
         Assert.Contains("Totale documento | 462,00", text, StringComparison.Ordinal);
     }
 

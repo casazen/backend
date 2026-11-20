@@ -319,15 +319,17 @@ draft). The amounts are gross (VAT included), in the currency of the property; t
 | `TouristTax` | see below | out of VAT: `N1` in Italy, no nature in Switzerland |
 
 **Tourist tax, Italy.** The amount of the stay's confirmed `StayTouristTax` (per guest, with the exemptions the host confirmed), else `Booking.TouristTax`, **only when the host
-or the agency collects it** (`TouristTaxCollectorRules`: a booking that is not of a channel, the active `TouristTaxChannelRule` of the comune and the channel, then the
-host's declaration). If the portal collects it there is no line (never a double charge to the guest); a channel stay whose collector nobody has declared yet has none either.
+or the agency collects it**. Who collects is decided by `ItalianPortalTouristTax.Decide`, strongest source first (decision 2 of `fatturazione/decisioni-fiscali-2026-11-20.md`, research R2): a booking that is not of a
+channel (the host); the active `TouristTaxChannelRule` of the comune and the channel, then the host's declaration for the stay, then the collector of the calculation the host confirmed (`TouristTaxCollectorRules`, the
+record of the stay, E25); the organization's own list of portals that collect (`PlatformCollectedTouristTaxChannels` once confirmed, else `ItalianTouristTax:PlatformCollected`, none by default); and last the
+global default, **the host collects at the property** (never an assumed «the portal did»). If the portal collects it there is no line (never a double charge to the guest). Details in *The tourist tax of an Italian portal stay* below.
 
 **Tourist tax, Switzerland.** No line for a channel in the channels the profile says collect it (`PlatformCollectedTouristTaxChannels` once confirmed, else the shipped default, below); else `Booking.TouristTax` when it is > 0; else the canton rule of
 `SwissTouristTax:Rules` (the canton comes from `SwissMunicipalities` through `Property.SwissMunicipalityCode`): `guests × nights × rate`, each night at the rate in force on
 that night. Shipped: Ticino, CHF 2.00 per person and night from 2025-01-01, no age exemption (⚖ C4: all the guests of `Booking.NumberOfGuests`), source
 `https://www.ticino.ch/en/hospitality/opportunita/tasse/alloggio.html`. A canton without a rule gives no line. `SwissTouristTax:PlatformCollected` (⚖ C5, `Airbnb`) is the default
 list of a Swiss issuer **that has not confirmed its own yet**: `IGuestDocumentLineBuilder.PlatformCollectedChannelsOf` reads it when the document is made and never copies it into
-the profile (the step «Tassa di soggiorno» of the billing setup stays open until the issuer confirms its list). The issuer's confirmed list, an empty one included («no portal collects it»), is the one the documents follow from then on; an Italian issuer never has the default. The same list is read by the other two places that say who collects, so they never disagree with the documents: the box «Tassa di soggiorno» of the owner statement (`OwnerStatementDocuments`, FIX/RES-OWNERS) leaves out the stays of those channels, and the billing setup lists it, read-only, as `defaultPlatformCollectedTouristTaxChannels` in the `touristTax` section (next to the issuer's own `platformCollectedTouristTaxChannels`, which stays absent until confirmed), so the wizard asks about the portals that are not on it.
+the profile (the step «Tassa di soggiorno» of the billing setup stays open until the issuer confirms its list). The issuer's confirmed list, an empty one included («no portal collects it»), is the one the documents follow from then on; an Italian issuer never has the Swiss default (its own is `ItalianTouristTax:PlatformCollected`, none by default). The same list is read by the other two places that say who collects, so they never disagree with the documents: the box «Tassa di soggiorno» of the owner statement (`OwnerStatementDocuments`, FIX/RES-OWNERS) leaves out the stays of those channels, and the billing setup lists it, read-only, as `defaultPlatformCollectedTouristTaxChannels` in the `touristTax` section (next to the issuer's own `platformCollectedTouristTaxChannels`, which stays absent until confirmed), so the wizard asks about the portals that are not on it.
 Example: 2 guests × 3 nights × CHF 2.00 = CHF 12.00, out of VAT.
 
 **Who collected the money** (`FiscalDocument.PaymentChannel`, written with the draft):
@@ -353,15 +355,52 @@ recorded. All of it recorded: nothing is to collect, no note, and the document s
 document is built for the person who asks: `GET api/fiscal/documents/{id}`, the answers of the create, the refresh and the issue of a document (the replacement of a rejected invoice is a refresh), the PDF of the
 agency, of the accountant package and of the owner portal (which names the org: the portal has no tenant); the list has no lines and reads nothing.
 It is read by the two layouts of the PDF, each with the words of its own tax: the Swiss layout says «tassa» (the line of the tax carries «- tassa da riscuotere in struttura» / «- tax to be collected at the property»;
-the payment says «Pagata tramite il portale: CHF 450.00» and «Tassa di soggiorno da riscuotere in struttura: CHF 12.00»); the Italian layout says «imposta», as its line does («Imposta di soggiorno riscossa per conto
-del comune»), and never «riscossa» and «da riscuotere» together (the line carries «- da pagare in struttura» / «- payable at the property»; the payment says «Pagamento: pagato tramite il portale per EUR 450,00» and
-«Imposta di soggiorno da pagare in struttura: EUR 12,00»). The API reads it too: `FiscalDocumentDto` (`amountPaidViaPortal`, `amountToCollectAtProperty` and `toCollectAtProperty` on the line of the tax, each **left out
+the payment says «Pagata tramite il portale: CHF 450.00» and «Tassa di soggiorno da riscuotere in struttura: CHF 12.00»); the Italian layout says «imposta», and the line of the tax a portal left to the host reads
+«Imposta di soggiorno da pagare in struttura» / «Tourist tax payable at the property» (not «riscossa per conto del comune», the line of a tax the host collected: FIX/BE-IT-TOURISTTAX-DEFAULTS), never «riscossa» and
+«da riscuotere» together; the payment says «Pagamento: pagato tramite il portale per EUR 450,00» and «Imposta di soggiorno da pagare in struttura: EUR 12,00», then that the amount is an estimate and that the property
+issues a separate numbered receipt when it collects it. The API reads it too: `FiscalDocumentDto` (`amountPaidViaPortal`, `amountToCollectAtProperty` and `toCollectAtProperty` on the line of the tax, each **left out
 of the answer** when it does not apply, so the answer of every other document is what it was; the list has no lines, so no row has them). The members come out of `GET api/fiscal/documents/{id}`, the answers of
 `POST api/fiscal/documents`, `.../{id}/refresh` and `.../{id}/issue`, and the replacement of a rejected invoice; **not** out of the list, the document card of a booking (`GET api/bookings/{id}/fiscal-documents`) or the payment
 ledger, which keep the stored `PaymentState` (`Paid` for the whole total) as the exports do. The total, the lines and the stored `PaymentState` do not change. **⚖ Product owner, open:** the default is «a tax nobody
 recorded is never declared paid»; the other choice is the whole document paid through the portal, as before. It is changed in `FiscalDocumentPortalCollection.SplitOf` (nothing else reads the portal's share). For
 Italy the PO still has to confirm the rule itself (a stay of a portal whose tax the host collects is «to collect» unless E25 records it; whether a tax included in the price a portal reports counts as collected is his
 call). **Rollback:** revert the change; no data was written. The frontend adopts the new members in a slice of its own.
+
+**The tourist tax of an Italian portal stay** (FIX/BE-IT-TOURISTTAX-DEFAULTS, decision 2 of `fatturazione/decisioni-fiscali-2026-11-20.md`, research R2 in `fatturazione/ricerche/R2-imposta-soggiorno-italia-portali.md`; this settles the
+«⚖ Product owner, open» above for Italy). **The rule: the guest document says «incassata dal portale» only if for that booking the tax is recorded as collected by the portal; otherwise «da pagare in struttura».**
+Why: in the short lettings the subject that collects the rent or intervenes in the payment (a portal or an intermediary) is responsible for paying the tax and filing the declaration, with recourse on the guests
+(art. 4 c. 5-ter DL 50/2017, added by art. 180 c. 4 DL 34/2020); in the other cases the manager of the structure is (art. 4 c. 1-ter D.Lgs. 23/2011, introduced by art. 180 c. 3 DL 34/2020); the MEF FAQ of
+19/09/2022 says the same of the declaration. Airbnb collects and pays only where the municipality is registered with it (its help pages 3652 and 2287); for Booking.com no official page says that it collects in Italy
+(its payments API page lists the countries where it does, and Italy is not one at November 2025); for Expedia and Vrbo nothing was verified. Writing «incassata» wrongly leaves the manager responsible towards the
+comune; writing «da pagare» wrongly is a double payment that is given back.
+
+*Who collects, strongest first* (`ItalianPortalTouristTax.Decide`, pure, in `Casazen.Core/TouristTax`): (1) a booking that is not of a channel: the host; (2) the record of the stay and the data of the channel: the active
+`TouristTaxChannelRule` of the comune and the channel, then the collector the host declared for the stay (`StayTouristTax.DeclaredCollector`), then the collector of the calculation it confirmed (`StayTouristTax.Collector`);
+(3) the rule of the organization: the portals of its own list (`PlatformCollectedTouristTaxChannels`, the answer it saved, an empty list included), or, while it saved none, the default of the channel,
+`ItalianTouristTax:PlatformCollected` (**none**: no channel is taken to collect it, Airbnb, Booking.com, Expedia, Vrbo and the unknown ones alike); (4) the global default: the host collects at the property. Nothing is
+«unknown» for the document any more: it does not wait for an answer (`TouristTaxCollectorRules.Decide` is untouched and still tells E25 to ask the host who collected). What the host saved is never overridden by the
+default, and the Swiss behaviour is unchanged (`SwissTouristTax:PlatformCollected` stays the Swiss default; an Italian issuer never inherits it).
+Before this change a portal booking whose collector nobody had declared got no tax line and its document said nothing of the tax; now it gets the line and the statement below. An amount is still needed: the confirmed tax of E25,
+else `Booking.TouristTax`; with none (no estimate is made up) there is no line and nothing is said.
+
+*What the Italian document says.* **The host collects** (the default): the line of the tax is billed and, on a document paid through the portal, the rule of the section above applies: the line reads «Imposta di soggiorno da pagare in struttura»
+(`FiscalDocLineTouristTaxToCollect`; it replaces «riscossa per conto del comune», which would say the opposite), the payment «Pagamento: pagato tramite il portale per EUR 450,00» and «Imposta di soggiorno da pagare in struttura: EUR 12,00»,
+and a paragraph says that the amount is an estimate and that the structure issues a separate numbered receipt when it collects the tax (`FiscalDocPdfToCollectReceiptNote`;
+Italian «imposta» throughout, never «riscossa» together with «da riscuotere»; the English words are different: «Tourist tax payable at the property», «issues a separate numbered receipt»). **The portal collected it** (the
+organization says so, or the record of the stay does) and the stay owes a tax: no line (never a double charge), and the line of the stay carries the statement «Soggiorno di 3 notti. Imposta di soggiorno incassata dal portale
+(per le esenzioni rivolgersi al portale)» (`FiscalDocLineLodgingTaxByPortal`), written with the draft in the language of the document like every line, so an issued document never changes; it names no portal. The Swiss layout is untouched.
+
+*The setup* (`GET api/billing-setup`, section `touristTax`, for an **Italian issuer** only, read only, never saved or applied by itself; the section still does not apply to an Italian issuer, so no item is added to its guide):
+`defaultPlatformCollectedTouristTaxChannels` is the Italian default above (empty); `italianPortalProposals` is `[{ comuneIstat, comune, channel, status }]`, `status` = `to_confirm`: **«Airbnb incassa, da confermare» only for
+Milano (ISTAT 015146) and Firenze (ISTAT 048017)**, the two comuni whose own pages were read on 2026-11-20 (Comune di Milano, «Airbnb: gestione imposta di soggiorno»; Comune di Firenze, FAQ); derived from the ISTAT codes
+of the properties of the organization, none for any other comune (Roma stays out: «da verificare»), and none for an organization that has saved its own list, which stands. A person confirms a proposal by saving the
+list (`PUT api/billing-setup/touristTax`, `platformCollectedTouristTaxChannels`). `portalTouristTaxConflict` is a boolean data-quality hint: the record of a recent active stay (ended less than 12 months ago) says the opposite of the
+rule of the organization for its channel (a tax recorded as collected by the portal while the rule says «at the property», or the opposite); no «To do». A caller who reaches only some of the properties does not get the two last
+members (they sum up all of them), as it cannot change the setup.
+
+*Not verified, for the accountant:* what happens to the host when a portal that collects the rent does not collect or pay the tax (no source on the recourse of the comune); the list of the comuni where Airbnb is active (outside
+Milano and Firenze only the listing says so; the agreement of Roma was not read); Booking.com, Expedia and Vrbo (re-verify before the release); the VAT treatment of the line (outside the VAT, read on the regulation of Milano only);
+the text of L. 213/2023 and D.Lgs. 147/2026; Trento and Bolzano have their own rules. **Rollback:** revert the change; no data was written, no migration, no flag.
 
 **When the booking changes.** `IFiscalDocumentService.ApplyBookingChangeAsync` follows a change of the booking: a **draft** is made again from it (or discarded when the booking is no
 longer active and nothing was collected for it; kept with a «To do» when money was collected or when it cannot be made again); an **issued** document is **never** rewritten: it is corrected
@@ -1074,7 +1113,8 @@ per comune and the account of the agent (the stays, the tax owed, the payment of
   («Riaddebito commissioni Booking.com») and so does the statement; the TD17 is the agency's (one for the two stays, 135.00 + VAT 29.70, the estimate accepted at the issue), none for the owners;
   the portal now pays the agency, so the agency withholds 21% of the stay of the private owner (94.50). The package of October lists the commission (67.50 of each owner, «Riaddebitata al
   proprietario») in `commissioni-portali-v2`, and the package of November holds the TD17 of the agency (a register, its PDF and its XML, and the class «Autofatture TD17» of the VAT file of the agency).
-- **Airbnb** (the portal collects the tourist tax of Como and withholds for a private Italian host, ⚖ R5): no line of the tax on the receipt, nothing in the box of the statement,
+- **Airbnb** (the portal collects the tourist tax of Como and withholds for a private Italian host, ⚖ R5): no line of the tax on the receipt, whose line of the stay says that the portal
+  collected the tax and that the exemptions are asked of the portal (never the name of the portal; FIX/BE-IT-TOURISTTAX-DEFAULTS), nothing in the box of the statement,
   no withholding of the agency («already withheld by the portal»: never twice), and the contract in the communication of 30 June.
 - **Flat B exempt N4** (⚖ I1): the stay N4 and the tourist tax N1 are outside the VAT and over 77.47, so the invoice of the company carries the stamp duty of 2.00 (`DatiBollo`).
 - **Co-owners 60/40** (⚖ I6): one receipt on the profile of the co-owner with the largest share, listing both with their shares; each owner has its own statement, invoice, payout and

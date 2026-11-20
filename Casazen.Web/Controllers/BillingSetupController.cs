@@ -37,7 +37,9 @@ public class BillingSetupController(
 
     /// <summary>
     /// Every section of the setup, in the order of the wizard: <c>{ complete, sections: [{ section, applies, complete, values, missing }] }</c>, a missing item being
-    /// <c>{ key, section, reason, count? }</c>. The key of the first missing item is where the guide reopens the wizard.
+    /// <c>{ key, section, reason, count? }</c>. The key of the first missing item is where the guide reopens the wizard. For an Italian issuer the values of <c>touristTax</c> also carry, read only,
+    /// <c>italianPortalProposals</c> (<c>[{ comuneIstat, comune, channel, status }]</c>: «Airbnb incassa, da confermare» for Milano and Firenze, never saved or applied by themselves) and
+    /// <c>portalTouristTaxConflict</c> (a boolean: the records of the stays contradict the organization's rule); a caller who reaches only some of the properties does not get these two, which sum up all of them.
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(BillingSetupDto), StatusCodes.Status200OK)]
@@ -48,7 +50,10 @@ public class BillingSetupController(
         if (orgId is null)
             return Unauthorized();
 
-        return Ok(BillingSetupDto.From(await billingSetup.GetAsync(orgId.Value, cancellationToken)));
+        // The caller may read the setup of its organization whatever its reach, but what sums up all of the properties is for the caller that reaches them all.
+        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
+        var setup = await billingSetup.GetAsync(orgId.Value, cancellationToken);
+        return Ok(BillingSetupDto.From(setup, orgWide: scope is { IsOrgWide: true }));
     }
 
     /// <summary>

@@ -23,6 +23,8 @@ namespace Casazen.Infrastructure.Services;
 /// that is not registered, tells the regime where only one fits.</item>
 /// <item><b>Open to the other epics.</b> The missing items are asked of every contributor of the section, in the order they were registered; a section with
 /// none does not apply and is not counted. The save of a section another epic owns (<c>channels</c>, <c>mandates</c>) is that epic's endpoint, not this one.</item>
+/// <item><b>Italian tourist tax.</b> For an Italian issuer the section <c>touristTax</c> also carries, read only, the proposals for the comuni of its properties and the data-quality hint of
+/// <see cref="IItalianTouristTaxSetup"/> (FIX/BE-IT-TOURISTTAX-DEFAULTS): nothing is saved or applied by reading them, and a service built without it carries none.</item>
 /// <item><b>Logs</b> carry the org, the section and the number of fields: never a value of the setting.</item>
 /// </list>
 /// </remarks>
@@ -32,11 +34,13 @@ public sealed class BillingSetupService(
     ILogger<BillingSetupService> logger,
     IPortalAccountSettingsService? portalAccounts = null,
     IFeatureFlags? featureFlags = null,
-    IGuestDocumentLineBuilder? documentLines = null) : IBillingSetupService
+    IGuestDocumentLineBuilder? documentLines = null,
+    IItalianTouristTaxSetup? italianTouristTax = null) : IBillingSetupService
 {
     /// <summary>
     /// The key of the section <c>touristTax</c> that lists the portals that collect the tourist tax by default, for an issuer that has not confirmed its own list yet:
-    /// read-only, the shipped default (<c>SwissTouristTax:PlatformCollected</c>) as the guest documents read it, never copied into the profile.
+    /// read-only, the default of its country as the guest documents read it (<c>SwissTouristTax:PlatformCollected</c> for a Swiss issuer, <c>ItalianTouristTax:PlatformCollected</c>, none by
+    /// default, for an Italian one), never copied into the profile.
     /// </summary>
     public const string DefaultPlatformCollectedTouristTaxChannels = "defaultPlatformCollectedTouristTaxChannels";
 
@@ -45,7 +49,8 @@ public sealed class BillingSetupService(
         var view = await issuers.GetSettingsAsync(orgId, ct);
         var evaluations = await EvaluateAsync(orgId, new SettingReader(issuers, orgId, view), null, ct);
         var channels = await ChannelValuesAsync(orgId, ct);
-        return new BillingSetup([.. evaluations.Select(evaluation => SectionOf(evaluation, view, channels))]);
+        var italianTax = await ItalianTouristTaxValuesAsync(orgId, view.Issuer, ct);
+        return new BillingSetup([.. evaluations.Select(evaluation => SectionOf(evaluation, view, channels, italianTax))]);
     }
 
     public async Task<BillingSetupSection> PutSectionAsync(
@@ -196,16 +201,51 @@ public sealed class BillingSetupService(
     private async Task<BillingSetupSection> SectionAfterAsync(Guid orgId, string name, IssuerSettingsView view, CancellationToken ct)
     {
         var evaluations = await EvaluateAsync(orgId, new SettingReader(issuers, orgId, view), [name], ct);
-        return SectionOf(evaluations.Single(), view);
+        var italianTax = name == BillingSetupSections.TouristTax ? await ItalianTouristTaxValuesAsync(orgId, view.Issuer, ct) : null;
+        return SectionOf(evaluations.Single(), view, null, italianTax);
     }
 
-    /// <summary>The section with its values: the ones of the profile of the issuer, and for <c>channels</c> the defaults of the portal accounts (E14/F01/US01/T01).</summary>
-    private BillingSetupSection SectionOf(Evaluation evaluation, IssuerSettingsView view, IReadOnlyDictionary<string, object?>? channels = null) =>
-        new(
-            evaluation.Section,
-            evaluation.Applies,
-            evaluation.Section == BillingSetupSections.Channels && channels is not null ? channels : ValuesOf(evaluation.Section, view),
-            evaluation.Items);
+    /// <summary>
+    /// The section with its values: the ones of the profile of the issuer, for <c>channels</c> the defaults of the portal accounts (E14/F01/US01/T01), and for <c>touristTax</c> of an Italian issuer
+    /// the read-only proposals and hint of <see cref="IItalianTouristTaxSetup"/> (<paramref name="italianTax"/>).
+    /// </summary>
+    private BillingSetupSection SectionOf(
+        Evaluation evaluation,
+        IssuerSettingsView view,
+        IReadOnlyDictionary<string, object?>? channels = null,
+        IReadOnlyDictionary<string, object?>? italianTax = null)
+    {
+        if (evaluation.Section == BillingSetupSections.Channels && channels is not null)
+            return new BillingSetupSection(evaluation.Section, evaluation.Applies, channels, evaluation.Items);
+
+        var values = ValuesOf(evaluation.Section, view);
+        if (evaluation.Section == BillingSetupSections.TouristTax && italianTax is not null)
+        {
+            foreach (var (key, value) in italianTax)
+                values[key] = value;
+        }
+
+        return new BillingSetupSection(evaluation.Section, evaluation.Applies, values, evaluation.Items);
+    }
+
+    /// <summary>
+    /// What the section <c>touristTax</c> adds for an Italian issuer (FIX/BE-IT-TOURISTTAX-DEFAULTS): the proposals «Airbnb incassa, da confermare» for the comuni of its properties
+    /// (<see cref="ItalianTouristTaxSetupKeys.Proposals"/>) and the data-quality hint (<see cref="ItalianTouristTaxSetupKeys.ChannelDataConflict"/>), read from the organization's rule exactly as the
+    /// guest documents read it. <c>null</c> for any other issuer, and for a service built without the reader or without the line builder (it has no rule to compare with): nothing is made up.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, object?>?> ItalianTouristTaxValuesAsync(Guid orgId, IssuerData issuer, CancellationToken ct)
+    {
+        if (italianTouristTax is null || documentLines is null || CountryOf(issuer.CountryCode) != FiscalDocumentRules.Italy)
+            return null;
+
+        var channels = issuer.PlatformCollectedTouristTaxChannelsConfirmed ? issuer.PlatformCollectedTouristTaxChannels : DefaultChannelsOf(issuer.CountryCode);
+        var setup = await italianTouristTax.ReadAsync(orgId, channels, issuer.PlatformCollectedTouristTaxChannelsConfirmed, ct);
+        return new Dictionary<string, object?>
+        {
+            [ItalianTouristTaxSetupKeys.Proposals] = setup.Proposals,
+            [ItalianTouristTaxSetupKeys.ChannelDataConflict] = setup.ChannelDataConflict,
+        };
+    }
 
     /// <summary>
     /// The values of the section <c>channels</c> the owner invoice adds (E14/F01/US01/T01, ⚖ I10, I11): who holds the accounts of the portals by default and
@@ -282,16 +322,19 @@ public sealed class BillingSetupService(
     /// <summary>
     /// The portals that collect the tourist tax by default for an issuer of <paramref name="countryCode"/> that has confirmed none, by the names of
     /// <see cref="Casazen.Core.Entities.Enums.BookingSource"/>: exactly what the guest documents say of a profile with nothing confirmed
-    /// (<see cref="IGuestDocumentLineBuilder.PlatformCollectedChannelsOf"/>: the shipped default of a Swiss issuer, none for an Italian one), so the wizard and the documents
-    /// never disagree. Empty when the service is built without the line builder.
+    /// (<see cref="IGuestDocumentLineBuilder.PlatformCollectedChannelsOf"/>: the shipped default of a Swiss issuer, <c>ItalianTouristTax:PlatformCollected</c>, none by default, for an
+    /// Italian one), so the wizard and the documents never disagree. Empty when the service is built without the line builder.
     /// </summary>
-    private IReadOnlyList<string> PlatformDefaultsOf(string? countryCode)
+    private IReadOnlyList<string> PlatformDefaultsOf(string? countryCode) => [.. DefaultChannelsOf(countryCode).Select(source => source.ToString())];
+
+    /// <summary>The default portals of the country of an issuer that has confirmed none (see <see cref="PlatformDefaultsOf"/>), as the guest documents read them.</summary>
+    private IReadOnlyList<BookingSource> DefaultChannelsOf(string? countryCode)
     {
         if (documentLines is null)
             return [];
 
         var unconfirmed = new OrgFiscalIssuerProfile { CountryCode = CountryOf(countryCode) };
-        return [.. documentLines.PlatformCollectedChannelsOf(unconfirmed).Select(source => source.ToString())];
+        return documentLines.PlatformCollectedChannelsOf(unconfirmed);
     }
 
     /// <summary>What is saved in a section, by the names of <see cref="BillingSetupFields"/>; the bank accounts of the issuer are in none. A section no epic fills here has none.</summary>
@@ -344,8 +387,8 @@ public sealed class BillingSetupService(
                         ? issuer.PlatformCollectedTouristTaxChannels.Select(source => source.ToString()).ToList()
                         : null,
 
-                    // The portals that collect it by default while the issuer has confirmed none (the shipped default of a Swiss issuer, none for an Italian one): the
-                    // wizard asks about the portals that are not on it, not about all of them. Read, never saved; the issuer's own answer is the field above.
+                    // The portals that collect it by default while the issuer has confirmed none (the shipped default of a Swiss issuer, ItalianTouristTax:PlatformCollected, none by
+                    // default, for an Italian one): the wizard asks about the portals that are not on it, not about all of them. Read, never saved; the issuer's own answer is the field above.
                     [DefaultPlatformCollectedTouristTaxChannels] = PlatformDefaultsOf(issuer.CountryCode),
                 };
             case BillingSetupSections.Automation:

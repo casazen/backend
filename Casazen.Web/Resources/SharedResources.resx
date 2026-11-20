@@ -6427,6 +6427,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocPdfToCollectAtProperty" xml:space="preserve">
     <value>Imposta di soggiorno da pagare in struttura: {0} {1}</value>
   </data>
+  <data name="FiscalDocPdfToCollectReceiptNote" xml:space="preserve">
+    <value>L'importo dell'imposta di soggiorno è una stima: quando la incassa, la struttura rilascia una ricevuta separata e numerata.</value>
+  </data>
   <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
     <value>Copia di cortesia della fattura elettronica: il documento valido ai fini fiscali è il file XML trasmesso al Sistema di Interscambio.</value>
   </data>
@@ -6541,6 +6544,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocLineLodging" xml:space="preserve">
     <value>Soggiorno di {0} notti</value>
   </data>
+  <data name="FiscalDocLineLodgingTaxByPortal" xml:space="preserve">
+    <value>Soggiorno di {0} notti. Imposta di soggiorno incassata dal portale (per le esenzioni rivolgersi al portale)</value>
+  </data>
   <data name="FiscalDocLineCleaning" xml:space="preserve">
     <value>Pulizie finali</value>
   </data>
@@ -6550,8 +6556,8 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocLineTouristTaxCh" xml:space="preserve">
     <value>Tassa di soggiorno (non soggetta all'IVA)</value>
   </data>
-  <data name="FiscalDocLineToCollectNote" xml:space="preserve">
-    <value>{0} - da pagare in struttura</value>
+  <data name="FiscalDocLineTouristTaxToCollect" xml:space="preserve">
+    <value>Imposta di soggiorno da pagare in struttura</value>
   </data>
   <data name="FiscalDocLineToCollectNoteCh" xml:space="preserve">
     <value>{0} - tassa da riscuotere in struttura</value>

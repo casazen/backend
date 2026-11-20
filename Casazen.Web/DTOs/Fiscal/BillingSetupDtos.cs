@@ -18,10 +18,14 @@ public sealed class BillingSetupDto
 
     public required IReadOnlyList<BillingSetupSectionDto> Sections { get; init; }
 
-    public static BillingSetupDto From(BillingSetup setup)
+    /// <summary>
+    /// The setup as the API answers it. <paramref name="orgWide"/> says the caller reaches the whole organization: a caller who reaches only some of its properties gets the setup without
+    /// the members that sum up all of them (<see cref="BillingSetupSectionDto.OrgWideValues"/>), never the whole organization's properties by the way.
+    /// </summary>
+    public static BillingSetupDto From(BillingSetup setup, bool orgWide = true)
     {
         ArgumentNullException.ThrowIfNull(setup);
-        return new BillingSetupDto { Complete = setup.IsComplete, Sections = [.. setup.Sections.Select(BillingSetupSectionDto.From)] };
+        return new BillingSetupDto { Complete = setup.IsComplete, Sections = [.. setup.Sections.Select(section => BillingSetupSectionDto.From(section, orgWide))] };
     }
 }
 
@@ -43,7 +47,17 @@ public sealed class BillingSetupSectionDto
 
     public required IReadOnlyList<BillingSetupItemDto> Missing { get; init; }
 
-    public static BillingSetupSectionDto From(BillingSetupSection section)
+    /// <summary>
+    /// The read-only members that sum up the properties of the whole organization (FIX/BE-IT-TOURISTTAX-DEFAULTS): the proposals for the comuni of its properties and the hint about the records of
+    /// its stays. A caller who reaches only some of the properties does not get them (it may read the setup and may not change it).
+    /// </summary>
+    public static IReadOnlySet<string> OrgWideValues { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        ItalianTouristTaxSetupKeys.Proposals,
+        ItalianTouristTaxSetupKeys.ChannelDataConflict,
+    };
+
+    public static BillingSetupSectionDto From(BillingSetupSection section, bool orgWide = true)
     {
         ArgumentNullException.ThrowIfNull(section);
         return new BillingSetupSectionDto
@@ -51,7 +65,9 @@ public sealed class BillingSetupSectionDto
             Section = section.Section,
             Applies = section.Applies,
             Complete = section.IsComplete,
-            Values = section.Values.Where(value => value.Value is not null).ToDictionary(value => value.Key, value => value.Value),
+            Values = section.Values
+                .Where(value => value.Value is not null && (orgWide || !OrgWideValues.Contains(value.Key)))
+                .ToDictionary(value => value.Key, value => value.Value),
             Missing = [.. section.Missing.Select(BillingSetupItemDto.From)],
         };
     }
