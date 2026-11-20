@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
@@ -53,7 +54,8 @@ public class GuestSessionPhoneLookupTests
     /// <summary>
     /// Privacy rule (AC2, AC-NF143-2): the lookup never reveals whether a code exists. Wrong digits, a code that does not exist, the code of another
     /// site (with the right digits of that booking), a string that is not a code and a booking without a phone (with the digits that stand in for a
-    /// missing phone) get the answer of a wrong e-mail: the same status, the same headers, the same body.
+    /// missing phone) get the answer of a wrong e-mail: the same status, the same headers, the same body. So do a booking that is not a direct one (any
+    /// other source) and a booking of a site whose org is not active, each with the right digits: direct bookings of an active org only, as with the e-mail.
     /// </summary>
     [Fact]
     public async Task WrongDigits_UnknownCode_NoPhone_SameResponse()
@@ -65,7 +67,15 @@ public class GuestSessionPhoneLookupTests
         var withoutPhone = await world.AddBookingAsync(org, house, "bruno@example.com", phone: string.Empty);
         var otherSite = await world.AddBookingAsync(otherOrg, otherHouse, "carla@example.com", GuestSessionPhoneWorld.Phone);
 
-        var refusals = new[]
+        // The e-mail proof reaches the direct bookings of an active org only, and so does the phone: the right digits of a guest's phone open nothing
+        // else, whatever the source of the booking and whatever the org of the site.
+        var (closedOrg, closedHouse) = await world.AddSiteAsync(isActive: false);
+        var ofClosedSite = await world.AddBookingAsync(closedOrg, closedHouse, "dario@example.com", GuestSessionPhoneWorld.Phone);
+        var notDirect = new List<string>();
+        foreach (var source in Enum.GetValues<BookingSource>().Where(candidate => candidate != BookingSource.Direct))
+            notDirect.Add((await world.AddBookingAsync(org, house, $"guest.{source}@example.com", GuestSessionPhoneWorld.Phone, source)).BookingCode);
+
+        var refusals = new List<SessionAnswer>
         {
             await world.OpenAsync(GuestSessionPhoneWorld.PhoneBody(org, booking.BookingCode, GuestSessionPhoneWorld.WrongDigits)),
             await world.OpenAsync(GuestSessionPhoneWorld.PhoneBody(org, GuestSessionPhoneWorld.OtherCode(booking.BookingCode), GuestSessionPhoneWorld.RightDigits)),
@@ -73,7 +83,10 @@ public class GuestSessionPhoneLookupTests
             await world.OpenAsync(GuestSessionPhoneWorld.PhoneBody(org, booking.Id.ToString("D"), GuestSessionPhoneWorld.RightDigits)),
             await world.OpenAsync(GuestSessionPhoneWorld.PhoneBody(org, withoutPhone.BookingCode, "0000")),
             await world.OpenAsync(GuestSessionPhoneWorld.EmailBody(org, booking.BookingCode, "someone.else@example.com")),
+            await world.OpenAsync(GuestSessionPhoneWorld.PhoneBody(closedOrg, ofClosedSite.BookingCode, GuestSessionPhoneWorld.RightDigits)),
         };
+        foreach (var code in notDirect)
+            refusals.Add(await world.OpenAsync(GuestSessionPhoneWorld.PhoneBody(org, code, GuestSessionPhoneWorld.RightDigits)));
 
         Assert.All(refusals, refusal => Assert.Equal(StatusCodes.Status404NotFound, refusal.Status));
         Assert.All(refusals, refusal => Assert.True(refusal.ActionRan));
@@ -87,6 +100,13 @@ public class GuestSessionPhoneLookupTests
         Assert.Equal(
             StatusCodes.Status200OK,
             (await world.OpenAsync(GuestSessionPhoneWorld.EmailBody(org, withoutPhone.BookingCode, "bruno@example.com"))).Status);
+
+        // The booking of the site whose org is not active opens as soon as the org is: the org was the only reason of its refusal.
+        closedOrg.IsActive = true;
+        await world.Db.SaveChangesAsync();
+        Assert.Equal(
+            StatusCodes.Status200OK,
+            (await world.OpenAsync(GuestSessionPhoneWorld.PhoneBody(closedOrg, ofClosedSite.BookingCode, GuestSessionPhoneWorld.RightDigits))).Status);
     }
 
     /// <summary>

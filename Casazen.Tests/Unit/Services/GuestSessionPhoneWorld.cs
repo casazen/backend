@@ -106,8 +106,8 @@ internal sealed class GuestSessionPhoneWorld : IDisposable
     public static string OtherCode(string code) =>
         string.Concat(code.Select(c => BookingCodes.Alphabet[(BookingCodes.Alphabet.IndexOf(c) + 1) % BookingCodes.Alphabet.Length]));
 
-    /// <summary>A booking site: an active org and one of its houses.</summary>
-    public async Task<(OrgEntity Org, Property House)> AddSiteAsync()
+    /// <summary>A booking site: an org (active unless <paramref name="isActive"/> says otherwise) and one of its houses.</summary>
+    public async Task<(OrgEntity Org, Property House)> AddSiteAsync(bool isActive = true)
     {
         var org = new OrgEntity
         {
@@ -116,7 +116,7 @@ internal sealed class GuestSessionPhoneWorld : IDisposable
             DisplayName = "Villa Prova",
             ContactEmail = "host@example.com",
             PlanTier = PlanTier.Starter,
-            IsActive = true,
+            IsActive = isActive,
         };
         var house = new Property
         {
@@ -139,8 +139,11 @@ internal sealed class GuestSessionPhoneWorld : IDisposable
         return (org, house);
     }
 
-    /// <summary>A confirmed direct booking of the site whose guest has <paramref name="email"/> and <paramref name="phone"/> (empty: no phone).</summary>
-    public async Task<Booking> AddBookingAsync(OrgEntity org, Property house, string email, string phone)
+    /// <summary>
+    /// A confirmed booking of the site (a direct one, unless <paramref name="source"/> says otherwise) whose guest has <paramref name="email"/> and
+    /// <paramref name="phone"/> (empty: no phone).
+    /// </summary>
+    public async Task<Booking> AddBookingAsync(OrgEntity org, Property house, string email, string phone, BookingSource source = BookingSource.Direct)
     {
         var guest = new Guest
         {
@@ -161,7 +164,7 @@ internal sealed class GuestSessionPhoneWorld : IDisposable
             NumberOfGuests = 2,
             NumberOfAdults = 2,
             Status = BookingStatus.Confirmed,
-            Source = BookingSource.Direct,
+            Source = source,
             PaymentOption = PaymentOption.Immediate,
             BasePrice = 350m,
             CleaningFee = 50m,
