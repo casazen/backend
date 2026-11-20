@@ -256,17 +256,24 @@ public class TicinoNotificationService(
             throw new DomainRuleException("ticino_declaration_receipt_invalid", "TicinoDeclarationReceiptInvalid");
 
         // Idempotent: a day declared already answers the declaration that exists, whoever repeats the call. A receipt it does not have yet is attached; nothing else changes.
-        var existing = await DeclarationsOf(property, day).OrderBy(d => d.DeclaredAt).ThenBy(d => d.Id).FirstOrDefaultAsync(cancellationToken);
-        if (existing is not null)
+        var existing = await FirstDeclarationAsync(property, day, cancellationToken);
+        if (existing is not null && receiptId is { } attach && existing.ReceiptId != attach)
         {
-            if (receiptId is { } attach && existing.ReceiptId != attach)
+            existing.ReceiptId = attach;
+            try
             {
-                existing.ReceiptId = attach;
                 await context.SaveChangesAsync(cancellationToken);
             }
-
-            return await ToDeclarationAsync(existing, created: false, cancellationToken);
+            catch (DbUpdateConcurrencyException)
+            {
+                // A co-host undid the declaration between the read and the save: the row to update is gone, so this call comes after the undo and declares the day again below.
+                context.Entry(existing).State = EntityState.Detached;
+                existing = await FirstDeclarationAsync(property, day, cancellationToken);
+            }
         }
+
+        if (existing is not null)
+            return await ToDeclarationAsync(existing, created: false, cancellationToken);
 
         var declaration = new SwissNotificationDeclaration
         {
@@ -292,7 +299,7 @@ public class TicinoNotificationService(
         {
             // A co-host declared the same day at the same moment and won the unique index: the answer is the declaration that is there, as if the call had come second.
             context.Entry(declaration).State = EntityState.Detached;
-            var winner = await DeclarationsOf(property, day).OrderBy(d => d.DeclaredAt).ThenBy(d => d.Id).FirstOrDefaultAsync(cancellationToken);
+            var winner = await FirstDeclarationAsync(property, day, cancellationToken);
             if (winner is null)
                 throw;
 
@@ -320,7 +327,19 @@ public class TicinoNotificationService(
             return false;
 
         context.SwissNotificationDeclarations.RemoveRange(declarations);
-        await context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // A co-host undid the same declaration at the same moment and won: the row is gone, which is what was asked. This call has nothing to undo and tells nobody, the answer
+            // is the idempotent one (false) and the winner told the hosts.
+            foreach (var removed in declarations)
+                context.Entry(removed).State = EntityState.Detached;
+
+            return false;
+        }
 
         _logger.LogInformation(
             "Ticino notification declaration of property {PropertyId} for {ArrivalDay} undone by {UserId}",
@@ -463,6 +482,10 @@ public class TicinoNotificationService(
     private IQueryable<SwissNotificationDeclaration> DeclarationsOf(Property property, DateOnly day) =>
         context.SwissNotificationDeclarations
             .Where(d => d.OrgId == property.OrgId && d.PropertyId == property.Id && d.ArrivalDay == day && d.RegimeCode == null);
+
+    /// <summary>The declaration of <paramref name="day"/> that stands (the first one, tracked), or <c>null</c> when the day is not declared.</summary>
+    private Task<SwissNotificationDeclaration?> FirstDeclarationAsync(Property property, DateOnly day, CancellationToken cancellationToken) =>
+        DeclarationsOf(property, day).OrderBy(d => d.DeclaredAt).ThenBy(d => d.Id).FirstOrDefaultAsync(cancellationToken);
 
     /// <summary>Whether the day is closed: a declaration of it, or a <c>Police</c> receipt recorded for it (the rule of <see cref="ListPendingDaysAsync"/>).</summary>
     private async Task<bool> IsClosedAsync(Property property, DateOnly day, CancellationToken cancellationToken) =>

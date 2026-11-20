@@ -89,7 +89,8 @@ public interface ITicinoNotificationService
 
     /// <summary>
     /// Undoes the declaration of an arrival day (E30/F02/US02/T01): the row is deleted, so the day is to notify again unless a receipt of it is recorded (a receipt still closes
-    /// the day). <b>Idempotent</b>: <c>false</c>, and nothing told, when the day was not declared. The undo of a declaration is told live to the hosts of the property like the declaration.
+    /// the day). <b>Idempotent</b>: <c>false</c>, and nothing told, when the day was not declared, also when a co-host removed the declaration at the same moment (that one told the hosts). The
+    /// undo of a declaration is told live to the hosts of the property like the declaration.
     /// Throws <c>property_not_found</c> or <c>property_not_in_ticino</c>.
     /// </summary>
     /// <param name="propertyId">The property.</param>

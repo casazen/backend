@@ -208,6 +208,43 @@ public class TicinoDeclarationTests
         Assert.All(push.Sent, p => Assert.InRange(p.Key.Length, 1, InAppNotification.DeliveryKeyMaxLength));
     }
 
+    [Fact]
+    public async Task Undo_ACoHostWhoUndoesTheSameDeclarationAtTheSameMoment_GetsTheIdempotentAnswer_AndTellsNobody()
+    {
+        // Two hosts press «undo» together: the first removes the row and tells the hosts; the second finds the row already gone when it saves (the database says that no row was affected). That is
+        // the answer of an undo with nothing to undo (false, no error: the 204 of the API), not a 500, and nothing is told twice.
+        var store = Guid.NewGuid().ToString();
+        Property property;
+        await using (var setup = NewDb(store))
+        {
+            property = await SeedPropertyAsync(setup);
+            setup.SwissNotificationDeclarations.Add(
+                new SwissNotificationDeclaration
+                {
+                    OrgId = property.OrgId,
+                    PropertyId = property.Id,
+                    ArrivalDay = ArrivalDay,
+                    DeclaredByUserId = Bruno,
+                    DeclaredAt = Now.AddSeconds(-1),
+                });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var db = new VanishingRowDbContext(store, () => RemoveEveryDeclaration(store));
+        var push = new RecordingPush();
+        var service = new TicinoNotificationService(db, Clock, pushNotifications: push);
+
+        var undone = await service.UndeclareDayAsync(property.Id, ArrivalDay, Anna);
+
+        Assert.False(undone);
+        Assert.Empty(push.Sent);
+        await using var check = NewDb(store);
+        Assert.Empty(await check.SwissNotificationDeclarations.AsNoTracking().ToListAsync());
+
+        // The context is left clean: nothing that was undone is tracked for a later save of the same scope.
+        Assert.Empty(db.ChangeTracker.Entries<SwissNotificationDeclaration>());
+    }
+
     // ─── Receipts ───
 
     [Fact]
@@ -302,6 +339,45 @@ public class TicinoDeclarationTests
         var row = Assert.Single(await db.SwissNotificationDeclarations.AsNoTracking().ToListAsync());
         Assert.Equal((Anna, receipt), (row.DeclaredByUserId, row.ReceiptId));
         Assert.Single(push.Sent);
+    }
+
+    [Fact]
+    public async Task Declare_AnUndoThatPassesBetweenTheReadAndTheSaveOfTheReceipt_LeavesTheDayDeclaredAgainByThisCall()
+    {
+        // The declaration is read, a co-host undoes it, and only then the receipt is saved on it: the row to update is gone. The call comes after the undo, so the day is declared again with the
+        // receipt (not a 500, not the answer about a declaration that no longer exists) and the hosts are told, as for any declaration that is created.
+        var store = Guid.NewGuid().ToString();
+        Property property;
+        Guid receipt;
+        await using (var setup = NewDb(store))
+        {
+            property = await SeedPropertyAsync(setup);
+            AddUser(setup, Anna, "Anna", "Rossi");
+            receipt = AddReceipt(setup, property, "Police");
+            setup.SwissNotificationDeclarations.Add(
+                new SwissNotificationDeclaration
+                {
+                    OrgId = property.OrgId,
+                    PropertyId = property.Id,
+                    ArrivalDay = ArrivalDay,
+                    DeclaredByUserId = Bruno,
+                    DeclaredAt = Now.AddSeconds(-1),
+                });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var db = new VanishingRowDbContext(store, () => RemoveEveryDeclaration(store));
+        var push = new RecordingPush();
+        var service = new TicinoNotificationService(db, Clock, pushNotifications: push);
+
+        var answer = await service.DeclareDayAsync(property.Id, ArrivalDay, Anna, receipt);
+
+        Assert.True(answer.Created);
+        Assert.Equal((receipt, "Anna Rossi"), (answer.ReceiptId, answer.DeclaredBy));
+        Assert.Single(push.Sent);
+        await using var check = NewDb(store);
+        var row = Assert.Single(await check.SwissNotificationDeclarations.AsNoTracking().ToListAsync());
+        Assert.Equal((Anna, receipt), (row.DeclaredByUserId, row.ReceiptId));
     }
 
     // ─── Organizations and regimes ───
@@ -853,6 +929,14 @@ public class TicinoDeclarationTests
 
     private static string Sha256Of(byte[] content) => Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
 
+    /// <summary>What another request does a moment before this one saves: it removes every declaration of the store.</summary>
+    private static void RemoveEveryDeclaration(string store)
+    {
+        using var winner = NewDb(store);
+        winner.SwissNotificationDeclarations.RemoveRange(winner.SwissNotificationDeclarations.ToList());
+        winner.SaveChanges();
+    }
+
     private static async Task<Property> SeedPropertyAsync(
         AppDbContext db, string country = "CH", string canton = "TI", string? structureId = null, string name = "TEST")
     {
@@ -987,6 +1071,28 @@ public class TicinoDeclarationTests
         public Guid? OrgId { get; } = orgId;
 
         public bool FilterEnabled => true;
+    }
+
+    /// <summary>
+    /// A context whose first save of a change to a declaration (an update or a delete) finds the row already gone: another request removed it a moment before, and the database answers that no row was
+    /// affected, which EF reports as a concurrency exception. The next saves are as any other.
+    /// </summary>
+    private sealed class VanishingRowDbContext(string store, Action anotherRequestWins)
+        : AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(store).Options)
+    {
+        private bool _raced;
+
+        public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            if (!_raced && ChangeTracker.Entries<SwissNotificationDeclaration>().Any(e => e.State is EntityState.Modified or EntityState.Deleted))
+            {
+                _raced = true;
+                anotherRequestWins();
+                throw new DbUpdateConcurrencyException("The database operation was expected to affect 1 row(s), but actually affected 0 row(s).");
+            }
+
+            return await base.SaveChangesAsync(cancellationToken);
+        }
     }
 
     /// <summary>
