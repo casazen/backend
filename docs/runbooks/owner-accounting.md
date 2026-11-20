@@ -347,14 +347,23 @@ The holder of the account of a listing on a portal decides the recharge of its c
   - **Turning the recharge off is a waiver** of the reimbursement the law gives the agency. A save of `PUT api/billing-setup/channels` that starts it (after it the recharge
     is off and the agency holds at least one account, its default or the one of a listing; before it the recharge was on, or the agency held none) needs
     `acknowledgeRechargeWaiver: true`, otherwise 422 `recharge_waiver_not_acknowledged` and nothing is saved; with it the activity log of the organization records who
-    acknowledged it and when (`OrgSettingsChanged` with the part `portalCommissionRechargeWaiver`, in the save of the change). A save that keeps a waiver in place asks
-    nothing; the bulk write of the holders of the listings does not ask (the waiver is the setting of the organization). The frontend dialog is its own slice.
+    acknowledged it and when (`OrgSettingsChanged` with the part `portalCommissionRechargeWaiver`, in the save of the change). The bulk write of the holders of the
+    listings asks the same when it starts the waiver (the recharge off, the agency not the default holder and holding no listing yet, and the write gives it one: the same
+    effect as making it the default holder): `PUT api/billing-setup/channel-account-holders?acknowledgeRechargeWaiver=true`, otherwise the same 422 and nothing is written;
+    with it the same activity line. A save or a write that keeps a waiver in place asks nothing. The frontend dialog is its own slice.
   - **Not retroactive.** Statement versions already published are append-only and never rewritten (their stored totals, their published file and their PDF stay as they
     were; a channel fee the owner was charged on such an account before this rule keeps its amount and is told as «Commissioni del portale (account del portale intestato
     al gestore, senza riaddebito in fattura)», key `StatementFileChannelFeesAgencyCharged`). The next posting of a month **still open** reverses such a channel fee and posts
     the commission as the agency's, so the version made after it follows the rule (an owner invoice already issued for that month keeps its lines: a credit note is the
     agency's call, as for any source that changes after an invoice). A **closed** month is never posted again: its readiness tells, not blocking, `late_source_after_close`
     for such a commission, and a correction in a later month is the agency's call.
+  - **Known limit: the label of a channel fee read again.** What a published version stores never changes (its totals, its published file, its stored PDF). The type of a
+    line says who bears a commission (`ChannelFeeBorneByAgency` is read from the line), but whether a `ChannelFee` of an account of the agency was recharged is not stored
+    with the line: when the lines are read again (the owner portal, the CSV, the PDF of a version not published, the accountant package) it follows the setting of today.
+    So after a waiver a statement published with the recharge is read again as «account intestato al gestore, senza riaddebito in fattura»
+    (`channelFeeChargedOnAgencyAccount`, not `channelFeeRechargedByAgency`) and the package lists its commission «A carico dell'agenzia», though its stored PDF and its
+    invoice say «riaddebitate dal gestore (fattura n. …)»; never as the account of the owner and never as a commission the owner was not charged. Reading the recharge from
+    the invoice of the version would need a marker on the lines of the invoice (not there today).
 
 The default of the organization and the recharge are on the profile of the issuer (`OrgFiscalIssuerProfile.PortalAccountHolder`, `RechargePortalCommissions`,
 migration `AddPortalAccountHolder`: the profiles that exist get the owner and the recharge on): they are the `values` of the section `channels` of the billing
@@ -386,9 +395,11 @@ E13 (its PDF and the owner portal), the VAT summary of E15 and the TD17 of E17 (
   the net, in a part of its own (like the tourist tax box), never as a row of «Commissioni dei canali». A channel fee the owner was charged on such an account before that
   rule (a line of a version made before it) keeps its amount in the totals and is told as «Commissioni del portale (account del portale intestato al gestore, senza riaddebito
   in fattura)» (key `StatementFileChannelFeesAgencyCharged`), never as a commission the owner was not charged. The owner portal reads the same facts
-  (`channelFeeRechargedByAgency`, and `channelFeeBilledToAgencyNotRecharged` for the commission the agency bears: an informational line whose amount is in neither the
-  `total` of its part nor the net; the web app shows a note for the first only until its own slice): the resolver reads the holders whatever the tenant of the caller, since
-  the request of an owner has no org of its own. The e-mail of the publication never carries a line. A published version keeps the PDF it was published with (a stored file
+  (`channelFeeRechargedByAgency`; `channelFeeBilledToAgencyNotRecharged` for the commission the agency bears; `channelFeeChargedOnAgencyAccount` for a commission the
+  owner was charged on an account of the agency without the recharge; all three false is the account of the owner; and `informational`, true for a line whose amount is in
+  neither the `total` of its part nor the net; the web app shows a note for the first only until its own slice, see the known limit above): the resolver reads the holders
+  whatever the tenant of the caller, since the request of an owner has no org of its own. The lines of the ledger the screens of the agency read (`OwnerLedgerEntryDto`: a
+  version, the evidence, a correction) carry `informational` too, so a client leaves such a line out of its totals without knowing its type. The e-mail of the publication never carries a line. A published version keeps the PDF it was published with (a stored file
   never changes): the new label is in the drafts and in the PDF of a new version.
 - **Published = stored.** Publishing a version builds its PDF once, stores it with its SHA-256 as an owner document of type statement (the id of the document is the
   id of the version) and tells the people of the owner portal who read the statements of the owner by e-mail: the agency and the link to the page «Contabilità», never an

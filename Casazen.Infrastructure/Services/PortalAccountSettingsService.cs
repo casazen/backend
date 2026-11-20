@@ -13,9 +13,10 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// The defaults live on the profile of the issuer of the organization (<see cref="OrgFiscalIssuerProfile.PortalAccountHolder"/>,
 /// <see cref="OrgFiscalIssuerProfile.RechargePortalCommissions"/>), the holders of the listings in <see cref="PropertyChannelAccountHolder"/>. The logs carry ids
-/// and counts only. The waiver of the recharge (FIX/BE-V2-NO-RECHARGE) is acknowledged in the activity log of the organization (<paramref name="activityLog"/>), in the save
-/// of the change: a line <see cref="OrgActivityType.OrgSettingsChanged"/> with the part <see cref="PortalAccountErrors.RechargeWaiverActivityPart"/>, whose actor and instant
-/// are who acknowledged it and when (the place the other settings of an organization record their changes; no column of its own).
+/// and counts only. The waiver of the recharge (FIX/BE-V2-NO-RECHARGE), whether a save of the defaults or a bulk write of the holders starts it, is acknowledged in the activity
+/// log of the organization (<paramref name="activityLog"/>), in the save of the change: a line <see cref="OrgActivityType.OrgSettingsChanged"/> with the part
+/// <see cref="PortalAccountErrors.RechargeWaiverActivityPart"/>, whose actor and instant are who acknowledged it and when (the place the other settings of an organization
+/// record their changes; no column of its own).
 /// </remarks>
 public sealed class PortalAccountSettingsService(
     AppDbContext db,
@@ -67,14 +68,7 @@ public sealed class PortalAccountSettingsService(
 
         // Who acknowledged the waiver and when: the actor and the instant of the line, written in the same save as the change (a change rolled back leaves no line).
         if (startsWaiver)
-        {
-            activityLog?.Record(OrgActivity.Of(
-                orgId,
-                OrgActivityType.OrgSettingsChanged,
-                userId is { Length: > 0 and <= OrgActivityCatalog.MaxIdLength } ? userId : null,
-                orgId.ToString(),
-                (OrgActivityDetailKeys.Part, PortalAccountErrors.RechargeWaiverActivityPart)));
-        }
+            RecordWaiver(orgId, userId);
 
         await db.SaveChangesAsync(ct);
 
@@ -101,10 +95,43 @@ public sealed class PortalAccountSettingsService(
 
         var listingOfTheAgency = await db.PropertyChannelAccountHolders.AsNoTracking()
             .AnyAsync(h => h.OrgId == orgId && h.Holder == PortalAccountHolder.Agency, ct);
-        var agencyBefore = holderBefore == PortalAccountHolder.Agency || listingOfTheAgency;
-        var agencyAfter = holderAfter == PortalAccountHolder.Agency || listingOfTheAgency;
-        var waivedBefore = !rechargeBefore && agencyBefore;
-        return agencyAfter && !waivedBefore;
+        return Waived(rechargeAfter, holderAfter, listingOfTheAgency) && !Waived(rechargeBefore, holderBefore, listingOfTheAgency);
+    }
+
+    /// <summary>
+    /// True when the bulk write of the holders starts the waiver of the recharge: the recharge is off, the agency is not the default holder and holds no listing yet, and the
+    /// write gives it one. The same effect as a save of the defaults that makes the agency the default holder, so the same acknowledgement.
+    /// </summary>
+    private async Task<bool> StartsRechargeWaiverAsync(Guid orgId, IReadOnlyList<ChannelAccountHolderCommand> commands, CancellationToken ct)
+    {
+        var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().OfOrganization(orgId).FirstOrDefaultAsync(ct);
+        var recharge = profile?.RechargePortalCommissions ?? PortalAccountHolders.Defaults.RechargePortalCommissions;
+        var holder = profile?.PortalAccountHolder ?? PortalAccountHolders.Defaults.Default;
+        if (recharge || holder == PortalAccountHolder.Agency || !commands.Any(c => c.Holder == PortalAccountHolder.Agency))
+            return false;
+
+        // Before the write, as stored; after it, a listing of the agency at least (the one the write names).
+        var listingBefore = await db.PropertyChannelAccountHolders.AsNoTracking()
+            .AnyAsync(h => h.OrgId == orgId && h.Holder == PortalAccountHolder.Agency, ct);
+        return Waived(recharge, holder, listingOfTheAgency: true) && !Waived(recharge, holder, listingBefore);
+    }
+
+    /// <summary>The waiver of the recharge is in place: the recharge off while the agency holds at least one portal account, its default or the one of a listing.</summary>
+    private static bool Waived(bool recharge, PortalAccountHolder defaultHolder, bool listingOfTheAgency) =>
+        !recharge && (defaultHolder == PortalAccountHolder.Agency || listingOfTheAgency);
+
+    /// <summary>
+    /// Who acknowledged the waiver and when: a line <see cref="OrgActivityType.OrgSettingsChanged"/> with the part <see cref="PortalAccountErrors.RechargeWaiverActivityPart"/>,
+    /// whose actor and instant are the person and the moment, added to the save of the change.
+    /// </summary>
+    private void RecordWaiver(Guid orgId, string? userId)
+    {
+        activityLog?.Record(OrgActivity.Of(
+            orgId,
+            OrgActivityType.OrgSettingsChanged,
+            userId is { Length: > 0 and <= OrgActivityCatalog.MaxIdLength } ? userId : null,
+            orgId.ToString(),
+            (OrgActivityDetailKeys.Part, PortalAccountErrors.RechargeWaiverActivityPart)));
     }
 
     public async Task<IReadOnlyList<ChannelAccountHolderView>> ListAccountHoldersAsync(Guid orgId, CancellationToken ct = default)
@@ -133,6 +160,7 @@ public sealed class PortalAccountSettingsService(
         Guid orgId,
         IReadOnlyList<ChannelAccountHolderCommand>? commands,
         string? userId,
+        bool acknowledgeRechargeWaiver = false,
         CancellationToken ct = default)
     {
         // An empty list is never «all the listings», and never «none» either: it is refused.
@@ -165,6 +193,12 @@ public sealed class PortalAccountSettingsService(
             if (!known.Contains(commands[i].PropertyId))
                 throw Invalid(i, "propertyId");
         }
+
+        // The waiver of the recharge (decision 1 of 20/11/2026): with the recharge off, the first listing of the agency makes the commissions of its account a cost of the agency,
+        // as making the agency the default holder does, so the write needs the same explicit acknowledgement, checked before anything is written.
+        var startsWaiver = await StartsRechargeWaiverAsync(orgId, commands, ct);
+        if (startsWaiver && !acknowledgeRechargeWaiver)
+            throw new DomainRuleException(PortalAccountErrors.RechargeWaiverNotAcknowledged, "RechargeWaiverNotAcknowledged");
 
         var rows = await db.PropertyChannelAccountHolders
             .Where(h => h.OrgId == orgId && propertyIds.Contains(h.PropertyId))
@@ -208,6 +242,10 @@ public sealed class PortalAccountSettingsService(
             }
         }
 
+        // Who acknowledged the waiver and when, in the same save as the holders (a write refused or rolled back leaves no line).
+        if (startsWaiver)
+            RecordWaiver(orgId, userId);
+
         try
         {
             await db.SaveChangesAsync(ct);
@@ -218,6 +256,8 @@ public sealed class PortalAccountSettingsService(
             throw new DomainConflictException(PortalAccountErrors.AccountHoldersConflict, "ChannelAccountHoldersConflict");
         }
 
+        if (startsWaiver)
+            logger.LogInformation("The recharge of the portal commissions of org {OrgId} was waived by {UserId} with the holders of the listings, acknowledged", orgId, userId);
         logger.LogInformation(
             "Channel account holders of org {OrgId} saved by {UserId}: {Written} written, {Removed} back to the default",
             orgId, userId, written, removed);

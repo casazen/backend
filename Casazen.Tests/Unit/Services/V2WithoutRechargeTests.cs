@@ -11,6 +11,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.OwnerPortal;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.DataProtection;
@@ -59,6 +60,10 @@ public class V2WithoutRechargeTests
             (borne.Amount, borne.SourceId, borne.RuleVersion, borne.IdempotencyKey));
         Assert.Equal(266.23m, ledger.Where(e => OwnerLedgerBalance.Counts(e.EntryType)).Sum(e => e.Amount));
 
+        // The ledger as the screens of the agency read it: the line says it is for information only, so a client leaves it out of the totals without knowing its type.
+        Assert.True(OwnerLedgerEntryDto.From(borne).Informational);
+        Assert.All(ledger.Where(e => e.Id != borne.Id), e => Assert.False(OwnerLedgerEntryDto.From(e).Informational));
+
         // The version: nothing taken for the commission of the portal.
         var version = month.Version;
         Assert.Equal(
@@ -82,9 +87,12 @@ public class V2WithoutRechargeTests
         Assert.DoesNotContain("Trattenuta dal portale", text, StringComparison.Ordinal);
         Assert.DoesNotContain("riaddebitate dal gestore", text, StringComparison.Ordinal);
 
-        // The owner portal: the flag of the commission the agency bears, and the total of the part without it.
+        // The owner portal: the flag of the commission the agency bears, the line for information only, and the total of the part without it.
         var part = OwnerPortalStatementSectionDto.From(OwnerStatementSection.ChannelFees, content.Of(OwnerStatementSection.ChannelFees));
-        Assert.Equal((0m, true, false), (part.Total, Assert.Single(part.Lines).ChannelFeeBilledToAgencyNotRecharged, part.Lines[0].ChannelFeeRechargedByAgency));
+        var portalLine = Assert.Single(part.Lines);
+        Assert.Equal(
+            (0m, true, false, false, true),
+            (part.Total, portalLine.ChannelFeeBilledToAgencyNotRecharged, portalLine.ChannelFeeRechargedByAgency, portalLine.ChannelFeeChargedOnAgencyAccount, portalLine.Informational));
     }
 
     /// <summary>
@@ -106,6 +114,7 @@ public class V2WithoutRechargeTests
         Assert.Equal((false, false, false, false), (v1Line.Informational, v1Line.AgencyHoldsPortalAccount, v1Line.AgencyHoldsPortalAccountWithoutRecharge, v1Line.AgencyAccountChargedWithoutRecharge));
         Assert.Equal((-67.50m, 198.73m), (v1Statement.Totals.ChannelFees, v1Statement.Totals.ClosingBalance));
         Assert.Contains("Trattenuta dal portale (fattura del portale a tuo nome)", TextOf(OwnerStatementLayout.Pdf(v1Statement, Texts)), StringComparison.Ordinal);
+        Assert.Equal((false, false, false, false), PortalFlagsOf(v1Line));
 
         // V2 with the recharge: the same channel fee, recharged on the invoice of the property manager.
         await using var v2 = await World.CreateAsync();
@@ -121,11 +130,12 @@ public class V2WithoutRechargeTests
         Assert.Equal((false, true, false, false), (v2Line.Informational, v2Line.AgencyHoldsPortalAccount, v2Line.AgencyHoldsPortalAccountWithoutRecharge, v2Line.AgencyAccountChargedWithoutRecharge));
         Assert.Equal((-67.50m, 193.26m), (v2Statement.Totals.ChannelFees, v2Statement.Totals.ClosingBalance));
         Assert.Contains("Commissioni del portale riaddebitate dal gestore (fattura n. PM2026/1)", TextOf(OwnerStatementLayout.Pdf(v2Statement, Texts)), StringComparison.Ordinal);
+        Assert.Equal((true, false, false, false), PortalFlagsOf(v2Line));
 
         static void AssertChargedChannelFee(World world, OwnerLedgerEntry fee) =>
             Assert.Equal(
-                (OwnerLedgerEntryType.ChannelFee, -67.50m, $"fee:{world.BookingId:N}:2:{world.OwnerId:N}:-6750:CHF:-6750"),
-                (fee.EntryType, fee.Amount, fee.IdempotencyKey));
+                (OwnerLedgerEntryType.ChannelFee, -67.50m, $"fee:{world.BookingId:N}:2:{world.OwnerId:N}:-6750:CHF:-6750", false),
+                (fee.EntryType, fee.Amount, fee.IdempotencyKey, OwnerLedgerEntryDto.From(fee).Informational));
     }
 
     /// <summary>
@@ -173,7 +183,9 @@ public class V2WithoutRechargeTests
         Assert.Contains("Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)", text, StringComparison.Ordinal);
         Assert.DoesNotContain("non addebitata al proprietario", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Trattenuta dal portale", text, StringComparison.Ordinal);
-        Assert.False(Assert.Single(OwnerPortalStatementSectionDto.From(OwnerStatementSection.ChannelFees, content.Of(OwnerStatementSection.ChannelFees)).Lines).ChannelFeeBilledToAgencyNotRecharged);
+
+        // The owner portal tells it the same way: a commission charged on an account of the agency, never the account of the owner (V1) and never one the agency bears.
+        Assert.Equal((false, false, true, false), PortalFlagsOf(line));
 
         // The ledger is append-only: the line charged then is still there, reversed once, and the commission is now the agency's.
         var ledger = await world.LedgerAsync();
@@ -244,6 +256,94 @@ public class V2WithoutRechargeTests
         owners.Db.ChangeTracker.Clear();
         Assert.Equal(PortalAccountErrors.RechargeWaiverNotAcknowledged, agencyDefault.Code);
         Assert.Equal(PortalAccountHolder.Owner, (await owners.Setup.GetAsync(owners.OrgId)).PortalAccountHolder);
+    }
+
+    /// <summary>
+    /// PROOF TEST: permission and data rule. The bulk write of the holders of the listings (<c>PUT api/billing-setup/channel-account-holders</c>) starts the waiver too when, with the
+    /// recharge off, it gives the agency its first account: the same effect as making the agency the default holder, so the same acknowledgement. Without it
+    /// (<c>?acknowledgeRechargeWaiver=true</c> left out) the write is refused with 422 <c>recharge_waiver_not_acknowledged</c> and nothing is written; with it the holder is saved and the
+    /// activity log records, in the same save, who acknowledged it and when. A write while the waiver is in place asks nothing and records nothing more.
+    /// </summary>
+    [Fact]
+    public async Task RechargeWaiver_TheBulkWriteOfTheHolders_NeedsTheAcknowledgementToo_Test()
+    {
+        await using var world = await World.CreateAsync();
+
+        // The recharge off while every account is the owner's: nothing is waived yet.
+        await world.Setup.SaveAsync(world.OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = false }, Admin);
+        world.Db.ChangeTracker.Clear();
+        Assert.Empty(await world.Db.OrgActivityEntries.AsNoTracking().ToListAsync());
+
+        // The first listing of the agency without the acknowledgement: refused, with its code and its message, and nothing written.
+        ChannelAccountHolderCommand[] agencyListing = [new() { PropertyId = world.PropertyId, Channel = BookingSource.BookingCom, Holder = PortalAccountHolder.Agency }];
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => world.Setup.SaveAccountHoldersAsync(world.OrgId, agencyListing, Admin));
+        Assert.Equal((PortalAccountErrors.RechargeWaiverNotAcknowledged, "RechargeWaiverNotAcknowledged"), (refused.Code, refused.MessageKey));
+        world.Db.ChangeTracker.Clear();
+        Assert.Empty(await world.Setup.ListAccountHoldersAsync(world.OrgId));
+        Assert.Empty(await world.Db.OrgActivityEntries.AsNoTracking().ToListAsync());
+
+        // With it: the holder saved, and the activity log says who acknowledged the waiver and when.
+        world.Clock.Advance(TimeSpan.FromMinutes(3));
+        var when = world.Clock.GetUtcNow().UtcDateTime;
+        var saved = await world.Setup.SaveAccountHoldersAsync(world.OrgId, agencyListing, Admin, acknowledgeRechargeWaiver: true);
+        world.Db.ChangeTracker.Clear();
+        Assert.Equal(PortalAccountHolder.Agency, Assert.Single(saved).Holder);
+        var line = Assert.Single(await world.Db.OrgActivityEntries.AsNoTracking().ToListAsync());
+        Assert.Equal(
+            (world.OrgId, OrgActivityType.OrgSettingsChanged, Admin, when, "{\"part\":\"portalCommissionRechargeWaiver\"}"),
+            (line.OrgId, line.Type, line.ActorUserId, line.When, line.DetailsJson));
+
+        // The waiver in place: a write of the holders asks nothing and records nothing more.
+        await world.Setup.SaveAccountHoldersAsync(world.OrgId, agencyListing, Admin);
+        world.Db.ChangeTracker.Clear();
+        Assert.Single(await world.Db.OrgActivityEntries.AsNoTracking().ToListAsync());
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule, and the known limit of FIX/BE-V2-NO-RECHARGE. A waiver made after a version with the recharge was published changes nothing of what was published: its
+    /// stored PDF (made with «riaddebitate dal gestore (fattura n. PM2026/1)»), its published file, its hash and its totals stay, and read again its lines still give those totals with
+    /// the commission as a channel fee the owner bears (never a line for information only, never a commission the agency bears). What follows the setting of today is how such a line
+    /// is labelled when it is read again (the recharge is not stored with the line): the account of the agency without the recharge, in the content and in the owner portal, never
+    /// the account of the owner (V1).
+    /// </summary>
+    [Fact]
+    public async Task RechargeWaiver_AfterAVersionWithTheRechargeWasPublished_ChangesNothingPublished_Test()
+    {
+        await using var world = await World.CreateAsync();
+        await world.AgencyHoldsTheBookingAccountAsync();
+        var month = await world.CloseOctoberAsync();
+        var published = await world.PublishAsync(month.Version);
+        var pdf = (await world.Statements.GetPdfAsync(world.OrgId, published.Id)).Content;
+        var before = await world.Statements.GetContentAsync(world.OrgId, published.Id, "it");
+        Assert.Equal((true, false, false, false), PortalFlagsOf(Assert.Single(before.Of(OwnerStatementSection.ChannelFees))));
+
+        await world.WaiveTheRechargeAsync();
+
+        // Nothing published changes: the version, its file, its hash, its totals (193.26) and its stored PDF.
+        var stored = await world.Db.OwnerStatementVersions.AsNoTracking().SingleAsync(v => v.Id == published.Id);
+        Assert.Equal(
+            (OwnerStatementVersionStatus.Published, published.PublishedSha256, published.PublishedSnapshot, published.EntriesSha256, -67.50m, 193.26m),
+            (stored.Status, stored.PublishedSha256, stored.PublishedSnapshot, stored.EntriesSha256, stored.ChannelFees, stored.ClosingBalance));
+        Assert.Equal(pdf, (await world.Statements.GetPdfAsync(world.OrgId, published.Id)).Content);
+
+        // Read again: the same totals, and the commission is still the channel fee the owner was charged.
+        var after = await world.Statements.GetContentAsync(world.OrgId, published.Id, "it");
+        Assert.Equal(before.Totals, after.Totals);
+        var line = Assert.Single(after.Of(OwnerStatementSection.ChannelFees));
+        Assert.Equal(
+            (OwnerLedgerEntryType.ChannelFee, -67.50m, false, false),
+            (line.Type, line.Amount, line.Informational, line.AgencyHoldsPortalAccountWithoutRecharge));
+
+        // The known limit: its label follows the setting of today, the account of the agency without the recharge (not «riaddebitate dal gestore» any more), never V1.
+        Assert.Equal((false, true), (line.AgencyHoldsPortalAccount, line.AgencyAccountChargedWithoutRecharge));
+        Assert.Equal((false, false, true, false), PortalFlagsOf(line));
+    }
+
+    /// <summary>The flags of a line as the owner portal reads them: recharged by the agency, borne by the agency, charged on an account of the agency, for information only.</summary>
+    private static (bool Recharged, bool Borne, bool ChargedOnAgencyAccount, bool Informational) PortalFlagsOf(OwnerStatementLine line)
+    {
+        var dto = OwnerPortalStatementLineDto.From(line);
+        return (dto.ChannelFeeRechargedByAgency, dto.ChannelFeeBilledToAgencyNotRecharged, dto.ChannelFeeChargedOnAgencyAccount, dto.Informational);
     }
 
     private static (FiscalLineType Type, decimal Net, decimal Rate, decimal Vat)[] LinesOf(FiscalDocument document) =>

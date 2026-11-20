@@ -35,12 +35,16 @@ public interface IPortalAccountSettingsService
     /// the default; the listings and portals not named keep theirs. Answers the whole list as saved. 422 <c>channel_account_holders_invalid</c> (with the
     /// <c>index</c> and the <c>field</c>) for an empty list (never «all»), more than <see cref="PortalAccountErrors.MaxAccountHolders"/> rows, a property that is
     /// not one of the org, a channel that is not a portal, or a listing and portal named twice; 409 <c>channel_account_holders_conflict</c> when another save
-    /// of the same listing came first. A refusal saves nothing.
+    /// of the same listing came first. A refusal saves nothing. A write that starts the waiver of the recharge (the recharge off and, after it, a listing of the agency where
+    /// the agency held no account before: the same effect as a <see cref="SaveAsync"/> that makes the agency the default holder) needs
+    /// <paramref name="acknowledgeRechargeWaiver"/> (<c>?acknowledgeRechargeWaiver=true</c>), else 422 <see cref="PortalAccountErrors.RechargeWaiverNotAcknowledged"/> and
+    /// nothing is written; with it the activity log of the organization records who acknowledged it and when, as <see cref="SaveAsync"/> does.
     /// </summary>
     Task<IReadOnlyList<ChannelAccountHolderView>> SaveAccountHoldersAsync(
         Guid orgId,
         IReadOnlyList<ChannelAccountHolderCommand>? commands,
         string? userId,
+        bool acknowledgeRechargeWaiver = false,
         CancellationToken ct = default);
 }
 
@@ -57,7 +61,7 @@ public sealed record PortalAccountSettingsCommand
     /// <summary>
     /// The explicit acknowledgement of the waiver of the recharge (<c>acknowledgeRechargeWaiver: true</c>): the person confirms that the agency renounces recharging to the
     /// owners the commissions of the portal accounts it holds, which it then bears itself. Needed only by a save that starts the waiver
-    /// (<see cref="IPortalAccountSettingsService.SaveAsync"/>); ignored otherwise.
+    /// (<see cref="IPortalAccountSettingsService.SaveAsync"/>; the bulk write of the holders takes it as the query parameter of the same name); ignored otherwise.
     /// </summary>
     public bool? AcknowledgeRechargeWaiver { get; init; }
 }
