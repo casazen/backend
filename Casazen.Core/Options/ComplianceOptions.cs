@@ -79,6 +79,28 @@ public class ComplianceOptions
 
     /// <summary>Days after the first alert about an inactive connection at which the second and last one is sent (at least 1). Default 2.</summary>
     public int ConnectionReminderDays { get; set; } = 2;
+
+    // E30/F02/US01/T01 (NF-127, D9): the thresholds of the alerts about the 24 hours of the notification of the guests of a Ticino property to the cantonal
+    // police. Proposals the product owner may change; the alerts run only with Features:TicinoNotificationAlerts on. The times are on the clock of the property
+    // (Property.Timezone, Europe/Zurich), the durations are absolute.
+
+    /// <summary>
+    /// Hours after the first expected check-in of an arrival day (the earliest <c>Booking.ExpectedArrivalTime</c> of its stays) at which the first alert of the
+    /// day, «prepare the file», is due (never later than 23:00 of the arrival day). Default 2.
+    /// </summary>
+    public int TicinoArrivalAlertDelayHours { get; set; } = 2;
+
+    /// <summary>Hour (0-23, property clock) at which the first alert of an arrival day is due when no stay of it has an expected check-in. Default 18.</summary>
+    public int TicinoArrivalAlertDefaultHourLocal { get; set; } = 18;
+
+    /// <summary>Hours before the deadline of the notification (24 hours from the first recorded arrival) at which the second alert is due. Default 6.</summary>
+    public int TicinoDueWarningHours { get; set; } = 6;
+
+    /// <summary>How many reminders follow the «overdue» alert of a Ticino arrival day, until the day is closed. 0 disables them. Default 2.</summary>
+    public int TicinoMaxOverdueReminders { get; set; } = 2;
+
+    /// <summary>Hours between the «overdue» alert and its reminders (at least 1). Default 24.</summary>
+    public int TicinoOverdueReminderHours { get; set; } = 24;
 }
 
 /// <summary>Section <c>Compliance:StatusCheck</c> (CO-06).</summary>

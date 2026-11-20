@@ -131,9 +131,20 @@ public class NotificationService(
         var culture = EmailTemplates.DefaultCulture;
         // Validated at startup outside Development/Testing (FD-13); without it the email has no button.
         var complianceUrl = links.IsConfigured ? links.HostCompliance() : null;
-        var (template, email) = alert.Type == Casazen.Core.Entities.ComplianceAlertType.ConnectionInactive
-            ? (EmailTemplates.Names.ComplianceConnectionAlert, EmailTemplates.ComplianceConnectionAlert(culture, alert, property.Name, complianceUrl))
-            : (EmailTemplates.Names.CompliancePeriodAlert, EmailTemplates.CompliancePeriodAlert(culture, alert, property.Name, complianceUrl));
+        var (template, email) = alert.Type switch
+        {
+            Casazen.Core.Entities.ComplianceAlertType.ConnectionInactive => (
+                EmailTemplates.Names.ComplianceConnectionAlert,
+                EmailTemplates.ComplianceConnectionAlert(culture, alert, property.Name, complianceUrl)),
+
+            // E30/F02/US01/T01 (NF-127): a Ticino arrival day names the property, the day, the deadline and the types of field that are missing, never a guest.
+            Casazen.Core.Entities.ComplianceAlertType.TicinoNotification => (
+                EmailTemplates.Names.TicinoNotificationAlert,
+                EmailTemplates.TicinoNotificationAlert(culture, alert, property.Name, complianceUrl)),
+            _ => (
+                EmailTemplates.Names.CompliancePeriodAlert,
+                EmailTemplates.CompliancePeriodAlert(culture, alert, property.Name, complianceUrl)),
+        };
 
         // Delivered by EmailDeliveryJob (retries on transient provider errors); a missing address or provider is logged by the queue.
         foreach (var address in emails.Where(a => !string.IsNullOrWhiteSpace(a)).Distinct(StringComparer.OrdinalIgnoreCase))
@@ -149,11 +160,13 @@ public class NotificationService(
         }
 
         // Queued on PushDeliveryJob (MO-04): the key of the stage makes a retried job send it once per device.
-        var push = EmailTemplates.CompliancePush(culture, alert, property.Name);
+        var push = alert.Type == Casazen.Core.Entities.ComplianceAlertType.TicinoNotification
+            ? EmailTemplates.TicinoNotificationPush(culture, alert, property.Name)
+            : EmailTemplates.CompliancePush(culture, alert, property.Name);
         if (!pushNotifications.Enqueue(
                 deliveryKey,
                 PushAudience.PropertyHosts(alert.PropertyId),
-                new PushNotificationPayload(push.Title, push.Body, PushTypes.ForComplianceAlert(alert.Type), null, PushRoutes.Properties)))
+                new PushNotificationPayload(push.Title, push.Body, PushTypes.ForComplianceAlert(alert), null, PushRoutes.Properties)))
         {
             logger.LogWarning(
                 "Compliance alert {Type} push of property {PropertyId} not queued (org {OrgId})",

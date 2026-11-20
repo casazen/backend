@@ -7,7 +7,8 @@ namespace Casazen.Core.Services;
 
 /// <summary>
 /// The alerts about a property that are not tied to one stay (E03/F02/US02/T01, NF-52, CHK-12): the ISTAT and tourist tax periods and the
-/// connection of the property to the channel manager. The hourly <c>stay-alerts</c> job runs it after the stay alerts
+/// connection of the property to the channel manager; and, since E30/F02/US01/T01 (NF-127, D9), the 24 hours of the notification of the guests of a
+/// Ticino property to the cantonal police, one sequence for each arrival day. The hourly <c>stay-alerts</c> job runs it after the stay alerts
 /// (<see cref="IStayAlertService"/>), with the same mechanism: each stage is sent at most once, by an atomic compare-and-set on the
 /// <see cref="ComplianceAlertState"/> row of the property, whatever the number of runs, retries or concurrent runs.
 /// </summary>
@@ -18,17 +19,21 @@ namespace Casazen.Core.Services;
 /// This service decides only <i>when</i> to tell (<see cref="ComplianceAlertSchedule"/>, every threshold from <see cref="ComplianceOptions"/>).</item>
 /// <item><b>Silent where nothing is known.</b> A region with no ISTAT deadline day and a comune with no tourist tax deadline day produce no
 /// alert: a deadline is never guessed (<see cref="ITouristTaxDeadlineSource"/>: no table holds the day of a comune yet).</item>
-/// <item><b>Behind the module's flag.</b> With <c>Features:ComplianceTrafficLight</c> off the run does nothing.</item>
+/// <item><b>Behind the module's flag.</b> With <c>Features:ComplianceTrafficLight</c> off the period and connection alerts are not run. The Ticino
+/// ones (<see cref="ComplianceAlertType.TicinoNotification"/>) have a flag of their own, <c>Features:TicinoNotificationAlerts</c>: with both off the run
+/// does nothing.</item>
+/// <item><b>Ticino.</b> The days to notify come only from <see cref="ITicinoNotificationService.ListPendingDaysAsync"/>, which is also the one place
+/// that says a day is closed (a receipt, and when it exists the declaration): the alerts never read that rule again, so a closed day stops them.</item>
 /// </list>
 /// </remarks>
 public interface IComplianceAlertService
 {
-    /// <summary>Sends every period and connection alert due now. Never throws for one org or property that cannot be processed: it is logged and the run goes on.</summary>
+    /// <summary>Sends every period, connection and Ticino alert due now. Never throws for one org or property that cannot be processed: it is logged and the run goes on.</summary>
     Task<ComplianceAlertRunResult> RunAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>Outcome of one run of <see cref="IComplianceAlertService.RunAsync"/>.</summary>
-/// <param name="Skipped">The module is off (<c>Features:ComplianceTrafficLight</c>): the run did nothing.</param>
+/// <param name="Skipped">Both modules are off (<c>Features:ComplianceTrafficLight</c> and <c>Features:TicinoNotificationAlerts</c>): the run did nothing.</param>
 /// <param name="Sent">Alerts delivered (each one email plus one push).</param>
 public sealed record ComplianceAlertRunResult(bool Skipped, int Sent);
 
@@ -43,6 +48,17 @@ public enum ComplianceAlertKind
 
     /// <summary>The police send of the channel manager is not active while a stay is coming (first alert, then one reminder).</summary>
     ConnectionInactive,
+
+    // E30/F02/US01/T01 (NF-127, D9): the kinds below are appended, never renumbered.
+
+    /// <summary>Guests arrived on a day of a Ticino property and the file for the cantonal police is not uploaded yet: time to prepare it.</summary>
+    TicinoFileToPrepare,
+
+    /// <summary>The 24 hours of the notification to the cantonal police of a Ticino arrival day are about to run out.</summary>
+    TicinoDeadlineApproaching,
+
+    /// <summary>The 24 hours of the notification of a Ticino arrival day are over and nothing says it was made (first alert, then the limited reminders).</summary>
+    TicinoOverdue,
 }
 
 /// <summary>One alert to deliver for a property.</summary>
@@ -53,6 +69,12 @@ public enum ComplianceAlertKind
 /// <param name="DeadlineDay">The last day on which the period could be settled (Europe/Rome); <c>null</c> for the connection.</param>
 /// <param name="ReminderNumber">1..<paramref name="MaxReminders"/> for the reminders, 0 otherwise.</param>
 /// <param name="MaxReminders">Configured maximum of reminders of a period.</param>
+/// <param name="ArrivalDay">The arrival day (property calendar) of a Ticino notification alert; <c>null</c> for the others.</param>
+/// <param name="DueAtUtc">The instant the notification of that arrival day is due (24 hours from the first recorded arrival, else the end of the day); <c>null</c> for the others.</param>
+/// <param name="MissingFields">
+/// What the data of that day still miss, as stable codes (<c>TicinoMissing</c>, <see cref="TicinoAlertMissing"/>): types of field, never a name or a value.
+/// <c>null</c> or empty when nothing is known to miss.
+/// </param>
 public sealed record ComplianceAlert(
     ComplianceAlertType Type,
     Guid PropertyId,
@@ -60,11 +82,16 @@ public sealed record ComplianceAlert(
     string? Period = null,
     DateOnly? DeadlineDay = null,
     int ReminderNumber = 0,
-    int MaxReminders = 0);
+    int MaxReminders = 0,
+    DateOnly? ArrivalDay = null,
+    DateTime? DueAtUtc = null,
+    IReadOnlyList<string>? MissingFields = null);
 
 /// <summary>Stage due now for a property, with the alert to send when the stage is claimed.</summary>
 /// <param name="Type">The kind of state row the stage belongs to.</param>
-/// <param name="ReferenceKey">The reference of the state row: the period (<c>yyyy-MM</c>) or <see cref="ComplianceAlertState.ConnectionReferenceKey"/>.</param>
+/// <param name="ReferenceKey">
+/// The reference of the state row: the period (<c>yyyy-MM</c>), <see cref="ComplianceAlertState.ConnectionReferenceKey"/>, or the arrival day (<c>yyyy-MM-dd</c>) of a Ticino notification.
+/// </param>
 /// <param name="Stage">The stage (<see cref="ComplianceAlertStage"/>).</param>
 /// <param name="Alert">What to send.</param>
 public sealed record ComplianceAlertStep(ComplianceAlertType Type, string ReferenceKey, int Stage, ComplianceAlert Alert);
@@ -86,6 +113,28 @@ public static class ComplianceAlertStage
 
     /// <summary>Stage of the <paramref name="number"/>-th reminder of a period after <see cref="Overdue"/> (1-based).</summary>
     public static int OverdueReminder(int number) => Overdue + number;
+
+    /// <summary>Ticino notification: the arrival day, time to prepare the file (two hours after the first expected check-in, else 18:00 local).</summary>
+    public const int TicinoFileToPrepare = 1;
+
+    /// <summary>Ticino notification: six hours before the deadline.</summary>
+    public const int TicinoDeadlineApproaching = 2;
+
+    /// <summary>Ticino notification: the deadline is over and the day is not closed.</summary>
+    public const int TicinoOverdue = 3;
+
+    /// <summary>Stage of the <paramref name="number"/>-th reminder of a Ticino notification after <see cref="TicinoOverdue"/> (1-based).</summary>
+    public static int TicinoOverdueReminder(int number) => TicinoOverdue + number;
+}
+
+/// <summary>
+/// What a Ticino notification alert can say is missing besides the guest data of <c>TicinoMissing</c> (the codes of the file plan are passed on as they are):
+/// the identifier of the structure, without which no file can be written. A stable code the clients and the texts translate.
+/// </summary>
+public static class TicinoAlertMissing
+{
+    /// <summary>The «Numero identificativo LEAR / NO-LEAR» of the structure is not entered (or is not valid).</summary>
+    public const string StructureId = "structureId";
 }
 
 /// <summary>
@@ -94,7 +143,7 @@ public static class ComplianceAlertStage
 /// the last one sent, so a missed run is caught up by the next with one message, never with the backlog, and the last stage of a sequence is
 /// dropped when it is older than <see cref="LastStageValidity"/>.
 /// </summary>
-public static class ComplianceAlertSchedule
+public static partial class ComplianceAlertSchedule
 {
     /// <summary>How long the last stage of a sequence stays due after its time.</summary>
     public static readonly TimeSpan LastStageValidity = TimeSpan.FromHours(24);
