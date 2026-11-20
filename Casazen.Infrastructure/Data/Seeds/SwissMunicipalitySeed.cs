@@ -266,7 +266,7 @@ public static class SwissMunicipalitySeed
     /// outside a request, for the whole platform), only the codes that some property carries are in the answer.
     /// </summary>
     private static async Task<Dictionary<string, int>> CarriedByPropertiesAsync(
-        AppDbContext db, IReadOnlyCollection<string> codes, CancellationToken cancellationToken)
+        AppDbContext db, List<string> codes, CancellationToken cancellationToken)
     {
         if (codes.Count == 0)
             return new Dictionary<string, int>(StringComparer.Ordinal);
