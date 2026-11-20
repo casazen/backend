@@ -7,7 +7,8 @@
 The police of canton Ticino want every guest notified **within 24 hours of the arrival**. The portal (`notifiche.ti.ch`) has no API and CasaZen never logs into it,
 never keeps a password or the seed of a one-time code and never simulates a browser (decision D1): CasaZen writes the file, the host uploads it and records the
 receipt. Sections 1-7 are the file, its data, the groups and the minors, and the retention of the documents (E30/F01); sections 8-13 are the staged alerts that
-watch the 24 hours (E30/F02/US01/T01).
+watch the 24 hours (E30/F02/US01/T01); sections 14-17 are the regimes of Italy and of the 26 cantons, the card of a property and the readiness of a Swiss
+property (E29/F02/US01), with the catalog in [`docs/compliance/guest-registration-switzerland.md`](../compliance/guest-registration-switzerland.md).
 
 ## 1. The flow
 
@@ -202,3 +203,58 @@ WHERE "Type" IN ('ticino-notification-due', 'ticino-notification-overdue') AND "
 `Casazen.Infrastructure/Email/Templates/EmailTemplates.TicinoNotification.cs`. Tests: `ComplianceAlertTicinoTests` (the schedule with the two daylight saving changes, each stage once,
 a closed day stops the alerts, another org is never alerted, flag off sends nothing, the payload holds no personal data, the registration with `ValidateScopes`, the enumerations of
 `ComplianceAlertType` and `PushTypes`).
+
+## 14. The regime of a property in any canton (E29/F02/US01/T01, NF-125)
+
+Ticino is one of 28 regimes: Italy, the 26 cantons and the Swiss place nobody knows (`CH-UNKNOWN`), with obligation, channel, deadline, retention, private rentals, **certainty**, sources and
+what CasaZen does (catalog and rules: [`docs/compliance/guest-registration-switzerland.md`](../compliance/guest-registration-switzerland.md)). `IGuestRegistrationRegimeResolver` decides which one a
+property is under (country, then the canton the place resolver gives, then the catalog), and the Ticino code above keeps working: it reads the same canton from the same resolver.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `Features__GuestRegistrationRegimes` | `false` | The flag |
+
+- **Behind the flag.** `GET api/properties/{id}/guest-registration` → `{ regime, effectiveDuty, override, place, identifierMissing }` and `PUT` the same route with `{ "override": "Required" | "NotRequired" | null }`
+  (the permissions `property.read` and `property.write`, the row check of the property: another org's property is a 404, one outside the caller's scope a 403; the member `override` must be in the body).
+  Off, both answer 404 before authentication and **nothing reads `Properties.GuestNotificationOverride`** (the resolver answers as if it were empty): Ticino behaves exactly as before.
+- **`effectiveDuty`.** `Required` (raised), `NotRequired` (not raised) or `Ask` (the host decides; nothing in red). The setting of the host wins; without it Ticino and a verified obligation to report that covers
+  private rentals are `Required`, every other canton `Ask` (table in the compliance page). An Italian property cannot be given a setting (422 `guest_registration_override_not_applicable`).
+- **`identifierMissing`.** The reasons of § 15, the same codes the activation and the onboarding part use; empty for an Italian property.
+- **No supplier name** in the texts of the card (the keys `GuestRegime_*` of `SharedResources`, Italian and English); the sources are the pages of the authorities.
+
+## 15. The readiness of a Swiss property (E29/F02/US01/T02, NF-129): no flag
+
+A Swiss property lacks one thing at a time, in this order (`GuestRegistrationReadiness`, the one definition): `swiss_municipality_missing` (no municipality stored, none derived from the postal code and the city,
+or several left open: the canton, and with it the regime, is not known) and, when the municipality is in Ticino, `ticino_structure_id_missing` (no valid «Numero identificativo LEAR / NO-LEAR»: the same
+rule as the file, `TicinoStructureId.IsValid`). The host's setting is never read here.
+
+- **The activation of the property.** `PropertyComplianceStatusService` adds the step `guest-registration` to every Swiss property (never to an Italian one). For a property that is **not active** (pending, or
+  suspended for another reason) what is missing **blocks the activation**: the property stays pending with the reason, and the cockpit lists it in the `Missing` of the existing `propertiesPending` section
+  (`code` = the reason, `field` = `guest-registration`; no new cockpit action). A Swiss property is listed there with its name, address and city entered, as an Italian one is with its CIN.
+  For an **active** property the step is a reminder that blocks nothing: the nightly check and the re-evaluation after an edit never suspend a published house because its structure number is not entered yet.
+- **Creating a property** accepts `ticinoStructureId`, validated and stored normalized as on the update. The municipality is still only on the update (the create request has no country).
+- **The onboarding part «Guest registration»** (`guestRegistration`, key 12, plan order 11 before the activation, launch target `guestRegistration`): done only when every **active Swiss** property the caller reaches has its
+  municipality and, in Ticino, the structure number. `done` of `total` count those properties; `missing` lists (at most 50) the properties that lack something with `{ propertyId, reason, code }`, the `code` being the step of
+  the activation wizard to reopen. An organization with no active Swiss property sees the part as `notAvailable` (`no_swiss_property`); nothing requires it, so it can be put off.
+
+## 16. Checking and rolling back
+
+```sql
+-- The properties whose host has set the notification of the guests (replace the schema)
+SELECT "GuestNotificationOverride", count(*) FROM casazen_test."Properties" WHERE "GuestNotificationOverride" IS NOT NULL GROUP BY 1;
+```
+
+- **Turn it on (test only, on the product owner's order)**: `Features__GuestRegistrationRegimes=true` on the `test` environment (the change redeploys).
+- **Roll back**: set the flag off (or unset it): the endpoints answer 404 and the settings stop being read; the column stays, harmless. The readiness (§ 15) is not behind the flag: it is a step of the activation, a reminder
+  for an active property.
+- **Migration** `AddPropertyGuestNotificationOverride`: a nullable integer `GuestNotificationOverride` on `Properties` (1 = `Required`, 2 = `NotRequired`) with the CHECK `CK_Properties_GuestNotificationOverride`
+  (null or one of the two); every existing row stays null. Down: drops both.
+
+## 17. Code and tests
+
+`Casazen.Core/Regulatory/GuestRegistration/` (`GuestRegistrationRegime`, `GuestRegistrationRegimeCatalog`, `GuestRegistrationDutyRules`, `GuestRegistrationReadiness`), `Casazen.Core/Enums/GuestNotificationOverride.cs`,
+`Casazen.Core/Services/IGuestRegistrationRegimeResolver.cs`, `Casazen.Infrastructure/Services/` (`GuestRegistrationRegimeResolver`, `GuestNotificationOverrideService`, `GuestRegistrationPartEvaluator`,
+`PropertyComplianceStatusService` and `ComplianceWizardService` for § 15), `Casazen.Web/Controllers/PropertyGuestRegistrationController.cs`. Tests: `GuestRegistrationRegimeCatalogTests` (every canton of the municipality directory is in
+the catalog with an obligation, a channel, a certainty, a date and a source; Ticino, Appenzell Innerrhoden and Italy as above; the sentences in both languages; no supplier name), `GuestRegistrationRegimeResolverTests`
+(Lugano, the unknown place, Italy, the effective-duty table, the flag, the tenant), `PropertyGuestRegistrationControllerTests` (another org, a collaborator «Solo alcuni», the missing member), `GuestRegistrationPartEvaluatorTests`,
+`PropertyComplianceStatusServiceTests` (the Swiss step).

@@ -727,7 +727,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// The exact registrations of the activation (E10): one provider for each of the six flows and one evaluator for each of the eleven parts, in the
+    /// The exact registrations of the activation (E10): one provider for each of the six flows and one evaluator for each of the twelve parts, in the
     /// order they are registered, none a placeholder (a factory) any more, all scoped.
     /// </summary>
     [Fact]
@@ -761,6 +761,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
                 typeof(MessagesAiPartEvaluator),
                 typeof(FiscalDocumentsPartEvaluator),
                 typeof(PartnersPartEvaluator),
+                typeof(GuestRegistrationPartEvaluator),
             ],
             evaluators.Select(d => d.ImplementationType));
         Assert.All(providers.Concat(evaluators), d =>
@@ -769,7 +770,7 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
             Assert.Equal(ServiceLifetime.Scoped, d.Lifetime);
         });
 
-        // What each one answers for: all six flows and all eleven parts, each at the order of a real provider (10), none at the placeholder's (0).
+        // What each one answers for: all six flows and all twelve parts, each at the order of a real provider (10), none at the placeholder's (0).
         var reader = Reader();
         IFlowReadinessProvider[] flows =
         [

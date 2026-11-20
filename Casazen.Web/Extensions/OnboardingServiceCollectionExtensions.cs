@@ -35,7 +35,7 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IFlowReadinessProvider, DocumentsFlowProvider>();
         services.AddScoped<IFlowReadinessProvider, ReportsFlowProvider>();
 
-        // The plan of the eleven parts, the path of UX-10 and the deferral (E10/F01/US01/T03). One evaluator for each of the eleven parts (order
+        // The plan of the twelve parts, the path of UX-10 and the deferral (E10/F01/US01/T03). One evaluator for each of the twelve parts (order
         // 10): messages and AI, fiscal documents and partners read the facts of E05, E06 and E09 (E10/F01/US04/T01) in place of the placeholders that
         // answered «not provided» (order 0). NotProvidedPartEvaluator stays as the answer for a part that has no evaluator.
         services.AddScoped<IOnboardingPlanService, OnboardingPlanService>();
@@ -50,6 +50,9 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IOnboardingPartEvaluator, MessagesAiPartEvaluator>();
         services.AddScoped<IOnboardingPartEvaluator, FiscalDocumentsPartEvaluator>();
         services.AddScoped<IOnboardingPartEvaluator, PartnersPartEvaluator>();
+
+        // The twelfth part, «Guest registration» (E29/F02/US01/T02, NF-129): the municipality of every Swiss property and, for Ticino, the structure number.
+        services.AddScoped<IOnboardingPartEvaluator, GuestRegistrationPartEvaluator>();
 
         // The activation of the flows, the reader of the active flows for the consumers, the final read-only test with one check for each flow
         // that has one (the others are skipped as «not provided»), and the hourly "To do" sync (E10/F01/US01/T04).

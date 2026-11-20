@@ -30,6 +30,7 @@ public static class OnboardingPlanMapping
             ? new OnboardingAssistDto { Id = assist.Id, Status = assist.Status, Context = assist.Context, RequestedAt = assist.RequestedAt }
             : null,
         LaunchTarget = part.LaunchTarget,
+        Missing = [.. part.Missing.Select(item => new OnboardingPartMissingDto { PropertyId = item.PropertyId, Reason = item.Reason, Code = item.Code })],
     };
 
     public static OnboardingPathDto ToDto(this OnboardingPath path) => new()

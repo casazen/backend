@@ -58,7 +58,7 @@ public static class OnboardingReopenFocus
 /// instants only: no token, no property, no person.
 /// </summary>
 /// <param name="Connection">The org's connection to Octorate in this environment.</param>
-/// <param name="Parts">The eleven parts of the plan in order, each with whether it can be reopened.</param>
+/// <param name="Parts">The twelve parts of the plan in order, each with whether it can be reopened.</param>
 /// <param name="Senders">The properties for each sender of the Alloggiati and ISTAT communications.</param>
 /// <param name="Channels">The channel states for each publication status, every status listed (zero when none).</param>
 public sealed record OnboardingIntegrationOverview(
