@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
@@ -104,25 +103,17 @@ public static partial class ReviewReplyPromptBuilder
     public static string CallLabel(Guid reviewId) => $"review-reply:{Version}:{reviewId:N}";
 
     /// <summary>
-    /// The reply of the answer of the model: the <c>reply</c> of the one JSON object it holds, as plain text (<see cref="ReviewRules.NormalizeText"/>). <c>null</c> for anything else (no object, no
-    /// reply, an empty one): the pipeline then records that the answer could not be used, never a reply made of nothing.
+    /// The reply of the answer of the model: the <c>reply</c> of the JSON object it holds (neither the reasoning of a model that thinks aloud nor a brace in the text hides it, see
+    /// <see cref="AssistantClassification.DocumentOf"/>), as plain text (<see cref="ReviewRules.NormalizeText"/>). <c>null</c> for anything else (no object, no reply, an empty one): the
+    /// pipeline then records that the answer could not be used, never a reply made of nothing.
     /// </summary>
     public static string? ParseReply(string? answer)
     {
-        if (AssistantClassification.ObjectOf(answer) is not { } json)
+        using var document = AssistantClassification.DocumentOf(answer, "reply");
+        if (document is null)
             return null;
 
-        try
-        {
-            using var document = JsonDocument.Parse(json, new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip, MaxDepth = 8 });
-            return document.RootElement.ValueKind == JsonValueKind.Object
-                ? ReviewRules.NormalizeText(AssistantClassification.String(document.RootElement, "reply"))
-                : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+        return ReviewRules.NormalizeText(AssistantClassification.String(document.RootElement, "reply"));
     }
 
     /// <summary>
