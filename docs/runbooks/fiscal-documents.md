@@ -688,12 +688,13 @@ file here. Two rules of the list the correction rests on: an invoice already sen
   see above). The issue checks it again under the numbering path (`document_replacement_invalid`, 422): the replaced document must be a discarded rejected one of the same issuer, series and number,
   and no other replacement of it may be issued. A document that **was delivered** is corrected with a credit note, never replaced.
 - **A rejected invoice is never credited** (422 `document_rejected_use_correction`, also for the credit note a booking change would prepare: the host gets the «To do» that the booking changed).
-- **A self-billed invoice (TD17) has no correction here (FIX/RES-DOCS).** `POST …/sdi/correct` of a document whose purpose is `SelfBilling` is refused, **whatever its state**, with its own code: 422
-  `self_billing_not_correctable` (`SelfBillingErrors.NotCorrectable`, message key `SelfBillingNotCorrectable` in both `SharedResources` files). The guard is in the controller (it asks the service nothing) and in
-  `StartCorrectionAsync` (nothing is made, changed or numbered), and `GET …/sdi` says `canCorrect: false` for it. **No «Correggi la fattura» is raised for it** either: `FiscalDocumentRejectionHandler` does not
-  raise it for a rejected `SelfBilling` document, because that item leads to a correction a TD17 has not; it raises the **alert of its own** instead (`SelfBillingRejected`, see *The «Da fare» of the self-billed
-  invoices and the monthly run* below), and the rejection is read on the self-billed invoices too (`api/fiscal/self-billing`, which shows the state towards the SDI). `submit` and `declare` work for it like for any
-  electronic invoice. Not built: a correction flow of a TD17 (the accountant decides how to correct it, see *Self-billed invoices*).
+- **A self-billed invoice (TD17) is not corrected from here (FIX/RES-DOCS), but from the self-billed invoices (FIX/BE-TD17-CORRECTION).** `POST …/sdi/correct` of a document whose purpose is `SelfBilling` is refused, **whatever its state**, with its own code: 422
+  `self_billing_not_correctable` (`SelfBillingErrors.NotCorrectable`, message key `SelfBillingNotCorrectable` in both `SharedResources` files, which says to correct it and send it again from the self-billed invoices). The guard is in the controller (it asks the service nothing) and in
+  `StartCorrectionAsync` (nothing is made, changed or numbered), and `GET …/sdi` says `canCorrect: false` for it: that endpoint holds `payment.write` and follows a booking, while a TD17 is the agency's (`agency.invoice.manage`, the whole organization).
+  Its correction is `POST api/fiscal/self-billing/{id}/correct` (*Correction of a rejected TD17* in *Self-billed invoices*), the same correction with the differences a TD17 has. **No «Correggi la fattura» is raised for it** either: `FiscalDocumentRejectionHandler` does not
+  raise it for a rejected `SelfBilling` document, because that item leads to the correction of an invoice to a guest; it raises the **alert of its own** instead (`SelfBillingRejected`, see *The «Da fare» of the self-billed
+  invoices and the monthly run* below), which that correction closes (`FiscalDocumentCorrected`), and the rejection is read on the self-billed invoices too (`api/fiscal/self-billing`, which shows the state towards the SDI). `submit` and `declare` work for it like for any
+  electronic invoice.
 - ⚖ To be confirmed by the accountant: the reuse of the number of a rejected invoice, and that the replacement keeps its day (the Agenzia delle Entrate accepts the same number and date for a file sent again
   shortly after a rejection; after that, or for a delivered invoice, the credit note and a new invoice are the way). A replacement that is discarded leaves its number unused: the rejected document keeps it
   in the history.
@@ -793,7 +794,7 @@ next posting, and the drafts and the issue leave it out as `stay_not_active`. On
 the VAT too): it never comes from the tax rules of the sales documents. The part of the amount that comes from a rule of the agency or from the default of the channel, not from the
 figure of the portal (`OwnerReconciliationRules.SourceOf`), is the **estimated amount** (`estimatedAmount`, in the answer of the drafts and in the detail of the draft, recomputed from the ledger as the issue does): check it against the invoice of the
 portal before issuing. The issue refuses a draft with an estimate (422 `self_billing_estimate_unconfirmed`, the figure in `estimatedAmount`, nothing numbered) until the host accepts it with
-`acceptEstimate: true`, because an issued TD17 is not corrected from here.
+`acceptEstimate: true`, because an issued TD17 the SDI delivered is not corrected from here (one the SDI rejected is: *Correction of a rejected TD17* below).
 
 **Portals.** The cedente is the legal entity of `SelfBilling:Portals` (channel, name, ISO country, VAT number, street, city; ⚖ verify them against a real invoice of the portal before the
 first issue). Committed: Booking.com B.V. and Airbnb Ireland UC. A channel without an entry (Expedia, Vrbo, TripAdvisor, Agoda...) is **never** invoiced by a guess: its commissions are
@@ -819,11 +820,12 @@ portal.
 
 | Endpoint (`agency.invoice.manage`, agency plan, the whole organization only, `Features:FiscalDocumentIssuance`) | What |
 |---|---|
-| `GET api/fiscal/self-billing?period=yyyy-MM` | the TD17 of the org (drafts and issued ones), the newest month first: holder, portal, month, deadline, amounts, status, state towards the SDI |
+| `GET api/fiscal/self-billing?period=yyyy-MM` | the TD17 of the org (drafts and issued ones, and the originals a correction replaced), the newest month first: holder, portal, month, deadline, amounts, status, state towards the SDI, `canCorrect`, `replacesDocumentId`, `replacedByDocumentId` |
 | `GET api/fiscal/self-billing/{id}` | one TD17 with its lines and, for a draft, `estimatedAmount` |
-| `POST api/fiscal/self-billing/drafts` `{ period }` | the drafts of the month: counts, `ledgerPosted` (the owner ledger has lines for the month), one row for each TD17 (`created`, `updated`, `already_issued`, `estimatedAmount`, `changedSinceIssue`), `failed` (a holder that needs one and cannot get one: `owner_issuer_missing`, `issuer_profile_incomplete`, with the fields), `notDue` (the commissions left out and why: `portal_not_configured`, `holder_private_person`, `holder_not_italian`, `holder_not_vat_registered`, `currency_not_supported`, `not_a_portal`, `stay_not_found`, `stay_not_active`) |
+| `POST api/fiscal/self-billing/drafts` `{ period }` | the drafts of the month: counts, `ledgerPosted` (the owner ledger has lines for the month), one row for each TD17 (`created`, `updated`, `already_issued`, `estimatedAmount`, `changedSinceIssue`), `failed` (a holder that needs one and cannot get one: `owner_issuer_missing`, `issuer_profile_incomplete`, with the fields), `notDue` (the commissions left out and why: `portal_not_configured`, `holder_private_person`, `holder_not_italian`, `holder_not_vat_registered`, `currency_not_supported`, `not_a_portal`, `stay_not_found`, `stay_not_active`), `kept` (the drafts that hold the number of a rejected TD17 and that nothing gives now, each with its `reason`: *Correction of a rejected TD17* below) |
 | `POST api/fiscal/self-billing/{id}/issue` `{ confirm: true, acceptEstimate? }` | the issue, after the confirmation (and the acceptance of the estimate when part of the amount is one) |
-| `DELETE api/fiscal/self-billing/{id}` | the discard of a draft |
+| `POST api/fiscal/self-billing/{id}/correct` | the correction of a TD17 the SDI rejected: 201 with the replacement draft that holds its number (also behind `Features:SdiSubmission`; *Correction of a rejected TD17* below) |
+| `DELETE api/fiscal/self-billing/{id}` | the discard of a draft (never the replacement of a rejected TD17: it holds the number) |
 
 The PDF and the XML are the ones of every document (`GET api/fiscal/documents/{id}/pdf` and `/xml`, a document without a booking: the whole org only). The endpoints of the guest documents
 (`api/fiscal/documents`) neither make again, issue, credit nor discard a TD17: 422 `document_self_billing`. A caller who reaches only some properties is refused on every action (403); a
@@ -843,14 +845,59 @@ the owner), the amounts are the ledger's and never recomputed, and they are the 
 more) and, when recharged, the ones the invoices to the owners recharge. Both families are written only for a period that has them: a period with no
 TD17 and no commission of that kind has the same files, with the same content, as before.
 
-**A TD17 the SDI rejected** (⚖ the prudent default, a choice of the PO and the accountant to confirm before `Features__AccountantPackage` is turned on): a rejected invoice counts as not issued, and a TD17 has no
-correction that would replace it, so in CasaZen it stays `Issued` with the SDI state `rejected` (the page of the self-billed invoices shows it). The package never leaves it out in silence: the register of its
+**A TD17 the SDI rejected** (⚖ the prudent default, a choice of the PO and the accountant to confirm before `Features__AccountantPackage` is turned on): a rejected invoice counts as not issued, and until the host corrects it
+(*Correction of a rejected TD17* below, FIX/BE-TD17-CORRECTION: the corrected TD17 becomes `Discarded`, so it leaves the package, and the draft that replaces it enters the package when it is issued) it stays `Issued` in CasaZen with the SDI state `rejected` (the page of the self-billed invoices shows it). While it stays so, the package never leaves it out in silence: the register of its
 issuer lists it with its own amounts and the state «Scartata» (column «Stato SDI»), and a note under the register and under the VAT file says how many are left out. But it is in neither table of the rates of the
 register (the totals are the ones of the valid TD17), not in the class «Autofatture TD17» of the VAT file, it has no PDF and no XML in `fatture-proprietari/autofatture/`, and it is not a document of the package
 (it counts neither in the documents of the log nor against `DocumentArchive:MaxExportFiles`). An issuer whose TD17 are all rejected still has its register and its VAT file, with the note and no figure. The package
 has no other rule about the SDI state: a guest document or an invoice to an owner the SDI rejected stays in it as issued until its correction discards it, as it always did; nothing else changes.
 
-**Not in this slice** (so it is not silently missing): a credit note or a correction of an issued TD17 (it is not credited from here: the accountant decides how to correct it; `POST …/sdi/correct` of a TD17
+### Correction of a rejected TD17 (`IFiscalDocumentCorrectionService.StartSelfBillingCorrectionAsync`, `POST api/fiscal/self-billing/{id}/correct`, FIX/BE-TD17-CORRECTION)
+
+A TD17 the SDI rejected stays `Issued` with `sdiStatus` `rejected` and its number, but for the tax office it was never issued: it is **re-sent with the same number**, as an invoice to a guest is (*Correction of a
+rejected invoice* above). A TD17 has no booking and no guest, so what differs is what the replacement is and which door it goes through.
+
+- **The endpoint.** `POST api/fiscal/self-billing/{id}/correct`, no body: `agency.invoice.manage`, the whole organization (403 otherwise), `Features:FiscalDocumentIssuance` **and** `Features:SdiSubmission` (404 while
+  either is off, as the correction of an invoice to a guest). **201** with the detail of the replacement draft (`SelfBillingDto`, `Location` to `GET {id}`), whose `invoice.replacesDocumentId` is the rejected TD17.
+  404 `fiscal_document_not_found` for a document of another organization, one that is not a TD17 and an unknown one; **422 `self_billing_not_correctable`** (message key `SelfBillingCorrectionNotApplicable`) when
+  it is not issued and rejected by the SDI, or has an issued credit note. A second call answers the same draft, while it is a draft.
+- **The same correction.** One lock for the document (`FiscalDocumentSdi`, the lock of its submissions and outcomes) and one transaction: the rejected TD17 **keeps its display number for the history, gives up its
+  sequence number and becomes `Discarded`**, and a **draft** (`ReplacesDocumentId`) takes its series and its number, its lines, amounts, foreign supplier (the recipient columns, with the SDI code and the PEC of the
+  holder), issuer profile and month, as stored. `FiscalDocumentCorrected` is recorded in the same unit of work (the rejected TD17 as the entity, ids only: its consumer closes the «Da fare» about that document).
+  The code is the one of the correction of an invoice to a guest (`FiscalDocumentCorrectionService`: the lock, the move of the number, `ReplacementOf`, the event); only the entry point and what it reads differ.
+- **No refresh from a booking, nothing is sent.** The replacement is a plain draft. The host fixes what the SDI refused (the reason in plain words is on `GET api/fiscal/documents/{id}/sdi`: typically the SDI code or the
+  PEC of the holder, its issuer profile, or the data of the portal in `SelfBilling:Portals`) and, when the file changes, makes the drafts of the month again (`POST drafts`): that keeps the replacement as the draft of its holder,
+  portal and month, with its number, and updates it from the ledger, the profile and the portal of the settings; **no second TD17 is made for the holder and the portal while the replacement exists**, also when what was put right
+  is the VAT number or the country of the portal (see *The replacement is adopted* below). Then `POST {id}/issue` checks the draft against the ledger as for any draft
+  (409 `document_draft_outdated`: make the drafts again) and **uses the number it holds and the day of the TD17 it replaces**, reserving none (`IssueInTransactionAsync`, the path of the replacement of an invoice to a
+  guest; 422 `document_replacement_invalid` if what it replaces is not a discarded, rejected TD17 of the same holder and number); the TD17 is left `to_send` with the number in its XML and the SDI port sends it like every Italian
+  electronic invoice. The next TD17 of the series is the next number: the sequence has neither a hole nor a duplicate.
+- **The replacement is never discarded.** `DELETE api/fiscal/self-billing/{id}` of a draft that holds the number of a rejected TD17 is 422 `document_replacement_holds_number`: discarded, the number would be lost (a hole in
+  the series) and the rejected TD17 could not be corrected again. The drafts of the month keep it too when nothing gives it a TD17 any more (its commissions were reversed, its holder is no longer subject or cannot issue, its
+  portal is not in the settings): it stays a draft holding the number, and what the number is for is the accountant's decision (⚖). Every other draft nothing supports is dropped as before.
+- **The replacement is adopted when the portal is put right in the settings.** The replacement is the draft of its holder and portal by the key of the portal (country and VAT code of `SelfBilling:Portals`). When the cause of the
+  rejection was the VAT number or the country of the portal and the host (the operator) puts it right in the settings, the key changes and the TD17 does not: the drafts of the month **adopt** the draft that holds the number of a
+  rejected TD17 of the same holder (issuer profile) and the **same legal name of the portal** (case apart), that no other group took (every key is matched first, then the drafts that are left, so the order of the groups never
+  lets a group take the draft of another), and make it again as any draft is made again: its portal, VAT number and country become the ones of the settings, its series and number never change (`updated` in the answer).
+  So the month has one draft for the holder, portal and month, the number is not lost and no second TD17 appears; it is then issued under that number. A draft is **never** adopted by a group of another legal name: the number
+  of the TD17 of a portal is not handed to the TD17 of another (a portal that became another legal entity, with another name and VAT number, adopts nothing: its group gets a draft of its own and the old one is kept, see below).
+- **A draft that is kept says why (`kept`, `keptReason`).** A draft that holds the number of a rejected TD17 and that nothing gives now cannot be issued (409 `document_draft_outdated`, whatever is done) nor discarded: it is
+  kept, and the answer of `POST drafts` lists it in `kept` (`documentId`, `holderKind`, `holderOwnerId`, `portalName`, `number`, `reason`) and the list and the detail (`GET api/fiscal/self-billing`, `/{id}`) carry the same code in
+  `keptReason` on that draft (`null` on every other row, and on a draft the month would adopt). The reason is a stable code, with no personal data: `portal_not_configured` (the country and VAT number of its portal are not an
+  entry of `SelfBilling:Portals` any more: put the entry right), `issuer_profile_incomplete` or `owner_issuer_missing` (its holder cannot issue: complete the profile), `ledger_gives_no_td17` (the month gives that holder no TD17
+  for that portal: the commissions were reversed, the stays are no longer active, the holder is no longer subject to the TD17). The log carries the id and the code. There is **no way out from the API**: what the number is for
+  (a confirmed discard that leaves it unused, or another TD17 of the series) is for the accountant and the product owner to decide, and is not made by the code.
+- **What the list and the detail say.** `GET api/fiscal/self-billing` lists, with the drafts and the issued ones, the **originals a correction replaced** (`status` `Discarded`, `sdiStatus` `rejected`, their number; the
+  holder is named as it was at the issue), and every row carries three more fields: `canCorrect` (the button «Correggi e rimanda» is offered: issued, rejected, numbered, no issued credit note: `SelfBillingRules.IsCorrectable`,
+  the one definition the correction asks too), `replacesDocumentId` (this draft, or this TD17 issued after it, replaces that rejected one) and `replacedByDocumentId` (this one is the discarded original: the TD17 that replaces
+  it); a fourth, `keptReason`, is set only on a kept draft (above). A discarded draft nothing replaces is not listed, as before.
+- **Credit notes of an issued TD17 stay out of scope**: a rejected TD17 is corrected, never credited, and one that has an issued credit note is not corrected (the accountant decides).
+- ⚖ To be confirmed by the accountant, as for an invoice to a guest: the reuse of the number of a rejected TD17 and that its replacement keeps its day (a TD17 is due by the 15th of the month after the commissions: a file
+  sent again later is the accountant's call), and what the number of a replacement is for when its commissions are gone.
+- **No migration, no new flag, no configuration.** **Rollback:** switch `Features:SdiSubmission` off (the endpoint answers 404) or do not use it: the rejected TD17 stays as it is; a replacement already made stays a draft
+  holding its number and is issued with `POST {id}/issue`, which does not depend on the flag of the SDI.
+
+**Not in this slice** (so it is not silently missing): a credit note of an issued TD17 (it is not credited from here: the accountant decides; a TD17 the SDI rejected is corrected, not credited, as above; `POST …/sdi/correct` of a TD17
 answers 422 `self_billing_not_correctable` and no «Correggi la fattura» is raised for a TD17 the SDI rejected: the alert of *The «Da fare» of the self-billed invoices and the monthly run* below is raised instead); the posting
 of the integrated VAT to the owner ledger (the TD17 is neutral for the holder: the VAT is due and deductible); the invoice number and date of the portal as the related document; the
 submission to the SDI (not made by the issue: the document is `to_send` and the channel of *SDI submission, outcomes and correction* above sends it like every Italian electronic invoice). The accountant package and its VAT file hold the TD17 since FIX/BE-ACCOUNTANT-GAPS (above). No migration: nothing is stored beyond the existing columns of
@@ -873,8 +920,9 @@ Two gaps of the TD17 are closed here; no migration (the type and the action of a
 - **What the frontend maps** (a separate slice): the two `activityType` names for the label, and the action `ReviewSelfBilling` to `/app/account/self-billing` in its `ACTION_ROUTE_MAP`; for
   `SelfBillingRejected` the item carries the document id in `entityId` (open that document), for `SelfBillingDraftsToReview` the month is in `entityType` after `SelfBillingPeriod:` (`yyyy-MM`) and `entityId` is the organization.
 - **No push.** A TD17 has no booking and there is no organization-level push audience yet: the item is the alert (the bell and the live refresh of an organization-level event are a follow-up).
-- **A rejected TD17 stays rejected.** There is no correction of a TD17 in CasaZen (the accountant decides how to correct it), so the item of a rejected TD17 stays open until a correction flow exists
-  (⚖ product owner): it is a reminder that the document counts as not issued for the tax office.
+- **A rejected TD17 is corrected from the self-billed invoices.** The item of a rejected TD17 stays open until the host corrects it («Correggi e rimanda», `POST api/fiscal/self-billing/{id}/correct`: *Correction of a rejected TD17*
+  in *Self-billed invoices*, FIX/BE-TD17-CORRECTION), which records `FiscalDocumentCorrected` and so closes it (the table above: it is closed as well by the credit note or the acceptance of the SDI): it is a reminder that the
+  document counts as not issued for the tax office.
 - **The monthly run** (`SelfBillingMonthlyDraftsJob`, `self-billing-monthly-drafts`, Hangfire): the 5th of every month at 07:30 Europe/Rome (⚖ a prudent default), registered while `Features:FiscalDocumentIssuance`
   is on, never two runs at once, three automatic retries. **Off by default**: `SelfBilling:MonthlyDrafts:Enabled` is `false`, and then it returns before it opens a scope: no organization is read, the lock `SelfBilling`
   (1_640, taken by the generation) is not taken and nothing is written. With it on, for the month that ended and for each active organization on the agency plan (not downgraded) that has `ChannelFee` lines in its owner ledger

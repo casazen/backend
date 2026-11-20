@@ -443,12 +443,13 @@ public class SelfBillingServiceTests
         foreach (var restricted in new[] { new HostScope(orgId, GrantedToUserId: "auth0|solo-alcuni"), new HostScope(orgId, OwnerId: "auth0|solo-alcuni") })
         {
             var service = new Mock<ISelfBillingService>(MockBehavior.Strict);
-            var controller = new SelfBillingController(service.Object, Org(orgId), Scope(orgId, restricted)) { ControllerContext = Context() };
+            var corrections = new Mock<IFiscalDocumentCorrectionService>(MockBehavior.Strict);
+            var controller = new SelfBillingController(service.Object, corrections.Object, Org(orgId), Scope(orgId, restricted)) { ControllerContext = Context() };
             var actions = controller.GetType()
                 .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                 .Where(m => m.GetCustomAttributes().Any(a => a is HttpMethodAttribute))
                 .ToList();
-            Assert.Equal(5, actions.Count);
+            Assert.Equal(6, actions.Count);
 
             foreach (var action in actions)
             {
@@ -467,11 +468,12 @@ public class SelfBillingServiceTests
             }
 
             service.VerifyNoOtherCalls();
+            corrections.VerifyNoOtherCalls();
         }
 
         var whole = new Mock<ISelfBillingService>();
         whole.Setup(s => s.ListAsync(orgId, It.IsAny<SelfBillingCriteria>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
-        var served = await new SelfBillingController(whole.Object, Org(orgId), Scope(orgId, new HostScope(orgId))) { ControllerContext = Context() }.List("2026-10");
+        var served = await new SelfBillingController(whole.Object, Mock.Of<IFiscalDocumentCorrectionService>(), Org(orgId), Scope(orgId, new HostScope(orgId))) { ControllerContext = Context() }.List("2026-10");
         Assert.IsType<OkObjectResult>(served.Result);
         whole.Verify(s => s.ListAsync(orgId, It.Is<SelfBillingCriteria>(c => c.Year == 2026 && c.Month == 10), It.IsAny<CancellationToken>()), Times.Once);
 
