@@ -7,7 +7,6 @@ using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Jobs;
 using Hangfire;
@@ -466,24 +465,8 @@ public sealed class StayLifecycleService(
     /// Tells the hosts of the booking, live, that CasaZen did a step of the stay in their place (bell, pop-up, the open page refreshed): best effort after the save, never
     /// undoing the step. The property only, never the guest.
     /// </summary>
-    private void PushFlowStep(Booking booking, BookingFlowAutomaticStep step)
-    {
-        if (pushNotifications is null)
-            return;
-
-        try
-        {
-            var push = EmailTemplates.BookingFlowStepPush(EmailTemplates.DefaultCulture, step, booking.Property?.Name ?? string.Empty);
-            pushNotifications.Enqueue(
-                PushDeliveryKeys.BookingFlowStep(booking.Id, step),
-                PushAudience.BookingHosts(booking.Id),
-                new PushNotificationPayload(push.Title, push.Body, PushTypes.BookingFlowStep, booking.Id, PushRoutes.Booking(booking.Id)));
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Push about the automatic {Step} of booking {BookingId} could not be prepared", step, booking.Id);
-        }
-    }
+    private void PushFlowStep(Booking booking, BookingFlowAutomaticStep step) =>
+        BookingFlowLiveRefresh.Tell(pushNotifications, booking.Id, booking.Property?.Name, step, logger);
 
     private async Task SaveAsync(IDbContextTransaction? transaction, CancellationToken cancellationToken)
     {

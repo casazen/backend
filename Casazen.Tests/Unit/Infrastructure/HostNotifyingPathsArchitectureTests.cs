@@ -100,6 +100,8 @@ public class HostNotifyingPathsArchitectureTests
             ("«Fatto» on a «Fallo per me» request (E20/F03/US01/T02): the push, the entry of the bell and the live update «il collegamento è attivo» or «il supporto dichiara di aver collegato» to the administrators of the org, who alone can ask for help; not one of the eight kinds of event of NF-65", "none planned (outside the eight kinds of event of NF-65)"),
         ["Casazen.Infrastructure/Services/TouristTaxLiveRefresh.cs"] =
             ("the push «the guest paid the tourist tax online» (E25/F01/US01/T01): it makes the pages open on the booking read it again, and is not one of the eight kinds of event of NF-65, it keeps the hosts of the booking", "none planned (outside the eight kinds of event of NF-65)"),
+        ["Casazen.Infrastructure/Services/BookingFlowLiveRefresh.cs"] =
+            ("the push «CasaZen did a step of the stay in the host's place» (casazen/backend#978: the arrival or the departure registered, the property declared ready): the bell, the pop-up and the live update of the open pages of the hosts of the booking; not one of the eight kinds of event of NF-65, it keeps the hosts of the booking", "none planned (outside the eight kinds of event of NF-65)"),
         ["Casazen.Infrastructure/Services/ServiceRequestNotifier.cs"] =
             ("the push to the hosts about a request to a supplier (taken, started, completed, a time proposed, a quote): outside the eight kinds of event of NF-65", "none planned (outside the eight kinds of event of NF-65)"),
         ["Casazen.Infrastructure/Services/ServiceRequestNotifier.Backups.cs"] =
