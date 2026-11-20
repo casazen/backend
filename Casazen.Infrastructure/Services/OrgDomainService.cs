@@ -97,6 +97,13 @@ public partial class OrgDomainService(
                         org.DomainVerificationStatus = DomainVerificationStatus.Pending;
                         org.DomainVerificationToken = GenerateVerificationToken();
                         ResetDomainCheck(org);
+
+                        // The registration of the owner sign-in belongs to ONE domain: the previous one is forgotten (NotRequested, ResetDomainCheck). The agency's choice to
+                        // serve the owner portal on its domain stays, so the new domain asks for its registration at once, as saving the choice does (SetSurfacesAsync): left
+                        // in NotRequested nothing would ever move it to Pending, and the new domain would never reach the queue of the registrations.
+                        if (org.OwnerPortalOnOwnDomain)
+                            org.OwnerLoginHostState = OwnerLoginHostState.Pending;
+
                         org.DomainConfiguredAt = now;
                     }
                     else if (org.DomainVerificationStatus != DomainVerificationStatus.Verified)

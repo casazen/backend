@@ -150,7 +150,7 @@ public class OrgDomainSurfacesIntegrationTests(CasazenWebApplicationFactory flag
     }
 
     [Fact]
-    public async Task SetDomain_AnotherCustomDomain_ResetsOwnerLoginState_KeepsTheChoices()
+    public async Task SetDomain_AnotherCustomDomain_ForgetsTheRegistration_AsksAgainForTheNewDomain_KeepsTheChoices()
     {
         var ownerId = $"auth0|surfaces-reset-{Guid.NewGuid():N}";
         var org = await flagsOn.SeedOrgForOwnerAsync(ownerId);
@@ -173,7 +173,8 @@ public class OrgDomainSurfacesIntegrationTests(CasazenWebApplicationFactory flag
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var stored = await ReadOrgAsync(flagsOn, org.Id);
-        Assert.Equal(OwnerLoginHostState.NotRequested, stored.OwnerLoginHostState);
+        // The registration of the first domain is forgotten and, the owner portal being on, the new domain asks for its own at once.
+        Assert.Equal(OwnerLoginHostState.Pending, stored.OwnerLoginHostState);
         Assert.True(stored.GuestAreaOnOwnDomain);
         Assert.True(stored.OwnerPortalOnOwnDomain);
         Assert.False(stored.UseOwnDomainForLinks);
