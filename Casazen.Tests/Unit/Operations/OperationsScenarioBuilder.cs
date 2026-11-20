@@ -393,12 +393,29 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string _, long cents, string currency, Dictionary<string, string> metadata, string _, string? _, CancellationToken _) =>
+            .ReturnsAsync((string _, long cents, string currency, Dictionary<string, string> metadata, string key, string? _, CancellationToken _) =>
             {
-                var intent = new StripeIntent { Id = $"pi_tax_{Guid.NewGuid():N}", ClientSecret = "secret_tax", Amount = cents, Currency = currency, Status = "requires_payment_method" };
-                _taxIntents[intent.Id] = (new Dictionary<string, string>(metadata), cents);
+                // What Stripe does with an idempotency key: the same key gets the same payment intent, so a retry never makes a second one.
+                var intent = _taxIntentsByKey.GetOrAdd(
+                    key,
+                    _ => new StripeIntent
+                    {
+                        Id = $"pi_tax_{Guid.NewGuid():N}",
+                        ClientSecret = "secret_tax",
+                        Amount = cents,
+                        Currency = currency,
+                        Status = "requires_payment_method",
+                        Metadata = new Dictionary<string, string>(metadata),
+                    });
+                _taxIntents[intent.Id] = intent;
                 return intent;
             });
+
+        // The payment intent a stay holds open is read back by its id before another is asked for (the guest who opens the payment twice gets the same one).
+        Stripe
+            .Setup(s => s.GetPaymentIntentAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string id, string? _, CancellationToken _) =>
+                _taxIntents.TryGetValue(id, out var intent) ? intent : new StripeIntent { Id = id, Status = "requires_payment_method" });
     }
 
     private OctorateReservation ReservationOf(string id) => new()

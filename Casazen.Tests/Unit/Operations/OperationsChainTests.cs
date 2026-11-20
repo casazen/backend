@@ -11,6 +11,7 @@ using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Jobs;
 using Moq;
 using Xunit;
+using WebhookSource = Casazen.Infrastructure.External.WebhookSource;
 using World = Casazen.Tests.Unit.Operations.OperationsScenarioBuilder;
 
 namespace Casazen.Tests.Unit.Operations;
@@ -348,9 +349,16 @@ public class OperationsChainTests
         var session = await world.StartTouristTaxPaymentAsync(token);
         Assert.Equal(6.00m, session!.Amount);
 
-        // When Stripe tells the platform the payment succeeded the record is paid; the same event delivered again, as Stripe does, changes nothing.
+        // The guest opens the payment again before paying (a second tab, a reload): it is the payment intent already open, read back from Stripe, and Stripe is not asked for another one.
+        var reopened = await world.StartTouristTaxPaymentAsync(token);
+        Assert.Equal(session.PaymentIntentId, reopened!.PaymentIntentId);
+        world.TheTaxWasChargedOnce();
+
+        // When Stripe tells the platform the payment succeeded the record is paid. The same event delivered again, as Stripe does, is dropped by the claim of the event; the same payment told by
+        // another event (another id, as the other endpoint sends it) reaches the tourist tax itself, which records a payment once: nothing is collected or told a second time.
         await world.TouristTaxPaidAsync(session, "evt_tax_once");
         await world.TouristTaxPaidAsync(session, "evt_tax_once");
+        await world.TouristTaxPaidAsync(session, "evt_tax_other_endpoint", WebhookSource.Platform);
         var record = await world.TouristTaxRecordOfAsync(created.BookingId);
         Assert.Equal((TouristTaxCollectionStatus.PaidOnline, 6.00m), (record!.CollectionStatus, record.CollectedAmount));
         Assert.Single(world.Pushes.Queued, p => p.Payload.Type == PushTypes.TouristTaxPaid);

@@ -485,12 +485,15 @@ internal sealed partial class OperationsScenarioBuilder
         return await scope.Get<ITouristTaxCollectionService>().CreatePaymentIntentAsync(token);
     }
 
-    /// <summary>Stripe tells the platform the tourist tax was paid: the webhook of the connected account (<paramref name="eventId"/> is the event; the same id twice is one delivery).</summary>
-    public async Task TouristTaxPaidAsync(TouristTaxPaymentSession session, string eventId)
+    /// <summary>
+    /// Stripe tells the platform the tourist tax was paid: the webhook of the connected account by default (<paramref name="eventId"/> is the event; the same id twice is one delivery, another id for
+    /// the same payment is another event, as the other endpoint sends it).
+    /// </summary>
+    public async Task TouristTaxPaidAsync(TouristTaxPaymentSession session, string eventId, WebhookSource source = WebhookSource.Connected)
     {
-        var (metadata, cents) = _taxIntents[session.PaymentIntentId];
+        var intent = _taxIntents[session.PaymentIntentId];
         await using var scope = Scope(underTheOrg: false);
-        await scope.Get<StripeWebhookHandler>().HandleEventAsync(Succeeded(session.PaymentIntentId, cents, metadata, eventId), WebhookSource.Connected);
+        await scope.Get<StripeWebhookHandler>().HandleEventAsync(Succeeded(intent.Id, intent.Amount, intent.Metadata, eventId), source);
     }
 
     private StripeEvent Succeeded(string paymentIntentId, long cents, IDictionary<string, string> metadata, string? eventId = null) => new()
