@@ -18,8 +18,8 @@ namespace Casazen.Infrastructure.Email;
 /// <remarks>
 /// The host of a link comes only from the org record (the domain that really serves the site, <see cref="PublicOrgSiteUrls.OwnHost"/>), never
 /// from a header or a body, and a link carries the token or code it carried before and nothing else. With <c>WhiteLabelHost</c> off nothing is
-/// read. A missing org, a read error or an unconfigured platform URL give the platform links, byte for byte the ones built before: never a
-/// failure the old code did not have.
+/// read. A missing org, an org that is not active (the resolver serves none of its hosts), a read error or an unconfigured platform URL give the
+/// platform links, byte for byte the ones built before: never a failure the old code did not have.
 /// </remarks>
 public sealed class AgencyDomainLinks(
     AppDbContext db,
@@ -45,7 +45,8 @@ public sealed class AgencyDomainLinks(
             return AgencyLinks.Platform(platform);
         }
 
-        if (org is null)
+        // The resolver serves no host of an org that is not active (OrgService.GetByVerifiedCustomDomainAsync): its links stay on the CasaZen domain, the one that opens.
+        if (org is null || !org.IsActive)
             return AgencyLinks.Platform(platform);
 
         // The embeddable pages are no link: SiteEmbed plays no part here.
@@ -68,6 +69,7 @@ public sealed class AgencyDomainLinks(
             .Select(o => new
             {
                 o.Slug,
+                o.IsActive,
                 o.PublicHostMode,
                 o.CustomDomain,
                 o.DomainVerificationStatus,
@@ -88,6 +90,7 @@ public sealed class AgencyDomainLinks(
             {
                 Id = orgId,
                 Slug = row.Slug,
+                IsActive = row.IsActive,
                 PublicHostMode = row.PublicHostMode,
                 CustomDomain = row.CustomDomain,
                 DomainVerificationStatus = row.DomainVerificationStatus,

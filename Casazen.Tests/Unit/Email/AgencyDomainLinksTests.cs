@@ -66,6 +66,7 @@ public sealed class AgencyDomainLinksTests : IDisposable
         "plan not paid",
         "guest area off",
         "links off",
+        "org inactive",
         "org missing",
     };
 
@@ -96,6 +97,10 @@ public sealed class AgencyDomainLinksTests : IDisposable
                     break;
                 case "links off":
                     o.UseOwnDomainForLinks = false;
+                    break;
+                case "org inactive":
+                    // The resolver serves no host of an org that is not active: its links stay on the CasaZen domain.
+                    o.IsActive = false;
                     break;
             }
         });
