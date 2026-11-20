@@ -8647,4 +8647,19 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OctorateReviewActionNotAllowed" xml:space="preserve">
     <value>Il channel manager ha rifiutato l’operazione sulla recensione: non è consentita oppure è già stata fatta.</value>
   </data>
+  <data name="TicinoStructureIdInvalid" xml:space="preserve">
+    <value>Il numero identificativo LEAR / NO-LEAR non è valido: da 3 a 20 lettere e cifre, con trattini singoli (es. NL-12345678).</value>
+  </data>
+  <data name="TicinoStructureIdMissing" xml:space="preserve">
+    <value>Inserisci il numero identificativo LEAR / NO-LEAR della struttura, ricevuto da Ticino Turismo: senza, il portale delle notifiche rifiuta il file.</value>
+  </data>
+  <data name="TicinoNotificationEmpty" xml:space="preserve">
+    <value>Nessun ospite di questo giorno ha i dati completi per la notifica: completa i dati indicati e riprova.</value>
+  </data>
+  <data name="TicinoXmlNotAvailable" xml:space="preserve">
+    <value>Il file XML non è disponibile per questi ospiti (CAP non numerico o paese di residenza mancante): scarica il file CSV.</value>
+  </data>
+  <data name="TicinoFileFormatInvalid" xml:space="preserve">
+    <value>Formato del file non valido: scegli CSV o XML.</value>
+  </data>
 </root>

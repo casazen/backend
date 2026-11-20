@@ -405,6 +405,8 @@ public class ComplianceActivityFeederTests
             {
                 ComplianceCockpitAction.ActivateProperty, ComplianceCockpitAction.CompleteGuestCheckIn,
                 ComplianceCockpitAction.CheckOut, ComplianceCockpitAction.ConfirmPropertyReady,
+                // casazen/backend#979: the Ticino police notification has a section of its own in the cockpit, not an item of the status.
+                ComplianceCockpitAction.NotifyTicinoPolice,
             }.Order(),
             notFed.Order());
     }

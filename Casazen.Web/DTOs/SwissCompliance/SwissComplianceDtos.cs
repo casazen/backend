@@ -1,22 +1,95 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.SwissCompliance;
 
 /// <summary>
-/// Body of <c>POST /api/properties/{propertyId}/swiss/ticino-notification</c> (E08, ADR-016): the night to notify to the
-/// Ticino police.
+/// Body of <c>POST /api/properties/{propertyId}/swiss/ticino-notification</c> (casazen/backend#979): the arrival day whose guests go to the
+/// Ticino police, and the format of the file.
 /// </summary>
 public sealed class TicinoNotificationRequest
 {
     /// <summary>
-    /// The night the notification is about, a calendar day (<c>yyyy-MM-dd</c>, for instance <c>2026-10-25</c>) in Switzerland (Europe/Zurich), no time and no
-    /// time zone. The file lists the confirmed stays that include that night: check-in on that day or before, check-out after it.
+    /// The arrival day, a calendar day (<c>yyyy-MM-dd</c>, for instance <c>2026-11-19</c>) in Switzerland (Europe/Zurich), no time and no time
+    /// zone. The file lists the guests of the stays that arrive on that day.
     /// </summary>
     [Required(ErrorMessage = "SwissReportDateRequired")]
     public DateOnly? ReportDate { get; set; }
+
+    /// <summary><c>csv</c> (default, the official CSV model) or <c>xml</c> (the official XSD), case-insensitive.</summary>
+    public string? Format { get; set; }
+
+    /// <summary>The format of <paramref name="value"/>: CSV when blank; false when it is neither <c>csv</c> nor <c>xml</c>.</summary>
+    public static bool TryParseFormat(string? value, out TicinoPoliceFileFormat format)
+    {
+        format = TicinoPoliceFileFormat.Csv;
+        if (string.IsNullOrWhiteSpace(value))
+            return true;
+        return Enum.TryParse(value.Trim(), ignoreCase: true, out format) && Enum.IsDefined(format);
+    }
 }
+
+/// <summary>
+/// Answer of <c>GET /api/properties/{propertyId}/swiss/ticino-notification</c> (casazen/backend#979): one arrival day of a Ticino property.
+/// </summary>
+/// <param name="PropertyId">The property.</param>
+/// <param name="Day">The arrival day.</param>
+/// <param name="StructureId">The «Numero identificativo LEAR / NO-LEAR» of the property; <c>null</c> until entered (no file without it).</param>
+/// <param name="StayCount">The stays that arrive on the day.</param>
+/// <param name="Rows">The persons in the file of the day, with the minors counted on them.</param>
+/// <param name="Issues">The guests (or stays, <c>position</c> null) left out of the file, with the codes of what they miss: <c>firstName</c>,
+/// <c>lastName</c>, <c>birthDate</c>, <c>nationality</c>, <c>documentType</c>, <c>guests</c> (fewer guests recorded than the booking counts).</param>
+/// <param name="XmlAvailable">The XML can be written too (every row has a numeric postcode and a known country of residence).</param>
+/// <param name="ReceiptCount">Receipts of the portal recorded for the day (type <c>Police</c>): one or more means the day is notified.</param>
+/// <param name="DueAt">Deadline (UTC): 24 hours from the first recorded arrival, or the start of the next day.</param>
+/// <param name="Reference">The reference of the file of the day, to record with its receipt.</param>
+/// <param name="PortalUrl">Where the host uploads the file.</param>
+/// <param name="PendingDays">The days of the property still to notify (of the last 14), oldest first.</param>
+public sealed record TicinoNotificationDayResponse(
+    Guid PropertyId,
+    DateOnly Day,
+    string? StructureId,
+    int StayCount,
+    IReadOnlyList<TicinoNotificationRowResponse> Rows,
+    IReadOnlyList<TicinoNotificationIssueResponse> Issues,
+    bool XmlAvailable,
+    int ReceiptCount,
+    DateTime DueAt,
+    string Reference,
+    string PortalUrl,
+    IReadOnlyList<TicinoPendingDayResponse> PendingDays)
+{
+    public static TicinoNotificationDayResponse From(TicinoNotificationDay day)
+    {
+        ArgumentNullException.ThrowIfNull(day);
+        return new TicinoNotificationDayResponse(
+            day.PropertyId,
+            day.Day,
+            day.StructureId,
+            day.StayCount,
+            day.Plan.Registrations
+                .Select(r => new TicinoNotificationRowResponse(r.BookingId, $"{r.FirstName} {r.LastName}", r.PersonsOver14, r.PersonsUnder14))
+                .ToList(),
+            day.Plan.Issues.Select(i => new TicinoNotificationIssueResponse(i.BookingId, i.Position, i.GuestName, i.Missing)).ToList(),
+            day.Plan.XmlAvailable,
+            day.ReceiptCount,
+            day.DueAtUtc,
+            $"TI-{day.PropertyId:N}-{day.Day:yyyyMMdd}",
+            TicinoPoliceFile.PortalUrl,
+            day.PendingDays.Select(p => new TicinoPendingDayResponse(p.Day, p.StayCount, p.DueAtUtc)).ToList());
+    }
+}
+
+/// <summary>A person in the file: the guest and the accompanying minors counted on them (14 to 17, under 14).</summary>
+public sealed record TicinoNotificationRowResponse(Guid BookingId, string GuestName, int PersonsOver14, int PersonsUnder14);
+
+/// <summary>A guest left out of the file and what they miss (the codes of <c>TicinoMissing</c>).</summary>
+public sealed record TicinoNotificationIssueResponse(Guid BookingId, int? Position, string GuestName, IReadOnlyList<string> Missing);
+
+/// <summary>An arrival day still to notify.</summary>
+public sealed record TicinoPendingDayResponse(DateOnly Day, int StayCount, DateTime DueAt);
 
 /// <summary>
 /// Body of <c>POST /api/properties/{propertyId}/swiss/otr-report</c> (E08, ADR-016): the period of the overnight report.

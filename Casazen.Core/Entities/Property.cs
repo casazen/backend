@@ -364,6 +364,14 @@ public class Property : ITenantOwned
     [MaxLength(10)]
     public string? SwissMunicipalityCode { get; set; }
 
+    /// <summary>
+    /// The «Numero identificativo LEAR / NO-LEAR» Ticino Turismo gives the structure when it registers (casazen/backend#979), stored
+    /// normalized (<see cref="Regulatory.TicinoStructureId"/>): the first field of every row of the file for the Ticino police portal.
+    /// Null until the host enters it; meaningful only for a property in canton Ticino.
+    /// </summary>
+    [MaxLength(Regulatory.TicinoStructureId.MaxLength)]
+    public string? TicinoStructureId { get; set; }
+
     [ForeignKey("CancellationPolicy")]
     public Guid? CancellationPolicyId { get; set; }
     public virtual CancellationPolicy? CancellationPolicy { get; set; }
