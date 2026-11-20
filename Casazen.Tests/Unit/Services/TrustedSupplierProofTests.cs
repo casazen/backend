@@ -86,8 +86,8 @@ public class TrustedSupplierProofTests
         var activityLogA = new ActivityLog(dbA);
         var activityLogB = new ActivityLog(dbB);
 
-        var serviceA = new TrustedSupplierService(dbA, activityLogA, null!);
-        var serviceB = new TrustedSupplierService(dbB, activityLogB, null!);
+        var serviceA = new TrustedSupplierService(dbA, null!, activityLogA, null!);
+        var serviceB = new TrustedSupplierService(dbB, null!, activityLogB, null!);
 
         // Agency A's trusted supplier
         var trustedSupplierA = new TrustedSupplier

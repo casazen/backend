@@ -10,18 +10,11 @@ namespace Casazen.Core.Services;
 public sealed record InviteSupplierRequest(string Email, List<Guid> PropertyIds);
 
 /// <summary>
-/// Result of a supplier invitation.
+/// Result of a supplier invitation. The link token only travels in the email to the supplier (A4-04).
 /// </summary>
-/// <param name="InvitationToken">Token to be sent to the supplier for acceptance.</param>
+/// <param name="InviteId">The invite.</param>
 /// <param name="ExpiresAt">When the invitation expires.</param>
-public sealed record InviteSupplierResult(string InvitationToken, DateTime ExpiresAt);
-
-/// <summary>
-/// Request to accept a trusted supplier invitation.
-/// </summary>
-/// <param name="Token">The invitation token.</param>
-/// <param name="SupplierOrgId">The supplier's org accepting the invitation.</param>
-public sealed record AcceptSupplierInviteRequest(string Token, Guid SupplierOrgId);
+public sealed record InviteSupplierResult(Guid InviteId, DateTime ExpiresAt);
 
 /// <summary>
 /// Manages trusted supplier relationships for agency tier orgs (NF-21, ADR-020).
@@ -31,23 +24,23 @@ public sealed record AcceptSupplierInviteRequest(string Token, Guid SupplierOrgI
 public interface ITrustedSupplierService
 {
     /// <summary>
-    /// Invites a supplier to become a trusted supplier of the agency.
-    /// Generates an invitation token that the supplier can use to accept.
+    /// Invites a supplier to become a trusted supplier of the agency (bug #977): a supplier invite of the org
+    /// (<see cref="ISupplierService.CreateTrustedSupplierInviteAsync"/>), emailed with the link of the supplier registration.
+    /// The supplier accepts it there, signed in with the invited email: a new supplier registers, one already registered
+    /// just confirms, and the relation with the org is created then.
     /// </summary>
     /// <param name="orgId">The agency org inviting the supplier.</param>
     /// <param name="request">Invitation details (email, property scope).</param>
     /// <param name="actorUserId">The user creating the invitation.</param>
-    /// <returns>Invitation token and expiration.</returns>
+    /// <returns>The invite and its expiry.</returns>
+    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
+    /// Codes <c>trusted_supplier_invite_email_invalid</c>, <c>trusted_supplier_property_invalid</c> (a property that is not
+    /// the org's), <c>trusted_supplier_invite_comune_missing</c>.
+    /// </exception>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
+    /// Codes <c>trusted_supplier_already_added</c>, <c>duplicate_invite</c>.
+    /// </exception>
     Task<InviteSupplierResult> InviteSupplierAsync(Guid orgId, InviteSupplierRequest request, string actorUserId);
-
-    /// <summary>
-    /// Accepts a trusted supplier invitation and creates the relationship.
-    /// Records TrustedSupplierAdded activity event.
-    /// </summary>
-    /// <param name="request">Token and supplier org.</param>
-    /// <param name="actorUserId">The user accepting the invitation.</param>
-    /// <returns>The created TrustedSupplier relationship.</returns>
-    Task<TrustedSupplier> AcceptInviteAsync(AcceptSupplierInviteRequest request, string actorUserId);
 
     /// <summary>
     /// Gets all trusted suppliers for an agency org.
