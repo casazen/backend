@@ -31,7 +31,8 @@ public class BookingCheckInLinkController(
     PublicSiteLinks publicSiteLinks,
     ILogger<BookingCheckInLinkController> logger,
     TimeProvider? timeProvider = null,
-    ICheckInLinkDeliveryService? deliveries = null) : ControllerBase
+    ICheckInLinkDeliveryService? deliveries = null,
+    AgencyDomainLinks? agencyLinks = null) : ControllerBase
 {
     /// <summary>409: a link exists only for confirmed or checked-in bookings.</summary>
     public const string BookingNotEligibleCode = "checkin_link_booking_not_eligible";
@@ -120,6 +121,9 @@ public class BookingCheckInLinkController(
         // A missing App:PublicSiteBaseUrl is a configuration error (500) before any link is issued: never a wrong link.
         publicSiteLinks.EnsureConfigured();
 
+        // E40/F01/US01/T03: the link the host copies is the one the guest gets, on the agency's own domain when its guest area is served there;
+        // read before the link is issued.
+        var agency = await agencyLinks.ForOrgOrPlatformAsync(publicSiteLinks, booking.OrgId, HttpContext.RequestAborted);
         var link = await checkInService.IssueLinkAsync(booking.Id, booking.OrgId);
 
         // E23/F01/US01/T01: the host carries the link from here, so the delivery of the link the system was trying to take to the guest ends (the previous link stopped
@@ -136,7 +140,7 @@ public class BookingCheckInLinkController(
 
         return Ok(new CheckInLinkResponse
         {
-            CheckInLink = publicSiteLinks.GuestCheckIn(link.Token),
+            CheckInLink = agency.GuestCheckIn(link.Token),
             ExpiresAt = link.ExpiresAt,
             EmailStatus = email.Status,
             EmailError = email.Error,

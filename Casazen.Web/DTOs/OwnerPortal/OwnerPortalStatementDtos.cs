@@ -57,7 +57,7 @@ public sealed record OwnerPortalStatementDto(
 /// <c>closingBalance</c> is the <c>openingBalance</c> plus the <c>net</c> plus the <c>payments</c>.
 /// </summary>
 /// <param name="Gross">The gross of the stays without the tourist tax (the owner's share).</param>
-/// <param name="ChannelFees">What the portals kept.</param>
+/// <param name="ChannelFees">What the portals kept that the owner bears (never a commission the agency bears).</param>
 /// <param name="Withholding">The withholding kept from the payouts.</param>
 /// <param name="Commission">The commission of the property manager.</param>
 /// <param name="Charges">The recharges and the expenses.</param>
@@ -155,12 +155,12 @@ internal static class OwnerPortalSectionNames
 
 /// <summary>One part of a statement: its name, its total and its lines.</summary>
 /// <param name="Section">One of <c>stays</c>, <c>channelFees</c>, <c>withholding</c>, <c>commission</c>, <c>recharges</c>, <c>corrections</c>, <c>payments</c>.</param>
-/// <param name="Total">The sum of its lines.</param>
+/// <param name="Total">The sum of its lines that count: a line for information only (<c>informational</c>: the commission the agency bears) is not in it.</param>
 /// <param name="Lines">The lines, by day.</param>
 public sealed record OwnerPortalStatementSectionDto(string Section, decimal Total, IReadOnlyList<OwnerPortalStatementLineDto> Lines)
 {
     public static OwnerPortalStatementSectionDto From(OwnerStatementSection section, IReadOnlyList<OwnerStatementLine> lines) =>
-        new(OwnerPortalSectionNames.NameOf(section), lines.Sum(line => line.Amount), [.. lines.Select(OwnerPortalStatementLineDto.From)]);
+        new(OwnerPortalSectionNames.NameOf(section), lines.Where(line => !line.Informational).Sum(line => line.Amount), [.. lines.Select(OwnerPortalStatementLineDto.From)]);
 }
 
 /// <summary>One line of a statement. No guest, never a name, an e-mail or a phone.</summary>
@@ -175,10 +175,12 @@ public sealed record OwnerPortalStatementSectionDto(string Section, decimal Tota
 /// <param name="Kind">The kind of a flat fee: <c>cleaning</c> or <c>linen</c>.</param>
 /// <param name="Description">The words of the agency for a charge, an expense or a correction.</param>
 /// <param name="SharePercent">The part of the source the owner holds.</param>
-/// <param name="Amount">The signed amount: positive is owed to the owner.</param>
+/// <param name="Amount">The signed amount: positive is owed to the owner. For a line with <paramref name="ChannelFeeBilledToAgencyNotRecharged"/> the commission the portal kept (negative, as a channel fee), for information only: it is in no total and not in the net.</param>
 /// <param name="Reversal">True when the line reverses another.</param>
 /// <param name="ChannelFeeRechargedByAgency">True when the portal billed the agency, which recharges the commission to the owner.</param>
-/// <param name="ChannelFeeBilledToAgencyNotRecharged">True when the portal billed the agency and the agency does not recharge the commission to the owner on its invoice: the portal invoice is not the owner's and no invoice of the property manager carries the commission. Never true together with <paramref name="ChannelFeeRechargedByAgency"/>; false for the account of the owner.</param>
+/// <param name="ChannelFeeBilledToAgencyNotRecharged">True when the portal billed the agency, which does not recharge the commission and bears it itself: the owner is not charged (FIX/BE-V2-NO-RECHARGE). The line is for information only: its amount is in neither the total of its part nor the net; the statement says «Commissione del portale sostenuta dall'agenzia, non addebitata al proprietario». Never true together with <paramref name="ChannelFeeRechargedByAgency"/>; false for the account of the owner and for a commission the owner was charged before that rule.</param>
+/// <param name="ChannelFeeChargedOnAgencyAccount">True for a commission the owner was charged (it is in the totals) on a portal account of the agency that the organization does not recharge now: a line posted before FIX/BE-V2-NO-RECHARGE, or before the posting that follows a change of the setting. The statement says «Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)»: never the sentence of the account of the owner (V1). Never true together with <paramref name="ChannelFeeRechargedByAgency"/> or <paramref name="ChannelFeeBilledToAgencyNotRecharged"/>; all three false is the account of the owner.</param>
+/// <param name="Informational">True for a line for information only (today the commission the agency bears): the client shows it and leaves it out of every total and of the net, without having to know its type.</param>
 public sealed record OwnerPortalStatementLineDto(
     Guid Id,
     string Type,
@@ -194,7 +196,9 @@ public sealed record OwnerPortalStatementLineDto(
     decimal Amount,
     bool Reversal,
     bool ChannelFeeRechargedByAgency,
-    bool ChannelFeeBilledToAgencyNotRecharged)
+    bool ChannelFeeBilledToAgencyNotRecharged,
+    bool ChannelFeeChargedOnAgencyAccount,
+    bool Informational)
 {
     public static OwnerPortalStatementLineDto From(OwnerStatementLine line)
     {
@@ -214,7 +218,9 @@ public sealed record OwnerPortalStatementLineDto(
             line.Amount,
             line.Reversal,
             line.AgencyHoldsPortalAccount,
-            line.AgencyHoldsPortalAccountWithoutRecharge);
+            line.AgencyHoldsPortalAccountWithoutRecharge,
+            line.AgencyAccountChargedWithoutRecharge,
+            line.Informational);
     }
 }
 

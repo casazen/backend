@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using System.Security.Claims;
 using System.Text.Json;
@@ -113,16 +114,18 @@ public class SelfBillingAlertsTests
     }
 
     /// <summary>
-    /// PROOF TEST: data rule. The monthly run is off by default (the shipped settings and the code), and then does nothing, not even open a scope (so no organization is read and no lock is taken);
-    /// with the key on it makes the drafts of the month that ended once and raises one «Da fare» to check and issue them; a second run, or a trigger by hand, makes no second draft and no second
-    /// item, and never brings back a draft a person discarded; the item closes when no draft is left; and nothing is ever issued by the run.
+    /// PROOF TEST: data rule. The run does nothing, not even open a scope (so no organization is read and no lock is taken), when the key <c>SelfBilling:MonthlyDrafts:Enabled</c> is switched off or the
+    /// issuance is off (it is ON by default: the next test); on, it makes the drafts of the month that ended once and raises one «Da fare» to check and issue them; a second run, or a trigger by hand, makes
+    /// no second draft and no second item, and never brings back a draft a person discarded; the item closes when no draft is left; and nothing is ever issued by the run.
     /// </summary>
     [Fact]
-    public async Task MonthlySelfBillingDrafts_AreIdempotentAndOffByDefault_Test()
+    public async Task MonthlySelfBillingDrafts_AreIdempotentAndCanBeSwitchedOff_Test()
     {
-        Assert.False(new SelfBillingOptions().MonthlyDrafts.Enabled);
+        Assert.True(new SelfBillingOptions().MonthlyDrafts.Enabled);
         var shipped = SelfBillingRig.Shipped();
-        Assert.False(shipped.MonthlyDrafts.Enabled);
+        Assert.True(shipped.MonthlyDrafts.Enabled);
+        var disabled = SelfBillingRig.Shipped();
+        disabled.MonthlyDrafts.Enabled = false;
 
         await using var rig = await SelfBillingRig.CreateAsync();
         await rig.StandardMonthAsync();
@@ -130,7 +133,7 @@ public class SelfBillingAlertsTests
 
         // Off: a factory that is never asked for a scope (a strict mock throws at the first call): nothing is read, nothing is locked, nothing is written.
         var never = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
-        await JobOf(never.Object, rig, shipped, issuance: true).ExecuteAsync(Ct);
+        await JobOf(never.Object, rig, disabled, issuance: true).ExecuteAsync(Ct);
         never.VerifyNoOtherCalls();
         Assert.Empty(await rig.Db.FiscalDocuments.AsNoTracking().Where(d => d.Purpose == FiscalDocumentPurpose.SelfBilling).ToListAsync());
         Assert.Empty(await rig.Db.InternalActivities.AsNoTracking().ToListAsync());
@@ -340,14 +343,142 @@ public class SelfBillingAlertsTests
         service.Verify(s => s.IssueAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()), Times.Never);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (FIX/BE-TD17-JOB-EXIT, decision 3 of the fiscal decisions of 2026-11-20). The run is ON by default (the code and the shipped settings) and is repeated <b>every day from the 5th to
+    /// the 14th</b> at 07:30 Rome time, the days before the deadline of the 15th: ten runs in a row make no second draft and no second «Da fare», never touch a draft they made, retry the holder that was refused for
+    /// an incomplete issuer profile the day after it is complete (and only that one), and <b>never issue anything</b>; a run after the 14th (a trigger by hand) changes nothing either.
+    /// </summary>
     [Fact]
-    public void MonthlyJob_IsRegisteredWhileTheIssuanceIsOn_OnThe5thAt0730InRome_AndNeverRunsTwiceAtOnce()
+    public async Task MonthlyDraftsJob_RunsDailyFrom5To14_IsIdempotent_AndOnByDefault_Test()
+    {
+        // On by default, in the code and in the shipped settings (nothing is switched on below).
+        Assert.True(new SelfBillingOptions().MonthlyDrafts.Enabled);
+        var shipped = SelfBillingRig.Shipped();
+        Assert.True(shipped.MonthlyDrafts.Enabled);
+
+        // Scheduled every day from the 5th to the 14th at 07:30 of Rome, and on no other day.
+        var scheduled = Schedule(issuance: true).Registered[SelfBillingMonthlyDraftsJob.RecurringJobId];
+        Assert.Equal(("30 7 5-14 * *", RomeCalendar.TimeZone), (scheduled.Cron, scheduled.Options.TimeZone));
+        var (minute, hour, days) = CronOf(scheduled.Cron);
+        Assert.Equal((30, 7), (minute, hour));
+        Assert.Equal(Enumerable.Range(5, 10), days);
+        Assert.DoesNotContain(15, days);
+
+        // October 2026: the company (profile complete) has two TD17 to make (Booking.com and Airbnb); a second owner company has no issuer profile yet, so its TD17 is refused.
+        await using var rig = await SelfBillingRig.CreateAsync();
+        await rig.StandardMonthAsync();
+        await rig.AddAsync(rig.Fee(rig.NoProfileCompany, rig.Garden, await rig.StayAsync(rig.Garden, BookingSource.Airbnb, new DateTime(2026, 10, 9)), 10.00m));
+        var service = ServiceOf(rig, shipped, ActivitiesOf(rig));
+        var jobLog = new CapturingLogger<SelfBillingMonthlyDraftsJob>();
+        var job = JobOf(ProviderOf(service, []).GetRequiredService<IServiceScopeFactory>(), rig, shipped, issuance: true, jobLog);
+
+        Dictionary<Guid, DateTime> madeOnThe5th = [];
+        Guid itemId = Guid.Empty;
+        foreach (var day in days)
+        {
+            // The owner completes its issuer profile on the 8th: the run of the 8th makes the missing draft and no other.
+            if (day == 8)
+                await AddNoProfileIssuerAsync(rig);
+
+            rig.Clock.SetUtcNow(new DateTimeOffset(2026, 11, day, 6, 30, 0, TimeSpan.Zero));
+            jobLog.Entries.Clear();
+            await job.ExecuteAsync(Ct);
+
+            var documents = await DocumentsAsync(rig);
+            var items = await rig.Db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.SelfBillingDraftsToReview)).ToListAsync();
+            var item = Assert.Single(items);
+            var madeNow = day is 5 or 8 ? 1 : 0;
+            var refusedNow = day < 8;
+
+            // Two drafts until the owner is complete, three after; every one is a draft, none is numbered or issued.
+            Assert.Equal(day < 8 ? 2 : 3, documents.Count);
+            Assert.All(documents, d => Assert.Equal((FiscalDocumentStatus.Draft, (int?)null, FiscalDocumentSdiStatuses.NotApplicable), (d.Status, d.SequenceNumber, d.SdiStatus)));
+            Assert.Equal(madeNow, MadeBy(jobLog));
+            Assert.Equal(refusedNow, jobLog.Entries.Any(e => e.Level == LogLevel.Warning && e.Values.TryGetValue("Holders", out var holders) && (int)holders! == 1));
+
+            // One «Da fare» of the month, the same all along, open, with the words that tell of the holder refused while somebody is.
+            if (day == 5)
+            {
+                itemId = item.Id;
+                madeOnThe5th = documents.ToDictionary(d => d.Id, d => d.UpdatedAt);
+            }
+
+            Assert.Equal((itemId, true, refusedNow), (item.Id, item.CompletedAt is null, item.Reason!.Contains("incompleti", StringComparison.Ordinal)));
+
+            // The drafts made on the 5th are never touched by the runs that follow (no draft is made again, updated or dropped).
+            Assert.All(madeOnThe5th, made => Assert.Equal(made.Value, documents.Single(d => d.Id == made.Key).UpdatedAt));
+        }
+
+        // Nothing was issued by ten runs, and a run after the 14th (a trigger by hand) makes no second draft and no second item.
+        Assert.Equal(10, days.Count);
+        Assert.DoesNotContain(await rig.Db.FiscalDocuments.AsNoTracking().ToListAsync(), d => d.Status == FiscalDocumentStatus.Issued || d.SequenceNumber != null);
+        var before = (await DocumentsAsync(rig)).Select(d => d.Id).Order().ToList();
+        rig.Clock.SetUtcNow(new DateTimeOffset(2026, 11, 20, 6, 30, 0, TimeSpan.Zero));
+        await job.ExecuteAsync(Ct);
+        Assert.Equal(before, (await DocumentsAsync(rig)).Select(d => d.Id).Order());
+        Assert.Single(await rig.Db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.SelfBillingDraftsToReview)).ToListAsync());
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule. The run is repeated every day, so the «Da fare» must not come back every morning: an item a person closed while drafts are still open is not raised again by a run that made no
+    /// draft (the reminder was seen and put away), but a run that makes a new draft (a refused holder that is complete now) raises one for it: the days of the schedule never leave two open items for the month.
+    /// </summary>
+    [Fact]
+    public async Task MonthlyDraftsJob_DoesNotRaiseTheItemAgainOnceAPersonClosedIt_UnlessTheRunMadeANewDraft_Test()
+    {
+        await using var rig = await SelfBillingRig.CreateAsync();
+        await rig.AddAsync(rig.Fee(rig.Company, rig.Lake, await rig.StayAsync(rig.Lake, BookingSource.BookingCom, new DateTime(2026, 10, 5)), 100.00m));
+        await rig.AddAsync(rig.Fee(rig.NoProfileCompany, rig.Garden, await rig.StayAsync(rig.Garden, BookingSource.Airbnb, new DateTime(2026, 10, 9)), 10.00m));
+        var activities = ActivitiesOf(rig);
+        var shipped = SelfBillingRig.Shipped();
+        var job = JobOf(ProviderOf(ServiceOf(rig, shipped, activities), []).GetRequiredService<IServiceScopeFactory>(), rig, shipped, issuance: true);
+        async Task<List<InternalActivity>> MonthItemsAsync() =>
+            await rig.Db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.SelfBillingDraftsToReview)).OrderBy(a => a.CreatedAt).ThenBy(a => a.Id).ToListAsync();
+
+        // The 5th: the draft of the company is made and its item raised; the other owner is refused.
+        rig.Clock.SetUtcNow(new DateTimeOffset(2026, 11, 5, 6, 30, 0, TimeSpan.Zero));
+        await job.ExecuteAsync(Ct);
+        var first = Assert.Single(await MonthItemsAsync());
+        Assert.Null(first.CompletedAt);
+
+        // A person closes the item with the draft still open (seen and put away): the runs of the 6th and the 7th, which make nothing, do not raise it again.
+        await activities.CloseAsync(first.Id, "auth0|agency", Ct);
+        foreach (var day in new[] { 6, 7 })
+        {
+            rig.Clock.SetUtcNow(new DateTimeOffset(2026, 11, day, 6, 30, 0, TimeSpan.Zero));
+            await job.ExecuteAsync(Ct);
+            var only = Assert.Single(await MonthItemsAsync());
+            Assert.Equal((first.Id, true), (only.Id, only.CompletedAt is not null));
+        }
+
+        // The 8th: the owner completes its issuer profile, the run makes its draft and raises an item for it (one open item, never two).
+        await AddNoProfileIssuerAsync(rig);
+        rig.Clock.SetUtcNow(new DateTimeOffset(2026, 11, 8, 6, 30, 0, TimeSpan.Zero));
+        await job.ExecuteAsync(Ct);
+        var raised = await MonthItemsAsync();
+        Assert.Equal(2, raised.Count);
+        var open = Assert.Single(raised, a => a.CompletedAt is null);
+        Assert.NotEqual(first.Id, open.Id);
+
+        // The runs that follow make nothing and raise nothing.
+        foreach (var day in new[] { 9, 10, 14 })
+        {
+            rig.Clock.SetUtcNow(new DateTimeOffset(2026, 11, day, 6, 30, 0, TimeSpan.Zero));
+            await job.ExecuteAsync(Ct);
+            Assert.Equal(new[] { first.Id, open.Id }, (await MonthItemsAsync()).Select(a => a.Id));
+        }
+
+        Assert.Equal(2, (await DocumentsAsync(rig)).Count);
+    }
+
+    [Fact]
+    public void MonthlyJob_IsRegisteredWhileTheIssuanceIsOn_FromThe5thTo14thAt0730InRome_AndNeverRunsTwiceAtOnce()
     {
         Assert.Equal("self-billing-monthly-drafts", SelfBillingMonthlyDraftsJob.RecurringJobId);
 
         var on = Schedule(issuance: true);
         var job = on.Registered[SelfBillingMonthlyDraftsJob.RecurringJobId];
-        Assert.Equal(("30 7 5 * *", RomeCalendar.TimeZone), (job.Cron, job.Options.TimeZone));
+        Assert.Equal(("30 7 5-14 * *", RomeCalendar.TimeZone), (job.Cron, job.Options.TimeZone));
         Assert.Equal(typeof(SelfBillingMonthlyDraftsJob), job.Job.Type);
         var concurrency = job.Job.Method.GetCustomAttribute<DisableConcurrentExecutionAttribute>();
         Assert.NotNull(concurrency);
@@ -519,6 +650,50 @@ public class SelfBillingAlertsTests
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /// <summary>The issuer profile of the owner company that had none (the TD17 of the Garden refused until now), as the owner completes it.</summary>
+    private static Task AddNoProfileIssuerAsync(SelfBillingRig rig) =>
+        rig.AddAsync(
+            new OrgFiscalIssuerProfile
+            {
+                OrgId = rig.OrgId,
+                PropertyOwnerId = rig.NoProfileCompany,
+                DocumentRegime = DocumentRegime.VatOrdinary,
+                VatRegistered = true,
+                LegalName = "TEST Senza Profilo Srl",
+                VatNumber = "01234567898",
+                FiscalCode = "01234567898",
+                AddressStreet = "Via del Giardino",
+                AddressCivic = "4",
+                PostalCode = "22100",
+                City = "Como",
+                Province = "CO",
+                CountryCode = "IT",
+                IssuerSdiRecipientCode = "SPR1234",
+                IssuerPec = "senzaprofilo@pec.example.com",
+            });
+
+    /// <summary>The minute, the hour and the days of the month a cron expression of five fields fires on, for the shapes the job uses (numbers, ranges and lists in the day field; any month and weekday).</summary>
+    private static (int Minute, int Hour, List<int> Days) CronOf(string cron)
+    {
+        var fields = cron.Split(' ');
+        Assert.Equal(5, fields.Length);
+        Assert.Equal(("*", "*"), (fields[3], fields[4]));
+        var days = fields[2]
+            .Split(',')
+            .SelectMany(part => ExpandDays(part))
+            .Order()
+            .ToList();
+        return (int.Parse(fields[0], CultureInfo.InvariantCulture), int.Parse(fields[1], CultureInfo.InvariantCulture), days);
+
+        static IEnumerable<int> ExpandDays(string part)
+        {
+            var bounds = part.Split('-');
+            var first = int.Parse(bounds[0], CultureInfo.InvariantCulture);
+            var last = bounds.Length == 2 ? int.Parse(bounds[1], CultureInfo.InvariantCulture) : first;
+            return Enumerable.Range(first, last - first + 1);
+        }
+    }
 
     private static InternalActivityService ActivitiesOf(SelfBillingRig rig) => new(rig.Db, NullLogger<InternalActivityService>.Instance, rig.Clock);
 

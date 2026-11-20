@@ -42,7 +42,8 @@ public sealed class GuestMessageService(
     ILogger<GuestMessageService> logger,
     TimeProvider? timeProvider = null,
     IDomainEventRecorder? events = null,
-    IEnumerable<IThreadReplyObserver>? replyObservers = null) : IGuestMessageService
+    IEnumerable<IThreadReplyObserver>? replyObservers = null,
+    AgencyDomainLinks? agencyLinks = null) : IGuestMessageService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -520,6 +521,12 @@ public sealed class GuestMessageService(
             if (booking.Guest.DataAnonymizedDate is not null || string.IsNullOrWhiteSpace(booking.Guest.Email))
                 return;
 
+            // E40/F01/US01/T03: the booking area of the agency's own domain when its guest area is served there. Read before the claim below, so
+            // nothing can stop between the claim and the e-mail.
+            var bookingArea = links.IsConfigured
+                ? (await agencyLinks.ForOrgOrPlatformAsync(links, booking.OrgId, cancellationToken)).GuestBookings(booking.Org.Slug, BookingCodes.Format(booking.BookingCode))
+                : null;
+
             var cutoff = now.AddMinutes(-GuestMessageRules.NotifyIntervalMinutes);
             var claimed = await db.GuestThreads
                 .Where(t => t.Id == threadId && (t.GuestNotifiedAt == null || t.GuestNotifiedAt <= cutoff))
@@ -533,7 +540,7 @@ public sealed class GuestMessageService(
                 booking.Guest.FirstName,
                 hostName,
                 booking.Property.Name,
-                links.IsConfigured ? links.GuestBookings(booking.Org.Slug, BookingCodes.Format(booking.BookingCode)) : null);
+                bookingArea);
             if (!emailQueue.Enqueue(booking.Guest.Email, content, EmailTemplates.Names.HostReplyToGuest))
             {
                 await db.GuestThreads

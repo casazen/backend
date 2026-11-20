@@ -82,7 +82,7 @@ public class OwnerInvoicesScopeTests
 
             var defaults = await controller.PutChannels(new PortalAccountSettingsCommand { PortalAccountHolder = PortalAccountHolder.Agency }, CancellationToken.None);
             var list = await controller.GetAccountHolders(CancellationToken.None);
-            var write = await controller.PutAccountHolders(holders, CancellationToken.None);
+            var write = await controller.PutAccountHolders(holders, acknowledgeRechargeWaiver: true, CancellationToken.None);
 
             Assert.Equal(
                 (StatusCodes.Status403Forbidden, StatusCodes.Status403Forbidden, StatusCodes.Status403Forbidden),

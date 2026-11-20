@@ -92,8 +92,9 @@ internal sealed class BookingDocumentIssuerConfiguration : IEntityTypeConfigurat
 /// The fiscal documents (NF-83, NF-84, E06/F01/US02/T01, E11/F01/US01/T01, E17/F01/US01/T01). Kept ten years (ADR-033-R7): the booking, the property, the
 /// owner, the statement version, the issuer profile, the credited and the replaced document are <b>restrict</b> foreign keys, so neither the removal of a
 /// booking nor anything else can delete a document by cascade. The database refuses two documents with the same number in one org, issuer and series, two
-/// imported rows of one Octorate document and two live owner invoices of one owner and period, and accepts only the known SDI states. The recipient columns,
-/// the issuer snapshot and the XML get their converter from <c>EncryptedColumns</c> (no length); <c>xmin</c> is the concurrency token.
+/// imported rows of one Octorate document and two live owner invoices of one owner and period, accepts only the known SDI states, and keeps the number of a replacement
+/// closed as «non più dovuta» (FIX/BE-TD17-JOB-EXIT: <c>CK_FiscalDocuments_ClosedNotDue</c>). The recipient columns, the issuer snapshot, the XML and the note of that closing get
+/// their converter from <c>EncryptedColumns</c> (no length); <c>xmin</c> is the concurrency token.
 /// </summary>
 internal sealed class FiscalDocumentConfiguration : IEntityTypeConfiguration<FiscalDocument>
 {
@@ -136,6 +137,14 @@ internal sealed class FiscalDocumentConfiguration : IEntityTypeConfiguration<Fis
                 "CK_FiscalDocuments_SdiStatus",
                 "\"SdiStatus\" IN (" + string.Join(", ", FiscalDocumentSdiStatuses.All.Select(s => $"'{s}'")) + ")");
             table.HasCheckConstraint("CK_FiscalDocuments_SequenceNumber", "\"SequenceNumber\" IS NULL OR \"SequenceNumber\" > 0");
+
+            // FIX/BE-TD17-JOB-EXIT: a replacement closed as «non più dovuta» is all or nothing: a document that was not closed has none of the four columns of the closing, and a closed one has its reason and its
+            // day, is discarded and KEEPS its sequence number (the number is reserved and never freed: with the unique index of the series, no other document can take it).
+            table.HasCheckConstraint(
+                "CK_FiscalDocuments_ClosedNotDue",
+                "(\"ClosedNotDueAt\" IS NULL AND \"ClosedNotDueReason\" IS NULL AND \"ClosedNotDueByUserId\" IS NULL AND \"ClosedNotDueNote\" IS NULL) "
+                + "OR (\"ClosedNotDueAt\" IS NOT NULL AND \"ClosedNotDueReason\" IS NOT NULL AND \"SequenceNumber\" IS NOT NULL "
+                + $"AND \"Status\" = {(int)FiscalDocumentStatus.Discarded})");
         });
     }
 }

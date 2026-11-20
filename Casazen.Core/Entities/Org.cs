@@ -331,6 +331,33 @@ public class Org
     [MaxLength(63)]
     public string? Subdomain { get; set; }
 
+    // ─── Surfaces on the agency's own domain (E40/F01/US01, NF-140..NF-142, NF-149) ─────────
+    // The agency's choices; what is really served is decided by Casazen.Core.Services.HostSurfaceRules (flag WhiteLabelHost, a verified
+    // custom domain the org pays for, these settings). A platform subdomain never serves them.
+
+    /// <summary>The guest area (check-in, booking area) is served on the verified custom domain too (NF-140). Off by default.</summary>
+    public bool GuestAreaOnOwnDomain { get; set; }
+
+    /// <summary>The owner portal is served on the verified custom domain too (NF-140); signing in there also needs <see cref="OwnerLoginHostState"/> Ready (NF-141). Off by default.</summary>
+    public bool OwnerPortalOnOwnDomain { get; set; }
+
+    /// <summary>
+    /// The links CasaZen sends (check-in, booking area, owner invitations) are built on the agency's domain (NF-142). On by default: it takes
+    /// effect only once the domain is verified and the surface of the link is on.
+    /// </summary>
+    public bool UseOwnDomainForLinks { get; set; } = true;
+
+    /// <summary>The Auth0 registration of the custom domain for the owner sign-in (NF-141); back to NotRequested when the domain or the host mode changes.</summary>
+    [Required]
+    public OwnerLoginHostState OwnerLoginHostState { get; set; } = OwnerLoginHostState.NotRequested;
+
+    /// <summary>Longest <see cref="GtmContainerId"/> the column holds (a valid id is at most 16 characters, <c>GtmContainerIds</c>).</summary>
+    public const int GtmContainerIdMaxLength = 20;
+
+    /// <summary>The Google Tag Manager container of the agency's booking pages (NF-149), normalized by <c>GtmContainerIds</c>, or null.</summary>
+    [MaxLength(GtmContainerIdMaxLength)]
+    public string? GtmContainerId { get; set; }
+
     // ─── Delegation of the Alloggiati transmission (AW-R02, ADR-015-R10) ─────────
 
     /// <summary>Longest user id of the delegation columns (the Auth0 subject).</summary>

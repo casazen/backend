@@ -311,6 +311,13 @@ public static class DemoShowcaseCatalog
         public const string SelfBillingCorrection = "self-billing-td17-correction";
 
         /// <summary>
+        /// The exit of the replacement of a self-billed invoice (TD17) the SDI rejected when the month no longer supports it (FIX/BE-TD17-JOB-EXIT, decision 2 of the fiscal decisions of 2026-11-20): the draft that holds the
+        /// number the rejected TD17 gave up, whose commissions the portal credited, closed as «non più dovuta» with a reason. The number is never freed: it stays reserved, is never given again and appears in the register of the
+        /// unused numbers of the accountant package. A template only, like the correction it follows (the submission to the SDI is off and needs a channel the demo does not have).
+        /// </summary>
+        public const string SelfBillingClosedNotDue = "self-billing-td17-closed-not-due";
+
+        /// <summary>
         /// The payment ledger (E06/F04/US01/T03, FIS-05, NF-85): a card payment with the commission and the net the provider reported, a cash payment
         /// the host recorded, and a booking of a channel with the amount the channel collected (commission not given by Octorate: not shown). Invented
         /// amounts, a template of the lines the ledger answers.
@@ -491,6 +498,7 @@ public static class DemoShowcaseCatalog
         Scenario.SdiRejectedInvoice,
         Scenario.SelfBilling,
         Scenario.SelfBillingCorrection,
+        Scenario.SelfBillingClosedNotDue,
         Scenario.PaymentLedger,
         Scenario.OwnerChannelCommission,
         Scenario.ReportCollections,
@@ -648,6 +656,16 @@ public static class DemoShowcaseCatalog
     public static IReadOnlyList<DemoSelfBillingCorrectionTemplate> SelfBillingCorrectionExamples { get; } =
     [
         new("td17-scartata", "TD17-2026/1", "TEST Immobiliare Lago Srl", "TEST Portale B.V.", 244.61m, "00427", Scenario.SelfBillingCorrection),
+    ];
+
+    /// <summary>
+    /// The replacement draft of the rejected self-billed invoice of the demo month (<see cref="SelfBillingCorrectionExamples"/>) after the TEST portal issued a credit note of the invoice the TD17 integrated: the draft
+    /// that holds number TD17-2026/1 is closed as «non più dovuta» for that reason (<c>portal_credit_note</c>), the number stays reserved and the next TD17 of the series is TD17-2026/2.
+    /// Invented, a template only.
+    /// </summary>
+    public static IReadOnlyList<DemoSelfBillingClosedTemplate> SelfBillingClosedExamples { get; } =
+    [
+        new("td17-chiusa-non-piu-dovuta", "TD17-2026/1", "TEST Immobiliare Lago Srl", "TEST Portale B.V.", "portal_credit_note", Scenario.SelfBillingClosedNotDue),
     ];
 
     /// <summary>
@@ -2534,6 +2552,18 @@ public sealed record DemoSelfBillingCorrectionTemplate(
     string PortalName,
     decimal Total,
     string ErrorCode,
+    string Scenario);
+
+/// <summary>
+/// The replacement draft of a rejected self-billed invoice of a demo month, closed as «non più dovuta» (FIX/BE-TD17-JOB-EXIT): the number it keeps reserved, the TEST holder that issues the TD17, the TEST portal abroad
+/// that is its cedente and the reason of the closing (one of <c>SelfBillingCloseReasons</c>: the code the screen translates).
+/// </summary>
+public sealed record DemoSelfBillingClosedTemplate(
+    string Key,
+    string Number,
+    string HolderName,
+    string PortalName,
+    string Reason,
     string Scenario);
 
 /// <summary>A fiscal document of a direct demo stay: its status, the number of an issued one, the TEST recipient, the total and the tourist tax in it.</summary>

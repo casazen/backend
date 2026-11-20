@@ -28,7 +28,7 @@ public sealed class QueuedInAppNotification
 
     /// <summary>
     /// The service request for the <c>service-request-*</c> types, the subject of the event for the platform staff (a «Fallo per me» request),
-    /// the property for the two Ticino alerts (<see cref="PushTypes.IsTicinoNotification"/>), else the booking; <c>null</c> when there is none.
+    /// the property for the Ticino types, the two alerts and the declaration of a day (<see cref="PushTypes.IsTicinoNotification"/>), else the booking; <c>null</c> when there is none.
     /// </summary>
     public Guid? EntityId { get; set; }
 
@@ -53,8 +53,8 @@ public sealed class QueuedInAppNotification
         if (audience.Kind == PushAudienceKind.PlatformStaff)
             return audience.Id;
 
-        // E30/F02/US01/T01: the alert about the 24 hours of a Ticino arrival day is about a property, and an arrival day is not an entity of its own. The entry carries the
-        // property (the audience of the push), no booking and no day: the client opens the Ticino page of the property on its first day to notify.
+        // E30/F02/US01/T01 and E30/F02/US02/T01: the alert about the 24 hours of a Ticino arrival day, and the declaration of a day, are about a property, and an arrival day is not an
+        // entity of its own. The entry carries the property (the audience of the push), no booking and no day: the client opens the Ticino page of the property on its first day to notify.
         if (audience.Kind == PushAudienceKind.PropertyHosts && PushTypes.IsTicinoNotification(payload.Type))
             return audience.Id;
 

@@ -171,6 +171,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.SdiRejectedInvoiceExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.SelfBillingExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.SelfBillingCorrectionExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.SelfBillingClosedExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.PaymentLedgerExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.ChannelCommissionRules.Select(rule => rule.Scenario))
             .Concat(DemoShowcaseCatalog.CleaningSetups.Select(setup => setup.Scenario))
@@ -1368,6 +1369,24 @@ public class DemoShowcaseTests
         Assert.Equal(amounts.Total, example.Total);
         Assert.Equal(example.ErrorCode, Casazen.Core.Services.SdiRejectionReasons.Normalize(example.ErrorCode));
         Assert.NotEqual(Casazen.Core.Services.SdiRejectionReasons.GenericKey, Casazen.Core.Services.SdiRejectionReasons.KeyOf(example.ErrorCode));
+    }
+
+    /// <summary>
+    /// FIX/BE-TD17-JOB-EXIT: the demo replacement closed as «non più dovuta» is the TD17 the demo correction made (the same number, holder and TEST portal) and its reason is one of the three the closing accepts (the one
+    /// the screen translates), so a scenario without a real reason fails here.
+    /// </summary>
+    [Fact]
+    public void SelfBillingClosedNotDue_TheExampleIsTheDemoReplacementClosedWithAKnownReason()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.SelfBillingClosedNotDue, DemoShowcaseCatalog.Scenarios);
+        var example = Assert.Single(DemoShowcaseCatalog.SelfBillingClosedExamples);
+        var rejected = Assert.Single(DemoShowcaseCatalog.SelfBillingCorrectionExamples);
+
+        Assert.StartsWith("TEST", example.HolderName, StringComparison.Ordinal);
+        Assert.StartsWith("TEST", example.PortalName, StringComparison.Ordinal);
+        Assert.Matches("^TD17-[0-9]{4}/[0-9]+$", example.Number);
+        Assert.Equal((rejected.Number, rejected.HolderName, rejected.PortalName), (example.Number, example.HolderName, example.PortalName));
+        Assert.Equal(example.Reason, Casazen.Core.Services.SelfBillingCloseReasons.Normalize(example.Reason));
     }
 
     /// <summary>

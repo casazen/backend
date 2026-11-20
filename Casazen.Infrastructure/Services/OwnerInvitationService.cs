@@ -41,7 +41,8 @@ public class OwnerInvitationService(
     IActivityLog activityLog,
     IOwnerOnboardingService onboarding,
     IAuth0ManagementService auth0Management,
-    TimeProvider timeProvider) : IOwnerInvitationService
+    TimeProvider timeProvider,
+    AgencyDomainLinks? agencyLinks = null) : IOwnerInvitationService
 {
     private const int MaxInvitationsPerDay = 100;
     private const int InvitationValidityDays = 7;
@@ -57,6 +58,8 @@ public class OwnerInvitationService(
         CancellationToken cancellationToken = default,
         HostScope? scope = null)
     {
+        // E40/F01/US01/T03: where the link of the e-mail lives, read before the transaction (a failed read never touches it).
+        var agency = await agencyLinks.ForOrgOrPlatformAsync(links, orgId, cancellationToken);
         await using var transaction = await LockAsync(orgId, cancellationToken);
 
         // Verify PropertyOwner exists and belongs to this org, and fetch org for email template
@@ -89,7 +92,7 @@ public class OwnerInvitationService(
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
 
-        if (!QueueEmail(invitation.Invitation, invitation.Token, propertyOwner, propertyOwner.Org.Name))
+        if (!QueueEmail(invitation.Invitation, invitation.Token, propertyOwner, propertyOwner.Org.Name, agency))
         {
             await WithdrawUndeliveredAsync([invitation.Invitation], actorUserId, cancellationToken);
             throw new DomainRuleException(OwnerInvitationErrors.EmailNotQueued, "OwnerInvitationEmailNotQueued");
@@ -192,6 +195,8 @@ public class OwnerInvitationService(
         if (string.IsNullOrWhiteSpace(fingerprint))
             throw new DomainRuleException(OwnerInvitationErrors.PreviewRequired, "OwnerInvitationPreviewRequired");
 
+        // E40/F01/US01/T03: where the links of the e-mails live, read before the transaction (a failed read never touches it).
+        var agency = await agencyLinks.ForOrgOrPlatformAsync(links, scope.OrgId, cancellationToken);
         await using var transaction = await LockAsync(scope.OrgId, cancellationToken);
 
         // Judged again, under the lock: what the person saw must still be true, or nothing is sent.
@@ -234,7 +239,7 @@ public class OwnerInvitationService(
         var undelivered = new List<OwnerInvitation>();
         foreach (var (invitation, token, owner) in prepared)
         {
-            if (QueueEmail(invitation, token, owner, agencyName))
+            if (QueueEmail(invitation, token, owner, agencyName, agency))
                 continue;
 
             undelivered.Add(invitation);
@@ -299,6 +304,8 @@ public class OwnerInvitationService(
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentException.ThrowIfNullOrWhiteSpace(actorUserId);
 
+        // E40/F01/US01/T03: where the link of the e-mail lives, read before the transaction (a failed read never touches it).
+        var agency = await agencyLinks.ForOrgOrPlatformAsync(links, scope.OrgId, cancellationToken);
         await using var transaction = await LockAsync(scope.OrgId, cancellationToken);
         var invitation = await FindVisibleAsync(scope, invitationId, cancellationToken);
         await EnsureNotSharedOutsideReachAsync(scope, invitation.PropertyOwnerId, cancellationToken);
@@ -326,7 +333,7 @@ public class OwnerInvitationService(
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
 
-        if (!QueueEmail(created.Invitation, created.Token, owner, owner.Org.Name))
+        if (!QueueEmail(created.Invitation, created.Token, owner, owner.Org.Name, agency))
         {
             await WithdrawUndeliveredAsync([created.Invitation], actorUserId, cancellationToken);
             throw new DomainRuleException(OwnerInvitationErrors.EmailNotQueued, "OwnerInvitationEmailNotQueued");
@@ -642,14 +649,17 @@ public class OwnerInvitationService(
         return (invitation, token);
     }
 
-    /// <summary>Queues the e-mail of an invitation; false when it could not be queued (the provider is not configured, no address).</summary>
-    private bool QueueEmail(OwnerInvitation invitation, string token, PropertyOwner owner, string agencyName)
+    /// <summary>
+    /// Queues the e-mail of an invitation; false when it could not be queued (the provider is not configured, no address). The link is on the
+    /// agency's own domain only once the owner sign-in works there (<paramref name="agency"/>, E40/F01/US01/T03).
+    /// </summary>
+    private bool QueueEmail(OwnerInvitation invitation, string token, PropertyOwner owner, string agencyName, AgencyLinks agency)
     {
         var content = EmailTemplates.OwnerInvitation(
             new CultureInfo("it-IT"),
             OwnerFieldRules.DisplayName(owner),
             agencyName,
-            links.OwnerInvitationAccept(token),
+            agency.OwnerInvitationAccept(token),
             invitation.ExpiresAt);
         return emailQueue.Enqueue(owner.Email, content, EmailTemplates.Names.OwnerInvitation);
     }

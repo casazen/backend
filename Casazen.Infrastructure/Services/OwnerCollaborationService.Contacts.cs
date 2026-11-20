@@ -7,6 +7,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -50,9 +51,10 @@ public sealed partial class OwnerCollaborationService
         // The address is encrypted at rest: it is found, and kept unique for the owner profile, by its keyed hash (never by the address).
         var emailHash = contactIndex.HashEmail(email);
 
-        // The link is built before anything is saved: a missing public address leaves no contact behind.
+        // The link is built before anything is saved: a missing public address leaves no contact behind. E40/F01/US01/T03: on the agency's own
+        // domain only once the owner sign-in works there.
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-        var acceptUrl = links.OwnerContactAccept(token);
+        var acceptUrl = (await agencyLinks.ForOrgOrPlatformAsync(links, orgId, cancellationToken)).OwnerContactAccept(token);
 
         var now = Now();
         OwnerPortalContact contact;

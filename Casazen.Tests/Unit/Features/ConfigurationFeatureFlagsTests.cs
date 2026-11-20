@@ -119,6 +119,12 @@ public class ConfigurationFeatureFlagsTests
                 "PurgeDocumentsAfterReceipt",
                 // E05/F07/US01/T01: the scheduled messages of the routines, off until the product owner confirms the send window and the retry times.
                 "ScheduledMessages",
+                // E40/F01/US01/T01: the guest area, the owner portal and the links on the agency's own domain, off until the frontend serves them there.
+                "WhiteLabelHost",
+                // E40/F01/US01/T01: the automatic registration of the agency domains in Auth0, off until the Management credentials exist.
+                "Auth0HostSync",
+                // E40/F01/US01/T01: the embeddable booking pages, the WordPress plugin and the GTM container of the agency, off until they are delivered.
+                "SiteEmbed",
                 // E30/F02/US01/T01: the staged alerts about the 24 hours of the notification of the guests of a Ticino property to the cantonal police, off until the product owner has seen them on an arrival.
                 "TicinoNotificationAlerts",
             },

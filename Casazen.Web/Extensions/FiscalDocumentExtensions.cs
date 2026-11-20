@@ -105,9 +105,17 @@ public static class FiscalDocumentExtensions
         services.AddOptions<SwissTouristTaxOptions>().Bind(configuration.GetSection(SwissTouristTaxOptions.SectionName)).ValidateOnStart();
         services.AddSingleton<IValidateOptions<SwissTouristTaxOptions>, SwissTouristTaxOptionsValidator>();
 
+        // Who collects the tourist tax of an Italian portal booking by default (FIX/BE-IT-TOURISTTAX-DEFAULTS, decision 2 of 2026-11-20), ItalianTouristTax: no portal by default, kept apart from the
+        // Swiss list so that an Italian organization never inherits it; a channel that is not a portal stops the application with a clear message. Empty is valid.
+        services.AddOptions<ItalianTouristTaxOptions>().Bind(configuration.GetSection(ItalianTouristTaxOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ItalianTouristTaxOptions>, ItalianTouristTaxOptionsValidator>();
+
         // The lines of the document of a booking, whatever its source: the amounts of a portal, the tourist tax only when the host collects it, who collected the money
         // (E12/F01/US01/T01).
         services.AddScoped<IGuestDocumentLineBuilder, GuestDocumentLineBuilder>();
+
+        // The proposals and the data-quality hint the billing setup gives an Italian organization about the tourist tax of the portals (FIX/BE-IT-TOURISTTAX-DEFAULTS): read only.
+        services.AddScoped<IItalianTouristTaxSetup, ItalianTouristTaxSetupService>();
 
         // The documents a booking needs and who issues each: the owner of an Italian property its stay, the agency its services (E17/F01/US01/T02).
         services.AddScoped<IDocumentPlanService, DocumentPlanService>();
