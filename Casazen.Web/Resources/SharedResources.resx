@@ -8751,6 +8751,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="GuestRegime_IT_Deadline" xml:space="preserve">
     <value>Entro 24 ore dall'arrivo, entro 6 ore per i soggiorni non superiori a 24 ore.</value>
   </data>
+  <data name="GuestRegime_CH_AG_Deadline" xml:space="preserve">
+    <value>Nessun termine di invio; a chi vada consegnato il registro non è verificato.</value>
+  </data>
   <data name="GuestRegime_CH_BS_Deadline" xml:space="preserve">
     <value>Inserimento ogni giorno; la fonte non indica un orario limite.</value>
   </data>
@@ -8765,6 +8768,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="GuestRegime_CH_SH_Deadline" xml:space="preserve">
     <value>Ogni giorno entro le 02:00; la fonte non dice a quale giorno si riferisce l'orario.</value>
+  </data>
+  <data name="GuestRegime_CH_VD_Deadline" xml:space="preserve">
+    <value>Nessun termine di invio: il registro si tiene a disposizione dell'autorità.</value>
   </data>
   <data name="GuestRegime_CH_ZG_Deadline" xml:space="preserve">
     <value>La scheda si compila all'arrivo dell'ospite; le fonti non citano una finestra di 24 ore.</value>

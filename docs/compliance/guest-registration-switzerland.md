@@ -74,7 +74,7 @@ host makes itself, E31), **Info**. Sentences for the user: `SharedResources` key
 | `CH-TG` | Report | e-mail file | not verified | 5 | Unknown | Partial | Assisted | the specification of the CSV and the code of the structure only through the police |
 | `CH-TI` | Report | portal file upload | 24 h from arrival | 5 | Yes | Verified | File | the file of E30; the 5 years are those of the group sheets and the parental authorizations |
 | `CH-UR` | Register | none | at arrival | – | Unknown | Partial | Register | an opinion of 2020 puts the retention at most 1 year |
-| `CH-VD` | Register | none | none | – | Yes | Verified | Register | register with a copy of the document: CasaZen does not keep document images, the copy stays with the host |
+| `CH-VD` | Register | none | none | – | Yes | Verified | Register | register with a copy of the document, at the disposal of the authority (the page names no police recipient): CasaZen does not keep document images, the copy stays with the host |
 | `CH-VS` | Register | paper | not verified | – | Partial | Partial | Register | holiday lets without hotel services: the municipality (not confirmed) |
 | `CH-ZG` | Report | portal | at arrival | – | Yes | Verified | Assisted | fields and retention not verified |
 | `CH-ZH` | Report | interface of the management software | not verified | 3 | Partial | Partial | Assisted | «commercial» is not defined; the specification is not public |

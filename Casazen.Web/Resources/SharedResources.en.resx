@@ -8751,6 +8751,9 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="GuestRegime_IT_Deadline" xml:space="preserve">
     <value>Within 24 hours of arrival, within 6 hours for stays of up to 24 hours.</value>
   </data>
+  <data name="GuestRegime_CH_AG_Deadline" xml:space="preserve">
+    <value>No deadline to send anything; who the register must be handed to is not verified.</value>
+  </data>
   <data name="GuestRegime_CH_BS_Deadline" xml:space="preserve">
     <value>Entered every day; the source gives no cut-off time.</value>
   </data>
@@ -8765,6 +8768,9 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="GuestRegime_CH_SH_Deadline" xml:space="preserve">
     <value>Every day by 02:00; the source does not say which day the time refers to.</value>
+  </data>
+  <data name="GuestRegime_CH_VD_Deadline" xml:space="preserve">
+    <value>No deadline to send anything: the register is kept at the disposal of the authority.</value>
   </data>
   <data name="GuestRegime_CH_ZG_Deadline" xml:space="preserve">
     <value>The form is completed when the guest arrives; the sources mention no 24-hour window.</value>

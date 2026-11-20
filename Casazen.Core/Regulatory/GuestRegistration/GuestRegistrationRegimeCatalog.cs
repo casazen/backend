@@ -136,7 +136,7 @@ public static class GuestRegistrationRegimeCatalog
         Obligation = GuestRegistrationObligation.KeepRegister,
         Channel = GuestRegistrationChannel.None,
         DeadlineKind = GuestRegistrationDeadlineKind.None,
-        DeadlineNoteKey = DeadlineNoSubmissionKey,
+        DeadlineNoteKey = DeadlineKeyOf("CH-AG"),
         RetentionYears = 5,
         PrivateRentals = GuestRegistrationPrivateRentals.Unknown,
         LegalReferences = ["Gastgewerbegesetz (GGG, SAR 970.100) § 7", "Gastgewerbeverordnung (GGV, SAR 970.111) § 21"],
@@ -672,7 +672,7 @@ public static class GuestRegistrationRegimeCatalog
         Obligation = GuestRegistrationObligation.KeepRegister,
         Channel = GuestRegistrationChannel.None,
         DeadlineKind = GuestRegistrationDeadlineKind.None,
-        DeadlineNoteKey = DeadlineNoSubmissionKey,
+        DeadlineNoteKey = DeadlineKeyOf("CH-VD"),
         PrivateRentals = GuestRegistrationPrivateRentals.Yes,
         LegalReferences = ["LEAE (BLV 930.01) art. 4a, 74c, 74d e 89", "RLPPPL art. 15 al. 2"],
         Sources =
