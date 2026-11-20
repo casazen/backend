@@ -3502,6 +3502,20 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid?>("BookingId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ClosedNotDueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ClosedNotDueByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("ClosedNotDueNote")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClosedNotDueReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -3737,6 +3751,8 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.ToTable("FiscalDocuments", t =>
                         {
+                            t.HasCheckConstraint("CK_FiscalDocuments_ClosedNotDue", "(\"ClosedNotDueAt\" IS NULL AND \"ClosedNotDueReason\" IS NULL AND \"ClosedNotDueByUserId\" IS NULL AND \"ClosedNotDueNote\" IS NULL) OR (\"ClosedNotDueAt\" IS NOT NULL AND \"ClosedNotDueReason\" IS NOT NULL AND \"SequenceNumber\" IS NOT NULL AND \"Status\" = 3)");
+
                             t.HasCheckConstraint("CK_FiscalDocuments_SdiStatus", "\"SdiStatus\" IN ('not_applicable', 'to_send', 'submitted', 'delivered', 'rejected', 'manual_declared', 'unknown')");
 
                             t.HasCheckConstraint("CK_FiscalDocuments_SequenceNumber", "\"SequenceNumber\" IS NULL OR \"SequenceNumber\" > 0");

@@ -43,7 +43,9 @@ public class EncryptedColumnsTests
                 "CheckInLinkDelivery.LinkToken:Casazen.CheckInLink.Token",
                 "DocumentImage.BackImageUrl:Casazen.DocumentImage",
                 "DocumentImage.FrontImageUrl:Casazen.DocumentImage",
-                // NF-83: the recipient snapshot of a fiscal document and its FatturaPA XML (E06/F01/US02/T01), and the snapshot of its issuer (E11/F01/US01/T01).
+                // NF-83: the recipient snapshot of a fiscal document and its FatturaPA XML (E06/F01/US02/T01), and the snapshot of its issuer (E11/F01/US01/T01); FIX/BE-TD17-JOB-EXIT: the free
+                // note of the closing of a replacement draft of a rejected TD17 as «non più dovuta».
+                "FiscalDocument.ClosedNotDueNote:Casazen.FiscalDocument",
                 "FiscalDocument.FatturaPaXml:Casazen.FiscalDocument",
                 "FiscalDocument.IssuerSnapshot:Casazen.FiscalDocument",
                 "FiscalDocument.RecipientAddressCivic:Casazen.FiscalDocument",

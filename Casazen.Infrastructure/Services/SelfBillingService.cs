@@ -185,11 +185,11 @@ public sealed partial class SelfBillingService(
     {
         ArgumentNullException.ThrowIfNull(criteria);
 
-        // The drafts and the issued ones, and the originals a correction replaced (discarded, a draft or an issued TD17 holds their number): the history of a number is never hidden from the list. A
-        // discarded draft nothing replaces is not listed.
+        // The drafts and the issued ones, the originals a correction replaced (discarded, a draft or an issued TD17 holds their number) and the replacement drafts closed as «non più dovuta» (discarded, they keep their
+        // number reserved): the history of a number is never hidden from the list. A discarded draft nothing replaces and nobody closed is not listed.
         var query = db.FiscalDocuments.AsNoTracking()
             .Where(d => d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Kind != DocumentKind.CreditNote
-                        && (d.Status != FiscalDocumentStatus.Discarded || db.FiscalDocuments.Any(r => r.OrgId == orgId && r.ReplacesDocumentId == d.Id)));
+                        && (d.Status != FiscalDocumentStatus.Discarded || d.ClosedNotDueAt != null || db.FiscalDocuments.Any(r => r.OrgId == orgId && r.ReplacesDocumentId == d.Id)));
         if (criteria.Year is { } year && criteria.Month is { } month)
             query = query.Where(d => d.PeriodYear == year && d.PeriodMonth == month);
 
@@ -782,11 +782,16 @@ public sealed partial class SelfBillingService(
     /// <summary>
     /// What a row says about the correction of a TD17 (FIX/BE-TD17-CORRECTION): the rejected documents that have an issued credit note (they are not corrected), for each discarded original, the
     /// TD17 that replaces it (the newest, when a replacement was itself rejected and replaced), and for each draft that holds the number of a rejected TD17 and that the drafts of its month would
-    /// keep (nothing gives it a TD17 now), the reason it cannot be issued.
+    /// keep (nothing gives it a TD17 now), the reason it cannot be issued, and the name of the person who closed each draft closed as «non più dovuta» (FIX/BE-TD17-JOB-EXIT; the id of the user is stored, the
+    /// row shows the name).
     /// </summary>
-    private sealed record CorrectionFacts(IReadOnlySet<Guid> Credited, IReadOnlyDictionary<Guid, Guid> ReplacedBy, IReadOnlyDictionary<Guid, string> Kept)
+    private sealed record CorrectionFacts(
+        IReadOnlySet<Guid> Credited,
+        IReadOnlyDictionary<Guid, Guid> ReplacedBy,
+        IReadOnlyDictionary<Guid, string> Kept,
+        IReadOnlyDictionary<string, string> ClosedBy)
     {
-        public static CorrectionFacts None { get; } = new(new HashSet<Guid>(), new Dictionary<Guid, Guid>(), new Dictionary<Guid, string>());
+        public static CorrectionFacts None { get; } = new(new HashSet<Guid>(), new Dictionary<Guid, Guid>(), new Dictionary<Guid, string>(), new Dictionary<string, string>());
     }
 
     private async Task<CorrectionFacts> CorrectionFactsAsync(Guid orgId, IReadOnlyCollection<FiscalDocument> found, CancellationToken ct)
@@ -818,7 +823,24 @@ public sealed partial class SelfBillingService(
                 replacedBy[replacement.Original] = replacement.Id;
         }
 
-        return new CorrectionFacts(credited, replacedBy, await KeptReasonsAsync(orgId, held, ct));
+        return new CorrectionFacts(credited, replacedBy, await KeptReasonsAsync(orgId, held, ct), await ClosersOfAsync(found, ct));
+    }
+
+    /// <summary>
+    /// The name of each person who closed a document of <paramref name="found"/> as «non più dovuta» (FIX/BE-TD17-JOB-EXIT), by the id of the user the closing recorded: the first and the last name of the user
+    /// (never the e-mail); a user that is gone (or has no name) is not in the answer, and the row says nothing of who closed it. One read, only when a document was closed.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, string>> ClosersOfAsync(IReadOnlyCollection<FiscalDocument> found, CancellationToken ct)
+    {
+        var ids = found.Where(d => d.ClosedNotDueAt != null && d.ClosedNotDueByUserId != null).Select(d => d.ClosedNotDueByUserId!).Distinct(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0)
+            return new Dictionary<string, string>();
+
+        var users = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).Select(u => new { u.Id, u.FirstName, u.LastName }).ToListAsync(ct);
+        return users
+            .Select(u => (u.Id, Name: $"{u.FirstName} {u.LastName}".Trim()))
+            .Where(u => u.Name.Length > 0)
+            .ToDictionary(u => u.Id, u => u.Name, StringComparer.Ordinal);
     }
 
     /// <summary>
@@ -889,7 +911,11 @@ public sealed partial class SelfBillingService(
             SelfBillingRules.IsCorrectable(document, corrections.Credited.Contains(document.Id)),
             document.ReplacesDocumentId,
             corrections.ReplacedBy.TryGetValue(document.Id, out var replacedBy) ? replacedBy : null,
-            corrections.Kept.TryGetValue(document.Id, out var kept) ? kept : null);
+            corrections.Kept.TryGetValue(document.Id, out var kept) ? kept : null,
+            document.ClosedNotDueReason,
+            document.ClosedNotDueAt,
+            document.ClosedNotDueByUserId is { } closer && corrections.ClosedBy.TryGetValue(closer, out var closedBy) ? closedBy : null,
+            document.ClosedNotDueNote);
     }
 
     private async Task<Dictionary<Guid, string>> PropertyNamesAsync(Guid orgId, IReadOnlyList<Guid> propertyIds, CancellationToken ct) =>

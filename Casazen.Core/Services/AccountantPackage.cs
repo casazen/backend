@@ -199,6 +199,13 @@ public static class AccountantPackageStructure
     public const string SelfBilledFolder = OwnerInvoicesFolder + "/autofatture";
 
     /// <summary>
+    /// The name, without its extension, of the register of the <b>unused numbers</b> of the self-billed invoices (TD17) in <see cref="SelfBilledFolder"/> (FIX/BE-TD17-JOB-EXIT): the numbers of replacement drafts
+    /// closed as «non più dovuta» in the period, which stay reserved and are never given again (number, day, reason, SDI outcome of the rejected original, user). Owner accounting, written only when the period
+    /// has one: a period with none is the package it always was.
+    /// </summary>
+    public const string UnusedNumbersFile = "numeri-non-utilizzati";
+
+    /// <summary>
     /// The name, without its extension, of the table of the portal commissions of the accounts the agency holds (V2) in <see cref="OwnerInvoicesFolder"/>. Written only when the period has
     /// one of those commissions, like <see cref="SelfBilledFolder"/>.
     /// </summary>

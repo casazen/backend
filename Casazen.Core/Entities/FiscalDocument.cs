@@ -21,7 +21,7 @@ namespace Casazen.Core.Entities;
 /// <item><b>The issuer as it was.</b> At the issue <see cref="IssuerSnapshot"/> keeps the data of the issuer the document was made with and
 /// <see cref="RuleVersion"/> the version of the tax rule: the PDF and the XML of an issued document read the issuer from there, never from the profile
 /// of today.</item>
-/// <item><b>Privacy.</b> The recipient snapshot (<c>Recipient*</c>), the issuer snapshot and the XML are <b>encrypted at rest</b> with their own purpose
+/// <item><b>Privacy.</b> The recipient snapshot (<c>Recipient*</c>), the issuer snapshot, the XML and the note of a closing (<see cref="ClosedNotDueNote"/>) are <b>encrypted at rest</b> with their own purpose
 /// (<c>EncryptedColumns.FiscalDocumentPurpose</c>): the columns have no length (the payload is longer than the text), the lengths are checked on input
 /// (the constants below).</item>
 /// <item><b>Tenant.</b> <see cref="ITenantOwned"/>: <see cref="OrgId"/> is the org of the booking, never a value of a client.</item>
@@ -71,6 +71,12 @@ public class FiscalDocument : ITenantOwned
     public const int OctorateAccommodationIdMaxLength = 100;
     public const int OctorateReservationIdMaxLength = 50;
     public const int CreatedByUserIdMaxLength = 255;
+
+    /// <summary>The longest <see cref="ClosedNotDueReason"/> (the codes of <see cref="SelfBillingCloseReasons"/> are shorter).</summary>
+    public const int ClosedNotDueReasonMaxLength = 32;
+
+    /// <summary>The longest note of a closing, in characters of the clear text (the column is encrypted and has no length: the check is on input).</summary>
+    public const int ClosedNotDueNoteMaxLength = 500;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -278,6 +284,27 @@ public class FiscalDocument : ITenantOwned
 
     /// <summary>The rejected document a correction replaces (restrict).</summary>
     public Guid? ReplacesDocumentId { get; set; }
+
+    // ---------------------------------------------------------------- «non più dovuta»: the exit of a replacement of a rejected TD17 (FIX/BE-TD17-JOB-EXIT)
+
+    /// <summary>
+    /// Why the replacement draft of a rejected self-billed invoice (TD17) was closed as «non più dovuta» (one of <see cref="SelfBillingCloseReasons"/>); <c>null</c> for every other document. A closed
+    /// draft is <see cref="FiscalDocumentStatus.Discarded"/> (an internal outcome of CasaZen, never «scarto confermato»: the rejection is a fact of the SDI) and <b>keeps its series, its
+    /// <see cref="SequenceNumber"/> and its <see cref="Number"/></b>: the unique index <see cref="SeriesNumberIndexName"/> never lets the number be taken again, and the counter is already past it. It is listed in
+    /// the register of the unused numbers of the accountant package. Set together with the three columns below, in one change (a check of the table keeps them together).
+    /// </summary>
+    [MaxLength(ClosedNotDueReasonMaxLength)]
+    public string? ClosedNotDueReason { get; set; }
+
+    /// <summary>The note the person wrote when closing it (free text: it can name a person or a portal document); <c>null</c> when there is none. <b>Encrypted at rest.</b></summary>
+    public string? ClosedNotDueNote { get; set; }
+
+    /// <summary>When it was closed (UTC); <c>null</c> for a document that was not.</summary>
+    public DateTime? ClosedNotDueAt { get; set; }
+
+    /// <summary>The user who closed it; <c>null</c> for a document that was not (and when the call carried no user).</summary>
+    [MaxLength(CreatedByUserIdMaxLength)]
+    public string? ClosedNotDueByUserId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

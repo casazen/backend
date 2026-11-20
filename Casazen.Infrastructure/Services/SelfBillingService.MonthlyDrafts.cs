@@ -20,7 +20,9 @@ namespace Casazen.Infrastructure.Services;
 /// person's action, behind <c>agency.invoice.manage</c> and <c>Features:FiscalDocumentIssuance</c>, and it checks the amounts the person confirms.</item>
 /// <item><b>No second draft for who has one.</b> A holder and portal that has a TD17 of the month in any state is left alone by the run (so a retry, a second run or a trigger by hand makes no
 /// second draft for it, and a draft a person discarded stays discarded): only the holders that have none get a draft. The item is one for each organization and month while it is
-/// open (<see cref="IInternalActivityService.CreateAsync"/> returns the open one), and closes when no draft of the month is left.</item>
+/// open (<see cref="IInternalActivityService.CreateAsync"/> returns the open one), and closes when no draft of the month is left. The run is repeated every day from the 5th to the 14th
+/// (FIX/BE-TD17-JOB-EXIT), so the same holds for ten runs in a row: a run raises the item only when it made a draft or when none was ever raised for the month
+/// (<see cref="ShouldRaiseDraftsTodoAsync"/>), never again for an item a person closed.</item>
 /// <item><b>A month with a holder refused is not a month done.</b> The holders that need a TD17 and could not get one (the issuer profile is not complete: <see cref="SelfBillingGeneration.Failed"/>) are
 /// counted and their codes given in the answer, logged as a warning (codes and counts, never a name, a VAT number or a field), said in the words of the item while a draft is open
 /// (<see cref="SelfBillingTodos.DraftsRefusedReasonKey"/>, the same item changed in place, never closed or raised again for it), and tried again by the next run: the holders that already have a
@@ -70,7 +72,7 @@ public sealed partial class SelfBillingService
         var refused = generation.Failed.Count;
         var refusedCodes = generation.Failed.Select(f => f.Code).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
 
-        var open = await SyncDraftsTodoAsync(orgId, year, month, raise: true, refused, ct);
+        var open = await SyncDraftsTodoAsync(orgId, year, month, await ShouldRaiseDraftsTodoAsync(orgId, year, month, generation.Created, ct), refused, ct);
 
         // The items of the other months that have no draft left open are closed too: the close that follows a change is best effort (TrySyncDraftsTodoAsync), this is what puts it right.
         await CloseStaleDraftsTodosAsync(orgId, year, month, ct);
@@ -97,6 +99,23 @@ public sealed partial class SelfBillingService
             open,
             refused);
         return new SelfBillingMonthlyRun(year, month, alreadyMade, generation.Created, generation.Updated, open, refused, refusedCodes);
+    }
+
+    /// <summary>
+    /// Whether this run raises the item of the month. The run is repeated every day from the 5th to the 14th (FIX/BE-TD17-JOB-EXIT), so the item must not come back every morning: it is raised when the run
+    /// <b>made a draft</b> (something new to check) or when <b>no item of the month was ever raised</b> (the first run of the month, whoever made the drafts); an item a person closed while drafts are still open
+    /// is a reminder that was seen and put away, and a run that made nothing does not raise it again. While the item is open nothing is raised either way (<see cref="IInternalActivityService.CreateAsync"/>
+    /// returns the open one), and the item the system closed because no draft was left comes back only with a new draft. Without the service of the «Da fare» there is no item and nothing to decide.
+    /// </summary>
+    private async Task<bool> ShouldRaiseDraftsTodoAsync(Guid orgId, int year, int month, int created, CancellationToken ct)
+    {
+        if (created > 0 || activities is null)
+            return true;
+
+        var entityType = SelfBillingTodos.PeriodEntityType(year, month);
+        return !await db.InternalActivities
+            .AsNoTracking()
+            .AnyAsync(a => a.OrgId == orgId && a.ActivityType == nameof(ActivityType.SelfBillingDraftsToReview) && a.EntityType == entityType && a.EntityId == orgId && a.Action != null, ct);
     }
 
     /// <summary>

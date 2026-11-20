@@ -6907,6 +6907,18 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="SelfBillingCorrectionNotApplicable" xml:space="preserve">
     <value>Only a TD17 self-billed invoice the SDI rejected, with no credit note issued, is corrected this way.</value>
   </data>
+  <data name="SelfBillingNotClosable" xml:space="preserve">
+    <value>Only the replacement draft of a TD17 self-billed invoice rejected by the SDI that the month no longer supports is closed as no longer due: if its data are still valid, issue it.</value>
+  </data>
+  <data name="SelfBillingAlreadyClosed" xml:space="preserve">
+    <value>This draft was already closed for a different reason: the reason and the user on record are never changed.</value>
+  </data>
+  <data name="SelfBillingCloseReasonRequired" xml:space="preserve">
+    <value>State why you are closing it: credit note from the portal, holder no longer a taxable person, or duplicate or error.</value>
+  </data>
+  <data name="SelfBillingCloseNoteTooLong" xml:space="preserve">
+    <value>The note is too long: {0} characters at most.</value>
+  </data>
   <data name="SelfBillingLineCommissions" xml:space="preserve">
     <value>Intermediation commissions {0} - {1} - {2}</value>
   </data>
@@ -7674,6 +7686,42 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="AccPkgTreatmentBorne" xml:space="preserve">
     <value>Borne by the agency</value>
+  </data>
+  <data name="AccPkgUnusedNumbersTitle" xml:space="preserve">
+    <value>Unused numbers of the TD17 self-billed invoices (replacement drafts closed as no longer due), from {0} to {1}, by closing date. Every number stays reserved and is never reassigned: it is a documented gap in the issuer's series</value>
+  </data>
+  <data name="AccPkgColRejectedOn" xml:space="preserve">
+    <value>Date of the rejected document</value>
+  </data>
+  <data name="AccPkgColClosedOn" xml:space="preserve">
+    <value>Closed on</value>
+  </data>
+  <data name="AccPkgColCloseReason" xml:space="preserve">
+    <value>Reason for closing</value>
+  </data>
+  <data name="AccPkgColCloseNote" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="AccPkgColOriginalSdi" xml:space="preserve">
+    <value>SDI outcome of the original document</value>
+  </data>
+  <data name="AccPkgColSdiErrorCode" xml:space="preserve">
+    <value>SDI rejection code</value>
+  </data>
+  <data name="AccPkgColClosedBy" xml:space="preserve">
+    <value>Closed by</value>
+  </data>
+  <data name="AccPkgUserNoLongerPresent" xml:space="preserve">
+    <value>user no longer present</value>
+  </data>
+  <data name="AccPkgCloseReasonPortalCreditNote" xml:space="preserve">
+    <value>Credit note from the portal</value>
+  </data>
+  <data name="AccPkgCloseReasonHolderNoLongerSubject" xml:space="preserve">
+    <value>Holder no longer a taxable person</value>
+  </data>
+  <data name="AccPkgCloseReasonDuplicateOrError" xml:space="preserve">
+    <value>Duplicate or error</value>
   </data>
   <data name="AccPkgStatementsTitle" xml:space="preserve">
     <value>Statements published to the owners, by month (latest published version)</value>

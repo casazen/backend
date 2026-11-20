@@ -47,8 +47,8 @@ public class SelfBillingOptions
     public string RuleVersion { get; set; } = DefaultRuleVersion;
 
     /// <summary>
-    /// The monthly run that makes the drafts of the month that ended (<c>SelfBilling:MonthlyDrafts</c>, FIX/BE-TD17-ALERTS): <b>off by default</b>, so nothing is drafted by time until
-    /// somebody turns it on.
+    /// The run that makes the drafts of the month that ended (<c>SelfBilling:MonthlyDrafts</c>, FIX/BE-TD17-ALERTS, FIX/BE-TD17-JOB-EXIT): <b>on by default</b>, every day from the 5th to the 14th of the month,
+    /// because the TD17 is due by the 15th and the draft has no fiscal effect until a person issues it (the real risk is not preparing it).
     /// </summary>
     public SelfBillingMonthlyDraftsOptions MonthlyDrafts { get; set; } = new();
 
@@ -93,14 +93,17 @@ public class SelfBillingOptions
 }
 
 /// <summary>
-/// The section <c>SelfBilling:MonthlyDrafts</c> (FIX/BE-TD17-ALERTS, ⚖): the Hangfire job <c>self-billing-monthly-drafts</c> makes, for every agency with commissions in the owner ledger of the month
-/// that ended, the same drafts as <c>POST api/fiscal/self-billing/drafts</c> and raises the «Da fare» to check and issue them. It never issues: the issue stays a person's action, behind
-/// <c>agency.invoice.manage</c> and <c>Features:FiscalDocumentIssuance</c>. Documented in <c>docs/runbooks/deploy-checklist.md</c> § 2.
+/// The section <c>SelfBilling:MonthlyDrafts</c> (FIX/BE-TD17-ALERTS, FIX/BE-TD17-JOB-EXIT, ⚖): the Hangfire job <c>self-billing-monthly-drafts</c> makes, for every agency with commissions in the owner ledger of the
+/// month that ended, the same drafts as <c>POST api/fiscal/self-billing/drafts</c> (only the missing ones) and raises the «Da fare» to check and issue them, every day from the 5th to the 14th. It never
+/// issues: the issue stays a person's action, behind <c>agency.invoice.manage</c> and <c>Features:FiscalDocumentIssuance</c>. Documented in <c>docs/runbooks/deploy-checklist.md</c> § 2.
 /// </summary>
 public class SelfBillingMonthlyDraftsOptions
 {
-    /// <summary>Whether the monthly run does anything. <b>false</b> by default: with it off the job is a no-op (no organization is read, no lock is taken, nothing is written).</summary>
-    public bool Enabled { get; set; }
+    /// <summary>
+    /// Whether the run does anything. <b>true</b> by default (decision 3 of the fiscal decisions of 2026-11-20, R3): a draft has no fiscal effect until a person issues it, so preparing it is safe and not
+    /// preparing it risks the penalty of a missing or late TD17. <c>false</c> turns it off for an environment: the job is then a no-op (no organization is read, no lock is taken, nothing is written).
+    /// </summary>
+    public bool Enabled { get; set; } = true;
 }
 
 /// <summary>One entry of <c>SelfBilling:Portals</c>: the legal entity of a foreign portal as it appears on its invoices (⚖: verify it against a real invoice of the portal).</summary>
