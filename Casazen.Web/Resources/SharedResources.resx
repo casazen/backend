@@ -1735,6 +1735,15 @@
   <data name="GuestBookingEmailInvalid" xml:space="preserve">
     <value>Indirizzo email non valido.</value>
   </data>
+  <data name="GuestSessionProofRequired" xml:space="preserve">
+    <value>Inserisci l'indirizzo email con cui hai prenotato oppure le ultime 4 cifre del tuo numero di telefono.</value>
+  </data>
+  <data name="GuestSessionProofExclusive" xml:space="preserve">
+    <value>Usa l'indirizzo email oppure le ultime 4 cifre del telefono, non entrambi.</value>
+  </data>
+  <data name="GuestSessionPhoneLast4Invalid" xml:space="preserve">
+    <value>Inserisci solo le ultime 4 cifre del numero di telefono con cui hai prenotato.</value>
+  </data>
   <data name="PublicPropertyNotFound" xml:space="preserve">
     <value>Questo alloggio non è disponibile per la prenotazione online.</value>
   </data>

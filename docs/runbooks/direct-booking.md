@@ -387,12 +387,13 @@ and, on PostgreSQL, `BookingEmailsPostgresTests`. Frontend:
 ### 8.4 The guest's session, with no account (DB-06a)
 
 The foundation of the guest area (messages with the host, reviews… build on it). The guest proves **one booking** with its code and
-email, once, and gets a signed token with a short life instead of sending code and email at every call. No account, no password,
-no cookie, no table, no flag, no migration. The old lookup (§ 8.2) and its check-in link stay as they are.
+email (or, with `Features__WhiteLabelHost` on, the last four digits of the phone: § 8.4.1), once, and gets a signed token with a short life
+instead of sending code and proof at every call. No account, no password, no cookie, no table, no migration. The old lookup (§ 8.2) and
+its check-in link stay as they are.
 
 | Endpoint | Auth | Answers |
 |---|---|---|
-| `POST /api/public/guest/session` `{ orgSlug, bookingCode, email }` (the body of the lookup) | anonymous; 10 per 5 min per IP (`PublicGuestSession`), per email (shared with § 8.2) and per code | 200 `{ accessToken, expiresAt, bookingCode }`; 400 `validation_error`; **404 `guest_booking_not_found`** (the same for every reason); 429 `rate_limited` |
+| `POST /api/public/guest/session` `{ orgSlug, bookingCode, email }`, or with `WhiteLabelHost` on `{ orgSlug, bookingCode, phoneLast4 }` (exactly one of `email` and `phoneLast4`) | anonymous; 10 per 5 min per IP (`PublicGuestSession`, both proofs), per email (shared with § 8.2), per code, and the lock of a code after 5 failed digits (§ 8.4.1) | 200 `{ accessToken, expiresAt, bookingCode }`; 400 `validation_error`; **404 `guest_booking_not_found`** (the same for every reason); 429 `rate_limited` |
 | `GET /api/public/guest/bookings/{code}` | `Authorization: Bearer {accessToken}` (policy `GuestSession`); 30 per min per IP (`PublicBookingLookup`) | 200: the same body as the lookup; 401 (no, altered or expired token); **404 `guest_booking_not_found`**; 429 |
 
 - **The token.** Starts with `gs1.`; the rest is the payload `{ version, orgId, hash of the guest's email, end of the session }` sealed with
@@ -424,15 +425,61 @@ no cookie, no table, no flag, no migration. The old lookup (§ 8.2) and its chec
   script on the page could read the token: the site loads no third-party HTML. Short life, "Esci" and no sensitive data (exact address,
   Wi-Fi) before the check-in window are the other defences.
 
-Logs: `Rate limit exceeded: policy PublicGuestSession | GuestBookingLookupPerEmail | GuestSessionPerCode on POST …` (no email, no code, no
-IP). Nothing is logged when a session opens.
+Logs: `Rate limit exceeded: policy PublicGuestSession | GuestBookingLookupPerEmail | GuestSessionPerCode | GuestPhoneLookupLockout on POST …`
+(no email, no code, no digits, no IP). Nothing is logged when a session opens.
 
 Code: `Casazen.Core/Services/IGuestSessionService.cs`, `Casazen.Infrastructure/Services/GuestSessionService.cs`, `GuestSessionTokens.cs`,
-`GuestBookingLookupService.cs` (`LoadAsync`, `ViewOfAsync`), `Casazen.Web/Authorization/GuestSessionAuthentication.cs` (scheme, claims,
-`GetGuestSessionTicket`), `CasazenPolicies.GuestSession`, `Casazen.Web/Controllers/GuestAreaController.cs`,
-`Casazen.Web/Infrastructure/GuestSessionCodeRateLimiter.cs`. Frontend: `src/features/public-booking/guest-bookings-page.tsx` (the form,
+`GuestBookingLookupService.cs` (`LoadAsync`, `LoadByPhoneAsync`, `ViewOfAsync`), `Casazen.Web/Authorization/GuestSessionAuthentication.cs` (scheme, claims,
+`GetGuestSessionTicket`), `CasazenPolicies.GuestSession`, `Casazen.Web/Controllers/GuestAreaController.cs`, `Casazen.Web/DTOs/GuestSessionRequest.cs`,
+`Casazen.Web/Infrastructure/GuestSessionCodeRateLimiter.cs`, `GuestPhoneLookupLockout.cs`. Frontend: `src/features/public-booking/guest-bookings-page.tsx` (the form,
 "Esci" and `guest-area-slot.tsx`, where the messages of the guest hook in), `src/api/guest-session.api.ts`, `src/lib/guest-session.ts`,
-`src/queries/use-guest-session.ts`. Test: `GuestBookingLookupPostgresTests.GuestSession_…` (tenancy, uniform 404).
+`src/queries/use-guest-session.ts`. Test: `GuestBookingLookupPostgresTests.GuestSession_…` (tenancy, uniform 404) and `…PhoneVariant_…` (§ 8.4.1).
+
+#### 8.4.1 The last four digits of the phone instead of the email (NF-143, E40/F01/US03/T01)
+
+On the agency's own domain the guest can open the same session with the booking code and the **last four digits of the phone** given when
+booking, instead of the email. **Behind `Features__WhiteLabelHost`** (off by default, [`feature-flags.md`](feature-flags.md)).
+
+- **The body.** `{ orgSlug, bookingCode, phoneLast4 }`: exactly one of `email` and `phoneLast4`; `phoneLast4` is four ASCII digits
+  (`[0-9]{4}`), nothing else (no space, no sign, no other digits). Neither, both, or other digits: 400 `validation_error` with a field error
+  that names no booking (`GuestSessionProofRequired`, `GuestSessionProofExclusive`, `GuestSessionPhoneLast4Invalid`, it and en); a blank value
+  counts as not given. **With the flag off `phoneLast4` is not read**: a body without email gets the 400 of a missing email, word by word, and a
+  body with both is the email proof of always. Nothing changes for anybody.
+- **The proof.** The phone of the guest of the booking as stored (`Guests.PhoneNumber`, empty when the guest gave none), reduced to its digits:
+  its last four are compared with the typed ones **in constant time** (`GuestPhoneDigits.Matches`, `CryptographicOperations.FixedTimeEquals`).
+  Direct bookings of an active org only, as with the email; a previous slug of the org keeps working. **One path for every outcome**: the org
+  by slug, the code normalized, then ONE light query that reads only the booking id and the guest's phone — also for a site that does not
+  exist or a string that is not a code (with values no booking has) — and the same fixed-time comparison (against a placeholder that never
+  matches when the booking has no phone, i.e. fewer than four digits). The booking is loaded in full only after the digits match. A code that
+  does not exist, another site's code, a malformed code, a booking without a phone and wrong digits all get **the same 404
+  `guest_booking_not_found` as a wrong email**: same status, same body, same headers apart from the trace id, similar time.
+- **The same session.** A match opens exactly the session of the email proof: the token carries the hash of the booking's email, so the guest
+  reads the same bookings with it, and the phone is never in the token, the answer or a URL.
+- **The lock of a code** (`GuestPhoneLookupLockout`). Four digits have 10,000 values, so the phone proof has a limit of its own, per booking
+  code and whatever the IP: `GuestArea__PhoneLockout__MaxFailures` failed attempts (default **5**) within `GuestArea__PhoneLockout__WindowMinutes`
+  (default **60**, from the first attempt on the code) lock the code **for the rest of the window**: 429 `rate_limited` with `Retry-After`
+  naming the **whole window** (3600 seconds by default, never the time left), the booking not read, **even with the right digits**. A match
+  before the lock clears the count. Every attempt counts the moment it starts, so a burst of parallel attempts cannot pass the lock. **Blind to
+  existence**: the key is a SHA-256 hash of the code as typed and normalized (never the code, never the digits), computed before any lookup, so a
+  real code and a made-up one lock alike. Only the phone proof is counted and locked: **the email proof keeps its own limits**, so a guest whose
+  code is locked can still prove the booking with the email. Each value must be at least 1, or the API does not start.
+- **Counters live in memory per replica**, like the other limits of the guests: a restart, or another replica, starts from zero. The store follows
+  at most 100,000 codes at once (each entry expires with its window): a flood of made-up codes cannot grow it, and while it is full a new code is
+  refused with the same 429 until room is made (the lock is never skipped).
+- **The limits, in order.** Per IP (`PublicGuestSession`, 10 per 5 min, both proofs), per email (the email proof only), per code
+  (`GuestSessionPerCode`, both proofs), then the lock (the phone proof only). The same 429 for all.
+- **Demo.** The showcase catalog (`DemoShowcaseCatalog`) has no guest-area scenario: a demo guest opens the session as a real one, with the code
+  of a direct demo booking and its phone.
+
+Checks (test environment, `Features__WhiteLabelHost` on):
+
+1. A direct test booking with a phone: `POST /api/public/guest/session` `{ orgSlug, bookingCode, phoneLast4 }` with its last four digits → 200 and
+   the same session as with the email (the page shows the booking).
+2. Five wrong digits on that code → five 404 identical to a wrong email; the sixth attempt, even with the right digits → 429 with
+   `Retry-After: 3600`; the email still opens it.
+3. With the flag off: a body with `phoneLast4` and no email → the 400 of a missing email.
+
+Rollback: turn `Features__WhiteLabelHost` off (the phone proof stops at once, the email proof is untouched); nothing is stored, no migration.
 
 ### 8.5 The guest cancels from the guest area (DB-08a)
 
