@@ -36,7 +36,8 @@ public sealed class ComplianceAutopilotService(
     PublicSiteLinks links,
     IOptions<EmailOptions> emailOptions,
     ILogger<ComplianceAutopilotService> logger,
-    TimeProvider? timeProvider = null) : IComplianceAutopilotService
+    TimeProvider? timeProvider = null,
+    AgencyDomainLinks? agencyLinks = null) : IComplianceAutopilotService
 {
     /// <summary>One run at a time per org: a double click, two tabs, the app and the web.</summary>
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> Gates = new();
@@ -157,6 +158,12 @@ public sealed class ComplianceAutopilotService(
         if (!links.IsConfigured)
             return Outcome(item, AutopilotOutcomeStatus.Failed, AutopilotOutcomeCodes.Failed, errorCode: GuestCheckInLinkEmailErrors.LinkUnavailable);
 
+        // E40/F01/US01/T03: the link of the chat draft is on the agency's own domain when its guest area is served there. Read before the link is
+        // issued, so nothing waits between the new link and what carries it.
+        var chatLinks = item.Channels.Contains(AutopilotChannels.Chat)
+            ? await agencyLinks.ForOrgOrPlatformAsync(links, booking.OrgId, cancellationToken)
+            : null;
+
         IssuedCheckInLink link;
         try
         {
@@ -181,7 +188,7 @@ public sealed class ComplianceAutopilotService(
             emailError = email.Error;
         }
 
-        var chat = item.Channels.Contains(AutopilotChannels.Chat) ? ChatDraftOf(booking, history, link, wording) : null;
+        var chat = chatLinks is not null ? ChatDraftOf(booking, history, link, wording, chatLinks) : null;
         var queued = emailStatus == nameof(GuestCheckInLinkEmailStatus.Queued);
         var (status, code) = queued
             ? (AutopilotOutcomeStatus.Done, AutopilotOutcomeCodes.EmailQueued)
@@ -192,13 +199,13 @@ public sealed class ComplianceAutopilotService(
         return Outcome(item, status, code, emailStatus, emailError, chat);
     }
 
-    private AutopilotChatDraft ChatDraftOf(Booking booking, StayHistory history, IssuedCheckInLink link, AutopilotWording wording)
+    private static AutopilotChatDraft ChatDraftOf(Booking booking, StayHistory history, IssuedCheckInLink link, AutopilotWording wording, AgencyLinks agency)
     {
         var guest = booking.Guest;
         var variant = VariantOf(booking, history);
         var written = wording.Texts.GetValueOrDefault(variant.Key)
             ?? new AutopilotWrittenText(AutopilotChatText.Fallback(variant.Language, variant.Reminder), false);
-        var text = AutopilotChatText.Fill(written.Template, guest.FirstName, booking.Property.Name, booking.CheckInDate, links.GuestCheckIn(link.Token));
+        var text = AutopilotChatText.Fill(written.Template, guest.FirstName, booking.Property.Name, booking.CheckInDate, agency.GuestCheckIn(link.Token));
         var phone = AutopilotContacts.InternationalPhone(guest.PhoneNumber, guest.Country);
 
         return new AutopilotChatDraft(

@@ -51,6 +51,41 @@ public static class PublicSitePaths
     /// <summary>Sitemap of an org's own host: <c>/sitemap.xml</c> of that host.</summary>
     public const string HostSitemap = "/sitemap.xml";
 
+    // ─── Guest area and owner portal on the agency's own domain (E40/F01/US01/T03, NF-142) ─────────────────
+    // The same routes, tokens and codes as on the CasaZen domain (PublicSiteLinks), at the root of the agency's host; the host itself comes
+    // from the org record (AgencyDomainLinks), never from here.
+
+    /// <summary>The guest's check-in page on the org's own host: <c>/checkin/{token}</c>.</summary>
+    public static string HostGuestCheckIn(string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return $"/checkin/{Uri.EscapeDataString(token)}";
+    }
+
+    /// <summary>«Le mie prenotazioni» on the org's own host: <c>/my-bookings</c>, with <c>?code=</c> when a code is given.</summary>
+    public static string HostGuestBookings(string? bookingCode = null) =>
+        string.IsNullOrWhiteSpace(bookingCode) ? "/my-bookings" : $"/my-bookings?code={Uri.EscapeDataString(bookingCode)}";
+
+    /// <summary>The page where an owner accepts the invitation of its agency, on the agency's own host.</summary>
+    public static string HostOwnerInvitationAccept(string inviteToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(inviteToken);
+        return $"/portale-proprietari/invito?token={Uri.EscapeDataString(inviteToken)}";
+    }
+
+    /// <summary>The page where a contact an owner invited accepts it, on the agency's own host.</summary>
+    public static string HostOwnerContactAccept(string inviteToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(inviteToken);
+        return $"/portale-proprietari/contatto?token={Uri.EscapeDataString(inviteToken)}";
+    }
+
+    /// <summary>A conversation of the owner inbox on the agency's own host: the id only.</summary>
+    public static string HostOwnerPortalConversation(Guid conversationId) => $"/portale-proprietari/messaggi/{conversationId:D}";
+
+    /// <summary>The page «Contabilità» of the owner portal on the agency's own host.</summary>
+    public const string HostOwnerPortalAccounting = "/portale-proprietari/contabilita";
+
     /// <summary>
     /// Sitemap of one org (<c>/book/{slug}/sitemap.xml</c>): under the org's own path, so it may only list URLs of that
     /// path, as the sitemap protocol requires.

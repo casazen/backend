@@ -46,7 +46,8 @@ public sealed class BookingNotifier(
     ICheckInLinkDeliveryService? linkDeliveries = null,
     IOptions<GuestCheckInOptions>? checkInOptions = null,
     TimeProvider? timeProvider = null,
-    IBookingFlowSettingsService? flowSettings = null)
+    IBookingFlowSettingsService? flowSettings = null,
+    AgencyDomainLinks? agencyLinks = null)
 {
     /// <summary>
     /// The four optional services of the check-in link were given (the check-in, the delivery, its options, the clock): the container gives them. Built without them the notifier says
@@ -87,8 +88,12 @@ public sealed class BookingNotifier(
             return;
         }
 
+        // E40/F01/US01/T03: the booking-area link and the check-in link of the confirmation, on the agency's own domain when its guest area is
+        // served there, on the CasaZen domain otherwise. Read once for the e-mail; never throws.
+        var agency = await agencyLinks.ForOrgOrPlatformAsync(links, data.OrgId, cancellationToken);
+
         // E23/F02/US01/T01: what the confirmation says about the online check-in, with the link when the check-in is already open. Never throws.
-        var confirmationCheckIn = await PrepareCheckInAsync(data, cancellationToken);
+        var confirmationCheckIn = await PrepareCheckInAsync(data, agency, cancellationToken);
 
         // A link that is about to leave is «in attesa» (queued, never sent) until the provider accepts the e-mail that carries it: written BEFORE the e-mail is queued, so that the job that
         // sends it cannot finish first.
@@ -104,7 +109,7 @@ public sealed class BookingNotifier(
                 data.PaidAmount,
                 data.FreeRefundDeadline,
                 data.HostContact,
-                links.GuestBookings(data.OrgSlug, data.Summary.BookingCode),
+                agency.GuestBookings(data.OrgSlug, data.Summary.BookingCode),
                 confirmationCheckIn?.Notice);
 
             // The job that sends an e-mail with a link writes on the session whether the link really left.
@@ -130,7 +135,7 @@ public sealed class BookingNotifier(
     /// <c>null</c> without the services of the check-in, without a public site to build a link on, for a guest with no address to write to, or when the state of the check-in cannot be
     /// read (logged): the e-mail is then what it always was and the job does what it always does. Never throws.
     /// </summary>
-    private async Task<ConfirmationCheckIn?> PrepareCheckInAsync(BookingEmailData data, CancellationToken cancellationToken)
+    private async Task<ConfirmationCheckIn?> PrepareCheckInAsync(BookingEmailData data, AgencyLinks agency, CancellationToken cancellationToken)
     {
         // A link is not issued for an e-mail that cannot carry it: no public site to build it on, no address to send it to (an issued link, however unsent, stops the job from sending one).
         if (checkIn is null || linkDeliveries is null || !links.IsConfigured || string.IsNullOrWhiteSpace(data.GuestEmail))
@@ -166,7 +171,7 @@ public sealed class BookingNotifier(
                 case GuestCheckInAccessStatus.NotYetOpen when access.OpensOn is { } opensOn:
                     return new ConfirmationCheckIn(BookingCheckInNotice.OnDay(DayOf(opensOn)), null);
                 case GuestCheckInAccessStatus.Open:
-                    return await IssueLinkAsync(data, today);
+                    return await IssueLinkAsync(data, agency, today);
                 default:
                     // Completed (the data or the communication were sent) or not applicable: nothing to say about a link.
                     return null;
@@ -183,12 +188,12 @@ public sealed class BookingNotifier(
     /// The check-in is open: issues the link the way the daily job does (one session, the same lifetime) and makes the notice that carries it. A link that cannot be issued is logged
     /// with the booking only, and the notice is the day of the next run of the job, which issues it as it does today.
     /// </summary>
-    private async Task<ConfirmationCheckIn> IssueLinkAsync(BookingEmailData data, DateOnly today)
+    private async Task<ConfirmationCheckIn> IssueLinkAsync(BookingEmailData data, AgencyLinks agency, DateOnly today)
     {
         try
         {
             var issued = await checkIn!.IssueLinkAsync(data.BookingId, data.OrgId);
-            return new ConfirmationCheckIn(BookingCheckInNotice.WithLink(links.GuestCheckIn(issued.Token), issued.ExpiresAt), issued);
+            return new ConfirmationCheckIn(BookingCheckInNotice.WithLink(agency.GuestCheckIn(issued.Token), issued.ExpiresAt), issued);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

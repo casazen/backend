@@ -590,6 +590,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICorsOriginSource, OrgHostCorsOriginSource>();
         // Where an org's public site lives (own host or platform path) and its canonical URLs (BK-16).
         services.AddScoped<PublicOrgSiteUrls>();
+        // The links CasaZen sends for an org, on the agency's own domain or on the CasaZen one (E40/F01/US01/T03).
+        services.AddScoped<Casazen.Infrastructure.Email.AgencyDomainLinks>();
         // Pages and sitemaps of the public site as crawlers read them (BK-15).
         services.AddScoped<Casazen.Web.Seo.IPublicSeoService, Casazen.Web.Seo.PublicSeoService>();
         services.AddScoped<IDnsTxtLookup, DnsClientTxtLookup>();

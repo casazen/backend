@@ -61,7 +61,8 @@ public sealed class OwnerStatementDocuments(
     TimeProvider time,
     ILogger<OwnerStatementDocuments> logger,
     IPortalAccountHolderResolver? holders = null,
-    IGuestDocumentLineBuilder? documentLines = null) : IOwnerStatementDocuments
+    IGuestDocumentLineBuilder? documentLines = null,
+    AgencyDomainLinks? agencyLinks = null) : IOwnerStatementDocuments
 {
     /// <summary>The entity type of the «To do» about a statement whose owner could not be told that it was published.</summary>
     public const string OwnerStatementVersionEntityType = "OwnerStatementVersion";
@@ -284,8 +285,10 @@ public sealed class OwnerStatementDocuments(
             .Select(o => new { o.Name, o.DefaultLanguage })
             .FirstOrDefaultAsync(ct);
 
-        // The words are the agency and the link: the amounts, the lines and the stays are in the portal, never in the e-mail.
-        var content = EmailTemplates.OwnerStatementPublished(OrgInvitationEmails.CultureOf(agency?.DefaultLanguage), agency?.Name ?? string.Empty, links.OwnerPortalAccounting());
+        // The words are the agency and the link: the amounts, the lines and the stays are in the portal, never in the e-mail. E40/F01/US01/T03: the
+        // portal of the agency's own domain only once the owner sign-in works there.
+        var accounting = (await agencyLinks.ForOrgOrPlatformAsync(links, version.OrgId, ct)).OwnerPortalAccounting();
+        var content = EmailTemplates.OwnerStatementPublished(OrgInvitationEmails.CultureOf(agency?.DefaultLanguage), agency?.Name ?? string.Empty, accounting);
         var queued = 0;
         foreach (var address in addresses)
         {

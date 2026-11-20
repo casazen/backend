@@ -140,6 +140,38 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
     }
 
     /// <summary>
+    /// PROOF TEST (E40/F01/US01/T03, NF-142, AC-NF142-2): an org whose verified domain serves its guest area, with «use my domain for links» on: the confirmation
+    /// carries the booking-area link and the check-in link on the agency's domain, with the same token, which still opens the check-in.
+    /// </summary>
+    [Fact]
+    public async Task ConfirmedInsideWindow_OrgOnItsOwnDomain_LinksOnTheAgencyDomain_Test()
+    {
+        const string domain = "prenota.villa-org.test";
+        var bookingId = await SeedAsync(daysUntilArrival: 2);
+        var orgId = (await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId)).OrgId;
+        var org = await _db.Orgs.SingleAsync(o => o.Id == orgId);
+        org.PlanTier = PlanTier.Pro;
+        org.PublicHostMode = PublicHostMode.CustomDomain;
+        org.CustomDomain = domain;
+        org.DomainVerificationStatus = DomainVerificationStatus.Verified;
+        org.GuestAreaOnOwnDomain = true;
+        org.UseOwnDomainForLinks = true;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await new BookingNotifier(
+                _db, _emails, EmailTestHelpers.Links(), _pushes, _notifierLog, _checkIn, _deliveries, _options, _clock, agencyLinks: AgencyLinksOverTheDb())
+            .BookingConfirmedAsync(bookingId, BookingConfirmationKind.PaidOnline);
+
+        var html = Assert.Single(_emails.Snapshot(), e => e.To == GuestEmail).Content.HtmlBody;
+        var token = Regex.Match(html, $"https://{Regex.Escape(domain)}/checkin/([0-9a-f]{{64}})").Groups[1].Value;
+        Assert.Equal(64, token.Length);
+        Assert.Contains($"https://{domain}/my-bookings", html, StringComparison.Ordinal);
+        Assert.DoesNotMatch(CheckInLink, html);
+        Assert.NotNull(await _checkIn.GetSessionByTokenAsync(token));
+    }
+
+    /// <summary>
     /// PROOF TEST: data rule (AC2). A direct booking confirmed with the arrival beyond the window gets a confirmation with NO link that says the day it arrives (the day the check-in
     /// opens, formatted like the other dates of the e-mail) and that it can be requested from «Le mie prenotazioni» from then; no link is issued and no record is written. The job sends the
     /// link on that day, as it does today, and not the day before.
@@ -439,6 +471,16 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
             EmailTestHelpers.Links(),
             _deliveryLog,
             clock);
+
+    /// <summary>The links of E40/F01/US01/T03 over the test database, with <c>WhiteLabelHost</c> on and the stored tier taken as paid for.</summary>
+    private AgencyDomainLinks AgencyLinksOverTheDb()
+    {
+        var entitlements = new Mock<IEntitlementService>();
+        entitlements.Setup(e => e.ResolveEffectiveTier(It.IsAny<OrgEntity>())).Returns((OrgEntity o) => o.PlanTier);
+        var links = EmailTestHelpers.Links();
+        var siteUrls = new PublicOrgSiteUrls(links, Microsoft.Extensions.Options.Options.Create(new PublicHostOptions()), entitlements.Object);
+        return new AgencyDomainLinks(_db, links, siteUrls, new TestFeatureFlags(Casazen.Core.Features.FeatureFlags.WhiteLabelHost), NullLogger<AgencyDomainLinks>.Instance);
+    }
 
     private BookingNotifier Notifier(IGuestCheckInService? checkIn = null) =>
         new(_db, _emails, EmailTestHelpers.Links(), _pushes, _notifierLog, checkIn ?? _checkIn, _deliveries, _options, _clock);

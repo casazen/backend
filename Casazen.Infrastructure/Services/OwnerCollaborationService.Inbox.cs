@@ -5,6 +5,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -500,7 +501,9 @@ public sealed partial class OwnerCollaborationService
             .ToListAsync(cancellationToken);
 
         var agency = await db.Orgs.AsNoTracking().Where(o => o.Id == conversation.OrgId).Select(o => o.Name).FirstOrDefaultAsync(cancellationToken) ?? string.Empty;
-        var content = EmailTemplates.OwnerInboxMessage(new CultureInfo("it-IT"), agency, links.OwnerPortalConversation(conversation.Id));
+        // E40/F01/US01/T03: the conversation on the agency's own domain only once the owner sign-in works there.
+        var conversationLink = (await agencyLinks.ForOrgOrPlatformAsync(links, conversation.OrgId, cancellationToken)).OwnerPortalConversation(conversation.Id);
+        var content = EmailTemplates.OwnerInboxMessage(new CultureInfo("it-IT"), agency, conversationLink);
         foreach (var address in addresses)
             emailQueue.Enqueue(address, content, EmailTemplates.Names.OwnerInboxMessage);
     }

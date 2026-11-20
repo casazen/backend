@@ -35,7 +35,8 @@ public sealed partial class OwnerCollaborationService(
     IAuth0ManagementService auth0Management,
     IOwnerContactIndex contactIndex,
     TimeProvider timeProvider,
-    ILogger<OwnerCollaborationService> logger) : IOwnerCollaborationService
+    ILogger<OwnerCollaborationService> logger,
+    AgencyDomainLinks? agencyLinks = null) : IOwnerCollaborationService
 {
     /// <summary>The entity type of the «To do» about a document that lapses.</summary>
     public const string DocumentVersionEntityType = "OwnerDocumentVersion";
