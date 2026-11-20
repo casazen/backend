@@ -1,12 +1,22 @@
+using System.Globalization;
+using System.Net;
 using System.Reflection;
 using Casazen.Core.Features;
 using Casazen.Web.Controllers;
 using Casazen.Web.Extensions;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Casazen.Tests.Unit.GuestPortal;
@@ -67,6 +77,67 @@ public class GuestPortalControllerBaseTests
             var templates = action.GetCustomAttributes<HttpMethodAttribute>().Select(a => a.Template ?? string.Empty).ToList();
             Assert.DoesNotContain(templates, t => t.Contains("booking", StringComparison.OrdinalIgnoreCase));
             Assert.DoesNotContain(action.GetParameters(), p => p.Name!.Contains("booking", StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>
+    /// Permission and privacy rule (the limits of the portal): next to the policy per client IP and token hash, which a client that changes the token at
+    /// every request does not meet twice, every controller of the portal has a limit per client IP over every token, 600 a minute. It runs after the private
+    /// answer and before the token filter; the 601st request, with yet another token, is a 429 with Retry-After and nothing else runs; another client has
+    /// its own budget.
+    /// </summary>
+    [Fact]
+    public async Task GuestPortal_AClientHasOneBudgetOverEveryToken_Test()
+    {
+        foreach (var controller in new[] { typeof(SampleGuestPortalController), typeof(GuestPortalOverviewController) })
+        {
+            var attribute = Assert.Single(controller.GetCustomAttributes(inherit: true).OfType<GuestPortalIpRateLimitAttribute>());
+            Assert.Equal(typeof(GuestPortalIpRateLimitFilter), attribute.ImplementationType);
+            Assert.InRange(attribute.Order, 1, GuestPortalTokenFilter.FilterOrder - 1);
+        }
+
+        Assert.Contains(
+            new ServiceCollection().AddCasazenRateLimiting(),
+            descriptor => descriptor.ServiceType == typeof(GuestPortalIpRateLimiter) && descriptor.Lifetime == ServiceLifetime.Singleton);
+
+        using var limiter = new GuestPortalIpRateLimiter(new ConfigurationBuilder().Build());
+        Assert.Equal("GuestPortalPerIp", limiter.PolicyName);
+        Assert.Equal(TimeSpan.FromMinutes(1), limiter.Window);
+        var filter = new GuestPortalIpRateLimitFilter(limiter, NullLogger<GuestPortalIpRateLimitFilter>.Instance);
+
+        // The answer is localized from the resources of the product, so the requests need the localizer.
+        var services = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider();
+
+        // 600 requests, each with a token of its own (the policy per token never meets one twice), all get through.
+        for (var request = 1; request <= 600; request++)
+            Assert.True((await RunAsync("203.0.113.7", $"Token_{request:D4}_00000000000000000000")).ActionRan);
+
+        var over = await RunAsync("203.0.113.7", "Token_Another_0000000000000000000");
+        Assert.False(over.ActionRan);
+        Assert.Equal(StatusCodes.Status429TooManyRequests, Assert.IsType<ObjectResult>(over.Result).StatusCode);
+        Assert.InRange(int.Parse(over.Http.Response.Headers.RetryAfter.ToString(), CultureInfo.InvariantCulture), 1, 60);
+        Assert.True((await RunAsync("203.0.113.8", "Token_Another_0000000000000000000")).ActionRan);
+
+        async Task<(bool ActionRan, IActionResult? Result, DefaultHttpContext Http)> RunAsync(string address, string token)
+        {
+            var http = new DefaultHttpContext { RequestServices = services };
+            http.Connection.RemoteIpAddress = IPAddress.Parse(address);
+            var routeData = new RouteData();
+            routeData.Values[GuestPortalTokenFilter.TokenRouteValue] = token;
+            var context = new ResourceExecutingContext(
+                new ActionContext(http, routeData, new ActionDescriptor()),
+                new List<IFilterMetadata>(),
+                new List<IValueProviderFactory>());
+            var ran = false;
+            await filter.OnResourceExecutionAsync(
+                context,
+                () =>
+                {
+                    ran = true;
+                    return Task.FromResult(new ResourceExecutedContext(context, new List<IFilterMetadata>()));
+                });
+
+            return (ran, context.Result, http);
         }
     }
 }

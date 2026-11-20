@@ -16,7 +16,8 @@ namespace Casazen.Web.Controllers;
 /// <item>anonymous: the token of the stay link is the only proof, and the <see cref="Portal"/> it opens is the only source of the booking, the org and
 /// the property (no endpoint reads a booking id from the client);</item>
 /// <item>the rate limit <see cref="RateLimitPolicies.GuestPortal"/> (per client IP and token hash; a writing action sets
-/// <see cref="RateLimitPolicies.GuestPortalWrite"/> on itself), 429 with <c>Retry-After</c>;</item>
+/// <see cref="RateLimitPolicies.GuestPortalWrite"/> on itself) and, after it, the limit per client IP over every token
+/// (<see cref="GuestPortalIpRateLimiter"/>, before the token is looked up), 429 with <c>Retry-After</c>;</item>
 /// <item>private answers (<c>Cache-Control: no-store</c>, <c>X-Robots-Tag: noindex</c>), the 404 and the 429 included;</item>
 /// <item><see cref="GuestPortalTokenFilter"/>: the same 404 <c>guest_portal_link_invalid</c> for a token that is unknown, revoked, expired or
 /// malformed, before the model binding.</item>
@@ -28,6 +29,7 @@ namespace Casazen.Web.Controllers;
 [AllowAnonymous]
 [FeatureGate(FeatureFlags.GuestPortal)]
 [EnableRateLimiting(RateLimitPolicies.GuestPortal)]
+[GuestPortalIpRateLimit]
 [PrivateAnswer]
 [ServiceFilter(typeof(GuestPortalTokenFilter), Order = GuestPortalTokenFilter.FilterOrder)]
 public abstract class GuestPortalControllerBase : ControllerBase
