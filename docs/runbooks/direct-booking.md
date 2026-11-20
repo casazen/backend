@@ -465,7 +465,9 @@ booking, instead of the email. **Behind `Features__WhiteLabelHost`** (off by def
   code is locked can still prove the booking with the email. Each value must be at least 1, or the API does not start.
 - **Counters live in memory per replica**, like the other limits of the guests: a restart, or another replica, starts from zero. The store follows
   at most 100,000 codes at once (each entry expires with its window): a flood of made-up codes cannot grow it, and while it is full a new code is
-  refused with the same 429 until room is made (the lock is never skipped).
+  refused with the same 429, never let through uncounted, until room is made. The cache makes room by dropping the entries whose window is over
+  and then the least recently used ones, so a flood of 100,000 distinct codes within one window (at the default per-IP limit, at least 833 client
+  addresses for an hour) can make it forget a lock that is still running and win 5 more attempts on one code: a known limit of the design.
 - **The limits, in order.** Per IP (`PublicGuestSession`, 10 per 5 min, both proofs), per email (the email proof only), per code
   (`GuestSessionPerCode`, both proofs), then the lock (the phone proof only). The same 429 for all.
 - **Demo.** The showcase catalog (`DemoShowcaseCatalog`) has no guest-area scenario: a demo guest opens the session as a real one, with the code

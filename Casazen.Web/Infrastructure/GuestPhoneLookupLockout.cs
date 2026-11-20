@@ -65,8 +65,10 @@ public sealed class GuestPhoneLookupLockoutOptions
 /// burst of parallel attempts cannot get past the lock.</para>
 /// <para><b>Bounded memory.</b> Counters live in memory, per replica, like the other limits of the guests: a size-limited <see cref="MemoryCache"/>
 /// (<see cref="MaxTrackedCodes"/> entries) whose entries expire with their window, so a flood of made-up codes cannot grow it. When it is full a new
-/// code is refused with the same 429 until room is made (the cache drops the expired and the least recently used entries): the lock is never
-/// skipped.</para>
+/// code is refused with the same 429, never let through uncounted, until room is made. The cache makes room by dropping the entries whose window is
+/// over and then the least recently used ones, so a flood of <see cref="MaxTrackedCodes"/> distinct codes within one window (at the default per-IP
+/// limit, at least 833 client addresses for an hour) can make it forget a lock that is still running and win 5 more attempts on one code: a known
+/// limit of the design.</para>
 /// </remarks>
 public sealed class GuestPhoneLookupLockout : IDisposable
 {
