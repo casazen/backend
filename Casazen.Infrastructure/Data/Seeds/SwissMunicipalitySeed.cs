@@ -1,196 +1,291 @@
+using System.Security.Cryptography;
+using System.Text;
 using Casazen.Core.Entities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Casazen.Infrastructure.Data.Seeds;
 
 /// <summary>
-/// Swiss municipalities imported from the official Ufficio federale di statistica (BFS/OFS/UST) source.
-/// Data retrieved from the official Swiss Federal Statistical Office municipality register
-/// (https://www.bfs.admin.ch/bfs/en/home/basics/swiss-official-commune-register.html).
+/// The Swiss municipalities and localities of the official directory of swisstopo («Amtliches Ortschaftenverzeichnis mit Postleitzahl und
+/// Perimeter», E29/F01/US01/T01, NF-124): the seed file compiled into this assembly (<c>Data/Seeds/swiss/swiss-localities.csv</c>, built by
+/// <c>scripts/build-swiss-places.mjs</c>; provenance, licence and refresh in <c>Data/Seeds/swiss/README.md</c>), how it is read, and how the
+/// <c>SwissMunicipalities</c> and <c>SwissLocalities</c> tables are made equal to it. It replaces the hand-written list of 48 municipalities of
+/// 2026-10-24, four of whose five Ticino numbers were wrong (Lugano was 5113, which is Locarno).
 /// </summary>
 /// <remarks>
-/// This seed includes major Swiss municipalities across all cantons, focusing on tourist destinations
-/// and cities where short-term rental properties are likely to be located. The official BFS numbers
-/// (Gemeindenummern) are the stable identifiers used by Swiss authorities.
-/// Data as of October 2026.
+/// <para><b>Idempotent.</b> <see cref="ApplyAsync"/> upserts the municipalities by BFS number and removes the ones the file no longer has (a
+/// merger, or a row of the old hand-written list), and adds, corrects or removes the localities by their key; then it records the SHA-256 of the
+/// file in <c>OfficialSourceFetches</c> (dataset <see cref="OfficialSourceDatasets.SwisstopoLocalities"/>). With the same file already recorded and
+/// the same row counts it changes nothing. Instances starting together are serialized by an advisory lock.</para>
+/// <para><b>Strict.</b> The file is data derived from a third party: every line is checked (<see cref="Parse"/>) and a file with one wrong line is
+/// refused as a whole, never loaded in part.</para>
 /// </remarks>
 public static class SwissMunicipalitySeed
 {
-    /// <summary>Date the data was compiled from official sources.</summary>
-    public static readonly DateTime RetrievedAt = new(2026, 10, 24, 0, 0, 0, DateTimeKind.Utc);
+    /// <summary>The name of the seed compiled into the assembly.</summary>
+    public const string ResourceName = "Casazen.Infrastructure.Data.Seeds.swiss.swiss-localities.csv";
 
-    /// <summary>Official source URL for Swiss municipality data.</summary>
-    public const string SourceUrl = "https://www.bfs.admin.ch/bfs/en/home/basics/swiss-official-commune-register.html";
+    /// <summary>The header line of the seed.</summary>
+    public const string Header = "postal_code;add_on;locality;municipality_code;municipality;canton";
+
+    /// <summary>The page of the official directory (the source credit of the licence is «swisstopo»).</summary>
+    public const string SourceUrl = "https://www.swisstopo.admin.ch/de/amtliches-ortschaftenverzeichnis";
+
+    /// <summary>The authority that publishes the directory.</summary>
+    public const string Authority = "swisstopo";
+
+    /// <summary>Largest seed read.</summary>
+    public const int MaxSeedBytes = 5 * 1024 * 1024;
+
+    private const int Columns = 6;
+    private const int MaxNameLength = 100;
+
+    /// <summary>The 26 cantons (ISO 3166-2:CH).</summary>
+    public static readonly IReadOnlySet<string> Cantons = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "AG", "AI", "AR", "BE", "BL", "BS", "FR", "GE", "GL", "GR", "JU", "LU", "NE",
+        "NW", "OW", "SG", "SH", "SO", "SZ", "TG", "TI", "UR", "VD", "VS", "ZG", "ZH",
+    };
+
+    /// <summary>The seed of this build; <c>null</c> when the build has none.</summary>
+    public static byte[]? ReadEmbedded()
+    {
+        using var stream = typeof(SwissMunicipalitySeed).Assembly.GetManifestResourceStream(ResourceName);
+        if (stream is null)
+            return null;
+
+        using var memory = new MemoryStream();
+        stream.CopyTo(memory);
+        return memory.ToArray();
+    }
 
     /// <summary>
-    /// Inserts Swiss municipalities into the database. Called by the migration Up method.
+    /// Reads a seed: UTF-8, the <see cref="Header"/>, six cells a line, a postal code of four digits (not starting with 0), an add-on of two digits,
+    /// a BFS number of one to four digits (not starting with 0), names of 1 to 100 characters, one of the 26 cantons, a municipality with one name
+    /// and one canton, no row twice.
+    /// </summary>
+    /// <exception cref="FormatException">The file is not a seed: the message names the first wrong line.</exception>
+    public static SwissPlacesSeedData Parse(byte[] content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        if (content.Length == 0 || content.Length > MaxSeedBytes)
+            throw new FormatException($"Swiss places seed: unexpected size of {content.Length} bytes.");
+
+        string text;
+        try
+        {
+            text = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(content);
+        }
+        catch (DecoderFallbackException ex)
+        {
+            throw new FormatException("Swiss places seed: the file is not UTF-8.", ex);
+        }
+
+        // A byte order mark (U+FEFF) at the start is not part of the header.
+        if (text.Length > 0 && text[0] == (char)0xFEFF)
+            text = text[1..];
+
+        var lines = text.Split('\n').Select(line => line.TrimEnd('\r')).ToList();
+        while (lines.Count > 0 && lines[^1].Length == 0)
+            lines.RemoveAt(lines.Count - 1);
+
+        if (lines.Count < 2 || !string.Equals(lines[0], Header, StringComparison.Ordinal))
+            throw new FormatException("Swiss places seed: line 1 is not the header " + Header + ".");
+
+        var municipalities = new Dictionary<string, SwissMunicipality>(StringComparer.Ordinal);
+        var localities = new List<SwissLocality>(lines.Count - 1);
+        var keys = new HashSet<(string, string, string, string)>();
+        for (var i = 1; i < lines.Count; i++)
+        {
+            var number = i + 1;
+            var cells = lines[i].Split(';');
+            if (cells.Length != Columns)
+                throw Wrong(number, $"{cells.Length} cells instead of {Columns}");
+
+            var (postalCode, addOn, name, municipalityCode, municipalityName, canton) = (cells[0], cells[1], cells[2], cells[3], cells[4], cells[5]);
+            if (postalCode.Length != 4 || !postalCode.All(char.IsAsciiDigit) || postalCode[0] == '0')
+                throw Wrong(number, "the postal code is not four digits");
+            if (addOn.Length != 2 || !addOn.All(char.IsAsciiDigit))
+                throw Wrong(number, "the add-on is not two digits");
+            if (municipalityCode.Length is < 1 or > 4 || !municipalityCode.All(char.IsAsciiDigit) || municipalityCode[0] == '0')
+                throw Wrong(number, "the municipality number is not a BFS number");
+            if (!IsName(name) || !IsName(municipalityName))
+                throw Wrong(number, "a name is empty, too long or has a control character");
+            if (!Cantons.Contains(canton))
+                throw Wrong(number, "the canton is not one of the 26");
+
+            if (municipalities.TryGetValue(municipalityCode, out var known))
+            {
+                if (!string.Equals(known.OfficialName, municipalityName, StringComparison.Ordinal) || !string.Equals(known.CantonCode, canton, StringComparison.Ordinal))
+                    throw Wrong(number, $"municipality {municipalityCode} has another name or canton above");
+            }
+            else
+            {
+                municipalities[municipalityCode] = new SwissMunicipality { MunicipalityCode = municipalityCode, CantonCode = canton, OfficialName = municipalityName };
+            }
+
+            if (!keys.Add((postalCode, addOn, municipalityCode, name)))
+                throw Wrong(number, "the row is there twice");
+
+            localities.Add(new SwissLocality
+            {
+                PostalCode = postalCode,
+                AddOn = addOn,
+                Name = name,
+                NormalizedName = SwissLocality.NormalizeName(name),
+                MunicipalityCode = municipalityCode,
+                CantonCode = canton,
+            });
+        }
+
+        return new SwissPlacesSeedData(
+            Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant(),
+            [.. municipalities.Values.OrderBy(m => m.MunicipalityCode.Length).ThenBy(m => m.MunicipalityCode, StringComparer.Ordinal)],
+            localities);
+    }
+
+    /// <summary>
+    /// Makes <c>SwissMunicipalities</c> and <c>SwissLocalities</c> equal to the seed <paramref name="content"/> (see the remarks of the class) and
+    /// records it in <c>OfficialSourceFetches</c>; nothing is written when the same file is already recorded and the row counts match.
+    /// </summary>
+    /// <exception cref="FormatException">The file is not a seed (<see cref="Parse"/>): nothing is written.</exception>
+    public static async Task<SwissPlacesSeedResult> ApplyAsync(AppDbContext db, byte[] content, TimeProvider clock, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(clock);
+        var seed = Parse(content);
+
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, (PostgresAdvisoryLocks.Scope.SwissPlacesSeed, "swiss-places"));
+
+        var stamp = await db.OfficialSourceFetches.AsNoTracking()
+            .Where(f => f.Dataset == OfficialSourceDatasets.SwisstopoLocalities && f.Status == OfficialSourceFetchStatus.Imported)
+            .OrderByDescending(f => f.RetrievedAt)
+            .Select(f => f.Sha256)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (string.Equals(stamp, seed.Sha256, StringComparison.Ordinal)
+            && await db.SwissMunicipalities.CountAsync(cancellationToken) == seed.Municipalities.Count
+            && await db.SwissLocalities.CountAsync(cancellationToken) == seed.Localities.Count)
+        {
+            return new SwissPlacesSeedResult(false, seed.Sha256, seed.Municipalities.Count, seed.Localities.Count, 0, 0);
+        }
+
+        var now = clock.GetUtcNow().UtcDateTime;
+
+        // Municipalities: by BFS number. A number the file no longer has is removed (a merger, a row of the old hand-written list): the resolver of
+        // the place of a property then derives the place again from its postal code, and the property form asks for the new municipality.
+        var storedMunicipalities = await db.SwissMunicipalities.ToDictionaryAsync(m => m.MunicipalityCode, StringComparer.Ordinal, cancellationToken);
+        foreach (var municipality in seed.Municipalities)
+        {
+            if (storedMunicipalities.Remove(municipality.MunicipalityCode, out var stored))
+            {
+                if (!string.Equals(stored.CantonCode, municipality.CantonCode, StringComparison.Ordinal)
+                    || !string.Equals(stored.OfficialName, municipality.OfficialName, StringComparison.Ordinal))
+                {
+                    stored.CantonCode = municipality.CantonCode;
+                    stored.OfficialName = municipality.OfficialName;
+                    stored.UpdatedAt = now;
+                }
+
+                continue;
+            }
+
+            db.SwissMunicipalities.Add(new SwissMunicipality
+            {
+                MunicipalityCode = municipality.MunicipalityCode,
+                CantonCode = municipality.CantonCode,
+                OfficialName = municipality.OfficialName,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+        }
+
+        db.SwissMunicipalities.RemoveRange(storedMunicipalities.Values);
+
+        // Localities: by postal code, add-on, municipality and name; the canton follows the municipality, the search name follows the name.
+        var storedLocalities = (await db.SwissLocalities.ToListAsync(cancellationToken))
+            .ToDictionary(KeyOf);
+        foreach (var locality in seed.Localities)
+        {
+            if (storedLocalities.Remove(KeyOf(locality), out var stored))
+            {
+                if (!string.Equals(stored.CantonCode, locality.CantonCode, StringComparison.Ordinal))
+                    stored.CantonCode = locality.CantonCode;
+                if (!string.Equals(stored.NormalizedName, locality.NormalizedName, StringComparison.Ordinal))
+                    stored.NormalizedName = locality.NormalizedName;
+                continue;
+            }
+
+            db.SwissLocalities.Add(new SwissLocality
+            {
+                PostalCode = locality.PostalCode,
+                AddOn = locality.AddOn,
+                Name = locality.Name,
+                NormalizedName = locality.NormalizedName,
+                MunicipalityCode = locality.MunicipalityCode,
+                CantonCode = locality.CantonCode,
+            });
+        }
+
+        db.SwissLocalities.RemoveRange(storedLocalities.Values);
+
+        db.OfficialSourceFetches.Add(new OfficialSourceFetch
+        {
+            Dataset = OfficialSourceDatasets.SwisstopoLocalities,
+            SourceUrl = SourceUrl,
+            Authority = Authority,
+            RetrievedAt = now,
+            Sha256 = seed.Sha256,
+            Status = OfficialSourceFetchStatus.Imported,
+            Detail = $"{seed.Municipalities.Count} municipalities, {seed.Localities.Count} localities; removed {storedMunicipalities.Count} municipalities and {storedLocalities.Count} localities",
+        });
+
+        await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+        db.ChangeTracker.Clear();
+
+        return new SwissPlacesSeedResult(true, seed.Sha256, seed.Municipalities.Count, seed.Localities.Count, storedMunicipalities.Count, storedLocalities.Count);
+    }
+
+    /// <summary>
+    /// Called by the Up method of the migration <c>AddSwissMunicipality</c> (2026-10-25), which inserted here a hand-written list of 48
+    /// municipalities, four of its five Ticino numbers wrong. It inserts nothing any more: a new database gets the official directory from
+    /// <see cref="ApplyAsync"/> at startup (<c>SwissPlacesSeedHostedService</c>), and a database that already has the old rows gets them corrected
+    /// or removed by the same load. The migration file itself is left as it was generated.
     /// </summary>
     public static void Insert(MigrationBuilder migrationBuilder)
     {
-        var municipalities = BuildMunicipalities();
-
-        foreach (var municipality in municipalities)
-        {
-            migrationBuilder.InsertData(
-                table: "SwissMunicipalities",
-                columns: new[] { "MunicipalityCode", "CantonCode", "OfficialName", "CreatedAt", "UpdatedAt" },
-                values: new object[]
-                {
-                    municipality.MunicipalityCode,
-                    municipality.CantonCode,
-                    municipality.OfficialName,
-                    RetrievedAt,
-                    RetrievedAt
-                });
-        }
+        ArgumentNullException.ThrowIfNull(migrationBuilder);
     }
 
     /// <summary>
-    /// Deletes Swiss municipalities. Called by the migration Down method.
-    /// Uses raw SQL to avoid EF model resolution issues when rolling back through this migration
-    /// from earlier model snapshots where SwissMunicipality doesn't exist yet.
+    /// Deletes the Swiss municipalities. Called by the Down method of the migration <c>AddSwissMunicipality</c>, with raw SQL so that rolling back
+    /// through it never needs a model where the table does not exist yet.
     /// </summary>
     public static void Delete(MigrationBuilder migrationBuilder)
     {
+        ArgumentNullException.ThrowIfNull(migrationBuilder);
         migrationBuilder.Sql("DELETE FROM \"SwissMunicipalities\";");
     }
 
-    /// <summary>
-    /// Builds the list of Swiss municipalities to be seeded. New instances on every call.
-    /// </summary>
-    private static IReadOnlyList<SwissMunicipality> BuildMunicipalities() =>
-    [
-        // Canton of Zürich (ZH)
-        Municipality("261", "ZH", "Zürich"),
-        Municipality("230", "ZH", "Winterthur"),
-        Municipality("191", "ZH", "Uster"),
-        Municipality("296", "ZH", "Dübendorf"),
-        Municipality("295", "ZH", "Dietikon"),
+    private static bool IsName(string value) =>
+        value.Length is >= 1 and <= MaxNameLength
+        && value.Trim().Length == value.Length
+        && !value.Any(char.IsControl);
 
-        // Canton of Bern (BE)
-        Municipality("351", "BE", "Bern"),
-        Municipality("371", "BE", "Biel/Bienne"),
-        Municipality("392", "BE", "Thun"),
-        Municipality("551", "BE", "Köniz"),
-        Municipality("942", "BE", "Interlaken"),
-        Municipality("724", "BE", "Gstaad"),
+    private static (string, string, string, string) KeyOf(SwissLocality locality) =>
+        (locality.PostalCode, locality.AddOn, locality.MunicipalityCode, locality.Name);
 
-        // Canton of Ticino (TI)
-        Municipality("5113", "TI", "Lugano"),
-        Municipality("5002", "TI", "Bellinzona"),
-        Municipality("5093", "TI", "Locarno"),
-        Municipality("5190", "TI", "Mendrisio"),
-        Municipality("5237", "TI", "Ascona"),
-
-        // Canton of Geneva (GE)
-        Municipality("6621", "GE", "Genève"),
-        Municipality("6623", "GE", "Vernier"),
-        Municipality("6608", "GE", "Carouge"),
-        Municipality("6630", "GE", "Lancy"),
-
-        // Canton of Vaud (VD)
-        Municipality("5586", "VD", "Lausanne"),
-        Municipality("5938", "VD", "Montreux"),
-        Municipality("5889", "VD", "Vevey"),
-        Municipality("5932", "VD", "Yverdon-les-Bains"),
-        Municipality("5581", "VD", "Nyon"),
-
-        // Canton of Valais (VS)
-        Municipality("6002", "VS", "Sion"),
-        Municipality("6053", "VS", "Monthey"),
-        Municipality("6295", "VS", "Sierre"),
-        Municipality("6248", "VS", "Martigny"),
-        Municipality("6003", "VS", "Zermatt"),
-        Municipality("6083", "VS", "Crans-Montana"),
-
-        // Canton of Basel-Stadt (BS)
-        Municipality("2701", "BS", "Basel"),
-        Municipality("2703", "BS", "Riehen"),
-
-        // Canton of Basel-Landschaft (BL)
-        Municipality("2829", "BL", "Allschwil"),
-        Municipality("2770", "BL", "Reinach"),
-        Municipality("2769", "BL", "Muttenz"),
-
-        // Canton of Lucerne (LU)
-        Municipality("1061", "LU", "Luzern"),
-        Municipality("1024", "LU", "Emmen"),
-        Municipality("1059", "LU", "Kriens"),
-
-        // Canton of St. Gallen (SG)
-        Municipality("3203", "SG", "St. Gallen"),
-        Municipality("3340", "SG", "Rapperswil-Jona"),
-        Municipality("3251", "SG", "Wil"),
-
-        // Canton of Graubünden (GR)
-        Municipality("3944", "GR", "Chur"),
-        Municipality("3851", "GR", "Davos"),
-        Municipality("3787", "GR", "St. Moritz"),
-        Municipality("3506", "GR", "Arosa"),
-
-        // Canton of Aargau (AG)
-        Municipality("4001", "AG", "Aarau"),
-        Municipality("4021", "AG", "Baden"),
-        Municipality("4012", "AG", "Wettingen"),
-
-        // Canton of Thurgau (TG)
-        Municipality("4651", "TG", "Frauenfeld"),
-        Municipality("4566", "TG", "Kreuzlingen"),
-        Municipality("4861", "TG", "Arbon"),
-
-        // Canton of Schaffhausen (SH)
-        Municipality("2939", "SH", "Schaffhausen"),
-
-        // Canton of Neuchâtel (NE)
-        Municipality("6458", "NE", "Neuchâtel"),
-        Municipality("6454", "NE", "La Chaux-de-Fonds"),
-
-        // Canton of Fribourg (FR)
-        Municipality("2196", "FR", "Fribourg"),
-        Municipality("2014", "FR", "Bulle"),
-
-        // Canton of Jura (JU)
-        Municipality("6711", "JU", "Delémont"),
-
-        // Canton of Solothurn (SO)
-        Municipality("2601", "SO", "Solothurn"),
-        Municipality("2581", "SO", "Olten"),
-
-        // Canton of Zug (ZG)
-        Municipality("1711", "ZG", "Zug"),
-        Municipality("1709", "ZG", "Baar"),
-
-        // Canton of Schwyz (SZ)
-        Municipality("1372", "SZ", "Schwyz"),
-        Municipality("1361", "SZ", "Einsiedeln"),
-
-        // Canton of Uri (UR)
-        Municipality("1211", "UR", "Altdorf"),
-
-        // Canton of Obwalden (OW)
-        Municipality("1402", "OW", "Sarnen"),
-        Municipality("1407", "OW", "Engelberg"),
-
-        // Canton of Nidwalden (NW)
-        Municipality("1509", "NW", "Stans"),
-
-        // Canton of Glarus (GL)
-        Municipality("1632", "GL", "Glarus"),
-
-        // Canton of Appenzell Ausserrhoden (AR)
-        Municipality("3001", "AR", "Herisau"),
-
-        // Canton of Appenzell Innerrhoden (AI)
-        Municipality("3101", "AI", "Appenzell"),
-    ];
-
-    private static SwissMunicipality Municipality(string code, string canton, string name) =>
-        new()
-        {
-            MunicipalityCode = code,
-            CantonCode = canton,
-            OfficialName = name,
-            CreatedAt = RetrievedAt,
-            UpdatedAt = RetrievedAt
-        };
+    private static FormatException Wrong(int line, string reason) => new($"Swiss places seed: line {line}: {reason}.");
 }
+
+/// <summary>A seed read by <see cref="SwissMunicipalitySeed.Parse"/>: its SHA-256, the municipalities (one per BFS number) and the localities.</summary>
+public sealed record SwissPlacesSeedData(string Sha256, IReadOnlyList<SwissMunicipality> Municipalities, IReadOnlyList<SwissLocality> Localities);
+
+/// <summary>
+/// What <see cref="SwissMunicipalitySeed.ApplyAsync"/> did: <see cref="Imported"/> is false when the same file was already loaded (nothing written);
+/// the counts are the ones of the file and the rows removed because the file no longer has them.
+/// </summary>
+public sealed record SwissPlacesSeedResult(bool Imported, string Sha256, int Municipalities, int Localities, int MunicipalitiesRemoved, int LocalitiesRemoved);

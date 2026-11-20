@@ -149,10 +149,10 @@ public sealed class TouristTaxYearEndExportsTests
         var orgId = Guid.NewGuid();
         await using var db = CreateDb();
         SeedOrg(db, orgId);
-        db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5113", CantonCode = "TI", OfficialName = "Lugano" });
+        db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5192", CantonCode = "TI", OfficialName = "Lugano" });
         db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "261", CantonCode = "ZH", OfficialName = "Zürich" });
-        var casa = SeedProperty(db, orgId, "Casa Lugano", "Lugano", country: "CH", municipality: "5113");
-        var vuota = SeedProperty(db, orgId, "Casa Vuota Lugano", "Lugano", country: "CH", municipality: "5113");
+        var casa = SeedProperty(db, orgId, "Casa Lugano", "Lugano", country: "CH", municipality: "5192");
+        var vuota = SeedProperty(db, orgId, "Casa Vuota Lugano", "Lugano", country: "CH", municipality: "5192");
         var zurigo = SeedProperty(db, orgId, "Casa Zurigo", "Zürich", country: "CH", municipality: "261");
         var senzaComune = SeedProperty(db, orgId, "Villa Senza Comune", "Chiasso", country: "CH", municipality: null);
 
@@ -192,7 +192,7 @@ public sealed class TouristTaxYearEndExportsTests
         var texts = new ResxDocumentTexts();
         var csv = Encoding.UTF8.GetString(TouristTaxYearEndExports.TicinoCsv(count, texts, DocumentLanguages.Italian));
         Assert.Contains("05/01/2027", csv, StringComparison.Ordinal);
-        Assert.Contains("Casa Lugano;Via Test 1;Lugano;5113;4;11;1;3;2;6;1;2;CHF;12,00", csv, StringComparison.Ordinal);
+        Assert.Contains("Casa Lugano;Via Test 1;Lugano;5192;4;11;1;3;2;6;1;2;CHF;12,00", csv, StringComparison.Ordinal);
         Assert.Contains("Villa Senza Comune;Via Test 1;Chiasso;;1;2;0;0;0;0;1;2;CHF;0,00;Cantone non determinato", csv, StringComparison.Ordinal);
         Assert.DoesNotContain("Zurigo", csv, StringComparison.Ordinal);
         Assert.True(TouristTaxYearEndExports.TicinoXlsx(count, texts, DocumentLanguages.English).Length > 0);

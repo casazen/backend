@@ -40,7 +40,7 @@ public class ChannelMappingProofTests
     public async Task ImportedCountry_UsesOfficialMunicipality_WithoutTrustingTheModel()
     {
         await using var db = NewDb();
-        db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5113", CantonCode = "TI", OfficialName = "Lugano" });
+        db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5192", CantonCode = "TI", OfficialName = "Lugano" });
         await db.SaveChangesAsync();
         var ai = new Mock<IAiProvider>();
         ai.Setup(a => a.GenerateAsync(It.IsAny<AiRequest>(), AiModelTier.Economy, It.IsAny<string>(), It.IsAny<CancellationToken>()))

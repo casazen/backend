@@ -147,9 +147,10 @@ public sealed class TouristTaxYearEndJsonTests
         await using var db = CreateDb();
         SeedOrg(db, orgId);
         SeedOrg(db, otherOrgId);
-        db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5113", CantonCode = "TI", OfficialName = "Lugano" });
+        db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5192", CantonCode = "TI", OfficialName = "Lugano" });
+        db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5113", CantonCode = "TI", OfficialName = "Locarno" });
         db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "261", CantonCode = "ZH", OfficialName = "Zürich" });
-        var lugano = SeedProperty(db, orgId, "Casa Lugano", "Lugano", country: "CH", municipality: "5113");
+        var lugano = SeedProperty(db, orgId, "Casa Lugano", "Lugano", country: "CH", municipality: "5192");
         var withoutMunicipality = SeedProperty(db, orgId, "Villa Senza Comune", "Chiasso", country: "CH", municipality: null);
         var notInRegistry = SeedProperty(db, orgId, "Villa Comune Ignoto", "Mendrisio", country: "CH", municipality: "9999");
         var zurich = SeedProperty(db, orgId, "Casa Zurigo", "Zürich", country: "CH", municipality: "261");

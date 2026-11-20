@@ -83,16 +83,16 @@ public class TaxReportingNpgsqlTranslationTests
                 ("Name", typeof(string), "TEST Casa Lugano"),
                 ("Address", typeof(string), "Via Test 1"),
                 ("City", typeof(string), "Lugano"),
-                ("SwissMunicipalityCode", typeof(string), "5113"),
+                ("SwissMunicipalityCode", typeof(string), "5192"),
                 ("Currency", typeof(string), "CHF"),
                 ("IsDeleted", typeof(bool), false));
         }
 
         if (CantonPropertySelect.IsMatch(text))
-            return Table(("Id", typeof(Guid), PropertyId), ("SwissMunicipalityCode", typeof(string), "5113"));
+            return Table(("Id", typeof(Guid), PropertyId), ("SwissMunicipalityCode", typeof(string), "5192"));
 
         if (MunicipalitySelect.IsMatch(text))
-            return Table(("MunicipalityCode", typeof(string), "5113"), ("CantonCode", typeof(string), "TI"));
+            return Table(("MunicipalityCode", typeof(string), "5192"), ("CantonCode", typeof(string), "TI"));
 
         return SwissStaySelect.IsMatch(text)
             ? Table(

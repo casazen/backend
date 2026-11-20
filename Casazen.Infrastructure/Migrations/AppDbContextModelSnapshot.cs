@@ -16888,6 +16888,43 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("SwissComplianceReceipts");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.SwissLocality", b =>
+                {
+                    b.Property<string>("PostalCode")
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)");
+
+                    b.Property<string>("AddOn")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("MunicipalityCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("CantonCode")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("PostalCode", "AddOn", "MunicipalityCode", "Name");
+
+                    b.HasIndex("MunicipalityCode");
+
+                    b.HasIndex("NormalizedName");
+
+                    b.ToTable("SwissLocalities");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.SwissMunicipality", b =>
                 {
                     b.Property<string>("MunicipalityCode")
