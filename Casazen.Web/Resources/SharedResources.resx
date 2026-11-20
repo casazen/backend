@@ -6886,6 +6886,15 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="SelfBillingCorrectionNotApplicable" xml:space="preserve">
     <value>Si corregge così solo un'autofattura TD17 scartata dallo SDI e senza una nota di credito emessa.</value>
   </data>
+  <data name="SelfBillingNotClosable" xml:space="preserve">
+    <value>Si chiude come non più dovuta solo la bozza sostitutiva di un'autofattura TD17 scartata dallo SDI che il mese non sostiene più: se i suoi dati sono ancora validi, emettila.</value>
+  </data>
+  <data name="SelfBillingCloseReasonRequired" xml:space="preserve">
+    <value>Indica il motivo della chiusura: nota di credito del portale, titolare non più soggetto passivo, oppure duplicato o errore.</value>
+  </data>
+  <data name="SelfBillingCloseNoteTooLong" xml:space="preserve">
+    <value>La nota è troppo lunga: al massimo {0} caratteri.</value>
+  </data>
   <data name="SelfBillingLineCommissions" xml:space="preserve">
     <value>Commissioni di intermediazione {0} - {1} - {2}</value>
   </data>
@@ -7647,6 +7656,39 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="AccPkgTreatmentBorne" xml:space="preserve">
     <value>Non riaddebitata in fattura</value>
+  </data>
+  <data name="AccPkgUnusedNumbersTitle" xml:space="preserve">
+    <value>Numeri delle autofatture TD17 non utilizzati (bozze sostitutive chiuse come non più dovute), dal {0} al {1}, per data di chiusura. Ogni numero resta riservato e non viene riassegnato: è un buco documentato nella serie dell'emittente</value>
+  </data>
+  <data name="AccPkgColRejectedOn" xml:space="preserve">
+    <value>Data del documento scartato</value>
+  </data>
+  <data name="AccPkgColClosedOn" xml:space="preserve">
+    <value>Chiusa il</value>
+  </data>
+  <data name="AccPkgColCloseReason" xml:space="preserve">
+    <value>Motivo della chiusura</value>
+  </data>
+  <data name="AccPkgColCloseNote" xml:space="preserve">
+    <value>Nota</value>
+  </data>
+  <data name="AccPkgColOriginalSdi" xml:space="preserve">
+    <value>Esito SDI del documento originale</value>
+  </data>
+  <data name="AccPkgColSdiErrorCode" xml:space="preserve">
+    <value>Codice di scarto SDI</value>
+  </data>
+  <data name="AccPkgColClosedBy" xml:space="preserve">
+    <value>Chiusa da</value>
+  </data>
+  <data name="AccPkgCloseReasonPortalCreditNote" xml:space="preserve">
+    <value>Nota di credito del portale</value>
+  </data>
+  <data name="AccPkgCloseReasonHolderNoLongerSubject" xml:space="preserve">
+    <value>Titolare non più soggetto passivo</value>
+  </data>
+  <data name="AccPkgCloseReasonDuplicateOrError" xml:space="preserve">
+    <value>Duplicato o errore</value>
   </data>
   <data name="AccPkgStatementsTitle" xml:space="preserve">
     <value>Rendiconti pubblicati ai proprietari, per mese di competenza (ultima versione pubblicata)</value>

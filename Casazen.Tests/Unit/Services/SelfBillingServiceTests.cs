@@ -449,13 +449,14 @@ public class SelfBillingServiceTests
                 .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
                 .Where(m => m.GetCustomAttributes().Any(a => a is HttpMethodAttribute))
                 .ToList();
-            Assert.Equal(6, actions.Count);
+            Assert.Equal(7, actions.Count);
 
             foreach (var action in actions)
             {
                 var arguments = action.GetParameters()
                     .Select(p => p.ParameterType == typeof(GenerateSelfBillingRequest) ? new GenerateSelfBillingRequest { Period = "2026-10" }
                         : p.ParameterType == typeof(IssueSelfBillingRequest) ? new IssueSelfBillingRequest { Confirm = true, AcceptEstimate = true }
+                        : p.ParameterType == typeof(CloseSelfBillingNotDueRequest) ? new CloseSelfBillingNotDueRequest { Reason = SelfBillingCloseReasons.DuplicateOrError }
                         : p.ParameterType.IsValueType ? Activator.CreateInstance(p.ParameterType) : null)
                     .ToArray();
                 var task = (Task)action.Invoke(controller, arguments)!;

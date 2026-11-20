@@ -80,6 +80,19 @@ internal static class PackageLabels
     public const string TreatmentRecharged = "AccPkgTreatmentRecharged";
     public const string TreatmentBorne = "AccPkgTreatmentBorne";
 
+    // The register of the unused numbers of the self-billed invoices (TD17): the numbers of replacement drafts closed as «non più dovuta» (FIX/BE-TD17-JOB-EXIT).
+    public const string UnusedNumbersTitle = "AccPkgUnusedNumbersTitle";
+    public const string ColRejectedOn = "AccPkgColRejectedOn";
+    public const string ColClosedOn = "AccPkgColClosedOn";
+    public const string ColCloseReason = "AccPkgColCloseReason";
+    public const string ColCloseNote = "AccPkgColCloseNote";
+    public const string ColOriginalSdi = "AccPkgColOriginalSdi";
+    public const string ColSdiErrorCode = "AccPkgColSdiErrorCode";
+    public const string ColClosedBy = "AccPkgColClosedBy";
+    public const string CloseReasonPortalCreditNote = "AccPkgCloseReasonPortalCreditNote";
+    public const string CloseReasonHolderNoLongerSubject = "AccPkgCloseReasonHolderNoLongerSubject";
+    public const string CloseReasonDuplicateOrError = "AccPkgCloseReasonDuplicateOrError";
+
     // Statements.
     public const string StatementsTitle = "AccPkgStatementsTitle";
     public const string ColOwner = "AccPkgColOwner";

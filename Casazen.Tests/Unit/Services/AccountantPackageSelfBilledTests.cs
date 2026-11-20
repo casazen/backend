@@ -360,7 +360,131 @@ public class AccountantPackageSelfBilledTests
         AssertTheIndex(files);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (FIX/BE-TD17-JOB-EXIT). The numbers closed as «non più dovuta» are in the package, in a register of the unused numbers next to the register of the TD17 (<c>numeri-non-utilizzati</c>, CSV and
+    /// Excel, listed in the index with their hash): for each one the issuer (its series is its own), the number, the day of the rejected original, the day of the closing, the reason in words, the note, the SDI outcome of the
+    /// original (its state and the code of the rejection) and the user (the name, else the id the closing recorded). Only the closings of the period count, by the day of Rome (a closing at 00:30 of the 1st of December is
+    /// December's; a year has them all), never another organization's and never a draft that was discarded without a closing; only for who reads the owner accounting of the whole organization; a text a spreadsheet would
+    /// run as a formula (the note) is written as text in both files. <b>A period without a closing is the package it always was: no file, not a byte changed.</b>
+    /// </summary>
+    [Fact]
+    public async Task AccountantPackage_ListsTheUnusedNumbers_AndAPeriodWithoutThemIsUnchanged_Test()
+    {
+        await using var rig = await AccountantPackageRig.CreateAsync();
+        var unusedPath = $"{AccountantPackageStructure.SelfBilledFolder}/{AccountantPackageStructure.UnusedNumbersFile}.csv";
+        var (_, before) = await BuildAsync(rig, AccountantPackageAccess.Full, September);
+        Assert.DoesNotContain(before.Keys, k => k.Contains(AccountantPackageStructure.UnusedNumbersFile, StringComparison.Ordinal));
+
+        // Three numbers closed: one of the company on the 20th of November (a formula as its note), one of the same company at 00:30 of the 1st of December in Rome (23:30 UTC of the 30th), one of another issuer on the
+        // 2nd of December (a user that is gone); a draft discarded without a closing; and a closing of another organization.
+        var company = CompanyOf("TEST Immobiliare Lago Srl", CompanyVat);
+        var other = Guid.NewGuid();
+        var (rejectedA, closedA) = ClosedNumber(rig.OrgId, 1, new DateOnly(2026, 11, 3), new DateTime(2026, 11, 20, 10, 0, 0, DateTimeKind.Utc), company, SelfBillingCloseReasons.PortalCreditNote, "=SUM(1+1)", "auth0|agency");
+        var (rejectedC, closedC) = ClosedNumber(rig.OrgId, 2, new DateOnly(2026, 11, 5), new DateTime(2026, 11, 30, 23, 30, 0, DateTimeKind.Utc), company, SelfBillingCloseReasons.DuplicateOrError, "Duplicato della TD17 di ottobre, gia' emessa", "auth0|agency");
+        var (rejectedB, closedB) = ClosedNumber(rig.OrgId, 1, new DateOnly(2026, 11, 4), new DateTime(2026, 12, 2, 22, 30, 0, DateTimeKind.Utc), CompanyOf("TEST Casa Monte Srl", SecondCompanyVat), SelfBillingCloseReasons.HolderNoLongerSubject, null, "auth0|ghost");
+        var (rejectedX, closedX) = ClosedNumber(other, 9, new DateOnly(2026, 11, 3), new DateTime(2026, 11, 20, 10, 0, 0, DateTimeKind.Utc), CompanyOf("TEST Altra Societa Srl", "05555555555"), SelfBillingCloseReasons.PortalCreditNote, "TEST nota di un'altra agenzia", "auth0|altra");
+        var dropped = SelfBilled(rig.OrgId, 3, 10, new DateOnly(2026, 11, 6), company, "TEST Portale B.V.", "NL", "NL805734958B01", 10.00m);
+        (dropped.Status, dropped.SequenceNumber, dropped.IssueDate) = (FiscalDocumentStatus.Discarded, null, null);
+        rig.Db.Users.Add(new User { Id = "auth0|agency", Email = "mario.rossi@example.com", FirstName = "Mario", LastName = "Rossi", Role = UserRole.PropertyManager });
+        rig.Db.FiscalDocuments.AddRange(rejectedA, closedA, rejectedC, closedC, rejectedB, closedB, rejectedX, closedX, dropped);
+        await rig.Db.SaveChangesAsync();
+        rig.Db.ChangeTracker.Clear();
+        var columns = new[]
+        {
+            "Emittente", "Numero", "Data del documento scartato", "Chiusa il", "Motivo della chiusura", "Nota", "Esito SDI del documento originale", "Codice di scarto SDI", "Chiusa da",
+        };
+
+        // November: the number closed on the 20th, with every column (the closing of the 1st of December in Rome is December's), the issuer told apart, the note as text, the outcome of the rejected original.
+        var (_, november) = await BuildAsync(rig, AccountantPackageAccess.Full, November);
+        var register = Blocks(november[unusedPath]);
+        Assert.StartsWith("Numeri delle autofatture TD17 non utilizzati", register[0][0][0], StringComparison.Ordinal);
+        Assert.Contains("01/11/2026", register[0][0][0], StringComparison.Ordinal);
+        Assert.Contains("30/11/2026", register[0][0][0], StringComparison.Ordinal);
+        Assert.Equal(columns, register[0][1]);
+        Assert.Equal(
+            new[] { "TEST Immobiliare Lago Srl (IT 09876543217)", "TD17-2026/1", "03/11/2026", "20/11/2026", "Nota di credito del portale", "'=SUM(1+1)", "Scartata", "00417", "Mario Rossi" },
+            Assert.Single(register[0].Skip(2)));
+        using (var workbook = new ZipArchive(new MemoryStream(november[unusedPath.Replace(".csv", ".xlsx", StringComparison.Ordinal)]), ZipArchiveMode.Read))
+        using (var sheet = new StreamReader(workbook.GetEntry("xl/worksheets/sheet1.xml")!.Open(), Encoding.UTF8))
+        {
+            var xml = await sheet.ReadToEndAsync();
+            Assert.Contains("=SUM(1+1)", xml, StringComparison.Ordinal);
+            Assert.DoesNotContain("<f>", xml, StringComparison.Ordinal);
+        }
+
+        AssertTheIndex(november);
+
+        // December: the number closed at 00:30 of the 1st (Rome) and the one of the other issuer, oldest closing first; a user that is gone is named by the id the closing recorded, and a closing without a note has an empty cell.
+        var (_, december) = await BuildAsync(rig, AccountantPackageAccess.Full, AccountantPackagePeriod.OfMonth(2026, 12));
+        var decemberRows = Blocks(december[unusedPath])[0].Skip(2).ToList();
+        Assert.Equal(2, decemberRows.Count);
+        Assert.Equal(
+            new[] { "TEST Immobiliare Lago Srl (IT 09876543217)", "TD17-2026/2", "05/11/2026", "01/12/2026", "Duplicato o errore", "Duplicato della TD17 di ottobre, gia' emessa", "Scartata", "00417", "Mario Rossi" },
+            decemberRows[0]);
+        Assert.Equal(
+            new[] { "TEST Casa Monte Srl (IT 01112223334)", "TD17-2026/1", "04/11/2026", "02/12/2026", "Titolare non più soggetto passivo", string.Empty, "Scartata", "00417", "auth0|ghost" },
+            decemberRows[1]);
+        AssertTheIndex(december);
+
+        // A year has all three, oldest closing first; none of another organization or of a draft discarded without a closing is in any file.
+        var (_, year) = await BuildAsync(rig, AccountantPackageAccess.Full, Year2026);
+        Assert.Equal(new[] { "TD17-2026/1", "TD17-2026/2", "TD17-2026/1" }, Blocks(year[unusedPath])[0].Skip(2).Select(r => r[1]));
+        Assert.Equal(new[] { "20/11/2026", "01/12/2026", "02/12/2026" }, Blocks(year[unusedPath])[0].Skip(2).Select(r => r[3]));
+        foreach (var (path, content) in year.Where(f => f.Key.EndsWith(".csv", StringComparison.Ordinal)))
+        {
+            var text = Text(content);
+            foreach (var foreign in new[] { "TD17-2026/9", "TEST Altra Societa", "05555555555", "TEST nota di un'altra agenzia", "auth0|altra" })
+                Assert.False(text.Contains(foreign, StringComparison.Ordinal), $"{path} holds «{foreign}» of another organization");
+        }
+
+        // Owner accounting of the whole organization only: without the permission, or for a caller who reaches only some properties, there is no register (and none of its words in any file).
+        var (_, withoutPermission) = await BuildAsync(rig, AccountantPackageAccess.WithoutOwnerAccounting, Year2026);
+        var (_, restricted) = await BuildAsync(rig, AccountantPackageAccess.Full, Year2026, new HostScope(rig.OrgId, GrantedToUserId: "auth0|lago"));
+        foreach (var files in new[] { withoutPermission, restricted })
+        {
+            Assert.DoesNotContain(files.Keys, k => k.Contains(AccountantPackageStructure.UnusedNumbersFile, StringComparison.Ordinal));
+            foreach (var (path, content) in files.Where(f => f.Key.EndsWith(".csv", StringComparison.Ordinal) && f.Key != AccountantPackageStructure.IndexFile))
+            {
+                var text = Text(content);
+                foreach (var word in new[] { "TD17-2026/2", "Mario Rossi", "Nota di credito del portale", "auth0|ghost" })
+                    Assert.False(text.Contains(word, StringComparison.Ordinal), $"{path} holds «{word}», which is owner accounting");
+            }
+        }
+
+        // A period without a closing is the package it always was: September has the same files with the same content as before the closings existed (no file, not a byte of the CSV changed).
+        var (_, after) = await BuildAsync(rig, AccountantPackageAccess.Full, September);
+        Assert.Equal(before.Keys.Order(StringComparer.Ordinal), after.Keys.Order(StringComparer.Ordinal));
+        foreach (var path in before.Keys.Where(k => k.EndsWith(".csv", StringComparison.Ordinal) && k != AccountantPackageStructure.IndexFile))
+            Assert.Equal(before[path], after[path]);
+    }
+
     // ---------------------------------------------------------------- the data
+
+    /// <summary>
+    /// A number closed as «non più dovuta»: the TD17 the SDI rejected (issued on <paramref name="issued"/>, discarded by its correction, its sequence number given up, rejected with the code 00417) and the replacement draft
+    /// that holds its number, discarded with the reason, the note, the user and the day of the closing (<paramref name="closedAt"/>, UTC).
+    /// </summary>
+    private static (FiscalDocument Original, FiscalDocument Closed) ClosedNumber(
+        Guid orgId, int sequence, DateOnly issued, DateTime closedAt, string issuerSnapshot, string reason, string? note, string? userId)
+    {
+        var original = SelfBilled(orgId, sequence, 10, issued, issuerSnapshot, "TEST Portale B.V.", "NL", "NL805734958B01", 67.50m);
+        original.Status = FiscalDocumentStatus.Discarded;
+        original.SequenceNumber = null;
+        original.SdiStatus = FiscalDocumentSdiStatuses.Rejected;
+        original.SdiErrorCode = "00417";
+        var closed = SelfBilled(orgId, sequence, 10, issued, issuerSnapshot, "TEST Portale B.V.", "NL", "NL805734958B01", 67.50m);
+        closed.Status = FiscalDocumentStatus.Discarded;
+        closed.IssueDate = null;
+        closed.IssuerSnapshot = null;
+        closed.FatturaPaXml = null;
+        closed.SdiStatus = FiscalDocumentSdiStatuses.NotApplicable;
+        closed.ReplacesDocumentId = original.Id;
+        closed.ClosedNotDueReason = reason;
+        closed.ClosedNotDueNote = note;
+        closed.ClosedNotDueAt = closedAt;
+        closed.ClosedNotDueByUserId = userId;
+        return (original, closed);
+    }
 
     /// <summary>Three TD17 of two owner companies (V1 holders): the first and the second issued in November for October, the third in December for November; a series of its own for each company.</summary>
     private static async Task<IReadOnlyList<FiscalDocument>> SeedSelfBilledAsync(AccountantPackageRig rig)

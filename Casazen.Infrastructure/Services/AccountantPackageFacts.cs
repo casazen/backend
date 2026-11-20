@@ -3,6 +3,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -62,6 +63,33 @@ internal sealed record PackageVatRow(decimal? RatePercent, string? NatureCode, d
 /// (with its country prefix) are the recipient columns the document keeps the supplier in, read only for these documents.
 /// </summary>
 internal sealed record PackageSupplier(string? CountryCode, string? VatNumber);
+
+/// <summary>
+/// A number of the TD17 series that a replacement draft held and that was closed as «non più dovuta» (FIX/BE-TD17-JOB-EXIT): the number, the issuer and the day of the rejected original it was given to, the
+/// state the SDI left that original in, and the closing (the day it happened, its reason, the note and the user). The row of the register of the unused numbers of the package.
+/// </summary>
+/// <param name="Number">The display number the draft kept (<c>TD17-2026/3</c>): it is never given again.</param>
+/// <param name="IssuerSnapshot">The issuer of the rejected original (the holder that numbers its TD17 in its own series), as it was at the issue; <c>null</c> when the original has none.</param>
+/// <param name="OriginalDay">The day the rejected original was issued (the day of the number); <c>null</c> when it is not known.</param>
+/// <param name="OriginalSdiStatus">The state of the rejected original with the SDI (<see cref="FiscalDocumentSdiStatuses"/>: <c>rejected</c>).</param>
+/// <param name="OriginalSdiErrorCode">The code of the rejection, as the SDI gave it; <c>null</c> when it is not known.</param>
+/// <param name="ClosedAt">When the draft was closed (UTC).</param>
+/// <param name="Reason">One of <see cref="SelfBillingCloseReasons"/>.</param>
+/// <param name="Note">The note of the person who closed it (read through the encryption of the column); <c>null</c> when there is none.</param>
+/// <param name="ClosedByUserId">The user who closed it; <c>null</c> when the closing carried none.</param>
+internal sealed record PackageUnusedNumber(
+    string? Number,
+    string? IssuerSnapshot,
+    DateOnly? OriginalDay,
+    string OriginalSdiStatus,
+    string? OriginalSdiErrorCode,
+    DateTime ClosedAt,
+    string Reason,
+    string? Note,
+    string? ClosedByUserId);
+
+/// <summary>The rejected original a closed draft replaced, as the register of the unused numbers needs it: the day it was issued, the state and the code the SDI gave, the issuer as it was at the issue.</summary>
+internal sealed record PackageRejectedOriginal(DateOnly? IssueDate, string SdiStatus, string? SdiErrorCode, string? IssuerSnapshot);
 
 /// <summary>
 /// A commission a portal kept on a stay of a listing whose account the agency holds (V2), as one line of the owner ledger says it: the statement month and the owner the line belongs to, the
@@ -408,5 +436,81 @@ internal static class AccountantPackageFacts
             .Select(d => new { d.Id, d.RecipientCountryCode, d.RecipientVatNumber })
             .ToListAsync(cancellationToken);
         return suppliers.ToDictionary(s => s.Id, s => new PackageSupplier(s.RecipientCountryCode, s.RecipientVatNumber));
+    }
+
+    /// <summary>
+    /// The numbers of the self-billed invoices (TD17) that were closed as «non più dovuta» in <paramref name="period"/>, by the day of the closing (Europe/Rome): the replacement drafts of a TD17 the SDI
+    /// rejected that the month no longer supported (FIX/BE-TD17-JOB-EXIT), oldest closing first. Each keeps its number (reserved, never given again), so the register of the package documents the gap: the number, the
+    /// day and the issuer of the rejected original (the series is the issuer's own), the SDI outcome of that original, the reason, the note and the user. The org is the key, never a request value; a draft of
+    /// another org, one that was discarded without a closing and one that is not a TD17 are not here; a period with no closing reads nothing else (an empty list). Two plain reads, so the provider translates both.
+    /// </summary>
+    public static async Task<IReadOnlyList<PackageUnusedNumber>> UnusedNumbersAsync(AppDbContext db, Guid orgId, AccountantPackagePeriod period, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(period);
+
+        var from = RomeCalendar.StartOfDayUtc(period.From);
+        var until = RomeCalendar.StartOfDayUtc(period.To.AddDays(1));
+        var closed = await db.FiscalDocuments.AsNoTracking()
+            .Where(d => d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Status == FiscalDocumentStatus.Discarded
+                        && d.ClosedNotDueAt != null && d.ClosedNotDueAt >= from && d.ClosedNotDueAt < until)
+            .OrderBy(d => d.ClosedNotDueAt)
+            .ThenBy(d => d.Series)
+            .ThenBy(d => d.SequenceNumber)
+            .ThenBy(d => d.Id)
+            .Select(d => new { d.Number, d.ReplacesDocumentId, ClosedAt = d.ClosedNotDueAt!.Value, Reason = d.ClosedNotDueReason!, Note = d.ClosedNotDueNote, UserId = d.ClosedNotDueByUserId })
+            .ToListAsync(cancellationToken);
+        if (closed.Count == 0)
+            return [];
+
+        var originals = await RejectedOriginalsAsync(db, orgId, [.. closed.Where(c => c.ReplacesDocumentId != null).Select(c => c.ReplacesDocumentId!.Value).Distinct()], cancellationToken);
+        return closed
+            .Select(c =>
+            {
+                var original = c.ReplacesDocumentId is { } id && originals.TryGetValue(id, out var found) ? found : null;
+                return new PackageUnusedNumber(
+                    c.Number,
+                    original?.IssuerSnapshot,
+                    original?.IssueDate,
+                    original?.SdiStatus ?? FiscalDocumentSdiStatuses.NotApplicable,
+                    original?.SdiErrorCode,
+                    c.ClosedAt,
+                    c.Reason,
+                    c.Note,
+                    c.UserId);
+            })
+            .ToList();
+    }
+
+    /// <summary>The rejected originals the closed drafts replaced, by id: the day they were issued, the state and the code the SDI gave, and the issuer as it was at the issue. Only the org's own; an empty list reads nothing.</summary>
+    public static async Task<Dictionary<Guid, PackageRejectedOriginal>> RejectedOriginalsAsync(AppDbContext db, Guid orgId, IReadOnlyCollection<Guid> originalIds, CancellationToken cancellationToken)
+    {
+        if (originalIds.Count == 0)
+            return [];
+
+        var originals = await db.FiscalDocuments.AsNoTracking()
+            .Where(o => o.OrgId == orgId && o.Purpose == FiscalDocumentPurpose.SelfBilling && originalIds.Contains(o.Id))
+            .Select(o => new { o.Id, o.IssueDate, o.SdiStatus, o.SdiErrorCode, o.IssuerSnapshot })
+            .ToListAsync(cancellationToken);
+        return originals.ToDictionary(o => o.Id, o => new PackageRejectedOriginal(o.IssueDate, o.SdiStatus, o.SdiErrorCode, o.IssuerSnapshot));
+    }
+
+    /// <summary>
+    /// The name of each user among <paramref name="userIds"/> (first and last name, never the e-mail): who closed a number, for the register of the unused numbers. A user that is gone, or has no name,
+    /// is not in the answer (the register then names the id the closing recorded, never a blank). An empty list reads nothing.
+    /// </summary>
+    public static async Task<Dictionary<string, string>> UserNamesAsync(AppDbContext db, IReadOnlyCollection<string> userIds, CancellationToken cancellationToken)
+    {
+        if (userIds.Count == 0)
+            return [];
+
+        var users = await db.Users.AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.FirstName, u.LastName })
+            .ToListAsync(cancellationToken);
+        return users
+            .Select(u => (u.Id, Name: $"{u.FirstName} {u.LastName}".Trim()))
+            .Where(u => u.Name.Length > 0)
+            .ToDictionary(u => u.Id, u => u.Name, StringComparer.Ordinal);
     }
 }

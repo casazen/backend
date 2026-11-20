@@ -33,7 +33,9 @@ namespace Casazen.Core.Services;
 /// <item><b>A TD17 the SDI rejected is corrected, not credited</b> (FIX/BE-TD17-CORRECTION). For the tax office it was never issued, so its correction
 /// (<see cref="IFiscalDocumentCorrectionService.StartSelfBillingCorrectionAsync"/>) discards it, with its display number for the history, and makes a draft that holds its series and its number
 /// (<see cref="SelfBillingRow.ReplacesDocumentId"/>). The drafts of the month keep that draft as the draft of its holder, portal and month (never a second TD17), and it is issued with
-/// <see cref="IssueAsync"/> under the number it holds, never discarded (422 <c>document_replacement_holds_number</c>). A credit note of an issued TD17 is not made.</item>
+/// <see cref="IssueAsync"/> under the number it holds, never discarded (422 <c>document_replacement_holds_number</c>). When the month no longer supports it (<see cref="SelfBillingRow.KeptReason"/>) its only exit is
+/// <see cref="CloseNotDueAsync"/> (FIX/BE-TD17-JOB-EXIT): «non più dovuta», with a reason, the user and the day, the number <b>kept reserved</b> and written in the register of the unused numbers of the accountant
+/// package, never freed or given to another document. A credit note of an issued TD17 is not made.</item>
 /// </list>
 /// </remarks>
 public interface ISelfBillingService
@@ -69,18 +71,32 @@ public interface ISelfBillingService
     Task DiscardDraftAsync(Guid orgId, Guid documentId, CancellationToken ct = default);
 
     /// <summary>
+    /// The exit of a replacement draft that can no longer be sustained (FIX/BE-TD17-JOB-EXIT): the draft that holds the number of a TD17 the SDI rejected and that the month no longer supports
+    /// (<see cref="SelfBillingRow.KeptReason"/> is not <c>null</c>) is <b>closed as «non più dovuta»</b> with a mandatory <paramref name="reason"/> (one of <see cref="SelfBillingCloseReasons"/>), an optional
+    /// <paramref name="note"/> (at most <see cref="FiscalDocument.ClosedNotDueNoteMaxLength"/> characters, never logged), the user and the day. It becomes <see cref="FiscalDocumentStatus.Discarded"/> and
+    /// <b>keeps its series, its sequence number and its number</b>: the number is never freed (the unique index of the series never lets it be taken again, and the counter is already past it), it is only
+    /// documented as unused (the register of the accountant package). It is an internal outcome of CasaZen, never «scarto confermato»: the rejection is an external fact of the SDI, and the rejected
+    /// original stays as history. The generic discard (<see cref="DiscardDraftAsync"/>) stays refused for such a draft. A second call with the same reason answers the closed draft as it is (a double click,
+    /// a retry); another reason is refused, so the record of who closed it and why is never rewritten. The decision is taken under the lock of the generation of the organization (the month cannot adopt the draft meanwhile).
+    /// 404 <c>fiscal_document_not_found</c> (another org, not a TD17); 422 <c>close_reason_required</c> (missing or not one of the reasons), <c>close_note_too_long</c>, <c>self_billing_not_closable</c> (not the replacement
+    /// draft of a rejected TD17, or one the month still supports: it is issued, not closed).
+    /// </summary>
+    Task<SelfBillingDetail> CloseNotDueAsync(Guid orgId, Guid documentId, string? reason, string? note, string? userId, CancellationToken ct = default);
+
+    /// <summary>
     /// The organizations the monthly run looks at for <paramref name="year"/>-<paramref name="month"/> (FIX/BE-TD17-ALERTS): the active ones on the agency plan (not downgraded to reads only) that
     /// have <see cref="OwnerLedgerEntryType.ChannelFee"/> lines in the owner ledger of the month, whatever the tenant of the caller; the organization is the key, never a request value.
     /// </summary>
     Task<IReadOnlyList<Guid>> OrgsWithCommissionsAsync(int year, int month, CancellationToken ct = default);
 
     /// <summary>
-    /// The monthly run of one organization (FIX/BE-TD17-ALERTS): the drafts of the month that are missing, made with the plan of <see cref="CreateDraftsForPeriodAsync"/> (the call a person's click on
+    /// The run of one organization, repeated every day from the 5th to the 14th (FIX/BE-TD17-ALERTS, FIX/BE-TD17-JOB-EXIT): the drafts of the month that are missing, made with the plan of <see cref="CreateDraftsForPeriodAsync"/> (the call a person's click on
     /// «make the drafts» makes, with no user), then the «Da fare» <see cref="ActivityType.SelfBillingDraftsToReview"/> raised once when a draft of the month is open. <b>Idempotent</b>: a holder
-    /// that has a TD17 of the month in any state (a draft, an issued one, a discarded one) is left alone, so a second run, a retry or a trigger by hand makes no second draft for it and a draft a
-    /// person discarded stays discarded; a holder that needs a TD17 and could not get one (an incomplete issuer profile) is <b>counted and reported</b> in the answer
-    /// (<see cref="SelfBillingMonthlyRun.Refused"/>), its code logged as a warning and said in the words of the «Da fare», and it is tried again by the next run, so a month in which somebody was
-    /// refused is never reported as done. The «Da fare» is raised once while it is open (and never for a month with no draft open), and the run closes the items of the other months of the
+    /// that has a TD17 of the month in any state (a draft, an issued one, a discarded or closed one, a rejected one) is left alone, so a second run, ten runs in a row, a retry or a trigger by hand make no second
+    /// draft for it and a draft a person discarded stays discarded; a holder that needs a TD17 and could not get one (an incomplete issuer profile) is <b>counted and reported</b> in the answer
+    /// (<see cref="SelfBillingMonthlyRun.Refused"/>), its code logged as a warning and said in the words of the «Da fare», and it is tried again by the next day's run, so a month in which somebody was
+    /// refused is never reported as done. The «Da fare» is raised once while it is open (and never for a month with no draft open; a run that made no draft does not raise it again once a person closed it),
+    /// and the run closes the items of the other months of the
     /// organization that have no draft left open (a close that failed after a change is put right here). It never issues anything: the issue stays a person's action. The same 422 as the drafts
     /// (<c>self_billing_not_configured</c>, <c>self_billing_period_not_ended</c>).
     /// </summary>
@@ -114,9 +130,17 @@ public sealed record SelfBillingCriteria(int? Year = null, int? Month = null);
 /// <param name="ReplacedByDocumentId">The TD17 that replaces this one (a <see cref="FiscalDocumentStatus.Discarded"/> original the SDI rejected, its correction made); <c>null</c> for any other.</param>
 /// <param name="KeptReason">
 /// Only for a draft that holds the number of a rejected TD17 and that nothing in the ledger, the holder and the portals of the settings gives now (one of <see cref="SelfBillingKeptReasons"/> or the code
-/// of the holder's failure): it cannot be issued (409 <c>document_draft_outdated</c> whatever is done to it) nor discarded (it holds the number). <c>null</c> for every other document, and for a
+/// of the holder's failure): it cannot be issued (409 <c>document_draft_outdated</c> whatever is done to it) nor discarded (it holds the number); it leaves only by <see cref="ISelfBillingService.CloseNotDueAsync"/>
+/// («non più dovuta», the number stays reserved). <c>null</c> for every other document, and for a
 /// draft the drafts of the month can make again (that includes the draft of a portal whose VAT number or country was fixed in the settings: the month adopts it).
 /// </param>
+/// <param name="ClosedReason">
+/// Only for a replacement draft that was closed as «non più dovuta» (<see cref="ISelfBillingService.CloseNotDueAsync"/>, FIX/BE-TD17-JOB-EXIT): one of <see cref="SelfBillingCloseReasons"/>. Such a row is
+/// <see cref="FiscalDocumentStatus.Discarded"/>, keeps its <see cref="Number"/> (reserved, never given again) and is listed with the history of the number. <c>null</c> for every other document.
+/// </param>
+/// <param name="ClosedAt">When it was closed (UTC); <c>null</c> unless <paramref name="ClosedReason"/> is set.</param>
+/// <param name="ClosedBy">The name of the person who closed it (the user the closing recorded); <c>null</c> when it is not known any more, and for every document that was not closed.</param>
+/// <param name="ClosedNote">The note the person wrote when closing it (read through the encryption of the column); <c>null</c> when there is none.</param>
 public sealed record SelfBillingRow(
     Guid Id,
     SelfBillingHolderKind HolderKind,
@@ -138,7 +162,11 @@ public sealed record SelfBillingRow(
     bool CanCorrect = false,
     Guid? ReplacesDocumentId = null,
     Guid? ReplacedByDocumentId = null,
-    string? KeptReason = null);
+    string? KeptReason = null,
+    string? ClosedReason = null,
+    DateTime? ClosedAt = null,
+    string? ClosedBy = null,
+    string? ClosedNote = null);
 
 /// <summary>A TD17 with its lines (<see cref="Document"/>), its row and the estimate of its amount.</summary>
 /// <param name="EstimatedAmount">
@@ -189,6 +217,32 @@ public static class SelfBillingKeptReasons
 
     /// <summary>The month gives this holder no TD17 for this portal now: its commissions were reversed, its stays are no longer active, or the holder is no longer subject to the TD17.</summary>
     public const string NotInLedger = "ledger_gives_no_td17";
+}
+
+/// <summary>
+/// Why a kept replacement draft is closed as «non più dovuta» (<see cref="ISelfBillingService.CloseNotDueAsync"/>, <see cref="SelfBillingRow.ClosedReason"/>, FIX/BE-TD17-JOB-EXIT): the three answers the
+/// person gives (R3 of the fiscal decisions of 2026-11-20), stable codes the frontend translates and the accountant package writes in words. The reason is mandatory: a number is never closed without one.
+/// </summary>
+public static class SelfBillingCloseReasons
+{
+    /// <summary>The portal issued a credit note of the invoice the TD17 integrated: nothing is left to integrate.</summary>
+    public const string PortalCreditNote = "portal_credit_note";
+
+    /// <summary>The holder is no longer a taxable person (it closed its VAT position, or the foreign invoice no longer concerns it): the TD17 is no longer due.</summary>
+    public const string HolderNoLongerSubject = "holder_no_longer_subject";
+
+    /// <summary>The TD17 was a duplicate of another one, or made by mistake (a commission that was never charged).</summary>
+    public const string DuplicateOrError = "duplicate_or_error";
+
+    /// <summary>Every reason, in the order the screen offers them.</summary>
+    public static IReadOnlyList<string> All { get; } = [PortalCreditNote, HolderNoLongerSubject, DuplicateOrError];
+
+    /// <summary>The reason as the code it is stored with (trimmed, the case of the code never matters); <c>null</c> when it is blank or not one of <see cref="All"/>.</summary>
+    public static string? Normalize(string? reason)
+    {
+        var trimmed = reason?.Trim();
+        return trimmed is { Length: > 0 } ? All.FirstOrDefault(known => string.Equals(known, trimmed, StringComparison.OrdinalIgnoreCase)) : null;
+    }
 }
 
 /// <summary>What the monthly run did for one organization (<see cref="ISelfBillingService.RunMonthlyDraftsAsync"/>): counts and codes only, no amount, name or number.</summary>
@@ -292,6 +346,19 @@ public static class SelfBillingErrors
     /// (<c>POST api/fiscal/self-billing/{id}/correct</c>, FIX/BE-TD17-CORRECTION), which answers with this code a TD17 that is not issued and rejected by the SDI, or that has an issued credit note.
     /// </summary>
     public const string NotCorrectable = "self_billing_not_correctable";
+
+    /// <summary>
+    /// 422 (FIX/BE-TD17-JOB-EXIT): the draft cannot be closed as «non più dovuta». Only the replacement draft of a TD17 the SDI rejected (<see cref="FiscalDocument.ReplacesDocumentId"/> set, holding its number) that the
+    /// month no longer supports (<see cref="SelfBillingRow.KeptReason"/> is not <c>null</c>) is closed; a draft the month still gives is issued, and anything else (an issued TD17, a discarded or an ordinary draft, a draft
+    /// already closed for another reason) is refused. Nothing is changed.
+    /// </summary>
+    public const string NotClosable = "self_billing_not_closable";
+
+    /// <summary>422 (FIX/BE-TD17-JOB-EXIT): the reason of the closing is missing or is none of <see cref="SelfBillingCloseReasons.All"/>: a number is never closed without one. Nothing is changed.</summary>
+    public const string CloseReasonRequired = "close_reason_required";
+
+    /// <summary>422 (FIX/BE-TD17-JOB-EXIT): the note of the closing is longer than <see cref="FiscalDocument.ClosedNotDueNoteMaxLength"/> characters. Nothing is changed.</summary>
+    public const string CloseNoteTooLong = "close_note_too_long";
 }
 
 /// <summary>

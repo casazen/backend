@@ -199,6 +199,70 @@ internal static class AccountantPackageDocuments
     }
 
     /// <summary>
+    /// The register of the <b>unused numbers</b> of the self-billed invoices (TD17) of one period (FIX/BE-TD17-JOB-EXIT), written only for a period that has one: the numbers of replacement drafts that were closed
+    /// as «non più dovuta» (their reason and the day, the user, and the note when there is one), with the day of the rejected original the number was given to and the outcome of that original with the SDI
+    /// (its state and the code of the rejection). The number stays reserved and is never given again: the register is the documentation of the gap in the series of its issuer, which is told apart by the
+    /// first column (every holder numbers its TD17 in a series of its own). Text a person typed (the note, the name of the user) is written as text in both files, never as a formula
+    /// (<see cref="ReportTable"/>). A period with no closing writes nothing: the caller does not call it.
+    /// </summary>
+    public static IReadOnlyList<ReportTable> UnusedNumbers(
+        IReadOnlyList<PackageUnusedNumber> rows,
+        IReadOnlyDictionary<string, string> userNames,
+        FiscalIssuerSnapshot fallback,
+        AccountantPackagePeriod period,
+        PackageTexts t)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        ArgumentNullException.ThrowIfNull(userNames);
+        ArgumentNullException.ThrowIfNull(fallback);
+        ArgumentNullException.ThrowIfNull(period);
+        ArgumentNullException.ThrowIfNull(t);
+
+        var table = new ReportTable(
+            t.Get(PackageLabels.UnusedNumbersTitle, Day(period.From), Day(period.To)),
+            [
+                t[PackageLabels.ColIssuer],
+                t["FiscalExportColNumber"],
+                t[PackageLabels.ColRejectedOn],
+                t[PackageLabels.ColClosedOn],
+                t[PackageLabels.ColCloseReason],
+                t[PackageLabels.ColCloseNote],
+                t[PackageLabels.ColOriginalSdi],
+                t[PackageLabels.ColSdiErrorCode],
+                t[PackageLabels.ColClosedBy],
+            ]);
+        foreach (var row in rows)
+        {
+            table.Add(
+                IssuerLabel(AccountantPackageFacts.IssuerOf(row.IssuerSnapshot, fallback)),
+                row.Number,
+                ReportCell.Date(row.OriginalDay),
+                ReportCell.Date(RomeCalendar.DateInRome(row.ClosedAt)),
+                CloseReasonLabel(row.Reason, t),
+                row.Note,
+                FiscalDocumentExports.SdiLabel(row.OriginalSdiStatus, t.Source, t.Language),
+                row.OriginalSdiErrorCode,
+                row.ClosedByUserId is { } user ? userNames.GetValueOrDefault(user) ?? user : null);
+        }
+
+        return [table];
+    }
+
+    /// <summary>The words of a reason of a closing as the accountant reads them; a reason that is none of the known ones (never written by CasaZen) is given as it is stored.</summary>
+    public static string CloseReasonLabel(string reason, PackageTexts t)
+    {
+        ArgumentNullException.ThrowIfNull(t);
+
+        return reason switch
+        {
+            SelfBillingCloseReasons.PortalCreditNote => t[PackageLabels.CloseReasonPortalCreditNote],
+            SelfBillingCloseReasons.HolderNoLongerSubject => t[PackageLabels.CloseReasonHolderNoLongerSubject],
+            SelfBillingCloseReasons.DuplicateOrError => t[PackageLabels.CloseReasonDuplicateOrError],
+            _ => reason,
+        };
+    }
+
+    /// <summary>
     /// The portal commissions of the accounts the agency holds (V2) as the owner ledger says them, one row for each statement month, owner, channel and currency: the commission as a positive
     /// amount, the stays that carry it and whether the organization recharges it to the owner on its invoice or not (the label never says who bears it when it does not); then the totals for each channel and currency. They are the
     /// ledger lines the self-billed invoice of the agency integrates (the TD17 itself leaves out what is not in euro or belongs to a stay that is not active any more) and, when recharged,
