@@ -1,13 +1,13 @@
 # Runbook: notification of the guests to the police in Switzerland (Ticino)
 
-**Issue:** casazen/backend#979 · **Requirements:** NF-126 (complete Ticino file), NF-127 (the 24 hours: staged alerts), NF-128 (retention), NF-132 (Swiss data at the check-in) · **Format of the file:**
+**Issue:** casazen/backend#979 · **Requirements:** NF-126 (complete Ticino file), NF-127 (the 24 hours: staged alerts), NF-128 (retention, declaration, duplicates), NF-132 (Swiss data at the check-in) · **Format of the file:**
 [`docs/compliance/ticino-notification-format.md`](../compliance/ticino-notification-format.md) · **Analysis:** `alloggiati-ch/analisi-tecnica.md`
 (decisions D1-D16) and `alloggiati-ch/specifica-ticino.md` (verified rules).
 
 The police of canton Ticino want every guest notified **within 24 hours of the arrival**. The portal (`notifiche.ti.ch`) has no API and CasaZen never logs into it,
 never keeps a password or the seed of a one-time code and never simulates a browser (decision D1): CasaZen writes the file, the host uploads it and records the
-receipt. Sections 1-7 are the file, its data, the groups and the minors, and the retention of the documents (E30/F01); sections 8-13 are the staged alerts that
-watch the 24 hours (E30/F02/US01/T01).
+receipt, or declares the day uploaded. Sections 1-7 are the file, its data, the groups and the minors, and the retention of the documents (E30/F01); sections 8-13 are the staged alerts that
+watch the 24 hours (E30/F02/US01/T01); sections 14-20 are the declaration of a day, the guard against duplicates and the audit of the files (E30/F02/US02/T01).
 
 ## 1. The flow
 
@@ -19,9 +19,11 @@ watch the 24 hours (E30/F02/US01/T01).
    each guest (optional), and the **plate
    of the car** once for the stay (optional). The public context says it with `requiredGuestFields` and `askVehiclePlate`.
 3. Within 24 hours of the arrival the host opens the day (`GET api/properties/{id}/swiss/ticino-notification?date=`), sees who is in the
-   file and what the others miss, and downloads the file (`POST …/ticino-notification`, CSV by default). Nothing is stored. The alerts that tell the host the day is still open are § 8-13.
+   file and what the others miss, and downloads the file (`POST …/ticino-notification`, CSV by default). Nothing is stored, but every generation leaves an audit row without personal data
+   (§ 17), and the file of a day that is already closed asks for a confirmation (§ 16). The alerts that tell the host the day is still open are § 8-13.
 4. The host uploads the file on <https://www.notifiche.ti.ch> («Notifiche → Invio», login and one-time code: CasaZen never logs in,
-   decision D1) and records the receipt of the portal (`POST …/upload-receipt`, type `Police`, report date = the arrival day).
+   decision D1) and records the receipt of the portal (`POST …/upload-receipt`, type `Police`, report date = the arrival day) **or**, with no receipt, declares the day
+   uploaded (`POST …/ticino-notification/declare`, § 14-15). Either closes the day.
 
 ## 2. Configuration
 
@@ -118,8 +120,8 @@ queues nothing. It does not need `Features:ComplianceTrafficLight`; with both of
 ## 9. Which days, which stages
 
 **Which days.** Only `ITicinoNotificationService.ListPendingDaysAsync` says (last 14 days, every org): the arrival days of the stays that owe a notification (an active status
-and no no-show) of the Ticino properties (country `CH` and a municipality of canton `TI`) that no receipt of the portal closes. **That service is the one place that says a day
-is closed**: when the declaration «I uploaded the file» (E30/F02/US02) enters it, the alerts respect it with no change here. Before a stage is claimed the detail of the day is
+and no no-show) of the Ticino properties (country `CH` and a municipality of canton `TI`) that no receipt of the portal and no declaration «I uploaded the file» (§ 14) closes. **That
+service is the one place that says a day is closed**: the alerts respect the declaration with no change in them. Before a stage is claimed the detail of the day is
 read from the same service, so a day closed meanwhile sends nothing. `DueAtUtc` is its deadline: 24 hours from the first recorded arrival, else the end of the arrival day.
 
 **Which stages** (`ComplianceAlertSchedule.DueTicinoStep`; the time zone is the one of the property, `Property.Timezone`, Europe/Zurich; every number is an option):
@@ -202,3 +204,126 @@ WHERE "Type" IN ('ticino-notification-due', 'ticino-notification-overdue') AND "
 `Casazen.Infrastructure/Email/Templates/EmailTemplates.TicinoNotification.cs`. Tests: `ComplianceAlertTicinoTests` (the schedule with the two daylight saving changes, each stage once,
 a closed day stops the alerts, another org is never alerted, flag off sends nothing, the payload holds no personal data, the registration with `ValidateScopes`, the enumerations of
 `ComplianceAlertType` and `PushTypes`).
+
+## 14. The declaration «I uploaded the file» and the one rule of a closed day
+
+Task E30/F02/US02/T01 (NF-128, decision D10 of `alloggiati-ch/analisi-tecnica.md`). Until now a Ticino day closed only with a receipt of the portal, so a host without a receipt stayed
+stuck, and the file could be generated again as often as the host liked although the portal may create duplicates when a day is uploaded twice (`specifica-ticino.md` § 3). Three things
+are added, with **no flag** (they complete a flow already in `develop`):
+
+1. **The declaration**: a person of the org says the day was uploaded to the portal, with or without a receipt.
+2. **A guard against duplicates**: the file of a closed day is generated again only on an explicit confirmation (§ 16).
+3. **An audit row for every file generated**, with no personal data (§ 17).
+
+**A day is closed** when a `Police` receipt is recorded for it (§ 1) **or** a declaration of it exists. `ITicinoNotificationService.ListPendingDaysAsync` is the one place that applies the
+rule: a closed day is not listed, so the cockpit section `ticinoNotifications` and the alerts of § 8-13, which read nothing else, stop at once. A receipt still closes the day after the
+declaration is undone. A declaration with a regime code belongs to another canton (§ 19) and never closes a day of the Ticino police.
+
+## 15. The API: declare, undo and what the day says
+
+| Route | Permission | Body or query | Answer |
+|---|---|---|---|
+| `POST api/properties/{id}/swiss/ticino-notification/declare` | `alloggiati.submit` (the permission that records a receipt), on top of the `booking.read` of the controller | `{ "arrivalDay": "2026-11-19", "receiptId": null }` | 200 `{ propertyId, arrivalDay, declaredAt, declaredBy, receiptId, created }`, never cached, **no guest data** |
+| `DELETE api/properties/{id}/swiss/ticino-notification/declare?arrivalDay=2026-11-19` | the same | the day in the query | 204, also when the day was not declared |
+| `GET api/properties/{id}/swiss/ticino-notification?date=` | `guest.read` (unchanged) | — | the day, which gains `declaredAt`, `declaredBy`, `fileGeneratedAt`, `fileGeneratedCount` and `alreadyDeclared` |
+| `POST api/properties/{id}/swiss/ticino-notification` | `guest.read` (unchanged) | `{ "reportDate": "2026-11-19", "format": "csv", "confirmRegenerate": false }` | the file, or 409 `ticino_day_already_declared` (§ 16) |
+
+- **Idempotent.** `POST …/declare` on a day that is declared already answers the declaration that exists (`created: false`), whoever repeats the call: `declaredAt` and `declaredBy` are the
+  first person's, and nothing is told again. Two hosts pressing at the same moment: the unique index (§ 19) lets one in and the other gets the declaration that won (23505 is handled, not
+  an error). A `receiptId` the declaration does not have yet is **attached** to it (a host that declared first and uploaded the receipt later); a call without one never removes it.
+- **`receiptId`** is optional (decision D10) and must be a `Police` receipt of this property whose report date is the arrival day, as `POST …/upload-receipt` records it: another property's,
+  another day's or another type's is refused with 422 `ticino_declaration_receipt_invalid`.
+- **A day that has not started** (after today in Europe/Zurich) cannot be declared: 422 `ticino_declaration_day_in_future`. It would close a day whose guests have not arrived and silence its
+  alerts; a past day with no stay is harmless and accepted.
+- **Undo** is by any person of the same org with the same permission (`alloggiati.submit`); the row is deleted and the day is to notify again unless a receipt closes it.
+- **Who may call, as for the receipt** (`SwissComplianceController.AuthorizeAsync`): a property of another org is a 404 (nothing is declared or read), one the caller's scope does not reach (a
+  collaborator «Solo alcuni» not given it) is a 403. The person in the token (`sub`) is the one written on the declaration; the client never names it.
+- **The day** (`GET`, which already lists the guests and so asks `guest.read`): `declaredAt` (UTC) and `declaredBy` (first and last name of the person, `null` while nobody declared and when
+  the account no longer exists), `fileGeneratedAt` / `fileGeneratedCount` (the CSV and the XML of the day, § 17) and `alreadyDeclared`, which is **the same rule as the pending list**: the day is
+  declared **or** has a receipt (`receiptCount` > 0). `alreadyDeclared` is the flag a page reads to ask the confirmation of § 16 before it sends `confirmRegenerate: true`.
+- Errors: 400 `validation_error` (a missing `arrivalDay`), 401 `unauthorized` (a token with no subject), 403 `forbidden`, 404 `property_not_found`, 422 `property_not_in_ticino`,
+  `ticino_declaration_day_in_future`, `ticino_declaration_receipt_invalid`; texts `SwissArrivalDayRequired`, `TicinoDeclarationDayInFuture`, `TicinoDeclarationReceiptInvalid` in `SharedResources.resx` and `.en.resx`.
+
+## 16. The guard against duplicates
+
+The portal does not say what it does with a file loaded twice (`specifica-ticino.md` § 4, question 2), so CasaZen does not make it easy. `POST …/ticino-notification` for a day that is **closed**
+(declared, or with a receipt: § 14) answers **409 `ticino_day_already_declared`** (`TicinoDayAlreadyDeclared`, Italian and English) unless the body says **`"confirmRegenerate": true`**; no file is
+generated and no audit row is written for the 409. A day that is not closed is never asked, and the confirmation changes nothing else: the file is the same.
+
+- The checks of the data come first: a closed day with nothing to write answers 422 `ticino_notification_empty` (or the other data errors), not a confirmation for a file that would not exist.
+- **Receipts count.** A receipt is the proof of the same fact as the declaration (decision D10: the receipt is the optional proof of the upload), so a day with only a receipt is also asked: the
+  risk of duplicates is the same, and the rule of a closed day is one for the alerts, the cockpit and this guard. A consequence to know: the old page of the console, which downloads again after a
+  receipt, gets the 409 until the slice of the frontend (E30/F02/US03/T01) sends `confirmRegenerate`.
+- The group sheet (`GET …/group-sheet`) is kept by the host and never uploaded as a notification, so it has no guard (it only writes its audit row).
+
+## 17. The audit of the files (`SwissNotificationFileEvents`)
+
+Every file CasaZen generates for the police writes **one row**, whoever asked and whether or not the file was uploaded afterwards, in the same request: a row that cannot be written fails the
+request, so no file leaves unaudited.
+
+| Column | Meaning |
+|---|---|
+| `OrgId`, `PropertyId` | the org (tenant filter, TN-2) and the property (cascade) |
+| `ArrivalDay` | the day of the file (the arrival day of its stay for a group sheet; the first day of the period for the register of E31) |
+| `Format` | `csv`, `xml`, `register` or `groupSheet` (text, `CK_SwissNotificationFileEvents_Format`) |
+| `RowCount` | the persons in the file (the members of a sheet) |
+| `Sha256` | the hash of the bytes of the file, lowercase hexadecimal: the file is never stored, so the hash is how a file is recognized later |
+| `CreatedByUserId`, `CreatedAt` | the person (Auth0 subject, `null` when no person asked) and the instant |
+
+**No personal data**: never a name, a document, an address, a plate, a booking code or the name of the person (`TicinoDeclarationTests.FileEvent_NoPersonalData_Test` writes a file full of them and
+looks for them in every column; a test also fixes the list of columns, so a new one makes somebody decide again). The day counts only the **CSV and XML** rows (`fileGeneratedCount`, `fileGeneratedAt`): a
+group sheet is kept by the host and a register is not a notification.
+
+## 18. Live update for the other hosts
+
+When a declaration is **created** or **removed** the hosts of the property learn it without a refresh, through the chain of the alerts of § 10: `TicinoDeclarationLiveRefresh` (the one class that tells
+them, like `BookingFlowLiveRefresh` for a stay) calls `IPushNotificationService.Enqueue` with
+`PushAudience.PropertyHosts(propertyId)` (the person in charge while they reach the property and the administrators of the org: the person who acted is one of them, and their own page already has
+the answer), type **`ticino-notification-declared`** (one type for both; `PushTypes.IsTicinoNotification`), route `/properties`. It is **not one of the eight kinds of event of the notification
+preferences** (NF-65): it is the refresh of what a co-host did, so it must reach the open pages of every host of the property whatever channel they chose for the deadlines; for that reason the
+class is listed, with the other live refreshes, in the legacy list of `HostNotifyingPathsArchitectureTests` («none planned (outside the eight kinds of event of NF-65)»). The decorator writes the bell entry (**`entityId` = the property**, like the
+two alerts) and the job publishes `notificationsChanged`, on which the open pages read the cockpit and the day again. The text of the push tells the declaration from the undo (`Push_TicinoNotificationDeclared_*`
+and `Push_TicinoNotificationUndone_*` in `EmailTexts.resx` and `.en.resx`) and names the property and the day only: never a guest, a value or the person who acted (the cockpit shows who).
+
+The delivery key is `ticino-declaration:{propertyId:N}:{yyyyMMdd}:{declared|undone}:{yyyyMMddHHmmssfff}`: a day declared, undone and declared again is three events. Nothing is told for a repeated declaration, for an
+undo with nothing to undo or when only a receipt is attached. The push is queued **after** the row is saved and is best effort: a queue that is down or that refuses is logged with ids
+(`Ticino declaration push of property … could not be prepared / not queued`) and never fails the person who declared.
+
+## 19. The data, the key and the other cantons
+
+- **`SwissNotificationDeclarations`**: `OrgId` (restrict), `PropertyId` (cascade), `ArrivalDay` (`date`), `DeclaredByUserId` (the Auth0 subject, no foreign key: the declaration outlives the account),
+  `DeclaredAt`, `Channel` (`portal`, text, default `portal`), `ReceiptId` (nullable, **SET NULL**: a receipt removed by the retention of § 6 leaves the declaration without it, never deletes it) and `RegimeCode`
+  (nullable, 12 characters).
+- **The key.** One declaration for each property, day and regime. `RegimeCode` **null is the notification to the police of Ticino**; another canton (E31) writes its own code and shares the table **with no
+  migration**. PostgreSQL takes two NULLs as different values, so the key is **two partial unique indexes** (the pattern of `MarketplaceActivation`):
+  `UX_SwissNotificationDeclarations_Property_Day` on (`PropertyId`, `ArrivalDay`) where `RegimeCode IS NULL`, and `UX_SwissNotificationDeclarations_Property_Day_Regime` on
+  (`PropertyId`, `ArrivalDay`, `RegimeCode`) where it is not. The Ticino rows are the ones **without** a code (`TicinoNotificationService` reads and writes only those); another regime must not use `NULL`.
+- **`SwissNotificationFileEvents`**: § 17. Both tables are `ITenantOwned`: every read names the org of the property, and the global filter scopes the caller.
+- **Retention.** Neither table holds guest data (a user id, codes, counts, a hash and dates), so the job of § 6 does not touch them: the rows live as long as their property. An undo deletes the
+  declaration (the log of the application and the live message say who did what).
+- **Migration**: one, `AddSwissNotificationTracking` (after `AddSwissGuestFields`), two tables and their indexes; `Down` drops them. No data to backfill, no flag.
+
+## 20. Checking, rolling back, code and tests
+
+```sql
+-- The declarations of the last days (replace the schema); a null regime is the Ticino police
+SELECT "PropertyId", "ArrivalDay", "DeclaredAt", "Channel", "ReceiptId", "RegimeCode"
+FROM casazen_test."SwissNotificationDeclarations" ORDER BY "DeclaredAt" DESC LIMIT 50;
+
+-- How many files were generated for each day, and when last
+SELECT "PropertyId", "ArrivalDay", "Format", count(*) AS files, max("CreatedAt") AS last
+FROM casazen_test."SwissNotificationFileEvents" GROUP BY 1, 2, 3 ORDER BY max("CreatedAt") DESC LIMIT 50;
+```
+
+- **Make a day to notify again** (a wrong declaration nobody can undo): `DELETE FROM casazen_test."SwissNotificationDeclarations" WHERE "PropertyId" = '<id>' AND "ArrivalDay" = 'yyyy-MM-dd' AND "RegimeCode" IS NULL;`
+  (the day is listed again at the next read; a receipt of the day would still close it).
+- **Roll back the release**: the previous version ignores both tables; the declarations then close nothing and the days they closed are listed again. To drop the tables, `dotnet ef migrations remove` before
+  the migration is applied, or a migration that reverts it (its `Down` drops the two tables).
+- **Code**: `Casazen.Core/Entities/SwissNotificationDeclaration.cs`, `SwissNotificationFileEvent.cs` (with `SwissNotificationChannels` and `SwissNotificationFileFormats`),
+  `Casazen.Core/Services/ITicinoNotificationService.cs` (`DeclareDayAsync`, `UndeclareDayAsync`, `TicinoFileRequest`), `Casazen.Infrastructure/Services/TicinoNotificationService.cs`,
+  `Casazen.Infrastructure/Data/Configurations/SwissNotification*Configuration.cs`, `Casazen.Web/Controllers/SwissComplianceController.cs`, `Casazen.Web/DTOs/SwissCompliance/SwissComplianceDtos.cs`,
+  `Casazen.Core/Services/IPushNotificationService.cs` (`PushTypes.TicinoNotificationDeclared`, `PushDeliveryKeys.TicinoNotificationDeclared`),
+  `Casazen.Infrastructure/Services/TicinoDeclarationLiveRefresh.cs` (the push), `Casazen.Infrastructure/Email/Templates/EmailTemplates.TicinoNotification.cs`. **Tests**: `TicinoDeclarationTests` (idempotent declare
+  and the race on the key, undo, the pending list and the day, a receipt also closes the day, isolation between organizations, the regeneration guard, the audit rows and their privacy, the live message,
+  the model of the key, the JSON names of the contract), `SwissComplianceControllerTests` (`Declare_OtherOrganizationForbidden_Test`, the permission of both routes, the confirmation and the caller passed to
+  the service) and `HostNotifyingPathsArchitectureTests` (the live refresh is listed as outside the eight kinds of event of NF-65).

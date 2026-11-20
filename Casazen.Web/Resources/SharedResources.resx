@@ -342,6 +342,18 @@
   <data name="SwissReceiptDateTooOld" xml:space="preserve">
     <value>La data indicata è di oltre {0} anni fa: un documento di questo tipo si conserva {0} anni dalla sua data e la conservazione automatica lo cancellerebbe subito. Controlla la data (il giorno di arrivo).</value>
   </data>
+  <data name="SwissArrivalDayRequired" xml:space="preserve">
+    <value>Indica il giorno di arrivo.</value>
+  </data>
+  <data name="TicinoDayAlreadyDeclared" xml:space="preserve">
+    <value>Questo giorno risulta già notificato alla Polizia cantonale: dichiarato come caricato oppure con una ricevuta registrata. Caricare di nuovo il file sul portale può creare dei doppioni. Genera il file solo se serve davvero e conferma.</value>
+  </data>
+  <data name="TicinoDeclarationDayInFuture" xml:space="preserve">
+    <value>Non puoi dichiarare come notificato un giorno che non è ancora iniziato: gli ospiti devono ancora arrivare.</value>
+  </data>
+  <data name="TicinoDeclarationReceiptInvalid" xml:space="preserve">
+    <value>La ricevuta indicata non è una ricevuta della Polizia di questo immobile per questo giorno di arrivo.</value>
+  </data>
   <data name="BookingNotFound" xml:space="preserve">
     <value>Prenotazione non trovata</value>
   </data>
