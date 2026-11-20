@@ -244,6 +244,7 @@ public sealed class BillingSetupService(
         {
             [ItalianTouristTaxSetupKeys.Proposals] = setup.Proposals,
             [ItalianTouristTaxSetupKeys.ChannelDataConflict] = setup.ChannelDataConflict,
+            [ItalianTouristTaxSetupKeys.ConfirmedComuni] = setup.ConfirmedComuni,
         };
     }
 

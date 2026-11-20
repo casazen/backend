@@ -376,15 +376,26 @@ comune; writing «da pagare» wrongly is a double payment that is given back.
 
 *Who collects, strongest first* (`ItalianPortalTouristTax.Decide`, pure, in `Casazen.Core/TouristTax`): (1) a booking that is not of a channel: the host; (2) the record of the stay and the data of the channel: the active
 `TouristTaxChannelRule` of the comune and the channel, then the collector the host declared for the stay (`StayTouristTax.DeclaredCollector`), then the collector of the calculation it confirmed (`StayTouristTax.Collector`);
-(3) the rule of the organization: the portals of its own list (`PlatformCollectedTouristTaxChannels`, the answer it saved, an empty list included), or, while it saved none, the default of the channel,
-`ItalianTouristTax:PlatformCollected` (**none**: no channel is taken to collect it, Airbnb, Booking.com, Expedia, Vrbo and the unknown ones alike); (4) the global default: the host collects at the property. Nothing is
+(3) the rule of the organization: the portals of its own list for every comune (`PlatformCollectedTouristTaxChannels`, the answer it saved, an empty list included), or, while it saved none, the default of the channel,
+`ItalianTouristTax:PlatformCollected` (**none**: no channel is taken to collect it, Airbnb, Booking.com, Expedia, Vrbo and the unknown ones alike), **and the portals it confirmed for one comune**
+(`OrgFiscalIssuerProfile.PortalTouristTaxComuni`: the proposal «Airbnb incassa a Milano» confirmed by a person is the pair channel **and** comune, so it counts for the properties in Milano and is nothing for a flat in Como);
+(4) the global default: the host collects at the property. Nothing is
 «unknown» for the document any more: it does not wait for an answer (`TouristTaxCollectorRules.Decide` is untouched and still tells E25 to ask the host who collected). What the host saved is never overridden by the
-default, and the Swiss behaviour is unchanged (`SwissTouristTax:PlatformCollected` stays the Swiss default; an Italian issuer never inherits it).
+default, and the Swiss behaviour is unchanged (`SwissTouristTax:PlatformCollected` stays the Swiss default; an Italian issuer never inherits it). The box «Tassa di soggiorno» of the owner statement
+(`OwnerStatementDocuments`) reads the same `Decide` for an Italian issuer (the record of the stay wins over the list of the organization), so the statement and the guest document never say two things of one stay; a Swiss
+issuer's statement reads its list first, as its document does.
 Before this change a portal booking whose collector nobody had declared got no tax line and its document said nothing of the tax; now it gets the line and the statement below. An amount is still needed: the confirmed tax of E25,
 else `Booking.TouristTax`; with none (no estimate is made up) there is no line and nothing is said.
+**Documents issued before the default** have no such line, and that is no change of the booking: when the only difference between an issued document and what the booking bills now is a line of tourist tax that **only the default
+brings** (`GuestDocumentLines.TouristTaxFromDefault`: no rule of the comune, no record of the stay and no answer of the organization), the correction of a change (`FiscalDocumentService.ComparableLinesOf`, in `ApplyBookingChange` and
+in the daily run `TellTheChangesOfEndedPortalStaysAsync`) tolerates it: no «To do» of a change, no credit note and no new document for that addition alone, and only for an issued document with no line of tourist tax at all. Any other
+difference (the price, the dates) is a change as before, and the new draft carries the line; anything else that says who collects (a rule, a record, an answer of the organization) is compared as it is.
 
 *What the Italian document says.* **The host collects** (the default): the line of the tax is billed and, on a document paid through the portal, the rule of the section above applies: the line reads «Imposta di soggiorno da pagare in struttura»
-(`FiscalDocLineTouristTaxToCollect`; it replaces «riscossa per conto del comune», which would say the opposite), the payment «Pagamento: pagato tramite il portale per EUR 450,00» and «Imposta di soggiorno da pagare in struttura: EUR 12,00»,
+(`FiscalDocLineTouristTaxToCollect`; it replaces «riscossa per conto del comune», which would say the opposite; **it is the description stored in the line when a document paid through the portal is made**, so the
+FatturaPA XML and the `description` of the API say what the PDF says; the PDF keeps both honest: while some of the tax is to collect it reads «da pagare» whatever an older document stored, and once the stay records all of it as
+collected it reads «riscossa per conto del comune»; **limit:** the lines of an issued document are never rewritten, so the XML and the API of a document issued before keep «riscossa per conto del comune» and only its PDF says «da
+pagare»), the payment «Pagamento: pagato tramite il portale per EUR 450,00» and «Imposta di soggiorno da pagare in struttura: EUR 12,00»,
 and a paragraph says that the amount is an estimate and that the structure issues a separate numbered receipt when it collects the tax (`FiscalDocPdfToCollectReceiptNote`;
 Italian «imposta» throughout, never «riscossa» together with «da riscuotere»; the English words are different: «Tourist tax payable at the property», «issues a separate numbered receipt»). **The portal collected it** (the
 organization says so, or the record of the stay does) and the stay owes a tax: no line (never a double charge), and the line of the stay carries the statement «Soggiorno di 3 notti. Imposta di soggiorno incassata dal portale
@@ -393,14 +404,24 @@ organization says so, or the record of the stay does) and the stay owes a tax: n
 *The setup* (`GET api/billing-setup`, section `touristTax`, for an **Italian issuer** only, read only, never saved or applied by itself; the section still does not apply to an Italian issuer, so no item is added to its guide):
 `defaultPlatformCollectedTouristTaxChannels` is the Italian default above (empty); `italianPortalProposals` is `[{ comuneIstat, comune, channel, status }]`, `status` = `to_confirm`: **«Airbnb incassa, da confermare» only for
 Milano (ISTAT 015146) and Firenze (ISTAT 048017)**, the two comuni whose own pages were read on 2026-11-20 (Comune di Milano, «Airbnb: gestione imposta di soggiorno»; Comune di Firenze, FAQ); derived from the ISTAT codes
-of the properties of the organization, none for any other comune (Roma stays out: «da verificare»), and none for an organization that has saved its own list, which stands. A person confirms a proposal by saving the
-list (`PUT api/billing-setup/touristTax`, `platformCollectedTouristTaxChannels`). `portalTouristTaxConflict` is a boolean data-quality hint: the record of a recent active stay (ended less than 12 months ago) says the opposite of the
-rule of the organization for its channel (a tax recorded as collected by the portal while the rule says «at the property», or the opposite); no «To do». A caller who reaches only some of the properties does not get the two last
-members (they sum up all of them), as it cannot change the setup.
+of the properties of the organization, none for any other comune (Roma stays out: «da verificare»), none for an organization that has saved its own list for every comune, which stands, and none for a pair it already confirmed.
+**A person confirms a proposal for its comune:** `PUT api/billing-setup/touristTax/portal-comuni`, body `{ "comuni": [{ "channel": "Airbnb", "comuneIstat": "015146" }] }`, the whole list of the pairs the organization confirms
+(it replaces the one it had; an empty list takes every confirmation away and never means «every comune»; a request without `comuni` is 422), answered with the section `touristTax` as saved, whose
+`confirmedPortalTouristTaxComuni` is `[{ comuneIstat, channel }]`. It counts only for the properties in that comune and never touches the list for every comune
+(`PUT api/billing-setup/touristTax`, `platformCollectedTouristTaxChannels`, which stays valid as it always was for who saved it, never overwritten and never answered by the confirmation of a comune). It is kept in the existing
+column of the profile of the organization (`OrgFiscalIssuerProfiles.PlatformCollectedTouristTaxChannels`, a jsonb, **no migration**): the plain array it always was until a comune is confirmed, then an object
+`{"channels":[...],"comuni":[{"channel":"Airbnb","comuneIstat":"015146"}]}` (no `channels` member while the list for every comune was never answered). 422 `issuer_field_invalid` on `portalTouristTaxComuni` for a channel that is not a
+portal, a code that is not six digits, more than 200 pairs or a Swiss issuer; 422 `issuer_profile_incomplete` before the issuer step created the profile; 403 `fiscal_settings_need_whole_org` for a caller who reaches only some of the
+properties. `portalTouristTaxConflict` is a boolean data-quality hint: the record of a recent active stay (ended less than 12 months ago) says the opposite of the
+rule of the organization for its channel in the comune of the property (a tax recorded as collected by the portal while the rule says «at the property», or the opposite); no «To do». A caller who reaches only some of the properties
+does not get the three members that sum up the organization (`italianPortalProposals`, `confirmedPortalTouristTaxComuni`, `portalTouristTaxConflict`), as it cannot change the setup; the DTO is fail-closed (it gives them only to a
+caller that checked the reach of the whole organization).
 
 *Not verified, for the accountant:* what happens to the host when a portal that collects the rent does not collect or pay the tax (no source on the recourse of the comune); the list of the comuni where Airbnb is active (outside
 Milano and Firenze only the listing says so; the agreement of Roma was not read); Booking.com, Expedia and Vrbo (re-verify before the release); the VAT treatment of the line (outside the VAT, read on the regulation of Milano only);
-the text of L. 213/2023 and D.Lgs. 147/2026; Trento and Bolzano have their own rules. **Rollback:** revert the change; no data was written, no migration, no flag.
+the text of L. 213/2023 and D.Lgs. 147/2026; Trento and Bolzano have their own rules. **Rollback:** revert the change; no migration, no flag. The only data written is the confirmation of a comune, in the column that already existed:
+the code before this change reads the object form as a list that could not be read, that is «no portal collects it», which is the Italian default, so a revert loses the confirmations (they stay in the column) and says «da pagare in
+struttura» again; the plain array of an organization that never confirmed a comune is untouched.
 
 **When the booking changes.** `IFiscalDocumentService.ApplyBookingChangeAsync` follows a change of the booking: a **draft** is made again from it (or discarded when the booking is no
 longer active and nothing was collected for it; kept with a «To do» when money was collected or when it cannot be made again); an **issued** document is **never** rewritten: it is corrected

@@ -14,12 +14,23 @@ public enum ItalianTouristTaxOrigin
     /// <summary>The record of the stay's tourist tax (E25): the host's declaration for the stay, or the collector of the calculation the host confirmed.</summary>
     StayRecord,
 
-    /// <summary>The organization's own list of the portals that collect it: the answer it saved, or the default of the configuration while it saved none.</summary>
+    /// <summary>
+    /// The organization's own answer: the list of the portals that collect it in every comune (the answer it saved, or the default of the configuration while it saved none), or the portal
+    /// it confirmed for the comune of the property (<see cref="PortalComune"/>).
+    /// </summary>
     Organization,
 
     /// <summary>Nothing says that the portal collects it: the host collects it at the property (the global default).</summary>
     Default,
 }
+
+/// <summary>
+/// A portal that collects the tourist tax in one comune, as the organization confirmed it (the proposal of the setup, «Airbnb incassa a Milano», confirmed by a person): the channel and the
+/// ISTAT code (six digits) of the comune. It says nothing of any other comune.
+/// </summary>
+/// <param name="Channel">The portal.</param>
+/// <param name="ComuneIstat">The ISTAT code of the comune, six digits.</param>
+public sealed record PortalComune(BookingSource Channel, string ComuneIstat);
 
 /// <summary>Who collects the tourist tax of an Italian stay, and where that comes from.</summary>
 /// <param name="Collector">Who collects it: never unknown (a stay nobody said anything about is the host's).</param>
@@ -40,7 +51,8 @@ public sealed record ItalianTouristTaxDecision(TouristTaxCollector Collector, It
 /// <remarks>
 /// The order, strongest first: (1) a booking that is not of a channel: the host; (2) the record of the stay and the data of the channel: the active rule of the comune and the channel
 /// (<see cref="TouristTaxCollectorRules.Decide"/>), the host's declaration for the stay, the collector of the calculation the host confirmed (E25); (3) the rule of the organization: the portals of
-/// its own list, the one it saved or, while it saved none, the default of the configuration (<c>ItalianTouristTax:PlatformCollected</c>, none by default); (4) the global default: the host, at the
+/// its own list, the one it saved or, while it saved none, the default of the configuration (<c>ItalianTouristTax:PlatformCollected</c>, none by default), and the portals it confirmed for one comune
+/// (<see cref="PortalComune"/>), which count only for a property in that comune; (4) the global default: the host, at the
 /// property. Nothing is ever «unknown»: <see cref="TouristTaxCollectorRules.Decide"/> asks the host who collected, this rule does not wait for the answer.
 /// </remarks>
 public static class ItalianPortalTouristTax
@@ -48,14 +60,17 @@ public static class ItalianPortalTouristTax
     /// <summary>
     /// Who collects the tourist tax of a stay of <paramref name="source"/>: see the order of <see cref="ItalianPortalTouristTax"/>. <paramref name="channelRule"/> is the active rule of the comune of
     /// the property and the channel, <paramref name="declared"/> the collector the host declared for the stay, <paramref name="confirmed"/> the collector of the calculation the host confirmed, and
-    /// <paramref name="organizationChannels"/> the portals the organization says collect it.
+    /// <paramref name="organizationChannels"/> the portals the organization says collect it in every comune; <paramref name="organizationComuni"/> the portals it confirmed for one comune, which
+    /// count only for a property in that comune (<paramref name="comuneIstat"/>, the ISTAT code of the property): the confirmation of Airbnb for Milano says nothing of a flat in Como.
     /// </summary>
     public static ItalianTouristTaxDecision Decide(
         BookingSource source,
         TouristTaxChannelRule? channelRule,
         TouristTaxCollector? declared,
         TouristTaxCollector? confirmed,
-        IReadOnlyCollection<BookingSource> organizationChannels)
+        IReadOnlyCollection<BookingSource> organizationChannels,
+        IReadOnlyCollection<PortalComune>? organizationComuni = null,
+        string? comuneIstat = null)
     {
         ArgumentNullException.ThrowIfNull(organizationChannels);
 
@@ -72,29 +87,57 @@ public static class ItalianPortalTouristTax
         if (confirmed is { } confirmedCollector)
             return new ItalianTouristTaxDecision(confirmedCollector, ItalianTouristTaxOrigin.StayRecord);
 
-        return organizationChannels.Contains(source)
+        return OrganizationCollects(source, organizationChannels, organizationComuni, comuneIstat)
             ? new ItalianTouristTaxDecision(TouristTaxCollector.Channel, ItalianTouristTaxOrigin.Organization)
             : new ItalianTouristTaxDecision(TouristTaxCollector.Host, ItalianTouristTaxOrigin.Default);
     }
 
-    /// <summary>What the organization's own rule says of a channel: the portal collects it when the channel is in its list, the host does otherwise.</summary>
-    public static TouristTaxCollector OrganizationRuleOf(BookingSource source, IReadOnlyCollection<BookingSource> organizationChannels)
+    /// <summary>
+    /// Whether the organization says the portal collects the tax of a stay of <paramref name="source"/> in the comune <paramref name="comuneIstat"/>: the channel is in its list of the portals that collect
+    /// it everywhere, or it confirmed that very channel for that very comune. A comune it did not confirm (or a property with no ISTAT code) is never taken from another comune's confirmation.
+    /// </summary>
+    public static bool OrganizationCollects(
+        BookingSource source,
+        IReadOnlyCollection<BookingSource> organizationChannels,
+        IReadOnlyCollection<PortalComune>? organizationComuni,
+        string? comuneIstat)
     {
         ArgumentNullException.ThrowIfNull(organizationChannels);
-        return organizationChannels.Contains(source) ? TouristTaxCollector.Channel : TouristTaxCollector.Host;
+
+        if (organizationChannels.Contains(source))
+            return true;
+
+        var comune = comuneIstat?.Trim();
+        return organizationComuni is { Count: > 0 } && !string.IsNullOrEmpty(comune) && organizationComuni.Any(c => c.Channel == source && string.Equals(c.ComuneIstat, comune, StringComparison.Ordinal));
     }
+
+    /// <summary>
+    /// What the organization's own rule says of a channel in a comune: the portal collects it when the channel is in its list (everywhere) or it confirmed the channel for that comune, the host does
+    /// otherwise.
+    /// </summary>
+    public static TouristTaxCollector OrganizationRuleOf(
+        BookingSource source,
+        IReadOnlyCollection<BookingSource> organizationChannels,
+        IReadOnlyCollection<PortalComune>? organizationComuni = null,
+        string? comuneIstat = null) =>
+        OrganizationCollects(source, organizationChannels, organizationComuni, comuneIstat) ? TouristTaxCollector.Channel : TouristTaxCollector.Host;
 
     /// <summary>
     /// Whether the collector the record of a stay gives (<paramref name="recorded"/>: the host's declaration, else the collector of the calculation it confirmed) contradicts the organization's rule
     /// for the channel: a record of the tax collected by the portal while the rule says «at the property», or the opposite. Nothing recorded, or a booking that is not of a channel, contradicts nothing.
     /// </summary>
-    public static bool Contradicts(BookingSource source, TouristTaxCollector? recorded, IReadOnlyCollection<BookingSource> organizationChannels)
+    public static bool Contradicts(
+        BookingSource source,
+        TouristTaxCollector? recorded,
+        IReadOnlyCollection<BookingSource> organizationChannels,
+        IReadOnlyCollection<PortalComune>? organizationComuni = null,
+        string? comuneIstat = null)
     {
         ArgumentNullException.ThrowIfNull(organizationChannels);
 
         return TouristTaxCollectorRules.IsChannelBooking(source)
                && recorded is { } collector
-               && collector != OrganizationRuleOf(source, organizationChannels);
+               && collector != OrganizationRuleOf(source, organizationChannels, organizationComuni, comuneIstat);
     }
 }
 

@@ -29,11 +29,16 @@ public class BillingSetupController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver,
     ILogger<BillingSetupController> logger,
-    IPortalAccountSettingsService? portalAccounts = null) : ControllerBase
+    IPortalAccountSettingsService? portalAccounts = null,
+    IItalianTouristTaxSetup? italianTouristTax = null) : ControllerBase
 {
     /// <summary>The settings of the portal accounts (E14/F01/US01/T01), registered with the fiscal documents.</summary>
     private IPortalAccountSettingsService PortalAccounts =>
         portalAccounts ?? throw new InvalidOperationException("The settings of the portal accounts are not registered.");
+
+    /// <summary>The proposals and the confirmation of the tourist tax of the Italian portals (FIX/BE-IT-TOURISTTAX-DEFAULTS), registered with the fiscal documents.</summary>
+    private IItalianTouristTaxSetup ItalianTouristTax =>
+        italianTouristTax ?? throw new InvalidOperationException("The setup of the tourist tax of the Italian portals is not registered.");
 
     /// <summary>
     /// Every section of the setup, in the order of the wizard: <c>{ complete, sections: [{ section, applies, complete, values, missing }] }</c>, a missing item being
@@ -90,7 +95,33 @@ public class BillingSetupController(
         }
 
         var saved = await billingSetup.PutSectionAsync(orgId.Value, section, request.ToPayload(), User.GetUserId(), cancellationToken);
-        return Ok(BillingSetupSectionDto.From(saved));
+        // The guard above says the caller reaches the whole organization.
+        return Ok(BillingSetupSectionDto.From(saved, orgWide: true));
+    }
+
+    /// <summary>
+    /// The confirmation of the proposals «Airbnb incassa, da confermare» (FIX/BE-IT-TOURISTTAX-DEFAULTS): <c>{ comuni: [{ channel, comuneIstat }] }</c>, the whole list of the portals the organization
+    /// confirms for one comune each (a proposal of <c>italianPortalProposals</c>, or any portal and comune it knows), which replaces the one it had; an empty list takes every confirmation away and a
+    /// request without <c>comuni</c> is 422, never «every comune». It counts only for the properties in that comune, so the confirmation for Milano is nothing for a flat in Como, and it never touches
+    /// <c>platformCollectedTouristTaxChannels</c> (the portals that collect it everywhere). Answers the section <c>touristTax</c> as saved, with <c>confirmedPortalTouristTaxComuni</c>. Only for an
+    /// Italian issuer with a profile: 422 <c>issuer_field_invalid</c> on <c>portalTouristTaxComuni</c> (a channel that is not a portal, a code that is not six digits, a Swiss issuer),
+    /// <c>issuer_profile_incomplete</c> before the issuer step created the profile; 403 <c>fiscal_settings_need_whole_org</c> for a caller who reaches only some of the properties.
+    /// </summary>
+    [HttpPut("touristTax/portal-comuni")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(BillingSetupSectionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<BillingSetupSectionDto>> PutPortalComuni([FromBody] ConfirmPortalComuniRequest request, CancellationToken cancellationToken)
+    {
+        if (await WholeOrgAsync(cancellationToken) is not { } orgId)
+            return NeedsWholeOrg();
+
+        await ItalianTouristTax.ConfirmComuniAsync(orgId, request.ToComuni(), User.GetUserId(), cancellationToken);
+        var setup = await billingSetup.GetAsync(orgId, cancellationToken);
+
+        // WholeOrgAsync above says the caller reaches the whole organization.
+        return Ok(BillingSetupSectionDto.From(setup.Sections.Single(s => s.Section == BillingSetupSections.TouristTax), orgWide: true));
     }
 
     /// <summary>
@@ -112,7 +143,8 @@ public class BillingSetupController(
 
         await PortalAccounts.SaveAsync(orgId, command, User.GetUserId(), cancellationToken);
         var setup = await billingSetup.GetAsync(orgId, cancellationToken);
-        return Ok(BillingSetupSectionDto.From(setup.Sections.Single(s => s.Section == BillingSetupSections.Channels)));
+        // WholeOrgAsync above says the caller reaches the whole organization.
+        return Ok(BillingSetupSectionDto.From(setup.Sections.Single(s => s.Section == BillingSetupSections.Channels), orgWide: true));
     }
 
     /// <summary>

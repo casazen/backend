@@ -29,6 +29,7 @@ public sealed class GuestDocumentLineBuilder(
     private const string LodgingTaxByPortalKey = "FiscalDocLineLodgingTaxByPortal";
     private const string CleaningKey = "FiscalDocLineCleaning";
     private const string TouristTaxKey = "FiscalDocLineTouristTax";
+    private const string TouristTaxToCollectKey = "FiscalDocLineTouristTaxToCollect";
     private const string SwissTouristTaxKey = "FiscalDocLineTouristTaxCh";
 
     public IReadOnlyList<BookingSource> PlatformCollectedChannelsOf(OrgFiscalIssuerProfile profile)
@@ -46,7 +47,7 @@ public sealed class GuestDocumentLineBuilder(
     }
 
     /// <summary>True for an issuer in Italy: the country the profile has when it names none.</summary>
-    private static bool IsItalian(string? countryCode) =>
+    internal static bool IsItalian(string? countryCode) =>
         string.IsNullOrWhiteSpace(countryCode) || string.Equals(countryCode.Trim(), FiscalDocumentRules.Italy, StringComparison.OrdinalIgnoreCase);
 
     public async Task<GuestDocumentLines> BuildAsync(
@@ -73,28 +74,40 @@ public sealed class GuestDocumentLineBuilder(
                 b.OtaCompanyCollect,
                 b.OtaCommissionIncludedInPayments,
                 b.Property.SwissMunicipalityCode,
-                b.Property.ComuneIstatCode))
+                b.Property.ComuneIstatCode,
+                b.OrgId))
             .FirstOrDefaultAsync(ct)
             ?? throw new NotFoundException($"Booking {bookingId} was not found") { Code = "booking_not_found", MessageKey = "BookingNotFound" };
 
         var language = DocumentLanguages.Italian;
         var (lodging, cleaning) = SplitOf(stay.BasePrice, stay.CleaningFee);
 
-        // The tourist tax first: the line of the tax is drawn only when the host collects it, and the line of the stay says so when an Italian portal collected a tax (nothing else is said of it).
-        var (tax, collectedByPortal) = rule.IsSwiss
-            ? (await SwissTouristTaxAsync(stay, platformCollectedTouristTaxChannels, ct), false)
+        // Who collected the money first: the line of an Italian tax the portal left to the host is written «da pagare in struttura» when the document is made, so that the XML and the API say what the PDF says.
+        var paymentChannel = await ChannelOfAsync(stay, ct);
+
+        // The tourist tax: the line of the tax is drawn only when the host collects it, and the line of the stay says so when an Italian portal collected a tax (nothing else is said of it).
+        var tax = rule.IsSwiss
+            ? new TouristTaxOutcome(await SwissTouristTaxAsync(stay, platformCollectedTouristTaxChannels, ct), false, false)
             : await ItalianTouristTaxAsync(stay, platformCollectedTouristTaxChannels, ct);
 
         var lines = new List<FiscalDocumentGrossLine>();
         if (lodging > 0m)
-            lines.Add(Line(texts.Get(collectedByPortal ? LodgingTaxByPortalKey : LodgingKey, language, stay.Nights), lodging, FiscalLineType.Accommodation, rule));
+            lines.Add(Line(texts.Get(tax.CollectedByPortal ? LodgingTaxByPortalKey : LodgingKey, language, stay.Nights), lodging, FiscalLineType.Accommodation, rule));
         if (cleaning > 0m)
             lines.Add(Line(texts.Get(CleaningKey, language), cleaning, FiscalLineType.Cleaning, rule));
-        if (tax > 0m)
-            lines.Add(Line(texts.Get(rule.IsSwiss ? SwissTouristTaxKey : TouristTaxKey, language), tax, FiscalLineType.TouristTax, rule));
+        if (tax.Amount > 0m)
+            lines.Add(Line(texts.Get(TouristTaxKeyOf(rule, paymentChannel), language), tax.Amount, FiscalLineType.TouristTax, rule));
 
-        return new GuestDocumentLines(lines, await ChannelOfAsync(stay, ct));
+        return new GuestDocumentLines(lines, paymentChannel, tax.Amount > 0m && tax.FromDefault);
     }
+
+    /// <summary>
+    /// The words of the line of the tourist tax: the Swiss ones for a Swiss document; in Italy, «Imposta di soggiorno da pagare in struttura» when the portal collected the money and left the tax to the host
+    /// (it is still to collect at the property), «riscossa per conto del comune» when the host collects it with the rest. The PDF says the same while some of it is to collect, whatever a document made
+    /// before stored (<c>FiscalDocumentPdfs</c>).
+    /// </summary>
+    private static string TouristTaxKeyOf(FiscalTaxRule rule, FiscalPaymentChannel paymentChannel) =>
+        rule.IsSwiss ? SwissTouristTaxKey : paymentChannel == FiscalPaymentChannel.Portal ? TouristTaxToCollectKey : TouristTaxKey;
 
     /// <summary>
     /// The lines of the booking that the document of the plan bills (E17/F01/US01/T02): all of them for the one document of the organization; the stay of an owner
@@ -184,20 +197,29 @@ public sealed class GuestDocumentLineBuilder(
     /// (the host's declaration, the collector of the calculation it confirmed), the organization's own list of portals (<paramref name="organizationChannels"/>), and last the default, the
     /// host at the property; never «unknown», so a portal booking nobody said anything about gets the line, and the document says «da pagare in struttura» (the portal is never taken to
     /// have collected a tax it was not recorded to collect). When the portal collects a tax the stay is known to owe there is no line (never a double charge to the guest) and the document
-    /// says so (<c>CollectedByPortal</c>); no amount known, nothing to say.
+    /// says so (<c>CollectedByPortal</c>); no amount known, nothing to say. The portals the organization confirmed for one comune (the proposal «Airbnb incassa a Milano») are read from its profile and
+    /// count only for a property in that comune: the confirmation for Milano is nothing for a flat in Como.
     /// </summary>
-    private async Task<(decimal Amount, bool CollectedByPortal)> ItalianTouristTaxAsync(
+    private async Task<TouristTaxOutcome> ItalianTouristTaxAsync(
         StayFacts stay,
         IReadOnlyList<BookingSource> organizationChannels,
         CancellationToken ct)
     {
         var istatCode = stay.ComuneIstatCode?.Trim();
         TouristTaxChannelRule? channelRule = null;
+        IReadOnlyList<PortalComune> organizationComuni = [];
         if (TouristTaxCollectorRules.IsChannelBooking(stay.Source) && !string.IsNullOrEmpty(istatCode))
         {
             channelRule = await db.TouristTaxChannelRules
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.Channel == stay.Source && r.IstatCode == istatCode && r.IsActive, ct);
+
+            var stored = await db.OrgFiscalIssuerProfiles
+                .AsNoTracking()
+                .OfOrganization(stay.OrgId)
+                .Select(p => p.PlatformCollectedTouristTaxChannelsJson)
+                .FirstOrDefaultAsync(ct);
+            organizationComuni = OrgFiscalIssuerProfile.PortalComuniOf(stored);
         }
 
         var record = await db.StayTouristTaxes
@@ -205,10 +227,19 @@ public sealed class GuestDocumentLineBuilder(
             .Where(t => t.BookingId == stay.Id)
             .Select(t => new TaxRecord(t.ConfirmedAt, t.Total, t.DeclaredCollector, t.ConfirmedAt != null ? t.Collector : null))
             .FirstOrDefaultAsync(ct);
-        var decision = ItalianPortalTouristTax.Decide(stay.Source, channelRule, record?.DeclaredCollector, record?.ConfirmedCollector, organizationChannels);
+        var decision = ItalianPortalTouristTax.Decide(
+            stay.Source,
+            channelRule,
+            record?.DeclaredCollector,
+            record?.ConfirmedCollector,
+            organizationChannels,
+            organizationComuni,
+            istatCode);
 
         var amount = record is { ConfirmedAt: not null } ? record.Total : stay.TouristTax;
-        return decision.HostCollects ? (amount, false) : (0m, amount > 0m);
+        return decision.HostCollects
+            ? new TouristTaxOutcome(amount, false, decision.Origin == ItalianTouristTaxOrigin.Default)
+            : new TouristTaxOutcome(0m, amount > 0m, false);
     }
 
     /// <summary>
@@ -244,6 +275,9 @@ public sealed class GuestDocumentLineBuilder(
     /// <summary>The record of the tourist tax of the stay (E25): what the host confirmed, who it declared collects, and the collector of the calculation it confirmed (none before it confirmed).</summary>
     private sealed record TaxRecord(DateTime? ConfirmedAt, decimal Total, TouristTaxCollector? DeclaredCollector, TouristTaxCollector? ConfirmedCollector);
 
+    /// <summary>What the tourist tax of the stay comes to: the amount of its line (0 for none), whether the portal collected a tax the stay owes, and whether the line is there only by the default.</summary>
+    private sealed record TouristTaxOutcome(decimal Amount, bool CollectedByPortal, bool FromDefault);
+
     private sealed record StayFacts(
         Guid Id,
         BookingSource Source,
@@ -256,7 +290,8 @@ public sealed class GuestDocumentLineBuilder(
         bool? OtaCompanyCollect,
         bool? OtaCommissionIncludedInPayments,
         string? SwissMunicipalityCode,
-        string? ComuneIstatCode)
+        string? ComuneIstatCode,
+        Guid OrgId)
     {
         /// <summary>The nights of the stay (calendar days between check-in and check-out).</summary>
         public int Nights => Math.Max(0, (CheckOut.Date - CheckIn.Date).Days);

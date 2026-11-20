@@ -20,6 +20,14 @@ public interface IItalianTouristTaxSetup
         IReadOnlyList<BookingSource> organizationChannels,
         bool organizationConfirmed,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// The portals the organization confirms for one comune each (the proposal «Airbnb incassa a Milano», confirmed by a person): the whole list, which replaces the one it had; an empty one takes every
+    /// confirmation away (it never means «every comune»). They count only for a property in that comune and never touch the list of the portals that collect it everywhere. Only for an Italian issuer
+    /// that already has its profile; 422 <c>issuer_field_invalid</c> on <c>portalTouristTaxComuni</c> for a channel that is not a portal, an ISTAT code that is not six digits, or a profile that is not
+    /// Italian; 422 <c>issuer_profile_incomplete</c> while the profile does not exist. The caller must reach the whole organization (the setup is the organization's): the controller checks it.
+    /// </summary>
+    Task ConfirmComuniAsync(Guid orgId, IReadOnlyList<PortalComune> comuni, string? updatedByUserId, CancellationToken ct = default);
 }
 
 /// <summary>The proposals and the hint of <see cref="IItalianTouristTaxSetup"/>.</summary>
@@ -30,7 +38,11 @@ public interface IItalianTouristTaxSetup
 /// True when the record of a recent stay (E25: the collector the host declared, or the one of the calculation it confirmed) contradicts the organization's rule for the channel: tax recorded as collected
 /// by the portal while the rule says «at the property», or the opposite. A data-quality hint: no «To do», nothing is changed by it.
 /// </param>
-public sealed record ItalianTouristTaxSetupView(IReadOnlyList<ItalianPortalProposal> Proposals, bool ChannelDataConflict);
+/// <param name="ConfirmedComuni">The portals the organization confirmed for one comune each (the proposals a person confirmed): they count only for a property in that comune.</param>
+public sealed record ItalianTouristTaxSetupView(IReadOnlyList<ItalianPortalProposal> Proposals, bool ChannelDataConflict, IReadOnlyList<ItalianPortalConfirmation> ConfirmedComuni);
+
+/// <summary>A portal the organization confirmed for one comune: the ISTAT code (six digits) and the name of the <see cref="BookingSource"/>.</summary>
+public sealed record ItalianPortalConfirmation(string ComuneIstat, string Channel);
 
 /// <summary>The members the section <c>touristTax</c> of the billing setup carries for an Italian issuer (read only, never saved: the issuer's own answer is <c>platformCollectedTouristTaxChannels</c>).</summary>
 public static class ItalianTouristTaxSetupKeys
@@ -40,4 +52,7 @@ public static class ItalianTouristTaxSetupKeys
 
     /// <summary>A boolean: the records of the stays contradict the organization's rule (the data-quality hint).</summary>
     public const string ChannelDataConflict = "portalTouristTaxConflict";
+
+    /// <summary><c>[{ comuneIstat, channel }]</c>: the portals the organization confirmed for one comune each (the proposals a person confirmed), saved by <c>PUT api/billing-setup/touristTax/portal-comuni</c>.</summary>
+    public const string ConfirmedComuni = "confirmedPortalTouristTaxComuni";
 }

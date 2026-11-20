@@ -539,10 +539,10 @@ public sealed class OwnerStatementDocuments(
         if (stays.Count == 0)
             return [];
 
-        // Who collects the tax of a stay is what the host's tourist tax says (TouristTaxCollectorRules: the active rule of the channel in the comune of the property,
-        // else the collector the host declared for the stay), else the one the host confirmed with the calculation; and any channel of the list of the issuer as the
-        // guest documents read it (the confirmed one, else the shipped default of a Swiss issuer). A stay that nobody is known to collect for is the agency's: never an
-        // assumed 0.
+        // Who collects the tax of a stay is what the guest document of the stay says. Italy: ItalianPortalTouristTax.Decide (the active rule of the channel in the comune of the property,
+        // the collector the host declared for the stay, the one it confirmed with the calculation, the answer of the organization, and last the host); Switzerland: any channel of the list of
+        // the issuer as the guest documents read it (the confirmed one, else the shipped default), else the rule and the collector of the stay. A stay that nobody is known to collect for is
+        // the agency's: never an assumed 0.
         var ids = stays.Select(b => b.Id).ToList();
         var records = (await db.StayTouristTaxes
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -561,15 +561,25 @@ public sealed class OwnerStatementDocuments(
             .OfOrganization(orgId)
             .FirstOrDefaultAsync(ct);
         var platformCollected = PlatformCollectedChannelsOf(orgId, issuer);
+        var swissIssuer = FiscalDocumentRules.IsSwiss(issuer?.CountryCode);
+        var confirmedComuni = issuer?.PortalTouristTaxComuni ?? [];
 
         bool ChannelCollects(BookingFacts stay)
         {
-            if (platformCollected.Contains(stay.Source))
-                return true;
-
             var comune = ComuneOf(stay, properties);
             var rule = comune is null ? null : rules.FirstOrDefault(r => r.Channel == stay.Source && r.IstatCode == comune);
             records.TryGetValue(stay.Id, out var record);
+
+            // Italy: the one rule of the guest document of the stay (FIX/BE-IT-TOURISTTAX-DEFAULTS): the rule of the comune, the record of the stay (the declaration of the host, the collector of the
+            // calculation it confirmed), then the answer of the organization (its list for every comune, or the portal it confirmed for the comune of the property), and last the host at the property.
+            // The statement and the document never say two things of one stay.
+            if (!swissIssuer)
+                return ItalianPortalTouristTax.Decide(stay.Source, rule, record?.DeclaredCollector, record?.Collector, platformCollected, confirmedComuni, comune).Collector == TouristTaxCollector.Channel;
+
+            // Switzerland: the list of the issuer first, as the Swiss guest document reads it, then the collector of the stay.
+            if (platformCollected.Contains(stay.Source))
+                return true;
+
             var collector = TouristTaxCollectorRules.Decide(stay.Source, rule, record?.DeclaredCollector).Collector ?? record?.Collector;
             return collector == TouristTaxCollector.Channel;
         }

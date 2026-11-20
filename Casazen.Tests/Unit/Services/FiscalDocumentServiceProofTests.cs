@@ -522,7 +522,11 @@ public class FiscalDocumentServiceProofTests
             if (swiss)
                 Assert.Contains("- tassa da riscuotere in struttura", text, StringComparison.Ordinal);
             else
+            {
+                // The cell of the line of the tax says «da pagare in struttura» (a cell on its own: the paragraph of the payment has a colon after it), never «riscossa».
+                Assert.Contains("\nImposta di soggiorno da pagare in struttura\n", text, StringComparison.Ordinal);
                 Assert.DoesNotContain("riscossa per conto del comune", text, StringComparison.Ordinal);
+            }
         }
         else
         {

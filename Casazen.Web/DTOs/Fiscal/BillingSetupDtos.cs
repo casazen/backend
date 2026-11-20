@@ -1,9 +1,11 @@
 using System.Text.Json.Serialization;
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Models;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Core.Validation;
 
 namespace Casazen.Web.DTOs.Fiscal;
@@ -20,9 +22,10 @@ public sealed class BillingSetupDto
 
     /// <summary>
     /// The setup as the API answers it. <paramref name="orgWide"/> says the caller reaches the whole organization: a caller who reaches only some of its properties gets the setup without
-    /// the members that sum up all of them (<see cref="BillingSetupSectionDto.OrgWideValues"/>), never the whole organization's properties by the way.
+    /// the members that sum up all of them (<see cref="BillingSetupSectionDto.OrgWideValues"/>), never the whole organization's properties by the way. It is <b>false by default</b> (a
+    /// caller that does not say who it answers is not taken to reach everything): only a caller that checked the reach of the whole organization passes <c>true</c>.
     /// </summary>
-    public static BillingSetupDto From(BillingSetup setup, bool orgWide = true)
+    public static BillingSetupDto From(BillingSetup setup, bool orgWide = false)
     {
         ArgumentNullException.ThrowIfNull(setup);
         return new BillingSetupDto { Complete = setup.IsComplete, Sections = [.. setup.Sections.Select(section => BillingSetupSectionDto.From(section, orgWide))] };
@@ -48,16 +51,17 @@ public sealed class BillingSetupSectionDto
     public required IReadOnlyList<BillingSetupItemDto> Missing { get; init; }
 
     /// <summary>
-    /// The read-only members that sum up the properties of the whole organization (FIX/BE-IT-TOURISTTAX-DEFAULTS): the proposals for the comuni of its properties and the hint about the records of
-    /// its stays. A caller who reaches only some of the properties does not get them (it may read the setup and may not change it).
+    /// The read-only members that sum up the properties of the whole organization (FIX/BE-IT-TOURISTTAX-DEFAULTS): the proposals for the comuni of its properties, the portals it confirmed for a
+    /// comune and the hint about the records of its stays. A caller who reaches only some of the properties does not get them (it may read the setup and may not change it).
     /// </summary>
     public static IReadOnlySet<string> OrgWideValues { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         ItalianTouristTaxSetupKeys.Proposals,
         ItalianTouristTaxSetupKeys.ChannelDataConflict,
+        ItalianTouristTaxSetupKeys.ConfirmedComuni,
     };
 
-    public static BillingSetupSectionDto From(BillingSetupSection section, bool orgWide = true)
+    public static BillingSetupSectionDto From(BillingSetupSection section, bool orgWide = false)
     {
         ArgumentNullException.ThrowIfNull(section);
         return new BillingSetupSectionDto
@@ -212,4 +216,56 @@ public sealed class SaveBillingSetupSectionRequest
         failures.Add(new InvoiceDataFailure(DocumentIssuerErrorCodes.FieldInvalid, field));
         return null;
     }
+}
+
+/// <summary>
+/// The portals the organization confirms for one comune each (<c>PUT api/billing-setup/touristTax/portal-comuni</c>, FIX/BE-IT-TOURISTTAX-DEFAULTS): the proposal «Airbnb incassa a Milano» of the
+/// setup, confirmed by a person, is <c>{ "comuni": [{ "channel": "Airbnb", "comuneIstat": "015146" }] }</c>. The list is the whole answer: it replaces the one the organization had, an empty one takes
+/// every confirmation away, and a request without <c>comuni</c> is 422 (never «every comune»). It counts only for the properties in that comune and never touches
+/// <c>platformCollectedTouristTaxChannels</c>, the list of the portals that collect it everywhere.
+/// </summary>
+public sealed class ConfirmPortalComuniRequest
+{
+    /// <summary>The (portal, comune) pairs, the whole list; absent is a refusal.</summary>
+    public IReadOnlyList<PortalComuneRequest>? Comuni { get; init; }
+
+    /// <summary>The pairs of the service. A missing list, a channel that is not the name of a <c>BookingSource</c> or a blank comune is 422 <c>issuer_field_invalid</c> on <c>portalTouristTaxComuni</c>.</summary>
+    public IReadOnlyList<PortalComune> ToComuni()
+    {
+        var comuni = new List<PortalComune>();
+        var valid = Comuni is not null;
+        foreach (var item in Comuni ?? [])
+        {
+            if (item is null || string.IsNullOrWhiteSpace(item.Channel) || !EnumNames.TryParseDefined<BookingSource>(item.Channel, out var channel) || string.IsNullOrWhiteSpace(item.ComuneIstat))
+            {
+                valid = false;
+                break;
+            }
+
+            comuni.Add(new PortalComune(channel, item.ComuneIstat.Trim()));
+        }
+
+        if (valid)
+            return comuni;
+
+        throw new DomainRuleException(DocumentIssuerErrorCodes.FieldInvalid, DocumentIssuerErrorCodes.MessageKeyOf(DocumentIssuerErrorCodes.FieldInvalid))
+        {
+            Extensions = new Dictionary<string, object?>
+            {
+                ["field"] = FieldName,
+                ["errors"] = new[] { new { field = FieldName, code = DocumentIssuerErrorCodes.FieldInvalid } },
+            },
+        };
+    }
+
+    /// <summary>The field the refusals name (the one of the service).</summary>
+    private const string FieldName = "portalTouristTaxComuni";
+}
+
+/// <summary>One portal confirmed for one comune: <c>channel</c> (the name of a <c>BookingSource</c>, a portal) and <c>comuneIstat</c> (six digits).</summary>
+public sealed class PortalComuneRequest
+{
+    public string? Channel { get; init; }
+
+    public string? ComuneIstat { get; init; }
 }

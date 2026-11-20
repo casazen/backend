@@ -110,7 +110,7 @@ public static class FiscalDocumentPdfs
             ],
             lines.Select(l => Row(
                     l.LineNumber.ToString(CultureInfo.InvariantCulture),
-                    DescriptionOf(split, l, texts, language),
+                    DescriptionOf(document, split, l, texts, language),
                     l.Quantity.ToString("0.##", DocumentLanguages.CultureOf(language)),
                     DocumentLanguages.Money(l.UnitPrice, language),
                     DocumentLanguages.Money(l.TotalPrice, language),
@@ -338,12 +338,21 @@ public static class FiscalDocumentPdfs
     }
 
     /// <summary>
-    /// The description of a line in the Italian layout: as stored, except the line of the tourist tax the portal left to the host (<paramref name="split"/>, FIX/BE-PORTAL-TAXLINE), which says
-    /// «Imposta di soggiorno da pagare in struttura» instead of «riscossa per conto del comune»: a tax that is still to be paid is never described as collected, and the Italian layout says
-    /// «imposta» throughout, never «riscossa» together with «da riscuotere» (FIX/BE-IT-TOURISTTAX-DEFAULTS).
+    /// The description of a line in the Italian layout: as stored, except the line of the tourist tax of a document paid through a portal. While some of that tax is still to collect
+    /// (<paramref name="split"/>, FIX/BE-PORTAL-TAXLINE) it says «Imposta di soggiorno da pagare in struttura» (a document made before FIX/BE-IT-TOURISTTAX-DEFAULTS stored «riscossa per conto del
+    /// comune», which would say the opposite; a document made since stores the right words); once the stay records all of it as collected it says what a tax the host collected says («riscossa per
+    /// conto del comune»), even though the document was made with «da pagare»: a tax that is still to be paid is never described as collected and the other way round, and the Italian layout says
+    /// «imposta» throughout, never «riscossa» together with «da riscuotere».
     /// </summary>
-    private static string DescriptionOf(PortalCollectionSplit? split, FiscalDocumentLine line, IDocumentTexts texts, string language) =>
-        split?.IsToCollect(line) == true ? texts.Get("FiscalDocLineTouristTaxToCollect", language) : line.Description;
+    private static string DescriptionOf(FiscalDocument document, PortalCollectionSplit? split, FiscalDocumentLine line, IDocumentTexts texts, string language)
+    {
+        if (split?.IsToCollect(line) == true)
+            return texts.Get("FiscalDocLineTouristTaxToCollect", language);
+
+        return line.LineType == FiscalLineType.TouristTax && FiscalDocumentPortalCollection.TaxLeftToTheHost(document) > 0m
+            ? texts.Get("FiscalDocLineTouristTax", language)
+            : line.Description;
+    }
 
     /// <summary>
     /// The description of a line of the Swiss layout, with the note that its tax is to be collected at the property when it is the line of tourist tax the portal left to the host

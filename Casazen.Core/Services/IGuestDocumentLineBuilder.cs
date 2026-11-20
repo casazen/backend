@@ -49,4 +49,8 @@ public interface IGuestDocumentLineBuilder
 /// <summary>The lines of a guest document as the guest pays them (VAT included), in order, with who collected the money.</summary>
 /// <param name="Lines">The lines, each with its type; empty when the booking has nothing to bill (the amounts are then refused).</param>
 /// <param name="PaymentChannel">Who collected the money: decides the payment state the document shows.</param>
-public sealed record GuestDocumentLines(IReadOnlyList<FiscalDocumentGrossLine> Lines, FiscalPaymentChannel PaymentChannel);
+/// <param name="TouristTaxFromDefault">
+/// True when the line of the tourist tax is there only because nothing said the portal collects it (an Italian portal booking with no rule of the comune, no record of the stay and no answer of the
+/// organization: <c>ItalianTouristTaxOrigin.Default</c>, FIX/BE-IT-TOURISTTAX-DEFAULTS). A document issued before that default has no such line and is not a document that changed when it is the only difference.
+/// </param>
+public sealed record GuestDocumentLines(IReadOnlyList<FiscalDocumentGrossLine> Lines, FiscalPaymentChannel PaymentChannel, bool TouristTaxFromDefault = false);
