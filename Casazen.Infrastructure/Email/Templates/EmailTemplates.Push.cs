@@ -230,6 +230,18 @@ public static partial class EmailTemplates
     /// </summary>
     public static PushText AssistDeclaredPush(CultureInfo culture) => Push(culture, "Push_AssistDeclared");
 
+    /// <summary>
+    /// The custom domain of the org became verified (E40/F01/US02/T01), to the administrators of the org: the bell and its live update only (the app has no screen of
+    /// the domain). Never the name of the domain, nothing of a person.
+    /// </summary>
+    public static PushText DomainVerifiedPush(CultureInfo culture) => Push(culture, "Push_DomainVerified");
+
+    /// <summary>The owner sign-in on the org's domain is enabled (E40/F01/US02/T01, NF-141), to the administrators of the org. No domain name.</summary>
+    public static PushText OwnerLoginReadyPush(CultureInfo culture) => Push(culture, "Push_OwnerLoginReady");
+
+    /// <summary>The owner sign-in on the org's domain could not be enabled (E40/F01/US02/T01, NF-141), to the administrators of the org: they can retry. No domain name.</summary>
+    public static PushText OwnerLoginFailedPush(CultureInfo culture) => Push(culture, "Push_OwnerLoginFailed");
+
     private static PushText Push(CultureInfo culture, string prefix, params object[] values) =>
         new(
             EmailTexts.Get($"{prefix}_Title", culture),
