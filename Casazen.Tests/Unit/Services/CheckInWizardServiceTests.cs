@@ -40,12 +40,13 @@ public class CheckInWizardServiceTests
         // No region requires a statistical field: an empty one is never an issue (data minimization).
         Assert.DoesNotContain(Issues(guest, []), i => i.Code == CheckInIssueCodes.GuestFieldRequired);
 
-        // The region requires the kind of tourism: the empty field is a blocking issue, and only that field.
+        // The region requires the kind of tourism: the empty field is a warning (the ISTAT statistic never holds the guests back from the police
+        // communication, see CheckInWizard_ARegionStatisticalField_IsAWarning_AndTheHostCanStillConfirmAndSend_Test), and only that field.
         var required = Issues(guest, [IstatGuestFieldLists.TourismTypeField]);
         var issue = Assert.Single(required, i => i.Code == CheckInIssueCodes.GuestFieldRequired);
         Assert.Equal("tourismType", issue.Field);
         Assert.Equal(guest.Position, issue.Position);
-        Assert.True(issue.Blocking);
+        Assert.False(issue.Blocking);
         Assert.DoesNotContain(required, i => i.Field == "travelWay");
 
         // Filled in, it is no issue any more.
@@ -58,23 +59,78 @@ public class CheckInWizardServiceTests
         Assert.False(expired.Blocking);
     }
 
+    /// <summary>
+    /// A statistical field the region requires (ISTAT) never keeps the guests of a stay from going to the channel manager, which sends the police
+    /// communication on (E21/F01/US01/T01, post-merge review): the Alloggiati communication is a legal obligation with a deadline, the statistic is not, and
+    /// CasaZen does not pass the field to the channel manager. The wizard warns, the host can still confirm, the guests are sent, and the step it suggests is
+    /// not «guests». The rule is <c>CheckInReadinessRules.SendBlockers</c>, the one of the automatic send too (a proof for it is in
+    /// <c>OctorateGuestAutoSendTests</c>).
+    /// </summary>
+    [Fact]
+    public async Task CheckInWizard_ARegionStatisticalField_IsAWarning_AndTheHostCanStillConfirmAndSend_Test()
+    {
+        await using var db = NewDb($"wizard-istat-warning-{Guid.NewGuid():N}", null);
+        await db.Database.EnsureCreatedAsync();
+        db.Comuni.Add(Como());
+        var booking = await SeedStayAsync(db, OrgA);
+        var property = await db.Properties.SingleAsync(p => p.Id == booking.PropertyId);
+        property.ComuneIstatCode = "013075";
+        var row = await db.IstatRegionRules.SingleAsync(r => r.RegionIstatCode == "03");
+        row.RequiredGuestFields = IstatGuestFieldLists.TourismTypeField;
+        await db.SaveChangesAsync();
+
+        // A complete record of the one guest, without the kind of tourism the region asks.
+        var guest = CompleteGuest();
+        guest.BookingId = booking.Id;
+        guest.OrgId = OrgA;
+        var octorate = new Mock<ICheckInOctorateSyncService>();
+        var wizard = Wizard(db, [guest], octorate);
+
+        var state = await wizard.GetStateAsync(booking.Id, CancellationToken.None);
+        var issue = Assert.Single(state.Issues, i => i.Code == CheckInIssueCodes.GuestFieldRequired);
+        Assert.Equal(("tourismType", false), (issue.Field, issue.Blocking));
+        Assert.Empty(CheckInReadinessRules.SendBlockers(state.Issues));
+        Assert.NotEqual(CheckInWizardSteps.Guests, state.SuggestedStep);
+
+        // The host confirms: nothing stops it, the guests go to the channel manager, and the warning is still there for the host to read.
+        var confirmation = await wizard.ConfirmAsync(booking.Id, "auth0|host-a", CancellationToken.None);
+        octorate.Verify(o => o.SendGuestsAsync(booking.Id, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains(confirmation.State.Issues, i => i is { Code: CheckInIssueCodes.GuestFieldRequired, Blocking: false });
+    }
+
+    /// <summary>
+    /// The one rule of the stays that may go to the channel manager: only a blocking issue holds them back, and never a statistical field of the region, even
+    /// if one were built as blocking; the suggested step of the wizard follows the same rule, so a missing statistical field alone does not send the host back
+    /// to the guests.
+    /// </summary>
+    [Fact]
+    public void CheckInReadiness_SendBlockers_NeverCountTheStatisticalFieldOfARegion_Test()
+    {
+        var missing = new CheckInIssue(0, CheckInIssueCodes.GuestFieldMissing, "lastName", true);
+        var required = new CheckInIssue(0, CheckInIssueCodes.GuestFieldRequired, "tourismType", Blocking: false);
+        var requiredAsBlocking = required with { Blocking = true };
+        var warning = new CheckInIssue(0, CheckInIssueCodes.DocumentExpired, "documentExpiresOn", false);
+
+        Assert.Equal([missing], CheckInReadinessRules.SendBlockers([missing, required, requiredAsBlocking, warning]));
+        Assert.Empty(CheckInReadinessRules.SendBlockers([required, requiredAsBlocking, warning]));
+
+        // Only the warning of the region is left: the host is not sent back to the guests, and the send is the next thing to do (a mirrored stay not sent yet).
+        var step = CheckInWizardService.SuggestedStep(
+            savedGuests: 1, [required, requiredAsBlocking], tax: null, octorateReceivesGuests: true, new OctorateCheckInView(true, [], []), StayAttendance.Expected);
+        Assert.Equal(CheckInWizardSteps.Send, step);
+        Assert.Equal(
+            CheckInWizardSteps.Guests,
+            CheckInWizardService.SuggestedStep(
+                savedGuests: 1, [missing, required], tax: null, octorateReceivesGuests: true, new OctorateCheckInView(true, [], []), StayAttendance.Expected));
+    }
+
     [Fact]
     public async Task CheckInWizard_State_AsksTheFieldsOfTheRegionTable_Test()
     {
         // The statistical fields of the wizard are the ones of the row of the ISTAT region table of the comune of the property (E21/F01/US01/T01).
         await using var db = NewDb($"wizard-istat-{Guid.NewGuid():N}", null);
         await db.Database.EnsureCreatedAsync();
-        db.Comuni.Add(new Comune
-        {
-            IstatCode = "013075",
-            Name = "Como",
-            DisplayName = "Como",
-            NormalizedName = "como",
-            SearchText = "como",
-            ProvinceCode = "CO",
-            RegionIstatCode = "03",
-            RegionName = "Lombardia",
-        });
+        db.Comuni.Add(Como());
         var booking = await SeedStayAsync(db, OrgA);
         var property = await db.Properties.SingleAsync(p => p.Id == booking.PropertyId);
         property.ComuneIstatCode = "013075";
@@ -307,13 +363,29 @@ public class CheckInWizardServiceTests
             NullLogger<StayLifecycleService>.Instance,
             Clock);
 
-    /// <summary>The wizard over <paramref name="db"/>: the services it composes answer for a stay with no registered guest, never sent.</summary>
-    private static CheckInWizardService Wizard(AppDbContext db)
+    /// <summary>Como, in Lombardia: the comune of the tests of the region table.</summary>
+    private static Comune Como() => new()
+    {
+        IstatCode = "013075",
+        Name = "Como",
+        DisplayName = "Como",
+        NormalizedName = "como",
+        SearchText = "como",
+        ProvinceCode = "CO",
+        RegionIstatCode = "03",
+        RegionName = "Lombardia",
+    };
+
+    /// <summary>
+    /// The wizard over <paramref name="db"/>: the services it composes answer for the registered <paramref name="guests"/> (none by default), never sent;
+    /// <paramref name="octorate"/> is the channel manager's sync, whose send answers «not applicable».
+    /// </summary>
+    private static CheckInWizardService Wizard(AppDbContext db, IReadOnlyList<StayGuest>? guests = null, Mock<ICheckInOctorateSyncService>? octorate = null)
     {
         var stayGuests = new Mock<IStayGuestService>();
         stayGuests
             .Setup(s => s.GetForBookingAsync(It.IsAny<Booking>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<StayGuest>());
+            .ReturnsAsync(guests ?? Array.Empty<StayGuest>());
         var codeTables = new Mock<IAlloggiatiCodeTableService>();
         codeTables
             .Setup(c => c.LoadCodeBookAsync(It.IsAny<IEnumerable<StayGuest>>(), It.IsAny<CancellationToken>()))
@@ -322,10 +394,13 @@ public class CheckInWizardServiceTests
         tax
             .Setup(t => t.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new DomainRuleException(StayTouristTaxService.NotCalculableCode, "TouristTaxNotCalculable"));
-        var octorate = new Mock<ICheckInOctorateSyncService>();
+        octorate ??= new Mock<ICheckInOctorateSyncService>();
         octorate
             .Setup(o => o.GetStatusAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctorateCheckInView(false, [], []));
+        octorate
+            .Setup(o => o.SendGuestsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateCheckInSendResult(OctorateCheckInSendState.NotApplicable, null, false, [], false));
         var senders = new Mock<IPropertySenderStore>();
         senders
             .Setup(s => s.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))

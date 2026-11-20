@@ -24,7 +24,8 @@ public class SwissFiscalDocumentPdfTests
     /// <summary>
     /// PROOF TEST: data rule. The invoice of a registered Swiss issuer (4 nights CHF 600, cleaning 80 with the stay, an extra 40, the tourist tax 16) shows
     /// «N. IVA CHE-109.322.551 IVA», the two rates of the summary with their bases and VAT (3.8%: 655.11 and 24.89; 8.1%: 37.00 and 3.00), the total
-    /// CHF 736.00, the stay and the property, the tourist tax labelled outside the VAT, and the payment through the portal without naming it.
+    /// CHF 736.00, the stay and the property, the tourist tax labelled outside the VAT, and the payment through the portal without naming it: the portal collected the 720.00 of the stay
+    /// and left the tourist tax of 16.00 to the host, so the document says that tax is to be collected at the property and does not declare it paid (FIX/BE-PORTAL-TAXLINE).
     /// </summary>
     [Fact]
     public void SwissInvoicePdf_HasVatNumberAndRateSummary_Test()
@@ -48,10 +49,10 @@ public class SwissFiscalDocumentPdfTests
             new[] { new[] { "8.1%", "37.00", "3.00" }, new[] { "3.8%", "655.11", "24.89" } },
             summary.Rows.Select(r => r.ToArray()).ToArray());
 
-        // The lines with their VAT rate; the tourist tax labelled as the tax outside the VAT.
+        // The lines with their VAT rate; the tourist tax labelled as the tax outside the VAT, with the note that the portal did not collect it.
         var lines = Assert.Single(content.Blocks.OfType<PdfTable>(), t => t.Columns.Count == 5);
         Assert.Equal(new[] { "3.8%", "3.8%", "8.1%", "—" }, lines.Rows.Select(r => r[4]).ToArray());
-        Assert.Equal("Tassa di soggiorno (non soggetta all'IVA)", lines.Rows[3][0]);
+        Assert.Equal("Tassa di soggiorno (non soggetta all'IVA) - tassa da riscuotere in struttura", lines.Rows[3][0]);
 
         // The totals in CHF, written the Swiss way.
         var totals = Assert.Single(content.Blocks.OfType<PdfTable>(), t => t.Columns.Count == 2);
@@ -60,7 +61,8 @@ public class SwissFiscalDocumentPdfTests
         Assert.Equal("1'234.50", SwissFiscalDocumentPdf.Money(1234.5m));
         Assert.Equal("12'345'678.90", SwissFiscalDocumentPdf.Money(12345678.9m));
 
-        Assert.Contains("Pagata tramite il portale", text, StringComparison.Ordinal);
+        Assert.Contains("Pagata tramite il portale: CHF 720.00", text, StringComparison.Ordinal);
+        Assert.Contains("Tassa di soggiorno da riscuotere in struttura: CHF 16.00", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Booking", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Octorate", text, StringComparison.OrdinalIgnoreCase);
         AssertNothingItalian(text);

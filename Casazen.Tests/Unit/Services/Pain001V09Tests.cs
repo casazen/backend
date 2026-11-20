@@ -30,8 +30,10 @@ namespace Casazen.Tests.Unit.Services;
 /// <b>confirmed payouts</b> of the owners (the net after the withholding), validated against the official schema before anything is saved, encrypted at rest,
 /// and its endpoints check the organization. E16/F01/US02/T01 (NF-25): the EUR wire file is the ISO 20022 <c>pain.001.001.09</c> message with the rules of the SEPA
 /// credit transfer of the EPC (service level <c>SEPA</c>, charge bearer <c>SLEV</c>, no BIC, structured addresses), validated the same way. The official schemas are
-/// not in the repository until an operator adds them (docs/runbooks/wire-transfers.md): the proofs that need them are skipped with a clear message while they are
-/// missing, and the other tests give the service a schema of their own (<see cref="Pain001TestSchemas"/>).
+/// in the repository, embedded in the build and pinned by their SHA-256 in docs/runbooks/wire-transfers.md
+/// (<c>Pain001ValidationProofTests.EmbeddedSchemas_HaveTheChecksumsOfTheRunbook_Test</c>), so the proofs that validate against them run. The skip of
+/// <see cref="OfficialPain001SchemaFactAttribute"/> is the exception, for a build that lacks a file (no longer the normal state: that same test fails then). The
+/// other tests are about the rules of the service and give it a schema of their own (<see cref="Pain001TestSchemas"/>).
 /// </summary>
 public class Pain001V09Tests
 {
@@ -43,9 +45,11 @@ public class Pain001V09Tests
 
     /// <summary>
     /// Money and data rule (AC-NF113-3): a CHF batch built from confirmed payouts is a <c>pain.001.001.09.ch.03</c> file that validates against the OFFICIAL schema of
-    /// the Swiss Payment Standards, with the schema of the build (no stand-in), and an altered file does not validate. Skipped with its reason while the official
-    /// file is not in <c>Payments/Schemas/Swiss</c>: nothing is claimed valid that was not checked (the service answers 422 <c>wire_batch_schema_unavailable</c>
-    /// then, never a made-up success).
+    /// the Swiss Payment Standards, with the schema of the build (no stand-in), and an altered file does not validate. The official file is in
+    /// <c>Payments/Schemas/Swiss</c> (pinned by its SHA-256 in the runbook), so this proof runs; it is skipped, with its reason, only in a build that lacks the file
+    /// (no longer the normal state): nothing is claimed valid that was not checked (the service answers 422 <c>wire_batch_schema_unavailable</c> then, never a
+    /// made-up success). The altered file (no <c>MsgId</c>) fails on any schema: that the schema is the Swiss one is proved by
+    /// <see cref="SwissSchema_RejectsTheOtherShapeOfTheDebtorAgent_Test"/> and by the checksum of the embedded files.
     /// </summary>
     [OfficialPain001SchemaFact(WireTransferErrors.SwissCurrency)]
     public async Task Pain001V09_ChfBatch_ValidAgainstOfficialXsd_Test()
@@ -79,9 +83,9 @@ public class Pain001V09Tests
     /// <summary>
     /// Money and data rule (E16/F01/US02/T01, NF-25): a EUR batch built from confirmed payouts is a <c>pain.001.001.09</c> file that validates against the OFFICIAL ISO
     /// 20022 schema <c>pain.001.001.09.xsd</c> of the message catalogue, with the schema of the build (no stand-in), and follows the SEPA rules the schema leaves open
-    /// (the service has just checked them: <see cref="Pain001Checks"/>); an altered file does not validate. Skipped with its reason while the official file is not in
-    /// <c>Payments/Schemas/Iso</c>: nothing is claimed valid that was not checked (the service answers 422 <c>wire_batch_schema_unavailable</c> then, never a made-up
-    /// success).
+    /// (the service has just checked them: <see cref="Pain001Checks"/>); an altered file does not validate. The official file is in <c>Payments/Schemas/Iso</c>
+    /// (pinned by its SHA-256 in the runbook), so this proof runs; it is skipped, with its reason, only in a build that lacks the file (no longer the normal state):
+    /// nothing is claimed valid that was not checked (the service answers 422 <c>wire_batch_schema_unavailable</c> then, never a made-up success).
     /// </summary>
     [OfficialPain001SchemaFact(WireTransferErrors.SepaCurrency)]
     public async Task Pain001V09_EurBatch_ValidAgainstIsoXsd_Test()
@@ -261,7 +265,7 @@ public class Pain001V09Tests
     /// The CHF file is the Swiss message and nothing else: the <c>pain.001.001.09</c> namespace and its schema location, one payment per execution date with its
     /// count, sum, date (<c>ReqdExctnDt/Dt</c>), debtor and IBAN, one transfer per payout with the unique end-to-end id of the payout, the amount, the creditor with a
     /// <b>structured</b> address (and no address line), the creditor IBAN and the remittance «Rendiconto 10/2026». The children of every element follow the ISO 20022
-    /// sequence, which a schema checks and this test keeps checked while the official file is missing.
+    /// sequence, which the official schema checks and this test keeps checked on its own, with no schema of the build (it runs in any build).
     /// </summary>
     [Fact]
     public async Task Pain001V09_ChfFile_IsTheSwissMessageWithStructuredAddresses_Test()
@@ -338,26 +342,18 @@ public class Pain001V09Tests
     /// <summary>
     /// Data rule: the debtor agent of the Swiss file validates against the OFFICIAL Swiss schema, which takes a BIC or a clearing member id there and no «other
     /// identification»: a Swiss or a Liechtenstein debit IBAN names its bank by the institution identifier it carries (characters 5 to 9), and an IBAN that carries none
-    /// (not a Swiss or Liechtenstein one) leaves the bank unnamed, which the schema also takes. Skipped with its reason while the official Swiss file is not in the build.
+    /// (not a Swiss or Liechtenstein one) or whose identifier is no clearing member (a QR-IBAN, institution 30000 to 31999) leaves the bank unnamed, which the schema
+    /// also takes. The cases are a Swiss, a Liechtenstein, a foreign and a QR-IBAN. Skipped with its reason only in a build that lacks the official Swiss file (no
+    /// longer the normal state).
     /// </summary>
     [OfficialPain001SchemaFact(WireTransferErrors.SwissCurrency)]
     public void Pain001V09Writer_SwissDebtorAgent_IsTheInstitutionOfTheIban_OrNoBank_AndValidates_Test()
     {
         var schemas = Pain001SchemaProvider.GetSchemas(WireTransferErrors.SwissCurrency);
-        var creditor = new Pain001Party("Mario Rossi", "Via Cantonale", "12", "6900", "Lugano", "CH");
-        var debtor = new Pain001Party("Quokka Immobiliare SA", "Via Nassa", null, "6900", "Lugano", "CH");
 
-        foreach (var (debitIban, institution) in new (string Iban, string? Institution)[] { (DebitIban, "08307"), (LiechtensteinIban, "08810"), (ItalianIban, null) })
+        foreach (var (debitIban, institution) in new (string Iban, string? Institution)[] { (DebitIban, "08307"), (LiechtensteinIban, "08810"), (ItalianIban, null), (QrIban, null) })
         {
-            var message = new Pain001Message(
-                "CZ" + Guid.NewGuid().ToString("N"),
-                new DateTime(2026, 11, 14, 11, 0, 0),
-                "CHF",
-                debtor,
-                debitIban,
-                [new Pain001Transfer("CZ" + Guid.NewGuid().ToString("N"), 10.10m, creditor, SwissIban, "Rendiconto 10/2026", ExecutionDate)]);
-
-            var xml = Pain001V09Writer.Write(message);
+            var xml = Pain001V09Writer.Write(SwissMessageDebitedFrom(debitIban));
 
             Assert.Empty(XsdValidator.Validate(xml, schemas));
             var bank = XDocument.Parse(xml).Descendants(Swiss + "DbtrAgt").Single().Element(Swiss + "FinInstnId")!;
@@ -365,6 +361,64 @@ public class Pain001V09Tests
             Assert.Equal(institution, bank.Element(Swiss + "ClrSysMmbId")?.Element(Swiss + "MmbId")?.Value);
             Assert.Equal(institution is null, !bank.HasElements);
         }
+    }
+
+    /// <summary>
+    /// Data rule (NF-113): a QR-IBAN is the account of a QR-bill, a credit-side account, and its institution identifier (30000 to 31999) is no member of the Swiss bank
+    /// clearing. Legacy data can still hold one as the debit account of the issuer profile (the profile refuses it today), and the batch is still made: its Swiss file
+    /// names no bank (an empty debtor agent, never the identifier of the QR-bill as a clearing member) and still validates against the official Swiss schema, which takes
+    /// an unnamed bank. A normal Swiss IBAN keeps naming its bank.
+    /// </summary>
+    [OfficialPain001SchemaFact(WireTransferErrors.SwissCurrency)]
+    public async Task DebtorAgent_QrIban_NamesNoBank_Test()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = NewDb(orgId);
+        await AddIssuerAsync(db, orgId, iban: QrIban);
+        var payouts = await AddTwoPayoutsAsync(db, orgId);
+
+        var (batch, xml) = await NewService(db).CreateBatchAsync(orgId, payouts, ExecutionDate);
+
+        Assert.Equal(WireMessageFormats.Pain001V09Ch03, batch.MessageFormat);
+        var document = XDocument.Parse(xml);
+        Assert.Equal(QrIban, document.Descendants(Swiss + "DbtrAcct").Single().Descendants(Swiss + "IBAN").Single().Value);
+        var bank = document.Descendants(Swiss + "DbtrAgt").Single().Element(Swiss + "FinInstnId")!;
+        Assert.False(bank.HasElements);
+        Assert.Empty(document.Descendants(Swiss + "ClrSysMmbId"));
+        Assert.Empty(XsdValidator.Validate(xml, Pain001SchemaProvider.GetSchemas(WireTransferErrors.SwissCurrency)));
+
+        // The control: the normal Swiss debit IBAN of the other tests still names its bank, so it is the QR-IBAN that leaves it out.
+        var normal = XDocument.Parse(Pain001V09Writer.Write(SwissMessageDebitedFrom(DebitIban)));
+        Assert.Equal("08307", normal.Descendants(Swiss + "DbtrAgt").Single().Descendants(Swiss + "MmbId").Single().Value);
+    }
+
+    /// <summary>
+    /// Data rule: the two embedded schemas are told apart by their content, not by a name. The shape the EUR file writes for the debtor agent, <c>FinInstnId/Othr/Id</c>
+    /// «NOTPROVIDED», is refused by the Swiss schema (it takes a BIC or a clearing member there and no «other identification») and accepted by the ISO one, while the
+    /// shape the Swiss file writes validates against the Swiss schema: an ISO schema renamed into <c>Swiss/</c> would take the old shape, and a Swiss one in
+    /// <c>Iso/</c> would refuse it (the altered-file proofs only remove <c>MsgId</c>, which every schema refuses, so they cannot tell the two schemas apart). Skipped
+    /// with its reason only in a build that lacks one of the two official files (no longer the normal state).
+    /// </summary>
+    [OfficialPain001SchemaFact(WireTransferErrors.SwissCurrency, WireTransferErrors.SepaCurrency)]
+    public void SwissSchema_RejectsTheOtherShapeOfTheDebtorAgent_Test()
+    {
+        var swissSchemas = Pain001SchemaProvider.GetSchemas(WireTransferErrors.SwissCurrency);
+        var isoSchemas = Pain001SchemaProvider.GetSchemas(WireTransferErrors.SepaCurrency);
+
+        // The shape of the Swiss file: a clearing member (the control: the rest of the file is right, so only the debtor agent below can be what is refused).
+        var swissShape = Pain001V09Writer.Write(SwissMessageDebitedFrom(DebitIban));
+        Assert.Empty(XsdValidator.Validate(swissShape, swissSchemas));
+
+        // The shape of the EUR file: an «other identification» «not provided».
+        var document = XDocument.Parse(swissShape);
+        var bank = document.Descendants(Swiss + "DbtrAgt").Single().Element(Swiss + "FinInstnId")!;
+        bank.RemoveNodes();
+        bank.Add(new XElement(Swiss + "Othr", new XElement(Swiss + "Id", "NOTPROVIDED")));
+        var otherShape = document.ToString();
+
+        var refused = XsdValidator.Validate(otherShape, swissSchemas);
+        Assert.Contains(refused, error => error.Message.Contains("Othr", StringComparison.Ordinal));
+        Assert.Empty(XsdValidator.Validate(otherShape, isoSchemas));
     }
 
     /// <summary>
@@ -457,7 +511,7 @@ public class Pain001V09Tests
     /// namespace and the schema location of the ISO file, one payment with the service level <c>SEPA</c> (before the requested date) and the charge bearer <c>SLEV</c>
     /// (after the debtor agent), the debtor agent «not provided» and no creditor agent and no BIC at all (the IBAN alone: the BIC is optional), the debtor and the
     /// creditors with a <b>structured</b> address (and no address line), the creditor IBAN and the remittance «Rendiconto 10/2026». The children of every element follow
-    /// the ISO 20022 sequence, which a schema checks and this test keeps checked while the official file is missing.
+    /// the ISO 20022 sequence, which the official schema checks and this test keeps checked on its own, with no schema of the build (it runs in any build).
     /// </summary>
     [Fact]
     public async Task Pain001V09_EurFile_IsTheSepaMessageWithStructuredAddresses_Test()
@@ -880,6 +934,43 @@ public class Pain001V09Tests
     }
 
     /// <summary>
+    /// Money rule (NF-113): a CHF batch is a domestic payment of the Swiss system, debited from an account a Swiss bank holds. A debit IBAN of the issuer profile that is
+    /// not Swiss or Liechtenstein (here an Italian one, which passes the check digits) is 422 <c>wire_debit_iban_not_swiss</c>, nothing is saved and neither the IBAN nor
+    /// the name is in the error or the log (the writer would otherwise leave the bank unnamed, a file a Swiss bank does not execute). The same org's Liechtenstein IBAN
+    /// makes the batch. EUR is unchanged: the EUR batch of the same org with the same foreign debit IBAN is made, as before.
+    /// </summary>
+    [Fact]
+    public async Task ChfBatch_FromANonSwissDebitIban_IsRefused_Test()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = NewDb(orgId);
+        await AddIssuerAsync(db, orgId, iban: ItalianIban);
+        var chf = await AddTwoPayoutsAsync(db, orgId);
+        var logger = new CapturingLogger<WireTransferService>();
+        var service = NewService(db, logger);
+
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateBatchAsync(orgId, chf, ExecutionDate));
+
+        Assert.Equal(WireTransferErrors.DebitIbanNotSwiss, refused.Code);
+        Assert.Equal("WireDebitIbanNotSwiss", refused.MessageKey);
+        Assert.Empty(refused.MessageArgs);
+        AssertNoSecret(refused, logger);
+        await AssertNothingSavedAsync(db);
+
+        // EUR is unchanged: the issuer profile with the same foreign debit IBAN pays a EUR batch (its debtor agent is «not provided», whatever the bank).
+        var eur = await AddTwoPayoutsAsync(db, orgId, WireTransferErrors.SepaCurrency);
+        var (eurBatch, _) = await service.CreateBatchAsync(orgId, eur, ExecutionDate);
+        Assert.Equal(WireTransferErrors.SepaCurrency, eurBatch.Currency);
+
+        // A Liechtenstein debit IBAN is a domestic one of the Swiss system: the CHF batch that was refused is made, in a file that names the bank of that IBAN.
+        (await db.OrgFiscalIssuerProfiles.SingleAsync()).Iban = LiechtensteinIban;
+        await db.SaveChangesAsync();
+        var (chfBatch, xml) = await service.CreateBatchAsync(orgId, chf, ExecutionDate);
+        Assert.Equal(WireTransferErrors.SwissCurrency, chfBatch.Currency);
+        Assert.Equal("08810", XDocument.Parse(xml).Descendants(Swiss + "DbtrAgt").Single().Descendants(Swiss + "MmbId").Single().Value);
+    }
+
+    /// <summary>
     /// Data rule: an owner whose name is only in an alphabet the message cannot write (Cyrillic, Greek, Chinese: it would go to the bank as points) is refused for the
     /// batch like an owner with no name, with the owner id (422 <c>wire_owner_address_missing</c>), in both files, and nothing is saved.
     /// </summary>
@@ -1236,6 +1327,24 @@ public class Pain001V09Tests
         return element.Elements().Select(e => e.Name.LocalName).ToArray();
     }
 
+    /// <summary>
+    /// A Swiss message of one transfer whose debit account is <paramref name="debitIban"/>: the writer reads the institution identifier of that IBAN to name the bank
+    /// and nothing else of it (the check digits are the service's business), so the IBANs of these tests need not be real accounts.
+    /// </summary>
+    private static Pain001Message SwissMessageDebitedFrom(string debitIban)
+    {
+        var creditor = new Pain001Party("Mario Rossi", "Via Cantonale", "12", "6900", "Lugano", "CH");
+        var debtor = new Pain001Party("Quokka Immobiliare SA", "Via Nassa", null, "6900", "Lugano", "CH");
+
+        return new Pain001Message(
+            "CZ" + Guid.NewGuid().ToString("N"),
+            new DateTime(2026, 11, 14, 11, 0, 0),
+            "CHF",
+            debtor,
+            debitIban,
+            [new Pain001Transfer("CZ" + Guid.NewGuid().ToString("N"), 10.10m, creditor, SwissIban, "Rendiconto 10/2026", ExecutionDate)]);
+    }
+
     /// <summary>A EUR batch of two transfers to owners of Como and its SEPA file.</summary>
     private static async Task<(WireBatch Batch, string Xml)> WriteTwoEurTransfersAsync()
     {
@@ -1316,17 +1425,20 @@ public class Pain001V09Tests
 }
 
 /// <summary>
-/// A <c>[Fact]</c> that needs the official schema of a wire currency in the build: it is skipped, with the reason, while the file is not in the repository
-/// (docs/runbooks/wire-transfers.md), and runs as soon as it is. Never a pass that checked nothing.
+/// A <c>[Fact]</c> that needs the official schema of one or more wire currencies in the build. Both official files are in the repository, embedded and pinned by
+/// their SHA-256 (docs/runbooks/wire-transfers.md), so the proof runs; the skip, with the reason, is for a build that lacks a file or whose file does not compile,
+/// which is no longer the normal state (<c>Pain001ValidationProofTests.EmbeddedSchemas_HaveTheChecksumsOfTheRunbook_Test</c> fails then). Never a pass that checked
+/// nothing.
 /// </summary>
 public sealed class OfficialPain001SchemaFactAttribute : FactAttribute
 {
-    public OfficialPain001SchemaFactAttribute(string currency)
+    public OfficialPain001SchemaFactAttribute(params string[] currencies)
     {
-        if (!Pain001SchemaProvider.HasOfficialSchema(currency))
+        foreach (var currency in currencies.Where(c => !Pain001SchemaProvider.HasOfficialSchema(c)))
         {
-            Skip = $"The official {currency} wire schema is not in the repository (Casazen.Infrastructure/Payments/Schemas): add it as docs/runbooks/wire-transfers.md says, "
+            Skip = $"The official {currency} wire schema is not in this build (Casazen.Infrastructure/Payments/Schemas): restore it as docs/runbooks/wire-transfers.md says, "
                    + $"and this proof validates the {currency} file against it. {Pain001SchemaProvider.LoadProblem(currency)}";
+            return;
         }
     }
 }

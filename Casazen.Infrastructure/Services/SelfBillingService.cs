@@ -29,10 +29,12 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Only active stays.</b> The ledger is posted by hand (the month-end posting), so the line of a stay cancelled or marked no-show since is still alive until the next posting:
 /// the bookings are read for their channel, their check-out day and whether they are active now (<see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/> and no no-show, the one definition),
 /// and a stay that is not is reported as not due (<see cref="SelfBillingNotDueReasons.StayNotActive"/>), in the drafts and at the issue.</item>
+/// <item><b>The «Da fare» of the drafts and the monthly run</b> (FIX/BE-TD17-ALERTS, <c>SelfBillingService.MonthlyDrafts.cs</c>): the generation, the issue and the discard keep the
+/// item of the month in step with the drafts that are left (<paramref name="activities"/>, nothing without it); only the monthly run raises it.</item>
 /// <item><b>Logs</b> carry ids and counts: never a name, a VAT number or an amount.</item>
 /// </list>
 /// </remarks>
-public sealed class SelfBillingService(
+public sealed partial class SelfBillingService(
     AppDbContext db,
     IFiscalDocumentService documents,
     IDocumentIssuerService issuers,
@@ -41,7 +43,8 @@ public sealed class SelfBillingService(
     IDocumentTexts texts,
     IOptions<SelfBillingOptions> options,
     TimeProvider time,
-    ILogger<SelfBillingService> logger) : ISelfBillingService
+    ILogger<SelfBillingService> logger,
+    IInternalActivityService? activities = null) : ISelfBillingService
 {
     /// <summary>The most TD17 one call of the list answers (the newest periods first).</summary>
     public const int MaxListRows = 1000;
@@ -51,7 +54,15 @@ public sealed class SelfBillingService(
 
     private DateTime UtcNow => time.GetUtcNow().UtcDateTime;
 
-    public async Task<SelfBillingGeneration> CreateDraftsForPeriodAsync(Guid orgId, int year, int month, string? userId, CancellationToken ct = default)
+    public Task<SelfBillingGeneration> CreateDraftsForPeriodAsync(Guid orgId, int year, int month, string? userId, CancellationToken ct = default) =>
+        GenerateDraftsAsync(orgId, year, month, userId, onlyMissing: false, ct);
+
+    /// <summary>
+    /// The generation of the drafts of a month. With <paramref name="onlyMissing"/> (the monthly run) a holder and portal that already has a TD17 of the month in <b>any</b> state (a draft, an
+    /// issued one, one a person discarded) is left alone: no draft is made again, updated or dropped, so a draft a person discarded stays discarded; only the holders that have none get a draft,
+    /// which is how the ones refused by an earlier run are tried again without a second draft for the others. Without it (a person's click) the drafts are made again from the ledger.
+    /// </summary>
+    private async Task<SelfBillingGeneration> GenerateDraftsAsync(Guid orgId, int year, int month, string? userId, bool onlyMissing, CancellationToken ct)
     {
         if (year is < 2000 or > 2100 || month is < 1 or > 12)
             throw new DomainRuleException(SelfBillingErrors.PeriodInvalid, "SelfBillingPeriodInvalid");
@@ -65,7 +76,7 @@ public sealed class SelfBillingService(
         var live = await db.FiscalDocuments
             .Include(d => d.Lines)
             .Where(d => d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.PeriodYear == year && d.PeriodMonth == month
-                        && d.Status != FiscalDocumentStatus.Discarded && d.Kind != DocumentKind.CreditNote)
+                        && (onlyMissing || d.Status != FiscalDocumentStatus.Discarded) && d.Kind != DocumentKind.CreditNote)
             .ToListAsync(ct);
 
         var last = new DateOnly(year, month, 1).AddMonths(1).AddDays(-1);
@@ -73,12 +84,17 @@ public sealed class SelfBillingService(
         int created = 0, updated = 0, alreadyIssued = 0, discarded = 0;
         var outcomes = new List<SelfBillingOutcome>();
         var matched = new HashSet<Guid>();
+        var matches = MatchGroups(plan.Groups, live);
         foreach (var group in plan.Groups)
         {
             var composition = Compose(group, names, year, month, last);
-            var existing = live.FirstOrDefault(d => IsDocumentOf(d, group));
+            var existing = matches.GetValueOrDefault(group);
             if (existing is not null)
                 matched.Add(existing.Id);
+
+            // The monthly run makes what is missing and nothing else: whoever has a TD17 of the month in any state (a discarded one included) is not made again.
+            if (onlyMissing && existing is not null)
+                continue;
 
             if (existing is { Status: FiscalDocumentStatus.Issued })
             {
@@ -120,18 +136,39 @@ public sealed class SelfBillingService(
             outcomes.Add(OutcomeOf(draft, group, existing is null ? SelfBillingResults.Created : SelfBillingResults.Updated, changedSinceIssue: false));
         }
 
-        // A draft the ledger no longer supports (its commissions are gone, its holder or its portal changed) is dropped: it has no number, and the month shows what is true.
-        foreach (var stale in live.Where(d => d.Status == FiscalDocumentStatus.Draft && !matched.Contains(d.Id)))
+        // A draft the ledger no longer supports (its commissions are gone, its holder or its portal changed) is dropped: it has no number, and the month shows what is true. The monthly run
+        // touches no draft that exists. The exception is the replacement of a TD17 the SDI rejected (FIX/BE-TD17-CORRECTION): it holds the number that TD17 gave up, so dropping it would leave a hole
+        // in the numbering of the series and the rejected TD17 could not be corrected again. It is kept as it is (the accountant decides what the number is for), and the answer says why it cannot be
+        // issued (Kept); the warning carries ids and a code only.
+        var held = new List<FiscalDocument>();
+        if (!onlyMissing)
         {
-            stale.Status = FiscalDocumentStatus.Discarded;
-            stale.UpdatedAt = UtcNow;
-            discarded++;
+            foreach (var stale in live.Where(d => d.Status == FiscalDocumentStatus.Draft && !matched.Contains(d.Id)))
+            {
+                if (FiscalDocumentService.HoldsAReplacedNumber(stale))
+                {
+                    held.Add(stale);
+                    continue;
+                }
+
+                stale.Status = FiscalDocumentStatus.Discarded;
+                stale.UpdatedAt = UtcNow;
+                discarded++;
+            }
         }
+
+        var kept = await KeptOfAsync(orgId, held, plan, ct);
+        foreach (var entry in kept)
+            logger.LogWarning("Self-billed invoice draft {DocumentId} of org {OrgId} holds the number of a rejected TD17 and nothing gives it a TD17 now ({Reason}): kept, not discarded", entry.DocumentId, orgId, entry.Reason);
 
         if (discarded > 0)
             await db.SaveChangesAsync(ct);
         if (transaction is not null)
             await transaction.CommitAsync(ct);
+
+        // The «Da fare» of the month follows the drafts that are left: a generation that dropped the last one closes it (it never raises it: that is the monthly run's), and its words follow the
+        // holders refused now.
+        await TrySyncDraftsTodoAsync(orgId, year, month, plan.Failed.Count, ct);
 
         logger.LogInformation(
             "Self-billed invoice drafts of org {OrgId} for {Year}-{Month} by {UserId}: {Created} made, {Updated} made again, {Issued} issued already, {Discarded} discarded, {Failed} holders refused, {NotDue} commissions not due, {Ignored} portal entries ignored",
@@ -140,15 +177,18 @@ public sealed class SelfBillingService(
         // The drafts only read the ledger, which is posted by hand (the month-end posting of the owner accounting): a month with no line in it has nothing to invoice, and the answer says so
         // instead of an empty list that reads as «nothing is due».
         var ledgerPosted = await db.OwnerLedgerEntries.AsNoTracking().AnyAsync(e => e.OrgId == orgId && e.PeriodYear == year && e.PeriodMonth == month, ct);
-        return new SelfBillingGeneration(year, month, created, updated, alreadyIssued, discarded, outcomes, plan.Failed, plan.NotDue, ledgerPosted);
+        return new SelfBillingGeneration(year, month, created, updated, alreadyIssued, discarded, outcomes, plan.Failed, plan.NotDue, ledgerPosted, kept.Count == 0 ? null : kept);
     }
 
     public async Task<IReadOnlyList<SelfBillingRow>> ListAsync(Guid orgId, SelfBillingCriteria criteria, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(criteria);
 
+        // The drafts and the issued ones, and the originals a correction replaced (discarded, a draft or an issued TD17 holds their number): the history of a number is never hidden from the list. A
+        // discarded draft nothing replaces is not listed.
         var query = db.FiscalDocuments.AsNoTracking()
-            .Where(d => d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Kind != DocumentKind.CreditNote && d.Status != FiscalDocumentStatus.Discarded);
+            .Where(d => d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Kind != DocumentKind.CreditNote
+                        && (d.Status != FiscalDocumentStatus.Discarded || db.FiscalDocuments.Any(r => r.OrgId == orgId && r.ReplacesDocumentId == d.Id)));
         if (criteria.Year is { } year && criteria.Month is { } month)
             query = query.Where(d => d.PeriodYear == year && d.PeriodMonth == month);
 
@@ -159,8 +199,9 @@ public sealed class SelfBillingService(
             .Take(MaxListRows)
             .ToListAsync(ct);
         var info = await HolderInfoAsync(orgId, found, ct);
+        var corrections = await CorrectionFactsAsync(orgId, found, ct);
         return found
-            .Select(d => RowOf(d, info))
+            .Select(d => RowOf(d, info, corrections))
             .OrderByDescending(r => r.PeriodYear)
             .ThenByDescending(r => r.PeriodMonth)
             .ThenBy(r => r.HolderName, StringComparer.CurrentCultureIgnoreCase)
@@ -218,17 +259,25 @@ public sealed class SelfBillingService(
         }
 
         var issued = await documents.IssueSelfBillingAsync(draft.Id, composition.Rule, options.Value.EffectiveSeriesPattern, userId, ct);
+
+        // The last draft of the month issued: its «Da fare» to check and issue is done.
+        await TrySyncDraftsTodoAsync(orgId, year, month, null, ct);
         return await DetailOfAsync(orgId, issued, 0m, ct);
     }
 
     public async Task DiscardDraftAsync(Guid orgId, Guid documentId, CancellationToken ct = default)
     {
         var found = await db.FiscalDocuments.AsNoTracking()
-            .AnyAsync(d => d.Id == documentId && d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Kind != DocumentKind.CreditNote, ct);
-        if (!found)
-            throw DocumentNotFound(documentId);
+            .Where(d => d.Id == documentId && d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Kind != DocumentKind.CreditNote)
+            .Select(d => new { d.PeriodYear, d.PeriodMonth })
+            .FirstOrDefaultAsync(ct)
+            ?? throw DocumentNotFound(documentId);
 
         await documents.DiscardSelfBillingDraftAsync(documentId, ct);
+
+        // The last draft of the month discarded: its «Da fare» to check and issue is done.
+        if (found.PeriodYear is { } year && found.PeriodMonth is { } month)
+            await TrySyncDraftsTodoAsync(orgId, year, month, null, ct);
     }
 
     // ---------------------------------------------------------------- the plan: who needs a TD17 for which commissions
@@ -575,6 +624,106 @@ public sealed class SelfBillingService(
         && string.Equals(SelfBillingRules.PortalKey(document.RecipientCountryCode, document.RecipientVatNumber), group.Portal.Key, StringComparison.Ordinal);
 
     /// <summary>
+    /// The live TD17 of each group of the plan. First by the key (<see cref="IsDocumentOf"/>: the holder and the legal entity of the portal, its country and VAT number). Then, for a group left without one,
+    /// the draft that holds the number of a rejected TD17 (FIX/BE-TD17-CORRECTION) of the same holder and the same legal name of the portal, that no other group took: the host put the VAT number or the
+    /// country of the portal right in <c>SelfBilling:Portals</c> after the rejection (the cause of it, typically), so the key of the portal changed and the TD17 did not. Without this the month would make a
+    /// second draft for the same holder, portal and month, with a number of its own, and leave the replacement holding its number for ever (it can be neither issued nor discarded). The draft adopted is made
+    /// again as any draft is (its portal, VAT number and country become the ones of the settings; its series and number never change). A draft of another legal name is never adopted: the number of the
+    /// TD17 of a portal is not handed to the TD17 of another (what a number is for when its draft has no TD17 any more is the accountant's call). The first pass takes every key before the second one
+    /// takes any draft, so the order of the groups never lets a group take the draft of another.
+    /// </summary>
+    private static Dictionary<Group, FiscalDocument> MatchGroups(IReadOnlyList<Group> groups, IReadOnlyList<FiscalDocument> live)
+    {
+        var matches = new Dictionary<Group, FiscalDocument>();
+        foreach (var group in groups)
+        {
+            if (live.FirstOrDefault(d => IsDocumentOf(d, group)) is { } existing)
+                matches[group] = existing;
+        }
+
+        var taken = matches.Values.Select(d => d.Id).ToHashSet();
+        foreach (var group in groups.Where(g => !matches.ContainsKey(g)))
+        {
+            var adopted = live
+                .Where(d => d.Status == FiscalDocumentStatus.Draft && FiscalDocumentService.HoldsAReplacedNumber(d) && !taken.Contains(d.Id)
+                            && d.IssuerProfileId == group.Holder.Profile.Id && SamePortalName(d.RecipientName, group.Portal.Name))
+                .OrderBy(d => d.CreatedAt)
+                .ThenBy(d => d.Id)
+                .FirstOrDefault();
+            if (adopted is null)
+                continue;
+
+            matches[group] = adopted;
+            taken.Add(adopted.Id);
+        }
+
+        return matches;
+    }
+
+    private static bool SamePortalName(string? a, string? b) =>
+        !string.IsNullOrWhiteSpace(a) && string.Equals(a.Trim(), b?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The drafts the generation kept (<paramref name="held"/>: they hold the number of a rejected TD17 and no group of the plan took them) with the reason each cannot be issued now.
+    /// </summary>
+    private async Task<IReadOnlyList<SelfBillingKept>> KeptOfAsync(Guid orgId, IReadOnlyList<FiscalDocument> held, Plan plan, CancellationToken ct)
+    {
+        if (held.Count == 0)
+            return [];
+
+        var info = await HolderInfoAsync(orgId, held, ct);
+        var kept = new List<SelfBillingKept>();
+        foreach (var draft in held)
+        {
+            var holder = HolderOf(draft, info);
+            kept.Add(new SelfBillingKept(draft.Id, holder.Kind, holder.OwnerId, draft.RecipientName ?? string.Empty, draft.Number, KeptReasonOf(draft, holder, plan)));
+        }
+
+        return kept;
+    }
+
+    /// <summary>
+    /// Why a draft that holds the number of a rejected TD17 gets no TD17 from the month now, in the order the host puts it right: its portal is not in the settings (<see cref="SelfBillingKeptReasons.PortalNotConfigured"/>);
+    /// its holder cannot issue (the code of its failure, <c>issuer_profile_incomplete</c> or <c>owner_issuer_missing</c>); otherwise the ledger gives it nothing (<see cref="SelfBillingKeptReasons.NotInLedger"/>).
+    /// </summary>
+    private string KeptReasonOf(FiscalDocument draft, HolderInfo holder, Plan plan)
+    {
+        var key = SelfBillingRules.PortalKey(draft.RecipientCountryCode, draft.RecipientVatNumber);
+        if (!options.Value.ConfiguredPortals().Values.Any(p => string.Equals(p.Key, key, StringComparison.Ordinal)))
+            return SelfBillingKeptReasons.PortalNotConfigured;
+
+        var failure = plan.Failed.FirstOrDefault(f => f.HolderKind == holder.Kind && f.HolderOwnerId == holder.OwnerId);
+        return failure?.Code ?? SelfBillingKeptReasons.NotInLedger;
+    }
+
+    /// <summary>
+    /// The drafts of <paramref name="held"/> (they hold the number of a rejected TD17) that the drafts of their month would keep, and why: the month is read as the generation reads it (the plan, the live
+    /// documents, <see cref="MatchGroups"/>), once for each month that has one, and nothing is changed. A draft the month would make again (adopted) has no reason.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<Guid, string>> KeptReasonsAsync(Guid orgId, IReadOnlyList<FiscalDocument> held, CancellationToken ct)
+    {
+        var reasons = new Dictionary<Guid, string>();
+        if (held.Count == 0)
+            return reasons;
+
+        var info = await HolderInfoAsync(orgId, held, ct);
+        foreach (var month in held.GroupBy(d => (Year: d.PeriodYear!.Value, Month: d.PeriodMonth!.Value)))
+        {
+            var (year, calendarMonth) = month.Key;
+            var plan = await PlanAsync(orgId, year, calendarMonth, ct);
+            var live = await db.FiscalDocuments.AsNoTracking()
+                .Where(d => d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.PeriodYear == year && d.PeriodMonth == calendarMonth
+                            && d.Status != FiscalDocumentStatus.Discarded && d.Kind != DocumentKind.CreditNote)
+                .ToListAsync(ct);
+            var given = MatchGroups(plan.Groups, live).Values.Select(d => d.Id).ToHashSet();
+            foreach (var draft in month.Where(d => !given.Contains(d.Id)))
+                reasons[draft.Id] = KeptReasonOf(draft, HolderOf(draft, info), plan);
+        }
+
+        return reasons;
+    }
+
+    /// <summary>
     /// The draft still is what the ledger gives today (<paramref name="expected"/> is the document made now): the issuer, the version of the settings, the supplier and where the
     /// file goes, the totals and every line (type, net, rate, nature, VAT). The descriptions are not compared: a renamed property does not change what the holder integrates.
     /// </summary>
@@ -626,12 +775,54 @@ public sealed class SelfBillingService(
     private async Task<SelfBillingDetail> DetailOfAsync(Guid orgId, FiscalDocument document, decimal estimated, CancellationToken ct)
     {
         var info = await HolderInfoAsync(orgId, [document], ct);
-        return new SelfBillingDetail(document, RowOf(document, info), estimated);
+        return new SelfBillingDetail(document, RowOf(document, info, await CorrectionFactsAsync(orgId, [document], ct)), estimated);
+    }
+
+    /// <summary>
+    /// What a row says about the correction of a TD17 (FIX/BE-TD17-CORRECTION): the rejected documents that have an issued credit note (they are not corrected), for each discarded original, the
+    /// TD17 that replaces it (the newest, when a replacement was itself rejected and replaced), and for each draft that holds the number of a rejected TD17 and that the drafts of its month would
+    /// keep (nothing gives it a TD17 now), the reason it cannot be issued.
+    /// </summary>
+    private sealed record CorrectionFacts(IReadOnlySet<Guid> Credited, IReadOnlyDictionary<Guid, Guid> ReplacedBy, IReadOnlyDictionary<Guid, string> Kept)
+    {
+        public static CorrectionFacts None { get; } = new(new HashSet<Guid>(), new Dictionary<Guid, Guid>(), new Dictionary<Guid, string>());
+    }
+
+    private async Task<CorrectionFacts> CorrectionFactsAsync(Guid orgId, IReadOnlyCollection<FiscalDocument> found, CancellationToken ct)
+    {
+        var rejected = found.Where(d => d.Status == FiscalDocumentStatus.Issued && d.SdiStatus == FiscalDocumentSdiStatuses.Rejected).Select(d => d.Id).ToList();
+        var discarded = found.Where(d => d.Status == FiscalDocumentStatus.Discarded).Select(d => d.Id).ToList();
+        var held = found.Where(d => d.Status == FiscalDocumentStatus.Draft && FiscalDocumentService.HoldsAReplacedNumber(d) && d.PeriodYear != null && d.PeriodMonth != null).ToList();
+        if (rejected.Count == 0 && discarded.Count == 0 && held.Count == 0)
+            return CorrectionFacts.None;
+
+        var credited = new HashSet<Guid>();
+        if (rejected.Count > 0)
+        {
+            credited.UnionWith(await db.FiscalDocuments.AsNoTracking()
+                .Where(c => c.OrgId == orgId && c.CreditedDocumentId != null && rejected.Contains(c.CreditedDocumentId.Value) && c.Status == FiscalDocumentStatus.Issued)
+                .Select(c => c.CreditedDocumentId!.Value)
+                .ToListAsync(ct));
+        }
+
+        var replacedBy = new Dictionary<Guid, Guid>();
+        if (discarded.Count > 0)
+        {
+            var replacements = await db.FiscalDocuments.AsNoTracking()
+                .Where(r => r.OrgId == orgId && r.ReplacesDocumentId != null && discarded.Contains(r.ReplacesDocumentId.Value))
+                .OrderBy(r => r.CreatedAt)
+                .Select(r => new { Original = r.ReplacesDocumentId!.Value, r.Id })
+                .ToListAsync(ct);
+            foreach (var replacement in replacements)
+                replacedBy[replacement.Original] = replacement.Id;
+        }
+
+        return new CorrectionFacts(credited, replacedBy, await KeptReasonsAsync(orgId, held, ct));
     }
 
     /// <summary>
     /// The estimate of a draft as the plan gives it now (the figure the issue asks to accept), recomputed as the issue does; 0 for a document that is not a draft and for a draft the ledger no
-    /// longer supports (the next generation drops it).
+    /// longer supports (the next generation drops it, or keeps it when it holds the number of a rejected TD17: <see cref="SelfBillingRow.KeptReason"/>).
     /// </summary>
     private async Task<decimal> EstimatedAmountOfAsync(Guid orgId, FiscalDocument document, CancellationToken ct)
     {
@@ -662,12 +853,16 @@ public sealed class SelfBillingService(
                 Clean(p.LegalName) ?? orgName));
     }
 
-    private SelfBillingRow RowOf(FiscalDocument document, IReadOnlyDictionary<Guid, HolderInfo> info)
-    {
-        var holder = document.IssuerProfileId is { } id && info.TryGetValue(id, out var found) ? found : new HolderInfo(SelfBillingHolderKind.Agency, null, string.Empty);
+    private static HolderInfo HolderOf(FiscalDocument document, IReadOnlyDictionary<Guid, HolderInfo> info) =>
+        document.IssuerProfileId is { } id && info.TryGetValue(id, out var found) ? found : new HolderInfo(SelfBillingHolderKind.Agency, null, string.Empty);
 
-        // An issued document names its holder as it was at the issue, never as the profile says today.
-        var name = document.Status == FiscalDocumentStatus.Issued && FiscalIssuerSnapshot.FromJson(document.IssuerSnapshot) is { } snapshot && snapshot.DisplayName.Length > 0
+    private SelfBillingRow RowOf(FiscalDocument document, IReadOnlyDictionary<Guid, HolderInfo> info, CorrectionFacts corrections)
+    {
+        var holder = HolderOf(document, info);
+
+        // An issued document names its holder as it was at the issue, never as the profile says today: the original a correction discarded was issued, so it does too.
+        var wasIssued = document.Status is FiscalDocumentStatus.Issued or FiscalDocumentStatus.Discarded;
+        var name = wasIssued && FiscalIssuerSnapshot.FromJson(document.IssuerSnapshot) is { } snapshot && snapshot.DisplayName.Length > 0
             ? snapshot.DisplayName
             : holder.Name;
         var year = document.PeriodYear ?? 0;
@@ -689,7 +884,11 @@ public sealed class SelfBillingService(
             document.VatAmount,
             document.Total,
             document.Currency,
-            document.SdiStatus);
+            document.SdiStatus,
+            SelfBillingRules.IsCorrectable(document, corrections.Credited.Contains(document.Id)),
+            document.ReplacesDocumentId,
+            corrections.ReplacedBy.TryGetValue(document.Id, out var replacedBy) ? replacedBy : null,
+            corrections.Kept.TryGetValue(document.Id, out var kept) ? kept : null);
     }
 
     private async Task<Dictionary<Guid, string>> PropertyNamesAsync(Guid orgId, IReadOnlyList<Guid> propertyIds, CancellationToken ct) =>

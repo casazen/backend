@@ -43,10 +43,38 @@ internal sealed record PackageDocument(
 {
     /// <summary>The sign a document counts with: a credit note takes away what it credits (it stores positive amounts).</summary>
     public decimal Sign => Kind == FiscalDocumentKind.CreditNote ? -1m : 1m;
+
+    /// <summary>The state of the document with the SDI (one of <see cref="FiscalDocumentSdiStatuses"/>), as it is stored: the register of the self-billed invoices says it.</summary>
+    public string SdiStatus { get; init; } = FiscalDocumentSdiStatuses.NotApplicable;
+
+    /// <summary>
+    /// True for a self-billed invoice (TD17) the SDI rejected: a rejected invoice counts as not issued, so the package lists it in the register of the TD17 with its state and counts it nowhere
+    /// else (no total by rate, no VAT figure, no PDF and no XML). The TD17 has no correction that would replace it, so it stays issued in CasaZen with that state (⚖ the choice of the PO and the accountant).
+    /// </summary>
+    public bool IsRejectedSelfBilled => Purpose == FiscalDocumentPurpose.SelfBilling && SdiStatus == FiscalDocumentSdiStatuses.Rejected;
 }
 
 /// <summary>One VAT rate of a document: the taxable amount and the stored VAT, as the document states them (a credit note still positive). A rate that is not stated is <c>null</c>.</summary>
 internal sealed record PackageVatRow(decimal? RatePercent, string? NatureCode, decimal Taxable, decimal Vat);
+
+/// <summary>
+/// The foreign supplier of a self-billed invoice (TD17): the portal whose invoice it integrates. Its name is the recipient name of <see cref="PackageDocument"/>; the country and the VAT number
+/// (with its country prefix) are the recipient columns the document keeps the supplier in, read only for these documents.
+/// </summary>
+internal sealed record PackageSupplier(string? CountryCode, string? VatNumber);
+
+/// <summary>
+/// A commission a portal kept on a stay of a listing whose account the agency holds (V2), as one line of the owner ledger says it: the statement month and the owner the line belongs to, the
+/// channel, the stay, the currency of the statement and the amount as the ledger stores it (negative: a cost of the owner, a reversal is positive), and whether the organization recharges
+/// it on the invoice to the owner (<see cref="PortalAccountHolders.RechargesCommissionOf"/>, the very test of that invoice).
+/// </summary>
+internal sealed record PortalCommissionLine(int Year, int Month, Guid OwnerId, BookingSource Source, string Currency, Guid StayId, decimal Amount, bool Recharged);
+
+/// <summary>
+/// The commission of one channel in one currency on the stays of an owner in a statement month (the lines of the portal in the invoice of the agency to that owner), as a positive amount, with
+/// the stays that carry it and whether the organization recharges it to the owner; <paramref name="OwnerName"/> is <c>null</c> until the names are read, and for an owner whose data was anonymized.
+/// </summary>
+internal sealed record PackagePortalCommission(int Year, int Month, Guid OwnerId, string? OwnerName, BookingSource Source, string Currency, int Stays, decimal Amount, bool Recharged);
 
 /// <summary>
 /// What the accountant package and the agency summary read from the fiscal documents and the owner ledger, in one place (E15/F01/US01/T01): the issued documents of a
@@ -81,6 +109,15 @@ internal static class AccountantPackageFacts
 
         var bookings = db.Bookings.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]).Where(b => b.OrgId == orgId).InScope(scope);
         return query.Where(d => d.BookingId != null && bookings.Any(b => b.Id == d.BookingId));
+    }
+
+    /// <summary>
+    /// The self-billed invoices (TD17) of <see cref="IssuedDocuments"/> that have files in the package: the ones the SDI did not reject (a rejected invoice counts as not issued: the register lists
+    /// it with its state and no PDF or XML is written for it, <see cref="PackageDocument.IsRejectedSelfBilled"/>). The number the caps of the package are first checked against.
+    /// </summary>
+    public static IQueryable<FiscalDocument> IssuedSelfBilledWithFiles(AppDbContext db, HostScope scope, AccountantPackagePeriod period)
+    {
+        return IssuedDocuments(db, scope, period, FiscalDocumentPurpose.SelfBilling).Where(d => d.SdiStatus != FiscalDocumentSdiStatuses.Rejected);
     }
 
     /// <summary>
@@ -120,7 +157,10 @@ internal static class AccountantPackageFacts
                 d.Lines
                     .OrderBy(l => l.LineNumber)
                     .Select(l => new PackageDocumentLine(l.LineNumber, l.LineType, l.TotalPrice, l.VatRatePercent, l.VatNatureCode, l.VatAmount))
-                    .ToList()));
+                    .ToList())
+            {
+                SdiStatus = d.SdiStatus,
+            });
     }
 
     /// <summary>The documents of <see cref="Documents"/>, read.</summary>
@@ -265,11 +305,12 @@ internal static class AccountantPackageFacts
     }
 
     /// <summary>
-    /// The commissions the portals kept on the stays of the listings whose account the agency holds (⚖ I10, V2), for each channel and currency: the channel fee lines of the
-    /// owner ledger of the statement months of the period, as positive amounts, a reversal and the line it reverses cancelling out. Read through
-    /// <see cref="IPortalAccountHolderResolver"/>, the one reader of who holds an account.
+    /// The commissions the portals kept on the stays of the listings whose account the agency holds (⚖ I10, V2): the channel fee lines of the owner ledger of the statement months of the
+    /// period, one <see cref="PortalCommissionLine"/> for each ledger line, as the ledger stores them (a reversal is a line of its own). Read through
+    /// <see cref="IPortalAccountHolderResolver"/>, the one reader of who holds an account; a listing whose account the owner holds (V1) is not here. The one read both
+    /// <see cref="PortalCommissionsBorneAsync"/> (the figures of the summary and of the Swiss VAT file) and the V2 table of the package are made from.
     /// </summary>
-    public static async Task<IReadOnlyList<AgencyPortalCommissionBorneRow>> PortalCommissionsBorneAsync(
+    public static async Task<IReadOnlyList<PortalCommissionLine>> PortalCommissionLinesAsync(
         AppDbContext db, IPortalAccountHolderResolver holders, Guid orgId, AccountantPackagePeriod period, CancellationToken cancellationToken)
     {
         var fromKey = (period.From.Year * 100) + period.From.Month;
@@ -277,7 +318,7 @@ internal static class AccountantPackageFacts
         var fees = await db.OwnerLedgerEntries.AsNoTracking()
             .Where(e => e.OrgId == orgId && e.EntryType == OwnerLedgerEntryType.ChannelFee && e.PropertyId != null && e.SourceId != null
                         && ((e.PeriodYear * 100) + e.PeriodMonth) >= fromKey && ((e.PeriodYear * 100) + e.PeriodMonth) <= toKey)
-            .Select(e => new { PropertyId = e.PropertyId!.Value, StayId = e.SourceId!.Value, e.StatementCurrency, e.Amount })
+            .Select(e => new { PropertyId = e.PropertyId!.Value, StayId = e.SourceId!.Value, e.PropertyOwnerId, e.PeriodYear, e.PeriodMonth, e.StatementCurrency, e.Amount })
             .ToListAsync(cancellationToken);
         if (fees.Count == 0)
             return [];
@@ -291,11 +332,81 @@ internal static class AccountantPackageFacts
         var holderMap = await holders.ForOrgAsync(orgId, cancellationToken);
         return fees
             .Where(f => sources.TryGetValue(f.StayId, out var source) && holderMap.Resolve(f.PropertyId, source) == PortalAccountHolder.Agency)
-            .GroupBy(f => (Source: sources[f.StayId], Currency: f.StatementCurrency))
-            .Select(g => new AgencyPortalCommissionBorneRow(g.Key.Source, g.Key.Currency, -g.Sum(f => f.Amount)))
+            .Select(f => new PortalCommissionLine(
+                f.PeriodYear,
+                f.PeriodMonth,
+                f.PropertyOwnerId,
+                sources[f.StayId],
+                f.StatementCurrency,
+                f.StayId,
+                f.Amount,
+                holderMap.RechargesCommissionOf(f.PropertyId, sources[f.StayId])))
+            .ToList();
+    }
+
+    /// <summary>
+    /// The commissions the portals kept on the stays of the listings whose account the agency holds (⚖ I10, V2), for each channel and currency: the lines of
+    /// <see cref="PortalCommissionLinesAsync"/> as positive amounts, a reversal and the line it reverses cancelling out.
+    /// </summary>
+    public static async Task<IReadOnlyList<AgencyPortalCommissionBorneRow>> PortalCommissionsBorneAsync(
+        AppDbContext db, IPortalAccountHolderResolver holders, Guid orgId, AccountantPackagePeriod period, CancellationToken cancellationToken)
+    {
+        return BorneOf(await PortalCommissionLinesAsync(db, holders, orgId, period, cancellationToken));
+    }
+
+    /// <summary>The lines of <see cref="PortalCommissionLinesAsync"/> added up for each channel and currency, as positive amounts (what is left of the fees of the period), the zero totals left out.</summary>
+    public static IReadOnlyList<AgencyPortalCommissionBorneRow> BorneOf(IReadOnlyList<PortalCommissionLine> lines)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+
+        return lines
+            .GroupBy(l => (l.Source, l.Currency))
+            .Select(g => new AgencyPortalCommissionBorneRow(g.Key.Source, g.Key.Currency, -g.Sum(l => l.Amount)))
             .Where(r => r.Amount != 0m)
             .OrderBy(r => r.Source)
             .ThenBy(r => r.Currency, StringComparer.Ordinal)
             .ToList();
+    }
+
+    /// <summary>
+    /// The lines of <see cref="PortalCommissionLinesAsync"/> added up for each statement month, owner, channel and currency (the lines of the invoice of the agency to an owner that
+    /// recharges a portal are one for each channel): the commission as a positive amount, the stays that still carry one (a stay whose lines net to nothing is out), and whether the
+    /// organization recharges it. A group that nets to nothing is left out. The names of the owners are not here: <see cref="OwnerNamesAsync"/> gives them.
+    /// </summary>
+    public static IReadOnlyList<PackagePortalCommission> PortalCommissionRowsOf(IReadOnlyList<PortalCommissionLine> lines)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+
+        return lines
+            .GroupBy(l => (l.Year, l.Month, l.OwnerId, l.Source, l.Currency, l.Recharged))
+            .Select(g => new PackagePortalCommission(
+                g.Key.Year,
+                g.Key.Month,
+                g.Key.OwnerId,
+                null,
+                g.Key.Source,
+                g.Key.Currency,
+                g.GroupBy(l => l.StayId).Count(stay => stay.Sum(l => l.Amount) != 0m),
+                -g.Sum(l => l.Amount),
+                g.Key.Recharged))
+            .Where(r => r.Amount != 0m)
+            .ToList();
+    }
+
+    /// <summary>
+    /// The foreign supplier of each self-billed invoice among <paramref name="documentIds"/> of the org: the country and the VAT number kept in the recipient columns of the document
+    /// (the portal it integrates the invoice of, encrypted at rest like every recipient). A document of another org or of another purpose is not in the answer; an empty list reads nothing.
+    /// </summary>
+    public static async Task<Dictionary<Guid, PackageSupplier>> SelfBilledSuppliersAsync(
+        AppDbContext db, Guid orgId, IReadOnlyCollection<Guid> documentIds, CancellationToken cancellationToken)
+    {
+        if (documentIds.Count == 0)
+            return [];
+
+        var suppliers = await db.FiscalDocuments.AsNoTracking()
+            .Where(d => d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && documentIds.Contains(d.Id))
+            .Select(d => new { d.Id, d.RecipientCountryCode, d.RecipientVatNumber })
+            .ToListAsync(cancellationToken);
+        return suppliers.ToDictionary(s => s.Id, s => new PackageSupplier(s.RecipientCountryCode, s.RecipientVatNumber));
     }
 }

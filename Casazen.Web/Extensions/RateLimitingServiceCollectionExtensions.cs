@@ -153,6 +153,9 @@ public static class RateLimitingServiceCollectionExtensions
         // Per email and org limit of the contact form of the booking site (DB-03b), next to its per-IP policy PublicContact.
         services.AddSingleton<HostContactEmailRateLimiter>();
 
+        // Per client IP limit of the doors of the properties, whatever the door token ([DoorCheckInIpRateLimit], E22/F01/US02), chained after its policy PublicDoorCheckIn.
+        services.AddSingleton<DoorCheckInIpRateLimiter>();
+
         // Per email and supplier limit of the customer's own area of a booking ([SupplierBookingManageRateLimit], SP-11), next to the
         // per-IP policy PublicGuestBookingLookup.
         services.AddSingleton<SupplierBookingManageEmailRateLimiter>();

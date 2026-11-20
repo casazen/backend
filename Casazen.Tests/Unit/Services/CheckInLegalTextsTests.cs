@@ -263,10 +263,99 @@ public sealed class CheckInLegalTextsTests : IDisposable
         Assert.Null(registry.GetActiveVersion("not-a-kind"));
     }
 
+    /// <summary>
+    /// Data (E22/F01/US02 post-review): a failure of the file system (an I/O error) says nothing about the files, so it is not kept for the life of the process. A reader that fails once leaves the
+    /// registry closed for now (nothing that was not checked is served), it is not read again within the interval, and after it the texts are served; the same for one text file of a version. What
+    /// the files say (a hash that is not the recorded one) is the same at every read and stays out whatever the time, without reading again.
+    /// </summary>
+    [Fact]
+    public void LegalTexts_AnErrorOfTheFileSystem_IsReadAgainAfterTheInterval_AndWhatTheFilesSayIsNot_Test()
+    {
+        WriteRegistry(("biometric-consent", "consent-v1", "approved", Texts("Consenso approvato")));
+        var manifest = Path.Combine(_root, "checkin", "manifest.json");
+        var italian = Path.Combine(_root, "checkin", "biometric-consent.consent-v1.it.md");
+        var clock = new FakeTimeProvider(Now);
+
+        // The manifest cannot be read once: nothing is served, and within the interval it is not read again.
+        var files = new FailingOnceFiles();
+        files.FailOnce(manifest);
+        var registry = Registry("Production", clock, files);
+
+        Assert.Null(registry.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent));
+        Assert.Null(registry.FindServedVersion(CheckInLegalTextKinds.BiometricConsent, "consent-v1"));
+        Assert.Empty(registry.GetForStay(documentNotArchived: false, "it"));
+        var reads = files.Reads;
+        clock.Advance(CheckInLegalTexts.TransientRetryInterval - TimeSpan.FromSeconds(1));
+        Assert.Null(registry.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent));
+        Assert.Equal(reads, files.Reads);
+
+        // After the interval it is read again and the text is served; a registry read in full is kept.
+        clock.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal("consent-v1", registry.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent)!.Version);
+        Assert.Single(registry.GetForStay(documentNotArchived: false, "it"));
+        var readInFull = files.Reads;
+        clock.Advance(TimeSpan.FromHours(3));
+        Assert.NotNull(registry.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent));
+        Assert.Equal(readInFull, files.Reads);
+
+        // One text file of the version cannot be read once: the version is not served (a text that was not checked never is) and comes back after the interval.
+        var partial = new FailingOnceFiles();
+        partial.FailOnce(italian);
+        var second = Registry("Production", clock, partial);
+        Assert.Null(second.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent));
+        clock.Advance(CheckInLegalTexts.TransientRetryInterval + TimeSpan.FromSeconds(1));
+        Assert.NotNull(second.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent));
+
+        // What the files say is the same at every read: a text changed after its hash was recorded is out for good, and nothing is read again.
+        File.WriteAllText(italian, "Testo cambiato dopo la registrazione\n");
+        var tamperedFiles = new FailingOnceFiles();
+        var third = Registry("Production", clock, tamperedFiles);
+        Assert.Null(third.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent));
+        var tamperedReads = tamperedFiles.Reads;
+        clock.Advance(TimeSpan.FromHours(1));
+        Assert.Null(third.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent));
+        Assert.Equal(tamperedReads, tamperedFiles.Reads);
+    }
+
     private static Dictionary<string, string> Texts(string italian) => new() { ["it"] = italian + "\n", ["en"] = italian + " (en)\n" };
 
     private CheckInLegalTexts Registry(string environment) =>
         new(Config(new Dictionary<string, string?> { ["Legal:ContentPath"] = _root }), Env(environment), NullLogger<CheckInLegalTexts>.Instance);
+
+    private CheckInLegalTexts Registry(string environment, TimeProvider clock, ILegalFileReader files) =>
+        new(Config(new Dictionary<string, string?> { ["Legal:ContentPath"] = _root }), Env(environment), NullLogger<CheckInLegalTexts>.Instance, clock, files);
+
+    /// <summary>The files of the registry, with some that fail once with an I/O error the way a file system may; every read is counted.</summary>
+    private sealed class FailingOnceFiles : ILegalFileReader
+    {
+        private readonly HashSet<string> _failOnce = new(StringComparer.Ordinal);
+
+        public int Reads { get; private set; }
+
+        public void FailOnce(string path) => _failOnce.Add(path);
+
+        public bool Exists(string path) => File.Exists(path);
+
+        public string ReadAllText(string path)
+        {
+            Reads++;
+            FailIfAsked(path);
+            return File.ReadAllText(path, Encoding.UTF8);
+        }
+
+        public byte[] ReadAllBytes(string path)
+        {
+            Reads++;
+            FailIfAsked(path);
+            return File.ReadAllBytes(path);
+        }
+
+        private void FailIfAsked(string path)
+        {
+            if (_failOnce.Remove(path))
+                throw new IOException("The file system said no, once.");
+        }
+    }
 
     private static IConfiguration Config(Dictionary<string, string?> values) =>
         new ConfigurationBuilder().AddInMemoryCollection(values).Build();

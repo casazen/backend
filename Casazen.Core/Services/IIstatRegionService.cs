@@ -87,7 +87,11 @@ public sealed record IstatRegionRuleUpdate(
 /// <param name="RequiredGuestFields">The statistical fields the region requires: empty when it requires none or the row is not verified.</param>
 /// <param name="RequiredGuestFieldsKnown">False when the row is not verified: then no field is asked, and none can be said to be not required.</param>
 /// <param name="Coverage">Whether the channel manager covers the region; <see cref="IstatCoverage.Unknown"/> unless the staff verified it.</param>
-/// <param name="IstatSender">Who sends the ISTAT communication of the property: always the Alloggiati sender.</param>
+/// <param name="IstatSender">
+/// Who sends the ISTAT communication of the property: the Alloggiati sender, except that it is <see cref="ComplianceSenderType.Manual"/> where the
+/// channel manager does not cover the region (<see cref="IstatCoverage.NotCovered"/>): the host uses the portal of the region, as the next step says and as
+/// the cockpit shows (<see cref="Casazen.Core.Regulatory.IstatRegionResolver.IstatSenderFor"/>).
+/// </param>
 /// <param name="NextStep">What the host does next; null when <paramref name="Applies"/> is false.</param>
 /// <param name="AssistContext">The context of the «Do it for me» request when the next step is to ask support (<c>panelIstat</c>); null otherwise.</param>
 /// <param name="SourceUrl">The source of the row; null when no row applies.</param>

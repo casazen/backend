@@ -43,4 +43,12 @@ public sealed record PortalAccountHolders(
     /// </summary>
     public bool RechargesCommissionOf(Guid propertyId, BookingSource channel) =>
         RechargePortalCommissions && Resolve(propertyId, channel) == PortalAccountHolder.Agency;
+
+    /// <summary>
+    /// True when the account of <paramref name="propertyId"/> on <paramref name="channel"/> is the agency's (V2) and the organization does not recharge the commissions of
+    /// the accounts it holds (⚖ I11 off): the portal bills the agency and no invoice of the property manager carries the commission to the owner. The other half of
+    /// <see cref="RechargesCommissionOf"/>: for an account of the agency exactly one of the two is true, for an account of the owner (V1) neither is.
+    /// </summary>
+    public bool IsAgencyAccountWithoutRecharge(Guid propertyId, BookingSource channel) =>
+        !RechargePortalCommissions && Resolve(propertyId, channel) == PortalAccountHolder.Agency;
 }

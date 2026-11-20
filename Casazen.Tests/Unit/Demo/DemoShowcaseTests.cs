@@ -170,6 +170,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.OwnerIssuerDocumentExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.SdiRejectedInvoiceExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.SelfBillingExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.SelfBillingCorrectionExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.PaymentLedgerExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.ChannelCommissionRules.Select(rule => rule.Scenario))
             .Concat(DemoShowcaseCatalog.CleaningSetups.Select(setup => setup.Scenario))
@@ -1341,6 +1342,31 @@ public class DemoShowcaseTests
             example.Commissions.Select(c => new FiscalDocumentNetLine("TEST", 1m, c, settings.VatRatePercent, null, FiscalLineType.Commission)).ToList(),
             null);
         Assert.Equal((200.50m, 44.11m, 244.61m), (amounts.TaxableBase, amounts.VatAmount, amounts.Total));
+    }
+
+    /// <summary>
+    /// FIX/BE-TD17-CORRECTION: the demo self-billed invoice the SDI rejected is the TEST owner company's TD17 of the demo month (the same total), from a TEST portal abroad, has a number of the TD17 series
+    /// and an official code of the SDI list whose reason in plain words is a text of its own (never the generic one).
+    /// </summary>
+    [Fact]
+    public void SelfBillingCorrection_TheExampleIsATestTd17RejectedWithAnOfficialCode()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.SelfBillingCorrection, DemoShowcaseCatalog.Scenarios);
+        var example = Assert.Single(DemoShowcaseCatalog.SelfBillingCorrectionExamples);
+        var invoice = Assert.Single(DemoShowcaseCatalog.SelfBillingExamples);
+
+        Assert.StartsWith("TEST", example.HolderName, StringComparison.Ordinal);
+        Assert.StartsWith("TEST", example.PortalName, StringComparison.Ordinal);
+        Assert.Matches("^TD17-[0-9]{4}/[0-9]+$", example.Number);
+        Assert.Equal((invoice.HolderName, invoice.PortalName), (example.HolderName, example.PortalName));
+
+        var settings = SelfBillingRig.Shipped();
+        var amounts = FiscalDocumentTotals.FromNet(
+            invoice.Commissions.Select(c => new FiscalDocumentNetLine("TEST", 1m, c, settings.VatRatePercent, null, FiscalLineType.Commission)).ToList(),
+            null);
+        Assert.Equal(amounts.Total, example.Total);
+        Assert.Equal(example.ErrorCode, Casazen.Core.Services.SdiRejectionReasons.Normalize(example.ErrorCode));
+        Assert.NotEqual(Casazen.Core.Services.SdiRejectionReasons.GenericKey, Casazen.Core.Services.SdiRejectionReasons.KeyOf(example.ErrorCode));
     }
 
     /// <summary>

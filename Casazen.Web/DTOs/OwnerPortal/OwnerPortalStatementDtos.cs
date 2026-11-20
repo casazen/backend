@@ -178,6 +178,7 @@ public sealed record OwnerPortalStatementSectionDto(string Section, decimal Tota
 /// <param name="Amount">The signed amount: positive is owed to the owner.</param>
 /// <param name="Reversal">True when the line reverses another.</param>
 /// <param name="ChannelFeeRechargedByAgency">True when the portal billed the agency, which recharges the commission to the owner.</param>
+/// <param name="ChannelFeeBilledToAgencyNotRecharged">True when the portal billed the agency and the agency does not recharge the commission to the owner on its invoice: the portal invoice is not the owner's and no invoice of the property manager carries the commission. Never true together with <paramref name="ChannelFeeRechargedByAgency"/>; false for the account of the owner.</param>
 public sealed record OwnerPortalStatementLineDto(
     Guid Id,
     string Type,
@@ -192,7 +193,8 @@ public sealed record OwnerPortalStatementLineDto(
     decimal SharePercent,
     decimal Amount,
     bool Reversal,
-    bool ChannelFeeRechargedByAgency)
+    bool ChannelFeeRechargedByAgency,
+    bool ChannelFeeBilledToAgencyNotRecharged)
 {
     public static OwnerPortalStatementLineDto From(OwnerStatementLine line)
     {
@@ -211,7 +213,8 @@ public sealed record OwnerPortalStatementLineDto(
             line.SharePercent,
             line.Amount,
             line.Reversal,
-            line.AgencyHoldsPortalAccount);
+            line.AgencyHoldsPortalAccount,
+            line.AgencyHoldsPortalAccountWithoutRecharge);
     }
 }
 

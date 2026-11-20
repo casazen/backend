@@ -16,7 +16,8 @@ namespace Casazen.Web.Controllers;
 /// <remarks>
 /// Everything that does not open answers the one <see cref="NotFoundCode"/> 404, with the same body: an unknown or made-up door token, a stay of another property, a wrong code, surname
 /// or date, a check-in already completed. The answer never says which part was wrong and never holds booking data besides the token. Five attempts a minute for each client IP and door token
-/// (<see cref="RateLimitPolicies.PublicDoorCheckIn"/>, 429 <c>rate_limited</c> beyond). The answer holds a secret that opens the guest page, so it is private
+/// (<see cref="RateLimitPolicies.PublicDoorCheckIn"/>, 429 <c>rate_limited</c> beyond); next to it the failed attempts of a door count for every client together
+/// (<see cref="IDoorCheckInFailureTracker"/>), and a door that had its <see cref="DoorCheckInRules.FailureLimit"/> answers the same 404 to everything, the right data included. The answer holds a secret that opens the guest page, so it is private
 /// (<c>Cache-Control: no-store</c>).
 /// </remarks>
 [ApiController]
@@ -29,11 +30,20 @@ public class PublicDoorCheckInController(IDoorCheckInService doorCheckIn) : Cont
     public const string NotFoundCode = "door_checkin_not_found";
 
     /// <summary>
-    /// Finds the stay and issues its check-in link: <c>{ token }</c> to open <c>/checkin/{token}</c>. 404 <c>door_checkin_not_found</c> for every other case; 429 over the limit.
+    /// Largest body of the endpoint (2 KB): a booking code or a surname and a date. A body of an anonymous call is small, as the other anonymous calls of the guests
+    /// (<c>GuestCancellationController</c>, <c>GuestAreaController</c>); a larger one is refused by the server with 413 before it is read.
+    /// </summary>
+    public const int MaxRequestBytes = 2048;
+
+    /// <summary>
+    /// Finds the stay and gives it its check-in link: <c>{ token }</c> to open <c>/checkin/{token}</c>. 404 <c>door_checkin_not_found</c> for every other case; 429 over the limit, the one per client
+    /// IP and door token and the one per client IP over every door (<see cref="DoorCheckInIpRateLimiter"/>).
     /// </summary>
     [HttpPost("{doorToken}")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
     [EnableRateLimiting(RateLimitPolicies.PublicDoorCheckIn)]
+    [RequestSizeLimit(MaxRequestBytes)]
+    [DoorCheckInIpRateLimit]
     [ProducesResponseType(typeof(DoorCheckInResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]

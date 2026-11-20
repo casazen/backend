@@ -304,6 +304,13 @@ public static class DemoShowcaseCatalog
         public const string SelfBilling = "self-billing-td17";
 
         /// <summary>
+        /// The correction of a self-billed invoice (TD17) the SDI rejected (FIX/BE-TD17-CORRECTION, NF-86): the TD17 of the demo month issued to be sent, rejected with an official code (the SDI code of
+        /// the holder is not valid), and its correction from the self-billed invoices: a draft that keeps the number the rejected TD17 gave up, which the host fixes and issues with that number. A template
+        /// only: the submission to the SDI is off (<c>Features:SdiSubmission</c>) and needs a channel the demo does not have.
+        /// </summary>
+        public const string SelfBillingCorrection = "self-billing-td17-correction";
+
+        /// <summary>
         /// The payment ledger (E06/F04/US01/T03, FIS-05, NF-85): a card payment with the commission and the net the provider reported, a cash payment
         /// the host recorded, and a booking of a channel with the amount the channel collected (commission not given by Octorate: not shown). Invented
         /// amounts, a template of the lines the ledger answers.
@@ -476,6 +483,7 @@ public static class DemoShowcaseCatalog
         Scenario.OwnerIssuerDocuments,
         Scenario.SdiRejectedInvoice,
         Scenario.SelfBilling,
+        Scenario.SelfBillingCorrection,
         Scenario.PaymentLedger,
         Scenario.OwnerChannelCommission,
         Scenario.ReportCollections,
@@ -622,6 +630,16 @@ public static class DemoShowcaseCatalog
     public static IReadOnlyList<DemoSelfBillingTemplate> SelfBillingExamples { get; } =
     [
         new("td17-societa-booking", "TEST Immobiliare Lago Srl", "TEST Portale B.V.", "NL", [120.00m, 80.50m], Scenario.SelfBilling),
+    ];
+
+    /// <summary>
+    /// The self-billed invoice of the demo month that the SDI rejected (FIX/BE-TD17-CORRECTION): number TD17-2026/1 of the TEST owner company, to the TEST portal abroad, 244.61 in all (the TD17 of
+    /// <see cref="SelfBillingExamples"/>), rejected with the code 00427 (the SDI code of the holder is not valid). The correction is a draft that keeps that number, because a TD17 the SDI rejected was
+    /// never delivered: the host fixes the SDI code in the issuer profile, makes the drafts of the month again and issues it from the self-billed invoices. Invented, a template only.
+    /// </summary>
+    public static IReadOnlyList<DemoSelfBillingCorrectionTemplate> SelfBillingCorrectionExamples { get; } =
+    [
+        new("td17-scartata", "TD17-2026/1", "TEST Immobiliare Lago Srl", "TEST Portale B.V.", 244.61m, "00427", Scenario.SelfBillingCorrection),
     ];
 
     /// <summary>
@@ -2482,6 +2500,19 @@ public sealed record DemoSelfBillingTemplate(
     string PortalName,
     string PortalCountry,
     IReadOnlyList<decimal> Commissions,
+    string Scenario);
+
+/// <summary>
+/// A self-billed invoice of a demo month that the SDI rejected (FIX/BE-TD17-CORRECTION): its number, the TEST holder that issues it, the TEST portal abroad that is its cedente, the total and the
+/// official code of the rejection (the reason in plain words is the one <c>SdiRejectionReasons</c> gives for it).
+/// </summary>
+public sealed record DemoSelfBillingCorrectionTemplate(
+    string Key,
+    string Number,
+    string HolderName,
+    string PortalName,
+    decimal Total,
+    string ErrorCode,
     string Scenario);
 
 /// <summary>A fiscal document of a direct demo stay: its status, the number of an issued one, the TEST recipient, the total and the tourist tax in it.</summary>

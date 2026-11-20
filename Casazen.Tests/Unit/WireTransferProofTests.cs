@@ -31,8 +31,8 @@ public class WireTransferProofTests
         var payout1 = await AddPayoutAsync(db, orgId, owner1, 1200.00m, "EUR");
         var payout2 = await AddPayoutAsync(db, orgId, owner2, 1574.50m, "EUR");
 
-        // Act: create the wire batch (the official pain.001 schemas are not in the repository until an operator adds them, and a file is never produced without
-        // its validation: this proof is about the sums, so it validates against a schema of its own, see Pain001ValidationProofTests for the validation)
+        // Act: create the wire batch (a file is never produced without its validation: this proof is about the sums, so it validates against a schema of its own,
+        // see Pain001ValidationProofTests for the validation against the official schemas of the build)
         var (batch, xml) = await NewService(db).CreateBatchAsync(orgId, [payout1, payout2], ExecutionDate, CancellationToken.None);
 
         // Assert: batch total equals the sum of the payout nets

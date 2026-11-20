@@ -28,10 +28,13 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>The online check-in in the confirmation (E23/F02/US01/T01, NF-122, NF-63).</b> The checkout tells the guest that the link of the online check-in arrives at their address,
 /// so the confirmation says where it stands, by the rule of the guest page (<see cref="GuestCheckInAccessRules"/>: the same Europe/Rome calendar day and the same
 /// <c>CheckIn:SendWindowDays</c> as <c>GuestCheckInSendJob</c>). The check-in is open: the link is issued as the job issues it (<see cref="IGuestCheckInService.IssueLinkAsync"/>: one
-/// session, the lifetime of <c>CheckIn:SessionLifetimeDays</c>) and the e-mail carries it; the confirmation is the delivery, so no second e-mail is queued, the delivery record says «sent by
-/// e-mail» (<see cref="ICheckInLinkDeliveryService.RecordSentByEmailAsync"/>) and the next run of the job finds a usable link and sends nothing. Not open yet: the e-mail says the day the job
-/// sends the link. Not needed, or done: it says nothing. A link that cannot be issued leaves the confirmation as it is, with the day of the next run of the job, which retries as it does
-/// today; a confirmation that cannot be queued takes the link back (its session expires), so the job sends it. No token, address or other personal data in a log.</para>
+/// session, the lifetime of <c>CheckIn:SessionLifetimeDays</c>) and the e-mail carries it; the confirmation is the delivery, so no second e-mail is queued and the next run of the job finds a
+/// usable link and sends nothing. The link is «in attesa» until the provider accepts the e-mail: the session says <c>Queued</c> and the delivery row <c>Sending</c>
+/// (<see cref="ICheckInLinkDeliveryService.RecordEmailQueuedAsync"/>, written before the e-mail is queued), and <see cref="BookingConfirmationEmailJob"/> turns them into <c>Sent</c> or
+/// <c>Failed</c> (CO-09, A5-26: never «sent» when nothing left). Not open yet: the e-mail says the day the job sends the link. Not needed, or done: it says nothing. A link that cannot be
+/// issued leaves the confirmation as it is, with the day of the next run of the job, which retries as it does today; a confirmation that cannot be queued, or that the provider never takes,
+/// takes the link back (it is <c>Failed</c> and its session expires), so the job sends one. The host is told of the new booking before any of this is settled, whatever happens to the request.
+/// No token, address or other personal data in a log.</para>
 /// </remarks>
 public sealed class BookingNotifier(
     AppDbContext db,
@@ -44,6 +47,12 @@ public sealed class BookingNotifier(
     IOptions<GuestCheckInOptions>? checkInOptions = null,
     TimeProvider? timeProvider = null)
 {
+    /// <summary>
+    /// The four optional services of the check-in link were given (the check-in, the delivery, its options, the clock): the container gives them. Built without them the notifier says
+    /// nothing about the check-in and issues no link, in silence, so a test over the real container reads this (E23/F02/US01/T01).
+    /// </summary>
+    internal bool IssuesCheckInLinks => checkIn is not null && linkDeliveries is not null && checkInOptions is not null && timeProvider is not null;
+
     /// <summary>
     /// The booking has just become confirmed (<paramref name="kind"/>): confirmation to the guest and, unless the host
     /// confirmed it (<see cref="BookingConfirmationKind.OnSite"/>), the new booking to the host. Skipped when the booking
@@ -80,8 +89,13 @@ public sealed class BookingNotifier(
         // E23/F02/US01/T01: what the confirmation says about the online check-in, with the link when the check-in is already open. Never throws.
         var confirmationCheckIn = await PrepareCheckInAsync(data, cancellationToken);
 
+        // A link that is about to leave is «in attesa» (queued, never sent) until the provider accepts the e-mail that carries it: written BEFORE the e-mail is queued, so that the job that
+        // sends it cannot finish first.
+        await RecordCheckInQueuedAsync(data, confirmationCheckIn);
+
         var queued = Queue(bookingId, EmailTemplates.Names.GuestBookingConfirmed, data.GuestEmail, () =>
-            EmailTemplates.GuestBookingConfirmed(
+        {
+            var content = EmailTemplates.GuestBookingConfirmed(
                 EmailTemplates.DefaultCulture,
                 data.GuestFirstName,
                 data.Summary,
@@ -90,12 +104,23 @@ public sealed class BookingNotifier(
                 data.FreeRefundDeadline,
                 data.HostContact,
                 links.GuestBookings(data.OrgSlug, data.Summary.BookingCode),
-                confirmationCheckIn?.Notice));
+                confirmationCheckIn?.Notice);
 
-        await FinishCheckInAsync(data, confirmationCheckIn, queued, cancellationToken);
+            // The job that sends an e-mail with a link writes on the session whether the link really left.
+            return confirmationCheckIn?.Link is { } issued
+                ? content with
+                {
+                    CheckInLink = new CheckInLinkEmail(data.BookingId, issued.SessionId),
+                }
+                : content;
+        });
 
+        // The host is told of the new booking (e-mail, push, bell) the moment the e-mail of the guest is with the queue, BEFORE anything of the link is settled: no await with the token of
+        // the request sits between the two, so a request that is cancelled right after the confirmation was queued cannot make the host lose the alert.
         if (kind != BookingConfirmationKind.OnSite)
             AlertHostOfNewBooking(data, kind);
+
+        await TakeBackCheckInAsync(data, confirmationCheckIn, queued);
     }
 
     /// <summary>
@@ -179,29 +204,44 @@ public sealed class BookingNotifier(
     private static DateTime DayOf(DateOnly day) => day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
     /// <summary>
-    /// After the confirmation was handed to the queue. When it carries a link: queued, the confirmation is the delivery (the delivery record says «sent by e-mail», the session says the e-mail
-    /// was handed over) and the job sends nothing more; not queued (no provider, a queue that refused it), the link is taken back (its session expires) so that the job issues and sends one at
-    /// its next run. Never throws: a failure is logged with the booking only.
+    /// Before the confirmation is handed to the queue, when it carries a link: the confirmation is the delivery, so the session says <c>Queued</c> and the delivery row <c>Sending</c> («in
+    /// attesa»; the job that sends the e-mail turns them into <c>Sent</c> or <c>Failed</c> once the provider answers) and the next run of the daily job finds a usable link and sends
+    /// nothing. Never throws: a failure is logged with the booking only (the link stays usable and the job that sends the e-mail still writes the outcome on the session).
     /// </summary>
-    private async Task FinishCheckInAsync(BookingEmailData data, ConfirmationCheckIn? confirmationCheckIn, bool queued, CancellationToken cancellationToken)
+    private async Task RecordCheckInQueuedAsync(BookingEmailData data, ConfirmationCheckIn? confirmationCheckIn)
     {
-        if (confirmationCheckIn?.Link is not { } issued || checkIn is null || linkDeliveries is null)
+        if (confirmationCheckIn?.Link is not { } issued || linkDeliveries is null)
             return;
 
         try
         {
-            if (queued)
-            {
-                await linkDeliveries.RecordSentByEmailAsync(data.BookingId, issued, cancellationToken);
-                return;
-            }
+            await linkDeliveries.RecordEmailQueuedAsync(data.BookingId, issued, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "The check-in link of booking {BookingId} could not be recorded as queued with its confirmation", data.BookingId);
+        }
+    }
 
-            await checkIn.ExpireTokenAsync(issued.Token);
+    /// <summary>
+    /// After the confirmation was handed to the queue: when it carries a link and the queue did not take it (no provider, a queue that refused it), the link is taken back, it is <c>Failed</c>
+    /// and its session expires (<see cref="ICheckInLinkDeliveryService.RecordEmailFailedAsync"/>), so that the daily job issues and sends one at its next run. A confirmation that was queued
+    /// is settled by <see cref="BookingConfirmationEmailJob"/>, not here. A step of the change that is already committed: it does not take the token of the request (a request that is
+    /// cancelled must not leave a link behind that nobody has). Never throws: a failure is logged with the booking only.
+    /// </summary>
+    private async Task TakeBackCheckInAsync(BookingEmailData data, ConfirmationCheckIn? confirmationCheckIn, bool queued)
+    {
+        if (queued || confirmationCheckIn?.Link is not { } issued || linkDeliveries is null)
+            return;
+
+        try
+        {
+            await linkDeliveries.RecordEmailFailedAsync(data.BookingId, issued.SessionId, GuestCheckInLinkEmailErrors.QueueFailed, CancellationToken.None);
             logger.LogWarning("Check-in link of booking {BookingId} taken back: its confirmation was not queued", data.BookingId);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
-            logger.LogError(ex, "The check-in link of booking {BookingId} could not be settled after its confirmation", data.BookingId);
+            logger.LogError(ex, "The check-in link of booking {BookingId} could not be taken back after its confirmation was not queued", data.BookingId);
         }
     }
 

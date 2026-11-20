@@ -86,12 +86,31 @@ public interface IInternalActivityService
     /// narrowed to the properties of the scope (an organization-level item, with no property, only for an org-wide scope; the
     /// items of a soft-deleted property are not listed), the most urgent first, then by deadline (the ones without a deadline
     /// last), then by creation; at most <see cref="TodoLimits.MaxPendingItems"/>. The single source of the list for web,
-    /// mobile, email and push.
+    /// mobile, email and push. <paramref name="excludeTypes"/> leaves out the items of those types: how the web layer keeps from a caller the items that
+    /// need a permission it does not hold (the self-billed invoices need <c>agency.invoice.manage</c>, <see cref="SelfBillingTodos.ActivityTypes"/>); the
+    /// service itself checks no role.
     /// </summary>
-    Task<IReadOnlyList<InternalActivity>> GetPendingAsync(HostScope scope, CancellationToken ct, bool excludeRoutineTasks = false);
+    Task<IReadOnlyList<InternalActivity>> GetPendingAsync(
+        HostScope scope,
+        CancellationToken ct,
+        bool excludeRoutineTasks = false,
+        IReadOnlyCollection<ActivityType>? excludeTypes = null);
 
-    /// <summary>How many of the open items <see cref="GetPendingAsync"/> reaches are <see cref="ActivityUrgency.High"/>: the nav badge.</summary>
-    Task<int> CountUrgentAsync(HostScope scope, CancellationToken ct, bool excludeRoutineTasks = false);
+    /// <summary>
+    /// How many of the open items <see cref="GetPendingAsync"/> reaches are <see cref="ActivityUrgency.High"/>: the nav badge. <paramref name="excludeTypes"/> is the one of
+    /// the list, so the badge never counts an item the list does not show.
+    /// </summary>
+    Task<int> CountUrgentAsync(
+        HostScope scope,
+        CancellationToken ct,
+        bool excludeRoutineTasks = false,
+        IReadOnlyCollection<ActivityType>? excludeTypes = null);
+
+    /// <summary>
+    /// Whether the org has an open "To do" of one of <paramref name="types"/> (every scope: the caller names the org, the web layer decides who may ask): how the web layer knows it has
+    /// something to keep from a caller before it looks a permission up. No type is <c>false</c>, never "any".
+    /// </summary>
+    Task<bool> AnyOpenAsync(Guid orgId, IReadOnlyCollection<ActivityType> types, CancellationToken ct = default);
 
     /// <summary>
     /// Raises a "To do" item and returns its id, which the caller keeps to close the item later. Idempotent: while an item of
