@@ -65,8 +65,9 @@ internal sealed record PackageSupplier(string? CountryCode, string? VatNumber);
 
 /// <summary>
 /// A commission a portal kept on a stay of a listing whose account the agency holds (V2), as one line of the owner ledger says it: the statement month and the owner the line belongs to, the
-/// channel, the stay, the currency of the statement and the amount as the ledger stores it (negative: a cost of the owner, a reversal is positive), and whether the organization recharges
-/// it on the invoice to the owner (<see cref="PortalAccountHolders.RechargesCommissionOf"/>, the very test of that invoice).
+/// channel, the stay, the currency of the statement and the amount as the ledger stores it (negative, a reversal is positive), and whether the organization recharges it on the invoice to
+/// the owner (<see cref="PortalAccountHolders.RechargesCommissionOf"/>, the very test of that invoice; never for a commission the agency bears,
+/// <see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>: then it is a cost of the agency).
 /// </summary>
 internal sealed record PortalCommissionLine(int Year, int Month, Guid OwnerId, BookingSource Source, string Currency, Guid StayId, decimal Amount, bool Recharged);
 
@@ -307,7 +308,9 @@ internal static class AccountantPackageFacts
     /// <summary>
     /// The commissions the portals kept on the stays of the listings whose account the agency holds (⚖ I10, V2): the channel fee lines of the owner ledger of the statement months of the
     /// period, one <see cref="PortalCommissionLine"/> for each ledger line, as the ledger stores them (a reversal is a line of its own). Read through
-    /// <see cref="IPortalAccountHolderResolver"/>, the one reader of who holds an account; a listing whose account the owner holds (V1) is not here. The one read both
+    /// <see cref="IPortalAccountHolderResolver"/>, the one reader of who holds an account; a listing whose account the owner holds (V1) is not here. A commission the agency bears
+    /// (<see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>, posted for an account of the agency that the organization does not recharge, FIX/BE-V2-NO-RECHARGE) is the agency's
+    /// by the line itself: always here, never recharged, and the owner was never charged it, so the margin counts it once. The one read both
     /// <see cref="PortalCommissionsBorneAsync"/> (the figures of the summary and of the Swiss VAT file) and the V2 table of the package are made from.
     /// </summary>
     public static async Task<IReadOnlyList<PortalCommissionLine>> PortalCommissionLinesAsync(
@@ -316,9 +319,20 @@ internal static class AccountantPackageFacts
         var fromKey = (period.From.Year * 100) + period.From.Month;
         var toKey = (period.To.Year * 100) + period.To.Month;
         var fees = await db.OwnerLedgerEntries.AsNoTracking()
-            .Where(e => e.OrgId == orgId && e.EntryType == OwnerLedgerEntryType.ChannelFee && e.PropertyId != null && e.SourceId != null
+            .Where(e => e.OrgId == orgId && (e.EntryType == OwnerLedgerEntryType.ChannelFee || e.EntryType == OwnerLedgerEntryType.ChannelFeeBorneByAgency)
+                        && e.PropertyId != null && e.SourceId != null
                         && ((e.PeriodYear * 100) + e.PeriodMonth) >= fromKey && ((e.PeriodYear * 100) + e.PeriodMonth) <= toKey)
-            .Select(e => new { PropertyId = e.PropertyId!.Value, StayId = e.SourceId!.Value, e.PropertyOwnerId, e.PeriodYear, e.PeriodMonth, e.StatementCurrency, e.Amount })
+            .Select(e => new
+            {
+                PropertyId = e.PropertyId!.Value,
+                StayId = e.SourceId!.Value,
+                e.PropertyOwnerId,
+                e.PeriodYear,
+                e.PeriodMonth,
+                e.StatementCurrency,
+                e.Amount,
+                BorneByAgency = e.EntryType == OwnerLedgerEntryType.ChannelFeeBorneByAgency,
+            })
             .ToListAsync(cancellationToken);
         if (fees.Count == 0)
             return [];
@@ -331,7 +345,7 @@ internal static class AccountantPackageFacts
             .ToDictionaryAsync(b => b.Id, b => b.Source, cancellationToken);
         var holderMap = await holders.ForOrgAsync(orgId, cancellationToken);
         return fees
-            .Where(f => sources.TryGetValue(f.StayId, out var source) && holderMap.Resolve(f.PropertyId, source) == PortalAccountHolder.Agency)
+            .Where(f => sources.TryGetValue(f.StayId, out var source) && (f.BorneByAgency || holderMap.Resolve(f.PropertyId, source) == PortalAccountHolder.Agency))
             .Select(f => new PortalCommissionLine(
                 f.PeriodYear,
                 f.PeriodMonth,
@@ -340,7 +354,7 @@ internal static class AccountantPackageFacts
                 f.StatementCurrency,
                 f.StayId,
                 f.Amount,
-                holderMap.RechargesCommissionOf(f.PropertyId, sources[f.StayId])))
+                !f.BorneByAgency && holderMap.RechargesCommissionOf(f.PropertyId, sources[f.StayId])))
             .ToList();
     }
 

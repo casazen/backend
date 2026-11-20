@@ -136,6 +136,40 @@ public class SelfBillingServiceTests
         Assert.Equal(2, await rig.Db.FiscalDocuments.AsNoTracking().CountAsync(d => d.Purpose == FiscalDocumentPurpose.SelfBilling));
     }
 
+    /// <summary>
+    /// PROOF TEST: money rule (FIX/BE-V2-NO-RECHARGE). The agency that holds the account and does not recharge the commissions bears them, and the owner ledger writes them as lines for
+    /// information only: its TD17 integrates them all the same (the self-billed invoice does not depend on the recharge), and the monthly run still finds the organization. A stay posted before
+    /// the rule and again under it (its channel fee reversed, the commission posted as the agency's) is integrated once, to the cent.
+    /// </summary>
+    [Fact]
+    public async Task Td17_TheCommissionTheAgencyBears_IsIntegratedOnce_Test()
+    {
+        await using var rig = await SelfBillingRig.CreateAsync();
+        await rig.HoldAsync(rig.Mountain, BookingSource.BookingCom, PortalAccountHolder.Agency);
+
+        // A stay posted under the rule: only the commission the agency bears.
+        var borne = rig.Fee(rig.Company, rig.Mountain, await rig.StayAsync(rig.Mountain, BookingSource.BookingCom, new DateTime(2026, 10, 7)), 30.00m);
+        borne.EntryType = OwnerLedgerEntryType.ChannelFeeBorneByAgency;
+        await rig.AddAsync(borne);
+        Assert.Contains(rig.OrgId, await rig.Service.OrgsWithCommissionsAsync(2026, 10));
+
+        // A stay posted before the rule and again under it.
+        var stay = await rig.StayAsync(rig.Mountain, BookingSource.BookingCom, new DateTime(2026, 10, 9));
+        var charged = rig.Fee(rig.Company, rig.Mountain, stay, 45.00m);
+        await rig.AddAsync(charged);
+        await rig.AddAsync(rig.Reversal(charged));
+        var again = rig.Fee(rig.Company, rig.Mountain, stay, 45.00m);
+        again.EntryType = OwnerLedgerEntryType.ChannelFeeBorneByAgency;
+        await rig.AddAsync(again);
+
+        var generation = await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, null);
+
+        var agency = Assert.Single(generation.Drafts);
+        Assert.Equal((SelfBillingHolderKind.Agency, (Guid?)null, 75.00m), (agency.HolderKind, agency.HolderOwnerId, agency.TaxableBase));
+        Assert.Empty(generation.Failed);
+        Assert.Empty(generation.NotDue);
+    }
+
     /// <summary>PROOF TEST: data rule (⚖ I10). A Swiss agency that holds the account has no TD17: the commissions are left out as «holder not Italian», nothing is drafted.</summary>
     [Fact]
     public async Task Td17_SwissAgencyHoldingTheAccountHasNone_Test()

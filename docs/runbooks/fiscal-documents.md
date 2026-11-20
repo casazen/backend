@@ -784,7 +784,8 @@ With several co-owners the owner of a V1 account is the one who **signs for the 
 (`DocumentPlanRules.SignatoryOf`: the mandate in force, then the largest share, then the oldest ownership, then the smallest id), so the TD17 and the receipt or the invoice of the
 stay are always the same owner's.
 
-**The amounts.** The taxable amount is the sum of the `ChannelFee` lines of the owner ledger of the month (a reversal and the line it reverses cancel out; the drafts only read the ledger,
+**The amounts.** The taxable amount is the sum of the `ChannelFee` lines of the owner ledger of the month, and of the `ChannelFeeBorneByAgency` ones (the commission of an account of the agency that is not
+recharged: the agency bears it, the TD17 is due all the same; FIX/BE-V2-NO-RECHARGE) (a reversal and the line it reverses cancel out; the drafts only read the ledger,
 so a month the owner accounting has not posted yet has no commissions to invoice, and the answer says so: `ledgerPosted` false), in the currency of the stay
 and **in euro only**: a commission in another currency is not converted by a guess, it is reported (`currency_not_supported`). Only the stays that are **active now** are integrated (the one
 definition, `AlloggiatiStatusRules.ActiveBookingStatuses` and no no-show): the owner ledger is posted by hand, so the line of a stay cancelled or marked no-show after the posting is alive until the
@@ -839,10 +840,18 @@ duty, the total, the currency, then the country and the VAT number of the suppli
 each document. The VAT file of the issuer (`iva/iva-{issuer}.csv`) carries them as the class «Autofatture TD17» (month, rate, taxable amount, VAT, total, documents), whatever the regime of
 the issuer (a TD17 integrates the VAT at the rate of the settings), but only with the owner accounting: a TD17 of an owner company is that owner's cost of its portal, so, like the portal commissions,
 a caller without `agency.statement.view` (or that reaches only some properties) finds none of it, not even as a figure, and the VAT file of an Italian issuer says so in a last table «Autofatture TD17 non incluse in questo file» (the reason is the one of the omitted folders: `agency.statement.view` and the whole org), never a file that reads as «no TD17». The **portal commissions of the accounts the agency holds** (V2) are `fatture-proprietari/commissioni-portali-v2.csv` and `.xlsx`: one row
-for each statement month, owner, channel and currency (the commission as a positive amount, the stays that carry it and the treatment, «Riaddebitata al proprietario» or «Non riaddebitata in fattura» by
+for each statement month, owner, channel and currency (the commission as a positive amount, the stays that carry it and the treatment, «Riaddebitata al proprietario» or «A carico dell'agenzia» by
 `RechargePortalCommissions`) and the totals for each channel and currency; they come from the owner ledger through the resolver of the holders (`IPortalAccountHolderResolver`: the same test as the invoice to
 the owner), the amounts are the ledger's and never recomputed, and they are the lines the TD17 of the agency integrates (the TD17 leaves out what is not in euro or belongs to a stay that is not active any
-more) and, when recharged, the ones the invoices to the owners recharge. Both families are written only for a period that has them: a period with no
+more) and, when recharged, the ones the invoices to the owners recharge. **Without the recharge the agency bears the commission** (FIX/BE-V2-NO-RECHARGE, decision 1 of
+`fatturazione/decisioni-fiscali-2026-11-20.md`): the owner ledger writes it as `ChannelFeeBorneByAgency`, a line for information only that charges the owner nothing, so the treatment «A carico
+dell'agenzia» says what is true and the agency summary counts the commission **once**, as the cost of its margin («Margine = provvigioni e riaddebiti fatturati meno le commissioni dei portali sui
+conti intestati all'agenzia»: the recharged ones come back with the recharges, the others stay its cost; the column of the commissions is «Commissioni dei portali sui conti dell'agenzia»). The sources (R1,
+opened on 20/11/2026): the expenses of the mandate are the principal's by law (art. 1719-1720 c.c.; art. 402 CO), but in V2 the portal invoices the agency, so charging them to the owner is a taxable recharge
+that needs a document of the agency (art. 3 c. 3 and art. 13 c. 2 lett. b DPR 633/72 until 31/12/2026, then the Testo unico IVA, D.Lgs. 10/2026; art. 20 LIVA): without it the commission is the agency's. **The
+confirmation of the mandate and of the VAT treatment is for the accountant** (and the Swiss fiduciary) before the function is used in production. A commission charged to the owner on such an account before
+the rule (a `ChannelFee` of a month closed before it: the open months are posted again under the rule) is read with the setting of today and listed «A carico dell'agenzia» like the others; the statement of
+that month says what it was. Both families are written only for a period that has them: a period with no
 TD17 and no commission of that kind has the same files, with the same content, as before.
 
 **A TD17 the SDI rejected** (⚖ the prudent default, a choice of the PO and the accountant to confirm before `Features__AccountantPackage` is turned on): a rejected invoice counts as not issued, and until the host corrects it
@@ -1000,8 +1009,10 @@ version and its SHA-256: the table «Official schemas» of `docs/runbooks/wire-t
 listing told the owner that the portal billed it while the invoice of the property manager recharged the commission. The channel fee that the invoice recharges (the
 agency holds the account and recharges, the test of the invoice) is now «Commissioni del portale riaddebitate dal gestore (fattura n. …)», in the published PDF and on
 the owner portal (`Variant_V2_*`, read as the owner reads it: the request of an owner has no org, and the resolver reads the holders whatever the tenant of the
-caller); an account of the agency whose commissions it does not recharge never names the invoice and has a label of its own, «Commissioni del portale (account del portale
-intestato al gestore, senza riaddebito in fattura)», never the sentence of V1 (`Variant_V2_WithoutTheRecharge_*`).
+caller); an account of the agency whose commissions it does not recharge never names the invoice and has a label of its own, never the sentence of V1
+(`Variant_V2_WithoutTheRecharge_*`). Since FIX/BE-V2-NO-RECHARGE (decision 1 of 20/11/2026) the agency bears that commission: the owner is not charged it (the month closes at 266.23 instead of
+198.73, the payout is 266.23), the statement shows it for information only, «Commissione del portale sostenuta dall'agenzia, non addebitata al proprietario» (the commission as the amount
+the agency bears, in no total), and the package lists it «A carico dell'agenzia».
 
 **What the scenario shows** (facts of the code as it is, for the decisions of the PO and of the accountant):
 

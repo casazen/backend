@@ -59,8 +59,9 @@ public sealed partial class OwnerAccountingService
         var hash = Hash(ofMonth);
 
         // A balance is money in a currency, not a bare number. A month without entries retains the currency of the
-        // outstanding balance; changing currency while another currency is still owed needs an explicit conversion.
-        var priorBalances = entries.Where(e => new Period(e.PeriodYear, e.PeriodMonth).IsBefore(year, month))
+        // outstanding balance; changing currency while another currency is still owed needs an explicit conversion. A line for information only (the commission of a
+        // portal the agency bears, FIX/BE-V2-NO-RECHARGE) is in no balance: it is in the lines of the version (their hash) and in none of its amounts.
+        var priorBalances = entries.Where(e => OwnerLedgerBalance.Counts(e.EntryType) && new Period(e.PeriodYear, e.PeriodMonth).IsBefore(year, month))
             .GroupBy(e => e.StatementCurrency, StringComparer.Ordinal)
             .Select(group => new { Currency = group.Key, Amount = group.Sum(e => e.Amount) })
             .Where(balance => balance.Amount != 0m)
@@ -86,7 +87,7 @@ public sealed partial class OwnerAccountingService
         var plan = await PlanAsync(orgId, period, ct);
         var live = await LiveEntriesAsync(orgId, period, ct);
         var issues = LedgerIssues(plan, live, ownerId);
-        var closing = opening + ofMonth.Sum(e => e.Amount);
+        var closing = opening + ofMonth.Where(e => OwnerLedgerBalance.Counts(e.EntryType)).Sum(e => e.Amount);
         if (closing < 0m)
             issues.Add(new OwnerReadinessIssue(OwnerReadinessCodes.NegativeBalance, ownerId, Blocking: false));
 
@@ -116,6 +117,8 @@ public sealed partial class OwnerAccountingService
             CutoffAt = now,
             OpeningBalance = opening,
             Revenue = SumOf(ofMonth, OwnerLedgerEntryType.BookingRevenue),
+
+            // The commissions the owner bears: the ones the agency bears (ChannelFeeBorneByAgency) are for information only, in no column.
             ChannelFees = SumOf(ofMonth, OwnerLedgerEntryType.ChannelFee),
             // The commission of the agency with the VAT its owner invoice added on top (E14/F01/US01/T01): the section of the statement that names the invoice.
             Commission = SumOf(ofMonth, OwnerLedgerEntryType.AgencyCommission, OwnerLedgerEntryType.AgencyVat),
@@ -444,8 +447,10 @@ public sealed partial class OwnerAccountingService
         if (entries.Any(entry => entry.StatementCurrency != version.Currency))
             throw new DomainConflictException(OwnerAccountingErrors.StatementCurrencyConflict, "OwnerStatementCurrencyConflict");
 
-        // The balance carried in from the earlier months is part of the picture: a line posted there after the cut-off makes this version stale too.
+        // The balance carried in from the earlier months is part of the picture: a line posted there after the cut-off makes this version stale too. A line for information
+        // only is in no balance.
         var priorBalances = await db.OwnerLedgerEntries.AsNoTracking()
+            .CountingInBalance()
             .Where(e => e.OrgId == version.OrgId && e.PropertyOwnerId == version.PropertyOwnerId
                 && (e.PeriodYear < version.PeriodYear || (e.PeriodYear == version.PeriodYear && e.PeriodMonth < version.PeriodMonth)))
             .GroupBy(e => e.StatementCurrency)

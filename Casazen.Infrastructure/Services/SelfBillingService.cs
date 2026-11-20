@@ -17,7 +17,8 @@ namespace Casazen.Infrastructure.Services;
 /// <inheritdoc cref="ISelfBillingService"/>
 /// <remarks>
 /// <list type="bullet">
-/// <item><b>The base is the ledger.</b> The commissions are the <see cref="OwnerLedgerEntryType.ChannelFee"/> lines of the owner ledger of the month (the ledger decides which
+/// <item><b>The base is the ledger.</b> The commissions are the channel fee lines of the owner ledger of the month, whoever bears them (<see cref="OwnerLedgerEntryType.ChannelFee"/>,
+/// and <see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/> for an account the agency holds and does not recharge: the TD17 does not depend on the recharge; the ledger decides which
 /// stays are active and what the portal kept; a reversal and the line it reverses cancel out), in the currency of the stay, never read from the bookings again. The portal of a
 /// stay is its booking source, the holder of its account is <see cref="IPortalAccountHolderResolver"/>'s, and for an account held by the owner the owner is the one who signs for
 /// the property on the check-out day (<see cref="DocumentPlanRules.SignatoryOf"/>): the same owner whose receipt or invoice the document plan makes for the stay.</item>
@@ -328,8 +329,8 @@ public sealed partial class SelfBillingService(
         // The commissions of the month, as the ledger has them: the owner's share of the commission of each stay, a reversal and the line it reverses cancelling out. In the
         // currency of the stay (the share of the owner in it), so that nothing is converted.
         var fees = await db.OwnerLedgerEntries.AsNoTracking()
-            .Where(e => e.OrgId == orgId && e.EntryType == OwnerLedgerEntryType.ChannelFee && e.PeriodYear == year && e.PeriodMonth == month
-                        && e.PropertyId != null && e.SourceId != null)
+            .Where(e => e.OrgId == orgId && (e.EntryType == OwnerLedgerEntryType.ChannelFee || e.EntryType == OwnerLedgerEntryType.ChannelFeeBorneByAgency)
+                        && e.PeriodYear == year && e.PeriodMonth == month && e.PropertyId != null && e.SourceId != null)
             .Select(e => new FeeLine(e.PropertyId!.Value, e.SourceId!.Value, e.PropertyOwnerId, e.OriginalCurrency, e.OriginalAmount, e.RuleVersion))
             .ToListAsync(ct);
         if (fees.Count == 0)

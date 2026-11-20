@@ -224,7 +224,8 @@ public class OwnerInvoiceServiceTests
         Assert.Equal((FiscalLineType.Recharge, 150.00m, 8.1m), (recharge.LineType, recharge.TotalPrice, recharge.VatRatePercent));
         Assert.Equal(owners.Id, agencys.Id);
 
-        await rig.Setup.SaveAsync(rig.OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = false }, null);
+        // Turning the recharge off with an account of the agency is a waiver the agency acknowledges (FIX/BE-V2-NO-RECHARGE).
+        await rig.Setup.SaveAsync(rig.OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = false, AcknowledgeRechargeWaiver = true }, null);
         var off = await rig.Invoices.CreateDraftAsync(rig.OrgId, version.Id, null);
         Assert.DoesNotContain(off.Lines, l => l.Description.StartsWith("Riaddebito commissioni", StringComparison.Ordinal));
 

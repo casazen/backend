@@ -503,6 +503,29 @@ public static class OwnerLedgerRules
 }
 
 /// <summary>
+/// Which lines of the owner ledger make the balance of an owner (FIX/BE-V2-NO-RECHARGE, decision 1 of 20/11/2026): every line but the ones for information only,
+/// today the commission of a portal the agency bears (<see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>). The one definition every reader of a balance uses: the
+/// closing and the opening balance of a version, the readiness, the settlement of an owner invoice, the reconciliation of the statements and the totals of a statement.
+/// The readers of the commissions of the portals (the TD17, the accountant package, the reconciliation of the payouts of the portals) read both kinds of channel fee
+/// (<see cref="IsChannelFee"/>).
+/// </summary>
+public static class OwnerLedgerBalance
+{
+    /// <summary>True when a line of <paramref name="type"/> counts in the balance of the owner; false for a line for information only.</summary>
+    public static bool Counts(OwnerLedgerEntryType type) => type != OwnerLedgerEntryType.ChannelFeeBorneByAgency;
+
+    /// <summary>True for the commission a portal kept on a stay, whoever bears it: a <see cref="OwnerLedgerEntryType.ChannelFee"/> or a <see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>.</summary>
+    public static bool IsChannelFee(OwnerLedgerEntryType type) => type is OwnerLedgerEntryType.ChannelFee or OwnerLedgerEntryType.ChannelFeeBorneByAgency;
+
+    /// <summary>The lines of a query of the ledger that count in the balance of an owner (<see cref="Counts"/>), as a predicate a database translates.</summary>
+    public static IQueryable<OwnerLedgerEntry> CountingInBalance(this IQueryable<OwnerLedgerEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        return entries.Where(e => e.EntryType != OwnerLedgerEntryType.ChannelFeeBorneByAgency);
+    }
+}
+
+/// <summary>
 /// The retention of the evidence of a closed month (E06/F05/US02/T02, AC-NF110-8): the years of the approved rule set of the owner when it says more,
 /// else the floor of the jurisdiction (Italy 10 years, Switzerland 20 for the evidence of immovable property, any other 10), counted from the end of the
 /// close year. A legal hold stops the expiry.

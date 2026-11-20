@@ -91,8 +91,10 @@ public class BillingSetupController(
     /// <summary>
     /// The endpoint of the section <c>channels</c> (E14/F01/US01/T01, ⚖ I10, I11): who holds the accounts of the portals by default (<c>portalAccountHolder</c>,
     /// <c>Owner</c> or <c>Agency</c>) and whether their commissions are recharged to the owners (<c>rechargePortalCommissions</c>); a member left out keeps its
-    /// value. Answers the section as saved. 422 <c>billing_channels_invalid</c>; 403 <c>fiscal_settings_need_whole_org</c>. Behind <c>Features:OwnerInvoicing</c>
-    /// too, like the invoices that use it: 404 while it is off.
+    /// value. Answers the section as saved. 422 <c>billing_channels_invalid</c>; 422 <c>recharge_waiver_not_acknowledged</c> for a save that turns the waiver of the recharge
+    /// on (the recharge off with an account of the agency) without <c>acknowledgeRechargeWaiver: true</c> (FIX/BE-V2-NO-RECHARGE: the agency then bears those commissions;
+    /// who acknowledged it and when go to the activity log); 403 <c>fiscal_settings_need_whole_org</c>. Behind <c>Features:OwnerInvoicing</c> too, like the invoices that
+    /// use it: 404 while it is off.
     /// </summary>
     [HttpPut(BillingSetupSections.Channels)]
     [FeatureGate(FeatureFlags.OwnerInvoicing)]

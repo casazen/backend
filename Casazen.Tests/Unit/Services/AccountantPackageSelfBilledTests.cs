@@ -102,8 +102,8 @@ public class AccountantPackageSelfBilledTests
 
     /// <summary>
     /// PROOF TEST: money rule. The portal commissions of the accounts the agency holds (V2) are in the package, one row for each statement month, owner and channel: the amount is the one of the
-    /// owner ledger (a listing whose account the owner holds is not in it), it ties to the figure of the agency summary, the treatment says whether it is recharged to the owner or not charged back on an invoice
-    /// (<c>RechargePortalCommissions</c>), and a reversal cancels the line it reverses out of the table.
+    /// owner ledger (a listing whose account the owner holds is not in it), it ties to the figure of the agency summary, the treatment says whether it is recharged to the owner or borne by the agency
+    /// (<c>RechargePortalCommissions</c>, decision 1 of 20/11/2026), and a reversal cancels the line it reverses out of the table.
     /// </summary>
     [Fact]
     public async Task AccountantPackage_ContainsTheV2PortalCommission_Test()
@@ -126,13 +126,14 @@ public class AccountantPackageSelfBilledTests
         Assert.DoesNotContain("150,00", Text(files[PortalCommissionsPath]), StringComparison.Ordinal);
         AssertTheIndex(files);
 
-        // The agency that does not recharge the commissions: the same amount, said as not charged back on an invoice (the label never says who bears it).
+        // The agency that does not recharge the commissions bears them (decision 1 of 20/11/2026): the same amount, said so. (The posting writes such a commission as a line the
+        // agency bears, AccountantPackage_V2NotRecharged_IsAgencyCost_OnceInTheMargin_Test; here the line of before is read with the setting of today.)
         var profile = await rig.Db.OrgFiscalIssuerProfiles.SingleAsync(p => p.OrgId == rig.OrgId);
         profile.RechargePortalCommissions = false;
         await rig.Db.SaveChangesAsync();
         rig.Db.ChangeTracker.Clear();
         var (_, borne) = await BuildAsync(rig, AccountantPackageAccess.Full, October);
-        Assert.Equal(new[] { "2026-10", "TEST Proprietario", "Booking.com", "CHF", "1", "120,00", "Non riaddebitata in fattura" }, Assert.Single(Blocks(borne[PortalCommissionsPath])[0].Skip(2)));
+        Assert.Equal(new[] { "2026-10", "TEST Proprietario", "Booking.com", "CHF", "1", "120,00", "A carico dell'agenzia" }, Assert.Single(Blocks(borne[PortalCommissionsPath])[0].Skip(2)));
 
         // A reversal and the line it reverses cancel out: nothing is left to list, and the table is not written.
         var original = await rig.Db.OwnerLedgerEntries.AsNoTracking().SingleAsync(e => e.EntryType == OwnerLedgerEntryType.ChannelFee && e.PropertyId == lake);
@@ -142,6 +143,49 @@ public class AccountantPackageSelfBilledTests
         var (_, reversed) = await BuildAsync(rig, AccountantPackageAccess.Full, October);
         Assert.DoesNotContain(reversed.Keys, k => k.Contains(AccountantPackageStructure.PortalCommissionsFile, StringComparison.Ordinal));
         Assert.Empty((await rig.Summaries.GetAsync(rig.Scope, AccountantPackageAccess.Full, October)).PortalCommissionsBorne);
+    }
+
+    /// <summary>
+    /// PROOF TEST: money rule (FIX/BE-V2-NO-RECHARGE, decision 1 of 20/11/2026). The organization stops recharging the commissions of the accounts it holds, so the posting of the month stops
+    /// charging the commission of the lake house to the owner: it reverses the channel fee posted before and posts the commission again as a line the agency bears (as
+    /// <c>PostPeriodAsync</c> does). The owner's balance has none of it; the package lists it once, «A carico dell'agenzia»; the agency summary counts it once as the cost of the margin (120.00,
+    /// not 240.00: the reversed line and its reversal cancel out), the very margin of before, when the owner was charged it and the agency recharged it.
+    /// </summary>
+    [Fact]
+    public async Task AccountantPackage_V2NotRecharged_IsAgencyCost_OnceInTheMargin_Test()
+    {
+        await using var rig = await AccountantPackageRig.CreateAsync();
+        var (lake, stay) = await V2ListingAsync(rig);
+        var before = Assert.Single((await rig.Summaries.GetAsync(rig.Scope, AccountantPackageAccess.Full, October)).Margin);
+
+        var profile = await rig.Db.OrgFiscalIssuerProfiles.SingleAsync(p => p.OrgId == rig.OrgId);
+        profile.RechargePortalCommissions = false;
+        var original = await rig.Db.OwnerLedgerEntries.AsNoTracking().SingleAsync(e => e.EntryType == OwnerLedgerEntryType.ChannelFee && e.PropertyId == lake);
+        rig.Db.OwnerLedgerEntries.Add(Fee(rig, lake, stay, 10, 120.00m, reverses: original.Id));
+        var borneByAgency = Fee(rig, lake, stay, 10, -120.00m);
+        borneByAgency.EntryType = OwnerLedgerEntryType.ChannelFeeBorneByAgency;
+        rig.Db.OwnerLedgerEntries.Add(borneByAgency);
+        await rig.Db.SaveChangesAsync();
+        rig.Db.ChangeTracker.Clear();
+
+        // The owner is charged nothing of it: what counts in its balance nets to zero, and the line the agency bears is for information only.
+        var lines = await rig.Db.OwnerLedgerEntries.AsNoTracking().Where(e => e.PropertyId == lake && e.SourceId == stay).ToListAsync();
+        Assert.Equal(0m, lines.Where(e => OwnerLedgerBalance.Counts(e.EntryType)).Sum(e => e.Amount));
+        Assert.Equal(-120.00m, Assert.Single(lines, e => !OwnerLedgerBalance.Counts(e.EntryType)).Amount);
+
+        // The package: one row and one total, the commission borne by the agency.
+        var (_, files) = await BuildAsync(rig, AccountantPackageAccess.Full, October);
+        var blocks = Blocks(files[PortalCommissionsPath]);
+        Assert.Equal(new[] { "2026-10", "TEST Proprietario", "Booking.com", "CHF", "1", "120,00", "A carico dell'agenzia" }, Assert.Single(blocks[0].Skip(2)));
+        Assert.Equal(new[] { "Booking.com", "CHF", "A carico dell'agenzia", "120,00" }, Assert.Single(blocks[1].Skip(2)));
+        AssertTheIndex(files);
+
+        // The agency summary: the commission is the cost of the margin once, and the margin is the one of before.
+        var summary = await rig.Summaries.GetAsync(rig.Scope, AccountantPackageAccess.Full, October);
+        Assert.Equal(new AgencyPortalCommissionBorneRow(BookingSource.BookingCom, "CHF", 120.00m), Assert.Single(summary.PortalCommissionsBorne));
+        var margin = Assert.Single(summary.Margin);
+        Assert.Equal((120.00m, margin.Commissions + margin.Recharges - 120.00m), (margin.PortalCommissionsBorne, margin.Margin));
+        Assert.Equal(before, margin);
     }
 
     /// <summary>

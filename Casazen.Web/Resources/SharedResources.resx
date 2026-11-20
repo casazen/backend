@@ -6904,6 +6904,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="BillingChannelsInvalid" xml:space="preserve">
     <value>L'impostazione dei portali non è valida: controlla il campo indicato.</value>
   </data>
+  <data name="RechargeWaiverNotAcknowledged" xml:space="preserve">
+    <value>Senza riaddebito le commissioni dei portali sugli account intestati all'agenzia restano a carico dell'agenzia e non vengono addebitate ai proprietari: conferma la rinuncia per salvare.</value>
+  </data>
   <data name="ChannelAccountHoldersInvalid" xml:space="preserve">
     <value>L'elenco degli intestatari degli account dei portali non è valido: controlla la riga e il campo indicati.</value>
   </data>
@@ -7406,6 +7409,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Commissioni del portale riaddebitate dal gestore (fattura n. {0})</value>
   </data>
   <data name="StatementFileChannelFeesAgencyNotRecharged" xml:space="preserve">
+    <value>Commissione del portale sostenuta dall'agenzia, non addebitata al proprietario</value>
+  </data>
+  <data name="StatementFileChannelFeesAgencyCharged" xml:space="preserve">
     <value>Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)</value>
   </data>
   <data name="StatementFileCommissionInvoice" xml:space="preserve">
@@ -7646,7 +7652,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Riaddebitata al proprietario</value>
   </data>
   <data name="AccPkgTreatmentBorne" xml:space="preserve">
-    <value>Non riaddebitata in fattura</value>
+    <value>A carico dell'agenzia</value>
   </data>
   <data name="AccPkgStatementsTitle" xml:space="preserve">
     <value>Rendiconti pubblicati ai proprietari, per mese di competenza (ultima versione pubblicata)</value>
@@ -7916,13 +7922,13 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Commissioni dei portali sui conti intestati all'agenzia, per mese di competenza (dal libro dei proprietari)</value>
   </data>
   <data name="AccPkgSumMarginTitle" xml:space="preserve">
-    <value>Margine = provvigioni e riaddebiti fatturati (imponibile) meno le commissioni dei portali a carico dell'agenzia</value>
+    <value>Margine = provvigioni e riaddebiti fatturati (imponibile) meno le commissioni dei portali sui conti intestati all'agenzia: quelle riaddebitate rientrano con i riaddebiti, quelle non riaddebitate restano a carico dell'agenzia e contano una volta sola</value>
   </data>
   <data name="AccPkgSumMargin" xml:space="preserve">
     <value>Margine</value>
   </data>
   <data name="AccPkgSumPortalBorne" xml:space="preserve">
-    <value>Commissioni dei portali a carico dell'agenzia</value>
+    <value>Commissioni dei portali sui conti dell'agenzia</value>
   </data>
   <data name="AccPkgSumOwnersTitle" xml:space="preserve">
     <value>Report per proprietario: ricavo e occupazione degli immobili, per competenza</value>
