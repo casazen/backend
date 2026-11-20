@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Casazen.Core.Assistant;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -840,6 +841,40 @@ public sealed class AssistantDraftPipelineTests : IDisposable
         Assert.Equal([AiModelTier.Economy, AiModelTier.Standard, AiModelTier.Standard], _rig.Ai.Calls.Select(call => call.Tier));
         Assert.All(_rig.Ai.Calls, call => Assert.True(call.Request.DisableThinking));
         Assert.Single(await _rig.Db.ApprovalQueueItems.ToListAsync());
+
+        // The draft is asked again with room for a reasoning: the same short limit would be spent the same way.
+        Assert.Equal(
+            [AssistantPromptBuilder.ClassificationMaxTokens, AssistantPromptBuilder.DraftMaxTokens, AssistantPromptBuilder.ReasoningRetryMaxTokens],
+            _rig.Ai.Calls.Select(call => call.Request.MaxCompletionTokens ?? 0));
+    }
+
+    [Fact]
+    public async Task AModelThatSpentTheLimitReasoning_IsAskedAgainWithRoomToReason_AndItsDraftIsQueued()
+    {
+        // #936: a model that reasons before it answers, on a server that did not switch the reasoning off, gave back no text to the classification and only a reasoning
+        // cut by the limit to the draft: both calls are made again with room for the reasoning, and the answers that follow the reasoning are read.
+        await _rig.SeedAsync();
+        _rig.Ai.ClassificationResponses.Enqueue(string.Empty);
+        _rig.Ai.Classification = "<think>The guest asks where to park {perhaps parking}.</think>\n" + ScriptedAiProvider.ParkingClassification;
+        _rig.Ai.DraftResponses.Enqueue("<think>The guest wants to know where to park, the facts say");
+        _rig.Ai.Draft = "<think>Greet with {{guest_name}} and use the fact.</think>" + ScriptedAiProvider.ParkingDraft;
+        var message = await _rig.GuestWritesAsync("Dove posso parcheggiare?");
+
+        var outcome = await _rig.Service().ProcessInboundAsync(_rig.OrgId, _rig.Key, message.Id, AssistantProcessOptions.Automatic);
+
+        Assert.Equal((AssistantDecision.Drafted, AssistantSituation.Parking), (outcome.Decision, outcome.Situation));
+        Assert.Equal(
+            [
+                (AiModelTier.Economy, AssistantPromptBuilder.ClassificationMaxTokens),
+                (AiModelTier.Economy, AssistantPromptBuilder.ReasoningRetryMaxTokens),
+                (AiModelTier.Standard, AssistantPromptBuilder.DraftMaxTokens),
+                (AiModelTier.Standard, AssistantPromptBuilder.ReasoningRetryMaxTokens),
+            ],
+            _rig.Ai.Calls.Select(call => (call.Tier, call.Request.MaxCompletionTokens ?? 0)));
+        Assert.All(_rig.Ai.Calls, call => Assert.True(call.Request.DisableThinking));
+        var item = Assert.Single(await _rig.Db.ApprovalQueueItems.ToListAsync());
+        Assert.DoesNotContain("think", item.ContentText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("parcheggio", item.ContentText, StringComparison.Ordinal);
     }
 
     [Fact]

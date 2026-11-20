@@ -11238,6 +11238,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<string>("TicinoStructureId")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("Timezone")
                         .IsRequired()
                         .HasMaxLength(50)

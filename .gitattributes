@@ -6,3 +6,5 @@ Casazen.Infrastructure/Data/Seeds/comuni-centroidi.csv -text
 Casazen.Infrastructure/Payments/Schemas/**/*.xsd -text
 # The official FatturaPA schemas (E17/F01/US01/T03): the SHA-256 in docs/runbooks/fiscal-documents.md and FatturaPaSchemaProvider.OfficialFiles is the one of these exact bytes.
 Casazen.Infrastructure/Fiscal/Schemas/*.xsd -text
+# The official models of the Ticino police portal (casazen/backend#979): the tests compare bytes of the CSV model (ISO-8859-1, CRLF).
+Casazen.Tests/Fixtures/ticino/* -text

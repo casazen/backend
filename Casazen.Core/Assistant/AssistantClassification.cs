@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
 
 namespace Casazen.Core.Assistant;
 
@@ -46,52 +47,66 @@ public sealed partial record AssistantClassification(
     public static AssistantClassification Unreadable { get; } = new(AssistantSituation.Other, AssistantUrgency.Normal, SensitiveCategory.None, [], null, 0m);
 
     /// <summary>
-    /// The classification in the answer of the model, strictly: the one JSON object it holds (whatever comes before its first <c>{</c> or after its last <c>}</c>, a code fence
-    /// for one, is left out) with <c>situation</c> (the stable code of a situation of <see cref="AssistantSituationCatalog"/>, or the name of its member) and
-    /// <c>situationMatch</c> (a number from 0 to 1). <b>Anything unreadable or out of range is <see cref="AssistantSituation.Other"/> with a match of 0, never an exception</b>: no
-    /// object, an unknown situation, a match missing, not a number or outside 0 to 1. The rest is read on its own: <c>urgency</c> (<c>normal</c>, <c>high</c>, <c>urgent</c>; any other
-    /// value is normal), <c>sensitiveCategories</c> (the known words; the others are left out), <c>intentFlags</c> (codes of lower-case letters, digits and underscores) and
-    /// <c>language</c> (two letters).
+    /// The classification in the answer of the model, strictly: the JSON object it holds (a code fence or a sentence around it, and the reasoning of a model that thinks aloud,
+    /// <c>&lt;think&gt;…&lt;/think&gt;</c>, are left out; see <see cref="DocumentOf"/>) with <c>situation</c> (the stable code of a situation of
+    /// <see cref="AssistantSituationCatalog"/>, or the name of its member) and <c>situationMatch</c> (a number from 0 to 1). <b>Anything unreadable or out of range is
+    /// <see cref="AssistantSituation.Other"/> with a match of 0, never an exception</b>: no object, an unknown situation, a match missing, not a number or outside 0 to 1. The rest is
+    /// read on its own: <c>urgency</c> (<c>normal</c>, <c>high</c>, <c>urgent</c>; any other value is normal), <c>sensitiveCategories</c> (the known words; the others are left out),
+    /// <c>intentFlags</c> (codes of lower-case letters, digits and underscores) and <c>language</c> (two letters).
     /// </summary>
     public static AssistantClassification Parse(string? answer)
     {
-        if (ObjectOf(answer) is not { } json)
+        using var document = DocumentOf(answer, "situation");
+        if (document is null)
             return Unreadable;
 
-        try
-        {
-            using var document = JsonDocument.Parse(json, ReadOptions);
-            var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object)
-                return Unreadable;
+        var root = document.RootElement;
+        var urgency = UrgencyOf(root);
+        var categories = CategoriesOf(root);
+        var flags = FlagsOf(root);
+        var language = LanguageOf(root);
 
-            var urgency = UrgencyOf(root);
-            var categories = CategoriesOf(root);
-            var flags = FlagsOf(root);
-            var language = LanguageOf(root);
-
-            var situation = AssistantSituation.Other;
-            var known = String(root, "situation") is { } text && AssistantSituationCatalog.TryParse(text, out situation);
-            var match = MatchOf(root);
-            return known && match is { } value && situation != AssistantSituation.Other
-                ? new AssistantClassification(situation, urgency, categories, flags, language, value)
-                : new AssistantClassification(AssistantSituation.Other, urgency, categories, flags, language, 0m);
-        }
-        catch (JsonException)
-        {
-            return Unreadable;
-        }
+        var situation = AssistantSituation.Other;
+        var known = String(root, "situation") is { } text && AssistantSituationCatalog.TryParse(text, out situation);
+        var match = MatchOf(root);
+        return known && match is { } value && situation != AssistantSituation.Other
+            ? new AssistantClassification(situation, urgency, categories, flags, language, value)
+            : new AssistantClassification(AssistantSituation.Other, urgency, categories, flags, language, 0m);
     }
 
-    /// <summary>The text from the first <c>{</c> to the last <c>}</c> of the answer; <c>null</c> when there is none.</summary>
-    internal static string? ObjectOf(string? answer)
+    /// <summary>
+    /// The JSON object of the answer the caller reads, parsed (the caller disposes it): the objects that follow a reasoning (<see cref="AiAnswerText.JsonObjectsLastFirst"/>,
+    /// the last one first), and of them the first that has <paramref name="member"/>, else the first that is an object at all; <c>null</c> when the answer holds none.
+    /// Trying each object in turn is what keeps a brace inside a string of the answer (the <c>{{guest_name}}</c> of a draft) or an object in a reasoning from hiding the answer.
+    /// </summary>
+    internal static JsonDocument? DocumentOf(string? answer, string member)
     {
-        if (string.IsNullOrWhiteSpace(answer))
-            return null;
+        JsonDocument? anyObject = null;
+        foreach (var candidate in AiAnswerText.JsonObjectsLastFirst(answer))
+        {
+            JsonDocument document;
+            try
+            {
+                document = JsonDocument.Parse(candidate, ReadOptions);
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
 
-        var start = answer.IndexOf('{', StringComparison.Ordinal);
-        var end = answer.LastIndexOf('}');
-        return start >= 0 && end > start ? answer[start..(end + 1)] : null;
+            if (document.RootElement.ValueKind == JsonValueKind.Object && Member(document.RootElement, member) is not null)
+            {
+                anyObject?.Dispose();
+                return document;
+            }
+
+            if (anyObject is null && document.RootElement.ValueKind == JsonValueKind.Object)
+                anyObject = document;
+            else
+                document.Dispose();
+        }
+
+        return anyObject;
     }
 
     /// <summary>The string of <paramref name="name"/> in <paramref name="root"/> (in any case of the name); <c>null</c> when it is missing or not a string.</summary>

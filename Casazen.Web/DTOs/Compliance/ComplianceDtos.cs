@@ -242,6 +242,12 @@ public class ComplianceSummaryDto
 
     /// <summary>The ISTAT (<c>UploadIstatProof</c>) and tourist tax (<c>DeclareTouristTax</c>) of the closed months, with their <c>period</c>, and the tourist tax rates that are not known (<c>EnterMunicipalityTaxRate</c>).</summary>
     public ComplianceSummarySectionDto PeriodItems { get; set; } = new();
+
+    /// <summary>
+    /// The arrival days of the properties in canton Ticino whose guests are not notified to the cantonal police yet (<c>NotifyTicinoPolice</c>,
+    /// casazen/backend#979): one item per property and day, the day in <c>period</c> (<c>yyyy-MM-dd</c>), due 24 hours from the arrival.
+    /// </summary>
+    public ComplianceSummarySectionDto TicinoNotifications { get; set; } = new();
 }
 
 /// <summary>

@@ -305,11 +305,7 @@ public sealed class AssistantDraftService(
     private async Task<Composition> ComposeAsync(Composing input, CancellationToken ct)
     {
         // (c) The classification (Economy tier) and the setting of its situation.
-        var classified = await CallAsync(
-            AssistantPromptBuilder.BuildClassification(input.Transcript),
-            AiModelTier.Economy,
-            AssistantPromptBuilder.CallLabel("classify", input.MessageId),
-            ct);
+        var classified = await CallOnceMoreIfEmptyAsync(AssistantPromptBuilder.BuildClassification(input.Transcript), AiModelTier.Economy, "classify", input, ct);
         if (classified.Failure is { } classificationFailure)
             return Composition.Failed(classificationFailure, classified.Tier);
 
@@ -350,12 +346,7 @@ public sealed class AssistantDraftService(
                 .ToList();
             var request = AssistantPromptBuilder.BuildDraft(
                 input.Transcript, promptFacts, input.Rules, info.Code, language, greetByName: input.Values.GuestName is not null);
-            var drafted = await CallAsync(request, AiModelTier.Standard, AssistantPromptBuilder.CallLabel("draft", input.MessageId), ct);
-            if (drafted.Failure is null && string.IsNullOrWhiteSpace(drafted.Content))
-            {
-                drafted = await CallAsync(request, AiModelTier.Standard, AssistantPromptBuilder.CallLabel("draft-retry", input.MessageId), ct);
-            }
-
+            var drafted = await CallOnceMoreIfEmptyAsync(request, AiModelTier.Standard, "draft", input, ct);
             lastTier = drafted.Tier ?? lastTier;
             if (drafted.Failure is { } draftFailure)
                 return new Composition(classification, info, resolved, sensitive, null, facts, null, false, null, lastTier, draftFailure);
@@ -460,6 +451,25 @@ public sealed class AssistantDraftService(
     // ─── The calls to the AI ───
 
     private sealed record CallResult(string? Content, AiModelTier? Tier, string? Failure);
+
+    /// <summary>
+    /// A call of the pipeline, made once more with room for a reasoning (<see cref="AssistantPromptBuilder.WithRoomToReason"/>) when the model answered no text: a model
+    /// that reasons before it answers, on a server that could not switch the reasoning off, spends the short limit of the call on its reasoning and answers nothing.
+    /// A failure is never repeated.
+    /// </summary>
+    private async Task<CallResult> CallOnceMoreIfEmptyAsync(AiRequest request, AiModelTier tier, string kind, Composing input, CancellationToken ct)
+    {
+        var result = await CallAsync(request, tier, AssistantPromptBuilder.CallLabel(kind, input.MessageId), ct);
+        if (result.Failure is not null || AssistantPromptBuilder.HasAnswer(result.Content))
+            return result;
+
+        logger.LogWarning(
+            "The AI answered no text to the {Kind} call of the assistant (org {OrgId}): asked again with room for a reasoning ({MaxTokens} tokens)",
+            kind,
+            input.OrgId,
+            AssistantPromptBuilder.ReasoningRetryMaxTokens);
+        return await CallAsync(AssistantPromptBuilder.WithRoomToReason(request), tier, AssistantPromptBuilder.CallLabel($"{kind}-retry", input.MessageId), ct);
+    }
 
     /// <summary>One call to the provider. The budget used up and any failure of the provider are codes, never exceptions; a provider that did not answer is «not configured».</summary>
     private async Task<CallResult> CallAsync(AiRequest request, AiModelTier tier, string label, CancellationToken ct)

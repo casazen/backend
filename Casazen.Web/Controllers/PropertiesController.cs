@@ -179,7 +179,10 @@ public class PropertiesController(
 
         await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "Property.Read");
 
-        return Ok(PropertyResponse.From(property));
+        // casazen/backend#979: the edit form shows the identifier of the Ticino police portal only for a property in Ticino.
+        var ticino = HttpContext?.RequestServices?.GetService<ITicinoNotificationService>();
+        var isInTicino = ticino is not null && await ticino.IsPropertyInTicinoAsync(property.Id);
+        return Ok(PropertyResponse.From(property, isInTicino: isInTicino));
     }
 
     /// <summary>

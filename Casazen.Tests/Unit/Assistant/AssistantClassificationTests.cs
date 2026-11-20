@@ -62,4 +62,16 @@ public sealed class AssistantClassificationTests
         Assert.Equal(AssistantUrgency.Normal, classification.Urgency);
         Assert.Null(classification.Language);
     }
+
+    [Fact]
+    public void Parse_TheObjectAfterAReasoning_IsTheAnswer_AndAReasoningIsNeverReadAsOne()
+    {
+        // #936: a model that thinks aloud writes its reasoning, braces and first tries of the answer included, before the object.
+        var classification = AssistantClassification.Parse(
+            "<think>Maybe {\"situation\":\"wifi\",\"situationMatch\":0.4}? No: the car.</think>\n{\"situation\":\"parking\",\"situationMatch\":0.9,\"urgency\":\"normal\"} {\"note\":\"done\"}");
+        var cutReasoning = AssistantClassification.Parse("<think>The guest asks about {\"situation\":\"parking\",\"situationMatch\":0.9}");
+
+        Assert.Equal((AssistantSituation.Parking, 0.9m), (classification.Situation, classification.SituationMatch));
+        Assert.Equal((AssistantSituation.Other, 0m), (cutReasoning.Situation, cutReasoning.SituationMatch));
+    }
 }
