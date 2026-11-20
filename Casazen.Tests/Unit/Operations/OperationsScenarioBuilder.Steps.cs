@@ -346,6 +346,20 @@ internal sealed partial class OperationsScenarioBuilder
         return await scope.Get<IGuestDocumentPurgeService>().PurgeAsync(OrgId, CancellationToken.None);
     }
 
+    /// <summary>The rows of the photos of the identity document of a stay (the deletion removes them with their objects).</summary>
+    public async Task<List<DocumentImage>> DocumentImagesOfAsync(Guid bookingId)
+    {
+        await using var scope = Scope(underTheOrg: false);
+        return await scope.Db.DocumentImages.AsNoTracking().Where(i => i.BookingId == bookingId).ToListAsync();
+    }
+
+    /// <summary>The lines of the log of the stay that record a deletion of its documents (a line holds no personal data).</summary>
+    public async Task<List<ComplianceSendLogEntry>> DocumentDeletionsOfAsync(Guid bookingId)
+    {
+        await using var scope = Scope(underTheOrg: false);
+        return await scope.Db.ComplianceSendLogEntries.AsNoTracking().Where(e => e.BookingId == bookingId && e.Kind == ComplianceSendKind.DocumentsDeleted).ToListAsync();
+    }
+
     /// <summary>What an organization that is not the agency reads of the status of the stay: nothing.</summary>
     public async Task<ComplianceStayStatus?> StatusAsAnotherOrganizationAsync(Guid bookingId)
     {

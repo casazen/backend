@@ -97,22 +97,34 @@ public class OperationsChainTests
         Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.EntrustedToChannelManager), (entrusted.Verdict!.Verdict.Light, entrusted.Verdict.Verdict.Reason));
         Assert.Null(entrusted.ReceiptProof);
 
-        // B11: the photo of the document stays while no receipt covers the stay.
+        // B11: the photo of the document stays while no receipt covers the stay: none at all, and the receipt of another day (a receipt is for the flat and the day of the arrival).
         var image = await world.StoreDocumentImageAsync(bookingId);
         Assert.Equal(new GuestDocumentPurgeResult(true, 0, 0, 0), await world.PurgeAsync());
         Assert.Contains(image, world.Storage.Keys);
+        var anotherDay = await world.UploadReceiptAsync(World.CheckInDay.AddDays(1));
+        Assert.Equal(0, anotherDay.CoveredStays);
+        Assert.Equal(new GuestDocumentPurgeResult(true, 0, 0, 0), await world.PurgeAsync());
+        Assert.Contains(image, world.Storage.Keys);
+        Assert.Single(await world.DocumentImagesOfAsync(bookingId));
+        Assert.Empty(await world.DocumentDeletionsOfAsync(bookingId));
 
-        // B5: the host uploads the receipt of the day for the flat: the stay turns green and the run that deletes the documents is queued; it deletes the photo of the
-        // document and nothing of the legal record of the guests.
+        // B5: the host uploads the receipt of the day of the arrival for the flat: the stay turns green and the run that deletes the documents is queued; it deletes the photo of the
+        // document (its object and its row), records the deletion with no personal data, and leaves the legal record of the guests as it was.
+        var queuedRuns = PurgeRunsQueued(world);
         var receipt = await world.UploadReceiptAsync(World.CheckInDay);
         Assert.Equal(1, receipt.CoveredStays);
         var green = await world.StatusOfAsync(bookingId);
         Assert.Equal((ComplianceLight.Green, ComplianceReasonCodes.ReceiptArchived), (green.Verdict!.Verdict.Light, green.Verdict.Verdict.Reason));
-        Assert.Contains(world.Jobs.Created, j => j.Job.Type == typeof(GuestDocumentPurgeJob));
+        Assert.Equal(queuedRuns + 1, PurgeRunsQueued(world));
         var purged = await world.PurgeAsync();
         Assert.Equal((true, 1, 1), (purged.Enabled, purged.Stays, purged.Images));
         Assert.DoesNotContain(image, world.Storage.Keys);
-        Assert.Equal(2, (await world.StayGuestsOfAsync(bookingId)).Count);
+        Assert.Empty(await world.DocumentImagesOfAsync(bookingId));
+        var deletion = Assert.Single(await world.DocumentDeletionsOfAsync(bookingId));
+        Assert.Equal((world.OrgId, world.PropertyId), (deletion.OrgId, deletion.PropertyId));
+        var kept = await world.StayGuestsOfAsync(bookingId);
+        Assert.Equal([("Mario", "Rossi"), ("Rita", "Rossi")], kept.Select(g => (g.FirstName, g.LastName)));
+        Assert.Equal("YA1234567", kept[0].DocumentNumber);
         Assert.Equal(new GuestDocumentPurgeResult(true, 0, 0, 0), await world.PurgeAsync());
 
         // Another organization reads nothing of the stay and cannot file a receipt for the flat of the agency.
@@ -460,4 +472,7 @@ public class OperationsChainTests
         Assert.Equal(RoutineCodes.AiUnavailable, RoutineExecutionResult.Parse(run.ResultJson).Code);
         Assert.Empty(await world.CleaningsOfAsync(bookingId));
     }
+
+    /// <summary>The runs of the deletion of the documents that the services handed to the background (the receipt of a stay queues one).</summary>
+    private static int PurgeRunsQueued(World world) => world.Jobs.Created.Count(j => j.Job.Type == typeof(GuestDocumentPurgeJob));
 }
