@@ -2,6 +2,7 @@ using System.Text;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Authorization;
@@ -30,7 +31,7 @@ public class SwissComplianceControllerTests
     private static readonly Guid OtherProperty = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
     private static readonly DateOnly Night = new(2026, 10, 25);
 
-    public static TheoryData<string> Endpoints => new() { "ticino-notification", "otr-report", "upload-receipt", "list-receipts", "download-receipt" };
+    public static TheoryData<string> Endpoints => new() { "ticino-notification", "ticino-day", "otr-report", "upload-receipt", "list-receipts", "download-receipt" };
 
     private readonly Mock<ITicinoNotificationService> _ticino = new();
     private readonly Mock<IOtrTaxService> _otr = new();
@@ -41,8 +42,11 @@ public class SwissComplianceControllerTests
     public async Task Endpoint_ACallerWhoseScopeDoesNotReachTheProperty_IsRefusedAndNothingIsGeneratedNorStored(string endpoint)
     {
         _ticino
-            .Setup(s => s.GenerateDailyNotificationAsync(GivenProperty, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TicinoNotificationResult("<TicinoNotification />", "TI-ref", "hash"));
+            .Setup(s => s.GenerateFileAsync(GivenProperty, It.IsAny<DateOnly>(), It.IsAny<TicinoPoliceFileFormat>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TicinoNotificationFile([1], "notifiche-ti.csv", "text/csv", "TI-ref", "hash", 1));
+        _ticino
+            .Setup(s => s.GetDayAsync(GivenProperty, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TicinoNotificationDay(GivenProperty, Night, "NL-1234", 0, new TicinoDayPlan([], []), 0, DateTime.UtcNow, []));
         _otr
             .Setup(s => s.GeneratePeriodReportAsync(GivenProperty, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OtrTaxResult("PropertyId", "OTR-ref", "hash"));
@@ -66,7 +70,9 @@ public class SwissComplianceControllerTests
         var refused = await CallAsync(controller, endpoint, OtherProperty);
 
         Assert.IsType<ForbidResult>(refused);
-        _ticino.Verify(s => s.GenerateDailyNotificationAsync(OtherProperty, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
+        _ticino.Verify(
+            s => s.GenerateFileAsync(OtherProperty, It.IsAny<DateOnly>(), It.IsAny<TicinoPoliceFileFormat>(), It.IsAny<CancellationToken>()), Times.Never);
+        _ticino.Verify(s => s.GetDayAsync(OtherProperty, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
         _otr.Verify(s => s.GeneratePeriodReportAsync(OtherProperty, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
         _receipts.Verify(
             s => s.RecordAsync(OtherProperty, It.IsAny<SwissComplianceFileType>(), It.IsAny<DateTime>(), It.IsAny<string>(), It.IsAny<Stream>(),
@@ -111,8 +117,9 @@ public class SwissComplianceControllerTests
 
     private static async Task<ActionResult?> CallAsync(SwissComplianceController controller, string endpoint, Guid propertyId) => endpoint switch
     {
-        "ticino-notification" => (await controller.GenerateTicinoNotification(
-            propertyId, new TicinoNotificationRequest { ReportDate = Night }, CancellationToken.None)).Result,
+        "ticino-notification" => await controller.GenerateTicinoNotification(
+            propertyId, new TicinoNotificationRequest { ReportDate = Night, Format = "xml" }, CancellationToken.None),
+        "ticino-day" => (await controller.GetTicinoNotificationDay(propertyId, Night, CancellationToken.None)).Result,
         "otr-report" => (await controller.GenerateOtrReport(
             propertyId, new OtrReportRequest { FromDate = Night, ToDate = Night.AddDays(6) }, CancellationToken.None)).Result,
         "list-receipts" => (await controller.ListReceipts(propertyId)).Result,

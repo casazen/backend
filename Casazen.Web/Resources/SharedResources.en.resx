@@ -4049,6 +4049,18 @@
   <data name="TrustedSupplierNotFound" xml:space="preserve">
     <value>Trusted supplier not found</value>
   </data>
+  <data name="TrustedSupplierInviteEmailInvalid" xml:space="preserve">
+    <value>Enter a valid email address for the supplier.</value>
+  </data>
+  <data name="TrustedSupplierPropertyInvalid" xml:space="preserve">
+    <value>One of the chosen properties does not exist or does not belong to your organization.</value>
+  </data>
+  <data name="TrustedSupplierInviteComuneMissing" xml:space="preserve">
+    <value>To invite a supplier, first add a property with its municipality: the invite is for the municipality of your properties.</value>
+  </data>
+  <data name="TrustedSupplierAlreadyAdded" xml:space="preserve">
+    <value>This supplier is already one of your trusted suppliers.</value>
+  </data>
   <data name="ApprovalItemNotFound" xml:space="preserve">
     <value>Approval item not found</value>
   </data>
@@ -8591,5 +8603,20 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="AgentTrainingGeneration" xml:space="preserve">
     <value>AI did not generate valid scenarios. Specify when to perform and when to skip the action, then try again.</value>
+  </data>
+  <data name="TicinoStructureIdInvalid" xml:space="preserve">
+    <value>The LEAR / NO-LEAR identification number is not valid: 3 to 20 letters and digits, with single hyphens (e.g. NL-12345678).</value>
+  </data>
+  <data name="TicinoStructureIdMissing" xml:space="preserve">
+    <value>Enter the LEAR / NO-LEAR identification number of the property, received from Ticino Turismo: without it the notification portal refuses the file.</value>
+  </data>
+  <data name="TicinoNotificationEmpty" xml:space="preserve">
+    <value>No guest of this day has complete data for the notification: complete the data shown and try again.</value>
+  </data>
+  <data name="TicinoXmlNotAvailable" xml:space="preserve">
+    <value>The XML file is not available for these guests (a postcode that is not a number or a missing country of residence): download the CSV file.</value>
+  </data>
+  <data name="TicinoFileFormatInvalid" xml:space="preserve">
+    <value>Invalid file format: choose CSV or XML.</value>
   </data>
 </root>

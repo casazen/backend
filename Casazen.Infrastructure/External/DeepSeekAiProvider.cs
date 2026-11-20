@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -24,6 +25,20 @@ public class DeepSeekAiProvider(
     /// 30 seconds of the client of the text calls (<c>AiProviderRegistration</c>).
     /// </summary>
     public const string LongCallHttpClientName = "AiLongCall";
+
+    /// <summary>
+    /// The member of a chat completion that a compatible server (vLLM, SGLang and the gateways in front of them) passes to the chat template of the
+    /// model: <c>{"enable_thinking": false}</c> makes a model that reasons before it answers (Qwen and the like) answer at once, as
+    /// <see cref="AiRequest.DisableThinking"/> asks. Without it such a model spends the completion limit of a short call on its reasoning and the
+    /// answer comes back empty.
+    /// </summary>
+    public const string ChatTemplateKwargsMember = "chat_template_kwargs";
+
+    /// <summary>
+    /// The compatible servers (base URL and model) that refused <see cref="ChatTemplateKwargsMember"/> and then answered without it: they are not
+    /// sent it again until the process restarts, so a server that does not know it costs one refused call, not one per call.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, byte> TemplateSwitchRefused = new(StringComparer.OrdinalIgnoreCase);
 
     public Task<AiGenerationResult> GenerateAsync(
         string prompt,
@@ -251,17 +266,79 @@ public class DeepSeekAiProvider(
             payload["thinking"] = new { type = "disabled" };
         }
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{config.OpenAiBaseUrl.TrimEnd('/')}/chat/completions");
-        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.ApiKey);
+        var url = $"{config.OpenAiBaseUrl.TrimEnd('/')}/chat/completions";
+        var templateSwitch = request.DisableThinking && SendsTemplateSwitch(config);
+        if (templateSwitch)
+            payload[ChatTemplateKwargsMember] = new { enable_thinking = false };
+
+        string json;
+        try
+        {
+            json = await PostChatCompletionAsync(client, url, config.ApiKey!, payload, cancellationToken);
+        }
+        catch (HttpRequestException ex) when (templateSwitch && ex.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity)
+        {
+            // A server that does not know the switch may refuse the whole request: the same request without it. Only a server that then answers
+            // refused the switch itself, and is not sent it again; one that refuses the request for another reason fails here as before.
+            payload.Remove(ChatTemplateKwargsMember);
+            json = await PostChatCompletionAsync(client, url, config.ApiKey!, payload, cancellationToken);
+            TemplateSwitchRefused.TryAdd(TemplateSwitchKey(config), 0);
+            logger.LogWarning(
+                "AI provider {Provider} refused the switch that turns the reasoning of model {Model} off ({Status}): sent without it",
+                config.Provider, config.Model, (int?)ex.StatusCode);
+        }
+
+        var (promptTokens, completionTokens) = ExtractUsage(json);
+        var content = ExtractCompletionContent(json);
+        if (string.IsNullOrWhiteSpace(content) && string.Equals(ExtractFinishReason(json), "length", StringComparison.OrdinalIgnoreCase))
+        {
+            // The model reached the limit before it wrote a word of the answer: it reasoned for the whole completion (never the text, only the sizes).
+            logger.LogWarning(
+                "AI provider {Provider} answered nothing: model {Model} used its whole completion limit of {MaxTokens} tokens ({CompletionTokens} reported) before the answer",
+                config.Provider, config.Model, maxTokens, completionTokens);
+        }
+
+        return new AiGenerationResult(content, promptTokens, completionTokens, tier, FromCache: false, ImagesRead: images.Count);
+    }
+
+    /// <summary>
+    /// Whether a call that asks for a direct answer carries <see cref="ChatTemplateKwargsMember"/>: to a compatible server only (DeepSeek has its own
+    /// switch, the OpenAI API refuses members it does not know), and not to one that refused it before.
+    /// </summary>
+    private static bool SendsTemplateSwitch(AiOptions config) =>
+        string.Equals(config.Provider, AiOptions.CompatibleProvider, StringComparison.OrdinalIgnoreCase)
+        && !TemplateSwitchRefused.ContainsKey(TemplateSwitchKey(config));
+
+    private static string TemplateSwitchKey(AiOptions config) => $"{config.OpenAiBaseUrl.TrimEnd('/')}|{config.Model}";
+
+    /// <summary>One chat completion: the body of a successful answer; an answer that is not a success throws <see cref="HttpRequestException"/> with its status.</summary>
+    private static async Task<string> PostChatCompletionAsync(
+        HttpClient client,
+        string url,
+        string apiKey,
+        Dictionary<string, object?> payload,
+        CancellationToken cancellationToken)
+    {
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         httpRequest.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
         using var response = await client.SendAsync(httpRequest, cancellationToken);
         response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(cancellationToken);
+    }
 
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        var (promptTokens, completionTokens) = ExtractUsage(json);
-        return new AiGenerationResult(
-            ExtractCompletionContent(json), promptTokens, completionTokens, tier, FromCache: false, ImagesRead: images.Count);
+    /// <summary>The <c>finish_reason</c> of the first choice of a chat completion (<c>length</c> when the limit cut it), <c>null</c> when the answer has none.</summary>
+    public static string? ExtractFinishReason(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty("choices", out var choices)
+               && choices.ValueKind == JsonValueKind.Array
+               && choices.GetArrayLength() > 0
+               && choices[0].TryGetProperty("finish_reason", out var reason)
+               && reason.ValueKind == JsonValueKind.String
+            ? reason.GetString()
+            : null;
     }
 
     public static string ExtractCompletionContent(string json)

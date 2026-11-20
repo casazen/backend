@@ -358,7 +358,8 @@ public sealed record ComplianceSummaryItem
             or ComplianceCockpitAction.UploadIstatProof
             or ComplianceCockpitAction.EnterMunicipalityTaxRate
             or ComplianceCockpitAction.DeclareTouristTax
-            or ComplianceCockpitAction.RenewPoliceCredentials;
+            or ComplianceCockpitAction.RenewPoliceCredentials
+            or ComplianceCockpitAction.NotifyTicinoPolice;
 
     public static ComplianceSummaryItem ForProperty(ComplianceCockpitAction action, Guid propertyId, string label) =>
         TargetsProperty(action)
@@ -440,4 +441,11 @@ public record ComplianceSummaryResult(
 
     /// <summary>The ISTAT and tourist tax of the closed months, and the tourist tax rates that are not known.</summary>
     public ComplianceSummarySection PeriodItems { get; init; } = ComplianceSummarySection.Empty;
+
+    /// <summary>
+    /// The arrival days of the properties in canton Ticino whose guests are not notified to the cantonal police yet (casazen/backend#979, within
+    /// 24 hours of the arrival): one item per property and day (<c>NotifyTicinoPolice</c>, the day in <c>Period</c>), oldest first. Filled whatever
+    /// the traffic light: it is the police obligation of those properties, which owe no Alloggiati communication.
+    /// </summary>
+    public ComplianceSummarySection TicinoNotifications { get; init; } = ComplianceSummarySection.Empty;
 }

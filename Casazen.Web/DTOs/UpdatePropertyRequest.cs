@@ -177,6 +177,27 @@ public class UpdatePropertyRequest
     }
 
     /// <summary>
+    /// The «Numero identificativo LEAR / NO-LEAR» of the structure for the Ticino police portal (casazen/backend#979), e.g.
+    /// <c>NL-12345678</c>: spaces are ignored and the value is stored uppercase (see <c>TicinoStructureId</c>); <c>null</c> or blank clears
+    /// it; leaving it out keeps it.
+    /// </summary>
+    [MaxLength(40, ErrorMessage = Casazen.Core.Regulatory.TicinoStructureId.InvalidFormatMessageKey)]
+    [TicinoStructureId]
+    public string? TicinoStructureId
+    {
+        get;
+        set
+        {
+            field = value;
+            TicinoStructureIdSent = true;
+        }
+    }
+
+    /// <summary>True when the body carries <see cref="TicinoStructureId"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool TicinoStructureIdSent { get; private set; }
+
+    /// <summary>
     /// IANA timezone identifier used for booking date calculations (e.g. <c>Europe/Rome</c>); unknown and Windows ids
     /// are rejected.
     /// </summary>
@@ -523,6 +544,8 @@ public class UpdatePropertyRequest
             property.Timezone = Timezone.Trim();
         if (CinCodeSent)
             property.CinCode = CinCode;
+        if (TicinoStructureIdSent)
+            property.TicinoStructureId = Casazen.Core.Regulatory.TicinoStructureId.Normalize(TicinoStructureId);
         if (CancellationPolicyIdSent)
             property.CancellationPolicyId = CancellationPolicyId;
         if (CancellationFullRefundHours is { } fullHours)

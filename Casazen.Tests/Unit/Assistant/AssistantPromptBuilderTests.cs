@@ -110,6 +110,37 @@ public sealed class AssistantPromptBuilderTests
     }
 
     [Fact]
+    public void ParseDraft_ReadsTheObjectAfterAReasoning_AndTheBracesOfTheGreetingDoNotHideIt()
+    {
+        // #936: a model that thinks aloud; the object of the draft holds «{{guest_name}}» and is followed by another object.
+        var answer = AssistantPromptBuilder.ParseDraft(
+            "<think>Greet with {{guest_name}}, use the fact {parking}.</think>Ecco: {\"draft\":\"Ciao {{guest_name}}, il parcheggio è nel cortile.\",\"language\":\"it\",\"missingFacts\":false,\"topics\":[\"Parking\"]} {\"note\":\"x\"}");
+
+        Assert.NotNull(answer);
+        Assert.Equal(("Ciao {{guest_name}}, il parcheggio è nel cortile.", "it", false), (answer.Draft, answer.Language, answer.MissingFacts));
+        Assert.Equal(["Parking"], answer.Topics);
+        Assert.Null(AssistantPromptBuilder.ParseDraft("<think>{\"draft\":\"Ciao\"} is what I would write"));
+    }
+
+    [Fact]
+    public void WithRoomToReason_RaisesOnlyTheLimit_AndHasAnswer_LeavesTheReasoningOut()
+    {
+        var request = AssistantPromptBuilder.BuildClassification([new AssistantPromptMessage(true, "Dove parcheggio?")]);
+
+        var again = AssistantPromptBuilder.WithRoomToReason(request);
+
+        Assert.Equal(AssistantPromptBuilder.ReasoningRetryMaxTokens, again.MaxCompletionTokens);
+        Assert.Equal((request.Prompt, request.SystemPrompt, request.Temperature, true), (again.Prompt, again.SystemPrompt, again.Temperature, again.DisableThinking));
+        Assert.Equal(8000, AssistantPromptBuilder.WithRoomToReason(request with { MaxCompletionTokens = 8000 }).MaxCompletionTokens);
+        Assert.False(AssistantPromptBuilder.HasAnswer(null));
+        Assert.False(AssistantPromptBuilder.HasAnswer("  "));
+        Assert.False(AssistantPromptBuilder.HasAnswer("<think>the guest asks"));
+        Assert.False(AssistantPromptBuilder.HasAnswer("<think>the guest asks</think>\n"));
+        Assert.True(AssistantPromptBuilder.HasAnswer("<think>ok</think>{\"draft\":\"Ciao\"}"));
+        Assert.True(AssistantPromptBuilder.HasAnswer("Non riesco a scrivere la bozza."));
+    }
+
+    [Fact]
     public void ToVariables_TurnsThePlaceholdersOfTheKnownNamesIntoTheVariablesTheServerFills_TheOthersStay()
     {
         var text = AssistantPromptBuilder.ToVariables("Ciao [guest], sono [host]: prenotazione [booking], chiama il [tel].");

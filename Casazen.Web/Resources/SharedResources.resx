@@ -4049,6 +4049,18 @@
   <data name="TrustedSupplierNotFound" xml:space="preserve">
     <value>Fornitore di fiducia non trovato</value>
   </data>
+  <data name="TrustedSupplierInviteEmailInvalid" xml:space="preserve">
+    <value>Inserisci un indirizzo email valido per il fornitore.</value>
+  </data>
+  <data name="TrustedSupplierPropertyInvalid" xml:space="preserve">
+    <value>Uno degli immobili scelti non esiste o non è della tua organizzazione.</value>
+  </data>
+  <data name="TrustedSupplierInviteComuneMissing" xml:space="preserve">
+    <value>Per invitare un fornitore aggiungi prima un immobile con il suo comune: l'invito vale per il comune dei tuoi immobili.</value>
+  </data>
+  <data name="TrustedSupplierAlreadyAdded" xml:space="preserve">
+    <value>Questo fornitore è già tra i tuoi fornitori di fiducia.</value>
+  </data>
   <data name="ApprovalItemNotFound" xml:space="preserve">
     <value>Elemento da approvare non trovato</value>
   </data>
@@ -8591,5 +8603,20 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="AgentTrainingGeneration" xml:space="preserve">
     <value>L’AI non ha generato scenari validi. Specifica i criteri per eseguire e per saltare l’azione, poi riprova.</value>
+  </data>
+  <data name="TicinoStructureIdInvalid" xml:space="preserve">
+    <value>Il numero identificativo LEAR / NO-LEAR non è valido: da 3 a 20 lettere e cifre, con trattini singoli (es. NL-12345678).</value>
+  </data>
+  <data name="TicinoStructureIdMissing" xml:space="preserve">
+    <value>Inserisci il numero identificativo LEAR / NO-LEAR della struttura, ricevuto da Ticino Turismo: senza, il portale delle notifiche rifiuta il file.</value>
+  </data>
+  <data name="TicinoNotificationEmpty" xml:space="preserve">
+    <value>Nessun ospite di questo giorno ha i dati completi per la notifica: completa i dati indicati e riprova.</value>
+  </data>
+  <data name="TicinoXmlNotAvailable" xml:space="preserve">
+    <value>Il file XML non è disponibile per questi ospiti (CAP non numerico o paese di residenza mancante): scarica il file CSV.</value>
+  </data>
+  <data name="TicinoFileFormatInvalid" xml:space="preserve">
+    <value>Formato del file non valido: scegli CSV o XML.</value>
   </data>
 </root>

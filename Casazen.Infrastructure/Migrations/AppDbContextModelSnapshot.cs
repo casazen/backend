@@ -11193,6 +11193,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<string>("TicinoStructureId")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("Timezone")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -16053,6 +16057,9 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.PrimitiveCollection<List<Guid>>("AssignedPropertyIds")
+                        .HasColumnType("uuid[]");
+
                     b.Property<string>("CategoriesJson")
                         .HasColumnType("jsonb");
 
@@ -16071,6 +16078,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("InvitedByOrgId")
+                        .HasColumnType("uuid");
 
                     b.Property<bool>("IsUsed")
                         .HasColumnType("boolean");
