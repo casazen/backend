@@ -42,6 +42,9 @@ public static class OnboardingLaunchTargets
     public const string Fiscal = "fiscal";
     public const string Marketplace = "marketplace";
     public const string Summary = "summary";
+
+    /// <summary>The card of the regime of a Swiss property in the activation wizard, opened at the step <c>guest-registration</c> (E29/F02/US01/T02).</summary>
+    public const string GuestRegistration = "guestRegistration";
 }
 
 /// <summary>
@@ -69,7 +72,7 @@ public sealed record OnboardingPartDefinition(
 public sealed record OnboardingPathStepDefinition(string Code, int Order, IReadOnlyList<OnboardingPartKey> Parts);
 
 /// <summary>
-/// The catalog of the eleven parts of the activation plan (NF-104, ONB-01, E10/F01/US01/T03). Code-defined, not configured (the open question
+/// The catalog of the twelve parts of the activation plan (NF-104, ONB-01, E10/F01/US01/T03; E29/F02/US01/T02 added the twelfth). Code-defined, not configured (the open question
 /// «code-defined or configured» of the epic is answered «code»): what a part requires, needs and launches is part of the product, and a change
 /// of it is a change of the code. Whether a part is done is never here: it is derived on read from the stored facts
 /// (<see cref="IOnboardingPartEvaluator"/>).
@@ -79,7 +82,7 @@ public static class OnboardingPartCatalog
     /// <summary>The code of the connected path «start with CasaZen» of UX-10.</summary>
     public const string StartWithCasazenPath = "start-with-casazen";
 
-    /// <summary>The eleven parts, in the order of the plan.</summary>
+    /// <summary>The twelve parts, in the order of the plan.</summary>
     public static IReadOnlyList<OnboardingPartDefinition> Parts { get; } =
     [
         new(OnboardingPartKey.OctorateConnection, "octorateConnection", 1, [], [], OnboardingLaunchTargets.Connect),
@@ -98,10 +101,13 @@ public static class OnboardingPartCatalog
         new(OnboardingPartKey.MessagesAi, "messagesAi", 8, [], [], OnboardingLaunchTargets.Messages),
         new(OnboardingPartKey.FiscalDocuments, "fiscalDocuments", 9, [], [OnboardingNeedCodes.FiscalData], OnboardingLaunchTargets.Fiscal),
         new(OnboardingPartKey.Partners, "partners", 10, [], [], OnboardingLaunchTargets.Marketplace),
+        // E29/F02/US01/T02 (NF-129): the twelfth part, appended to the keys (number 12) and placed before the activation in the plan; nothing requires it
+        // and it needs nothing at hand, so the host may put it off. It applies only to an organization that has an active Swiss property.
+        new(OnboardingPartKey.GuestRegistration, "guestRegistration", 11, [], [], OnboardingLaunchTargets.GuestRegistration),
         new(
             OnboardingPartKey.Activation,
             "activation",
-            11,
+            12,
             [OnboardingPartKey.OctorateConnection, OnboardingPartKey.Properties],
             [],
             OnboardingLaunchTargets.Summary),

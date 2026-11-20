@@ -1,7 +1,7 @@
 namespace Casazen.Core.Entities.Enums;
 
 /// <summary>
-/// The eleven parts of the Octorate activation plan (NF-104, ONB-01, E10/F01/US01), in the order the host does them. Stored as its number in
+/// The twelve parts of the Octorate activation plan (NF-104, ONB-01, E10/F01/US01; the twelfth, E29/F02/US01/T02), in the order the host does them. Stored as its number in
 /// <c>OnboardingPartStates.PartKey</c> and <c>OnboardingAssistRequests.PartKey</c>: every member has an explicit value, an existing number never
 /// changes and is never reused, and a later part is appended with the next number. Whether a part is open, done or the next one is derived on
 /// read from the stored facts of the org (nothing is "done" by a flag, as in the activation checklist of PL-15); only the host's intent to
@@ -41,4 +41,10 @@ public enum OnboardingPartKey
 
     /// <summary>The summary, the final read-only test and the activation of the flows.</summary>
     Activation = 11,
+
+    /// <summary>
+    /// The notification of the guests of the Swiss properties (E29/F02/US01/T02, NF-129): the municipality of each and, for Ticino, the structure number.
+    /// Appended with the next number; in the plan it stands before the activation (its <c>Order</c> is 11, the activation's 12).
+    /// </summary>
+    GuestRegistration = 12,
 }

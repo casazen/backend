@@ -8779,6 +8779,138 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="TicinoNotAGroup" xml:space="preserve">
     <value>Questo soggiorno non è un gruppo di almeno {0} persone (capogruppo e membri del gruppo): la scheda del gruppo non serve.</value>
   </data>
+  <data name="ActivationStepGuestRegistration" xml:space="preserve">
+    <value>Notifica degli ospiti</value>
+  </data>
+  <data name="SwissMunicipalityMissing" xml:space="preserve">
+    <value>Indica il comune svizzero dell'immobile: dal comune si ricava il cantone e quindi le regole sulla notifica degli ospiti.</value>
+  </data>
+  <data name="GuestRegistrationOverrideNotApplicable" xml:space="preserve">
+    <value>Questa impostazione vale solo per gli immobili in Svizzera: in Italia i dati degli ospiti si comunicano sempre alla Questura.</value>
+  </data>
+  <data name="GuestRegistrationCountryNotSupported" xml:space="preserve">
+    <value>Per il paese di questo immobile CasaZen non ha regole sulla notifica degli ospiti.</value>
+  </data>
+  <data name="GuestRegistrationOverrideRequired" xml:space="preserve">
+    <value>Indica se la notifica degli ospiti è richiesta o non richiesta, oppure null per seguire le regole del cantone.</value>
+  </data>
+  <data name="GuestRegimeDeadlineNotVerified" xml:space="preserve">
+    <value>La scadenza non è verificata: chiedi alla polizia cantonale.</value>
+  </data>
+  <data name="GuestRegimeDeadlineNoSubmission" xml:space="preserve">
+    <value>Nessun termine di invio: il registro si tiene a disposizione della polizia.</value>
+  </data>
+  <data name="GuestRegime_IT_Deadline" xml:space="preserve">
+    <value>Entro 24 ore dall'arrivo, entro 6 ore per i soggiorni non superiori a 24 ore.</value>
+  </data>
+  <data name="GuestRegime_CH_AG_Deadline" xml:space="preserve">
+    <value>Nessun termine di invio; a chi vada consegnato il registro non è verificato.</value>
+  </data>
+  <data name="GuestRegime_CH_BS_Deadline" xml:space="preserve">
+    <value>Inserimento ogni giorno; la fonte non indica un orario limite.</value>
+  </data>
+  <data name="GuestRegime_CH_GE_Deadline" xml:space="preserve">
+    <value>Per gli affitti privati: al più presto, appena l'ospite ha preso possesso dell'alloggio. Per gli hotel: ogni giorno.</value>
+  </data>
+  <data name="GuestRegime_CH_NE_Deadline" xml:space="preserve">
+    <value>Ogni giorno (alberghi e para-alberghi); la fonte non indica un orario limite.</value>
+  </data>
+  <data name="GuestRegime_CH_NW_Deadline" xml:space="preserve">
+    <value>Almeno una volta alla settimana; la scheda si compila all'arrivo.</value>
+  </data>
+  <data name="GuestRegime_CH_SH_Deadline" xml:space="preserve">
+    <value>Ogni giorno entro le 02:00; la fonte non dice a quale giorno si riferisce l'orario.</value>
+  </data>
+  <data name="GuestRegime_CH_VD_Deadline" xml:space="preserve">
+    <value>Nessun termine di invio: il registro si tiene a disposizione dell'autorità.</value>
+  </data>
+  <data name="GuestRegime_CH_ZG_Deadline" xml:space="preserve">
+    <value>La scheda si compila all'arrivo dell'ospite; le fonti non citano una finestra di 24 ore.</value>
+  </data>
+  <data name="GuestRegime_IT_Summary" xml:space="preserve">
+    <value>In Italia i dati degli ospiti si comunicano alla Questura tramite Alloggiati Web entro 24 ore dall'arrivo (entro 6 ore per i soggiorni non superiori a 24 ore), anche negli affitti brevi. CasaZen prepara il file e mostra le scadenze.</value>
+  </data>
+  <data name="GuestRegime_CH_TI_Summary" xml:space="preserve">
+    <value>In Ticino chi alloggia gli ospiti li notifica alla Polizia cantonale entro 24 ore dall'arrivo, in forma elettronica sul portale ufficiale delle notifiche; vale anche per le strutture esenti dalla LEAR. CasaZen prepara il file di caricamento nel formato ufficiale, il gestore lo carica con il proprio accesso. I moduli dei gruppi e le autorizzazioni dei genitori vanno conservati 5 anni.</value>
+  </data>
+  <data name="GuestRegime_CH_AG_Summary" xml:space="preserve">
+    <value>In Argovia chi offre alloggio a titolo professionale tiene un registro degli ospiti (su carta o elettronico, formato libero) e lo conserva 5 anni. La fonte non dice a chi vada consegnato né se valga per gli affitti privati: verifica con il comune o la polizia.</value>
+  </data>
+  <data name="GuestRegime_CH_AI_Summary" xml:space="preserve">
+    <value>Ad Appenzello Interno tenere un elenco degli ospiti (generalità e provenienza) è una facoltà del titolare, non un obbligo: gli ospiti devono dare dati veritieri e la polizia può controllare l'elenco in ogni momento. Resta l'obbligo federale di annunciare gli ospiti stranieri.</value>
+  </data>
+  <data name="GuestRegime_CH_AR_Summary" xml:space="preserve">
+    <value>Ad Appenzello Esterno i gestori fanno compilare una scheda agli ospiti e tengono i dati a disposizione della polizia cantonale per 5 anni; la forma è libera (esiste un modello Excel) e non si invia nulla. Non è chiaro per quali ospiti, né se valga per gli affitti privati: verifica con la polizia.</value>
+  </data>
+  <data name="GuestRegime_CH_BE_Summary" xml:space="preserve">
+    <value>A Berna il gestore tiene un registro degli ospiti che pernottano (anche solo elettronico), da conservare almeno 5 anni e da mostrare alla polizia cantonale, che può consultarlo e confrontarlo con i suoi sistemi. Non risulta un invio periodico obbligatorio. Per gli affitti privati e per la scadenza le fonti non dicono: verifica con la polizia.</value>
+  </data>
+  <data name="GuestRegime_CH_BL_Summary" xml:space="preserve">
+    <value>A Basilea Campagna ogni ospite che pernotta compila e firma a mano una scheda e mostra un documento valido; il gestore la conserva (10 anni secondo l'ente turistico, da ricontrollare) e la polizia la controlla in caso di necessità. Un testo del 2014 prevedeva l'invio alla polizia entro 24 ore: l'invio sistematico sembra superato, ma non è verificato.</value>
+  </data>
+  <data name="GuestRegime_CH_BS_Summary" xml:space="preserve">
+    <value>A Basilea Città i dati degli ospiti vanno inseriti ogni giorno, completi e veritieri, nel sistema cantonale di notifica elettronica (portale con accesso personale, oppure interfaccia dal gestionale); servono alla polizia, alla tassa di soggiorno e alla statistica. La fonte non dice se vale per gli affitti privati: verifica con il cantone.</value>
+  </data>
+  <data name="GuestRegime_CH_FR_Summary" xml:space="preserve">
+    <value>A Friburgo alberghi e para-alberghi (oltre 5 persone) tengono un registro e trasmettono il bollettino d'arrivo alla Polizia cantonale e all'Unione friburghese del turismo; dal 1.1.2023 la sua piattaforma di registrazione è obbligatoria anche per chi affitta chalet e appartamenti. Non è verificato se il bollettino valga per gli affitti privati né se la piattaforma lo sostituisca.</value>
+  </data>
+  <data name="GuestRegime_CH_GE_Summary" xml:space="preserve">
+    <value>A Ginevra gli hotel trasmettono ogni giorno un file di arrivi alla polizia. Per gli affitti brevi privati vale per gli ospiti stranieri (meno di 90 giorni secondo la pagina del cantone): il locatore si registra con un conto cantonale verificato, scrive alla polizia e riceve un codice di registrazione con le istruzioni; formato e canale dei dati degli ospiti non sono descritti. Una riforma è in discussione.</value>
+  </data>
+  <data name="GuestRegime_CH_GL_Summary" xml:space="preserve">
+    <value>A Glarona chi alloggia ospiti a titolo professionale tiene un registro (scheda compilata e firmata dall'ospite su documento ufficiale), da conservare 3 anni; la polizia cantonale lo riceve solo su richiesta. Per gli affitti brevi privati la fonte non lo dice: verifica con il comune.</value>
+  </data>
+  <data name="GuestRegime_CH_GR_Summary" xml:space="preserve">
+    <value>Nei Grigioni vale per gli ospiti stranieri: modulo ufficiale firmato dall'ospite, con tipo e numero del documento annotati dal gestore, da conservare 1 anno e mostrare alla polizia; l'invio alla polizia entro 24 ore è stato abolito. Per gli affitti brevi privati non è verificato.</value>
+  </data>
+  <data name="GuestRegime_CH_JU_Summary" xml:space="preserve">
+    <value>Nel Giura chi ospita fa compilare una scheda all'arrivo e tiene un elenco degli ospiti in un registro che polizia e autorità della tassa di soggiorno possono consultare; la polizia cantonale pubblica un modulo PDF «Bulletin d'hôtel» che si compila e si invia con un pulsante, ma la pagina non dice a chi arrivi. La legge cantonale esclude gli alloggi di vacanza senza servizi alberghieri, ma resta l'obbligo federale per gli ospiti stranieri.</value>
+  </data>
+  <data name="GuestRegime_CH_LU_Summary" xml:space="preserve">
+    <value>A Lucerna le strutture compilano una scheda dell'ospite dal documento d'identità, la fanno firmare e la conservano 5 anni a disposizione della polizia: non si invia nulla. Per gli affitti brevi senza patente vale per gli ospiti stranieri (fonti parziali).</value>
+  </data>
+  <data name="GuestRegime_CH_NE_Summary" xml:space="preserve">
+    <value>A Neuchâtel alberghi e para-alberghi trasmettono ogni giorno alla polizia nome, cognome e data di nascita degli ospiti, verificati su un documento, tramite il Guichet unique (inserimento o importazione). Per gli alloggi di vacanza la trasmissione giornaliera non è confermata dal testo di legge, ma un rapporto del Consiglio di Stato dice che gli ospiti vanno dichiarati ogni giorno.</value>
+  </data>
+  <data name="GuestRegime_CH_NW_Summary" xml:space="preserve">
+    <value>A Nidvaldo ogni ospite compila una scheda ufficiale all'arrivo e il gestore consegna le schede, o i dati elettronici, alla polizia cantonale almeno una volta alla settimana; l'obbligo vale anche per gli appartamenti di vacanza. Il formato elettronico si chiede alla polizia cantonale.</value>
+  </data>
+  <data name="GuestRegime_CH_OW_Summary" xml:space="preserve">
+    <value>A Obvaldo il controllo degli ospiti che pernottano va tenuto a disposizione della polizia (legge sul turismo, art. 22). Una revisione in corso prevede la registrazione entro 12 ore, la conservazione per 1 anno e la possibile trasmissione elettronica alla polizia; non è verificato se la revisione sia già in vigore. Per gli affitti privati non è verificato.</value>
+  </data>
+  <data name="GuestRegime_CH_SG_Summary" xml:space="preserve">
+    <value>A San Gallo i gestori fanno compilare e firmare la scheda dell'ospite e la consegnano alla polizia su richiesta (almeno 5 anni per gli ospiti stranieri); l'ente turistico offre un sistema online (inserimento, link per l'ospite, interfaccia dal gestionale). Non è descritto nessun invio alla polizia; per gli affitti privati non è esplicitato.</value>
+  </data>
+  <data name="GuestRegime_CH_SH_Summary" xml:space="preserve">
+    <value>A Sciaffusa la notifica elettronica è obbligatoria dal 1.2.2024 per tutti i gestori, anche per chi affitta appartamenti privati tramite piattaforme online: ogni ospite si registra ogni giorno sul portale cantonale (inserimento singolo, file Excel collettivo o interfaccia dal gestionale). La scheda cartacea è sostituita.</value>
+  </data>
+  <data name="GuestRegime_CH_SO_Summary" xml:space="preserve">
+    <value>A Soletta chi ha un'autorizzazione di esercizio per alloggiare ospiti tiene un registro delle schede degli ospiti, conservato 3 anni in azienda a disposizione della polizia: non si invia nulla. Per gli affitti privati vale se l'attività è professionale (fonti parziali).</value>
+  </data>
+  <data name="GuestRegime_CH_SZ_Summary" xml:space="preserve">
+    <value>A Svitto l'obbligo riguarda gli ospiti stranieri, anche negli affitti tramite piattaforme online: chi li alloggia a pagamento fa compilare e firmare il modulo di notifica e lo conserva, a disposizione della polizia cantonale, per almeno 2 anni (raccomandazione). Non si invia nulla e per gli ospiti svizzeri non c'è obbligo.</value>
+  </data>
+  <data name="GuestRegime_CH_TG_Summary" xml:space="preserve">
+    <value>In Turgovia i dati degli ospiti si trasmettono in forma elettronica alla Polizia cantonale (Hotelkontrolle): dal gestionale oppure, per chi non ne ha uno, con un file CSV compilato a mano e inviato per e-mail con un codice struttura da chiedere alla polizia. Scadenza e formato non sono verificati.</value>
+  </data>
+  <data name="GuestRegime_CH_UR_Summary" xml:space="preserve">
+    <value>A Uri il controllo degli ospiti si tiene in struttura a uso della polizia cantonale: l'ospite si iscrive all'arrivo, con un documento da verificare. Non risultano un modulo ufficiale né una procedura online, e non è chiaro se vada inviato; la legge non fissa la conservazione e un parere dell'ufficio per la protezione dei dati (2020) indica al massimo 1 anno. Fonti parziali.</value>
+  </data>
+  <data name="GuestRegime_CH_VD_Summary" xml:space="preserve">
+    <value>Nel Vaud chi affitta a breve termine, anche in privato, si annuncia al comune e tiene un registro degli ospiti con copia del documento d'identità e periodi esatti di soggiorno, a disposizione dell'autorità (dal 1.7.2022); non c'è nessun invio alla polizia. CasaZen non conserva le immagini dei documenti: la copia resta al gestore.</value>
+  </data>
+  <data name="GuestRegime_CH_VS_Summary" xml:space="preserve">
+    <value>In Vallese i titolari di un'autorizzazione di esercizio fanno compilare un bollettino d'arrivo approvato dalla polizia cantonale e tengono un registro degli ospiti, che la polizia può consultare. Gli alloggi senza servizi alberghieri sono esclusi da questa legge e, secondo la pagina del cantone, devono annunciarsi al comune (non confermato).</value>
+  </data>
+  <data name="GuestRegime_CH_ZG_Summary" xml:space="preserve">
+    <value>A Zugo chi alloggia ospiti a pagamento, anche tramite piattaforme online, segnala ogni ospite alla Polizia di Zugo all'arrivo, sul portale web ufficiale (con un account cantonale gratuito) o consegnando la scheda a un posto di polizia. Campi richiesti e conservazione non sono verificati.</value>
+  </data>
+  <data name="GuestRegime_CH_ZH_Summary" xml:space="preserve">
+    <value>A Zurigo le strutture tengono un controllo degli ospiti e rilasciano le schede di notifica; la trasmissione alla polizia cantonale è elettronica e vale anche per gli affitti brevi commerciali, anche tramite piattaforme online (il confine di «commerciale» non è definito). Scadenza e modalità di accesso non sono verificate: chiedi alla polizia cantonale.</value>
+  </data>
+  <data name="GuestRegime_CH_UNKNOWN_Summary" xml:space="preserve">
+    <value>Non sappiamo in quale cantone si trova l'immobile (comune mancante o non univoco): indica il comune per vedere le regole del suo cantone. Resta l'obbligo federale di annunciare all'autorità cantonale gli ospiti stranieri alloggiati a pagamento.</value>
+  </data>
   <data name="CleaningVatAnswerInvalid" xml:space="preserve">
     <value>Indica se la ditta di pulizie ha applicato l'IVA: Sì, No o Non lo so.</value>
   </data>

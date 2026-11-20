@@ -11,7 +11,7 @@ namespace Casazen.Core.Services;
 /// <remarks>
 /// <para><b>One evaluator wins.</b> Several evaluators may answer for a part (a placeholder and the real one); the one with the highest
 /// <see cref="Order"/> is used. A part nobody has built yet has the placeholder of <see cref="OnboardingPartEvaluatorOrders.Placeholder"/>, «not
-/// available, not provided», until the epic that owns it registers its own evaluator with a higher order. Today every one of the eleven parts has its
+/// available, not provided», until the epic that owns it registers its own evaluator with a higher order. Today every one of the twelve parts has its
 /// evaluator (messages and AI, fiscal documents and partners are in <c>OnboardingCrossEpicProviders</c>, E10/F01/US04/T01) and nothing registers a
 /// placeholder.</para>
 /// <para><b>Reads only.</b> An evaluator never writes, never calls Octorate and never throws for something that is not done (that is an

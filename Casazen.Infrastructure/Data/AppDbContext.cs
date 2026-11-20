@@ -806,6 +806,14 @@ public class AppDbContext(
                 $"\"EnergyIndex\" IS NULL OR (\"EnergyClass\" IS NOT NULL AND \"EnergyIndex\" >= 0 AND \"EnergyIndex\" <= {SitePropertyProfileLimits.MaxEnergyIndex})");
         });
 
+        // E29/F02/US01/T01 (NF-125): what the host decided about notifying the guests of a Swiss property, stored as the number of the enum;
+        // null = follow the regime of the place (every row that existed before the column, and the default). The service validates it; the
+        // constraint keeps any other writer honest.
+        modelBuilder.Entity<Property>().ToTable(t => t.HasCheckConstraint(
+            "CK_Properties_GuestNotificationOverride",
+            $"\"GuestNotificationOverride\" IS NULL OR \"GuestNotificationOverride\" IN ({(int)Casazen.Core.Enums.GuestNotificationOverride.Required}, "
+            + $"{(int)Casazen.Core.Enums.GuestNotificationOverride.NotRequired})"));
+
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
 
