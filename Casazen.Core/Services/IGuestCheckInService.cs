@@ -118,6 +118,12 @@ public class GuestCheckInSubmitRequest
     /// never a reason to refuse the check-in for what it does not say: only data that is not valid is refused (422).
     /// </summary>
     public GuestCheckInInvoice? Invoice { get; set; }
+
+    /// <summary>
+    /// The plate of the car (NF-132), asked where <see cref="GuestCheckInPublicView.AskVehiclePlate"/>: <c>null</c> keeps what is stored, an empty
+    /// text clears it (see <see cref="IStayGuestService.ReplaceAsync"/>). Optional.
+    /// </summary>
+    public string? VehiclePlate { get; set; }
 }
 
 /// <summary>
@@ -169,6 +175,9 @@ public static class CheckInValidationKeys
 
     /// <summary>The tourist tax exemption is not an active reason the host may choose (NF-46).</summary>
     public const string TaxExemptionInvalid = "CheckInTaxExemptionInvalid";
+
+    /// <summary>The plate of the car is not one: letters, digits and hyphens, at most 20 once the spaces are removed (NF-132).</summary>
+    public const string VehiclePlateInvalid = "CheckInVehiclePlateInvalid";
 }
 
 public class GuestCheckInSubmitResult
@@ -223,11 +232,15 @@ public sealed class GuestCheckInPublicView
     public bool HasInvoiceData { get; init; }
 
     /// <summary>
-    /// The statistical fields (<c>IstatGuestFieldLists</c> names) the region of the property requires, so the page asks nothing more than
-    /// the region needs (data minimization, ADR-030-R1). Empty when the comune is unknown, the region has no verified row in the ISTAT
-    /// region table (E21/F01/US01/T01) or it requires none.
+    /// The guest fields the regime of the property requires, so the page asks nothing more than it needs (data minimization, ADR-030-R1): the
+    /// statistical fields (<c>IstatGuestFieldLists</c> names) the region requires, empty when the comune is unknown, the region has no verified row in
+    /// the ISTAT region table (E21/F01/US01/T01) or it requires none; and, for a property in canton Ticino (NF-132), the names of
+    /// <see cref="Regulatory.TicinoCheckInFields.Required"/> (the document of every adult, the home address and the state of residence).
     /// </summary>
     public IReadOnlyList<string>? RequiredGuestFields { get; init; }
+
+    /// <summary>The page asks the plate of the car, once for the stay and optional: the property is in canton Ticino (NF-132).</summary>
+    public bool AskVehiclePlate { get; init; }
 
     /// <summary>The language the guest saved on the session (NF-40); null until the guest chooses one.</summary>
     public string? Language { get; init; }
@@ -266,6 +279,9 @@ public sealed class StayGuestPrefill
     public string? ResidenceProvince { get; init; }
     public string? ResidenceCountryCode { get; init; }
     public string? ResidenceCountryName { get; init; }
+    public string? ResidenceStreet { get; init; }
+    public string? ResidencePostalCode { get; init; }
+    public string? ResidenceCityName { get; init; }
     public string? TourismType { get; init; }
     public string? TravelWay { get; init; }
     public string? EducationLevel { get; init; }

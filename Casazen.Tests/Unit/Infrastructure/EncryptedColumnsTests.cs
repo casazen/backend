@@ -26,6 +26,8 @@ public class EncryptedColumnsTests
                 // NF-66, PO-09: the free text a host writes for the assistant: what a lesson proposes to learn and the response template of a situation (E05/F05/US01/T01).
                 "AssistantLesson.ProposedText:Casazen.Assistant.Content",
                 "AssistantSituationSetting.ResponseTemplate:Casazen.Assistant.Content",
+                // NF-132: the plate of the car of the stay (the Ticino police file), typed with the guests' data.
+                "Booking.VehiclePlate:Casazen.Guest.Document",
                 // NF-81: who an invoice of a booking is made out to (name, fiscal code, VAT number, address, PEC) and, with it, the hash of what was
                 // last written to Octorate (E06/F02/US01/T04).
                 "BookingInvoiceData.AddressCivic:Casazen.BookingInvoiceData",
@@ -148,6 +150,10 @@ public class EncryptedColumnsTests
                 "ShowcaseInquiry.Payload:Casazen.ServiceCustomer",
                 "StayGuest.DocumentIssuePlaceName:Casazen.Guest.Document",
                 "StayGuest.DocumentNumber:Casazen.Guest.Document",
+                // NF-132: the home address of the guest (the Ticino police file), never searched.
+                "StayGuest.ResidenceCityName:Casazen.Guest.Document",
+                "StayGuest.ResidencePostalCode:Casazen.Guest.Document",
+                "StayGuest.ResidenceStreet:Casazen.Guest.Document",
                 // NF-46: the tourist tax exemption the host chose (its reason can reveal a health condition).
                 "StayGuest.TaxExemptionCode:Casazen.Guest.Document",
                 // NF-46: the same reason on the confirmed tax of the stay (kept 10 years, cleared with the guest's data).

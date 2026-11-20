@@ -24,13 +24,15 @@ public interface ICheckInWizardService
 
     /// <summary>
     /// Replaces the guests of the stay with the host as author (<see cref="IStayGuestService.ReplaceAsync"/>): the input is the whole truth, the
-    /// exemption codes of the tourist tax included. Invalid data gives the field errors and saves nothing.
+    /// exemption codes of the tourist tax included. Invalid data gives the field errors and saves nothing. <paramref name="vehiclePlate"/> is the plate
+    /// of the stay (NF-132): <c>null</c> keeps the stored one, an empty text clears it.
     /// </summary>
     Task<CheckInSaveResult> SaveGuestsAsync(
         Guid bookingId,
         IReadOnlyList<StayGuestInput> guests,
         string userId,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? vehiclePlate = null);
 
     /// <summary>
     /// Confirms the wizard: 422 <c>checkin_not_ready</c> with the blocking issues (extension <c>issues</c>) when any exists; otherwise confirms the
@@ -64,7 +66,10 @@ public static class CheckInWizardCodes
 /// <param name="Booking">The booking: property, dates, nights, source, declared guests, status.</param>
 /// <param name="Attendance">Expected, arrived, departed, no-show or inactive.</param>
 /// <param name="Guests">The guests in record order; the booker shown before any guest is registered has <see cref="StayGuest.Id"/> empty.</param>
-/// <param name="RequiredGuestFields">The statistical fields the region requires, from the ISTAT region table (none when it says none or is not verified).</param>
+/// <param name="RequiredGuestFields">
+/// The guest fields the regime requires: the statistical fields the region requires, from the ISTAT region table (none when it says none or is not
+/// verified), and in canton Ticino the names of <see cref="TicinoCheckInFields.Required"/> (NF-132).
+/// </param>
 /// <param name="Issues">What the checks found.</param>
 /// <param name="Tax">The tourist tax of the stay; null when it cannot be worked out now.</param>
 /// <param name="Sender">Who sends the police communications of the property.</param>
@@ -72,6 +77,7 @@ public static class CheckInWizardCodes
 /// <param name="Alloggiati">The Alloggiati communication of the stay.</param>
 /// <param name="Capabilities">What the host can do now.</param>
 /// <param name="SuggestedStep">The first step with something to do (<see cref="CheckInWizardSteps"/>).</param>
+/// <param name="AskVehiclePlate">The plate of the car is asked for the stay (optional): the property is in canton Ticino (NF-132).</param>
 public sealed record CheckInState(
     CheckInBookingView Booking,
     StayAttendance Attendance,
@@ -83,9 +89,11 @@ public sealed record CheckInState(
     OctorateCheckInView Octorate,
     AlloggiatiStatusInfo Alloggiati,
     CheckInCapabilities Capabilities,
-    string SuggestedStep);
+    string SuggestedStep,
+    bool AskVehiclePlate = false);
 
 /// <summary>The booking of the wizard.</summary>
+/// <param name="VehiclePlate">The plate of the car of the stay (NF-132), null when none was given.</param>
 public sealed record CheckInBookingView(
     Guid BookingId,
     Guid PropertyId,
@@ -96,7 +104,8 @@ public sealed record CheckInBookingView(
     BookingSource Source,
     int DeclaredGuests,
     BookingStatus Status,
-    DateTime? NoShowAt);
+    DateTime? NoShowAt,
+    string? VehiclePlate = null);
 
 /// <summary>What the host can do now.</summary>
 /// <param name="DocumentReading">The reading of a document photo is available (<c>Features:CheckInIdentityVerification</c>).</param>

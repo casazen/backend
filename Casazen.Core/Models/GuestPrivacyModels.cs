@@ -84,7 +84,9 @@ public sealed record GuestExportDocument(
 /// <paramref name="AttributionCampaign"/> and <paramref name="AttributionReferrerHost"/> are where the guest came from, as the booking holds it (the
 /// <c>utm_*</c> of the link and the host name of the site the guest came from, never an address of a page); <c>null</c> when the booking holds none. The
 /// source of a reservation of the booking engine of the agency goes as <see cref="BookingAttribution.AgencyBookingEngineExportName"/>: the stored token
-/// names the supplier of the channel manager, which no file for a guest or a host does.
+/// names the supplier of the channel manager, which no file for a guest or a host does. E30/F01/US01/T01 (NF-132, art. 15):
+/// <paramref name="VehiclePlate"/> is the plate of the car of the stay as the booking holds it (typed at the check-in with the guests' data, cleared with
+/// them); <c>null</c> when none was given.
 /// </summary>
 public sealed record GuestExportBooking(
     Guid Id,
@@ -106,7 +108,8 @@ public sealed record GuestExportBooking(
     string? AttributionSource = null,
     string? AttributionMedium = null,
     string? AttributionCampaign = null,
-    string? AttributionReferrerHost = null);
+    string? AttributionReferrerHost = null,
+    string? VehiclePlate = null);
 
 public sealed record GuestExportPayment(
     decimal Amount,
@@ -116,6 +119,11 @@ public sealed record GuestExportPayment(
     DateTime? ProcessedAt,
     DateTime CreatedAt);
 
+/// <summary>
+/// A guest of a stay in the export. E30/F01/US01/T01 (NF-132, art. 15): <paramref name="ResidenceStreet"/>, <paramref name="ResidencePostalCode"/> and
+/// <paramref name="ResidenceCityName"/> are the home of the guest as the check-in recorded it (encrypted at rest, cleared with the guest); <c>null</c> when
+/// none was given.
+/// </summary>
 public sealed record GuestExportStayGuest(
     Guid BookingId,
     int Position,
@@ -139,7 +147,10 @@ public sealed record GuestExportStayGuest(
     string? DocumentIssuePlaceCode,
     string DocumentIssuePlaceName,
     StayGuestDataSource DataSource,
-    DateTime? AnonymizedAt);
+    DateTime? AnonymizedAt,
+    string? ResidenceStreet = null,
+    string? ResidencePostalCode = null,
+    string? ResidenceCityName = null);
 
 public sealed record GuestExportCheckInSession(
     Guid Id,

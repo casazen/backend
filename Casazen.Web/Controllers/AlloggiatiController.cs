@@ -248,6 +248,7 @@ public class AlloggiatiController(
             booking!,
             request.Guests.Select(g => g.ToInput()).ToList(),
             StayGuestAuthor.Host(userId),
+            vehiclePlate: request.VehiclePlate,
             cancellationToken: HttpContext.RequestAborted);
         if (!result.Success)
         {

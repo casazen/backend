@@ -38,7 +38,8 @@ public sealed class CheckInWizardService(
     IOptions<OctorateOptions> octorateOptions,
     ILogger<CheckInWizardService> logger,
     TimeProvider? timeProvider = null,
-    ITouristTaxCollectionService? touristTaxCollection = null) : ICheckInWizardService
+    ITouristTaxCollectionService? touristTaxCollection = null,
+    ITicinoNotificationService? ticinoNotifications = null) : ICheckInWizardService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -52,13 +53,15 @@ public sealed class CheckInWizardService(
         Guid bookingId,
         IReadOnlyList<StayGuestInput> guests,
         string userId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? vehiclePlate = null)
     {
         ArgumentNullException.ThrowIfNull(guests);
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         var booking = await LoadBookingAsync(bookingId, cancellationToken);
 
-        var result = await stayGuests.ReplaceAsync(booking, guests, StayGuestAuthor.Host(userId), cancellationToken: cancellationToken);
+        var result = await stayGuests.ReplaceAsync(
+            booking, guests, StayGuestAuthor.Host(userId), vehiclePlate: vehiclePlate, cancellationToken: cancellationToken);
         if (!result.Success)
             return new CheckInSaveResult(result.Errors, null);
 
@@ -159,9 +162,13 @@ public sealed class CheckInWizardService(
         // The statistical fields the region of the property requires, from its row of the ISTAT region table: none for a comune that is not in the
         // list, for a region without a row and for a row that is not verified, so nothing is asked that the region does not require.
         var region = await IstatRegionService.FindForComuneAsync(db, booking.Property.ComuneIstatCode, cancellationToken);
-        var requiredGuestFields = IstatRegionResolver.RequiredFields(region?.Rule);
+        var statisticalFields = IstatRegionResolver.RequiredFields(region?.Rule);
+
+        // NF-132: a property in canton Ticino asks the fields of the police file, and every guest the file notifies needs a document.
+        var inTicino = ticinoNotifications is not null && await ticinoNotifications.IsPropertyInTicinoAsync(booking.PropertyId);
+        var requiredGuestFields = TicinoCheckInFields.AskedOf(statisticalFields, inTicino);
         var issues = CheckInReadinessRules.Evaluate(new CheckInReadinessInput(
-            saved, codes, checkIn, booking.NumberOfGuests, octorateReceivesGuests, requiredGuestFields));
+            saved, codes, checkIn, booking.NumberOfGuests, octorateReceivesGuests, statisticalFields, inTicino));
 
         StayTouristTaxView? tax = null;
         try
@@ -195,7 +202,8 @@ public sealed class CheckInWizardService(
                 booking.Source,
                 booking.NumberOfGuests,
                 booking.Status,
-                booking.NoShowAt),
+                booking.NoShowAt,
+                booking.VehiclePlate),
             attendance,
             guests,
             requiredGuestFields,
@@ -205,7 +213,8 @@ public sealed class CheckInWizardService(
             octorateView,
             alloggiatiStatus,
             capabilities,
-            SuggestedStep(saved.Count, issues, tax, octorateReceivesGuests, octorateView, attendance));
+            SuggestedStep(saved.Count, issues, tax, octorateReceivesGuests, octorateView, attendance),
+            AskVehiclePlate: inTicino);
     }
 
     /// <summary>
