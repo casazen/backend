@@ -99,6 +99,79 @@ public class DeepSeekAiProviderImagesTests
             Assert.Equal("disabled", thinking.GetProperty("type").GetString());
     }
 
+    [Theory]
+    [InlineData(AiOptions.CompatibleProvider, true)]
+    [InlineData(AiOptions.OpenAiProvider, false)]
+    [InlineData(AiOptions.DeepSeekProvider, false)]
+    public async Task GenerateAsync_DirectAnswer_AsksACompatibleServerToSwitchTheReasoningOffThroughTheChatTemplate(string providerName, bool expectsSwitch)
+    {
+        // #936: a model that reasons before it answers (Qwen on the compatible server of the platform) spent the short limit of the assistant on its reasoning.
+        var handler = new RecordingHandler(_ => Ok(ChatAnswer));
+        var options = Options(providerName);
+        options.Model = "reasoning-model";
+
+        await Provider(handler).GenerateAsync(Request(0) with { DisableThinking = true }, AiModelTier.Economy, "k", options);
+        await Provider(handler).GenerateAsync(Request(0), AiModelTier.Economy, "k", options);
+
+        using var direct = JsonDocument.Parse(handler.Bodies[0]);
+        Assert.Equal(expectsSwitch, direct.RootElement.TryGetProperty(DeepSeekAiProvider.ChatTemplateKwargsMember, out var kwargs));
+        if (expectsSwitch)
+            Assert.False(kwargs.GetProperty("enable_thinking").GetBoolean());
+        Assert.DoesNotContain(DeepSeekAiProvider.ChatTemplateKwargsMember, handler.Bodies[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_ACompatibleServerThatRefusesTheSwitch_GetsTheRequestWithoutIt_AndIsNotSentItAgain()
+    {
+        var handler = new RecordingHandler(call => call == 1
+            ? new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent("{\"error\":\"unknown member chat_template_kwargs\"}") }
+            : Ok(ChatAnswer));
+        var options = Options(AiOptions.CompatibleProvider);
+        options.OpenAiBaseUrl = "https://refusing-switch.example/v1";
+
+        var first = await Provider(handler).GenerateAsync(Request(0) with { DisableThinking = true }, AiModelTier.Economy, "k", options);
+        var second = await Provider(handler).GenerateAsync(Request(0) with { DisableThinking = true }, AiModelTier.Economy, "k", options);
+
+        Assert.Equal("{\"title\":\"T\",\"description\":\"D\"}", first.Content);
+        Assert.Equal(first.Content, second.Content);
+        Assert.Equal(3, handler.Bodies.Count);
+        Assert.Contains(DeepSeekAiProvider.ChatTemplateKwargsMember, handler.Bodies[0], StringComparison.Ordinal);
+        Assert.DoesNotContain(DeepSeekAiProvider.ChatTemplateKwargsMember, handler.Bodies[1], StringComparison.Ordinal);
+        Assert.DoesNotContain(DeepSeekAiProvider.ChatTemplateKwargsMember, handler.Bodies[2], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_ARequestRefusedForAnotherReason_StillFails_AndTheSwitchIsKeptForTheNextCall()
+    {
+        var handler = new RecordingHandler(call => call <= 2
+            ? new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent("{\"error\":\"context too long\"}") }
+            : Ok(ChatAnswer));
+        var options = Options(AiOptions.CompatibleProvider);
+        options.OpenAiBaseUrl = "https://refusing-request.example/v1";
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            Provider(handler).GenerateAsync(Request(0) with { DisableThinking = true }, AiModelTier.Economy, "k", options));
+        await Provider(handler).GenerateAsync(Request(0) with { DisableThinking = true }, AiModelTier.Economy, "k", options);
+
+        Assert.Equal(3, handler.Bodies.Count);
+        Assert.Contains(DeepSeekAiProvider.ChatTemplateKwargsMember, handler.Bodies[2], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_AReasoningCutByTheLimit_IsAnEmptyAnswer_NotAFailure()
+    {
+        var handler = new RecordingHandler(_ => Ok(
+            "{\"choices\":[{\"message\":{\"content\":null,\"reasoning_content\":\"The guest asks\"},\"finish_reason\":\"length\"}],\"usage\":{\"prompt_tokens\":500,\"completion_tokens\":300}}"));
+
+        var result = await Provider(handler).GenerateAsync(
+            Request(0) with { DisableThinking = true }, AiModelTier.Economy, "k", Options(AiOptions.CompatibleProvider));
+
+        Assert.Equal(string.Empty, result.Content);
+        Assert.Equal(300, result.CompletionTokens);
+        Assert.Equal("length", DeepSeekAiProvider.ExtractFinishReason("{\"choices\":[{\"finish_reason\":\"length\"}]}"));
+        Assert.Null(DeepSeekAiProvider.ExtractFinishReason("{\"choices\":[]}"));
+    }
+
     [Fact]
     public async Task GenerateAsync_ImagesRefused_SendsTheTextAloneOnce()
     {

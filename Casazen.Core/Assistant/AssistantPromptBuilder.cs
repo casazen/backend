@@ -77,6 +77,9 @@ public static partial class AssistantPromptBuilder
     /// <summary>The completion limit of the draft: a text of at most 800 characters in a JSON object.</summary>
     public const int DraftMaxTokens = 1000;
 
+    /// <summary>The completion limit of a call made again because its first answer held no text (<see cref="WithRoomToReason"/>).</summary>
+    public const int ReasoningRetryMaxTokens = 4096;
+
     /// <summary>The particles of a name (de, da, di, van, von, al, el…): words of the text far more than names, left alone.</summary>
     private static readonly HashSet<string> NameParticles = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -102,8 +105,6 @@ public static partial class AssistantPromptBuilder
         [AssistantSituation.Emergency] = "danger, health, fire, gas, water, a person locked out at night, the police",
         [AssistantSituation.Other] = "none of the situations above",
     };
-
-    private static readonly JsonDocumentOptions ReadOptions = new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip, MaxDepth = 8 };
 
     // ─── Minimization (PO-09) ───
 
@@ -359,53 +360,62 @@ public static partial class AssistantPromptBuilder
     }
 
     /// <summary>
-    /// The answer of the draft call: the one JSON object it holds, with a <c>draft</c> that says something. <c>null</c> for anything else (no object, no draft): the pipeline then
+    /// The answer of the draft call: the JSON object it holds (neither the reasoning of a model that thinks aloud nor the braces of <c>{{guest_name}}</c> hide it, see
+    /// <see cref="AssistantClassification.DocumentOf"/>), with a <c>draft</c> that says something. <c>null</c> for anything else (no object, no draft): the pipeline then
     /// records that the answer could not be used, never a draft made of nothing.
     /// </summary>
     public static AssistantDraftAnswer? ParseDraft(string? answer)
     {
-        if (AssistantClassification.ObjectOf(answer) is not { } json)
+        using var document = AssistantClassification.DocumentOf(answer, "draft");
+        if (document is null)
             return null;
 
-        try
+        var root = document.RootElement;
+        if (GuestMessageRules.NormalizeText(AssistantClassification.String(root, "draft")) is not { } draft)
+            return null;
+
+        var language = AssistantClassification.String(root, "language")?.Trim().ToLowerInvariant() is { Length: 2 } code && code.All(c => c is >= 'a' and <= 'z')
+            ? code
+            : null;
+        var missing = AssistantClassification.Member(root, "missingFacts") switch
         {
-            using var document = JsonDocument.Parse(json, ReadOptions);
-            var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || GuestMessageRules.NormalizeText(AssistantClassification.String(root, "draft")) is not { } draft)
-                return null;
+            { ValueKind: JsonValueKind.True } => true,
+            { ValueKind: JsonValueKind.String } text => string.Equals(text.GetString()?.Trim(), "true", StringComparison.OrdinalIgnoreCase),
+            _ => false,
+        };
 
-            var language = AssistantClassification.String(root, "language")?.Trim().ToLowerInvariant() is { Length: 2 } code && code.All(c => c is >= 'a' and <= 'z')
-                ? code
-                : null;
-            var missing = AssistantClassification.Member(root, "missingFacts") switch
+        var topics = new List<string>();
+        if (AssistantClassification.Member(root, "topics") is { ValueKind: JsonValueKind.Array } items)
+        {
+            foreach (var item in items.EnumerateArray())
             {
-                { ValueKind: JsonValueKind.True } => true,
-                { ValueKind: JsonValueKind.String } text => string.Equals(text.GetString()?.Trim(), "true", StringComparison.OrdinalIgnoreCase),
-                _ => false,
-            };
-
-            var topics = new List<string>();
-            if (AssistantClassification.Member(root, "topics") is { ValueKind: JsonValueKind.Array } items)
-            {
-                foreach (var item in items.EnumerateArray())
+                if (item.ValueKind == JsonValueKind.String
+                    && AssistantTopicNames.TryNormalize(item.GetString(), out var topic)
+                    && !topics.Contains(topic, StringComparer.Ordinal)
+                    && topics.Count < 10)
                 {
-                    if (item.ValueKind == JsonValueKind.String
-                        && AssistantTopicNames.TryNormalize(item.GetString(), out var topic)
-                        && !topics.Contains(topic, StringComparer.Ordinal)
-                        && topics.Count < 10)
-                    {
-                        topics.Add(topic);
-                    }
+                    topics.Add(topic);
                 }
             }
+        }
 
-            return new AssistantDraftAnswer(draft, language, missing, topics);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+        return new AssistantDraftAnswer(draft, language, missing, topics);
     }
+
+    /// <summary>
+    /// <paramref name="request"/> with room for a reasoning: the call made again when the first answer held no text. A model that reasons before it answers, on a server
+    /// that did not switch the reasoning off, spends the short limits above (<see cref="ClassificationMaxTokens"/>, <see cref="DraftMaxTokens"/>) on its reasoning and
+    /// answers nothing; <see cref="ReasoningRetryMaxTokens"/> leaves it room to finish and answer. A limit already larger is kept.
+    /// </summary>
+    public static AiRequest WithRoomToReason(AiRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return request with { MaxCompletionTokens = Math.Max(request.MaxCompletionTokens ?? 0, ReasoningRetryMaxTokens) };
+    }
+
+    /// <summary>Whether an answer of the model holds text once a reasoning (<c>&lt;think&gt;…&lt;/think&gt;</c>, or one cut before it closed) is left out.</summary>
+    public static bool HasAnswer(string? content) =>
+        !string.IsNullOrWhiteSpace(content) && !string.IsNullOrWhiteSpace(AiAnswerText.WithoutReasoning(content));
 
     // ─── The draft of the model, back on the server ───
 
