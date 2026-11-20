@@ -45,7 +45,8 @@ public sealed class BookingNotifier(
     IGuestCheckInService? checkIn = null,
     ICheckInLinkDeliveryService? linkDeliveries = null,
     IOptions<GuestCheckInOptions>? checkInOptions = null,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    IBookingFlowSettingsService? flowSettings = null)
 {
     /// <summary>
     /// The four optional services of the check-in link were given (the check-in, the delivery, its options, the clock): the container gives them. Built without them the notifier says
@@ -140,6 +141,15 @@ public sealed class BookingNotifier(
             var clock = timeProvider ?? TimeProvider.System;
             var today = clock.TodayInRomeAsDateOnly();
             var windowDays = (checkInOptions?.Value ?? new GuestCheckInOptions()).SendWindowDays;
+            if (flowSettings is not null)
+            {
+                // casazen/backend#978: the org's booking flow. The host sends the links (manual): the confirmation issues none and says nothing about it.
+                var flow = await flowSettings.GetAsync(data.OrgId, cancellationToken);
+                if (!flow.SendsCheckInLink)
+                    return null;
+                windowDays = flow.CheckInLinkDaysBefore;
+            }
+
             var access = await GuestCheckInAccessRules.ReadAsync(
                 db,
                 data.BookingId,

@@ -42,7 +42,8 @@ public class GuestCheckInSendJob(
     IOptions<GuestCheckInOptions> options,
     ILogger<GuestCheckInSendJob> logger,
     TimeProvider? timeProvider = null,
-    ICheckInLinkDeliveryService? deliveries = null)
+    ICheckInLinkDeliveryService? deliveries = null,
+    IBookingFlowSettingsService? flowSettings = null)
 {
     private static readonly GuestCheckInSessionStatus[] OpenStatuses =
     [
@@ -75,7 +76,9 @@ public class GuestCheckInSendJob(
         // Calendar window in Europe/Rome (QA-CLOCK): arrivals from today to today + SendWindowDays, whatever the hour
         // of the run, as the guest page opens the check-in (GuestBookingLookupService). An instant bound would drop the
         // last day of the window between 22:00 and 24:00 UTC, when Rome is already on the next day.
-        var windowEnd = today.AddDays(options.Value.SendWindowDays);
+        // casazen/backend#978: each org says how many days before the arrival its links go (the booking flow), up to the life of a link: the widest window is read,
+        // then each stay is kept by the window of its org.
+        var windowEnd = today.AddDays(flowSettings is null ? options.Value.SendWindowDays : Math.Max(options.Value.SendWindowDays, MaxLinkDays));
 
         var bookings = await db.Bookings
             .AsNoTracking()
@@ -88,11 +91,37 @@ public class GuestCheckInSendJob(
                  b.CheckOutDate >= today))
             .ToListAsync();
 
+        // A stay of an org whose links the host sends (manual) gets no link and no reminder from here; the others only once their window opened.
+        var flows = await FlowsOfAsync(bookings);
+        bookings = bookings
+            .Where(b => b.Status == BookingStatus.CheckedIn
+                ? SendsLinks(flows, b.OrgId)
+                : SendsLinks(flows, b.OrgId) && b.CheckInDate <= today.AddDays(DaysBefore(flows, b.OrgId)))
+            .ToList();
+
         if (bookings.Count > 0)
             await SendLinksAsync(bookings, now);
 
         await RemindAsync(today, now);
     }
+
+    /// <summary>The most days before the arrival an org may send its links: the life of a link.</summary>
+    private int MaxLinkDays => Math.Clamp(
+        options.Value.SessionLifetimeDays,
+        GuestCheckInOptions.MinSessionLifetimeDays,
+        GuestCheckInOptions.MaxSessionLifetimeDays);
+
+    /// <summary>The booking flow of the orgs of <paramref name="bookings"/>; <c>null</c> without the settings service (a test that predates it): every org sends, with the window of the options.</summary>
+    private async Task<IReadOnlyDictionary<Guid, BookingFlowSettingsView>?> FlowsOfAsync(IReadOnlyCollection<Booking> bookings) =>
+        flowSettings is null || bookings.Count == 0
+            ? null
+            : await flowSettings.GetManyAsync(bookings.Select(b => b.OrgId).ToList());
+
+    private static bool SendsLinks(IReadOnlyDictionary<Guid, BookingFlowSettingsView>? flows, Guid orgId) =>
+        flows is null || !flows.TryGetValue(orgId, out var flow) || flow.SendsCheckInLink;
+
+    private int DaysBefore(IReadOnlyDictionary<Guid, BookingFlowSettingsView>? flows, Guid orgId) =>
+        flows is not null && flows.TryGetValue(orgId, out var flow) ? flow.CheckInLinkDaysBefore : options.Value.SendWindowDays;
 
     /// <summary>First stage: the link of the stays that have none usable.</summary>
     private async Task SendLinksAsync(List<Booking> bookings, DateTime now)
@@ -192,6 +221,9 @@ public class GuestCheckInSendJob(
             .Include(b => b.Guest)
             .Where(b => b.Status == BookingStatus.Confirmed && b.CheckInDate >= today && b.CheckInDate <= windowEnd)
             .ToListAsync();
+        // casazen/backend#978: the org whose links the host sends gets no reminder either (the reminder is a new link).
+        var flows = await FlowsOfAsync(bookings);
+        bookings = bookings.Where(b => SendsLinks(flows, b.OrgId)).ToList();
         if (bookings.Count == 0)
             return;
 

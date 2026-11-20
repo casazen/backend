@@ -23,6 +23,9 @@ public static class BookingOperationsServiceCollectionExtensions
     {
         // E08/F06/US01/T02 (NF-79): a stay ended without a cleaning request, a booking with a special request, a booking from a channel.
         services.AddScoped<IEventHandler<DomainEvent>, BookingCleaningActivityHandler>();
+
+        // casazen/backend#978: the supplier completed the cleaning of a stay, so the booking flow declares the property ready when the org says so.
+        services.AddScoped<IEventHandler<DomainEvent>, PropertyReadyAutomationHandler>();
         services.AddScoped<IEventHandler<DomainEvent>, BookingSpecialRequestActivityHandler>();
         services.AddScoped<IEventHandler<DomainEvent>, ChannelBookingAlertHandler>();
 

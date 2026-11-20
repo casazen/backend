@@ -473,6 +473,8 @@ public static class ServiceCollectionExtensions
         // E22/F01/US01/T03: the biometric settings of an organization (the thresholds and the attempts, provisional until a platform administrator marks a
         // calibration), read by its administrators and the staff; the flow reads the same row.
         services.AddScoped<IBiometricSettingsService, BiometricSettingsService>();
+        // casazen/backend#978: which steps of a stay CasaZen does by itself (the check-in link, the arrival, the departure, the property ready), per org.
+        services.AddScoped<IBookingFlowSettingsService, BookingFlowSettingsService>();
         // E03/F04/US02/T03: the immediate alert to the operators (push, e-mail, urgent "To do") when a verification needs a person.
         services.AddScoped<IVerificationOperatorAlerts, VerificationOperatorAlerts>();
         // NF-13: Property access codes with encryption and verification gating (E06/F03/US01/T01).

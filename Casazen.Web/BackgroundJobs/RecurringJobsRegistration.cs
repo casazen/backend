@@ -307,6 +307,13 @@ public static class RecurringJobsRegistration
             "0 8 * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // casazen/backend#978: the arrivals and departures of the orgs whose booking flow is automatic (the default), every hour at :20 (after the stay alerts at :00).
+        recurringJobManager.AddOrUpdate<BookingFlowAutomationJob>(
+            BookingFlowAutomationJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            "20 * * * *",
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // E23/F01/US01/T01, T02 (NF-122): the check-in links of the stays with no e-mail address that wait for the chat of the portal or for the contact of the guest are tried
         // again every hour, only while the connector and one of the flags PortalChatCheckInLink and GuestContactInfo are on.
         ConfigureCheckInLinkDeliveryJob(recurringJobManager, CheckInLinkDeliveryRetryJob.IsEnabled(featureFlags));

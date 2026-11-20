@@ -213,6 +213,9 @@ public static class PushDeliveryKeys
     /// </summary>
     public static string GuestCheckInCompleted(Guid sessionId) => $"guest-checkin:{sessionId:N}:completed";
 
+    /// <summary>A step of a stay CasaZen did in the host's place (casazen/backend#978), to the hosts of the booking: one per stay and step.</summary>
+    public static string BookingFlowStep(Guid bookingId, BookingFlowAutomaticStep step) => $"booking-flow:{bookingId:N}:{step.ToString().ToLowerInvariant()}";
+
     /// <summary>A booking confirmed without the host's action (payment, saved card), to the host.</summary>
     public static string NewBooking(Guid bookingId) => $"booking:{bookingId:N}:new";
 
@@ -392,6 +395,12 @@ public static class PushTypes
 
     /// <summary>The guest completed the online check-in (US-020): pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its detail.</summary>
     public const string GuestCheckInCompleted = "guest-checkin-completed";
+
+    /// <summary>
+    /// CasaZen did a step of a stay in the host's place (casazen/backend#978): registered the arrival or the departure, or declared the property ready once the cleaning was
+    /// done. Pushed to the hosts of the booking and written to the bell; <c>entityId</c> is the booking, the route its detail. The property only, never the guest.
+    /// </summary>
+    public const string BookingFlowStep = "booking-flow-step";
     public const string GuestDataMissing = "guest-data-missing";
     public const string AlloggiatiDeadline = "alloggiati-deadline";
     public const string AlloggiatiOverdue = "alloggiati-overdue";

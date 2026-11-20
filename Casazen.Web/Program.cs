@@ -251,6 +251,8 @@ builder.Services.AddScoped<SeoPageGenerationJob>();
 builder.Services.AddScoped<SeoContentRefreshJob>();
 builder.Services.AddScoped<SeoEventRetentionJob>();
 builder.Services.AddScoped<GuestCheckInSendJob>();
+// casazen/backend#978: the arrivals and departures the booking flow registers in the host's place.
+builder.Services.AddScoped<BookingFlowAutomationJob>();
 builder.Services.AddScoped<CheckoutHoldExpiryJob>();
 // SP-04: cancels the service requests nobody answered in time (scheduled only with Features:SupplierRequestAutoCancel on).
 builder.Services.AddScoped<ServiceRequestAutoCancelJob>();

@@ -1534,6 +1534,12 @@
   <data name="BiometricSettingsAttemptsOutOfRange" xml:space="preserve">
     <value>Attempts must be between {0} and {1}.</value>
   </data>
+  <data name="BookingFlowDaysOutOfRange" xml:space="preserve">
+    <value>The check-in link can go from 0 to {0} days before the arrival.</value>
+  </data>
+  <data name="BookingFlowValueInvalid" xml:space="preserve">
+    <value>Choose one of the options offered for each step.</value>
+  </data>
   <data name="VerificationVideoCallUrlInvalid" xml:space="preserve">
     <value>The video call link must be an absolute https address, with no spaces or credentials and at most {0} characters.</value>
   </data>
