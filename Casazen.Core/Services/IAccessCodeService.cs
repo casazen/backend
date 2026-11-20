@@ -48,6 +48,20 @@ public interface IAccessCodeService
     Task<string?> ReleaseToGuestAsync(Guid bookingId, string channel, CancellationToken ct = default);
 
     /// <summary>
+    /// The first half of <see cref="ReleaseToGuestAsync"/>: the same gate (a known channel, verification passed, an active stay not over, no hold, a code set), and the code the guest may be given, but
+    /// <b>nothing is written</b>: no line of the release log. For a caller that puts the code in a message and logs the release only once the message went out (<see cref="RecordReleaseAsync"/>), so a message
+    /// that is refused or fails leaves no line that says a code reached a guest.
+    /// </summary>
+    /// <returns>Plain text code, or null for the reasons <see cref="ReleaseToGuestAsync"/> gives.</returns>
+    Task<string?> GetReleasableCodeAsync(Guid bookingId, string channel, CancellationToken ct = default);
+
+    /// <summary>
+    /// The second half of <see cref="ReleaseToGuestAsync"/>: writes the line of the release log (the channel and the time, never the code) for a code that was taken with
+    /// <see cref="GetReleasableCodeAsync"/> and has gone, or may have gone, to the guest. Another value of <paramref name="channel"/> than <see cref="AccessCodeReleaseChannels"/> is an <see cref="ArgumentException"/>.
+    /// </summary>
+    Task RecordReleaseAsync(Guid bookingId, string channel, CancellationToken ct = default);
+
+    /// <summary>
     /// Why the lock code of the booking is held back from the guest now (E25/F01/US01/T01, NF-119): one of <see cref="AccessCodeHoldReasons"/>, or <c>null</c>
     /// when nothing holds it back. The one gate of every release to a guest (<see cref="ReleaseToGuestAsync"/>: the screen, the e-mail, the operator's
     /// approval) reads it, so no channel can bypass it; the callers that tell the guest why no code came read it too.
@@ -91,8 +105,14 @@ public static class AccessCodeReleaseChannels
     /// <summary>A screen of a guest-facing page (the channel of before E03/F04/US02).</summary>
     public const string Screen = "screen";
 
+    /// <summary>A scheduled message of a routine written in the conversation of the booking on a portal (the chat of the channel manager, E05/F07/US01/T03).</summary>
+    public const string PortalChat = "portal-chat";
+
+    /// <summary>A scheduled message of a routine written in the guest area of a direct booking (the conversation of the booking site, E05/F07/US01/T03).</summary>
+    public const string GuestArea = "guest-area";
+
     /// <summary>Every channel; any other value is refused.</summary>
-    public static IReadOnlyList<string> All { get; } = [CheckInScreen, Email, Operator, Screen];
+    public static IReadOnlyList<string> All { get; } = [CheckInScreen, Email, Operator, Screen, PortalChat, GuestArea];
 }
 
 /// <summary>Why the lock code of a stay is held back from the guest (<see cref="IAccessCodeService.GetHoldReasonAsync"/>); the codes the guest page reads.</summary>

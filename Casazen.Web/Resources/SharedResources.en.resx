@@ -3953,7 +3953,25 @@
     <value>This conversation cannot be written to from CasaZen: the channel manager does not say who writes or the identifier of the conversation on the channel. Answer on the channel.</value>
   </data>
   <data name="MessageTemplateVariableUnknown" xml:space="preserve">
-    <value>The template uses “{0}”, which is not a valid variable. The valid ones are guest_name, property_name, booking_code, check_in_date, check_out_date, check_in_time, check_out_time and host_name, written between double curly braces.</value>
+    <value>The template uses “{0}”, which is not a valid variable. The valid ones are guest_name, property_name, booking_code, check_in_date, check_out_date, check_in_time, check_out_time, host_name, check_in_link, check_in_method, access_code, property_address and review_link, written between double curly braces.</value>
+  </data>
+  <data name="ScheduledMessageNotFound" xml:space="preserve">
+    <value>The scheduled message does not exist or is outside your reach.</value>
+  </data>
+  <data name="ScheduledMessageNotEditable" xml:space="preserve">
+    <value>The message was already sent, skipped, cancelled or has expired: it can no longer be edited or skipped.</value>
+  </data>
+  <data name="ScheduledMessageNotSendable" xml:space="preserve">
+    <value>The message was already sent, skipped, cancelled or has expired: it can no longer be sent.</value>
+  </data>
+  <data name="ScheduledMessageBlocked" xml:space="preserve">
+    <value>The message cannot go out: a piece of data is missing (for example the access code of a guest who is not verified yet, or a variable with no value). Fix the text or complete the data and try again.</value>
+  </data>
+  <data name="ScheduledMessageInProgress" xml:space="preserve">
+    <value>The message is being sent right now and is never sent twice. Try again in a minute.</value>
+  </data>
+  <data name="ScheduledMessageChanged" xml:space="preserve">
+    <value>Somebody changed the message while you were changing it. Reload the page and try again.</value>
   </data>
   <data name="MessageTemplateVariableMissing" xml:space="preserve">
     <value>This conversation has no value for “{0}”: choose another template or complete the text by hand.</value>
@@ -6857,7 +6875,10 @@ Once active, the function works on the data the channel manager already holds.</
     <value>A TD17 self-billed invoice is prepared, issued and discarded from the self-billed invoices.</value>
   </data>
   <data name="SelfBillingNotCorrectable" xml:space="preserve">
-    <value>A TD17 self-billed invoice cannot be corrected from here: if the SDI rejected it, read the reason on the self-billed invoices and agree with your accountant how to put it right.</value>
+    <value>A TD17 self-billed invoice cannot be corrected from here: if the SDI rejected it, correct it and send it again from the self-billed invoices.</value>
+  </data>
+  <data name="SelfBillingCorrectionNotApplicable" xml:space="preserve">
+    <value>Only a TD17 self-billed invoice the SDI rejected, with no credit note issued, is corrected this way.</value>
   </data>
   <data name="SelfBillingLineCommissions" xml:space="preserve">
     <value>Intermediation commissions {0} - {1} - {2}</value>

@@ -117,6 +117,8 @@ public class ConfigurationFeatureFlagsTests
                 "TaxReportingExports",
                 // E20/F02/US01/T02: the deletion of the guests' documents once the stay is covered by an archived Alloggiati receipt, off until the test environment has shown it.
                 "PurgeDocumentsAfterReceipt",
+                // E05/F07/US01/T01: the scheduled messages of the routines, off until the product owner confirms the send window and the retry times.
+                "ScheduledMessages",
             },
             FeatureFlags.All);
     }

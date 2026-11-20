@@ -68,14 +68,16 @@ public interface IFiscalDocumentService
     /// same issue as a document of a guest (the gap-free number in the series <paramref name="seriesPattern"/> of the issuer the draft belongs to, the snapshot of that
     /// issuer, the rule version, the Italian XML, the state <c>to_send</c>), with <paramref name="rule"/> the one the self-billing service resolved from its settings (the VAT
     /// integrated at its rate, the type of document TD17). The XML is the invoice of the foreign supplier integrated by its recipient: the supplier is the cedente, the issuer is the
-    /// cessionario that issues it (<c>SoggettoEmittente</c> <c>CC</c>). 404 <c>fiscal_document_not_found</c> (not a self-billed invoice); 422 <c>document_not_draft</c>,
-    /// <c>issuer_profile_incomplete</c>, <c>series_too_long</c>.
+    /// cessionario that issues it (<c>SoggettoEmittente</c> <c>CC</c>). A draft that replaces a TD17 the SDI rejected (<see cref="IFiscalDocumentCorrectionService.StartSelfBillingCorrectionAsync"/>)
+    /// holds its series and its number and is issued with them, and with the day of the TD17 it replaces, reserving no other number (the same issue as the replacement of an invoice to a guest).
+    /// 404 <c>fiscal_document_not_found</c> (not a self-billed invoice); 422 <c>document_not_draft</c>, <c>issuer_profile_incomplete</c>, <c>series_too_long</c>, <c>document_replacement_invalid</c>.
     /// </summary>
     Task<FiscalDocument> IssueSelfBillingAsync(Guid documentId, FiscalTaxRule rule, string seriesPattern, string? userId, CancellationToken ct = default);
 
     /// <summary>
     /// The draft of a self-billed invoice discarded (E17/F01/US03/T01), called by <see cref="ISelfBillingService.DiscardDraftAsync"/> once it checked the organization: no number is
-    /// consumed. 404 <c>fiscal_document_not_found</c> (not a self-billed invoice); 422 <c>document_not_draft</c>. The endpoints of the guest documents refuse it (422 <c>document_self_billing</c>).
+    /// consumed. 404 <c>fiscal_document_not_found</c> (not a self-billed invoice); 422 <c>document_not_draft</c>, <c>document_replacement_holds_number</c> (the draft replaces a TD17 the SDI rejected and
+    /// holds its number: it is issued, never discarded, FIX/BE-TD17-CORRECTION). The endpoints of the guest documents refuse it (422 <c>document_self_billing</c>).
     /// </summary>
     Task DiscardSelfBillingDraftAsync(Guid documentId, CancellationToken ct = default);
 

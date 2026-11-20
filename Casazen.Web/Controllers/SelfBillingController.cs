@@ -12,15 +12,15 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// The self-billed invoices (TD17) of the commissions that foreign portals charge an Italian account holder (E17/F01/US03/T01, NF-116): the list and the detail of the month
-/// (the drafts and the issued ones), the drafts of a month made from the owner ledger, the issue of a draft and the discard of a draft. Every action needs
-/// <c>agency.invoice.manage</c> (create and issue invoices, agency plan) and <c>Features:FiscalDocumentIssuance</c> (404 while it is off). The PDF and the XML of a TD17 are the ones of
-/// every fiscal document (<c>GET api/fiscal/documents/{id}/pdf</c> and <c>/xml</c>, a document without a booking: the whole org only); once issued its state towards the SDI is
-/// <c>to_send</c> like every Italian electronic invoice, and the SDI port sends it.
+/// (the drafts and the issued ones, and the originals a correction replaced), the drafts of a month made from the owner ledger, the issue of a draft, the discard of a draft and the correction
+/// of a TD17 the SDI rejected. Every action needs <c>agency.invoice.manage</c> (create and issue invoices, agency plan) and <c>Features:FiscalDocumentIssuance</c> (404 while it is off). The PDF
+/// and the XML of a TD17 are the ones of every fiscal document (<c>GET api/fiscal/documents/{id}/pdf</c> and <c>/xml</c>, a document without a booking: the whole org only); once issued its
+/// state towards the SDI is <c>to_send</c> like every Italian electronic invoice, and the SDI port sends it.
 /// </summary>
 /// <remarks>
 /// A TD17 spans the properties of a holder, like the owner accounting it comes from: a caller restricted to some properties is refused (403) even with the permission, on every
 /// action, reads included. A document of another org, and any document that is not a TD17, is 404. The endpoints of the guest documents (<c>api/fiscal/documents</c>) refuse to
-/// change a TD17 (422 <c>document_self_billing</c>).
+/// change a TD17 (422 <c>document_self_billing</c>, and <c>self_billing_not_correctable</c> for <c>POST …/sdi/correct</c>: the correction of a TD17 is <c>POST {id}/correct</c> here).
 /// </remarks>
 [ApiController]
 [Route("api/fiscal/self-billing")]
@@ -28,6 +28,7 @@ namespace Casazen.Web.Controllers;
 [FeatureGate(FeatureFlags.FiscalDocumentIssuance)]
 public class SelfBillingController(
     ISelfBillingService selfBilling,
+    IFiscalDocumentCorrectionService corrections,
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
@@ -132,6 +133,32 @@ public class SelfBillingController(
 
         await selfBilling.DiscardDraftAsync(orgId, id, HttpContext.RequestAborted);
         return NoContent();
+    }
+
+    /// <summary>
+    /// Starts the correction of a TD17 the SDI rejected («Correggi e rimanda», FIX/BE-TD17-CORRECTION): for the tax office it was never issued, so it is replaced by a draft that holds its series
+    /// and its number, and the rejected one keeps its number for the history, gives it up and becomes <c>Discarded</c>. Answers <c>201</c> with the replacement draft, the detail of
+    /// <c>GET {id}</c> (its <c>invoice.replacesDocumentId</c> names the rejected TD17); a second call answers the same draft. Nothing is issued and nothing is sent to the SDI: the host fixes what the
+    /// SDI refused (the issuer profile, the data of the portal; the reason is on <c>GET api/fiscal/documents/{id}/sdi</c>), makes the drafts of the month again (<c>POST drafts</c>) when the file
+    /// needs it, and issues the draft with <c>POST {id}/issue</c>, which uses the number it holds and leaves it <c>to_send</c>; it is sent as any other (<c>POST api/fiscal/documents/{id}/sdi/submit</c>).
+    /// Behind <c>Features:SdiSubmission</c> too (404 while it is off), like the correction of an invoice to a guest. 404 <c>fiscal_document_not_found</c> (another org, not a TD17); 422
+    /// <c>self_billing_not_correctable</c> (not issued and rejected by the SDI, or an issued credit note); 403 without the whole org.
+    /// </summary>
+    [HttpPost("{id:guid}/correct")]
+    [FeatureGate(FeatureFlags.SdiSubmission)]
+    [ProducesResponseType(typeof(SelfBillingDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<SelfBillingDto>> Correct(Guid id)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+
+        var ct = HttpContext.RequestAborted;
+        var replacement = await corrections.StartSelfBillingCorrectionAsync(orgId, id, User.GetUserId(), ct);
+        var detail = await selfBilling.GetAsync(orgId, replacement.Id, ct);
+        return CreatedAtAction(nameof(Get), new { id = replacement.Id }, SelfBillingDto.From(detail));
     }
 
     /// <summary>The caller's org, only when its reach is the whole org.</summary>

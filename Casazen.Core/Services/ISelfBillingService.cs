@@ -30,6 +30,10 @@ namespace Casazen.Core.Services;
 /// otherwise).</item>
 /// <item><b>Tenant and reach.</b> Every method names the org; a document of another org is 404. The web layer decides who may call: the whole organization only (a TD17 spans
 /// the properties of a holder).</item>
+/// <item><b>A TD17 the SDI rejected is corrected, not credited</b> (FIX/BE-TD17-CORRECTION). For the tax office it was never issued, so its correction
+/// (<see cref="IFiscalDocumentCorrectionService.StartSelfBillingCorrectionAsync"/>) discards it, with its display number for the history, and makes a draft that holds its series and its number
+/// (<see cref="SelfBillingRow.ReplacesDocumentId"/>). The drafts of the month keep that draft as the draft of its holder, portal and month (never a second TD17), and it is issued with
+/// <see cref="IssueAsync"/> under the number it holds, never discarded (422 <c>document_replacement_holds_number</c>). A credit note of an issued TD17 is not made.</item>
 /// </list>
 /// </remarks>
 public interface ISelfBillingService
@@ -42,10 +46,14 @@ public interface ISelfBillingService
     /// </summary>
     Task<SelfBillingGeneration> CreateDraftsForPeriodAsync(Guid orgId, int year, int month, string? userId, CancellationToken ct = default);
 
-    /// <summary>The TD17 of the org (drafts and issued ones, not the discarded ones), the newest period first.</summary>
+    /// <summary>
+    /// The TD17 of the org, the newest period first: the drafts and the issued ones, and the originals a correction replaced (<see cref="FiscalDocumentStatus.Discarded"/>, the SDI rejected
+    /// them, they keep their display number for the history and say which draft replaces them: <see cref="SelfBillingRow.ReplacedByDocumentId"/>). The drafts a person or a generation dropped
+    /// are not listed.
+    /// </summary>
     Task<IReadOnlyList<SelfBillingRow>> ListAsync(Guid orgId, SelfBillingCriteria criteria, CancellationToken ct = default);
 
-    /// <summary>One TD17 with its lines. 404 <c>fiscal_document_not_found</c> (another org, not a TD17).</summary>
+    /// <summary>One TD17 with its lines, whatever its status (a replaced original too). 404 <c>fiscal_document_not_found</c> (another org, not a TD17).</summary>
     Task<SelfBillingDetail> GetAsync(Guid orgId, Guid documentId, CancellationToken ct = default);
 
     /// <summary>
@@ -98,6 +106,17 @@ public sealed record SelfBillingCriteria(int? Year = null, int? Month = null);
 /// <param name="PortalName">The legal name of the foreign portal (the cedente).</param>
 /// <param name="PortalCountry">The country of the portal.</param>
 /// <param name="DueDate">The day by which the TD17 is issued (⚖ <see cref="SelfBillingOptions.IssueByDay"/> of the month after the commissions).</param>
+/// <param name="CanCorrect">
+/// The SDI rejected this TD17 and it can be replaced by its correction (<see cref="SelfBillingRules.IsCorrectable"/>: issued, rejected, with a number, no issued credit note): the host may start it with
+/// «Correggi e rimanda». False for every other document.
+/// </param>
+/// <param name="ReplacesDocumentId">The rejected TD17 this draft (or its issued form) replaces and whose number it holds; <c>null</c> for a TD17 that replaces none.</param>
+/// <param name="ReplacedByDocumentId">The TD17 that replaces this one (a <see cref="FiscalDocumentStatus.Discarded"/> original the SDI rejected, its correction made); <c>null</c> for any other.</param>
+/// <param name="KeptReason">
+/// Only for a draft that holds the number of a rejected TD17 and that nothing in the ledger, the holder and the portals of the settings gives now (one of <see cref="SelfBillingKeptReasons"/> or the code
+/// of the holder's failure): it cannot be issued (409 <c>document_draft_outdated</c> whatever is done to it) nor discarded (it holds the number). <c>null</c> for every other document, and for a
+/// draft the drafts of the month can make again (that includes the draft of a portal whose VAT number or country was fixed in the settings: the month adopts it).
+/// </param>
 public sealed record SelfBillingRow(
     Guid Id,
     SelfBillingHolderKind HolderKind,
@@ -115,7 +134,11 @@ public sealed record SelfBillingRow(
     decimal VatAmount,
     decimal Total,
     string Currency,
-    string SdiStatus);
+    string SdiStatus,
+    bool CanCorrect = false,
+    Guid? ReplacesDocumentId = null,
+    Guid? ReplacedByDocumentId = null,
+    string? KeptReason = null);
 
 /// <summary>A TD17 with its lines (<see cref="Document"/>), its row and the estimate of its amount.</summary>
 /// <param name="EstimatedAmount">
@@ -133,6 +156,10 @@ public sealed record SelfBillingDetail(FiscalDocument Document, SelfBillingRow R
 /// The owner ledger has lines for the month (the month-end posting of the owner accounting was run). The drafts only read the ledger: without it a month has nothing to invoice, and the host
 /// is told to post the month first instead of reading an empty answer as «nothing is due».
 /// </param>
+/// <param name="Kept">
+/// The drafts that hold the number of a rejected TD17 (FIX/BE-TD17-CORRECTION) and that nothing gives now: they are never dropped (the number would be lost), they cannot be issued nor discarded, and
+/// each says why (<see cref="SelfBillingKept.Reason"/>). <c>null</c> when there are none.
+/// </param>
 public sealed record SelfBillingGeneration(
     int Year,
     int Month,
@@ -143,7 +170,26 @@ public sealed record SelfBillingGeneration(
     IReadOnlyList<SelfBillingOutcome> Drafts,
     IReadOnlyList<SelfBillingFailure> Failed,
     IReadOnlyList<SelfBillingNotDue> NotDue,
-    bool LedgerPosted);
+    bool LedgerPosted,
+    IReadOnlyList<SelfBillingKept>? Kept = null);
+
+/// <summary>
+/// A draft that holds the number of a rejected TD17 and that the ledger, the holder and the portals of the settings no longer give (FIX/BE-TD17-CORRECTION): the generation keeps it (discarding it would lose
+/// the number, and the rejected TD17 could not be corrected again) and says why it cannot be issued; what the number is for is for the accountant to decide. No personal data: ids, the legal name of the
+/// portal, the number and a code.
+/// </summary>
+/// <param name="Reason">One of <see cref="SelfBillingKeptReasons"/>, or the code of the failure of its holder (<c>owner_issuer_missing</c>, <c>issuer_profile_incomplete</c>).</param>
+public sealed record SelfBillingKept(Guid DocumentId, SelfBillingHolderKind HolderKind, Guid? HolderOwnerId, string PortalName, string? Number, string Reason);
+
+/// <summary>Why a draft that holds the number of a rejected TD17 is kept and cannot be issued (<see cref="SelfBillingKept.Reason"/>, <see cref="SelfBillingRow.KeptReason"/>): stable codes the frontend translates.</summary>
+public static class SelfBillingKeptReasons
+{
+    /// <summary>The portal of the draft (its country and VAT number) is not an entry of <c>SelfBilling:Portals</c> any more, and no draft of the same legal name took its place: the entry is to be put right in the settings.</summary>
+    public const string PortalNotConfigured = SelfBillingNotDueReasons.PortalNotConfigured;
+
+    /// <summary>The month gives this holder no TD17 for this portal now: its commissions were reversed, its stays are no longer active, or the holder is no longer subject to the TD17.</summary>
+    public const string NotInLedger = "ledger_gives_no_td17";
+}
 
 /// <summary>What the monthly run did for one organization (<see cref="ISelfBillingService.RunMonthlyDraftsAsync"/>): counts and codes only, no amount, name or number.</summary>
 /// <param name="AlreadyMade">The month already had a TD17 before the run (made by an earlier run, by a person, or discarded): the holders that have one were left alone.</param>
@@ -242,7 +288,8 @@ public static class SelfBillingErrors
 
     /// <summary>
     /// 422: a TD17 the SDI rejected has no correction from the endpoint of the guest documents (<c>POST api/fiscal/documents/{id}/sdi/correct</c>), whatever its state: that correction replaces an invoice
-    /// to a guest and holds its number, and a TD17 is not one (FIX/RES-DOCS). Its rejection is read on the self-billed invoices; nothing is made, changed or raised for it here.
+    /// to a guest and follows its booking, and a TD17 is not one (FIX/RES-DOCS); nothing is made, changed or raised for it there. Its correction is on the self-billed invoices
+    /// (<c>POST api/fiscal/self-billing/{id}/correct</c>, FIX/BE-TD17-CORRECTION), which answers with this code a TD17 that is not issued and rejected by the SDI, or that has an issued credit note.
     /// </summary>
     public const string NotCorrectable = "self_billing_not_correctable";
 }
@@ -347,6 +394,24 @@ public static class SelfBillingRules
     /// <summary>The day by which a TD17 of the commissions of <paramref name="year"/>-<paramref name="month"/> is issued: <paramref name="issueByDay"/> of the month after.</summary>
     public static DateOnly DueDate(int year, int month, int issueByDay) =>
         new DateOnly(year, month, 1).AddMonths(1).AddDays(Math.Clamp(issueByDay, 1, 28) - 1);
+
+    /// <summary>
+    /// A TD17 is corrected, replaced by a draft that holds its number, when the SDI rejected it (FIX/BE-TD17-CORRECTION): a TD17 of CasaZen that is issued, rejected, has the sequence number and the
+    /// display number it is to give up, and has no issued credit note (<paramref name="hasIssuedCreditNote"/>: the accountant decides then, and a credit note of a TD17 is not made from here). The one
+    /// definition: the correction and the row of the list (<see cref="SelfBillingRow.CanCorrect"/>) both ask it. The caller has read the document as a TD17 (not a credit note) of its org.
+    /// </summary>
+    public static bool IsCorrectable(FiscalDocument document, bool hasIssuedCreditNote)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
+        return document.Source == FiscalDocumentSource.CasaZen
+               && document.Purpose == FiscalDocumentPurpose.SelfBilling
+               && document.Status == FiscalDocumentStatus.Issued
+               && document.SdiStatus == FiscalDocumentSdiStatuses.Rejected
+               && document.SequenceNumber is not null
+               && !string.IsNullOrEmpty(document.Number)
+               && !hasIssuedCreditNote;
+    }
 
     /// <summary>
     /// The tax rule of a TD17 of an issuer of the regime <paramref name="regime"/> (Italy): the VAT integrated at the rate of the settings (⚖) on every line, whatever the regime

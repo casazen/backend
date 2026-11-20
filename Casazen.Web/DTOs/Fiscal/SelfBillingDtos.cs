@@ -7,6 +7,12 @@ namespace Casazen.Web.DTOs.Fiscal;
 /// One self-billed invoice (TD17) of the list (<c>GET api/fiscal/self-billing</c>, E17/F01/US03/T01): stable codes (never a display text), the stored amounts in
 /// <see cref="Currency"/>, the holder it is made for (<c>Agency</c> or <c>Owner</c>), the foreign portal (the cedente), the month of the commissions and the day it is to be
 /// issued by, and the state towards the SDI. The fiscal data of the holder and of the portal are on the document, <c>GET api/fiscal/documents/{id}</c>, and its PDF and XML.
+/// The correction of a TD17 the SDI rejected (FIX/BE-TD17-CORRECTION, <c>POST api/fiscal/self-billing/{id}/correct</c>) is told by three fields: <see cref="CanCorrect"/> (the button «Correggi e rimanda»
+/// is offered: the document is issued and rejected, with its number and no issued credit note), <see cref="ReplacesDocumentId"/> (this draft, or this TD17 issued after it, replaces that rejected one
+/// and holds its number) and <see cref="ReplacedByDocumentId"/> (this one is the rejected original the correction discarded: its <c>Status</c> is <c>Discarded</c>, it keeps its number and its
+/// <c>SdiStatus</c> <c>rejected</c> for the history, and the draft that replaces it is that id). <see cref="KeptReason"/> is set only on a draft that holds the number of a rejected TD17 and that the drafts of
+/// its month would keep, because nothing gives it a TD17 now: a stable code (<c>portal_not_configured</c>, <c>issuer_profile_incomplete</c>, <c>owner_issuer_missing</c>, <c>ledger_gives_no_td17</c>) the frontend
+/// translates; such a draft can be neither issued nor discarded, and the host is told so instead of being offered «issue» or «discard».
 /// </summary>
 public sealed record SelfBillingListItemDto(
     Guid Id,
@@ -25,7 +31,11 @@ public sealed record SelfBillingListItemDto(
     decimal VatAmount,
     decimal Total,
     string Currency,
-    string SdiStatus)
+    string SdiStatus,
+    bool CanCorrect,
+    Guid? ReplacesDocumentId,
+    Guid? ReplacedByDocumentId,
+    string? KeptReason)
 {
     public static SelfBillingListItemDto From(SelfBillingRow row)
     {
@@ -47,7 +57,11 @@ public sealed record SelfBillingListItemDto(
             row.VatAmount,
             row.Total,
             row.Currency,
-            row.SdiStatus);
+            row.SdiStatus,
+            row.CanCorrect,
+            row.ReplacesDocumentId,
+            row.ReplacedByDocumentId,
+            row.KeptReason);
     }
 }
 
@@ -104,7 +118,8 @@ public sealed record GenerateSelfBillingRequest
 /// <summary>
 /// What the drafts of a month did: how many were made, made again, left alone because they were issued already and dropped because the ledger no longer supports them, one row for
 /// each TD17 (with what it is and the estimated part of its amount), the holders that need one and cannot get one yet, the commissions that are not self-billed with the reason, and whether
-/// the owner ledger of the month is posted (<see cref="LedgerPosted"/> false: the drafts read the ledger, so the month has to be posted by the owner accounting first).
+/// the owner ledger of the month is posted (<see cref="LedgerPosted"/> false: the drafts read the ledger, so the month has to be posted by the owner accounting first). <see cref="Kept"/> lists the drafts
+/// that hold the number of a rejected TD17 (FIX/BE-TD17-CORRECTION) and that nothing gives now: they are never dropped, and each says why it cannot be issued.
 /// </summary>
 public sealed record SelfBillingGenerationDto(
     int Year,
@@ -116,7 +131,8 @@ public sealed record SelfBillingGenerationDto(
     IReadOnlyList<SelfBillingOutcomeDto> Drafts,
     IReadOnlyList<SelfBillingFailureDto> Failed,
     IReadOnlyList<SelfBillingNotDueDto> NotDue,
-    bool LedgerPosted)
+    bool LedgerPosted,
+    IReadOnlyList<SelfBillingKeptDto> Kept)
 {
     public static SelfBillingGenerationDto From(SelfBillingGeneration generation)
     {
@@ -131,9 +147,17 @@ public sealed record SelfBillingGenerationDto(
             generation.Drafts.Select(d => new SelfBillingOutcomeDto(d.DocumentId, d.HolderKind.ToString(), d.HolderOwnerId, d.PortalName, d.Result, d.TaxableBase, d.EstimatedAmount, d.ChangedSinceIssue)).ToList(),
             generation.Failed.Select(f => new SelfBillingFailureDto(f.HolderKind.ToString(), f.HolderOwnerId, f.PortalName, f.Code, f.Fields)).ToList(),
             generation.NotDue.Select(n => new SelfBillingNotDueDto(n.Reason, n.Channel, n.Stays, n.Amount, n.Currency)).ToList(),
-            generation.LedgerPosted);
+            generation.LedgerPosted,
+            (generation.Kept ?? []).Select(k => new SelfBillingKeptDto(k.DocumentId, k.HolderKind.ToString(), k.HolderOwnerId, k.PortalName, k.Number, k.Reason)).ToList());
     }
 }
+
+/// <summary>
+/// A draft that holds the number of a rejected TD17 and that nothing gives now: kept, never dropped. <c>reason</c> is <c>portal_not_configured</c> (its portal is not in the settings: put it right there),
+/// <c>issuer_profile_incomplete</c> or <c>owner_issuer_missing</c> (its holder cannot issue: complete the profile), or <c>ledger_gives_no_td17</c> (the month gives this holder no TD17 for this portal: the
+/// commissions were reversed, the stays are no longer active, or the holder is no longer subject). It can be neither issued nor discarded: what its number is for is the accountant's decision.
+/// </summary>
+public sealed record SelfBillingKeptDto(Guid DocumentId, string HolderKind, Guid? HolderOwnerId, string PortalName, string? Number, string Reason);
 
 /// <summary>One TD17 of a generation: <c>result</c> is <c>created</c>, <c>updated</c> or <c>already_issued</c>.</summary>
 public sealed record SelfBillingOutcomeDto(

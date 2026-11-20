@@ -170,8 +170,8 @@ public class MessageComposerRulesTests
     {
         Assert.Equal(["host_name", "guest_name"], MessageTemplateRenderer.VariablesOf("{{host_name}} {{guest_name}} {{host_name}}"));
         Assert.Empty(MessageTemplateRenderer.VariablesOf("Nessuna variabile"));
-        Assert.Equal(8, MessageTemplateRenderer.Variables.Count);
-        Assert.Equal(8, MessageTemplateRenderer.Variables.Distinct().Count());
+        Assert.Equal(13, MessageTemplateRenderer.Variables.Count);
+        Assert.Equal(13, MessageTemplateRenderer.Variables.Distinct().Count());
     }
 
     // ---- What leaves the building when a message is translated -------------------------------------------------------------------------------

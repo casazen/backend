@@ -173,6 +173,10 @@ builder.Services.AddMessagesHub();
 // PortalChatCheckInLink and GuestContactInfo, all registered in AddCheckInLinkDelivery.
 builder.Services.AddCheckInLinkDelivery();
 
+// E05/F07/US01 (NF-71): the scheduled messages of the routines: the plan, the timeline, the dispatcher that sends, the handler of the booking events, the alerts and the jobs, all registered in AddScheduledMessages and
+// all behind Features:ScheduledMessages (off by default).
+builder.Services.AddScheduledMessages();
+
 // Who is told what and how (epic E05, feature F03, NF-65): the notification preferences of the host users with their single decision point, and the alerts
 // of the new messages of the guests that already use it, all registered in AddNotificationPreferences.
 builder.Services.AddNotificationPreferences();

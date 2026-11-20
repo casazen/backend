@@ -68,7 +68,8 @@ public class DemoMessageTemplatesSeedTests : IAsyncLifetime
 
         // A stay with a value for every variable, so a template that names a variable the renderer does not have fails here.
         var values = new MessageTemplateValues(
-            "Laura (TEST)", "Villa Lago (TEST)", "TEST-0001", new DateOnly(2026, 11, 8), new DateOnly(2026, 11, 11), new TimeOnly(15, 0), new TimeOnly(10, 0), "Marco (TEST)");
+            "Laura (TEST)", "Villa Lago (TEST)", "TEST-0001", new DateOnly(2026, 11, 8), new DateOnly(2026, 11, 11), new TimeOnly(15, 0), new TimeOnly(10, 0), "Marco (TEST)",
+            CheckInLink: "https://example.com/checkin/TEST", CheckInMethod: "ritiro delle chiavi nella cassetta (TEST)", AccessCode: "0000", PropertyAddress: "Via del Lago 1, Como (TEST)", ReviewLink: "https://example.com/review/TEST");
         var used = new HashSet<string>(StringComparer.Ordinal);
         foreach (var template in templates)
         {
