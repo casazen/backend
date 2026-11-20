@@ -4465,6 +4465,61 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.GuestPortalLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AccountAttachedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AccountUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountUserId");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_GuestPortalLinks_BookingId_Active")
+                        .HasFilter("\"RevokedAt\" IS NULL");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("Token")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_GuestPortalLinks_Token");
+
+                    b.ToTable("GuestPortalLinks");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.GuestPrivacyAuditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -13565,6 +13620,11 @@ namespace Casazen.Infrastructure.Migrations
                         },
                         new
                         {
+                            RoleId = 1,
+                            PermissionKey = "guestportal.manage"
+                        },
+                        new
+                        {
                             RoleId = 2,
                             PermissionKey = "property.read"
                         },
@@ -13777,6 +13837,11 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             RoleId = 7,
                             PermissionKey = "verification.decision"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "guestportal.manage"
                         },
                         new
                         {
@@ -19777,6 +19842,21 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Thread");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.GuestPortalLink", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Booking", null)
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.GuestPrivacyAuditEntry", b =>
