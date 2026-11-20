@@ -391,10 +391,12 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         foreach (var refusal in refusals)
         {
             Assert.Equal(HttpStatusCode.NotFound, refusal.StatusCode);
-            var text = await refusal.Content.ReadAsStringAsync();
-            Assert.DoesNotContain("7364", text, StringComparison.Ordinal);
-            Assert.DoesNotContain("4821", text, StringComparison.Ordinal);
-            var problem = JsonDocument.Parse(text).RootElement;
+            var problem = JsonDocument.Parse(await refusal.Content.ReadAsStringAsync()).RootElement;
+
+            // The digits are looked for in what the answer says, not in its trace id: that is a random hexadecimal string and can hold any four digits.
+            var said = SupplierBookingManageHttp.SameBody(problem);
+            Assert.DoesNotContain("7364", said, StringComparison.Ordinal);
+            Assert.DoesNotContain("4821", said, StringComparison.Ordinal);
             Assert.Equal(GuestBookingLookupErrorCodes.NotFound, problem.GetProperty("code").GetString());
             answers.Add(JsonSerializer.Serialize(new
             {
