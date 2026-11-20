@@ -11,8 +11,9 @@ namespace Casazen.Core.Services;
 /// <para><b>Rules.</b> A property outside Switzerland has no place (<c>null</c>). A stored <see cref="Property.SwissMunicipalityCode"/> that the
 /// directory has wins (<see cref="SwissPlaceSource.Stored"/>). Otherwise the place is derived from the postal code and the city
 /// (<see cref="SwissPlaceSource.Derived"/>): the four digits of the postal code (<see cref="SwissPlaceCodes.FourDigitPostalCode"/>); when the
-/// localities of that postal code all lie in one municipality, that one; when several, the one whose official name equals the city, else the one
-/// that has a locality of that postal code whose name equals the city (names compared by <see cref="SwissLocality.NormalizeName"/>); still several
+/// localities of that postal code all lie in one municipality, that one; when several, the one whose official name equals the city (only when they
+/// all lie in one canton: a postal code in two cantons, like 6533, is never decided on the name of a municipality), else the one that has a locality
+/// of that postal code whose name equals the city (names compared by <see cref="SwissLocality.NormalizeName"/>); still several
 /// (or none of them named) is <see cref="SwissPlace.Ambiguous"/> with no municipality and no canton: the resolver never chooses silently, the
 /// property form asks the host. A malformed postal code, or one the directory does not have, gives no place.</para>
 /// <para><b>Read only.</b> Resolving never writes: a derived place is not stored behind the host's back. The property save path stores a

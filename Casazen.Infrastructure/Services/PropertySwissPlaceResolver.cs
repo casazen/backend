@@ -101,9 +101,12 @@ public class PropertySwissPlaceResolver(AppDbContext db) : IPropertySwissPlaceRe
     }
 
     /// <summary>
-    /// The municipality of the localities of one postal code: the only one; else the one whose official name is the city; else the one that has a
-    /// locality of that postal code named as the city; else none (ambiguous). <c>6600</c> «Locarno» is Locarno, although the locality Locarno of
-    /// 6600 lies in Muralto too: the name of the municipality decides before the one of the locality.
+    /// The municipality of the localities of one postal code: the only one; else, when the candidates all lie in one canton, the one whose official
+    /// name is the city; else the one that has a locality of that postal code named as the city (only one municipality has it); else none
+    /// (ambiguous). <c>6600</c> «Locarno» is Locarno, although the locality Locarno of 6600 lies in Muralto too: the name of the municipality decides
+    /// before the one of the locality, but only inside one canton. A postal code that lies in two cantons (<c>6533</c>: Lumino TI, San Vittore GR) is
+    /// the case where the choice changes the legal regime: its postal locality is named as the municipality of one canton and lies in the other too,
+    /// so a name never decides there unless a locality of that name lies in one municipality only.
     /// </summary>
     private static LocalityRow? Derive(IReadOnlyList<LocalityRow> rows, string? city)
     {
@@ -115,9 +118,12 @@ public class PropertySwissPlaceResolver(AppDbContext db) : IPropertySwissPlaceRe
         if (name.Length == 0)
             return null;
 
-        var byMunicipality = candidates.Where(c => SwissLocality.NormalizeName(c.MunicipalityName) == name).ToList();
-        if (byMunicipality.Count > 0)
-            return byMunicipality.Count == 1 ? byMunicipality[0] : null;
+        if (candidates.Select(c => c.CantonCode).Distinct(StringComparer.Ordinal).Count() == 1)
+        {
+            var byMunicipality = candidates.Where(c => SwissLocality.NormalizeName(c.MunicipalityName) == name).ToList();
+            if (byMunicipality.Count > 0)
+                return byMunicipality.Count == 1 ? byMunicipality[0] : null;
+        }
 
         var byLocality = rows.Where(r => r.NormalizedName == name).DistinctBy(r => r.MunicipalityCode).ToList();
         return byLocality.Count == 1 ? byLocality[0] : null;

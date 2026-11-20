@@ -148,7 +148,10 @@ Rules (`SwissPlace { MunicipalityCode, MunicipalityName, CantonCode, Source, Amb
    spaces are ignored, `690000` gives `6900`; anything else, an Italian CAP for one, gives no place). The localities of that postal code all in one
    municipality: that one. Several: the one whose official name equals the city (lower case, accents ignored), else the one with a locality of
    that postal code named as the city. `6900` «Lugano» is Lugano (5192, TI); `6600` «Locarno» is Locarno (5113), although the locality Locarno
-   of 6600 lies in Muralto too: the name of the municipality decides before the one of the locality.
+   of 6600 lies in Muralto too: the name of the municipality decides before the one of the locality, but **only when all the candidates lie in one
+   canton**. A postal code that lies in two cantons (`6533`: Lumino TI and San Vittore GR, its postal locality «Lumino» lies in both) is the case
+   where the choice changes the legal regime: there a name never decides, unless a locality of that name lies in one municipality only; `6533`
+   «Lumino» and `6533` «San Vittore» are ambiguous.
 4. Still several (or a city that names none of them) is **ambiguous**: `Ambiguous = true` with no municipality and no canton. The resolver never
    chooses silently; the property is not «in Ticino» until the host chooses its municipality.
 5. Resolving only reads: a derived municipality is never stored behind the host's back.

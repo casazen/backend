@@ -81,12 +81,16 @@ public class PropertySwissPlaceResolverTests(PropertySwissPlaceResolverTests.See
 
     /// <summary>
     /// Data: a postal code shared by several municipalities, with a city that names none of them (or no city), is ambiguous and gives no
-    /// municipality and no canton: a wrong canton would apply the wrong legal regime, so the resolver never chooses (acceptance criterion 2).
+    /// municipality and no canton: a wrong canton would apply the wrong legal regime, so the resolver never chooses (acceptance criterion 2). The
+    /// postal code 6533 lies in two cantons (Lumino TI, San Vittore GR) and its postal locality is named «Lumino»: the name of a municipality never
+    /// decides there, because a flat of San Vittore (GR) addressed «6533 Lumino» would be placed in Ticino.
     /// </summary>
     [Theory]
     [InlineData("6900", "Ticino")]
     [InlineData("6900", "")]
     [InlineData("6600", "Lago Maggiore")]
+    [InlineData("6533", "Lumino")]
+    [InlineData("6533", "San Vittore")]
     public async Task Resolver_AmbiguousPostalCode_NeverChoosesSilently_Test(string postalCode, string city)
     {
         await using var db = places.NewContext();
