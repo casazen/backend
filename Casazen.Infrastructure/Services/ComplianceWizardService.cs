@@ -99,9 +99,8 @@ public class ComplianceWizardService(
             .InScope(scope)
             .Where(OpenableStayRules.CanShow)
             .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn)
+            .Where(AlloggiatiStatusRules.ItalianProperties) // casazen/backend#979: Alloggiati data, an Italian duty; Ticino has its own section
             .Where(b => b.NoShowAt == null) // NF-45: the guests of a no-show never came, there is no data to complete
-            // casazen/backend#979: the data asked here are the ones of Alloggiati Web, an Italian obligation; a Ticino stay has its own section.
-            .Where(AlloggiatiStatusRules.ItalianProperties)
             .Where(b => b.CheckInDate.Date <= today.AddDays(1))
             .ToListAsync(cancellationToken);
 
