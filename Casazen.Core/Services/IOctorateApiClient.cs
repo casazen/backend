@@ -544,4 +544,31 @@ public interface IOctorateApiClient
     /// that reports an error of its own, is <c>OctorateServerException</c>; a caller leaves what it asks about as it was and claims nothing.
     /// </summary>
     Task<OctorateCalendarProcess> GetCalendarProcessAsync(string processId, CancellationToken ct);
+
+    /// <summary>
+    /// The reviews of one booking (<c>GET /rest/v2/review/{accommodationId}/{refer}</c>, E05/F06/US01/T02, OCT-12): the guest's review, with the reply of the host to it, and the
+    /// host's own review. The API has no list per property, so a booking is one call. The guest's review is visible only once the channel published it (<c>REVIEW_PUBLISHED</c>); the
+    /// answer of a booking with no review is an empty list, which is <see cref="OctorateReview.IsEmpty"/> and not an error. <b>Documented, not proven:</b> the sandbox has no
+    /// reviews, so the member names of the answer follow the OpenAPI and the plan and are read in one place (<c>OtaReviewMapper</c>): a member that is not there is <c>null</c>, never a
+    /// made-up value, and an answer that is none of the shapes it knows is <c>OctorateServerException</c>, never an empty review. A 403 that is not an error of Octorate's API (the page
+    /// of its application server, what the chat answers without its module) is <c>OctorateAuthException</c> with the code <c>review_not_available</c>: the channel manager does not give
+    /// the reviews of the accommodation, a state of the read and not a failure to retry at once. The text of the answer is personal data and is never logged.
+    /// </summary>
+    Task<OctorateReview> GetReviewAsync(string accommodationId, string refer, CancellationToken ct);
+
+    /// <summary>
+    /// The host's reply to the guest's review (<c>POST /rest/v2/review/{accommodationId}/{refer}/sendHostReply</c>, Airbnb only, the guest's review published). <b>Never repeated by the
+    /// client</b> (OCT-13): the operation has no idempotency key, so a timeout, a 5xx or an answer that cannot be read leaves the outcome unknown and only the caller, after a read of
+    /// the reviews, decides about a second send. A 409 (not allowed, or already sent) is <c>OctorateReviewActionNotAllowedException</c> with the stable code
+    /// <c>review_action_not_allowed</c>. <b>Documented, not proven:</b> the sandbox has no reviews and does not push to the channels (S6), so the body follows the plan and the first
+    /// real reply is verified on the first real Airbnb test property. The words are personal data and are never logged.
+    /// </summary>
+    Task SendHostReplyAsync(string accommodationId, string refer, string text, CancellationToken ct);
+
+    /// <summary>
+    /// The host's own review of the guest (<c>POST /rest/v2/review/{accommodationId}/{refer}/sendHostReview</c>, Airbnb only, the window open): the rating categories, the public text
+    /// and <c>privateReview</c>. The same rules as <see cref="SendHostReplyAsync"/>: never repeated by the client, a 409 is <c>review_action_not_allowed</c>, documented and not proven.
+    /// An empty list of ratings is refused (<see cref="ArgumentException"/>), never sent as «no rating».
+    /// </summary>
+    Task SendHostReviewAsync(string accommodationId, string refer, OctorateHostReviewCommand review, CancellationToken ct);
 }

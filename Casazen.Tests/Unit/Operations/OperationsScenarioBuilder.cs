@@ -284,6 +284,7 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
         services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
         services.AddScoped<StripeWebhookHandler>();
         services.AddScoped<IAlloggiatiWebService>(_ => Mock.Of<IAlloggiatiWebService>());
+        services.AddScoped<IAlloggiatiReportScheduler>(_ => Mock.Of<IAlloggiatiReportScheduler>());
         services.AddScoped<IPricingAdapterService, PricingAdapterService>();
         services.AddCasazenBookingOperations();
         services.AddCasazenTouristTaxCollection();

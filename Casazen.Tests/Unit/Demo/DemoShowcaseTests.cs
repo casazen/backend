@@ -152,6 +152,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.MarketplacePartners.Select(partner => partner.Scenario))
             .Concat(DemoShowcaseCatalog.MarketplaceActivations.Select(activation => activation.Scenario))
             .Concat(DemoShowcaseCatalog.MessageThreads.Select(thread => thread.Scenario))
+            .Concat(DemoShowcaseCatalog.Reviews.Select(review => review.Scenario))
             .Concat(DemoShowcaseCatalog.HostMessageTemplates.Select(template => template.Scenario))
             .Concat(DemoShowcaseCatalog.ScheduledMessages.Select(message => message.Scenario))
             .Concat(DemoShowcaseCatalog.FiscalIssuerProfiles.Select(profile => profile.Scenario))

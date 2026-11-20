@@ -8700,6 +8700,49 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="AgentTrainingGeneration" xml:space="preserve">
     <value>AI did not generate valid scenarios. Specify when to perform and when to skip the action, then try again.</value>
   </data>
+  <!-- E05/F06/US01/T02 (NF-69, OCT-12): the reviews of the channels. No supplier is named: «channel manager» only. -->
+  <data name="OtaReviewNotFound" xml:space="preserve">
+    <value>The review does not exist or is not accessible.</value>
+  </data>
+  <data name="OtaReviewChannelNotIntegrated" xml:space="preserve">
+    <value>The reviews of this channel are not connected to CasaZen: they cannot be read or answered from here.</value>
+  </data>
+  <data name="OtaReviewChannelNotSupported" xml:space="preserve">
+    <value>From CasaZen you can reply to Airbnb reviews and write your own review of the guest for Airbnb only.</value>
+  </data>
+  <data name="OtaReviewNotPublished" xml:space="preserve">
+    <value>The guest’s review is not published on the channel yet: there is nothing to reply to for now.</value>
+  </data>
+  <data name="OtaReviewWindowClosed" xml:space="preserve">
+    <value>The period to write your own review of the guest is not open.</value>
+  </data>
+  <data name="OtaReviewActionNotAllowed" xml:space="preserve">
+    <value>The channel did not accept the operation: it is not allowed or it was already done. Refresh the reviews of the booking to see the real state.</value>
+  </data>
+  <data name="OtaReviewReplyAlreadySent" xml:space="preserve">
+    <value>You have already replied to this review.</value>
+  </data>
+  <data name="OtaReviewHostReviewAlreadySent" xml:space="preserve">
+    <value>You have already written your own review of the guest.</value>
+  </data>
+  <data name="OtaReviewActionUnconfirmed" xml:space="preserve">
+    <value>An earlier attempt has not been confirmed by the channel yet: CasaZen checks it by itself and only marks it as not delivered after an hour. Wait before trying again.</value>
+  </data>
+  <data name="OtaReviewHostReviewInvalid" xml:space="preserve">
+    <value>Your review of the guest is not valid: it needs at least one whole rating from 1 to 5 for a category and the text.</value>
+  </data>
+  <data name="OtaReviewRefreshTooSoon" xml:space="preserve">
+    <value>The reviews of this booking were read a moment ago: try again in a few minutes.</value>
+  </data>
+  <data name="OtaReviewBookingNotReviewable" xml:space="preserve">
+    <value>There are no reviews to read for this booking: the stay did not happen (the booking was cancelled or the guest did not show up) or it has no usable reference on the channel.</value>
+  </data>
+  <data name="OctorateReviewNotAvailable" xml:space="preserve">
+    <value>The reviews of this property are not available in the channel manager (usually a permission is missing or the channel is not connected): they cannot be read for now.</value>
+  </data>
+  <data name="OctorateReviewActionNotAllowed" xml:space="preserve">
+    <value>The channel manager refused the operation on the review: it is not allowed or it was already done.</value>
+  </data>
   <data name="TicinoStructureIdInvalid" xml:space="preserve">
     <value>The LEAR / NO-LEAR identification number is not valid: 3 to 20 letters and digits, with single hyphens (e.g. NL-12345678).</value>
   </data>
