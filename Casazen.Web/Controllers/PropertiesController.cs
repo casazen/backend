@@ -380,10 +380,15 @@ public class PropertiesController(
         {
             if (string.IsNullOrWhiteSpace(request.SwissMunicipalityCode))
                 clearSwissMunicipality = true;
-            else if (!SwissPlace.IsSwissCountry(correctedCountry ?? existing.Country))
-                return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, SwissPlaceErrorCodes.NotApplicable, SwissPlaceErrorCodes.NotApplicableMessageKey);
-            else
+            else if (correctedCountry is not null || !IsTheStoredSwissMunicipality(existing, request.SwissMunicipalityCode))
+            {
+                // Checked only when it changes, as the comune is: the form sends back the number the record carries, which is not a choice, so a
+                // municipality the directory dropped later (or a directory not loaded) never blocks the other edits of the property.
+                if (!SwissPlace.IsSwissCountry(correctedCountry ?? existing.Country))
+                    return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, SwissPlaceErrorCodes.NotApplicable, SwissPlaceErrorCodes.NotApplicableMessageKey);
+
                 chosenSwissMunicipality = await SwissPlaces().RequireMunicipalityAsync(request.SwissMunicipalityCode, HttpContext.RequestAborted);
+            }
         }
         else if (existing.SwissMunicipalityCode is not null
             && (cityChanged || (request.PostalCode is { } newPostalCode && IsPostalCodeChange(existing.PostalCode, newPostalCode))))
@@ -517,6 +522,11 @@ public class PropertiesController(
         !string.Equals(Compact(currentPostalCode), Compact(requestedPostalCode), StringComparison.OrdinalIgnoreCase);
 
     private static string Compact(string? value) => string.Concat((value ?? string.Empty).Where(c => !char.IsWhiteSpace(c)));
+
+    /// <summary>The BFS number sent is the one already stored on the property (same digits, leading zeros ignored).</summary>
+    private static bool IsTheStoredSwissMunicipality(Property existing, string sent) =>
+        SwissPlaceCodes.NormalizeMunicipalityCode(sent) is { } code
+        && string.Equals(code, SwissPlaceCodes.NormalizeMunicipalityCode(existing.SwissMunicipalityCode), StringComparison.Ordinal);
 
     /// <summary>
     /// The country an imported draft is corrected to, or null when it does not change: only a property not active yet whose listing an Octorate

@@ -2141,6 +2141,41 @@ public class PropertiesControllerTests
         Assert.Null(property.SwissMunicipalityCode);
     }
 
+    /// <summary>
+    /// Data: the number the record carries is checked only when it changes, as the comune is. A form sends back the stored municipality with every
+    /// save, so a number the directory dropped later (a merger), or a directory not loaded, never blocks the other edits of the property; a number that
+    /// differs from the stored one is a choice and is still checked.
+    /// </summary>
+    [Fact]
+    public async Task Update_TheStoredSwissMunicipalitySentBack_IsNotCheckedAgain_ButAnotherNumberIs()
+    {
+        await using var db = SwissDirectory();
+        SetupSwissCaller("auth0|owner_user_123", db);
+        AllowAuthorization();
+        var property = new Property
+        {
+            Id = Guid.NewGuid(),
+            OwnerId = "auth0|owner_user_123",
+            Name = "TEST",
+            Country = "CH",
+            City = "Lugano",
+            PostalCode = "6900",
+            SwissMunicipalityCode = "9999",
+        };
+        _mockService.Setup(x => x.GetPropertyRecordAsync(property.Id)).ReturnsAsync(property);
+        _mockService.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>())).ReturnsAsync(property);
+
+        Assert.IsType<NoContentResult>(await _controller.Update(property.Id, new UpdatePropertyRequest { Name = "TEST 2", SwissMunicipalityCode = "9999" }));
+        Assert.Equal(("TEST 2", "9999"), (property.Name, property.SwissMunicipalityCode));
+
+        var unknown = await Assert.ThrowsAsync<DomainRuleException>(() => _controller.Update(property.Id, new UpdatePropertyRequest { SwissMunicipalityCode = "9998" }));
+        Assert.Equal(SwissPlaceErrorCodes.Unknown, unknown.Code);
+        Assert.Equal("9999", property.SwissMunicipalityCode);
+
+        Assert.IsType<NoContentResult>(await _controller.Update(property.Id, new UpdatePropertyRequest { SwissMunicipalityCode = "5192" }));
+        Assert.Equal("5192", property.SwissMunicipalityCode);
+    }
+
     [Fact]
     public async Task Create_WithASwissMunicipality_Is422_BecauseThePropertyItCreatesIsItalian()
     {
