@@ -17,7 +17,8 @@ namespace Casazen.Web.Controllers;
 /// another org or out of the reach of a collaborator «Solo alcuni» is a 404, a caller without the permission is refused by the policy (403), and a
 /// conversation of a channel with no confirmed property mapping is read-only for the screens (<c>allowedActions</c>) and is seen only by a caller who
 /// reaches every property. The words of the messages are the guest's personal data: they never go in a log, and every answer is private and not cached.
-/// The host answers a conversation with <see cref="Reply"/> (E05/F02/US02/T01), through the same scope.
+/// The host answers a conversation with <see cref="Reply"/> (E05/F02/US02/T01), through the same scope. The reviews of the hub (E05/F06/US01/T03) are not conversations: they are opened with
+/// <see cref="GetReview"/>, and the key of a review is a 404 for every endpoint of a conversation (and the key of a conversation a 404 for the review).
 /// </summary>
 /// <remarks>The service of the reply is an optional constructor parameter at the end, so a test that builds the controller for the reads is untouched.</remarks>
 [ApiController]
@@ -53,6 +54,31 @@ public class MessageThreadsController(
         // The money of the card is read only by a caller who may read payments (SR-D7), like the amounts of the booking itself.
         var includeAmounts = (await authorizationService.AuthorizeAsync(User, CasazenPolicies.PaymentRead)).Succeeded;
         return Ok(MessageThreadDto.From(await hub.GetThreadAsync(scope, key, includeAmounts, cancellationToken)));
+    }
+
+    /// <summary>
+    /// One review of the list <c>GET api/messages?includeOta=true&amp;kind=review</c> (E05/F06/US01/T03, NF-69): the stars and the categories, the words of the guest, the host's reply and its state, the host's own
+    /// review and its window (a review of a channel), the booking card and what the channel allows (<c>capabilities</c>: <c>canReply</c>, <c>canHostReview</c> and the <c>reason</c> why not). <c>threadKey</c> is
+    /// <c>otareview:{id}</c> (a channel) or <c>review:{id}</c> (the booking site). The caller's <see cref="HostScope"/> is applied in SQL: a review of another org or out of the reach of a collaborator
+    /// «Solo alcuni» is a 404 <c>review_not_found</c>, like the key of a conversation. 400 <c>thread_key_invalid</c>. The words are personal data: never logged.
+    /// </summary>
+    [HttpGet("reviews/{threadKey}")]
+    [ProducesResponseType(typeof(ReviewThreadDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ReviewThreadDto>> GetReview(string threadKey, CancellationToken cancellationToken)
+    {
+        if (!MessageThreadKey.TryParse(threadKey, out var key))
+            return InvalidKey();
+
+        var scope = await ResolveScopeAsync(cancellationToken);
+        if (scope is null)
+            return Forbidden();
+
+        // The money of the booking card is read only by a caller who may read payments (SR-D7), like the amounts of the booking itself.
+        var includeAmounts = (await authorizationService.AuthorizeAsync(User, CasazenPolicies.PaymentRead)).Succeeded;
+        return Ok(ReviewThreadDto.From(await hub.GetReviewThreadAsync(scope, key, includeAmounts, cancellationToken)));
     }
 
     /// <summary>

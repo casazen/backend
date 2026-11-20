@@ -130,6 +130,14 @@ public static class EncryptedColumns
     public const string OtaMessageTextPurpose = "Casazen.Message.Content";
 
     /// <summary>
+    /// Purpose of the words of the reviews of the channels (NF-69, E05/F06/US01/T01): <see cref="OtaReview.GuestReviewText"/>, what a guest wrote about the stay,
+    /// <see cref="OtaReview.HostReplyText"/>, the reply of the host, and <see cref="OtaReview.HostReviewJson"/>, the host's own review of the guest (the ratings, the public
+    /// text and the private text). Free text that can name a person or say anything; read by the hosts who reach the property of the booking, never searched and never
+    /// logged. Its own purpose, apart from the words of the conversations. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string ReviewContentPurpose = "Casazen.Review.Content";
+
+    /// <summary>
     /// Purpose of the fiscal documents (NF-83, E06/F01/US02/T01, E11/F01/US01/T01): the recipient snapshot of <see cref="FiscalDocument"/> (name, fiscal
     /// code, VAT number, address, recipient code, PEC), the snapshot of its issuer, its FatturaPA XML, which repeats them, and the note of the closing of a replacement
     /// draft as «non più dovuta» (FIX/BE-TD17-JOB-EXIT). Kept ten years for the legal retention; nothing is searched in them. Never change it: stored values would become unreadable.
@@ -371,6 +379,12 @@ public static class EncryptedColumns
         new EncryptedEntity<OtaMessage>(
             OtaMessageTextPurpose,
             nameof(OtaMessage.Text)),
+        // NF-69: the words of the reviews of the channels: what the guest wrote, the reply of the host and the host's own review of the guest (E05/F06/US01/T01).
+        new EncryptedEntity<OtaReview>(
+            ReviewContentPurpose,
+            nameof(OtaReview.GuestReviewText),
+            nameof(OtaReview.HostReplyText),
+            nameof(OtaReview.HostReviewJson)),
         new EncryptedEntity<StorefrontChatThread>("Casazen.StorefrontChat.Contact", nameof(StorefrontChatThread.VisitorEmail)),
         new EncryptedEntity<StorefrontChatMessage>("Casazen.StorefrontChat.Text", nameof(StorefrontChatMessage.Text)),
         // NF-83: the recipient snapshot of a fiscal document and its XML (E06/F01/US02/T01), and the snapshot of its issuer (E11/F01/US01/T01).

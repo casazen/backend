@@ -58,6 +58,12 @@ public sealed class OctorateAuthException : OctorateException
     /// <summary>Code of a chat call refused because the <c>chat</c> module is not in the license of the accommodation (E05/F01/US01/T02).</summary>
     public const string ChatNotLicensedCode = OtaMessageSyncErrorCodes.ChatNotLicensed;
 
+    /// <summary>
+    /// Code of a read of the reviews refused because the channel manager does not give them for the accommodation (E05/F06/US01/T02): no permission, or no channel connected there.
+    /// A state of the read, not a failure to retry at once.
+    /// </summary>
+    public const string ReviewNotAvailableCode = OtaReviewErrorCodes.ReviewNotAvailable;
+
     private OctorateAuthException(string code, string messageKey, int responseStatusCode, int? octorateStatusCode)
         : base(code, messageKey, responseStatusCode, octorateStatusCode)
     {
@@ -65,6 +71,16 @@ public sealed class OctorateAuthException : OctorateException
 
     /// <summary>True when the org has no usable connection: the host has to connect (again).</summary>
     public bool IsNotConnected => Code == NotConnectedCode;
+
+    /// <summary>True when the channel manager does not give the reviews of the accommodation (<see cref="ReviewNotAvailableCode"/>).</summary>
+    public bool IsReviewNotAvailable => Code == ReviewNotAvailableCode;
+
+    /// <summary>
+    /// Octorate refused a read of the reviews with 403 and no error of its own API (the page of its application server, which is what the chat answers without its module): 409,
+    /// the reviews of the accommodation are not available. The decision is the status and the shape of the answer, never its text.
+    /// </summary>
+    public static OctorateAuthException ReviewNotAvailable(int? octorateStatusCode) =>
+        new(ReviewNotAvailableCode, "OctorateReviewNotAvailable", StatusCodes.Status409Conflict, octorateStatusCode);
 
     /// <summary>True when the chat of the accommodation is not in its license: its messages cannot be read, and that is a state, not a failure to retry.</summary>
     public bool IsChatNotLicensed => Code == ChatNotLicensedCode;
@@ -114,6 +130,18 @@ public sealed class OctorateChatNotSendableException()
 /// </summary>
 public sealed class OctorateChatNotReadException(int? octorateStatusCode, Exception? innerException = null)
     : OctorateException("octorate_unavailable", "OctorateUnavailable", StatusCodes.Status502BadGateway, octorateStatusCode, innerException);
+
+/// <summary>
+/// Octorate answered 409 to a reply or to the host's own review (E05/F06/US01/T02, OCT-12): the action is not allowed (the guest's review is not published, the window is
+/// closed) or was already done. The stable code <c>review_action_not_allowed</c>; 409. Never retried by the client (OCT-13): the next read of the reviews shows which of the two it
+/// was.
+/// </summary>
+public sealed class OctorateReviewActionNotAllowedException(int? octorateStatusCode)
+    : OctorateException(CodeValue, "OctorateReviewActionNotAllowed", StatusCodes.Status409Conflict, octorateStatusCode)
+{
+    /// <summary>The code of a 409 of Octorate to a reply or a host's review.</summary>
+    public const string CodeValue = "review_action_not_allowed";
+}
 
 /// <summary>Octorate failed (5xx), did not answer in time, or answered something that cannot be read: 502, worth a later retry.</summary>
 public sealed class OctorateServerException(int? octorateStatusCode, Exception? innerException = null)

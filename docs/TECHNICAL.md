@@ -1865,6 +1865,21 @@ reservation of the room of a property, found through the confirmed `OctorateList
   `ChatMessageReceivedHandler` handles `CHAT_MESSAGE_RECEIVED`; the jobs `ota-message-reconcile` (every 10 minutes) and `ota-message-deep-reconcile`
   (02:30 UTC) back it, behind the flag. The words and the names leave with the guest (`GuestDataEraser`) and with the retention of the guest data
   (`OtaMessageRetentionService`); details in `docs/runbooks/octorate-webhooks.md` § 4c and `docs/runbooks/gdpr.md` § 14.
+- *Reviews of the channels (E05/F06/US01/T02, NF-69, OCT-12, OCT-13).* The table `OtaReviews` (one row for each organization, booking and channel, unique index; the words of the
+  guest, the reply and the host's review encrypted with the purpose `Casazen.Review.Content`; `xmin` as the concurrency token) is filled by `IOtaReviewService` from
+  `GET /rest/v2/review/{accommodation}/{refer}` of the channel manager, **Airbnb only** (`OtaReviewCapabilities` is the one table: no read, no reply, no simulated row for the other
+  channels). `OtaReviewSyncJob` (`ota-review-sync`, every six hours, cap `Octorate:Reviews:MaxBookingsPerRun`) reads one booking at a time; `OtaReviewMapper` is the only file that
+  knows the wire (documented, not proven: the sandbox has no reviews). The first time a review is published `DomainEventType.ReviewReceived` is recorded (dedup key `ota-review:{id}`) and
+  the hosts of the booking are told (bell, pop-up, live refresh). `POST api/reviews/ota/{id}/reply` and `/host-review` use the safe send: the text and the key are saved as
+  `ManualVerify` under the lock `OtaReview`, the call is made with no lock, and an outcome nobody knows is never sent again (found on the channel by the next read, or an error after an
+  hour); a 429 takes the attempt back. `GuestDataEraser` empties the words of the guest. Details in `docs/runbooks/ota-reviews.md`.
+- *The reviews in the hub and the drafts of the replies (E05/F06/US01/T03, NF-69, AI-06, PO-09).* `MessageThreadKey` has two more kinds, `otareview:{id}` and `review:{id}` (`IsReview`, longest key 46
+  characters); the hub lists them under `kind=review` (`MessageHubThreadKind.Review`: `MessageHubService.ReviewRows`, one `UNION ALL` of `Reviews` and the published `OtaReviews`, paged in SQL, never in the
+  default view) and opens one with `GET api/messages/reviews/{threadKey}` (`ReviewThreadView`: `GetReviewThreadAsync`, which reuses `IOtaReviewService.GetAsync` for a channel); a review is a 404 for the endpoints of a
+  conversation. `ReviewReceivedHandler` (the event `ReviewReceived`, behind `Features:MessageAssistant`) queues `ReviewReplyDraftJob`, which runs `ReviewReplyDrafter`: the model writes the reply without the
+  names (`AssistantPromptBuilder.Minimize`), the server refuses a reply that promises money, says it is an AI or holds a contact detail, and the draft is an item `ApprovalItemTypes.ReviewReply` of the approval
+  queue (origin action `SendReviewReply`); `ReviewDraftsController` (`POST api/reviews/{reviewKey}/draft`) asks for one now and supersedes the waiting one. Only `ReviewReplyApprovalAction` sends the reply
+  (once, with the key of the item): through `IOtaReviewService.ReplyAsync` for Airbnb, `IHostReviewService.ReplyAsync` for the booking site. Registered by `AddOtaReviews`. Details in `docs/runbooks/ota-reviews.md`.
 - *Octorate's own assistant kept off (E05/F05/US03/T03, NF-67, OCT-11).* `OctorateAiAssistantGuard`, a consumer of `OtaThreadSynced` (registered in
   `AddMessageSync`, behind `Features:OctorateConnector`), switches the assistant of the channel manager off on every thread CasaZen manages
   (`IOctorateApiClient.SetThreadAiAssistantAsync`, `PATCH .../threads/{thread}/aiAssistant?enabled=false`, documented and not yet proven on a licensed

@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
+using Casazen.Web.DTOs.Reviews;
 
 namespace Casazen.Web.DTOs.Messages;
 
@@ -14,6 +15,9 @@ namespace Casazen.Web.DTOs.Messages;
 /// <c>Unassigned</c> is true and only a caller who reaches every property sees it. <c>Preview</c> is the start of the last message (plain text, for
 /// the host only, <c>null</c> for a message that is only a file); <c>LastMessageOrigin</c> is <c>Guest</c>, <c>Person</c>, <c>Assistant</c> or <c>Automation</c>.
 /// <c>NeedsReply</c> is the conversation of the «Da rispondere» list: open, with the guest's message last.
+/// Under the filter <c>kind=review</c> (E05/F06/US01/T03) a row is a review, not a conversation: <c>Source</c> is <c>Review</c> (the booking site) or <c>OtaReview</c> (a channel), <c>Kind</c> is <c>Review</c>,
+/// <c>ThreadKey</c> is <c>review:{id}</c> or <c>otareview:{id}</c> and opens <c>GET api/messages/reviews/{threadKey}</c> (never the endpoints of a conversation), <c>LastMessageAt</c> is when the review
+/// was published, <c>Preview</c> its first 120 characters (for the host only), <c>Rating</c> its stars and <c>NeedsReply</c> «published and not answered». The default view has no review.
 /// </summary>
 public sealed class MessageHubThreadDto
 {
@@ -35,6 +39,7 @@ public sealed class MessageHubThreadDto
     public string? Preview { get; init; }
     public int UnreadCount { get; init; }
     public bool NeedsReply { get; init; }
+    public decimal? Rating { get; init; }
 
     public static MessageHubThreadDto From(MessageHubThreadSummary thread) => new()
     {
@@ -56,6 +61,7 @@ public sealed class MessageHubThreadDto
         Preview = thread.Preview,
         UnreadCount = thread.UnreadCount,
         NeedsReply = thread.NeedsReply,
+        Rating = thread.Rating,
     };
 }
 
@@ -298,3 +304,53 @@ public sealed class MessageChannelStatusDto
 }
 
 public sealed record MessageChannelStatusItemDto(Guid PropertyId, string PropertyName, string Status, DateTime? LastCheckedAt);
+
+/// <summary>
+/// One review of the hub (<c>GET api/messages/reviews/{threadKey}</c>, E05/F06/US01/T03, NF-69): the stars and the categories, the words of the guest, the host's reply and where it stands, the
+/// host's own review (<c>null</c> for a review of the booking site, which has none) with its window, the booking card, the link to the customer and what the host may do now
+/// (<c>Capabilities</c>: for a review of a channel the table of the channel narrowed by the connector and the listing, with the reason; for one of the booking site a reply once and no review of the host).
+/// <c>Source</c> is <c>Review</c> (the booking site) or <c>OtaReview</c> (a channel). The words of the guest and of the host are personal data, shown as text only and never logged.
+/// </summary>
+public sealed class ReviewThreadDto
+{
+    public string ThreadKey { get; init; } = string.Empty;
+    public MessageThreadSource Source { get; init; }
+    public MessageHubChannel Channel { get; init; }
+    public Guid PropertyId { get; init; }
+    public string? PropertyName { get; init; }
+    public Guid BookingId { get; init; }
+    public string? GuestName { get; init; }
+    public DateTime? PublishedAt { get; init; }
+    public decimal? Rating { get; init; }
+    public IReadOnlyList<ReviewCategoryRatingDto> CategoryRatings { get; init; } = [];
+    public string? Text { get; init; }
+    public ReviewReplyDto Reply { get; init; } = new();
+    public OtaHostReviewDto? HostReview { get; init; }
+    public MessageBookingCardDto? Booking { get; init; }
+    public MessageCustomerDto? Customer { get; init; }
+    public OtaReviewCapabilitiesDto Capabilities { get; init; } = new();
+    public DateTime? LastSyncedAt { get; init; }
+    public string? LastSyncError { get; init; }
+
+    public static ReviewThreadDto From(ReviewThreadView review) => new()
+    {
+        ThreadKey = review.Key.ToString(),
+        Source = review.Source,
+        Channel = review.Channel,
+        PropertyId = review.PropertyId,
+        PropertyName = review.PropertyName,
+        BookingId = review.BookingId,
+        GuestName = review.GuestName,
+        PublishedAt = review.PublishedAt,
+        Rating = review.Rating,
+        CategoryRatings = review.CategoryRatings.Select(ReviewCategoryRatingDto.From).ToList(),
+        Text = review.Text,
+        Reply = ReviewReplyDto.From(review.Reply),
+        HostReview = review.HostReview is null ? null : OtaHostReviewDto.From(review.HostReview),
+        Booking = review.Booking is null ? null : MessageBookingCardDto.From(review.Booking),
+        Customer = review.CustomerGuestId is { } guestId ? new MessageCustomerDto { GuestId = guestId } : null,
+        Capabilities = OtaReviewCapabilitiesDto.From(review.Capabilities),
+        LastSyncedAt = review.LastSyncedAt,
+        LastSyncError = review.LastSyncError,
+    };
+}

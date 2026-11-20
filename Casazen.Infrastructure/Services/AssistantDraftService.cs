@@ -857,6 +857,10 @@ public sealed class AssistantDraftService(
 
     private async Task<ThreadState?> ThreadOfAsync(Guid orgId, MessageThreadKey key, CancellationToken ct)
     {
+        // The key of a review is not a conversation of a guest: there is no message to answer (E05/F06/US01/T03).
+        if (key.IsReview)
+            return null;
+
         if (key.Source == MessageThreadSource.Ota)
         {
             var ota = await db.OtaMessageThreads
