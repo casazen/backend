@@ -6,6 +6,7 @@ using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
@@ -28,6 +29,9 @@ public class OrgDomainController(
     public const string DomainInUseCode = "org_domain_in_use";
     public const string DomainNotConfiguredCode = "org_domain_not_configured";
     public const string DomainVerificationFailedCode = "org_domain_verification_failed";
+
+    /// <summary>The owner sign-in is asked for a domain that is not verified (409 on the retry, 422 on the administrator's Ready), E40/F01/US02/T01.</summary>
+    public const string DomainNotVerifiedCode = "org_domain_not_verified";
 
     [HttpGet]
     [ProducesResponseType(typeof(OrgDomainConfigDto), StatusCodes.Status200OK)]
@@ -163,6 +167,41 @@ public class OrgDomainController(
                 new { code = "plan_required", requiredPlan = "Pro" }),
             _ => this.ApiProblem(
                 StatusCodes.Status400BadRequest, DomainNotConfiguredCode, "OrgDomainNotConfigured"),
+        };
+    }
+
+    /// <summary>
+    /// The agency's «retry» of the owner sign-in on its verified domain (E40/F01/US02/T01, NF-141): with <c>Auth0HostSync</c> on the domain is registered in
+    /// Auth0 again (idempotent; nothing is asked while it is ready already), with it off the request goes back to CasaZen (<c>Pending</c>). The answer is the
+    /// whole domain configuration, <c>surfaces.ownerLoginHostState</c> updated. 404 while <c>WhiteLabelHost</c> is off, 403 for another org's id, 409
+    /// <c>org_domain_not_verified</c> without a verified custom domain (whatever the plan), 403 <c>plan_required</c> for a verified domain the org no longer pays for, 429 past
+    /// five calls in ten minutes for the same person (<see cref="RateLimitPolicies.OwnerLoginRetry"/>: the call reads and may write the Auth0 tenant that every host shares).
+    /// </summary>
+    [HttpPost("owner-login")]
+    [FeatureGate(FeatureFlags.WhiteLabelHost)]
+    [EnableRateLimiting(RateLimitPolicies.OwnerLoginRetry)]
+    [ProducesResponseType(typeof(OrgDomainConfigDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<OrgDomainConfigDto>> RetryOwnerLogin(
+        Guid orgId,
+        CancellationToken cancellationToken)
+    {
+        var forbidden = await EnsureCallerOrgAsync(orgId, cancellationToken);
+        if (forbidden is not null)
+            return forbidden;
+
+        var result = await orgDomainService.RetryOwnerLoginAsync(orgId, cancellationToken);
+        return result.Outcome switch
+        {
+            RetryOwnerLoginOutcome.Success when result.Config is not null => Ok(Map(result.Config)),
+            RetryOwnerLoginOutcome.NotFound => NotFound(),
+            RetryOwnerLoginOutcome.PlanRequired => StatusCode(
+                StatusCodes.Status403Forbidden,
+                new { code = "plan_required", requiredPlan = "Pro" }),
+            _ => this.ApiProblem(StatusCodes.Status409Conflict, DomainNotVerifiedCode, "OrgDomainNotVerified"),
         };
     }
 

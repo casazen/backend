@@ -28,7 +28,8 @@ public sealed class QueuedInAppNotification
 
     /// <summary>
     /// The service request for the <c>service-request-*</c> types, the subject of the event for the platform staff (a «Fallo per me» request),
-    /// the property for the Ticino types, the two alerts and the declaration of a day (<see cref="PushTypes.IsTicinoNotification"/>), else the booking; <c>null</c> when there is none.
+    /// the property for the Ticino types, the two alerts and the declaration of a day (<see cref="PushTypes.IsTicinoNotification"/>), the org for its
+    /// administrators (the notices of its domain, <see cref="PushAudienceKind.OrgAdmins"/>), else the booking; <c>null</c> when there is none.
     /// </summary>
     public Guid? EntityId { get; set; }
 
@@ -50,7 +51,8 @@ public sealed class QueuedInAppNotification
     private static Guid? EntityOf(PushAudience audience, PushNotificationPayload payload)
     {
         // The audience of the platform staff names the subject of the event itself (PushAudience.PlatformStaff): that is what the bell opens.
-        if (audience.Kind == PushAudienceKind.PlatformStaff)
+        // So does the audience of the administrators of an org (E40/F01/US02/T01): the event is about the org's own domain.
+        if (audience.Kind is PushAudienceKind.PlatformStaff or PushAudienceKind.OrgAdmins)
             return audience.Id;
 
         // E30/F02/US01/T01 and E30/F02/US02/T01: the alert about the 24 hours of a Ticino arrival day, and the declaration of a day, are about a property, and an arrival day is not an
@@ -80,7 +82,8 @@ public sealed class QueuedInAppNotification
 /// cannot disagree. A user without a registered device still gets the notification: the bell does not depend on a phone. An
 /// audience with nobody in it (a booking that is gone, an org whose members are all deactivated) writes nothing and is not an error.
 /// The platform staff (<see cref="PushAudienceKind.PlatformStaff"/>, <see cref="PlatformAdministrators"/>) has no push on a phone: the
-/// bell is its only channel, and each of its rows carries the staff member's own org, the one its bell reads, never the org of the event.</para>
+/// bell is its only channel, and each of its rows carries the staff member's own org, the one its bell reads, never the org of the event.
+/// The administrators of an org told about its domain (<see cref="PushAudienceKind.OrgAdmins"/>, E40/F01/US02/T01) have no push on a phone either.</para>
 /// <para>Runs without a tenant (no HTTP request): every read states the org it means. Logs carry the key, the type, the
 /// audience and counts, never a user id or a push text.</para>
 /// </remarks>
@@ -249,6 +252,8 @@ public sealed class InAppNotificationJob(
                 return await VerificationOperatorsAsync(notification.AudienceId, cancellationToken);
             case PushAudienceKind.PlatformStaff:
                 return await PlatformStaffAsync(cancellationToken);
+            case PushAudienceKind.OrgAdmins:
+                return await OrgAdministratorsAsync(notification.AudienceId, cancellationToken);
             default:
                 // A new kind of audience the push knows and this job does not: nothing to retry, the log says which.
                 logger.LogError(
@@ -353,6 +358,19 @@ public sealed class InAppNotificationJob(
                 .OrderBy(u => u.Id, StringComparer.Ordinal)
                 .Select(u => new Recipient(u.Id, u.OrgId!.Value)),
         ]);
+    }
+
+    /// <summary>
+    /// The administrators of the org (E40/F01/US02/T01, <see cref="PushAudienceKind.OrgAdmins"/>): its active owner and <c>Admin</c>s, never a deactivated member
+    /// (<see cref="HostNotificationAudience.AdministratorsToTell"/>, the people <c>OrgBillingAdminAuthorizationHandler</c> lets into the domain settings). The rows
+    /// belong to the org, the one their bell reads. Nobody of another org, and nobody of the team who is not an administrator.
+    /// </summary>
+    private async Task<Recipients> OrgAdministratorsAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var users = await HostNotificationAudience.AdministratorsToTell(db, orgId)
+            .Select(u => u.Id)
+            .ToListAsync(cancellationToken);
+        return Recipients.Of(orgId, users);
     }
 
     private async Task<Recipients> HostsAsync(

@@ -89,6 +89,48 @@ public sealed record SetOrgDomainSurfacesResult(
     SetOrgDomainSurfacesOutcome Outcome,
     OrgDomainConfig? Config);
 
+public enum RetryOwnerLoginOutcome
+{
+    Success,
+    NotFound,
+
+    /// <summary>
+    /// The org has a verified custom domain but its effective tier no longer pays for it — controller maps to 403 <c>plan_required</c>. Asked after
+    /// <see cref="DomainNotVerified"/>, as <see cref="IOrgDomainService.VerifyDomainAsync"/> asks for a configured domain before the plan: an org with no verified domain is never refused for its plan.
+    /// </summary>
+    PlanRequired,
+
+    /// <summary>The org has no verified custom domain to register, whatever its plan — controller maps to 409 <c>org_domain_not_verified</c>.</summary>
+    DomainNotVerified,
+}
+
+/// <param name="Config">The domain configuration after the retry (the state of the owner sign-in in <see cref="OrgDomainConfig.Surfaces"/>).</param>
+public sealed record RetryOwnerLoginResult(
+    RetryOwnerLoginOutcome Outcome,
+    OrgDomainConfig? Config);
+
+/// <summary>One org of the queue of the owner sign-ins (E40/F01/US02/T01): <c>GET api/admin/owner-login-hosts?state=…</c>.</summary>
+/// <param name="DomainVerified">The domain is verified: <see cref="OwnerLoginHostState.Ready"/> can be set only for a verified domain the org pays for.</param>
+public sealed record OwnerLoginHostQueueItem(
+    Guid OrgId,
+    string DisplayName,
+    string Domain,
+    OwnerLoginHostState State,
+    bool DomainVerified);
+
+public enum SetOwnerLoginStateOutcome
+{
+    Success,
+    NotFound,
+
+    /// <summary><see cref="OwnerLoginHostState.Ready"/> for an org whose custom domain is not verified and served — controller maps to 422 <c>org_domain_not_verified</c>.</summary>
+    DomainNotVerified,
+}
+
+public sealed record SetOwnerLoginStateResult(
+    SetOwnerLoginStateOutcome Outcome,
+    OwnerLoginHostState? State);
+
 /// <summary>
 /// Honest state of the custom domain for the settings page (BK-17): why it is pending or failed, when it was last checked,
 /// when it became verified, whether the platform can activate domains at all, and whether the periodic check still runs.
@@ -175,5 +217,31 @@ public interface IOrgDomainService
     Task<SetOrgDomainTrackingResult> SetTrackingAsync(
         Guid orgId,
         string? gtmContainerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The agency's «retry» of the owner sign-in on its verified domain (E40/F01/US02/T01, NF-141): with <c>Auth0HostSync</c> on the registration runs again
+    /// (idempotent; nothing is called while the state is already <see cref="OwnerLoginHostState.Ready"/>), with it off the request goes back to the queue of
+    /// CasaZen (<see cref="OwnerLoginHostState.NotRequested"/> or <see cref="OwnerLoginHostState.Failed"/> become <see cref="OwnerLoginHostState.Pending"/>).
+    /// The flag <c>WhiteLabelHost</c> and the IDOR check are the controller's.
+    /// </summary>
+    Task<RetryOwnerLoginResult> RetryOwnerLoginAsync(Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The queue of the owner sign-ins for the platform administrators (E40/F01/US02/T01): the active orgs with a custom domain in <paramref name="state"/>, by
+    /// name. The policy <c>AdminOnly</c> is the controller's.
+    /// </summary>
+    Task<IReadOnlyList<OwnerLoginHostQueueItem>> ListOwnerLoginHostsAsync(
+        OwnerLoginHostState state,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A platform administrator sets the state of the owner sign-in of an org by hand (E40/F01/US02/T01, the fallback while <c>Auth0HostSync</c> is off): never a
+    /// call to Auth0; <see cref="OwnerLoginHostState.Ready"/> only for a verified custom domain the org pays for. The cached <c>resolve-host</c> answer of the
+    /// domain is dropped, and the administrators of the org are told of a change to Ready or Failed. The policy <c>AdminOnly</c> is the controller's.
+    /// </summary>
+    Task<SetOwnerLoginStateResult> SetOwnerLoginStateAsync(
+        Guid orgId,
+        OwnerLoginHostState state,
         CancellationToken cancellationToken = default);
 }

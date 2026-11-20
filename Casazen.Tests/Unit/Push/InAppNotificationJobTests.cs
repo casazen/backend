@@ -225,6 +225,8 @@ public class InAppNotificationJobTests : IDisposable
             [PushAudienceKind.SupplierOrg] = PushAudience.SupplierOrg(world.SupplierOrgId),
             [PushAudienceKind.VerificationOperators] = PushAudience.VerificationOperators(world.BookingId),
             [PushAudienceKind.PlatformStaff] = PushAudience.PlatformStaff(Guid.NewGuid()),
+            // E40/F01/US02/T01: the administrators of the org (its owner), told about the org's own domain.
+            [PushAudienceKind.OrgAdmins] = PushAudience.OrgAdmins(world.OrgId),
         };
 
         // NF-65: a push to one user is the push channel of that user's choice. The counter of the bell is another channel, which the caller

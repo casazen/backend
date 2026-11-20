@@ -527,6 +527,14 @@ internal static class PostgresAdvisoryLocks
         /// 29_099 are the Swiss places and the guest-registration regimes (epic E29).
         /// </summary>
         SwissPlacesSeed = 29_011,
+
+        /// <summary>
+        /// The callback, logout and web-origin lists of the SPA application of the environment in the shared Auth0 tenant (key: the client id of the application,
+        /// <c>Auth0:HostSync:ClientId</c>, E40/F01/US02/T01, NF-141): the registration and the removal of the host of an agency read the lists, write them back in one
+        /// call and read them again one at a time, held until the end (the calls to Auth0 included), so two hosts registered at once by two instances never write
+        /// each other's lists away. The values 40_000 to 40_099 are the site integration (epic E40); 40_021 is its F01/US02.
+        /// </summary>
+        Auth0HostRegistration = 40_021,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

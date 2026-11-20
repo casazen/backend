@@ -19,6 +19,9 @@ namespace Casazen.Infrastructure.Services;
 /// custom-domain state when the owner switches away from it. Since E40/F01/US01 it also saves the
 /// surfaces of the agency's own domain and reports them (with <c>WhiteLabelHost</c> on) through
 /// <see cref="HostSurfaceRules"/>. Without <paramref name="featureFlags"/> (a test) every flag is off.
+/// Since E40/F01/US02/T01 the state of the owner sign-in on the domain moves through <paramref name="ownerLogin"/>
+/// (<see cref="OwnerLoginHostSync"/>: the Auth0 registration, the queue of the platform administrators and the notices); without it (a test) the
+/// state is only saved.
 /// </summary>
 public partial class OrgDomainService(
     AppDbContext dbContext,
@@ -30,8 +33,12 @@ public partial class OrgDomainService(
     PublicOrgSiteUrls siteUrls,
     IVercelDomainsClient vercelClient,
     TimeProvider timeProvider,
-    IFeatureFlags? featureFlags = null) : IOrgDomainService
+    IFeatureFlags? featureFlags = null,
+    OwnerLoginHostSync? ownerLogin = null) : IOrgDomainService
 {
+    /// <summary>The longest queue of the owner sign-ins one read answers (<see cref="ListOwnerLoginHostsAsync"/>).</summary>
+    public const int OwnerLoginQueueMax = 500;
+
     private const string DefaultDomainRequiredMessage = "OrgDomainRequired";
     private const string SubdomainRequiredMessage = "OrgSubdomainRequired";
     private const string InvalidCustomDomainMessage = "OrgDomainInvalid";
@@ -230,6 +237,7 @@ public partial class OrgDomainService(
         if (org.PublicHostMode != PublicHostMode.CustomDomain || string.IsNullOrEmpty(org.CustomDomain))
             return new SetOrgDomainSurfacesResult(SetOrgDomainSurfacesOutcome.NotConfigured, null);
 
+        var ownerLoginBefore = org.OwnerLoginHostState;
         org.GuestAreaOnOwnDomain = settings.GuestAreaOnOwnDomain;
         org.OwnerPortalOnOwnDomain = settings.OwnerPortalOnOwnDomain;
         org.UseOwnDomainForLinks = settings.UseOwnDomainForLinks;
@@ -240,6 +248,10 @@ public partial class OrgDomainService(
         org.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
 
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        // E40/F01/US02/T01: with Auth0HostSync on, a verified domain whose registration was never asked or failed is registered now.
+        if (settings.OwnerPortalOnOwnDomain && ownerLogin is not null)
+            await ownerLogin.OwnerPortalSavedOnAsync(org, ownerLoginBefore, cancellationToken);
 
         // The answer of resolve-host carries the surfaces: the next call reads them at once.
         publicHostResolver.InvalidateCacheForHost(org.CustomDomain);
@@ -271,6 +283,84 @@ public partial class OrgDomainService(
             publicHostResolver.InvalidateCacheForHost(subdomainHost);
 
         return new SetOrgDomainTrackingResult(SetOrgDomainTrackingOutcome.Success, new OrgDomainTracking(normalized));
+    }
+
+    public async Task<RetryOwnerLoginResult> RetryOwnerLoginAsync(Guid orgId, CancellationToken cancellationToken = default)
+    {
+        var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null)
+            return new RetryOwnerLoginResult(RetryOwnerLoginOutcome.NotFound, null);
+
+        // Only a verified domain is registered: Auth0 is never asked for a domain the org has not proved it controls. This comes first, as VerifyDomainAsync asks for a configured
+        // domain before the plan: an org with no custom domain answers 409 whatever its plan, never a 403, which is what the owner of an org must get from a POST with no body
+        // (OrgBillingAdminMembershipAccessTests).
+        if (org.PublicHostMode != PublicHostMode.CustomDomain
+            || string.IsNullOrEmpty(org.CustomDomain)
+            || org.DomainVerificationStatus != DomainVerificationStatus.Verified)
+        {
+            return new RetryOwnerLoginResult(RetryOwnerLoginOutcome.DomainNotVerified, null);
+        }
+
+        // The owner sign-in follows the domain's plan, as the surfaces do (the effective tier, A3-07): a verified domain whose plan lapsed registers nothing.
+        var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId, cancellationToken);
+        if (!canUseCustomDomain)
+            return new RetryOwnerLoginResult(RetryOwnerLoginOutcome.PlanRequired, null);
+
+        if (ownerLogin is not null)
+            await ownerLogin.RetryAsync(org, cancellationToken);
+
+        return new RetryOwnerLoginResult(RetryOwnerLoginOutcome.Success, BuildConfig(org, canUseCustomDomain));
+    }
+
+    public async Task<IReadOnlyList<OwnerLoginHostQueueItem>> ListOwnerLoginHostsAsync(
+        OwnerLoginHostState state,
+        CancellationToken cancellationToken = default)
+    {
+        // Orgs are not tenant-owned: the platform administrators read every org, on purpose. Active orgs with a custom domain only.
+        return await dbContext.Orgs.AsNoTracking()
+            .Where(o => o.IsActive
+                        && o.PublicHostMode == PublicHostMode.CustomDomain
+                        && o.CustomDomain != null
+                        && o.OwnerLoginHostState == state)
+            .OrderBy(o => o.DisplayName)
+            .ThenBy(o => o.Id)
+            .Take(OwnerLoginQueueMax)
+            .Select(o => new OwnerLoginHostQueueItem(
+                o.Id,
+                o.DisplayName != string.Empty ? o.DisplayName : o.Name,
+                o.CustomDomain!,
+                o.OwnerLoginHostState,
+                o.DomainVerificationStatus == DomainVerificationStatus.Verified))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<SetOwnerLoginStateResult> SetOwnerLoginStateAsync(
+        Guid orgId,
+        OwnerLoginHostState state,
+        CancellationToken cancellationToken = default)
+    {
+        var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null)
+            return new SetOwnerLoginStateResult(SetOwnerLoginStateOutcome.NotFound, null);
+
+        // Ready says the owners can sign in on the domain: only a verified custom domain the org pays for (the one resolve-host serves) can be that.
+        if (state == OwnerLoginHostState.Ready && siteUrls.ServedMode(org) != PublicHostMode.CustomDomain)
+            return new SetOwnerLoginStateResult(SetOwnerLoginStateOutcome.DomainNotVerified, null);
+
+        if (ownerLogin is not null)
+        {
+            await ownerLogin.ApplyAsync(org, state, cancellationToken);
+        }
+        else if (org.OwnerLoginHostState != state)
+        {
+            org.OwnerLoginHostState = state;
+            org.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            if (!string.IsNullOrEmpty(org.CustomDomain))
+                publicHostResolver.InvalidateCacheForHost(org.CustomDomain);
+        }
+
+        return new SetOwnerLoginStateResult(SetOwnerLoginStateOutcome.Success, org.OwnerLoginHostState);
     }
 
     private static void ClearCustomDomainFields(Org org)
