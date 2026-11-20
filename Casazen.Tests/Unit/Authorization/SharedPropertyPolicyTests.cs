@@ -80,6 +80,11 @@ public class SharedPropertyPolicyTests
         "DocumentArchiveController.Export",
         "DocumentArchiveController.GetTypes",
         "DocumentArchiveController.List",
+        // FIX/BE-CLEANING-VAT: the question of the VAT a cleaning company applied on a cleaning recharged to the owner. The door is property.read (read)
+        // and property.write (answer) in either rental context; the controller then checks the operation of the request's own context, so a landlord
+        // with only the long-term area reaches the long-rent requests of its properties, within its scope, and never a short-stay one.
+        "ServiceRequestCleaningVatController.Answer",
+        "ServiceRequestCleaningVatController.Get",
     ];
 
     [Fact]

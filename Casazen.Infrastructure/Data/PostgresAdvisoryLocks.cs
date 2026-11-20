@@ -514,6 +514,14 @@ internal static class PostgresAdvisoryLocks
         CleaningAutomation = 24_011,
 
         /// <summary>
+        /// The reviews of one booking of a channel (key: <c>{orgId:N}:{bookingId:N}</c>, E05/F06/US01/T02): the write of a read of the channel manager and the saving of a reply or of
+        /// the host's own review are taken one at a time and held until the commit, never across the call to Octorate, so a double click, the job of the reviews and the button «Refresh»
+        /// do not undo each other's state and a reply is saved, and sent, once. The values 20_500 to 20_599 are the messages hub (epic E05); 20_511 is
+        /// <see cref="OtaMessageThread"/>, and this one is 20_541 because the neighbours of the same feature pick their own.
+        /// </summary>
+        OtaReview = 20_541,
+
+        /// <summary>
         /// The load of the seed of the Swiss localities and municipalities (single key, E29/F01/US01/T01): instances starting together write the two
         /// tables one at a time, and the second finds the version stamp of the first and does nothing. Held until the commit. The values 29_000 to
         /// 29_099 are the Swiss places and the guest-registration regimes (epic E29).

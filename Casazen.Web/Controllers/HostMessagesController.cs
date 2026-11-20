@@ -31,7 +31,7 @@ public class HostMessagesController(
     /// The threads of the properties the caller reaches, the latest message first, a page at a time; <c>needsReply</c> true keeps the open
     /// threads that wait for an answer (false the others), <c>propertyId</c> those of one property. With <c>includeOta=true</c> the answer is a page of
     /// <see cref="MessageHubThreadDto"/>, the conversations of the channels and the direct ones together, which the filters <c>channel</c> (<c>Direct</c>,
-    /// <c>Airbnb</c>, <c>Booking</c>, <c>Vrbo</c>, <c>Expedia</c>), <c>bookingId</c>, <c>unread</c>, <c>kind</c> (<c>Reservation</c>, <c>Request</c>) and
+    /// <c>Airbnb</c>, <c>Booking</c>, <c>Vrbo</c>, <c>Expedia</c>), <c>bookingId</c>, <c>unread</c>, <c>kind</c> (<c>Reservation</c>, <c>Request</c>, or <c>Review</c>: the reviews of the guests, of the booking site and of the channels, E05/F06/US01/T03 - they are in no other view, and a row of them opens <c>GET api/messages/reviews/{threadKey}</c>) and
     /// <c>q</c> (the name of the guest, the booking code or the name of the property; not the words of a message) narrow further. Those five are
     /// read only with <c>includeOta=true</c>.
     /// </summary>

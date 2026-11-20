@@ -516,6 +516,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyCleaningSetupService, PropertyCleaningSetupService>();
         services.AddScoped<ICleaningAutomationService, CleaningAutomationService>();
         services.AddScoped<ICleaningCostSource, CleaningCostSource>();
+        // FIX/BE-CLEANING-VAT: the question of the VAT of a cleaning company recharged to the owner (api/service-requests/{id}/cleaning-vat, no flag).
+        services.AddScoped<ICleaningVatService, CleaningVatService>();
         // ADR-022: domain events are recorded in the outbox of the current unit of work (R1) and published by the dispatcher on the
         // in-process bus, which runs each handler in its own scope under the event's org (R3, R6).
         services.AddScoped<IDomainEventRecorder, DomainEventRecorder>();
@@ -1023,6 +1025,15 @@ public static class ServiceCollectionExtensions
         // The tokens are sealed with Data Protection (the key ring in the database), so every replica reads them.
         services.AddSingleton<GuestSessionTokens>();
         services.AddScoped<IGuestSessionService, GuestSessionService>();
+        // The lock of a booking code after repeated failures of the last four digits of the phone, the other proof of the guest session (NF-143,
+        // flag WhiteLabelHost; docs/runbooks/direct-booking.md § 8.4): its two settings are checked at startup, its counters live in memory, per replica.
+        services.AddOptions<GuestPhoneLookupLockoutOptions>()
+            .Configure<IConfiguration>(GuestPhoneLookupLockoutOptions.Read)
+            .Validate(
+                options => options.IsValid(),
+                $"{GuestPhoneLookupLockoutOptions.MaxFailuresKey} and {GuestPhoneLookupLockoutOptions.WindowMinutesKey} must be at least 1.")
+            .ValidateOnStart();
+        services.AddSingleton<GuestPhoneLookupLockout>();
         // The bookings of the guest who has an account (the mobile app, GuestAccountController): the direct bookings of any site whose guest
         // has the account's verified email, and the same guest-area session opened for them (docs/runbooks/direct-booking.md § 8.6).
         services.AddScoped<IGuestAccountBookingService, GuestAccountBookingService>();

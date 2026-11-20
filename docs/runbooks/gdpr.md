@@ -402,3 +402,18 @@ personal data; the link to an attachment is kept (the file is not).
 Not in the export of the guest's data (art. 15, 20) yet: the conversations are in the hub of messages for the host who reaches the property; their
 export for the guest is a decision of the product owner. Verification after deploy: Railway logs at 03:00 UTC show `GDPR OTA message retention done: period
 configured {Configured}, N conversations and M messages anonymized`; the logs carry counts only, never a text, a name or an address.
+
+## 15. The reviews of the channels (ADR-032, E05/F06/US01)
+
+The reviews the guests of Airbnb leave are read from the channel manager into `OtaReviews` (the words of the guest, the reply of the host and the host's own
+review encrypted at rest, purpose `Casazen.Review.Content`, [encryption.md](encryption.md); [ota-reviews.md](ota-reviews.md)). The words of the guest are
+personal data and can name a person; the mark, the categories and the states are the reputation of the house, not an identity.
+
+| Trigger | What happens | Code |
+|---|---|---|
+| Erasure (`DELETE /api/gdpr/guests/{id}`) or anonymization (`POST /api/gdpr/guests/{id}/anonymize`) of a guest | The reviews of the guest's bookings lose the text of the guest; the mark, the categories, the states and the words of the host (the reply, the host's review) stay. The drafts of the replies to those reviews (and to the reviews of the booking site) in the approval queue lose their words and, if they waited, expire | `GuestDataEraser.ClearOtaReviewTextsAsync`, `ClearApprovalItemsOfGuestAsync` |
+| A later read of the channel manager | The sync stores no text for a booking whose guest was erased or anonymized, whatever the channel manager still holds | `OtaReviewMapper.Apply` (`guestErased`) |
+| Retention | No period of its own yet: a review goes with its booking and its property (cascade). The words of the guest are emptied by the erasure above; a period for the copy is a decision of the product owner | - |
+| Logs | Ids, states and codes only: never a word of a guest or of a host, never the reference of the booking on the channel manager | `OtaReviewService`, `ReviewReplyDrafter`, `ReviewReplyApprovalAction` |
+
+The reviews of the booking site (`site-reviews.md`) keep their own rules. Not in the export of the guest's data (art. 15, 20) yet.

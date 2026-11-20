@@ -369,7 +369,7 @@ public sealed partial class FiscalDocumentService(
 
         var (profile, org) = await RequireIssuerAsync(document.OrgId, ct);
         var rule = OwnerInvoiceRuleOf(profile, document);
-        RequireDraftOfTheRule(document, rule);
+        RequireDraftOfTheRule(document, rule, ownerInvoice: true);
 
         // The series of the owner invoices (E14), its own counter: never the one of the documents of the guests.
         var today = timeProvider.TodayInRomeAsDateOnly();
@@ -1563,18 +1563,26 @@ public sealed partial class FiscalDocumentService(
     /// and the host confirmed other amounts: 409 <c>document_draft_outdated</c>, the draft has to be refreshed first. A draft without a version (made before the
     /// versions existed) is not checked.
     /// </summary>
-    private static void RequireDraftOfTheRule(FiscalDocument draft, FiscalTaxRule rule)
+    /// <remarks>
+    /// An owner invoice (<paramref name="ownerInvoice"/>) may also carry, on a recharge line, the VAT of a cleaning company the agency stated (FIX/BE-CLEANING-VAT,
+    /// <see cref="CleaningVatRules.IsCompanyVatOf"/>): its lines were compared with a fresh composition of its version by <see cref="IOwnerInvoiceService.IssueAsync"/> just before.
+    /// </remarks>
+    private static void RequireDraftOfTheRule(FiscalDocument draft, FiscalTaxRule rule, bool ownerInvoice = false)
     {
         if (draft.RuleVersion is null)
             return;
 
         var kind = rule.DocumentKind == RuleDocumentKind.Receipt ? DocumentKind.Receipt : DocumentKind.Invoice;
         var sameRule = string.Equals(draft.RuleVersion, rule.Version, StringComparison.Ordinal) && draft.Kind == kind;
-        if (sameRule && draft.Lines.All(line => HasTheVatOfTheRule(line, rule)))
+        if (sameRule && draft.Lines.All(line => HasTheVatOfTheRule(line, rule) || (ownerInvoice && HasTheVatOfACleaningCompany(line, rule))))
             return;
 
         throw new DomainConflictException(FiscalDocumentErrors.DraftOutdated, "FiscalDocumentDraftOutdated");
     }
+
+    /// <summary>A recharge line that carries the VAT of a cleaning company the agency stated (FIX/BE-CLEANING-VAT): «Sì» a standard rate of the rule's country, «No» none.</summary>
+    private static bool HasTheVatOfACleaningCompany(FiscalDocumentLine line, FiscalTaxRule rule) =>
+        line.LineType == FiscalLineType.Recharge && CleaningVatRules.IsCompanyVatOf(line.VatRatePercent, line.VatNatureCode, rule);
 
     /// <summary>
     /// The draft is the document <paramref name="planned"/> of the plan of its booking (E17/F01/US01/T02): the same issuer (a draft without one is the

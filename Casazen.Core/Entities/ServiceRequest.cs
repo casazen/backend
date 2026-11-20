@@ -243,6 +243,31 @@ public class ServiceRequest
     /// </summary>
     public Guid? LeaseContractId { get; set; }
 
+    // ─── The VAT of the cleaning company, for the recharge to the owner (FIX/BE-CLEANING-VAT) ─────────────────────────
+    // The answer of the agency to «La ditta di pulizie ha applicato l'IVA su questa fattura?» for a cleaning request, set only through
+    // POST api/service-requests/{id}/cleaning-vat. Empty on every request nobody answered (the remembered default of the company may answer for it).
+    // Only the host's: the supplier's views never carry it.
+
+    /// <summary>The answer; <c>null</c> while nobody answered for this request.</summary>
+    public CleaningSupplierVat? SupplierVat { get; set; }
+
+    /// <summary>The rate the answer «Sì» used (the standard rate of the country of the cleaning on its day, <c>VatRates</c>); set only with <see cref="CleaningSupplierVat.Applied"/>.</summary>
+    [Column(TypeName = "numeric(5,2)")]
+    public decimal? SupplierVatRatePercent { get; set; }
+
+    /// <summary>When the answer was given or last changed (UTC).</summary>
+    public DateTime? SupplierVatAnsweredAt { get; set; }
+
+    /// <summary>Who gave it.</summary>
+    [MaxLength(255)]
+    public string? SupplierVatAnsweredByUserId { get; set; }
+
+    /// <summary>
+    /// When the «Da fare» of the question was proposed once more, at the close of the month of an owner the cleaning is recharged to (the answer was «Non lo so», or
+    /// none): once for each request, never again.
+    /// </summary>
+    public DateTime? SupplierVatAskedAgainAt { get; set; }
+
     // ─── Another time proposed by the supplier (SP-04) ───────────────────────────────────────────────────────────────
 
     /// <summary>

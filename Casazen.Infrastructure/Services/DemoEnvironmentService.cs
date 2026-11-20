@@ -140,6 +140,7 @@ public class DemoEnvironmentService(
         await RemoveShowcaseTouristTaxRemittancesAsync(orgId, cancellationToken);
         await RemoveShowcaseMarketplaceAsync(orgId, cancellationToken);
         await RemoveShowcaseTouristTaxRulesAsync(orgId, cancellationToken);
+        await RemoveShowcaseReviewsAsync(orgId, cancellationToken);
         await RemoveShowcaseMessageThreadsAsync(orgId, cancellationToken);
         await RemoveShowcaseMessageTemplatesAsync(orgId, cancellationToken);
         await RemoveShowcaseCrmAsync(orgId, cancellationToken);
@@ -162,6 +163,10 @@ public class DemoEnvironmentService(
         // NF-61, NF-64: the conversations of the hub of messages are about the houses and stays just created, so they come after them.
         foreach (var thread in DemoShowcaseCatalog.MessageThreads)
             await CreateMessageThreadAsync(orgId, ownerId, thread, cancellationToken);
+
+        // E05/F06/US01/T03 (NF-69): the reviews of the demo and the drafts of their replies are about the past stays just created, so they come after them.
+        foreach (var review in DemoShowcaseCatalog.Reviews)
+            await CreateReviewAsync(orgId, review, cancellationToken);
 
         // E05/F02/US02/T02: the message templates of the demo host point at no house or stay, so they can come anywhere after the removal above.
         foreach (var messageTemplate in DemoShowcaseCatalog.HostMessageTemplates)
@@ -1123,6 +1128,131 @@ public class DemoEnvironmentService(
 
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.OtaMessageThread, otaThread.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+    }
+
+    /// <summary>
+    /// Deletes the reviews the showcase wrote for the org and the drafts of their replies, found by their markers (E05/F06/US01/T03), and the markers. A review goes with its house (cascade) but the
+    /// draft of its reply points at it by id only, so left to the removal of the houses it would stay in the approval queue with no review: the reset deletes them here, before the houses go (that
+    /// removal drops every showcase marker of the org). A review of a guest, and a draft a host decided, have no marker and are never touched.
+    /// </summary>
+    internal async Task RemoveShowcaseReviewsAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var markers = await Markers()
+            .Where(m => m.OrgId == orgId
+                && m.Origin == TestDataOrigins.Showcase
+                && (m.EntityType == TestDataEntities.Review
+                    || m.EntityType == TestDataEntities.OtaReview
+                    || m.EntityType == TestDataEntities.ApprovalQueueItem))
+            .ToListAsync(cancellationToken);
+        if (markers.Count == 0)
+            return;
+
+        var itemIds = markers.Where(m => m.EntityType == TestDataEntities.ApprovalQueueItem).Select(m => m.EntityId).ToList();
+        var channelIds = markers.Where(m => m.EntityType == TestDataEntities.OtaReview).Select(m => m.EntityId).ToList();
+        var siteIds = markers.Where(m => m.EntityType == TestDataEntities.Review).Select(m => m.EntityId).ToList();
+
+        db.ApprovalQueueItems.RemoveRange(await db.ApprovalQueueItems.IgnoreQueryFilters([Tenant])
+            .Where(i => i.OrgId == orgId && itemIds.Contains(i.Id))
+            .ToListAsync(cancellationToken));
+        db.OtaReviews.RemoveRange(await db.OtaReviews.IgnoreQueryFilters([Tenant])
+            .Where(r => r.OrgId == orgId && channelIds.Contains(r.Id))
+            .ToListAsync(cancellationToken));
+        db.Reviews.RemoveRange(await db.Reviews.IgnoreQueryFilters([Tenant])
+            .Where(r => r.OrgId == orgId && siteIds.Contains(r.Id))
+            .ToListAsync(cancellationToken));
+        db.TestDataMarkers.RemoveRange(markers);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// One review of the showcase with the draft of the reply to it (E05/F06/US01/T03, NF-69): the review of a past direct stay on the booking site, or the row of an Airbnb stay that the sync of the
+    /// reviews would write, with invented words that say TEST and no channel manager behind it; and, waiting in the approval queue, the draft of the reply as the assistant would have written it
+    /// (an item of type <c>ReviewReply</c> with the key of the review, never sent). Skipped, with a log, when the house or the stay it names was not created or is not a stay of that house.
+    /// </summary>
+    internal async Task CreateReviewAsync(Guid orgId, DemoReviewTemplate template, CancellationToken cancellationToken)
+    {
+        var propertyId = await ShowcaseIdAsync(orgId, TestDataEntities.Property, template.PropertyKey, cancellationToken);
+        var bookingId = await ShowcaseIdAsync(orgId, TestDataEntities.Booking, template.BookingKey, cancellationToken);
+        var stay = bookingId is null
+            ? null
+            : await db.Bookings.IgnoreQueryFilters([Tenant]).AsNoTracking()
+                .Where(b => b.OrgId == orgId && b.Id == bookingId)
+                .Select(b => new { b.PropertyId, b.CheckOutDate, GuestFirstName = b.Guest.FirstName })
+                .FirstOrDefaultAsync(cancellationToken);
+        if (propertyId is null || bookingId is null || stay is null || stay.PropertyId != propertyId)
+        {
+            logger.LogWarning("Demo review {Key} of org {OrgId} was skipped: the house or the stay it names was not created", template.Key, orgId);
+            return;
+        }
+
+        var now = UtcNow();
+        var publishedAt = now.AddDays(-template.PublishedDaysAgo);
+        Guid reviewId;
+        MessageThreadKey key;
+        if (template.Kind == DemoReviewKind.Direct)
+        {
+            var review = new Review
+            {
+                OrgId = orgId,
+                PropertyId = propertyId.Value,
+                BookingId = bookingId.Value,
+                Rating = (int)template.Rating,
+                Text = template.Text,
+                AuthorName = ReviewRules.AuthorNameFor(stay.GuestFirstName, showName: false),
+                StayEndedOn = RomeCalendar.DateInRome(stay.CheckOutDate).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                Status = ReviewStatus.Published,
+                PublishedAt = publishedAt,
+            };
+            db.Reviews.Add(review);
+            await db.SaveChangesAsync(cancellationToken);
+            await MarkAsync(orgId, TestDataEntities.Review, review.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+            reviewId = review.Id;
+            key = MessageThreadKey.ForReview(review.Id);
+        }
+        else
+        {
+            var review = new OtaReview
+            {
+                OrgId = orgId,
+                PropertyId = propertyId.Value,
+                BookingId = bookingId.Value,
+                Channel = OtaChannel.Airbnb,
+                OctorateRefer = $"TEST-{template.Key}",
+                GuestReviewPublished = true,
+                GuestReviewPublishedAt = publishedAt,
+                GuestRating = template.Rating,
+                GuestReviewText = template.Text,
+                HostReviewWindow = HostReviewWindow.Open,
+                LastSyncedAt = now,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            db.OtaReviews.Add(review);
+            await db.SaveChangesAsync(cancellationToken);
+            await MarkAsync(orgId, TestDataEntities.OtaReview, review.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+            reviewId = review.Id;
+            key = MessageThreadKey.ForOtaReview(review.Id);
+        }
+
+        var draft = new ApprovalQueueItem
+        {
+            OrgId = orgId,
+            ItemType = ApprovalItemTypes.ReviewReply,
+            ItemId = reviewId,
+            ContentText = template.DraftReply,
+            ContentVersion = Casazen.Core.Assistant.ReviewReplyPromptBuilder.Version,
+            IsAiGenerated = true,
+            Status = ApprovalStatus.Pending,
+            CreatedAt = now,
+            ExpiresAt = now.AddDays(ApprovalQueueRules.ExpirationDays),
+            PropertyId = propertyId.Value,
+            OriginAction = ApprovalOriginActions.SendReviewReply,
+            OriginActionStatus = ApprovalOriginActionStatus.Pending,
+            ThreadKey = key.ToString(),
+        };
+        db.ApprovalQueueItems.Add(draft);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.ApprovalQueueItem, draft.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
     /// <summary>

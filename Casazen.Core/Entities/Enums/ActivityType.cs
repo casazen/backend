@@ -192,11 +192,13 @@ public enum ActivityType
     CleaningDateChanged = 130,
 
     /// <summary>
-    /// A cleaning recharged to the owner at its cost whose VAT nature the cost source does not say (E14/F01/US02/T01, ⚖ I13): the agency states it, because CasaZen never guesses it. The
-    /// charge is posted all the same; the item asks the agency to state the VAT (and the amount, when the cleaning has none: the statement is held back until it has). About the booking
-    /// of the cleaning when it has one (entity type <c>Booking</c>, leading to it: <see cref="ActivityAction.ReviewBooking"/>), else about the request or the staff activity itself;
-    /// raised at the posting of the month, once for each of them (never again after a person closed it), and closed by the system when the cleaning's VAT is known. The number 140
-    /// keeps clear of 130 to 139, the cleaning at check-out (epic E24), and of the values the tasks that run in parallel append.
+    /// A cleaning of a company recharged to the owner at its cost whose VAT nobody stated (E14/F01/US02/T01, ⚖ I13; FIX/BE-CLEANING-VAT): the agency answers «La ditta di pulizie ha
+    /// applicato l'IVA su questa fattura?» (Sì / No / Non lo so), because CasaZen never guesses it. The charge is posted all the same, gross. About the cleaning request (entity type
+    /// <c>ServiceRequest</c>, leading to the question: <see cref="ActivityAction.StateCleaningVat"/>); the items raised before FIX/BE-CLEANING-VAT are about the stay (entity type
+    /// <c>Booking</c>, <see cref="ActivityAction.ReviewBooking"/>) and are closed the same way. Raised at the posting of the month, once for each request (never again after a person
+    /// closed it), closed by the answer (or by the system when the company's remembered answer covers the request), and proposed once more at the close of the month when the answer
+    /// was «Non lo so». A staff cleaning has no VAT of a company and is never asked. The number 140 keeps clear of 130 to 139, the cleaning at check-out (epic E24), and of the values
+    /// the tasks that run in parallel append.
     /// </summary>
     CleaningVatToState = 140,
 

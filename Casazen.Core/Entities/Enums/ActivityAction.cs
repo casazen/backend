@@ -119,4 +119,12 @@ public enum ActivityAction
     /// messages (feature E05/F07).
     /// </summary>
     FixScheduledMessage = 120,
+
+    /// <summary>
+    /// The question of the VAT of a cleaning recharged to the owner (FIX/BE-CLEANING-VAT): «La ditta di pulizie ha applicato l'IVA su questa fattura?», answered with
+    /// <c>POST api/service-requests/{id}/cleaning-vat</c> (the question itself is <c>GET</c> of the same route). About the cleaning request (entity type <c>ServiceRequest</c>,
+    /// the id is the request's) of <see cref="ActivityType.CleaningVatToState"/>; the items raised before it are about the stay and keep <see cref="ReviewBooking"/>. The number
+    /// is the one of its type (140, the cleaning recharge of E14), clear of the values the tasks that run in parallel append after 50 and 120.
+    /// </summary>
+    StateCleaningVat = 140,
 }

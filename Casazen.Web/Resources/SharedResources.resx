@@ -1747,6 +1747,15 @@
   <data name="GuestBookingEmailInvalid" xml:space="preserve">
     <value>Indirizzo email non valido.</value>
   </data>
+  <data name="GuestSessionProofRequired" xml:space="preserve">
+    <value>Inserisci l'indirizzo email con cui hai prenotato oppure le ultime 4 cifre del tuo numero di telefono.</value>
+  </data>
+  <data name="GuestSessionProofExclusive" xml:space="preserve">
+    <value>Usa l'indirizzo email oppure le ultime 4 cifre del telefono, non entrambi.</value>
+  </data>
+  <data name="GuestSessionPhoneLast4Invalid" xml:space="preserve">
+    <value>Inserisci solo le ultime 4 cifre del numero di telefono con cui hai prenotato.</value>
+  </data>
   <data name="PublicPropertyNotFound" xml:space="preserve">
     <value>Questo alloggio non è disponibile per la prenotazione online.</value>
   </data>
@@ -8691,6 +8700,49 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AgentTrainingGeneration" xml:space="preserve">
     <value>L’AI non ha generato scenari validi. Specifica i criteri per eseguire e per saltare l’azione, poi riprova.</value>
   </data>
+  <!-- E05/F06/US01/T02 (NF-69, OCT-12): the reviews of the channels. No supplier is named: «channel manager» only. -->
+  <data name="OtaReviewNotFound" xml:space="preserve">
+    <value>La recensione non esiste oppure non è accessibile.</value>
+  </data>
+  <data name="OtaReviewChannelNotIntegrated" xml:space="preserve">
+    <value>Per questo canale le recensioni non sono collegate a CasaZen: da qui non si possono leggere né rispondere.</value>
+  </data>
+  <data name="OtaReviewChannelNotSupported" xml:space="preserve">
+    <value>Da CasaZen si può rispondere alle recensioni di Airbnb e scrivere la propria recensione dell’ospite solo per Airbnb.</value>
+  </data>
+  <data name="OtaReviewNotPublished" xml:space="preserve">
+    <value>La recensione dell’ospite non è ancora pubblicata sul canale: per ora non c’è nulla a cui rispondere.</value>
+  </data>
+  <data name="OtaReviewWindowClosed" xml:space="preserve">
+    <value>Il periodo per scrivere la tua recensione dell’ospite non è aperto.</value>
+  </data>
+  <data name="OtaReviewActionNotAllowed" xml:space="preserve">
+    <value>Il canale non ha accettato l’operazione: non è consentita oppure è già stata fatta. Aggiorna le recensioni della prenotazione per vedere lo stato reale.</value>
+  </data>
+  <data name="OtaReviewReplyAlreadySent" xml:space="preserve">
+    <value>Hai già risposto a questa recensione.</value>
+  </data>
+  <data name="OtaReviewHostReviewAlreadySent" xml:space="preserve">
+    <value>Hai già scritto la tua recensione dell’ospite.</value>
+  </data>
+  <data name="OtaReviewActionUnconfirmed" xml:space="preserve">
+    <value>Un tentativo precedente non è ancora stato confermato dal canale: CasaZen lo verifica da sola, e solo dopo un’ora lo segna come non consegnato. Aspetta prima di riprovare.</value>
+  </data>
+  <data name="OtaReviewHostReviewInvalid" xml:space="preserve">
+    <value>La tua recensione dell’ospite non è valida: servono almeno un voto intero da 1 a 5 per una categoria e il testo.</value>
+  </data>
+  <data name="OtaReviewRefreshTooSoon" xml:space="preserve">
+    <value>Le recensioni di questa prenotazione sono state lette da poco: riprova tra qualche minuto.</value>
+  </data>
+  <data name="OtaReviewBookingNotReviewable" xml:space="preserve">
+    <value>Per questa prenotazione non ci sono recensioni da leggere: il soggiorno non c’è stato (prenotazione annullata o ospite non presentato) oppure non ha un riferimento utilizzabile sul canale.</value>
+  </data>
+  <data name="OctorateReviewNotAvailable" xml:space="preserve">
+    <value>Le recensioni di questo immobile non sono disponibili nel channel manager (di solito manca un permesso o il canale non è collegato): per ora non si possono leggere.</value>
+  </data>
+  <data name="OctorateReviewActionNotAllowed" xml:space="preserve">
+    <value>Il channel manager ha rifiutato l’operazione sulla recensione: non è consentita oppure è già stata fatta.</value>
+  </data>
   <data name="TicinoStructureIdInvalid" xml:space="preserve">
     <value>Il numero identificativo LEAR / NO-LEAR non è valido: da 3 a 20 lettere e cifre, con trattini singoli (es. NL-12345678).</value>
   </data>
@@ -8858,5 +8910,20 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="GuestRegime_CH_UNKNOWN_Summary" xml:space="preserve">
     <value>Non sappiamo in quale cantone si trova l'immobile (comune mancante o non univoco): indica il comune per vedere le regole del suo cantone. Resta l'obbligo federale di annunciare all'autorità cantonale gli ospiti stranieri alloggiati a pagamento.</value>
+  </data>
+  <data name="CleaningVatAnswerInvalid" xml:space="preserve">
+    <value>Indica se la ditta di pulizie ha applicato l'IVA: Sì, No o Non lo so.</value>
+  </data>
+  <data name="CleaningVatNotCompleted" xml:space="preserve">
+    <value>La pulizia non è ancora completata: l'IVA della ditta si indica sulla fattura di una pulizia completata.</value>
+  </data>
+  <data name="CleaningVatRateUnknown" xml:space="preserve">
+    <value>Per il giorno di questa pulizia non c'è un'aliquota IVA ordinaria del paese in cui è stata fatta: rispondi No o Non lo so.</value>
+  </data>
+  <data name="CleaningVatRememberUnknown" xml:space="preserve">
+    <value>«Non lo so» non si può ricordare per la ditta: togli «Ricorda per questa ditta» oppure rispondi Sì o No.</value>
+  </data>
+  <data name="CleaningVatRememberForbidden" xml:space="preserve">
+    <value>Solo chi gestisce tutta l'organizzazione può ricordare la risposta per la ditta: rispondi solo per questa pulizia.</value>
   </data>
 </root>

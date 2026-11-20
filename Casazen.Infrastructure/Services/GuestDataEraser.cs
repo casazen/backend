@@ -62,6 +62,7 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         var marketingConsents = await ClearMarketingConsentRecordsAsync(guest.Id, cancellationToken);
         var specialRequests = await ClearSpecialRequestsAsync(guest.Id, now, cancellationToken);
         var reviews = await AnonymizeReviewsAsync(guest.Id, cancellationToken);
+        var channelReviews = await ClearOtaReviewTextsAsync(guest.Id, now, cancellationToken);
         await ExpireOpenCheckInLinksAsync(guest.Id, now, cancellationToken);
         var threads = await DeleteMessageThreadsAsync(guest.Id, cancellationToken);
         var otaThreads = (await AnonymizeOtaThreadsOfGuestAsync(guest.Id, now, cancellationToken)).Threads;
@@ -70,7 +71,7 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
 
         var changed = Fingerprint(guest) != before
             || filesDeleted > 0 || stayGuests > 0 || taxReasons > 0 || consentEvidence > 0 || marketingConsents > 0
-            || specialRequests > 0 || reviews > 0 || threads > 0 || otaThreads > 0 || approvalItems > 0 || crm.Changed
+            || specialRequests > 0 || reviews > 0 || channelReviews > 0 || threads > 0 || otaThreads > 0 || approvalItems > 0 || crm.Changed
             || guest.DataAnonymizedDate is null;
         guest.AlloggiatiDataErasedAt ??= now;
         guest.DataAnonymizedDate ??= now;
@@ -629,6 +630,26 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
     }
 
     /// <summary>
+    /// What the guest wrote in the review of a channel (E05/F06/US01/T02, NF-69): the text the channel manager reported is free text and can name a person, so it is emptied
+    /// for the reviews of the guest's bookings. The mark, the categories and the state stay (the host's reputation, not an identity), and so do the host's own words, the reply
+    /// and the host's review of the guest. The next read of the channel manager does not bring it back: the sync stores no text for a booking whose guest was erased. Stages the
+    /// change without saving; returns the reviews that changed (a second run finds none).
+    /// </summary>
+    private async Task<int> ClearOtaReviewTextsAsync(Guid guestId, DateTime now, CancellationToken cancellationToken)
+    {
+        var reviews = await db.OtaReviews
+            .Where(r => r.GuestReviewText != null && db.Bookings.Any(b => b.Id == r.BookingId && b.GuestId == guestId))
+            .ToListAsync(cancellationToken);
+        foreach (var review in reviews)
+        {
+            review.GuestReviewText = null;
+            review.UpdatedAt = now;
+        }
+
+        return reviews.Count;
+    }
+
+    /// <summary>
     /// The messages of the guest with the host (DB-14a) are free text written by the guest and can hold anything: the threads of the
     /// guest's bookings are deleted, with their messages (the foreign key cascades). The host keeps the bookings, not the conversations.
     /// </summary>
@@ -768,8 +789,20 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
             .Select(b => b.Id)
             .ToListAsync(cancellationToken);
 
+        // The draft of a reply to a review of the guest (E05/F06/US01/T03) is about the review, which has a key of its own: the reviews of the guest's stays, of a channel and of the booking site.
+        var channelReviews = await db.OtaReviews
+            .Where(r => db.Bookings.Any(b => b.Id == r.BookingId && b.GuestId == guestId))
+            .Select(r => r.Id)
+            .ToListAsync(cancellationToken);
+        var siteReviews = await db.Reviews
+            .Where(r => db.Bookings.Any(b => b.Id == r.BookingId && b.GuestId == guestId))
+            .Select(r => r.Id)
+            .ToListAsync(cancellationToken);
+
         var keys = otaThreads.Select(id => MessageThreadKey.ForOta(id).ToString())
             .Concat(bookings.Select(id => MessageThreadKey.ForDirect(id).ToString()))
+            .Concat(channelReviews.Select(id => MessageThreadKey.ForOtaReview(id).ToString()))
+            .Concat(siteReviews.Select(id => MessageThreadKey.ForReview(id).ToString()))
             .ToList();
         if (keys.Count == 0)
             return 0;
