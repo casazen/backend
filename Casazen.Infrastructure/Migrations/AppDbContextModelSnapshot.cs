@@ -4465,61 +4465,6 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.GuestPortalLink", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("AccountAttachedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("AccountUserId")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<Guid>("BookingId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CreatedByUserId")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("OrgId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Token")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AccountUserId");
-
-                    b.HasIndex("BookingId")
-                        .IsUnique()
-                        .HasDatabaseName("UIX_GuestPortalLinks_BookingId_Active")
-                        .HasFilter("\"RevokedAt\" IS NULL");
-
-                    b.HasIndex("OrgId");
-
-                    b.HasIndex("Token")
-                        .IsUnique()
-                        .HasDatabaseName("UIX_GuestPortalLinks_Token");
-
-                    b.ToTable("GuestPortalLinks");
-                });
-
             modelBuilder.Entity("Casazen.Core.Entities.GuestPrivacyAuditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -11314,6 +11259,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int?>("FloorLevel")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("GuestNotificationOverride")
+                        .HasColumnType("integer");
+
                     b.Property<string>("HouseRules")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -11505,6 +11453,8 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_Properties_EnergyIndex", "\"EnergyIndex\" IS NULL OR (\"EnergyClass\" IS NOT NULL AND \"EnergyIndex\" >= 0 AND \"EnergyIndex\" <= 9999)");
 
                             t.HasCheckConstraint("CK_Properties_FloorLevel", "\"FloorLevel\" IS NULL OR \"FloorLevel\" BETWEEN -3 AND 60");
+
+                            t.HasCheckConstraint("CK_Properties_GuestNotificationOverride", "\"GuestNotificationOverride\" IS NULL OR \"GuestNotificationOverride\" IN (1, 2)");
 
                             t.HasCheckConstraint("CK_Properties_MinNights", "\"MinNights\" IS NULL OR \"MinNights\" BETWEEN 1 AND 30");
 
@@ -13615,11 +13565,6 @@ namespace Casazen.Infrastructure.Migrations
                         },
                         new
                         {
-                            RoleId = 1,
-                            PermissionKey = "guestportal.manage"
-                        },
-                        new
-                        {
                             RoleId = 2,
                             PermissionKey = "property.read"
                         },
@@ -13832,11 +13777,6 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             RoleId = 7,
                             PermissionKey = "verification.decision"
-                        },
-                        new
-                        {
-                            RoleId = 7,
-                            PermissionKey = "guestportal.manage"
                         },
                         new
                         {
@@ -19837,21 +19777,6 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Thread");
-                });
-
-            modelBuilder.Entity("Casazen.Core.Entities.GuestPortalLink", b =>
-                {
-                    b.HasOne("Casazen.Core.Entities.Booking", null)
-                        .WithMany()
-                        .HasForeignKey("BookingId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Casazen.Core.Entities.Org", null)
-                        .WithMany()
-                        .HasForeignKey("OrgId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.GuestPrivacyAuditEntry", b =>

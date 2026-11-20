@@ -381,6 +381,17 @@ public static class FeatureFlags
     public const string TicinoNotificationAlerts = "TicinoNotificationAlerts";
 
     /// <summary>
+    /// E29/F02/US01/T01 (NF-125, D3, D5, D12, casazen/backend#979): the regimes of the registration of the guests of Italy and of the 26 cantons, <b>off by default</b> and
+    /// turned on only in the test environment until the product owner has read what the catalog says of a canton. Off, <c>GET</c> and <c>PUT api/properties/{id}/guest-registration</c>
+    /// answer 404 before authentication, nothing reads the host's setting of a property (<c>Properties.GuestNotificationOverride</c>: the one resolver answers as if it were
+    /// empty) and Ticino behaves exactly as before. On, the card of a property says what its place asks (obligation, channel, deadline, retention, sources and how certain they
+    /// are, and what CasaZen does) and whether CasaZen treats the duty as required, not required or left to the host (<c>Ask</c>): only a regime verified as an obligation to report
+    /// to an authority that covers private rentals is <c>Required</c> by default, any other canton is <c>Ask</c>. The readiness of a Swiss property (the municipality, the structure
+    /// number of Ticino) is <b>not</b> behind it. It needs no variable to start. The frontend reads the key <c>guestRegistrationRegimes</c>.
+    /// </summary>
+    public const string GuestRegistrationRegimes = "GuestRegistrationRegimes";
+
+    /// <summary>
     /// E50-E60 (NF-152..NF-187, guest portal plan decision A6, casazen/backend#987): the guest portal, <b>off by default</b>. On, every booking of any source
     /// gets its personal stay link <c>/s/{token}</c> on request (the host endpoints <c>api/bookings/{id}/guest-portal</c>) and the public portal
     /// <c>api/public/guest-portal/{token}/…</c> answers with its sections (stay, check-in, guide, services, chat, documents, review) and the host's extras.
@@ -445,6 +456,7 @@ public static class FeatureFlags
         Auth0HostSync,
         SiteEmbed,
         TicinoNotificationAlerts,
+        GuestRegistrationRegimes,
         GuestPortal,
         GuestPortalSupplierServices,
         GuestPortalAutoReplies,

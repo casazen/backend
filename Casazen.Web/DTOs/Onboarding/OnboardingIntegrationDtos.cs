@@ -11,7 +11,7 @@ public sealed class OnboardingIntegrationDto
 {
     public OnboardingConnectionHealthDto Connection { get; set; } = new();
 
-    /// <summary>The eleven parts of the plan in order, each as <c>GET api/onboarding/plan</c> gives it, plus <c>reopenable</c>.</summary>
+    /// <summary>The twelve parts of the plan in order, each as <c>GET api/onboarding/plan</c> gives it, plus <c>reopenable</c>.</summary>
     public List<OnboardingIntegrationPartDto> Parts { get; set; } = [];
 
     public OnboardingSenderCountsDto Senders { get; set; } = new();

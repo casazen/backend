@@ -211,8 +211,8 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
 
         // The parts follow the reach too: the plan is read over the same scope, so the evaluators count the one house of the collaborator and the
         // two of the owner (a plan read over the whole org for everybody would show 2 of 2 to the collaborator).
-        Assert.Equal(11, orgWide.Parts.Count);
-        Assert.Equal(11, restricted.Parts.Count);
+        Assert.Equal(12, orgWide.Parts.Count);
+        Assert.Equal(12, restricted.Parts.Count);
         Assert.Equal((Done: 1, Total: 1), ProgressOf(restricted, OnboardingPartKey.PricesRules));
         Assert.Equal((Done: 2, Total: 2), ProgressOf(orgWide, OnboardingPartKey.PricesRules));
         Assert.Equal((Done: 1, Total: 1), ProgressOf(restricted, OnboardingPartKey.Channels));
@@ -359,7 +359,7 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         Assert.Equal(OnboardingPartStates.Deferred, parts[OnboardingPartKey.Listings].Plan.State);
         Assert.Equal(OnboardingPartStates.Done, parts[OnboardingPartKey.PricesRules].Plan.State);
         Assert.Equal(OnboardingPartStates.Blocked, parts[OnboardingPartKey.Activation].Plan.State);
-        foreach (var key in new[] { OnboardingPartKey.MessagesAi, OnboardingPartKey.FiscalDocuments, OnboardingPartKey.Partners })
+        foreach (var key in new[] { OnboardingPartKey.MessagesAi, OnboardingPartKey.FiscalDocuments, OnboardingPartKey.Partners, OnboardingPartKey.GuestRegistration })
         {
             Assert.Equal(OnboardingPartStates.NotAvailable, parts[key].Plan.State);
             Assert.False(parts[key].Reopenable);
@@ -389,7 +389,7 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         Assert.Equal(6, root.GetProperty("channels").GetArrayLength());
         Assert.Equal(["count", "status"], Names(root.GetProperty("channels")[0]));
         Assert.Equal("Draft", root.GetProperty("channels")[0].GetProperty("status").GetString());
-        Assert.Equal(11, root.GetProperty("parts").GetArrayLength());
+        Assert.Equal(12, root.GetProperty("parts").GetArrayLength());
         Assert.Equal(
             ["assist", "code", "deferrable", "done", "launchTarget", "needs", "order", "reason", "remindAt", "reopenable", "requires", "state", "total"],
             Names(root.GetProperty("parts")[0]));
@@ -437,7 +437,7 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
     {
         var service = Build(_db).Integration;
         var provided = OnboardingPartCatalog.Parts
-            .Where(p => p.Key is not (OnboardingPartKey.MessagesAi or OnboardingPartKey.FiscalDocuments or OnboardingPartKey.Partners))
+            .Where(p => p.Key is not (OnboardingPartKey.MessagesAi or OnboardingPartKey.FiscalDocuments or OnboardingPartKey.Partners or OnboardingPartKey.GuestRegistration))
             .ToList();
 
         var answers = new List<OnboardingPartReopen>();
@@ -508,7 +508,7 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
     {
         var service = Build(_db).Integration;
 
-        foreach (var key in new[] { OnboardingPartKey.MessagesAi, OnboardingPartKey.FiscalDocuments, OnboardingPartKey.Partners })
+        foreach (var key in new[] { OnboardingPartKey.MessagesAi, OnboardingPartKey.FiscalDocuments, OnboardingPartKey.Partners, OnboardingPartKey.GuestRegistration })
         {
             var refused = await Assert.ThrowsAsync<DomainRuleException>(() => service.ReopenPartAsync(_world.OrgId, _world.OwnerUserId, key, Ct));
             Assert.Equal(OnboardingIntegrationCodes.PartNotReopenable, refused.Code);
@@ -538,6 +538,7 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
             new NotProvidedPartEvaluator(OnboardingPartKey.MessagesAi),
             new NotProvidedPartEvaluator(OnboardingPartKey.FiscalDocuments),
             new NotProvidedPartEvaluator(OnboardingPartKey.Partners),
+            new NotProvidedPartEvaluator(OnboardingPartKey.GuestRegistration),
             new ConstantEvaluator(OnboardingPartKey.Activation, new PartFacts(true, 0, 2, OnboardingPartReasons.FlowsIncomplete)),
         ];
         var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, _clock);

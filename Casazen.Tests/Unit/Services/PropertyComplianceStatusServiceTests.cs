@@ -3,8 +3,10 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
+using Casazen.Core.Regulatory.GuestRegistration;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Data.Seeds;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
@@ -346,6 +348,197 @@ public class PropertyComplianceStatusServiceTests
         Assert.Equal(PropertyComplianceStatus.Active, stored.ComplianceStatus);
         Assert.Null(stored.ComplianceSuspendedAt);
         Assert.Single(_emails.Snapshot()); // only the suspension
+    }
+
+    // ---- E29/F02/US01/T02 (NF-129): the readiness of a Swiss property, the step «guest-registration» ------------------------------------
+
+    /// <summary>
+    /// Proof (data): the file for the police portal cannot be written without the structure number of the property, so a Ticino property that lacks it stays pending
+    /// with the reason; with the number it activates as before.
+    /// </summary>
+    [Fact]
+    public async Task Ticino_WithoutStructureNumber_IsPendingWithReason_Test()
+    {
+        await using var db = await CreateSwissDbAsync(nameof(Ticino_WithoutStructureNumber_IsPendingWithReason_Test));
+        var property = await SeedSwissAsync(db, PropertyComplianceStatus.Pending, "6900", "Lugano");
+        var service = CreateService(db);
+
+        var step = (await service.GetBlockingStepsAsync(await ReloadAsync(db, property.Id))).Single(s => s.Id == PropertyComplianceStatusService.GuestRegistrationStepId);
+
+        Assert.Equal("guest-registration", step.Id);
+        Assert.True(step.Blocker);
+        Assert.Equal("pending", step.Status);
+        Assert.Equal(["ticino_structure_id_missing"], step.Blockers.Select(b => b.Code));
+        Assert.Equal(GuestRegistrationReadiness.TicinoStructureIdMissing, step.Blockers.Single().Code);
+        Assert.Equal("TicinoStructureIdMissing", step.Blockers.Single().MessageKey);
+        Assert.Equal("ActivationStepGuestRegistration", step.LabelKey);
+
+        var refused = await service.ActivateAsync(property.Id, new HostActivation(property.OwnerId, true));
+        Assert.Equal(PropertyComplianceStatus.Pending, refused.Status);
+        Assert.Equal(["guest-registration"], refused.IncompleteSteps.Select(s => s.Id));
+        Assert.Equal(PropertyComplianceStatus.Pending, (await ReloadAsync(db, property.Id)).ComplianceStatus);
+
+        // With the number, normalised as the update stores it, the property takes the normal path.
+        await SetAsync(db, property.Id, p => p.TicinoStructureId = "NL-12345678");
+        var step2 = (await service.GetBlockingStepsAsync(await ReloadAsync(db, property.Id))).Single(s => s.Id == "guest-registration");
+        Assert.Equal(("complete", false, 0), (step2.Status, step2.Blocker, step2.Blockers.Count));
+        var activated = await service.ActivateAsync(property.Id, new HostActivation(property.OwnerId, true));
+        Assert.Equal(PropertyComplianceStatus.Active, activated.Status);
+    }
+
+    /// <summary>A Swiss property with a missing or ambiguous municipality is pending with the reason: its canton, and with it its regime, is not known.</summary>
+    [Theory]
+    [InlineData("6900", "Ticino")]
+    [InlineData("", "")]
+    [InlineData("20822", "Seveso")]
+    public async Task Swiss_WithAnAmbiguousOrMissingMunicipality_IsPendingWithReason(string postalCode, string city)
+    {
+        await using var db = await CreateSwissDbAsync($"{nameof(Swiss_WithAnAmbiguousOrMissingMunicipality_IsPendingWithReason)}-{postalCode}-{city}");
+        var property = await SeedSwissAsync(db, PropertyComplianceStatus.Pending, postalCode, city);
+
+        var step = (await CreateService(db).GetBlockingStepsAsync(await ReloadAsync(db, property.Id))).Single(s => s.Id == "guest-registration");
+
+        Assert.True(step.Blocker);
+        Assert.Equal(["swiss_municipality_missing"], step.Blockers.Select(b => b.Code));
+        Assert.Equal("SwissMunicipalityMissing", step.MessageKey);
+    }
+
+    /// <summary>A municipality the host chose counts without a postal code; it decides the canton, and so whether the structure number is asked.</summary>
+    [Fact]
+    public async Task Swiss_WithAStoredMunicipality_IsPlacedByIt_NotByThePostalCode()
+    {
+        await using var db = await CreateSwissDbAsync(nameof(Swiss_WithAStoredMunicipality_IsPlacedByIt_NotByThePostalCode));
+        var zurich = await SeedSwissAsync(db, PropertyComplianceStatus.Pending, "", "", municipality: "261");
+        var lugano = await SeedSwissAsync(db, PropertyComplianceStatus.Pending, "", "", municipality: "5192");
+        var service = CreateService(db);
+
+        var zurichStep = (await service.GetBlockingStepsAsync(await ReloadAsync(db, zurich.Id))).Single(s => s.Id == "guest-registration");
+        var luganoStep = (await service.GetBlockingStepsAsync(await ReloadAsync(db, lugano.Id))).Single(s => s.Id == "guest-registration");
+
+        Assert.Equal(("complete", false), (zurichStep.Status, zurichStep.Blocker));
+        Assert.Equal(["ticino_structure_id_missing"], luganoStep.Blockers.Select(b => b.Code));
+    }
+
+    /// <summary>Proof (data): no regression on the Italian rules: an Italian property (any case, or an old row with no country) has the four steps it always had and no step of the Swiss readiness.</summary>
+    [Theory]
+    [InlineData("IT", true)]
+    [InlineData("it", true)]
+    [InlineData(" it ", false)]
+    [InlineData("", false)]
+    public async Task Italian_Property_StatusUnchanged_Test(string country, bool wellFormedCountry)
+    {
+        await using var db = await CreateSwissDbAsync($"{nameof(Italian_Property_StatusUnchanged_Test)}-{country}");
+        var property = await SeedCompliantAsync(db, PropertyComplianceStatus.Pending);
+        await SetAsync(db, property.Id, p =>
+        {
+            p.Country = country;
+            p.PostalCode = "6900";
+            p.TicinoStructureId = null;
+        });
+        var service = CreateService(db);
+
+        var steps = await service.GetBlockingStepsAsync(await ReloadAsync(db, property.Id));
+
+        // The four steps it always had, whatever the postal code or the structure number say: the Swiss readiness is never asked of an Italian property.
+        Assert.Equal(["base-data", "cin", "documents", "safety"], steps.Select(s => s.Id));
+        if (!wellFormedCountry)
+            return; // A country that is not two letters is the old base-data blocker «country unknown» (UnknownCountry_IsExplainedAsAnActivationBlocker): unchanged.
+
+        Assert.All(steps, step => Assert.Equal("complete", step.Status));
+        Assert.Equal(PropertyComplianceStatus.Active, (await service.ActivateAsync(property.Id, new HostActivation(property.OwnerId, true))).Status);
+    }
+
+    /// <summary>
+    /// A gate on the way in, never on the way out: a property that is active keeps being so, and one that is suspended stays suspended until it is complete. The nightly
+    /// check and the re-evaluation after an edit never suspend a published house because its structure number is not entered yet; its step is a reminder.
+    /// </summary>
+    [Fact]
+    public async Task ActiveSwissProperty_WithoutStructureNumber_IsNeverSuspended_ItsStepIsAReminder()
+    {
+        await using var db = await CreateSwissDbAsync(nameof(ActiveSwissProperty_WithoutStructureNumber_IsNeverSuspended_ItsStepIsAReminder));
+        var property = await SeedSwissAsync(db, PropertyComplianceStatus.Active, "6900", "Lugano");
+        var service = CreateService(db);
+
+        var step = (await service.GetBlockingStepsAsync(await ReloadAsync(db, property.Id))).Single(s => s.Id == "guest-registration");
+        Assert.Equal(("warning", false), (step.Status, step.Blocker));
+        Assert.Equal(["ticino_structure_id_missing"], step.Blockers.Select(b => b.Code));
+
+        var check = await service.ReevaluateAsync(property.Id);
+        var run = await service.RecalculateAllAsync(dryRun: false);
+
+        Assert.Equal((PropertyComplianceStatus.Active, false, false), (check.Status, check.Suspended, check.HostNotified));
+        Assert.Equal((1, 0, 0, 0), (run!.Checked, run.Suspended, run.Reactivated, run.HostsNotified));
+        Assert.Empty(_emails.Snapshot());
+        Assert.Equal(PropertyComplianceStatus.Active, (await ReloadAsync(db, property.Id)).ComplianceStatus);
+    }
+
+    [Fact]
+    public async Task SuspendedSwissProperty_WithoutStructureNumber_StaysSuspended_UntilItIsSet()
+    {
+        await using var db = await CreateSwissDbAsync(nameof(SuspendedSwissProperty_WithoutStructureNumber_StaysSuspended_UntilItIsSet));
+        var property = await SeedSwissAsync(db, PropertyComplianceStatus.Suspended, "6900", "Lugano");
+        var service = CreateService(db);
+
+        var stays = await service.ReevaluateAsync(property.Id);
+        Assert.Equal(PropertyComplianceStatus.Suspended, stays.Status);
+        Assert.Equal(["guest-registration"], stays.IncompleteSteps.Select(s => s.Id));
+
+        await SetAsync(db, property.Id, p => p.TicinoStructureId = "NL-12345678");
+        var back = await service.ReevaluateAsync(property.Id);
+        Assert.Equal((PropertyComplianceStatus.Active, true), (back.Status, back.Reactivated));
+    }
+
+    /// <summary>The list of the host reads the same steps for many properties as for one (two queries for the places, whatever their number).</summary>
+    [Fact]
+    public async Task GetBlockingStepsManyAsync_SaysForEveryPropertyWhatTheSingleReadSays()
+    {
+        await using var db = await CreateSwissDbAsync(nameof(GetBlockingStepsManyAsync_SaysForEveryPropertyWhatTheSingleReadSays));
+        var ticino = await SeedSwissAsync(db, PropertyComplianceStatus.Pending, "6900", "Lugano");
+        var open = await SeedSwissAsync(db, PropertyComplianceStatus.Pending, "6900", "Ticino");
+        var done = await SeedSwissAsync(db, PropertyComplianceStatus.Pending, "8001", "Zürich");
+        var italian = await SeedCompliantAsync(db, PropertyComplianceStatus.Pending);
+        var service = CreateService(db);
+        var properties = new List<Property>
+        {
+            await ReloadAsync(db, ticino.Id), await ReloadAsync(db, open.Id), await ReloadAsync(db, done.Id), await ReloadAsync(db, italian.Id),
+        };
+
+        var many = await service.GetBlockingStepsManyAsync(properties);
+
+        Assert.Equal(properties.Count, many.Count);
+        foreach (var property in properties)
+        {
+            var single = await service.GetBlockingStepsAsync(property);
+            Assert.Equal(
+                single.Select(s => (s.Id, s.Status, s.Blocker, string.Join('|', s.Blockers.Select(b => b.Code)))),
+                many[property.Id].Select(s => (s.Id, s.Status, s.Blocker, string.Join('|', s.Blockers.Select(b => b.Code)))));
+        }
+
+        Assert.DoesNotContain(many[italian.Id], s => s.Id == "guest-registration");
+        Assert.Equal(["swiss_municipality_missing"], many[open.Id].Single(s => s.Id == "guest-registration").Blockers.Select(b => b.Code));
+    }
+
+    private static async Task<AppDbContext> CreateSwissDbAsync(string name)
+    {
+        var db = CreateDb(name);
+        await SwissMunicipalitySeed.ApplyAsync(db, SwissMunicipalitySeed.ReadEmbedded()!, TimeProvider.System, CancellationToken.None);
+        return db;
+    }
+
+    /// <summary>A property in Switzerland that has what the activation asks of a Swiss one (base data, no CIN, no document) with the place given.</summary>
+    private static async Task<Property> SeedSwissAsync(
+        AppDbContext db, PropertyComplianceStatus status, string postalCode, string city, string? municipality = null)
+    {
+        var property = await SeedCompliantAsync(db, status);
+        await SetAsync(db, property.Id, p =>
+        {
+            p.Country = "CH";
+            p.CinCode = null;
+            p.PostalCode = postalCode;
+            p.City = string.IsNullOrEmpty(city) ? "Lugano" : city;
+            p.SwissMunicipalityCode = municipality;
+        });
+        return property;
     }
 
     private PropertyComplianceStatusService CreateService(AppDbContext db, bool notifyOnFirstCheck = false) =>

@@ -1,4 +1,5 @@
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Regulatory.GuestRegistration;
 
 namespace Casazen.Core.Models;
 
@@ -104,6 +105,18 @@ public static class OnboardingPartReasons
     /// </summary>
     public const string ConnectorOff = "connector_off";
 
+    /// <summary>
+    /// A Swiss property has no known municipality (none chosen, or the postal code and the city leave several open): without it its canton, and the rules of
+    /// its canton, are not known (E29/F02/US01/T02, part «Guest registration»). The same code as the step <c>guest-registration</c> of the activation.
+    /// </summary>
+    public const string SwissMunicipalityMissing = GuestRegistrationReadiness.MunicipalityMissing;
+
+    /// <summary>A property of canton Ticino has no valid structure number, so the file for the police portal cannot be written (E29/F02/US01/T02).</summary>
+    public const string TicinoStructureIdMissing = GuestRegistrationReadiness.TicinoStructureIdMissing;
+
+    /// <summary>The organization has no active Swiss property the caller reaches: the part «Guest registration» does not apply (E29/F02/US01/T02).</summary>
+    public const string NoSwissProperty = "no_swiss_property";
+
     /// <summary>The caller reaches no short-rent property that is active: there is nothing to count yet.</summary>
     public const string NoProperty = "no_property";
 
@@ -124,6 +137,16 @@ public static class OnboardingPartReasons
 /// <param name="Reason">One of <see cref="OnboardingPartReasons"/> when the part is not complete; <c>null</c> when it is.</param>
 public sealed record PartFacts(bool Provided, int Done, int Total, string? Reason)
 {
+    /// <summary>
+    /// What is missing, property by property, for the parts that count things on the caller's properties and can say which ones lack what
+    /// (E29/F02/US01/T02: the part «Guest registration»); empty for every other part and for a part that is done. At most
+    /// <see cref="MaxMissingItems"/>: <see cref="Total"/> minus <see cref="Done"/> says how many lack something in all.
+    /// </summary>
+    public IReadOnlyList<PartMissingItem> Missing { get; init; } = [];
+
+    /// <summary>The most items of <see cref="Missing"/> a part lists (the plan is read often: a portfolio of hundreds of houses is not listed whole).</summary>
+    public const int MaxMissingItems = 50;
+
     /// <summary>True when the part is provided, has something to do, and all of it is done: the only way a part is done.</summary>
     public bool IsComplete => Provided && Total > 0 && Done >= Total;
 
@@ -138,8 +161,17 @@ public sealed record PartFacts(bool Provided, int Done, int Total, string? Reaso
         new(true, done, total, done >= total && total > 0 ? null : reason ?? OnboardingPartReasons.NoProperty);
 }
 
-/// <summary>The plan of the activation of an org (NF-104, <c>GET api/onboarding/plan</c>): the eleven parts, «What you need», the path and whether the org is activated.</summary>
-/// <param name="Parts">The eleven parts in the order of the plan.</param>
+/// <summary>
+/// One thing a part still lacks on one property (E29/F02/US01/T02): which property, why (a stable reason code of <see cref="OnboardingPartReasons"/>) and
+/// where to reopen the wizard (the code of its step: <c>guest-registration</c>, the step of the activation of the property). Ids and codes only.
+/// </summary>
+/// <param name="PropertyId">The property that lacks it (one the caller reaches).</param>
+/// <param name="Reason">One of <see cref="OnboardingPartReasons"/>: <see cref="OnboardingPartReasons.SwissMunicipalityMissing"/> or <see cref="OnboardingPartReasons.TicinoStructureIdMissing"/>.</param>
+/// <param name="Code">The step of the wizard the frontend reopens for this property.</param>
+public sealed record PartMissingItem(Guid PropertyId, string Reason, string Code);
+
+/// <summary>The plan of the activation of an org (NF-104, <c>GET api/onboarding/plan</c>): the twelve parts, «What you need», the path and whether the org is activated.</summary>
+/// <param name="Parts">The twelve parts in the order of the plan.</param>
 /// <param name="Needs">The five codes of «What you need» (<c>OnboardingNeedCodes.All</c>).</param>
 /// <param name="Path">The connected path of UX-10.</param>
 /// <param name="Activated">True when the part <see cref="OnboardingPartKey.Activation"/> is done: every property reached has every available flow active.</param>
@@ -176,7 +208,11 @@ public sealed record OnboardingPlanPart(
     IReadOnlyList<string> Needs,
     DateTime? RemindAt,
     OnboardingAssistInfo? Assist,
-    string LaunchTarget);
+    string LaunchTarget)
+{
+    /// <summary>What the part still lacks, property by property (see <see cref="PartFacts.Missing"/>); empty for every part that does not say.</summary>
+    public IReadOnlyList<PartMissingItem> Missing { get; init; } = [];
+}
 
 /// <summary>An open «Do it for me» request of a part (NF-107): its id, where it stands, what it is about and when it was asked. No person, no note.</summary>
 public sealed record OnboardingAssistInfo(Guid Id, OnboardingAssistStatus Status, string Context, DateTime RequestedAt);

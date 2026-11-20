@@ -13,7 +13,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// The plan of the activation of CasaZen with Octorate (NF-104, NF-10, ONB-01, UX-06, UX-10, E10/F01/US01/T03): the eleven parts with the state
+/// The plan of the activation of CasaZen with Octorate (NF-104, NF-10, ONB-01, UX-06, UX-10, E10/F01/US01/T03): the twelve parts with the state
 /// of each, derived on every read from the stored facts, the connected path of UX-10, and the host's «Do it later» (defer), «Save and exit»
 /// (exit) and resume of a part, each with its "To do".
 /// </summary>
@@ -34,7 +34,7 @@ public sealed class OnboardingPlanController(
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
     /// <summary>The plan of the caller's org over the properties it reaches.</summary>
-    /// <response code="200">The eleven parts, «What you need», the path and <c>activated</c>.</response>
+    /// <response code="200">The twelve parts, «What you need», the path and <c>activated</c>.</response>
     /// <response code="403">The caller has no org, or reaches nothing in it.</response>
     [HttpGet("plan")]
     [Authorize(Policy = CasazenPolicies.SharedPropertyRead)]

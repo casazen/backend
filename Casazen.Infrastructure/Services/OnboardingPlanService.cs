@@ -76,7 +76,11 @@ public sealed class OnboardingPlanService(
                 definition.Needs,
                 intent?.ActivityId is not null ? intent.RemindAt : null,
                 assist,
-                definition.LaunchTarget));
+                definition.LaunchTarget)
+            {
+                // What the part lacks, property by property, only while it is not done (a part that does not say lists nothing).
+                Missing = facts.Provided && !facts.IsComplete ? facts.Missing : [],
+            });
         }
 
         return new OnboardingPlan(

@@ -4,9 +4,11 @@ using Casazen.Core.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Data.Seeds;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -119,6 +121,41 @@ public class ComplianceMissingServiceTests
         Assert.Equal(
             [new ComplianceMissing(ComplianceMissingCodes.ActivationNotConfirmed)],
             Assert.Single(described.PropertiesPending.Items).Missing);
+    }
+
+    /// <summary>
+    /// E29/F02/US01/T02 (NF-129): a Swiss property that is not active lists in the <c>Missing</c> of its item what its guest registration lacks, the code of the blocker with the
+    /// step as the field, in the section that already exists (no new cockpit action); one with everything set has only the confirmation of the activation left.
+    /// </summary>
+    [Fact]
+    public async Task Property_ASwissOneListsWhatItsGuestRegistrationLacks_InTheSectionThatExists()
+    {
+        await using var db = HostScopeScenario.NewInMemoryDb();
+        await SwissMunicipalitySeed.ApplyAsync(db, SwissMunicipalitySeed.ReadEmbedded()!, TimeProvider.System, CancellationToken.None);
+        var withoutNumber = await SeedSwissPropertyAsync(db, "Casa Lugano", "6900", "Lugano");
+        var withoutPlace = await SeedSwissPropertyAsync(db, "Casa Senza Comune", "6900", "Ticino");
+        var ready = await SeedSwissPropertyAsync(db, "Casa Zurigo", "8001", "Zürich");
+
+        var described = await Service(db).DescribeAsync(Summary(properties: Section(PropertyItem(withoutNumber), PropertyItem(withoutPlace), PropertyItem(ready))));
+
+        var items = described.PropertiesPending.Items;
+        Assert.Equal([new ComplianceMissing("ticino_structure_id_missing", "guest-registration")], items[0].Missing);
+        Assert.Equal([new ComplianceMissing("swiss_municipality_missing", "guest-registration")], items[1].Missing);
+        Assert.Equal([new ComplianceMissing(ComplianceMissingCodes.ActivationNotConfirmed)], items[2].Missing);
+        Assert.All(items, item => Assert.Equal(ComplianceCockpitAction.ActivateProperty, item.Action));
+    }
+
+    private static async Task<Property> SeedSwissPropertyAsync(AppDbContext db, string name, string postalCode, string city)
+    {
+        var property = await SeedPropertyAsync(db, name);
+        var stored = await db.Properties.SingleAsync(p => p.Id == property.Id);
+        stored.Country = "CH";
+        stored.CinCode = null;
+        stored.PostalCode = postalCode;
+        stored.City = city;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return property;
     }
 
     [Fact]

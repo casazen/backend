@@ -5,6 +5,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.OrgTeam;
 using Casazen.Core.Regulatory;
+using Casazen.Core.Regulatory.GuestRegistration;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
@@ -40,9 +41,13 @@ public class PropertyComplianceStatusService(
     IOptions<ComplianceOptions> complianceOptions,
     IActivityLog activityLog,
     ILogger<PropertyComplianceStatusService> logger,
-    TimeProvider? timeProvider = null) : IPropertyComplianceStatusService
+    TimeProvider? timeProvider = null,
+    IPropertySwissPlaceResolver? swissPlaces = null) : IPropertyComplianceStatusService
 {
     private const string RunLockKey = "property-compliance-check";
+
+    /// <summary>The id of the step of a Swiss property that says whether its guests can be notified (E29/F02/US01/T02, NF-129).</summary>
+    public const string GuestRegistrationStepId = "guest-registration";
 
     /// <summary>
     /// The ids of the compliance steps that are reminders and still open (the documents, the safety checklist): what a host
@@ -52,6 +57,9 @@ public class PropertyComplianceStatusService(
         steps.Where(s => !s.Blocker && s.Status != "complete").Select(s => s.Id).ToList();
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    // The one resolver of the place of a Swiss property (E29/F01); a service built by hand without it reads the same directory through the context.
+    private readonly IPropertySwissPlaceResolver _swissPlaces = swissPlaces ?? new PropertySwissPlaceResolver(db);
 
     public async Task<IReadOnlyList<ComplianceActivationStep>> GetBlockingStepsAsync(
         Property property,
@@ -78,6 +86,12 @@ public class PropertyComplianceStatusService(
             .FirstOrDefaultAsync(c => c.PropertyId == property.Id, cancellationToken);
 
         var steps = BuildBlockingSteps(property, comuneListImported, uploadedTypes, safetyChecklist);
+        if (SwissPlace.IsSwissCountry(property.Country))
+        {
+            var place = await _swissPlaces.ResolveAsync(property, cancellationToken);
+            steps = [.. steps, BuildGuestRegistrationStep(property, place)];
+        }
+
         if (!property.IsActive && await db.OctorateListingMappings.AnyAsync(m => m.OrgId == property.OrgId &&
                 m.PropertyId == property.Id && m.Status == OctorateMappingStatus.Confirmed, cancellationToken))
             return RequireDraftReview(steps);
@@ -122,6 +136,12 @@ public class PropertyComplianceStatusService(
                 .Where(m => m.PropertyId != null && draftIds.Contains(m.PropertyId.Value) && m.Status == OctorateMappingStatus.Confirmed)
                 .Select(m => m.PropertyId!.Value).ToListAsync(cancellationToken)).ToHashSet();
 
+        // The places of the Swiss properties, all in the queries of the one resolver (two whatever their number).
+        var swiss = properties.Where(p => SwissPlace.IsSwissCountry(p.Country)).ToList();
+        var placeOf = swiss.Count == 0
+            ? new Dictionary<Guid, SwissPlace>()
+            : (await _swissPlaces.ResolveManyAsync([.. swiss.Select(SwissPlaceLookup.From)], cancellationToken)).ToDictionary();
+
         foreach (var property in properties)
         {
             var propertySteps = BuildBlockingSteps(
@@ -129,11 +149,49 @@ public class PropertyComplianceStatusService(
                 comuneListImported,
                 typesOf.GetValueOrDefault(property.Id) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 checklistOf.GetValueOrDefault(property.Id));
+            if (SwissPlace.IsSwissCountry(property.Country))
+                propertySteps = [.. propertySteps, BuildGuestRegistrationStep(property, placeOf.GetValueOrDefault(property.Id))];
             stepsOf[property.Id] = importedDraftIds.Contains(property.Id) ? RequireDraftReview(propertySteps) : propertySteps;
         }
 
         return stepsOf;
     }
+
+    /// <summary>
+    /// The step «Guest registration» of a Swiss property (E29/F02/US01/T02, NF-129): whether its municipality is known and, in Ticino, whether it has the
+    /// structure number the police file starts with (<see cref="GuestRegistrationReadiness"/>, the one definition). It stands for every Swiss property,
+    /// complete or not, so the activation wizard can show the card of the property's regime; an Italian property has none (the Italian rules are untouched).
+    /// </summary>
+    /// <remarks>
+    /// <para><b>A gate on the way in, never on the way out.</b> For a property that is not <see cref="PropertyComplianceStatus.Active"/> (pending, or suspended
+    /// for another reason) what is missing blocks the activation: the property stays pending with the reason, which the cockpit lists in the <c>Missing</c> of
+    /// <c>propertiesPending</c> (the code of the blocker, the step id as the field). For an active property it is a reminder (a warning that blocks nothing),
+    /// so the nightly check and every re-evaluation after an edit never suspend a published house because its structure number is not entered yet: the
+    /// onboarding part «Guest registration» and <c>GET api/properties/{id}/guest-registration</c> say what it still lacks.</para>
+    /// <para>No flag and no read of the host's setting: the readiness is the same whatever <c>Features:GuestRegistrationRegimes</c> says.</para>
+    /// </remarks>
+    private static ComplianceActivationStep BuildGuestRegistrationStep(Property property, SwissPlace? place)
+    {
+        var missing = GuestRegistrationReadiness.MissingOf(property.Country, place, property.TicinoStructureId);
+        if (missing.Count == 0)
+        {
+            return new ComplianceActivationStep(GuestRegistrationStepId, "Notifica degli ospiti", "complete", false)
+            {
+                LabelKey = "ActivationStepGuestRegistration",
+            };
+        }
+
+        var blocks = property.ComplianceStatus != PropertyComplianceStatus.Active;
+        return new ComplianceActivationStep(GuestRegistrationStepId, "Notifica degli ospiti", blocks ? "pending" : "warning", blocks)
+        {
+            LabelKey = "ActivationStepGuestRegistration",
+            MessageKey = GuestRegistrationMessageKey(missing[0]),
+            Blockers = [.. missing.Select(code => new ActivationBlocker(code, GuestRegistrationMessageKey(code)))],
+        };
+    }
+
+    private static string GuestRegistrationMessageKey(string reason) =>
+        reason == GuestRegistrationReadiness.TicinoStructureIdMissing ? "TicinoStructureIdMissing" : "SwissMunicipalityMissing";
 
     private static IReadOnlyList<ComplianceActivationStep> RequireDraftReview(IReadOnlyList<ComplianceActivationStep> steps) =>
         steps.Select(step => step.Status == "complete" ? step : step with { Blocker = true }).ToList();

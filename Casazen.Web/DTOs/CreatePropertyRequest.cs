@@ -203,6 +203,16 @@ public class CreatePropertyRequest
     public string? CinCode { get; set; }
 
     /// <summary>
+    /// The «Numero identificativo LEAR / NO-LEAR» of the structure for the Ticino police portal (E29/F02/US01/T02, NF-129, casazen/backend#979), e.g.
+    /// <c>NL-12345678</c>, with the same validation and normalisation as the update: spaces are ignored and the value is stored uppercase (see
+    /// <c>TicinoStructureId</c>); 400 <c>validation_error</c> when it is not 3 to 20 letters and digits with single hyphens; <c>null</c>, blank or left
+    /// out = none. It is meaningful only for a property in Ticino.
+    /// </summary>
+    [MaxLength(40, ErrorMessage = Casazen.Core.Regulatory.TicinoStructureId.InvalidFormatMessageKey)]
+    [TicinoStructureId]
+    public string? TicinoStructureId { get; set; }
+
+    /// <summary>
     /// IANA timezone identifier used for booking date calculations
     /// (e.g. <c>Europe/Rome</c>). Defaults to <c>Europe/Rome</c>.
     /// </summary>
@@ -275,6 +285,7 @@ public class CreatePropertyRequest
         QuietHoursTo = QuietHoursTo,
         ExtraGuestFeePerNight = ExtraGuestFeePerNight,
         CinCode = CinCode,
+        TicinoStructureId = Casazen.Core.Regulatory.TicinoStructureId.Normalize(TicinoStructureId),
         Timezone = Timezone,
         CancellationPolicyId = CancellationPolicyId,
         CancellationFullRefundHours = CancellationFullRefundHours,
