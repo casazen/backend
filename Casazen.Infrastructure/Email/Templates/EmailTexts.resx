@@ -868,7 +868,10 @@
     <value>Le date del soggiorno sono cambiate: la pulizia è già stata presa in carico, decidi se spostarla o annullarla</value>
   </data>
   <data name="TodoReason_CleaningVatToState" xml:space="preserve">
-    <value>La pulizia da riaddebitare al proprietario non ha l'IVA indicata: indicala (e l'importo, se manca) prima di chiudere il rendiconto</value>
+    <value>Pulizia da riaddebitare al proprietario: la ditta di pulizie ha applicato l'IVA su questa fattura?</value>
+  </data>
+  <data name="TodoReason_CleaningVatToStateAgain" xml:space="preserve">
+    <value>Il mese è chiuso e l'IVA di questa pulizia non è ancora indicata: la ditta di pulizie ha applicato l'IVA su questa fattura?</value>
   </data>
   <data name="OwnerLedger_CleaningRecharge" xml:space="preserve">
     <value>Pulizia del {0}</value>

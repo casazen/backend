@@ -170,6 +170,12 @@ public class AppDbContext(
     public DbSet<TrustedSupplier> TrustedSuppliers { get; set; } = null!;
 
     /// <summary>
+    /// What an organization remembers of the VAT of a cleaning company («Ricorda per questa ditta», FIX/BE-CLEANING-VAT): tenant-owned, one row for each
+    /// organization and company. Only <c>CleaningVatService</c> writes it; the readers of the cleaning VAT read it with the org named.
+    /// </summary>
+    public DbSet<SupplierVatDefault> SupplierVatDefaults { get; set; } = null!;
+
+    /// <summary>
     /// Internal activities performed by staff on properties (NF-22): cleaning, maintenance, check-in assistance.
     /// Staff sees only activities within their perimeter (PropertyMemberAccess).
     /// </summary>
@@ -1752,6 +1758,10 @@ public class AppDbContext(
 
         // The lease a long-rent request is about (LR-03c): a link, set only when the landlord asks from the sheet of the contract.
         modelBuilder.ApplyConfiguration(new ServiceRequestLeaseConfiguration());
+
+        // The VAT of the company of a cleaning recharged to the owner (FIX/BE-CLEANING-VAT): the answer on the request, and what an organization remembers of a company.
+        modelBuilder.ApplyConfiguration(new ServiceRequestSupplierVatConfiguration());
+        modelBuilder.ApplyConfiguration(new SupplierVatDefaultConfiguration());
 
         // Whether an org's requests also go to backup suppliers: on for every org that exists (the rule is general), so the migration gives
         // the existing rows true. EF itself always writes the value of the entity: left to generate it, EF would take an explicit false for

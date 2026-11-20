@@ -86,8 +86,14 @@ public sealed partial class OwnerAccountingService
         if (left <= 0m)
             return null;
 
-        // The whole VAT left with the note that completes the credit (the cents of the partial notes included), else the VAT of the note.
-        var amount = invoice.CreditedInFull ? left : Math.Min(creditNote.VatAmount, left);
+        // The whole VAT left with the note that completes the credit (the cents of the partial notes included), else the VAT of the note. An invoice whose cleaning recharge
+        // contains the VAT of the company (FIX/BE-CLEANING-VAT) posted only the VAT of its other lines on top: a partial note gives back its share of that VAT, never the
+        // VAT the ledger line of the cleaning holds, which the owner was never charged on top.
+        var postedVat = -posted.Amount;
+        var noteVat = invoice.VatAmount > postedVat
+            ? Math.Round(creditNote.VatAmount * postedVat / invoice.VatAmount, 2, MidpointRounding.AwayFromZero)
+            : creditNote.VatAmount;
+        var amount = invoice.CreditedInFull ? left : Math.Min(noteVat, left);
         if (amount <= 0m)
             return null;
 

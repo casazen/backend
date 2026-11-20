@@ -150,6 +150,58 @@ public static class FiscalDocumentTotals
     }
 
     /// <summary>
+    /// The amounts of an owner invoice of a mandate «+ IVA» some of whose lines already contain their VAT (FIX/BE-CLEANING-VAT: the recharge of a cleaning whose company
+    /// applied VAT, at the gross the company invoiced): the lines that do not contain it are computed as <see cref="FromNet"/> computes them (the net kept to the cent, the VAT
+    /// added), the ones that do as <see cref="FromGross"/> computes them (the VAT taken out, <c>gross × rate / (100 + rate)</c>, so the line is its gross to the cent), each
+    /// kind grouped by rate and nature on its own. The VAT summary adds the two kinds by rate and nature (the stored VAT of the lines, as <see cref="SummaryOf"/> prints it); the
+    /// stamp duty and the total are those of the whole document. The lines keep the order given; every line is positive.
+    /// </summary>
+    public static FiscalDocumentAmounts FromNetAndGross(IReadOnlyList<FiscalDocumentLedgerLine> lines, FiscalStampDutyRule? stamp)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        if (lines.Count == 0 || lines.Any(l => l.Amount <= 0m || l.Quantity <= 0m || l.VatRatePercent is < 0m or > 100m))
+            throw new DomainRuleException(AmountsInvalidCode, "FiscalDocumentAmountsInvalid");
+
+        var computed = new FiscalDocumentLineAmounts[lines.Count];
+        var parts = new List<FiscalDocumentVatSummary>();
+        var added = lines.Select((line, index) => (Line: line, Index: index)).Where(x => !x.Line.ContainsVat).ToList();
+        if (added.Count > 0)
+        {
+            var part = FromNet(
+                added.Select(x => new FiscalDocumentNetLine(x.Line.Description, x.Line.Quantity, x.Line.Amount, x.Line.VatRatePercent, x.Line.NatureCode, x.Line.LineType)).ToList(),
+                null);
+            for (var i = 0; i < added.Count; i++)
+                computed[added[i].Index] = part.Lines[i] with { LineNumber = added[i].Index + 1 };
+            parts.AddRange(part.Summary);
+        }
+
+        var contained = lines.Select((line, index) => (Line: line, Index: index)).Where(x => x.Line.ContainsVat).ToList();
+        if (contained.Count > 0)
+        {
+            var part = FromGross(
+                contained.Select(x => new FiscalDocumentGrossLine(x.Line.Description, x.Line.Quantity, x.Line.Amount, x.Line.VatRatePercent, x.Line.NatureCode, x.Line.LineType)).ToList(),
+                null);
+            for (var i = 0; i < contained.Count; i++)
+                computed[contained[i].Index] = part.Lines[i] with { LineNumber = contained[i].Index + 1 };
+            parts.AddRange(part.Summary);
+        }
+
+        var summary = parts
+            .GroupBy(s => (s.VatRatePercent, s.NatureCode))
+            .OrderByDescending(g => g.Key.VatRatePercent)
+            .ThenBy(g => g.Key.NatureCode, StringComparer.Ordinal)
+            .Select(g => new FiscalDocumentVatSummary(g.Key.VatRatePercent, g.Key.NatureCode, g.Sum(s => s.TaxableAmount), g.Sum(s => s.Tax)))
+            .ToList();
+        var withoutVat = summary.Where(s => s.VatRatePercent == 0m).Sum(s => s.TaxableAmount);
+        var stampDuty = stamp is not null && withoutVat > stamp.Threshold ? stamp.Amount : 0m;
+        var taxableBase = summary.Sum(s => s.TaxableAmount);
+        var vatAmount = summary.Sum(s => s.Tax);
+        var total = taxableBase + vatAmount + (stamp?.ChargedToRecipient == true ? stampDuty : 0m);
+
+        return new FiscalDocumentAmounts(computed, summary, taxableBase, vatAmount, stampDuty, total, RuleVersion);
+    }
+
+    /// <summary>
     /// The VAT summary of stored lines, one row per rate and nature code (the highest rate first): the taxable amount is the sum of the nets, the VAT the
     /// sum of the stored VAT of the lines. The lines written before their VAT was stored (<c>VatAmount</c> <c>null</c>) take the stored VAT of the
     /// document when it has one taxed rate, and <c>taxable × rate</c> otherwise (the computation of those documents).
@@ -227,6 +279,26 @@ public sealed record FiscalDocumentNetLine(
     decimal VatRatePercent,
     string? NatureCode,
     FiscalLineType LineType);
+
+/// <summary>
+/// A line of an owner invoice of a mandate «+ IVA» as the ledger has it (<see cref="FiscalDocumentTotals.FromNetAndGross"/>): a taxable amount the VAT is added to or, with
+/// <paramref name="ContainsVat"/>, an amount that already contains its VAT (the gross a cleaning company invoiced with VAT, FIX/BE-CLEANING-VAT).
+/// </summary>
+/// <param name="Description">What the line is (no personal data of a guest).</param>
+/// <param name="Quantity">The quantity (1 for the lines of an owner invoice).</param>
+/// <param name="Amount">The amount of the line as the ledger has it.</param>
+/// <param name="VatRatePercent">The VAT rate of the line in percent; 0 for an operation without VAT.</param>
+/// <param name="NatureCode">The nature code of an operation without VAT.</param>
+/// <param name="LineType">What the line is.</param>
+/// <param name="ContainsVat">Whether <paramref name="Amount"/> contains the VAT (taken out of it) instead of being the taxable amount (the VAT added).</param>
+public sealed record FiscalDocumentLedgerLine(
+    string Description,
+    decimal Quantity,
+    decimal Amount,
+    decimal VatRatePercent,
+    string? NatureCode,
+    FiscalLineType LineType,
+    bool ContainsVat);
 
 /// <summary>A line as the guest pays it (VAT included).</summary>
 /// <param name="Description">What the line is (no personal data).</param>
