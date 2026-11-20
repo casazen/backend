@@ -19,7 +19,8 @@ namespace Casazen.Infrastructure.Services;
 /// and the line it reverses cancel out), grouped: the commission of each property; one recharge for each flat fee of a stay, each cleaning request recharged at its cost with its
 /// reference (E14/F01/US02/T01), each approved charge, the card fees of each property passed on by the mandate and the commissions of each portal the agency holds the account
 /// of (⚖ I10, I11); one expense advanced for each expense of the owner (art. 15, outside the VAT). The VAT of each line comes from the rule of the last day of the month by
-/// line type.</item>
+/// line type, except the recharge of a cleaning whose company's VAT the agency stated (FIX/BE-CLEANING-VAT, <see cref="CleaningVatRules.RechargeVatOf"/>): «Sì» carries the
+/// company's rate contained in the gross of the ledger (never added on top, never posted to the ledger again), «No» carries none; «Non lo so» is the rule's, as before.</item>
 /// <item><b>The VAT of the mandate (⚖ R4)</b> is read from the mandate of the owner in force on the last day of the month (the default «+ IVA» without one).</item>
 /// <item><b>The issue</b> makes the lines again from the version and refuses a draft whose money is no longer the version's (409 <c>document_draft_outdated</c>);
 /// then the issue of the fiscal documents numbers it and posts its VAT on top to the ledger, once.</item>
@@ -241,8 +242,11 @@ public sealed class OwnerInvoiceService(
         string? Province,
         string? Country);
 
-    /// <summary>A line before its VAT: what it is, where it goes in the invoice, its description and its amount as the ledger has it.</summary>
-    private sealed record InvoiceLine(FiscalLineType Type, int Order, string Description, decimal Amount);
+    /// <summary>
+    /// A line before its VAT: what it is, where it goes in the invoice, its description and its amount as the ledger has it, and the VAT it carries instead of the rule's
+    /// (<see cref="CleaningVatRules.RechargeVatOf"/>: the recharge of a cleaning whose company's VAT the agency stated), <c>null</c> for the rule's.
+    /// </summary>
+    private sealed record InvoiceLine(FiscalLineType Type, int Order, string Description, decimal Amount, CleaningRechargeVat? Vat = null);
 
     /// <summary>What the descriptions of the lines name: the properties and the stays of the ledger lines.</summary>
     private sealed record LineFacts(IReadOnlyDictionary<Guid, string> Properties, IReadOnlyDictionary<Guid, StayFacts> Stays);
@@ -263,7 +267,20 @@ public sealed class OwnerInvoiceService(
             .ToListAsync(ct);
         var facts = await LineFactsAsync(version.OrgId, entries, ct);
         var holderMap = await holders.ForOrgAsync(version.OrgId, ct);
-        var lines = LinesOf(entries, facts, holderMap, FiscalDocumentPdfs.PeriodLabel(version.PeriodYear, version.PeriodMonth));
+
+        // FIX/BE-CLEANING-VAT: the VAT of the cleaning companies the agency stated, read once for the cleaning requests of the version (a staff cleaning has none).
+        var cleanings = entries
+            .Where(e => e.SourceType == OwnerLedgerSourceType.CleaningRequest && e.SourceId is not null)
+            .Select(e => e.SourceId!.Value)
+            .Distinct()
+            .ToList();
+        var stated = await CleaningSupplierVatReader.ReadAsync(db, version.OrgId, cleanings, ct);
+        var lines = LinesOf(
+            entries,
+            facts,
+            holderMap,
+            FiscalDocumentPdfs.PeriodLabel(version.PeriodYear, version.PeriodMonth),
+            request => request is { } id ? CleaningVatRules.RechargeVatOf(stated.GetValueOrDefault(id), rule) : null);
         if (lines.Count == 0)
             throw new DomainRuleException(OwnerInvoiceErrors.NothingToInvoice, "OwnerInvoiceNothingToInvoice");
 
@@ -275,14 +292,22 @@ public sealed class OwnerInvoiceService(
             ?? mandates.Where(m => OwnerMandateRules.Covers(m, last)).MaxBy(m => m.ValidFrom);
         var includesVat = mandate?.CommissionIncludesVat ?? false;
 
+        // The VAT of each line: the rule's for its type, or the one a stated cleaning carries. A cleaning whose company applied VAT contains it in the gross of the ledger: with
+        // «+ IVA» its VAT is taken out of it while the VAT of the other lines is added (FIX/BE-CLEANING-VAT); with «IVA inclusa» every line contains its VAT anyway.
         var ordered = lines.OrderBy(l => l.Order).ThenBy(l => l.Description, StringComparer.Ordinal).ToList();
+        var rates = ordered.Select(l => l.Vat is { } own ? new FiscalLineRate(own.Percent, own.NatureCode) : rule.RateOf(l.Type)).ToList();
+        var anyContained = ordered.Any(l => l.Vat is { Contained: true });
         var amounts = includesVat
             ? FiscalDocumentTotals.FromGross(
-                ordered.Select(l => new FiscalDocumentGrossLine(l.Description, 1m, l.Amount, rule.RateOf(l.Type).Percent, rule.RateOf(l.Type).NatureCode, l.Type)).ToList(),
+                ordered.Select((l, i) => new FiscalDocumentGrossLine(l.Description, 1m, l.Amount, rates[i].Percent, rates[i].NatureCode, l.Type)).ToList(),
                 rule.StampDuty)
-            : FiscalDocumentTotals.FromNet(
-                ordered.Select(l => new FiscalDocumentNetLine(l.Description, 1m, l.Amount, rule.RateOf(l.Type).Percent, rule.RateOf(l.Type).NatureCode, l.Type)).ToList(),
-                rule.StampDuty);
+            : anyContained
+                ? FiscalDocumentTotals.FromNetAndGross(
+                    ordered.Select((l, i) => new FiscalDocumentLedgerLine(l.Description, 1m, l.Amount, rates[i].Percent, rates[i].NatureCode, l.Type, l.Vat is { Contained: true })).ToList(),
+                    rule.StampDuty)
+                : FiscalDocumentTotals.FromNet(
+                    ordered.Select((l, i) => new FiscalDocumentNetLine(l.Description, 1m, l.Amount, rates[i].Percent, rates[i].NatureCode, l.Type)).ToList(),
+                    rule.StampDuty);
 
         var recipient = await RecipientAsync(version.OrgId, version.PropertyOwnerId, last, ct);
         var missing = MissingRecipientData(recipient, FiscalDocumentService.NeedsOnlyTheName(rule, kind));
@@ -294,11 +319,22 @@ public sealed class OwnerInvoiceService(
             };
         }
 
-        return new Composition(rule, kind, amounts, recipient, includesVat ? 0m : amounts.VatAmount);
+        // The VAT the issue posts to the ledger on top of its amounts: the VAT of the lines that did not contain theirs. The VAT of a cleaning whose company applied it is in
+        // the gross of its ledger line already, never charged twice.
+        var containedVat = amounts.Lines.Where((line, i) => ordered[i].Vat is { Contained: true }).Sum(line => line.VatAmount ?? 0m);
+        return new Composition(rule, kind, amounts, recipient, includesVat ? 0m : amounts.VatAmount - containedVat);
     }
 
-    /// <summary>The lines of the invoice from the ledger lines of the version (see the remarks of the class): only what nets to an amount the agency charges.</summary>
-    private List<InvoiceLine> LinesOf(IReadOnlyList<OwnerLedgerEntry> entries, LineFacts facts, PortalAccountHolders holderMap, string period)
+    /// <summary>
+    /// The lines of the invoice from the ledger lines of the version (see the remarks of the class): only what nets to an amount the agency charges. <paramref name="cleaningVat"/>
+    /// gives the VAT a cleaning request's recharge carries instead of the rule's (<c>null</c>: the rule's).
+    /// </summary>
+    private List<InvoiceLine> LinesOf(
+        IReadOnlyList<OwnerLedgerEntry> entries,
+        LineFacts facts,
+        PortalAccountHolders holderMap,
+        string period,
+        Func<Guid?, CleaningRechargeVat?> cleaningVat)
     {
         var lines = new List<InvoiceLine>();
 
@@ -317,7 +353,7 @@ public sealed class OwnerInvoiceService(
 
         // The cleanings of the agency's company or staff recharged at their cost (E14/F01/US02/T01, ⚖ I13), which the mandate on the actual cost posts instead of the flat fee of the
         // stay: a recharge for each cleaning request, with its reference (and the invoice of the supplier, when the model links one). A request changed after it was posted is its
-        // reversal and a new line of the same request: one line, the net of them.
+        // reversal and a new line of the same request: one line, the net of them. Its VAT follows the company's when the agency stated it (FIX/BE-CLEANING-VAT).
         foreach (var group in entries
                      .Where(e => e.EntryType == OwnerLedgerEntryType.OwnerCharge && e.SourceType == OwnerLedgerSourceType.CleaningRequest)
                      .GroupBy(e => (e.SourceId, e.SourceReference, e.PropertyId)))
@@ -327,7 +363,7 @@ public sealed class OwnerInvoiceService(
             var request = supplierInvoice is null
                 ? Text("OwnerInvoiceCleaningRequest", reference, DayOf(group))
                 : Text("OwnerInvoiceCleaningRequestWithInvoice", reference, DayOf(group), supplierInvoice);
-            Add(FiscalLineType.Recharge, 1, Dashed(Text("OwnerInvoiceCleaningRecharge"), PropertyName(group.Key.PropertyId), request), group);
+            Add(FiscalLineType.Recharge, 1, Dashed(Text("OwnerInvoiceCleaningRecharge"), PropertyName(group.Key.PropertyId), request), group, cleaningVat(group.Key.SourceId));
         }
 
         // The approved charges, and the charges of any other source: a recharge for each, with its own description and day.
@@ -368,12 +404,12 @@ public sealed class OwnerInvoiceService(
 
         return lines;
 
-        void Add(FiscalLineType type, int order, string description, IEnumerable<OwnerLedgerEntry> group)
+        void Add(FiscalLineType type, int order, string description, IEnumerable<OwnerLedgerEntry> group, CleaningRechargeVat? vat = null)
         {
             // A debit of the owner is negative in the ledger; what nets to nothing (a reversed line) or to a credit is not something the agency charges.
             var amount = -group.Sum(e => e.Amount);
             if (amount > 0m)
-                lines.Add(new InvoiceLine(type, order, Truncate(description, FiscalDocumentLine.DescriptionMaxLength), amount));
+                lines.Add(new InvoiceLine(type, order, Truncate(description, FiscalDocumentLine.DescriptionMaxLength), amount, vat));
         }
 
         string PropertyName(Guid? propertyId) =>

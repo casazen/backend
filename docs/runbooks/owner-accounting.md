@@ -228,18 +228,79 @@ the one definition; no flag):
 - **A request that changes or is cancelled.** The key holds the amounts, so a request whose price changed after it was posted is a reversal of the old line and a new line
   (as every source that changed, and `late_source_after_close` when the month of the owner is closed); a request that is cancelled afterwards is no longer returned, so its
   line is reversed and nothing is posted for it.
-- **The VAT is never guessed.** The amount is posted as the cost source gives it, whatever its VAT nature (`IncludesSupplierVat`: the gross the supplier declared;
-  `ExcludesVat`; `NotApplicable`: a staff cost): the ledger keeps no VAT nature. **When the source does not say it (`Unknown`)** the posting raises the «Da fare»
-  `CleaningVatToState` for the agency, about the stay of the cleaning (entity
-  `Booking`, «Do now» opens it) or, for a cleaning of no stay, about the request itself: once for each stay or request (an item open, or one a person closed, is not raised
-  again), without personal data, in the language of the org (`TodoReason_CleaningVatToState`). It is closed by the system at a later posting when the cleaning's VAT is known;
-  an item about a cleaning cancelled afterwards stays until a person closes it. The VAT the owner invoice adds to the line is that of any recharge (⚖ R4, below): **whether
-  the VAT of a supplier's gross amount is to be taken out of the base of the recharge is a question for the accountant**, not decided here.
+- **The VAT is never guessed.** The amount is posted as the cost source gives it, gross and not decomposed (decision D4: `IncludesSupplierVat`, the gross the supplier
+  declared; `NotApplicable`, a staff cost): the ledger and the statements keep no VAT. Whether the cleaning company applied VAT is what the agency states (below, «The VAT of
+  the cleaning company»): for a cleaning of a company nobody stated, the posting raises the «Da fare» `CleaningVatToState` about the request.
 - **The invoice.** The version's lines make one `Recharge` line for each cleaning request, «Riaddebito pulizia - {property} - richiesta {reference} del {day}» (with
-  «, fattura del fornitore {reference}» when the supplier's invoice is known); a request changed after it was posted is one line, the net of the reversal and the new line.
+  «, fattura del fornitore {reference}» when the supplier's invoice is known); a request changed after it was posted is one line, the net of the reversal and the new line. Its
+  VAT follows the company's when the agency stated it (below).
 - **Prove it** (`CleaningRechargeTests`, no database): once per request and never together with the flat fee; a cancelled request posts nothing and its posted line is
-  reversed; the invoice shows a line per request with its reference; the «Da fare» of an unknown VAT; the staff cleaning without a price; the owners of one property on different
-  modes (60% on the actual cost, 40% on the flat rate: each pays its share once, the request only to the first and the flat fee only to the second).
+  reversed; the invoice shows a line per request with its reference; the «Da fare» of a VAT nobody stated; the staff cleaning without a price; the owners of one property on
+  different modes (60% on the actual cost, 40% on the flat rate: each pays its share once, the request only to the first and the flat fee only to the second).
+
+### The VAT of the cleaning company (FIX/BE-CLEANING-VAT)
+
+Decision 4 of `fatturazione/decisioni-fiscali-2026-11-20.md` (research `fatturazione/ricerche/R4-iva-pulizie.md`, official sources opened on 20/11/2026). **On the recharge
+to the owner the cleaning follows the VAT of the supplier; on the document to the guest it follows the VAT of the lodging** and depends on the VAT status of the host, not of
+the supplier (that side is not in this change). So the agency is asked one thing only, for each cleaning of a company recharged at its cost:
+
+- **The question.** «La ditta di pulizie ha applicato l'IVA su questa fattura?» — Switzerland [Sì, 8,1%] [No, senza IVA] [Non lo so], Italy [Sì, 22%] [No, senza IVA]
+  [Non lo so], with «Ricorda per questa ditta». The rate of «Sì» is the **standard rate of the country of the cleaning (its property) on the day of the cleaning** (the day it
+  was completed, Europe/Rome), read from the dated table `VatRates` (`Casazen.Core/Regulatory/VatRates.cs`), never from a constant. The model has no country of the supplier: the
+  country used is the property's, where the cleaning was done.
+- **The «Da fare».** `CleaningVatToState` about the cleaning request (entity `ServiceRequest`, the id of the request), action `StateCleaningVat` (140): raised at the posting of the
+  month for each cleaning of a company recharged to an owner whose month is open and whose VAT nobody stated (no answer on the request, nothing remembered for the company),
+  once (an item open, or one a person closed, is not raised again), in the language of the org (`TodoReason_CleaningVatToState`). The items raised before this change are about
+  the stay (entity `Booking`, `ReviewBooking`): they keep working, no new item is raised for a cleaning of that stay while one of them is open, and they are closed when every
+  cleaning of the stay is stated (by the answer, or by the system at the next posting). A staff cleaning is never asked (no VAT of a company).
+- **The endpoint.** `GET api/service-requests/{id}/cleaning-vat` (`property.read`) answers the question: `country`, `cleaningDate`, `standardRatePercent` (the rate of «Sì»;
+  `null` when the table has none for that day), `answer`, `answerRatePercent`, `answeredAt`, `companyAppliesVat` (what the organization remembers), `statedAnswer`,
+  `statedRatePercent`, `statedByCompany` (what the invoice uses) and `canRemember`. `POST` of the same route (`property.write`) takes `{ answer, remember }` (`Applied`,
+  `NotApplied`, `Unknown`) and answers the same shape. The permission is the one of the property of the request in its own context (short-rent or long-rent), within the scope
+  of the caller (a collaborator «Solo alcuni» reaches only the requests of its properties); a request of another organization, out of reach, of the showcase or of another
+  category is 404 `service_request_not_found`. **The same answer again changes nothing; another answer replaces it** (who and when are kept). Refusals: 422
+  `cleaning_vat_answer_invalid`, `cleaning_vat_not_completed` (a cleaning not completed or paid), `cleaning_vat_rate_unknown` («Sì» on a day the table has no rate for),
+  `cleaning_vat_remember_unknown` («Non lo so» is never remembered); 403 `cleaning_vat_remember_forbidden` («Ricorda» by a caller restricted to some properties: the remembered
+  answer decides the cleanings of every property); 409 `service_request_state_changed`.
+- **Where it is kept.** On the request (`ServiceRequests.SupplierVat`, `SupplierVatRatePercent` with «Sì» only, `SupplierVatAnsweredAt`, `SupplierVatAnsweredByUserId`,
+  `SupplierVatAskedAgainAt`), never shown to the supplier; «Ricorda per questa ditta» in `SupplierVatDefaults` (one row per organization and company, tenant-owned: never on the
+  supplier's profile, which every organization reads, so one agency's answer never decides another's invoices). A remembered «Sì» takes the rate of the table on the day of
+  each cleaning; a day the table has no rate for leaves that cleaning to be answered. The answer closes the «Da fare» of the request (and, with «Ricorda», those of the other
+  requests of the company it now answers).
+- **The line of the owner invoice** (`CleaningVatRules.RechargeVatOf`): «Sì» → the line carries the rate of the answer and **the gross of the ledger contains the VAT**:
+  VAT = gross × r / (100 + r) (CHF 100.00 at 8.1% → VAT 7.49, net 92.51; EUR 100.00 at 22% → VAT 18.03, net 81.97), also under a mandate «+ IVA» (`FiscalDocumentTotals.
+  FromNetAndGross`: the other lines keep their VAT on top); the issue posts to the ledger only the VAT added on top of the other lines, so the owner pays the cleaning once, at
+  the gross. «No» → no VAT (Italy: nature `N2.2`, «non soggette - altri casi», with the stamp duty of the rule above its threshold). «Non lo so», or nothing stated → exactly as
+  before (the rate of a recharge, added on top or taken out as the mandate says). Only an issuer that charges VAT on a recharge applies the company's VAT: an agency outside
+  the VAT (not registered, a receipt, the flat-rate regime) and a cleaning in another country than the issuer's stay as before. A draft made before the answer changed is
+  refused at the issue (409 `document_draft_outdated`) and made again; an issued invoice never changes (a credit note gives back only its share of the VAT posted on top).
+  **The statements and the ledger stay gross and not decomposed** (D4).
+- **The close of the month.** When the month of an owner is closed, each cleaning of a company recharged to it in the month whose answer is still «Non lo so», or none, gets its
+  «Da fare» once more (`TodoReason_CleaningVatToStateAgain`), once for each request (`SupplierVatAskedAgainAt`), unless an item about it is still open. **«Non lo so» never
+  blocks the close**: this runs after the close is saved.
+- **Not in this change.** A cleaning whose supplier's invoice is addressed to the owner, the agency acting in the owner's name (a pass-through «spesa anticipata» outside the
+  VAT, art. 15 c. 1 n. 3 DPR 633/72, art. 24 cpv. 6 lett. b LIVA): it needs the question «intestare al proprietario?» when the cleaning is ordered. The VAT of the cleaning on
+  the document to the guest (the lodging's: 3.8% in Switzerland for a registered host, 10% in Italy for a structure).
+
+**The dated table of the rates** (`VatRates`, one row per country and kind; a new rate is a new row from its first day, the old one closed the day before; a day outside the
+validity of every row of a kind has no rate, never a default):
+
+| Country | Kind | Rate | Valid | Source |
+|---|---|---|---|---|
+| CH | Standard | 8.1 | from 1/1/2024 | ESTV «Schweizer Mehrwertsteuersätze» (5/11/2026); LIVA SR 641.20 |
+| CH | Reduced | 2.6 | from 1/1/2024 | same |
+| CH | Lodging | 3.8 | 1/1/2024 to 31/12/2027 (by law, art. 25 cpv. 4 LIVA) | same |
+| IT | Standard | 22 | from 1/1/2024 (the table covers no earlier day) | DPR 633/72 art. 16 (from 1/1/2027 D.Lgs. 10/2026, TU IVA) |
+| IT | Lodging | 10 | from 1/1/2024 | DPR 633/72 Tab. A parte III n. 120 |
+
+**Sources (R4, opened on 20/11/2026):** ESTV, «Schweizer Mehrwertsteuersätze»; LIVA/MWSTG SR 641.20 art. 10, 20, 24, 25 cpv. 4, 27, 28; ESTV MWST-Branchen-Info 08 (Hotel- und
+Gastgewerbe) ciffra 6.1.2 and 17 (Liegenschaftsverwaltung) ciffra 7.2.1; MWST-Info 07 ciffra 1.2; DPR 633/72 art. 3 c. 3, 12, 15 c. 1 n. 3 (Normattiva); D.Lgs. 10/2026 (TU
+IVA, GU n. 24 del 30/1/2026); AdE Risposta 623/2021, Circolare 24/E del 12/10/2017. **Not verified, for the fiduciary (Switzerland) and the accountant (Italy) before the
+function is relied on in production:** the final cleaning at 3.8% (no ESTV text names the «Endreinigung»; the ESTV pages read are dated 2021 and 2015 «auf Widerruf»); a
+supplier below the Swiss threshold of CHF 100'000 or in the Italian flat-rate regime (the recharge without VAT, and its nature `N2.2`, are a product default; R4 notes that a
+registered Swiss manager's recharge of an unregistered supplier is «di norma 8,1%»); the invoice of the manager that must show the taxable amount and the VAT of the recharge
+(the accountant decides; D4 holds for the non-fiscal statement); the rates from 2028 (the votation of 29/11/2026 and the extension of the 3.8% are not decided and are not in
+the table); the reverse charge on the cleaning of buildings (art. 17 c. 6 lett. a-ter DPR 633/72), to be excluded with the accountant.
 
 ## Owner invoices (E14/F01/US01/T01)
 
@@ -276,7 +337,9 @@ The invoice of the property manager to an owner (NF-114, D9): a `FiscalDocument`
 - **VAT (⚖ R4).** The mandate of the owner in force on the last day of the month says it: `CommissionIncludesVat = false` (the default) makes the ledger amounts
   the taxable amounts and adds the VAT (`FiscalDocumentTotals.FromNet`: every line keeps its net to the cent, the VAT of a rate on the sum of its lines);
   `true` makes them the gross and takes the VAT out (`FromGross`). The rates are those of the catalog `FiscalDocuments:TaxRules` in force on the last day of
-  the month by line type: Switzerland 8.1 (`ch-vat-2024.1`), Italy 22, a flat-rate issuer `N2.2` with the stamp duty (borne by the issuer, as the catalog says).
+  the month by line type: Switzerland 8.1 (`ch-vat-2024.1`), Italy 22, a flat-rate issuer `N2.2` with the stamp duty (borne by the issuer, as the catalog says). The
+  recharge of a cleaning whose company's VAT the agency stated carries the company's VAT instead (FIX/BE-CLEANING-VAT, «The VAT of the cleaning company» above): «Sì»
+  contained in the gross of the ledger even under «+ IVA» (`FromNetAndGross`; that VAT is never posted on top), «No» none.
 - **Issue.** The issue of the fiscal documents: the gap-free number in the series `OrgFiscalIssuerProfile.OwnerInvoiceSeries` (default `PM{year}`, e.g.
   `PM2026/1`), the snapshot of the issuer, the rule version, the Italian XML of an invoice (422 `fatturapa_schema_unavailable` until the official schema is in
   the build, E17). The draft is made again from its version first: when the version was superseded or the mandate, the holders, the rule or the recipient give
@@ -288,7 +351,8 @@ The invoice of the property manager to an owner (NF-114, D9): a `FiscalDocument`
 - **Credit note** (`POST api/owner-invoices/{id}/credit-note`, `agency.statement.manage`). A credit note of the owner invoice gives the VAT back in its own
   transaction: the reversal of the line when it credits the whole invoice at once, else the VAT of the note (the rest of it with the note that completes the
   credit, so the cents of the partial notes are not lost); in the month of the invoice, or in the month of today when that month of the owner is closed; nothing for
-  a mandate «IVA inclusa» (it posted none). The draft or flagged version of the month is generated again. An invoice credited in full frees its owner and month.
+  a mandate «IVA inclusa» (it posted none). An invoice whose cleaning recharge contains the company's VAT posted only the VAT of its other lines: a partial note gives
+  back its share of the VAT posted (the VAT of the note × posted / VAT of the invoice), never the VAT the owner was never charged on top. The draft or flagged version of the month is generated again. An invoice credited in full frees its owner and month.
   The draft of an owner invoice is discarded by `DELETE api/owner-invoices/{id}` (the month is free for a new draft).
 - **Payment.** An issued invoice is `offset` when the statement covers it, else `to_pay` with how much the debt of the owner grew in the month (the ledger before
   the month and at its end, the VAT included), never more than what is left of the invoice after its credit notes (`OwnerInvoiceSettlements`).

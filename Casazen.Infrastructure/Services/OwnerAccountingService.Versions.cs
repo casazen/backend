@@ -329,6 +329,9 @@ public sealed partial class OwnerAccountingService
         logger.LogInformation(
             "Owner month {Year}-{Month} of owner {OwnerId} closed by {UserId} on version {VersionId} (waived: {Waived})",
             year, month, ownerId, userId, version.Id, row.WaiverReason is not null);
+
+        // FIX/BE-CLEANING-VAT: the question of the VAT of a cleaning company answered «Non lo so» (or by nobody) comes back once, now that the month is closed; it never held the close.
+        await AskCleaningVatAgainAsync(orgId, ownerId, period, ct);
         return row;
     }
 

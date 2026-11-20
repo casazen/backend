@@ -177,6 +177,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.OwnerUnitsExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.CompanyTenantExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.CleaningRechargeExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.CleaningVatExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.PayoutFactsExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.YearEndExportExamples.Select(example => example.Scenario))
             .ToHashSet(StringComparer.Ordinal);
@@ -1414,6 +1415,25 @@ public class DemoShowcaseTests
         Assert.Single(examples, e => e.Mode == CleaningRechargeMode.FlatRate);
         Assert.Single(examples, e => e.Mode == CleaningRechargeMode.ActualCost && e.RequestAmount is not null);
         Assert.Single(examples, e => e.Mode == CleaningRechargeMode.ActualCost && e.RequestAmount is null);
+    }
+
+    /// <summary>
+    /// FIX/BE-CLEANING-VAT: the demo answers to the question of the VAT of a cleaning company are TEST companies with the three answers, «Non lo so» is never remembered for the
+    /// company, and every «Sì» has a standard rate in the table on the day of its cleaning (the showcase never shows a «Sì» the API would refuse): the Swiss 8.1 and the Italian 22.
+    /// </summary>
+    [Fact]
+    public void CleaningVat_TheExamplesAreTestCompaniesWithTheThreeAnswersAndARateOfTheTable()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.CleaningVat, DemoShowcaseCatalog.Scenarios);
+        var examples = DemoShowcaseCatalog.CleaningVatExamples;
+        Assert.Equal(examples.Count, examples.Select(e => e.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(examples, e => Assert.StartsWith("TEST", e.Company, StringComparison.Ordinal));
+        Assert.All(examples, e => Assert.True(e.Gross > 0m));
+        Assert.Equal(Enum.GetValues<CleaningSupplierVat>().Order(), examples.Select(e => e.Answer).Distinct().Order());
+        Assert.DoesNotContain(examples, e => e.RememberForCompany && e.Answer == CleaningSupplierVat.Unknown);
+        Assert.Equal(
+            [8.1m, 22m],
+            examples.Where(e => e.Answer == CleaningSupplierVat.Applied).Select(e => VatRates.Find(e.Country, VatRateKind.Standard, e.CleaningDate)!.Percent).Order());
     }
 
     /// <summary>

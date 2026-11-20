@@ -366,6 +366,13 @@ public static class DemoShowcaseCatalog
         public const string CleaningRecharge = "cleaning-recharge";
 
         /// <summary>
+        /// The question of the VAT of a cleaning company recharged to the owner (FIX/BE-CLEANING-VAT): «La ditta di pulizie ha applicato l'IVA su questa fattura?» answered
+        /// «Sì» for a Swiss and an Italian company (the rate of the table, contained in the gross), «No, senza IVA» and «Non lo so», one of them remembered for the company.
+        /// Invented, TEST companies and amounts: a template of what <c>api/service-requests/{id}/cleaning-vat</c> answers; the showcase writes none of these rows.
+        /// </summary>
+        public const string CleaningVat = "cleaning-vat";
+
+        /// <summary>
         /// The facts of a payout read from the ledger (E18/F01/US01/T01, NF-117, ⚖ R5): the stays of the October statement of a private TEST owner of an Italian house,
         /// one paid with a payment the agency recorded (in the base, its tourist tax left out), one of Airbnb on the agency's account (Airbnb withholds for the private host
         /// itself: never withheld again) and one of Booking.com on the owner's account (the portal pays the owner: the agency neither collected nor intervened). A template
@@ -491,6 +498,7 @@ public static class DemoShowcaseCatalog
         Scenario.CleaningAtCheckout,
         Scenario.OwnerTaxChecks,
         Scenario.CleaningRecharge,
+        Scenario.CleaningVat,
         Scenario.PayoutFacts,
         Scenario.TaxReportingYearEnd,
         Scenario.BookingFourOrigins,
@@ -693,6 +701,19 @@ public static class DemoShowcaseCatalog
         new("forfait-per-soggiorno", "TEST Mario Rossi", CleaningRechargeMode.FlatRate, "TEST Impresa di pulizie", null, 40m, Scenario.CleaningRecharge),
         new("costo-effettivo-richiesta", "TEST Giulia Bianchi", CleaningRechargeMode.ActualCost, "TEST Impresa di pulizie", 85m, 40m, Scenario.CleaningRecharge),
         new("costo-effettivo-staff-senza-tariffa", "TEST Luca Verdi", CleaningRechargeMode.ActualCost, "TEST Personale dell'agenzia", null, 40m, Scenario.CleaningRecharge),
+    ];
+
+    /// <summary>
+    /// The answers to the question of the VAT of a cleaning company recharged to the owner (FIX/BE-CLEANING-VAT): «Sì» for a Swiss company (8.1, remembered for the company) and an
+    /// Italian one (22), the rates of <c>VatRates</c> on the day of the cleaning and contained in the gross; «No, senza IVA»; «Non lo so». Invented, TEST companies and amounts; a
+    /// template only.
+    /// </summary>
+    public static IReadOnlyList<DemoCleaningVatTemplate> CleaningVatExamples { get; } =
+    [
+        new("si-iva-svizzera", "TEST Pulizie Lugano Sagl", "CH", new DateOnly(2026, 10, 20), 100.00m, CleaningSupplierVat.Applied, true, Scenario.CleaningVat),
+        new("si-iva-italia", "TEST Pulizie Como Srl", "IT", new DateOnly(2026, 10, 20), 100.00m, CleaningSupplierVat.Applied, false, Scenario.CleaningVat),
+        new("no-iva", "TEST Pulizie forfettarie", "IT", new DateOnly(2026, 10, 21), 80.00m, CleaningSupplierVat.NotApplied, false, Scenario.CleaningVat),
+        new("non-lo-so", "TEST Impresa di pulizie", "CH", new DateOnly(2026, 10, 22), 90.00m, CleaningSupplierVat.Unknown, false, Scenario.CleaningVat),
     ];
 
     /// <summary>
@@ -2603,6 +2624,20 @@ public sealed record DemoCleaningRechargeTemplate(
     string Cleaner,
     decimal? RequestAmount,
     decimal MandateFlatRate,
+    string Scenario);
+
+/// <summary>
+/// An answer to the question of the VAT of a cleaning company (FIX/BE-CLEANING-VAT): the company, the country and the day of the cleaning (whose standard rate «Sì» uses), the
+/// gross the company invoiced, the answer of the agency and whether it was remembered for the company. What the invoice of the agency does with it is <c>CleaningVatRules</c>'.
+/// </summary>
+public sealed record DemoCleaningVatTemplate(
+    string Key,
+    string Company,
+    string Country,
+    DateOnly CleaningDate,
+    decimal Gross,
+    CleaningSupplierVat Answer,
+    bool RememberForCompany,
     string Scenario);
 
 /// <summary>

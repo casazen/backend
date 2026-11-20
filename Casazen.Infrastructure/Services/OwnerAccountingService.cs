@@ -29,8 +29,9 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Cleanings at their cost.</b> For an owner whose mandate asks for the actual cost (<see cref="CleaningRechargeMode.ActualCost"/>, E14/F01/US02/T01, ⚖ I13) the cleaning is
 /// not the flat fee of the stay: each cleaning completed in the month and recharged to the owner is one charge linked to its request, read only through
 /// <paramref name="cleaningCosts"/> (never the requests or the staff activities themselves); the flat fee of the stay is not posted, never both. A cleaning with no price (a request
-/// with no amount, a staff cleaning with no rate and no flat rate in the mandate) holds the statement back and, when the cost source does not say its VAT, raises the «Da fare»
-/// <see cref="ActivityType.CleaningVatToState"/> (<paramref name="activities"/>) at the posting: a VAT is never guessed.</para>
+/// with no amount, a staff cleaning with no rate and no flat rate in the mandate) holds the statement back. The VAT of a cleaning company is never guessed: for a cleaning whose VAT
+/// the agency has not stated (FIX/BE-CLEANING-VAT) the posting raises the «Da fare» <see cref="ActivityType.CleaningVatToState"/> about the request (<paramref name="activities"/>), and
+/// the close of the month proposes it once more when the answer was «Non lo so»; the ledger stays gross.</para>
 /// <para><b>Locks.</b> Posting, generation, close and corrections of one org run one at a time (<see cref="PostgresAdvisoryLocks.Scope.OwnerAccounting"/>).</para>
 /// <para><b>Files.</b> The publication of a version stores its PDF with it, in the same save (<paramref name="statementFiles"/>, E13/F01/US02/T01), and tells the owner
 /// after it (E13/F01/US02/T02); a service built without it (a test) publishes the version and the JSON file only.</para>

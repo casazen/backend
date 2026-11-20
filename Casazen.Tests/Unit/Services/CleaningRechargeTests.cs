@@ -19,7 +19,7 @@ namespace Casazen.Tests.Unit.Services;
 /// <summary>
 /// E14/F01/US02/T01 (NF-114, NF-115, ⚖ I13): with the mandate on the actual cost every cleaning completed in the month and recharged to the owner is one charge linked to
 /// its request, read only through the cost source of the cleanings, in place of the flat fee of the stay (never both); a cancelled request posts nothing; a staff cleaning with
-/// no price costs the flat rate of the mandate and one with no price at all holds the statement back; a VAT the source does not say raises a «Da fare» and is never guessed; the
+/// no price costs the flat rate of the mandate and one with no price at all holds the statement back; a VAT nobody stated raises a «Da fare» and is never guessed; the
 /// owner invoice shows one recharge line for each request with its reference; the mode is a field of the mandate that defaults to the flat rate.
 /// </summary>
 public class CleaningRechargeTests
@@ -211,9 +211,10 @@ public class CleaningRechargeTests
     }
 
     /// <summary>
-    /// PROOF TEST: money rule. A VAT the cost source does not say is never guessed: the charge is posted as it is and a «Da fare» asks the agency to state the VAT, once for the stay
-    /// however often the month is posted; closed by a person it is not raised again, and when the source says the VAT the item the system raised is closed. A cleaning with no amount
-    /// at all is not posted as a charge of zero: it holds the statement back and raises the same item.
+    /// PROOF TEST: money rule. A VAT nobody stated is never guessed (FIX/BE-CLEANING-VAT: the agency answers whether the cleaning company applied it): the charge is posted as it is
+    /// and a «Da fare» about the request asks the question, once however often the month is posted; closed by a person it is not raised again, and when the VAT is stated (the
+    /// agency answered for the request) the item the system raised is closed by the system. A cleaning with no amount at all is not posted as a charge of zero: it holds the
+    /// statement back and raises the same item.
     /// </summary>
     [Fact]
     public async Task CleaningRecharge_UnknownVatPostsTheChargeAndRaisesTheTodoOnce_Test()
@@ -233,9 +234,9 @@ public class CleaningRechargeTests
         Assert.Equal(-70m, Assert.Single(CleaningLines(await world.LiveAsync())).Amount);
         var todo = Assert.Single(await world.TodosAsync());
         Assert.Equal(nameof(ActivityType.CleaningVatToState), todo.ActivityType);
-        Assert.Equal(ActivityAction.ReviewBooking, todo.Action);
-        Assert.Equal(InternalActivity.BookingEntityType, todo.EntityType);
-        Assert.Equal(stay, todo.EntityId);
+        Assert.Equal(ActivityAction.StateCleaningVat, todo.Action);
+        Assert.Equal(CleaningVatRules.TodoEntityType, todo.EntityType);
+        Assert.Equal(request, todo.EntityId);
         Assert.Equal(property, todo.PropertyId);
         Assert.False(string.IsNullOrWhiteSpace(todo.Reason));
         Assert.Null(todo.CompletedAt);
@@ -245,14 +246,14 @@ public class CleaningRechargeTests
         await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
         Assert.Single(await world.TodosAsync());
 
-        // The agency closes it by hand: it is not raised again while the VAT is still unknown.
+        // The agency closes it by hand: it is not raised again while the VAT is still not stated.
         await world.Activities.CloseAsync(todo.Id, "auth0|admin", CancellationToken.None);
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
         var closedByAPerson = Assert.Single(await world.TodosAsync());
         Assert.Equal("auth0|admin", closedByAPerson.ClosedBy);
 
-        // A cleaning with no amount at all: no charge of zero, the statement waits, and the stay has an item.
+        // A cleaning with no amount at all: no charge of zero, the statement waits, and its request has an item.
         var bare = await world.OwnerAsync();
         var bareProperty = await world.PropertyAsync(bare, "TEST Casa Monte");
         await world.MandateAsync(bare, CleaningRechargeMode.ActualCost, null);
@@ -263,18 +264,26 @@ public class CleaningRechargeTests
         var held = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
         Assert.Contains(held.Issues, i => i.Code == OwnerReadinessCodes.SourceAmountMissing && i.OwnerId == bare && i.Blocking);
         Assert.DoesNotContain(CleaningLines(await world.LiveAsync()), e => e.PropertyOwnerId == bare);
-        var bareTodo = Assert.Single(await world.TodosAsync(), t => t.EntityId == bareStay);
+        var bareTodo = Assert.Single(await world.TodosAsync(), t => t.EntityId == bareRequest);
         Assert.Null(bareTodo.CompletedAt);
 
-        // The source says the VAT now: the item the system raised is closed by the system; the one a person closed stays as it was.
+        // The VAT is stated now (the agency answered «No» for the request, which has its amount too): the item the system raised is closed by the system; the one a person
+        // closed stays as it was.
+        await world.RequestAsync(bareProperty, ServiceRequestStatus.Completato, At(10, 21), r =>
+        {
+            r.Id = bareRequest;
+            r.BookingId = bareStay;
+            r.FinalAmountCents = 9000;
+            r.SupplierVat = CleaningSupplierVat.NotApplied;
+        });
         source.Set(Cleaning(property, stay, request, 7000, CleaningAmountVat.IncludesSupplierVat), Cleaning(bareProperty, bareStay, bareRequest, 9000, CleaningAmountVat.IncludesSupplierVat));
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         var stated = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
         Assert.DoesNotContain(stated.Issues, i => i.Blocking);
         Assert.Equal(-90m, Assert.Single(CleaningLines(await world.LiveAsync()), e => e.PropertyOwnerId == bare).Amount);
         var todos = await world.TodosAsync();
-        Assert.Equal(InternalActivity.ClosedBySystem, todos.Single(t => t.EntityId == bareStay).ClosedBy);
-        Assert.Equal("auth0|admin", todos.Single(t => t.EntityId == stay).ClosedBy);
+        Assert.Equal(InternalActivity.ClosedBySystem, todos.Single(t => t.EntityId == bareRequest).ClosedBy);
+        Assert.Equal("auth0|admin", todos.Single(t => t.EntityId == request).ClosedBy);
     }
 
     /// <summary>
