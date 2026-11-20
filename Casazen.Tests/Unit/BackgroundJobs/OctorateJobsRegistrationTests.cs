@@ -37,6 +37,7 @@ public class OctorateJobsRegistrationTests
         OctorateCheckInRetryJob.RecurringJobId,
         MarketplaceConnectionSyncJob.RecurringJobId,
         CalendarChangeProcessJob.RecurringJobId,
+        OtaReviewSyncJob.RecurringJobId,
     ];
 
     [Fact]
@@ -166,6 +167,9 @@ public class OctorateJobsRegistrationTests
 
         // The calendar changes run every minute (E08/F05/US02/T02) and wait as the other frequent jobs do.
         Assert.Equal(JobLockTimeouts.FrequentSeconds, CalendarChangeProcessJob.LockTimeoutSeconds);
+
+        // The read of the reviews of the channels runs every six hours (E05/F06/US01/T02): it waits as the other jobs of its kind do.
+        Assert.Equal(JobLockTimeouts.DefaultSeconds, OtaReviewSyncJob.LockTimeoutSeconds);
     }
 
     [Fact]

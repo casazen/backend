@@ -31,7 +31,7 @@ public class ApprovalQueueItem : ITenantOwned
     /// <summary>Longest <see cref="SituationCode"/>, the same as the rule code of a message of the assistant (<see cref="OtaMessage.RuleCodeMaxLength"/>).</summary>
     public const int SituationCodeMaxLength = 64;
 
-    /// <summary>Longest <see cref="ThreadKey"/>: a key of the hub of messages is at most 43 characters.</summary>
+    /// <summary>Longest <see cref="ThreadKey"/>: a key of the hub of messages is at most 46 characters (<c>MessageThreadKey.MaxLength</c>, the key of a review included).</summary>
     public const int ThreadKeyMaxLength = 80;
 
     [Key]
@@ -121,7 +121,10 @@ public class ApprovalQueueItem : ITenantOwned
     [MaxLength(SituationCodeMaxLength)]
     public string? SituationCode { get; set; }
 
-    /// <summary>The conversation a draft of a message belongs to: <c>ota:{guid}</c> or <c>direct:{guid}</c> (<c>MessageThreadKey</c>); <c>null</c> for every other item.</summary>
+    /// <summary>
+    /// The conversation a draft of a message belongs to: <c>ota:{guid}</c> or <c>direct:{guid}</c> (<c>MessageThreadKey</c>), or the review a draft of a reply belongs to:
+    /// <c>otareview:{guid}</c> or <c>review:{guid}</c>; <c>null</c> for every other item.
+    /// </summary>
     [MaxLength(ThreadKeyMaxLength)]
     public string? ThreadKey { get; set; }
 

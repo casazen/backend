@@ -23,13 +23,14 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Personal data.</b> The words, the names and the address of an attachment are never logged (only ids and counters), and the address never
 /// leaves <see cref="OpenAttachmentAsync"/>: the thread detail asks the database only whether a message has a file, not where it is.</para>
 /// </remarks>
-public sealed class MessageHubService(
+public sealed partial class MessageHubService(
     AppDbContext db,
     IGuestMessageService guestMessages,
     IChannelMappingService channelMapping,
     IOtaAttachmentFetcher attachments,
     ILogger<MessageHubService> logger,
-    TimeProvider? timeProvider = null) : IMessageHubService
+    TimeProvider? timeProvider = null,
+    IOtaReviewService? otaReviews = null) : IMessageHubService
 {
     /// <summary>Stable code of the 404 of a conversation that is not there or not within reach.</summary>
     public const string ThreadNotFoundCode = "thread_not_found";
@@ -61,7 +62,9 @@ public sealed class MessageHubService(
 
         // A direct thread is open while its check-out day is not more than seven days behind today (Europe/Rome): the same rule as StateOf.
         var openFrom = RomeCalendar.TodayAt(new DateTimeOffset(now)).AddDays(-GuestMessageRules.ClosedAfterCheckOutDays);
-        var rows = Filtered(Rows(scope, openFrom), filter);
+        // The reviews are listed under their own filter and never in the default view: the list of «Da rispondere» is the conversations (E05/F06/US01/T03).
+        var reviewsOnly = filter.Kind == MessageHubThreadKind.Review;
+        var rows = Filtered(reviewsOnly ? ReviewRows(scope) : Rows(scope, openFrom), filter);
 
         var total = await rows.CountAsync(cancellationToken);
         if (total == 0)
@@ -75,7 +78,17 @@ public sealed class MessageHubService(
             .ToListAsync(cancellationToken);
 
         var lastMessages = await LastMessagesAsync(scope.OrgId, pageRows, cancellationToken);
-        var items = pageRows.Select(r => Summary(r, lastMessages.GetValueOrDefault(new MessageThreadKey((MessageThreadSource)r.Source, r.KeyId)), now)).ToList();
+        var ratings = new Dictionary<MessageThreadKey, decimal?>();
+        if (reviewsOnly)
+            await AddReviewPreviewsAsync(scope.OrgId, pageRows, lastMessages, ratings, cancellationToken);
+
+        var items = pageRows
+            .Select(r =>
+            {
+                var key = new MessageThreadKey((MessageThreadSource)r.Source, r.KeyId);
+                return Summary(r, lastMessages.GetValueOrDefault(key), ratings.GetValueOrDefault(key), now);
+            })
+            .ToList();
         return new MessageHubPage(items, total, page, pageSize);
     }
 
@@ -86,6 +99,11 @@ public sealed class MessageHubService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
+
+        // The key of a review is the one of a thing that is not a conversation: it is opened with GetReviewThreadAsync, never as a conversation.
+        if (key.IsReview)
+            throw ThreadNotFound();
+
         if (key.Source == MessageThreadSource.Storefront)
             return await Storefront.GetForHostAsync(scope, key, cancellationToken);
 
@@ -101,6 +119,9 @@ public sealed class MessageHubService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
+        if (key.IsReview)
+            throw ThreadNotFound();
+
         if (key.Source == MessageThreadSource.Storefront)
             return await Storefront.MarkReadAsync(scope, key, cancellationToken);
 
@@ -446,7 +467,7 @@ public sealed class MessageHubService(
         return result;
     }
 
-    private static MessageHubThreadSummary Summary(HubRow r, LastMessage? last, DateTime now)
+    private static MessageHubThreadSummary Summary(HubRow r, LastMessage? last, decimal? rating, DateTime now)
     {
         var source = (MessageThreadSource)r.Source;
         var key = new MessageThreadKey(source, r.KeyId);
@@ -470,13 +491,15 @@ public sealed class MessageHubService(
             last?.Origin,
             last?.Preview,
             r.UnreadCount,
-            r.NeedsReply);
+            r.NeedsReply,
+            rating);
     }
 
     /// <summary>A conversation of a channel is archived or not; a direct one is open until the seventh day after the check-out (the rule of <see cref="GuestMessageRules.StateOf"/>).</summary>
     private static MessageHubThreadState StateOf(HubRow row, DateTime now)
     {
-        if ((MessageThreadSource)row.Source == MessageThreadSource.Storefront)
+        // A review has no state of a conversation: it is shown as open (the host may still answer it).
+        if ((MessageThreadSource)row.Source is MessageThreadSource.Storefront or MessageThreadSource.OtaReview or MessageThreadSource.Review)
             return MessageHubThreadState.Open;
 
         if ((MessageThreadSource)row.Source == MessageThreadSource.Ota)

@@ -2912,6 +2912,20 @@
   <data name="Push_CheckInLinkFailed_Body" xml:space="preserve">
     <value>{0}: the check-in link did not reach the guest automatically. Open the booking, copy it and send it yourself.</value>
   </data>
+  <!-- E05/F06/US01/T02 (NF-69): the pushes to the host about the reviews of the channels: a review appeared, and a reply or a host review that did not reach the channel. The property
+       only: never the guest, the mark or a word of the review. No supplier is named. -->
+  <data name="Push_OtaReviewReceived_Title" xml:space="preserve">
+    <value>New review</value>
+  </data>
+  <data name="Push_OtaReviewReceived_Body" xml:space="preserve">
+    <value>{0}: a guest left a review. Open the booking to read it and reply.</value>
+  </data>
+  <data name="Push_OtaReviewActionFailed_Title" xml:space="preserve">
+    <value>Reply to the review not delivered</value>
+  </data>
+  <data name="Push_OtaReviewActionFailed_Body" xml:space="preserve">
+    <value>{0}: your reply or your review did not reach the channel. Open the booking and try again.</value>
+  </data>
   <data name="Push_TicinoNotificationDeclared_Title" xml:space="preserve">
     <value>Police notification declared</value>
   </data>

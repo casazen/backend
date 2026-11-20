@@ -189,6 +189,10 @@ builder.Services.AddApprovalQueueActions();
 // property and, with the next tasks of the feature, the situations, the drafts and the gate, all registered in AddMessageAssistant and behind Features:MessageAssistant where they are used.
 builder.Services.AddMessageAssistant();
 
+// The reviews of the channels (epic E05, feature F06, NF-69, OCT-12): the read of the reviews of the bookings of Airbnb through the channel manager, the reply of the host and the
+// host's own review, the job that reads the bookings every six hours, and the reply drafts that wait in the approval queue; all registered in AddOtaReviews.
+builder.Services.AddOtaReviews();
+
 // Marketplace (epic E09, NF-54 to NF-59): the catalog of channels, tools, license functions and partners; every task of the epic registers in AddCasazenMarketplace.
 builder.Services.AddCasazenMarketplace(builder.Configuration);
 

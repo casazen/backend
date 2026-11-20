@@ -281,4 +281,22 @@ public static class TestDataEntities
     /// never touched.
     /// </summary>
     public const string Routine = "Routine";
+
+    /// <summary>
+    /// The review a guest of a showcase direct stay left on the booking site (<see cref="Entities.Review"/>, E05/F06/US01/T03, NF-69): invented words that say TEST. It follows its house
+    /// (cascade); the reset deletes it by its marker before the houses go, with the draft of its reply, and a review of a guest has no marker and is never touched.
+    /// </summary>
+    public const string Review = "Review";
+
+    /// <summary>
+    /// The review of a showcase Airbnb stay (<see cref="Entities.OtaReview"/>, E05/F06/US01/T03, NF-69): the row the sync of the reviews would write, invented and saying TEST, with no channel
+    /// manager behind it. Deleted by the reset by its marker, with the draft of its reply; a real row has no marker and is never touched.
+    /// </summary>
+    public const string OtaReview = "OtaReview";
+
+    /// <summary>
+    /// The draft of the reply to a showcase review waiting in the approval queue (<see cref="Entities.ApprovalQueueItem"/>, E05/F06/US01/T03): an item of type <c>ReviewReply</c>, written as the
+    /// assistant would and never sent. It points at its review by id only (no foreign key), so the reset deletes it by its marker; an item a host decided or a real one has no marker.
+    /// </summary>
+    public const string ApprovalQueueItem = "ApprovalQueueItem";
 }
