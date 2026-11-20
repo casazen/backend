@@ -157,7 +157,8 @@ refuse for a missing mandatory field.
 | `GET api/compliance/summary` → `ticinoNotifications` | one `NotifyTicinoPolice` item per Ticino property and arrival day still to notify, the day in `period` |
 
 Errors: `property_not_in_ticino`, `ticino_structure_id_missing`, `ticino_notification_empty`, `ticino_xml_not_available`,
-`ticino_file_format_invalid`, `ticino_not_a_group`, `booking_not_found` (group sheet).
+`ticino_file_format_invalid`, `ticino_not_a_group`, `booking_not_found` (group sheet), `swiss_receipt_date_too_old` (400 of the upload of a document kept
+5 years whose report date is more than 5 years ago: the retention job would delete it at once).
 
 The police receipts, the group sheets and the parents' authorizations are deleted 5 years after their report date by the daily job
 `swiss-compliance-retention` (NF-128); the OTR reports are kept ([`guest-notification-switzerland.md`](../runbooks/guest-notification-switzerland.md) § 6).

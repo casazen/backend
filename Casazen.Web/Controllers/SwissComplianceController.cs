@@ -52,6 +52,12 @@ public class SwissComplianceController(
     /// <summary>Code of a receipt file that is empty or larger than the limit (400).</summary>
     public const string ReceiptFileInvalidCode = "swiss_receipt_file_invalid";
 
+    /// <summary>
+    /// Code of a document kept five years (<c>Police</c>, <c>ParentalAuthorization</c>, <c>GroupSheet</c>) whose report date is already past that time (400): the daily
+    /// retention job would delete it the night it is recorded.
+    /// </summary>
+    public const string ReceiptDateTooOldCode = "swiss_receipt_date_too_old";
+
     /// <summary>Longest OTR period, both ends counted: a year, leap year included.</summary>
     /// <summary>Code of a police file format that is not <c>csv</c> or <c>xml</c> (400).</summary>
     public const string TicinoFileFormatInvalidCode = "ticino_file_format_invalid";
@@ -291,7 +297,9 @@ public class SwissComplianceController(
     /// <response code="400">
     /// <c>validation_error</c>: a field is missing, <c>reportDate</c> is not a date or <c>reference</c> is longer than 200
     /// characters; <c>swiss_receipt_type_invalid</c>: <c>type</c> is not <c>Police</c>, <c>OTR</c>, <c>ParentalAuthorization</c> or <c>GroupSheet</c>;
-    /// <c>swiss_receipt_file_invalid</c>: the file is empty or larger than 10 MB (a request far over the limit is refused earlier by the server).
+    /// <c>swiss_receipt_file_invalid</c>: the file is empty or larger than 10 MB (a request far over the limit is refused earlier by the server);
+    /// <c>swiss_receipt_date_too_old</c>: a <c>Police</c>, <c>ParentalAuthorization</c> or <c>GroupSheet</c> document whose <c>reportDate</c> is more than five years
+    /// ago, which the daily retention job would delete the night it is recorded (an OTR report is never refused for its date).
     /// </response>
     /// <response code="403">The caller may not declare the police communication of this property.</response>
     /// <response code="404"><c>property_not_found</c>: no such property in the caller's org.</response>
@@ -317,6 +325,14 @@ public class SwissComplianceController(
 
         if (!EnumNames.TryParseDefined<SwissComplianceFileType>(form.Type, out var type))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ReceiptTypeInvalidCode, "SwissReceiptTypeInvalid");
+
+        // NF-128: a document of a type kept five years with a date already past that time would be deleted (file and row) by the daily retention job the night
+        // it is recorded, with a count in the log: refused here, so a legal proof is never destroyed in silence by a mistyped date.
+        if (SwissComplianceReceipts.IsPastRetention(type, form.ReportDate!.Value, TimeProvider.System.TodayInRomeAsDateOnly()))
+        {
+            return this.ApiProblem(
+                StatusCodes.Status400BadRequest, ReceiptDateTooOldCode, "SwissReceiptDateTooOld", SwissComplianceReceipts.PoliceRetentionYears);
+        }
 
         var file = form.File!;
         if (file.Length is 0 or > SwissComplianceReceipts.MaxFileBytes)

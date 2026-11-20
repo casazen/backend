@@ -45,7 +45,7 @@ public class SwissComplianceRetentionJob(
     [AutomaticRetry(Attempts = 3)]
     public async Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        var cutoffDay = timeProvider.TodayInRomeAsDateOnly().AddYears(-SwissComplianceReceipts.PoliceRetentionYears);
+        var cutoffDay = SwissComplianceReceipts.RetentionCutoffDay(timeProvider.TodayInRomeAsDateOnly());
 
         // The report date is stored as midnight UTC of its day (the convention of the stays): a document dated before the cut day is past its time.
         var cutoff = DateTime.SpecifyKind(cutoffDay.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);

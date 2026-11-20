@@ -339,6 +339,9 @@
   <data name="SwissReceiptFileInvalid" xml:space="preserve">
     <value>The receipt file is empty or larger than {0} MB.</value>
   </data>
+  <data name="SwissReceiptDateTooOld" xml:space="preserve">
+    <value>The date is more than {0} years ago: a document of this type is kept {0} years from its date, so the automatic retention would delete it at once. Check the date (the arrival day).</value>
+  </data>
   <data name="BookingNotFound" xml:space="preserve">
     <value>Booking not found</value>
   </data>

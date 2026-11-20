@@ -85,6 +85,9 @@ police, question 4 of the draft request):
   and the row of every document of type `Police`, `GroupSheet` or `ParentalAuthorization` whose report date is more than 5 years ago (cut day =
   today in Europe/Zurich minus 5 years: a document dated on the cut day is kept until the next day).
 - **OTR reports are never deleted**: they are tax evidence of the overnight stays and no retention rule is decided for them (⚖ with the accountant).
+- **A date that is already past is refused at the upload**: `POST …/upload-receipt` answers 400 `swiss_receipt_date_too_old` for a `Police`, `GroupSheet` or
+  `ParentalAuthorization` document whose report date is before the cut day (`SwissComplianceReceipts.IsPastRetention`, the same cut as the job), because the job
+  would delete it the night it is recorded: a mistyped date never destroys a legal proof in silence. An OTR report is never refused for its date.
 - A file that cannot be deleted keeps its row and fails the run (Hangfire repeats it): nothing past its time is kept in silence. The log has counts
   and the cut day only.
 - Nothing to configure. To check a run: Hangfire dashboard, job `swiss-compliance-retention`, and the log line «Swiss compliance retention

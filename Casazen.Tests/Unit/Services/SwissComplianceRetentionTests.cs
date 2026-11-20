@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Core.Validation;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Jobs;
@@ -77,6 +78,36 @@ public class SwissComplianceRetentionTests
 
         // Nothing past its time is kept in silence: the run fails (Hangfire repeats it) and only the row whose file is still there stays.
         Assert.Equal([stuck.Id], await db.SwissComplianceReceipts.AsNoTracking().Select(r => r.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task UploadDate_TheUploadRefusesExactlyWhatTheRetentionDeletes_Test()
+    {
+        // One definition of the cut day for the job and for the upload: a document the job deletes is one the upload refuses, a document the job keeps is one
+        // the upload accepts, and an OTR report is neither deleted nor refused whatever its date: a legal proof is never destroyed in silence by a mistyped date.
+        await using var db = NewDb();
+        var property = NewProperty(db);
+        var storage = new InMemoryFileStorage();
+        var today = Clock.TodayInRomeAsDateOnly();
+        var types = Enum.GetValues<SwissComplianceFileType>();
+        var dayBefore = types.ToDictionary(t => t, t => Receipt(db, storage, property, t, CutDay.AddDays(-1)));
+        var onTheCutDay = types.ToDictionary(t => t, t => Receipt(db, storage, property, t, CutDay));
+        await db.SaveChangesAsync();
+
+        await Job(db, storage).ExecuteAsync(CancellationToken.None);
+
+        foreach (var type in types)
+        {
+            var deleted = !await storage.ExistsAsync(StorageBucket.Private, KeyOf(dayBefore[type]));
+            Assert.Equal(deleted, SwissComplianceReceipts.IsPastRetention(type, DateOnly.FromDateTime(dayBefore[type].ReportDate), today));
+            Assert.True(await storage.ExistsAsync(StorageBucket.Private, KeyOf(onTheCutDay[type])));
+            Assert.False(SwissComplianceReceipts.IsPastRetention(type, DateOnly.FromDateTime(onTheCutDay[type].ReportDate), today));
+        }
+
+        Assert.Equal(DateOnly.FromDateTime(CutDay), SwissComplianceReceipts.RetentionCutoffDay(today));
+        Assert.Equal(
+            [SwissComplianceFileType.Police, SwissComplianceFileType.ParentalAuthorization, SwissComplianceFileType.GroupSheet],
+            types.Where(t => SwissComplianceReceipts.IsPastRetention(t, new DateOnly(2000, 1, 1), today)).Order());
     }
 
     [Theory]

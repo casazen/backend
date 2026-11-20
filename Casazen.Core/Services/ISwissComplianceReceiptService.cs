@@ -106,4 +106,18 @@ public static class SwissComplianceReceipts
         StoredType(SwissComplianceFileType.ParentalAuthorization),
         StoredType(SwissComplianceFileType.GroupSheet),
     ];
+
+    /// <summary>
+    /// The cut day of the retention (NF-128): <paramref name="today"/> minus <see cref="PoliceRetentionYears"/> years. The daily job deletes a document of
+    /// <see cref="RetainedFiveYears"/> whose report date is before it, and one dated on it is kept; the one definition of the cut, for the job and for the upload.
+    /// </summary>
+    public static DateOnly RetentionCutoffDay(DateOnly today) => today.AddYears(-PoliceRetentionYears);
+
+    /// <summary>
+    /// True when a document of <paramref name="type"/> dated <paramref name="reportDay"/> is already past its retention on <paramref name="today"/>: the type is kept
+    /// five years and the date is before <see cref="RetentionCutoffDay"/>, so the daily job would delete it the night it is recorded. Such a document is refused at
+    /// the upload (a legal proof is never destroyed in silence); an OTR report is never past its retention.
+    /// </summary>
+    public static bool IsPastRetention(SwissComplianceFileType type, DateOnly reportDay, DateOnly today) =>
+        RetainedFiveYears.Contains(StoredType(type)) && reportDay < RetentionCutoffDay(today);
 }
