@@ -34,13 +34,16 @@ namespace Casazen.Infrastructure.Services;
 /// reference): it is delivered at most once, with retries, a manual trigger or two runs at once. Who is told is read before the claim (once, for the email
 /// and the popup): a read that fails leaves the stage unclaimed, so the next run tries again. A delivery that fails after the claim is logged and not
 /// repeated.</item>
-/// <item><b>Behind the module's flag.</b> With <c>Features:ComplianceTrafficLight</c> off the run does nothing and writes nothing.</item>
+/// <item><b>Behind the modules' flags.</b> With <c>Features:ComplianceTrafficLight</c> off the periods and the connection are not run and nothing of
+/// them is written; the Ticino arrival days (<c>ComplianceAlertService.Ticino.cs</c>) have <c>Features:TicinoNotificationAlerts</c>. Both off: the run does
+/// nothing and writes nothing.</item>
 /// <item><b>Leaves behind</b> (<see cref="IComplianceAlertFollowUp"/>): the "To do" of the condition (the same item the feed of the cockpit raises) and,
-/// for ISTAT, a popup alert when the deadline is within 24 hours; the "To do" of a period is closed when the engine says it is green or gone.</item>
+/// for ISTAT, a popup alert when the deadline is within 24 hours; the "To do" of a period is closed when the engine says it is green or gone. A Ticino
+/// arrival day leaves neither: the cockpit lists it in its own section (<c>ticinoNotifications</c>), outside the feed of the "To do" on purpose.</item>
 /// <item>Logs carry ids, types and counts: no name, no address, no text.</item>
 /// </list>
 /// </remarks>
-public sealed class ComplianceAlertService(
+public sealed partial class ComplianceAlertService(
     AppDbContext db,
     IComplianceStatusService complianceStatus,
     IComplianceConnectionHealthService connectionHealth,
@@ -52,7 +55,8 @@ public sealed class ComplianceAlertService(
     IFeatureFlags featureFlags,
     IOptions<ComplianceOptions> options,
     ILogger<ComplianceAlertService> logger,
-    TimeProvider? timeProvider = null) : IComplianceAlertService
+    TimeProvider? timeProvider = null,
+    ITicinoNotificationService? ticinoNotifications = null) : IComplianceAlertService
 {
     /// <summary>
     /// The closed months looked at for the periods: the one just over and the one before it, because a deadline day late in the month plus the
@@ -64,15 +68,25 @@ public sealed class ComplianceAlertService(
 
     public async Task<ComplianceAlertRunResult> RunAsync(CancellationToken cancellationToken = default)
     {
-        if (!featureFlags.IsEnabled(FeatureFlags.ComplianceTrafficLight))
+        var trafficLight = featureFlags.IsEnabled(FeatureFlags.ComplianceTrafficLight);
+        var ticino = featureFlags.IsEnabled(FeatureFlags.TicinoNotificationAlerts);
+        if (!trafficLight && !ticino)
         {
-            logger.LogDebug("Compliance alerts skipped: Features:ComplianceTrafficLight is off");
+            logger.LogDebug("Compliance alerts skipped: Features:ComplianceTrafficLight and Features:TicinoNotificationAlerts are off");
             return new ComplianceAlertRunResult(Skipped: true, Sent: 0);
         }
 
         var now = _clock.GetUtcNow().UtcDateTime;
-        var sent = await SendPeriodAlertsAsync(now, cancellationToken)
-            + await SendConnectionAlertsAsync(now, cancellationToken);
+        var sent = 0;
+        if (trafficLight)
+        {
+            sent += await SendPeriodAlertsAsync(now, cancellationToken)
+                + await SendConnectionAlertsAsync(now, cancellationToken);
+        }
+
+        // Its own flag: the Ticino days are not part of the traffic light (the section of the cockpit is not either).
+        if (ticino)
+            sent += await SendTicinoAlertsAsync(now, cancellationToken);
 
         logger.LogInformation("Compliance alerts run completed: {Sent} alerts sent", sent);
         return new ComplianceAlertRunResult(Skipped: false, Sent: sent);
@@ -415,6 +429,11 @@ public sealed class ComplianceAlertService(
     /// </summary>
     private async Task FollowUpAsync(Guid orgId, ComplianceAlertStep step, DateTime now, ComplianceAlertRecipients audience, CancellationToken ct)
     {
+        // A Ticino arrival day has no "To do" and no popup of the router: it is told by the bell, its live update and the e-mail, and listed by the cockpit
+        // in the section of the days to notify (outside the feed of the "To do" on purpose: ComplianceActivityFeeder.NotFedActions).
+        if (step.Type == ComplianceAlertType.TicinoNotification)
+            return;
+
         try
         {
             var todo = step.Type == ComplianceAlertType.ConnectionInactive

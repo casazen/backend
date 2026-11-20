@@ -493,6 +493,20 @@ public static class PushTypes
     public const string ScheduledMessageIssue = "scheduled-message-issue";
 
     /// <summary>
+    /// The guests of an arrival day of a Ticino property have to be notified to the cantonal police and the deadline is still ahead (E30/F02/US01/T01, NF-127, D9): the
+    /// first alert of the arrival day («prepare the file») and the one six hours before the deadline. Pushed to the hosts of the property, written to the bell and published
+    /// live; <c>entityId</c> is empty (an arrival day of a property is not an entity), the route <c>/properties</c>, and the open pages read again the section of the days to
+    /// notify. The text names the property and the day, and what the data miss as types of field: never a guest, a value or a document.
+    /// </summary>
+    public const string TicinoNotificationDue = "ticino-notification-due";
+
+    /// <summary>
+    /// The deadline of the notification of a Ticino arrival day is over and nothing says it was made (E30/F02/US01/T01, NF-127, D9): the first alert and the at most two
+    /// reminders. Same audience, channels, route and privacy as <see cref="TicinoNotificationDue"/>.
+    /// </summary>
+    public const string TicinoNotificationOverdue = "ticino-notification-overdue";
+
+    /// <summary>
     /// Type of the push to the host when a service request reaches <paramref name="status"/>; <c>null</c> for a status that has
     /// no push (a new request and a paid one are the host's own doing): the caller then sends nothing.
     /// </summary>
@@ -526,6 +540,20 @@ public static class PushTypes
         Casazen.Core.Entities.ComplianceAlertType.IstatPeriod => IstatDeadline,
         Casazen.Core.Entities.ComplianceAlertType.TouristTaxPeriod => TouristTaxDeadline,
         Casazen.Core.Entities.ComplianceAlertType.ConnectionInactive => ConnectionInactive,
+        Casazen.Core.Entities.ComplianceAlertType.TicinoNotification => TicinoNotificationDue,
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "No push type for this alert."),
     };
+
+    /// <summary>
+    /// Type of the push of <paramref name="alert"/> (E30/F02/US01/T01): the one of its <see cref="ComplianceAlert.Type"/>, and for a Ticino notification
+    /// <see cref="TicinoNotificationOverdue"/> once the deadline is over, <see cref="TicinoNotificationDue"/> before.
+    /// </summary>
+    public static string ForComplianceAlert(ComplianceAlert alert)
+    {
+        ArgumentNullException.ThrowIfNull(alert);
+
+        return alert.Type == Casazen.Core.Entities.ComplianceAlertType.TicinoNotification && alert.Kind == ComplianceAlertKind.TicinoOverdue
+            ? TicinoNotificationOverdue
+            : ForComplianceAlert(alert.Type);
+    }
 }

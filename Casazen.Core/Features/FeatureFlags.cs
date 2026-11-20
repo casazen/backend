@@ -343,6 +343,18 @@ public static class FeatureFlags
     /// </summary>
     public const string ScheduledMessages = "ScheduledMessages";
 
+    /// <summary>
+    /// E30/F02/US01/T01 (NF-127, D9, casazen/backend#979): the staged alerts about the 24 hours of the notification of the guests of a Ticino property to the
+    /// cantonal police, <b>off by default</b> and turned on only in the test environment until the product owner has seen them on a real arrival. Off, the hourly
+    /// <c>stay-alerts</c> job reads no Ticino day and writes no alert state, and nothing is queued: no e-mail, no push, no entry of the bell. On, every
+    /// arrival day of a Ticino property that is not closed (no receipt of the portal, and the declaration when it exists) gets three stages, each sent once:
+    /// the arrival day («prepare the file»), six hours before the deadline, and overdue followed by at most two reminders, to the people who hear about the
+    /// legal deadlines of the property (e-mail) and to its hosts (push, bell and the live update of the open pages, the types <c>ticino-notification-due</c> and
+    /// <c>ticino-notification-overdue</c>). The cockpit section of the days to notify (<c>ticinoNotifications</c>) is not behind it. Independent of
+    /// <see cref="ComplianceTrafficLight"/>. It needs no variable to start. The thresholds are <c>Compliance__Ticino*</c>.
+    /// </summary>
+    public const string TicinoNotificationAlerts = "TicinoNotificationAlerts";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -377,5 +389,6 @@ public static class FeatureFlags
         TaxReportingExports,
         PurgeDocumentsAfterReceipt,
         ScheduledMessages,
+        TicinoNotificationAlerts,
     ];
 }
