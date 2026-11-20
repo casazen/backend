@@ -10,6 +10,16 @@ namespace Casazen.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AlterColumn<string>(
+                name: "Type",
+                table: "SwissComplianceReceipts",
+                type: "character varying(40)",
+                maxLength: 40,
+                nullable: false,
+                oldClrType: typeof(string),
+                oldType: "character varying(20)",
+                oldMaxLength: 20);
+
             migrationBuilder.AddColumn<string>(
                 name: "ResidenceCityName",
                 table: "StayGuests",
@@ -53,6 +63,16 @@ namespace Casazen.Infrastructure.Migrations
             migrationBuilder.DropColumn(
                 name: "VehiclePlate",
                 table: "Bookings");
+
+            migrationBuilder.AlterColumn<string>(
+                name: "Type",
+                table: "SwissComplianceReceipts",
+                type: "character varying(20)",
+                maxLength: 20,
+                nullable: false,
+                oldClrType: typeof(string),
+                oldType: "character varying(40)",
+                oldMaxLength: 40);
         }
     }
 }

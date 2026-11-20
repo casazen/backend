@@ -47,6 +47,11 @@ public sealed class TicinoNotificationRequest
 /// <param name="Reference">The reference of the file of the day, to record with its receipt.</param>
 /// <param name="PortalUrl">Where the host uploads the file.</param>
 /// <param name="PendingDays">The days of the property still to notify (of the last 14), oldest first.</param>
+/// <param name="Warnings">
+/// What the file alone does not settle, per stay (decision D11): <c>parental_authorization_needed</c> (minors without an adult: the written
+/// authorization of the parents, to file in the archive as <c>ParentalAuthorization</c>), <c>group_sheet_incomplete</c> (a member of a group of six or
+/// more misses a name or a nationality on the sheet). A stay may be in the file and still have a warning.
+/// </param>
 /// <param name="CsvCharset">The character set of the CSV (<c>GuestNotifications:TicinoCsvEncoding</c>): <c>windows-1252</c> (default) or <c>utf-8</c>.</param>
 /// <param name="TransliteratedCount">
 /// The characters of the rows that <paramref name="CsvCharset"/> cannot hold (NF-126): the CSV writes them without their accent, or as <c>?</c> as the
@@ -65,6 +70,7 @@ public sealed record TicinoNotificationDayResponse(
     string Reference,
     string PortalUrl,
     IReadOnlyList<TicinoPendingDayResponse> PendingDays,
+    IReadOnlyList<TicinoStayWarningResponse> Warnings,
     string CsvCharset = "windows-1252",
     int TransliteratedCount = 0)
 {
@@ -76,9 +82,7 @@ public sealed record TicinoNotificationDayResponse(
             day.Day,
             day.StructureId,
             day.StayCount,
-            day.Plan.Registrations
-                .Select(r => new TicinoNotificationRowResponse(r.BookingId, $"{r.FirstName} {r.LastName}", r.PersonsOver14, r.PersonsUnder14))
-                .ToList(),
+            day.Plan.Registrations.Select(TicinoNotificationRowResponse.From).ToList(),
             day.Plan.Issues.Select(i => new TicinoNotificationIssueResponse(i.BookingId, i.Position, i.GuestName, i.Missing)).ToList(),
             day.Plan.XmlAvailable,
             day.ReceiptCount,
@@ -86,13 +90,46 @@ public sealed record TicinoNotificationDayResponse(
             $"TI-{day.PropertyId:N}-{day.Day:yyyyMMdd}",
             TicinoPoliceFile.PortalUrl,
             day.PendingDays.Select(p => new TicinoPendingDayResponse(p.Day, p.StayCount, p.DueAtUtc)).ToList(),
+            day.Plan.Warnings.Select(w => new TicinoStayWarningResponse(w.BookingId, w.Code)).ToList(),
             day.CsvCharset,
             day.TransliteratedCount);
     }
 }
 
-/// <summary>A person in the file: the guest and the accompanying minors counted on them (14 to 17, under 14).</summary>
-public sealed record TicinoNotificationRowResponse(Guid BookingId, string GuestName, int PersonsOver14, int PersonsUnder14);
+/// <summary>
+/// A row of the file: the guest and the accompanying minors counted on them (14 to 17, under 14), or the leader of a group of six or more with every
+/// other member counted on the row (14 or more, under 14).
+/// </summary>
+/// <param name="BookingId">The stay.</param>
+/// <param name="GuestName">The notified person.</param>
+/// <param name="PersonsOver14">«Mag14».</param>
+/// <param name="PersonsUnder14">«Min14».</param>
+/// <param name="Kind"><c>guest</c>, or <c>group</c> for the leader of a group of six or more (its sheet: <c>GET …/ticino-notification/group-sheet?bookingId=</c>).</param>
+/// <param name="GroupSize">The persons of the group, the leader included; 0 for a guest.</param>
+public sealed record TicinoNotificationRowResponse(
+    Guid BookingId, string GuestName, int PersonsOver14, int PersonsUnder14, string Kind = TicinoNotificationRowResponse.GuestKind, int GroupSize = 0)
+{
+    /// <summary>The <see cref="Kind"/> of the row of a guest.</summary>
+    public const string GuestKind = "guest";
+
+    /// <summary>The <see cref="Kind"/> of the row of the leader of a group of six or more.</summary>
+    public const string GroupKind = "group";
+
+    public static TicinoNotificationRowResponse From(TicinoRegistration row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return new TicinoNotificationRowResponse(
+            row.BookingId,
+            $"{row.FirstName} {row.LastName}",
+            row.PersonsOver14,
+            row.PersonsUnder14,
+            row.Kind == TicinoRowKind.Group ? GroupKind : GuestKind,
+            row.GroupSize);
+    }
+}
+
+/// <summary>A warning about a stay of the day (the codes of <c>TicinoWarnings</c>, the clients translate them).</summary>
+public sealed record TicinoStayWarningResponse(Guid BookingId, string Code);
 
 /// <summary>A guest left out of the file and what they miss (the codes of <c>TicinoMissing</c>).</summary>
 public sealed record TicinoNotificationIssueResponse(Guid BookingId, int? Position, string GuestName, IReadOnlyList<string> Missing);
@@ -143,13 +180,18 @@ public sealed record SwissComplianceFileResponse(
 /// </summary>
 public sealed class UploadSwissReceiptForm
 {
-    /// <summary>What was submitted: <c>Police</c> (the police notification) or <c>OTR</c> (the overnight report); case-insensitive.</summary>
+    /// <summary>
+    /// What the document is, case-insensitive: <c>Police</c> (the receipt of the police notification), <c>OTR</c> (the overnight report),
+    /// <c>ParentalAuthorization</c> (the written authorization of the parents of a minor staying without an adult) or <c>GroupSheet</c> (the sheet of a
+    /// group of six or more): the last two are the documents the Ticino rules keep five years (decision D11).
+    /// </summary>
     [Required(ErrorMessage = "SwissReceiptTypeRequired")]
     public string? Type { get; set; }
 
     /// <summary>
-    /// The day the submission is about, a calendar day in ISO format (<c>yyyy-MM-dd</c>, for instance <c>2026-10-25</c>): the night of a police notification, the first day
-    /// (<c>fromDate</c>) of the period of an OTR report.
+    /// The day the document is about, a calendar day in ISO format (<c>yyyy-MM-dd</c>, for instance <c>2026-10-25</c>): the arrival day of a police
+    /// notification, of a group sheet or of a parents' authorization, the first day (<c>fromDate</c>) of the period of an OTR report. The five years of
+    /// the retention of the police documents run from it.
     /// </summary>
     [Required(ErrorMessage = "SwissReportDateRequired")]
     public DateOnly? ReportDate { get; set; }
@@ -174,7 +216,7 @@ public sealed class UploadSwissReceiptForm
 /// </summary>
 /// <param name="Id">Id of the receipt.</param>
 /// <param name="PropertyId">The property of the request.</param>
-/// <param name="Type"><c>Police</c> or <c>OTR</c>.</param>
+/// <param name="Type"><c>Police</c>, <c>OTR</c>, <c>ParentalAuthorization</c> or <c>GroupSheet</c>.</param>
 /// <param name="ReportDate">The day the submission is about, as sent.</param>
 /// <param name="Reference">The reference of the submission, trimmed.</param>
 /// <param name="FileHash">SHA-256 of the receipt file, lowercase hexadecimal (64 characters).</param>

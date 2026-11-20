@@ -45,7 +45,22 @@ public interface ITicinoNotificationService
 
     /// <summary>Whether a property is in canton Ticino (country CH, municipality of canton TI).</summary>
     Task<bool> IsPropertyInTicinoAsync(Guid propertyId);
+
+    /// <summary>
+    /// The sheet of the group of a stay of a Ticino property (decision D11, NF-126): the first name, the last name, the birth date and the nationality of
+    /// every member, the leader first (<see cref="TicinoPoliceFile.WriteGroupSheet"/>), rebuilt from the check-in on every request and never stored. Throws
+    /// <c>property_not_found</c>, <c>property_not_in_ticino</c>, <c>booking_not_found</c> (no stay of that property, of the org of the property, that
+    /// owes a notification: another org's booking, a pending or cancelled one, a no-show) or <c>ticino_not_a_group</c> (not a group of six or more).
+    /// </summary>
+    Task<TicinoGroupSheet> GetGroupSheetAsync(Guid propertyId, Guid bookingId, CancellationToken cancellationToken = default);
 }
+
+/// <summary>The sheet of a group (<see cref="ITicinoNotificationService.GetGroupSheetAsync"/>).</summary>
+/// <param name="Content">The CSV, UTF-8 with its byte order mark.</param>
+/// <param name="FileName">Suggested name, e.g. <c>scheda-gruppo-ti-2026-11-19-ABCDE-12345.csv</c> (the arrival day and the code of the booking).</param>
+/// <param name="ContentType"><c>text/csv; charset=utf-8</c>.</param>
+/// <param name="Members">The persons on the sheet, the leader included.</param>
+public sealed record TicinoGroupSheet(byte[] Content, string FileName, string ContentType, int Members);
 
 /// <summary>An arrival day of a Ticino property (<see cref="ITicinoNotificationService.GetDayAsync"/>).</summary>
 /// <param name="PropertyId">The property.</param>

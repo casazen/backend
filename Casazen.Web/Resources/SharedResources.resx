@@ -322,10 +322,10 @@
     <value>Il periodo non può superare {0} giorni.</value>
   </data>
   <data name="SwissReceiptTypeRequired" xml:space="preserve">
-    <value>Indica il tipo di ricevuta: Police oppure OTR.</value>
+    <value>Indica il tipo di documento: Police, OTR, ParentalAuthorization oppure GroupSheet.</value>
   </data>
   <data name="SwissReceiptTypeInvalid" xml:space="preserve">
-    <value>Tipo di ricevuta non valido: usa «Police» (notifica alla polizia) oppure «OTR» (rapporto dei pernottamenti).</value>
+    <value>Tipo di documento non valido: usa «Police» (notifica alla polizia), «OTR» (rapporto dei pernottamenti), «ParentalAuthorization» (autorizzazione dei genitori di un minore non accompagnato) oppure «GroupSheet» (scheda del gruppo).</value>
   </data>
   <data name="SwissReceiptReferenceRequired" xml:space="preserve">
     <value>Indica il riferimento dell'invio, per esempio il numero di conferma del portale.</value>
@@ -8627,5 +8627,8 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="TicinoFileFormatInvalid" xml:space="preserve">
     <value>Formato del file non valido: scegli CSV o XML.</value>
+  </data>
+  <data name="TicinoNotAGroup" xml:space="preserve">
+    <value>Questo soggiorno non è un gruppo di almeno {0} persone (capogruppo e membri del gruppo): la scheda del gruppo non serve.</value>
   </data>
 </root>

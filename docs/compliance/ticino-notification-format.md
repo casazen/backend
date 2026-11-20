@@ -43,7 +43,13 @@ LEAR / NO-LEAR number of the structure.
 - Minor children travelling with a parent are counted on **one** parent's row in «Mag14» (14 to 17) and «Min14» (under 14); the
   notified person is never counted there. An adult child is notified separately.
 - CasaZen counts the minors on the head of family or group of the stay, otherwise on its first adult. A stay without adults
-  notifies each minor. (Assumption: a 14-year-old counts in «Mag14».)
+  notifies each minor, and the day warns `parental_authorization_needed` (the written authorization of the parents is kept 5 years: archive
+  type `ParentalAuthorization`). (Assumption: a 14-year-old counts in «Mag14».)
+- **Groups of 6 or more** (decision D11 ⚖, E30/F01/US01/T02): a stay whose guests are all «capogruppo» / «membro del gruppo», with one head of
+  group and 6 or more persons, is **one row**, the leader's, with every other member counted in «Mag14» (14 or more, adults included) and «Min14»;
+  the members are not rows. Their sheet (first name, last name, birth date, nationality) is `GET …/ticino-notification/group-sheet?bookingId=`,
+  kept 5 years by the host (archive type `GroupSheet`). A family is never a group. How the portal wants a group in a bulk upload is not
+  documented (question 4 to the police): the leader's row is what the manual entry form asks.
 
 ## XML (`F-Modello_4.xsd`)
 
@@ -116,7 +122,8 @@ For a property in Ticino (`ITicinoNotificationService.IsPropertyInTicinoAsync`) 
 elsewhere:
 
 - the **document type and number of every guest the file notifies on their own row** (`TicinoPoliceFile.NotifiedPositions`: every adult,
-  family and group members included, or every minor of a stay without adults), not only of the head as the Alloggiati record does. The
+  family and group members included, or every minor of a stay without adults; in a group of 6 or more only its leader), not only of the head as
+  the Alloggiati record does. The
   public check-in (`POST api/public/checkin/{token}`) and the host's save of the guests refuse the guests without them (`DocumentType`,
   `DocumentNumber`: `CheckInFieldRequired`); the wizard reports them as blocking (`guest_field_missing`, `documentType` /
   `documentNumber`). The place of issue stays optional for a member. Elsewhere a member's document is dropped, as before;
@@ -143,13 +150,17 @@ refuse for a missing mandatory field.
 
 | Route | What |
 |---|---|
-| `GET api/properties/{id}/swiss/ticino-notification?date=yyyy-MM-dd` | the arrival day: rows, issues, `xmlAvailable`, receipts, deadline, the days still to notify (no `date`: the oldest pending day of the last 14, else today) |
+| `GET api/properties/{id}/swiss/ticino-notification?date=yyyy-MM-dd` | the arrival day: rows (`kind`: `guest` or `group`, `groupSize`), issues, `warnings` (`parental_authorization_needed`, `group_sheet_incomplete`), `xmlAvailable`, receipts, deadline, the days still to notify (no `date`: the oldest pending day of the last 14, else today), `csvCharset`, `transliteratedCount` |
 | `POST api/properties/{id}/swiss/ticino-notification` `{ reportDate, format: "csv" \| "xml" }` | the file (attachment), never stored |
-| `POST api/properties/{id}/swiss/upload-receipt` | the receipt of the portal (type `Police`, report date = arrival day) |
+| `GET api/properties/{id}/swiss/ticino-notification/group-sheet?bookingId=` | the sheet of a group of 6 or more (CSV UTF-8 with BOM), `guest.read`, never stored |
+| `POST api/properties/{id}/swiss/upload-receipt` | the receipt of the portal (type `Police`, report date = arrival day), or a document kept 5 years: `ParentalAuthorization`, `GroupSheet` (report date = arrival day) |
 | `GET api/compliance/summary` → `ticinoNotifications` | one `NotifyTicinoPolice` item per Ticino property and arrival day still to notify, the day in `period` |
 
 Errors: `property_not_in_ticino`, `ticino_structure_id_missing`, `ticino_notification_empty`, `ticino_xml_not_available`,
-`ticino_file_format_invalid`.
+`ticino_file_format_invalid`, `ticino_not_a_group`, `booking_not_found` (group sheet).
+
+The police receipts, the group sheets and the parents' authorizations are deleted 5 years after their report date by the daily job
+`swiss-compliance-retention` (NF-128); the OTR reports are kept ([`guest-notification-switzerland.md`](../runbooks/guest-notification-switzerland.md) § 6).
 
 ## Not verified
 

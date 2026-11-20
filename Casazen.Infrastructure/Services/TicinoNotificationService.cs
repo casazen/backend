@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq.Expressions;
 using System.Security.Cryptography;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -197,21 +198,45 @@ public class TicinoNotificationService(
             .AnyAsync(m => m.MunicipalityCode == property.SwissMunicipalityCode && m.CantonCode == TicinoCantonCode, cancellationToken);
     }
 
+    public async Task<TicinoGroupSheet> GetGroupSheetAsync(Guid propertyId, Guid bookingId, CancellationToken cancellationToken = default)
+    {
+        var property = await LoadTicinoPropertyAsync(propertyId, cancellationToken);
+
+        // The same stays as the file: of this property and of its org, owing a notification (never a pending, cancelled or no-show booking).
+        var stay = (await ReadStaysAsync(property, b => b.Id == bookingId, cancellationToken)).SingleOrDefault()
+            ?? throw new NotFoundException($"Booking {bookingId} not found") { Code = "booking_not_found", MessageKey = "BookingNotFound" };
+        var members = TicinoPoliceFile.GroupSheetOf(stay.Facts)
+            ?? throw new DomainRuleException("ticino_not_a_group", "TicinoNotAGroup", TicinoPoliceFile.GroupMinSize);
+
+        var arrival = stay.Facts.Arrival.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var code = string.IsNullOrWhiteSpace(stay.Facts.ReferenceNumber) ? bookingId.ToString("N") : stay.Facts.ReferenceNumber;
+        return new TicinoGroupSheet(
+            TicinoPoliceFile.WriteGroupSheet(members), $"scheda-gruppo-ti-{arrival}-{code}.csv", "text/csv; charset=utf-8", members.Count);
+    }
+
     private sealed record StayRead(TicinoStayFacts Facts, DateTime? ArrivedAt);
 
-    private async Task<List<StayRead>> ReadStaysAsync(Property property, DateOnly day, CancellationToken cancellationToken)
+    private Task<List<StayRead>> ReadStaysAsync(Property property, DateOnly day, CancellationToken cancellationToken)
     {
         var from = StoredDay(day);
         var to = StoredDay(day.AddDays(1));
+        return ReadStaysAsync(property, b => b.CheckInDate >= from && b.CheckInDate < to, cancellationToken);
+    }
+
+    /// <summary>
+    /// The stays of <paramref name="property"/> that <paramref name="which"/> selects and that owe a police communication (the one definition of
+    /// <see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/>, not a no-show), with their guests; every read names the org of the property.
+    /// </summary>
+    private async Task<List<StayRead>> ReadStaysAsync(Property property, Expression<Func<Booking, bool>> which, CancellationToken cancellationToken)
+    {
         var bookings = await context.Bookings
             .AsNoTracking()
             .Include(b => b.Guest)
             .Where(b => b.OrgId == property.OrgId
                 && b.PropertyId == property.Id
                 && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status)
-                && b.NoShowAt == null
-                && b.CheckInDate >= from
-                && b.CheckInDate < to)
+                && b.NoShowAt == null)
+            .Where(which)
             .OrderBy(b => b.CheckInDate)
             .ThenBy(b => b.Id)
             .ToListAsync(cancellationToken);

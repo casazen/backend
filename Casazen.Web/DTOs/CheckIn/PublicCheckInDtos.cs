@@ -69,7 +69,8 @@ public class PublicCheckInContextResponse
     /// The guest fields the regime of the property requires, the page asks only these (data minimization), as names of the properties of a guest
     /// (<see cref="StayGuestSubmitDto"/>): the statistical fields the region requires (<c>TourismType</c>, <c>TravelWay</c>, <c>EducationLevel</c>;
     /// none when the comune is unknown or the region requires none) and, for a property in canton Ticino (NF-132), <c>DocumentType</c> and
-    /// <c>DocumentNumber</c> (of every adult, family and group members included, or of every minor of a stay without adults: required),
+    /// <c>DocumentNumber</c> (of every adult, family and group members included, or of every minor of a stay without adults, in a group of six or
+    /// more of its leader only: required),
     /// <c>ResidenceStreet</c>, <c>ResidencePostalCode</c>, <c>ResidenceCityName</c> and <c>ResidenceCountryName</c> (the home and the state of
     /// residence, as the residence block asks it: asked, optional).
     /// </summary>

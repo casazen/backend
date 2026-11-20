@@ -10,8 +10,8 @@ namespace Casazen.Core.Regulatory;
 /// <remarks>
 /// <list type="bullet">
 /// <item><see cref="DocumentType"/>, <see cref="DocumentNumber"/>: the document of every guest the police file notifies on their own row
-/// (<see cref="TicinoPoliceFile.NotifiedPositions"/>: every adult, family and group members included, or every minor of a stay without adults), not
-/// only of the head. Required: the check-in and the wizard do not complete without them.</item>
+/// (<see cref="TicinoPoliceFile.NotifiedPositions"/>: every adult, family and group members included, or every minor of a stay without adults; in a
+/// group of six or more only its leader), not only of the head. Required: the check-in and the wizard do not complete without them.</item>
 /// <item><see cref="ResidenceStreet"/>, <see cref="ResidencePostalCode"/>, <see cref="ResidenceCityName"/>, <see cref="ResidenceCountryName"/> (the
 /// place of residence as the form already asks it: in Italy the comune, abroad the state): «Indirizzo», «CAP», «Domicilio», «Nazione» of the file.
 /// Asked but optional: a guest without them is still a valid row of the file.</item>

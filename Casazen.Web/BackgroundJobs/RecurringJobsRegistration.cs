@@ -183,6 +183,15 @@ public static class RecurringJobsRegistration
             GuestDocumentPurgeJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // NF-128 (casazen/backend#979, decisions D10, D11): the receipts of the Ticino police notifications, the group sheets and the parents' authorizations are kept
+        // five years from their date; the file and the row of those whose time is over are deleted every day at 03:55 UTC, counts only in the log, never an OTR report.
+        // Always registered: a file that exists costs money whatever a flag says, and with nothing past its time a run finds nothing.
+        recurringJobManager.AddOrUpdate<SwissComplianceRetentionJob>(
+            SwissComplianceRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            SwissComplianceRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // CO-20: daily CIN alert, after the nightly compliance check of CO-06.
         recurringJobManager.AddOrUpdate<CinDeadlineAlertJob>(
             CinDeadlineAlertJob.RecurringJobId,

@@ -359,6 +359,147 @@ public class TicinoPoliceFileTests
         Assert.Equal([0, 1], minors.Order());
     }
 
+    // ─── D11: groups of six or more and minors without an adult ─────────────────────────────────────────
+
+    [Fact]
+    public void TicinoGroup_LeaderRowWithCounters_Test()
+    {
+        // A group of 7: the leader and 6 members (3 adults, one of 15, two of 10). The file holds ONE row, the leader's, with the 6 others counted on
+        // it: 14 or more in «Mag14» (the adults too), under 14 in «Min14». The plate and the code of the booking are on that row.
+        var group = Stay(
+            Adult("Laura", "Guida", position: 0, type: StayGuestType.HeadOfGroup),
+            Adult("Paolo", "Membro", position: 1, type: StayGuestType.GroupMember) with { DocumentType = null, DocumentTypeCode = null },
+            Adult("Sara", "Membro", position: 2, type: StayGuestType.GroupMember) with { DocumentType = null, DocumentTypeCode = null },
+            Adult("Ugo", "Membro", position: 3, type: StayGuestType.GroupMember) with { DocumentType = null, DocumentTypeCode = null },
+            GroupChild("Teo", age: 15, position: 4),
+            GroupChild("Ada", age: 10, position: 5),
+            GroupChild("Ivo", age: 10, position: 6));
+        var stay = group with { ReferenceNumber = "ABCDE-12345", VehiclePlate = "TI123456" };
+
+        var plan = TicinoPoliceFile.Plan(Structure, [stay], Today);
+
+        Assert.Empty(plan.Issues);
+        Assert.Empty(plan.Warnings);
+        var row = Assert.Single(plan.Registrations);
+        Assert.Equal(("Laura", TicinoRowKind.Group, 7), (row.FirstName, row.Kind, row.GroupSize));
+        Assert.Equal((4, 2), (row.PersonsOver14, row.PersonsUnder14));
+        Assert.Equal(("TI123456", "ABCDE-12345"), (row.CarId, row.ReferenceNr));
+        Assert.Equal(
+            "NL-12345678;Guida;Laura;04.01.1984;CHE;19.11.2026;21.11.2026;SVIZZERA;ABCDE-12345;Via Test 1;6900;Lugano;CHE;TI123456;4;2;Passaporto;X1234567",
+            Windows1252.GetString(TicinoPoliceFile.WriteCsv(plan.Registrations)).Split("\r\n")[1]);
+
+        // The sheet of the group: the 7 members, the leader first, the four data of each, UTF-8 with its byte order mark.
+        var sheet = TicinoPoliceFile.WriteGroupSheet(TicinoPoliceFile.GroupSheetOf(stay)!);
+        Assert.True(sheet.AsSpan().StartsWith(Encoding.UTF8.Preamble));
+        Assert.Equal(
+            [
+                "Nome;Cognome;Data di nascita;Nazionalità",
+                "Laura;Guida;04.01.1984;CHE",
+                "Paolo;Membro;04.01.1984;CHE",
+                "Sara;Membro;04.01.1984;CHE",
+                "Ugo;Membro;04.01.1984;CHE",
+                "Teo;Membro;18.11.2011;CHE",
+                "Ada;Membro;18.11.2016;CHE",
+                "Ivo;Membro;18.11.2016;CHE",
+            ],
+            Encoding.UTF8.GetString(sheet.AsSpan(Encoding.UTF8.Preamble.Length)).Split("\r\n"));
+
+        // Only the leader is a row: the check-in asks the document of the leader alone.
+        Assert.Equal([0], TicinoPoliceFile.NotifiedPositions(stay.Guests.Select(g => (g.Position, g.Type, g.BirthDate)), Arrival));
+    }
+
+    [Fact]
+    public void Plan_AFamilyOfSeven_IsNotAGroup_AndKeepsTheAdultRowsAndTheMinorCounters()
+    {
+        var stay = Stay(
+            Adult("Marco", "Rossi", position: 0, type: StayGuestType.HeadOfFamily),
+            Adult("Anna", "Rossi", position: 1, type: StayGuestType.FamilyMember),
+            Adult("Nonna", "Rossi", position: 2, type: StayGuestType.FamilyMember),
+            Child("Luca", age: 16, position: 3),
+            Child("Sara", age: 12, position: 4),
+            Child("Ivo", age: 8, position: 5),
+            Child("Ada", age: 3, position: 6));
+
+        var plan = TicinoPoliceFile.Plan(Structure, [stay], Today);
+
+        Assert.Null(TicinoPoliceFile.GroupSheetOf(stay));
+        Assert.Equal(["Marco", "Anna", "Nonna"], plan.Registrations.Select(r => r.FirstName));
+        Assert.All(plan.Registrations, r => Assert.Equal((TicinoRowKind.Guest, 0), (r.Kind, r.GroupSize)));
+        var head = Assert.Single(plan.Registrations, r => r.FirstName == "Marco");
+        Assert.Equal((1, 3), (head.PersonsOver14, head.PersonsUnder14));
+        Assert.Empty(plan.Warnings);
+    }
+
+    [Fact]
+    public void Plan_AGroupOfFive_KeepsTheRuleOfTheAdults()
+    {
+        var stay = Stay(
+            Adult("Laura", "Guida", position: 0, type: StayGuestType.HeadOfGroup),
+            Adult("Paolo", "Membro", position: 1, type: StayGuestType.GroupMember),
+            Adult("Sara", "Membro", position: 2, type: StayGuestType.GroupMember),
+            GroupChild("Teo", age: 15, position: 3),
+            GroupChild("Ada", age: 10, position: 4));
+
+        var plan = TicinoPoliceFile.Plan(Structure, [stay], Today);
+
+        // Under six persons the adults are rows and the minors are counted on the head of the group.
+        Assert.Equal(["Laura", "Paolo", "Sara"], plan.Registrations.Select(r => r.FirstName));
+        Assert.Equal((1, 1), (plan.Registrations[0].PersonsOver14, plan.Registrations[0].PersonsUnder14));
+        Assert.All(plan.Registrations, r => Assert.Equal(TicinoRowKind.Guest, r.Kind));
+        Assert.Null(TicinoPoliceFile.GroupSheetOf(stay));
+    }
+
+    [Fact]
+    public void Plan_AGroupMemberWithoutNationality_StillNotifiesTheLeader_AndWarnsThatTheSheetIsIncomplete()
+    {
+        var stay = Stay(
+            Adult("Laura", "Guida", position: 0, type: StayGuestType.HeadOfGroup),
+            Adult("Paolo", "Membro", position: 1, type: StayGuestType.GroupMember) with { CitizenshipCode = null, CitizenshipName = "ATLANTIDE" },
+            GroupChild("Teo", age: 15, position: 2),
+            GroupChild("Ada", age: 10, position: 3),
+            GroupChild("Ivo", age: 9, position: 4),
+            GroupChild("Eva", age: 8, position: 5));
+
+        var plan = TicinoPoliceFile.Plan(Structure, [stay], Today);
+
+        var row = Assert.Single(plan.Registrations);
+        Assert.Equal((TicinoRowKind.Group, 2, 3), (row.Kind, row.PersonsOver14, row.PersonsUnder14));
+        Assert.Equal(TicinoWarnings.GroupSheetIncomplete, Assert.Single(plan.Warnings).Code);
+        Assert.Equal(string.Empty, TicinoPoliceFile.GroupSheetOf(stay)![1].Nationality);
+    }
+
+    [Fact]
+    public void Plan_AGroupMemberWithoutBirthDate_CannotBeCounted_AndKeepsTheGroupOut()
+    {
+        var stay = Stay(
+            Adult("Laura", "Guida", position: 0, type: StayGuestType.HeadOfGroup),
+            Adult("Paolo", "Membro", position: 1, type: StayGuestType.GroupMember) with { BirthDate = null },
+            GroupChild("Teo", age: 15, position: 2),
+            GroupChild("Ada", age: 10, position: 3),
+            GroupChild("Ivo", age: 9, position: 4),
+            GroupChild("Eva", age: 8, position: 5));
+
+        var plan = TicinoPoliceFile.Plan(Structure, [stay], Today);
+
+        Assert.Empty(plan.Registrations);
+        Assert.Equal([TicinoMissing.BirthDate], Assert.Single(plan.Issues, i => i.Position == 1).Missing);
+    }
+
+    [Fact]
+    public void Plan_AStayOfMinorsOnly_NotifiesEachMinor_AndWarnsThatTheParentsAuthorizationIsNeeded()
+    {
+        var minors = Stay(
+            Child("Luca", age: 17) with { CitizenshipCode = "100000241", DocumentType = GuestDocumentType.IdentityCard },
+            Child("Sara", age: 16, position: 1) with { CitizenshipCode = "100000241", DocumentType = GuestDocumentType.IdentityCard });
+        var family = Stay(Adult("Anna", "Rossi"), Child("Luca", age: 10, position: 1));
+
+        var plan = TicinoPoliceFile.Plan(Structure, [minors, family], Today);
+
+        Assert.Equal(["Anna", "Luca", "Sara"], plan.Registrations.Select(r => r.FirstName).Order());
+        var warning = Assert.Single(plan.Warnings);
+        Assert.Equal((minors.BookingId, TicinoWarnings.ParentalAuthorizationNeeded), (warning.BookingId, warning.Code));
+    }
+
     // ─── Codes ──────────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
@@ -494,6 +635,10 @@ public class TicinoPoliceFileTests
             DocumentTypeCode = null,
             DocumentNumber = null,
         };
+
+    /// <summary>A minor member of a group: <paramref name="age"/> years at the arrival, no document.</summary>
+    private static TicinoGuestFacts GroupChild(string first, int age, int position) =>
+        Child(first, age, position) with { LastName = "Membro", Type = StayGuestType.GroupMember };
 
     private static XmlSchemaSet OfficialSchema(bool relaxRegistrationCount)
     {
