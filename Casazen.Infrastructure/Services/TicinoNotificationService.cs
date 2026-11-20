@@ -269,6 +269,11 @@ public class TicinoNotificationService(
             {
                 // A co-host undid the declaration between the read and the save: the row to update is gone, so this call comes after the undo and declares the day again below.
                 context.Entry(existing).State = EntityState.Detached;
+                _logger.LogInformation(
+                    "Ticino notification declaration of property {PropertyId} for {ArrivalDay} was undone by a co-host before {UserId} could attach a receipt to it",
+                    property.Id,
+                    day,
+                    userId);
                 existing = await FirstDeclarationAsync(property, day, cancellationToken);
             }
         }
@@ -339,6 +344,11 @@ public class TicinoNotificationService(
             foreach (var removed in declarations)
                 context.Entry(removed).State = EntityState.Detached;
 
+            _logger.LogInformation(
+                "Ticino notification declaration of property {PropertyId} for {ArrivalDay} was already removed by a co-host when {UserId} undid it",
+                property.Id,
+                day,
+                userId);
             return false;
         }
 
