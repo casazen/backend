@@ -114,8 +114,9 @@ public class AppDbContext(
     public DbSet<ComuneOfficialProfile> ComuneOfficialProfiles { get; set; } = null!;
     public DbSet<ComuneOfficialProfileVersion> ComuneOfficialProfileVersions { get; set; } = null!;
 
-    // Swiss municipalities from Ufficio federale di statistica (NF-02)
+    // Swiss municipalities and localities of the official directory of swisstopo (NF-02, E29/F01/US01/T01, NF-124)
     public DbSet<SwissMunicipality> SwissMunicipalities { get; set; } = null!;
+    public DbSet<SwissLocality> SwissLocalities { get; set; } = null!;
 
     // Swiss compliance receipts (Ticino police notifications, OTR tax reports, ADR-016)
     public DbSet<SwissComplianceReceipt> SwissComplianceReceipts { get; set; } = null!;
@@ -694,6 +695,16 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OfficialSourceFetchConfiguration());
         modelBuilder.ApplyConfiguration(new ComuneOfficialProfileConfiguration());
         modelBuilder.ApplyConfiguration(new ComuneOfficialProfileVersionConfiguration(Database.IsNpgsql()));
+
+        // E29/F01/US01/T01 (NF-124): the localities of the official swisstopo directory, one row per locality and municipality. The key starts with
+        // the postal code, so it is the index of the postal code lookups (the search, the resolver of the place of a property); the search name and
+        // the municipality have their own.
+        modelBuilder.Entity<SwissLocality>(locality =>
+        {
+            locality.HasKey(l => new { l.PostalCode, l.AddOn, l.MunicipalityCode, l.Name });
+            locality.HasIndex(l => l.NormalizedName);
+            locality.HasIndex(l => l.MunicipalityCode);
+        });
 
         // CO-14: one set of Alloggiati Web credentials per property, going with it; tenant row (TN-2).
         modelBuilder.ApplyConfiguration(new PropertyQuesturaCredentialsConfiguration());

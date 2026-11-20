@@ -54,7 +54,8 @@ public sealed class IdentityVerificationFlowService(
     TimeProvider clock,
     ILogger<IdentityVerificationFlowService> logger,
     IDomainEventRecorder? domainEvents = null,
-    ICheckInLegalTexts? legalTexts = null) : IIdentityVerificationFlowService
+    ICheckInLegalTexts? legalTexts = null,
+    IPropertySwissPlaceResolver? swissPlaces = null) : IIdentityVerificationFlowService
 {
     /// <summary>Data Protection purpose of the encrypted picture of a document in the private bucket. Never change it: stored pictures would become unreadable.</summary>
     public const string DocumentImageContentPurpose = "Casazen.DocumentImage.Content";
@@ -65,8 +66,6 @@ public sealed class IdentityVerificationFlowService(
     /// <summary>Largest picture read, in bytes (the endpoint refuses more than 10 MB anyway).</summary>
     internal const int MaxImageBytes = 12_000_000;
 
-    private const string TicinoCantonCode = "TI";
-    private const string SwitzerlandCountryCode = "CH";
     private const string StoredContentType = "application/octet-stream";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -756,22 +755,17 @@ public sealed class IdentityVerificationFlowService(
 
     /// <summary>
     /// The property keeps no document (ADR-013-R6, R15): it is in canton Ticino, or in Switzerland with a canton CasaZen does not know (the
-    /// prudent reading of the zero retention).
+    /// prudent reading of the zero retention). The canton is the one of the one resolver of the place of a Swiss property (E29/F01/US01/T02), and
+    /// only a municipality the host confirmed (stored) outside Ticino lets a document be kept: a place derived from the postal code, or an
+    /// ambiguous one, keeps nothing, as a property without a stored municipality always did.
     /// </summary>
     private async Task<bool> DocumentNotArchivedAsync(Property property, CancellationToken ct)
     {
-        if (!string.Equals(property.Country, SwitzerlandCountryCode, StringComparison.OrdinalIgnoreCase))
+        if (!SwissPlace.IsSwissCountry(property.Country))
             return false;
 
-        if (string.IsNullOrWhiteSpace(property.SwissMunicipalityCode))
-            return true;
-
-        var canton = await db.SwissMunicipalities
-            .AsNoTracking()
-            .Where(m => m.MunicipalityCode == property.SwissMunicipalityCode)
-            .Select(m => m.CantonCode)
-            .FirstOrDefaultAsync(ct);
-        return canton is null || string.Equals(canton, TicinoCantonCode, StringComparison.OrdinalIgnoreCase);
+        var place = await (swissPlaces ?? new PropertySwissPlaceResolver(db)).ResolveAsync(property, ct);
+        return place is not { IsKnown: true, Source: SwissPlaceSource.Stored } || place.IsInTicino;
     }
 
     private bool IsMinor(DateOnly? dateOfBirth)

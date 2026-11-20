@@ -4,6 +4,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Authorization;
 using Casazen.Web.Controllers;
@@ -31,7 +32,10 @@ public class SwissComplianceControllerTests
     private static readonly Guid OtherProperty = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
     private static readonly DateOnly Night = new(2026, 10, 25);
 
-    public static TheoryData<string> Endpoints => new() { "ticino-notification", "ticino-day", "otr-report", "upload-receipt", "list-receipts", "download-receipt" };
+    public static TheoryData<string> Endpoints => new()
+    {
+        "ticino-notification", "ticino-day", "otr-report", "upload-receipt", "list-receipts", "download-receipt", "group-sheet",
+    };
 
     private readonly Mock<ITicinoNotificationService> _ticino = new();
     private readonly Mock<IOtrTaxService> _otr = new();
@@ -59,6 +63,9 @@ public class SwissComplianceControllerTests
             .ReturnsAsync(new SwissComplianceReceiptPage([], 1, 50, 0, IsTicinoProperty: true));
         _receipts.Setup(s => s.OpenFileAsync(GivenProperty, GivenProperty, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SwissComplianceReceiptFile(Stream.Null, "receipt.pdf", "application/pdf"));
+        _ticino
+            .Setup(s => s.GetGroupSheetAsync(GivenProperty, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TicinoGroupSheet([1], "scheda-gruppo-ti.csv", "text/csv; charset=utf-8", 7));
 
         // A collaborator «Solo alcuni» of the org, given GivenProperty only; every permission of its role is held.
         var controller = NewController(GivenPropertyOnly());
@@ -80,6 +87,94 @@ public class SwissComplianceControllerTests
             Times.Never);
         _receipts.Verify(s => s.ListAsync(OtherProperty, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
         _receipts.Verify(s => s.OpenFileAsync(OtherProperty, It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _ticino.Verify(s => s.GetGroupSheetAsync(OtherProperty, It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GroupSheet_OtherOrganizationForbidden_Test()
+    {
+        // The sheet holds the names, birth dates and nationalities of the members: a property of another org is not even visible to the caller (404,
+        // nothing built), one of the caller's org outside its scope is refused (403, nothing built), and the property it was given is served with
+        // a file that is never cached.
+        var otherOrgProperty = Guid.Parse("cccccccc-0000-0000-0000-000000000003");
+        _ticino
+            .Setup(s => s.GetGroupSheetAsync(GivenProperty, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TicinoGroupSheet([1], "scheda-gruppo-ti.csv", "text/csv; charset=utf-8", 7));
+        var resources = new Mock<IHostResourceLookup>();
+        resources
+            .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) => id == otherOrgProperty ? null : new HostResource(OrgId, "auth0|creator", id));
+        var controller = NewController(GivenPropertyOnly(), resources.Object);
+
+        var otherOrg = await controller.DownloadGroupSheet(otherOrgProperty, Guid.NewGuid(), CancellationToken.None);
+        var outOfScope = await controller.DownloadGroupSheet(OtherProperty, Guid.NewGuid(), CancellationToken.None);
+        var served = await controller.DownloadGroupSheet(GivenProperty, Guid.NewGuid(), CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status404NotFound, Assert.IsAssignableFrom<ObjectResult>(otherOrg).StatusCode);
+        Assert.IsType<ForbidResult>(outOfScope);
+        Assert.IsType<FileContentResult>(served);
+        Assert.Equal("private, no-store", controller.Response.Headers.CacheControl.ToString());
+        _ticino.Verify(s => s.GetGroupSheetAsync(otherOrgProperty, It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _ticino.Verify(s => s.GetGroupSheetAsync(OtherProperty, It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("Police")]
+    [InlineData("ParentalAuthorization")]
+    [InlineData("GroupSheet")]
+    public async Task UploadReceipt_ADocumentKeptFiveYearsWithADateAlreadyPastThat_IsRefusedWith400_AndNothingIsRecorded_Test(string type)
+    {
+        // The daily retention job deletes such a document (file and row) the night it is recorded: a mistyped date must never destroy a legal proof in silence.
+        var controller = NewController(GivenPropertyOnly());
+        var form = ReceiptForm();
+        form.Type = type;
+        form.ReportDate = new DateOnly(2000, 1, 1);
+
+        var result = (await controller.UploadReceipt(GivenProperty, form, CancellationToken.None)).Result;
+
+        var problem = Assert.IsType<ProblemDetails>(Assert.IsType<ObjectResult>(result).Value);
+        Assert.Equal(StatusCodes.Status400BadRequest, problem.Status);
+        Assert.Equal(SwissComplianceController.ReceiptDateTooOldCode, (string?)problem.Extensions["code"]);
+        Assert.Equal("swiss_receipt_date_too_old", SwissComplianceController.ReceiptDateTooOldCode);
+        _receipts.Verify(
+            s => s.RecordAsync(
+                It.IsAny<Guid>(), It.IsAny<SwissComplianceFileType>(), It.IsAny<DateTime>(), It.IsAny<string>(), It.IsAny<Stream>(),
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task UploadReceipt_AnOtrReportOfAnyDate_AndAYoungDocumentOfAKeptType_AreRecorded_Test()
+    {
+        // An OTR report is never deleted by the retention, so its date is never refused; a document of a kept type dated today is far from its time.
+        _receipts
+            .Setup(s => s.RecordAsync(
+                GivenProperty, It.IsAny<SwissComplianceFileType>(), It.IsAny<DateTime>(), "REF-1", It.IsAny<Stream>(),
+                "receipt.pdf", "application/pdf", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwissComplianceReceipt { OrgId = OrgId, PropertyId = GivenProperty, Type = "OTR", Reference = "REF-1" });
+        var controller = NewController(GivenPropertyOnly());
+        var oldOtr = ReceiptForm();
+        oldOtr.Type = "OTR";
+        oldOtr.ReportDate = new DateOnly(2000, 1, 1);
+        var youngSheet = ReceiptForm();
+        youngSheet.Type = "GroupSheet";
+        youngSheet.ReportDate = TimeProvider.System.TodayInRomeAsDateOnly();
+
+        var recordedOtr = (await controller.UploadReceipt(GivenProperty, oldOtr, CancellationToken.None)).Result;
+        var recordedSheet = (await controller.UploadReceipt(GivenProperty, youngSheet, CancellationToken.None)).Result;
+
+        Assert.Equal(StatusCodes.Status201Created, Assert.IsAssignableFrom<ObjectResult>(recordedOtr).StatusCode);
+        Assert.Equal(StatusCodes.Status201Created, Assert.IsAssignableFrom<ObjectResult>(recordedSheet).StatusCode);
+        _receipts.Verify(
+            s => s.RecordAsync(
+                GivenProperty, SwissComplianceFileType.Otr, new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc), "REF-1", It.IsAny<Stream>(),
+                "receipt.pdf", "application/pdf", It.IsAny<CancellationToken>()),
+            Times.Once);
+        _receipts.Verify(
+            s => s.RecordAsync(
+                GivenProperty, SwissComplianceFileType.GroupSheet, It.IsAny<DateTime>(), "REF-1", It.IsAny<Stream>(),
+                "receipt.pdf", "application/pdf", It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     private static UserAuthorizationSnapshot GivenPropertyOnly() => new(
@@ -91,7 +186,7 @@ public class SwissComplianceControllerTests
         OrgMember: new OrgMemberSnapshot(
             OrgId, OrgRole.Collaborator, OrgMemberStatus.Active, PropertyScope.Selected, new HashSet<Guid> { GivenProperty }));
 
-    private SwissComplianceController NewController(UserAuthorizationSnapshot snapshot)
+    private SwissComplianceController NewController(UserAuthorizationSnapshot snapshot, IHostResourceLookup? lookup = null)
     {
         var resources = new Mock<IHostResourceLookup>();
         resources
@@ -102,7 +197,7 @@ public class SwissComplianceControllerTests
             OrgId, scopeResolver: HostAuthorizationTestHarness.ScopeResolver(snapshot));
 
         return new SwissComplianceController(
-            _ticino.Object, _otr.Object, _receipts.Object, resources.Object, authorization, Mock.Of<ILogger<SwissComplianceController>>())
+            _ticino.Object, _otr.Object, _receipts.Object, lookup ?? resources.Object, authorization, Mock.Of<ILogger<SwissComplianceController>>())
         {
             ControllerContext = new ControllerContext
             {
@@ -124,6 +219,7 @@ public class SwissComplianceControllerTests
             propertyId, new OtrReportRequest { FromDate = Night, ToDate = Night.AddDays(6) }, CancellationToken.None)).Result,
         "list-receipts" => (await controller.ListReceipts(propertyId)).Result,
         "download-receipt" => await controller.DownloadReceipt(propertyId, GivenProperty),
+        "group-sheet" => await controller.DownloadGroupSheet(propertyId, Guid.NewGuid(), CancellationToken.None),
         _ => (await controller.UploadReceipt(propertyId, ReceiptForm(), CancellationToken.None)).Result,
     };
 

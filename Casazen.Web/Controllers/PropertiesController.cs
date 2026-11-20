@@ -179,10 +179,12 @@ public class PropertiesController(
 
         await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "Property.Read");
 
-        // casazen/backend#979: the edit form shows the identifier of the Ticino police portal only for a property in Ticino.
-        var ticino = HttpContext?.RequestServices?.GetService<ITicinoNotificationService>();
-        var isInTicino = ticino is not null && await ticino.IsPropertyInTicinoAsync(property.Id);
-        return Ok(PropertyResponse.From(property, isInTicino: isInTicino));
+        // casazen/backend#979, E29/F01/US01/T02: where the one resolver places the property (the stored Swiss municipality, or the one its postal code
+        // and city give): the edit form shows the identifier of the Ticino police portal only in Ticino, and proposes a derived municipality for
+        // confirmation. Reading never stores it.
+        var swissPlaces = HttpContext?.RequestServices?.GetService<IPropertySwissPlaceResolver>();
+        var swissPlace = swissPlaces is null ? null : await swissPlaces.ResolveAsync(property, HttpContext!.RequestAborted);
+        return Ok(PropertyResponse.From(property, swissPlace: swissPlace));
     }
 
     /// <summary>
@@ -213,6 +215,8 @@ public class PropertiesController(
     /// <response code="409"><c>duplicate_property_address</c>: an active property of the org has the same address and unit
     /// (several apartments of one building differ by <c>unit</c>; another org's property never conflicts, A2-19), or a
     /// duplicate slug within the organization.</response>
+    /// <response code="422"><c>swiss_municipality_not_applicable</c>: a Swiss municipality sent for the property this request creates, which is
+    /// Italian (E29/F01/US01/T02); the comune errors of SU-04.</response>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
     [ProducesResponseType(typeof(Property), StatusCodes.Status201Created)]
@@ -244,6 +248,18 @@ public class PropertiesController(
             var comune = await comuneResolver.ResolveAsync(request.ComuneIstatCode, HttpContext.RequestAborted);
             property.ComuneIstatCode = comune.IstatCode;
             property.RegionCode = comune.RegionCode;
+        }
+
+        // E29/F01/US01/T02 (NF-124): the Swiss municipality the host chose from the official directory, only for a property in Switzerland. This
+        // request has no country (the property it creates is Italian; a Swiss one comes from the import of a channel manager), so a municipality sent
+        // here is refused while the country is not Swiss.
+        if (!string.IsNullOrWhiteSpace(request.SwissMunicipalityCode))
+        {
+            if (!SwissPlace.IsSwissCountry(property.Country))
+                return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, SwissPlaceErrorCodes.NotApplicable, SwissPlaceErrorCodes.NotApplicableMessageKey);
+
+            var municipality = await SwissPlaces().RequireMunicipalityAsync(request.SwissMunicipalityCode, HttpContext.RequestAborted);
+            property.SwissMunicipalityCode = municipality.MunicipalityCode;
         }
 
         // AC8: the org's plan limit is enforced server-side, and the check and the insert are one atomic
@@ -284,7 +300,10 @@ public class PropertiesController(
     /// <response code="404">No property with this id in the caller's org.</response>
     /// <response code="409">Slug already used in the org, or city change after a canone concordato registration.</response>
     /// <response code="422"><c>cancellation_policy_not_found</c>: the cancellation policy does not exist;
-    /// <c>property_rental_mode_change_not_allowed</c>: <c>rentalMode</c> is not the stored one (PM-01).</response>
+    /// <c>property_rental_mode_change_not_allowed</c>: <c>rentalMode</c> is not the stored one (PM-01);
+    /// <c>swiss_municipality_not_applicable</c>: a Swiss municipality for a property that is not in Switzerland;
+    /// <c>swiss_municipality_unknown</c> / <c>swiss_places_unavailable</c>: a number the official directory does not have, or no directory
+    /// loaded (E29/F01/US01/T02).</response>
     [HttpPut("{id}")]
     [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -348,27 +367,49 @@ public class PropertiesController(
             clearComune = true;
         }
 
+        // A host can correct the country on an imported draft before activation (active properties keep the existing contract): worked out before
+        // anything is applied, so the Swiss municipality below is checked against the country the property will have.
+        var correctedCountry = await ImportedDraftCountryCorrectionAsync(existing, request.Country);
+
+        // E29/F01/US01/T02 (NF-124): the Swiss municipality of the official directory, stored only when the caller sent it (the host confirmed it in
+        // the form: a place derived from the postal code is never stored by a save that does not send it), only for a property in Switzerland. A city
+        // or a postal code rewritten without it clears it, as for the comune: the number no longer says where the property is.
+        SwissPlace? chosenSwissMunicipality = null;
+        var clearSwissMunicipality = false;
+        if (request.SwissMunicipalityCodeSent)
+        {
+            if (string.IsNullOrWhiteSpace(request.SwissMunicipalityCode))
+                clearSwissMunicipality = true;
+            else if (correctedCountry is not null || !IsTheStoredSwissMunicipality(existing, request.SwissMunicipalityCode))
+            {
+                // Checked only when it changes, as the comune is: the form sends back the number the record carries, which is not a choice, so a
+                // municipality the directory dropped later (or a directory not loaded) never blocks the other edits of the property.
+                if (!SwissPlace.IsSwissCountry(correctedCountry ?? existing.Country))
+                    return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, SwissPlaceErrorCodes.NotApplicable, SwissPlaceErrorCodes.NotApplicableMessageKey);
+
+                chosenSwissMunicipality = await SwissPlaces().RequireMunicipalityAsync(request.SwissMunicipalityCode, HttpContext.RequestAborted);
+            }
+        }
+        else if (existing.SwissMunicipalityCode is not null
+            && (cityChanged || (request.PostalCode is { } newPostalCode && IsPostalCodeChange(existing.PostalCode, newPostalCode))))
+        {
+            clearSwissMunicipality = true;
+        }
+
         request.ApplyTo(existing);
 
-        // A host can correct the country on an imported draft before activation. Active properties keep the existing contract.
-        if (!existing.IsActive && request.Country is { } country && country != existing.Country)
+        if (correctedCountry is { } country)
         {
-            var database = HttpContext.RequestServices.GetRequiredService<AppDbContext>();
-            var imported = await database.OctorateListingMappings.AnyAsync(m => m.OrgId == existing.OrgId &&
-                m.PropertyId == existing.Id && m.Status == OctorateMappingStatus.Confirmed, HttpContext.RequestAborted);
-            if (imported)
+            existing.Country = country;
+            existing.Currency = country == "CH" ? "CHF" : "EUR";
+            existing.Timezone = country == "CH" ? "Europe/Zurich" : "Europe/Rome";
+            existing.ComuneIstatCode = null;
+            existing.SwissMunicipalityCode = null;
+            existing.RegionCode = null;
+            if (country == "CH")
             {
-                existing.Country = country;
-                existing.Currency = country == "CH" ? "CHF" : "EUR";
-                existing.Timezone = country == "CH" ? "Europe/Zurich" : "Europe/Rome";
-                existing.ComuneIstatCode = null;
-                existing.SwissMunicipalityCode = null;
-                existing.RegionCode = null;
-                if (country == "CH")
-                {
-                    chosenComune = null;
-                    clearComune = true;
-                }
+                chosenComune = null;
+                clearComune = true;
             }
         }
         if (chosenComune is not null)
@@ -381,6 +422,11 @@ public class PropertiesController(
             existing.ComuneIstatCode = null;
             existing.RegionCode = null;
         }
+
+        if (chosenSwissMunicipality is not null)
+            existing.SwissMunicipalityCode = chosenSwissMunicipality.MunicipalityCode;
+        else if (clearSwissMunicipality)
+            existing.SwissMunicipalityCode = null;
 
         await propertyService.UpdatePropertyAsync(existing);
         if (chosenComune is not null)
@@ -471,6 +517,34 @@ public class PropertiesController(
 
     private static bool IsCityChange(string currentCity, string requestedCity) =>
         !string.Equals(currentCity.Trim(), requestedCity.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsPostalCodeChange(string? currentPostalCode, string requestedPostalCode) =>
+        !string.Equals(Compact(currentPostalCode), Compact(requestedPostalCode), StringComparison.OrdinalIgnoreCase);
+
+    private static string Compact(string? value) => string.Concat((value ?? string.Empty).Where(c => !char.IsWhiteSpace(c)));
+
+    /// <summary>The BFS number sent is the one already stored on the property (same digits, leading zeros ignored).</summary>
+    private static bool IsTheStoredSwissMunicipality(Property existing, string sent) =>
+        SwissPlaceCodes.NormalizeMunicipalityCode(sent) is { } code
+        && string.Equals(code, SwissPlaceCodes.NormalizeMunicipalityCode(existing.SwissMunicipalityCode), StringComparison.Ordinal);
+
+    /// <summary>
+    /// The country an imported draft is corrected to, or null when it does not change: only a property not active yet whose listing an Octorate
+    /// mapping confirmed, and only to another country (the active properties keep the contract they have).
+    /// </summary>
+    private async Task<string?> ImportedDraftCountryCorrectionAsync(Property existing, string? requestedCountry)
+    {
+        if (existing.IsActive || requestedCountry is null || requestedCountry == existing.Country)
+            return null;
+
+        var database = HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+        var imported = await database.OctorateListingMappings.AnyAsync(m => m.OrgId == existing.OrgId &&
+            m.PropertyId == existing.Id && m.Status == OctorateMappingStatus.Confirmed, HttpContext.RequestAborted);
+        return imported ? requestedCountry : null;
+    }
+
+    /// <summary>The one resolver of the place of a Swiss property (E29/F01/US01/T02), asked only when a request carries a Swiss municipality.</summary>
+    private IPropertySwissPlaceResolver SwissPlaces() => HttpContext.RequestServices.GetRequiredService<IPropertySwissPlaceResolver>();
 
     /// <summary>
     /// CIN status of the properties the caller sees in <c>GET /api/properties</c> (TN-3 scope, MO-12): the owner's own,

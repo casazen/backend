@@ -110,6 +110,55 @@ public class SwissComplianceStayLifecycleTests
     }
 
     [Fact]
+    public async Task GroupSheet_IsTheSheetOfAGroupOfTheProperty_NeverOfABookingOfAnotherOrg()
+    {
+        await using var db = NewDb();
+        var property = await SeedPropertyAsync(db, structureId: "NL-12345678");
+        var group = AddStay(db, property, BookingStatus.CheckedIn, guests: 6);
+        for (var position = 0; position < 6; position++)
+        {
+            db.StayGuests.Add(new StayGuest
+            {
+                BookingId = group.Id,
+                OrgId = property.OrgId,
+                Position = position,
+                Type = position == 0 ? StayGuestType.HeadOfGroup : StayGuestType.GroupMember,
+                FirstName = $"Test{position}",
+                LastName = "Gruppo",
+                DateOfBirth = new DateTime(1990, 1, position + 1, 0, 0, 0, DateTimeKind.Utc),
+                CitizenshipCode = "100000241",
+                CitizenshipName = "SVIZZERA",
+                DocumentTypeCode = position == 0 ? "PASOR" : null,
+                DocumentNumber = position == 0 ? "X1234567" : string.Empty,
+            });
+        }
+
+        var notAGroup = AddStay(db, property, BookingStatus.CheckedIn, guests: 2);
+        var otherOrgProperty = await SeedPropertyAsync(db);
+        var foreign = AddStay(db, otherOrgProperty, BookingStatus.CheckedIn);
+        await db.SaveChangesAsync();
+        var service = new TicinoNotificationService(db, Clock);
+
+        var sheet = await service.GetGroupSheetAsync(property.Id, group.Id);
+        var day = await service.GetDayAsync(property.Id, ArrivalDay);
+        var foreignError = await Assert.ThrowsAsync<NotFoundException>(() => service.GetGroupSheetAsync(property.Id, foreign.Id));
+        var notAGroupError = await Assert.ThrowsAsync<DomainRuleException>(() => service.GetGroupSheetAsync(property.Id, notAGroup.Id));
+
+        // The six persons, the leader first; the file of the day has the leader's row only, with the five members counted on it.
+        Assert.Equal((6, "text/csv; charset=utf-8"), (sheet.Members, sheet.ContentType));
+        Assert.StartsWith("scheda-gruppo-ti-2026-11-18-", sheet.FileName, StringComparison.Ordinal);
+        var lines = Encoding.UTF8.GetString(sheet.Content.AsSpan(Encoding.UTF8.Preamble.Length)).Split("\r\n");
+        Assert.Equal(["Nome;Cognome;Data di nascita;Nazionalità", "Test0;Gruppo;01.01.1990;CHE"], lines.Take(2));
+        Assert.Equal(8, lines.Length); // the header, the six persons and the empty text after the last CRLF
+        var leader = Assert.Single(day.Plan.Registrations, r => r.BookingId == group.Id);
+        Assert.Equal((TicinoRowKind.Group, 6, 5, 0), (leader.Kind, leader.GroupSize, leader.PersonsOver14, leader.PersonsUnder14));
+
+        // A booking of another org is never read through this property, and a stay that is not a group has no sheet.
+        Assert.Equal("booking_not_found", foreignError.Code);
+        Assert.Equal("ticino_not_a_group", notAGroupError.Code);
+    }
+
+    [Fact]
     public async Task OtrSummary_KeepsCompletedStays_ClipsNightsToTheRequestedPeriod_AndExcludesCancelled()
     {
         await using var db = NewDb();
@@ -156,7 +205,7 @@ public class SwissComplianceStayLifecycleTests
 
     private static async Task<Property> SeedPropertyAsync(AppDbContext db, string country = "CH", string canton = "TI", string? structureId = null)
     {
-        var municipalityCode = canton == "TI" ? "5113" : "261";
+        var municipalityCode = canton == "TI" ? "5192" : "261";
         if (!await db.SwissMunicipalities.AnyAsync(m => m.MunicipalityCode == municipalityCode))
             db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = municipalityCode, CantonCode = canton, OfficialName = "TEST" });
         var org = new OrgEntity { Name = "TEST", Slug = Guid.NewGuid().ToString("N"), ContactEmail = "test@example.com" };

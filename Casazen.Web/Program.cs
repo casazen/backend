@@ -309,6 +309,8 @@ builder.Services.AddOptions<Casazen.Core.Options.ShortStayFiscalOptions>()
 builder.Services.Configure<ComuniOptions>(builder.Configuration.GetSection(ComuniOptions.SectionName));
 builder.Services.AddHostedService<ComuneSeedHostedService>();
 builder.Services.AddHostedService<AlloggiatiCodeTableSeedHostedService>();
+// The official Swiss localities and municipalities of swisstopo (E29/F01/US01/T01): the seed file of the deploy, loaded when the database does not have it yet.
+builder.Services.AddHostedService<SwissPlacesSeedHostedService>();
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
 // Which legal documents are not published and what to configure (decision D9, docs/runbooks/legal-documents.md).
 builder.Services.AddHostedService<LegalDocumentsStartupCheck>();

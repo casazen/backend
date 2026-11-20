@@ -1308,6 +1308,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("VehiclePlate")
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.HasIndex("BookingCode")
@@ -15637,6 +15640,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("Position")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ResidenceCityName")
+                        .HasColumnType("text");
+
                     b.Property<string>("ResidenceComuneCode")
                         .HasMaxLength(9)
                         .HasColumnType("character varying(9)");
@@ -15656,9 +15662,15 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool?>("ResidenceInItaly")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("ResidencePostalCode")
+                        .HasColumnType("text");
+
                     b.Property<string>("ResidenceProvince")
                         .HasMaxLength(2)
                         .HasColumnType("character varying(2)");
+
+                    b.Property<string>("ResidenceStreet")
+                        .HasColumnType("text");
 
                     b.Property<string>("TaxExemptionCode")
                         .HasColumnType("text");
@@ -16971,8 +16983,8 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
 
                     b.Property<DateTime>("UploadedAt")
                         .HasColumnType("timestamp with time zone");
@@ -16987,6 +16999,43 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("PropertyId");
 
                     b.ToTable("SwissComplianceReceipts");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SwissLocality", b =>
+                {
+                    b.Property<string>("PostalCode")
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)");
+
+                    b.Property<string>("AddOn")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("MunicipalityCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("CantonCode")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("PostalCode", "AddOn", "MunicipalityCode", "Name");
+
+                    b.HasIndex("MunicipalityCode");
+
+                    b.HasIndex("NormalizedName");
+
+                    b.ToTable("SwissLocalities");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SwissMunicipality", b =>

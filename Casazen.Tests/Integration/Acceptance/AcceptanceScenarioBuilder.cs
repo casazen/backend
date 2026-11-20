@@ -89,7 +89,7 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
     public const string GuestMailDomain = "ospiti-test.ch";
 
     /// <summary>The BFS number of Lugano, canton Ticino.</summary>
-    public const string LuganoMunicipality = "5113";
+    public const string LuganoMunicipality = "5192";
 
     public const string PropertyName = "TEST Casa Lago Lugano";
 

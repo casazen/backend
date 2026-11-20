@@ -41,6 +41,12 @@ public class OfficialReferenceDataOptions
     /// <summary>Load the embedded Alloggiati tables at startup when the database has none. On by default.</summary>
     public bool SeedAlloggiatiOnStartup { get; set; } = true;
 
+    /// <summary>
+    /// Load the embedded Swiss localities and municipalities (swisstopo directory, E29/F01/US01/T01) at startup when the database does not have
+    /// this file yet. On by default; off, the two tables keep what they have.
+    /// </summary>
+    public bool SeedSwissPlacesOnStartup { get; set; } = true;
+
     public string IstatCatalogUrl { get; set; } = DefaultIstatCatalogUrl;
 
     public string IstatComuniCsvUrl { get; set; } = DefaultIstatComuniCsvUrl;

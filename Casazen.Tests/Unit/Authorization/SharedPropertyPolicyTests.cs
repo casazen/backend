@@ -53,6 +53,13 @@ public class SharedPropertyPolicyTests
         "PropertyModeController.Schedule",
         // AM-03: the member in charge of a property is part of the property core (both kinds of landlord have properties).
         "PropertyResponsibleController.Set",
+        // E29/F01/US01/T01 (NF-124): the official directory of the Swiss localities and municipalities (search by postal code or name, one
+        // municipality by its BFS number). It is reference data, the same for every org, with no tenant and no short-stay data, and it is the
+        // picker of the municipality of a property: a field of the property core that PropertiesController.Update takes under
+        // SharedPropertyWrite, for the properties of both rental areas. A landlord with only the long-term area edits a Swiss property too, so it
+        // reads the directory with the same property.read in either context (SharedPropertyRead), never with a short-rent policy.
+        "SwissPlacesController.GetMunicipality",
+        "SwissPlacesController.SearchLocalities",
         // Recommendation of CasaZen to a friend: open to every member of a host org, whatever the role and the rental context
         // (a loyalty-style action, not an administrative one). It reuses the permission every host role holds in either context
         // instead of a new permission to seed on every role; it touches no property and no short-stay data.

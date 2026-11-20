@@ -46,11 +46,17 @@ public class SwissComplianceController(
     /// <summary>Code of an OTR period longer than <see cref="MaxPeriodDays"/> days (400).</summary>
     public const string PeriodTooLongCode = "swiss_period_too_long";
 
-    /// <summary>Code of a receipt type that is not <c>Police</c> or <c>OTR</c> (400).</summary>
+    /// <summary>Code of a receipt type that is not <c>Police</c>, <c>OTR</c>, <c>ParentalAuthorization</c> or <c>GroupSheet</c> (400).</summary>
     public const string ReceiptTypeInvalidCode = "swiss_receipt_type_invalid";
 
     /// <summary>Code of a receipt file that is empty or larger than the limit (400).</summary>
     public const string ReceiptFileInvalidCode = "swiss_receipt_file_invalid";
+
+    /// <summary>
+    /// Code of a document kept five years (<c>Police</c>, <c>ParentalAuthorization</c>, <c>GroupSheet</c>) whose report date is already past that time (400): the daily
+    /// retention job would delete it the night it is recorded.
+    /// </summary>
+    public const string ReceiptDateTooOldCode = "swiss_receipt_date_too_old";
 
     /// <summary>Longest OTR period, both ends counted: a year, leap year included.</summary>
     /// <summary>Code of a police file format that is not <c>csv</c> or <c>xml</c> (400).</summary>
@@ -127,8 +133,9 @@ public class SwissComplianceController(
 
     /// <summary>
     /// The file of an arrival day for the Ticino police portal (casazen/backend#979), in the official format the host uploads at
-    /// «Notifiche → Invio»: <c>csv</c> (default; ISO-8859-1, the official model) or <c>xml</c> (the official XSD). It holds the guests of the
-    /// stays whose data are complete (<c>GET</c> lists the others with what they miss); it is rebuilt on every request and never stored.
+    /// «Notifiche → Invio»: <c>csv</c> (default; Windows-1252 like the official model, or UTF-8 by <c>GuestNotifications:TicinoCsvEncoding</c>, the
+    /// <c>charset</c> of the content type says which) or <c>xml</c> (the official XSD). It holds the guests of the stays whose data are complete
+    /// (<c>GET</c> lists the others with what they miss); it is rebuilt on every request and never stored.
     /// </summary>
     /// <param name="propertyId">The property.</param>
     /// <param name="request">Body <c>{ "reportDate": "2026-11-19", "format": "csv" }</c> (<see cref="TicinoNotificationRequest"/>).</param>
@@ -168,6 +175,49 @@ public class SwissComplianceController(
             User.GetUserId(), format, file.Rows, propertyId, reportDate);
         Response.Headers.CacheControl = "private, no-store";
         return File(file.Content, file.ContentType, file.FileName);
+    }
+
+    /// <summary>
+    /// The sheet of a group of six or more persons of a Ticino property (decision D11, casazen/backend#979): the first name, the last name, the birth date
+    /// and the nationality (ISO alpha-3) of every member, the leader first, which the host keeps five years at the disposal of the police and of the
+    /// regional tourism organizations (or files in the archive as type <c>GroupSheet</c>). The file of the day holds only the leader's row, with the other
+    /// members counted on it (<c>kind: group</c>). CSV in UTF-8 with its byte order mark, semicolons; rebuilt from the check-in on every request and never
+    /// stored.
+    /// </summary>
+    /// <param name="propertyId">The property.</param>
+    /// <param name="bookingId">The stay of the group.</param>
+    /// <param name="cancellationToken">Aborts the request.</param>
+    /// <response code="200">The sheet (attachment), never cached: it holds the personal data of the members.</response>
+    /// <response code="400"><c>validation_error</c>: <c>bookingId</c> is missing.</response>
+    /// <response code="403">The caller may not read the guests of this property.</response>
+    /// <response code="404">
+    /// <c>property_not_found</c>: no such property in the caller's org; <c>booking_not_found</c>: no stay of this property with that id that owes a
+    /// notification (another org's, a pending or cancelled booking, a no-show).
+    /// </response>
+    /// <response code="422"><c>property_not_in_ticino</c>; <c>ticino_not_a_group</c>: the stay is not a group of six or more.</response>
+    [HttpGet("ticino-notification/group-sheet")]
+    [Authorize(Policy = CasazenPolicies.GuestRead)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> DownloadGroupSheet(Guid propertyId, [FromQuery] Guid? bookingId, CancellationToken cancellationToken)
+    {
+        var denied = await AuthorizeAsync(propertyId, BookingOperations.Read, cancellationToken);
+        if (denied is not null)
+            return denied;
+
+        if (bookingId is not { } booking || booking == Guid.Empty)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "validation_error", "ValidationError");
+
+        var sheet = await ticinoNotifications.GetGroupSheetAsync(propertyId, booking, cancellationToken);
+
+        logger.LogInformation(
+            "User {UserId} downloaded the group sheet ({Members} members) of booking {BookingId} of property {PropertyId}",
+            User.GetUserId(), sheet.Members, booking, propertyId);
+        Response.Headers.CacheControl = "private, no-store";
+        return File(sheet.Content, sheet.ContentType, sheet.FileName);
     }
 
     /// <summary>
@@ -228,11 +278,12 @@ public class SwissComplianceController(
     }
 
     /// <summary>
-    /// Records the receipt of a file the host submitted on the cantonal portal (AC-NF15-3): <c>multipart/form-data</c> with
-    /// <c>type</c> (<c>Police</c> or <c>OTR</c>, case-insensitive), <c>reportDate</c> (<c>2026-10-25</c>: the night of a police
-    /// notification, the first day of an OTR period), <c>reference</c> (up to 200 characters) and <c>file</c> (the receipt, not
-    /// empty, up to 10 MB). The original is encrypted in private storage and hashed; the receipt belongs to the property's org.
-    /// Nothing is deduplicated: sending the same receipt twice records two.
+    /// Records the receipt of a file the host submitted on the cantonal portal (AC-NF15-3), or a document the Ticino rules keep five years (decision
+    /// D11): <c>multipart/form-data</c> with <c>type</c> (<c>Police</c>, <c>OTR</c>, <c>ParentalAuthorization</c> or <c>GroupSheet</c>,
+    /// case-insensitive), <c>reportDate</c> (<c>2026-10-25</c>: the arrival day of a police notification, a parents' authorization or a group sheet, the
+    /// first day of an OTR period), <c>reference</c> (up to 200 characters) and <c>file</c> (the document, not empty, up to 10 MB). The original is
+    /// encrypted in private storage and hashed; the document belongs to the property's org. Nothing is deduplicated: sending the same receipt twice
+    /// records two. The police receipts, the parents' authorizations and the group sheets are deleted five years after their report date (NF-128).
     /// </summary>
     /// <param name="propertyId">The property.</param>
     /// <param name="form">The multipart form (<see cref="UploadSwissReceiptForm"/>).</param>
@@ -245,8 +296,10 @@ public class SwissComplianceController(
     /// <response code="201">The receipt was recorded.</response>
     /// <response code="400">
     /// <c>validation_error</c>: a field is missing, <c>reportDate</c> is not a date or <c>reference</c> is longer than 200
-    /// characters; <c>swiss_receipt_type_invalid</c>: <c>type</c> is not <c>Police</c> or <c>OTR</c>;
-    /// <c>swiss_receipt_file_invalid</c>: the file is empty or larger than 10 MB (a request far over the limit is refused earlier by the server).
+    /// characters; <c>swiss_receipt_type_invalid</c>: <c>type</c> is not <c>Police</c>, <c>OTR</c>, <c>ParentalAuthorization</c> or <c>GroupSheet</c>;
+    /// <c>swiss_receipt_file_invalid</c>: the file is empty or larger than 10 MB (a request far over the limit is refused earlier by the server);
+    /// <c>swiss_receipt_date_too_old</c>: a <c>Police</c>, <c>ParentalAuthorization</c> or <c>GroupSheet</c> document whose <c>reportDate</c> is more than five years
+    /// ago, which the daily retention job would delete the night it is recorded (an OTR report is never refused for its date).
     /// </response>
     /// <response code="403">The caller may not declare the police communication of this property.</response>
     /// <response code="404"><c>property_not_found</c>: no such property in the caller's org.</response>
@@ -272,6 +325,14 @@ public class SwissComplianceController(
 
         if (!EnumNames.TryParseDefined<SwissComplianceFileType>(form.Type, out var type))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ReceiptTypeInvalidCode, "SwissReceiptTypeInvalid");
+
+        // NF-128: a document of a type kept five years with a date already past that time would be deleted (file and row) by the daily retention job the night
+        // it is recorded, with a count in the log: refused here, so a legal proof is never destroyed in silence by a mistyped date.
+        if (SwissComplianceReceipts.IsPastRetention(type, form.ReportDate!.Value, TimeProvider.System.TodayInRomeAsDateOnly()))
+        {
+            return this.ApiProblem(
+                StatusCodes.Status400BadRequest, ReceiptDateTooOldCode, "SwissReceiptDateTooOld", SwissComplianceReceipts.PoliceRetentionYears);
+        }
 
         var file = form.File!;
         if (file.Length is 0 or > SwissComplianceReceipts.MaxFileBytes)
