@@ -318,6 +318,10 @@ public static class RecurringJobsRegistration
         // again every hour, only while the connector and one of the flags PortalChatCheckInLink and GuestContactInfo are on.
         ConfigureCheckInLinkDeliveryJob(recurringJobManager, CheckInLinkDeliveryRetryJob.IsEnabled(featureFlags));
 
+        // E05/F07/US01/T02, T03 (NF-71): the hourly plan of the messages of the routines (minute 20) and the sweep that sends what is overdue and tries again what is blocked (every 15 minutes), only while
+        // Features:ScheduledMessages is on; otherwise the schedule of an earlier deploy is removed.
+        ConfigureScheduledMessageJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.ScheduledMessages));
+
         // MO-04: Expo receipts of the pushes (DeviceNotRegistered removes the device), purge of old delivery rows.
         recurringJobManager.AddOrUpdate<PushReceiptsJob>(
             PushReceiptsJob.RecurringJobId,
@@ -373,6 +377,31 @@ public static class RecurringJobsRegistration
             ComuneOfficialProfileRefreshJob.RecurringJobId,
             job => job.ExecuteAsync(),
             ComuneOfficialProfileRefreshJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The jobs of the scheduled messages (E05/F07/US01, NF-71): the hourly plan at minute 20 and the sweep every 15 minutes, scheduled only while <paramref name="enabled"/>
+    /// (<c>Features:ScheduledMessages</c> on); otherwise the schedule of an earlier deploy is removed (<c>RemoveIfExists</c>) and no message is planned or sent by a job.
+    /// </summary>
+    private static void ConfigureScheduledMessageJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(ScheduledMessagePlanJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(ScheduledMessageSweepJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<ScheduledMessagePlanJob>(
+            ScheduledMessagePlanJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ScheduledMessagePlanJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+        recurringJobManager.AddOrUpdate<ScheduledMessageSweepJob>(
+            ScheduledMessageSweepJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ScheduledMessageSweepJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

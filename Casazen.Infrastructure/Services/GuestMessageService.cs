@@ -83,7 +83,7 @@ public sealed class GuestMessageService(
             booking.PropertyId,
             booking.Id,
             GuestMessageReceivedPayload.DirectSource);
-        var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Guest, stored, key, null, now, received, cancellationToken);
+        var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Guest, GuestMessageRules.OriginOf(GuestMessageSender.Guest), stored, key, null, now, received, cancellationToken);
         if (replayed)
             return new SentGuestMessage(message, redacted, true);
 
@@ -132,13 +132,34 @@ public sealed class GuestMessageService(
             messages);
     }
 
-    public async Task<SentGuestMessage> ReplyAsHostAsync(
+    public Task<SentGuestMessage> ReplyAsHostAsync(
         Guid bookingId,
         string? text,
         string? idempotencyKey,
         string? userId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ReplyOfAsync(bookingId, text, idempotencyKey, userId, MessageOrigin.Person, cancellationToken);
+
+    public Task<SentGuestMessage> ReplyAsAutomationAsync(
+        Guid bookingId,
+        string? text,
+        string? idempotencyKey,
+        CancellationToken cancellationToken = default) =>
+        ReplyOfAsync(bookingId, text, idempotencyKey, null, MessageOrigin.Automation, cancellationToken);
+
+    /// <summary>
+    /// A message of the host side. A person (or the assistant) who writes answers the guest: the thread is answered and what the guest wrote is read. A message of <see cref="MessageOrigin.Automation"/> (the
+    /// one a routine planned) answers nobody, as on the channels: it is the latest message of the thread and nothing more, so a question of the guest still waits for its answer.
+    /// </summary>
+    private async Task<SentGuestMessage> ReplyOfAsync(
+        Guid bookingId,
+        string? text,
+        string? idempotencyKey,
+        string? userId,
+        MessageOrigin origin,
+        CancellationToken cancellationToken)
     {
+        var answers = origin != MessageOrigin.Automation;
         var booking = await db.Bookings
             .AsNoTracking()
             .Include(b => b.Property)
@@ -153,21 +174,26 @@ public sealed class GuestMessageService(
 
         var (clean, key) = Validate(text, idempotencyKey);
         var threadId = await EnsureThreadAsync(booking, now, cancellationToken);
-        var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Host, clean, key, userId, now, null, cancellationToken);
+        var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Host, origin, clean, key, userId, now, null, cancellationToken);
         if (replayed)
         {
             await TellReplyObserversAsync(booking.OrgId, bookingId, userId);
             return new SentGuestMessage(message, false, true);
         }
 
-        // Answering is reading: whatever the guest wrote up to now is no longer «unread».
+        // Answering is reading: whatever the guest wrote up to now is no longer «unread». A message nobody wrote answers nobody: it only moves the last message of the thread.
         await db.GuestThreads
             .Where(t => t.Id == threadId)
             .ExecuteUpdateAsync(
-                set => set
-                    .SetProperty(t => t.LastMessageAt, t => t.LastMessageAt > now ? t.LastMessageAt : now)
-                    .SetProperty(t => t.LastHostMessageAt, t => t.LastHostMessageAt > now ? t.LastHostMessageAt : now)
-                    .SetProperty(t => t.HostReadAt, t => t.LastGuestMessageAt),
+                set =>
+                {
+                    set.SetProperty(t => t.LastMessageAt, t => t.LastMessageAt > now ? t.LastMessageAt : now);
+                    if (!answers)
+                        return;
+
+                    set.SetProperty(t => t.LastHostMessageAt, t => t.LastHostMessageAt > now ? t.LastHostMessageAt : now);
+                    set.SetProperty(t => t.HostReadAt, t => t.LastGuestMessageAt);
+                },
                 cancellationToken);
 
         logger.LogInformation("Host message {MessageId} written in thread {ThreadId} of booking {BookingId}", message.Id, threadId, bookingId);
@@ -391,6 +417,7 @@ public sealed class GuestMessageService(
         Guid threadId,
         Guid orgId,
         GuestMessageSender sender,
+        MessageOrigin origin,
         string text,
         string key,
         string? userId,
@@ -407,7 +434,7 @@ public sealed class GuestMessageService(
             OrgId = orgId,
             ThreadId = threadId,
             Sender = sender,
-            Origin = GuestMessageRules.OriginOf(sender),
+            Origin = origin,
             Text = text,
             CreatedAt = now,
             IdempotencyKey = key,

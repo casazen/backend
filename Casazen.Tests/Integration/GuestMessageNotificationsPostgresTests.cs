@@ -268,6 +268,49 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         _publisher.VerifyNoOtherCalls();
     }
 
+    /// <summary>
+    /// PROOF TEST (E05/F07/US01): a message nobody wrote (the one a routine planned) answers nobody. The question of the guest stays unread and the thread still waits for its answer, the origin is stored on
+    /// the message, and a person who answers afterwards does what a person always does (the guest's messages are read, the thread is answered).
+    /// </summary>
+    [PostgresFact]
+    public async Task ReplyAsAutomation_AnswersNobody_TheQuestionOfTheGuestStaysUnreadAndWaiting_UntilAPersonAnswers()
+    {
+        var world = await SeedAsync();
+        await SendAsGuestAsync(world, "uno", "key-00000020");
+        _clock.Advance(TimeSpan.FromMinutes(5));
+
+        await using (var db = NewDb())
+            await Service(db).ReplyAsAutomationAsync(world.BookingId, "Benvenuti (TEST)", "sm-00000000000000000000000000000020");
+
+        await using (var check = NewDb())
+        {
+            var thread = await check.GuestThreads.AsNoTracking().SingleAsync(t => t.BookingId == world.BookingId);
+            Assert.Null(thread.HostReadAt);
+            Assert.Null(thread.LastHostMessageAt);
+            Assert.Equal(Now.AddMinutes(5), thread.LastMessageAt);
+            var automatic = await check.GuestMessages.AsNoTracking().SingleAsync(m => m.ThreadId == thread.Id && m.Sender == GuestMessageSender.Host);
+            Assert.Equal(MessageOrigin.Automation, automatic.Origin);
+            Assert.Null(automatic.AuthorUserId);
+        }
+
+        await using (var db = NewDb())
+        {
+            var waiting = await Service(db).GetForHostAsync(world.BookingId);
+            Assert.Equal(1, waiting.UnreadCount);
+            Assert.True(waiting.NeedsReply);
+        }
+
+        await using (var db = NewDb())
+            await Service(db).ReplyAsHostAsync(world.BookingId, "Ciao", "key-00000021", HostUser);
+
+        await using (var db = NewDb())
+        {
+            var answered = await Service(db).GetForHostAsync(world.BookingId);
+            Assert.Equal(0, answered.UnreadCount);
+            Assert.False(answered.NeedsReply);
+        }
+    }
+
     [PostgresFact]
     public async Task MarkRead_ThePublisherFails_TheCallStillSucceeds()
     {

@@ -201,6 +201,15 @@ public enum ActivityType
     CleaningVatToState = 140,
 
     /// <summary>
+    /// A message of a routine could not go out and the host has to look at it (E05/F07/US01/T03, NF-71): it is blocked for a piece of data it has no value for (a variable, the access
+    /// code of a guest who is not verified) or its last send failed for good. About the booking (entity type <c>Booking</c>), leading to the booking where the message is edited or sent
+    /// by hand (<see cref="ActivityAction.FixScheduledMessage"/>), with the code of the reason (<c>variable_missing:access_code</c>, <c>id_not_verified</c>), never the words of the
+    /// message. One open item for each booking, shared by its blocked messages; closed by the system when the last one is sent, skipped, expired, or the booking is cancelled. The number 150
+    /// keeps clear of the values the tasks that run in parallel append between 140 and 149.
+    /// </summary>
+    ScheduledMessageIssue = 150,
+
+    /// <summary>
     /// The SDI rejected a self-billed invoice (TD17, FIX/BE-TD17-ALERTS): for the tax office it was not issued, and a TD17 has no correction in CasaZen (<c>self_billing_not_correctable</c>), so
     /// this item is the agency's alert, not the «Correggi la fattura» of an invoice to a guest. About the rejected document (entity type <c>FiscalDocument</c>), organization-level (a TD17 spans the
     /// properties of its holder), leading to the self-billed invoices (<see cref="ActivityAction.ReviewSelfBilling"/>, which carries the document id); urgent. Raised once for each document (the
