@@ -237,6 +237,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAuthorizationHandler, AgencyTierAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, AgencyPermissionAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, OwnerPortalAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, OwnerPortalHostOriginAuthorizationHandler>();
 
         // The complete policy set (TN-3): see CasazenPolicies for how to choose one.
         var builder = services.AddAuthorizationBuilder()
@@ -260,9 +261,13 @@ public static class ServiceCollectionExtensions
             .AddPolicy(CasazenPolicies.TenantAccount, policy => policy
                 .RequireAuthenticatedUser()
                 .RequireAssertion(context => !string.IsNullOrWhiteSpace(context.User.GetUserId())))
-            // Owner portal access (ADR-011): context=owner_portal claim, MUST NOT include host roles.
+            // Owner portal access (ADR-011): context=owner_portal claim, MUST NOT include host roles. E40/F01/US01/T02: a call from an agency's own
+            // domain also needs that agency in the owner's agency_ids (a separate requirement, so the two are AND-ed).
             .AddPolicy(CasazenPolicies.OwnerPortal, policy =>
-                policy.Requirements.Add(new OwnerPortalRequirement()));
+            {
+                policy.Requirements.Add(new OwnerPortalRequirement());
+                policy.Requirements.Add(new OwnerPortalHostOriginRequirement());
+            });
 
         foreach (var policyName in CasazenPolicies.ContextPolicies)
         {
