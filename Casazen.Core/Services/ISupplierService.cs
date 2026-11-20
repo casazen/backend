@@ -190,6 +190,22 @@ public interface ISupplierService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Invite of a host that wants <paramref name="email"/> among its trusted suppliers (bug #977): the same invite, token, email
+    /// and registration page as an admin invite, plus the inviting org and the properties. The comune is the one of the
+    /// properties (the assigned ones first) when the official list knows it, otherwise the supplier picks it while registering.
+    /// Unlike an admin invite, the email may already have a supplier profile: its owner accepts by signing in with that email,
+    /// and accepting adds the relation instead of a new profile. The caller checks that the properties are the org's.
+    /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
+    /// Code <c>duplicate_invite</c>: this org already has a pending invite for the email.
+    /// </exception>
+    Task<SupplierInvite> CreateTrustedSupplierInviteAsync(
+        Guid hostOrgId,
+        string email,
+        IReadOnlyCollection<Guid> propertyIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Resolves the caller's supplier org, provisioning org + profile when a Supplier user has none yet.
     /// Supports dual-role users whose <c>User.OrgId</c> points at a host org. The org comes only from the user's own
     /// link (<c>User.SupplierOrgId</c>, or <c>User.OrgId</c> of a supplier org): never from the email, which the
