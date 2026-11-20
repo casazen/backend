@@ -235,6 +235,54 @@ the Pro card shows "Piano attuale" and "Fatturazione" shows Attivo with the next
 offer "Cambia dal portale", which opens the Stripe portal. The incomplete, unpaid and past due states are covered by the
 frontend tests (`plans-page.test.tsx`, `billing-settings-page.test.tsx`).
 
+## Connect accounts: country and test onboarding (issue #1001)
+
+The host's payments run on its own Stripe **Express** account (`ConnectOnboardingService`, `StripeConnectGateway`). Issue #1001
+(the Quokka360 test org could not get through the Stripe onboarding, even in test mode) had two causes.
+
+**1. The country was always the platform default (`IT`).** Stripe fixes the country of an account when it is created and the hosted
+form then asks for the data of that country (address, tax id, IBAN, legal forms). A Swiss company cannot complete an Italian form,
+in test or in production. A new account is now created in the org's own country:
+
+| Order | Source | Used when |
+|---|---|---|
+| 1 | `OrgFiscalIssuerProfiles.CountryCode` of the org's own profile | the profile is **confirmed** (`ConfirmedAt` set; an unconfirmed one only holds the default) and the country is `IT` or `CH` |
+| 2 | `Orgs.BillingCountry` | `IT` or `CH` |
+| 3 | `Stripe__ConnectDefaultCountry` | otherwise (default `IT`): an org of another country keeps the old behaviour |
+
+An account that is of another country than the org's **and** has nothing submitted (`details_submitted`, `charges_enabled` and
+`payouts_enabled` all false) is replaced at the next "Completa la verifica" / `POST /api/connect/account`, with the idempotency key
+`connect-account:{orgId}:replaces:{oldAccountId}`; the old Express account stays on Stripe, empty, and can be deleted from the
+Dashboard. A submitted account is never swapped, whatever its country.
+
+**2. In test mode Stripe checks identities against nothing but its published test values.** A real name, birth date or address typed in
+the hosted form fails with `verification_failed_keyed_identity` (the person's `first_name`, `last_name`, `dob`, `address`, `phone`
+come back as `currently_due` with that error) and the account never leaves the onboarding. With a **test-mode** key
+(`StripeKeyModes`) a new account is therefore created and then filled, in one best-effort update, with Stripe's test data
+(`StripeConnectTestData`): `business_type` individual, date of birth `1901-01-01`, address line `address_full_match` in a real city of the
+country, test phone, test personal id (Italy), the test IBAN of the country and a product description. What is left in the
+hosted flow is the Stripe login by phone (**Use test phone number**) and the acceptance of the terms; `requirements.currently_due`
+is only `tos_acceptance.date` and `tos_acceptance.ip`. No `business_profile.url` is sent: Stripe validates it also in test mode and refuses
+reserved domains.
+
+- `Stripe__ConnectTestPrefill=false` switches the prefill off (the empty hosted form, to test it as a real host would). A live key never prefills.
+- A Stripe error on the prefill is logged (`Could not prefill Stripe test account`) and ignored: the account is created and linked
+  either way. It runs only right after the creation, before any Account Link: afterwards Stripe refuses the platform's writes on an Express account.
+- Countries other than `IT` and `CH` get no prefill. By hand, in the hosted form, the same values work for any test account:
+  date of birth `01/01/1901`, address line `address_full_match` (with a real city, province and postal code), phone `000 000 0000`
+  (or **Use test phone number**), personal id `000000000`, tax id `000000000`, IBAN `IT60X0542811101000000123456` or
+  `CH9300762011623852957` (Stripe, *Testing Connect → identity verification*).
+
+**Verification on the test environment.** Open "Pagamenti" as an org of `CH` (billing country or confirmed fiscal profile): "Collega Stripe"
+leads to a hosted page of a **Swiss** account (`connect.stripe.com/setup/e/acct_…`), already filled; after the test phone number and the
+acceptance of the terms the page is back on CasaZen with the account active (`charges_enabled`). `GET /api/connect/status` shows the
+account and the logs one `Stripe Express account created: acct_… (CH)` and one `prefilled with Stripe test data`. An Italian org gets
+an `IT` account the same way. An org that already had an unsubmitted `IT` account and is `CH` gets a new `CH` one at the next click.
+
+**Open point for production (Stripe, not code).** A Swiss account under the Italian platform is created with `card_payments` and
+`transfers` (checked on test mode); whether Stripe activates `card_payments` for it in live mode, for direct charges in CHF, depends
+on the platform's cross-border settings: confirm it with Stripe before the pilot's live onboarding.
+
 ## Refunds and booking cancellations on Stripe Connect (BK-02)
 
 Task BK-02 (audit defects A3-05 P0, A9-15 payments part; issue #51). Before it, "Rimborsa" only changed the database,

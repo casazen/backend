@@ -156,7 +156,7 @@ public class StripeConnectGatewayTests
             })
             .ReturnsAsync(new Account { Id = "acct_new" });
 
-        var accountId = await Gateway().CreateExpressAccountAsync(" host@example.com ", "connect-account:abc");
+        var accountId = await Gateway().CreateExpressAccountAsync(" host@example.com ", "IT", "connect-account:abc");
 
         Assert.Equal("acct_new", accountId);
         Assert.Equal("connect-account:abc", sentRequestOptions?.IdempotencyKey);
@@ -165,6 +165,171 @@ public class StripeConnectGatewayTests
         Assert.True(options.Capabilities.SepaDebitPayments.Requested);
         Assert.Equal("IT", options.Country);
         Assert.Equal("host@example.com", options.Email);
+    }
+
+    [Theory]
+    [InlineData("CH", "CH")]
+    [InlineData(" ch ", "CH")]
+    [InlineData("IT", "IT")]
+    public async Task CreateExpressAccountAsync_CreatesTheAccountInTheGivenCountry_NotAFixedOne(string country, string expected)
+    {
+        // Issue #1001: the country was always the platform default, so a Swiss company got an Italian form.
+        var created = SetupCreateAccount();
+
+        await Gateway().CreateExpressAccountAsync("host@example.com", country, "connect-account:abc");
+
+        Assert.Equal(expected, Assert.IsType<AccountCreateOptions>(created.Options).Country);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task CreateExpressAccountAsync_BlankCountry_ThrowsBeforeCallingStripe(string country)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => Gateway().CreateExpressAccountAsync("host@example.com", country, "connect-account:abc"));
+
+        _client.Verify(
+            c => c.RequestAsync<Account>(
+                It.IsAny<HttpMethod>(), It.IsAny<string>(), It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Theory]
+    [InlineData("IT", "Milano", "MI", "20121", "+390000000000", "eur", "IT60X0542811101000000123456", "000000000")]
+    [InlineData("CH", "Lugano", "TI", "6900", "+410000000000", "chf", "CH9300762011623852957", null)]
+    public async Task CreateExpressAccountAsync_TestModeKey_FillsTheNewAccountWithStripeTestData(
+        string country,
+        string city,
+        string state,
+        string postalCode,
+        string phone,
+        string currency,
+        string iban,
+        string? idNumber)
+    {
+        // Issue #1001: in test mode Stripe verifies identities against nothing but its published test values; a real name,
+        // birth date or address fails with verification_failed_keyed_identity and the account never leaves the onboarding.
+        var created = SetupCreateAccount();
+        var update = SetupUpdateAccount();
+
+        var accountId = await Gateway().CreateExpressAccountAsync("host@example.com", country, "connect-account:abc");
+
+        Assert.Equal("acct_new", accountId);
+        var options = Assert.IsType<AccountUpdateOptions>(update.Options);
+        Assert.Equal("individual", options.BusinessType);
+        Assert.Equal("6513", options.BusinessProfile.Mcc);
+        Assert.False(string.IsNullOrWhiteSpace(options.BusinessProfile.ProductDescription));
+        // Stripe refuses reserved domains in test mode too, which would fail the whole update: no URL is sent.
+        Assert.Null(options.BusinessProfile.Url);
+        var individual = options.Individual;
+        Assert.Equal("host@example.com", individual.Email);
+        Assert.Equal(phone, individual.Phone);
+        Assert.Equal(1, individual.Dob.Day);
+        Assert.Equal(1, individual.Dob.Month);
+        Assert.Equal(1901, individual.Dob.Year);
+        Assert.Equal("address_full_match", individual.Address.Line1);
+        Assert.Equal(city, individual.Address.City);
+        Assert.Equal(state, individual.Address.State);
+        Assert.Equal(postalCode, individual.Address.PostalCode);
+        Assert.Equal(country, individual.Address.Country);
+        Assert.Equal(idNumber, individual.IdNumber);
+        Assert.Equal("bank_account", options.ExtraParams["external_account[object]"]);
+        Assert.Equal(country, options.ExtraParams["external_account[country]"]);
+        Assert.Equal(currency, options.ExtraParams["external_account[currency]"]);
+        Assert.Equal(iban, options.ExtraParams["external_account[account_number]"]);
+        // The creation itself is unchanged by the prefill and still carries the idempotency key.
+        Assert.Equal("connect-account:abc", created.RequestOptions?.IdempotencyKey);
+        Assert.Null(Assert.IsType<AccountCreateOptions>(created.Options).Individual);
+    }
+
+    [Theory]
+    [InlineData("sk_live_unit_connect", null)]
+    [InlineData("rk_live_unit_connect", null)]
+    [InlineData("sk_test_unit_connect", "false")]
+    [InlineData("rk_test_unit_connect", "False")]
+    public async Task CreateExpressAccountAsync_LiveKeyOrPrefillSwitchedOff_NeverFillsTheAccount(string secretKey, string? prefillSetting)
+    {
+        // A live account is never written with fake identities; the test environment can also ask for the real hosted form.
+        SetupCreateAccount();
+        var update = SetupUpdateAccount();
+
+        var accountId = await Gateway(secretKey, prefillSetting).CreateExpressAccountAsync("host@example.com", "IT", "connect-account:abc");
+
+        Assert.Equal("acct_new", accountId);
+        Assert.Null(update.Options);
+        _client.Verify(
+            c => c.RequestAsync<Account>(
+                HttpMethod.Post, "/v1/accounts/acct_new", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateExpressAccountAsync_CountryWithoutTestData_KeepsTheEmptyHostedOnboarding()
+    {
+        SetupCreateAccount();
+        var update = SetupUpdateAccount();
+
+        var accountId = await Gateway().CreateExpressAccountAsync("host@example.com", "DE", "connect-account:abc");
+
+        Assert.Equal("acct_new", accountId);
+        Assert.Null(update.Options);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest, "url_invalid")]
+    [InlineData(HttpStatusCode.TooManyRequests, "rate_limit")]
+    [InlineData(HttpStatusCode.ServiceUnavailable, null)]
+    public async Task CreateExpressAccountAsync_TestDataRejectedByStripe_StillReturnsTheCreatedAccount(HttpStatusCode status, string? code)
+    {
+        // The account exists and is linked by the caller: the prefill is a help, never a reason to lose it.
+        SetupCreateAccount();
+        _client
+            .Setup(c => c.RequestAsync<Account>(
+                HttpMethod.Post, "/v1/accounts/acct_new", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(StripeError(status, code));
+
+        var accountId = await Gateway().CreateExpressAccountAsync("host@example.com", "IT", "connect-account:abc");
+
+        Assert.Equal("acct_new", accountId);
+    }
+
+    [Fact]
+    public async Task CreateExpressAccountAsync_TestDataNetworkError_StillReturnsTheCreatedAccount()
+    {
+        SetupCreateAccount();
+        _client
+            .Setup(c => c.RequestAsync<Account>(
+                HttpMethod.Post, "/v1/accounts/acct_new", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Connection refused"));
+
+        var accountId = await Gateway().CreateExpressAccountAsync("host@example.com", "CH", "connect-account:abc");
+
+        Assert.Equal("acct_new", accountId);
+    }
+
+    [Fact]
+    public async Task CreateExpressAccountAsync_CallerCancelsDuringTheTestData_PropagatesCancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        SetupCreateAccount();
+        _client
+            .Setup(c => c.RequestAsync<Account>(
+                HttpMethod.Post, "/v1/accounts/acct_new", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .Callback(() => cts.Cancel())
+            .ThrowsAsync(new TaskCanceledException());
+
+        await Assert.ThrowsAsync<TaskCanceledException>(() =>
+            Gateway().CreateExpressAccountAsync("host@example.com", "IT", "connect-account:abc", cts.Token));
+    }
+
+    [Fact]
+    public async Task GetAccountAsync_Success_MapsTheCountryOfTheAccount()
+    {
+        SetupGetAccount().ReturnsAsync(new Account { Id = AccountId, Country = "CH" });
+
+        var snapshot = await Gateway().GetAccountAsync(AccountId);
+
+        Assert.Equal("CH", snapshot.Country);
     }
 
     [Fact]
@@ -270,10 +435,54 @@ public class StripeConnectGatewayTests
         _client.Setup(c => c.RequestAsync<LoginLink>(
             HttpMethod.Post, $"/v1/accounts/{AccountId}/login_links", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()));
 
-    private StripeConnectGateway Gateway(string? secretKey = "sk_test_unit_connect") =>
+    /// <summary>What the mocked Stripe client received for one request.</summary>
+    private sealed class Sent
+    {
+        public BaseOptions? Options { get; set; }
+
+        public RequestOptions? RequestOptions { get; set; }
+    }
+
+    /// <summary><c>POST /v1/accounts</c> creates <c>acct_new</c>.</summary>
+    private Sent SetupCreateAccount()
+    {
+        var sent = new Sent();
+        _client
+            .Setup(c => c.RequestAsync<Account>(
+                HttpMethod.Post, "/v1/accounts", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .Callback<HttpMethod, string, BaseOptions, RequestOptions, CancellationToken>((_, _, options, request, _) =>
+            {
+                sent.Options = options;
+                sent.RequestOptions = request;
+            })
+            .ReturnsAsync(new Account { Id = "acct_new" });
+        return sent;
+    }
+
+    /// <summary><c>POST /v1/accounts/acct_new</c>, the update that fills a test account.</summary>
+    private Sent SetupUpdateAccount()
+    {
+        var sent = new Sent();
+        _client
+            .Setup(c => c.RequestAsync<Account>(
+                HttpMethod.Post, "/v1/accounts/acct_new", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .Callback<HttpMethod, string, BaseOptions, RequestOptions, CancellationToken>((_, _, options, request, _) =>
+            {
+                sent.Options = options;
+                sent.RequestOptions = request;
+            })
+            .ReturnsAsync(new Account { Id = "acct_new" });
+        return sent;
+    }
+
+    private StripeConnectGateway Gateway(string? secretKey = "sk_test_unit_connect", string? prefillSetting = null) =>
         new(
             new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?> { ["Stripe:SecretKey"] = secretKey })
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Stripe:SecretKey"] = secretKey,
+                    ["Stripe:ConnectTestPrefill"] = prefillSetting,
+                })
                 .Build(),
             NullLogger<StripeConnectGateway>.Instance,
             _client.Object);

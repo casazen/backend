@@ -1,11 +1,17 @@
 namespace Casazen.Core.Services;
 
+/// <param name="Country">
+/// ISO 3166-1 alpha-2 country of the account as Stripe holds it (<c>null</c> when the caller does not know it). It never changes
+/// after the account is created, so a host that onboarded in the wrong country needs a new account
+/// (<see cref="ConnectAccountCountries"/>).
+/// </param>
 public record ConnectAccountSnapshot(
     string AccountId,
     bool ChargesEnabled,
     bool PayoutsEnabled,
     bool DetailsSubmitted,
-    IReadOnlyList<string> RequirementsDue);
+    IReadOnlyList<string> RequirementsDue,
+    string? Country = null);
 
 /// <summary>
 /// Stripe Connect calls of the onboarding. Every failure is a <see cref="Casazen.Core.Exceptions.StripeConnectException"/>
@@ -15,10 +21,17 @@ public record ConnectAccountSnapshot(
 public interface IStripeConnectGateway
 {
     /// <summary>
-    /// Creates an Express account. <paramref name="idempotencyKey"/> is sent as Stripe's <c>Idempotency-Key</c>: a repeated
-    /// call with the same key (lost answer, retry) returns the same account instead of a second one.
+    /// Creates an Express account in <paramref name="country"/> (ISO 3166-1 alpha-2): the country of the business, which Stripe
+    /// cannot change afterwards, so the hosted onboarding asks the data of that country (address, tax id, IBAN).
+    /// <paramref name="idempotencyKey"/> is sent as Stripe's <c>Idempotency-Key</c>: a repeated call with the same key (lost
+    /// answer, retry) returns the same account instead of a second one. With a Stripe test-mode key the new account is also
+    /// filled with Stripe's published test data, so its onboarding passes the verification (see the gateway).
     /// </summary>
-    Task<string> CreateExpressAccountAsync(string email, string idempotencyKey, CancellationToken cancellationToken = default);
+    Task<string> CreateExpressAccountAsync(
+        string email,
+        string country,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
 
     Task<ConnectAccountSnapshot> GetAccountAsync(string connectedAccountId, CancellationToken cancellationToken = default);
 
@@ -55,9 +68,11 @@ public interface IConnectOnboardingService
 
     /// <summary>
     /// The org's Express account, created when missing (BK-09, A3-19): one org at a time (advisory lock) and with an
-    /// idempotency key bound to the org, so parallel clicks create one account. The linked account is replaced only when
-    /// Stripe says it does not exist or was revoked; a temporary or configuration failure throws
-    /// <see cref="Casazen.Core.Exceptions.StripeConnectException"/> and leaves it untouched.
+    /// idempotency key bound to the org, so parallel clicks create one account. The account is created in the org's own country
+    /// (<see cref="ConnectAccountCountries.Resolve"/>: a Swiss org gets a Swiss account, not the platform default). The linked
+    /// account is replaced only when Stripe says it does not exist or was revoked, or when it is of another country than the
+    /// org's and the onboarding has not been submitted yet (Stripe cannot change the country of an account); a temporary or
+    /// configuration failure throws <see cref="Casazen.Core.Exceptions.StripeConnectException"/> and leaves it untouched.
     /// </summary>
     Task<ConnectStatus> EnsureExpressAccountAsync(Guid orgId, CancellationToken cancellationToken = default);
 
