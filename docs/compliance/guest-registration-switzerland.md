@@ -67,7 +67,7 @@ host makes itself, E31), **Info**. Sentences for the user: `SharedResources` key
 | `CH-NE` | Report | portal (Guichet unique) | every day | – | Partial | Partial | Assisted | holiday lets: daily sending not confirmed by the text, a report says it is due |
 | `CH-NW` | Report | paper (or electronic data) | at least weekly | – | Partial | Partial | Assisted | the electronic format and channel are asked of the police |
 | `CH-OW` | Register | none | not verified | – | Unknown | Partial | Register | a revision (12 h, 1 year, electronic sending) is under way: whether it is already in force is not verified |
-| `CH-SG` | Register | portal (the tourism body's system) | none | 5 (foreign guests) | Partial | Partial | Register | nothing is sent to the police |
+| `CH-SG` | Register | portal (the tourism body's system) | none | 5 (foreign guests) | Unknown | Partial | Register | private rentals not stated by the sources; nothing is sent to the police |
 | `CH-SH` | Report | portal | every day by 02:00 | – | Yes | Verified | Assisted | official brochure of 11/2023; which day the hour refers to is ambiguous |
 | `CH-SO` | Register | none | none | 3 | Partial | Partial | Register | private rentals when the activity is professional |
 | `CH-SZ` | Register | none | none | 2 | Partial | Partial | Register | only foreign guests; 2 years is a recommendation |

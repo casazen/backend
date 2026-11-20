@@ -512,7 +512,7 @@ public static class GuestRegistrationRegimeCatalog
         DeadlineKind = GuestRegistrationDeadlineKind.None,
         DeadlineNoteKey = DeadlineNoSubmissionKey,
         RetentionYears = 5,
-        PrivateRentals = GuestRegistrationPrivateRentals.Partial,
+        PrivateRentals = GuestRegistrationPrivateRentals.Unknown,
         LegalReferences = ["Polizeigesetz (PolG) art. 52bis", "LStrI art. 16", "OASA art. 18"],
         Sources = [new("https://partner.st.gallen-bodensee.ch/de/dienstleistungen/digitales-meldewesen.html", "Digitales Meldewesen - St.Gallen-Bodensee Tourismus")],
         VerifiedOn = ResearchDay,
