@@ -4,8 +4,10 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Configuration;
+using Casazen.Web.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
@@ -85,6 +87,53 @@ public class OwnerPortalHostOriginTests
         var context = await AuthorizeAsync(origin: "https://unknown.example.test", agencies: [AgencyA]);
 
         Assert.True(context.HasSucceeded);
+    }
+
+    [Fact]
+    public async Task OwnerPortalPolicy_AsTheAppRegistersIt_HasTheSecondWallAsARequirementOfItsOwn()
+    {
+        // The real registration (AddCasazenAuthorization): the policy carries the requirement next to the first one, and its handler is registered, so the second wall
+        // cannot be dropped without a test failing (a handler tried alone would not notice).
+        var registered = new ServiceCollection();
+        registered.AddLogging();
+        registered.AddCasazenAuthorization();
+
+        var policy = await registered.BuildServiceProvider().GetRequiredService<IAuthorizationPolicyProvider>().GetPolicyAsync(CasazenPolicies.OwnerPortal);
+
+        Assert.NotNull(policy);
+        Assert.Single(policy.Requirements.OfType<OwnerPortalRequirement>());
+        Assert.Single(policy.Requirements.OfType<OwnerPortalHostOriginRequirement>());
+        Assert.Contains(registered, d => d.ServiceType == typeof(IAuthorizationHandler) && d.ImplementationType == typeof(OwnerPortalHostOriginAuthorizationHandler));
+    }
+
+    [Theory]
+    [InlineData("https://prenota.agenzia-b.it", false)]
+    [InlineData("https://prenota.agenzia-a.it", true)]
+    [InlineData(PlatformOrigin, true)]
+    [InlineData(null, true)]
+    public async Task OwnerPortalPolicy_TheRegisteredPolicyWithBothHandlers_OwnerOfAgencyA(string? origin, bool allowed)
+    {
+        // The policy as the app registers it, evaluated by the authorization service with the first handler and the second wall: the owner of A is refused from the domain
+        // of B (the 403), and passes from its own domain, from the platform and with no Origin. A real token: one claim per agency.
+        var registered = new ServiceCollection();
+        registered.AddLogging();
+        registered.AddCasazenAuthorization();
+        var policy = await registered.BuildServiceProvider().GetRequiredService<IAuthorizationPolicyProvider>().GetPolicyAsync(CasazenPolicies.OwnerPortal);
+        Assert.NotNull(policy);
+
+        var http = new DefaultHttpContext();
+        if (origin is not null)
+            http.Request.Headers.Origin = origin;
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAuthorizationCore();
+        services.AddSingleton<IAuthorizationHandler>(new OwnerPortalAuthorizationHandler(Options.Create(new Auth0Options { CustomClaimNamespace = Namespace })));
+        services.AddSingleton<IAuthorizationHandler>(NewHandler(http));
+        var authorization = services.BuildServiceProvider().GetRequiredService<IAuthorizationService>();
+
+        var result = await authorization.AuthorizeAsync(OwnerOf([AgencyA.ToString()]), http, policy);
+
+        Assert.Equal(allowed, result.Succeeded);
     }
 
     [Theory]
