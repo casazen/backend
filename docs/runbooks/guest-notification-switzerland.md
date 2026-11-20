@@ -252,8 +252,9 @@ generated and no audit row is written for the 409. A day that is not closed is n
 
 - The checks of the data come first: a closed day with nothing to write answers 422 `ticino_notification_empty` (or the other data errors), not a confirmation for a file that would not exist.
 - **Receipts count.** A receipt is the proof of the same fact as the declaration (decision D10: the receipt is the optional proof of the upload), so a day with only a receipt is also asked: the
-  risk of duplicates is the same, and the rule of a closed day is one for the alerts, the cockpit and this guard. A consequence to know: the old page of the console, which downloads again after a
-  receipt, gets the 409 until the slice of the frontend (E30/F02/US03/T01) sends `confirmRegenerate`.
+  risk of duplicates is the same, and the rule of a closed day is one for the alerts, the cockpit and this guard. It breaks no page of the console: the one already in `develop` (frontend PR #649,
+  `SwissCompliancePage.tsx`) shows the download buttons only while the day has no receipt (`receiptCount` is 0), so it never asks for the file of a day with a receipt; the frontend slice
+  (E30/F02/US03/T01) sends `confirmRegenerate` when it asks for the file of a closed day.
 - The group sheet (`GET …/group-sheet`) is kept by the host and never uploaded as a notification, so it has no guard (it only writes its audit row).
 
 ## 17. The audit of the files (`SwissNotificationFileEvents`)
