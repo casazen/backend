@@ -26,11 +26,13 @@ public class SwissPlacesController(ISwissPlacesDirectory directory) : Controller
     /// (case, accents and extra spaces ignored), exact matches first: <c>6900</c> gives Lugano, Massagno and Paradiso, <c>locarn</c> gives Locarno.
     /// Each item is <c>{ postalCode, name, municipalityCode, municipalityName, cantonCode }</c>, one for each municipality a locality lies in; at
     /// most <paramref name="limit"/> items (default and most 20). A query that matches nothing, or cannot match (blank, one letter, five digits),
-    /// gives an empty list. 400 <c>validation_error</c> when the query is longer than 100 characters.
+    /// gives an empty list. 400 <c>validation_error</c> when the query is longer than 100 characters; 422 <c>swiss_places_unavailable</c> when the
+    /// directory is not loaded (the load at startup failed or was turned off): an empty list means «no such place» only for a directory that is there.
     /// </summary>
     [HttpGet("localities")]
     [ProducesResponseType(typeof(IReadOnlyList<SwissLocalityDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<IReadOnlyList<SwissLocalityDto>>> SearchLocalities(
         [FromQuery, StringLength(ISwissPlacesDirectory.MaxQueryLength, ErrorMessage = "SwissPlacesQueryTooLong")] string? query,
         [FromQuery] int limit = ISwissPlacesDirectory.MaxLimit,
@@ -42,11 +44,13 @@ public class SwissPlacesController(ISwissPlacesDirectory directory) : Controller
 
     /// <summary>
     /// One municipality by its BFS number (<c>5192</c> is Lugano): <c>{ municipalityCode, name, cantonCode }</c>. 404
-    /// <c>swiss_municipality_unknown</c> when the directory has no such number (or it is not a number).
+    /// <c>swiss_municipality_unknown</c> when the directory has no such number (or it is not a number); 422 <c>swiss_places_unavailable</c> when the
+    /// directory is not loaded.
     /// </summary>
     [HttpGet("municipalities/{bfs}")]
     [ProducesResponseType(typeof(SwissMunicipalityDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<SwissMunicipalityDto>> GetMunicipality(string bfs, CancellationToken cancellationToken)
     {
         var municipality = await directory.FindMunicipalityAsync(bfs, cancellationToken);

@@ -127,8 +127,10 @@ Reference data, no personal data, for whoever may read properties (`SharedProper
   (case, accents and extra spaces ignored); up to `limit` items (default and most 20), exact matches first, each
   `{ postalCode, name, municipalityCode, municipalityName, cantonCode }`, one for each municipality a locality lies in. `6900` gives Lugano,
   Massagno and Paradiso; `locarn` gives Locarno. A query that matches nothing (or cannot: blank, one letter, five digits) gives `[]`; longer than
-  100 characters is 400 `validation_error`.
-- `GET /api/swiss/municipalities/{bfs}`: `{ municipalityCode, name, cantonCode }`, 404 `swiss_municipality_unknown`.
+  100 characters is 400 `validation_error`. A search that could match and finds nothing because **the directory is not loaded** (the load at
+  startup failed or was turned off: no municipality or no locality at all) is 422 `swiss_places_unavailable`, never `[]`.
+- `GET /api/swiss/municipalities/{bfs}`: `{ municipalityCode, name, cantonCode }`, 404 `swiss_municipality_unknown`, or 422
+  `swiss_places_unavailable` when the directory is not loaded (as the save of a municipality on a property answers).
 
 The BFS number is a **text of digits** everywhere in the API (`"5192"`), as the entity and the year-end report already had it.
 

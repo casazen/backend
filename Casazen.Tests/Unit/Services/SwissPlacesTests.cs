@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using Casazen.Core.Entities;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -142,6 +143,32 @@ public class SwissPlacesTests(SwissPlacesTests.SeededDirectory seeded) : IClassF
         Assert.Equal(new SwissMunicipalityInfo("5192", "Lugano", "TI"), await directory.FindMunicipalityAsync(" 05192 "));
         Assert.Null(await directory.FindMunicipalityAsync("9999"));
         Assert.Null(await directory.FindMunicipalityAsync("Lugano"));
+    }
+
+    /// <summary>
+    /// A directory that is not loaded (the load at startup failed or was turned off, a new database) cannot answer: the search and the lookup say 422
+    /// <c>swiss_places_unavailable</c>, as the save of a municipality does, never an empty list or a 404 «unknown» that look like «no such place».
+    /// What cannot be searched for stays an empty list, and a number that is not one stays unknown.
+    /// </summary>
+    [Fact]
+    public async Task Directory_NotLoaded_Is422Unavailable_AndNotAnEmptyListOrA404()
+    {
+        await using var db = NewDb();
+        var directory = new SwissPlacesDirectory(db);
+
+        var byPostalCode = await Assert.ThrowsAsync<DomainRuleException>(() => directory.SearchLocalitiesAsync("6900", 20));
+        var byName = await Assert.ThrowsAsync<DomainRuleException>(() => directory.SearchLocalitiesAsync("locarno", 20));
+        var lookup = await Assert.ThrowsAsync<DomainRuleException>(() => directory.FindMunicipalityAsync("5192"));
+
+        Assert.All([byPostalCode, byName, lookup], e => Assert.Equal(SwissPlaceErrorCodes.Unavailable, e.Code));
+        Assert.Empty(await directory.SearchLocalitiesAsync("   ", 20));
+        Assert.Empty(await directory.SearchLocalitiesAsync("12345", 20));
+        Assert.Null(await directory.FindMunicipalityAsync("Lugano"));
+
+        // Loaded, a search that finds nothing is still an empty list and an unknown number is still null.
+        await SwissMunicipalitySeed.ApplyAsync(db, Encoding.UTF8.GetBytes(SmallSeed), TimeProvider.System, CancellationToken.None);
+        Assert.Empty(await directory.SearchLocalitiesAsync("zzqqxx", 20));
+        Assert.Null(await directory.FindMunicipalityAsync("9999"));
     }
 
     [Fact]

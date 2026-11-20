@@ -22,9 +22,14 @@ public interface ISwissPlacesDirectory
     /// A locality that lies in several municipalities gives one item for each. A query that cannot match (blank, a name shorter than
     /// <see cref="MinNameLength"/>, five or more digits) gives an empty list.
     /// </summary>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// 422 <c>swiss_places_unavailable</c> when a search that could match finds nothing because the directory is not loaded (no municipality or no
+    /// locality at all): an empty list means «no such place» only for a directory that is there.
+    /// </exception>
     Task<IReadOnlyList<SwissLocalityMatch>> SearchLocalitiesAsync(string? query, int limit, CancellationToken cancellationToken = default);
 
     /// <summary>The municipality with this BFS number (digits, leading zeros and spaces ignored); <c>null</c> when the directory has none.</summary>
+    /// <exception cref="Exceptions.DomainRuleException">422 <c>swiss_places_unavailable</c> when the number is not found because the directory is not loaded.</exception>
     Task<SwissMunicipalityInfo?> FindMunicipalityAsync(string? municipalityCode, CancellationToken cancellationToken = default);
 }
 

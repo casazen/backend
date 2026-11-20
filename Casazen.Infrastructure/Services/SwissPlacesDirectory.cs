@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -33,7 +34,7 @@ public class SwissPlacesDirectory(AppDbContext db) : ISwissPlacesDirectory
                 .Take(take * 2)
                 .Select(p => new SwissLocalityMatch(p.locality.PostalCode, p.locality.Name, p.locality.MunicipalityCode, p.municipality.OfficialName, p.municipality.CantonCode))
                 .ToListAsync(cancellationToken);
-            return [.. byPostalCode.Distinct().Take(take)];
+            return await ResultAsync([.. byPostalCode.Distinct().Take(take)], cancellationToken);
         }
 
         if (text.All(char.IsAsciiDigit))
@@ -54,7 +55,7 @@ public class SwissPlacesDirectory(AppDbContext db) : ISwissPlacesDirectory
             .Take(take * 2)
             .Select(p => new SwissLocalityMatch(p.locality.PostalCode, p.locality.Name, p.locality.MunicipalityCode, p.municipality.OfficialName, p.municipality.CantonCode))
             .ToListAsync(cancellationToken);
-        return [.. byName.Distinct().Take(take)];
+        return await ResultAsync([.. byName.Distinct().Take(take)], cancellationToken);
     }
 
     public async Task<SwissMunicipalityInfo?> FindMunicipalityAsync(string? municipalityCode, CancellationToken cancellationToken = default)
@@ -62,11 +63,35 @@ public class SwissPlacesDirectory(AppDbContext db) : ISwissPlacesDirectory
         if (SwissPlaceCodes.NormalizeMunicipalityCode(municipalityCode) is not { } code)
             return null;
 
-        return await db.SwissMunicipalities.AsNoTracking()
+        var municipality = await db.SwissMunicipalities.AsNoTracking()
             .Where(m => m.MunicipalityCode == code)
             .Select(m => new SwissMunicipalityInfo(m.MunicipalityCode, m.OfficialName, m.CantonCode))
             .FirstOrDefaultAsync(cancellationToken);
+
+        // A number «unknown» to a directory that is not loaded is not unknown: the directory cannot answer.
+        if (municipality is null && !await db.SwissMunicipalities.AsNoTracking().AnyAsync(cancellationToken))
+            throw Unavailable();
+
+        return municipality;
     }
+
+    /// <summary>
+    /// The answer of a search that reached the directory. An empty one is a search that found nothing only when the directory is loaded: with no
+    /// municipality or no locality at all (the load at startup failed or was turned off, a new database) it is 422 <c>swiss_places_unavailable</c>,
+    /// as the save of a municipality answers, never an empty list that looks like «no such place».
+    /// </summary>
+    private async Task<IReadOnlyList<SwissLocalityMatch>> ResultAsync(List<SwissLocalityMatch> matches, CancellationToken cancellationToken)
+    {
+        if (matches.Count == 0
+            && !(await db.SwissMunicipalities.AsNoTracking().AnyAsync(cancellationToken) && await db.SwissLocalities.AsNoTracking().AnyAsync(cancellationToken)))
+        {
+            throw Unavailable();
+        }
+
+        return matches;
+    }
+
+    private static DomainRuleException Unavailable() => new(SwissPlaceErrorCodes.Unavailable, SwissPlaceErrorCodes.UnavailableMessageKey);
 
     /// <summary>One to four digits, after an optional <c>CH-</c> prefix and spaces: the start of a postal code; <c>null</c> for anything else.</summary>
     private static string? PostalCodePrefix(string text)
