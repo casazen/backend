@@ -50,6 +50,7 @@ public class ComplianceController(
         ManualSendsRequired = MapSection(summary.ManualSendsRequired),
         ConnectionsToFix = MapSection(summary.ConnectionsToFix),
         PeriodItems = MapSection(summary.PeriodItems),
+        TicinoNotifications = MapSection(summary.TicinoNotifications),
     };
 
     private static ComplianceSummarySectionDto MapSection(ComplianceSummarySection section) => new()

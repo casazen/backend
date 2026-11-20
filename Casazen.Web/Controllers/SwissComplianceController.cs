@@ -1,4 +1,5 @@
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Core.Validation;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.SwissCompliance;
@@ -9,7 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Swiss compliance files of a property in canton Ticino (E08, NF-15, ADR-016): the daily police notification (XML), the OTR
+/// Swiss compliance files of a property in canton Ticino (E08, NF-15, ADR-016): the police notification of the arrivals of a day (the official CSV or XML of notifiche.ti.ch, casazen/backend#979), the OTR
 /// overnight report (CSV) and the archive of the receipts the cantonal portal gives back. CasaZen does not transmit anything to
 /// the portal: the host downloads the file, submits it there and records the receipt here.
 /// </summary>
@@ -52,9 +53,11 @@ public class SwissComplianceController(
     public const string ReceiptFileInvalidCode = "swiss_receipt_file_invalid";
 
     /// <summary>Longest OTR period, both ends counted: a year, leap year included.</summary>
+    /// <summary>Code of a police file format that is not <c>csv</c> or <c>xml</c> (400).</summary>
+    public const string TicinoFileFormatInvalidCode = "ticino_file_format_invalid";
+
     public const int MaxPeriodDays = 366;
 
-    private const string XmlContentType = "application/xml";
     private const string CsvContentType = "text/csv";
     private const long MaxReceiptRequestBytes = SwissComplianceReceipts.MaxFileBytes + 64 * 1024;
 
@@ -88,30 +91,64 @@ public class SwissComplianceController(
     }
 
     /// <summary>
-    /// Generates the police notification of one night for a Ticino property (notifiche.ti.ch, ADR-016): the confirmed stays that
-    /// include <c>reportDate</c>. A night with no stay still gives a valid file with an empty list of stays.
+    /// One arrival day of the police notification of a Ticino property (notifiche.ti.ch, casazen/backend#979): who arrives, who is in the
+    /// file and what the others miss, whether the receipt of the portal is recorded, and the days still to notify. Without <c>date</c> it
+    /// is the oldest day still to notify (of the last 14), or today when none is.
     /// </summary>
     /// <param name="propertyId">The property.</param>
-    /// <param name="request">Body <c>{ "reportDate": "2026-10-25" }</c> (<see cref="TicinoNotificationRequest"/>).</param>
+    /// <param name="date">The arrival day (<c>yyyy-MM-dd</c>, Europe/Zurich); optional.</param>
     /// <param name="cancellationToken">Aborts the request.</param>
-    /// <returns>
-    /// 200 with <see cref="SwissComplianceFileResponse"/>: <c>fileName</c> (<c>{reference}.xml</c>), <c>contentType</c>
-    /// (<c>application/xml</c>), <c>content</c> (the XML), <c>reference</c> (<c>TI-{propertyId}-{yyyyMMdd}</c>) and
-    /// <c>fileHash</c> (SHA-256 of <c>content</c>). The answer is never cached (<c>Cache-Control: private, no-store</c>): it holds guest names.
-    /// </returns>
-    /// <response code="200">The file.</response>
-    /// <response code="400"><c>validation_error</c>: <c>reportDate</c> is missing or is not a date.</response>
+    /// <response code="200"><see cref="TicinoNotificationDayResponse"/>; never cached: it holds guest names.</response>
     /// <response code="403">The caller may not read the bookings or the guests of this property.</response>
     /// <response code="404"><c>property_not_found</c>: no such property in the caller's org.</response>
     /// <response code="422"><c>property_not_in_ticino</c>: the property is not in canton Ticino.</response>
+    [HttpGet("ticino-notification")]
+    [Authorize(Policy = CasazenPolicies.GuestRead)]
+    [ProducesResponseType(typeof(TicinoNotificationDayResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<TicinoNotificationDayResponse>> GetTicinoNotificationDay(
+        Guid propertyId,
+        [FromQuery] DateOnly? date,
+        CancellationToken cancellationToken)
+    {
+        var denied = await AuthorizeAsync(propertyId, BookingOperations.Read, cancellationToken);
+        if (denied is not null)
+            return denied;
+
+        var day = await ticinoNotifications.GetDayAsync(propertyId, date ?? TimeProvider.System.TodayInRomeAsDateOnly(), cancellationToken);
+        if (date is null && day.PendingDays.Count > 0 && day.PendingDays[0].Day != day.Day)
+            day = await ticinoNotifications.GetDayAsync(propertyId, day.PendingDays[0].Day, cancellationToken);
+
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(TicinoNotificationDayResponse.From(day));
+    }
+
+    /// <summary>
+    /// The file of an arrival day for the Ticino police portal (casazen/backend#979), in the official format the host uploads at
+    /// «Notifiche → Invio»: <c>csv</c> (default; ISO-8859-1, the official model) or <c>xml</c> (the official XSD). It holds the guests of the
+    /// stays whose data are complete (<c>GET</c> lists the others with what they miss); it is rebuilt on every request and never stored.
+    /// </summary>
+    /// <param name="propertyId">The property.</param>
+    /// <param name="request">Body <c>{ "reportDate": "2026-11-19", "format": "csv" }</c> (<see cref="TicinoNotificationRequest"/>).</param>
+    /// <param name="cancellationToken">Aborts the request.</param>
+    /// <response code="200">The file (attachment), never cached: it holds guest data.</response>
+    /// <response code="400"><c>validation_error</c>: <c>reportDate</c> is missing; <c>ticino_file_format_invalid</c>: the format is not <c>csv</c> or <c>xml</c>.</response>
+    /// <response code="403">The caller may not read the bookings or the guests of this property.</response>
+    /// <response code="404"><c>property_not_found</c>: no such property in the caller's org.</response>
+    /// <response code="422">
+    /// <c>property_not_in_ticino</c>; <c>ticino_structure_id_missing</c>: the property has no identifier of the portal;
+    /// <c>ticino_notification_empty</c>: no guest of the day has complete data; <c>ticino_xml_not_available</c>: use the CSV.
+    /// </response>
     [HttpPost("ticino-notification")]
     [Authorize(Policy = CasazenPolicies.GuestRead)]
-    [ProducesResponseType(typeof(SwissComplianceFileResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
-    public async Task<ActionResult<SwissComplianceFileResponse>> GenerateTicinoNotification(
+    public async Task<ActionResult> GenerateTicinoNotification(
         Guid propertyId,
         [FromBody] TicinoNotificationRequest request,
         CancellationToken cancellationToken)
@@ -120,15 +157,17 @@ public class SwissComplianceController(
         if (denied is not null)
             return denied;
 
+        if (!TicinoNotificationRequest.TryParseFormat(request.Format, out var format))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, TicinoFileFormatInvalidCode, "TicinoFileFormatInvalid");
+
         var reportDate = request.ReportDate!.Value;
-        var file = await ticinoNotifications.GenerateDailyNotificationAsync(propertyId, AsDay(reportDate), cancellationToken);
+        var file = await ticinoNotifications.GenerateFileAsync(propertyId, reportDate, format, cancellationToken);
 
         logger.LogInformation(
-            "User {UserId} generated the Ticino police notification of property {PropertyId} for {ReportDate}",
-            User.GetUserId(), propertyId, reportDate);
+            "User {UserId} generated the Ticino police file ({Format}, {Rows} rows) of property {PropertyId} for {ReportDate}",
+            User.GetUserId(), format, file.Rows, propertyId, reportDate);
         Response.Headers.CacheControl = "private, no-store";
-        return Ok(new SwissComplianceFileResponse(
-            propertyId, $"{file.Reference}.xml", XmlContentType, file.XmlContent, file.Reference, file.FileHash));
+        return File(file.Content, file.ContentType, file.FileName);
     }
 
     /// <summary>

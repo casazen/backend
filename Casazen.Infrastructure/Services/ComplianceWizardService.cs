@@ -1,3 +1,4 @@
+using System.Globalization;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -24,7 +25,8 @@ public class ComplianceWizardService(
     TimeProvider? timeProvider = null,
     IComplianceStatusService? statusService = null,
     IComplianceActivityFeeder? activityFeeder = null,
-    IFeatureFlags? featureFlags = null) : IComplianceWizardService
+    IFeatureFlags? featureFlags = null,
+    ITicinoNotificationService? ticinoNotifications = null) : IComplianceWizardService
 {
     /// <summary>The most items listed in each section of the compliance status (the count covers all of the ones that need attention).</summary>
     internal const int StatusSectionMaxItems = 50;
@@ -97,6 +99,7 @@ public class ComplianceWizardService(
             .InScope(scope)
             .Where(OpenableStayRules.CanShow)
             .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn)
+            .Where(AlloggiatiStatusRules.ItalianProperties) // casazen/backend#979: Alloggiati data, an Italian duty; Ticino has its own section
             .Where(b => b.NoShowAt == null) // NF-45: the guests of a no-show never came, there is no data to complete
             .Where(b => b.CheckInDate.Date <= today.AddDays(1))
             .ToListAsync(cancellationToken);
@@ -155,6 +158,7 @@ public class ComplianceWizardService(
         var (alloggiatiFailures, alloggiatiManualRequired) =
             await GetAlloggiatiSectionsAsync(scope, today, status is null ? null : statusOfStay, supersededByStatus, cancellationToken);
         var turnoversPending = await GetTurnoversPendingAsync(scope, cancellationToken);
+        var ticinoDays = await GetTicinoNotificationsAsync(scope, cancellationToken);
 
         // An item of the sections that existed: red with the code of its action when the traffic light is on, as it was (no light) when it is off.
         ComplianceSummaryItem Lit(ComplianceSummaryItem item) => status is null ? item : WithOpenVerdict(item);
@@ -179,6 +183,11 @@ public class ComplianceWizardService(
             ConnectionsToFix = StatusSection(status, i => i.Kind is ComplianceItemKind.Connection or ComplianceItemKind.Credentials),
             PeriodItems = StatusSection(
                 status, i => i.Kind is ComplianceItemKind.Istat or ComplianceItemKind.TouristTax or ComplianceItemKind.MunicipalityRate),
+            TicinoNotifications = new ComplianceSummarySection(
+                ticinoDays.Count,
+                ticinoDays.Take(StatusSectionMaxItems)
+                    .Select(item => status is null ? item : WithVerdict(item, ComplianceLightRules.OpenAction(item.Action), item.Period))
+                    .ToList()),
         };
 
         // AC-NF52-13: the red and yellow items feed the unified "To do". The summary is the cockpit of the host: if the list cannot be
@@ -196,6 +205,35 @@ public class ComplianceWizardService(
         }
 
         return summary;
+    }
+
+    /// <summary>
+    /// casazen/backend#979: the arrival days of the Ticino properties of the caller's reach whose guests are not notified to the cantonal police
+    /// yet, oldest first: one item per property and day, the day in <c>Period</c> (<c>yyyy-MM-dd</c>), due 24 hours from the arrival.
+    /// </summary>
+    private async Task<List<ComplianceSummaryItem>> GetTicinoNotificationsAsync(HostScope scope, CancellationToken cancellationToken)
+    {
+        if (ticinoNotifications is null)
+            return [];
+
+        var propertyIds = await db.Properties
+            .AsNoTracking()
+            .Where(PropertyRentalModeRules.IsShortRent)
+            .Where(p => p.OrgId == scope.OrgId)
+            .InScope(scope)
+            .Select(p => p.Id)
+            .ToListAsync(cancellationToken);
+        if (propertyIds.Count == 0)
+            return [];
+
+        var days = await ticinoNotifications.ListPendingDaysAsync(scope.OrgId, propertyIds, _clock.TodayInRomeAsDateOnly(), cancellationToken);
+        return days
+            .Select(d => ComplianceSummaryItem.ForProperty(ComplianceCockpitAction.NotifyTicinoPolice, d.PropertyId, d.PropertyName) with
+            {
+                DueAt = d.DueAtUtc,
+                Period = d.Day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            })
+            .ToList();
     }
 
     /// <summary>

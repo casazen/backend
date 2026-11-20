@@ -112,6 +112,8 @@ public sealed class ComplianceActivityFeeder(
         ComplianceCockpitAction.CompleteGuestCheckIn,
         ComplianceCockpitAction.CheckOut,
         ComplianceCockpitAction.ConfirmPropertyReady,
+        // casazen/backend#979: an arrival day of a Ticino property to notify, a section of the cockpit of its own (not of the status).
+        ComplianceCockpitAction.NotifyTicinoPolice,
     ];
 
     public async Task FeedAsync(HostScope scope, ComplianceStatusResult status, CancellationToken ct)
