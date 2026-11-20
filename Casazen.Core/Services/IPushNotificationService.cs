@@ -58,11 +58,20 @@ public enum PushAudienceKind
     /// this audience gets no push on a phone: the bell and its live update tell them. An explicit value, never renumbered.
     /// </summary>
     PlatformStaff = 12,
+
+    /// <summary>
+    /// The administrators of one host org (E40/F01/US02/T01): its active owner and <c>Admin</c>s, the people the policy <c>RequireOrgBillingAdmin</c> lets into the
+    /// settings of the org's domain (<c>OrgBillingAdminAuthorizationHandler</c>: an <c>OrgMember</c> Owner or Admin), deactivated members never. <see cref="PushAudience.Id"/>
+    /// is the org, which is also the <c>entityId</c> of the notification. The app has no screen of the domain, so, like <see cref="PlatformStaff"/>, this audience
+    /// gets no push on a phone: the bell and its live update tell them. An explicit value, never renumbered.
+    /// </summary>
+    OrgAdmins = 13,
 }
 
 /// <summary>
 /// Recipients of a push: <see cref="Kind"/> and the id of the booking, property or supplier org; for <see cref="PushAudienceKind.User"/> the id of
-/// the org and, in <see cref="UserId"/>, the user; for <see cref="PushAudienceKind.PlatformStaff"/> the subject of the event.
+/// the org and, in <see cref="UserId"/>, the user; for <see cref="PushAudienceKind.PlatformStaff"/> the subject of the event; for
+/// <see cref="PushAudienceKind.OrgAdmins"/> the org.
 /// </summary>
 public sealed record PushAudience(PushAudienceKind Kind, Guid Id, string? UserId = null)
 {
@@ -79,6 +88,9 @@ public sealed record PushAudience(PushAudienceKind Kind, Guid Id, string? UserId
 
     /// <summary>The platform administrators, told about <paramref name="subjectId"/> (the «Fallo per me» request): the bell and its live update only.</summary>
     public static PushAudience PlatformStaff(Guid subjectId) => new(PushAudienceKind.PlatformStaff, subjectId);
+
+    /// <summary>The administrators of the host org <paramref name="orgId"/>, told about the org's own domain (E40/F01/US02/T01): the bell and its live update only.</summary>
+    public static PushAudience OrgAdmins(Guid orgId) => new(PushAudienceKind.OrgAdmins, orgId);
 }
 
 /// <summary>
@@ -316,6 +328,21 @@ public static class PushDeliveryKeys
             ? key
             : prefix + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(userId)));
     }
+
+    /// <summary>
+    /// The custom domain of an org became verified (E40/F01/US02/T01), to the administrators of the org: one per verification. <paramref name="verifiedAtUtc"/> is
+    /// <c>Org.DomainVerifiedAt</c>, so a check that finds the domain verified again tells nobody, and a domain verified again after a demotion is another event.
+    /// </summary>
+    public static string DomainVerified(Guid orgId, DateTime verifiedAtUtc) => $"domain-verified:{orgId:N}:{Stamp(verifiedAtUtc)}";
+
+    /// <summary>The owner sign-in on the org's domain became ready (E40/F01/US02/T01), to the administrators of the org: one per change of the state, at <paramref name="changedAtUtc"/>.</summary>
+    public static string OwnerLoginReady(Guid orgId, DateTime changedAtUtc) => $"owner-login:{orgId:N}:ready:{Stamp(changedAtUtc)}";
+
+    /// <summary>The registration of the owner sign-in on the org's domain failed (E40/F01/US02/T01), to the administrators of the org: one per change of the state.</summary>
+    public static string OwnerLoginFailed(Guid orgId, DateTime changedAtUtc) => $"owner-login:{orgId:N}:failed:{Stamp(changedAtUtc)}";
+
+    /// <summary>A UTC instant to the millisecond, the same whatever the culture of the thread.</summary>
+    private static string Stamp(DateTime utc) => utc.ToString("yyyyMMddHHmmssfff", System.Globalization.CultureInfo.InvariantCulture);
 }
 
 /// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
@@ -507,6 +534,22 @@ public static class PushTypes
     /// reminders. Same audience, channels, route, privacy and <c>entityId</c> (the property) as <see cref="TicinoNotificationDue"/>.
     /// </summary>
     public const string TicinoNotificationOverdue = "ticino-notification-overdue";
+
+    /// <summary>
+    /// The custom domain of the org became verified (E40/F01/US02/T01): written to the bell of the administrators of the org (<see cref="PushAudienceKind.OrgAdmins"/>)
+    /// and published live, only while <c>WhiteLabelHost</c> is on; <c>entityId</c> is the org, the web route <c>/app/short-rent/settings/domain</c>, which the open page
+    /// reads again. No push on a phone, and never the name of the domain.
+    /// </summary>
+    public const string DomainVerified = "domain-verified";
+
+    /// <summary>The owner sign-in on the org's domain is enabled (E40/F01/US02/T01, NF-141): the same audience, channels and route as <see cref="DomainVerified"/>.</summary>
+    public const string OwnerLoginReady = "owner-login-ready";
+
+    /// <summary>
+    /// The registration of the owner sign-in on the org's domain failed, automatically or set by a platform administrator (E40/F01/US02/T01, NF-141): the same audience,
+    /// channels and route as <see cref="DomainVerified"/>; the domain settings offer the retry.
+    /// </summary>
+    public const string OwnerLoginFailed = "owner-login-failed";
 
     /// <summary>
     /// True for the two types of the alerts about the 24 hours of the notification of a Ticino arrival day (<see cref="TicinoNotificationDue"/>,

@@ -23,6 +23,7 @@ The general developer guide (SPA app, API, local setup) stays in [`docs/AUTH0_SE
 | Deactivated users (PL-03) | Every authenticated request of a user with `Users.IsActive = false` gets **403 `account_inactive`**, before any policy, whatever the roles in the token. The flag is read with the tenant (one query per request, no cache) | `InactiveAccountMiddleware`, `TenantContext` |
 | Deactivation / reactivation | `DELETE /api/users/{id}`: DB first, then Auth0 `blocked=true` and removal of the user's CasaZen roles (remembered in `Users.SuspendedAuth0Roles`). `POST /api/users/{id}/reactivate`: roles given back, then `blocked=false`. Outcome in `auth0Synced` / `auth0SyncError` / `message`; section 10 | `UserService.DeactivateUserAsync` / `ReactivateUserAsync` |
 | Permanent removal | `DELETE /api/users/{id}/account`: Auth0 user deleted first (`delete:users`), then the CasaZen row. The organization and its properties stay. 502 when Auth0 refuses, so a retry is safe (a missing Auth0 user counts as deleted). 422 `cannot_delete_self` / `cannot_delete_last_admin` | `UserService.DeleteRegisteredUserAsync` |
+| Agency hosts (E40/F01/US02/T01, NF-141) | With `Features__WhiteLabelHost` **and** `Features__Auth0HostSync` on, the origin `https://{domain}` of a verified agency domain is appended to the callback, logout and web-origin lists of the SPA application of the environment (`Auth0__HostSync__ClientId`) in one `PATCH /clients/{id}`, read back, and removed when the domain is removed or replaced; with the flag off a platform administrator does it by hand and records it (section 13) | `Casazen.Infrastructure/Services/Auth0HostRegistrar.cs`, `OwnerLoginHostSync.cs` |
 | Guest account of the mobile app | A person who books as a guest has an account like any other (section 12): `GET /api/users/me` returns `emailVerified`; `GET /api/guest/bookings` and the other booking actions of `api/guest/*` answer 403 `guest_email_not_verified` until the claim says the email is verified; `DELETE /api/guest/account` removes the person's own account, Auth0 first (same `delete:users`, same 502 and retry), refused with 409 `guest_account_is_professional` for an account that also has a host org, a supplier link or an administrator's role | `GuestAccountController`, `UserService.DeleteOwnGuestAccountAsync` |
 
 Error codes returned to clients: `auth0_management_not_configured`, `auth0_management_token_failed`,
@@ -201,6 +202,8 @@ Applications → Applications → **Create Application** → *Machine to Machine
    | `create:role_members` | adding a role to a user (`POST /users/{id}/roles`); giving the roles back at the reactivation |
    | `delete:role_members` | removing a named role from a user (`DELETE /users/{id}/roles`); removing the roles at the deactivation |
    | `read:role_members` | roles of a user before its deactivation (`GET /users/{id}/roles`, PL-03, with `read:users` and `read:roles`): grant it. When a scope is missing the deactivation still applies in CasaZen and reports `auth0Synced: false` |
+   | `read:clients` | **only before turning `Features__Auth0HostSync` on** (E40/F01/US02/T01, section 13): reading the three lists of the SPA application of the environment (`GET /clients/{id}?fields=callbacks,allowed_logout_urls,web_origins`) |
+   | `update:clients` | **only before turning `Features__Auth0HostSync` on** (section 13): writing them back with the origin of a verified agency domain added or removed (`PATCH /clients/{id}`). Without it the registration answers `Rejected` and the agency's state is `Failed`. The product owner grants these two scopes (Applications → APIs → Auth0 Management API → Machine To Machine Applications → the M2M application → the two boxes → Update); the code never asks for them |
 
 2. Copy **Client ID** and **Client Secret** into Railway (next section). Never commit them.
 3. Rotate the secret from the same page when needed: update Railway, redeploy, then revoke the old one.
@@ -216,6 +219,7 @@ Applications → Applications → **Create Application** → *Machine to Machine
 | `Auth0__ManagementClientId` | M2M client id | secret |
 | `Auth0__ManagementClientSecret` | M2M client secret | secret |
 | `Auth0__ManagementApiToken` | — | **delete it** once the two variables above are set (deprecated) |
+| `Auth0__HostSync__ClientId` | client id of the SPA application of **this** environment (the same value as `VITE_AUTH0_CLIENT_ID` of its Vercel environment) | not a secret; read only with `Features__Auth0HostSync` on (section 13). Missing: the automatic registration of the agency domains answers `NotConfigured`, calls nothing, and the agencies wait in `Pending` for the manual step; the service starts all the same |
 | `Authorization__UserCacheSeconds` | `60` (default) | optional; `0` disables the cross-request cache |
 
 Check after the deploy:
@@ -721,6 +725,86 @@ safe. Check in the test tenant with a throw-away guest: 204, the user is gone fr
 4. The demo environment is **off in Production** by design (`available: false`): the demo bookings exist on the test API only. A store build that
    talks to Production shows this account an empty list of bookings (valid, but there is nothing to see); to show bookings there, a real booking is
    made on a published house with that email and the host accepts it, or the review build points at the test environment. Decision of the product owner.
+
+## 13. Agency domains: the owner sign-in on an agency's own domain (E40/F01/US02/T01, NF-141)
+
+An agency whose custom domain is verified (`prenota.agenzia.it`) can serve the owner portal there (`Features__WhiteLabelHost`, the agency's choice
+`ownerPortalOnOwnDomain`). The web app signs in with `redirect_uri` = the origin of the page and signs out with `returnTo` = the same origin, so the
+**origin of the domain**, `https://{domain}` and nothing else (no path, no wildcard), must be in three lists of the **SPA application of the environment**:
+*Allowed Callback URLs*, *Allowed Logout URLs* and *Allowed Web Origins*. The tenant is CasaZen's (§ 1.2): an agency never touches it. Until the
+three are there the agency's state is not `Ready`, its owner sign-in page says «non ancora abilitato» and no owner link is moved to its domain.
+
+The state of each agency (`Orgs.OwnerLoginHostState`, in `GET api/orgs/{orgId}/domain` → `surfaces.ownerLoginHostState`): `NotRequested` (nobody asked),
+`Pending` (waiting: for CasaZen while the sync is off, or for its configuration), `Ready` (the three URLs are there), `Failed` (the registration failed,
+the agency can retry). A new custom domain, or a switch to the platform path or to a subdomain, puts it back to `NotRequested` (or `Pending` when the
+owner portal stays on: the new domain asks for its own registration).
+
+### 13.1 Automatic: `Features__Auth0HostSync` on (with `Features__WhiteLabelHost`)
+
+Before turning it on, per environment:
+
+1. Grant the M2M application of the environment the scopes `read:clients` and `update:clients` (§ 4). Nothing else changes for it.
+2. Set `Auth0__HostSync__ClientId` on Railway to the client id of the SPA application of **the same** environment (test: the test SPA application;
+   production: `casazen-web-prod`, § 1.2). Never the client id of the other environment, never the M2M application's.
+3. Check that the **first** Allowed Callback URL of that application is the platform origin of the environment (§ 1.2 rule 6): the code appends after
+   it, never before it, and refuses to work on an application that has no callback URL.
+
+What the code does (`Auth0HostRegistrar`, `OwnerLoginHostSync`):
+
+| When | What |
+|---|---|
+| A domain **becomes** verified (`Verifica ora` or the periodic check) | The administrators of the agency are told (`domain-verified`); the origin is registered: `Ready` on `Registered` or `AlreadyRegistered`, `Failed` on `Rejected` or `Unavailable`, `Pending` on `NotConfigured` (`Auth0__HostSync__ClientId` or the M2M credentials missing: no call is made). A domain found verified again, or demoted by its DNS, changes nothing in Auth0 |
+| The agency saves `ownerPortalOnOwnDomain` on while its domain is verified and its state is `NotRequested` or `Failed` | The same registration |
+| The agency retries: `POST api/orgs/{orgId}/domain/owner-login` (`RequireOrgBillingAdmin`, its own org only; 409 `org_domain_not_verified` without a verified domain) | The same registration; nothing is asked of Auth0 once the state is `Ready` |
+| The domain is removed or replaced, or the org deactivated | The periodic job (`domain-recheck`) removes it from the Vercel project, then removes exactly the three strings `https://{domain}` from the application. The row of `PendingDomainRemovals` stays (its `LastError` says `auth0_unavailable`, `auth0_rejected` or `auth0_not_configured`) and is tried again at every run until **both** removals succeeded. A domain another active org uses meanwhile stays in both |
+
+Every registration and removal reads the application (`GET /clients/{id}`, the three lists only), writes the three lists back **in one**
+`PATCH /clients/{id}` (Auth0 applies all of them or none), and reads them again: the change counts only if the read-back has it. A URL that is there
+already is not added again (nothing to write = no write), the other entries keep their order, and the first callback URL is never touched. The
+read-write-read is serialized across the instances by the advisory lock `Auth0HostRegistration` (40_021) on the client id. A change made by hand in the
+dashboard at the same second can still be overwritten: edit the lists by hand only while no domain is being verified, or with the flag off.
+
+The logs say `Auth0 host registration: <Result> (<code>)` and `Auth0 registration of the domain of org <orgId>: <Result>`; never the domain, never a
+token, a credential or the body of an answer of Auth0 (the codes are an HTTP status such as `http_403`, `rate_limited`, `invalid_host`,
+`read_back_mismatch`, `auth0_management_token_failed`, `auth0_management_credentials_rejected`). `http_403` usually means a missing scope (step 1);
+`http_404` a wrong `Auth0__HostSync__ClientId`.
+
+### 13.2 By hand: `Features__Auth0HostSync` off (the default)
+
+Nothing calls Auth0. Saving the owner portal on puts the agency in `Pending`, and so does its retry from `NotRequested` or `Failed`; the agency reads
+«in attesa di abilitazione da parte di CasaZen». A platform administrator (role `Admin`; the two endpoints answer 404 while `Features__WhiteLabelHost`
+is off):
+
+1. Lists the queue: `GET api/admin/owner-login-hosts?state=Pending` → `[{ "orgId", "displayName", "domain", "state", "domainVerified" }]` (active orgs
+   with a custom domain, by name, at most 500; `state` can be `NotRequested`, `Pending`, `Ready` or `Failed`).
+2. For a row with `domainVerified: true`: Auth0 Dashboard → Applications → the SPA application of **this** environment → Settings, and **appends**
+   `https://{domain}` at the end of *Allowed Callback URLs*, *Allowed Logout URLs* and *Allowed Web Origins* (comma separated; never first, never a
+   wildcard, never a path). Save.
+3. Records it: `PUT api/admin/orgs/{orgId}/owner-login-state` with `{ "state": "Ready" }` → `{ "state": "Ready" }`. 422 `org_domain_not_verified` when
+   the domain is not verified or the org does not pay for it; 404 for an unknown org. The cached `resolve-host` answer of the domain is dropped and the
+   administrators of the agency are told (`owner-login-ready`); `{ "state": "Failed" }` tells them it could not be done (`owner-login-failed`).
+
+When a domain registered by hand is removed or replaced, the job does **not** remove it from Auth0 with the flag off: remove its three strings by hand.
+Once a month (and before turning the flag on) compare the three lists with the domains that need them:
+
+```sql
+SELECT "Id", "CustomDomain" FROM casazen_test."Orgs"
+WHERE "OwnerLoginHostState" = 2 AND "PublicHostMode" = 2 AND "IsActive";  -- 2 = Ready, 2 = CustomDomain
+```
+
+and remove from the application every agency origin that is not in the answer (the platform, preview and localhost origins of § 1.2 stay). An origin
+that stays registered after the agency lost its domain is a callback URL someone else could serve: a domain demoted for good (`Failed` for days) keeps
+its entries until the agency removes or replaces it, so ask the agency, or remove them by hand.
+
+### 13.3 Rollback
+
+- **Turn the automatic registration off**: `Features__Auth0HostSync=false` on Railway. Nothing calls Auth0 any more; the states stay as they are, the
+  three URLs already registered stay in Auth0 (the owners keep signing in), and the manual procedure of 13.2 applies from then on, removals included.
+- **Turn the surfaces off**: `Features__WhiteLabelHost=false`. The owner portal is no longer served on any agency domain and no owner link points there;
+  the admin endpoints answer 404. Remove the agency origins from the application by hand if they will not come back.
+- **Take one agency back**: remove its three strings from the application, then `PUT …/owner-login-state` with `{ "state": "Pending" }` (or `Failed`).
+- `Auth0__HostSync__ClientId` and the two scopes can stay: with the flag off nothing reads them. No migration is involved (the state column comes with
+  `AddHostSurfaces`).
 
 ## Multi-instance note
 

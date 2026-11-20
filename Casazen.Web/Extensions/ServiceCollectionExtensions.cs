@@ -614,6 +614,11 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<Casazen.Infrastructure.Jobs.AgencyUsageJob>();
         services.AddScoped<IOrgDomainService, OrgDomainService>();
+        // The owner sign-in on an agency's own domain (E40/F01/US02/T01, NF-141): the registrar of the hosts in the shared Auth0 tenant (Auth0:HostSync,
+        // nothing is called without its client id or while Auth0HostSync is off) and the one place that moves the state and tells the org's administrators.
+        services.AddOptions<Auth0HostSyncOptions>().BindConfiguration(Auth0HostSyncOptions.SectionName);
+        services.AddScoped<IAuth0HostRegistrar, Auth0HostRegistrar>();
+        services.AddScoped<OwnerLoginHostSync>();
         services.AddScoped<IEntitlementService, EntitlementService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddScoped<IBillingCheckoutService, BillingCheckoutService>();

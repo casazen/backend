@@ -77,6 +77,31 @@ public class OrgDomainEffectiveSurfacesDto
     public bool LinksOnOwnDomain { get; set; }
 }
 
+/// <summary>
+/// One org of the queue of the owner sign-ins on the agencies' domains (E40/F01/US02/T01, NF-141): <c>GET /api/admin/owner-login-hosts?state=Pending</c>, for
+/// the platform administrators who register the domains in Auth0 by hand while <c>Auth0HostSync</c> is off.
+/// </summary>
+public class OwnerLoginHostDto
+{
+    public Guid OrgId { get; set; }
+    public string DisplayName { get; set; } = string.Empty;
+    public string Domain { get; set; } = string.Empty;
+    public OwnerLoginHostState State { get; set; }
+
+    /// <summary>The custom domain is verified: <c>Ready</c> can be set only for a verified domain the org pays for.</summary>
+    public bool DomainVerified { get; set; }
+}
+
+/// <summary>
+/// The state of the owner sign-in of an org: the body of <c>PUT /api/admin/orgs/{orgId}/owner-login-state</c> (<c>NotRequested</c>, <c>Pending</c>,
+/// <c>Ready</c> or <c>Failed</c>, required) and its whole answer (E40/F01/US02/T01).
+/// </summary>
+public class OwnerLoginStateDto
+{
+    [Required]
+    public OwnerLoginHostState? State { get; set; }
+}
+
 /// <summary>Request body for <c>PUT /api/orgs/{orgId}/domain/surfaces</c> (E40/F01/US01): the three choices, all required.</summary>
 public class SetOrgDomainSurfacesRequest
 {

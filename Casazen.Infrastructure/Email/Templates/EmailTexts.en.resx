@@ -957,6 +957,24 @@
   <data name="Push_AssistDeclared_Body" xml:space="preserve">
     <value>CasaZen support says it completed the connection you asked for. If something does not work, reopen the request.</value>
   </data>
+  <data name="Push_DomainVerified_Title" xml:space="preserve">
+    <value>Domain verified</value>
+  </data>
+  <data name="Push_DomainVerified_Body" xml:space="preserve">
+    <value>Your domain is active: the booking site now answers on your own address.</value>
+  </data>
+  <data name="Push_OwnerLoginReady_Title" xml:space="preserve">
+    <value>Owner sign-in enabled</value>
+  </data>
+  <data name="Push_OwnerLoginReady_Body" xml:space="preserve">
+    <value>Owners can now sign in to their portal on your domain.</value>
+  </data>
+  <data name="Push_OwnerLoginFailed_Title" xml:space="preserve">
+    <value>Owner sign-in not enabled</value>
+  </data>
+  <data name="Push_OwnerLoginFailed_Body" xml:space="preserve">
+    <value>The owner sign-in could not be enabled on your domain. Try again from the domain settings.</value>
+  </data>
   <data name="Push_CheckoutReminder_Title" xml:space="preserve">
     <value>Check-out reminder</value>
   </data>

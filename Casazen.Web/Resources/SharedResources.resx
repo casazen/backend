@@ -3298,6 +3298,12 @@
   <data name="OrgDomainVerificationFailed" xml:space="preserve">
     <value>Verifica del dominio non riuscita.</value>
   </data>
+  <data name="OrgDomainNotVerified" xml:space="preserve">
+    <value>Il dominio personalizzato non è ancora verificato: l'accesso dei proprietari si abilita solo su un dominio verificato.</value>
+  </data>
+  <data name="OwnerLoginStateInvalid" xml:space="preserve">
+    <value>Stato non valido: usa NotRequested, Pending, Ready o Failed.</value>
+  </data>
   <data name="OrgAccessDenied" xml:space="preserve">
     <value>Accesso negato a questa organizzazione.</value>
   </data>

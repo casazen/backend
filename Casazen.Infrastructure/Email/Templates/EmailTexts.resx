@@ -957,6 +957,24 @@
   <data name="Push_AssistDeclared_Body" xml:space="preserve">
     <value>Il supporto CasaZen dichiara di aver completato il collegamento che avevi chiesto. Se qualcosa non funziona, riapri la richiesta.</value>
   </data>
+  <data name="Push_DomainVerified_Title" xml:space="preserve">
+    <value>Dominio verificato</value>
+  </data>
+  <data name="Push_DomainVerified_Body" xml:space="preserve">
+    <value>Il tuo dominio è attivo: il sito di prenotazione risponde al tuo indirizzo.</value>
+  </data>
+  <data name="Push_OwnerLoginReady_Title" xml:space="preserve">
+    <value>Accesso proprietari abilitato</value>
+  </data>
+  <data name="Push_OwnerLoginReady_Body" xml:space="preserve">
+    <value>I proprietari possono ora accedere al loro portale dal tuo dominio.</value>
+  </data>
+  <data name="Push_OwnerLoginFailed_Title" xml:space="preserve">
+    <value>Accesso proprietari non abilitato</value>
+  </data>
+  <data name="Push_OwnerLoginFailed_Body" xml:space="preserve">
+    <value>Non è stato possibile abilitare l'accesso dei proprietari dal tuo dominio. Riprova dalle impostazioni del dominio.</value>
+  </data>
   <data name="Push_CheckoutReminder_Title" xml:space="preserve">
     <value>Promemoria check-out</value>
   </data>

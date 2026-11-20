@@ -72,14 +72,15 @@ public sealed class HangfirePushQueue(
             if (deliveryKey.Length > 200)
                 throw new ArgumentException("A delivery key has at most 200 characters.", nameof(deliveryKey));
 
-            // The app has no screen of the platform staff, so there is no tap to open: the staff is told by the bell and its live update
-            // (InAppNotificationPushDecorator), never on a phone.
-            if (audience.Kind == PushAudienceKind.PlatformStaff)
+            // The app has no screen of the platform staff, nor of the domain of an org (E40/F01/US02/T01), so there is no tap to open: they are
+            // told by the bell and its live update (InAppNotificationPushDecorator), never on a phone.
+            if (audience.Kind is PushAudienceKind.PlatformStaff or PushAudienceKind.OrgAdmins)
             {
                 logger.LogInformation(
-                    "Push {Type} (key {DeliveryKey}) not queued for the platform staff: the app has no screen of the staff, the bell tells them",
+                    "Push {Type} (key {DeliveryKey}) not queued for {Audience}: the app has no screen for it, the bell tells them",
                     payload.Type,
-                    deliveryKey);
+                    deliveryKey,
+                    audience.Kind);
                 return false;
             }
 
