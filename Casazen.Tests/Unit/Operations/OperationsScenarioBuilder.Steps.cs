@@ -97,23 +97,23 @@ internal sealed partial class OperationsScenarioBuilder
     }
 
     /// <summary>
-    /// The copy of the chat of the channel manager reads the listing without error (the permission of the chat is in the license now): the state of the listing the sync leaves, which is
-    /// what lifts a link that waits for the permission.
+    /// The copy of the chat of the channel manager reads the listing without error (the permission of the chat is in the license now): the real pass of the sync (<c>ReconcileRecentAsync</c>,
+    /// the one the hourly reconciliation runs) over a channel manager that answers the chat, which leaves its mark on the checkpoints of the listing with no error. That mark is what lifts a
+    /// link that waits for the permission.
     /// </summary>
     public async Task TheChatSyncReadsTheListingAsync()
     {
-        await using var scope = Scope(underTheOrg: false);
-        var state = await scope.Db.OtaMessageSyncStates.SingleOrDefaultAsync(s => s.OrgId == OrgId && s.OctorateAccommodationId == OctorateAccommodation);
-        if (state is null)
-        {
-            var connection = await scope.Db.OctorateConnections.AsNoTracking().SingleAsync(c => c.OrgId == OrgId);
-            state = new OtaMessageSyncState { OrgId = OrgId, OctorateAccommodationId = OctorateAccommodation, ConnectionId = connection.Id, PropertyId = PropertyId };
-            scope.Db.OtaMessageSyncStates.Add(state);
-        }
+        Octorate
+            .Setup(c => c.GetRecentChatMessagesAsync(OctorateAccommodation, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
-        state.LastError = null;
-        state.UpdatedAt = Clock.GetUtcNow().UtcDateTime;
-        await scope.Db.SaveChangesAsync();
+        await using var scope = Scope(underTheOrg: false);
+        await scope.Get<IMessageSyncService>().ReconcileRecentAsync(OrgId, CancellationToken.None);
+
+        // The pass leaves a clean checkpoint for the flat of the mapping: a pass that read nothing (the connector off, no listing) would lift nothing, and the step says so instead of going on.
+        var state = await scope.Db.OtaMessageSyncStates.AsNoTracking().SingleOrDefaultAsync(s => s.OrgId == OrgId && s.OctorateAccommodationId == OctorateAccommodation);
+        if (state is null || state.LastError is not null || state.PropertyId != PropertyId || state.LastRecentPassAt is null)
+            throw new InvalidOperationException("The pass of the chat sync left no clean checkpoint for the listing of the flat.");
     }
 
     // ---------------------------------------------------------------- the direct bookings and the booking of the host
@@ -495,13 +495,32 @@ internal sealed partial class OperationsScenarioBuilder
 
     // ---------------------------------------------------------------- the tourist tax
 
-    /// <summary>The host confirms the tourist tax of the stay (the tax step of the wizard of the check-in): the amount the guests registered owe.</summary>
+    /// <summary>
+    /// The host confirms the tourist tax of the stay: the amount the guests registered owe. It is the tax step of the wizard of the check-in, in the order the wizard makes it
+    /// (<c>CheckInWizardService.ConfirmTaxAsync</c>: confirm, then reconcile the collection), <b>made here call by call</b>. The step is private to the wizard, and the public door of the wizard,
+    /// <c>ConfirmAsync</c>, also runs the whole readiness check and sends the guests again through the in-house Alloggiati machinery, which the world replaces on purpose (CasaZen sends nothing to
+    /// the police). <see cref="TheWizardTaxStepMakesTheCallsOfTheWorld"/> reads the wizard and tells when it stops making these two calls; it is declared in docs/runbooks/operations-scenario.md § 4.
+    /// </summary>
     public async Task<StayTouristTaxView> ConfirmTouristTaxAsync(Guid bookingId)
     {
         await using var scope = Scope();
         var confirmed = await scope.Get<IStayTouristTaxService>().ConfirmAsync(bookingId, HostUser);
         await scope.Get<ITouristTaxCollectionService>().ReconcileAfterChangeAsync(bookingId);
         return confirmed;
+    }
+
+    /// <summary>
+    /// Whether the wizard still makes, in its tax step, the two calls <see cref="ConfirmTouristTaxAsync"/> makes by hand: the confirmation of the tax and, after it, the reconciliation of the
+    /// collection. The step is private, so this reads the source of the wizard (the way the architecture tests of the repository read it): a wizard that changes them makes the world replay a
+    /// step that is not the application's any more.
+    /// </summary>
+    public static bool TheWizardTaxStepMakesTheCallsOfTheWorld()
+    {
+        var source = File.ReadAllText(Path.Combine(SolutionRoot(), "Casazen.Infrastructure", "Services", "CheckInWizardService.cs"));
+        var step = source.IndexOf("Task<CheckInTaxOutcome> ConfirmTaxAsync(", StringComparison.Ordinal);
+        var confirm = step < 0 ? -1 : source.IndexOf("stayTouristTax.ConfirmAsync(", step, StringComparison.Ordinal);
+        var reconcile = confirm < 0 ? -1 : source.IndexOf("touristTaxCollection.ReconcileAfterChangeAsync(", confirm, StringComparison.Ordinal);
+        return step >= 0 && confirm > step && reconcile > confirm && reconcile - step < 2000;
     }
 
     /// <summary>What the guest sees on the tourist tax step of its page: what is payable online, and why not when nothing is.</summary>

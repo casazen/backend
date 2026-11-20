@@ -507,6 +507,14 @@ public class OperationsChainTests
         Assert.Empty(await world.CleaningsOfAsync(bookingId));
     }
 
+    // Il passo della tassa del wizard del check-in e' rifatto a mano dal mondo (il passo e' privato e la porta pubblica del wizard rimanda anche gli ospiti): se il wizard cambia le due chiamate, questa prova lo dice.
+    [Fact]
+    [Trait("Scenario", "B7")]
+    public void OperationsChain_TheTaxStepOfTheWizardIsTheOneTheWorldReplays_Test() =>
+        Assert.True(
+            World.TheWizardTaxStepMakesTheCallsOfTheWorld(),
+            "The tax step of CheckInWizardService no longer confirms the tax and then reconciles the collection: change OperationsScenarioBuilder.ConfirmTouristTaxAsync with it, or call the wizard.");
+
     /// <summary>The runs of the deletion of the documents that the services handed to the background (the receipt of a stay queues one).</summary>
     private static int PurgeRunsQueued(World world) => world.Jobs.Created.Count(j => j.Job.Type == typeof(GuestDocumentPurgeJob));
 }
