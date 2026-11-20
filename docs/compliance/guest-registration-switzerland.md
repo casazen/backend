@@ -62,7 +62,7 @@ host makes itself, E31), **Info**. Sentences for the user: `SharedResources` key
 | `CH-GE` | Report | portal (cantonal account) | at arrival (privates), every day (hotels) | – | Partial | Partial | Assisted | privates: foreign guests under 90 days (an old page said 60); a reform is under discussion |
 | `CH-GL` | Register | none | none | 3 | Unknown | Partial | Register | law read through summaries |
 | `CH-GR` | Register | paper | none | 1 | Unknown | Partial | Register | only foreign guests; the sending within 24 h was abolished |
-| `CH-JU` | Register | none | not verified | – | No | Partial | Register | holiday lets without hotel services excluded; the form and the ordinance not verified |
+| `CH-JU` | Register | none | not verified | – | No | Partial | Register | holiday lets without hotel services excluded; the form and the ordinance not verified; the police PDF form has a send button and the page does not say who receives it |
 | `CH-LU` | Register | none | none | 5 | Partial | Partial | Register | private rentals: foreign guests (cantonal and city pages) |
 | `CH-NE` | Report | portal (Guichet unique) | every day | – | Partial | Partial | Assisted | holiday lets: daily sending not confirmed by the text, a report says it is due |
 | `CH-NW` | Report | paper (or electronic data) | at least weekly | – | Partial | Partial | Assisted | the electronic format and channel are asked of the police |

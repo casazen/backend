@@ -8812,7 +8812,7 @@ Once active, the function works on the data the channel manager already holds.</
     <value>In Graubünden it applies to foreign guests: an official form signed by the guest, with the type and number of the document noted by the host, kept for 1 year and shown to the police; sending it to the police within 24 hours was abolished. For private short-term rentals it is not verified.</value>
   </data>
   <data name="GuestRegime_CH_JU_Summary" xml:space="preserve">
-    <value>In Jura whoever lodges guests has a form completed on arrival and keeps a list of guests in a register that the police and the tourist-tax authority may consult; the cantonal police publishes a «Bulletin d'hôtel» form. The cantonal law excludes holiday lets without hotel services, but the federal duty for foreign guests remains.</value>
+    <value>In Jura whoever lodges guests has a form completed on arrival and keeps a list of guests in a register that the police and the tourist-tax authority may consult; the cantonal police publishes a PDF «Bulletin d'hôtel» form that is completed and sent with a button, but the page does not say who receives it. The cantonal law excludes holiday lets without hotel services, but the federal duty for foreign guests remains.</value>
   </data>
   <data name="GuestRegime_CH_LU_Summary" xml:space="preserve">
     <value>In Lucerne the host completes a guest form from the identity document, has it signed and keeps it 5 years at the disposal of the police: nothing is sent. For short-term rentals without a licence it applies to foreign guests (partial sources).</value>

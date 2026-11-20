@@ -8812,7 +8812,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Nei Grigioni vale per gli ospiti stranieri: modulo ufficiale firmato dall'ospite, con tipo e numero del documento annotati dal gestore, da conservare 1 anno e mostrare alla polizia; l'invio alla polizia entro 24 ore è stato abolito. Per gli affitti brevi privati non è verificato.</value>
   </data>
   <data name="GuestRegime_CH_JU_Summary" xml:space="preserve">
-    <value>Nel Giura chi ospita fa compilare una scheda all'arrivo e tiene un elenco degli ospiti in un registro che polizia e autorità della tassa di soggiorno possono consultare; la polizia cantonale pubblica un modulo «Bulletin d'hôtel». La legge cantonale esclude gli alloggi di vacanza senza servizi alberghieri, ma resta l'obbligo federale per gli ospiti stranieri.</value>
+    <value>Nel Giura chi ospita fa compilare una scheda all'arrivo e tiene un elenco degli ospiti in un registro che polizia e autorità della tassa di soggiorno possono consultare; la polizia cantonale pubblica un modulo PDF «Bulletin d'hôtel» che si compila e si invia con un pulsante, ma la pagina non dice a chi arrivi. La legge cantonale esclude gli alloggi di vacanza senza servizi alberghieri, ma resta l'obbligo federale per gli ospiti stranieri.</value>
   </data>
   <data name="GuestRegime_CH_LU_Summary" xml:space="preserve">
     <value>A Lucerna le strutture compilano una scheda dell'ospite dal documento d'identità, la fanno firmare e la conservano 5 anni a disposizione della polizia: non si invia nulla. Per gli affitti brevi senza patente vale per gli ospiti stranieri (fonti parziali).</value>
