@@ -176,6 +176,13 @@ public static class TestDataEntities
     public const string MessageTemplate = "MessageTemplate";
 
     /// <summary>
+    /// A scheduled message of a showcase stay (<see cref="Entities.ScheduledMessage"/>, E05/F07/US01/T02): a planned one, a blocked one and one a person skipped, so the timeline of a booking has
+    /// something to show. It goes with its booking (cascade); the reset deletes it by its marker before the houses go, together with the marker. A message of a real stay has no marker and is
+    /// never touched.
+    /// </summary>
+    public const string ScheduledMessage = "ScheduledMessage";
+
+    /// <summary>
     /// The mirror of a showcase booking on the channel manager (<see cref="Entities.OctorateBookingSync"/>, E08/F03/US03/T02, NF-74): the state of the last operation of
     /// an invented reservation, nothing is sent. It goes with its booking (cascade) and the reset deletes its marker with the other showcase markers.
     /// </summary>

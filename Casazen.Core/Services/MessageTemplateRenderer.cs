@@ -17,14 +17,20 @@ public sealed record MessageTemplateValues(
     DateOnly? CheckOutDate,
     TimeOnly? CheckInTime,
     TimeOnly? CheckOutTime,
-    string? HostName);
+    string? HostName,
+    string? CheckInLink = null,
+    string? CheckInMethod = null,
+    string? AccessCode = null,
+    string? PropertyAddress = null,
+    string? ReviewLink = null);
 
 /// <summary>
 /// Replaces the variables of a template of the host with the values of a conversation (E05/F02/US02/T02, NF-63), pure: no database, no clock. A
-/// variable is <c>{{name}}</c> (spaces inside the braces are allowed, the case of the name is not); the names are the eight of <see cref="Variables"/>.
+/// variable is <c>{{name}}</c> (spaces inside the braces are allowed, the case of the name is not); the names are the thirteen of <see cref="Variables"/>: the eight of a conversation and, since
+/// the scheduled messages (E05/F07/US01), the check-in method, the check-in link, the access code, the address of the property and the review link.
 /// </summary>
 /// <remarks>
-/// <para><b>Never a literal variable in the text.</b> A name that is not one of the eight, or a brace that opens or closes nothing, is 422
+/// <para><b>Never a literal variable in the text.</b> A name that is not one of the thirteen, or a brace that opens or closes nothing, is 422
 /// <c>template_variable_unknown</c>; a variable the conversation has no value for is 422 <c>template_variable_missing</c> naming it. The text that comes
 /// out has no <c>{{</c> of the template left in it: the replacement is made in one pass, so a value that looks like a variable (a guest called
 /// <c>{{host_name}}</c>) is not replaced again.</para>
@@ -42,6 +48,21 @@ public static partial class MessageTemplateRenderer
     public const string CheckInTimeVariable = "check_in_time";
     public const string CheckOutTimeVariable = "check_out_time";
     public const string HostNameVariable = "host_name";
+
+    /// <summary>The link of the online check-in of the stay: a new one is issued when the message is sent (the previous one stops working), never in a preview (E05/F07/US01/T03).</summary>
+    public const string CheckInLinkVariable = "check_in_link";
+
+    /// <summary>How the guest gets in (the check-in method of the property, in the language of the guest) (E05/F07/US01/T03).</summary>
+    public const string CheckInMethodVariable = "check_in_method";
+
+    /// <summary>The lock code of the property: only after the identity of the guest was verified (ADR-022-R11), never a placeholder in what is sent, never resolved in a preview (E05/F07/US01/T03).</summary>
+    public const string AccessCodeVariable = "access_code";
+
+    /// <summary>The address of the property (E05/F07/US01/T03).</summary>
+    public const string PropertyAddressVariable = "property_address";
+
+    /// <summary>The link where the guest of a direct booking writes the review of the stay (E05/F07/US01/T03).</summary>
+    public const string ReviewLinkVariable = "review_link";
 
     /// <summary>The 422 of a name that is not one of the variables (or of a brace that opens or closes nothing).</summary>
     public const string UnknownCode = "template_variable_unknown";
@@ -63,6 +84,11 @@ public static partial class MessageTemplateRenderer
         CheckInTimeVariable,
         CheckOutTimeVariable,
         HostNameVariable,
+        CheckInLinkVariable,
+        CheckInMethodVariable,
+        AccessCodeVariable,
+        PropertyAddressVariable,
+        ReviewLinkVariable,
     ];
 
     /// <summary>
@@ -87,6 +113,19 @@ public static partial class MessageTemplateRenderer
         }
 
         return used;
+    }
+
+    /// <summary>
+    /// The variables <paramref name="body"/> uses that <paramref name="values"/> has no value for, each once, in the order they first appear (E05/F07/US01/T02): what a preview lists as missing and
+    /// what holds a scheduled message back. 422 <see cref="UnknownCode"/> for a name that is not a variable, as <see cref="VariablesOf"/>.
+    /// </summary>
+    public static IReadOnlyList<string> MissingVariables(string body, MessageTemplateValues values, CultureInfo culture)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        ArgumentNullException.ThrowIfNull(values);
+        ArgumentNullException.ThrowIfNull(culture);
+
+        return [.. VariablesOf(body).Where(name => string.IsNullOrWhiteSpace(ValueOf(name, values, culture)))];
     }
 
     /// <summary>The text of <paramref name="body"/> with every variable replaced (see the remarks of the class for what is refused).</summary>
@@ -161,6 +200,11 @@ public static partial class MessageTemplateRenderer
         CheckInTimeVariable => Time(values.CheckInTime),
         CheckOutTimeVariable => Time(values.CheckOutTime),
         HostNameVariable => values.HostName,
+        CheckInLinkVariable => values.CheckInLink,
+        CheckInMethodVariable => values.CheckInMethod,
+        AccessCodeVariable => values.AccessCode,
+        PropertyAddressVariable => values.PropertyAddress,
+        ReviewLinkVariable => values.ReviewLink,
         _ => null,
     };
 

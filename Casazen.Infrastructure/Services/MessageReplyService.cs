@@ -108,7 +108,7 @@ public sealed class MessageReplyService(
         }
 
         return key.Source == MessageThreadSource.Direct
-            ? await ReplyDirectAsync(scope, key, text, idempotencyKey, userId, ct)
+            ? await ReplyDirectAsync(scope, key, text, idempotencyKey, userId, origin, ct)
             : await ReplyOtaAsync(scope, key, text, idempotencyKey, userId, origin, ruleCode, ct);
     }
 
@@ -118,12 +118,22 @@ public sealed class MessageReplyService(
         return (await ChooseAsync(scope, bookingId, ct)).Options;
     }
 
+    public Task<MessageReplyResult> StartConversationAsync(
+        HostScope scope,
+        Guid bookingId,
+        string? text,
+        string? idempotencyKey,
+        string? userId,
+        CancellationToken ct = default) =>
+        StartConversationAsync(scope, bookingId, text, idempotencyKey, userId, MessageOrigin.Person, ct);
+
     public async Task<MessageReplyResult> StartConversationAsync(
         HostScope scope,
         Guid bookingId,
         string? text,
         string? idempotencyKey,
         string? userId,
+        MessageOrigin origin,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
@@ -140,7 +150,7 @@ public sealed class MessageReplyService(
         switch (choice.Options.Channel)
         {
             case MessageContactChannel.Ota or MessageContactChannel.Direct when choice.Options.ThreadKey is { } threadKey:
-                return await ReplyAsync(scope, threadKey, text, idempotencyKey, userId, MessageOrigin.Person, null, ct);
+                return await ReplyAsync(scope, threadKey, text, idempotencyKey, userId, origin, null, ct);
             case MessageContactChannel.Email:
                 return await SendByEmailAsync(scope, choice, text, idempotencyKey, userId, ct);
             default:
@@ -158,6 +168,7 @@ public sealed class MessageReplyService(
         string? text,
         string? idempotencyKey,
         string? userId,
+        MessageOrigin origin,
         CancellationToken ct)
     {
         // The booking is within the reach of the scope, or the conversation is not there: only then is the existing service asked, unchanged.
@@ -169,11 +180,15 @@ public sealed class MessageReplyService(
         if (!reachable)
             throw ThreadNotFound();
 
-        var sent = await guestMessages.ReplyAsHostAsync(key.Id, text, idempotencyKey, userId, ct);
+        // A message nobody wrote (a routine's) answers nobody on a direct thread either: the guest's question stays unread and waiting, as on the channels (the origin is stored on the message).
+        var automatic = origin == MessageOrigin.Automation;
+        var sent = automatic
+            ? await guestMessages.ReplyAsAutomationAsync(key.Id, text, idempotencyKey, ct)
+            : await guestMessages.ReplyAsHostAsync(key.Id, text, idempotencyKey, userId, ct);
         var message = new MessageHubMessage(
             sent.Message.Id,
             OtaMessageDirection.Outbound,
-            MessageOrigin.Person,
+            automatic ? MessageOrigin.Automation : MessageOrigin.Person,
             null,
             null,
             sent.Message.Text,
