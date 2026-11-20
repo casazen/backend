@@ -20,6 +20,15 @@ namespace Casazen.Core.Entities;
 [Index(nameof(BookingId), nameof(Position), IsUnique = true)]
 public class StayGuest : ITenantOwned
 {
+    /// <summary>Longest <see cref="ResidenceStreet"/> accepted on input.</summary>
+    public const int ResidenceStreetMaxLength = 200;
+
+    /// <summary>Longest <see cref="ResidencePostalCode"/> accepted on input.</summary>
+    public const int ResidencePostalCodeMaxLength = 20;
+
+    /// <summary>Longest <see cref="ResidenceCityName"/> accepted on input.</summary>
+    public const int ResidenceCityNameMaxLength = 100;
+
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -139,6 +148,25 @@ public class StayGuest : ITenantOwned
 
     /// <summary>State of residence as entered (living abroad).</summary>
     public string? ResidenceCountryName { get; set; }
+
+    /// <summary>
+    /// Street and house number of the guest's home («Indirizzo» of the Ticino police file, NF-132, casazen/backend#979); null when not entered.
+    /// Optional at entry, asked where the property is in canton Ticino. Encrypted at rest with the document (<c>EncryptedColumns</c>): the
+    /// column is <c>text</c> and the <see cref="ResidenceStreetMaxLength"/> characters are checked on input.
+    /// </summary>
+    public string? ResidenceStreet { get; set; }
+
+    /// <summary>
+    /// Postal code of the guest's home («CAP» of the Ticino police file), as written (a foreign code may hold letters); null when not entered.
+    /// At most <see cref="ResidencePostalCodeMaxLength"/> characters, encrypted like <see cref="ResidenceStreet"/>.
+    /// </summary>
+    public string? ResidencePostalCode { get; set; }
+
+    /// <summary>
+    /// Town of the guest's home («Domicilio» of the Ticino police file), as written; null when not entered. At most
+    /// <see cref="ResidenceCityNameMaxLength"/> characters, encrypted like <see cref="ResidenceStreet"/>.
+    /// </summary>
+    public string? ResidenceCityName { get; set; }
 
     /// <summary>
     /// Type of tourism, a code of <c>IstatGuestFieldLists.TourismTypes</c>: a statistical field some regions ask for (NF-40); optional at

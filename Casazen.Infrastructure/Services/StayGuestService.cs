@@ -16,11 +16,18 @@ namespace Casazen.Infrastructure.Services;
 /// record field and, once the official table is imported, exist in it; without codes the names are stored and the codes
 /// stay "to complete" (they block only the export of the record).
 /// </summary>
+/// <remarks>
+/// For a property in canton Ticino (NF-132, casazen/backend#979) the police file notifies every adult on their own row
+/// (<see cref="TicinoPoliceFile.NotifiedPositions"/>): each of them needs a document type and number, family and group members included, and keeps
+/// them (elsewhere a member's document is dropped). «In Ticino» is <see cref="ITicinoNotificationService.IsPropertyInTicinoAsync"/>, the one check of
+/// the jurisdiction.
+/// </remarks>
 public class StayGuestService(
     AppDbContext db,
     IAlloggiatiCodeTableService codeTables,
     TimeProvider? timeProvider = null,
-    IDomainEventRecorder? domainEvents = null) : IStayGuestService
+    IDomainEventRecorder? domainEvents = null,
+    ITicinoNotificationService? ticinoNotifications = null) : IStayGuestService
 {
     /// <summary>Longest name stored for places, citizenship and document labels.</summary>
     public const int MaxLabelLength = 100;
@@ -28,10 +35,15 @@ public class StayGuestService(
     /// <summary>Length of <see cref="StayGuest.EnteredByUserId"/>.</summary>
     private const int MaxUserIdLength = 200;
 
+    /// <summary>The field of the plate of the stay in the errors (<see cref="StayGuestFieldError.Field"/>, no guest index).</summary>
+    public const string VehiclePlateField = nameof(Booking.VehiclePlate);
+
     /// <summary>The earliest issue day of a document that is accepted (NF-40).</summary>
     private static readonly DateOnly EarliestDocumentDate = new(1900, 1, 1);
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    private readonly ITicinoNotificationService _ticino = ticinoNotifications ?? new TicinoNotificationService(db, timeProvider);
 
     public async Task<IReadOnlyList<StayGuest>> GetForBookingAsync(Booking booking, CancellationToken cancellationToken = default)
     {
@@ -75,7 +87,17 @@ public class StayGuestService(
         IReadOnlyList<StayGuestInput> guests,
         CancellationToken cancellationToken = default)
     {
-        var (_, errors) = await BuildAsync(guests, readTaxExemption: false, cancellationToken);
+        var (_, errors) = await BuildAsync(guests, readTaxExemption: false, GuestRules.Alloggiati, cancellationToken);
+        return errors;
+    }
+
+    public async Task<IReadOnlyList<StayGuestFieldError>> ValidateAsync(
+        Booking booking,
+        IReadOnlyList<StayGuestInput> guests,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        var (_, errors) = await BuildAsync(guests, readTaxExemption: false, await RulesOfAsync(booking), cancellationToken);
         return errors;
     }
 
@@ -84,13 +106,21 @@ public class StayGuestService(
         IReadOnlyList<StayGuestInput> guests,
         StayGuestAuthor author,
         bool save = true,
+        string? vehiclePlate = null,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(booking);
         ArgumentNullException.ThrowIfNull(author);
 
         // The tourist tax exemption is the host's decision (NF-46): any other author keeps the one of each row and is never read for it.
         var hostAuthor = author.Source == StayGuestDataSource.Host;
-        var (candidates, errors) = await BuildAsync(guests, hostAuthor, cancellationToken);
+        var (candidates, errors) = await BuildAsync(guests, hostAuthor, await RulesOfAsync(booking), cancellationToken);
+
+        // NF-132: the plate of the stay, sent with the guests; null leaves the stored one (a client that does not know the field).
+        var plate = VehiclePlates.Normalize(vehiclePlate);
+        if (!VehiclePlates.IsValid(plate))
+            errors.Add(new StayGuestFieldError(null, VehiclePlateField, CheckInValidationKeys.VehiclePlateInvalid, VehiclePlates.MaxLength));
+
         if (errors.Count > 0)
             return new StayGuestSaveResult([], errors);
 
@@ -127,6 +157,9 @@ public class StayGuestService(
 
         db.StayGuests.RemoveRange(existing.Where(s => s.Position >= candidates.Count));
 
+        if (vehiclePlate is not null)
+            await SetVehiclePlateAsync(booking, plate, now, cancellationToken);
+
         // E20/F01/US01/T01: the guests were saved. The event goes into the outbox in the same save as the rows (ids and a word, never a guest's data), so
         // an org that lets CasaZen write the guests to the channel manager on their own is told, and a failed save leaves no event. The org is the
         // booking's: the guest portal has no authenticated request to take it from.
@@ -143,12 +176,45 @@ public class StayGuestService(
     }
 
     /// <summary>
+    /// What the property of a stay asks of its guests beyond the Alloggiati record: in canton Ticino (NF-132) the document of every guest the police
+    /// file notifies on their own row, by their age at <see cref="Arrival"/>.
+    /// </summary>
+    private sealed record GuestRules(bool InTicino, DateOnly Arrival)
+    {
+        public static readonly GuestRules Alloggiati = new(false, default);
+    }
+
+    private async Task<GuestRules> RulesOfAsync(Booking booking) =>
+        new(await _ticino.IsPropertyInTicinoAsync(booking.PropertyId), DateOnly.FromDateTime(booking.CheckInDate));
+
+    /// <summary>
+    /// The plate of the stay on the booking (NF-132): on the instance the caller holds, and on the one the context tracks when the caller's is not
+    /// tracked, so the save of the guests writes it.
+    /// </summary>
+    private async Task SetVehiclePlateAsync(Booking booking, string? plate, DateTime now, CancellationToken cancellationToken)
+    {
+        var tracked = db.Entry(booking).State == EntityState.Detached
+            ? await db.Bookings.FirstOrDefaultAsync(b => b.Id == booking.Id, cancellationToken)
+            : booking;
+        if (tracked is not null && tracked.VehiclePlate != plate)
+        {
+            tracked.VehiclePlate = plate;
+            tracked.UpdatedAt = now;
+        }
+
+        // The caller's instance shows the plate too: it builds its answer from it.
+        booking.VehiclePlate = plate;
+    }
+
+    /// <summary>
     /// Normalized rows from the input, and the field errors that stop them from being saved. The tourist tax exemption is read and checked
-    /// only when <paramref name="readTaxExemption"/> (a host author); otherwise every candidate has none.
+    /// only when <paramref name="readTaxExemption"/> (a host author); otherwise every candidate has none. <paramref name="rules"/> adds what the
+    /// property asks beyond the Alloggiati record.
     /// </summary>
     private async Task<(List<StayGuest> Candidates, List<StayGuestFieldError> Errors)> BuildAsync(
         IReadOnlyList<StayGuestInput> guests,
         bool readTaxExemption,
+        GuestRules rules,
         CancellationToken cancellationToken)
     {
         var errors = new List<StayGuestFieldError>();
@@ -158,7 +224,7 @@ public class StayGuestService(
             return ([], errors);
         }
 
-        var candidates = new List<StayGuest>(guests.Count);
+        var kinds = new StayGuestType[guests.Count];
         var types = new List<StayGuestType>(guests.Count);
         for (var i = 0; i < guests.Count; i++)
         {
@@ -170,8 +236,21 @@ public class StayGuestService(
                 errors.Add(Error(i, nameof(StayGuestInput.Type), CheckInValidationKeys.GuestTypeInvalid));
             else
                 types.Add(type);
+            kinds[i] = type;
+        }
 
-            var candidate = Normalize(input, type);
+        // NF-132: in Ticino the guests the police file notifies on their own row (every adult, or every minor of a stay without adults) need their
+        // document, members included; elsewhere only a single guest or a head has one.
+        var notified = rules.InTicino
+            ? TicinoPoliceFile.NotifiedPositions(
+                guests.Select((g, i) => (i, kinds[i], g.DateOfBirth is { } born ? DateOnly.FromDateTime(born) : (DateOnly?)null)), rules.Arrival)
+            : new HashSet<int>();
+
+        var candidates = new List<StayGuest>(guests.Count);
+        for (var i = 0; i < guests.Count; i++)
+        {
+            var input = guests[i];
+            var candidate = Normalize(input, kinds[i], keepDocument: AlloggiatiRecordRules.RequiresDocument(kinds[i]) || notified.Contains(i));
             candidate.TaxExemptionCode = readTaxExemption ? NormalizeExemptionCode(input.TaxExemptionCode) : null;
             candidates.Add(candidate);
         }
@@ -193,7 +272,7 @@ public class StayGuestService(
         var codeBook = await codeTables.LoadCodeBookAsync(candidates, cancellationToken);
         var today = _clock.TodayInRome();
         for (var i = 0; i < guests.Count; i++)
-            ValidateGuest(i, guests[i], candidates[i], codeBook, today, errors);
+            ValidateGuest(i, guests[i], candidates[i], codeBook, today, errors, documentRequired: notified.Contains(i));
 
         if (readTaxExemption)
             await ValidateTaxExemptionsAsync(candidates, errors, cancellationToken);
@@ -230,7 +309,13 @@ public class StayGuestService(
         return string.IsNullOrEmpty(value) ? null : value;
     }
 
-    private static StayGuest Normalize(StayGuestInput input, StayGuestType type)
+    /// <param name="input">What was sent.</param>
+    /// <param name="type">The kind of guest.</param>
+    /// <param name="keepDocument">
+    /// The document is kept: a single guest or a head (the Alloggiati record), or, in Ticino, a guest the police file notifies on their own row
+    /// (NF-132). Otherwise whatever was sent is dropped.
+    /// </param>
+    private static StayGuest Normalize(StayGuestInput input, StayGuestType type, bool keepDocument)
     {
         var row = new StayGuest
         {
@@ -246,6 +331,11 @@ public class StayGuestService(
             TourismType = IstatGuestFieldLists.Normalize(input.TourismType),
             TravelWay = IstatGuestFieldLists.Normalize(input.TravelWay),
             EducationLevel = IstatGuestFieldLists.Normalize(input.EducationLevel),
+
+            // NF-132: the home of the guest, whatever the residence says (a foreign postal code may hold letters: upper case, as printed).
+            ResidenceStreet = NullIfEmpty(Clean(input.ResidenceStreet)),
+            ResidencePostalCode = NullIfEmpty(Clean(input.ResidencePostalCode).ToUpperInvariant()),
+            ResidenceCityName = NullIfEmpty(Clean(input.ResidenceCityName)),
         };
 
         // The residence follows the shape of the birth place: comune and province in Italy, a state abroad, nothing when not said.
@@ -273,8 +363,9 @@ public class StayGuestService(
             row.BirthCountryName = Clean(input.BirthCountryName);
         }
 
-        // Family and group members have no document in the record: whatever was sent is dropped.
-        if (AlloggiatiRecordRules.RequiresDocument(type))
+        // Family and group members have no document in the record: whatever was sent is dropped, unless the property is in Ticino and the member is
+        // a row of the police file (NF-132).
+        if (keepDocument)
         {
             row.DocumentType = Enum.TryParse<GuestDocumentType>(input.DocumentType?.Trim(), ignoreCase: true, out var kind)
                 && kind is GuestDocumentType.Passport or GuestDocumentType.IdentityCard or GuestDocumentType.DriversLicense
@@ -291,13 +382,24 @@ public class StayGuestService(
         return row;
     }
 
+    /// <param name="index">The position of the guest.</param>
+    /// <param name="input">What was sent.</param>
+    /// <param name="row">The normalized row.</param>
+    /// <param name="codeBook">The official tables.</param>
+    /// <param name="today">Today in Europe/Rome.</param>
+    /// <param name="errors">Where the errors go.</param>
+    /// <param name="documentRequired">
+    /// In Ticino the police file notifies this guest on their own row (NF-132): a document type and number are required even of a family or group
+    /// member, whose place of issue stays optional (the file does not have it).
+    /// </param>
     private void ValidateGuest(
         int index,
         StayGuestInput input,
         StayGuest row,
         AlloggiatiCodeBook codeBook,
         DateTime today,
-        List<StayGuestFieldError> errors)
+        List<StayGuestFieldError> errors,
+        bool documentRequired)
     {
         RequireText(index, nameof(StayGuestInput.FirstName), row.FirstName, AlloggiatiRecordRules.MaxFirstNameLength, errors);
         RequireText(index, nameof(StayGuestInput.LastName), row.LastName, AlloggiatiRecordRules.MaxLastNameLength, errors);
@@ -350,7 +452,13 @@ public class StayGuestService(
         ValidateStatisticalField(index, nameof(StayGuestInput.TravelWay), IstatGuestFieldLists.TravelWayField, row.TravelWay, errors);
         ValidateStatisticalField(index, nameof(StayGuestInput.EducationLevel), IstatGuestFieldLists.EducationLevelField, row.EducationLevel, errors);
 
-        if (!AlloggiatiRecordRules.RequiresDocument(row.Type))
+        // NF-132: the home of the guest, optional; only the lengths of the columns are checked (the values are encrypted, the column is text).
+        LimitText(index, nameof(StayGuestInput.ResidenceStreet), row.ResidenceStreet, StayGuest.ResidenceStreetMaxLength, errors);
+        LimitText(index, nameof(StayGuestInput.ResidencePostalCode), row.ResidencePostalCode, StayGuest.ResidencePostalCodeMaxLength, errors);
+        LimitText(index, nameof(StayGuestInput.ResidenceCityName), row.ResidenceCityName, StayGuest.ResidenceCityNameMaxLength, errors);
+
+        var head = AlloggiatiRecordRules.RequiresDocument(row.Type);
+        if (!head && !documentRequired)
             return;
 
         ValidateDocumentType(index, input, row, codeBook, errors);
@@ -362,9 +470,16 @@ public class StayGuestService(
 
         ValidatePlace(index, nameof(StayGuestInput.DocumentIssuePlaceName), nameof(StayGuestInput.DocumentIssuePlaceCode),
             row.DocumentIssuePlaceName, row.DocumentIssuePlaceCode, [AlloggiatiCodeTable.Comuni, AlloggiatiCodeTable.Stati],
-            codeBook, errors, entry => row.DocumentIssuePlaceName = entry.Description);
+            codeBook, errors, entry => row.DocumentIssuePlaceName = entry.Description, required: head);
 
         ValidateDocumentDates(index, row, DateOnly.FromDateTime(today), errors);
+    }
+
+    /// <summary>An optional text no longer than <paramref name="maxLength"/>.</summary>
+    private static void LimitText(int index, string field, string? value, int maxLength, List<StayGuestFieldError> errors)
+    {
+        if (value is { Length: > 0 } && value.Length > maxLength)
+            errors.Add(Error(index, field, CheckInValidationKeys.FieldMaxLength, field, maxLength));
     }
 
     /// <summary>
@@ -539,6 +654,9 @@ public class StayGuestService(
         to.ResidenceProvince = from.ResidenceProvince;
         to.ResidenceCountryCode = from.ResidenceCountryCode;
         to.ResidenceCountryName = from.ResidenceCountryName;
+        to.ResidenceStreet = from.ResidenceStreet;
+        to.ResidencePostalCode = from.ResidencePostalCode;
+        to.ResidenceCityName = from.ResidenceCityName;
         to.TourismType = from.TourismType;
         to.TravelWay = from.TravelWay;
         to.EducationLevel = from.EducationLevel;

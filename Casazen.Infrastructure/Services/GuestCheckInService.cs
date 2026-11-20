@@ -37,9 +37,13 @@ public class GuestCheckInService(
     ICrmContactIndex? contactIndex = null,
     IOptions<CrmOptions>? crmOptions = null,
     IInvoiceDataService? invoiceDataService = null,
-    ICheckInLinkDeliveryService? linkDeliveries = null) : IGuestCheckInService
+    ICheckInLinkDeliveryService? linkDeliveries = null,
+    ITicinoNotificationService? ticinoNotifications = null) : IGuestCheckInService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    // NF-132: whether the property is in canton Ticino, the one check of the jurisdiction (the page then asks the Swiss fields and the plate).
+    private readonly ITicinoNotificationService _ticino = ticinoNotifications ?? new TicinoNotificationService(db);
 
     // The answer to «Ti serve la fattura?» (FIS-01): the container gives the service that records its event; built by hand it records none.
     private readonly IInvoiceDataService _invoiceData = invoiceDataService ?? new InvoiceDataService(db, timeProvider: timeProvider);
@@ -54,7 +58,10 @@ public class GuestCheckInService(
         codeTableService ?? new AlloggiatiCodeTableService(db, NullLogger<AlloggiatiCodeTableService>.Instance);
 
     private readonly IStayGuestService _stayGuests = stayGuestService
-        ?? new StayGuestService(db, codeTableService ?? new AlloggiatiCodeTableService(db, NullLogger<AlloggiatiCodeTableService>.Instance));
+        ?? new StayGuestService(
+            db,
+            codeTableService ?? new AlloggiatiCodeTableService(db, NullLogger<AlloggiatiCodeTableService>.Instance),
+            ticinoNotifications: ticinoNotifications);
 
     /// <summary>Attempts of <see cref="IssueLinkAsync"/> when another link of the booking is issued at the same time.</summary>
     private const int MaxIssueAttempts = 3;
@@ -245,6 +252,7 @@ public class GuestCheckInService(
             .OrderByDescending(d => d.Version)
             .Select(d => d.WithdrawnAt == null ? d.Org.Slug : null)
             .FirstOrDefaultAsync();
+        var inTicino = await _ticino.IsPropertyInTicinoAsync(booking.PropertyId);
         return new GuestCheckInPublicView
         {
             InvoiceRequested = invoice?.InvoiceRequested ?? false,
@@ -262,8 +270,10 @@ public class GuestCheckInService(
             MarketingConsentVersion = MarketingVersion,
 
             // Data minimization (ADR-030-R1): the page asks a statistical field only where the region requires it, as the ISTAT region table says
-            // (E21/F01/US01/T01): none for a comune that is not in the list, for a region without a row and for a row that is not verified.
-            RequiredGuestFields = await RequiredGuestFieldsAsync(booking.Property.ComuneIstatCode),
+            // (E21/F01/US01/T01): none for a comune that is not in the list, for a region without a row and for a row that is not verified. A property
+            // in canton Ticino asks the fields of the police file too (NF-132): the document of every adult, the home and the plate.
+            RequiredGuestFields = TicinoCheckInFields.AskedOf(await RequiredGuestFieldsAsync(booking.Property.ComuneIstatCode), inTicino),
+            AskVehiclePlate = inTicino,
             Language = session.Language,
         };
     }
@@ -323,6 +333,11 @@ public class GuestCheckInService(
         ResidenceProvince = guest.ResidenceProvince,
         ResidenceCountryCode = guest.ResidenceCountryCode,
         ResidenceCountryName = guest.ResidenceCountryName,
+
+        // NF-132: given back with the rest of the guest, so a page that sends the guests whole does not clear them.
+        ResidenceStreet = guest.ResidenceStreet,
+        ResidencePostalCode = guest.ResidencePostalCode,
+        ResidenceCityName = guest.ResidenceCityName,
         TourismType = guest.TourismType,
         TravelWay = guest.TravelWay,
         EducationLevel = guest.EducationLevel,
@@ -420,8 +435,9 @@ public class GuestCheckInService(
         var marketingVersion = MarketingVersion;
         var (consentErrors, marketingEmail) = ValidateMarketingConsent(request, marketingVersion);
 
-        // Every guest: kinds and order, document only for single guests and heads, shape of the codes.
-        var guestErrors = (await _stayGuests.ValidateAsync(request.Guests)).ToList();
+        // Every guest: kinds and order, document only for single guests and heads (in Ticino of every guest the police file notifies, NF-132),
+        // shape of the codes.
+        var guestErrors = (await _stayGuests.ValidateAsync(session.Booking, request.Guests)).ToList();
         if (request.PrivacyNoticeAcknowledged == false)
             guestErrors.Add(new(null, nameof(request.PrivacyNoticeAcknowledged), "CheckInPrivacyAcknowledgementRequired"));
         if (IdentityVerificationFlowService.VerifiedNumberMismatch(session, request.Guests) is { } mismatch)
@@ -429,6 +445,8 @@ public class GuestCheckInService(
         var capacity = Math.Max(1, session.Booking.NumberOfGuests);
         if (request.Guests.Count > capacity)
             guestErrors.Add(new(null, nameof(request.Guests), "CheckInBookingCapacity", capacity));
+        if (!VehiclePlates.IsValid(VehiclePlates.Normalize(request.VehiclePlate)))
+            guestErrors.Add(new(null, StayGuestService.VehiclePlateField, CheckInValidationKeys.VehiclePlateInvalid, VehiclePlates.MaxLength));
         if (guestErrors.Count == 0)
         {
             var roster = await _stayGuests.GetForBookingAsync(session.Booking);
@@ -439,12 +457,13 @@ public class GuestCheckInService(
                     (!string.IsNullOrWhiteSpace(booked.LastName) && !CheckInGuestMatch.SameName(booked.LastName, entry?.LastName)))
                     guestErrors.Add(new(booked.Position, nameof(StayGuestInput.FirstName), "CheckInBookedGuestMismatch"));
             }
+
+            var withDocument = await GuestsWithDocumentAsync(session.Booking, request.Guests);
             for (var i = 0; i < request.Guests.Count; i++)
             {
                 var entry = request.Guests[i];
                 var number = AlloggiatiRecordRules.NormalizeDocumentNumber(entry.DocumentNumber);
-                if (Enum.TryParse<StayGuestType>(entry.Type, true, out var kind) && AlloggiatiRecordRules.RequiresDocument(kind)
-                    && (number.Length < 4 || !number.Any(char.IsAsciiDigit)))
+                if (withDocument.Contains(i) && (number.Length < 4 || !number.Any(char.IsAsciiDigit)))
                     guestErrors.Add(new(i, nameof(entry.DocumentNumber), "CheckInDocumentNumberPlausibility"));
             }
         }
@@ -461,8 +480,9 @@ public class GuestCheckInService(
         var now = UtcNow();
         var guest = await EnsureBookingOwnsMutableGuestAsync(session, now);
 
-        // Stages the rows: the session is completed in the same SaveChanges.
-        var saved = await _stayGuests.ReplaceAsync(session.Booking, request.Guests, StayGuestAuthor.GuestPortal, save: false);
+        // Stages the rows (and the plate of the stay, NF-132: null keeps the stored one): the session is completed in the same SaveChanges.
+        var saved = await _stayGuests.ReplaceAsync(
+            session.Booking, request.Guests, StayGuestAuthor.GuestPortal, save: false, vehiclePlate: request.VehiclePlate);
         if (!saved.Success)
             return new GuestCheckInSubmitResult { Success = false, ValidationErrors = saved.Errors };
 
@@ -888,6 +908,28 @@ public class GuestCheckInService(
                 booking.Id,
                 CrmDatabaseErrors.Describe(ex));
         }
+    }
+
+    /// <summary>
+    /// The positions of the guests whose document the check-in asks: a single guest or a head (the Alloggiati record) and, in canton Ticino, every guest
+    /// the police file notifies on their own row (NF-132, <see cref="TicinoPoliceFile.NotifiedPositions"/>).
+    /// </summary>
+    private async Task<HashSet<int>> GuestsWithDocumentAsync(Booking booking, IReadOnlyList<StayGuestInput> guests)
+    {
+        var kinds = guests
+            .Select(g => Enum.TryParse<StayGuestType>(g.Type, true, out var kind) && Enum.IsDefined(kind) ? kind : (StayGuestType?)null)
+            .ToList();
+        var positions = Enumerable.Range(0, guests.Count)
+            .Where(i => kinds[i] is { } kind && AlloggiatiRecordRules.RequiresDocument(kind))
+            .ToHashSet();
+        if (await _ticino.IsPropertyInTicinoAsync(booking.PropertyId))
+        {
+            positions.UnionWith(TicinoPoliceFile.NotifiedPositions(
+                guests.Select((g, i) => (i, kinds[i] ?? StayGuestType.SingleGuest, g.DateOfBirth is { } born ? DateOnly.FromDateTime(born) : (DateOnly?)null)),
+                DateOnly.FromDateTime(booking.CheckInDate)));
+        }
+
+        return positions;
     }
 
     /// <summary>Copies the first guest's registration on the booker's record (identity and document, as before CO-12).</summary>

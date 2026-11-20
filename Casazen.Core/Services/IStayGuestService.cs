@@ -22,9 +22,20 @@ public interface IStayGuestService
 
     /// <summary>
     /// Checks the guests without saving, as the guest portal sends them; empty when they can be saved. The tourist tax exemption is not
-    /// read: it is the host's decision, checked only when a host replaces the guests (<see cref="ReplaceAsync"/>).
+    /// read: it is the host's decision, checked only when a host replaces the guests (<see cref="ReplaceAsync"/>). Only the Alloggiati record
+    /// is applied: <see cref="ValidateAsync(Booking, IReadOnlyList{StayGuestInput}, CancellationToken)"/> adds the rules of the property.
     /// </summary>
     Task<IReadOnlyList<StayGuestFieldError>> ValidateAsync(
+        IReadOnlyList<StayGuestInput> guests,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Checks the guests of <paramref name="booking"/> without saving, with the rules of its property as <see cref="ReplaceAsync"/> applies them: in
+    /// canton Ticino (NF-132) the document type and number of every guest the police file notifies on their own row
+    /// (<see cref="Regulatory.TicinoPoliceFile.NotifiedPositions"/>), family and group members included. Empty when they can be saved.
+    /// </summary>
+    Task<IReadOnlyList<StayGuestFieldError>> ValidateAsync(
+        Booking booking,
         IReadOnlyList<StayGuestInput> guests,
         CancellationToken cancellationToken = default);
 
@@ -35,15 +46,21 @@ public interface IStayGuestService
     /// its own changes.
     /// </summary>
     /// <remarks>
-    /// The input is the whole truth (a null clears the field), with one exception: when <paramref name="author"/> is the guest portal,
+    /// <para>The input is the whole truth (a null clears the field), with one exception: when <paramref name="author"/> is the guest portal,
     /// <see cref="StayGuest.TaxExemptionCode"/> of each row is kept and never read from the input, because the exemption is the host's
-    /// decision (NF-46). A host author sets or clears it, and only to an active, non-automatic exemption reason.
+    /// decision (NF-46). A host author sets or clears it, and only to an active, non-automatic exemption reason.</para>
+    /// <para>The rules of the property apply: in canton Ticino (NF-132) every guest the police file notifies on their own row needs a document type
+    /// and number, and keeps them even as a family or group member (elsewhere a member's document is dropped, as the Alloggiati record has none).</para>
+    /// <para><paramref name="vehiclePlate"/> is the plate of the stay (<see cref="Booking.VehiclePlate"/>, NF-132): <c>null</c> leaves the stored one
+    /// as it is (a client that does not know the field), an empty text clears it, any other text is normalized (upper case, no spaces) and must be
+    /// a plate (<see cref="Regulatory.VehiclePlates"/>), otherwise a field error on <c>VehiclePlate</c>.</para>
     /// </remarks>
     Task<StayGuestSaveResult> ReplaceAsync(
         Booking booking,
         IReadOnlyList<StayGuestInput> guests,
         StayGuestAuthor author,
         bool save = true,
+        string? vehiclePlate = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -86,6 +103,14 @@ public sealed class StayGuestInput
     public string? ResidenceProvince { get; init; }
     public string? ResidenceCountryCode { get; init; }
     public string? ResidenceCountryName { get; init; }
+
+    /// <summary>
+    /// The home of the guest (NF-132, «Indirizzo», «CAP», «Domicilio» of the Ticino police file): optional, trimmed, at most 200, 20 and 100
+    /// characters; the postal code is stored upper case. Independent of <see cref="ResidenceInItaly"/>.
+    /// </summary>
+    public string? ResidenceStreet { get; init; }
+    public string? ResidencePostalCode { get; init; }
+    public string? ResidenceCityName { get; init; }
 
     /// <summary>Statistical fields (NF-40): optional, a code of the closed lists of <c>IstatGuestFieldLists</c>.</summary>
     public string? TourismType { get; init; }
