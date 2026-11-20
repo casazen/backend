@@ -8776,4 +8776,19 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="TicinoNotAGroup" xml:space="preserve">
     <value>Questo soggiorno non è un gruppo di almeno {0} persone (capogruppo e membri del gruppo): la scheda del gruppo non serve.</value>
   </data>
+  <data name="CleaningVatAnswerInvalid" xml:space="preserve">
+    <value>Indica se la ditta di pulizie ha applicato l'IVA: Sì, No o Non lo so.</value>
+  </data>
+  <data name="CleaningVatNotCompleted" xml:space="preserve">
+    <value>La pulizia non è ancora completata: l'IVA della ditta si indica sulla fattura di una pulizia completata.</value>
+  </data>
+  <data name="CleaningVatRateUnknown" xml:space="preserve">
+    <value>Per il giorno di questa pulizia non c'è un'aliquota IVA ordinaria del paese in cui è stata fatta: rispondi No o Non lo so.</value>
+  </data>
+  <data name="CleaningVatRememberUnknown" xml:space="preserve">
+    <value>«Non lo so» non si può ricordare per la ditta: togli «Ricorda per questa ditta» oppure rispondi Sì o No.</value>
+  </data>
+  <data name="CleaningVatRememberForbidden" xml:space="preserve">
+    <value>Solo chi gestisce tutta l'organizzazione può ricordare la risposta per la ditta: rispondi solo per questa pulizia.</value>
+  </data>
 </root>

@@ -111,7 +111,9 @@ plan (its task E14/F01/US02/T01 consumes it). Read only, one `CompletedCleaning`
 - **Amount.** Supplier: `FinalAmountCents`, else `QuotedAmountCents`, else `QuoteTotalCents`, else `EstimatedAmountCents`; none at all is 0 with `AmountVat = Unknown`. Staff: `InternalRate`
   in cents. The currency is the one of the property (requests and rates carry none).
 - **VAT nature (what the model says).** Every amount of a service request is documented «gross as declared (decision D4: no VAT split)»: supplier amounts are `IncludesSupplierVat`; a staff
-  cost is `NotApplicable`; `ExcludesVat` is not produced, because no amount of CasaZen is net. `Unknown` is returned only where there is no amount.
+  cost is `NotApplicable`; `ExcludesVat` is not produced, because no amount of CasaZen is net. `Unknown` is returned only where there is no amount. Whether the company applied VAT
+  is not the cost source's: the agency states it on the request (FIX/BE-CLEANING-VAT, `GET`/`POST api/service-requests/{id}/cleaning-vat`, columns `ServiceRequests.SupplierVat*`, never
+  shown to the supplier), see [`owner-accounting.md`](owner-accounting.md) «The VAT of the cleaning company».
 - **Supplier invoice reference.** The model links no invoice or receipt of the supplier to a request or to its payment (`ServiceRequestPayment` holds the identifiers of the payment provider,
   which are not an invoice), so `SupplierInvoiceReference` is always `null` today.
 - **Whose.** The tenant filter and an explicit `orgId` on the property, the request and the activity: a property id of another organization returns nothing, `propertyIds` `null` is every

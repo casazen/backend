@@ -14745,6 +14745,22 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("SupplierReminderSentAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("SupplierVat")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("SupplierVatAnsweredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SupplierVatAnsweredByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("SupplierVatAskedAgainAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("SupplierVatRatePercent")
+                        .HasColumnType("numeric(5,2)");
+
                     b.Property<DateTime?>("TakenAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -14831,6 +14847,8 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_ServiceRequests_QuoteOffer", "\"QuoteSentAt\" IS NULL OR \"ProposedStartUtc\" IS NULL");
 
                             t.HasCheckConstraint("CK_ServiceRequests_ScheduledInterval", "(\"ScheduledStartUtc\" IS NULL AND \"ScheduledEndUtc\" IS NULL) OR (\"ScheduledStartUtc\" IS NOT NULL AND \"ScheduledEndUtc\" IS NOT NULL AND \"ScheduledEndUtc\" > \"ScheduledStartUtc\")");
+
+                            t.HasCheckConstraint("CK_ServiceRequests_SupplierVat", "(\"SupplierVat\" = 1 AND \"SupplierVatRatePercent\" IS NOT NULL) OR (\"SupplierVat\" IS DISTINCT FROM 1 AND \"SupplierVatRatePercent\" IS NULL)");
                         });
                 });
 
@@ -16921,6 +16939,38 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             t.HasCheckConstraint("CK_SupplierTimeOff_Dates", "\"FromDate\" <= \"ToDate\"");
                         });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierVatDefault", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AppliesVat")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SupplierOrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SupplierOrgId");
+
+                    b.HasIndex(new[] { "OrgId", "SupplierOrgId" }, "UIX_SupplierVatDefaults_OrgId_SupplierOrgId")
+                        .IsUnique();
+
+                    b.ToTable("SupplierVatDefaults");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SupplierWorkingHours", b =>
@@ -22169,6 +22219,21 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("SupplierProfile");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierVatDefault", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierOrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SupplierWorkingHours", b =>
