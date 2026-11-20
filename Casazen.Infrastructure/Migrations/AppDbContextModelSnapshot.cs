@@ -11154,6 +11154,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int?>("FloorLevel")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("GuestNotificationOverride")
+                        .HasColumnType("integer");
+
                     b.Property<string>("HouseRules")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -11345,6 +11348,8 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_Properties_EnergyIndex", "\"EnergyIndex\" IS NULL OR (\"EnergyClass\" IS NOT NULL AND \"EnergyIndex\" >= 0 AND \"EnergyIndex\" <= 9999)");
 
                             t.HasCheckConstraint("CK_Properties_FloorLevel", "\"FloorLevel\" IS NULL OR \"FloorLevel\" BETWEEN -3 AND 60");
+
+                            t.HasCheckConstraint("CK_Properties_GuestNotificationOverride", "\"GuestNotificationOverride\" IS NULL OR \"GuestNotificationOverride\" IN (1, 2)");
 
                             t.HasCheckConstraint("CK_Properties_MinNights", "\"MinNights\" IS NULL OR \"MinNights\" BETWEEN 1 AND 30");
 
