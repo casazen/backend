@@ -2,8 +2,10 @@ using System.Globalization;
 using System.Reflection;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -293,7 +295,7 @@ public class ComplianceAlertTicinoTests : IDisposable
 
     private sealed record Tenant(Guid OrgId, Guid PropertyId, string OwnerId, string Address, string PropertyName);
 
-    private ComplianceAlertService Service(bool withTheDaysToNotify = true) =>
+    private ComplianceAlertService Service(bool withTheDaysToNotify = true, ITicinoNotificationService? daysToNotify = null) =>
         new(
             _db,
             Mock.Of<IComplianceStatusService>(),
@@ -307,7 +309,7 @@ public class ComplianceAlertTicinoTests : IDisposable
             Options.Create(_options),
             _log,
             _clock,
-            withTheDaysToNotify ? new TicinoNotificationService(_db, _clock) : null);
+            daysToNotify ?? (withTheDaysToNotify ? new TicinoNotificationService(_db, _clock) : null));
 
     private async Task<Tenant> SeedTenantAsync(string key, bool ticino = true, string? structureId = "NL-99999999", string timezone = "Europe/Zurich")
     {
@@ -617,7 +619,11 @@ public class ComplianceAlertTicinoTests : IDisposable
             new[] { (a.OwnerId, a.OrgId), (b.OwnerId, b.OrgId) }.OrderBy(x => x.Item1),
             rows.Select(r => (r.UserId, r.OrgId)).OrderBy(x => x.Item1));
         Assert.DoesNotContain(rows, r => r.UserId == c.OwnerId);
-        Assert.All(rows, r => Assert.Null(r.EntityId));
+
+        // Each entry is about the property of its own org (the entity of a Ticino alert is the property), never about another org's.
+        Assert.Equal(
+            new[] { (a.OwnerId, a.PropertyId), (b.OwnerId, b.PropertyId) }.OrderBy(x => x.Item1),
+            rows.Select(r => (r.UserId, r.EntityId ?? Guid.Empty)).OrderBy(x => x.Item1));
     }
 
     [Fact]
@@ -751,7 +757,7 @@ public class ComplianceAlertTicinoTests : IDisposable
     }
 
     [Fact]
-    public async Task TicinoAlerts_TheBellAndTheLiveUpdate_GetTheNewTypesWithNoEntityAndNoText()
+    public async Task TicinoAlerts_TheBellAndTheLiveUpdate_GetTheNewTypesWithThePropertyAndNoText()
     {
         var tenant = await SeedTenantAsync("a");
         await AddStayAsync(tenant, Day, arrivedAtUtc: "2026-11-19T14:00:00Z", guestRows: GuestRows.Incomplete);
@@ -770,13 +776,53 @@ public class ComplianceAlertTicinoTests : IDisposable
         Assert.All(rows, r =>
         {
             Assert.Equal(tenant.OwnerId, r.UserId);
-            Assert.Null(r.EntityId);
+            Assert.Equal(tenant.PropertyId, r.EntityId);
         });
 
-        // The live message of the open sessions: the unread count, the type and no entity.
+        // The live message of the open sessions: the unread count, the type and the property (the day is not in the entry: the client opens the page of the property).
         Assert.Equal(
-            [(tenant.OwnerId, PushTypes.TicinoNotificationDue, (Guid?)null), (tenant.OwnerId, PushTypes.TicinoNotificationOverdue, (Guid?)null)],
+            [(tenant.OwnerId, PushTypes.TicinoNotificationDue, (Guid?)tenant.PropertyId), (tenant.OwnerId, PushTypes.TicinoNotificationOverdue, (Guid?)tenant.PropertyId)],
             publisher.Published.ToArray());
+    }
+
+    [Theory]
+    [InlineData(PushTypes.TicinoNotificationDue)]
+    [InlineData(PushTypes.TicinoNotificationOverdue)]
+    public void TheBellEntryOfATicinoAlert_IsAboutTheProperty_NotABooking(string type)
+    {
+        var propertyId = Guid.NewGuid();
+        var payload = new PushNotificationPayload("title", "body", type, null, PushRoutes.Properties);
+
+        var queued = QueuedInAppNotification.From(PushAudience.PropertyHosts(propertyId), payload, new DateTime(2026, 11, 19, 17, 0, 0, DateTimeKind.Utc));
+
+        Assert.True(PushTypes.IsTicinoNotification(type));
+        Assert.Equal(propertyId, queued.EntityId);
+        Assert.Equal(type, queued.Type);
+    }
+
+    [Fact]
+    public void TheEntityOfEveryOtherBellEntry_IsUnchanged_OnlyTheTwoTicinoTypesNameTheProperty()
+    {
+        var propertyId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var requestId = Guid.NewGuid();
+        var at = new DateTime(2026, 11, 19, 17, 0, 0, DateTimeKind.Utc);
+
+        // The ISTAT alert is about a property too and still names no entity.
+        var istat = new PushNotificationPayload("title", "body", PushTypes.IstatDeadline, null, PushRoutes.Properties);
+        Assert.Null(QueuedInAppNotification.From(PushAudience.PropertyHosts(propertyId), istat, at).EntityId);
+
+        // A booking stays the entity of its types, a service request the one of its own.
+        var stay = new PushNotificationPayload("title", "body", PushTypes.AlloggiatiDeadline, bookingId, PushRoutes.Booking(bookingId));
+        Assert.Equal(bookingId, QueuedInAppNotification.From(PushAudience.BookingHosts(bookingId), stay, at).EntityId);
+        var request = new PushNotificationPayload("title", "body", PushTypes.ServiceRequestCreated, bookingId, PushRoutes.Properties, requestId);
+        Assert.Equal(requestId, QueuedInAppNotification.From(PushAudience.PropertyHosts(propertyId), request, at).EntityId);
+
+        // The property is named by the Ticino types sent to the hosts of a property only: another audience (an id that is a booking, not a property) is never turned into it.
+        Assert.False(PushTypes.IsTicinoNotification(PushTypes.IstatDeadline));
+        Assert.False(PushTypes.IsTicinoNotification(null));
+        var ticino = new PushNotificationPayload("title", "body", PushTypes.TicinoNotificationDue, null, PushRoutes.Properties);
+        Assert.Null(QueuedInAppNotification.From(PushAudience.BookingHosts(bookingId), ticino, at).EntityId);
     }
 
     // ─── The registration, the enumerations, the placeholder ───

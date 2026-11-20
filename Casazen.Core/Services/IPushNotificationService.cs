@@ -495,16 +495,25 @@ public static class PushTypes
     /// <summary>
     /// The guests of an arrival day of a Ticino property have to be notified to the cantonal police and the deadline is still ahead (E30/F02/US01/T01, NF-127, D9): the
     /// first alert of the arrival day («prepare the file») and the one six hours before the deadline. Pushed to the hosts of the property, written to the bell and published
-    /// live; <c>entityId</c> is empty (an arrival day of a property is not an entity), the route <c>/properties</c>, and the open pages read again the section of the days to
-    /// notify. The text names the property and the day, and what the data miss as types of field: never a guest, a value or a document.
+    /// live; the route is <c>/properties</c> (the only screen of the app a push of this kind can open) and the open pages read again the section of the days to notify. The
+    /// <c>entityId</c> of the bell entry and of the live message is the <b>property</b> (the id of the audience, <see cref="PushAudience.PropertyHosts"/>; see
+    /// <see cref="IsTicinoNotification"/>): the day is not in the entry, the client opens the Ticino page of that property on its first day to notify. The text of the push names the
+    /// property and the day, and what the data miss as types of field: never a guest, a value or a document.
     /// </summary>
     public const string TicinoNotificationDue = "ticino-notification-due";
 
     /// <summary>
     /// The deadline of the notification of a Ticino arrival day is over and nothing says it was made (E30/F02/US01/T01, NF-127, D9): the first alert and the at most two
-    /// reminders. Same audience, channels, route and privacy as <see cref="TicinoNotificationDue"/>.
+    /// reminders. Same audience, channels, route, privacy and <c>entityId</c> (the property) as <see cref="TicinoNotificationDue"/>.
     /// </summary>
     public const string TicinoNotificationOverdue = "ticino-notification-overdue";
+
+    /// <summary>
+    /// True for the two types of the alerts about the 24 hours of the notification of a Ticino arrival day (<see cref="TicinoNotificationDue"/>,
+    /// <see cref="TicinoNotificationOverdue"/>). Their bell entry is about a <b>property</b>, not a booking: <c>QueuedInAppNotification.From</c> gives it the id of the property
+    /// (the audience of the push) as <c>entityId</c>, so the bell can open the Ticino page of that property.
+    /// </summary>
+    public static bool IsTicinoNotification(string? type) => type is TicinoNotificationDue or TicinoNotificationOverdue;
 
     /// <summary>
     /// Type of the push to the host when a service request reaches <paramref name="status"/>; <c>null</c> for a status that has

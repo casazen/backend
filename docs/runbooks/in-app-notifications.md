@@ -42,7 +42,7 @@ service (BookingNotifier, ServiceRequestNotifier, ShowcaseBookingNotifier, Notif
 | `Id`, `UserId` | The notification and the user who is told (`Users.Id`, the Auth0 subject). **Foreign key to `Users` `ON DELETE CASCADE`** |
 | `OrgId` | The org the event belongs to: the host org of the booking or property, or the **supplier org** for the supplier's inbox. `ITenantOwned`. **Foreign key to `Orgs` `ON DELETE CASCADE`** |
 | `Type` | A value of `PushTypes` (`new-booking`, `service-request-completed`, …), at most 64 characters |
-| `EntityId` | The **service request** for the `service-request-*` types, the **«Fallo per me» request** for `assist-requested`, the **booking** for every other one; `null` if the event names none. Not a foreign key |
+| `EntityId` | The **service request** for the `service-request-*` types, the **«Fallo per me» request** for `assist-requested`, the **property** for `ticino-notification-due` and `ticino-notification-overdue` (the id of the audience, `PushAudience.PropertyHosts`: `QueuedInAppNotification.From`), the **booking** for every other one; `null` if the event names none. Not a foreign key |
 | `DeliveryKey` | The key of the push of the same event (`PushDeliveryKeys`), at most 200 characters. Never sent to a client |
 | `CreatedAt`, `ReadAt` | UTC instants (whole microseconds). `CreatedAt` is the instant of the event (taken when the push was queued, so a late run or a retry does not move it); `ReadAt` is `NULL` while unread |
 
@@ -74,7 +74,7 @@ and write what is still missing (at most three rounds, then Hangfire retries). R
 | `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed`, `checkout-reminder` | hosts of the booking | booking |
 | `receipt-missing`, `short-stay-at-risk`, `over-thirty-nights` | hosts of the booking (the stages of CHK-12 of the hourly `stay-alerts` job, E03/F02/US02/T01: the receipt that is missing the day after the communication, a short stay not entrusted to the channel manager, a stay over 30 nights; only with `Features__ComplianceTrafficLight` on) | booking |
 | `istat-deadline`, `tourist-tax-deadline`, `connection-inactive` | hosts of the property (the alerts about an ISTAT or tourist tax period and about the connection to the channel manager, same job and flag; `PushAudience.PropertyHosts`) | none: the alert is about a property and a month, so `entityId` is empty |
-| `ticino-notification-due`, `ticino-notification-overdue` | hosts of the property (E30/F02/US01/T01, NF-127, D9: the 24 hours of the notification of the guests of a Ticino property to the cantonal police, in the hourly `stay-alerts` job and only with `Features__TicinoNotificationAlerts` on; `PushAudience.PropertyHosts`). `due` is the first stage of the arrival day («prepare the file») and the one six hours before the deadline, `overdue` the first alert after it and its at most two reminders; the delivery key is the one of the compliance alerts (`compliance-alert:{propertyId}:TicinoNotification:{yyyy-MM-dd}:{stage}:{instant}`), so each stage of an arrival day is one push and one bell entry per person. The text names the property, the day and the types of field that miss (never a guest, a value or a document); the live message is `notificationsChanged` with this `type` and no `entityId`, on which the open pages are to read the section of the days to notify again (the frontend slice E30/F02/US03/T01 maps the types; until then the client shows its generic sentence) | none: the alert is about a property and an arrival day, so `entityId` is empty |
+| `ticino-notification-due`, `ticino-notification-overdue` | hosts of the property (E30/F02/US01/T01, NF-127, D9: the 24 hours of the notification of the guests of a Ticino property to the cantonal police, in the hourly `stay-alerts` job and only with `Features__TicinoNotificationAlerts` on; `PushAudience.PropertyHosts`). `due` is the first stage of the arrival day («prepare the file») and the one six hours before the deadline, `overdue` the first alert after it and its at most two reminders; the delivery key is the one of the compliance alerts (`compliance-alert:{propertyId}:TicinoNotification:{yyyy-MM-dd}:{stage}:{instant}`), so each stage of an arrival day is one push and one bell entry per person. The text names the property, the day and the types of field that miss (never a guest, a value or a document); the live message is `notificationsChanged` with this `type` and the property as `entityId`, on which the open pages are to read the section of the days to notify again (the frontend slice E30/F02/US03/T01 maps the types; until then the client shows its generic sentence) | the **property** (the id of the audience, `QueuedInAppNotification.From`): an arrival day is not an entity, so the entry names the property and not the day |
 | `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed` | hosts of the property | service request |
 | `service-request-cancelled` | the other party: the hosts of the property when the supplier cancels, the supplier org when the host or the customer of its showcase cancels; both when nobody answered in time | service request |
 | `service-request-created`, `-paid`, `-reminder`, `-proposal-accepted`, `-proposal-rejected`, `-rescheduled` | the supplier org | service request |
@@ -123,7 +123,7 @@ read again` when it lost a race. **No user id and no push text** in any of them.
 
 ## 5. GDPR
 
-A row is a user id, a kind of event and the id of a booking or service request: no name, no text, no address. It is still data about a
+A row is a user id, a kind of event and the id of a booking, service request or property: no name, no text, no address. It is still data about a
 person, so:
 
 * **Retention**: 90 days from the event (`InAppNotificationLimits.RetentionDays`), read or not, by the nightly job above.
@@ -174,7 +174,7 @@ WHERE invocationdata ->> 'Type' LIKE 'Casazen.Infrastructure.Push.InAppNotificat
 * Poll `GET …/unread-count` with `refetchInterval` (the answer is small and cheap); fetch the list when the drawer opens; after
   `POST …/read` or `…/read-all` invalidate both. A `404` on `read` means the retention or another tab got there first: refetch.
 * The text comes from `type` (i18n keys per type, plus a generic one for a type the client does not know), the link from `type` and
-  `entityId` (a booking for the stay types, a service request for the `service-request-*` ones). Dates are UTC; `readAt: null` is unread.
+  `entityId` (a booking for the stay types, a service request for the `service-request-*` ones, a property for the two Ticino alerts). Dates are UTC; `readAt: null` is unread.
 * The list is paged by `page`/`pageSize` (newest first). New notifications shift the pages: ask for page 1 again after a poll that
   shows a higher count rather than extending the old pages.
 
@@ -188,7 +188,7 @@ route of the same screen (the links the e-mails use are built in `PublicSiteLink
 |---|---|---|---|
 | `new-booking`, `ota-stay-review`, `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed`, `receipt-missing`, `short-stay-at-risk`, `over-thirty-nights` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}` |
 | `istat-deadline`, `tourist-tax-deadline`, `connection-inactive` | none (a property and a month, not an entity) | `/properties` | none: no entity to open; the e-mail of the same alert leads to `/app/short-rent/compliance` |
-| `ticino-notification-due`, `ticino-notification-overdue` | none (a property and an arrival day, not an entity) | `/properties` | none: no entity to open; the e-mail of the same alert leads to `/app/short-rent/compliance`, where the section `ticinoNotifications` lists the days to notify (the client is to read the cockpit summary again on this `type`, E30/F02/US03/T01) |
+| `ticino-notification-due`, `ticino-notification-overdue` | property (an arrival day is not an entity: the row names the property, never the day) | `/properties` | the Ticino page of that property on its first day to notify (the client picks the day, which is not in the row; E30/F02/US03/T01); the e-mail of the same alert leads to `/app/short-rent/compliance`, where the section `ticinoNotifications` lists the days to notify (the client is to read the cockpit summary again on this `type`) |
 | `checkout-reminder` | booking | `/bookings/{bookingId}/checkout` | `/app/short-rent/bookings/{bookingId}` |
 | `guest-message` | booking | `/bookings/{bookingId}/messages` | `/app/short-rent/bookings/{bookingId}?tab=messages` |
 | `fiscal-document-issued` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}` (the documents of the booking come from `GET api/bookings/{id}/fiscal-documents`) |
