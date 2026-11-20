@@ -46,6 +46,9 @@ public static class ReviewRules
     public const int DefaultPageSize = 10;
     public const int MaxPageSize = 50;
 
+    /// <summary>How many characters of a review the hub shows as its preview, to the host only (E05/F06/US01/T03).</summary>
+    public const int PreviewLength = 120;
+
     /// <summary>The stored placeholder of an erased name (<c>GuestDataEraser.AnonymizedName</c>).</summary>
     private const string ErasedName = "ANONYMIZED";
 
@@ -127,6 +130,19 @@ public static class ReviewRules
 
         var normalized = builder.ToString().Trim();
         return normalized.Length == 0 ? null : normalized;
+    }
+
+    /// <summary>
+    /// The first <see cref="PreviewLength"/> characters of a review on one line, with «…» when it was cut; <c>null</c> for a review with no text. For the host only: it is
+    /// read from the text of a review, which is personal data.
+    /// </summary>
+    public static string? Preview(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var line = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        return line.Length <= PreviewLength ? line : line[..PreviewLength].TrimEnd() + "…";
     }
 
     /// <summary>The month of a stay as the public reads it, <c>yyyy-MM</c>.</summary>

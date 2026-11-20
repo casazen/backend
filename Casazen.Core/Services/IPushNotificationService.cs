@@ -312,6 +312,19 @@ public static class PushDeliveryKeys
     public static string CheckInLinkFailed(Guid sessionId) => $"checkin-link:{sessionId:N}:failed";
 
     /// <summary>
+    /// The review of a guest of a channel appeared (E05/F06/US01/T02, NF-69), to the hosts of the booking: one per review (the first time the channel manager shows it published),
+    /// stable across the reads, so the bell and the open pages are told once.
+    /// </summary>
+    public static string OtaReviewReceived(Guid otaReviewId) => $"ota-review:{otaReviewId:N}:received";
+
+    /// <summary>
+    /// A reply to a review, or the host's own review, did not reach the channel (E05/F06/US01/T02): nobody confirmed it within the hour, so it became an error the host can act on. One
+    /// per attempt (<paramref name="requestedAtUtc"/> is the time the attempt was saved), stable across the reads; <paramref name="action"/> is <c>reply</c> or <c>host-review</c>.
+    /// </summary>
+    public static string OtaReviewActionFailed(Guid otaReviewId, string action, DateTime requestedAtUtc) =>
+        $"ota-review:{otaReviewId:N}:{action}-failed:{requestedAtUtc.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture)}";
+
+    /// <summary>
     /// A scheduled message of a booking could not go out, or went out outside the send window, or was skipped (E05/F07/US01, NF-71), to one host user the preferences selected: one per message,
     /// kind of problem and user, so an alert delivered again is one push and one notification. <paramref name="kind"/> is a code of <c>ScheduledMessageAlertKinds</c>; <paramref name="attempt"/>
     /// tells a second block of the same message apart from the first (a message blocked, sent and blocked again after an edit). The key is also the delivery key of the in-app notification. A user id
@@ -494,6 +507,18 @@ public static class PushTypes
     /// ever in it: the host opens the booking and copies the link from there.
     /// </summary>
     public const string CheckInLinkFailed = "checkin-link-failed";
+
+    /// <summary>
+    /// A guest left a review on a channel and the channel manager shows it published (E05/F06/US01/T02): pushed to the hosts of the booking, written to the bell and published
+    /// live; <c>entityId</c> is the booking, the route its detail, where the reviews of the stay are. Neither the guest, nor the mark, nor a word of the review is ever in it.
+    /// </summary>
+    public const string OtaReviewReceived = "ota-review-received";
+
+    /// <summary>
+    /// A reply to a review, or the host's own review, did not reach the channel (E05/F06/US01/T02): pushed to the hosts of the booking, written to the bell and published live;
+    /// <c>entityId</c> is the booking, the route its detail. The host tries again from the review. No text is ever in it.
+    /// </summary>
+    public const string OtaReviewActionFailed = "ota-review-action-failed";
 
     /// <summary>
     /// A scheduled message of a booking was held back, failed, was skipped by the system or went out outside the send window (E05/F07/US01, NF-71): pushed to the one user the preferences selected and

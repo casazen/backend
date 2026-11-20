@@ -51,6 +51,10 @@ public static class HostScopeQueryExtensions
     public static IQueryable<Review> InScope(this IQueryable<Review> source, HostScope scope) =>
         source.InScope(scope, review => review.Property);
 
+    /// <summary>The reviews of the channels of the scope (those of a property it reaches, E05/F06/US01/T01, NF-69).</summary>
+    public static IQueryable<OtaReview> InScope(this IQueryable<OtaReview> source, HostScope scope) =>
+        source.InScope(scope, review => review.Property);
+
     /// <summary>The message threads of the scope (those of a property it reaches, DB-14a).</summary>
     public static IQueryable<GuestThread> InScope(this IQueryable<GuestThread> source, HostScope scope) =>
         source.InScope(scope, thread => thread.Property);

@@ -71,6 +71,10 @@ internal static class MessageConversationLookup
         ArgumentNullException.ThrowIfNull(db);
         ArgumentNullException.ThrowIfNull(scope);
 
+        // The key of a review is never read as the one of a conversation: it is a conversation that is not there (E05/F06/US01/T03).
+        if (key.IsReview)
+            throw ThreadNotFound();
+
         var org = await db.Orgs
             .AsNoTracking()
             .Where(o => o.Id == scope.OrgId)
