@@ -1516,6 +1516,9 @@
   <data name="CheckInTaxExemptionInvalid" xml:space="preserve">
     <value>Questo motivo di esenzione dall'imposta di soggiorno non si può scegliere.</value>
   </data>
+  <data name="CheckInVehiclePlateInvalid" xml:space="preserve">
+    <value>Targa non valida: usa lettere, cifre e trattini, al massimo {0} caratteri.</value>
+  </data>
   <data name="CheckInDocumentProcessingFailed" xml:space="preserve">
     <value>Elaborazione del documento non riuscita. Riprova o inserisci i dati manualmente.</value>
   </data>

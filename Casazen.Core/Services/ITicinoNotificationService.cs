@@ -56,6 +56,11 @@ public interface ITicinoNotificationService
 /// <param name="ReceiptCount">The receipts of the portal recorded for the day: one or more means the day is notified.</param>
 /// <param name="DueAtUtc">The deadline: 24 hours from the first recorded arrival, or the start of the next day when none is recorded.</param>
 /// <param name="PendingDays">The days of the property still to notify, this one included when it is.</param>
+/// <param name="CsvCharset">The character set the CSV of the day is written in (<c>GuestNotifications:TicinoCsvEncoding</c>): <c>windows-1252</c> or <c>utf-8</c>.</param>
+/// <param name="TransliteratedCount">
+/// The characters of the rows of the day that <paramref name="CsvCharset"/> cannot hold: the CSV writes them without their accent, or as <c>?</c>
+/// (NF-126 AC3). Zero when every name is written as typed.
+/// </param>
 public sealed record TicinoNotificationDay(
     Guid PropertyId,
     DateOnly Day,
@@ -64,16 +69,20 @@ public sealed record TicinoNotificationDay(
     TicinoDayPlan Plan,
     int ReceiptCount,
     DateTime DueAtUtc,
-    IReadOnlyList<TicinoPendingDay> PendingDays);
+    IReadOnlyList<TicinoPendingDay> PendingDays,
+    string CsvCharset = "windows-1252",
+    int TransliteratedCount = 0);
 
 /// <summary>A file for the portal (<see cref="ITicinoNotificationService.GenerateFileAsync"/>).</summary>
-/// <param name="Content">The bytes (ISO-8859-1 for the CSV, UTF-8 for the XML).</param>
+/// <param name="Content">The bytes (Windows-1252, or UTF-8 by configuration, for the CSV; UTF-8 for the XML).</param>
 /// <param name="FileName">Suggested name, e.g. <c>notifiche-ti-2026-11-19.csv</c>.</param>
-/// <param name="ContentType"><c>text/csv; charset=iso-8859-1</c> or <c>application/xml</c>.</param>
+/// <param name="ContentType"><c>text/csv; charset=windows-1252</c> (or <c>charset=utf-8</c>) or <c>application/xml</c>.</param>
 /// <param name="Reference">Identifier of the file, <c>TI-{propertyId}-{yyyyMMdd}</c>.</param>
 /// <param name="FileHash">SHA-256 of <paramref name="Content"/>, lowercase hexadecimal.</param>
 /// <param name="Rows">The notified persons in the file.</param>
-public sealed record TicinoNotificationFile(byte[] Content, string FileName, string ContentType, string Reference, string FileHash, int Rows);
+/// <param name="TransliteratedCount">The characters of a CSV its character set cannot hold, written without their accent or as <c>?</c>; 0 for the XML.</param>
+public sealed record TicinoNotificationFile(
+    byte[] Content, string FileName, string ContentType, string Reference, string FileHash, int Rows, int TransliteratedCount = 0);
 
 /// <summary>An arrival day still to notify.</summary>
 public sealed record TicinoPendingDay(Guid OrgId, Guid PropertyId, string PropertyName, DateOnly Day, int StayCount, DateTime DueAtUtc);

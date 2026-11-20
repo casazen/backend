@@ -127,8 +127,9 @@ public class SwissComplianceController(
 
     /// <summary>
     /// The file of an arrival day for the Ticino police portal (casazen/backend#979), in the official format the host uploads at
-    /// «Notifiche → Invio»: <c>csv</c> (default; ISO-8859-1, the official model) or <c>xml</c> (the official XSD). It holds the guests of the
-    /// stays whose data are complete (<c>GET</c> lists the others with what they miss); it is rebuilt on every request and never stored.
+    /// «Notifiche → Invio»: <c>csv</c> (default; Windows-1252 like the official model, or UTF-8 by <c>GuestNotifications:TicinoCsvEncoding</c>, the
+    /// <c>charset</c> of the content type says which) or <c>xml</c> (the official XSD). It holds the guests of the stays whose data are complete
+    /// (<c>GET</c> lists the others with what they miss); it is rebuilt on every request and never stored.
     /// </summary>
     /// <param name="propertyId">The property.</param>
     /// <param name="request">Body <c>{ "reportDate": "2026-11-19", "format": "csv" }</c> (<see cref="TicinoNotificationRequest"/>).</param>

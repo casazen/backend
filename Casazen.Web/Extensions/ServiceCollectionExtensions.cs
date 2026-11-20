@@ -484,6 +484,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITicinoNotificationService, TicinoNotificationService>();
         services.AddScoped<IOtrTaxService, OtrTaxService>();
         services.AddScoped<ISwissComplianceReceiptService, SwissComplianceReceiptService>();
+        // NF-126 (casazen/backend#979): the character set of the CSV of the Ticino police, GuestNotifications:TicinoCsvEncoding (windows-1252 by default,
+        // or utf-8); any other value stops the application at startup (docs/runbooks/guest-notification-switzerland.md).
+        services.AddOptions<Casazen.Core.Options.GuestNotificationOptions>()
+            .BindConfiguration(Casazen.Core.Options.GuestNotificationOptions.SectionName)
+            .Validate(
+                options => Casazen.Core.Options.GuestNotificationOptions.TryParseTicinoCsvEncoding(options.TicinoCsvEncoding, out _),
+                "GuestNotifications:TicinoCsvEncoding must be windows-1252 or utf-8 (docs/runbooks/guest-notification-switzerland.md).")
+            .ValidateOnStart();
         services.AddOptions<Casazen.Core.Options.GdprOptions>()
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         // NF-05: Marketing suppression list with blind index (SHA-256) for one-click unsubscribe (ADR-007-R18, R22).

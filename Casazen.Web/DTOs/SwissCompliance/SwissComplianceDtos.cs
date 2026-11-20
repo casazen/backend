@@ -47,6 +47,11 @@ public sealed class TicinoNotificationRequest
 /// <param name="Reference">The reference of the file of the day, to record with its receipt.</param>
 /// <param name="PortalUrl">Where the host uploads the file.</param>
 /// <param name="PendingDays">The days of the property still to notify (of the last 14), oldest first.</param>
+/// <param name="CsvCharset">The character set of the CSV (<c>GuestNotifications:TicinoCsvEncoding</c>): <c>windows-1252</c> (default) or <c>utf-8</c>.</param>
+/// <param name="TransliteratedCount">
+/// The characters of the rows that <paramref name="CsvCharset"/> cannot hold (NF-126): the CSV writes them without their accent, or as <c>?</c> as the
+/// last resort. More than zero: the page says that some names are written without a letter they have, before the host uploads the file.
+/// </param>
 public sealed record TicinoNotificationDayResponse(
     Guid PropertyId,
     DateOnly Day,
@@ -59,7 +64,9 @@ public sealed record TicinoNotificationDayResponse(
     DateTime DueAt,
     string Reference,
     string PortalUrl,
-    IReadOnlyList<TicinoPendingDayResponse> PendingDays)
+    IReadOnlyList<TicinoPendingDayResponse> PendingDays,
+    string CsvCharset = "windows-1252",
+    int TransliteratedCount = 0)
 {
     public static TicinoNotificationDayResponse From(TicinoNotificationDay day)
     {
@@ -78,7 +85,9 @@ public sealed record TicinoNotificationDayResponse(
             day.DueAtUtc,
             $"TI-{day.PropertyId:N}-{day.Day:yyyyMMdd}",
             TicinoPoliceFile.PortalUrl,
-            day.PendingDays.Select(p => new TicinoPendingDayResponse(p.Day, p.StayCount, p.DueAtUtc)).ToList());
+            day.PendingDays.Select(p => new TicinoPendingDayResponse(p.Day, p.StayCount, p.DueAtUtc)).ToList(),
+            day.CsvCharset,
+            day.TransliteratedCount);
     }
 }
 

@@ -1516,6 +1516,9 @@
   <data name="CheckInTaxExemptionInvalid" xml:space="preserve">
     <value>This tourist tax exemption reason cannot be chosen.</value>
   </data>
+  <data name="CheckInVehiclePlateInvalid" xml:space="preserve">
+    <value>Invalid plate: use letters, digits and hyphens, at most {0} characters.</value>
+  </data>
   <data name="CheckInDocumentProcessingFailed" xml:space="preserve">
     <value>Document processing failed. Please try again or enter the data manually.</value>
   </data>
