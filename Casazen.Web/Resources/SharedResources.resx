@@ -8733,4 +8733,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="GuestPortalStayEnded" xml:space="preserve">
     <value>Il soggiorno è finito da più di 30 giorni: il link del soggiorno non si può più creare.</value>
   </data>
+  <data name="GuestPortalLinkInvalid" xml:space="preserve">
+    <value>Questo link del soggiorno non è valido o non è più attivo: chiedi all’host il link aggiornato.</value>
+  </data>
 </root>

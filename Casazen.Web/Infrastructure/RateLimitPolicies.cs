@@ -274,4 +274,17 @@ public static class RateLimitPolicies
     /// it is tight and partitioned by <b>person</b>: five in ten minutes, enough for a test and its retry.
     /// </summary>
     public const string AccountantPackageSend = "AccountantPackageSend";
+
+    /// <summary>
+    /// The guest portal (<c>api/public/guest-portal/{token}/…</c>, E50/F01/US01/T02, NF-152): the default of every endpoint of the portal
+    /// (<c>GuestPortalControllerBase</c>), the overview and the reads of the sections. Partitioned by client IP <b>and</b> a hash of the <c>{token}</c>
+    /// of the route, like <see cref="GuestCheckIn"/> (the partition never holds the token): 120 a minute, room for a page that reads several sections.
+    /// </summary>
+    public const string GuestPortal = "GuestPortal";
+
+    /// <summary>
+    /// What the guest writes in the portal (the later epics put it on their writing endpoints): 30 a minute for each client IP and token, partitioned
+    /// like <see cref="GuestPortal"/>.
+    /// </summary>
+    public const string GuestPortalWrite = "GuestPortalWrite";
 }

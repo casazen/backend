@@ -125,6 +125,10 @@ public static class RateLimitingServiceCollectionExtensions
 
         // «Send a test» of the package to the accountant (E15/F01/US02/T02): per signed-in person, since each call makes a package and sends an e-mail to a third party.
         new(RateLimitPolicies.AccountantPackageSend, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
+
+        // The guest portal (E50/F01/US01/T02): per client IP and a hash of the token of the route, like the check-in. The reads of a page, and what the guest writes.
+        new(RateLimitPolicies.GuestPortal, 120, OneMinute, PartitionByToken: true),
+        new(RateLimitPolicies.GuestPortalWrite, 30, OneMinute, PartitionByToken: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

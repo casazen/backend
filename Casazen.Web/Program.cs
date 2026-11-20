@@ -201,8 +201,13 @@ builder.Services.AddCrmMarketing(builder.Configuration);
 builder.Services.AddCasazenOnboarding(builder.Configuration);
 
 // The guest portal (epics E50-E60, casazen/backend#987): the stay link of a booking and the portal behind it, all registered in AddGuestPortal and
-// behind Features:GuestPortal where they are used (the endpoints).
+// behind Features:GuestPortal where they are used (the endpoints). Its sections, next steps and policies are found by scanning Core, Infrastructure and
+// Web (AddGuestPortalRegistries): a later epic adds a class, never a line here.
 builder.Services.AddGuestPortal();
+builder.Services.AddGuestPortalRegistries(
+    typeof(Casazen.Core.GuestPortal.PortalContext).Assembly,
+    typeof(Casazen.Infrastructure.GuestPortal.PortalContextFactory).Assembly,
+    typeof(Program).Assembly);
 
 // Localization — Italian (default) and English.
 // No ResourcesPath: resource names follow the marker type's namespace, so IStringLocalizer<SharedResources>
