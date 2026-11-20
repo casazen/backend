@@ -40,7 +40,8 @@ coordinates and the language of the official file are not kept.
 
 `SwissPlacesSeedHostedService` reads the file compiled into `Casazen.Infrastructure` at startup (`OfficialReferenceData__SeedSwissPlacesOnStartup`,
 on by default): under an advisory lock it makes the two tables equal to the file (municipalities upserted by BFS number and the ones the file no
-longer has removed, localities added, corrected or removed) and records the SHA-256 of the file in `OfficialSourceFetches` (dataset
+longer has removed unless a property still carries the number, which is kept and counted in a startup warning, localities added, corrected or
+removed) and records the SHA-256 of the file in `OfficialSourceFetches` (dataset
 `swisstopo_localities`). The next startup with the same file and the same row counts does nothing. A build without the file, or a file that
 does not parse, only logs a warning or an error: the API starts anyway.
 

@@ -84,7 +84,9 @@ normalised name and on the municipality. Migration `AddSwissLocalities`. No tena
 - every line of the file is checked (four-digit postal code, two-digit add-on, BFS number, names, one of the 26 cantons, one name and one canton per
   municipality, no row twice): a file with one wrong line is refused as a whole, logged as an error, and nothing is written;
 - under an advisory lock (instances starting together load it once) the two tables are made equal to the file: municipalities upserted by BFS number
-  and the ones the file no longer has removed (a merger, or a row of the old hand-written list), localities added, corrected or removed;
+  and the ones the file no longer has removed (a merger, or a row of the old hand-written list) **unless a property still carries the number**: that
+  row is kept as it is (the stored place of the property and the canton of the tax lines of its documents do not change), counted, and told by a
+  warning of the startup log and by the stamp row of `OfficialSourceFetches` («to be confirmed by the hosts»); localities added, corrected or removed;
 - the SHA-256 of the file is recorded in `OfficialSourceFetches` (dataset `swisstopo_localities`): the next startup with the same file and the same
   row counts does nothing (version stamp);
 - a build without the file only logs a warning, and a failure is logged as an error: the API starts anyway.
@@ -100,8 +102,22 @@ A new database (a new environment, the template of the integration tests) gets n
    The generator reads the file as untrusted data (strict parsing, nothing executed, paths as arguments), stops naming the line at the first row
    that looks wrong, and stops when one of the anchor municipalities (Lugano 5192, Locarno 5113, Bellinzona 5002, Mendrisio 5254, Ascona 5091,
    Zürich 261, Bern 351, Genève 6621) changed: read the change (a merger, a renumbering) before updating the anchors.
-3. Update the table of `Data/Seeds/swiss/README.md` (edition, dates, SHA-256, counts) and commit the seed with it. The next deploy loads it; the
-   properties whose stored municipality the new edition removed get their place derived again from their postal code.
+3. Update the table of `Data/Seeds/swiss/README.md` (edition, dates, SHA-256, counts) and commit the seed with it. The next deploy loads it. A
+   municipality the new edition dropped (a merger) that a property still carries is **kept** in `SwissMunicipalities` and counted in a startup
+   warning: list those properties with the query below and ask their hosts to confirm the new municipality in the property form; the edition
+   after that drops the row. A kept municipality has no locality left, which is how the query finds it:
+
+   ```sql
+   SELECT p."Id", p."OrgId", p."Name", p."SwissMunicipalityCode"
+   FROM "Properties" p
+   WHERE p."SwissMunicipalityCode" IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM "SwissLocalities" l WHERE l."MunicipalityCode" = p."SwissMunicipalityCode");
+   ```
+
+Before the **first** deploy of the directory on an environment, check that no property carries a number of the old hand-written list (nothing wrote
+the column before the E29 property form, so no row is expected): `SELECT "Id", "OrgId", "Name", "SwissMunicipalityCode" FROM "Properties" WHERE
+"SwissMunicipalityCode" IS NOT NULL;`. A row with 5113 (it was Lugano, it is Locarno now), 5093 or 5190 (dropped) or 5237 (it was Ascona, it is Alto
+Malcantone) needs its municipality confirmed by the host.
 
 ## Read API
 

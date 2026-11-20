@@ -15,7 +15,8 @@ namespace Casazen.Infrastructure.Data.Seeds;
 /// </summary>
 /// <remarks>
 /// <para><b>Idempotent.</b> <see cref="ApplyAsync"/> upserts the municipalities by BFS number and removes the ones the file no longer has (a
-/// merger, or a row of the old hand-written list), and adds, corrects or removes the localities by their key; then it records the SHA-256 of the
+/// merger, or a row of the old hand-written list) unless a property still carries the number (kept as it is, counted and told to the startup log:
+/// the host confirms the new municipality), and adds, corrects or removes the localities by their key; then it records the SHA-256 of the
 /// file in <c>OfficialSourceFetches</c> (dataset <see cref="OfficialSourceDatasets.SwisstopoLocalities"/>). With the same file already recorded and
 /// the same row counts it changes nothing. Instances starting together are serialized by an advisory lock.</para>
 /// <para><b>Strict.</b> The file is data derived from a third party: every line is checked (<see cref="Parse"/>) and a file with one wrong line is
@@ -155,6 +156,7 @@ public static class SwissMunicipalitySeed
         ArgumentNullException.ThrowIfNull(db);
         ArgumentNullException.ThrowIfNull(clock);
         var seed = Parse(content);
+        var seedCodes = seed.Municipalities.Select(m => m.MunicipalityCode).ToList();
 
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, cancellationToken, (PostgresAdvisoryLocks.Scope.SwissPlacesSeed, "swiss-places"));
@@ -165,16 +167,20 @@ public static class SwissMunicipalitySeed
             .Select(f => f.Sha256)
             .FirstOrDefaultAsync(cancellationToken);
         if (string.Equals(stamp, seed.Sha256, StringComparison.Ordinal)
-            && await db.SwissMunicipalities.CountAsync(cancellationToken) == seed.Municipalities.Count
+            && await db.SwissMunicipalities.CountAsync(m => seedCodes.Contains(m.MunicipalityCode), cancellationToken) == seed.Municipalities.Count
             && await db.SwissLocalities.CountAsync(cancellationToken) == seed.Localities.Count)
         {
-            return new SwissPlacesSeedResult(false, seed.Sha256, seed.Municipalities.Count, seed.Localities.Count, 0, 0);
+            // Nothing to write. The municipalities an earlier load kept (a property still carries them) are still told to the startup log.
+            var kept = await CarriedByPropertiesAsync(
+                db, await db.SwissMunicipalities.Where(m => !seedCodes.Contains(m.MunicipalityCode)).Select(m => m.MunicipalityCode).ToListAsync(cancellationToken), cancellationToken);
+            return new SwissPlacesSeedResult(false, seed.Sha256, seed.Municipalities.Count, seed.Localities.Count, 0, 0, kept.Count, kept.Values.Sum());
         }
 
         var now = clock.GetUtcNow().UtcDateTime;
 
-        // Municipalities: by BFS number. A number the file no longer has is removed (a merger, a row of the old hand-written list): the resolver of
-        // the place of a property then derives the place again from its postal code, and the property form asks for the new municipality.
+        // Municipalities: by BFS number. A number the file no longer has (a merger, a row of the old hand-written list) is removed, unless a property
+        // still carries it: that row is kept as it is (below), so the stored place of the property and the canton of its documents do not change under
+        // the host's feet, and the host is asked to confirm the new municipality.
         var storedMunicipalities = await db.SwissMunicipalities.ToDictionaryAsync(m => m.MunicipalityCode, StringComparer.Ordinal, cancellationToken);
         foreach (var municipality in seed.Municipalities)
         {
@@ -200,6 +206,10 @@ public static class SwissMunicipalitySeed
                 UpdatedAt = now,
             });
         }
+
+        var carried = await CarriedByPropertiesAsync(db, [.. storedMunicipalities.Keys], cancellationToken);
+        foreach (var code in carried.Keys)
+            storedMunicipalities.Remove(code);
 
         db.SwissMunicipalities.RemoveRange(storedMunicipalities.Values);
 
@@ -238,7 +248,8 @@ public static class SwissMunicipalitySeed
             RetrievedAt = now,
             Sha256 = seed.Sha256,
             Status = OfficialSourceFetchStatus.Imported,
-            Detail = $"{seed.Municipalities.Count} municipalities, {seed.Localities.Count} localities; removed {storedMunicipalities.Count} municipalities and {storedLocalities.Count} localities",
+            Detail = $"{seed.Municipalities.Count} municipalities, {seed.Localities.Count} localities; removed {storedMunicipalities.Count} municipalities and {storedLocalities.Count} localities"
+                + (carried.Count == 0 ? string.Empty : $"; kept {carried.Count} municipalities the file no longer has, still on {carried.Values.Sum()} properties (to be confirmed by the hosts)"),
         });
 
         await db.SaveChangesAsync(cancellationToken);
@@ -246,7 +257,26 @@ public static class SwissMunicipalitySeed
             await transaction.CommitAsync(cancellationToken);
         db.ChangeTracker.Clear();
 
-        return new SwissPlacesSeedResult(true, seed.Sha256, seed.Municipalities.Count, seed.Localities.Count, storedMunicipalities.Count, storedLocalities.Count);
+        return new SwissPlacesSeedResult(
+            true, seed.Sha256, seed.Municipalities.Count, seed.Localities.Count, storedMunicipalities.Count, storedLocalities.Count, carried.Count, carried.Values.Sum());
+    }
+
+    /// <summary>
+    /// How many properties carry each of <paramref name="codes"/> as their Swiss municipality: every org and the deleted properties too (the load runs
+    /// outside a request, for the whole platform), only the codes that some property carries are in the answer.
+    /// </summary>
+    private static async Task<Dictionary<string, int>> CarriedByPropertiesAsync(
+        AppDbContext db, IReadOnlyCollection<string> codes, CancellationToken cancellationToken)
+    {
+        if (codes.Count == 0)
+            return new Dictionary<string, int>(StringComparer.Ordinal);
+
+        var carried = await db.Properties.AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter, AppDbContext.SoftDeleteQueryFilter])
+            .Where(p => p.SwissMunicipalityCode != null && codes.Contains(p.SwissMunicipalityCode))
+            .Select(p => p.SwissMunicipalityCode!)
+            .ToListAsync(cancellationToken);
+        return carried.GroupBy(code => code, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
     }
 
     /// <summary>
@@ -286,6 +316,16 @@ public sealed record SwissPlacesSeedData(string Sha256, IReadOnlyList<SwissMunic
 
 /// <summary>
 /// What <see cref="SwissMunicipalitySeed.ApplyAsync"/> did: <see cref="Imported"/> is false when the same file was already loaded (nothing written);
-/// the counts are the ones of the file and the rows removed because the file no longer has them.
+/// the counts are the ones of the file and the rows removed because the file no longer has them. <see cref="MunicipalitiesKept"/> is the number of
+/// municipalities the file no longer has that stay because a property still carries them (<see cref="PropertiesOnKept"/> properties, to be confirmed
+/// by their hosts); it is told on every load, also when nothing was written.
 /// </summary>
-public sealed record SwissPlacesSeedResult(bool Imported, string Sha256, int Municipalities, int Localities, int MunicipalitiesRemoved, int LocalitiesRemoved);
+public sealed record SwissPlacesSeedResult(
+    bool Imported,
+    string Sha256,
+    int Municipalities,
+    int Localities,
+    int MunicipalitiesRemoved,
+    int LocalitiesRemoved,
+    int MunicipalitiesKept = 0,
+    int PropertiesOnKept = 0);

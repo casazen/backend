@@ -9,6 +9,7 @@ namespace Casazen.Web.HostedServices;
 /// Loads the official Swiss localities and municipalities (the swisstopo directory, E29/F01/US01/T01, NF-124) from the seed file of the deploy at
 /// startup (<see cref="SwissMunicipalitySeed"/>): the two tables are made equal to the file when the database does not have that file yet (its
 /// SHA-256 in <c>OfficialSourceFetches</c>), so a database that already has it is left alone and one with the old hand-written list is corrected.
+/// A municipality the file no longer has stays while a property still carries its number (a warning says how many, to be confirmed by the hosts).
 /// A build without the file only logs a warning, a file that does not parse or a failure is logged as an error: the API starts anyway.
 /// <c>OfficialReferenceData__SeedSwissPlacesOnStartup=false</c> turns it off.
 /// </summary>
@@ -49,6 +50,14 @@ public class SwissPlacesSeedHostedService(
             logger.LogInformation(
                 "Swiss places seed on startup: imported={Imported} municipalities={Municipalities} localities={Localities} removedMunicipalities={RemovedMunicipalities} removedLocalities={RemovedLocalities} sha256={Sha256}",
                 result.Imported, result.Municipalities, result.Localities, result.MunicipalitiesRemoved, result.LocalitiesRemoved, result.Sha256);
+
+            // A municipality the directory dropped (a merger) that a property still carries is kept: its host has to confirm the new one.
+            if (result.MunicipalitiesKept > 0)
+            {
+                logger.LogWarning(
+                    "Swiss places seed on startup: {KeptMunicipalities} municipality number(s) the directory no longer has are kept because {Properties} property(ies) still carry them: to be confirmed by the hosts (docs/compliance/swiss-municipalities.md)",
+                    result.MunicipalitiesKept, result.PropertiesOnKept);
+            }
         }
         catch (FormatException ex)
         {

@@ -227,6 +227,61 @@ public class SwissPlacesTests(SwissPlacesTests.SeededDirectory seeded) : IClassF
             (await db.SwissLocalities.OrderBy(l => l.PostalCode).ToListAsync()).Select(l => (l.PostalCode, l.Name, l.MunicipalityCode)));
     }
 
+    /// <summary>
+    /// Data: a municipality the new file no longer has (a merger) stays while a property still carries its number, of any org and deleted ones too:
+    /// removing it would leave the stored place of the property, and the canton of the tax lines of its documents, without an answer. The ones nobody
+    /// carries are removed; the load says how many were kept and for how many properties, now and on the next startup with the same file.
+    /// </summary>
+    [Fact]
+    public async Task Seed_KeepsAMunicipalityThatAPropertyStillCarries_AndRemovesTheOthers()
+    {
+        await using var db = NewDb();
+        db.SwissMunicipalities.AddRange(
+            new SwissMunicipality { MunicipalityCode = "5093", CantonCode = "TI", OfficialName = "Locarno" },
+            new SwissMunicipality { MunicipalityCode = "5237", CantonCode = "TI", OfficialName = "Ascona" });
+        db.Properties.AddRange(
+            new Property { OrgId = Guid.NewGuid(), Name = "TEST", Country = "CH", SwissMunicipalityCode = "5093" },
+            new Property { OrgId = Guid.NewGuid(), Name = "TEST deleted", Country = "CH", SwissMunicipalityCode = "5093", IsDeleted = true },
+            new Property { OrgId = Guid.NewGuid(), Name = "TEST Italy", Country = "IT" });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var seed = Encoding.UTF8.GetBytes(SmallSeed);
+
+        var first = await SwissMunicipalitySeed.ApplyAsync(db, seed, TimeProvider.System, CancellationToken.None);
+        var second = await SwissMunicipalitySeed.ApplyAsync(db, seed, TimeProvider.System, CancellationToken.None);
+
+        Assert.Equal((true, 1, 1, 2), (first.Imported, first.MunicipalitiesRemoved, first.MunicipalitiesKept, first.PropertiesOnKept));
+        Assert.Equal((false, 0, 1, 2), (second.Imported, second.MunicipalitiesRemoved, second.MunicipalitiesKept, second.PropertiesOnKept));
+        Assert.Equal(["5093", "5113", "5192"], (await db.SwissMunicipalities.Select(m => m.MunicipalityCode).ToListAsync()).Order(StringComparer.Ordinal));
+        var stamp = Assert.Single(await db.OfficialSourceFetches.Where(f => f.Dataset == OfficialSourceDatasets.SwisstopoLocalities).ToListAsync());
+        Assert.Contains("kept 1 municipalities", stamp.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HostedService_WithAMunicipalityKeptForAProperty_LogsAWarningToConfirmIt()
+    {
+        var name = Guid.NewGuid().ToString();
+        await using var provider = new ServiceCollection()
+            .AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase(name))
+            .BuildServiceProvider();
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5093", CantonCode = "TI", OfficialName = "Locarno" });
+            db.Properties.Add(new Property { OrgId = Guid.NewGuid(), Name = "TEST", Country = "CH", SwissMunicipalityCode = "5093" });
+            await db.SaveChangesAsync();
+        }
+
+        var logger = new CapturingLogger<SwissPlacesSeedHostedService>();
+        var service = new SwissPlacesSeedHostedService(provider, Options.Create(new OfficialReferenceDataOptions()), logger);
+
+        await service.SeedAsync(Encoding.UTF8.GetBytes(SmallSeed), CancellationToken.None);
+
+        Assert.Equal([LogLevel.Information, LogLevel.Warning], logger.Entries.Select(e => e.Level));
+        Assert.Equal<object?>(1, logger.Entries[1].Values["KeptMunicipalities"]);
+        Assert.Equal<object?>(1, logger.Entries[1].Values["Properties"]);
+    }
+
     [Theory]
     [InlineData("postal_code;add_on;locality;municipality_code;municipality;canton\n690;00;Lugano;5192;Lugano;TI\n", "line 2")]
     [InlineData("postal_code;add_on;locality;municipality_code;municipality;canton\n6900;00;Lugano;5192;Lugano;FL\n", "line 2")]
