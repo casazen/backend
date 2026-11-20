@@ -864,6 +864,24 @@
   <data name="Push_GuestCheckInCompleted_Body" xml:space="preserve">
     <value>{0}: a guest completed the online check-in.</value>
   </data>
+  <data name="Push_BookingFlowArrival_Title" xml:space="preserve">
+    <value>Arrival registered automatically</value>
+  </data>
+  <data name="Push_BookingFlowArrival_Body" xml:space="preserve">
+    <value>{0}: the arrival day is over, we registered the guest's arrival.</value>
+  </data>
+  <data name="Push_BookingFlowDeparture_Title" xml:space="preserve">
+    <value>Departure registered automatically</value>
+  </data>
+  <data name="Push_BookingFlowDeparture_Body" xml:space="preserve">
+    <value>{0}: the check-out time has passed, we registered the departure.</value>
+  </data>
+  <data name="Push_BookingFlowPropertyReady_Title" xml:space="preserve">
+    <value>Property ready for the next guest</value>
+  </data>
+  <data name="Push_BookingFlowPropertyReady_Body" xml:space="preserve">
+    <value>{0}: the cleaning is done, the property is ready for the next guest.</value>
+  </data>
   <data name="Push_AssistVerified_Title" xml:space="preserve">
     <value>The connection is active</value>
   </data>

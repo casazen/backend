@@ -1083,6 +1083,51 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("BiometricVerificationLogs");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.BookingFlowSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ArrivalMode")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CheckInLinkDaysBefore")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CheckInLinkMode")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DepartureMode")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("PropertyReadyMode")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PropertyReadyTrigger")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId")
+                        .IsUnique();
+
+                    b.ToTable("BookingFlowSettings");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.Booking", b =>
                 {
                     b.Property<Guid>("Id")
@@ -18544,6 +18589,17 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Guest");
 
                     b.Navigation("OperatorUser");
+
+                    b.Navigation("Org");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.BookingFlowSettings", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", "Org")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Org");
                 });

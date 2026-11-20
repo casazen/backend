@@ -7,6 +7,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -26,6 +27,7 @@ public class ComplianceWizardService(
     IComplianceStatusService? statusService = null,
     IComplianceActivityFeeder? activityFeeder = null,
     IFeatureFlags? featureFlags = null,
+    IBookingFlowSettingsService? flowSettings = null,
     ITicinoNotificationService? ticinoNotifications = null) : IComplianceWizardService
 {
     /// <summary>The most items listed in each section of the compliance status (the count covers all of the ones that need attention).</summary>
@@ -124,6 +126,9 @@ public class ComplianceWizardService(
             });
         }
 
+        // casazen/backend#978: the booking flow of the org says which steps CasaZen does by itself; those are not the host's to do.
+        var flow = flowSettings is null ? null : await flowSettings.GetAsync(orgId, cancellationToken);
+
         // Departures of today (Europe/Rome), with or without the arrival registered, and checked-in stays not closed
         // (CO-08, A5-08): until then only checked-in stays counted and none could be checked in from the apps.
         var checkoutDue = (await db.Bookings
@@ -133,8 +138,24 @@ public class ComplianceWizardService(
                 .Where(OpenableStayRules.CanShow)
                 .Where(StayLifecycleRules.CheckOutDue(today))
                 .OrderBy(b => b.CheckOutDate)
-                .Select(b => new { b.Id, b.CheckInDate, b.CheckOutDate, b.ArrivedAt, GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim() })
+                .Select(b => new
+                {
+                    b.Id,
+                    b.Status,
+                    b.CheckInDate,
+                    b.CheckOutDate,
+                    b.ArrivedAt,
+                    b.NoShowAt,
+                    b.CheckoutWizardStartedAt,
+                    GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim(),
+                })
                 .ToListAsync(cancellationToken))
+            // A departure of today that the flow registers by itself at the check-out time is not a thing to do; one of an earlier day (the flow did not close it) is.
+            .Where(b => !(flow is { RegistersDeparture: true }
+                          && b.CheckOutDate.Date == today.Date
+                          && b.NoShowAt is null
+                          && b.CheckoutWizardStartedAt is null
+                          && (b.Status == BookingStatus.CheckedIn || flow.RegistersArrival)))
             .Select(b => ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.CheckOut, b.Id, b.GuestName) with
             {
                 DueAt = ComplianceDeadlines.Of(ComplianceCockpitAction.CheckOut, b.CheckInDate, b.CheckOutDate, b.ArrivedAt),
@@ -157,7 +178,7 @@ public class ComplianceWizardService(
 
         var (alloggiatiFailures, alloggiatiManualRequired) =
             await GetAlloggiatiSectionsAsync(scope, today, status is null ? null : statusOfStay, supersededByStatus, cancellationToken);
-        var turnoversPending = await GetTurnoversPendingAsync(scope, cancellationToken);
+        var turnoversPending = await GetTurnoversPendingAsync(scope, flow, cancellationToken);
         var ticinoDays = await GetTicinoNotificationsAsync(scope, cancellationToken);
 
         // An item of the sections that existed: red with the code of its action when the traffic light is on, as it was (no light) when it is off.
@@ -324,13 +345,35 @@ public class ComplianceWizardService(
     /// (a stay closed before CO-17 has none and is not listed). A later stay of the same property whose arrival is
     /// registered closes it: the property was obviously ready for it.
     /// </summary>
-    private async Task<ComplianceSummarySection> GetTurnoversPendingAsync(HostScope scope, CancellationToken cancellationToken)
+    private async Task<ComplianceSummarySection> GetTurnoversPendingAsync(
+        HostScope scope,
+        BookingFlowSettingsView? flow,
+        CancellationToken cancellationToken)
     {
         var pending = db.StayCheckouts
             .AsNoTracking()
             .Where(c => c.OrgId == scope.OrgId && c.CompletedAt != null && c.PropertyReadyAt == null)
             .InScope(scope)
-            .Where(c => c.Booking.Status == BookingStatus.CheckedOut)
+            .Where(c => c.Booking.Status == BookingStatus.CheckedOut);
+
+        // casazen/backend#978: the flow declares the property ready by itself when its cleaning is done, so a stay whose cleaning is planned waits for it, not for the host.
+        // A stay with no cleaning planned, or whose property the host said was not ready yet, stays the host's to declare (nobody else will).
+        if (flow is { DeclaresReadyWhenCleaningDone: true })
+        {
+            pending = pending.Where(c => c.PropertyReady == false
+                || !(db.ServiceRequests.Any(r => r.OrgId == c.OrgId
+                                                 && r.BookingId == c.BookingId
+                                                 && r.Category == ServiceCategories.Cleaning
+                                                 && r.Status != ServiceRequestStatus.Annullato
+                                                 && r.Status != ServiceRequestStatus.Rifiutato)
+                     || db.InternalActivities.Any(a => a.OrgId == c.OrgId
+                                                       && a.BookingId == c.BookingId
+                                                       && a.Action == null
+                                                       && a.ActivityType == InternalActivity.CleaningActivityType
+                                                       && a.Status != InternalActivity.StatusCancelled)));
+        }
+
+        pending = pending
             // The check-out page of a stay whose property or guest is gone answers 404: it is not a thing to close.
             .Where(c => c.Booking.Property != null && c.Booking.Guest != null && !c.Booking.Guest.IsDeleted
                 && c.Booking.Property.Name != "" && c.Booking.Guest.FirstName != "" && c.Booking.Guest.LastName != "")

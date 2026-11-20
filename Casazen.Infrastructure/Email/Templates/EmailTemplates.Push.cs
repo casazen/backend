@@ -13,6 +13,13 @@ namespace Casazen.Infrastructure.Email.Templates;
 public static partial class EmailTemplates
 {
     /// <summary>
+    /// A step of a stay CasaZen did in the host's place (casazen/backend#978): the arrival, the departure or the property ready, to the hosts of the booking. The property
+    /// only, never the guest.
+    /// </summary>
+    public static PushText BookingFlowStepPush(CultureInfo culture, Casazen.Core.Services.BookingFlowAutomaticStep step, string propertyName) =>
+        Push(culture, $"Push_BookingFlow{step}", propertyName);
+
+    /// <summary>
     /// New service request, to the supplier. It names the comune, not the property: before the take the supplier does not know
     /// the property (decision D9, SP-04).
     /// </summary>

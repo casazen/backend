@@ -60,6 +60,15 @@ public class ComplianceAutopilotIntegrationTests : IClassFixture<CasazenWebAppli
     {
         var hostId = $"auth0|autopilot-{Guid.NewGuid():N}";
         var property = await _factory.SeedPropertyAsync(hostId);
+
+        // casazen/backend#978: the departures are the host's here (by default CasaZen registers the departure itself and the cockpit lists none to close).
+        using (var seed = _factory.Services.CreateScope())
+        {
+            var seedDb = seed.ServiceProvider.GetRequiredService<AppDbContext>();
+            seedDb.BookingFlowSettings.Add(new BookingFlowSettings { OrgId = property.OrgId, CheckInLinkDaysBefore = 3, DepartureMode = BookingFlowMode.Manual });
+            await seedDb.SaveChangesAsync();
+        }
+
         var over = await SeedStayAsync(property, BookingStatus.CheckedIn, -9, -3, email: "not-an-email");
         var today = await SeedStayAsync(property, BookingStatus.CheckedIn, -2, 0, email: "not-an-email");
         await using var app = WithClock();

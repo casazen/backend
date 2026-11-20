@@ -864,6 +864,24 @@
   <data name="Push_GuestCheckInCompleted_Body" xml:space="preserve">
     <value>{0}: un ospite ha completato il check-in online.</value>
   </data>
+  <data name="Push_BookingFlowArrival_Title" xml:space="preserve">
+    <value>Arrivo registrato in automatico</value>
+  </data>
+  <data name="Push_BookingFlowArrival_Body" xml:space="preserve">
+    <value>{0}: il giorno di arrivo è finito, abbiamo registrato l'arrivo dell'ospite.</value>
+  </data>
+  <data name="Push_BookingFlowDeparture_Title" xml:space="preserve">
+    <value>Partenza registrata in automatico</value>
+  </data>
+  <data name="Push_BookingFlowDeparture_Body" xml:space="preserve">
+    <value>{0}: è passata l'ora del check-out, abbiamo registrato la partenza.</value>
+  </data>
+  <data name="Push_BookingFlowPropertyReady_Title" xml:space="preserve">
+    <value>Casa pronta per il prossimo ospite</value>
+  </data>
+  <data name="Push_BookingFlowPropertyReady_Body" xml:space="preserve">
+    <value>{0}: la pulizia è fatta, la casa è pronta per il prossimo ospite.</value>
+  </data>
   <data name="Push_AssistVerified_Title" xml:space="preserve">
     <value>Il collegamento è attivo</value>
   </data>

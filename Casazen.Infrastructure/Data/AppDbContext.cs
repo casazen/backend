@@ -267,6 +267,9 @@ public class AppDbContext(
 
     // Biometric verification settings and audit logs (NF-11, ADR-013)
     public DbSet<BiometricSettings> BiometricSettings { get; set; } = null!;
+
+    // Which steps of a stay CasaZen does by itself and which the host does (casazen/backend#978): one row per org.
+    public DbSet<BookingFlowSettings> BookingFlowSettings { get; set; } = null!;
     public DbSet<BiometricVerificationLog> BiometricVerificationLogs { get; set; } = null!;
 
     // Property access codes and release logs (NF-13, E06/F03/US01/T01)

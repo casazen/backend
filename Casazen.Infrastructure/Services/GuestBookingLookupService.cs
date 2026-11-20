@@ -24,7 +24,8 @@ public sealed class GuestBookingLookupService(
     PublicSiteLinks links,
     IConfiguration configuration,
     ILogger<GuestBookingLookupService> logger,
-    TimeProvider? timeProvider = null) : IGuestBookingLookupService
+    TimeProvider? timeProvider = null,
+    IBookingFlowSettingsService? flowSettings = null) : IGuestBookingLookupService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -194,7 +195,10 @@ public sealed class GuestBookingLookupService(
             booking.CheckOutDate,
             _clock.TodayInRomeAsDateOnly(),
             _clock.GetUtcNow().UtcDateTime,
-            configuration.GetValue("CheckIn:SendWindowDays", 3),
+            // casazen/backend#978: the window of the org's booking flow, the one its links go out with.
+            flowSettings is null
+                ? configuration.GetValue("CheckIn:SendWindowDays", 3)
+                : (await flowSettings.GetAsync(booking.OrgId, cancellationToken)).CheckInLinkDaysBefore,
             cancellationToken);
     }
 

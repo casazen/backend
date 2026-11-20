@@ -1534,6 +1534,12 @@
   <data name="BiometricSettingsAttemptsOutOfRange" xml:space="preserve">
     <value>I tentativi devono essere da {0} a {1}.</value>
   </data>
+  <data name="BookingFlowDaysOutOfRange" xml:space="preserve">
+    <value>Il link del check-in può partire da 0 a {0} giorni prima dell’arrivo.</value>
+  </data>
+  <data name="BookingFlowValueInvalid" xml:space="preserve">
+    <value>Scegli una delle opzioni proposte per ogni passaggio.</value>
+  </data>
   <data name="VerificationVideoCallUrlInvalid" xml:space="preserve">
     <value>Il link della videochiamata deve essere un indirizzo https assoluto, senza spazi né credenziali e di al massimo {0} caratteri.</value>
   </data>
