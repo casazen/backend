@@ -856,6 +856,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierPilotComuni, SupplierPilotComuni>();
         services.AddScoped<IPropertyComuneResolver, PropertyComuneResolver>();
 
+        // The official Swiss localities and municipalities of swisstopo (E29/F01/US01/T01, NF-124): the search of the locality picker and the
+        // lookup of a municipality (SwissPlacesController); the seed is loaded at startup by SwissPlacesSeedHostedService.
+        services.AddScoped<ISwissPlacesDirectory, SwissPlacesDirectory>();
+        // E29/F01/US01/T02: the one resolver of the place of a Swiss property (stored municipality, else derived from postal code and city), read by
+        // the Ticino notification, the OTR report, the year-end count of Ticino, the policy of the identity documents and the property record.
+        services.AddScoped<IPropertySwissPlaceResolver, PropertySwissPlaceResolver>();
+
         // Pilot comuni of supplier self-serve registration (SU-01, runbook suppliers.md): no default, validated at startup.
         services.AddOptions<SupplierRegistrationOptions>()
             .BindConfiguration(SupplierRegistrationOptions.SectionName)

@@ -38,11 +38,11 @@ public class TaxReportingNpgsqlTranslationTests
         new(@"^SELECT\s+\w+\.""OrgId"",\s*\w+\.""PropertyOwnerId"",\s*\w+\.""PropertyId"",\s*\w+\.""OwnershipStart"",\s*\w+\.""OwnershipEnd""\s+FROM ""PropertyOwnerships""", Compiled);
 
     private static readonly Regex SwissPropertySelect =
-        new(@"^SELECT\s+\w+\.""Id"",\s*\w+\.""Name"",\s*\w+\.""Address"",\s*\w+\.""City"",\s*\w+\.""SwissMunicipalityCode"",\s*\w+\.""Currency"",\s*\w+\.""IsDeleted""\s+FROM ""Properties""", Compiled);
+        new(@"^SELECT\s+\w+\.""Id"",\s*\w+\.""Name"",\s*\w+\.""Address"",\s*\w+\.""City"",\s*\w+\.""PostalCode"",\s*\w+\.""SwissMunicipalityCode"",\s*\w+\.""Currency"",\s*\w+\.""IsDeleted""\s+FROM ""Properties""", Compiled);
 
-    private static readonly Regex CantonPropertySelect = new(@"^SELECT\s+\w+\.""Id"",\s*\w+\.""SwissMunicipalityCode""\s+FROM ""Properties""", Compiled);
-
-    private static readonly Regex MunicipalitySelect = new(@"^SELECT\s+\w+\.""MunicipalityCode"",\s*\w+\.""CantonCode""\s+FROM ""SwissMunicipalities""", Compiled);
+    // The localities of the postal code of a property with the municipality each lies in: the read of the one resolver of the place (E29/F01/US01/T02).
+    private static readonly Regex LocalitySelect =
+        new(@"^SELECT\s+\w+\.""PostalCode"",\s*\w+\.""NormalizedName"",\s*\w+\.""MunicipalityCode"",\s*\w+\.""OfficialName"",\s*\w+\.""CantonCode""\s+FROM ""SwissLocalities""", Compiled);
 
     private static readonly Regex SwissStaySelect =
         new(@"^SELECT\s+\w+\.""Id"",\s*\w+\.""PropertyId"",\s*\w+\.""CheckInDate"",\s*\w+\.""CheckOutDate""\s+FROM ""Bookings""", Compiled);
@@ -72,7 +72,10 @@ public class TaxReportingNpgsqlTranslationTests
                 ("OwnershipEnd", typeof(DateTime), DBNull.Value))
             : null;
 
-    /// <summary>A property in Switzerland whose municipality is in Ticino, and a stay of it: the reads of the canton, of the stays and of their documents are sent too.</summary>
+    /// <summary>
+    /// A property in Switzerland at 6900 Lugano whose stored municipality number the registry does not have, and a stay of it: the reads of the stored
+    /// municipality (no row), of the localities of its postal code (the place is derived: Ticino), of the stays and of their documents are sent too.
+    /// </summary>
     private static DataTable? TicinoRowsOf(string sql)
     {
         var text = sql.TrimStart();
@@ -83,16 +86,21 @@ public class TaxReportingNpgsqlTranslationTests
                 ("Name", typeof(string), "TEST Casa Lugano"),
                 ("Address", typeof(string), "Via Test 1"),
                 ("City", typeof(string), "Lugano"),
-                ("SwissMunicipalityCode", typeof(string), "5113"),
+                ("PostalCode", typeof(string), "6900"),
+                ("SwissMunicipalityCode", typeof(string), "9999"),
                 ("Currency", typeof(string), "CHF"),
                 ("IsDeleted", typeof(bool), false));
         }
 
-        if (CantonPropertySelect.IsMatch(text))
-            return Table(("Id", typeof(Guid), PropertyId), ("SwissMunicipalityCode", typeof(string), "5113"));
-
-        if (MunicipalitySelect.IsMatch(text))
-            return Table(("MunicipalityCode", typeof(string), "5113"), ("CantonCode", typeof(string), "TI"));
+        if (LocalitySelect.IsMatch(text))
+        {
+            return Table(
+                ("PostalCode", typeof(string), "6900"),
+                ("NormalizedName", typeof(string), "lugano"),
+                ("MunicipalityCode", typeof(string), "5192"),
+                ("OfficialName", typeof(string), "Lugano"),
+                ("CantonCode", typeof(string), "TI"));
+        }
 
         return SwissStaySelect.IsMatch(text)
             ? Table(
@@ -151,7 +159,7 @@ public class TaxReportingNpgsqlTranslationTests
         // The owner portal: the access, then the evidence of the owner profiles, the agencies and the annual data of each.
         "owner-withholding",
 
-        // The tourist tax at year end (E18/F01/US02/T03): the properties of Ticino, their canton, their stays and the documents; the record of a stay and its guests.
+        // The tourist tax at year end (E18/F01/US02/T03): the properties of Ticino, their place (E29/F01/US01/T02), their stays and the documents; the record of a stay and its guests.
         "ticino-count",
         "stay-facts",
     ];
@@ -168,7 +176,7 @@ public class TaxReportingNpgsqlTranslationTests
         // The ownership of the caller, its delegations, the evidence of its owner profile, the agencies and the annual data.
         "owner-withholding" => new(db => Portal(db).GetOwnerWithholdingAsync(OwnerUserId, 2026), 4, OwnershipOf),
 
-        // The properties in Switzerland, the canton of each, the municipalities, the stays of the year and the documents issued for them.
+        // The properties in Switzerland, their stored municipalities, the localities of their postal codes, the stays of the year and the documents issued for them.
         "ticino-count" => new(db => TouristTax(db).GetTicinoYearlyCountAsync(new HostScope(OrgId), 2026), 5, TicinoRowsOf),
         "stay-facts" => new(StayFacts, 2, StayTaxOf),
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "A call of the list that has no definition."),

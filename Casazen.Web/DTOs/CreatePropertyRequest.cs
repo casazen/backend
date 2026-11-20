@@ -57,6 +57,15 @@ public class CreatePropertyRequest
     public string? ComuneIstatCode { get; set; }
 
     /// <summary>
+    /// The Swiss municipality of the property (E29/F01/US01/T02, NF-124): its BFS number from the official directory (<c>GET /api/swiss/localities</c>),
+    /// a text of one to four digits such as <c>"5192"</c> (Lugano); 400 <c>validation_error</c> otherwise. Only for a property in Switzerland: this
+    /// request has no country, so the property it creates is Italian (a Swiss one comes from the import of a channel manager) and a value is refused
+    /// with 422 <c>swiss_municipality_not_applicable</c>. Left out, <c>null</c> or empty = none.
+    /// </summary>
+    [RegularExpression(SwissPlaceErrorCodes.CodePattern, ErrorMessage = SwissPlaceErrorCodes.InvalidFormatMessageKey)]
+    public string? SwissMunicipalityCode { get; set; }
+
+    /// <summary>
     /// Geographic latitude in degrees, -90 to 90 (A2-33); more than 6 decimals (about 0.1 m) are rounded. <c>0</c> with a
     /// longitude of <c>0</c> = not set.
     /// </summary>

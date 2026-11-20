@@ -123,7 +123,7 @@ public class SwissComplianceReceiptArchiveTests
 
     private static Property SeedProperty(AppDbContext db, Guid orgId)
     {
-        var property = new Property { OrgId = orgId, Name = "TEST", Country = "CH", SwissMunicipalityCode = "5113" };
+        var property = new Property { OrgId = orgId, Name = "TEST", Country = "CH", SwissMunicipalityCode = "5192" };
         db.Properties.Add(property);
         return property;
     }

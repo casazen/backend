@@ -149,10 +149,10 @@ public sealed class TouristTaxYearEndExportsTests
         var orgId = Guid.NewGuid();
         await using var db = CreateDb();
         SeedOrg(db, orgId);
-        db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5113", CantonCode = "TI", OfficialName = "Lugano" });
+        db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5192", CantonCode = "TI", OfficialName = "Lugano" });
         db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "261", CantonCode = "ZH", OfficialName = "Zürich" });
-        var casa = SeedProperty(db, orgId, "Casa Lugano", "Lugano", country: "CH", municipality: "5113");
-        var vuota = SeedProperty(db, orgId, "Casa Vuota Lugano", "Lugano", country: "CH", municipality: "5113");
+        var casa = SeedProperty(db, orgId, "Casa Lugano", "Lugano", country: "CH", municipality: "5192");
+        var vuota = SeedProperty(db, orgId, "Casa Vuota Lugano", "Lugano", country: "CH", municipality: "5192");
         var zurigo = SeedProperty(db, orgId, "Casa Zurigo", "Zürich", country: "CH", municipality: "261");
         var senzaComune = SeedProperty(db, orgId, "Villa Senza Comune", "Chiasso", country: "CH", municipality: null);
 
@@ -192,13 +192,67 @@ public sealed class TouristTaxYearEndExportsTests
         var texts = new ResxDocumentTexts();
         var csv = Encoding.UTF8.GetString(TouristTaxYearEndExports.TicinoCsv(count, texts, DocumentLanguages.Italian));
         Assert.Contains("05/01/2027", csv, StringComparison.Ordinal);
-        Assert.Contains("Casa Lugano;Via Test 1;Lugano;5113;4;11;1;3;2;6;1;2;CHF;12,00", csv, StringComparison.Ordinal);
+        Assert.Contains("Casa Lugano;Via Test 1;Lugano;5192;4;11;1;3;2;6;1;2;CHF;12,00", csv, StringComparison.Ordinal);
         Assert.Contains("Villa Senza Comune;Via Test 1;Chiasso;;1;2;0;0;0;0;1;2;CHF;0,00;Cantone non determinato", csv, StringComparison.Ordinal);
         Assert.DoesNotContain("Zurigo", csv, StringComparison.Ordinal);
         Assert.True(TouristTaxYearEndExports.TicinoXlsx(count, texts, DocumentLanguages.English).Length > 0);
         Assert.Equal("casazen-imposta-soggiorno-ticino-2026.csv", TouristTaxYearEndExports.TicinoFileName(2026, "csv"));
         Assert.Empty((await sut.GetTicinoYearlyCountAsync(new HostScope(Guid.NewGuid()), 2026)).Properties);
     }
+
+    /// <summary>
+    /// Data (E29/F01/US01/T02): the count of Ticino reads the canton from the one resolver of the place of a Swiss property. A property with no stored
+    /// municipality at 6900 «Lugano» is in Ticino (not «canton unknown»), with the municipality its postal code gives and the note that it is to be
+    /// confirmed, and nothing is stored on it; a postal code that leaves several municipalities open keeps the canton unknown; a property the postal
+    /// code places outside Ticino is not counted.
+    /// </summary>
+    [Fact]
+    public async Task TouristTaxYear_TicinoCount_ReadsTheCantonFromTheOneResolver_Test()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedOrg(db, orgId);
+        db.SwissMunicipalities.AddRange(
+            new SwissMunicipality { MunicipalityCode = "5192", CantonCode = "TI", OfficialName = "Lugano" },
+            new SwissMunicipality { MunicipalityCode = "5196", CantonCode = "TI", OfficialName = "Massagno" },
+            new SwissMunicipality { MunicipalityCode = "261", CantonCode = "ZH", OfficialName = "Zürich" });
+        db.SwissLocalities.AddRange(
+            Locality("6900", "00", "Lugano", "5192", "TI"),
+            Locality("6900", "05", "Massagno", "5196", "TI"),
+            Locality("8001", "00", "Zürich", "261", "ZH"));
+        var derived = SeedProperty(db, orgId, "Casa Derivata", "Lugano", country: "CH");
+        derived.PostalCode = "6900";
+        var ambiguous = SeedProperty(db, orgId, "Casa Ambigua", "Ticino", country: "CH");
+        ambiguous.PostalCode = "6900";
+        var zurich = SeedProperty(db, orgId, "Casa Zurigo", "Zürich", country: "CH");
+        zurich.PostalCode = "8001";
+        SeedStay(db, derived, Day(2026, 5, 1), nights: 2, touristTax: 0m);
+        await db.SaveChangesAsync();
+
+        var count = await CreateService(db).GetTicinoYearlyCountAsync(new HostScope(orgId), 2026);
+
+        Assert.Equal(["Casa Ambigua", "Casa Derivata"], count.Properties.Select(p => p.PropertyName));
+        Assert.True(count.Properties[0].CantonUnknown);
+        Assert.False(count.Properties[0].MunicipalityDerived);
+        Assert.Null(count.Properties[0].MunicipalityCode);
+        Assert.False(count.Properties[1].CantonUnknown);
+        Assert.True(count.Properties[1].MunicipalityDerived);
+        Assert.Equal("5192", count.Properties[1].MunicipalityCode);
+        Assert.Null((await db.Properties.AsNoTracking().SingleAsync(p => p.Id == derived.Id)).SwissMunicipalityCode);
+
+        var csv = Encoding.UTF8.GetString(TouristTaxYearEndExports.TicinoCsv(count, new ResxDocumentTexts(), DocumentLanguages.Italian));
+        Assert.Contains("Casa Derivata;Via Test 1;Lugano;5192;1;2;0;0;0;0;1;2;CHF;0,00;Comune ricavato da CAP e località", csv, StringComparison.Ordinal);
+    }
+
+    private static SwissLocality Locality(string postalCode, string addOn, string name, string municipality, string canton) => new()
+    {
+        PostalCode = postalCode,
+        AddOn = addOn,
+        Name = name,
+        NormalizedName = SwissLocality.NormalizeName(name),
+        MunicipalityCode = municipality,
+        CantonCode = canton,
+    };
 
     /// <summary>
     /// Permission and data: the year-end data of the whole org (a declaration of some of the properties would be false, the payments belong to the org) is refused to a caller that reaches only some of
