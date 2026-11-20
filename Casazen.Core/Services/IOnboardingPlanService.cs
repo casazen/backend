@@ -5,7 +5,7 @@ using Casazen.Core.Models;
 namespace Casazen.Core.Services;
 
 /// <summary>
-/// The plan of the activation of CasaZen with Octorate (NF-104, NF-10, ONB-01, UX-10, E10/F01/US01/T03): the eleven parts of
+/// The plan of the activation of CasaZen with Octorate (NF-104, NF-10, ONB-01, UX-10, E10/F01/US01/T03): the twelve parts of
 /// <see cref="OnboardingPartCatalog"/> with the state of each, derived on every read from the stored facts, the connected path of UX-10, and the
 /// host's «Do it later» (defer) and «Save and exit» (exit) of a part, each with a "To do". The plan orchestrates the wizards of the other epics:
 /// it reads what they stored, it never does their work.

@@ -88,7 +88,10 @@ public class ComplianceWizardService(
             .AsNoTracking()
             .Where(PropertyRentalModeRules.IsShortRent)
             .Where(p => p.OrgId == orgId && p.ComplianceStatus != PropertyComplianceStatus.Active)
-            .Where(p => p.Name != "" && p.Address != "" && p.City != "" && p.CinCode != null && p.CinCode != "")
+            // The essentials are entered: the CIN for an Italian property, which a Swiss one never has (E29/F02/US01/T02, NF-129: it is listed with what
+            // its activation still lacks, the municipality and the structure number of Ticino, in the Missing of the item).
+            .Where(p => p.Name != "" && p.Address != "" && p.City != ""
+                        && ((p.CinCode != null && p.CinCode != "") || p.Country.Trim().ToUpper() == "CH"))
             .InScope(scope)
             .OrderBy(p => p.Name)
             .Select(p => new { p.Id, p.Name })

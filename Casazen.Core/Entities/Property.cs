@@ -372,6 +372,13 @@ public class Property : ITenantOwned
     [MaxLength(Regulatory.TicinoStructureId.MaxLength)]
     public string? TicinoStructureId { get; set; }
 
+    /// <summary>
+    /// What the host decided about notifying the guests of this property to the authority of its canton (E29/F02/US01/T01, NF-125, decision D12): stored
+    /// as the number of <see cref="Enums.GuestNotificationOverride"/>; <c>null</c> = follow the regime of the place (the default, and every row that existed
+    /// before the column). Meaningful only for a property in Switzerland, and read only while <c>Features:GuestRegistrationRegimes</c> is on.
+    /// </summary>
+    public GuestNotificationOverride? GuestNotificationOverride { get; set; }
+
     [ForeignKey("CancellationPolicy")]
     public Guid? CancellationPolicyId { get; set; }
     public virtual CancellationPolicy? CancellationPolicy { get; set; }

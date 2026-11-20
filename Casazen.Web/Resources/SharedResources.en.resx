@@ -8785,6 +8785,138 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="TicinoNotAGroup" xml:space="preserve">
     <value>This stay is not a group of at least {0} persons (group leader and group members): no group sheet is needed.</value>
   </data>
+  <data name="ActivationStepGuestRegistration" xml:space="preserve">
+    <value>Guest registration</value>
+  </data>
+  <data name="SwissMunicipalityMissing" xml:space="preserve">
+    <value>Choose the Swiss municipality of the property: the canton, and with it the rules for registering the guests, follow from it.</value>
+  </data>
+  <data name="GuestRegistrationOverrideNotApplicable" xml:space="preserve">
+    <value>This setting applies only to properties in Switzerland: in Italy the guests' data are always reported to the Questura.</value>
+  </data>
+  <data name="GuestRegistrationCountryNotSupported" xml:space="preserve">
+    <value>CasaZen has no guest registration rules for the country of this property.</value>
+  </data>
+  <data name="GuestRegistrationOverrideRequired" xml:space="preserve">
+    <value>Say whether notifying the guests is required or not required, or null to follow the rules of the canton.</value>
+  </data>
+  <data name="GuestRegimeDeadlineNotVerified" xml:space="preserve">
+    <value>The deadline is not verified: ask the cantonal police.</value>
+  </data>
+  <data name="GuestRegimeDeadlineNoSubmission" xml:space="preserve">
+    <value>No deadline to send anything: the register is kept at the disposal of the police.</value>
+  </data>
+  <data name="GuestRegime_IT_Deadline" xml:space="preserve">
+    <value>Within 24 hours of arrival, within 6 hours for stays of up to 24 hours.</value>
+  </data>
+  <data name="GuestRegime_CH_AG_Deadline" xml:space="preserve">
+    <value>No deadline to send anything; who the register must be handed to is not verified.</value>
+  </data>
+  <data name="GuestRegime_CH_BS_Deadline" xml:space="preserve">
+    <value>Entered every day; the source gives no cut-off time.</value>
+  </data>
+  <data name="GuestRegime_CH_GE_Deadline" xml:space="preserve">
+    <value>For private rentals: as soon as possible, once the guest has taken possession of the accommodation. For hotels: every day.</value>
+  </data>
+  <data name="GuestRegime_CH_NE_Deadline" xml:space="preserve">
+    <value>Every day (hotels and similar establishments); the source gives no cut-off time.</value>
+  </data>
+  <data name="GuestRegime_CH_NW_Deadline" xml:space="preserve">
+    <value>At least once a week; the form is completed on arrival.</value>
+  </data>
+  <data name="GuestRegime_CH_SH_Deadline" xml:space="preserve">
+    <value>Every day by 02:00; the source does not say which day the time refers to.</value>
+  </data>
+  <data name="GuestRegime_CH_VD_Deadline" xml:space="preserve">
+    <value>No deadline to send anything: the register is kept at the disposal of the authority.</value>
+  </data>
+  <data name="GuestRegime_CH_ZG_Deadline" xml:space="preserve">
+    <value>The form is completed when the guest arrives; the sources mention no 24-hour window.</value>
+  </data>
+  <data name="GuestRegime_IT_Summary" xml:space="preserve">
+    <value>In Italy the guests' data are reported to the Questura through Alloggiati Web within 24 hours of arrival (within 6 hours for stays of up to 24 hours), short-term rentals included. CasaZen prepares the file and shows the deadlines.</value>
+  </data>
+  <data name="GuestRegime_CH_TI_Summary" xml:space="preserve">
+    <value>In Ticino whoever lodges guests notifies them to the Cantonal Police within 24 hours of arrival, electronically on the official notification portal; this includes structures exempt from the LEAR. CasaZen prepares the upload file in the official format and the host uploads it with their own access. Group sheets and parental authorisations are kept for 5 years.</value>
+  </data>
+  <data name="GuestRegime_CH_AG_Summary" xml:space="preserve">
+    <value>In Aargau whoever offers lodging professionally keeps a guest register (on paper or electronic, free format) for 5 years. The source does not say who it must be handed to or whether it covers private rentals: check with the municipality or the police.</value>
+  </data>
+  <data name="GuestRegime_CH_AI_Summary" xml:space="preserve">
+    <value>In Appenzell Innerrhoden keeping a list of guests (identity and origin) is a faculty of the licence holder, not a duty: guests must give true data and the police may check the list at any time. The federal duty to report foreign guests remains.</value>
+  </data>
+  <data name="GuestRegime_CH_AR_Summary" xml:space="preserve">
+    <value>In Appenzell Ausserrhoden hosts have guests complete a form and keep the data at the disposal of the cantonal police for 5 years; the form is free (an Excel template exists) and nothing is sent. It is not clear for which guests, or whether it covers private rentals: check with the police.</value>
+  </data>
+  <data name="GuestRegime_CH_BE_Summary" xml:space="preserve">
+    <value>In Bern the host keeps a register of overnight guests (electronic only is allowed), to be kept at least 5 years and shown to the cantonal police, which may consult it and compare it with its systems. No periodic submission is documented. For private rentals and for the deadline the sources say nothing: check with the police.</value>
+  </data>
+  <data name="GuestRegime_CH_BL_Summary" xml:space="preserve">
+    <value>In Basel-Landschaft every overnight guest completes and signs a form by hand and shows a valid document; the host keeps it (10 years according to the tourism body, to be double-checked) and the police checks it when needed. A 2014 text provided for sending it to the police within 24 hours: systematic sending seems to be superseded, but this is not verified.</value>
+  </data>
+  <data name="GuestRegime_CH_BS_Summary" xml:space="preserve">
+    <value>In Basel-Stadt the guests' data must be entered every day, complete and true, in the cantonal electronic notification system (a portal with a personal login, or an interface from the management software); they are used by the police, the tourist tax and the statistics. The source does not say whether it covers private rentals: check with the canton.</value>
+  </data>
+  <data name="GuestRegime_CH_FR_Summary" xml:space="preserve">
+    <value>In Fribourg hotels and similar establishments (over 5 people) keep a register and send the arrival form to the Cantonal Police and the Fribourg tourism union; since 1.1.2023 the union's registration platform is also mandatory for whoever rents chalets and apartments. It is not verified whether the form covers private rentals or whether the platform replaces it.</value>
+  </data>
+  <data name="GuestRegime_CH_GE_Summary" xml:space="preserve">
+    <value>In Geneva hotels send the police a file of arrivals every day. For private short-term rentals it applies to foreign guests (less than 90 days according to the canton's page): the host registers with a verified cantonal account, writes to the police and receives a registration code with instructions; the format and channel of the guests' data are not described. A reform is under discussion.</value>
+  </data>
+  <data name="GuestRegime_CH_GL_Summary" xml:space="preserve">
+    <value>In Glarus whoever lodges guests professionally keeps a register (a form completed and signed by the guest on an official document), to be kept 3 years; the cantonal police receives it only on request. For private short-term rentals the source does not say: check with the municipality.</value>
+  </data>
+  <data name="GuestRegime_CH_GR_Summary" xml:space="preserve">
+    <value>In Graubünden it applies to foreign guests: an official form signed by the guest, with the type and number of the document noted by the host, kept for 1 year and shown to the police; sending it to the police within 24 hours was abolished. For private short-term rentals it is not verified.</value>
+  </data>
+  <data name="GuestRegime_CH_JU_Summary" xml:space="preserve">
+    <value>In Jura whoever lodges guests has a form completed on arrival and keeps a list of guests in a register that the police and the tourist-tax authority may consult; the cantonal police publishes a PDF «Bulletin d'hôtel» form that is completed and sent with a button, but the page does not say who receives it. The cantonal law excludes holiday lets without hotel services, but the federal duty for foreign guests remains.</value>
+  </data>
+  <data name="GuestRegime_CH_LU_Summary" xml:space="preserve">
+    <value>In Lucerne the host completes a guest form from the identity document, has it signed and keeps it 5 years at the disposal of the police: nothing is sent. For short-term rentals without a licence it applies to foreign guests (partial sources).</value>
+  </data>
+  <data name="GuestRegime_CH_NE_Summary" xml:space="preserve">
+    <value>In Neuchâtel hotels and similar establishments send the police the guests' surname, first name and date of birth, checked on a document, every day through the Guichet unique (entry or import). For holiday lets daily transmission is not confirmed by the law, but a report of the State Council says guests must be declared every day.</value>
+  </data>
+  <data name="GuestRegime_CH_NW_Summary" xml:space="preserve">
+    <value>In Nidwalden every guest completes an official form on arrival and the host hands the forms, or the electronic data, to the cantonal police at least once a week; the duty also covers holiday apartments. The electronic format is to be asked from the cantonal police.</value>
+  </data>
+  <data name="GuestRegime_CH_OW_Summary" xml:space="preserve">
+    <value>In Obwalden the check of overnight guests is kept at the disposal of the police (tourism law, art. 22). A revision under way provides for registration within 12 hours, retention for 1 year and possible electronic transmission to the police; it is not verified whether the revision is already in force. For private rentals it is not verified.</value>
+  </data>
+  <data name="GuestRegime_CH_SG_Summary" xml:space="preserve">
+    <value>In St. Gallen hosts have guests complete and sign the form and hand it to the police on request (at least 5 years for foreign guests); the tourism body offers an online system (entry, link for the guest, interface from the management software). No sending to the police is described; for private rentals it is not stated.</value>
+  </data>
+  <data name="GuestRegime_CH_SH_Summary" xml:space="preserve">
+    <value>In Schaffhausen electronic notification has been mandatory since 1.2.2024 for all hosts, including those renting private apartments through online platforms: every guest is registered every day on the cantonal portal (single entry, collective Excel file or interface from the management software). The paper form is replaced.</value>
+  </data>
+  <data name="GuestRegime_CH_SO_Summary" xml:space="preserve">
+    <value>In Solothurn whoever holds an operating licence to lodge guests keeps a register of the guest forms, kept 3 years on the premises at the disposal of the police: nothing is sent. For private rentals it applies when the activity is professional (partial sources).</value>
+  </data>
+  <data name="GuestRegime_CH_SZ_Summary" xml:space="preserve">
+    <value>In Schwyz the duty concerns foreign guests, including rentals through online platforms: whoever lodges them for payment has the notification form completed and signed and keeps it, at the disposal of the cantonal police, for at least 2 years (a recommendation). Nothing is sent and there is no duty for Swiss guests.</value>
+  </data>
+  <data name="GuestRegime_CH_TG_Summary" xml:space="preserve">
+    <value>In Thurgau the guests' data are sent electronically to the Cantonal Police (Hotelkontrolle): from the management software or, for those without one, with a CSV file filled in by hand and sent by e-mail with a structure code to be requested from the police. Deadline and format are not verified.</value>
+  </data>
+  <data name="GuestRegime_CH_UR_Summary" xml:space="preserve">
+    <value>In Uri the guest check is kept on the premises for the cantonal police: the guest is entered on arrival, with a document to be checked. No official form or online procedure is documented and it is not clear whether it must be sent; the law sets no retention and an opinion of the data protection office (2020) indicates at most 1 year. Partial sources.</value>
+  </data>
+  <data name="GuestRegime_CH_VD_Summary" xml:space="preserve">
+    <value>In Vaud whoever rents short-term, private hosts included, registers with the municipality and keeps a guest register with a copy of the identity document and the exact periods of stay, at the disposal of the authority (since 1.7.2022); nothing is sent to the police. CasaZen does not keep document images: the copy stays with the host.</value>
+  </data>
+  <data name="GuestRegime_CH_VS_Summary" xml:space="preserve">
+    <value>In Valais licence holders have an arrival form approved by the cantonal police completed and keep a guest register, which the police may consult. Lodgings without hotel services are excluded from this law and, according to the canton's page, must register with the municipality (not confirmed).</value>
+  </data>
+  <data name="GuestRegime_CH_ZG_Summary" xml:space="preserve">
+    <value>In Zug whoever lodges guests for payment, including through online platforms, reports each guest to the Zug Police on arrival, on the official web portal (with a free cantonal account) or by handing the form to a police station. The fields required and the retention are not verified.</value>
+  </data>
+  <data name="GuestRegime_CH_ZH_Summary" xml:space="preserve">
+    <value>In Zurich hosts keep a guest check and issue notification forms; transmission to the cantonal police is electronic and also covers commercial short-term rentals, including through online platforms (the boundary of «commercial» is not defined). Deadline and access are not verified: ask the cantonal police.</value>
+  </data>
+  <data name="GuestRegime_CH_UNKNOWN_Summary" xml:space="preserve">
+    <value>We do not know which canton the property is in (municipality missing or ambiguous): choose the municipality to see the rules of its canton. The federal duty to report foreign guests lodged for payment to the cantonal authority remains.</value>
+  </data>
   <data name="CleaningVatAnswerInvalid" xml:space="preserve">
     <value>State whether the cleaning company applied VAT: Yes, No or I don't know.</value>
   </data>

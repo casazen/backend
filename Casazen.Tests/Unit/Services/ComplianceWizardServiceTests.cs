@@ -721,6 +721,36 @@ public class ComplianceWizardServiceTests
         Assert.DoesNotContain(summary.PropertiesPending.Items, i => i.Id == noCin.Id || i.Id == noName.Id);
     }
 
+    /// <summary>
+    /// E29/F02/US01/T02 (NF-129): a Swiss property has no CIN, so its essentials are its name, address and city: with them a pending (or suspended) one is listed in
+    /// the section «properties to activate», where its <c>Missing</c> names what its guest registration lacks. An Italian one without a CIN is still not listed; an active
+    /// Swiss one is not a property to activate.
+    /// </summary>
+    [Fact]
+    public async Task Summary_ASwissPropertyWithItsBaseData_IsListedWithoutACin_AnItalianOneStillNeedsIt()
+    {
+        await using var db = CreateDb(nameof(Summary_ASwissPropertyWithItsBaseData_IsListedWithoutACin_AnItalianOneStillNeedsIt));
+        var org = new OrgEntity { Name = "Org", Slug = $"org-{Guid.NewGuid():N}" };
+        db.Orgs.Add(org);
+        await db.SaveChangesAsync();
+        var swiss = await SeedPropertyAsync(db, org.Id, cinCode: null, complianceStatus: PropertyComplianceStatus.Pending);
+        var swissSuspended = await SeedPropertyAsync(db, org.Id, cinCode: null, complianceStatus: PropertyComplianceStatus.Suspended);
+        var swissActive = await SeedPropertyAsync(db, org.Id, cinCode: null, complianceStatus: PropertyComplianceStatus.Active);
+        var italianNoCin = await SeedPropertyAsync(db, org.Id, cinCode: null, complianceStatus: PropertyComplianceStatus.Pending);
+        var swissNoCity = await SeedPropertyAsync(db, org.Id, cinCode: null, complianceStatus: PropertyComplianceStatus.Pending);
+        foreach (var id in new[] { swiss.Id, swissSuspended.Id, swissActive.Id, swissNoCity.Id })
+            (await db.Properties.SingleAsync(p => p.Id == id)).Country = id == swissSuspended.Id ? " ch " : "CH";
+        (await db.Properties.SingleAsync(p => p.Id == swissNoCity.Id)).City = string.Empty;
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db).GetSummaryAsync(new HostScope(org.Id));
+
+        Assert.Equal(new[] { swiss.Id, swissSuspended.Id }.Order(), summary.PropertiesPending.Items.Select(i => i.Id).Order());
+        Assert.Equal(2, summary.PropertiesPending.Count);
+        Assert.DoesNotContain(summary.PropertiesPending.Items, i => i.Id == italianNoCin.Id || i.Id == swissActive.Id || i.Id == swissNoCity.Id);
+        Assert.All(summary.PropertiesPending.Items, i => Assert.Equal(ComplianceCockpitAction.ActivateProperty, i.Action));
+    }
+
     [Fact]
     public async Task Summary_EverySection_ReturnsItsActionAndTargetIdNeverAFrontEndPath()
     {

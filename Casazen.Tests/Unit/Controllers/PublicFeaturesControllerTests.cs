@@ -34,6 +34,21 @@ public class PublicFeaturesControllerTests
         Assert.All(features, feature => Assert.False(feature.Value, $"{feature.Key} must be off by default"));
     }
 
+    /// <summary>
+    /// E29/F02/US01/T01 (NF-125): the regimes of the registration of the guests are off by default and follow <c>Features:GuestRegistrationRegimes</c> alone; the
+    /// frontend reads them under <c>guestRegistrationRegimes</c>.
+    /// </summary>
+    [Fact]
+    public void Get_GuestRegistrationRegimes_IsOffByDefault_AndFollowsItsConfigurationAlone()
+    {
+        Assert.False(Get(new Dictionary<string, string?>())["guestRegistrationRegimes"]);
+
+        var on = Get(new Dictionary<string, string?> { [$"{FeatureFlags.SectionName}:{FeatureFlags.GuestRegistrationRegimes}"] = "true" });
+
+        Assert.True(on["guestRegistrationRegimes"]);
+        Assert.Single(on, feature => feature.Value);
+    }
+
     [Fact]
     public void Get_SiteIntegrationFlags_AreExposedUnderTheirCamelCaseKeys()
     {

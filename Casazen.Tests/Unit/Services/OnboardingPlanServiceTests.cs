@@ -258,7 +258,7 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetPlan_TheElevenPartsInOrder_WithTheStatesInTheirPrecedence()
+    public async Task GetPlan_TheTwelvePartsInOrder_WithTheStatesInTheirPrecedence()
     {
         var service = Service();
         await service.DeferAsync(_world.OrgId, _world.OwnerUserId, OnboardingPartKey.Listings, null, Ct);
@@ -267,7 +267,11 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
         OnboardingPlanPart Part(OnboardingPartKey key) => plan.Parts.Single(p => p.Key == key);
 
         Assert.Equal(OnboardingPartCatalog.Parts.Select(p => p.Code), plan.Parts.Select(p => p.Code));
-        Assert.Equal(11, plan.Parts.Count);
+        Assert.Equal(12, plan.Parts.Count);
+        // The part «Guest registration» (E29/F02/US01/T02) stands before the activation; with no evaluator it is never presumed done, as every part.
+        Assert.Equal(
+            ("guestRegistration", OnboardingPartStates.NotAvailable, OnboardingPartReasons.NotProvided),
+            (Part(OnboardingPartKey.GuestRegistration).Code, Part(OnboardingPartKey.GuestRegistration).State, Part(OnboardingPartKey.GuestRegistration).Reason));
         Assert.Equal(OnboardingNeedCodes.All, plan.Needs);
         // No evaluator: never presumed done.
         Assert.Equal((OnboardingPartStates.NotAvailable, OnboardingPartReasons.NotProvided), (Part(OnboardingPartKey.MessagesAi).State, Part(OnboardingPartKey.MessagesAi).Reason));
