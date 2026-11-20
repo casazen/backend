@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using Casazen.Core.Entities;
+using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Regulatory;
 
@@ -647,20 +648,22 @@ public static class TicinoPoliceFile
 
     /// <summary>
     /// The sheet of a group (decision D11): the first name, the last name, the birth date and the nationality (ISO alpha-3) of every member, kept five
-    /// years at the disposal of the police and of the regional tourism organizations. CSV in UTF-8 with its byte order mark (a spreadsheet then reads
-    /// the accents), semicolons, the header of <see cref="GroupSheetColumns"/>, lines ended by CRLF, dates <c>dd.MM.yyyy</c>; a datum that is not known
-    /// stays empty, a semicolon inside a value becomes a comma. Never stored by CasaZen: the host keeps it, or files it in the archive of the receipts
-    /// (type <c>GroupSheet</c>).
+    /// years at the disposal of the police and of the regional tourism organizations. It is a file the host opens in a spreadsheet, so the one writer of
+    /// those files writes it (<see cref="CsvWriter"/>): UTF-8 with its byte order mark (a spreadsheet then reads the accents), semicolons, the header of
+    /// <see cref="GroupSheetColumns"/>, every line ended by CRLF, dates <c>dd.MM.yyyy</c>; a datum that is not known stays empty. The names are typed by
+    /// the guests: a text that a spreadsheet would run as a formula (it starts with <c>= + - @</c>, a tab or a CR) gets a leading apostrophe and is never
+    /// calculated, and a cell with a semicolon, a quote or a line break is quoted. Never stored by CasaZen: the host keeps it, or files it in the archive
+    /// of the receipts (type <c>GroupSheet</c>).
     /// </summary>
     public static byte[] WriteGroupSheet(IReadOnlyList<TicinoGroupMember> members)
     {
         ArgumentNullException.ThrowIfNull(members);
-        var lines = new List<string> { string.Join(';', GroupSheetColumns) };
-        lines.AddRange(members.Select(m => string.Join(';', new[]
-        {
-            m.FirstName, m.LastName, m.BirthDate is { } born ? SwissDate(born) : string.Empty, m.Nationality,
-        }.Select(CsvValue))));
-        return [.. Encoding.UTF8.GetPreamble(), .. new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(string.Join("\r\n", lines))];
+        var rows = new List<IReadOnlyList<object?>>();
+        rows.Add([.. GroupSheetColumns]);
+        foreach (var member in members)
+            rows.Add([member.FirstName, member.LastName, member.BirthDate is { } born ? SwissDate(born) : string.Empty, member.Nationality]);
+
+        return CsvWriter.Write(rows);
     }
 
     /// <summary>The value of <c>documentType</c> in the XML.</summary>

@@ -152,7 +152,7 @@ refuse for a missing mandatory field.
 |---|---|
 | `GET api/properties/{id}/swiss/ticino-notification?date=yyyy-MM-dd` | the arrival day: rows (`kind`: `guest` or `group`, `groupSize`), issues, `warnings` (`parental_authorization_needed`, `group_sheet_incomplete`), `xmlAvailable`, receipts, deadline, the days still to notify (no `date`: the oldest pending day of the last 14, else today), `csvCharset`, `transliteratedCount` |
 | `POST api/properties/{id}/swiss/ticino-notification` `{ reportDate, format: "csv" \| "xml" }` | the file (attachment), never stored |
-| `GET api/properties/{id}/swiss/ticino-notification/group-sheet?bookingId=` | the sheet of a group of 6 or more (CSV UTF-8 with BOM), `guest.read`, never stored |
+| `GET api/properties/{id}/swiss/ticino-notification/group-sheet?bookingId=` | the sheet of a group of 6 or more (CSV UTF-8 with BOM, written by `CsvWriter`: a name that a spreadsheet would run as a formula gets a leading apostrophe), `guest.read`, never stored |
 | `POST api/properties/{id}/swiss/upload-receipt` | the receipt of the portal (type `Police`, report date = arrival day), or a document kept 5 years: `ParentalAuthorization`, `GroupSheet` (report date = arrival day) |
 | `GET api/compliance/summary` → `ticinoNotifications` | one `NotifyTicinoPolice` item per Ticino property and arrival day still to notify, the day in `period` |
 

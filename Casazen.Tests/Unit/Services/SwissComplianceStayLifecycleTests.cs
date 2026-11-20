@@ -149,7 +149,7 @@ public class SwissComplianceStayLifecycleTests
         Assert.StartsWith("scheda-gruppo-ti-2026-11-18-", sheet.FileName, StringComparison.Ordinal);
         var lines = Encoding.UTF8.GetString(sheet.Content.AsSpan(Encoding.UTF8.Preamble.Length)).Split("\r\n");
         Assert.Equal(["Nome;Cognome;Data di nascita;Nazionalità", "Test0;Gruppo;01.01.1990;CHE"], lines.Take(2));
-        Assert.Equal(7, lines.Length);
+        Assert.Equal(8, lines.Length); // the header, the six persons and the empty text after the last CRLF
         var leader = Assert.Single(day.Plan.Registrations, r => r.BookingId == group.Id);
         Assert.Equal((TicinoRowKind.Group, 6, 5, 0), (leader.Kind, leader.GroupSize, leader.PersonsOver14, leader.PersonsUnder14));
 

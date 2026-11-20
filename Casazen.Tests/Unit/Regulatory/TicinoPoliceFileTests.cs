@@ -388,7 +388,8 @@ public class TicinoPoliceFileTests
             "NL-12345678;Guida;Laura;04.01.1984;CHE;19.11.2026;21.11.2026;SVIZZERA;ABCDE-12345;Via Test 1;6900;Lugano;CHE;TI123456;4;2;Passaporto;X1234567",
             Windows1252.GetString(TicinoPoliceFile.WriteCsv(plan.Registrations)).Split("\r\n")[1]);
 
-        // The sheet of the group: the 7 members, the leader first, the four data of each, UTF-8 with its byte order mark.
+        // The sheet of the group: the 7 members, the leader first, the four data of each, UTF-8 with its byte order mark, every line ended by CRLF (the last
+        // one too: the one writer of the files the host opens in a spreadsheet, so the text after the last CRLF is empty).
         var sheet = TicinoPoliceFile.WriteGroupSheet(TicinoPoliceFile.GroupSheetOf(stay)!);
         Assert.True(sheet.AsSpan().StartsWith(Encoding.UTF8.Preamble));
         Assert.Equal(
@@ -401,11 +402,41 @@ public class TicinoPoliceFileTests
                 "Teo;Membro;18.11.2011;CHE",
                 "Ada;Membro;18.11.2016;CHE",
                 "Ivo;Membro;18.11.2016;CHE",
+                string.Empty,
             ],
             Encoding.UTF8.GetString(sheet.AsSpan(Encoding.UTF8.Preamble.Length)).Split("\r\n"));
 
         // Only the leader is a row: the check-in asks the document of the leader alone.
         Assert.Equal([0], TicinoPoliceFile.NotifiedPositions(stay.Guests.Select(g => (g.Position, g.Type, g.BirthDate)), Arrival));
+    }
+
+    [Fact]
+    public void GroupSheet_ANameASpreadsheetWouldRunAsAFormula_IsWrittenAsText_Test()
+    {
+        // The names are typed by the guests and the sheet is opened in a spreadsheet: a text that starts with = + - @ (or a tab) would be run as a formula, so
+        // it is written with a leading apostrophe, as every file the host downloads (CsvWriter); a cell with a semicolon or a quote is quoted, never changed;
+        // an accent and the digits of a date are written as they are.
+        TicinoGroupMember[] members =
+        [
+            new("=1+1", "@SUM(A1:A9)", new DateOnly(1984, 1, 4), "CHE"),
+            new("+390212345", "-Rossi", new DateOnly(1990, 5, 6), "ITA"),
+            new("\t=cmd", "Dell'Orto; Jr \"Il Grande\"", null, "CHE"),
+            new("Zoë", "Müller", new DateOnly(2001, 2, 3), "DEU"),
+        ];
+
+        var sheet = TicinoPoliceFile.WriteGroupSheet(members);
+
+        Assert.True(sheet.AsSpan().StartsWith(Encoding.UTF8.Preamble));
+        Assert.Equal(
+            [
+                "Nome;Cognome;Data di nascita;Nazionalità",
+                "'=1+1;'@SUM(A1:A9);04.01.1984;CHE",
+                "'+390212345;'-Rossi;06.05.1990;ITA",
+                "'\t=cmd;\"Dell'Orto; Jr \"\"Il Grande\"\"\";;CHE",
+                "Zoë;Müller;03.02.2001;DEU",
+                string.Empty,
+            ],
+            Encoding.UTF8.GetString(sheet.AsSpan(Encoding.UTF8.Preamble.Length)).Split("\r\n"));
     }
 
     [Fact]

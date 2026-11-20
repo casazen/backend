@@ -67,7 +67,9 @@ police, question 4 of the draft request):
   the file (it cannot be counted); a member without a name or a nationality does not, but the day warns `group_sheet_incomplete`.
 - **The group sheet**: `GET api/properties/{id}/swiss/ticino-notification/group-sheet?bookingId=` (permission `guest.read`, never cached, never
   stored): CSV in UTF-8 with byte order mark, `Nome;Cognome;Data di nascita;Nazionalità`, the leader first. The host keeps it 5 years, best by
-  uploading it to the archive (`POST …/upload-receipt`, type `GroupSheet`, report date = the arrival day).
+  uploading it to the archive (`POST …/upload-receipt`, type `GroupSheet`, report date = the arrival day). The names are typed by the guests and
+  the host opens the sheet in a spreadsheet, so it is written by the one writer of those files (`CsvWriter`): a name that starts with `=`, `+`, `-`
+  or `@` (or a tab) gets a leading apostrophe and is never run as a formula, and a cell with a semicolon or a quote is quoted.
 - **Minors without an adult**: each minor is a row (as before), and the day warns `parental_authorization_needed`. The host files the written
   authorization of the parents in the archive (type `ParentalAuthorization`, report date = the arrival day). Without it the police is to be told at
   once (the rule of the canton): CasaZen never contacts the police.
