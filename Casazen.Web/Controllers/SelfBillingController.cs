@@ -12,8 +12,9 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// The self-billed invoices (TD17) of the commissions that foreign portals charge an Italian account holder (E17/F01/US03/T01, NF-116): the list and the detail of the month
-/// (the drafts and the issued ones, and the originals a correction replaced), the drafts of a month made from the owner ledger, the issue of a draft, the discard of a draft and the correction
-/// of a TD17 the SDI rejected. Every action needs <c>agency.invoice.manage</c> (create and issue invoices, agency plan) and <c>Features:FiscalDocumentIssuance</c> (404 while it is off). The PDF
+/// (the drafts and the issued ones, the originals a correction replaced and the replacements closed as «non più dovuta»), the drafts of a month made from the owner ledger, the issue of a draft, the discard of a
+/// draft, the correction of a TD17 the SDI rejected and the closing of its replacement when the month no longer supports it. Every action needs <c>agency.invoice.manage</c> (create and issue invoices, agency plan)
+/// and <c>Features:FiscalDocumentIssuance</c> (404 while it is off). The PDF
 /// and the XML of a TD17 are the ones of every fiscal document (<c>GET api/fiscal/documents/{id}/pdf</c> and <c>/xml</c>, a document without a booking: the whole org only); once issued its
 /// state towards the SDI is <c>to_send</c> like every Italian electronic invoice, and the SDI port sends it.
 /// </summary>
@@ -159,6 +160,31 @@ public class SelfBillingController(
         var replacement = await corrections.StartSelfBillingCorrectionAsync(orgId, id, User.GetUserId(), ct);
         var detail = await selfBilling.GetAsync(orgId, replacement.Id, ct);
         return CreatedAtAction(nameof(Get), new { id = replacement.Id }, SelfBillingDto.From(detail));
+    }
+
+    /// <summary>
+    /// The exit of the replacement draft of a rejected TD17 that the month no longer supports («Chiusa, non più dovuta», FIX/BE-TD17-JOB-EXIT): <c>{ reason, note? }</c>, <c>reason</c> one of
+    /// <c>portal_credit_note</c>, <c>holder_no_longer_subject</c> or <c>duplicate_or_error</c> (mandatory), <c>note</c> a short free text. The draft becomes <c>Discarded</c> with the reason, the caller and the day
+    /// recorded and <b>keeps its number</b>: it stays reserved, is never given to another document and is listed in the register of the unused numbers of the accountant package. The rejected original stays as
+    /// history (an internal outcome of CasaZen, never «scarto confermato»). Only for a draft that replaces a rejected TD17 and that the system reports as kept (<c>keptReason</c> of the list and the detail); the
+    /// generic discard (<c>DELETE {id}</c>) stays refused for it. Answers <c>200</c> with the detail of the closed draft (<c>invoice.closedReason</c>, <c>closedAt</c>, <c>closedBy</c>, <c>closedNote</c>); the same
+    /// call again with the same reason answers the same closed draft. Behind <c>Features:SdiSubmission</c> too (404 while it is off), like the correction that makes such a draft. 404
+    /// <c>fiscal_document_not_found</c> (another org, not a TD17); 422 <c>close_reason_required</c>, <c>close_note_too_long</c>, <c>self_billing_already_closed</c> (already closed with another reason), <c>self_billing_not_closable</c> (not the replacement of a rejected TD17, one the month
+    /// still supports); 403 without the whole org.
+    /// </summary>
+    [HttpPost("{id:guid}/close-not-due")]
+    [FeatureGate(FeatureFlags.SdiSubmission)]
+    [ProducesResponseType(typeof(SelfBillingDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<SelfBillingDto>> CloseNotDue(Guid id, [FromBody] CloseSelfBillingNotDueRequest request)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+
+        var closed = await selfBilling.CloseNotDueAsync(orgId, id, request.Reason, request.Note, User.GetUserId(), HttpContext.RequestAborted);
+        return Ok(SelfBillingDto.From(closed));
     }
 
     /// <summary>The caller's org, only when its reach is the whole org.</summary>

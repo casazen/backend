@@ -19,15 +19,21 @@ namespace Casazen.Web.Controllers;
 /// <c>ticino-notification</c> generates the police XML of one night, <c>otr-report</c> the OTR CSV of one period,
 /// <c>upload-receipt</c> (multipart) records a receipt. The files are built on every request from the bookings as they are at
 /// that moment and are never stored; the answer carries the whole file as text (<see cref="SwissComplianceFileResponse"/>).</para>
+/// <para><b>Declaration of a day</b> (E30/F02/US02/T01, NF-128, decision D10): <c>POST ticino-notification/declare</c> says the day was uploaded to the portal, with or without the receipt
+/// (idempotent), and <c>DELETE ticino-notification/declare?arrivalDay=</c> undoes it. A declared day is closed like a day with a receipt (the one rule of
+/// <c>ITicinoNotificationService.ListPendingDaysAsync</c>); the file of a closed day is generated again only with <c>confirmRegenerate: true</c> (the portal may create duplicates), and
+/// every generation of a file or a group sheet leaves an audit row with no personal data. The other hosts of the property learn a declaration or its undo live
+/// (<c>ticino-notification-declared</c>: push, bell, open pages).</para>
 /// <para><b>Who may call.</b> The class asks <c>booking.read</c>; the two files list the guests by name, so they also ask
-/// <c>guest.read</c> (as the Alloggiati record file does), and recording a receipt declares a legal communication done, so it asks
+/// <c>guest.read</c> (as the Alloggiati record file does), and recording a receipt or declaring a day declares a legal communication done, so they ask
 /// <c>alloggiati.submit</c> (the owner and the property managers; not a collaborator). Then the property is authorized as a row
 /// (TN-3): one of another org is a 404, one the caller's scope does not reach (a collaborator «Solo alcuni» not given it) is a 403,
-/// and nothing is generated or stored for either. No feature flag: the services were never behind one.</para>
+/// and nothing is generated, declared or stored for either. No feature flag: the services were never behind one.</para>
 /// <para><b>Errors</b> are ProblemDetails with a stable <c>code</c> (FD-05): 400 <c>validation_error</c> (a field is missing or is
 /// not a date, with <c>errors</c> per field), <c>swiss_period_invalid</c>, <c>swiss_period_too_long</c>,
 /// <c>swiss_receipt_type_invalid</c>, <c>swiss_receipt_file_invalid</c>; 401 <c>unauthorized</c>; 403 <c>forbidden</c>;
-/// 404 <c>property_not_found</c>; 422 <c>property_not_in_ticino</c> (the property has no Swiss municipality or is in another canton).</para>
+/// 404 <c>property_not_found</c>; 409 <c>ticino_day_already_declared</c> (the file of a closed day without <c>confirmRegenerate</c>); 422 <c>property_not_in_ticino</c> (the property has no
+/// Swiss municipality or is in another canton), <c>ticino_declaration_day_in_future</c>, <c>ticino_declaration_receipt_invalid</c>.</para>
 /// </remarks>
 [ApiController]
 [Route("api/properties/{propertyId:guid}/swiss")]
@@ -98,7 +104,9 @@ public class SwissComplianceController(
 
     /// <summary>
     /// One arrival day of the police notification of a Ticino property (notifiche.ti.ch, casazen/backend#979): who arrives, who is in the
-    /// file and what the others miss, whether the receipt of the portal is recorded, and the days still to notify. Without <c>date</c> it
+    /// file and what the others miss, whether the receipt of the portal is recorded, who declared the day uploaded and when (<c>declaredAt</c>,
+    /// <c>declaredBy</c>), how many times its file was generated (<c>fileGeneratedCount</c>, <c>fileGeneratedAt</c>), whether the day is closed
+    /// (<c>alreadyDeclared</c>: declared or with a receipt) and the days still to notify. Without <c>date</c> it
     /// is the oldest day still to notify (of the last 14), or today when none is.
     /// </summary>
     /// <param name="propertyId">The property.</param>
@@ -138,12 +146,16 @@ public class SwissComplianceController(
     /// (<c>GET</c> lists the others with what they miss); it is rebuilt on every request and never stored.
     /// </summary>
     /// <param name="propertyId">The property.</param>
-    /// <param name="request">Body <c>{ "reportDate": "2026-11-19", "format": "csv" }</c> (<see cref="TicinoNotificationRequest"/>).</param>
+    /// <param name="request">Body <c>{ "reportDate": "2026-11-19", "format": "csv", "confirmRegenerate": false }</c> (<see cref="TicinoNotificationRequest"/>).</param>
     /// <param name="cancellationToken">Aborts the request.</param>
-    /// <response code="200">The file (attachment), never cached: it holds guest data.</response>
+    /// <response code="200">The file (attachment), never cached: it holds guest data. Every generation leaves one audit row (format, rows, hash; no personal data).</response>
     /// <response code="400"><c>validation_error</c>: <c>reportDate</c> is missing; <c>ticino_file_format_invalid</c>: the format is not <c>csv</c> or <c>xml</c>.</response>
     /// <response code="403">The caller may not read the bookings or the guests of this property.</response>
     /// <response code="404"><c>property_not_found</c>: no such property in the caller's org.</response>
+    /// <response code="409">
+    /// <c>ticino_day_already_declared</c>: the day is declared uploaded (or has a receipt of the portal) and the portal may create duplicates: the same request with
+    /// <c>confirmRegenerate: true</c> generates the file again.
+    /// </response>
     /// <response code="422">
     /// <c>property_not_in_ticino</c>; <c>ticino_structure_id_missing</c>: the property has no identifier of the portal;
     /// <c>ticino_notification_empty</c>: no guest of the day has complete data; <c>ticino_xml_not_available</c>: use the CSV.
@@ -154,6 +166,7 @@ public class SwissComplianceController(
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult> GenerateTicinoNotification(
         Guid propertyId,
@@ -168,13 +181,104 @@ public class SwissComplianceController(
             return this.ApiProblem(StatusCodes.Status400BadRequest, TicinoFileFormatInvalidCode, "TicinoFileFormatInvalid");
 
         var reportDate = request.ReportDate!.Value;
-        var file = await ticinoNotifications.GenerateFileAsync(propertyId, reportDate, format, cancellationToken);
+        var file = await ticinoNotifications.GenerateFileAsync(
+            propertyId, reportDate, format, new TicinoFileRequest(User.GetUserId(), request.ConfirmRegenerate), cancellationToken);
 
         logger.LogInformation(
-            "User {UserId} generated the Ticino police file ({Format}, {Rows} rows) of property {PropertyId} for {ReportDate}",
-            User.GetUserId(), format, file.Rows, propertyId, reportDate);
+            "User {UserId} generated the Ticino police file ({Format}, {Rows} rows) of property {PropertyId} for {ReportDate} (regeneration confirmed: {Confirmed})",
+            User.GetUserId(), format, file.Rows, propertyId, reportDate, request.ConfirmRegenerate);
         Response.Headers.CacheControl = "private, no-store";
         return File(file.Content, file.ContentType, file.FileName);
+    }
+
+    /// <summary>
+    /// Declares an arrival day of a Ticino property as uploaded to the police portal, with or without the receipt (E30/F02/US02/T01, NF-128, decision D10): the day is closed like a day
+    /// with a receipt (it is no longer one of the days to notify, so the alerts and the cockpit stop listing it) and shows who declared it and when. <b>Idempotent</b>: a day declared already
+    /// answers the declaration that exists (<c>created: false</c>), whoever repeats the call; a <c>receiptId</c> is attached only to a declaration that has none (one already attached is never
+    /// replaced by another). The other hosts of the
+    /// property are told live when a declaration is created (<c>ticino-notification-declared</c>). The answer holds no guest data.
+    /// </summary>
+    /// <param name="propertyId">The property.</param>
+    /// <param name="request">Body <c>{ "arrivalDay": "2026-11-19", "receiptId": null }</c> (<see cref="DeclareTicinoDayRequest"/>).</param>
+    /// <param name="cancellationToken">Aborts the request.</param>
+    /// <response code="200"><see cref="TicinoDeclarationResponse"/>, never cached.</response>
+    /// <response code="400"><c>validation_error</c>: <c>arrivalDay</c> is missing or is not a date.</response>
+    /// <response code="401"><c>unauthorized</c>: the token has no subject.</response>
+    /// <response code="403">The caller may not declare the police communication of this property (<c>alloggiati.submit</c>, or the property is out of their reach).</response>
+    /// <response code="404"><c>property_not_found</c>: no such property in the caller's org.</response>
+    /// <response code="422">
+    /// <c>property_not_in_ticino</c>; <c>ticino_declaration_day_in_future</c>: the day has not started in Switzerland; <c>ticino_declaration_receipt_invalid</c>: the receipt is not a
+    /// <c>Police</c> receipt of this property and day.
+    /// </response>
+    [HttpPost("ticino-notification/declare")]
+    [Authorize(Policy = CasazenPolicies.AlloggiatiSubmit)]
+    [ProducesResponseType(typeof(TicinoDeclarationResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<TicinoDeclarationResponse>> DeclareTicinoDay(
+        Guid propertyId,
+        [FromBody] DeclareTicinoDayRequest request,
+        CancellationToken cancellationToken)
+    {
+        var denied = await AuthorizeAsync(propertyId, AlloggiatiOperations.Submit, cancellationToken);
+        if (denied is not null)
+            return denied;
+
+        if (User.GetUserId() is not { Length: > 0 } userId)
+            return Unauthorized();
+
+        var arrivalDay = request.ArrivalDay!.Value;
+        var declaration = await ticinoNotifications.DeclareDayAsync(propertyId, arrivalDay, userId, request.ReceiptId, cancellationToken);
+
+        logger.LogInformation(
+            "User {UserId} declared the Ticino police notification of property {PropertyId} for {ArrivalDay} (created: {Created})",
+            userId, propertyId, arrivalDay, declaration.Created);
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(TicinoDeclarationResponse.From(declaration));
+    }
+
+    /// <summary>
+    /// Undoes the declaration of an arrival day (E30/F02/US02/T01): by any person of the same org with the same permission as declaring. The day is to notify again unless a receipt of the
+    /// portal is recorded for it (a receipt still closes the day). <b>Idempotent</b>: 204 also when the day was not declared. The other hosts of the property are told live when a
+    /// declaration was removed.
+    /// </summary>
+    /// <param name="propertyId">The property.</param>
+    /// <param name="arrivalDay">The arrival day (<c>yyyy-MM-dd</c>).</param>
+    /// <param name="cancellationToken">Aborts the request.</param>
+    /// <response code="204">Nothing is declared for the day any more.</response>
+    /// <response code="400"><c>validation_error</c>: <c>arrivalDay</c> is missing or is not a date.</response>
+    /// <response code="401"><c>unauthorized</c>: the token has no subject.</response>
+    /// <response code="403">The caller may not declare the police communication of this property (<c>alloggiati.submit</c>, or the property is out of their reach).</response>
+    /// <response code="404"><c>property_not_found</c>: no such property in the caller's org.</response>
+    /// <response code="422"><c>property_not_in_ticino</c>.</response>
+    [HttpDelete("ticino-notification/declare")]
+    [Authorize(Policy = CasazenPolicies.AlloggiatiSubmit)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> UndeclareTicinoDay(Guid propertyId, [FromQuery] DateOnly? arrivalDay, CancellationToken cancellationToken)
+    {
+        var denied = await AuthorizeAsync(propertyId, AlloggiatiOperations.Submit, cancellationToken);
+        if (denied is not null)
+            return denied;
+
+        if (User.GetUserId() is not { Length: > 0 } userId)
+            return Unauthorized();
+        if (arrivalDay is not { } day)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "validation_error", "ValidationError");
+
+        var removed = await ticinoNotifications.UndeclareDayAsync(propertyId, day, userId, cancellationToken);
+
+        logger.LogInformation(
+            "User {UserId} undid the Ticino police declaration of property {PropertyId} for {ArrivalDay} (removed: {Removed})",
+            userId, propertyId, day, removed);
+        return NoContent();
     }
 
     /// <summary>
@@ -211,7 +315,7 @@ public class SwissComplianceController(
         if (bookingId is not { } booking || booking == Guid.Empty)
             return this.ApiProblem(StatusCodes.Status400BadRequest, "validation_error", "ValidationError");
 
-        var sheet = await ticinoNotifications.GetGroupSheetAsync(propertyId, booking, cancellationToken);
+        var sheet = await ticinoNotifications.GetGroupSheetAsync(propertyId, booking, new TicinoFileRequest(User.GetUserId()), cancellationToken);
 
         logger.LogInformation(
             "User {UserId} downloaded the group sheet ({Members} members) of booking {BookingId} of property {PropertyId}",

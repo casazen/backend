@@ -342,6 +342,18 @@
   <data name="SwissReceiptDateTooOld" xml:space="preserve">
     <value>La data indicata è di oltre {0} anni fa: un documento di questo tipo si conserva {0} anni dalla sua data e la conservazione automatica lo cancellerebbe subito. Controlla la data (il giorno di arrivo).</value>
   </data>
+  <data name="SwissArrivalDayRequired" xml:space="preserve">
+    <value>Indica il giorno di arrivo.</value>
+  </data>
+  <data name="TicinoDayAlreadyDeclared" xml:space="preserve">
+    <value>Questo giorno risulta già notificato alla Polizia cantonale: dichiarato come caricato oppure con una ricevuta registrata. Caricare di nuovo il file sul portale può creare dei doppioni. Genera il file solo se serve davvero e conferma.</value>
+  </data>
+  <data name="TicinoDeclarationDayInFuture" xml:space="preserve">
+    <value>Non puoi dichiarare come notificato un giorno che non è ancora iniziato: gli ospiti devono ancora arrivare.</value>
+  </data>
+  <data name="TicinoDeclarationReceiptInvalid" xml:space="preserve">
+    <value>La ricevuta indicata non è una ricevuta della Polizia di questo immobile per questo giorno di arrivo.</value>
+  </data>
   <data name="BookingNotFound" xml:space="preserve">
     <value>Prenotazione non trovata</value>
   </data>
@@ -6445,6 +6457,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocPdfToCollectAtProperty" xml:space="preserve">
     <value>Imposta di soggiorno da pagare in struttura: {0} {1}</value>
   </data>
+  <data name="FiscalDocPdfToCollectReceiptNote" xml:space="preserve">
+    <value>L'importo dell'imposta di soggiorno è una stima: quando la incassa, la struttura rilascia una ricevuta separata e numerata.</value>
+  </data>
   <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
     <value>Copia di cortesia della fattura elettronica: il documento valido ai fini fiscali è il file XML trasmesso al Sistema di Interscambio.</value>
   </data>
@@ -6559,6 +6574,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocLineLodging" xml:space="preserve">
     <value>Soggiorno di {0} notti</value>
   </data>
+  <data name="FiscalDocLineLodgingTaxByPortal" xml:space="preserve">
+    <value>Soggiorno di {0} notti. Imposta di soggiorno incassata dal portale (per le esenzioni rivolgersi al portale)</value>
+  </data>
   <data name="FiscalDocLineCleaning" xml:space="preserve">
     <value>Pulizie finali</value>
   </data>
@@ -6568,8 +6586,8 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="FiscalDocLineTouristTaxCh" xml:space="preserve">
     <value>Tassa di soggiorno (non soggetta all'IVA)</value>
   </data>
-  <data name="FiscalDocLineToCollectNote" xml:space="preserve">
-    <value>{0} - da pagare in struttura</value>
+  <data name="FiscalDocLineTouristTaxToCollect" xml:space="preserve">
+    <value>Imposta di soggiorno da pagare in struttura</value>
   </data>
   <data name="FiscalDocLineToCollectNoteCh" xml:space="preserve">
     <value>{0} - tassa da riscuotere in struttura</value>
@@ -6904,6 +6922,18 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="SelfBillingCorrectionNotApplicable" xml:space="preserve">
     <value>Si corregge così solo un'autofattura TD17 scartata dallo SDI e senza una nota di credito emessa.</value>
   </data>
+  <data name="SelfBillingNotClosable" xml:space="preserve">
+    <value>Si chiude come non più dovuta solo la bozza sostitutiva di un'autofattura TD17 scartata dallo SDI che il mese non sostiene più: se i suoi dati sono ancora validi, emettila.</value>
+  </data>
+  <data name="SelfBillingAlreadyClosed" xml:space="preserve">
+    <value>Questa bozza è già stata chiusa con un altro motivo: il motivo e l'utente registrati non si cambiano.</value>
+  </data>
+  <data name="SelfBillingCloseReasonRequired" xml:space="preserve">
+    <value>Indica il motivo della chiusura: nota di credito del portale, titolare non più soggetto passivo, oppure duplicato o errore.</value>
+  </data>
+  <data name="SelfBillingCloseNoteTooLong" xml:space="preserve">
+    <value>La nota è troppo lunga: al massimo {0} caratteri.</value>
+  </data>
   <data name="SelfBillingLineCommissions" xml:space="preserve">
     <value>Commissioni di intermediazione {0} - {1} - {2}</value>
   </data>
@@ -6921,6 +6951,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="BillingChannelsInvalid" xml:space="preserve">
     <value>L'impostazione dei portali non è valida: controlla il campo indicato.</value>
+  </data>
+  <data name="RechargeWaiverNotAcknowledged" xml:space="preserve">
+    <value>Senza riaddebito le commissioni dei portali sugli account intestati all'agenzia restano a carico dell'agenzia e non vengono addebitate ai proprietari: conferma la rinuncia per salvare.</value>
   </data>
   <data name="ChannelAccountHoldersInvalid" xml:space="preserve">
     <value>L'elenco degli intestatari degli account dei portali non è valido: controlla la riga e il campo indicati.</value>
@@ -7424,6 +7457,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Commissioni del portale riaddebitate dal gestore (fattura n. {0})</value>
   </data>
   <data name="StatementFileChannelFeesAgencyNotRecharged" xml:space="preserve">
+    <value>Commissione del portale sostenuta dall'agenzia, non addebitata al proprietario</value>
+  </data>
+  <data name="StatementFileChannelFeesAgencyCharged" xml:space="preserve">
     <value>Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)</value>
   </data>
   <data name="StatementFileCommissionInvoice" xml:space="preserve">
@@ -7664,7 +7700,43 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Riaddebitata al proprietario</value>
   </data>
   <data name="AccPkgTreatmentBorne" xml:space="preserve">
-    <value>Non riaddebitata in fattura</value>
+    <value>A carico dell'agenzia</value>
+  </data>
+  <data name="AccPkgUnusedNumbersTitle" xml:space="preserve">
+    <value>Numeri delle autofatture TD17 non utilizzati (bozze sostitutive chiuse come non più dovute), dal {0} al {1}, per data di chiusura. Ogni numero resta riservato e non viene riassegnato: è un buco documentato nella serie dell'emittente</value>
+  </data>
+  <data name="AccPkgColRejectedOn" xml:space="preserve">
+    <value>Data del documento scartato</value>
+  </data>
+  <data name="AccPkgColClosedOn" xml:space="preserve">
+    <value>Chiusa il</value>
+  </data>
+  <data name="AccPkgColCloseReason" xml:space="preserve">
+    <value>Motivo della chiusura</value>
+  </data>
+  <data name="AccPkgColCloseNote" xml:space="preserve">
+    <value>Nota</value>
+  </data>
+  <data name="AccPkgColOriginalSdi" xml:space="preserve">
+    <value>Esito SDI del documento originale</value>
+  </data>
+  <data name="AccPkgColSdiErrorCode" xml:space="preserve">
+    <value>Codice di scarto SDI</value>
+  </data>
+  <data name="AccPkgColClosedBy" xml:space="preserve">
+    <value>Chiusa da</value>
+  </data>
+  <data name="AccPkgUserNoLongerPresent" xml:space="preserve">
+    <value>utente non più presente</value>
+  </data>
+  <data name="AccPkgCloseReasonPortalCreditNote" xml:space="preserve">
+    <value>Nota di credito del portale</value>
+  </data>
+  <data name="AccPkgCloseReasonHolderNoLongerSubject" xml:space="preserve">
+    <value>Titolare non più soggetto passivo</value>
+  </data>
+  <data name="AccPkgCloseReasonDuplicateOrError" xml:space="preserve">
+    <value>Duplicato o errore</value>
   </data>
   <data name="AccPkgStatementsTitle" xml:space="preserve">
     <value>Rendiconti pubblicati ai proprietari, per mese di competenza (ultima versione pubblicata)</value>
@@ -7934,13 +8006,13 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Commissioni dei portali sui conti intestati all'agenzia, per mese di competenza (dal libro dei proprietari)</value>
   </data>
   <data name="AccPkgSumMarginTitle" xml:space="preserve">
-    <value>Margine = provvigioni e riaddebiti fatturati (imponibile) meno le commissioni dei portali a carico dell'agenzia</value>
+    <value>Margine = provvigioni e riaddebiti fatturati (imponibile) meno le commissioni dei portali sui conti intestati all'agenzia: quelle riaddebitate rientrano con i riaddebiti, quelle non riaddebitate restano a carico dell'agenzia e contano una volta sola</value>
   </data>
   <data name="AccPkgSumMargin" xml:space="preserve">
     <value>Margine</value>
   </data>
   <data name="AccPkgSumPortalBorne" xml:space="preserve">
-    <value>Commissioni dei portali a carico dell'agenzia</value>
+    <value>Commissioni dei portali sui conti dell'agenzia</value>
   </data>
   <data name="AccPkgSumOwnersTitle" xml:space="preserve">
     <value>Report per proprietario: ricavo e occupazione degli immobili, per competenza</value>

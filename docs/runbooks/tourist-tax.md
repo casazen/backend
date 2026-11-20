@@ -43,7 +43,9 @@ A link reaches its own stay only (unknown, expired, cancelled: 404). A check-in 
 ## What is due (`TouristTaxCollectionRules`)
 
 - The channel collects the tax (the channel rule of the comune or the host's declaration; in Switzerland the portals of the issuer's profile,
-  `SwissTouristTax:PlatformCollected` by default): **nothing to pay**, state `CollectedByChannel`.
+  `SwissTouristTax:PlatformCollected` by default): **nothing to pay**, state `CollectedByChannel`. (The **guest document** of an Italian portal booking decides who collects
+  with two more sources, the organization's own list of portals and a default, the host at the property: `ItalianPortalTouristTax`, decision 2 of 2026-11-20, see
+  [`fiscal-documents.md`](fiscal-documents.md) § The tourist tax of an Italian portal stay. This collection is not changed by it.)
 - Who collects is not known (a channel stay with no rule and no declaration) or the amount cannot be calculated: **nothing is charged**, the page says the
   host will tell the amount.
 - CasaZen collected the tax with the price: a **direct** booking with a payment through CasaZen that went through (completed, or completed and partly refunded)

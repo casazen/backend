@@ -95,7 +95,9 @@ public static class OrgActivityDetailKeys
 
     /// <summary>
     /// The code of the part of the activation plan a «Do it for me» request is about (<c>compliance</c>, <c>channels</c>...): a code of a closed list
-    /// (E10/F01/US03/T01); or what an item of the owner portal operations is (<c>OwnerPortalParts</c>: <c>stay</c>, <c>stayRule</c>, ..., E07/F07/US01).
+    /// (E10/F01/US03/T01); or what an item of the owner portal operations is (<c>OwnerPortalParts</c>: <c>stay</c>, <c>stayRule</c>, ..., E07/F07/US01); or, on a line
+    /// <see cref="OrgActivityType.OrgSettingsChanged"/>, the one setting it names: <c>portalCommissionRechargeWaiver</c>, the acknowledged waiver of the recharge of the portal
+    /// commissions (<c>PortalAccountErrors.RechargeWaiverActivityPart</c>, FIX/BE-V2-NO-RECHARGE).
     /// </summary>
     public const string Part = "part";
 
@@ -237,7 +239,9 @@ public static partial class OrgActivityCatalog
         new(OrgActivityType.OrgSlugChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
         new(OrgActivityType.TierAssigned, OrgActivityArea.Account, OrgActivitySubjectType.Org,
             [OrgActivityDetailKeys.ToTier], Reserved: true),
-        new(OrgActivityType.OrgSettingsChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
+        // The other settings of the org: the fact, never a value; the one part it names is the acknowledged waiver of the recharge of the portal commissions
+        // (FIX/BE-V2-NO-RECHARGE, a renunciation the agency has to be able to show: who and when are the line's). The catalog is at its cap: a line of this event, not a new one.
+        new(OrgActivityType.OrgSettingsChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, [OrgActivityDetailKeys.Part]),
 
         // The mode change of a property (PM-02, written by PropertyModeService since AM-02c). The area is the one of the property,
         // which the service passes (ShortRent is only the default of the catalog).

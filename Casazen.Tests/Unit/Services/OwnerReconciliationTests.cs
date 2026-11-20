@@ -157,6 +157,41 @@ public class OwnerReconciliationTests
     }
 
     /// <summary>
+    /// PROOF TEST: money rule (FIX/BE-V2-NO-RECHARGE). The commission of a portal account of the agency that the organization does not recharge is borne by the agency (a line for
+    /// information only): the portal kept it all the same, so the payout it is expected to make is the gross less it; and the published statement, which holds the balance of the owner
+    /// only (100.00 less the commission of the agency, 80.00), reconciles with the ledger: the line of the agency is in neither total and never a difference.
+    /// </summary>
+    [Fact]
+    public async Task Reconciliation_TheCommissionTheAgencyBears_IsThePortalsButInNoBalanceOfTheOwner_Test()
+    {
+        var world = await OwnerMonthEndWorld.CreateAsync();
+        var owner = await world.OwnerAsync();
+        var property = await world.PropertyAsync("CHF", (owner, 100m));
+        await world.MandateAsync(owner, 20m);
+        world.Db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile { OrgId = world.OrgId, PortalAccountHolder = PortalAccountHolder.Agency, RechargePortalCommissions = false });
+        await world.Db.SaveChangesAsync();
+        await world.StayAsync(property, BookingSource.BookingCom, 100m, Day(10, 2), Day(10, 4), otaCommission: 15m, otaNet: 85m);
+        var posted = await world.Service.PostPeriodAsync(world.OrgId, 2026, 10, UserId);
+        Assert.DoesNotContain(posted.Issues, i => i.Blocking);
+        var fees = await world.Db.OwnerLedgerEntries.AsNoTracking().Where(e => e.EntryType == OwnerLedgerEntryType.ChannelFee || e.EntryType == OwnerLedgerEntryType.ChannelFeeBorneByAgency).ToListAsync();
+        Assert.Equal((OwnerLedgerEntryType.ChannelFeeBorneByAgency, -15m), (Assert.Single(fees).EntryType, fees[0].Amount));
+
+        world.Clock.Advance(TimeSpan.FromMinutes(1));
+        var version = await world.Service.GenerateVersionAsync(world.OrgId, owner, 2026, 10, UserId);
+        await world.Service.ApproveVersionAsync(world.OrgId, version.Id, UserId);
+        await world.Service.PublishVersionAsync(world.OrgId, version.Id, UserId);
+
+        var reconciliation = await world.Reconciliation.GetAsync(world.OrgId, 2026, 10);
+
+        var booking = Assert.Single(reconciliation.Channels, r => r.Channel == BookingSource.BookingCom);
+        Assert.Equal((100m, 15m), (booking.LedgerGross, booking.Commissions.FromPortal));
+        Assert.Equal(((decimal?)85m, (decimal?)85m, (decimal?)0m), (booking.ExpectedNetPayout, booking.RecordedPayouts, booking.Difference));
+        var statements = Assert.Single(reconciliation.Statements);
+        Assert.Equal((80m, 80m, 0m), (statements.LedgerTotal, statements.PublishedTotal, statements.Difference));
+        Assert.Empty(reconciliation.Differences);
+    }
+
+    /// <summary>
     /// Money: a payout CasaZen has no figure for is not available, never a zero. A row with a figure for some of its stays compares only those (the listed differences add up to its
     /// difference) and counts the others; the stay without a figure is told with its own reason and a <c>null</c> recorded figure and difference.
     /// </summary>

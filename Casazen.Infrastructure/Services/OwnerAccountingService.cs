@@ -36,6 +36,10 @@ namespace Casazen.Infrastructure.Services;
 /// after it (E13/F01/US02/T02); a service built without it (a test) publishes the version and the JSON file only.</para>
 /// <para><b>Flag.</b> With <paramref name="taxChecks"/> and <c>Features:TaxReportingExports</c> on, a version of an owner presumed a business (the limit of units of a private
 /// person, E18/F01/US03/T01) records the non-blocking issue <c>short_let_business_presumed</c>: the statement is right, the tax treatment of the owner is what to look at.</para>
+/// <para><b>Who bears a channel commission</b> (FIX/BE-V2-NO-RECHARGE, decision 1 of 20/11/2026). The commission of a listing whose portal account the agency holds while the
+/// organization does not recharge the commissions of the accounts it holds (<paramref name="holders"/>, the very test of the owner invoice) is the agency's cost: it is
+/// posted as <see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>, for information only, and no balance of the owner counts it (<see cref="OwnerLedgerBalance"/>). V1 and
+/// V2 with the recharge post a <see cref="OwnerLedgerEntryType.ChannelFee"/> as before. A service built without the resolver reads every listing as V1.</para>
 /// </remarks>
 public sealed partial class OwnerAccountingService(
     AppDbContext db,
@@ -46,7 +50,8 @@ public sealed partial class OwnerAccountingService(
     IOwnerStatementDocuments? statementFiles = null,
     IOwnerTaxChecks? taxChecks = null,
     ICleaningCostSource? cleaningCosts = null,
-    IInternalActivityService? activities = null) : IOwnerAccountingService
+    IInternalActivityService? activities = null,
+    IPortalAccountHolderResolver? holders = null) : IOwnerAccountingService
 {
     /// <summary>A rate older than this many days before the day of the source is not used.</summary>
     public const int FxMaxAgeDays = 7;
@@ -172,8 +177,10 @@ public sealed partial class OwnerAccountingService(
             .OrderBy(id => id)
             .ToList();
 
-        // What the earlier months say now, against the balance a version carried in: a line posted there after its cut-off makes the version stale.
+        // What the earlier months say now, against the balance a version carried in: a line posted there after its cut-off makes the version stale. A line for information only
+        // (the commission of a portal the agency bears) is in no balance.
         var openings = (await db.OwnerLedgerEntries.AsNoTracking()
+                .CountingInBalance()
                 .Where(e => e.OrgId == orgId && (e.PeriodYear < year || (e.PeriodYear == year && e.PeriodMonth < month)))
                 .GroupBy(e => new { e.PropertyOwnerId, e.StatementCurrency })
                 .Select(g => new { Owner = g.Key.PropertyOwnerId, Currency = g.Key.StatementCurrency, Sum = g.Sum(e => e.Amount) })

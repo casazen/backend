@@ -77,7 +77,8 @@ public interface IFiscalDocumentService
     /// <summary>
     /// The draft of a self-billed invoice discarded (E17/F01/US03/T01), called by <see cref="ISelfBillingService.DiscardDraftAsync"/> once it checked the organization: no number is
     /// consumed. 404 <c>fiscal_document_not_found</c> (not a self-billed invoice); 422 <c>document_not_draft</c>, <c>document_replacement_holds_number</c> (the draft replaces a TD17 the SDI rejected and
-    /// holds its number: it is issued, never discarded, FIX/BE-TD17-CORRECTION). The endpoints of the guest documents refuse it (422 <c>document_self_billing</c>).
+    /// holds its number: it is issued, never discarded, FIX/BE-TD17-CORRECTION; when the month no longer supports it, it leaves by <see cref="ISelfBillingService.CloseNotDueAsync"/>, which keeps the number
+    /// reserved, FIX/BE-TD17-JOB-EXIT). The endpoints of the guest documents refuse it (422 <c>document_self_billing</c>).
     /// </summary>
     Task DiscardSelfBillingDraftAsync(Guid documentId, CancellationToken ct = default);
 

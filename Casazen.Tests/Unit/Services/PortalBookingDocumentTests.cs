@@ -54,13 +54,16 @@ public class PortalBookingDocumentTests
         Assert.Equal(new PortalCollectionSplit(450.00m, 12.00m), FiscalDocumentPortalCollection.SplitOf(receipt));
         var receiptIt = FiscalDocumentPdfs.Pdf(receipt, ItalianIssuer(), Texts, "it");
         Assert.Equal(new[] { "Pagamento: pagato tramite il portale per EUR 450,00", "Imposta di soggiorno da pagare in struttura: EUR 12,00" }, PaymentParagraphsOf(receiptIt));
+        // The line of the tax a portal left to the host says it is to pay, never that it was «riscossa» (FIX/BE-IT-TOURISTTAX-DEFAULTS): «imposta» throughout, and never «da riscuotere».
         Assert.Equal(
-            new[] { "TEST Soggiorno", "Imposta di soggiorno riscossa per conto del comune - da pagare in struttura" },
+            new[] { "TEST Soggiorno", "Imposta di soggiorno da pagare in struttura" },
             Assert.Single(receiptIt.Blocks.OfType<PdfTable>(), t => t.Columns.Count == 6).Rows.Select(r => r[1]).ToArray());
         Assert.Contains(Assert.Single(receiptIt.Blocks.OfType<PdfTable>(), t => t.Columns.Count == 2).Rows, r => r[0] == "Totale documento" && r[1] == "462,00");
+        var receiptEn = FiscalDocumentPdfs.Pdf(receipt, ItalianIssuer(), Texts, "en");
+        Assert.Equal(new[] { "Payment: paid through the portal for EUR 450.00", "Tourist tax payable at the property: EUR 12.00" }, PaymentParagraphsOf(receiptEn));
         Assert.Equal(
-            new[] { "Payment: paid through the portal for EUR 450.00", "Tourist tax payable at the property: EUR 12.00" },
-            PaymentParagraphsOf(FiscalDocumentPdfs.Pdf(receipt, ItalianIssuer(), Texts, "en")));
+            new[] { "TEST Soggiorno", "Tourist tax payable at the property" },
+            Assert.Single(receiptEn.Blocks.OfType<PdfTable>(), t => t.Columns.Count == 6).Rows.Select(r => r[1]).ToArray());
 
         // The document of the API: the parts and the flag of the line, the total and the stored state untouched; the members are in the JSON.
         var dto = FiscalDocumentDto.From(swiss);
