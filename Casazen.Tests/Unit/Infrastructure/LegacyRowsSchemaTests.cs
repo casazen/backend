@@ -40,6 +40,7 @@ public class LegacyRowsSchemaTests
     private const string Sr07a = "AddPropertyWizardFields";
     private const string Db01 = "AddPublicSiteFontAndThemeIds";
     private const string Db11a = "AddPropertySiteProfile";
+    private const string E40 = "AddHostSurfaces";
     private const string Latest = "*";
 
     private static readonly Regex InsertShape = new(
@@ -125,6 +126,7 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyOrgRows), Db01 },
         { nameof(LegacyOrgRows), Db11a },
         { nameof(LegacyPropertyRows), Db11a },
+        { nameof(LegacyOrgRows), E40 },
     };
 
     /// <summary>The first migration after which each helper is valid (see the summary of each helper).</summary>

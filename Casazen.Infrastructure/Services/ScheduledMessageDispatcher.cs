@@ -55,7 +55,8 @@ public sealed class ScheduledMessageDispatcher(
     IOptions<ScheduledMessageOptions> options,
     IFeatureFlags featureFlags,
     ILogger<ScheduledMessageDispatcher> logger,
-    ICheckInLinkDeliveryService? linkDeliveries = null) : IScheduledMessageDispatcher
+    ICheckInLinkDeliveryService? linkDeliveries = null,
+    AgencyDomainLinks? agencyLinks = null) : IScheduledMessageDispatcher
 {
     /// <summary>The code recorded on a row whose send failed in a way nobody expected (the database, a call that is not an answer of the channel).</summary>
     internal const string UnexpectedErrorCode = "scheduled_message_error";
@@ -328,6 +329,10 @@ public sealed class ScheduledMessageDispatcher(
             }
         }
 
+        // E40/F01/US01/T03: where the check-in link lives (the agency's own domain when its guest area is served there, the CasaZen domain
+        // otherwise), read once for the message, before anything with a side effect.
+        var checkInLinks = usesLink ? await agencyLinks.ForOrgOrPlatformAsync(links, row.OrgId, ct) : null;
+
         // The code is taken, not released: nothing is logged until the message that carries it has gone (RecordReleaseAsync, after the send). A message that is refused, blocked on something else or fails leaves no
         // line that says a code reached a guest, and a retry writes none either.
         string? accessCode = null;
@@ -343,8 +348,9 @@ public sealed class ScheduledMessageDispatcher(
         }
 
         // The text is tried with the rules of the message layer before the link exists: a stand-in of the length of a real link takes its place. A text that cannot go out never costs the guest the link it holds.
+        // E40/F01/US01/T03: the stand-in and the real link are built by the same decision (checkInLinks), so the length tried is the length sent.
         var reviewLink = used.Contains(MessageTemplateRenderer.ReviewLinkVariable) ? ReviewLinkOf(facts, conversation) : null;
-        var standIn = usesLink ? links.GuestCheckIn(new string('0', CheckInTokenLength)) : null;
+        var standIn = checkInLinks?.GuestCheckIn(new string('0', CheckInTokenLength));
         var trial = RenderOrReason(body, values with { CheckInLink = standIn, AccessCode = accessCode, ReviewLink = reviewLink }, out var trialReason);
         if (trial is null)
             return await BlockAsync(row, trialReason!, wasBlocked, previousReason, now, ct);
@@ -361,7 +367,7 @@ public sealed class ScheduledMessageDispatcher(
         string? checkInLink = null;
         if (usesLink)
         {
-            checkInLink = await IssueCheckInLinkAsync(row, ct);
+            checkInLink = await IssueCheckInLinkAsync(row, checkInLinks!, ct);
             if (checkInLink is null)
                 return await BlockAsync(row, ScheduledMessageReasons.VariableMissing(MessageTemplateRenderer.CheckInLinkVariable), wasBlocked, previousReason, now, ct);
         }
@@ -1039,7 +1045,7 @@ public sealed class ScheduledMessageDispatcher(
     /// every rule that can refuse the message has passed (<see cref="CheckInLinkRefusalAsync"/>, the text tried with a stand-in): never for a message that does not go out. <c>null</c> when no link can be made
     /// (the public address is not set, or the service refuses the booking).
     /// </summary>
-    private async Task<string?> IssueCheckInLinkAsync(ScheduledMessage row, CancellationToken ct)
+    private async Task<string?> IssueCheckInLinkAsync(ScheduledMessage row, AgencyLinks checkInLinks, CancellationToken ct)
     {
         if (!links.IsConfigured)
             return null;
@@ -1067,7 +1073,7 @@ public sealed class ScheduledMessageDispatcher(
             }
         }
 
-        return links.GuestCheckIn(issued.Token);
+        return checkInLinks.GuestCheckIn(issued.Token);
     }
 
     // ------------------------------------------------------------------------------------------------------------------------------------

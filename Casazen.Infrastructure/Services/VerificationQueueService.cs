@@ -35,7 +35,8 @@ public class VerificationQueueService(
     TimeProvider? timeProvider = null,
     IAccessCodeService? accessCodes = null,
     IInternalActivityService? activities = null,
-    IDomainEventRecorder? domainEvents = null) : IVerificationQueueService
+    IDomainEventRecorder? domainEvents = null,
+    AgencyDomainLinks? agencyLinks = null) : IVerificationQueueService
 {
     /// <summary>The model name of an operator row when no automatic outcome came before it (a refused consent, a request of the guest).</summary>
     internal const string OperatorModelName = "operator";
@@ -180,8 +181,11 @@ public class VerificationQueueService(
         }
 
         // Hangfire is independent of EF. Commit the usable link before publishing it, and keep the hand-off until queueing succeeds.
+        // E40/F01/US01/T03: the link is on the agency's own domain when its guest area is served there, on the CasaZen domain otherwise; read
+        // before the link is issued, so nothing waits between the new link and its e-mail.
+        var agencyCheckInLinks = await agencyLinks.ForOrgOrPlatformAsync(links, booking.OrgId, cancellationToken);
         var newLink = await guestCheckInService.IssueLinkAsync(bookingId, booking.OrgId);
-        var checkInLink = links.GuestCheckIn(newLink.Token);
+        var checkInLink = agencyCheckInLinks.GuestCheckIn(newLink.Token);
         var guestName = $"{guest.FirstName} {guest.LastName}".Trim();
         var propertyName = booking.Property.Name;
         var culture = EmailTemplates.DefaultCulture;

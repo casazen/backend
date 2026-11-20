@@ -7393,6 +7393,13 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("FiscalDataRetentionUntil")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("GtmContainerId")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<bool>("GuestAreaOnOwnDomain")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("HasPartitaIva")
                         .HasColumnType("boolean");
 
@@ -7428,6 +7435,12 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("OrgType")
                         .HasColumnType("integer");
+
+                    b.Property<int>("OwnerLoginHostState")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("OwnerPortalOnOwnDomain")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("PartitaIvaNumber")
                         .HasMaxLength(11)
@@ -7506,6 +7519,10 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("UseOwnDomainForLinks")
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("VatId")
                         .HasMaxLength(32)

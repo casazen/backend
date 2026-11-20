@@ -1364,6 +1364,15 @@ public class AppDbContext(
             .IsUnique()
             .HasFilter("\"Subdomain\" IS NOT NULL");
 
+        // Surfaces of the agency's own domain (E40/F01/US01): the guest area and the owner portal start off and the Auth0 state NotRequested
+        // (the defaults of their types), the links follow the domain: on for the orgs that exist too, it takes effect only once the domain is
+        // verified and a surface is on. EF always writes the value of the entity: left to generate it, an explicit false would be taken for
+        // «not set» and the insert would write true in its place.
+        modelBuilder.Entity<Org>()
+            .Property(o => o.UseOwnDomainForLinks)
+            .HasDefaultValue(true)
+            .ValueGeneratedNever();
+
         modelBuilder.Entity<PlatformInvoice>()
             .HasOne(i => i.Org)
             .WithMany()
