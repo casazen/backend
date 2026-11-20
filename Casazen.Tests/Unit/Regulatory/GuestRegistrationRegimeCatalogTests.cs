@@ -267,6 +267,34 @@ public class GuestRegistrationRegimeCatalogTests
             Assert.Equal(GuestRegistrationRegimeCatalog.DeadlineKeyOf(regime.Code), regime.DeadlineNoteKey);
     }
 
+    /// <summary>
+    /// «Uncertain says so» (D5), as the review of the slice asked: what the research leaves open is written as open. The register of Vaud is for the authority (the page names no
+    /// police) and the recipient of the one of Aargau is not verified, so each has a note of its own; St. Gallen does not say whether it covers private rentals; the years the
+    /// research gives for Thurgau and Zurich (and the maximum of Uri) are how long a police system keeps the data, not the host's retention; Obwalden and Jura claim no more than
+    /// the sources do.
+    /// </summary>
+    [Fact]
+    public void Catalog_WhatTheResearchLeavesOpen_IsWrittenAsOpen_Test()
+    {
+        Assert.Equal(GuestRegistrationRegimeCatalog.DeadlineKeyOf("CH-VD"), GuestRegistrationRegimeCatalog.ForCanton("VD").DeadlineNoteKey);
+        Assert.Equal(GuestRegistrationRegimeCatalog.DeadlineKeyOf("CH-AG"), GuestRegistrationRegimeCatalog.ForCanton("AG").DeadlineNoteKey);
+        Assert.Equal(GuestRegistrationPrivateRentals.Unknown, GuestRegistrationRegimeCatalog.ForCanton("SG").PrivateRentals);
+        Assert.All(new[] { "TG", "ZH", "UR" }, canton => Assert.Null(GuestRegistrationRegimeCatalog.ForCanton(canton).RetentionYears));
+
+        var italian = Resx("SharedResources.resx");
+        var english = Resx("SharedResources.en.resx");
+        Assert.DoesNotContain("polizia", italian["GuestRegime_CH_VD_Deadline"], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("police", english["GuestRegime_CH_VD_Deadline"], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("non è verificato", italian["GuestRegime_CH_AG_Deadline"], StringComparison.Ordinal);
+        Assert.Contains("not verified", english["GuestRegime_CH_AG_Deadline"], StringComparison.Ordinal);
+        Assert.DoesNotContain("non ancora in vigore", italian["GuestRegime_CH_OW_Summary"], StringComparison.Ordinal);
+        Assert.DoesNotContain("not yet in force", english["GuestRegime_CH_OW_Summary"], StringComparison.Ordinal);
+        Assert.Contains("già in vigore", italian["GuestRegime_CH_OW_Summary"], StringComparison.Ordinal);
+        Assert.Contains("already in force", english["GuestRegime_CH_OW_Summary"], StringComparison.Ordinal);
+        Assert.Contains("a chi arrivi", italian["GuestRegime_CH_JU_Summary"], StringComparison.Ordinal);
+        Assert.Contains("who receives it", english["GuestRegime_CH_JU_Summary"], StringComparison.Ordinal);
+    }
+
     /// <summary>The authorities and their portals may be named; the suppliers of software and the systems they run for the cantons may not (no supplier name in a user-facing text).</summary>
     [Fact]
     public void NoTextOfTheUser_NamesASupplier_Test()
