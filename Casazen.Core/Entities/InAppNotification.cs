@@ -55,7 +55,9 @@ public class InAppNotification : ITenantOwned
     public string Type { get; set; } = string.Empty;
 
     /// <summary>
-    /// The service request the event is about for the <c>service-request-*</c> types, the booking for every other one;
+    /// The service request the event is about for the <c>service-request-*</c> types, the <b>property</b> for the two Ticino alerts
+    /// (<c>ticino-notification-due</c> and <c>ticino-notification-overdue</c>, E30/F02/US01/T01: an arrival day is not an entity, so the row names the property and
+    /// not the day; the client opens the Ticino page of that property on its first day to notify), the booking for every other one;
     /// <c>null</c> when the event names none. Not a foreign key: the notification outlives the removal of what it points to.
     /// </summary>
     public Guid? EntityId { get; set; }

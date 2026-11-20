@@ -28,7 +28,7 @@ public sealed class QueuedInAppNotification
 
     /// <summary>
     /// The service request for the <c>service-request-*</c> types, the subject of the event for the platform staff (a «Fallo per me» request),
-    /// else the booking; <c>null</c> when there is none.
+    /// the property for the two Ticino alerts (<see cref="PushTypes.IsTicinoNotification"/>), else the booking; <c>null</c> when there is none.
     /// </summary>
     public Guid? EntityId { get; set; }
 
@@ -42,11 +42,24 @@ public sealed class QueuedInAppNotification
         AudienceKind = audience.Kind,
         AudienceId = audience.Id,
         Type = payload.Type,
-
-        // The audience of the platform staff names the subject of the event itself (PushAudience.PlatformStaff): that is what the bell opens.
-        EntityId = audience.Kind == PushAudienceKind.PlatformStaff ? audience.Id : payload.ServiceRequestId ?? payload.BookingId,
+        EntityId = EntityOf(audience, payload),
         OccurredAt = UtcDateTime.Normalize(occurredAtUtc),
     };
+
+    /// <summary>The entity the bell entry of the event is about: see <see cref="EntityId"/>.</summary>
+    private static Guid? EntityOf(PushAudience audience, PushNotificationPayload payload)
+    {
+        // The audience of the platform staff names the subject of the event itself (PushAudience.PlatformStaff): that is what the bell opens.
+        if (audience.Kind == PushAudienceKind.PlatformStaff)
+            return audience.Id;
+
+        // E30/F02/US01/T01: the alert about the 24 hours of a Ticino arrival day is about a property, and an arrival day is not an entity of its own. The entry carries the
+        // property (the audience of the push), no booking and no day: the client opens the Ticino page of the property on its first day to notify.
+        if (audience.Kind == PushAudienceKind.PropertyHosts && PushTypes.IsTicinoNotification(payload.Type))
+            return audience.Id;
+
+        return payload.ServiceRequestId ?? payload.BookingId;
+    }
 }
 
 /// <summary>

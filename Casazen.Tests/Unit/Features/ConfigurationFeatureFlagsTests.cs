@@ -119,6 +119,8 @@ public class ConfigurationFeatureFlagsTests
                 "PurgeDocumentsAfterReceipt",
                 // E05/F07/US01/T01: the scheduled messages of the routines, off until the product owner confirms the send window and the retry times.
                 "ScheduledMessages",
+                // E30/F02/US01/T01: the staged alerts about the 24 hours of the notification of the guests of a Ticino property to the cantonal police, off until the product owner has seen them on an arrival.
+                "TicinoNotificationAlerts",
             },
             FeatureFlags.All);
     }
