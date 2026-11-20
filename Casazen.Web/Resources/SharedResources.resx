@@ -8824,7 +8824,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>A Nidvaldo ogni ospite compila una scheda ufficiale all'arrivo e il gestore consegna le schede, o i dati elettronici, alla polizia cantonale almeno una volta alla settimana; l'obbligo vale anche per gli appartamenti di vacanza. Il formato elettronico si chiede alla polizia cantonale.</value>
   </data>
   <data name="GuestRegime_CH_OW_Summary" xml:space="preserve">
-    <value>A Obvaldo oggi il controllo degli ospiti che pernottano va tenuto a disposizione della polizia (legge sul turismo, art. 22). Una revisione in corso, non ancora in vigore, prevede la registrazione entro 12 ore, la conservazione per 1 anno e la possibile trasmissione elettronica alla polizia. Per gli affitti privati non è verificato.</value>
+    <value>A Obvaldo il controllo degli ospiti che pernottano va tenuto a disposizione della polizia (legge sul turismo, art. 22). Una revisione in corso prevede la registrazione entro 12 ore, la conservazione per 1 anno e la possibile trasmissione elettronica alla polizia; non è verificato se la revisione sia già in vigore. Per gli affitti privati non è verificato.</value>
   </data>
   <data name="GuestRegime_CH_SG_Summary" xml:space="preserve">
     <value>A San Gallo i gestori fanno compilare e firmare la scheda dell'ospite e la consegnano alla polizia su richiesta (almeno 5 anni per gli ospiti stranieri); l'ente turistico offre un sistema online (inserimento, link per l'ospite, interfaccia dal gestionale). Non è descritto nessun invio alla polizia; per gli affitti privati non è esplicitato.</value>

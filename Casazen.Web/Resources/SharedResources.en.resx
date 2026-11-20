@@ -8824,7 +8824,7 @@ Once active, the function works on the data the channel manager already holds.</
     <value>In Nidwalden every guest completes an official form on arrival and the host hands the forms, or the electronic data, to the cantonal police at least once a week; the duty also covers holiday apartments. The electronic format is to be asked from the cantonal police.</value>
   </data>
   <data name="GuestRegime_CH_OW_Summary" xml:space="preserve">
-    <value>In Obwalden the check of overnight guests is today kept at the disposal of the police (tourism law, art. 22). A revision under way, not yet in force, provides for registration within 12 hours, retention for 1 year and possible electronic transmission to the police. For private rentals it is not verified.</value>
+    <value>In Obwalden the check of overnight guests is kept at the disposal of the police (tourism law, art. 22). A revision under way provides for registration within 12 hours, retention for 1 year and possible electronic transmission to the police; it is not verified whether the revision is already in force. For private rentals it is not verified.</value>
   </data>
   <data name="GuestRegime_CH_SG_Summary" xml:space="preserve">
     <value>In St. Gallen hosts have guests complete and sign the form and hand it to the police on request (at least 5 years for foreign guests); the tourism body offers an online system (entry, link for the guest, interface from the management software). No sending to the police is described; for private rentals it is not stated.</value>
