@@ -12,7 +12,6 @@ using Casazen.Infrastructure.Jobs;
 using Moq;
 using Xunit;
 using AutoSendOutcome = Casazen.Infrastructure.Octorate.StayGuestsAutoSendOutcome;
-using WebhookSource = Casazen.Infrastructure.External.WebhookSource;
 using World = Casazen.Tests.Unit.Operations.OperationsScenarioBuilder;
 
 namespace Casazen.Tests.Unit.Operations;
@@ -98,11 +97,12 @@ public class OperationsChainTests
         Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.EntrustedToChannelManager), (entrusted.Verdict!.Verdict.Light, entrusted.Verdict.Verdict.Reason));
         Assert.Null(entrusted.ReceiptProof);
 
-        // B11: the photo of the document stays while no receipt covers the stay: none at all, and the receipt of another day (a receipt is for the flat and the day of the arrival).
+        // B11: the photo of the document stays while no receipt covers the stay: none at all, and the receipt of another day, the one before (a receipt is for the flat and the day of the arrival,
+        // and a day in the future is refused).
         var image = await world.StoreDocumentImageAsync(bookingId);
         Assert.Equal(new GuestDocumentPurgeResult(true, 0, 0, 0), await world.PurgeAsync());
         Assert.Contains(image, world.Storage.Keys);
-        var anotherDay = await world.UploadReceiptAsync(World.CheckInDay.AddDays(1));
+        var anotherDay = await world.UploadReceiptAsync(World.CheckInDay.AddDays(-1));
         Assert.Equal(0, anotherDay.CoveredStays);
         Assert.Equal(new GuestDocumentPurgeResult(true, 0, 0, 0), await world.PurgeAsync());
         Assert.Contains(image, world.Storage.Keys);

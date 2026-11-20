@@ -3,7 +3,8 @@
 The acceptance proof of the operations steps «O» of `pilota-flusso-completo-2026-11-14.md`: one test for each way a stay is booked (a portal through the channel manager, the
 agency's own site, the CasaZen site, the host's own entry), each from the booking to the day after the departure, on the real code. It is the test that fails when a link of the
 chain breaks: a handler nobody registers, a rule that stops handing the stay to the next step, a flag that no longer reaches its job. It adds no behaviour: no flag, no setting, no
-migration, no endpoint.
+migration, no endpoint. **Read § 4 before trusting it for an environment:** the steps that go through the routines (the scheduled message, the cleaning at the check-out, the request of a
+review) need an AI provider in effect there, and the world replaces that provider.
 
 ## 1. Where it is and how to run it
 
