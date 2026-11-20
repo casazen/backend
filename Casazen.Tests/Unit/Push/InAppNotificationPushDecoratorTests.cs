@@ -284,6 +284,31 @@ public class InAppNotificationPushDecoratorTests
             (notification.AudienceKind, notification.AudienceId, notification.EntityId, notification.Type));
     }
 
+    [Theory]
+    [InlineData(PushTypes.DomainVerified)]
+    [InlineData(PushTypes.OwnerLoginReady)]
+    [InlineData(PushTypes.OwnerLoginFailed)]
+    public void AddCasazenPush_TheAdministratorsOfAnOrg_GetTheBellAboutTheOrg_AndNoPushOnAPhone(string type)
+    {
+        // The domain of an org (E40/F01/US02/T01): the app has no screen of it, so no job for the phones; the bell is queued, about the org, whatever the text and the route of the payload.
+        using var provider = Wire(out var jobs);
+        using var scope = provider.CreateScope();
+        var push = scope.ServiceProvider.GetRequiredService<IPushNotificationService>();
+
+        var queued = push.Enqueue(
+            PushDeliveryKeys.DomainVerified(RequestId, Now),
+            PushAudience.OrgAdmins(RequestId),
+            new PushNotificationPayload("Dominio verificato", "Il tuo dominio è attivo.", type, null, "/app/short-rent/settings/domain"));
+
+        Assert.False(queued);
+        var job = Assert.Single(jobs);
+        Assert.Equal(typeof(InAppNotificationJob), job.Type);
+        var notification = Assert.IsType<QueuedInAppNotification>(job.Args[1]);
+        Assert.Equal(
+            (PushAudienceKind.OrgAdmins, RequestId, (Guid?)RequestId, type),
+            (notification.AudienceKind, notification.AudienceId, notification.EntityId, notification.Type));
+    }
+
     [Fact]
     public void AddCasazenPush_RegistersTheServiceAndTheJobsOfTheBell()
     {
