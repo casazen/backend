@@ -87,6 +87,20 @@ public class OwnerPortalHostOriginTests
         Assert.True(context.HasSucceeded);
     }
 
+    [Theory]
+    [InlineData("https://prenota.agenzia-a.it")]
+    [InlineData("https://made-up-1.example.test")]
+    public async Task Unauthenticated_WithAnOrigin_IsNotLookedUp_AndTheRequirementIsNotMet(string origin)
+    {
+        // The first requirement of the policy refuses a caller nobody authenticated (401): the second wall does not ask the resolver, a database lookup per made-up
+        // Origin that would run before the rate limiter.
+        var context = await AuthorizeAsync(origin: origin, agencyClaims: [], authenticated: false);
+
+        Assert.False(context.HasSucceeded);
+        Assert.False(context.HasFailed);
+        _resolver.VerifyNoOtherCalls();
+    }
+
     [Fact]
     public async Task OwnerOfSeveralAgencies_OneClaimPerAgency_OriginOfTheSecond_Allowed()
     {

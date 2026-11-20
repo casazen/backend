@@ -19,7 +19,7 @@ public sealed class OwnerPortalHostOriginRequirement : IAuthorizationRequirement
 /// origin, the <c>agency_ids</c> claim of the owner must contain THAT org, else 403 <see cref="OtherAgencyReason"/>. No <c>Origin</c> (the
 /// mobile app, a server call), a platform origin, or an origin that is no org host: unchanged (the CORS of the browser refuses the last one
 /// anyway). The two acceptance endpoints keep their secret-token check and are not under this policy (no <c>agency_ids</c> exists before an
-/// invitation is accepted).
+/// invitation is accepted). A caller that is not authenticated is left to the first requirement: no host is looked up for it.
 /// </summary>
 public sealed class OwnerPortalHostOriginAuthorizationHandler(
     IHttpContextAccessor httpContextAccessor,
@@ -34,6 +34,11 @@ public sealed class OwnerPortalHostOriginAuthorizationHandler(
         AuthorizationHandlerContext context,
         OwnerPortalHostOriginRequirement requirement)
     {
+        // A caller nobody authenticated is refused by the first requirement of the policy (the challenge, 401): this wall does not look it up. The resolver runs a database
+        // lookup for every Origin it has not seen, and the authorization runs before the rate limiter, so without this anybody could make it run one per made-up Origin.
+        if (context.User.Identity?.IsAuthenticated != true)
+            return;
+
         var httpContext = context.Resource as HttpContext ?? httpContextAccessor.HttpContext;
         var origin = httpContext?.Request.Headers.Origin.ToString();
         if (string.IsNullOrEmpty(origin)
