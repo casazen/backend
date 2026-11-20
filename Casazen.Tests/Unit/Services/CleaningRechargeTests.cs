@@ -221,6 +221,7 @@ public class CleaningRechargeTests
     {
         var source = new StubCostSource();
         var world = await World.CreateAsync(source);
+        await world.VatIssuerAsync();
         var owner = await world.OwnerAsync();
         var property = await world.PropertyAsync(owner, "TEST Casa Lago");
         await world.MandateAsync(owner, CleaningRechargeMode.ActualCost, null);
@@ -477,8 +478,19 @@ public class CleaningRechargeTests
                 NullLogger<OwnerAccountingService>.Instance,
                 options,
                 cleaningCosts: costs ?? new CleaningCostSource(db),
-                activities: Activities);
+                activities: Activities,
+                taxRules: TaxRuleCatalogs.Resolver());
             Mandates = new OwnerMandateService(db, Clock, options, NullLogger<OwnerMandateService>.Instance);
+        }
+
+        /// <summary>
+        /// The agency as an Italian issuer of the ordinary regime, the country of the properties of the world (its owner invoices charge 22% on a recharge): the question of the VAT
+        /// of a cleaning company is asked only where the answer changes the invoice (FIX/BE-CLEANING-VAT).
+        /// </summary>
+        public async Task VatIssuerAsync()
+        {
+            Db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile { OrgId = OrgId, DocumentRegime = DocumentRegime.VatOrdinary, CountryCode = "IT" });
+            await Db.SaveChangesAsync();
         }
 
         public AppDbContext Db { get; }

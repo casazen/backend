@@ -31,7 +31,9 @@ namespace Casazen.Infrastructure.Services;
 /// <paramref name="cleaningCosts"/> (never the requests or the staff activities themselves); the flat fee of the stay is not posted, never both. A cleaning with no price (a request
 /// with no amount, a staff cleaning with no rate and no flat rate in the mandate) holds the statement back. The VAT of a cleaning company is never guessed: for a cleaning whose VAT
 /// the agency has not stated (FIX/BE-CLEANING-VAT) the posting raises the «Da fare» <see cref="ActivityType.CleaningVatToState"/> about the request (<paramref name="activities"/>), and
-/// the close of the month proposes it once more when the answer was «Non lo so»; the ledger stays gross.</para>
+/// the close of the month proposes it once more when the answer was «Non lo so»; the ledger stays gross. The question is asked only where the answer changes the invoice of the
+/// agency: the rule of its owner invoices on the last day of the month (<paramref name="taxRules"/> and its issuer profile) charges VAT on a recharge and the cleaning is in the
+/// rule's country; without the resolver, a profile or such a rule nothing is asked.</para>
 /// <para><b>Locks.</b> Posting, generation, close and corrections of one org run one at a time (<see cref="PostgresAdvisoryLocks.Scope.OwnerAccounting"/>).</para>
 /// <para><b>Files.</b> The publication of a version stores its PDF with it, in the same save (<paramref name="statementFiles"/>, E13/F01/US02/T01), and tells the owner
 /// after it (E13/F01/US02/T02); a service built without it (a test) publishes the version and the JSON file only.</para>
@@ -47,7 +49,8 @@ public sealed partial class OwnerAccountingService(
     IOwnerStatementDocuments? statementFiles = null,
     IOwnerTaxChecks? taxChecks = null,
     ICleaningCostSource? cleaningCosts = null,
-    IInternalActivityService? activities = null) : IOwnerAccountingService
+    IInternalActivityService? activities = null,
+    IFiscalTaxRuleResolver? taxRules = null) : IOwnerAccountingService
 {
     /// <summary>A rate older than this many days before the day of the source is not used.</summary>
     public const int FxMaxAgeDays = 7;
@@ -133,7 +136,7 @@ public sealed partial class OwnerAccountingService(
             await tx.CommitAsync(ct);
 
         // The «Da fare» of the cleanings whose VAT nobody states (E14/F01/US02/T01) comes once the lines are posted: the ledger never waits for it, and posting again finds the same items.
-        await SyncCleaningVatTodosAsync(orgId, plan, ct);
+        await SyncCleaningVatTodosAsync(orgId, period, plan, ct);
 
         // The issues of an owner whose month is closed are not the poster's business (nothing is posted for them), but a source that came after the close is told.
         var issues = plan.Issues

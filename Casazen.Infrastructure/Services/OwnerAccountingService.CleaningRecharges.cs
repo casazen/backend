@@ -29,7 +29,8 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>The VAT</b> is never guessed. The amount is posted as the cost source gives it, gross and not decomposed (D4: the ledger keeps no VAT; the owner invoice applies it,
 /// ⚖ R4). The VAT a cleaning company applied is what the agency states (FIX/BE-CLEANING-VAT, <see cref="ICleaningVatService"/>): for a cleaning of a company that nobody stated
 /// (no answer of the request, nothing remembered for the company) the posting raises the «Da fare» <see cref="ActivityType.CleaningVatToState"/> about the request, once; the
-/// close of the owner's month proposes it once more when the answer was «Non lo so». A staff cleaning has no VAT of a company and is never asked.</item>
+/// close of the owner's month proposes it once more when the answer was «Non lo so». Only where the answer changes the invoice of the agency (its rule charges VAT on a recharge,
+/// the cleaning is in the rule's country). A staff cleaning has no VAT of a company and is never asked.</item>
 /// </list>
 /// </remarks>
 public sealed partial class OwnerAccountingService
@@ -152,9 +153,13 @@ public sealed partial class OwnerAccountingService
                 inputs.Builder.Add(source, share, -Split(total, shares)[i], context);
             }
 
-            // Only a cleaning of a company has a VAT to state: a staff cleaning is the org's own rate.
+            // Only a cleaning of a company has a VAT to state: a staff cleaning is the org's own rate. «Non lo so» is an answer (not asked again at the posting) but states nothing.
             if (open && cleaning.Kind == CleaningKind.Supplier)
-                plan.Cleanings.Add(new CleaningFact(cleaning.PropertyId, cleaning.BookingId, cleaning.SourceId, stated.ContainsKey(cleaning.SourceId)));
+            {
+                var answer = stated.GetValueOrDefault(cleaning.SourceId);
+                plan.Cleanings.Add(new CleaningFact(
+                    cleaning.PropertyId, cleaning.BookingId, cleaning.SourceId, answer is not null, answer is not null && answer.Answer != CleaningSupplierVat.Unknown));
+            }
         }
     }
 
@@ -207,42 +212,45 @@ public sealed partial class OwnerAccountingService
 
     /// <summary>
     /// The «Da fare» of the cleanings of a company recharged at their cost, once their lines are posted (FIX/BE-CLEANING-VAT): one <see cref="ActivityType.CleaningVatToState"/> about
-    /// each request whose VAT nobody stated, leading to the question (<see cref="ActivityAction.StateCleaningVat"/>), raised once (an item about the request that is open or that a
-    /// person closed, or an item about its stay raised before FIX/BE-CLEANING-VAT, is not raised again). The items of the requests whose VAT is stated now (by the remembered answer
-    /// of the company) are closed by the system, and an item about a stay once every cleaning of it is stated. Nothing without the service of the «Da fare». No personal data in the
-    /// item or in the log: ids and counts. The rows read here are the «Da fare» rows of the table (the ones with an action), never the staff work.
+    /// each request nobody answered, leading to the question (<see cref="ActivityAction.StateCleaningVat"/>), raised once (an item about the request that is open or that a person
+    /// closed, or an item about its stay raised before FIX/BE-CLEANING-VAT that a person closed, is not raised again), and only where the answer changes the invoice of the agency
+    /// (<see cref="CleaningVatRules.IsAskedUnder"/>: the rule of its owner invoices on the last day of the month charges VAT on a recharge and the cleaning is in the rule's
+    /// country). The system closes the items about a request whose VAT is stated now (an answer other than «Non lo so», which states nothing: the item proposed again at the close
+    /// stays open) or whose answer would change nothing, and supersedes the open items raised before FIX/BE-CLEANING-VAT (action <see cref="ActivityAction.ReviewBooking"/>, about
+    /// the stay or the request of a cleaning of the month: they lead to the booking, never to the question) with the items about the requests. Nothing without the service of the
+    /// «Da fare». No personal data in the item or in the log: ids and counts. The rows read here are the «Da fare» rows of the table (the ones with an action), never the staff work.
     /// </summary>
-    private async Task SyncCleaningVatTodosAsync(Guid orgId, Plan plan, CancellationToken ct)
+    private async Task SyncCleaningVatTodosAsync(Guid orgId, Period period, Plan plan, CancellationToken ct)
     {
         if (activities is null || plan.Cleanings.Count == 0)
             return;
 
         var type = nameof(ActivityType.CleaningVatToState);
-        var unstated = plan.Cleanings.Where(c => !c.VatStated).DistinctBy(c => c.RequestId).ToList();
-        var waitingStays = unstated.Where(c => c.BookingId is not null).Select(c => c.BookingId!.Value).ToHashSet();
-        var statedRequests = plan.Cleanings.Where(c => c.VatStated).Select(c => c.RequestId).Distinct().ToList();
-        var statedStays = plan.Cleanings
-            .Where(c => c.VatStated && c.BookingId is { } stay && !waitingStays.Contains(stay))
-            .Select(c => c.BookingId!.Value)
-            .Distinct()
-            .ToList();
+        var cleanings = plan.Cleanings.DistinctBy(c => c.RequestId).ToList();
+        var rule = await CleaningSupplierVatReader.OwnerInvoiceRuleAsync(db, taxRules, orgId, period.Last, ct);
+        var countries = await CleaningSupplierVatReader.CountriesAsync(db, orgId, cleanings.Select(c => c.PropertyId).ToList(), ct);
+        var asked = cleanings.Where(c => CleaningVatRules.IsAskedUnder(rule, countries.GetValueOrDefault(c.PropertyId))).ToList();
+        var askedIds = asked.Select(c => c.RequestId).ToHashSet();
 
-        // The VAT of a request is stated now: its item is closed by the system, and the item of a stay once no cleaning of it waits.
-        if (statedRequests.Count > 0 || statedStays.Count > 0)
-        {
-            var open = await db.InternalActivities.AsNoTracking()
-                .Where(a => a.OrgId == orgId && a.Action != null && a.CompletedAt == null && a.ActivityType == type && a.EntityId != null
-                            && ((a.EntityType == CleaningVatRules.TodoEntityType && statedRequests.Contains(a.EntityId.Value))
-                                || (a.EntityType == InternalActivity.BookingEntityType && statedStays.Contains(a.EntityId.Value))))
-                .Select(a => a.Id)
-                .ToListAsync(ct);
-            foreach (var id in open)
-                await activities.CloseAsync(id, InternalActivity.ClosedBySystem, ct);
-        }
+        // Closed by the system: the item about a request whose VAT is stated now or whose answer would change nothing, and the open items raised before FIX/BE-CLEANING-VAT
+        // about a request or a stay of the month (superseded: the requests that still wait get their own item below).
+        var closing = cleanings.Where(c => c.Stated || !askedIds.Contains(c.RequestId)).Select(c => c.RequestId).ToList();
+        var requests = cleanings.Select(c => c.RequestId).ToList();
+        var stays = cleanings.Where(c => c.BookingId is not null).Select(c => c.BookingId!.Value).Distinct().ToList();
+        var legacy = ActivityAction.ReviewBooking;
+        var open = await db.InternalActivities.AsNoTracking()
+            .Where(a => a.OrgId == orgId && a.Action != null && a.CompletedAt == null && a.ActivityType == type && a.EntityId != null
+                        && ((a.EntityType == CleaningVatRules.TodoEntityType
+                             && (closing.Contains(a.EntityId.Value) || (a.Action == legacy && requests.Contains(a.EntityId.Value))))
+                            || (a.EntityType == InternalActivity.BookingEntityType && a.Action == legacy && stays.Contains(a.EntityId.Value))))
+            .Select(a => a.Id)
+            .ToListAsync(ct);
+        foreach (var id in open)
+            await activities.CloseAsync(id, InternalActivity.ClosedBySystem, ct);
 
         string? reason = null;
         var raised = 0;
-        foreach (var cleaning in unstated)
+        foreach (var cleaning in asked.Where(c => !c.Answered))
         {
             if (await WasAskedAsync(orgId, cleaning.RequestId, cleaning.BookingId, ct))
                 continue;
@@ -257,17 +265,19 @@ public sealed partial class OwnerAccountingService
     }
 
     /// <summary>
-    /// The question was asked for the request already: an item about it that is open or that a person closed (one the system closed is asked again when the VAT is no longer
-    /// stated), or an item about its stay raised before FIX/BE-CLEANING-VAT that is open or that a person closed.
+    /// The question was asked for the request already: an item about it that is open or that a person closed (one the system closed, a superseded one too, is asked again), or an
+    /// item about its stay raised before FIX/BE-CLEANING-VAT (<see cref="ActivityAction.ReviewBooking"/>) that a person closed (an open one was superseded just before; an item of
+    /// another type or action is never one).
     /// </summary>
     private Task<bool> WasAskedAsync(Guid orgId, Guid requestId, Guid? stay, CancellationToken ct)
     {
         var type = nameof(ActivityType.CleaningVatToState);
+        var legacy = ActivityAction.ReviewBooking;
         return db.InternalActivities.AsNoTracking()
             .AnyAsync(
                 a => a.OrgId == orgId && a.Action != null && a.ActivityType == type
                      && ((a.EntityType == CleaningVatRules.TodoEntityType && a.EntityId == requestId)
-                         || (stay != null && a.EntityType == InternalActivity.BookingEntityType && a.EntityId == stay))
+                         || (stay != null && a.EntityType == InternalActivity.BookingEntityType && a.Action == legacy && a.EntityId == stay))
                      && (a.CompletedAt == null || a.ClosedBy == null || a.ClosedBy != InternalActivity.ClosedBySystem),
                 ct);
     }
@@ -303,8 +313,9 @@ public sealed partial class OwnerAccountingService
 
     /// <summary>
     /// At the close of an owner's month (FIX/BE-CLEANING-VAT): the cleanings of a company recharged to the owner in the month whose VAT is still «Non lo so», or stated by nobody,
-    /// get their «Da fare» once more, once for each request (<see cref="ServiceRequest.SupplierVatAskedAgainAt"/>), unless an item about them is still open. «Non lo so» never
-    /// blocks the close: this runs after it is saved. A request changed meanwhile by another operation is left as it is (logged); nothing without the service of the «Da fare».
+    /// get their «Da fare» once more, once for each request (<see cref="ServiceRequest.SupplierVatAskedAgainAt"/>), unless an item about them is still open, and only where the
+    /// answer changes the invoice of the agency (<see cref="CleaningVatRules.IsAskedUnder"/>, the rule of the last day of the closed month). «Non lo so» never blocks the close: this
+    /// runs after it is saved. A request changed meanwhile by another operation is left as it is (logged); nothing without the service of the «Da fare».
     /// </summary>
     private async Task AskCleaningVatAgainAsync(Guid orgId, Guid ownerId, Period period, CancellationToken ct)
     {
@@ -328,10 +339,17 @@ public sealed partial class OwnerAccountingService
         if (requests.Count == 0)
             return;
 
+        // Only where the answer changes the invoice of the agency: the rule of its owner invoices on the last day of the closed month and the country of each cleaning.
+        var rule = await CleaningSupplierVatReader.OwnerInvoiceRuleAsync(db, taxRules, orgId, period.Last, ct);
+        if (rule is null || !CleaningVatRules.ChargesVatOnRecharge(rule))
+            return;
+
+        var countries = await CleaningSupplierVatReader.CountriesAsync(db, orgId, requests.Select(r => r.PropertyId!.Value).ToList(), ct);
         var stated = await CleaningSupplierVatReader.ReadAsync(db, orgId, requests.Select(r => r.Id).ToList(), ct);
         string? reason = null;
         var asked = 0;
-        foreach (var request in requests.Where(r => !stated.TryGetValue(r.Id, out var vat) || vat.Answer == CleaningSupplierVat.Unknown))
+        foreach (var request in requests.Where(r => CleaningVatRules.IsAskedUnder(rule, countries.GetValueOrDefault(r.PropertyId!.Value))
+                     && (!stated.TryGetValue(r.Id, out var vat) || vat.Answer == CleaningSupplierVat.Unknown)))
         {
             if (await HasOpenCleaningVatTodoAsync(orgId, request.Id, request.BookingId, ct))
                 continue;
@@ -371,7 +389,8 @@ public sealed partial class OwnerAccountingService
 
     /// <summary>
     /// A cleaning of a company recharged at its cost to an owner whose month is open, as the «Da fare» of the posting needs it: where it is (the property and the stay, if it has
-    /// one), its request, and whether its VAT is stated (the request's answer, or the answer remembered for the company).
+    /// one), its request, whether it has an answer (the request's own, «Non lo so» too, or the one remembered for the company: it is not asked again at the posting) and whether
+    /// that answer states the VAT (anything but «Non lo so»: only then does the system close an item about it).
     /// </summary>
-    private sealed record CleaningFact(Guid PropertyId, Guid? BookingId, Guid RequestId, bool VatStated);
+    private sealed record CleaningFact(Guid PropertyId, Guid? BookingId, Guid RequestId, bool Answered, bool Stated);
 }

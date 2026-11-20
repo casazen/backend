@@ -169,16 +169,20 @@ public sealed class CleaningVatService(
 
         if (company is { } companyId)
         {
+            // Only the requests with no answer of their own: one answered «Non lo so» is not covered by the company's answer (its own wins), and its item stays open.
             var asked = open.Where(a => a.EntityType == CleaningVatRules.TodoEntityType && a.EntityId != request.Id).Select(a => a.EntityId).ToList();
             var ofCompany = asked.Count == 0
                 ? []
                 : await db.ServiceRequests
                     .AsNoTracking()
-                    .Where(r => r.OrgId == orgId && r.SupplierOrgId == companyId && asked.Contains(r.Id))
+                    .Where(r => r.OrgId == orgId && r.SupplierOrgId == companyId && r.SupplierVat == null && asked.Contains(r.Id))
                     .Select(r => r.Id)
                     .ToListAsync(ct);
             var stated = await CleaningSupplierVatReader.ReadAsync(db, orgId, ofCompany, ct);
-            close.AddRange(open.Where(a => a.EntityType == CleaningVatRules.TodoEntityType && stated.ContainsKey(a.EntityId)).Select(a => a.Id));
+            close.AddRange(open
+                .Where(a => a.EntityType == CleaningVatRules.TodoEntityType
+                            && stated.TryGetValue(a.EntityId, out var vat) && vat.FromCompany && vat.Answer != CleaningSupplierVat.Unknown)
+                .Select(a => a.Id));
         }
 
         foreach (var id in close.Distinct())

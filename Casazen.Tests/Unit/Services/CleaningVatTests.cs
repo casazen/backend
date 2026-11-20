@@ -177,16 +177,18 @@ public class CleaningVatTests
     }
 
     /// <summary>
-    /// PROOF TEST: data rule. The posting asks the question about each cleaning of a company nobody stated, once (an item of the stay raised before keeps the request from a second
-    /// one); the answer is stored on the request with the rate it used, who and when; «Ricorda per questa ditta» keeps it for the company in the organization, which states and
-    /// closes the item of the other cleanings of the company; the same answer again changes nothing, another one replaces it once; «Non lo so» is never remembered, closes the item
-    /// (and the item of its stay) and is not asked again at the posting; at the close of the month it is proposed once more, once for the request even when a second owner closes,
-    /// and it never blocks the close.
+    /// PROOF TEST: data rule. The posting asks the question about each cleaning of a company nobody stated, once (an item of the stay raised before FIX/BE-CLEANING-VAT is
+    /// superseded by the items about the requests); the answer is stored on the request with the rate it used, who and when; «Ricorda per questa ditta» keeps it for the company in
+    /// the organization, which states and closes the item of the other cleanings of the company that have no answer of their own; the same answer again changes nothing, another one
+    /// replaces it once; «Non lo so» is never remembered, closes the item and is not asked again at the posting; at the close of the month it is proposed once more, once for the
+    /// request even when a second owner closes, it never blocks the close, and the item proposed again stays open through a posting of the month (the co-owner's month still open)
+    /// and through «Ricorda» on another cleaning of the same company: «Non lo so» states nothing.
     /// </summary>
     [Fact]
     public async Task CleaningVat_AnswerIsStoredRememberedPerSupplier_AndClosesTheTodo_Test()
     {
         var world = World.Create();
+        await world.IssuerAsync(DocumentRegime.SwissVatRegistered);
         var first = await world.OwnerAsync();
         var second = await world.OwnerAsync();
         var property = await world.CoOwnedPropertyAsync("TEST Casa Lago", (first, 60m), (second, 40m));
@@ -199,32 +201,23 @@ public class CleaningVatTests
         var a1 = await world.RequestAsync(property, companyA, At(10, 20), 10000, firstStay);
         var a2 = await world.RequestAsync(property, companyA, At(10, 21), 8500);
         var b = await world.RequestAsync(property, companyB, At(10, 22), 9000, secondStay);
+        var b2 = await world.RequestAsync(property, companyB, At(10, 23), 7000);
 
-        // An item raised before FIX/BE-CLEANING-VAT about the second stay (ReviewBooking): it keeps working and keeps the request of the stay from a second item.
-        var legacy = await world.Activities.CreateAsync(
-            new CreateTodoRequest
-            {
-                Type = ActivityType.CleaningVatToState,
-                Action = ActivityAction.ReviewBooking,
-                EntityType = InternalActivity.BookingEntityType,
-                EntityId = secondStay,
-                Urgency = ActivityUrgency.Medium,
-                PropertyId = property,
-                Reason = "TEST",
-            },
-            CancellationToken.None);
+        // An item raised before FIX/BE-CLEANING-VAT about the second stay (ReviewBooking, leading to the booking): the posting closes it as superseded.
+        var legacy = await world.LegacyItemAsync(property, InternalActivity.BookingEntityType, secondStay);
 
         await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, Agency);
 
         var raised = (await world.TodosAsync()).Where(t => t.Id != legacy).ToList();
-        Assert.Equal(new[] { a1, a2 }.Order(), raised.Select(t => t.EntityId!.Value).Order());
+        Assert.Equal(new[] { a1, a2, b, b2 }.Order(), raised.Select(t => t.EntityId!.Value).Order());
         Assert.All(raised, t => Assert.Equal(
             (nameof(ActivityType.CleaningVatToState), (ActivityAction?)ActivityAction.StateCleaningVat, (string?)CleaningVatRules.TodoEntityType, (Guid?)property, (DateTime?)null),
             (t.ActivityType, t.Action, t.EntityType, t.PropertyId, t.CompletedAt)));
         Assert.All(raised, t => Assert.False(string.IsNullOrWhiteSpace(t.Reason)));
+        Assert.Equal(InternalActivity.ClosedBySystem, (await world.TodosAsync()).Single(t => t.Id == legacy).ClosedBy);
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, null);
-        Assert.Equal(3, (await world.TodosAsync()).Count);
+        Assert.Equal(5, (await world.TodosAsync()).Count);
 
         // «Sì» for a1, remembered for the company: stored on the request with the rate it used, who and when; kept for company A; the items of a1 and a2 are closed.
         var answeredAt = world.Clock.GetUtcNow().UtcDateTime;
@@ -241,7 +234,7 @@ public class CleaningVatTests
         var todos = await world.TodosAsync();
         Assert.Equal(Agency, todos.Single(t => t.EntityId == a1).ClosedBy);
         Assert.Equal(Agency, todos.Single(t => t.EntityId == a2).ClosedBy);
-        Assert.Null(todos.Single(t => t.Id == legacy).CompletedAt);
+        Assert.Null(todos.Single(t => t.EntityId == b2).CompletedAt);
 
         // a2 has no answer of its own: the company's states it, with the rate of the table on its own day.
         var byCompany = await world.Vat.GetAsync(OrgWide, a2);
@@ -270,31 +263,132 @@ public class CleaningVatTests
         var missing = await Assert.ThrowsAsync<DomainRuleException>(() => world.Vat.AnswerAsync(OrgWide, b, null, remember: false, Agency));
         Assert.Equal(CleaningVatErrors.AnswerInvalid, missing.Code);
 
-        // «Non lo so» for b closes the item of its stay (every cleaning of the stay has an answer now); the posting asks nothing again.
+        // «Non lo so» for b closes its item; the posting asks nothing again.
         await world.Vat.AnswerAsync(OrgWide, b, CleaningSupplierVat.Unknown, remember: false, Agency);
-        Assert.Equal(Agency, (await world.TodosAsync()).Single(t => t.Id == legacy).ClosedBy);
+        Assert.Equal(Agency, (await world.TodosAsync()).Single(t => t.EntityId == b).ClosedBy);
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, null);
-        Assert.Equal(3, (await world.TodosAsync()).Count);
+        Assert.Equal(5, (await world.TodosAsync()).Count);
 
-        // The close of the first owner's month: «Non lo so» never blocks it, and the question of b comes back once.
+        // The close of the first owner's month: «Non lo so» never blocks it, and the question of b comes back once (b2's item is still open: not proposed again).
         await world.ApprovedVersionAsync(first);
         await world.ApprovedVersionAsync(second);
         var closed = await world.Accounting.CloseAsync(OrgId, first, 2026, 10, new OwnerCloseCommand { WaiverReason = "TEST" }, mayWaive: true, Agency);
         Assert.Equal(OwnerClosePeriodStatus.Closed, closed.Status);
-        var again = Assert.Single(await world.TodosAsync(), t => t.EntityId == b);
-        Assert.Equal((ActivityAction.StateCleaningVat, (DateTime?)null), (again.Action!.Value, again.CompletedAt));
+        var again = Assert.Single(await world.TodosAsync(), t => t.EntityId == b && t.CompletedAt == null);
+        Assert.Equal(ActivityAction.StateCleaningVat, again.Action!.Value);
         Assert.NotEqual(Assert.Single(await world.TodosAsync(), t => t.EntityId == a1).Reason, again.Reason);
         Assert.NotNull((await world.RequestRowAsync(b)).SupplierVatAskedAgainAt);
         Assert.Null((await world.RequestRowAsync(a1)).SupplierVatAskedAgainAt);
         Assert.Null((await world.RequestRowAsync(a2)).SupplierVatAskedAgainAt);
+        Assert.Null((await world.RequestRowAsync(b2)).SupplierVatAskedAgainAt);
+
+        // «Non lo so» states nothing: a posting of the month while the co-owner's month is still open leaves the item proposed again open.
+        world.Clock.Advance(TimeSpan.FromMinutes(5));
+        await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, null);
+        Assert.Null((await world.TodosAsync()).Single(t => t.Id == again.Id).CompletedAt);
+
+        // «Ricorda» on another cleaning of the same company states the company, not b (its own «Non lo so» wins): b's item stays open, b2's is closed by its answer.
+        await world.Vat.AnswerAsync(OrgWide, b2, CleaningSupplierVat.NotApplied, remember: true, Agency);
+        todos = await world.TodosAsync();
+        Assert.Null(todos.Single(t => t.Id == again.Id).CompletedAt);
+        Assert.Equal(Agency, todos.Single(t => t.EntityId == b2).ClosedBy);
+        Assert.Equal((CleaningSupplierVat.Unknown, false), ((await world.Vat.GetAsync(OrgWide, b)).Stated!.Answer, (await world.Vat.GetAsync(OrgWide, b)).Stated!.FromCompany));
 
         // «Non lo so» again closes it; the close of the second owner, who shares the cleaning, does not propose it a third time.
         await world.Vat.AnswerAsync(OrgWide, b, CleaningSupplierVat.Unknown, remember: false, Agency);
-        Assert.Equal(Agency, Assert.Single(await world.TodosAsync(), t => t.EntityId == b).ClosedBy);
+        Assert.Equal(Agency, (await world.TodosAsync()).Single(t => t.Id == again.Id).ClosedBy);
         await world.Accounting.CloseAsync(OrgId, second, 2026, 10, new OwnerCloseCommand { WaiverReason = "TEST" }, mayWaive: true, Agency);
-        Assert.Single(await world.TodosAsync(), t => t.EntityId == b);
-        Assert.Equal(4, (await world.TodosAsync()).Count);
+        Assert.Equal(2, (await world.TodosAsync()).Count(t => t.EntityId == b));
+        Assert.Equal(6, (await world.TodosAsync()).Count);
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule. The question is asked only where the answer changes the invoice of the agency: never without an issuer profile, never for an issuer whose rule charges
+    /// no VAT on a recharge (a Swiss agency not registered), never for a cleaning in another country than the rule's (an Italian house of a Swiss agency); an item raised while the
+    /// issuer charged VAT is closed by the system once it no longer does, and the close of the month proposes nothing.
+    /// </summary>
+    [Fact]
+    public async Task CleaningVat_IsAskedOnlyWhereTheAnswerChangesTheInvoice_Test()
+    {
+        var world = World.Create();
+        var owner = await world.OwnerAsync();
+        var swiss = await world.PropertyAsync(owner, "TEST Casa Lago");
+        var italian = await world.PropertyAsync(owner, "TEST Casa Como", country: "IT");
+        await world.MandateAsync(owner);
+        var company = Guid.NewGuid();
+        var inSwitzerland = await world.RequestAsync(swiss, company, At(10, 20), 10000);
+        var inItaly = await world.RequestAsync(italian, company, At(10, 21), 10000);
+
+        // No issuer profile: no owner invoice, nothing asked.
+        await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, Agency);
+        Assert.Empty(await world.TodosAsync());
+
+        // A Swiss agency not registered: its recharge has no VAT whatever the company did.
+        await world.IssuerAsync(DocumentRegime.SwissNotRegistered);
+        world.Clock.Advance(TimeSpan.FromMinutes(5));
+        await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, null);
+        Assert.Empty(await world.TodosAsync());
+
+        // Registered: the cleaning in Switzerland is asked, the one in Italy is not (its VAT is not the rule's).
+        await world.IssuerAsync(DocumentRegime.SwissVatRegistered);
+        world.Clock.Advance(TimeSpan.FromMinutes(5));
+        await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, null);
+        var asked = Assert.Single(await world.TodosAsync());
+        Assert.Equal((inSwitzerland, (DateTime?)null), (asked.EntityId!.Value, asked.CompletedAt));
+        Assert.DoesNotContain(await world.TodosAsync(), t => t.EntityId == inItaly);
+
+        // Not registered again: the item nobody can use is closed by the system, and the close of the month proposes nothing.
+        await world.IssuerAsync(DocumentRegime.SwissNotRegistered);
+        world.Clock.Advance(TimeSpan.FromMinutes(5));
+        await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, null);
+        Assert.Equal(InternalActivity.ClosedBySystem, Assert.Single(await world.TodosAsync()).ClosedBy);
+        await world.ApprovedVersionAsync(owner);
+        var closed = await world.Accounting.CloseAsync(OrgId, owner, 2026, 10, new OwnerCloseCommand { WaiverReason = "TEST" }, mayWaive: true, Agency);
+        Assert.Equal(OwnerClosePeriodStatus.Closed, closed.Status);
+        Assert.Single(await world.TodosAsync());
+        Assert.Null((await world.RequestRowAsync(inSwitzerland)).SupplierVatAskedAgainAt);
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule. An item raised before FIX/BE-CLEANING-VAT (action ReviewBooking, about the stay or the request: it leads to the booking, never to the question) is
+    /// superseded at the posting: an open one is closed by the system and the request that waits gets its own item leading to the question; one a person closed stays as the
+    /// person left it and keeps the request of its stay from a new item.
+    /// </summary>
+    [Fact]
+    public async Task CleaningVat_AnItemOfBeforeIsSupersededAtThePosting_UnlessAPersonClosedIt_Test()
+    {
+        var world = World.Create();
+        await world.IssuerAsync(DocumentRegime.SwissVatRegistered);
+        var owner = await world.OwnerAsync();
+        var property = await world.PropertyAsync(owner, "TEST Casa Lago");
+        await world.MandateAsync(owner);
+        var company = Guid.NewGuid();
+        var openStay = await world.StayAsync(property, At(10, 10), At(10, 12));
+        var closedStay = await world.StayAsync(property, At(10, 14), At(10, 16));
+        var ofOpenStay = await world.RequestAsync(property, company, At(10, 12), 10000, openStay);
+        var ofClosedStay = await world.RequestAsync(property, company, At(10, 16), 10000, closedStay);
+        var withoutStay = await world.RequestAsync(property, company, At(10, 18), 10000);
+        var openLegacy = await world.LegacyItemAsync(property, InternalActivity.BookingEntityType, openStay);
+        var closedLegacy = await world.LegacyItemAsync(property, InternalActivity.BookingEntityType, closedStay);
+        var requestLegacy = await world.LegacyItemAsync(property, CleaningVatRules.TodoEntityType, withoutStay);
+        await world.Activities.CloseAsync(closedLegacy, "auth0|admin", CancellationToken.None);
+
+        await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, Agency);
+
+        var todos = await world.TodosAsync();
+        Assert.Equal(InternalActivity.ClosedBySystem, todos.Single(t => t.Id == openLegacy).ClosedBy);
+        Assert.Equal(InternalActivity.ClosedBySystem, todos.Single(t => t.Id == requestLegacy).ClosedBy);
+        Assert.Equal("auth0|admin", todos.Single(t => t.Id == closedLegacy).ClosedBy);
+        var fresh = todos.Where(t => t.Action == ActivityAction.StateCleaningVat).ToList();
+        Assert.Equal(new[] { ofOpenStay, withoutStay }.Order(), fresh.Select(t => t.EntityId!.Value).Order());
+        Assert.All(fresh, t => Assert.Equal(((string?)CleaningVatRules.TodoEntityType, (DateTime?)null), (t.EntityType, t.CompletedAt)));
+        Assert.DoesNotContain(todos, t => t.EntityId == ofClosedStay);
+
+        // Posting again changes nothing.
+        world.Clock.Advance(TimeSpan.FromMinutes(5));
+        await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, null);
+        Assert.Equal(todos.Count, (await world.TodosAsync()).Count);
     }
 
     /// <summary>
@@ -500,7 +594,8 @@ public class CleaningVatTests
                 NullLogger<OwnerAccountingService>.Instance,
                 options,
                 cleaningCosts: new CleaningCostSource(db),
-                activities: Activities);
+                activities: Activities,
+                taxRules: TaxRuleCatalogs.Resolver());
             Mandates = new OwnerMandateService(db, Clock, options, NullLogger<OwnerMandateService>.Instance);
             Vat = new CleaningVatService(db, Activities, Clock, NullLogger<CleaningVatService>.Instance);
         }
@@ -565,11 +660,45 @@ public class CleaningVatTests
             return owner.Id;
         }
 
-        /// <summary>A Ticino property in francs (country CH) owned from January by the owner alone, of the org given (this one by default).</summary>
-        public async Task<Guid> PropertyAsync(Guid owner, string name, Guid? orgId = null)
+        /// <summary>
+        /// The agency's own issuer profile in Switzerland with the regime given (added, or changed): the rule of its owner invoices decides whether the question is asked
+        /// (registered: 8.1% on a recharge; not registered: no VAT at all).
+        /// </summary>
+        public async Task IssuerAsync(DocumentRegime regime)
+        {
+            var profile = await Db.OrgFiscalIssuerProfiles.OfOrganization(OrgId).FirstOrDefaultAsync();
+            if (profile is null)
+            {
+                profile = new OrgFiscalIssuerProfile { OrgId = OrgId, CountryCode = "CH" };
+                Db.OrgFiscalIssuerProfiles.Add(profile);
+            }
+
+            profile.DocumentRegime = regime;
+            profile.VatRegistered = regime == DocumentRegime.SwissVatRegistered;
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
+
+        /// <summary>An item raised before FIX/BE-CLEANING-VAT (S013): action ReviewBooking (it leads to the booking), about the stay or the request given.</summary>
+        public Task<Guid> LegacyItemAsync(Guid property, string entityType, Guid entityId) =>
+            Activities.CreateAsync(
+                new CreateTodoRequest
+                {
+                    Type = ActivityType.CleaningVatToState,
+                    Action = ActivityAction.ReviewBooking,
+                    EntityType = entityType,
+                    EntityId = entityId,
+                    Urgency = ActivityUrgency.Medium,
+                    PropertyId = property,
+                    Reason = "TEST",
+                },
+                CancellationToken.None);
+
+        /// <summary>A property in francs owned from January by the owner alone, in Ticino (country CH) unless said, of the org given (this one by default).</summary>
+        public async Task<Guid> PropertyAsync(Guid owner, string name, Guid? orgId = null, string country = "CH")
         {
             var org = orgId ?? OrgId;
-            var property = new Property { OrgId = org, OwnerId = Agency, Name = name, Address = "Via 1", City = "Lugano", Country = "CH", Currency = "CHF" };
+            var property = new Property { OrgId = org, OwnerId = Agency, Name = name, Address = "Via 1", City = "Lugano", Country = country, Currency = "CHF" };
             Db.Properties.Add(property);
             Db.PropertyOwnerships.Add(new PropertyOwnership
             {

@@ -250,9 +250,13 @@ the supplier (that side is not in this change). So the agency is asked one thing
   country used is the property's, where the cleaning was done.
 - **The «Da fare».** `CleaningVatToState` about the cleaning request (entity `ServiceRequest`, the id of the request), action `StateCleaningVat` (140): raised at the posting of the
   month for each cleaning of a company recharged to an owner whose month is open and whose VAT nobody stated (no answer on the request, nothing remembered for the company),
-  once (an item open, or one a person closed, is not raised again), in the language of the org (`TodoReason_CleaningVatToState`). The items raised before this change are about
-  the stay (entity `Booking`, `ReviewBooking`): they keep working, no new item is raised for a cleaning of that stay while one of them is open, and they are closed when every
-  cleaning of the stay is stated (by the answer, or by the system at the next posting). A staff cleaning is never asked (no VAT of a company).
+  once (an item open, or one a person closed, is not raised again), in the language of the org (`TodoReason_CleaningVatToState`). **Only where the answer changes the
+  invoice**: the rule of the agency's owner invoices on the last day of the month (its issuer profile) charges VAT on a recharge and the cleaning is in the rule's country;
+  without a profile, for an agency not registered, a receipt, the flat-rate regime or a cleaning in another country nothing is asked and an item already open is closed by the
+  system (items cannot be dismissed by hand). **«Non lo so» states nothing**: it is not asked again at the posting, but only an answer other than «Non lo so» lets the
+  system close an item, and «Ricorda» closes only the items of the requests of the company with no answer of their own. The items raised before this change (action
+  `ReviewBooking`, about the stay or the request: they open the booking, never the question) are closed by the system at the next posting of their month and the requests that
+  wait get their own item; one a person closed is left as it is and keeps the requests of its stay from a new item. A staff cleaning is never asked (no VAT of a company).
 - **The endpoint.** `GET api/service-requests/{id}/cleaning-vat` (`property.read`) answers the question: `country`, `cleaningDate`, `standardRatePercent` (the rate of «Sì»;
   `null` when the table has none for that day), `answer`, `answerRatePercent`, `answeredAt`, `companyAppliesVat` (what the organization remembers), `statedAnswer`,
   `statedRatePercent`, `statedByCompany` (what the invoice uses) and `canRemember`. `POST` of the same route (`property.write`) takes `{ answer, remember }` (`Applied`,
@@ -276,8 +280,8 @@ the supplier (that side is not in this change). So the agency is asked one thing
   refused at the issue (409 `document_draft_outdated`) and made again; an issued invoice never changes (a credit note gives back only its share of the VAT posted on top).
   **The statements and the ledger stay gross and not decomposed** (D4).
 - **The close of the month.** When the month of an owner is closed, each cleaning of a company recharged to it in the month whose answer is still «Non lo so», or none, gets its
-  «Da fare» once more (`TodoReason_CleaningVatToStateAgain`), once for each request (`SupplierVatAskedAgainAt`), unless an item about it is still open. **«Non lo so» never
-  blocks the close**: this runs after the close is saved.
+  «Da fare» once more (`TodoReason_CleaningVatToStateAgain`), once for each request (`SupplierVatAskedAgainAt`), unless an item about it is still open, and only where the
+  answer changes the invoice (as above). **«Non lo so» never blocks the close**: this runs after the close is saved.
 - **Not in this change.** A cleaning whose supplier's invoice is addressed to the owner, the agency acting in the owner's name (a pass-through «spesa anticipata» outside the
   VAT, art. 15 c. 1 n. 3 DPR 633/72, art. 24 cpv. 6 lett. b LIVA): it needs the question «intestare al proprietario?» when the cleaning is ordered. The VAT of the cleaning on
   the document to the guest (the lodging's: 3.8% in Switzerland for a registered host, 10% in Italy for a structure).

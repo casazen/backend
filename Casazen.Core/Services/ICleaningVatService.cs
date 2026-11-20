@@ -113,15 +113,8 @@ public static class CleaningVatRules
     public static CleaningRechargeVat? RechargeVatOf(StatedCleaningVat? stated, FiscalTaxRule rule)
     {
         ArgumentNullException.ThrowIfNull(rule);
-        if (stated is null || stated.Answer == CleaningSupplierVat.Unknown)
+        if (stated is null || stated.Answer == CleaningSupplierVat.Unknown || !IsAskedUnder(rule, stated.Country))
             return null;
-
-        if (rule.DocumentKind != FiscalDocumentKind.Invoice
-            || rule.RateOf(FiscalLineType.Recharge).Percent <= 0m
-            || !string.Equals(stated.Country, rule.Jurisdiction, StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
 
         return stated.Answer switch
         {
@@ -139,7 +132,7 @@ public static class CleaningVatRules
     public static bool IsCompanyVatOf(decimal ratePercent, string? natureCode, FiscalTaxRule rule)
     {
         ArgumentNullException.ThrowIfNull(rule);
-        if (rule.DocumentKind != FiscalDocumentKind.Invoice || rule.RateOf(FiscalLineType.Recharge).Percent <= 0m)
+        if (!ChargesVatOnRecharge(rule))
             return false;
 
         if (ratePercent == 0m)
@@ -148,6 +141,24 @@ public static class CleaningVatRules
         return natureCode is null
             && Regulatory.VatRates.Table.Any(rate => rate.Country == rule.Jurisdiction && rate.Kind == Regulatory.VatRateKind.Standard && rate.Percent == ratePercent);
     }
+
+    /// <summary>
+    /// Whether the issuer of <paramref name="rule"/> charges VAT on a recharge: an invoice whose recharge rate is above 0. Only then does the company's VAT change the line of
+    /// the recharge (<see cref="RechargeVatOf"/>); an agency not registered, a receipt or the Italian flat-rate regime has no VAT to charge on it.
+    /// </summary>
+    public static bool ChargesVatOnRecharge(FiscalTaxRule rule)
+    {
+        ArgumentNullException.ThrowIfNull(rule);
+        return rule.DocumentKind == FiscalDocumentKind.Invoice && rule.RateOf(FiscalLineType.Recharge).Percent > 0m;
+    }
+
+    /// <summary>
+    /// Whether the question is worth asking for a cleaning in <paramref name="country"/> (its property) under <paramref name="rule"/>, the rule of the owner invoices of the
+    /// organization on the last day of the month: the rule charges VAT on a recharge and the cleaning is in its country, so <see cref="RechargeVatOf"/> would use the answer.
+    /// No rule (no issuer profile, no rule in the catalog) is never a question: an item nobody can use is only noise.
+    /// </summary>
+    public static bool IsAskedUnder(FiscalTaxRule? rule, string? country) =>
+        rule is not null && ChargesVatOnRecharge(rule) && string.Equals(country?.Trim(), rule.Jurisdiction, StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>The stable codes and the message keys (<c>SharedResources</c>, Italian and English) of the refusals of <see cref="ICleaningVatService"/>.</summary>
