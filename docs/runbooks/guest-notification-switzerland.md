@@ -190,7 +190,7 @@ WHERE "Type" IN ('ticino-notification-due', 'ticino-notification-overdue') AND "
 ```
 
 - **Turn it on (test only, on the product owner's order)**: `Features__TicinoNotificationAlerts=true` on the `test` environment (the change redeploys). Properties of canton Ticino need
-  a municipality of the canton (`Property.SwissMunicipalityCode`) and the structure identifier; a day needs a stay that arrived and no receipt.
+  a municipality of the canton (`Property.SwissMunicipalityCode`) and the structure identifier; a day needs a stay that arrived and neither a receipt of the portal nor a declaration (§ 14).
 - **Roll back**: set the flag off (or unset it): the next run reads and sends nothing. The state rows are harmless; to start over for a day delete its row
   (`DELETE FROM casazen_test."ComplianceAlertStates" WHERE "Type" = 4 AND "PropertyId" = '<id>' AND "ReferenceKey" = 'yyyy-MM-dd';`), which makes the stages due at that moment go out once more.
   No migration: `ComplianceAlertStates.Type` is an integer with no CHECK, and value 4 is new.

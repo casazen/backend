@@ -61,8 +61,8 @@ public class SwissNotificationFileEvent : ITenantOwned
 }
 
 /// <summary>
-/// The values of <see cref="SwissNotificationFileEvent.Format"/>, stored as text (the same words the API uses), so a later format adds a value with no migration. The list is photographed by
-/// <c>TicinoDeclarationTests</c>: a value added here is a decision of its own.
+/// The values of <see cref="SwissNotificationFileEvent.Format"/>, stored as text (the same words the API uses). The column is bounded by the check <c>CK_SwissNotificationFileEvents_Format</c>, so a
+/// new format needs a migration that widens the check as well as a value here. The list is photographed by <c>TicinoDeclarationTests</c>: a value added here is a decision of its own.
 /// </summary>
 public static class SwissNotificationFileFormats
 {
