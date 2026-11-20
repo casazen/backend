@@ -363,7 +363,7 @@ public class AccountantPackageSelfBilledTests
     /// <summary>
     /// PROOF TEST: data rule (FIX/BE-TD17-JOB-EXIT). The numbers closed as «non più dovuta» are in the package, in a register of the unused numbers next to the register of the TD17 (<c>numeri-non-utilizzati</c>, CSV and
     /// Excel, listed in the index with their hash): for each one the issuer (its series is its own), the number, the day of the rejected original, the day of the closing, the reason in words, the note, the SDI outcome of the
-    /// original (its state and the code of the rejection) and the user (the name, else the id the closing recorded). Only the closings of the period count, by the day of Rome (a closing at 00:30 of the 1st of December is
+    /// original (its state and the code of the rejection) and the user (the name, else a fixed text: the id of a user is nowhere in the files). Only the closings of the period count, by the day of Rome (a closing at 00:30 of the 1st of December is
     /// December's; a year has them all), never another organization's and never a draft that was discarded without a closing; only for who reads the owner accounting of the whole organization; a text a spreadsheet would
     /// run as a formula (the note) is written as text in both files. <b>A period without a closing is the package it always was: no file, not a byte changed.</b>
     /// </summary>
@@ -414,7 +414,7 @@ public class AccountantPackageSelfBilledTests
 
         AssertTheIndex(november);
 
-        // December: the number closed at 00:30 of the 1st (Rome) and the one of the other issuer, oldest closing first; a user that is gone is named by the id the closing recorded, and a closing without a note has an empty cell.
+        // December: the number closed at 00:30 of the 1st (Rome) and the one of the other issuer, oldest closing first; a user that is gone is named by a fixed text, never by the id the closing recorded, and a closing without a note has an empty cell.
         var (_, december) = await BuildAsync(rig, AccountantPackageAccess.Full, AccountantPackagePeriod.OfMonth(2026, 12));
         var decemberRows = Blocks(december[unusedPath])[0].Skip(2).ToList();
         Assert.Equal(2, decemberRows.Count);
@@ -422,8 +422,14 @@ public class AccountantPackageSelfBilledTests
             new[] { "TEST Immobiliare Lago Srl (IT 09876543217)", "TD17-2026/2", "05/11/2026", "01/12/2026", "Duplicato o errore", "Duplicato della TD17 di ottobre, gia' emessa", "Scartata", "00417", "Mario Rossi" },
             decemberRows[0]);
         Assert.Equal(
-            new[] { "TEST Casa Monte Srl (IT 01112223334)", "TD17-2026/1", "04/11/2026", "02/12/2026", "Titolare non più soggetto passivo", string.Empty, "Scartata", "00417", "auth0|ghost" },
+            new[] { "TEST Casa Monte Srl (IT 01112223334)", "TD17-2026/1", "04/11/2026", "02/12/2026", "Titolare non più soggetto passivo", string.Empty, "Scartata", "00417", "utente non più presente" },
             decemberRows[1]);
+        using (var workbook = new ZipArchive(new MemoryStream(december[unusedPath.Replace(".csv", ".xlsx", StringComparison.Ordinal)]), ZipArchiveMode.Read))
+        using (var sheet = new StreamReader(workbook.GetEntry("xl/worksheets/sheet1.xml")!.Open(), Encoding.UTF8))
+        {
+            Assert.Contains("utente non più presente", await sheet.ReadToEndAsync(), StringComparison.Ordinal);
+        }
+
         AssertTheIndex(december);
 
         // A year has all three, oldest closing first; none of another organization or of a draft discarded without a closing is in any file.
@@ -436,6 +442,10 @@ public class AccountantPackageSelfBilledTests
             foreach (var foreign in new[] { "TD17-2026/9", "TEST Altra Societa", "05555555555", "TEST nota di un'altra agenzia", "auth0|altra" })
                 Assert.False(text.Contains(foreign, StringComparison.Ordinal), $"{path} holds «{foreign}» of another organization");
         }
+
+        // The id of a user is nowhere in the files, a user that is gone included (the fixed text is written instead): not in a CSV, not in any part of an Excel file. The id stays in the column of the database.
+        foreach (var files in new[] { november, december, year })
+            AssertNoUserIds(files, "auth0|ghost", "auth0|agency");
 
         // Owner accounting of the whole organization only: without the permission, or for a caller who reaches only some properties, there is no register (and none of its words in any file).
         var (_, withoutPermission) = await BuildAsync(rig, AccountantPackageAccess.WithoutOwnerAccounting, Year2026);
@@ -660,6 +670,31 @@ public class AccountantPackageSelfBilledTests
     }
 
     private static string Text(byte[] bytes) => Encoding.UTF8.GetString(bytes).TrimStart((char)0xFEFF);
+
+    /// <summary>No CSV file, and no part of an Excel file, holds the id of a user: the package names who closed a number by name, or by a fixed text when the user is gone.</summary>
+    private static void AssertNoUserIds(Dictionary<string, byte[]> files, params string[] ids)
+    {
+        foreach (var (path, content) in files.Where(f => f.Key.EndsWith(".csv", StringComparison.Ordinal) || f.Key.EndsWith(".xlsx", StringComparison.Ordinal)))
+        {
+            var texts = new List<string>();
+            if (path.EndsWith(".xlsx", StringComparison.Ordinal))
+            {
+                using var workbook = new ZipArchive(new MemoryStream(content), ZipArchiveMode.Read);
+                foreach (var entry in workbook.Entries)
+                {
+                    using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
+                    texts.Add(reader.ReadToEnd());
+                }
+            }
+            else
+            {
+                texts.Add(Text(content));
+            }
+
+            foreach (var id in ids)
+                Assert.False(texts.Any(text => text.Contains(id, StringComparison.Ordinal)), $"{path} holds the id of a user ({id})");
+        }
+    }
 
     /// <summary>An amount as the CSV writes it (a decimal comma, no thousands separator).</summary>
     private static decimal Money(string cell) => decimal.Parse(cell, NumberStyles.Number, Italian);

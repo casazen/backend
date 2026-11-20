@@ -203,7 +203,8 @@ internal static class AccountantPackageDocuments
     /// as «non più dovuta» (their reason and the day, the user, and the note when there is one), with the day of the rejected original the number was given to and the outcome of that original with the SDI
     /// (its state and the code of the rejection). The number stays reserved and is never given again: the register is the documentation of the gap in the series of its issuer, which is told apart by the
     /// first column (every holder numbers its TD17 in a series of its own). Text a person typed (the note, the name of the user) is written as text in both files, never as a formula
-    /// (<see cref="ReportTable"/>). A period with no closing writes nothing: the caller does not call it.
+    /// (<see cref="ReportTable"/>). The user is told by name; when the name is not known (the user is gone) the cell holds a fixed text (<see cref="PackageLabels.UserNoLongerPresent"/>): the id of a user
+    /// never leaves in the file, it stays in the column of the database. A period with no closing writes nothing: the caller does not call it.
     /// </summary>
     public static IReadOnlyList<ReportTable> UnusedNumbers(
         IReadOnlyList<PackageUnusedNumber> rows,
@@ -242,7 +243,7 @@ internal static class AccountantPackageDocuments
                 row.Note,
                 FiscalDocumentExports.SdiLabel(row.OriginalSdiStatus, t.Source, t.Language),
                 row.OriginalSdiErrorCode,
-                row.ClosedByUserId is { } user ? userNames.GetValueOrDefault(user) ?? user : null);
+                row.ClosedByUserId is { } user ? userNames.GetValueOrDefault(user) ?? t[PackageLabels.UserNoLongerPresent] : null);
         }
 
         return [table];

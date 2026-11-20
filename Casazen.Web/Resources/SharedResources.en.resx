@@ -6889,6 +6889,9 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="SelfBillingNotClosable" xml:space="preserve">
     <value>Only the replacement draft of a TD17 self-billed invoice rejected by the SDI that the month no longer supports is closed as no longer due: if its data are still valid, issue it.</value>
   </data>
+  <data name="SelfBillingAlreadyClosed" xml:space="preserve">
+    <value>This draft was already closed for a different reason: the reason and the user on record are never changed.</value>
+  </data>
   <data name="SelfBillingCloseReasonRequired" xml:space="preserve">
     <value>State why you are closing it: credit note from the portal, holder no longer a taxable person, or duplicate or error.</value>
   </data>
@@ -7680,6 +7683,9 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="AccPkgColClosedBy" xml:space="preserve">
     <value>Closed by</value>
+  </data>
+  <data name="AccPkgUserNoLongerPresent" xml:space="preserve">
+    <value>user no longer present</value>
   </data>
   <data name="AccPkgCloseReasonPortalCreditNote" xml:space="preserve">
     <value>Credit note from the portal</value>

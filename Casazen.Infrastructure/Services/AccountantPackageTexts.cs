@@ -89,6 +89,7 @@ internal static class PackageLabels
     public const string ColOriginalSdi = "AccPkgColOriginalSdi";
     public const string ColSdiErrorCode = "AccPkgColSdiErrorCode";
     public const string ColClosedBy = "AccPkgColClosedBy";
+    public const string UserNoLongerPresent = "AccPkgUserNoLongerPresent";
     public const string CloseReasonPortalCreditNote = "AccPkgCloseReasonPortalCreditNote";
     public const string CloseReasonHolderNoLongerSubject = "AccPkgCloseReasonHolderNoLongerSubject";
     public const string CloseReasonDuplicateOrError = "AccPkgCloseReasonDuplicateOrError";

@@ -497,7 +497,8 @@ internal static class AccountantPackageFacts
 
     /// <summary>
     /// The name of each user among <paramref name="userIds"/> (first and last name, never the e-mail): who closed a number, for the register of the unused numbers. A user that is gone, or has no name,
-    /// is not in the answer (the register then names the id the closing recorded, never a blank). An empty list reads nothing.
+    /// is not in the answer (the register then says so with a fixed text, <see cref="PackageLabels.UserNoLongerPresent"/>: never a blank and never the id of the user, which does not leave in the file). An
+    /// empty list reads nothing.
     /// </summary>
     public static async Task<Dictionary<string, string>> UserNamesAsync(AppDbContext db, IReadOnlyCollection<string> userIds, CancellationToken cancellationToken)
     {

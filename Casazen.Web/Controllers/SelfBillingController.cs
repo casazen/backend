@@ -169,8 +169,8 @@ public class SelfBillingController(
     /// history (an internal outcome of CasaZen, never «scarto confermato»). Only for a draft that replaces a rejected TD17 and that the system reports as kept (<c>keptReason</c> of the list and the detail); the
     /// generic discard (<c>DELETE {id}</c>) stays refused for it. Answers <c>200</c> with the detail of the closed draft (<c>invoice.closedReason</c>, <c>closedAt</c>, <c>closedBy</c>, <c>closedNote</c>); the same
     /// call again with the same reason answers the same closed draft. Behind <c>Features:SdiSubmission</c> too (404 while it is off), like the correction that makes such a draft. 404
-    /// <c>fiscal_document_not_found</c> (another org, not a TD17); 422 <c>close_reason_required</c>, <c>close_note_too_long</c>, <c>self_billing_not_closable</c> (not the replacement of a rejected TD17, one the month
-    /// still supports, or one closed for another reason); 403 without the whole org.
+    /// <c>fiscal_document_not_found</c> (another org, not a TD17); 422 <c>close_reason_required</c>, <c>close_note_too_long</c>, <c>self_billing_already_closed</c> (already closed with another reason), <c>self_billing_not_closable</c> (not the replacement of a rejected TD17, one the month
+    /// still supports); 403 without the whole org.
     /// </summary>
     [HttpPost("{id:guid}/close-not-due")]
     [FeatureGate(FeatureFlags.SdiSubmission)]

@@ -77,8 +77,8 @@ public interface ISelfBillingService
     /// <b>keeps its series, its sequence number and its number</b>: the number is never freed (the unique index of the series never lets it be taken again, and the counter is already past it), it is only
     /// documented as unused (the register of the accountant package). It is an internal outcome of CasaZen, never «scarto confermato»: the rejection is an external fact of the SDI, and the rejected
     /// original stays as history. The generic discard (<see cref="DiscardDraftAsync"/>) stays refused for such a draft. A second call with the same reason answers the closed draft as it is (a double click,
-    /// a retry); another reason is refused, so the record of who closed it and why is never rewritten. The decision is taken under the lock of the generation of the organization (the month cannot adopt the draft meanwhile).
-    /// 404 <c>fiscal_document_not_found</c> (another org, not a TD17); 422 <c>close_reason_required</c> (missing or not one of the reasons), <c>close_note_too_long</c>, <c>self_billing_not_closable</c> (not the replacement
+    /// a retry); another reason is refused with a code of its own (<c>self_billing_already_closed</c>), so the record of who closed it and why is never rewritten. The decision is taken under the lock of the generation of the organization (the month cannot adopt the draft meanwhile).
+    /// 404 <c>fiscal_document_not_found</c> (another org, not a TD17); 422 <c>close_reason_required</c> (missing or not one of the reasons), <c>close_note_too_long</c>, <c>self_billing_already_closed</c> (already closed with another reason), <c>self_billing_not_closable</c> (not the replacement
     /// draft of a rejected TD17, or one the month still supports: it is issued, not closed).
     /// </summary>
     Task<SelfBillingDetail> CloseNotDueAsync(Guid orgId, Guid documentId, string? reason, string? note, string? userId, CancellationToken ct = default);
@@ -349,10 +349,16 @@ public static class SelfBillingErrors
 
     /// <summary>
     /// 422 (FIX/BE-TD17-JOB-EXIT): the draft cannot be closed as «non più dovuta». Only the replacement draft of a TD17 the SDI rejected (<see cref="FiscalDocument.ReplacesDocumentId"/> set, holding its number) that the
-    /// month no longer supports (<see cref="SelfBillingRow.KeptReason"/> is not <c>null</c>) is closed; a draft the month still gives is issued, and anything else (an issued TD17, a discarded or an ordinary draft, a draft
-    /// already closed for another reason) is refused. Nothing is changed.
+    /// month no longer supports (<see cref="SelfBillingRow.KeptReason"/> is not <c>null</c>) is closed; a draft the month still gives is issued, and anything else (an issued TD17, a discarded or an ordinary draft) is
+    /// refused; a draft already closed with another reason has its own code (<see cref="AlreadyClosed"/>). Nothing is changed.
     /// </summary>
     public const string NotClosable = "self_billing_not_closable";
+
+    /// <summary>
+    /// 422 (FIX/BE-TD17-JOB-EXIT): the draft was already closed as «non più dovuta» with another reason than the one of the call. The same reason answers the closed draft (200, a double click or a retry); another one is
+    /// refused, so who closed it and why is never rewritten. It has a code of its own because it is not <see cref="NotClosable"/>: the draft is closed already and there is nothing to issue. Nothing is changed.
+    /// </summary>
+    public const string AlreadyClosed = "self_billing_already_closed";
 
     /// <summary>422 (FIX/BE-TD17-JOB-EXIT): the reason of the closing is missing or is none of <see cref="SelfBillingCloseReasons.All"/>: a number is never closed without one. Nothing is changed.</summary>
     public const string CloseReasonRequired = "close_reason_required";

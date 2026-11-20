@@ -46,7 +46,7 @@ public class SelfBillingCloseNotDueTests
     /// PROOF TEST: money and numbering rule. A kept replacement (the commissions of its month were reversed) is closed as «non più dovuta»: the draft becomes discarded with its reason, the user (named in the read
     /// model) and the day, and <b>keeps its series, its sequence number and its number</b>; the rejected original stays as history and is never corrected again. The generic discard stays refused. Neither the drafts
     /// of the month nor the monthly run take the number or touch the closed draft; when the commission comes back a new draft is made and, issued, takes the NEXT number of the series, never the closed one (no
-    /// duplicate), so the series has a documented gap. The same call again with the same reason answers the closed draft unchanged; another reason is refused.
+    /// duplicate), so the series has a documented gap. The same call again with the same reason answers the closed draft unchanged; another reason is refused with a code of its own (<c>self_billing_already_closed</c>).
     /// </summary>
     [Fact]
     public async Task ClosedNotDue_KeepsTheNumberReserved_AndNeverGivesItAgain_Test()
@@ -118,7 +118,7 @@ public class SelfBillingCloseNotDueTests
         var twice = await rig.Service.CloseNotDueAsync(rig.OrgId, replacement.Id, "PORTAL_CREDIT_NOTE", "another note", "auth0|someone-else");
         Assert.Equal(((DateTime?)closedAt, "Mario Rossi", "Nota di credito 4711 del portale"), (twice.Row.ClosedAt, twice.Row.ClosedBy, twice.Row.ClosedNote));
         var other = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Service.CloseNotDueAsync(rig.OrgId, replacement.Id, SelfBillingCloseReasons.DuplicateOrError, null, Host));
-        Assert.Equal(SelfBillingErrors.NotClosable, other.Code);
+        Assert.Equal((SelfBillingErrors.AlreadyClosed, "SelfBillingAlreadyClosed"), (other.Code, other.MessageKey));
         var still = await rig.DocumentAsync(replacement.Id);
         Assert.Equal(("portal_credit_note", "Nota di credito 4711 del portale", Host), (still.ClosedNotDueReason, still.ClosedNotDueNote, still.ClosedNotDueByUserId));
     }
@@ -288,6 +288,40 @@ public class SelfBillingCloseNotDueTests
         var closed = Assert.Single(await rig.Db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.SelfBillingDraftsToReview)).ToListAsync());
         Assert.Equal((item.Id, InternalActivity.ClosedBySystem), (closed.Id, closed.ClosedBy));
         Assert.NotNull(closed.CompletedAt);
+    }
+
+    /// <summary>
+    /// A call on a draft that is already closed: the same reason (in other letters, with another note: a double click, a retry) is still 200 with the closed draft exactly as it is; another reason is refused with a code
+    /// and a message of its own, 422 <c>self_billing_already_closed</c>, never <c>self_billing_not_closable</c> (whose words tell to issue the draft: a closed draft has nothing to issue). Who closed it, why and when is
+    /// never rewritten, and the other refusals keep their code (a discarded document nobody closed is still «not closable»).
+    /// </summary>
+    [Fact]
+    public async Task ClosedNotDue_AnotherReasonOnAClosedDraft_HasItsOwnCode_AndTheSameReasonStillAnswers_Test()
+    {
+        await using var rig = await SelfBillingRig.CreateAsync();
+        var (_, replacement) = await KeptReplacementAsync(rig);
+        var controller = ControllerOf(rig, rig.OrgId, new HostScope(rig.OrgId));
+
+        // The first call closes it.
+        var first = Assert.IsType<OkObjectResult>((await controller.CloseNotDue(replacement.Id, new CloseSelfBillingNotDueRequest { Reason = SelfBillingCloseReasons.PortalCreditNote, Note = "Nota di credito 4711" })).Result);
+        var closed = Assert.IsType<SelfBillingDto>(first.Value).Invoice;
+        Assert.Equal(("Discarded", SelfBillingCloseReasons.PortalCreditNote, "Nota di credito 4711"), (closed.Status, closed.ClosedReason, closed.ClosedNote));
+        var before = await SnapshotAsync(rig);
+
+        // The same reason answers 200 and the same closed draft, whatever the letters and the note of the call, and changes nothing.
+        var again = Assert.IsType<OkObjectResult>((await controller.CloseNotDue(replacement.Id, new CloseSelfBillingNotDueRequest { Reason = "Portal_Credit_Note", Note = "another note" })).Result);
+        var same = Assert.IsType<SelfBillingDto>(again.Value).Invoice;
+        Assert.Equal((closed.Id, closed.ClosedReason, closed.ClosedAt, closed.ClosedNote), (same.Id, same.ClosedReason, same.ClosedAt, same.ClosedNote));
+        Assert.Equal(before, await SnapshotAsync(rig));
+
+        // Another reason is refused with a code and a message of its own, and nothing is rewritten.
+        var other = await Assert.ThrowsAsync<DomainRuleException>(() => controller.CloseNotDue(replacement.Id, new CloseSelfBillingNotDueRequest { Reason = SelfBillingCloseReasons.DuplicateOrError }));
+        Assert.Equal((SelfBillingErrors.AlreadyClosed, "SelfBillingAlreadyClosed"), (other.Code, other.MessageKey));
+        Assert.NotEqual((SelfBillingErrors.NotClosable, "SelfBillingNotClosable"), (other.Code, other.MessageKey));
+        Assert.Equal(before, await SnapshotAsync(rig));
+
+        // The other refusals keep their own code: the original the correction discarded was never closed, so it is «not closable», not «already closed».
+        await AssertNotClosableAsync(rig, closed.ReplacesDocumentId!.Value);
     }
 
     /// <summary>The list of the self-billed invoices, which now includes the closed drafts, is translated to SQL by PostgreSQL (InMemory accepts what Npgsql cannot turn into SQL).</summary>

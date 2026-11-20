@@ -919,8 +919,10 @@ from the settings.
   closed draft (`SelfBillingDto`). The user and the day are the caller's and the server's, never a value of the request. **Errors, each with its own code and an IT and an EN text:** 404 `fiscal_document_not_found`
   (another organization's document, a document that is not a TD17, an unknown one); 422 `close_reason_required` (the reason is missing or is none of the three); 422 `close_note_too_long`; 422
   **`self_billing_not_closable`** (message key `SelfBillingNotClosable`): the document is not a **draft that replaces a rejected TD17 and holds its number** that the system reports as **kept** (`keptReason` not null: the
-  same read as the list and the detail, `KeptReasonsAsync`). A draft the month still gives, or would adopt, is issued, not closed; an issued TD17, an ordinary draft, a discarded one and a draft already closed for
-  *another* reason are refused. The same call again with the **same** reason answers the same closed draft (a double click, a retry) and changes nothing: who closed it and why is never rewritten.
+  same read as the list and the detail, `KeptReasonsAsync`). A draft the month still gives, or would adopt, is issued, not closed; an issued TD17, an ordinary draft and a discarded document nobody closed are refused.
+  The same call again with the **same** reason answers the same closed draft (a double click, a retry) and changes nothing; a draft already closed with *another* reason is refused with a code of its own, 422
+  **`self_billing_already_closed`** (message key `SelfBillingAlreadyClosed`: «already closed for a different reason», not the words of «not closable», which tell to issue a draft that is closed): who closed it and
+  why is never rewritten.
 - **The number is never freed.** The closed draft keeps its `series`, its `sequenceNumber` and its display `number`: the unique index `UIX_FiscalDocuments_OrgId_IssuerProfileId_Series_SequenceNumber` (any status) never lets
   the number be taken again, the counter of the series (`FiscalNumberSequences`) is already past it, and the check `CK_FiscalDocuments_ClosedNotDue` refuses a closed document that is not discarded or has lost its sequence
   number. The next TD17 of the series is the next number: the series has a documented gap, no duplicate. **The reuse of the number** (only when it is the last of the series and no later number was issued) **stays off and is
@@ -931,7 +933,8 @@ from the settings.
   and `closedNote`. The rejected original is not corrected again (`canCorrect` is false: it is no longer issued).
 - **The register of the unused numbers in the accountant package.** `fatture-proprietari/autofatture/numeri-non-utilizzati.csv` and `.xlsx` (owner accounting, the whole organization, the folder `ownerInvoices`): one row for each
   number closed **in the period** (the Europe/Rome day of the closing), with the issuer (the series is the issuer's own), the number, the day of the rejected original, the day of the closing, the reason in words, the note,
-  the **SDI outcome of the rejected original** (its state and the code of the rejection) and the user. Written by `Plan.AddTables` like every table of the package (the same index entry with its SHA-256, the same
+  the **SDI outcome of the rejected original** (its state and the code of the rejection) and the user (the name; when the user is gone, the fixed text «utente non più presente», `AccPkgUserNoLongerPresent`: **the
+  id of a user never leaves in the file**, it stays in the column of the database). Written by `Plan.AddTables` like every table of the package (the same index entry with its SHA-256, the same
   title row, header and typed cells; a note or a name a spreadsheet would run as a formula is written as text, with a leading apostrophe in the CSV and as a string never calculated in the Excel file). **A period with no
   closing writes no file at all: the package stays byte for byte what it was.**
 - **Data and privacy.** The reason, the day and the user are columns of `FiscalDocuments` (`ClosedNotDueReason`, `ClosedNotDueAt`, `ClosedNotDueByUserId`); the note (`ClosedNotDueNote`) is free text and is **encrypted at rest**

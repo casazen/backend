@@ -6889,6 +6889,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="SelfBillingNotClosable" xml:space="preserve">
     <value>Si chiude come non più dovuta solo la bozza sostitutiva di un'autofattura TD17 scartata dallo SDI che il mese non sostiene più: se i suoi dati sono ancora validi, emettila.</value>
   </data>
+  <data name="SelfBillingAlreadyClosed" xml:space="preserve">
+    <value>Questa bozza è già stata chiusa con un altro motivo: il motivo e l'utente registrati non si cambiano.</value>
+  </data>
   <data name="SelfBillingCloseReasonRequired" xml:space="preserve">
     <value>Indica il motivo della chiusura: nota di credito del portale, titolare non più soggetto passivo, oppure duplicato o errore.</value>
   </data>
@@ -7680,6 +7683,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="AccPkgColClosedBy" xml:space="preserve">
     <value>Chiusa da</value>
+  </data>
+  <data name="AccPkgUserNoLongerPresent" xml:space="preserve">
+    <value>utente non più presente</value>
   </data>
   <data name="AccPkgCloseReasonPortalCreditNote" xml:space="preserve">
     <value>Nota di credito del portale</value>

@@ -25,7 +25,7 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Only what the system reports as kept.</b> The draft must replace a rejected TD17, hold its number and be one the drafts of its month would keep (the same read as the list and the detail: a draft the
 /// month still gives, or would adopt, is issued, not closed). Anything else (an issued TD17, an ordinary draft, a discarded one) is 422 <c>self_billing_not_closable</c> and nothing is changed.</item>
 /// <item><b>One decision at a time.</b> It is taken under the lock of the generation of the organization (<see cref="PostgresAdvisoryLocks.Scope.SelfBilling"/>): the month cannot adopt or make again the draft
-/// meanwhile, and the same call twice (a double click, a retry) answers the closed draft once the first is done (the same reason; another reason is refused, so who closed it and why is never rewritten).</item>
+/// meanwhile, and the same call twice (a double click, a retry) answers the closed draft once the first is done (the same reason; another reason is refused with a code of its own, <see cref="SelfBillingErrors.AlreadyClosed"/>, so who closed it and why is never rewritten).</item>
 /// <item><b>Tenant.</b> The document is read by the organization of the caller (another organization's is 404). The note is free text: it is stored encrypted and never logged; the log carries ids and the code of the reason.</item>
 /// </list>
 /// </remarks>
@@ -51,11 +51,12 @@ public sealed partial class SelfBillingService
                 ct)
             ?? throw DocumentNotFound(documentId);
 
-        // Closed already: the same reason answers the same closed draft (a double click, a retry); another reason is refused, the record of who closed it and why is never rewritten.
+        // Closed already: the same reason answers the same closed draft (a double click, a retry); another reason is refused with a code of its own (the draft is closed, there is nothing to issue, so it is not
+        // «not closable»), the record of who closed it and why is never rewritten.
         if (document.Status == FiscalDocumentStatus.Discarded && document.ClosedNotDueAt is not null)
         {
             if (!string.Equals(document.ClosedNotDueReason, closeReason, StringComparison.Ordinal))
-                throw NotClosable();
+                throw AlreadyClosed();
 
             return await DetailOfAsync(orgId, document, 0m, ct);
         }
@@ -95,4 +96,6 @@ public sealed partial class SelfBillingService
     }
 
     private static DomainRuleException NotClosable() => new(SelfBillingErrors.NotClosable, "SelfBillingNotClosable");
+
+    private static DomainRuleException AlreadyClosed() => new(SelfBillingErrors.AlreadyClosed, "SelfBillingAlreadyClosed");
 }
