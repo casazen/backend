@@ -86,7 +86,9 @@ public sealed partial class FiscalDocumentService(
         if (drafts.Count == 0)
             throw new DomainConflictException(FiscalDocumentErrors.AlreadyIssued, "FiscalDocumentAlreadyIssued");
 
-        return drafts.FirstOrDefault(d => !d.ForAgencyServices) ?? drafts[0];
+        var draft = drafts.FirstOrDefault(d => !d.ForAgencyServices) ?? drafts[0];
+        await ApplyCollectedTouristTaxAsync(db, draft, ct);
+        return draft;
     }
 
     /// <summary>
@@ -216,7 +218,9 @@ public sealed partial class FiscalDocumentService(
         if (document.Kind == DocumentKind.CreditNote)
             return document;
 
-        return await RebuildAsync(document, ct);
+        var rebuilt = await RebuildAsync(document, ct);
+        await ApplyCollectedTouristTaxAsync(db, rebuilt, ct);
+        return rebuilt;
     }
 
     public Task DiscardDraftAsync(Guid documentId, CancellationToken ct = default) => DiscardAsync(documentId, ownerInvoice: false, ct);
@@ -244,8 +248,12 @@ public sealed partial class FiscalDocumentService(
         logger.LogInformation("Fiscal document draft {DocumentId} discarded", document.Id);
     }
 
-    public Task<FiscalDocument> IssueAsync(Guid documentId, bool confirm, CancellationToken ct = default) =>
-        IssueCoreAsync(documentId, confirm, notify: true, ct);
+    public async Task<FiscalDocument> IssueAsync(Guid documentId, bool confirm, CancellationToken ct = default)
+    {
+        var issued = await IssueCoreAsync(documentId, confirm, notify: true, ct);
+        await ApplyCollectedTouristTaxAsync(db, issued, ct);
+        return issued;
+    }
 
     /// <summary>
     /// The issue of a draft, the one path of the API, of the bulk issue and of the automatic issue. <paramref name="notify"/> tells the hosts of the booking that a document was issued
@@ -588,7 +596,11 @@ public sealed partial class FiscalDocumentService(
     {
         var document = await db.FiscalDocuments.AsNoTracking().Include(d => d.Lines).FirstOrDefaultAsync(d => d.Id == documentId, ct);
         if (document is not null)
+        {
             await ApplyCurrentPaymentStateAsync(db, [document], ct);
+            await ApplyCollectedTouristTaxAsync(db, document, ct);
+        }
+
         return document;
     }
 
@@ -747,6 +759,7 @@ public sealed partial class FiscalDocumentService(
             throw ReadOnly();
 
         await ApplyCurrentPaymentStateAsync(db, [document], ct);
+        await ApplyCollectedTouristTaxAsync(db, document, ct);
         var credited = document.CreditedDocumentId is { } creditedId
             ? await db.FiscalDocuments.AsNoTracking().FirstOrDefaultAsync(d => d.Id == creditedId, ct)
             : null;
@@ -1664,6 +1677,35 @@ public sealed partial class FiscalDocumentService(
     /// </summary>
     internal static bool IsPaymentStateReadFromPayments(FiscalDocumentSource source, DocumentKind kind, Guid? bookingId, FiscalPaymentChannel channel) =>
         source == FiscalDocumentSource.CasaZen && kind != DocumentKind.CreditNote && bookingId is not null && channel != FiscalPaymentChannel.Portal;
+
+    /// <summary>
+    /// The one reading of the collection of the tourist tax of the stay (E25, <see cref="StayTouristTax"/>) for the guest document of a portal (FIX/BE-PORTAL-TAXLINE): the part of the tax
+    /// the record says is collected (what the guest paid online net of the refunds, or all of it once the host recorded it paid at the property) is set on
+    /// <see cref="FiscalDocument.TouristTaxCollected"/>, which <see cref="FiscalDocumentPortalCollection.SplitOf"/> reads, so the document the API gives and its PDFs say the same. No record, or a
+    /// document that is not the guest document of a portal with a line of tourist tax: nothing is read and nothing changes. Applied on the document in memory: nothing is saved.
+    /// </summary>
+    /// <param name="db">The context.</param>
+    /// <param name="document">The document, with its lines.</param>
+    /// <param name="ct">The cancellation token.</param>
+    /// <param name="ofOrg">The org of the document, for a caller that has no org of its own (the owner portal: its tenant filter matches nothing); <c>null</c> for a caller of the org, whose tenant filter applies.</param>
+    internal static async Task ApplyCollectedTouristTaxAsync(AppDbContext db, FiscalDocument document, CancellationToken ct, Guid? ofOrg = null)
+    {
+        if (document.BookingId is not { } bookingId || FiscalDocumentPortalCollection.TaxLeftToTheHost(document) <= 0m)
+            return;
+
+        // A caller with no org of its own names the org of the document instead (ofOrg), as the payments are read.
+        var records = ofOrg is { } org
+            ? db.StayTouristTaxes.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).Where(t => t.OrgId == org)
+            : db.StayTouristTaxes.AsQueryable();
+        var record = await records
+            .AsNoTracking()
+            .Where(t => t.BookingId == bookingId)
+            .Select(t => new { t.CollectionStatus, t.CollectedAmount, t.RefundedAmount })
+            .FirstOrDefaultAsync(ct);
+        document.TouristTaxCollected = record is null
+            ? 0m
+            : FiscalDocumentPortalCollection.CollectedOf(document, record.CollectionStatus, record.CollectedAmount, record.RefundedAmount);
+    }
 
     // ---------------------------------------------------------------- reads
 

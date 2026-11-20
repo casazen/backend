@@ -18,8 +18,8 @@ namespace Casazen.Web.Controllers;
 /// every change <c>payment.write</c>; a document is authorized through its booking like the payments of a booking, a document without a booking only for a caller who reaches the whole org;
 /// a document of another org is a 404, like a missing one. An invoice of the property manager to an owner is never read or changed here (422 <c>document_owner_invoice</c>): its SDI state, its
 /// submission and its declaration are on <see cref="OwnerInvoiceSdiController"/>, behind <c>agency.statement.manage</c> and <c>Features:OwnerInvoicing</c>, since a role that holds
-/// <c>payment.write</c> (the property manager) holds no agency permission. A self-billed invoice (TD17) is sent and declared here like any electronic invoice, but it has no correction here
-/// (422 <c>self_billing_not_correctable</c>): its rejection is read on the self-billed invoices.
+/// <c>payment.write</c> (the property manager) holds no agency permission. A self-billed invoice (TD17) is sent and declared here like any electronic invoice, but it is not corrected here
+/// (422 <c>self_billing_not_correctable</c>): its rejection is read, and it is corrected (<c>POST api/fiscal/self-billing/{id}/correct</c>, behind <c>agency.invoice.manage</c>), on the self-billed invoices.
 /// </summary>
 /// <remarks>
 /// The three changes are behind <c>Features:SdiSubmission</c> <b>and</b> <c>Features:FiscalDocumentIssuance</c> (404 while either is off); the state is a read and is not. With no
@@ -116,8 +116,8 @@ public class FiscalDocumentSdiController(
     /// <summary>
     /// Starts the correction of an invoice the SDI rejected: answers the replacement draft (<c>replacesDocumentId</c> names the rejected document), which keeps its series and number, to be fixed
     /// (the invoice data of the booking, then refresh) and issued. 404; 422 <c>document_not_rejected</c> (a delivered document is corrected with a credit note), <c>document_not_correctable</c>,
-    /// <c>document_read_only</c>, <c>document_owner_invoice</c>, <c>self_billing_not_correctable</c> (a self-billed invoice, TD17: no correction is made for it, whatever its state, and no «Da fare» to correct
-    /// it is raised). A second start answers the same draft.
+    /// <c>document_read_only</c>, <c>document_owner_invoice</c>, <c>self_billing_not_correctable</c> (a self-billed invoice, TD17: no correction is made for it here, whatever its state, and no «Da fare» to correct
+    /// it is raised: its correction is <c>POST api/fiscal/self-billing/{id}/correct</c>). A second start answers the same draft.
     /// </summary>
     [HttpPost("correct")]
     [Authorize(Policy = CasazenPolicies.PaymentWrite)]

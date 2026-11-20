@@ -2884,4 +2884,14 @@
   </data>
   <data name="Guest_InvoiceRequest" xml:space="preserve"><value>Ti serve la fattura per questo soggiorno? Richiedila alla struttura tramite i contatti della prenotazione, indicando a chi intestarla.</value></data>
   <data name="Guest_InvoiceCta" xml:space="preserve"><value>Richiedi la fattura</value></data>
+  <data name="Push_ScheduledMessageIssue_Title" xml:space="preserve"><value>Messaggio programmato da controllare</value></data>
+  <data name="Push_ScheduledMessageIssue_Body" xml:space="preserve"><value>Un messaggio programmato per un ospite non è partito o chiede la tua attenzione. Apri la prenotazione per vedere cosa è successo.</value></data>
+  <data name="Push_ScheduledMessageIssueProperty_Body" xml:space="preserve"><value>{0}: un messaggio programmato per un ospite non è partito o chiede la tua attenzione. Apri la prenotazione per vedere cosa è successo.</value></data>
+  <data name="HostScheduledMessageIssue_Subject" xml:space="preserve"><value>Un messaggio programmato chiede la tua attenzione</value></data>
+  <data name="HostScheduledMessageIssue_Body" xml:space="preserve"><value>Un messaggio programmato per un ospite non è partito o è partito fuori orario.</value></data>
+  <data name="HostScheduledMessageIssue_BodyProperty" xml:space="preserve"><value>Un messaggio programmato per un ospite di &lt;strong&gt;{0}&lt;/strong&gt; non è partito o è partito fuori orario.</value></data>
+  <data name="HostScheduledMessageIssue_How" xml:space="preserve"><value>Apri la prenotazione in CasaZen per vedere cosa è successo: puoi correggere il testo, saltare il messaggio o inviarlo subito. Per proteggere i dati degli ospiti, il testo non è in questa email.</value></data>
+  <data name="HostScheduledMessageIssue_Cta" xml:space="preserve"><value>Apri la prenotazione</value></data>
+  <data name="HostScheduledMessageIssue_LinkFallback" xml:space="preserve"><value>Se il pulsante non funziona, copia questo link nel browser:</value></data>
+  <data name="HostScheduledMessageIssue_Why" xml:space="preserve"><value>Ricevi questa email perché hai scelto di essere avvisato quando un messaggio programmato per un ospite non parte o parte fuori orario. Ne inviamo una per ogni messaggio. Puoi cambiare la scelta nelle preferenze di notifica del tuo profilo.</value></data>
 </root>

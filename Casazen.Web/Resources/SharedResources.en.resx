@@ -3953,7 +3953,25 @@
     <value>This conversation cannot be written to from CasaZen: the channel manager does not say who writes or the identifier of the conversation on the channel. Answer on the channel.</value>
   </data>
   <data name="MessageTemplateVariableUnknown" xml:space="preserve">
-    <value>The template uses “{0}”, which is not a valid variable. The valid ones are guest_name, property_name, booking_code, check_in_date, check_out_date, check_in_time, check_out_time and host_name, written between double curly braces.</value>
+    <value>The template uses “{0}”, which is not a valid variable. The valid ones are guest_name, property_name, booking_code, check_in_date, check_out_date, check_in_time, check_out_time, host_name, check_in_link, check_in_method, access_code, property_address and review_link, written between double curly braces.</value>
+  </data>
+  <data name="ScheduledMessageNotFound" xml:space="preserve">
+    <value>The scheduled message does not exist or is outside your reach.</value>
+  </data>
+  <data name="ScheduledMessageNotEditable" xml:space="preserve">
+    <value>The message was already sent, skipped, cancelled or has expired: it can no longer be edited or skipped.</value>
+  </data>
+  <data name="ScheduledMessageNotSendable" xml:space="preserve">
+    <value>The message was already sent, skipped, cancelled or has expired: it can no longer be sent.</value>
+  </data>
+  <data name="ScheduledMessageBlocked" xml:space="preserve">
+    <value>The message cannot go out: a piece of data is missing (for example the access code of a guest who is not verified yet, or a variable with no value). Fix the text or complete the data and try again.</value>
+  </data>
+  <data name="ScheduledMessageInProgress" xml:space="preserve">
+    <value>The message is being sent right now and is never sent twice. Try again in a minute.</value>
+  </data>
+  <data name="ScheduledMessageChanged" xml:space="preserve">
+    <value>Somebody changed the message while you were changing it. Reload the page and try again.</value>
   </data>
   <data name="MessageTemplateVariableMissing" xml:space="preserve">
     <value>This conversation has no value for “{0}”: choose another template or complete the text by hand.</value>
@@ -4262,6 +4280,9 @@
   </data>
   <data name="WireDebitAccountMissing" xml:space="preserve">
     <value>The issuer profile has no IBAN for the account to debit: add it in the «Fatturazione» setup. No batch was saved.</value>
+  </data>
+  <data name="WireDebitIbanNotSwiss" xml:space="preserve">
+    <value>The IBAN of the account to debit in the issuer profile is not Swiss or Liechtenstein: a CHF transfer is a domestic payment, which a Swiss bank executes only from an account it holds. Enter a Swiss or Liechtenstein IBAN in the «Fatturazione» setup. No batch was saved.</value>
   </data>
   <data name="WireOwnerAddressMissing" xml:space="preserve">
     <value>{0} owners have no complete address (street, postal code, town and country), which the wire file needs: complete the data of the owners listed. No batch was saved.</value>
@@ -6382,6 +6403,12 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="FiscalDocPdfPaymentUnknown" xml:space="preserve">
     <value>not stated</value>
   </data>
+  <data name="FiscalDocPdfPaymentPortalPart" xml:space="preserve">
+    <value>paid through the portal for {0} {1}</value>
+  </data>
+  <data name="FiscalDocPdfToCollectAtProperty" xml:space="preserve">
+    <value>Tourist tax payable at the property: {0} {1}</value>
+  </data>
   <data name="FiscalDocPdfCourtesyCopy" xml:space="preserve">
     <value>Courtesy copy of the electronic invoice: the document valid for tax purposes is the XML file sent to the Exchange System.</value>
   </data>
@@ -6408,6 +6435,12 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="FiscalDocPdfChToCollect" xml:space="preserve">
     <value>To be collected</value>
+  </data>
+  <data name="FiscalDocPdfChPaidPortalPart" xml:space="preserve">
+    <value>Paid through the portal: {0} {1}</value>
+  </data>
+  <data name="FiscalDocPdfChToCollectAtProperty" xml:space="preserve">
+    <value>Tourist tax to be collected at the property: {0} {1}</value>
   </data>
   <data name="FiscalDocumentNotFound" xml:space="preserve">
     <value>Fiscal document not found.</value>
@@ -6498,6 +6531,12 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="FiscalDocLineTouristTaxCh" xml:space="preserve">
     <value>Tourist tax (not subject to VAT)</value>
+  </data>
+  <data name="FiscalDocLineToCollectNote" xml:space="preserve">
+    <value>{0} - payable at the property</value>
+  </data>
+  <data name="FiscalDocLineToCollectNoteCh" xml:space="preserve">
+    <value>{0} - tax to be collected at the property</value>
   </data>
   <data name="FiscalDocLineCredit" xml:space="preserve">
     <value>Credit of document {0}: {1}</value>
@@ -6824,7 +6863,10 @@ Once active, the function works on the data the channel manager already holds.</
     <value>A TD17 self-billed invoice is prepared, issued and discarded from the self-billed invoices.</value>
   </data>
   <data name="SelfBillingNotCorrectable" xml:space="preserve">
-    <value>A TD17 self-billed invoice cannot be corrected from here: if the SDI rejected it, read the reason on the self-billed invoices and agree with your accountant how to put it right.</value>
+    <value>A TD17 self-billed invoice cannot be corrected from here: if the SDI rejected it, correct it and send it again from the self-billed invoices.</value>
+  </data>
+  <data name="SelfBillingCorrectionNotApplicable" xml:space="preserve">
+    <value>Only a TD17 self-billed invoice the SDI rejected, with no credit note issued, is corrected this way.</value>
   </data>
   <data name="SelfBillingLineCommissions" xml:space="preserve">
     <value>Intermediation commissions {0} - {1} - {2}</value>
@@ -7345,6 +7387,9 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="StatementFileChannelFeesAgencyInvoice" xml:space="preserve">
     <value>Portal commissions recharged by the property manager (invoice no. {0})</value>
   </data>
+  <data name="StatementFileChannelFeesAgencyNotRecharged" xml:space="preserve">
+    <value>Portal commissions (portal account held by the property manager, no recharge on an invoice)</value>
+  </data>
   <data name="StatementFileCommissionInvoice" xml:space="preserve">
     <value>Property manager invoice no. {0}</value>
   </data>
@@ -7542,6 +7587,48 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="AccPkgOutsideOther" xml:space="preserve">
     <value>Other operations without VAT</value>
+  </data>
+  <data name="AccPkgSelfBilledRegisterTitle" xml:space="preserve">
+    <value>Self-billed invoices TD17 (integration of the VAT on the invoices of foreign portals), from {1} to {2}, by issue date. Issuer: {0}</value>
+  </data>
+  <data name="AccPkgColSupplier" xml:space="preserve">
+    <value>Foreign supplier (seller)</value>
+  </data>
+  <data name="AccPkgColSupplierCountry" xml:space="preserve">
+    <value>Supplier country</value>
+  </data>
+  <data name="AccPkgColSupplierVat" xml:space="preserve">
+    <value>Supplier VAT number</value>
+  </data>
+  <data name="AccPkgClassSelfBilled" xml:space="preserve">
+    <value>Self-billed invoices TD17</value>
+  </data>
+  <data name="AccPkgVatSelfBilledOmittedTitle" xml:space="preserve">
+    <value>Self-billed invoices TD17 not included in this file</value>
+  </data>
+  <data name="AccPkgSelfBilledRejectedTitle" xml:space="preserve">
+    <value>Self-billed invoices TD17 rejected by the SDI, left out of the figures</value>
+  </data>
+  <data name="AccPkgSelfBilledRejectedReason" xml:space="preserve">
+    <value>Self-billed invoices TD17 rejected by the SDI: {0}. A rejected invoice counts as not issued: it is listed in the register of the self-billed invoices with its state, but it is in no total by rate nor in the VAT, and it has no PDF or XML.</value>
+  </data>
+  <data name="AccPkgPortalCommissionsTitle" xml:space="preserve">
+    <value>Portal commissions on the accounts held by the agency (V2), from {0} to {1}, as the owner ledger records them, by statement month, owner and channel; the Treatment column says whether the agency recharges them to the owner on its invoice or bears them</value>
+  </data>
+  <data name="AccPkgPortalCommissionsTotalsTitle" xml:space="preserve">
+    <value>Totals by channel and currency</value>
+  </data>
+  <data name="AccPkgColPortalCommission" xml:space="preserve">
+    <value>Portal commission</value>
+  </data>
+  <data name="AccPkgColTreatment" xml:space="preserve">
+    <value>Treatment</value>
+  </data>
+  <data name="AccPkgTreatmentRecharged" xml:space="preserve">
+    <value>Recharged to the owner</value>
+  </data>
+  <data name="AccPkgTreatmentBorne" xml:space="preserve">
+    <value>Not charged back on an invoice</value>
   </data>
   <data name="AccPkgStatementsTitle" xml:space="preserve">
     <value>Statements published to the owners, by month (latest published version)</value>

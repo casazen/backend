@@ -5,12 +5,12 @@ using Casazen.Infrastructure.Services;
 namespace Casazen.Tests.Unit;
 
 /// <summary>
-/// Stand-ins for the official pain.001 schemas in the tests of the wire service (E06/F05/US01/T01, E16/F01/US01/T01, E16/F01/US02/T01). The official files are not in
-/// the repository until an operator adds them with their checksums (docs/runbooks/wire-transfers.md), and the service refuses a file it cannot validate: a test that
-/// wants to reach what comes after the validation (the sums, the save) has to give the service a schema of its own. These are not copies of the official schema and
-/// say nothing about the shape of a real file: <see cref="Accepting()"/> takes any content of a <c>Document</c> and <see cref="Rejecting"/> takes none of what the
-/// service writes. Both messages of the service (<c>pain.001.001.09</c> for EUR, <c>pain.001.001.09.ch.03</c> for CHF) are written in the same namespace, so one
-/// schema serves both currencies.
+/// Stand-ins for the official pain.001 schemas in the tests of the wire service (E06/F05/US01/T01, E16/F01/US01/T01, E16/F01/US02/T01). The official files are in the
+/// repository, embedded in the build and pinned by their SHA-256 in docs/runbooks/wire-transfers.md, and the proofs about the file validate against them. The tests that
+/// are about what comes after the validation (the sums, the save, the owners, the debtor) do not need the shape of a real file, so they give the service a schema of
+/// their own, which also keeps them independent of the official files. These are not copies of the official schema and say nothing about the shape of a real file:
+/// <see cref="Accepting()"/> takes any content of a <c>Document</c> and <see cref="Rejecting"/> takes none of what the service writes. Both messages of the service
+/// (<c>pain.001.001.09</c> for EUR, <c>pain.001.001.09.ch.03</c> for CHF) are written in the same namespace, so one schema serves both currencies.
 /// </summary>
 internal static class Pain001TestSchemas
 {

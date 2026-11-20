@@ -64,6 +64,22 @@ internal static class PackageLabels
     public const string OutsideExpenses = "AccPkgOutsideExpenses";
     public const string OutsideOther = "AccPkgOutsideOther";
 
+    // The self-billed invoices (TD17) and the portal commissions of the accounts the agency holds (V2): the files of a period that has them (FIX/BE-ACCOUNTANT-GAPS).
+    public const string SelfBilledRegisterTitle = "AccPkgSelfBilledRegisterTitle";
+    public const string ColSupplier = "AccPkgColSupplier";
+    public const string ColSupplierCountry = "AccPkgColSupplierCountry";
+    public const string ColSupplierVat = "AccPkgColSupplierVat";
+    public const string ClassSelfBilled = "AccPkgClassSelfBilled";
+    public const string VatSelfBilledOmittedTitle = "AccPkgVatSelfBilledOmittedTitle";
+    public const string SelfBilledRejectedTitle = "AccPkgSelfBilledRejectedTitle";
+    public const string SelfBilledRejectedReason = "AccPkgSelfBilledRejectedReason";
+    public const string PortalCommissionsTitle = "AccPkgPortalCommissionsTitle";
+    public const string PortalCommissionsTotalsTitle = "AccPkgPortalCommissionsTotalsTitle";
+    public const string ColPortalCommission = "AccPkgColPortalCommission";
+    public const string ColTreatment = "AccPkgColTreatment";
+    public const string TreatmentRecharged = "AccPkgTreatmentRecharged";
+    public const string TreatmentBorne = "AccPkgTreatmentBorne";
+
     // Statements.
     public const string StatementsTitle = "AccPkgStatementsTitle";
     public const string ColOwner = "AccPkgColOwner";

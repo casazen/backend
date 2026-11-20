@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using Casazen.Core.Authorization;
@@ -25,7 +27,8 @@ namespace Casazen.Tests.Unit.Services;
 /// E06/F05/US01/T01 (NF-25, AC-E06-F05-US01-01), carried on the payouts by E16/F01/US01/T01 and on the pain.001.001.09 file of EUR by E16/F01/US02/T01: the wire file
 /// is validated before the batch is saved. A file that does not validate leaves no row behind, a file is never produced without its schema, the money of the file is
 /// exact (decimals, never a float) and matches its lines, the errors carry no IBAN and no name, and the validation reads no external entity. The official schemas are
-/// not in the repository until an operator adds them (docs/runbooks/wire-transfers.md): the tests that need to get past the validation give the service a schema of
+/// in the repository, embedded in the build and pinned by their SHA-256 in docs/runbooks/wire-transfers.md
+/// (<see cref="EmbeddedSchemas_HaveTheChecksumsOfTheRunbook_Test"/>); the tests that are about the rules of the service and not about the file give it a schema of
 /// their own (<see cref="Pain001TestSchemas"/>). The rules of the two messages themselves, of the payouts and of the owners are in <see cref="Pain001V09Tests"/>.
 /// </summary>
 public class Pain001ValidationProofTests
@@ -68,8 +71,9 @@ public class Pain001ValidationProofTests
     }
 
     /// <summary>
-    /// With the official schema installed the file CasaZen writes validates against it and an altered one does not; without it nothing is produced (422
-    /// <c>wire_batch_schema_unavailable</c>) and nothing is saved: never a file that was not validated, never a made-up success.
+    /// With the official schema of the currency in the build (both are, so the validating branch runs) the file CasaZen writes validates against it and an altered one
+    /// does not; in a build that lacks it (no longer the normal state, kept so the rule stays proved) nothing is produced (422 <c>wire_batch_schema_unavailable</c>)
+    /// and nothing is saved: never a file that was not validated, never a made-up success.
     /// </summary>
     [Theory]
     [InlineData("EUR", ItalianIban)]
@@ -118,7 +122,8 @@ public class Pain001ValidationProofTests
     /// <summary>
     /// The embedded schemas either compile or the reason is known: a build never has files it cannot use and says nothing about it. Each currency has its own
     /// folder and its own file (<c>pain.001.001.09.xsd</c> of the ISO catalogue for EUR, <c>pain.001.001.09.ch.03.xsd</c> of the Swiss Payment Standards for CHF): the two
-    /// messages share a namespace, so a file put in the wrong folder would compile and validate the wrong message, and its name is what says so.
+    /// messages share a namespace, so a file put in the wrong folder would compile and validate the wrong message, and its name is what says so (its content is
+    /// pinned by <see cref="EmbeddedSchemas_HaveTheChecksumsOfTheRunbook_Test"/>).
     /// </summary>
     [Fact]
     public void Pain001SchemaProvider_EmbeddedFiles_CompileOrSayWhy_Test()
@@ -145,9 +150,43 @@ public class Pain001ValidationProofTests
     }
 
     /// <summary>
-    /// The loader that compiles the official files the day an operator adds them, with stand-in files: a schema of the namespace the file is written in becomes a
-    /// set that validates; no file is no set and no reason (the build simply has no schema); a file that does not compile, that has a DTD, that is another schema or
-    /// the schema of the other message is no set and the reason is kept. A broken file is never taken for an installed schema.
+    /// Data rule: the embedded schemas are the files their publishers give, byte for byte. The SHA-256 of each embedded file is the one the runbook records for it
+    /// (<c>docs/runbooks/wire-transfers.md</c>, the table of the official schemas, read here so that the runbook is the one record), so a file that was edited,
+    /// replaced, or put in the other folder (the ISO schema renamed into <c>Swiss/</c> compiles, has the same namespace and passes every proof that only removes an
+    /// element) fails here, and so does a checksum of the runbook that is not the one of the build. Exactly the two official files are embedded, one in each folder,
+    /// and they are two different files.
+    /// </summary>
+    [Fact]
+    public void EmbeddedSchemas_HaveTheChecksumsOfTheRunbook_Test()
+    {
+        var runbook = File.ReadAllLines(Path.Combine(FindRepositoryRoot(), "docs", "runbooks", "wire-transfers.md"));
+        var assembly = typeof(Pain001SchemaProvider).Assembly;
+        var embeddedFiles = new[]
+        {
+            (Name: Pain001SchemaProvider.IsoResourcePrefix + Pain001V09Writer.IsoSchemaFile, File: Pain001V09Writer.IsoSchemaFile),
+            (Name: Pain001SchemaProvider.SwissResourcePrefix + Pain001V09Writer.SwissSchemaFile, File: Pain001V09Writer.SwissSchemaFile),
+        };
+
+        Assert.Equal(embeddedFiles.Select(f => f.Name).Order(StringComparer.Ordinal), Pain001SchemaProvider.EmbeddedSchemaNames());
+
+        var recorded = new List<string>();
+        foreach (var (name, file) in embeddedFiles)
+        {
+            using var stream = assembly.GetManifestResourceStream(name);
+            Assert.NotNull(stream);
+            var runbookChecksum = RunbookChecksumOf(runbook, file);
+
+            Assert.Equal(runbookChecksum, Convert.ToHexStringLower(SHA256.HashData(stream)));
+            recorded.Add(runbookChecksum);
+        }
+
+        Assert.Equal(2, recorded.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    /// <summary>
+    /// The loader that compiles the embedded official files, tried here with stand-in files: a schema of the namespace the file is written in becomes a
+    /// set that validates; no file is no set and no reason (a build that lacks the files simply has no schema); a file that does not compile, that has a DTD, that is
+    /// another schema or the schema of the other message is no set and the reason is kept. A broken file is never taken for an installed schema.
     /// </summary>
     [Fact]
     public void Pain001SchemaProvider_Load_CompilesTheFiles_AndSaysWhyWhenItCannot_Test()
@@ -432,6 +471,32 @@ public class Pain001ValidationProofTests
     }
 
     // ---- helpers -------------------------------------------------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The SHA-256 the table of the official schemas of the runbook records for <paramref name="file"/>: the 64 hexadecimal digits, in backticks, that start the last
+    /// cell of the row that begins with the file name (the source cell of the Swiss row has the checksum of the archive it comes in, which is not the file's).
+    /// </summary>
+    private static string RunbookChecksumOf(string[] runbook, string file)
+    {
+        var rows = runbook.Where(line => line.StartsWith($"| `{file}`", StringComparison.Ordinal)).ToList();
+        Assert.True(rows.Count == 1, $"The table of the official schemas in docs/runbooks/wire-transfers.md needs exactly one row for {file}, it has {rows.Count}.");
+
+        var lastCell = rows[0].Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[^1];
+        var checksum = Regex.Match(lastCell, "^`(?<sha>[0-9a-f]{64})`");
+        Assert.True(checksum.Success, $"The last cell of the row of {file} in docs/runbooks/wire-transfers.md must start with its SHA-256 in backticks.");
+
+        return checksum.Groups["sha"].Value;
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        // System.AppContext: the bare name is ambiguous here with the entity of Casazen.Core.Entities.
+        var directory = new DirectoryInfo(System.AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Casazen.sln")))
+            directory = directory.Parent;
+
+        return directory?.FullName ?? throw new InvalidOperationException("Casazen.sln not found above the test output folder.");
+    }
 
     /// <summary>
     /// What a person who has to fix the writer needs when the file CasaZen writes does not validate against the official schema of its currency: the refusal
