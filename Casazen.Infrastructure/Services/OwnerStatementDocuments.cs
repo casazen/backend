@@ -37,10 +37,13 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Who holds the portal account.</b> The channel fee of a stay is flagged as recharged by the agency when the invoice of the property manager recharges it:
 /// the agency holds the account of the listing on that portal and the organization recharges the commissions of the accounts it holds
 /// (<see cref="PortalAccountHolders.RechargesCommissionOf"/> of <see cref="IPortalAccountHolderResolver"/>, E14, ⚖ I10 I11, the very test of the invoice), so the
-/// label «riaddebitate dal gestore (fattura n. …)» never names an invoice without that recharge. An account of the agency whose commissions the organization does not
-/// recharge (<see cref="PortalAccountHolders.IsAgencyAccountWithoutRecharge"/>: the portal bills the agency, no invoice carries the commission) has a label of its own, and
-/// only an account of the owner (V1) is «Trattenuta dal portale (fattura del portale a tuo nome)». A service built without
-/// the resolver reads every listing as V1.</item>
+/// label «riaddebitate dal gestore (fattura n. …)» never names an invoice without that recharge. The commission of an account of the agency that the organization does not
+/// recharge is the agency's (decision 1 of 20/11/2026, FIX/BE-V2-NO-RECHARGE): the posting wrote it as <see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>, a line for
+/// information only that the statement shows under a label of its own («sostenuta dall'agenzia, non addebitata al proprietario») and counts in no total; it is read from the
+/// line, never from the setting of today. A channel fee the owner was charged on such an account (posted before that decision, or before the posting that follows a change of
+/// the setting) keeps its amount in the totals and is told as what it is (<see cref="OwnerStatementLine.AgencyAccountChargedWithoutRecharge"/>), so a statement made from it
+/// never reads otherwise than it was made. Only an account of the owner (V1) is «Trattenuta dal portale (fattura del portale a tuo nome)». A service built without the
+/// resolver reads every listing as V1.</item>
 /// <item><b>Language.</b> There is no language kept for an owner yet: Italian unless the caller asks for English. The stored PDF is in Italian.</item>
 /// <item><b>The notice of the publication.</b> The e-mail that tells the owner is queued after the publication was saved. A notice that cannot be prepared or queued never
 /// turns the publication into an error, and is never silent: it is logged with its ids and the agency gets a «To do» (<see cref="ActivityType.OwnerStatementNoticeFailed"/>,
@@ -436,7 +439,8 @@ public sealed class OwnerStatementDocuments(
     /// <summary>
     /// The line of a ledger entry: its part, its day, the stay (days, channel, code) and property it is about, and, for the commission a portal kept, whether the
     /// invoice of the property manager recharges it (<paramref name="portalAccounts"/>: the agency holds the account of the listing on that portal and recharges), or the
-    /// agency holds the account and does not recharge it (<see cref="OwnerStatementLine.AgencyHoldsPortalAccountWithoutRecharge"/>).
+    /// owner was charged it on an account of the agency that the organization does not recharge now (<see cref="OwnerStatementLine.AgencyAccountChargedWithoutRecharge"/>).
+    /// The commission the agency bears is told by the type of the line (<see cref="OwnerStatementLine.AgencyHoldsPortalAccountWithoutRecharge"/>).
     /// </summary>
     private static OwnerStatementLine LineOf(OwnerLedgerEntry entry, BookingFacts? booking, string? propertyName, PortalAccountHolders portalAccounts)
     {
@@ -470,9 +474,10 @@ public sealed class OwnerStatementDocuments(
                 && booking is not null
                 && portalAccounts.RechargesCommissionOf(entry.PropertyId ?? booking.PropertyId, booking.Source))
         {
-            // The other half of the test of the invoice: the account of the agency whose commissions it does not recharge. The portal bills the agency, so the line is not
-            // the owner's portal invoice (V1) and no invoice of the property manager recharges it; the amount is the one of the ledger line either way.
-            AgencyHoldsPortalAccountWithoutRecharge = entry.EntryType == OwnerLedgerEntryType.ChannelFee
+            // The other half of the test of the invoice: a channel fee the owner was charged on an account of the agency whose commissions it does not recharge now (a line posted
+            // before FIX/BE-V2-NO-RECHARGE, which posts such a commission as ChannelFeeBorneByAgency). It is not the owner's portal invoice (V1) and no invoice recharges it; its
+            // amount stays the one of the ledger line, in the totals, as the statement was made.
+            AgencyAccountChargedWithoutRecharge = entry.EntryType == OwnerLedgerEntryType.ChannelFee
                 && booking is not null
                 && portalAccounts.IsAgencyAccountWithoutRecharge(entry.PropertyId ?? booking.PropertyId, booking.Source),
             LedgerEvidence = new OwnerStatementLedgerEvidence(
@@ -542,10 +547,10 @@ public sealed class OwnerStatementDocuments(
         if (stays.Count == 0)
             return [];
 
-        // Who collects the tax of a stay is what the host's tourist tax says (TouristTaxCollectorRules: the active rule of the channel in the comune of the property,
-        // else the collector the host declared for the stay), else the one the host confirmed with the calculation; and any channel of the list of the issuer as the
-        // guest documents read it (the confirmed one, else the shipped default of a Swiss issuer). A stay that nobody is known to collect for is the agency's: never an
-        // assumed 0.
+        // Who collects the tax of a stay is what the guest document of the stay says. Italy: ItalianPortalTouristTax.Decide (the active rule of the channel in the comune of the property,
+        // the collector the host declared for the stay, the one it confirmed with the calculation, the answer of the organization, and last the host); Switzerland: any channel of the list of
+        // the issuer as the guest documents read it (the confirmed one, else the shipped default), else the rule and the collector of the stay. A stay that nobody is known to collect for is
+        // the agency's: never an assumed 0.
         var ids = stays.Select(b => b.Id).ToList();
         var records = (await db.StayTouristTaxes
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -564,15 +569,25 @@ public sealed class OwnerStatementDocuments(
             .OfOrganization(orgId)
             .FirstOrDefaultAsync(ct);
         var platformCollected = PlatformCollectedChannelsOf(orgId, issuer);
+        var swissIssuer = FiscalDocumentRules.IsSwiss(issuer?.CountryCode);
+        var confirmedComuni = issuer?.PortalTouristTaxComuni ?? [];
 
         bool ChannelCollects(BookingFacts stay)
         {
-            if (platformCollected.Contains(stay.Source))
-                return true;
-
             var comune = ComuneOf(stay, properties);
             var rule = comune is null ? null : rules.FirstOrDefault(r => r.Channel == stay.Source && r.IstatCode == comune);
             records.TryGetValue(stay.Id, out var record);
+
+            // Italy: the one rule of the guest document of the stay (FIX/BE-IT-TOURISTTAX-DEFAULTS): the rule of the comune, the record of the stay (the declaration of the host, the collector of the
+            // calculation it confirmed), then the answer of the organization (its list for every comune, or the portal it confirmed for the comune of the property), and last the host at the property.
+            // The statement and the document never say two things of one stay.
+            if (!swissIssuer)
+                return ItalianPortalTouristTax.Decide(stay.Source, rule, record?.DeclaredCollector, record?.Collector, platformCollected, confirmedComuni, comune).Collector == TouristTaxCollector.Channel;
+
+            // Switzerland: the list of the issuer first, as the Swiss guest document reads it, then the collector of the stay.
+            if (platformCollected.Contains(stay.Source))
+                return true;
+
             var collector = TouristTaxCollectorRules.Decide(stay.Source, rule, record?.DeclaredCollector).Collector ?? record?.Collector;
             return collector == TouristTaxCollector.Channel;
         }

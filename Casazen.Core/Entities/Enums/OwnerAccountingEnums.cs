@@ -39,6 +39,16 @@ public enum OwnerLedgerEntryType
     /// its reversal. A mandate «IVA inclusa» posts none: the VAT is inside the amounts the ledger already holds.
     /// </summary>
     AgencyVat = 10,
+
+    /// <summary>
+    /// The owner's share of the commission a portal kept on a stay of a listing whose account the agency holds (V2) while the organization does not recharge the
+    /// commissions of the accounts it holds (<see cref="OrgFiscalIssuerProfile.RechargePortalCommissions"/> off, ⚖ I11; decision 1 of 20/11/2026,
+    /// FIX/BE-V2-NO-RECHARGE): the portal bills the agency, no invoice of the property manager carries the commission to the owner, so it is a cost of the agency and
+    /// the owner is not charged. Posted instead of a <see cref="ChannelFee"/>, with the amount a channel fee would have (negative), <b>for information only</b>: the
+    /// statement shows it, the TD17, the accountant package and the reconciliation read it as the commission of the portal, and no balance of the owner counts it
+    /// (<c>OwnerLedgerBalance</c>: the closing, the opening of the next month, the totals of a version).
+    /// </summary>
+    ChannelFeeBorneByAgency = 11,
 }
 
 /// <summary>Where a line of the owner ledger comes from (E06/F05/US02/T02). Stored as its number: never renumber.</summary>
@@ -103,7 +113,8 @@ public enum PortalAccountHolder
 
     /// <summary>
     /// V2: the agency holds the account. The portal invoices the agency and its commission reaches the owner as a recharge of the owner invoice, when the
-    /// organization recharges it (<see cref="OrgFiscalIssuerProfile.RechargePortalCommissions"/>, ⚖ I11).
+    /// organization recharges it (<see cref="OrgFiscalIssuerProfile.RechargePortalCommissions"/>, ⚖ I11); when it does not, the agency bears it and the owner is
+    /// not charged (<see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>).
     /// </summary>
     Agency = 2,
 }

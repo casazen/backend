@@ -131,8 +131,8 @@ public static class EncryptedColumns
 
     /// <summary>
     /// Purpose of the fiscal documents (NF-83, E06/F01/US02/T01, E11/F01/US01/T01): the recipient snapshot of <see cref="FiscalDocument"/> (name, fiscal
-    /// code, VAT number, address, recipient code, PEC), the snapshot of its issuer and its FatturaPA XML, which repeats them. Kept ten years for the legal
-    /// retention; nothing is searched in them. Never change it: stored values would become unreadable.
+    /// code, VAT number, address, recipient code, PEC), the snapshot of its issuer, its FatturaPA XML, which repeats them, and the note of the closing of a replacement
+    /// draft as «non più dovuta» (FIX/BE-TD17-JOB-EXIT). Kept ten years for the legal retention; nothing is searched in them. Never change it: stored values would become unreadable.
     /// </summary>
     public const string FiscalDocumentPurpose = "Casazen.FiscalDocument";
 
@@ -388,7 +388,9 @@ public static class EncryptedColumns
             nameof(FiscalDocument.RecipientSdiCode),
             nameof(FiscalDocument.RecipientPec),
             nameof(FiscalDocument.FatturaPaXml),
-            nameof(FiscalDocument.IssuerSnapshot)),
+            nameof(FiscalDocument.IssuerSnapshot),
+            // FIX/BE-TD17-JOB-EXIT: the free note of the closing of a replacement draft as «non più dovuta» (it can name a person or a portal document): the same purpose, no length.
+            nameof(FiscalDocument.ClosedNotDueNote)),
         // E11/F01/US01/T01: the bank accounts of the issuer of an organization; E17/F01/US01/T01: the personal data of an issuer (an owner who issues is often a
         // private person: the same treatment for every profile). The province, the country and the SDI code are no personal data.
         new EncryptedEntity<OrgFiscalIssuerProfile>(

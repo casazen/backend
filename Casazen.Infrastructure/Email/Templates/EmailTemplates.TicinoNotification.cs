@@ -78,6 +78,16 @@ public static partial class EmailTemplates
         return new PushText(EmailTexts.Get($"{prefix}_Title", culture), body);
     }
 
+    /// <summary>
+    /// Push text of the declaration of a Ticino arrival day as uploaded to the police portal, or of its undo (E30/F02/US02/T01, NF-128): the property and the arrival day. Plain text on a
+    /// lock screen: never a guest, a value, a document or the person who did it (the cockpit shows who).
+    /// </summary>
+    public static PushText TicinoNotificationDeclaredPush(CultureInfo culture, string propertyName, DateOnly day, bool declared)
+    {
+        var date = day.ToDateTime(TimeOnly.MinValue).ToString(EmailTexts.Get("Format_Date", culture), culture);
+        return Push(culture, declared ? "Push_TicinoNotificationDeclared" : "Push_TicinoNotificationUndone", propertyName, date);
+    }
+
     private static string TicinoPhase(ComplianceAlert alert) => alert.Kind switch
     {
         ComplianceAlertKind.TicinoFileToPrepare => "FileToPrepare",

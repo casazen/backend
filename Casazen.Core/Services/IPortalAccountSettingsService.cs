@@ -18,7 +18,12 @@ public interface IPortalAccountSettingsService
 
     /// <summary>
     /// Saves the default holder and the recharge; a member left out keeps its value, and an organization without a profile gets a draft one. 422
-    /// <c>billing_channels_invalid</c> (with the <c>field</c>) for a holder that is not one.
+    /// <c>billing_channels_invalid</c> (with the <c>field</c>) for a holder that is not one. A save that starts the waiver of the recharge (after it the recharge is off and the
+    /// agency holds at least one account, its default or the one of a listing; before it the recharge was on, or the agency held none) is a renunciation of the reimbursement
+    /// the law gives the agency (decision 1 of 20/11/2026: the commissions of those accounts become a cost of the agency): it needs
+    /// <see cref="PortalAccountSettingsCommand.AcknowledgeRechargeWaiver"/>, else 422 <see cref="PortalAccountErrors.RechargeWaiverNotAcknowledged"/> and nothing is saved; with it
+    /// the activity log of the organization records who acknowledged it and when. It is not retroactive: the posting of the months still open follows it, the published
+    /// versions and the closed months never change.
     /// </summary>
     Task<PortalAccountSettings> SaveAsync(Guid orgId, PortalAccountSettingsCommand command, string? userId, CancellationToken ct = default);
 
@@ -30,12 +35,16 @@ public interface IPortalAccountSettingsService
     /// the default; the listings and portals not named keep theirs. Answers the whole list as saved. 422 <c>channel_account_holders_invalid</c> (with the
     /// <c>index</c> and the <c>field</c>) for an empty list (never «all»), more than <see cref="PortalAccountErrors.MaxAccountHolders"/> rows, a property that is
     /// not one of the org, a channel that is not a portal, or a listing and portal named twice; 409 <c>channel_account_holders_conflict</c> when another save
-    /// of the same listing came first. A refusal saves nothing.
+    /// of the same listing came first. A refusal saves nothing. A write that starts the waiver of the recharge (the recharge off and, after it, a listing of the agency where
+    /// the agency held no account before: the same effect as a <see cref="SaveAsync"/> that makes the agency the default holder) needs
+    /// <paramref name="acknowledgeRechargeWaiver"/> (<c>?acknowledgeRechargeWaiver=true</c>), else 422 <see cref="PortalAccountErrors.RechargeWaiverNotAcknowledged"/> and
+    /// nothing is written; with it the activity log of the organization records who acknowledged it and when, as <see cref="SaveAsync"/> does.
     /// </summary>
     Task<IReadOnlyList<ChannelAccountHolderView>> SaveAccountHoldersAsync(
         Guid orgId,
         IReadOnlyList<ChannelAccountHolderCommand>? commands,
         string? userId,
+        bool acknowledgeRechargeWaiver = false,
         CancellationToken ct = default);
 }
 
@@ -48,6 +57,13 @@ public sealed record PortalAccountSettingsCommand
     public PortalAccountHolder? PortalAccountHolder { get; init; }
 
     public bool? RechargePortalCommissions { get; init; }
+
+    /// <summary>
+    /// The explicit acknowledgement of the waiver of the recharge (<c>acknowledgeRechargeWaiver: true</c>): the person confirms that the agency renounces recharging to the
+    /// owners the commissions of the portal accounts it holds, which it then bears itself. Needed only by a save that starts the waiver
+    /// (<see cref="IPortalAccountSettingsService.SaveAsync"/>; the bulk write of the holders takes it as the query parameter of the same name); ignored otherwise.
+    /// </summary>
+    public bool? AcknowledgeRechargeWaiver { get; init; }
 }
 
 /// <summary>The holder of a listing on a portal, as the list answers it.</summary>
@@ -77,6 +93,18 @@ public static class PortalAccountErrors
     public const string ChannelsInvalid = "billing_channels_invalid";
     public const string AccountHoldersInvalid = "channel_account_holders_invalid";
     public const string AccountHoldersConflict = "channel_account_holders_conflict";
+
+    /// <summary>
+    /// 422: a save that starts the waiver of the recharge of the portal commissions without <see cref="PortalAccountSettingsCommand.AcknowledgeRechargeWaiver"/> (message key
+    /// <c>RechargeWaiverNotAcknowledged</c>).
+    /// </summary>
+    public const string RechargeWaiverNotAcknowledged = "recharge_waiver_not_acknowledged";
+
+    /// <summary>
+    /// The <c>part</c> of the line <c>OrgSettingsChanged</c> of the activity log that records an acknowledged waiver of the recharge (who and when are the line's actor and
+    /// instant).
+    /// </summary>
+    public const string RechargeWaiverActivityPart = "portalCommissionRechargeWaiver";
 
     /// <summary>The most rows one write of the holders may carry (some hundred flats on a few portals).</summary>
     public const int MaxAccountHolders = 2000;

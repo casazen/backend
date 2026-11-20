@@ -248,6 +248,15 @@ public static class PushDeliveryKeys
         $"compliance-alert:{propertyId:N}:{type}:{referenceKey}:{stage}:{raisedAtUtc:yyyyMMddHHmm}";
 
     /// <summary>
+    /// An arrival day of a Ticino property was declared uploaded to the police portal, or the declaration was undone (E30/F02/US02/T01), to the hosts of the property: one per property, day,
+    /// kind and instant (whole milliseconds). A day can be declared, undone and declared again, so the instant tells the events apart; a retry of the push job keeps the key it was queued with.
+    /// </summary>
+    public static string TicinoNotificationDeclared(Guid propertyId, DateOnly day, bool declared, DateTime atUtc) =>
+        string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"ticino-declaration:{propertyId:N}:{day:yyyyMMdd}:{(declared ? "declared" : "undone")}:{atUtc:yyyyMMddHHmmssfff}");
+
+    /// <summary>
     /// An OTA stay "da verificare" (CO-21): the reason and, for <c>BlockDatesChanged</c>, the channel's dates, so a host
     /// already pushed for the same unresolved dates is not pushed again, while dates that changed once more start a new key.
     /// </summary>
@@ -552,11 +561,20 @@ public static class PushTypes
     public const string OwnerLoginFailed = "owner-login-failed";
 
     /// <summary>
-    /// True for the two types of the alerts about the 24 hours of the notification of a Ticino arrival day (<see cref="TicinoNotificationDue"/>,
-    /// <see cref="TicinoNotificationOverdue"/>). Their bell entry is about a <b>property</b>, not a booking: <c>QueuedInAppNotification.From</c> gives it the id of the property
-    /// (the audience of the push) as <c>entityId</c>, so the bell can open the Ticino page of that property.
+    /// A person of the org declared an arrival day of a Ticino property as uploaded to the police portal, or undid that declaration (E30/F02/US02/T01, NF-128, decision D10): the other hosts
+    /// of the property learn it live, so their cockpit stops (or starts again) listing the day without a refresh. Pushed to the hosts of the property (<see cref="PushAudience.PropertyHosts"/>),
+    /// written to the bell and published live; the route is <c>/properties</c> and the <c>entityId</c> of the bell entry and of the live message is the <b>property</b>, like the two alerts
+    /// (<see cref="IsTicinoNotification"/>). One type for both: the text of the push tells the declaration from the undo, the bell and the open pages only read the cockpit again. The text names
+    /// the property and the day: never a guest, a value, a document or the person who did it.
     /// </summary>
-    public static bool IsTicinoNotification(string? type) => type is TicinoNotificationDue or TicinoNotificationOverdue;
+    public const string TicinoNotificationDeclared = "ticino-notification-declared";
+
+    /// <summary>
+    /// True for the types about the notification of the guests of a Ticino arrival day to the cantonal police: the alerts about its 24 hours (<see cref="TicinoNotificationDue"/>,
+    /// <see cref="TicinoNotificationOverdue"/>) and the declaration of the day (<see cref="TicinoNotificationDeclared"/>). Their bell entry is about a <b>property</b>, not a booking:
+    /// <c>QueuedInAppNotification.From</c> gives it the id of the property (the audience of the push) as <c>entityId</c>, so the bell can open the Ticino page of that property.
+    /// </summary>
+    public static bool IsTicinoNotification(string? type) => type is TicinoNotificationDue or TicinoNotificationOverdue or TicinoNotificationDeclared;
 
     /// <summary>
     /// Type of the push to the host when a service request reaches <paramref name="status"/>; <c>null</c> for a status that has

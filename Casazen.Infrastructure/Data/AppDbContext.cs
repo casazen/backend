@@ -107,6 +107,11 @@ public class AppDbContext(
     // The flats a receipt covers: one row for each flat of the org an Alloggiati receipt is about (E20/F02/US01/T01, decision O3)
     public DbSet<ManualComplianceProofProperty> ManualComplianceProofProperties { get; set; } = null!;
 
+    // The tracking of the police notification of the Swiss properties (E30/F02/US02/T01, NF-128): the declaration «I uploaded the file» of an arrival day and the audit of the files
+    // generated for it (no guest data)
+    public DbSet<SwissNotificationDeclaration> SwissNotificationDeclarations { get; set; } = null!;
+    public DbSet<SwissNotificationFileEvent> SwissNotificationFileEvents { get; set; } = null!;
+
     // Official ISTAT list of the comuni and the log of its imports (SU-04)
     public DbSet<Comune> Comuni { get; set; } = null!;
     public DbSet<ComuneImport> ComuneImports { get; set; } = null!;
@@ -718,6 +723,11 @@ public class AppDbContext(
 
         // E20/F02/US01/T01 (decision O3): the flats a receipt covers, one row for each, with the unique pair (proof, flat); a tenant row (TN-2).
         modelBuilder.ApplyConfiguration(new ManualComplianceProofPropertyConfiguration());
+
+        // E30/F02/US02/T01 (NF-128): the declaration «I uploaded the file» of an arrival day (one for each property, day and regime: two partial unique indexes, a null regime is the
+        // notification to the Ticino police) and the audit of the files generated for the police (a format and a number of rows, never a guest); tenant rows (TN-2).
+        modelBuilder.ApplyConfiguration(new SwissNotificationDeclarationConfiguration());
+        modelBuilder.ApplyConfiguration(new SwissNotificationFileEventConfiguration());
 
         // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
         modelBuilder.Entity<Booking>()

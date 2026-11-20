@@ -11,7 +11,10 @@ A structure in canton Ticino notifies **every guest to the cantonal police withi
 
 CasaZen **transmits nothing**: it writes the file of an arrival day, the host uploads it on the portal and records the portal's
 summary page as the receipt of the day (`POST api/properties/{id}/swiss/upload-receipt`, type `Police`, report date = arrival day).
-A day is notified once a receipt of it is recorded.
+A day is **closed** once a receipt of it is recorded or a person of the org declared it uploaded, with or without a receipt
+(`POST api/properties/{id}/swiss/ticino-notification/declare`, E30/F02/US02/T01). The portal may create duplicates when a day is uploaded twice, so the
+file of a closed day is generated again only with `confirmRegenerate: true`, and every file CasaZen generates leaves an audit row with no personal data
+([`guest-notification-switzerland.md`](../runbooks/guest-notification-switzerland.md) § 14-20).
 
 ## Sources (official)
 
@@ -151,15 +154,18 @@ refuse for a missing mandatory field.
 
 | Route | What |
 |---|---|
-| `GET api/properties/{id}/swiss/ticino-notification?date=yyyy-MM-dd` | the arrival day: rows (`kind`: `guest` or `group`, `groupSize`), issues, `warnings` (`parental_authorization_needed`, `group_sheet_incomplete`), `xmlAvailable`, receipts, deadline, the days still to notify (no `date`: the oldest pending day of the last 14, else today), `csvCharset`, `transliteratedCount` |
-| `POST api/properties/{id}/swiss/ticino-notification` `{ reportDate, format: "csv" \| "xml" }` | the file (attachment), never stored |
+| `GET api/properties/{id}/swiss/ticino-notification?date=yyyy-MM-dd` | the arrival day: rows (`kind`: `guest` or `group`, `groupSize`), issues, `warnings` (`parental_authorization_needed`, `group_sheet_incomplete`), `xmlAvailable`, receipts, deadline, the days still to notify (no `date`: the oldest pending day of the last 14, else today), `csvCharset`, `transliteratedCount`, and, since E30/F02/US02/T01, `declaredAt`, `declaredBy`, `fileGeneratedAt`, `fileGeneratedCount` and `alreadyDeclared` (declared or with a receipt) |
+| `POST api/properties/{id}/swiss/ticino-notification` `{ reportDate, format: "csv" \| "xml", confirmRegenerate }` | the file (attachment), never stored; 409 `ticino_day_already_declared` for a closed day unless `confirmRegenerate` is `true`; one audit row for every file |
+| `POST api/properties/{id}/swiss/ticino-notification/declare` `{ arrivalDay, receiptId? }` | declares the day uploaded (`alloggiati.submit`, idempotent): `{ propertyId, arrivalDay, declaredAt, declaredBy, receiptId, created }`, no guest data |
+| `DELETE api/properties/{id}/swiss/ticino-notification/declare?arrivalDay=yyyy-MM-dd` | undoes the declaration (`alloggiati.submit`, 204, idempotent); a receipt still closes the day |
 | `GET api/properties/{id}/swiss/ticino-notification/group-sheet?bookingId=` | the sheet of a group of 6 or more (CSV UTF-8 with BOM, written by `CsvWriter`: a name that a spreadsheet would run as a formula gets a leading apostrophe), `guest.read`, never stored |
 | `POST api/properties/{id}/swiss/upload-receipt` | the receipt of the portal (type `Police`, report date = arrival day), or a document kept 5 years: `ParentalAuthorization`, `GroupSheet` (report date = arrival day) |
 | `GET api/compliance/summary` → `ticinoNotifications` | one `NotifyTicinoPolice` item per Ticino property and arrival day still to notify, the day in `period` |
 
 Errors: `property_not_in_ticino`, `ticino_structure_id_missing`, `ticino_notification_empty`, `ticino_xml_not_available`,
 `ticino_file_format_invalid`, `ticino_not_a_group`, `booking_not_found` (group sheet), `swiss_receipt_date_too_old` (400 of the upload of a document kept
-5 years whose report date is more than 5 years ago: the retention job would delete it at once).
+5 years whose report date is more than 5 years ago: the retention job would delete it at once), `ticino_day_already_declared` (409 of the file of a closed day without
+confirmation), `ticino_declaration_day_in_future` and `ticino_declaration_receipt_invalid` (422 of the declaration).
 
 The police receipts, the group sheets and the parents' authorizations are deleted 5 years after their report date by the daily job
 `swiss-compliance-retention` (NF-128); the OTR reports are kept ([`guest-notification-switzerland.md`](../runbooks/guest-notification-switzerland.md) § 6).

@@ -3,6 +3,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -64,9 +65,37 @@ internal sealed record PackageVatRow(decimal? RatePercent, string? NatureCode, d
 internal sealed record PackageSupplier(string? CountryCode, string? VatNumber);
 
 /// <summary>
+/// A number of the TD17 series that a replacement draft held and that was closed as «non più dovuta» (FIX/BE-TD17-JOB-EXIT): the number, the issuer and the day of the rejected original it was given to, the
+/// state the SDI left that original in, and the closing (the day it happened, its reason, the note and the user). The row of the register of the unused numbers of the package.
+/// </summary>
+/// <param name="Number">The display number the draft kept (<c>TD17-2026/3</c>): it is never given again.</param>
+/// <param name="IssuerSnapshot">The issuer of the rejected original (the holder that numbers its TD17 in its own series), as it was at the issue; <c>null</c> when the original has none.</param>
+/// <param name="OriginalDay">The day the rejected original was issued (the day of the number); <c>null</c> when it is not known.</param>
+/// <param name="OriginalSdiStatus">The state of the rejected original with the SDI (<see cref="FiscalDocumentSdiStatuses"/>: <c>rejected</c>).</param>
+/// <param name="OriginalSdiErrorCode">The code of the rejection, as the SDI gave it; <c>null</c> when it is not known.</param>
+/// <param name="ClosedAt">When the draft was closed (UTC).</param>
+/// <param name="Reason">One of <see cref="SelfBillingCloseReasons"/>.</param>
+/// <param name="Note">The note of the person who closed it (read through the encryption of the column); <c>null</c> when there is none.</param>
+/// <param name="ClosedByUserId">The user who closed it; <c>null</c> when the closing carried none.</param>
+internal sealed record PackageUnusedNumber(
+    string? Number,
+    string? IssuerSnapshot,
+    DateOnly? OriginalDay,
+    string OriginalSdiStatus,
+    string? OriginalSdiErrorCode,
+    DateTime ClosedAt,
+    string Reason,
+    string? Note,
+    string? ClosedByUserId);
+
+/// <summary>The rejected original a closed draft replaced, as the register of the unused numbers needs it: the day it was issued, the state and the code the SDI gave, the issuer as it was at the issue.</summary>
+internal sealed record PackageRejectedOriginal(DateOnly? IssueDate, string SdiStatus, string? SdiErrorCode, string? IssuerSnapshot);
+
+/// <summary>
 /// A commission a portal kept on a stay of a listing whose account the agency holds (V2), as one line of the owner ledger says it: the statement month and the owner the line belongs to, the
-/// channel, the stay, the currency of the statement and the amount as the ledger stores it (negative: a cost of the owner, a reversal is positive), and whether the organization recharges
-/// it on the invoice to the owner (<see cref="PortalAccountHolders.RechargesCommissionOf"/>, the very test of that invoice).
+/// channel, the stay, the currency of the statement and the amount as the ledger stores it (negative, a reversal is positive), and whether the organization recharges it on the invoice to
+/// the owner (<see cref="PortalAccountHolders.RechargesCommissionOf"/>, the very test of that invoice; never for a commission the agency bears,
+/// <see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>: then it is a cost of the agency).
 /// </summary>
 internal sealed record PortalCommissionLine(int Year, int Month, Guid OwnerId, BookingSource Source, string Currency, Guid StayId, decimal Amount, bool Recharged);
 
@@ -307,7 +336,9 @@ internal static class AccountantPackageFacts
     /// <summary>
     /// The commissions the portals kept on the stays of the listings whose account the agency holds (⚖ I10, V2): the channel fee lines of the owner ledger of the statement months of the
     /// period, one <see cref="PortalCommissionLine"/> for each ledger line, as the ledger stores them (a reversal is a line of its own). Read through
-    /// <see cref="IPortalAccountHolderResolver"/>, the one reader of who holds an account; a listing whose account the owner holds (V1) is not here. The one read both
+    /// <see cref="IPortalAccountHolderResolver"/>, the one reader of who holds an account; a listing whose account the owner holds (V1) is not here. A commission the agency bears
+    /// (<see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>, posted for an account of the agency that the organization does not recharge, FIX/BE-V2-NO-RECHARGE) is the agency's
+    /// by the line itself: always here, never recharged, and the owner was never charged it, so the margin counts it once. The one read both
     /// <see cref="PortalCommissionsBorneAsync"/> (the figures of the summary and of the Swiss VAT file) and the V2 table of the package are made from.
     /// </summary>
     public static async Task<IReadOnlyList<PortalCommissionLine>> PortalCommissionLinesAsync(
@@ -316,9 +347,20 @@ internal static class AccountantPackageFacts
         var fromKey = (period.From.Year * 100) + period.From.Month;
         var toKey = (period.To.Year * 100) + period.To.Month;
         var fees = await db.OwnerLedgerEntries.AsNoTracking()
-            .Where(e => e.OrgId == orgId && e.EntryType == OwnerLedgerEntryType.ChannelFee && e.PropertyId != null && e.SourceId != null
+            .Where(e => e.OrgId == orgId && (e.EntryType == OwnerLedgerEntryType.ChannelFee || e.EntryType == OwnerLedgerEntryType.ChannelFeeBorneByAgency)
+                        && e.PropertyId != null && e.SourceId != null
                         && ((e.PeriodYear * 100) + e.PeriodMonth) >= fromKey && ((e.PeriodYear * 100) + e.PeriodMonth) <= toKey)
-            .Select(e => new { PropertyId = e.PropertyId!.Value, StayId = e.SourceId!.Value, e.PropertyOwnerId, e.PeriodYear, e.PeriodMonth, e.StatementCurrency, e.Amount })
+            .Select(e => new
+            {
+                PropertyId = e.PropertyId!.Value,
+                StayId = e.SourceId!.Value,
+                e.PropertyOwnerId,
+                e.PeriodYear,
+                e.PeriodMonth,
+                e.StatementCurrency,
+                e.Amount,
+                BorneByAgency = e.EntryType == OwnerLedgerEntryType.ChannelFeeBorneByAgency,
+            })
             .ToListAsync(cancellationToken);
         if (fees.Count == 0)
             return [];
@@ -331,7 +373,7 @@ internal static class AccountantPackageFacts
             .ToDictionaryAsync(b => b.Id, b => b.Source, cancellationToken);
         var holderMap = await holders.ForOrgAsync(orgId, cancellationToken);
         return fees
-            .Where(f => sources.TryGetValue(f.StayId, out var source) && holderMap.Resolve(f.PropertyId, source) == PortalAccountHolder.Agency)
+            .Where(f => sources.TryGetValue(f.StayId, out var source) && (f.BorneByAgency || holderMap.Resolve(f.PropertyId, source) == PortalAccountHolder.Agency))
             .Select(f => new PortalCommissionLine(
                 f.PeriodYear,
                 f.PeriodMonth,
@@ -340,7 +382,7 @@ internal static class AccountantPackageFacts
                 f.StatementCurrency,
                 f.StayId,
                 f.Amount,
-                holderMap.RechargesCommissionOf(f.PropertyId, sources[f.StayId])))
+                !f.BorneByAgency && holderMap.RechargesCommissionOf(f.PropertyId, sources[f.StayId])))
             .ToList();
     }
 
@@ -408,5 +450,82 @@ internal static class AccountantPackageFacts
             .Select(d => new { d.Id, d.RecipientCountryCode, d.RecipientVatNumber })
             .ToListAsync(cancellationToken);
         return suppliers.ToDictionary(s => s.Id, s => new PackageSupplier(s.RecipientCountryCode, s.RecipientVatNumber));
+    }
+
+    /// <summary>
+    /// The numbers of the self-billed invoices (TD17) that were closed as «non più dovuta» in <paramref name="period"/>, by the day of the closing (Europe/Rome): the replacement drafts of a TD17 the SDI
+    /// rejected that the month no longer supported (FIX/BE-TD17-JOB-EXIT), oldest closing first. Each keeps its number (reserved, never given again), so the register of the package documents the gap: the number, the
+    /// day and the issuer of the rejected original (the series is the issuer's own), the SDI outcome of that original, the reason, the note and the user. The org is the key, never a request value; a draft of
+    /// another org, one that was discarded without a closing and one that is not a TD17 are not here; a period with no closing reads nothing else (an empty list). Two plain reads, so the provider translates both.
+    /// </summary>
+    public static async Task<IReadOnlyList<PackageUnusedNumber>> UnusedNumbersAsync(AppDbContext db, Guid orgId, AccountantPackagePeriod period, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(period);
+
+        var from = RomeCalendar.StartOfDayUtc(period.From);
+        var until = RomeCalendar.StartOfDayUtc(period.To.AddDays(1));
+        var closed = await db.FiscalDocuments.AsNoTracking()
+            .Where(d => d.OrgId == orgId && d.Purpose == FiscalDocumentPurpose.SelfBilling && d.Status == FiscalDocumentStatus.Discarded
+                        && d.ClosedNotDueAt != null && d.ClosedNotDueAt >= from && d.ClosedNotDueAt < until)
+            .OrderBy(d => d.ClosedNotDueAt)
+            .ThenBy(d => d.Series)
+            .ThenBy(d => d.SequenceNumber)
+            .ThenBy(d => d.Id)
+            .Select(d => new { d.Number, d.ReplacesDocumentId, ClosedAt = d.ClosedNotDueAt!.Value, Reason = d.ClosedNotDueReason!, Note = d.ClosedNotDueNote, UserId = d.ClosedNotDueByUserId })
+            .ToListAsync(cancellationToken);
+        if (closed.Count == 0)
+            return [];
+
+        var originals = await RejectedOriginalsAsync(db, orgId, [.. closed.Where(c => c.ReplacesDocumentId != null).Select(c => c.ReplacesDocumentId!.Value).Distinct()], cancellationToken);
+        return closed
+            .Select(c =>
+            {
+                var original = c.ReplacesDocumentId is { } id && originals.TryGetValue(id, out var found) ? found : null;
+                return new PackageUnusedNumber(
+                    c.Number,
+                    original?.IssuerSnapshot,
+                    original?.IssueDate,
+                    original?.SdiStatus ?? FiscalDocumentSdiStatuses.NotApplicable,
+                    original?.SdiErrorCode,
+                    c.ClosedAt,
+                    c.Reason,
+                    c.Note,
+                    c.UserId);
+            })
+            .ToList();
+    }
+
+    /// <summary>The rejected originals the closed drafts replaced, by id: the day they were issued, the state and the code the SDI gave, and the issuer as it was at the issue. Only the org's own; an empty list reads nothing.</summary>
+    public static async Task<Dictionary<Guid, PackageRejectedOriginal>> RejectedOriginalsAsync(AppDbContext db, Guid orgId, IReadOnlyCollection<Guid> originalIds, CancellationToken cancellationToken)
+    {
+        if (originalIds.Count == 0)
+            return [];
+
+        var originals = await db.FiscalDocuments.AsNoTracking()
+            .Where(o => o.OrgId == orgId && o.Purpose == FiscalDocumentPurpose.SelfBilling && originalIds.Contains(o.Id))
+            .Select(o => new { o.Id, o.IssueDate, o.SdiStatus, o.SdiErrorCode, o.IssuerSnapshot })
+            .ToListAsync(cancellationToken);
+        return originals.ToDictionary(o => o.Id, o => new PackageRejectedOriginal(o.IssueDate, o.SdiStatus, o.SdiErrorCode, o.IssuerSnapshot));
+    }
+
+    /// <summary>
+    /// The name of each user among <paramref name="userIds"/> (first and last name, never the e-mail): who closed a number, for the register of the unused numbers. A user that is gone, or has no name,
+    /// is not in the answer (the register then says so with a fixed text, <see cref="PackageLabels.UserNoLongerPresent"/>: never a blank and never the id of the user, which does not leave in the file). An
+    /// empty list reads nothing.
+    /// </summary>
+    public static async Task<Dictionary<string, string>> UserNamesAsync(AppDbContext db, IReadOnlyCollection<string> userIds, CancellationToken cancellationToken)
+    {
+        if (userIds.Count == 0)
+            return [];
+
+        var users = await db.Users.AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.FirstName, u.LastName })
+            .ToListAsync(cancellationToken);
+        return users
+            .Select(u => (u.Id, Name: $"{u.FirstName} {u.LastName}".Trim()))
+            .Where(u => u.Name.Length > 0)
+            .ToDictionary(u => u.Id, u => u.Name, StringComparer.Ordinal);
     }
 }
