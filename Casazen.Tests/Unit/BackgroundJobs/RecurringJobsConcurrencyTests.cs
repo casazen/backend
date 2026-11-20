@@ -36,6 +36,7 @@ public class RecurringJobsConcurrencyTests
         "accountant-package-monthly",
         "compliance-proof-retention",
         "guest-document-purge",
+        "swiss-compliance-retention",
     ];
 
     [Fact]

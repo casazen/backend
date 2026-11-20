@@ -22,8 +22,15 @@ public sealed class CheckInWizardStateDto
 
     public IReadOnlyList<CheckInWizardGuestDto> Guests { get; init; } = [];
 
-    /// <summary>The statistical fields the region requires (none in this release).</summary>
+    /// <summary>
+    /// The guest fields the regime requires: the statistical fields the region requires and, in canton Ticino (NF-132), <c>DocumentType</c>,
+    /// <c>DocumentNumber</c> (of every guest the police file notifies, members included), <c>ResidenceStreet</c>, <c>ResidencePostalCode</c>,
+    /// <c>ResidenceCityName</c> and <c>ResidenceCountryName</c>.
+    /// </summary>
     public IReadOnlyList<string> RequiredGuestFields { get; init; } = [];
+
+    /// <summary>The plate of the car is asked for the stay, optional (canton Ticino, NF-132); the plate itself is <c>booking.vehiclePlate</c>.</summary>
+    public bool AskVehiclePlate { get; init; }
 
     public IReadOnlyList<CheckInIssueDto> Issues { get; init; } = [];
 
@@ -60,10 +67,12 @@ public sealed class CheckInWizardStateDto
             DeclaredGuests = state.Booking.DeclaredGuests,
             Status = state.Booking.Status.ToString(),
             NoShowAt = state.Booking.NoShowAt,
+            VehiclePlate = state.Booking.VehiclePlate,
         },
         Attendance = state.Attendance,
         Guests = state.Guests.Select(guest => CheckInWizardGuestDto.From(guest, includeExemptionCodes)).ToList(),
         RequiredGuestFields = state.RequiredGuestFields,
+        AskVehiclePlate = state.AskVehiclePlate,
         Issues = state.Issues.Select(CheckInIssueDto.From).ToList(),
         Tax = state.Tax is { } tax ? StayTouristTaxDto.From(tax, includeExemptionCodes) : null,
         Sender = new CheckInWizardSenderDto
@@ -106,6 +115,9 @@ public sealed class CheckInWizardBookingDto
 
     /// <summary>When the host marked the stay as a no-show; null otherwise.</summary>
     public DateTime? NoShowAt { get; init; }
+
+    /// <summary>The plate of the car of the stay (NF-132), null when none was given.</summary>
+    public string? VehiclePlate { get; init; }
 }
 
 /// <summary>A guest as the host summary shows it: the document number masked, the exemption code of the tourist tax with the guest.</summary>
@@ -134,6 +146,11 @@ public sealed class CheckInWizardGuestDto
     public string? ResidenceProvince { get; init; }
     public string? ResidenceCountryCode { get; init; }
     public string? ResidenceCountryName { get; init; }
+
+    /// <summary>The home of the guest (NF-132): street and house number, postal code, town; null when not entered.</summary>
+    public string? ResidenceStreet { get; init; }
+    public string? ResidencePostalCode { get; init; }
+    public string? ResidenceCityName { get; init; }
     public GuestDocumentType? DocumentType { get; init; }
     public string? DocumentTypeCode { get; init; }
 
@@ -176,6 +193,9 @@ public sealed class CheckInWizardGuestDto
         ResidenceProvince = guest.ResidenceProvince,
         ResidenceCountryCode = guest.ResidenceCountryCode,
         ResidenceCountryName = guest.ResidenceCountryName,
+        ResidenceStreet = guest.ResidenceStreet,
+        ResidencePostalCode = guest.ResidencePostalCode,
+        ResidenceCityName = guest.ResidenceCityName,
         DocumentType = guest.DocumentType,
         DocumentTypeCode = guest.DocumentTypeCode,
         DocumentNumberMasked = GuestCheckInService.MaskDocumentNumber(guest.DocumentNumber),

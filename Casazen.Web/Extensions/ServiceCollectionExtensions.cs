@@ -237,6 +237,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAuthorizationHandler, AgencyTierAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, AgencyPermissionAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, OwnerPortalAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, OwnerPortalHostOriginAuthorizationHandler>();
 
         // The complete policy set (TN-3): see CasazenPolicies for how to choose one.
         var builder = services.AddAuthorizationBuilder()
@@ -260,9 +261,13 @@ public static class ServiceCollectionExtensions
             .AddPolicy(CasazenPolicies.TenantAccount, policy => policy
                 .RequireAuthenticatedUser()
                 .RequireAssertion(context => !string.IsNullOrWhiteSpace(context.User.GetUserId())))
-            // Owner portal access (ADR-011): context=owner_portal claim, MUST NOT include host roles.
+            // Owner portal access (ADR-011): context=owner_portal claim, MUST NOT include host roles. E40/F01/US01/T02: a call from an agency's own
+            // domain also needs that agency in the owner's agency_ids (a separate requirement, so the two are AND-ed).
             .AddPolicy(CasazenPolicies.OwnerPortal, policy =>
-                policy.Requirements.Add(new OwnerPortalRequirement()));
+            {
+                policy.Requirements.Add(new OwnerPortalRequirement());
+                policy.Requirements.Add(new OwnerPortalHostOriginRequirement());
+            });
 
         foreach (var policyName in CasazenPolicies.ContextPolicies)
         {
@@ -473,6 +478,8 @@ public static class ServiceCollectionExtensions
         // E22/F01/US01/T03: the biometric settings of an organization (the thresholds and the attempts, provisional until a platform administrator marks a
         // calibration), read by its administrators and the staff; the flow reads the same row.
         services.AddScoped<IBiometricSettingsService, BiometricSettingsService>();
+        // casazen/backend#978: which steps of a stay CasaZen does by itself (the check-in link, the arrival, the departure, the property ready), per org.
+        services.AddScoped<IBookingFlowSettingsService, BookingFlowSettingsService>();
         // E03/F04/US02/T03: the immediate alert to the operators (push, e-mail, urgent "To do") when a verification needs a person.
         services.AddScoped<IVerificationOperatorAlerts, VerificationOperatorAlerts>();
         // NF-13: Property access codes with encryption and verification gating (E06/F03/US01/T01).
@@ -482,6 +489,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITicinoNotificationService, TicinoNotificationService>();
         services.AddScoped<IOtrTaxService, OtrTaxService>();
         services.AddScoped<ISwissComplianceReceiptService, SwissComplianceReceiptService>();
+        // NF-126 (casazen/backend#979): the character set of the CSV of the Ticino police, GuestNotifications:TicinoCsvEncoding (windows-1252 by default,
+        // or utf-8); any other value stops the application at startup (docs/runbooks/guest-notification-switzerland.md).
+        services.AddOptions<Casazen.Core.Options.GuestNotificationOptions>()
+            .BindConfiguration(Casazen.Core.Options.GuestNotificationOptions.SectionName)
+            .Validate(
+                options => Casazen.Core.Options.GuestNotificationOptions.TryParseTicinoCsvEncoding(options.TicinoCsvEncoding, out _),
+                "GuestNotifications:TicinoCsvEncoding must be windows-1252 or utf-8 (docs/runbooks/guest-notification-switzerland.md).")
+            .ValidateOnStart();
         services.AddOptions<Casazen.Core.Options.GdprOptions>()
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         // NF-05: Marketing suppression list with blind index (SHA-256) for one-click unsubscribe (ADR-007-R18, R22).
@@ -583,6 +598,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICorsOriginSource, OrgHostCorsOriginSource>();
         // Where an org's public site lives (own host or platform path) and its canonical URLs (BK-16).
         services.AddScoped<PublicOrgSiteUrls>();
+        // The links CasaZen sends for an org, on the agency's own domain or on the CasaZen one (E40/F01/US01/T03).
+        services.AddScoped<Casazen.Infrastructure.Email.AgencyDomainLinks>();
         // Pages and sitemaps of the public site as crawlers read them (BK-15).
         services.AddScoped<Casazen.Web.Seo.IPublicSeoService, Casazen.Web.Seo.PublicSeoService>();
         services.AddScoped<IDnsTxtLookup, DnsClientTxtLookup>();
@@ -690,6 +707,9 @@ public static class ServiceCollectionExtensions
         // E20/F02/US01/T01 (NF-47, CHK-08): the proofs are kept five years from their upload; the daily job (compliance-proof-retention) deletes the file and the row of
         // those whose time is over. Always scheduled, nothing to configure.
         services.AddScoped<Casazen.Infrastructure.Jobs.ComplianceProofRetentionJob>();
+        // NF-128 (casazen/backend#979): the receipts of the Ticino police, the group sheets and the parents' authorizations are kept five years from their date; the
+        // daily job (swiss-compliance-retention) deletes the file and the row of those whose time is over (never an OTR report). Always scheduled, nothing to configure.
+        services.AddSwissComplianceRetention();
         // E20/F02/US01/T02 (NF-121, NF-16, decision O4): the photos of the identity documents and the legacy scan of a stay covered by an archived Alloggiati receipt are deleted by the
         // daily job (guest-document-purge) and by a run queued after each receipt upload; behind Features:PurgeDocumentsAfterReceipt, off by default (the deletion cannot be undone).
         services.AddScoped<IGuestDocumentPurgeService, GuestDocumentPurgeService>();
@@ -842,6 +862,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierComuneMatcher, SupplierComuneMatcher>();
         services.AddScoped<ISupplierPilotComuni, SupplierPilotComuni>();
         services.AddScoped<IPropertyComuneResolver, PropertyComuneResolver>();
+
+        // The official Swiss localities and municipalities of swisstopo (E29/F01/US01/T01, NF-124): the search of the locality picker and the
+        // lookup of a municipality (SwissPlacesController); the seed is loaded at startup by SwissPlacesSeedHostedService.
+        services.AddScoped<ISwissPlacesDirectory, SwissPlacesDirectory>();
+        // E29/F01/US01/T02: the one resolver of the place of a Swiss property (stored municipality, else derived from postal code and city), read by
+        // the Ticino notification, the OTR report, the year-end count of Ticino, the policy of the identity documents and the property record.
+        services.AddScoped<IPropertySwissPlaceResolver, PropertySwissPlaceResolver>();
 
         // Pilot comuni of supplier self-serve registration (SU-01, runbook suppliers.md): no default, validated at startup.
         services.AddOptions<SupplierRegistrationOptions>()
@@ -1086,6 +1113,17 @@ public static class ServiceCollectionExtensions
                             (int)outcome.Result.StatusCode, retryCount, timespan.TotalSeconds);
                     }
                 });
+    }
+
+    /// <summary>
+    /// The five-year retention of the documents of the Ticino police rules (NF-128): the daily job, scoped like the other jobs. A registration test resolves
+    /// it with validated scopes.
+    /// </summary>
+    public static IServiceCollection AddSwissComplianceRetention(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.AddScoped<Casazen.Infrastructure.Jobs.SwissComplianceRetentionJob>();
+        return services;
     }
 
     /// <summary>

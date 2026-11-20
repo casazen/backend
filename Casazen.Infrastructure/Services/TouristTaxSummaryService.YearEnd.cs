@@ -89,23 +89,26 @@ public sealed partial class TouristTaxSummaryService
         var orgId = scope.OrgId;
         var due = TouristTaxYearEndRules.TicinoCountDue(year);
 
-        // The properties in Ticino, the deleted ones too (their stays are history): the canton of the municipality of each, as the accountant package tells the Swiss tourist tax. A property in
-        // Switzerland whose canton is not known (an empty canton: no municipality on it, or one the registry lacks) may be in Ticino: it is counted too and flagged, never dropped in silence.
+        // The properties in Ticino, the deleted ones too (their stays are history), placed by the one resolver of the place of a Swiss property (E29/F01/US01/T02): the municipality stored on
+        // each, or the one its postal code and town give. A property in Switzerland whose canton is not known (no place, or a postal code that leaves several municipalities open) may be in
+        // Ticino: it is counted too and flagged, never dropped in silence.
         var swiss = await db.Properties.AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(p => p.OrgId == orgId && p.Country == "CH")
-            .Select(p => new { p.Id, p.Name, p.Address, p.City, p.SwissMunicipalityCode, p.Currency, p.IsDeleted })
+            .Select(p => new { p.Id, p.Name, p.Address, p.City, p.PostalCode, p.SwissMunicipalityCode, p.Currency, p.IsDeleted })
             .ToListAsync(cancellationToken);
-        var cantons = await AccountantPackageFacts.SwissCantonsAsync(db, orgId, [.. swiss.Select(p => p.Id)], cancellationToken);
+        var places = await (swissPlaces ?? new PropertySwissPlaceResolver(db)).ResolveManyAsync(
+            [.. swiss.Select(p => new SwissPlaceLookup(p.Id, "CH", p.SwissMunicipalityCode, p.PostalCode, p.City))], cancellationToken);
         var properties = swiss
-            .Where(p => cantons.TryGetValue(p.Id, out var canton) && (canton.Length == 0 || string.Equals(canton, TouristTaxYearEndRules.TicinoCanton, StringComparison.OrdinalIgnoreCase)))
+            .Select(p => (Property: p, Place: places.GetValueOrDefault(p.Id)))
+            .Where(p => InTheTicinoCount(p.Place))
             .ToList();
         if (properties.Count == 0)
             return new TicinoYearlyCount(year, due, []);
 
         // The stays with check-in in the year that happened (the one definition of an active stay, AlloggiatiStatusRules: confirmed, checked in or checked out, never a request, a cancelled
         // booking or a no-show), and the documents issued for them.
-        var propertyIds = properties.Select(p => p.Id).ToList();
+        var propertyIds = properties.Select(p => p.Property.Id).ToList();
         var firstNight = new DateOnly(year, 1, 1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var nextYear = new DateOnly(year + 1, 1, 1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var stays = await db.Bookings.AsNoTracking()
@@ -140,18 +143,20 @@ public sealed partial class TouristTaxSummaryService
 
         var documentsOf = documents.ToLookup(d => d.BookingId);
         var counts = new List<TicinoPropertyCount>();
-        foreach (var property in properties)
+        foreach (var (property, place) in properties)
         {
             var count = CountOf(property.Id, stays, documentsOf, property.Currency);
             if (count.Stays == 0 && property.IsDeleted)
                 continue;
 
+            // A known place gives its municipality (stored, or derived and said so); an unknown canton keeps the number stored on the property, if any.
+            var known = place is { IsKnown: true } ? place : null;
             counts.Add(new TicinoPropertyCount(
                 property.Id,
                 property.Name,
                 property.Address,
                 property.City,
-                property.SwissMunicipalityCode,
+                known?.MunicipalityCode ?? property.SwissMunicipalityCode,
                 property.Currency,
                 count.Stays,
                 count.Nights,
@@ -162,11 +167,15 @@ public sealed partial class TouristTaxSummaryService
                 count.StaysWithoutDocument,
                 count.NightsWithoutDocument,
                 count.TouristTax,
-                cantons[property.Id].Length == 0));
+                CantonUnknown: known is null,
+                MunicipalityDerived: known?.Source == SwissPlaceSource.Derived));
         }
 
         return new TicinoYearlyCount(year, due, [.. counts.OrderBy(c => c.PropertyName, StringComparer.OrdinalIgnoreCase).ThenBy(c => c.PropertyId)]);
     }
+
+    /// <summary>In the count of Ticino: a property the resolver places in Ticino, or one whose canton is not known (it may be in Ticino).</summary>
+    private static bool InTheTicinoCount(SwissPlace? place) => place is not { IsKnown: true } || place.IsInTicino;
 
     /// <summary>
     /// The count of one property: a stay is taxed when the tourist tax lines of its issued documents add up to more than nothing (a credit note takes its amount away), untaxed when it has an issued

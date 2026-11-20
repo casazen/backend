@@ -108,7 +108,9 @@ public sealed record TouristTaxAgentAccount(
 /// whose document of the stay carries a tourist tax (<see cref="TaxedStays"/>), those whose document has none (a portal that collects it, an exemption, no rule: <see cref="UntaxedStays"/>) and
 /// those with no document issued yet (<see cref="StaysWithoutDocument"/>: told apart, never counted as untaxed). <see cref="TouristTax"/> is the tourist tax lines of the issued documents of those stays,
 /// credit notes taken away, in <see cref="Currency"/>: the amount of the documents, never a calculation. <see cref="CantonUnknown"/> marks a property in Switzerland whose canton is not known (no
-/// Swiss municipality on the property, or one the registry of the municipalities does not have): it may be in Ticino, so it is counted and the file says so, never dropped in silence.
+/// Swiss municipality stored on the property nor derivable from its postal code and town, or a postal code that leaves several municipalities open): it may be in Ticino, so it is counted and
+/// the file says so, never dropped in silence. <see cref="MunicipalityCode"/> is the municipality the one resolver of the place gives (E29/F01/US01/T02): the stored one, or the one derived from
+/// the postal code and the town, then <see cref="MunicipalityDerived"/> is true and the file says it is to be confirmed.
 /// </summary>
 public sealed record TicinoPropertyCount(
     Guid PropertyId,
@@ -126,7 +128,8 @@ public sealed record TicinoPropertyCount(
     int StaysWithoutDocument,
     int NightsWithoutDocument,
     decimal TouristTax,
-    bool CantonUnknown = false);
+    bool CantonUnknown = false,
+    bool MunicipalityDerived = false);
 
 /// <summary>The yearly count of the nights of the properties in Ticino, due by 5 January of the next year (<see cref="TouristTaxYearEndRules.TicinoCountDue"/>).</summary>
 public sealed record TicinoYearlyCount(int Year, DateOnly DueDate, IReadOnlyList<TicinoPropertyCount> Properties);
@@ -145,8 +148,8 @@ public sealed record TouristTaxStayFacts(
 /// <summary>The rules of the year-end exports of the tourist tax (E18/F01/US02/T03), apart from any storage.</summary>
 public static class TouristTaxYearEndRules
 {
-    /// <summary>The canton of Ticino, as <c>SwissMunicipalities</c> gives it.</summary>
-    public const string TicinoCanton = "TI";
+    /// <summary>The canton of Ticino, as <c>SwissMunicipalities</c> gives it: the one of <see cref="SwissPlace"/>.</summary>
+    public const string TicinoCanton = SwissPlace.TicinoCantonCode;
 
     /// <summary>The day the regional tourist organization of Ticino wants the yearly count of nights of the year before: 5 January.</summary>
     public static DateOnly TicinoCountDue(int year) => new(year + 1, 1, 5);

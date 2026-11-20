@@ -343,6 +343,43 @@ public static class FeatureFlags
     /// </summary>
     public const string ScheduledMessages = "ScheduledMessages";
 
+    /// <summary>
+    /// E40 (NF-140..NF-143, site integration plan §5.8-§5.10): the guest area, the owner portal and the links on the agency's own domain, <b>off by default</b>. Off, every org is
+    /// served exactly as before: <c>GET api/public/resolve-host</c> reports no surface (<c>surfaces</c> and <c>ownerLoginReady</c> false), <c>GET api/orgs/{orgId}/domain</c> has no
+    /// <c>surfaces</c> block and <c>PUT api/orgs/{orgId}/domain/surfaces</c> answers 404 before authentication, the links of the e-mails stay on the CasaZen domain and the CORS of a
+    /// verified domain covers <c>/api/public</c> and <c>/api/legal</c> only. On, an org with a verified custom domain it pays for chooses what its domain serves besides the
+    /// booking site (<c>HostSurfaceRules</c>); a platform subdomain never serves more. It needs no variable to start. The frontend reads the key <c>whiteLabelHost</c>.
+    /// </summary>
+    public const string WhiteLabelHost = "WhiteLabelHost";
+
+    /// <summary>
+    /// E40 (NF-141, site integration plan §5.7): the automatic registration of the callback, logout and web-origin URLs of each verified domain in the shared Auth0 tenant through
+    /// the Management API, <b>off by default</b>: it needs Management credentials with <c>update:clients</c>. Off, the owner sign-in on an agency domain waits for CasaZen (the state
+    /// <c>Pending</c>, shown as <c>ownerLoginAutomatic: false</c> in the domain settings) and the step is done by hand following the runbook. It works only with
+    /// <see cref="WhiteLabelHost"/> on. The frontend reads the key <c>auth0HostSync</c>.
+    /// </summary>
+    public const string Auth0HostSync = "Auth0HostSync";
+
+    /// <summary>
+    /// E41-E43 (NF-144..NF-149, site integration plan §5.2-§5.4): the embeddable booking pages, the page «Incorpora nel tuo sito», the WordPress plugin and the Google Tag Manager
+    /// container of the agency, <b>off by default</b>. Off, <c>GET api/public/resolve-host</c> and <c>GET api/public/orgs/{slug}</c> report <c>embedEnabled</c> false,
+    /// <c>resolve-host</c> gives no container id (<c>tracking.gtmContainerId</c> null), <c>GET api/orgs/{orgId}/domain</c> has no <c>tracking</c> block and
+    /// <c>PUT api/orgs/{orgId}/domain/tracking</c> answers 404 before authentication. It needs no variable to start. The frontend reads the key <c>siteEmbed</c>.
+    /// </summary>
+    public const string SiteEmbed = "SiteEmbed";
+
+    /// <summary>
+    /// E30/F02/US01/T01 (NF-127, D9, casazen/backend#979): the staged alerts about the 24 hours of the notification of the guests of a Ticino property to the
+    /// cantonal police, <b>off by default</b> and turned on only in the test environment until the product owner has seen them on a real arrival. Off, the hourly
+    /// <c>stay-alerts</c> job reads no Ticino day and writes no alert state, and nothing is queued: no e-mail, no push, no entry of the bell. On, every
+    /// arrival day of a Ticino property that is not closed (no receipt of the portal, and the declaration when it exists) gets three stages, each sent once:
+    /// the arrival day («prepare the file»), six hours before the deadline, and overdue followed by at most two reminders, to the contact address of the organization
+    /// (the one e-mail) and to the person in charge of the property and the administrators of the organization (push, bell and the live update of the open pages, the
+    /// types <c>ticino-notification-due</c> and <c>ticino-notification-overdue</c>). The cockpit section of the days to notify (<c>ticinoNotifications</c>) is not behind it. Independent of
+    /// <see cref="ComplianceTrafficLight"/>. It needs no variable to start. The thresholds are <c>Compliance__Ticino*</c>.
+    /// </summary>
+    public const string TicinoNotificationAlerts = "TicinoNotificationAlerts";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -377,5 +414,9 @@ public static class FeatureFlags
         TaxReportingExports,
         PurgeDocumentsAfterReceipt,
         ScheduledMessages,
+        WhiteLabelHost,
+        Auth0HostSync,
+        SiteEmbed,
+        TicinoNotificationAlerts,
     ];
 }

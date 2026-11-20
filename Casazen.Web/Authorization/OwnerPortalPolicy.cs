@@ -103,34 +103,48 @@ public static class OwnerPortalPrincipalExtensions
     public static IReadOnlyList<Guid> GetOwnerAgencyIds(this ClaimsPrincipal user, string? customClaimNamespace = null)
     {
         ArgumentNullException.ThrowIfNull(user);
-        var agencyIdsClaim = user.FindFirstValue(OwnerPortalClaims.Type(customClaimNamespace, OwnerPortalClaims.AgencyIds, "agency_ids"));
-        if (string.IsNullOrWhiteSpace(agencyIdsClaim))
-            return Array.Empty<Guid>();
 
-        // Parse JSON array or comma-separated list
+        // The Auth0 Action sets an ARRAY (auth0.md 6.1) and the JWT handler turns an array into one claim per element, as it does for the roles (read with FindAll):
+        // every claim of the type is read, each one as a single id, a JSON array or a comma-separated list (E40/F01/US01/T02: an owner of several agencies keeps all of them).
+        var claimType = OwnerPortalClaims.Type(customClaimNamespace, OwnerPortalClaims.AgencyIds, "agency_ids");
+        var agencyIds = new List<Guid>();
+        foreach (var claim in user.FindAll(claimType))
+            agencyIds.AddRange(ParseIds(claim.Value));
+
+        return agencyIds.Distinct().ToList();
+    }
+
+    /// <summary>The ids of ONE claim value: a JSON array (<c>["uuid1","uuid2"]</c>), a comma-separated list or a single id; what is not an id is left out.</summary>
+    private static List<Guid> ParseIds(string? claimValue)
+    {
+        if (string.IsNullOrWhiteSpace(claimValue))
+            return [];
+
         try
         {
+            var value = claimValue.Trim();
+
             // Try JSON array first (e.g., ["uuid1","uuid2"])
-            if (agencyIdsClaim.StartsWith('['))
+            if (value.StartsWith('['))
             {
-                var ids = System.Text.Json.JsonSerializer.Deserialize<string[]>(agencyIdsClaim);
+                var ids = System.Text.Json.JsonSerializer.Deserialize<string[]>(value);
                 if (ids is null)
-                    return Array.Empty<Guid>();
+                    return [];
 
                 return ids.Select(id => Guid.TryParse(id, out var guid) ? guid : Guid.Empty)
                           .Where(id => id != Guid.Empty)
                           .ToList();
             }
 
-            // Fallback to comma-separated
-            return agencyIdsClaim.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            // Fallback to comma-separated (a single id is a list of one)
+            return value.Split(',', StringSplitOptions.RemoveEmptyEntries)
                 .Select(id => Guid.TryParse(id.Trim(), out var guid) ? guid : Guid.Empty)
                 .Where(id => id != Guid.Empty)
                 .ToList();
         }
         catch
         {
-            return Array.Empty<Guid>();
+            return [];
         }
     }
 

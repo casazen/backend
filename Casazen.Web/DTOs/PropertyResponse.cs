@@ -108,10 +108,32 @@ public sealed class PropertyResponse
     public string? TicinoStructureId { get; init; }
 
     /// <summary>
-    /// The property is in canton Ticino, so its guests are notified to the cantonal police (notifiche.ti.ch) instead of Alloggiati Web. Known only
-    /// on <c>GET /api/properties/{id}</c>; false on the lists.
+    /// The property is in canton Ticino, so its guests are notified to the cantonal police (notifiche.ti.ch) instead of Alloggiati Web: the canton of
+    /// <see cref="SwissPlace"/> (the one resolver, E29/F01/US01/T02). Known only on <c>GET /api/properties/{id}</c>; false on the lists.
     /// </summary>
     public bool IsInTicino { get; init; }
+
+    /// <summary>
+    /// The Swiss municipality stored on the property (E29/F01/US01/T02), the one the host chose: its BFS number as a text of digits (<c>"5192"</c>);
+    /// null when none is stored. It is what a form sends back in <c>swissMunicipalityCode</c>; a municipality derived from the postal code is in
+    /// <see cref="SwissPlace"/>, never here.
+    /// </summary>
+    public string? SwissMunicipalityCode { get; init; }
+
+    /// <summary>The official name of the stored Swiss municipality. Known only on <c>GET /api/properties/{id}</c>; null on the lists and when none is stored (or the directory lacks it).</summary>
+    public string? SwissMunicipalityName { get; init; }
+
+    /// <summary>The canton (<c>TI</c>) of the stored Swiss municipality. Known only on <c>GET /api/properties/{id}</c>; null on the lists and when none is stored.</summary>
+    public string? SwissCantonCode { get; init; }
+
+    /// <summary>
+    /// Where the rules place the property (the one resolver of the place of a Swiss property, NF-124): the stored municipality (<c>source: Stored</c>), or,
+    /// without it, the one its postal code and city give (<c>source: Derived</c>: not stored, the form proposes it for confirmation), or
+    /// <c>ambiguous: true</c> with no municipality and no canton when the postal code leaves several municipalities open (the form asks the host).
+    /// Only on <c>GET /api/properties/{id}</c>, for a property in Switzerland that has a place; left out otherwise.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SwissPlaceDto? SwissPlace { get; init; }
     public string Timezone { get; init; } = "Europe/Rome";
     public Guid? CancellationPolicyId { get; init; }
     public int? CancellationFullRefundHours { get; init; }
@@ -178,9 +200,15 @@ public sealed class PropertyResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PropertyModeChangeDto? ScheduledModeChange { get; init; }
 
-    public static PropertyResponse From(Property property, PropertyOverview? overview = null, bool isInTicino = false)
+    /// <summary>
+    /// The record of <paramref name="property"/>; <paramref name="overview"/> adds what the host's list shows, <paramref name="swissPlace"/> (only the
+    /// record of one property) where the one resolver places it: <see cref="IsInTicino"/>, the name and canton of the stored municipality and
+    /// <see cref="SwissPlace"/> come from it.
+    /// </summary>
+    public static PropertyResponse From(Property property, PropertyOverview? overview = null, SwissPlace? swissPlace = null)
     {
         ArgumentNullException.ThrowIfNull(property);
+        var stored = swissPlace is { Source: SwissPlaceSource.Stored, IsKnown: true } ? swissPlace : null;
         return new PropertyResponse
         {
             LifecycleStatus = overview?.LifecycleStatus,
@@ -234,7 +262,11 @@ public sealed class PropertyResponse
             RegionCode = property.RegionCode,
             CinIstatMismatch = CinFormat.HasIstatComuneMismatch(property.CinCode, property.ComuneIstatCode),
             TicinoStructureId = property.TicinoStructureId,
-            IsInTicino = isInTicino,
+            IsInTicino = swissPlace?.IsInTicino == true,
+            SwissMunicipalityCode = property.SwissMunicipalityCode,
+            SwissMunicipalityName = stored?.MunicipalityName,
+            SwissCantonCode = stored?.CantonCode,
+            SwissPlace = swissPlace is null ? null : SwissPlaceDto.From(swissPlace),
             Timezone = property.Timezone,
             CancellationPolicyId = property.CancellationPolicyId,
             CancellationFullRefundHours = property.CancellationFullRefundHours,
@@ -254,6 +286,43 @@ public sealed class PropertyResponse
             CadastralIncome = property.CadastralIncome,
             CreatedAt = property.CreatedAt,
             UpdatedAt = property.UpdatedAt,
+        };
+    }
+}
+
+/// <summary>
+/// Where the one resolver places a Swiss property (<c>swissPlace</c> of <see cref="PropertyResponse"/>, E29/F01/US01/T02, NF-124): the BFS number,
+/// the official name and the canton of its municipality, where they come from (<c>Stored</c>: chosen by the host; <c>Derived</c>: from the postal
+/// code and the city, not stored, to be confirmed), and whether the postal code leaves several municipalities open (<c>ambiguous</c>: then no
+/// municipality and no canton).
+/// </summary>
+public sealed class SwissPlaceDto
+{
+    /// <summary>The BFS number as a text of digits (<c>"5192"</c>); null when ambiguous.</summary>
+    public string? MunicipalityCode { get; init; }
+
+    /// <summary>The official name of the municipality; null when ambiguous.</summary>
+    public string? MunicipalityName { get; init; }
+
+    /// <summary>The two letters of the canton (<c>TI</c>); null when ambiguous.</summary>
+    public string? CantonCode { get; init; }
+
+    /// <summary><c>Stored</c> or <c>Derived</c>.</summary>
+    public SwissPlaceSource Source { get; init; }
+
+    /// <summary>The postal code and the city of the property leave several municipalities open: the host has to choose one.</summary>
+    public bool Ambiguous { get; init; }
+
+    public static SwissPlaceDto From(SwissPlace place)
+    {
+        ArgumentNullException.ThrowIfNull(place);
+        return new SwissPlaceDto
+        {
+            MunicipalityCode = place.MunicipalityCode,
+            MunicipalityName = place.MunicipalityName,
+            CantonCode = place.CantonCode,
+            Source = place.Source,
+            Ambiguous = place.Ambiguous,
         };
     }
 }

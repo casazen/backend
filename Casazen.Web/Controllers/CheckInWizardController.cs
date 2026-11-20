@@ -76,7 +76,7 @@ public class CheckInWizardController(
             return Unauthorized();
 
         var result = await wizard.SaveGuestsAsync(
-            bookingId, request.Guests.Select(g => g.ToInput()).ToList(), userId, cancellationToken);
+            bookingId, request.Guests.Select(g => g.ToInput()).ToList(), userId, cancellationToken, request.VehiclePlate);
         if (!result.Success)
         {
             foreach (var error in result.Errors)

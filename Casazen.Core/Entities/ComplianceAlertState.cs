@@ -37,7 +37,8 @@ public class ComplianceAlertState : ITenantOwned
 
     /// <summary>
     /// What the stages refer to: the period (<c>yyyy-MM</c>) of an ISTAT or tourist tax alert, <see cref="ConnectionReferenceKey"/> for the
-    /// connection. When the reference changes (the next period) the sequence starts again for it, because the row is another one.
+    /// connection, the arrival day (<c>yyyy-MM-dd</c>) of a Ticino notification alert (the property is the other column of the unique index, so it is
+    /// not repeated in the key). When the reference changes (the next period) the sequence starts again for it, because the row is another one.
     /// </summary>
     [Required, MaxLength(ReferenceKeyMaxLength)]
     public string ReferenceKey { get; set; } = string.Empty;
@@ -66,4 +67,11 @@ public enum ComplianceAlertType
 
     /// <summary>The police send of the channel manager is not active while a stay is coming: detection, then one more reminder.</summary>
     ConnectionInactive = 3,
+
+    /// <summary>
+    /// The guests of an arrival day of a Ticino property are not notified to the cantonal police yet (E30/F02/US01/T01, NF-127, D9): the file to prepare on
+    /// the arrival day, the deadline (24 hours from the arrival) approaching, then overdue and at most two reminders. The reference is the arrival day
+    /// (<c>yyyy-MM-dd</c>); the stages are <see cref="ComplianceAlertStage.TicinoFileToPrepare"/> to <see cref="ComplianceAlertStage.TicinoOverdueReminder"/>.
+    /// </summary>
+    TicinoNotification = 4,
 }

@@ -784,7 +784,8 @@ With several co-owners the owner of a V1 account is the one who **signs for the 
 (`DocumentPlanRules.SignatoryOf`: the mandate in force, then the largest share, then the oldest ownership, then the smallest id), so the TD17 and the receipt or the invoice of the
 stay are always the same owner's.
 
-**The amounts.** The taxable amount is the sum of the `ChannelFee` lines of the owner ledger of the month (a reversal and the line it reverses cancel out; the drafts only read the ledger,
+**The amounts.** The taxable amount is the sum of the `ChannelFee` lines of the owner ledger of the month, and of the `ChannelFeeBorneByAgency` ones (the commission of an account of the agency that is not
+recharged: the agency bears it, the TD17 is due all the same; FIX/BE-V2-NO-RECHARGE) (a reversal and the line it reverses cancel out; the drafts only read the ledger,
 so a month the owner accounting has not posted yet has no commissions to invoice, and the answer says so: `ledgerPosted` false), in the currency of the stay
 and **in euro only**: a commission in another currency is not converted by a guess, it is reported (`currency_not_supported`). Only the stays that are **active now** are integrated (the one
 definition, `AlloggiatiStatusRules.ActiveBookingStatuses` and no no-show): the owner ledger is posted by hand, so the line of a stay cancelled or marked no-show after the posting is alive until the
@@ -839,10 +840,18 @@ duty, the total, the currency, then the country and the VAT number of the suppli
 each document. The VAT file of the issuer (`iva/iva-{issuer}.csv`) carries them as the class «Autofatture TD17» (month, rate, taxable amount, VAT, total, documents), whatever the regime of
 the issuer (a TD17 integrates the VAT at the rate of the settings), but only with the owner accounting: a TD17 of an owner company is that owner's cost of its portal, so, like the portal commissions,
 a caller without `agency.statement.view` (or that reaches only some properties) finds none of it, not even as a figure, and the VAT file of an Italian issuer says so in a last table «Autofatture TD17 non incluse in questo file» (the reason is the one of the omitted folders: `agency.statement.view` and the whole org), never a file that reads as «no TD17». The **portal commissions of the accounts the agency holds** (V2) are `fatture-proprietari/commissioni-portali-v2.csv` and `.xlsx`: one row
-for each statement month, owner, channel and currency (the commission as a positive amount, the stays that carry it and the treatment, «Riaddebitata al proprietario» or «Non riaddebitata in fattura» by
+for each statement month, owner, channel and currency (the commission as a positive amount, the stays that carry it and the treatment, «Riaddebitata al proprietario» or «A carico dell'agenzia» by
 `RechargePortalCommissions`) and the totals for each channel and currency; they come from the owner ledger through the resolver of the holders (`IPortalAccountHolderResolver`: the same test as the invoice to
 the owner), the amounts are the ledger's and never recomputed, and they are the lines the TD17 of the agency integrates (the TD17 leaves out what is not in euro or belongs to a stay that is not active any
-more) and, when recharged, the ones the invoices to the owners recharge. Both families are written only for a period that has them: a period with no
+more) and, when recharged, the ones the invoices to the owners recharge. **Without the recharge the agency bears the commission** (FIX/BE-V2-NO-RECHARGE, decision 1 of
+`fatturazione/decisioni-fiscali-2026-11-20.md`): the owner ledger writes it as `ChannelFeeBorneByAgency`, a line for information only that charges the owner nothing, so the treatment «A carico
+dell'agenzia» says what is true and the agency summary counts the commission **once**, as the cost of its margin («Margine = provvigioni e riaddebiti fatturati meno le commissioni dei portali sui
+conti intestati all'agenzia»: the recharged ones come back with the recharges, the others stay its cost; the column of the commissions is «Commissioni dei portali sui conti dell'agenzia»). The sources (R1,
+opened on 20/11/2026): the expenses of the mandate are the principal's by law (art. 1719-1720 c.c.; art. 402 CO), but in V2 the portal invoices the agency, so charging them to the owner is a taxable recharge
+that needs a document of the agency (art. 3 c. 3 and art. 13 c. 2 lett. b DPR 633/72 until 31/12/2026, then the Testo unico IVA, D.Lgs. 10/2026; art. 20 LIVA): without it the commission is the agency's. **The
+confirmation of the mandate and of the VAT treatment is for the accountant** (and the Swiss fiduciary) before the function is used in production. A commission charged to the owner on such an account before
+the rule (a `ChannelFee` of a month closed before it: the open months are posted again under the rule) is read with the setting of today and listed «A carico dell'agenzia» like the others; the statement of
+that month says what it was. Both families are written only for a period that has them: a period with no
 TD17 and no commission of that kind has the same files, with the same content, as before.
 
 **A TD17 the SDI rejected** (⚖ the prudent default, a choice of the PO and the accountant to confirm before `Features__AccountantPackage` is turned on): a rejected invoice counts as not issued, and until the host corrects it
@@ -874,7 +883,8 @@ rejected invoice* above). A TD17 has no booking and no guest, so what differs is
   electronic invoice. The next TD17 of the series is the next number: the sequence has neither a hole nor a duplicate.
 - **The replacement is never discarded.** `DELETE api/fiscal/self-billing/{id}` of a draft that holds the number of a rejected TD17 is 422 `document_replacement_holds_number`: discarded, the number would be lost (a hole in
   the series) and the rejected TD17 could not be corrected again. The drafts of the month keep it too when nothing gives it a TD17 any more (its commissions were reversed, its holder is no longer subject or cannot issue, its
-  portal is not in the settings): it stays a draft holding the number, and what the number is for is the accountant's decision (⚖). Every other draft nothing supports is dropped as before.
+  portal is not in the settings): it stays a draft holding the number until the host closes it as «non più dovuta» (*Closing a replacement as «non più dovuta»* below: the number is never freed, only documented as unused).
+  Every other draft nothing supports is dropped as before.
 - **The replacement is adopted when the portal is put right in the settings.** The replacement is the draft of its holder and portal by the key of the portal (country and VAT code of `SelfBilling:Portals`). When the cause of the
   rejection was the VAT number or the country of the portal and the host (the operator) puts it right in the settings, the key changes and the TD17 does not: the drafts of the month **adopt** the draft that holds the number of a
   rejected TD17 of the same holder (issuer profile) and the **same legal name of the portal** (case apart), that no other group took (every key is matched first, then the drafts that are left, so the order of the groups never
@@ -885,16 +895,16 @@ rejected invoice* above). A TD17 has no booking and no guest, so what differs is
   kept, and the answer of `POST drafts` lists it in `kept` (`documentId`, `holderKind`, `holderOwnerId`, `portalName`, `number`, `reason`) and the list and the detail (`GET api/fiscal/self-billing`, `/{id}`) carry the same code in
   `keptReason` on that draft (`null` on every other row, and on a draft the month would adopt). The reason is a stable code, with no personal data: `portal_not_configured` (the country and VAT number of its portal are not an
   entry of `SelfBilling:Portals` any more: put the entry right), `issuer_profile_incomplete` or `owner_issuer_missing` (its holder cannot issue: complete the profile), `ledger_gives_no_td17` (the month gives that holder no TD17
-  for that portal: the commissions were reversed, the stays are no longer active, the holder is no longer subject to the TD17). The log carries the id and the code. There is **no way out from the API**: what the number is for
-  (a confirmed discard that leaves it unused, or another TD17 of the series) is for the accountant and the product owner to decide, and is not made by the code.
+  for that portal: the commissions were reversed, the stays are no longer active, the holder is no longer subject to the TD17). The log carries the id and the code. Its only way out is the closing as «non più dovuta»
+  (`POST api/fiscal/self-billing/{id}/close-not-due`, FIX/BE-TD17-JOB-EXIT, *Closing a replacement as «non più dovuta»* below): a reason, the user and the day are recorded and the number is documented as unused, never freed.
 - **What the list and the detail say.** `GET api/fiscal/self-billing` lists, with the drafts and the issued ones, the **originals a correction replaced** (`status` `Discarded`, `sdiStatus` `rejected`, their number; the
   holder is named as it was at the issue), and every row carries three more fields: `canCorrect` (the button «Correggi e rimanda» is offered: issued, rejected, numbered, no issued credit note: `SelfBillingRules.IsCorrectable`,
   the one definition the correction asks too), `replacesDocumentId` (this draft, or this TD17 issued after it, replaces that rejected one) and `replacedByDocumentId` (this one is the discarded original: the TD17 that replaces
-  it); a fourth, `keptReason`, is set only on a kept draft (above). A discarded draft nothing replaces is not listed, as before.
+  it); a fourth, `keptReason`, is set only on a kept draft (above). A discarded draft that nothing replaces and nobody closed as «non più dovuta» is not listed, as before.
 - **Credit notes of an issued TD17 stay out of scope**: a rejected TD17 is corrected, never credited, and one that has an issued credit note is not corrected (the accountant decides).
 - ⚖ To be confirmed by the accountant, as for an invoice to a guest: the reuse of the number of a rejected TD17 and that its replacement keeps its day (a TD17 is due by the 15th of the month after the commissions: a file
   sent again later is the accountant's call), and what the number of a replacement is for when its commissions are gone.
-- **No migration, no new flag, no configuration.** **Rollback:** switch `Features:SdiSubmission` off (the endpoint answers 404) or do not use it: the rejected TD17 stays as it is; a replacement already made stays a draft
+- **No migration, no new flag, no configuration** (of this slice: the closing of a replacement, below, adds the four columns of the closing). **Rollback:** switch `Features:SdiSubmission` off (the endpoint answers 404) or do not use it: the rejected TD17 stays as it is; a replacement already made stays a draft
   holding its number and is issued with `POST {id}/issue`, which does not depend on the flag of the SDI.
 
 **Not in this slice** (so it is not silently missing): a credit note of an issued TD17 (it is not credited from here: the accountant decides; a TD17 the SDI rejected is corrected, not credited, as above; `POST …/sdi/correct` of a TD17
@@ -903,6 +913,54 @@ of the integrated VAT to the owner ledger (the TD17 is neutral for the holder: t
 submission to the SDI (not made by the issue: the document is `to_send` and the channel of *SDI submission, outcomes and correction* above sends it like every Italian electronic invoice). The accountant package and its VAT file hold the TD17 since FIX/BE-ACCOUNTANT-GAPS (above). No migration: nothing is stored beyond the existing columns of
 `FiscalDocuments`. **Rollback:** switch `Features:FiscalDocumentIssuance` off (the endpoints answer 404) or empty `SelfBilling:Portals` (nothing is made: 422 `self_billing_not_configured`); an
 issued TD17 stays what it is (ten years).
+
+### Closing a replacement as «non più dovuta» (`ISelfBillingService.CloseNotDueAsync`, `POST api/fiscal/self-billing/{id}/close-not-due`, FIX/BE-TD17-JOB-EXIT)
+
+Decision 2 of the fiscal decisions of 20/11/2026 (`fatturazione/decisioni-fiscali-2026-11-20.md`, research R3 `fatturazione/ricerche/R3-td17-scarto-numerazione-termini.md`, sources opened on 20/11/2026): the **exit of a
+replacement draft that can no longer be sustained**, the one way out of a draft the month *keeps* (`keptReason`, above): its commissions were reversed, its holder is no longer subject to the TD17, its portal was removed
+from the settings.
+
+- **An internal outcome, never «scarto confermato».** The rejection is an external fact of the SDI: the rejected original stays as history (`Discarded`, `sdiStatus` `rejected`, its display number, `replacedByDocumentId`).
+  What is closed is the replacement draft, by a decision of the host, with a **mandatory reason**, the user and the day: the draft becomes `Discarded` and carries `closedReason`, `closedAt`, `closedBy` and `closedNote`.
+- **The endpoint.** `POST api/fiscal/self-billing/{id}/close-not-due` with `{ reason, note? }`: `agency.invoice.manage`, the whole organization (403 otherwise), `Features:FiscalDocumentIssuance` **and**
+  `Features:SdiSubmission` (404 while either is off: the same flags as the correction that makes such a draft). `reason` is one of `portal_credit_note` (the portal issued a credit note), `holder_no_longer_subject`
+  (the holder is no longer a taxable person) or `duplicate_or_error` (`SelfBillingCloseReasons`, the constants of the code); `note` is an optional free text of at most 500 characters. **200** with the detail of the
+  closed draft (`SelfBillingDto`). The user and the day are the caller's and the server's, never a value of the request. **Errors, each with its own code and an IT and an EN text:** 404 `fiscal_document_not_found`
+  (another organization's document, a document that is not a TD17, an unknown one); 422 `close_reason_required` (the reason is missing or is none of the three); 422 `close_note_too_long`; 422
+  **`self_billing_not_closable`** (message key `SelfBillingNotClosable`): the document is not a **draft that replaces a rejected TD17 and holds its number** that the system reports as **kept** (`keptReason` not null: the
+  same read as the list and the detail, `KeptReasonsAsync`). A draft the month still gives, or would adopt, is issued, not closed; an issued TD17, an ordinary draft and a discarded document nobody closed are refused.
+  The same call again with the **same** reason answers the same closed draft (a double click, a retry) and changes nothing; a draft already closed with *another* reason is refused with a code of its own, 422
+  **`self_billing_already_closed`** (message key `SelfBillingAlreadyClosed`: «already closed for a different reason», not the words of «not closable», which tell to issue a draft that is closed): who closed it and
+  why is never rewritten.
+- **The number is never freed.** The closed draft keeps its `series`, its `sequenceNumber` and its display `number`: the unique index `UIX_FiscalDocuments_OrgId_IssuerProfileId_Series_SequenceNumber` (any status) never lets
+  the number be taken again, the counter of the series (`FiscalNumberSequences`) is already past it, and the check `CK_FiscalDocuments_ClosedNotDue` refuses a closed document that is not discarded or has lost its sequence
+  number. The next TD17 of the series is the next number: the series has a documented gap, no duplicate. **The reuse of the number** (only when it is the last of the series and no later number was issued) **stays off and is
+  not built here**; the generic discard (`DELETE api/fiscal/self-billing/{id}`) stays refused for such a draft (`document_replacement_holds_number`). The decision is taken under the lock `SelfBilling` of the organization
+  (the lock of the generation: the month cannot adopt or make the draft again meanwhile), and the «Da fare» of the drafts of the month closes when it was the last open one.
+- **What the list and the detail say.** `GET api/fiscal/self-billing` and `/{id}` list a closed draft with the history of its number (it is `Discarded`, `replacesDocumentId` names the rejected original, `number` is the reserved
+  one) and four more fields, `null` on every other row: `closedReason` (the code the frontend translates), `closedAt` (UTC), `closedBy` (the first and last name of the user the closing recorded; `null` when the user is gone)
+  and `closedNote`. The rejected original is not corrected again (`canCorrect` is false: it is no longer issued).
+- **The register of the unused numbers in the accountant package.** `fatture-proprietari/autofatture/numeri-non-utilizzati.csv` and `.xlsx` (owner accounting, the whole organization, the folder `ownerInvoices`): one row for each
+  number closed **in the period** (the Europe/Rome day of the closing), with the issuer (the series is the issuer's own), the number, the day of the rejected original, the day of the closing, the reason in words, the note,
+  the **SDI outcome of the rejected original** (its state and the code of the rejection) and the user (the name; when the user is gone, the fixed text «utente non più presente», `AccPkgUserNoLongerPresent`: **the
+  id of a user never leaves in the file**, it stays in the column of the database). Written by `Plan.AddTables` like every table of the package (the same index entry with its SHA-256, the same
+  title row, header and typed cells; a note or a name a spreadsheet would run as a formula is written as text, with a leading apostrophe in the CSV and as a string never calculated in the Excel file). **A period with no
+  closing writes no file at all: the package stays byte for byte what it was.**
+- **Data and privacy.** The reason, the day and the user are columns of `FiscalDocuments` (`ClosedNotDueReason`, `ClosedNotDueAt`, `ClosedNotDueByUserId`); the note (`ClosedNotDueNote`) is free text and is **encrypted at rest**
+  with the purpose of the fiscal documents (`EncryptedColumns`, no length: 500 characters are checked on input) and never logged (the log carries the ids, the code of the reason and the user id). Tenant: the document is read
+  by the organization of the caller (another organization's is 404).
+- **Migration `AddSelfBillingClosedNotDue`** (the four columns above and `CK_FiscalDocuments_ClosedNotDue`; no data to move: nothing is closed before it). Existing columns could not hold the reason, the user and the day of a
+  closing (`UpdatedAt` is touched by every change, `CreatedByUserId` is the author of the draft, `SdiErrorDetail` is the answer of the SDI), so a migration was needed. **Rollback:** switch `Features:SdiSubmission` off (the
+  endpoint answers 404) or do not call it: nothing is closed until a person does it. A document already closed stays closed and keeps its number (reverting the code leaves the four columns and the check in place, and
+  nothing else reads them).
+- **Sources (R3, opened on 20/11/2026).** A TD17 the SDI rejected counts as not issued and is re-sent within five days of the notification with the same number and date, or replaced by a new document linked to it
+  (Provv. AdE 30/4/2018 n. 89757, Circ. 13/E of 2/7/2018 §1.6, AdE Risposte 103/2024 and 140/2024). The law asks a progressive and unique number (art. 21 DPR 633/72, Ris. 1/E of 2013) and **no official source says whether the
+  number of an abandoned rejected invoice may be reassigned**: the prudent reading is a documented gap, which is what the register is. The TD17 is due by the 15th of the month after the receipt of the foreign invoice
+  (art. 1 c. 3-bis D.Lgs. 127/2015, Circ. 26/E of 13/7/2022; penalty 2 euro per file up to 400 euro a month, halved within 15 days). **From 1/1/2027 art. 21 DPR 633/72 and artt. 46-47 DL 331/93 are replaced by the Testo
+  unico IVA (D.Lgs. 10/2026): texts and documents cite both.**
+- ⚖ **Not verified, to be confirmed by the accountant before the functions are used in production:** «five calendar days» against «five working days» (the sources say only «cinque giorni»); the reuse of the number of a
+  rejected invoice that was abandoned; the timeliness of a re-sent TD17 (by analogy with the other electronic invoices); the month of competence of the TD17 (the receipt of the foreign invoice) and the rule of the
+  15th when it falls on a Saturday or a holiday; the articles of the Testo unico IVA.
 
 ### The «Da fare» of the self-billed invoices and the monthly run (FIX/BE-TD17-ALERTS)
 
@@ -923,26 +981,34 @@ Two gaps of the TD17 are closed here; no migration (the type and the action of a
 - **A rejected TD17 is corrected from the self-billed invoices.** The item of a rejected TD17 stays open until the host corrects it («Correggi e rimanda», `POST api/fiscal/self-billing/{id}/correct`: *Correction of a rejected TD17*
   in *Self-billed invoices*, FIX/BE-TD17-CORRECTION), which records `FiscalDocumentCorrected` and so closes it (the table above: it is closed as well by the credit note or the acceptance of the SDI): it is a reminder that the
   document counts as not issued for the tax office.
-- **The monthly run** (`SelfBillingMonthlyDraftsJob`, `self-billing-monthly-drafts`, Hangfire): the 5th of every month at 07:30 Europe/Rome (⚖ a prudent default), registered while `Features:FiscalDocumentIssuance`
-  is on, never two runs at once, three automatic retries. **Off by default**: `SelfBilling:MonthlyDrafts:Enabled` is `false`, and then it returns before it opens a scope: no organization is read, the lock `SelfBilling`
-  (1_640, taken by the generation) is not taken and nothing is written. With it on, for the month that ended and for each active organization on the agency plan (not downgraded) that has `ChannelFee` lines in its owner ledger
-  for it, in a scope and under the tenant of its own, `ISelfBillingService.RunMonthlyDraftsAsync` makes the drafts with `CreateDraftsForPeriodAsync` (the same plan, lock and refusals as the click) and raises the item
-  of the month. **It never issues**: the issue stays a person's action, behind `agency.invoice.manage`, the confirmation and the acceptance of an estimate.
-- **Idempotent.** A holder and portal that already has a TD17 of the month in any state (a draft, an issued one, a discarded one) is **not made again**: a retry, a second run or a trigger from the dashboard makes
-  no second draft for it and no second item, and a draft a person discarded stays discarded (the run never updates or drops a draft that exists: only the holders that have none get one). The ledger is posted by
-  hand, so when it is not posted by the 5th the run finds nothing and the drafts are made from the page of the self-billed invoices (`ledgerPosted: false`). An organization that fails does not stop the others;
-  the run fails at the end with them all, and the second run leaves what was made alone.
+- **The run** (`SelfBillingMonthlyDraftsJob`, `self-billing-monthly-drafts`, Hangfire): **every day from the 5th to the 14th** at 07:30 Europe/Rome (cron `30 7 5-14 * *`; FIX/BE-TD17-JOB-EXIT, decision 3 of
+  20/11/2026; ⚖ a prudent default: the TD17 is due by the 15th), registered while `Features:FiscalDocumentIssuance` is on, never two runs at once, three automatic retries. **On by default**:
+  `SelfBilling:MonthlyDrafts:Enabled` is `true` in `SelfBillingOptions` and in `appsettings.json` (a draft has no fiscal effect until a person issues it, and the real risk is not preparing it: R3); `false` switches it off
+  for an environment, and then it returns before it opens a scope: no organization is read, the lock `SelfBilling` (1_640, taken by the generation) is not taken and nothing is written. Running, for the month that ended and
+  for each active organization on the agency plan (not downgraded) that has `ChannelFee` lines in its owner ledger for it, in a scope and under the tenant of its own, `ISelfBillingService.RunMonthlyDraftsAsync` makes the
+  missing drafts with `CreateDraftsForPeriodAsync` (the same plan, lock and refusals as the click) and raises the item of the month. **It never issues**: the issue stays a person's action, behind `agency.invoice.manage`,
+  the confirmation and the acceptance of an estimate.
+- **Idempotent, so it can run every day.** A holder and portal that already has a TD17 of the month in any state (a draft, an issued, rejected, discarded or closed one) is **not made again**: a retry, ten runs in a row, a
+  trigger from the dashboard make no second draft for it and no second item, and a draft a person discarded stays discarded (the run never updates, drops or issues a draft that exists, and never touches an issued or a
+  rejected document: only the holders that have none get a draft). **The item is raised once**: while it is open the same one is returned, and a run that made **no** draft does not raise it again once a person closed it
+  (`ShouldRaiseDraftsTodoAsync`: it is raised when the run made a draft or when none was ever raised for the month; the item the system closed because no draft was left comes back only with a new draft). The ledger is
+  posted by hand, so when it is not posted yet the run finds nothing: the run of the day after it is posted makes the drafts (the schedule goes on until the 14th), and the page of the self-billed invoices makes them
+  at any time (`ledgerPosted: false`). An organization that fails does not stop the others; the run fails at the end with them all, and the next run leaves what was made alone.
 - **A month with a holder refused is not a month done.** A holder that needs a TD17 and cannot have one (no issuer profile, or an incomplete one: `owner_issuer_missing`, `issuer_profile_incomplete`) is **counted and
   its code given** in the answer of the run (`SelfBillingMonthlyRun.Refused`, `RefusedCodes`), logged as a **warning** by the run and by the job (codes and counts only, never a name, a VAT number or a field), and
   **said in the words of the item** while a draft is open (`TodoReason_SelfBillingDraftsRefused`: «complete the details and make the drafts again from the page»); the same item changes its words in place and goes
   back to the plain ones when every holder has its draft, it is never closed or raised again for it. The organization is counted as «made now» only when the run made a draft (`Created` above 0). The refused holders
-  are tried again by the next run of that month (a retry of the job or a trigger by hand: the holders that already have a draft are skipped, so no second draft is made) and by the page of the self-billed invoices at
-  any time; the schedule is monthly (⚖ product owner: every day from the 5th to the 14th would make the retry automatic before the deadline of the 15th). When nobody got a draft there is no open draft and so no
-  item: the warning in the log is the only trace.
+  are tried again by **the next day's run** (the schedule is every day from the 5th to the 14th, so the retry is automatic before the deadline of the 15th; the holders that already have a draft are skipped, so no second
+  draft is made) and by the page of the self-billed invoices at any time. When nobody got a draft there is no open draft and so no item: the warning in the log is the only trace.
 - **The item of a past month that has no draft left is closed by the run.** The close that follows an issue, a discard or a generation is best effort (a failure is logged, never undoes the change), so the monthly
   run also closes the items `SelfBillingDraftsToReview` of its organization of any month that have no draft left open; a month that still has one keeps its item, and no other organization is read.
-- **Rollback.** Set `SelfBilling__MonthlyDrafts__Enabled` back to `false` (nothing is made by time any more; the drafts and the items already made stay: issue or discard the drafts and the item closes). The alert of a
+- **Rollback.** Set `SelfBilling__MonthlyDrafts__Enabled` to `false` (nothing is made by time any more; the drafts and the items already made stay: issue or discard the drafts and the item closes). The alert of a
   rejected TD17 has no switch of its own: it follows the SDI events of the issuance and the SDI channel.
+- **Sources and what is not verified (R3, 20/11/2026).** The TD17 is due by the 15th of the month after the receipt of the foreign invoice (art. 1 c. 3-bis D.Lgs. 127/2015, Circ. 26/E of 13/7/2022; penalty 2 euro per file up
+  to 400 euro a month, halved within 15 days), and a TD17 rejected by the SDI counts as not issued and is re-sent within five days of the notification with the same number and date (Provv. AdE 30/4/2018, Circ. 13/E of 2018
+  §1.6, Risposte AdE 103/2024 and 140/2024): that is why the drafts are made every day from the 5th to the 14th. From 1/1/2027 art. 21 DPR 633/72 and artt. 46-47 DL 331/93 are replaced by the Testo unico IVA (D.Lgs.
+  10/2026). ⚖ Not verified (to be confirmed by the accountant): five *calendar* days against five *working* days, the reuse of the number of an abandoned rejected invoice (it is never reused here: *Closing a replacement as
+  «non più dovuta»* above), the timeliness of a re-sent TD17 by analogy, and the month of competence of the TD17 (the receipt of the foreign invoice).
 
 ## Export of the list (`FiscalDocumentExports`, `XlsxWriter`)
 
@@ -966,7 +1032,7 @@ a strict stand-in, never called, since a Swiss document has no XML.
 
 **The agency** (plan Agency, flags `FiscalDocumentIssuance`, `OwnerInvoicing`, `AccountantPackage`, `AgencyTier` on, the configuration shipped in `appsettings.json`):
 an issuer of Switzerland registered for the VAT (UID, IBAN, QR-IBAN) saved with `SaveSettingsAsync` as the wizard «Fatturazione» saves it, with the automatic issue and
-the e-mail to the guest on and Airbnb collecting the tourist tax of Ticino; one flat in Lugano (CHF, BFS 5113) owned by a private owner with a mandate of 20% «+ IVA» and a
+the e-mail to the guest on and Airbnb collecting the tourist tax of Ticino; one flat in Lugano (CHF, BFS 5192) owned by a private owner with a mandate of 20% «+ IVA» and a
 cleaning flat fee of CHF 80; the rule of the agency for Booking.com, 15%; the listing mapped on the channel manager; the account of Booking.com held by the owner (V1)
 or, in its variant, by the agency (V2).
 
@@ -1000,8 +1066,10 @@ version and its SHA-256: the table «Official schemas» of `docs/runbooks/wire-t
 listing told the owner that the portal billed it while the invoice of the property manager recharged the commission. The channel fee that the invoice recharges (the
 agency holds the account and recharges, the test of the invoice) is now «Commissioni del portale riaddebitate dal gestore (fattura n. …)», in the published PDF and on
 the owner portal (`Variant_V2_*`, read as the owner reads it: the request of an owner has no org, and the resolver reads the holders whatever the tenant of the
-caller); an account of the agency whose commissions it does not recharge never names the invoice and has a label of its own, «Commissioni del portale (account del portale
-intestato al gestore, senza riaddebito in fattura)», never the sentence of V1 (`Variant_V2_WithoutTheRecharge_*`).
+caller); an account of the agency whose commissions it does not recharge never names the invoice and has a label of its own, never the sentence of V1
+(`Variant_V2_WithoutTheRecharge_*`). Since FIX/BE-V2-NO-RECHARGE (decision 1 of 20/11/2026) the agency bears that commission: the owner is not charged it (the month closes at 266.23 instead of
+198.73, the payout is 266.23), the statement shows it for information only, «Commissione del portale sostenuta dall'agenzia, non addebitata al proprietario» (the commission as the amount
+the agency bears, in no total), and the package lists it «A carico dell'agenzia».
 
 **What the scenario shows** (facts of the code as it is, for the decisions of the PO and of the accountant):
 
@@ -1108,6 +1176,6 @@ SHA-256: the table «Official schemas» of `docs/runbooks/wire-transfers.md`). I
 
 - A fiscal document is kept ten years (ADR-033-R7): the booking, the property, the owner, the statement version, the credited and the replaced document
   are restrict foreign keys; the erasure of a guest leaves the recipient snapshot of an issued document in place.
-- The recipient snapshot, the issuer snapshot and the XML are encrypted at rest (`Casazen.FiscalDocument`, `docs/runbooks/encryption.md`); so are the
+- The recipient snapshot, the issuer snapshot, the XML and the free note of the closing of a replacement as «non più dovuta» (`ClosedNotDueNote`, FIX/BE-TD17-JOB-EXIT) are encrypted at rest (`Casazen.FiscalDocument`, `docs/runbooks/encryption.md`); so are the
   IBAN and the QR-IBAN of the issuer and the personal data of every issuer profile, the owners' included (`Casazen.OrgFiscalIssuerProfile`: legal name, fiscal
   code, VAT number, street, house number, postal code, city, PEC). The logs carry ids, codes and field names, never a value.

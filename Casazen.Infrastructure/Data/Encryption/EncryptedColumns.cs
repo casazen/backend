@@ -139,8 +139,8 @@ public static class EncryptedColumns
 
     /// <summary>
     /// Purpose of the fiscal documents (NF-83, E06/F01/US02/T01, E11/F01/US01/T01): the recipient snapshot of <see cref="FiscalDocument"/> (name, fiscal
-    /// code, VAT number, address, recipient code, PEC), the snapshot of its issuer and its FatturaPA XML, which repeats them. Kept ten years for the legal
-    /// retention; nothing is searched in them. Never change it: stored values would become unreadable.
+    /// code, VAT number, address, recipient code, PEC), the snapshot of its issuer, its FatturaPA XML, which repeats them, and the note of the closing of a replacement
+    /// draft as «non più dovuta» (FIX/BE-TD17-JOB-EXIT). Kept ten years for the legal retention; nothing is searched in them. Never change it: stored values would become unreadable.
     /// </summary>
     public const string FiscalDocumentPurpose = "Casazen.FiscalDocument";
 
@@ -254,12 +254,20 @@ public static class EncryptedColumns
             nameof(Guest.DocumentNumber),
             nameof(Guest.DocumentIssuingCountry)),
         // NF-46: the tourist tax exemption the host chose travels with the document, under the same purpose: its reason can reveal a
-        // health condition (art. 9 GDPR).
+        // health condition (art. 9 GDPR). NF-132 (casazen/backend#979): the home address of the guest (street, postal code, town), personal data of a
+        // person that is never searched, gets the treatment of every address added since E06 (the invoice data, the residence of a lease party).
         new EncryptedEntity<StayGuest>(
             GuestDocumentPurpose,
             nameof(StayGuest.DocumentNumber),
             nameof(StayGuest.DocumentIssuePlaceName),
-            nameof(StayGuest.TaxExemptionCode)),
+            nameof(StayGuest.TaxExemptionCode),
+            nameof(StayGuest.ResidenceStreet),
+            nameof(StayGuest.ResidencePostalCode),
+            nameof(StayGuest.ResidenceCityName)),
+        // NF-132: the plate of the car of the stay, typed at the check-in with the guests' data and never searched: the same purpose as them.
+        new EncryptedEntity<Booking>(
+            GuestDocumentPurpose,
+            nameof(Booking.VehiclePlate)),
         // NF-46: the same reason on the confirmed tax of the stay, kept 10 years for the comune's checks: encrypted too (art. 9 GDPR), and
         // cleared with the guest's data; only the kind of the exemption and the amount stay for the fiscal retention.
         new EncryptedEntity<StayTouristTaxGuest>(
@@ -394,7 +402,9 @@ public static class EncryptedColumns
             nameof(FiscalDocument.RecipientSdiCode),
             nameof(FiscalDocument.RecipientPec),
             nameof(FiscalDocument.FatturaPaXml),
-            nameof(FiscalDocument.IssuerSnapshot)),
+            nameof(FiscalDocument.IssuerSnapshot),
+            // FIX/BE-TD17-JOB-EXIT: the free note of the closing of a replacement draft as «non più dovuta» (it can name a person or a portal document): the same purpose, no length.
+            nameof(FiscalDocument.ClosedNotDueNote)),
         // E11/F01/US01/T01: the bank accounts of the issuer of an organization; E17/F01/US01/T01: the personal data of an issuer (an owner who issues is often a
         // private person: the same treatment for every profile). The province, the country and the SDI code are no personal data.
         new EncryptedEntity<OrgFiscalIssuerProfile>(

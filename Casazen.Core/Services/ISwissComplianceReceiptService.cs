@@ -46,14 +46,29 @@ public sealed record SwissComplianceReceiptItem(SwissComplianceReceipt Receipt, 
 public sealed record SwissComplianceReceiptPage(IReadOnlyList<SwissComplianceReceiptItem> Items, int Page, int PageSize, int TotalCount, bool IsTicinoProperty);
 public sealed record SwissComplianceReceiptFile(Stream Content, string FileName, string ContentType);
 
-/// <summary>What a Swiss compliance receipt is about (ADR-016); stored in <see cref="SwissComplianceReceipt.Type"/>.</summary>
+/// <summary>
+/// What a Swiss compliance receipt is about (ADR-016); stored in <see cref="SwissComplianceReceipt.Type"/> as the text of
+/// <see cref="SwissComplianceReceipts.StoredType"/>. Values are appended, never renumbered.
+/// </summary>
 public enum SwissComplianceFileType
 {
-    /// <summary>The Ticino police notification: the XML of one night.</summary>
+    /// <summary>The Ticino police notification: the receipt of the portal for the file of one arrival day.</summary>
     Police,
 
     /// <summary>The OTR overnight report: the CSV of one period.</summary>
     Otr,
+
+    /// <summary>
+    /// The written authorization of the parents of a minor who stays without an adult (decision D11, casazen/backend#979): kept five years; the day of
+    /// the police notification asks for it (<c>parental_authorization_needed</c>). Report date = the arrival day.
+    /// </summary>
+    ParentalAuthorization,
+
+    /// <summary>
+    /// The sheet of a group of six or more persons (decision D11): kept five years at the disposal of the police and the regional tourism organizations.
+    /// Report date = the arrival day.
+    /// </summary>
+    GroupSheet,
 }
 
 /// <summary>The values of <see cref="SwissComplianceReceipt.Type"/> and the limits of a receipt.</summary>
@@ -65,11 +80,44 @@ public static class SwissComplianceReceipts
     /// <summary>Same limit as <see cref="SwissComplianceReceipt.Reference"/>.</summary>
     public const int MaxReferenceLength = 200;
 
-    /// <summary>The text stored in <see cref="SwissComplianceReceipt.Type"/>: <c>Police</c> or <c>OTR</c>.</summary>
+    /// <summary>Years a document of the police rules is kept from its date (NF-128): the police receipts, the group sheets, the parents' authorizations.</summary>
+    public const int PoliceRetentionYears = 5;
+
+    /// <summary>
+    /// The text stored in <see cref="SwissComplianceReceipt.Type"/>: <c>Police</c>, <c>OTR</c>, <c>ParentalAuthorization</c> or <c>GroupSheet</c> (at most
+    /// <see cref="SwissComplianceReceipt.TypeMaxLength"/> characters).
+    /// </summary>
     public static string StoredType(SwissComplianceFileType type) => type switch
     {
         SwissComplianceFileType.Police => "Police",
         SwissComplianceFileType.Otr => "OTR",
+        SwissComplianceFileType.ParentalAuthorization => "ParentalAuthorization",
+        SwissComplianceFileType.GroupSheet => "GroupSheet",
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown Swiss compliance file type"),
     };
+
+    /// <summary>
+    /// The types kept <see cref="PoliceRetentionYears"/> years and then deleted (NF-128): every type but the OTR report, which is tax evidence with no
+    /// retention rule decided yet (it is kept).
+    /// </summary>
+    public static IReadOnlyList<string> RetainedFiveYears { get; } =
+    [
+        StoredType(SwissComplianceFileType.Police),
+        StoredType(SwissComplianceFileType.ParentalAuthorization),
+        StoredType(SwissComplianceFileType.GroupSheet),
+    ];
+
+    /// <summary>
+    /// The cut day of the retention (NF-128): <paramref name="today"/> minus <see cref="PoliceRetentionYears"/> years. The daily job deletes a document of
+    /// <see cref="RetainedFiveYears"/> whose report date is before it, and one dated on it is kept; the one definition of the cut, for the job and for the upload.
+    /// </summary>
+    public static DateOnly RetentionCutoffDay(DateOnly today) => today.AddYears(-PoliceRetentionYears);
+
+    /// <summary>
+    /// True when a document of <paramref name="type"/> dated <paramref name="reportDay"/> is already past its retention on <paramref name="today"/>: the type is kept
+    /// five years and the date is before <see cref="RetentionCutoffDay"/>, so the daily job would delete it the night it is recorded. Such a document is refused at
+    /// the upload (a legal proof is never destroyed in silence); an OTR report is never past its retention.
+    /// </summary>
+    public static bool IsPastRetention(SwissComplianceFileType type, DateOnly reportDay, DateOnly today) =>
+        RetainedFiveYears.Contains(StoredType(type)) && reportDay < RetentionCutoffDay(today);
 }

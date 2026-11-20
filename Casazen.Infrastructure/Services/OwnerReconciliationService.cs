@@ -11,7 +11,8 @@ namespace Casazen.Infrastructure.Services;
 
 /// <inheritdoc cref="IOwnerReconciliationService"/>
 /// <remarks>
-/// <para><b>Channels.</b> From the live lines of the owner ledger of the month that come from a booking (<c>BookingRevenue</c> and <c>ChannelFee</c>; the booking is the source of a
+/// <para><b>Channels.</b> From the live lines of the owner ledger of the month that come from a booking (<c>BookingRevenue</c>, <c>ChannelFee</c> and <c>ChannelFeeBorneByAgency</c>, the
+/// commission the agency bears: the portal kept it all the same; the booking is the source of a
 /// booking line and of a flat fee, and the reference of a payment line): the stays posted, their gross and their commission by where it comes from (the rule version of the line:
 /// <c>payload</c>, <c>channel-rule:{id}</c>, <c>channel-default</c>), in the currency of the stays. For a portal, a stay it collected (not <c>OtaCompanyCollect = false</c>) is expected
 /// to be paid out its gross less its commission; what CasaZen records for it is the payments collected in CasaZen (recorded by hand, net of refunds and without their share of the
@@ -25,7 +26,8 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Statements.</b> The published version of an owner (the newest published of the month, even superseded by a version not published yet, as the owner portal reads it) holds
 /// the lines of the owner posted up to its cut-off: the lines posted after it, or all of them when no version is published, are the difference between the ledger and the
 /// statements, listed by their stay (the lines of a booking of an owner together) or by their entry; what is left when they are taken out (a total that is not the one of the
-/// lines of the version) is told by the version. So the listed differences always add up to the difference of the totals.</para>
+/// lines of the version) is told by the version. So the listed differences always add up to the difference of the totals. A line for information only (the commission the
+/// agency bears) is in no balance, so it is in neither total and never a difference.</para>
 /// <para>Every read names the org. Nothing is written. The logs carry ids and counts, never an amount.</para>
 /// </remarks>
 public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerReconciliationService> logger) : IOwnerReconciliationService
@@ -79,8 +81,9 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
         IReadOnlyDictionary<Guid, decimal> paid,
         List<ReconciliationDifference> differences)
     {
+        // The commission the portal kept is the same whoever bears it (the owner, or the agency for an account it holds and does not recharge): the payout expected is the gross less it.
         var stays = live
-            .Where(l => l.Type is OwnerLedgerEntryType.BookingRevenue or OwnerLedgerEntryType.ChannelFee)
+            .Where(l => l.Type == OwnerLedgerEntryType.BookingRevenue || OwnerLedgerBalance.IsChannelFee(l.Type))
             .Select(l => (Line: l, Booking: BookingOf(l)))
             .Where(x => x.Booking is { } id && bookings.ContainsKey(id))
             .GroupBy(x => (Booking: x.Booking!.Value, Currency: x.Line.OriginalCurrency))
@@ -217,11 +220,15 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
         Guid orgId,
         int year,
         int month,
-        IReadOnlyList<Line> lines,
+        IReadOnlyList<Line> allLines,
         IReadOnlyDictionary<Guid, BookingInfo> bookings,
         List<ReconciliationDifference> differences,
         CancellationToken ct)
     {
+        // A statement holds the balance of its owner: a line for information only (the commission of a portal the agency bears, FIX/BE-V2-NO-RECHARGE) is in no balance, so
+        // it is neither in the total of the ledger nor a difference.
+        var lines = allLines.Where(l => OwnerLedgerBalance.Counts(l.Type)).ToList();
+
         // The newest published version of each owner. Only the columns the totals need: the published file of a version is never read here.
         var published = (await db.OwnerStatementVersions.AsNoTracking()
                 .Where(v => v.OrgId == orgId && v.PeriodYear == year && v.PeriodMonth == month && v.PublishedAt != null)
@@ -426,7 +433,7 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
             var all = lines.ToList();
             var revenue = all.Where(l => l.Type == OwnerLedgerEntryType.BookingRevenue).ToList();
             decimal FeeOf(ChannelCommissionSource source) =>
-                -all.Where(l => l.Type == OwnerLedgerEntryType.ChannelFee && OwnerReconciliationRules.SourceOf(l.RuleVersion) == source).Sum(l => l.OriginalAmount);
+                -all.Where(l => OwnerLedgerBalance.IsChannelFee(l.Type) && OwnerReconciliationRules.SourceOf(l.RuleVersion) == source).Sum(l => l.OriginalAmount);
 
             return new StayFigures(
                 booking, currency, revenue.Count > 0, revenue.Sum(l => l.OriginalAmount),

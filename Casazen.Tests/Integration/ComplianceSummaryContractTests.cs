@@ -37,6 +37,8 @@ public class ComplianceSummaryContractTests : IClassFixture<CasazenWebApplicatio
         Assert.Equal(Today, Clock.TodayInRome());
         var hostId = $"auth0|co04-{Guid.NewGuid():N}";
         var property = await _factory.SeedPropertyAsync(hostId);
+        // casazen/backend#978: the departures are the host's here (by default CasaZen registers today's departure itself and lists none).
+        await SeedManualDepartureAsync(property.OrgId);
         var departing = await SeedStayAsync(property, Today.AddDays(-2), Today, alloggiati: null);
         var rejected = await SeedStayAsync(property, Today.AddDays(-1), Today.AddDays(2), AlloggiatiWebStatus.Rifiutato);
         await using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
@@ -80,6 +82,14 @@ public class ComplianceSummaryContractTests : IClassFixture<CasazenWebApplicatio
     }
 
     /// <summary>A stay with incomplete guest data (no stay guests), inserted directly like the other cockpit tests.</summary>
+    private async Task SeedManualDepartureAsync(Guid orgId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.BookingFlowSettings.Add(new BookingFlowSettings { OrgId = orgId, CheckInLinkDaysBefore = 3, DepartureMode = BookingFlowMode.Manual });
+        await db.SaveChangesAsync();
+    }
+
     private async Task<Guid> SeedStayAsync(Property property, DateTime checkIn, DateTime checkOut, AlloggiatiWebStatus? alloggiati)
     {
         using var scope = _factory.Services.CreateScope();

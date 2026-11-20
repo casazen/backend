@@ -321,6 +321,69 @@
   <data name="CompliancePush_Connection_Body" xml:space="preserve">
     <value>{0}: automatic sending is not active and a guest is about to arrive.</value>
   </data>
+  <data name="TicinoNotificationAlert_FileToPrepare_Subject" xml:space="preserve">
+    <value>Police notification to prepare - {0} ({1})</value>
+  </data>
+  <data name="TicinoNotificationAlert_FileToPrepare_Body" xml:space="preserve">
+    <value>It is time to prepare the notification to the Ticino cantonal police of the guests arriving on &lt;strong&gt;{1}&lt;/strong&gt; at &lt;strong&gt;{0}&lt;/strong&gt;: it is due within 24 hours of arrival, for CasaZen by &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="TicinoNotificationAlert_Approaching_Subject" xml:space="preserve">
+    <value>Police notification due soon - {0} ({1})</value>
+  </data>
+  <data name="TicinoNotificationAlert_Approaching_Body" xml:space="preserve">
+    <value>The notification to the Ticino cantonal police of the guests arriving on &lt;strong&gt;{1}&lt;/strong&gt; at &lt;strong&gt;{0}&lt;/strong&gt; is due on &lt;strong&gt;{2}&lt;/strong&gt; and CasaZen does not show it as done yet.</value>
+  </data>
+  <data name="TicinoNotificationAlert_Overdue_Subject" xml:space="preserve">
+    <value>Police notification overdue - {0} ({1})</value>
+  </data>
+  <data name="TicinoNotificationAlert_Overdue_Body" xml:space="preserve">
+    <value>The deadline to notify the Ticino cantonal police of the guests arriving on &lt;strong&gt;{1}&lt;/strong&gt; at &lt;strong&gt;{0}&lt;/strong&gt; was &lt;strong&gt;{2}&lt;/strong&gt; and CasaZen does not show the notification as done.</value>
+  </data>
+  <data name="TicinoNotificationAlert_Missing" xml:space="preserve">
+    <value>Data still missing for the file: {0}.</value>
+  </data>
+  <data name="TicinoNotificationAlert_Action" xml:space="preserve">
+    <value>Download the file from the Compliance page of CasaZen and upload it on the cantonal police portal, then record in CasaZen that the day was notified: you will get no more reminders for that day.</value>
+  </data>
+  <data name="TicinoNotificationPush_Due_Title" xml:space="preserve">
+    <value>Police notification to do</value>
+  </data>
+  <data name="TicinoNotificationPush_Due_Body" xml:space="preserve">
+    <value>{0}: the guests arriving on {1} must be notified to the cantonal police by {2}.</value>
+  </data>
+  <data name="TicinoNotificationPush_Overdue_Title" xml:space="preserve">
+    <value>Police notification overdue</value>
+  </data>
+  <data name="TicinoNotificationPush_Overdue_Body" xml:space="preserve">
+    <value>{0}: the notification of the guests arriving on {1} is not shown as done.</value>
+  </data>
+  <data name="TicinoNotificationPush_Missing" xml:space="preserve">
+    <value>Missing: {0}.</value>
+  </data>
+  <data name="TicinoMissing_structureId" xml:space="preserve">
+    <value>structure identifier</value>
+  </data>
+  <data name="TicinoMissing_guests" xml:space="preserve">
+    <value>guests not registered yet</value>
+  </data>
+  <data name="TicinoMissing_firstName" xml:space="preserve">
+    <value>first name</value>
+  </data>
+  <data name="TicinoMissing_lastName" xml:space="preserve">
+    <value>last name</value>
+  </data>
+  <data name="TicinoMissing_birthDate" xml:space="preserve">
+    <value>date of birth</value>
+  </data>
+  <data name="TicinoMissing_nationality" xml:space="preserve">
+    <value>nationality</value>
+  </data>
+  <data name="TicinoMissing_documentType" xml:space="preserve">
+    <value>document type</value>
+  </data>
+  <data name="TicinoMissing_other" xml:space="preserve">
+    <value>other data</value>
+  </data>
   <data name="ComplianceSummary_Subject_NoStays" xml:space="preserve">
     <value>Compliance for {0}: no stays</value>
   </data>
@@ -863,6 +926,24 @@
   </data>
   <data name="Push_GuestCheckInCompleted_Body" xml:space="preserve">
     <value>{0}: a guest completed the online check-in.</value>
+  </data>
+  <data name="Push_BookingFlowArrival_Title" xml:space="preserve">
+    <value>Arrival registered automatically</value>
+  </data>
+  <data name="Push_BookingFlowArrival_Body" xml:space="preserve">
+    <value>{0}: the arrival day is over, we registered the guest's arrival.</value>
+  </data>
+  <data name="Push_BookingFlowDeparture_Title" xml:space="preserve">
+    <value>Departure registered automatically</value>
+  </data>
+  <data name="Push_BookingFlowDeparture_Body" xml:space="preserve">
+    <value>{0}: the check-out time has passed, we registered the departure.</value>
+  </data>
+  <data name="Push_BookingFlowPropertyReady_Title" xml:space="preserve">
+    <value>Property ready for the next guest</value>
+  </data>
+  <data name="Push_BookingFlowPropertyReady_Body" xml:space="preserve">
+    <value>{0}: the cleaning is done, the property is ready for the next guest.</value>
   </data>
   <data name="Push_AssistVerified_Title" xml:space="preserve">
     <value>The connection is active</value>
@@ -2826,6 +2907,18 @@
   </data>
   <data name="Push_OtaReviewActionFailed_Body" xml:space="preserve">
     <value>{0}: your reply or your review did not reach the channel. Open the booking and try again.</value>
+  </data>
+  <data name="Push_TicinoNotificationDeclared_Title" xml:space="preserve">
+    <value>Police notification declared</value>
+  </data>
+  <data name="Push_TicinoNotificationDeclared_Body" xml:space="preserve">
+    <value>{0}: the notification of the guests arriving on {1} was declared as uploaded to the cantonal police portal.</value>
+  </data>
+  <data name="Push_TicinoNotificationUndone_Title" xml:space="preserve">
+    <value>Notification declaration undone</value>
+  </data>
+  <data name="Push_TicinoNotificationUndone_Body" xml:space="preserve">
+    <value>{0}: the declaration of the notification of the guests arriving on {1} was undone: the day is to be notified again.</value>
   </data>
   <data name="TodoReason_CheckInLinkToSend" xml:space="preserve">
     <value>The check-in link has not reached the guest yet: copy it from the booking and send it yourself.</value>

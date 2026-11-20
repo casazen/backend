@@ -632,10 +632,12 @@ public class OwnerStatementDocumentsTests
     }
 
     /// <summary>
-    /// Money and trust: an account of the agency whose commissions it does not recharge (V2 without the recharge) is not the owner's portal invoice (V1) and no invoice of the property
-    /// manager carries it, so the statement tells it in words of its own, in both languages, and never with the sentence of V1 or the one of the recharge, which names an invoice. Only the
-    /// words change: the commission is the same line in the same totals and the net is the one the version stores (the one of the same statement read with no holder at all). Read through
-    /// the real resolver, V1 and V2 with the recharge keep their own flags: the three cases never overlap.
+    /// Money and trust (FIX/BE-V2-NO-RECHARGE, decision 1 of 20/11/2026): the commission of an account of the agency that the organization does not recharge (V2 without the recharge) is
+    /// borne by the agency, so the posting writes it as a line for information only (<see cref="OwnerLedgerEntryType.ChannelFeeBorneByAgency"/>). The statement tells it in words of its own, in
+    /// both languages, the commission shown as the amount the owner is not charged: never with the sentence of V1, the one of the recharge (which names an invoice) or the one of a commission
+    /// charged to the owner, and in no total: the net is the one of the same statement whose commission the owner bears (V1), plus the commission. What the line is comes from the line as it
+    /// was posted, never from the setting of today; read through the same resolver, a channel fee the owner bears keeps the flag of its own case (the recharge, V1, or charged before the
+    /// rule): the four cases never overlap.
     /// </summary>
     [Fact]
     public async Task StatementV2WithoutRecharge_ShowsItsOwnLabel_AndNoDeduction_Test()
@@ -644,59 +646,89 @@ public class OwnerStatementDocumentsTests
         var plain = await World.CreateAsync();
         var asV1 = await plain.Documents.GetContentAsync(plain.OrgId, plain.VersionId, "it");
 
-        var world = await World.CreateAsync(readsPortalAccounts: true);
+        var world = await World.CreateAsync(readsPortalAccounts: true, borneByAgency: true);
         var profile = new OrgFiscalIssuerProfile { OrgId = world.OrgId, PortalAccountHolder = PortalAccountHolder.Agency, RechargePortalCommissions = false };
         world.Db.OrgFiscalIssuerProfiles.Add(profile);
         await world.Db.SaveChangesAsync();
 
         var italian = await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "it");
 
-        // Money: the label is all that changes. The commission is the ledger line, the same amount in the same part, and the net is the one the version stores.
+        // Money: the commission is a line for information only, in the part of the commissions; the owner keeps it (the net of V1 plus 75.00), and the totals are the ones the version stores.
         var fee = Assert.Single(italian.Of(OwnerStatementSection.ChannelFees));
-        Assert.Equal((-75m, false, true), (fee.Amount, fee.AgencyHoldsPortalAccount, fee.AgencyHoldsPortalAccountWithoutRecharge));
-        Assert.Equal(asV1.Totals, italian.Totals);
+        Assert.Equal((-75m, false, true, true), (fee.Amount, fee.AgencyHoldsPortalAccount, fee.AgencyHoldsPortalAccountWithoutRecharge, fee.Informational));
         Assert.Equal(OwnerStatementTotals.Of(world.Version), italian.Totals);
-        Assert.Equal((-75m, 580m, 280m), (italian.Totals.ChannelFees, italian.Totals.Period, italian.Totals.ClosingBalance));
+        Assert.Equal((0m, 655m, 355m), (italian.Totals.ChannelFees, italian.Totals.Period, italian.Totals.ClosingBalance));
+        Assert.Equal((asV1.Totals.Period + 75m, asV1.Totals.ClosingBalance + 75m), (italian.Totals.Period, italian.Totals.ClosingBalance));
 
-        // The words in Italian, with an invoice of the property manager linked: its own label, never the sentence of V1 or the one of the recharge, which would name that invoice.
+        // The words in Italian, with an invoice of the property manager linked: its own label over the commission the agency bears, never the sentence of V1, the one of the recharge
+        // (which would name that invoice) or the one of a commission charged to the owner; and nothing taken from the net (no negative amount of it).
         var invoiced = italian with { OwnerInvoiceNumber = "PM2026/7", OwnerInvoiceDate = new DateOnly(2026, 11, 12) };
         var italianText = TextOf(OwnerStatementLayout.Pdf(invoiced, texts).Blocks);
-        Assert.Contains("Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)", italianText, StringComparison.Ordinal);
+        Assert.Contains("Commissione del portale sostenuta dall'agenzia, non addebitata al proprietario", italianText, StringComparison.Ordinal);
+        Assert.Contains(Chf(75m), italianText, StringComparison.Ordinal);
+        Assert.DoesNotContain(Chf(-75m), italianText, StringComparison.Ordinal);
         Assert.DoesNotContain("Trattenuta dal portale", italianText, StringComparison.Ordinal);
         Assert.DoesNotContain("fattura del portale a tuo nome", italianText, StringComparison.Ordinal);
         Assert.DoesNotContain("riaddebitate dal gestore", italianText, StringComparison.Ordinal);
         Assert.DoesNotContain("(fattura n. PM2026/7)", italianText, StringComparison.Ordinal);
+        Assert.DoesNotContain("senza riaddebito in fattura", italianText, StringComparison.Ordinal);
 
         // The words in English, which are not the Italian ones.
         var english = await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "en");
         var englishText = TextOf(OwnerStatementLayout.Pdf(english with { OwnerInvoiceNumber = "PM2026/7", OwnerInvoiceDate = new DateOnly(2026, 11, 12) }, texts).Blocks);
-        Assert.Contains("Portal commissions (portal account held by the property manager, no recharge on an invoice)", englishText, StringComparison.Ordinal);
+        Assert.Contains("Portal commission covered by the property manager, not deducted from your statement", englishText, StringComparison.Ordinal);
         Assert.DoesNotContain("Withheld by the portal", englishText, StringComparison.Ordinal);
         Assert.DoesNotContain("portal invoice in your name", englishText, StringComparison.Ordinal);
         Assert.DoesNotContain("recharged by the property manager", englishText, StringComparison.Ordinal);
         Assert.NotEqual(texts.Get("StatementFileChannelFeesAgencyNotRecharged", "it"), texts.Get("StatementFileChannelFeesAgencyNotRecharged", "en"));
 
-        // The owner portal gets the same fact next to the flag of the recharge, so that it can say it too: the two are never true together.
-        var portal = Assert.Single(OwnerPortalStatementSectionDto.From(OwnerStatementSection.ChannelFees, italian.Of(OwnerStatementSection.ChannelFees)).Lines);
+        // The owner portal gets the same fact next to the flag of the recharge, so that it can say it too (the two are never true together); the total of the part leaves it out.
+        var portalPart = OwnerPortalStatementSectionDto.From(OwnerStatementSection.ChannelFees, italian.Of(OwnerStatementSection.ChannelFees));
+        var portal = Assert.Single(portalPart.Lines);
         Assert.Equal((-75m, false, true), (portal.Amount, portal.ChannelFeeRechargedByAgency, portal.ChannelFeeBilledToAgencyNotRecharged));
+        Assert.Equal(0m, portalPart.Total);
 
-        // The same listing in the other two cases, through the same resolver: the recharge keeps its own flag and the account of the owner has neither.
+        // The CSV: the commission follows the net in a part of its own, as the amount the agency bears; it is not a row of the commissions of the channels, whose total has none of it.
+        var cells = Encoding.UTF8.GetString(OwnerStatementLayout.Csv(italian, texts)).TrimStart((char)0xFEFF).Split("\r\n", StringSplitOptions.RemoveEmptyEntries).Select(r => r.Split(';')).ToList();
+        Assert.Contains(cells, c => c.Length == 9 && c[0] == "Commissione del portale sostenuta dall'agenzia, non addebitata al proprietario" && c[7] == "75,00");
+        Assert.Contains(cells, c => c.Length == 9 && c[0] == "Totale - Commissioni dei canali" && c[7] == "0,00");
+        Assert.DoesNotContain(cells, c => c.Length == 9 && c[0] == "Commissioni dei canali");
+        Assert.Contains(cells, c => c.Length == 9 && c[0] == "Saldo finale" && c[7] == "355,00");
+
+        // What the line is comes from the line as it was posted, never from the setting of today: turning the recharge back on, or the account back to the owner, does not make it a
+        // commission the owner bears (only a new posting of the month would).
         profile.RechargePortalCommissions = true;
         await world.Db.SaveChangesAsync();
-        var recharged = Assert.Single((await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "it")).Of(OwnerStatementSection.ChannelFees));
-        Assert.Equal((true, false), (recharged.AgencyHoldsPortalAccount, recharged.AgencyHoldsPortalAccountWithoutRecharge));
+        var stillBorne = Assert.Single((await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "it")).Of(OwnerStatementSection.ChannelFees));
+        Assert.Equal((false, true, false), (stillBorne.AgencyHoldsPortalAccount, stillBorne.AgencyHoldsPortalAccountWithoutRecharge, stillBorne.AgencyAccountChargedWithoutRecharge));
 
-        profile.PortalAccountHolder = PortalAccountHolder.Owner;
-        await world.Db.SaveChangesAsync();
-        var ownerAccount = Assert.Single((await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "it")).Of(OwnerStatementSection.ChannelFees));
-        Assert.Equal((false, false), (ownerAccount.AgencyHoldsPortalAccount, ownerAccount.AgencyHoldsPortalAccountWithoutRecharge));
+        // A channel fee the owner bears, through the same resolver: the recharge (V2), a commission charged to the owner on an account of the agency without the recharge (a line posted
+        // before the rule) and the account of the owner (V1): each with its own flag, never the one of the commission the agency bears.
+        var charged = await World.CreateAsync(readsPortalAccounts: true);
+        var chargedProfile = new OrgFiscalIssuerProfile { OrgId = charged.OrgId, PortalAccountHolder = PortalAccountHolder.Agency, RechargePortalCommissions = true };
+        charged.Db.OrgFiscalIssuerProfiles.Add(chargedProfile);
+        await charged.Db.SaveChangesAsync();
+        async Task<(bool Recharged, bool Borne, bool Charged, bool Informational)> FlagsAsync()
+        {
+            var line = Assert.Single((await charged.Documents.GetContentAsync(charged.OrgId, charged.VersionId, "it")).Of(OwnerStatementSection.ChannelFees));
+            return (line.AgencyHoldsPortalAccount, line.AgencyHoldsPortalAccountWithoutRecharge, line.AgencyAccountChargedWithoutRecharge, line.Informational);
+        }
+
+        Assert.Equal((true, false, false, false), await FlagsAsync());
+        chargedProfile.RechargePortalCommissions = false;
+        await charged.Db.SaveChangesAsync();
+        Assert.Equal((false, false, true, false), await FlagsAsync());
+        chargedProfile.PortalAccountHolder = PortalAccountHolder.Owner;
+        await charged.Db.SaveChangesAsync();
+        Assert.Equal((false, false, false, false), await FlagsAsync());
     }
 
     /// <summary>
     /// Trust: each commission of a channel is told under the label of its own account, in one statement. An organization whose Booking.com accounts are the owner's (V1) but one, the listing
     /// «TEST Casa Locarno», whose account is the agency's with the recharge turned off (the override of a listing and portal, read through the real resolver), has two commissions of different
-    /// amounts: the one of the owner's listing is under the sentence of V1 and the one of the agency's listing under the label of its own, each in a table with the total of its own lines, in the
-    /// order of the kinds and not in the order of the days (the agency's listing is the earlier day). The same in English, and the totals are the ones the version stores.
+    /// amounts: the one of the owner's listing is under the sentence of V1 and the one of the agency's listing, which the agency bears (FIX/BE-V2-NO-RECHARGE: posted as a line for information
+    /// only), under the label of its own, each in a table with the total of its own lines, in the order of the kinds and not in the order of the days (the agency's listing is the earlier day).
+    /// The same in English, and the totals are the ones the version stores: the commission the owner bears only.
     /// </summary>
     [Fact]
     public async Task StatementChannelFees_AnOwnerListingAndAnAgencyListingWithoutRecharge_AreTwoGroupsEachUnderItsOwnLabel_Test()
@@ -704,28 +736,30 @@ public class OwnerStatementDocumentsTests
         var texts = new ResxDocumentTexts();
         var (world, content) = await StatementOfAnOwnerListingAndAnAgencyListingAsync();
 
-        // The lines: each carries the flags of its own account, the amounts are the ones the ledger posted, and the totals are the ones the version stores (both commissions are in them).
+        // The lines: each carries the flags of its own account, the amounts are the ones the ledger posted, and the totals are the ones the version stores (the commission of the owner's
+        // listing only: the agency bears the other).
         var fees = content.Of(OwnerStatementSection.ChannelFees);
         var owner = Assert.Single(fees, line => line.PropertyName == "TEST Casa Lugano");
         var agency = Assert.Single(fees, line => line.PropertyName == "TEST Casa Locarno");
         Assert.Equal(2, fees.Count);
-        Assert.Equal((-75m, false, false), (owner.Amount, owner.AgencyHoldsPortalAccount, owner.AgencyHoldsPortalAccountWithoutRecharge));
-        Assert.Equal((-42m, false, true), (agency.Amount, agency.AgencyHoldsPortalAccount, agency.AgencyHoldsPortalAccountWithoutRecharge));
+        Assert.Equal((-75m, false, false, false), (owner.Amount, owner.AgencyHoldsPortalAccount, owner.AgencyHoldsPortalAccountWithoutRecharge, owner.Informational));
+        Assert.Equal((-42m, false, true, true), (agency.Amount, agency.AgencyHoldsPortalAccount, agency.AgencyHoldsPortalAccountWithoutRecharge, agency.Informational));
         Assert.Equal(OwnerStatementTotals.Of(world.Version), content.Totals);
-        Assert.Equal((-117m, 538m, 238m), (content.Totals.ChannelFees, content.Totals.Period, content.Totals.ClosingBalance));
+        Assert.Equal((-75m, 580m, 280m), (content.Totals.ChannelFees, content.Totals.Period, content.Totals.ClosingBalance));
 
         // The owner portal reads the same two facts line by line.
         var portal = OwnerPortalStatementSectionDto.From(OwnerStatementSection.ChannelFees, fees).Lines.ToDictionary(line => line.Property!);
         Assert.Equal((false, false), (portal["TEST Casa Lugano"].ChannelFeeRechargedByAgency, portal["TEST Casa Lugano"].ChannelFeeBilledToAgencyNotRecharged));
         Assert.Equal((false, true), (portal["TEST Casa Locarno"].ChannelFeeRechargedByAgency, portal["TEST Casa Locarno"].ChannelFeeBilledToAgencyNotRecharged));
 
-        // The words in Italian: the sentence of V1 over the owner's listing and, after it though its day is earlier, the label of its own over the agency's, each with a table and its own total.
+        // The words in Italian: the sentence of V1 over the owner's listing and, after it though its day is earlier, the label of its own over the agency's, each with a table and its own
+        // total; the commission the agency bears is the amount it bears, nothing taken from the owner.
         var italian = ChannelFeeBlocks(OwnerStatementLayout.Pdf(content, texts), texts, "it");
         Assert.Equal(new[] { true, false, true, false }, italian.Select(block => block is PdfParagraph).ToArray());
         Assert.Equal(new PdfParagraph("Trattenuta dal portale (fattura del portale a tuo nome)", Bold: true), italian[0]);
-        Assert.Equal(new PdfParagraph("Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)", Bold: true), italian[2]);
+        Assert.Equal(new PdfParagraph("Commissione del portale sostenuta dall'agenzia, non addebitata al proprietario", Bold: true), italian[2]);
         Assert.Equal(new[] { ("TEST Casa Lugano", "Booking.com", Chf(-75m)), ("Totale", string.Empty, Chf(-75m)) }, ChannelFeeCells(italian[1]));
-        Assert.Equal(new[] { ("TEST Casa Locarno", "Booking.com", Chf(-42m)), ("Totale", string.Empty, Chf(-42m)) }, ChannelFeeCells(italian[3]));
+        Assert.Equal(new[] { ("TEST Casa Locarno", "Booking.com", Chf(42m)), ("Totale", string.Empty, Chf(42m)) }, ChannelFeeCells(italian[3]));
 
         // The two tables keep the columns they always had.
         var columns = new[]
@@ -741,7 +775,7 @@ public class OwnerStatementDocumentsTests
         var english = ChannelFeeBlocks(OwnerStatementLayout.Pdf(await world.Documents.GetContentAsync(world.OrgId, world.VersionId, "en"), texts), texts, "en");
         Assert.Equal(new[] { true, false, true, false }, english.Select(block => block is PdfParagraph).ToArray());
         Assert.Equal(
-            new[] { "Withheld by the portal (portal invoice in your name)", "Portal commissions (portal account held by the property manager, no recharge on an invoice)" },
+            new[] { "Withheld by the portal (portal invoice in your name)", "Portal commission covered by the property manager, not deducted from your statement" },
             english.OfType<PdfParagraph>().Select(paragraph => paragraph.Text).ToArray());
         Assert.Equal(new[] { "TEST Casa Lugano", "TEST Casa Locarno" }, english.OfType<PdfTable>().Select(table => table.Rows[0][0]).ToArray());
     }
@@ -749,8 +783,8 @@ public class OwnerStatementDocumentsTests
     /// <summary>
     /// Trust, the three kinds of commission in one statement (asked of the layout with the flags set by hand: an organization recharges all the accounts it holds or none, so the real resolver never
     /// gives the recharge and the account without it together): the account of the owner (V1), the recharge of the agency with the invoice of the property manager, and the account of the agency without
-    /// the recharge. They are three groups, each a label and a table of its own, in that order whatever the order of the lines; the first two are what the statement had before the third kind existed
-    /// (the same blocks as a statement without it) and the third only follows them.
+    /// the recharge, whose commission the agency bears (FIX/BE-V2-NO-RECHARGE: for information only, the amount it bears). They are three groups, each a label and a table of its own, in that order
+    /// whatever the order of the lines; the first two are what the statement had before the third kind existed (the same blocks as a statement without it) and the third only follows them.
     /// </summary>
     [Fact]
     public async Task StatementChannelFees_TheThreeKindsInOneStatement_AreThreeGroupsInOrder_AndTheFirstTwoAreAsBefore_Test()
@@ -783,19 +817,22 @@ public class OwnerStatementDocumentsTests
             {
                 new PdfParagraph("Trattenuta dal portale (fattura del portale a tuo nome)", Bold: true),
                 new PdfParagraph("Commissioni del portale riaddebitate dal gestore (fattura n. PM2026/7)", Bold: true),
-                new PdfParagraph("Commissioni del portale (account del portale intestato al gestore, senza riaddebito in fattura)", Bold: true),
+                new PdfParagraph("Commissione del portale sostenuta dall'agenzia, non addebitata al proprietario", Bold: true),
             },
             three.OfType<PdfParagraph>().ToArray());
         Assert.Equal(new[] { ("TEST Casa Lugano", "Booking.com", Chf(-75m)), ("Totale", string.Empty, Chf(-75m)) }, ChannelFeeCells(three[1]));
         Assert.Equal(new[] { ("TEST Casa Como", "Booking.com", Chf(-30m)), ("Totale", string.Empty, Chf(-30m)) }, ChannelFeeCells(three[3]));
-        Assert.Equal(new[] { ("TEST Casa Locarno", "Booking.com", Chf(-42m)), ("Totale", string.Empty, Chf(-42m)) }, ChannelFeeCells(three[5]));
+        Assert.Equal(new[] { ("TEST Casa Locarno", "Booking.com", Chf(42m)), ("Totale", string.Empty, Chf(42m)) }, ChannelFeeCells(three[5]));
+
+        // The commission the agency bears is in no total: the statement with it has the totals of the statement without it.
+        Assert.Equal(Statement(recharged, owner).Totals, Statement(withoutRecharge, recharged, owner).Totals);
 
         // As before: without the third kind the part has exactly the first two groups, and with it the same blocks come first: the new kind only follows them.
         var before = ChannelFeeBlocks(OwnerStatementLayout.Pdf(Statement(recharged, owner), texts), texts, "it");
         Assert.Equal(new[] { true, false, true, false }, before.Select(block => block is PdfParagraph).ToArray());
         Assert.Equal(before.OfType<PdfParagraph>().ToArray(), three.Take(4).OfType<PdfParagraph>().ToArray());
         Assert.Equal(TextOf(before), TextOf(three.Take(4)));
-        Assert.DoesNotContain("senza riaddebito in fattura", TextOf(before), StringComparison.Ordinal);
+        Assert.DoesNotContain("non addebitata al proprietario", TextOf(before), StringComparison.Ordinal);
     }
 
     /// <summary>The day a statement says it was published is the day in Rome, as the other documents write their days: 23:30 UTC is already the next day there, winter and summer time.</summary>
@@ -924,7 +961,8 @@ public class OwnerStatementDocumentsTests
     /// <summary>
     /// The statement of an organization whose Booking.com accounts are the owner's (V1) but one: the listing «TEST Casa Locarno», whose account is the agency's, with the recharge of the commissions
     /// turned off (the override of a listing and portal, read through the real resolver). Each listing has the commission its portal kept: 75.00 on «TEST Casa Lugano» (the 8th of October) and 42.00
-    /// on «TEST Casa Locarno» (the 2nd), so that the order of the days is not the order of the kinds.
+    /// on «TEST Casa Locarno» (the 2nd), so that the order of the days is not the order of the kinds; the agency bears the second, which the posting writes as a line for information only
+    /// (FIX/BE-V2-NO-RECHARGE).
     /// </summary>
     private static async Task<(World World, OwnerStatementContent Content)> StatementOfAnOwnerListingAndAnAgencyListingAsync()
     {
@@ -933,7 +971,7 @@ public class OwnerStatementDocumentsTests
         world.Db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile { OrgId = world.OrgId, PortalAccountHolder = PortalAccountHolder.Owner, RechargePortalCommissions = false });
         await world.Db.SaveChangesAsync();
 
-        var agencyListing = await world.AddListingWithPortalFeeAsync("TEST Casa Locarno", -42m, 2);
+        var agencyListing = await world.AddListingWithPortalFeeAsync("TEST Casa Locarno", -42m, 2, OwnerLedgerEntryType.ChannelFeeBorneByAgency);
         world.Db.PropertyChannelAccountHolders.Add(
             new PropertyChannelAccountHolder { OrgId = world.OrgId, PropertyId = agencyListing, Channel = nameof(BookingSource.BookingCom), Holder = PortalAccountHolder.Agency });
         await world.Db.SaveChangesAsync();
@@ -1075,7 +1113,16 @@ public class OwnerStatementDocumentsTests
                 NullLogger<OwnerCollaborationService>.Instance);
         }
 
-        public static async Task<World> CreateAsync(bool approved = false, Casazen.Core.Options.SwissTouristTaxOptions? swiss = null, bool convertedStay = false, bool readsPortalAccounts = false)
+        /// <summary>
+        /// The world of the statement of October. With <paramref name="borneByAgency"/> the commission of the Booking.com stay is posted as the agency's (FIX/BE-V2-NO-RECHARGE: an account of
+        /// the agency that the organization does not recharge), a line for information only that the totals of the version leave out.
+        /// </summary>
+        public static async Task<World> CreateAsync(
+            bool approved = false,
+            Casazen.Core.Options.SwissTouristTaxOptions? swiss = null,
+            bool convertedStay = false,
+            bool readsPortalAccounts = false,
+            bool borneByAgency = false)
         {
             var world = new World(
                 new AppDbContext(
@@ -1084,7 +1131,7 @@ public class OwnerStatementDocumentsTests
                     new EphemeralDataProtectionProvider()),
                 swiss ?? new Casazen.Core.Options.SwissTouristTaxOptions(),
                 readsPortalAccounts);
-            await world.SeedAsync(approved, convertedStay);
+            await world.SeedAsync(approved, convertedStay, borneByAgency);
             return world;
         }
 
@@ -1129,11 +1176,12 @@ public class OwnerStatementDocumentsTests
         }
 
         /// <summary>
-        /// A second listing of the owner with a Booking.com stay and the commission its portal kept on it (<paramref name="fee"/>, negative), posted on the <paramref name="day"/> of October: the
-        /// statement has then a second commission of a channel, of another listing. The totals the version stores follow the new line, as the ones of a version cut from these lines do:
-        /// for a version that is not published yet (<c>approved: true</c>), because the append-only guard refuses any change of a published one.
+        /// A second listing of the owner with a Booking.com stay and the commission its portal kept on it (<paramref name="fee"/>, negative), posted on the <paramref name="day"/> of October as a
+        /// line of <paramref name="type"/> (a channel fee the owner bears, or one the agency bears): the statement has then a second commission of a channel, of another listing. The totals the
+        /// version stores follow the new line, as the ones of a version cut from these lines do (a line the agency bears is in none of them): for a version that is not published yet
+        /// (<c>approved: true</c>), because the append-only guard refuses any change of a published one.
         /// </summary>
-        public async Task<Guid> AddListingWithPortalFeeAsync(string name, decimal fee, int day)
+        public async Task<Guid> AddListingWithPortalFeeAsync(string name, decimal fee, int day, OwnerLedgerEntryType type = OwnerLedgerEntryType.ChannelFee)
         {
             var propertyId = Guid.NewGuid();
             var bookingId = Guid.NewGuid();
@@ -1151,24 +1199,25 @@ public class OwnerStatementDocumentsTests
                 TotalPrice = 400m,
                 Status = BookingStatus.Confirmed,
             });
-            var entry = Entry(OwnerLedgerEntryType.ChannelFee, OwnerLedgerSourceType.Booking, bookingId, bookingId.ToString("N"), fee, new DateOnly(2026, 10, day), 11);
+            var entry = Entry(type, OwnerLedgerSourceType.Booking, bookingId, bookingId.ToString("N"), fee, new DateOnly(2026, 10, day), 11);
             entry.PropertyId = propertyId;
             Db.OwnerLedgerEntries.Add(entry);
             await Db.SaveChangesAsync();
 
+            var counts = OwnerLedgerBalance.Counts(type);
             await Tamper(
                 Db,
                 VersionId,
                 version =>
                 {
-                    version.ChannelFees += fee;
-                    version.ClosingBalance += fee;
+                    version.ChannelFees += counts ? fee : 0m;
+                    version.ClosingBalance += counts ? fee : 0m;
                     version.EntryCount += 1;
                 });
             return propertyId;
         }
 
-        private async Task SeedAsync(bool approved, bool convertedStay)
+        private async Task SeedAsync(bool approved, bool convertedStay, bool borneByAgency)
         {
             Db.Orgs.Add(new OrgEntity { Id = OrgId, Name = "TEST Agenzia Lugano", DisplayName = "TEST Agenzia Lugano", Slug = "test-agenzia", PlanTier = PlanTier.Agency });
             Db.Orgs.Add(new OrgEntity { Id = OtherOrgId, Name = "TEST Altra Agenzia", DisplayName = "TEST Altra Agenzia", Slug = "test-altra", PlanTier = PlanTier.Agency });
@@ -1203,7 +1252,14 @@ public class OwnerStatementDocumentsTests
             var october = new List<OwnerLedgerEntry>
             {
                 Entry(OwnerLedgerEntryType.BookingRevenue, OwnerLedgerSourceType.Booking, PortalBookingId, PortalBookingId.ToString("N"), 500m, new DateOnly(2026, 10, 8), 1),
-                Entry(OwnerLedgerEntryType.ChannelFee, OwnerLedgerSourceType.Booking, PortalBookingId, PortalBookingId.ToString("N"), -75m, new DateOnly(2026, 10, 8), 2),
+                Entry(
+                    borneByAgency ? OwnerLedgerEntryType.ChannelFeeBorneByAgency : OwnerLedgerEntryType.ChannelFee,
+                    OwnerLedgerSourceType.Booking,
+                    PortalBookingId,
+                    PortalBookingId.ToString("N"),
+                    -75m,
+                    new DateOnly(2026, 10, 8),
+                    2),
                 Entry(OwnerLedgerEntryType.AgencyCommission, OwnerLedgerSourceType.Booking, PortalBookingId, PortalBookingId.ToString("N"), -50m, new DateOnly(2026, 10, 8), 3),
                 Entry(OwnerLedgerEntryType.OwnerCharge, OwnerLedgerSourceType.MandateFlatFee, PortalBookingId, OwnerLedgerFlatFees.Cleaning, -40m, new DateOnly(2026, 10, 8), 4),
                 Entry(OwnerLedgerEntryType.BookingRevenue, OwnerLedgerSourceType.Payment, payment, DirectBookingId.ToString("N"), 300m, new DateOnly(2026, 10, 12), 5),
@@ -1246,7 +1302,7 @@ public class OwnerStatementDocumentsTests
                 Charges = Sum(OwnerLedgerEntryType.OwnerCharge, OwnerLedgerEntryType.OwnerExpense),
                 Payments = Sum(OwnerLedgerEntryType.OwnerPayment, OwnerLedgerEntryType.AgencyPayment),
                 Corrections = Sum(OwnerLedgerEntryType.Correction),
-                ClosingBalance = 100m + october.Sum(e => e.Amount),
+                ClosingBalance = 100m + october.Where(e => OwnerLedgerBalance.Counts(e.EntryType)).Sum(e => e.Amount),
                 EntryCount = october.Count,
                 EntriesSha256 = OwnerAccountingService.Hash(october),
                 CreatedAt = Cutoff,

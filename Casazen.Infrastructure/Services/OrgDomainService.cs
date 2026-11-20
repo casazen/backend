@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -15,7 +16,9 @@ namespace Casazen.Infrastructure.Services;
 /// Owner-facing domain get/set/verify façade (#298 / US-024). IDOR (route <c>orgId</c> vs. caller
 /// org) is enforced by <c>OrgDomainController</c>; this service enforces business rules: the
 /// entitlement gate on <c>CustomDomain</c>, token generation, uniqueness, and clearing stale
-/// custom-domain state when the owner switches away from it.
+/// custom-domain state when the owner switches away from it. Since E40/F01/US01 it also saves the
+/// surfaces of the agency's own domain and reports them (with <c>WhiteLabelHost</c> on) through
+/// <see cref="HostSurfaceRules"/>. Without <paramref name="featureFlags"/> (a test) every flag is off.
 /// </summary>
 public partial class OrgDomainService(
     AppDbContext dbContext,
@@ -26,7 +29,8 @@ public partial class OrgDomainService(
     PublicSiteLinks publicSiteLinks,
     PublicOrgSiteUrls siteUrls,
     IVercelDomainsClient vercelClient,
-    TimeProvider timeProvider) : IOrgDomainService
+    TimeProvider timeProvider,
+    IFeatureFlags? featureFlags = null) : IOrgDomainService
 {
     private const string DefaultDomainRequiredMessage = "OrgDomainRequired";
     private const string SubdomainRequiredMessage = "OrgSubdomainRequired";
@@ -93,6 +97,13 @@ public partial class OrgDomainService(
                         org.DomainVerificationStatus = DomainVerificationStatus.Pending;
                         org.DomainVerificationToken = GenerateVerificationToken();
                         ResetDomainCheck(org);
+
+                        // The registration of the owner sign-in belongs to ONE domain: the previous one is forgotten (NotRequested, ResetDomainCheck). The agency's choice to
+                        // serve the owner portal on its domain stays, so the new domain asks for its registration at once, as saving the choice does (SetSurfacesAsync): left
+                        // in NotRequested nothing would ever move it to Pending, and the new domain would never reach the queue of the registrations.
+                        if (org.OwnerPortalOnOwnDomain)
+                            org.OwnerLoginHostState = OwnerLoginHostState.Pending;
+
                         org.DomainConfiguredAt = now;
                     }
                     else if (org.DomainVerificationStatus != DomainVerificationStatus.Verified)
@@ -200,6 +211,68 @@ public partial class OrgDomainService(
         return new VerifyOrgDomainResult(VerifyOrgDomainOutcome.Success, result);
     }
 
+    public async Task<SetOrgDomainSurfacesResult> SetSurfacesAsync(
+        Guid orgId,
+        OrgDomainSurfaceSettings settings,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null)
+            return new SetOrgDomainSurfacesResult(SetOrgDomainSurfacesOutcome.NotFound, null);
+
+        // The surfaces follow the domain's plan (the effective tier, A3-07): an org that cannot have a custom domain has nothing to set.
+        var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId, cancellationToken);
+        if (!canUseCustomDomain)
+            return new SetOrgDomainSurfacesResult(SetOrgDomainSurfacesOutcome.PlanRequired, null);
+
+        if (org.PublicHostMode != PublicHostMode.CustomDomain || string.IsNullOrEmpty(org.CustomDomain))
+            return new SetOrgDomainSurfacesResult(SetOrgDomainSurfacesOutcome.NotConfigured, null);
+
+        org.GuestAreaOnOwnDomain = settings.GuestAreaOnOwnDomain;
+        org.OwnerPortalOnOwnDomain = settings.OwnerPortalOnOwnDomain;
+        org.UseOwnDomainForLinks = settings.UseOwnDomainForLinks;
+        // The owner portal on the domain asks for the Auth0 registration of the domain (done by the sync, or by CasaZen by hand); a state
+        // already reached is kept: turning the portal off does not unregister the domain, and a failure keeps its retry.
+        if (settings.OwnerPortalOnOwnDomain && org.OwnerLoginHostState == OwnerLoginHostState.NotRequested)
+            org.OwnerLoginHostState = OwnerLoginHostState.Pending;
+        org.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // The answer of resolve-host carries the surfaces: the next call reads them at once.
+        publicHostResolver.InvalidateCacheForHost(org.CustomDomain);
+
+        return new SetOrgDomainSurfacesResult(SetOrgDomainSurfacesOutcome.Success, BuildConfig(org, canUseCustomDomain));
+    }
+
+    public async Task<SetOrgDomainTrackingResult> SetTrackingAsync(
+        Guid orgId,
+        string? gtmContainerId,
+        CancellationToken cancellationToken = default)
+    {
+        // The one rule of the format (NF-149): the typed text is never stored, logged or answered as it is.
+        if (!GtmContainerIds.TryNormalize(gtmContainerId, out var normalized))
+            return new SetOrgDomainTrackingResult(SetOrgDomainTrackingOutcome.Invalid, null);
+
+        var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null)
+            return new SetOrgDomainTrackingResult(SetOrgDomainTrackingOutcome.NotFound, null);
+
+        org.GtmContainerId = normalized;
+        org.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // The answer of resolve-host carries the container: every host of the org reads the new one at once.
+        if (org.CustomDomain is not null)
+            publicHostResolver.InvalidateCacheForHost(org.CustomDomain);
+        if (SubdomainHost(org.Subdomain) is { } subdomainHost)
+            publicHostResolver.InvalidateCacheForHost(subdomainHost);
+
+        return new SetOrgDomainTrackingResult(SetOrgDomainTrackingOutcome.Success, new OrgDomainTracking(normalized));
+    }
+
     private static void ClearCustomDomainFields(Org org)
     {
         org.CustomDomain = null;
@@ -209,7 +282,10 @@ public partial class OrgDomainService(
         org.DomainConfiguredAt = null;
     }
 
-    /// <summary>What a check found out belongs to one domain: a new domain starts from nothing (BK-17).</summary>
+    /// <summary>
+    /// What a check found out belongs to one domain: a new domain starts from nothing (BK-17). So does the Auth0 registration of the owner
+    /// sign-in (E40/F01/US01): it was made for the previous domain. The surface choices of the agency stay.
+    /// </summary>
     private static void ResetDomainCheck(Org org)
     {
         org.DomainStatusDetail = null;
@@ -219,6 +295,7 @@ public partial class OrgDomainService(
         org.DomainCheckFailures = 0;
         org.DomainVercelTxtHost = null;
         org.DomainVercelTxtValue = null;
+        org.OwnerLoginHostState = OwnerLoginHostState.NotRequested;
     }
 
     private OrgDomainConfig BuildConfig(Org org, bool canUseCustomDomain)
@@ -235,8 +312,28 @@ public partial class OrgDomainService(
             canUseCustomDomain,
             dnsInstructions,
             publicUrls,
-            BuildStatus(org));
+            BuildStatus(org),
+            BuildSurfaces(org),
+            IsEnabled(FeatureFlags.SiteEmbed) ? new OrgDomainTracking(org.GtmContainerId) : null);
     }
+
+    /// <summary>The surfaces block of the settings (E40/F01/US01): <c>null</c> while <c>WhiteLabelHost</c> is off, so nothing changes for anybody.</summary>
+    private OrgDomainSurfaces? BuildSurfaces(Org org)
+    {
+        if (!IsEnabled(FeatureFlags.WhiteLabelHost))
+            return null;
+
+        var effective = HostSurfaceRules.Evaluate(org, siteUrls.ServedMode(org), whiteLabelHost: true, IsEnabled(FeatureFlags.SiteEmbed));
+        return new OrgDomainSurfaces(
+            org.GuestAreaOnOwnDomain,
+            org.OwnerPortalOnOwnDomain,
+            org.UseOwnDomainForLinks,
+            org.OwnerLoginHostState,
+            IsEnabled(FeatureFlags.Auth0HostSync),
+            effective);
+    }
+
+    private bool IsEnabled(string flag) => featureFlags?.IsEnabled(flag) ?? false;
 
     private DnsInstructions BuildDnsInstructions(Org org) => new(
         CnameHost: org.CustomDomain!,

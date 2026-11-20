@@ -213,6 +213,9 @@ public static class PushDeliveryKeys
     /// </summary>
     public static string GuestCheckInCompleted(Guid sessionId) => $"guest-checkin:{sessionId:N}:completed";
 
+    /// <summary>A step of a stay CasaZen did in the host's place (casazen/backend#978), to the hosts of the booking: one per stay and step.</summary>
+    public static string BookingFlowStep(Guid bookingId, BookingFlowAutomaticStep step) => $"booking-flow:{bookingId:N}:{step.ToString().ToLowerInvariant()}";
+
     /// <summary>A booking confirmed without the host's action (payment, saved card), to the host.</summary>
     public static string NewBooking(Guid bookingId) => $"booking:{bookingId:N}:new";
 
@@ -231,6 +234,15 @@ public static class PushDeliveryKeys
     /// </summary>
     public static string ComplianceAlert(Guid propertyId, Casazen.Core.Entities.ComplianceAlertType type, string referenceKey, int stage, DateTime raisedAtUtc) =>
         $"compliance-alert:{propertyId:N}:{type}:{referenceKey}:{stage}:{raisedAtUtc:yyyyMMddHHmm}";
+
+    /// <summary>
+    /// An arrival day of a Ticino property was declared uploaded to the police portal, or the declaration was undone (E30/F02/US02/T01), to the hosts of the property: one per property, day,
+    /// kind and instant (whole milliseconds). A day can be declared, undone and declared again, so the instant tells the events apart; a retry of the push job keeps the key it was queued with.
+    /// </summary>
+    public static string TicinoNotificationDeclared(Guid propertyId, DateOnly day, bool declared, DateTime atUtc) =>
+        string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"ticino-declaration:{propertyId:N}:{day:yyyyMMdd}:{(declared ? "declared" : "undone")}:{atUtc:yyyyMMddHHmmssfff}");
 
     /// <summary>
     /// An OTA stay "da verificare" (CO-21): the reason and, for <c>BlockDatesChanged</c>, the channel's dates, so a host
@@ -420,6 +432,12 @@ public static class PushTypes
 
     /// <summary>The guest completed the online check-in (US-020): pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its detail.</summary>
     public const string GuestCheckInCompleted = "guest-checkin-completed";
+
+    /// <summary>
+    /// CasaZen did a step of a stay in the host's place (casazen/backend#978): registered the arrival or the departure, or declared the property ready once the cleaning was
+    /// done. Pushed to the hosts of the booking and written to the bell; <c>entityId</c> is the booking, the route its detail. The property only, never the guest.
+    /// </summary>
+    public const string BookingFlowStep = "booking-flow-step";
     public const string GuestDataMissing = "guest-data-missing";
     public const string AlloggiatiDeadline = "alloggiati-deadline";
     public const string AlloggiatiOverdue = "alloggiati-overdue";
@@ -509,6 +527,38 @@ public static class PushTypes
     public const string ScheduledMessageIssue = "scheduled-message-issue";
 
     /// <summary>
+    /// The guests of an arrival day of a Ticino property have to be notified to the cantonal police and the deadline is still ahead (E30/F02/US01/T01, NF-127, D9): the
+    /// first alert of the arrival day («prepare the file») and the one six hours before the deadline. Pushed to the hosts of the property, written to the bell and published
+    /// live; the route is <c>/properties</c> (the only screen of the app a push of this kind can open) and the open pages read again the section of the days to notify. The
+    /// <c>entityId</c> of the bell entry and of the live message is the <b>property</b> (the id of the audience, <see cref="PushAudience.PropertyHosts"/>; see
+    /// <see cref="IsTicinoNotification"/>): the day is not in the entry, the client opens the Ticino page of that property on its first day to notify. The text of the push names the
+    /// property and the day, and what the data miss as types of field: never a guest, a value or a document.
+    /// </summary>
+    public const string TicinoNotificationDue = "ticino-notification-due";
+
+    /// <summary>
+    /// The deadline of the notification of a Ticino arrival day is over and nothing says it was made (E30/F02/US01/T01, NF-127, D9): the first alert and the at most two
+    /// reminders. Same audience, channels, route, privacy and <c>entityId</c> (the property) as <see cref="TicinoNotificationDue"/>.
+    /// </summary>
+    public const string TicinoNotificationOverdue = "ticino-notification-overdue";
+
+    /// <summary>
+    /// A person of the org declared an arrival day of a Ticino property as uploaded to the police portal, or undid that declaration (E30/F02/US02/T01, NF-128, decision D10): the other hosts
+    /// of the property learn it live, so their cockpit stops (or starts again) listing the day without a refresh. Pushed to the hosts of the property (<see cref="PushAudience.PropertyHosts"/>),
+    /// written to the bell and published live; the route is <c>/properties</c> and the <c>entityId</c> of the bell entry and of the live message is the <b>property</b>, like the two alerts
+    /// (<see cref="IsTicinoNotification"/>). One type for both: the text of the push tells the declaration from the undo, the bell and the open pages only read the cockpit again. The text names
+    /// the property and the day: never a guest, a value, a document or the person who did it.
+    /// </summary>
+    public const string TicinoNotificationDeclared = "ticino-notification-declared";
+
+    /// <summary>
+    /// True for the types about the notification of the guests of a Ticino arrival day to the cantonal police: the alerts about its 24 hours (<see cref="TicinoNotificationDue"/>,
+    /// <see cref="TicinoNotificationOverdue"/>) and the declaration of the day (<see cref="TicinoNotificationDeclared"/>). Their bell entry is about a <b>property</b>, not a booking:
+    /// <c>QueuedInAppNotification.From</c> gives it the id of the property (the audience of the push) as <c>entityId</c>, so the bell can open the Ticino page of that property.
+    /// </summary>
+    public static bool IsTicinoNotification(string? type) => type is TicinoNotificationDue or TicinoNotificationOverdue or TicinoNotificationDeclared;
+
+    /// <summary>
     /// Type of the push to the host when a service request reaches <paramref name="status"/>; <c>null</c> for a status that has
     /// no push (a new request and a paid one are the host's own doing): the caller then sends nothing.
     /// </summary>
@@ -542,6 +592,20 @@ public static class PushTypes
         Casazen.Core.Entities.ComplianceAlertType.IstatPeriod => IstatDeadline,
         Casazen.Core.Entities.ComplianceAlertType.TouristTaxPeriod => TouristTaxDeadline,
         Casazen.Core.Entities.ComplianceAlertType.ConnectionInactive => ConnectionInactive,
+        Casazen.Core.Entities.ComplianceAlertType.TicinoNotification => TicinoNotificationDue,
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "No push type for this alert."),
     };
+
+    /// <summary>
+    /// Type of the push of <paramref name="alert"/> (E30/F02/US01/T01): the one of its <see cref="ComplianceAlert.Type"/>, and for a Ticino notification
+    /// <see cref="TicinoNotificationOverdue"/> once the deadline is over, <see cref="TicinoNotificationDue"/> before.
+    /// </summary>
+    public static string ForComplianceAlert(ComplianceAlert alert)
+    {
+        ArgumentNullException.ThrowIfNull(alert);
+
+        return alert.Type == Casazen.Core.Entities.ComplianceAlertType.TicinoNotification && alert.Kind == ComplianceAlertKind.TicinoOverdue
+            ? TicinoNotificationOverdue
+            : ForComplianceAlert(alert.Type);
+    }
 }

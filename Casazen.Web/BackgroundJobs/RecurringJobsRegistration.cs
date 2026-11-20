@@ -183,6 +183,15 @@ public static class RecurringJobsRegistration
             GuestDocumentPurgeJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // NF-128 (casazen/backend#979, decisions D10, D11): the receipts of the Ticino police notifications, the group sheets and the parents' authorizations are kept
+        // five years from their date; the file and the row of those whose time is over are deleted every day at 03:55 UTC, counts only in the log, never an OTR report.
+        // Always registered: a file that exists costs money whatever a flag says, and with nothing past its time a run finds nothing.
+        recurringJobManager.AddOrUpdate<SwissComplianceRetentionJob>(
+            SwissComplianceRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            SwissComplianceRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // CO-20: daily CIN alert, after the nightly compliance check of CO-06.
         recurringJobManager.AddOrUpdate<CinDeadlineAlertJob>(
             CinDeadlineAlertJob.RecurringJobId,
@@ -305,6 +314,13 @@ public static class RecurringJobsRegistration
             "guest-checkin-send",
             job => job.ExecuteAsync(),
             "0 8 * * *",
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // casazen/backend#978: the arrivals and departures of the orgs whose booking flow is automatic (the default), every hour at :20 (after the stay alerts at :00).
+        recurringJobManager.AddOrUpdate<BookingFlowAutomationJob>(
+            BookingFlowAutomationJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            "20 * * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         // E23/F01/US01/T01, T02 (NF-122): the check-in links of the stays with no e-mail address that wait for the chat of the portal or for the contact of the guest are tried
@@ -524,8 +540,9 @@ public static class RecurringJobsRegistration
     /// <summary>
     /// The documents of the stays that ended (E12/F01/US01/T02, NF-83, NF-112): the drafts, and their issue when the profile issues without a person, every day at 05:10
     /// Europe/Rome, only with <see cref="FeatureFlags.FiscalDocumentIssuance"/> on. With the flag off nothing is drafted or issued by time and the schedule of an earlier deploy is
-    /// removed (<c>RemoveIfExists</c>). The same flag schedules the monthly drafts of the self-billed invoices (FIX/BE-TD17-ALERTS), the 5th of every month at 07:30 Europe/Rome, which do nothing
-    /// unless <c>SelfBilling:MonthlyDrafts:Enabled</c> is on (off by default, read at each run).
+    /// removed (<c>RemoveIfExists</c>). The same flag schedules the drafts of the self-billed invoices (FIX/BE-TD17-ALERTS, FIX/BE-TD17-JOB-EXIT), <b>every day from the 5th to the 14th</b> at 07:30 Europe/Rome
+    /// (<see cref="SelfBillingMonthlyDraftsJob.Cron"/>: idempotent, it only makes the missing drafts and never issues), which do nothing when <c>SelfBilling:MonthlyDrafts:Enabled</c> is off (on by default,
+    /// read at each run).
     /// </summary>
     private static void ConfigureFiscalDocumentJobs(IRecurringJobManager recurringJobManager, bool enabled)
     {

@@ -1,14 +1,19 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.SiteDocuments;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Logging;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -949,6 +954,193 @@ public class GuestCheckInServiceTests
         Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.Completo);
         Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.Inviato);
     }
+
+    // ─── NF-132: a property in canton Ticino ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetPublicView_TicinoProperty_AsksTheFieldsOfThePoliceFileAndThePlate_OtherPropertiesNot()
+    {
+        await using var ticino = await SeedTicinoAsync(capacity: 2);
+        await using var rome = await SeedAsync(capacity: 2);
+        var ticinoService = new GuestCheckInService(ticino.Db, NullLogger<GuestCheckInService>.Instance);
+        var romeService = new GuestCheckInService(rome.Db, NullLogger<GuestCheckInService>.Instance);
+
+        var ticinoView = await ticinoService.GetPublicViewAsync(await ticinoService.CreateSessionAsync(ticino.BookingId, ticino.OrgId));
+        var romeView = await romeService.GetPublicViewAsync(await romeService.CreateSessionAsync(rome.BookingId, rome.OrgId));
+
+        Assert.NotNull(ticinoView);
+        Assert.True(ticinoView.AskVehiclePlate);
+        Assert.Equal(TicinoCheckInFields.Required, ticinoView.RequiredGuestFields);
+        Assert.NotNull(romeView);
+        Assert.False(romeView.AskVehiclePlate);
+        Assert.Empty(romeView.RequiredGuestFields!);
+    }
+
+    [Fact]
+    public async Task Submit_Ticino_TheSecondAdultNeedsADocument_ThenTheDocumentTheHomeAndThePlateAreSaved()
+    {
+        await using var seed = await SeedTicinoAsync(capacity: 3);
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var child = Member("Luca", dateOfBirth: new DateTime(2019, 6, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        var refused = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest { Guests = [TicinoHead("Via Test Nassa 15"), Member("Anna"), child] });
+
+        // In Ticino the police file notifies every adult: the second adult cannot be left without a document; the child of 7 needs none.
+        Assert.False(refused.Success);
+        Assert.Equal(["1.DocumentType", "1.DocumentNumber"], refused.ValidationErrors.Select(e => $"{e.Index}.{e.Field}"));
+        Assert.Empty(seed.Db.StayGuests);
+
+        var saved = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest
+        {
+            Guests = [TicinoHead("Via Test Nassa 15"), Member("Anna", documentNumber: "AB1234567"), child],
+            VehiclePlate = " ti 123 456 ",
+        });
+
+        Assert.True(saved.Success, string.Join(", ", saved.ValidationErrors.Select(e => $"{e.Index}.{e.Field}")));
+        var rows = await seed.Db.StayGuests.AsNoTracking().OrderBy(s => s.Position).ToListAsync();
+        Assert.Equal(
+            ("Via Test Nassa 15", "CH-6900", "Bellinzona"),
+            (rows[0].ResidenceStreet, rows[0].ResidencePostalCode, rows[0].ResidenceCityName));
+        Assert.Equal((GuestDocumentType.Passport, "AB1234567"), (rows[1].DocumentType!.Value, rows[1].DocumentNumber));
+        Assert.Null(rows[2].DocumentType);
+        Assert.Equal(string.Empty, rows[2].DocumentNumber);
+        Assert.Equal("TI123456", (await seed.Db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId)).VehiclePlate);
+    }
+
+    [Fact]
+    public async Task Submit_AnInvalidPlate_IsAFieldErrorAndNothingIsSaved()
+    {
+        await using var seed = await SeedTicinoAsync(capacity: 1);
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.VehiclePlate = "TI 12/34";
+
+        var result = await svc.SubmitAsync(token, request);
+
+        AssertSingleError(result, null, StayGuestService.VehiclePlateField, CheckInValidationKeys.VehiclePlateInvalid);
+        Assert.Empty(seed.Db.StayGuests);
+        Assert.Null((await seed.Db.Bookings.AsNoTracking().SingleAsync()).VehiclePlate);
+    }
+
+    [Fact]
+    public async Task StayGuestSwissFields_NoPersonalDataInLogs_Test()
+    {
+        await using var seed = await SeedTicinoAsync(capacity: 2);
+        var logger = new CapturingLogger<GuestCheckInService>();
+        var svc = new GuestCheckInService(seed.Db, logger);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var result = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest
+        {
+            Guests = [TicinoHead("Via Test Nassa 15"), Member("Anna", documentNumber: "AB1234567")],
+            VehiclePlate = "TITEST99",
+        });
+
+        Assert.True(result.Success, string.Join(", ", result.ValidationErrors.Select(e => $"{e.Index}.{e.Field}")));
+        Assert.NotEmpty(logger.Entries);
+        foreach (var personal in new[] { "Via Test Nassa", "CH-6900", "Bellinzona", "TITEST99", "AB1234567" })
+            Assert.DoesNotContain(personal, logger.AllOutput, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void StayGuestSwissFields_AreEncryptedAtRest_LikeTheDocument()
+    {
+        using var db = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
+            tenantContext: null,
+            EncryptionProvider);
+        (Type Entity, string Property, string Value)[] columns =
+        [
+            (typeof(StayGuest), nameof(StayGuest.ResidenceStreet), "Via Test Nassa 15"),
+            (typeof(StayGuest), nameof(StayGuest.ResidencePostalCode), "CH-6900"),
+            (typeof(StayGuest), nameof(StayGuest.ResidenceCityName), "Bellinzona"),
+            (typeof(Booking), nameof(Booking.VehiclePlate), "TITEST99"),
+        ];
+
+        foreach (var (entity, property, value) in columns)
+        {
+            var column = db.Model.FindEntityType(entity)!.FindProperty(property)!;
+            var converter = Assert.IsType<EncryptedStringConverter>(column.GetValueConverter());
+            Assert.Null(column.GetMaxLength());
+
+            // Deterministic: the stored text is a Data Protection payload, not the value, and only the converter reads it back.
+            var stored = (string)converter.ConvertToProvider(value)!;
+            Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored, StringComparison.Ordinal);
+            Assert.NotEqual(value, stored);
+            Assert.Equal(value, converter.ConvertFromProvider(stored));
+            Assert.Contains(EncryptedColumns.All, c => c.EntityType == entity && c.Property == property && c.Purpose == EncryptedColumns.GuestDocumentPurpose);
+        }
+    }
+
+    [Fact]
+    public async Task StayGuestSwissFields_AreErasedWithTheGuestsOfTheStay()
+    {
+        await using var seed = await SeedTicinoAsync(capacity: 1);
+        var booking = await seed.Db.Bookings.SingleAsync();
+        booking.VehiclePlate = "TITEST99";
+        seed.Db.StayGuests.Add(new StayGuest
+        {
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            Position = 0,
+            FirstName = "Test",
+            LastName = "Bernasconi",
+            ResidenceStreet = "Via Test Nassa 15",
+            ResidencePostalCode = "CH-6900",
+            ResidenceCityName = "Bellinzona",
+        });
+        await seed.Db.SaveChangesAsync();
+        var eraser = new GuestDataEraser(seed.Db, Mock.Of<IFileStorage>(), NullLogger<GuestDataEraser>.Instance);
+
+        await eraser.AnonymizeStayGuestsOfBookingsAsync([booking.Id], DateTime.UtcNow, CancellationToken.None);
+        await seed.Db.SaveChangesAsync();
+
+        var row = await seed.Db.StayGuests.AsNoTracking().SingleAsync();
+        Assert.Null(row.ResidenceStreet);
+        Assert.Null(row.ResidencePostalCode);
+        Assert.Null(row.ResidenceCityName);
+        Assert.Null((await seed.Db.Bookings.AsNoTracking().SingleAsync()).VehiclePlate);
+    }
+
+    /// <summary>One provider for the class: EF keeps one model per provider.</summary>
+    private static readonly IDataProtectionProvider EncryptionProvider = new EphemeralDataProtectionProvider();
+
+    /// <summary>A booking of a property in canton Ticino: country CH and a municipality of canton TI the test writes itself (the seed is not read).</summary>
+    private static async Task<Seed> SeedTicinoAsync(int capacity)
+    {
+        var seed = await SeedAsync(capacity);
+        var property = await seed.Db.Properties.SingleAsync();
+        property.Country = "CH";
+        property.City = "Lugano";
+        property.PostalCode = "6900";
+        property.SwissMunicipalityCode = "5192";
+        if (!await seed.Db.SwissMunicipalities.AnyAsync(m => m.MunicipalityCode == "5192"))
+            seed.Db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5192", CantonCode = "TI", OfficialName = "Lugano (TEST)" });
+        await seed.Db.SaveChangesAsync();
+        return seed;
+    }
+
+    /// <summary>The head of the stay (the booker, Mario Rossi) with a document and, when given, the home of the Ticino file.</summary>
+    private static StayGuestInput TicinoHead(string? street) => new()
+    {
+        Type = "HeadOfFamily",
+        FirstName = "Mario",
+        LastName = "Rossi",
+        DateOfBirth = new DateTime(1990, 5, 15, 0, 0, 0, DateTimeKind.Utc),
+        Gender = Gender.Male,
+        BornInItaly = true,
+        BirthComuneName = "Roma",
+        BirthProvince = "rm",
+        CitizenshipName = "Italia",
+        DocumentType = "Passport",
+        DocumentNumber = "YA1234567",
+        DocumentIssuePlaceName = "Roma",
+        ResidenceStreet = street,
+        ResidencePostalCode = street is null ? null : " ch-6900 ",
+        ResidenceCityName = street is null ? null : "Bellinzona",
+    };
 
     private static async Task<Guid> AddBookingSharingGuestAsync(AppDbContext db, Guid guestId)
     {

@@ -12,7 +12,11 @@ namespace Casazen.Web.DTOs.Fiscal;
 /// and holds its number) and <see cref="ReplacedByDocumentId"/> (this one is the rejected original the correction discarded: its <c>Status</c> is <c>Discarded</c>, it keeps its number and its
 /// <c>SdiStatus</c> <c>rejected</c> for the history, and the draft that replaces it is that id). <see cref="KeptReason"/> is set only on a draft that holds the number of a rejected TD17 and that the drafts of
 /// its month would keep, because nothing gives it a TD17 now: a stable code (<c>portal_not_configured</c>, <c>issuer_profile_incomplete</c>, <c>owner_issuer_missing</c>, <c>ledger_gives_no_td17</c>) the frontend
-/// translates; such a draft can be neither issued nor discarded, and the host is told so instead of being offered «issue» or «discard».
+/// translates; such a draft can be neither issued nor discarded, and the host is told so instead of being offered «issue» or «discard»: it leaves by <c>POST api/fiscal/self-billing/{id}/close-not-due</c>
+/// (FIX/BE-TD17-JOB-EXIT). A draft that was closed that way is listed with the history of its number: its <c>Status</c> is <c>Discarded</c>, it keeps its <c>Number</c> (reserved, never given again),
+/// <see cref="ReplacesDocumentId"/> names the rejected original, and four fields say how it was closed: <see cref="ClosedReason"/> (<c>portal_credit_note</c>, <c>holder_no_longer_subject</c> or
+/// <c>duplicate_or_error</c>, the frontend translates it: the outcome «Chiusa, non più dovuta»), <see cref="ClosedAt"/> (UTC), <see cref="ClosedBy"/> (the name of the person; <c>null</c> when it is not known
+/// any more) and <see cref="ClosedNote"/> (the free note, when there is one); all four are <c>null</c> on every other row.
 /// </summary>
 public sealed record SelfBillingListItemDto(
     Guid Id,
@@ -35,7 +39,11 @@ public sealed record SelfBillingListItemDto(
     bool CanCorrect,
     Guid? ReplacesDocumentId,
     Guid? ReplacedByDocumentId,
-    string? KeptReason)
+    string? KeptReason,
+    string? ClosedReason,
+    DateTime? ClosedAt,
+    string? ClosedBy,
+    string? ClosedNote)
 {
     public static SelfBillingListItemDto From(SelfBillingRow row)
     {
@@ -61,7 +69,11 @@ public sealed record SelfBillingListItemDto(
             row.CanCorrect,
             row.ReplacesDocumentId,
             row.ReplacedByDocumentId,
-            row.KeptReason);
+            row.KeptReason,
+            row.ClosedReason,
+            row.ClosedAt,
+            row.ClosedBy,
+            row.ClosedNote);
     }
 }
 
@@ -107,6 +119,18 @@ public sealed record IssueSelfBillingRequest
     public bool Confirm { get; init; }
 
     public bool AcceptEstimate { get; init; }
+}
+
+/// <summary>
+/// <c>POST api/fiscal/self-billing/{id}/close-not-due</c> (FIX/BE-TD17-JOB-EXIT): why the replacement draft of a rejected TD17 is closed as «non più dovuta». <see cref="Reason"/> is mandatory and is one of
+/// <c>portal_credit_note</c>, <c>holder_no_longer_subject</c> or <c>duplicate_or_error</c> (422 <c>close_reason_required</c> otherwise); <see cref="Note"/> is optional free text, at most 500 characters
+/// (422 <c>close_note_too_long</c>), stored encrypted and never logged. The user and the day are the caller's and the server's, never a value of the request.
+/// </summary>
+public sealed record CloseSelfBillingNotDueRequest
+{
+    public string? Reason { get; init; }
+
+    public string? Note { get; init; }
 }
 
 /// <summary><c>POST api/fiscal/self-billing/drafts</c>: the month (<c>yyyy-MM</c>) whose drafts are made.</summary>

@@ -321,6 +321,69 @@
   <data name="CompliancePush_Connection_Body" xml:space="preserve">
     <value>{0}: l'invio automatico non è attivo e un ospite sta per arrivare.</value>
   </data>
+  <data name="TicinoNotificationAlert_FileToPrepare_Subject" xml:space="preserve">
+    <value>Notifica alla polizia da preparare - {0} ({1})</value>
+  </data>
+  <data name="TicinoNotificationAlert_FileToPrepare_Body" xml:space="preserve">
+    <value>È il momento di preparare la notifica alla Polizia cantonale ticinese degli ospiti con arrivo il &lt;strong&gt;{1}&lt;/strong&gt; a &lt;strong&gt;{0}&lt;/strong&gt;: va fatta entro 24 ore dall'arrivo, per CasaZen entro il &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="TicinoNotificationAlert_Approaching_Subject" xml:space="preserve">
+    <value>Notifica alla polizia in scadenza - {0} ({1})</value>
+  </data>
+  <data name="TicinoNotificationAlert_Approaching_Body" xml:space="preserve">
+    <value>La notifica alla Polizia cantonale ticinese degli ospiti con arrivo il &lt;strong&gt;{1}&lt;/strong&gt; a &lt;strong&gt;{0}&lt;/strong&gt; scade il &lt;strong&gt;{2}&lt;/strong&gt; e in CasaZen non risulta ancora fatta.</value>
+  </data>
+  <data name="TicinoNotificationAlert_Overdue_Subject" xml:space="preserve">
+    <value>Notifica alla polizia scaduta - {0} ({1})</value>
+  </data>
+  <data name="TicinoNotificationAlert_Overdue_Body" xml:space="preserve">
+    <value>Il termine per notificare alla Polizia cantonale ticinese gli ospiti con arrivo il &lt;strong&gt;{1}&lt;/strong&gt; a &lt;strong&gt;{0}&lt;/strong&gt; era il &lt;strong&gt;{2}&lt;/strong&gt; e in CasaZen non risulta che la notifica sia stata fatta.</value>
+  </data>
+  <data name="TicinoNotificationAlert_Missing" xml:space="preserve">
+    <value>Dati ancora mancanti per il file: {0}.</value>
+  </data>
+  <data name="TicinoNotificationAlert_Action" xml:space="preserve">
+    <value>Scarica il file dalla pagina Adempimenti di CasaZen e caricalo sul portale della Polizia cantonale, poi registra in CasaZen che il giorno è stato notificato: non riceverai altri promemoria per quel giorno.</value>
+  </data>
+  <data name="TicinoNotificationPush_Due_Title" xml:space="preserve">
+    <value>Notifica alla polizia da fare</value>
+  </data>
+  <data name="TicinoNotificationPush_Due_Body" xml:space="preserve">
+    <value>{0}: gli ospiti con arrivo il {1} vanno notificati alla Polizia cantonale entro il {2}.</value>
+  </data>
+  <data name="TicinoNotificationPush_Overdue_Title" xml:space="preserve">
+    <value>Notifica alla polizia scaduta</value>
+  </data>
+  <data name="TicinoNotificationPush_Overdue_Body" xml:space="preserve">
+    <value>{0}: la notifica degli ospiti con arrivo il {1} non risulta fatta.</value>
+  </data>
+  <data name="TicinoNotificationPush_Missing" xml:space="preserve">
+    <value>Mancano: {0}.</value>
+  </data>
+  <data name="TicinoMissing_structureId" xml:space="preserve">
+    <value>numero identificativo della struttura</value>
+  </data>
+  <data name="TicinoMissing_guests" xml:space="preserve">
+    <value>ospiti non ancora registrati</value>
+  </data>
+  <data name="TicinoMissing_firstName" xml:space="preserve">
+    <value>nome</value>
+  </data>
+  <data name="TicinoMissing_lastName" xml:space="preserve">
+    <value>cognome</value>
+  </data>
+  <data name="TicinoMissing_birthDate" xml:space="preserve">
+    <value>data di nascita</value>
+  </data>
+  <data name="TicinoMissing_nationality" xml:space="preserve">
+    <value>nazionalità</value>
+  </data>
+  <data name="TicinoMissing_documentType" xml:space="preserve">
+    <value>tipo di documento</value>
+  </data>
+  <data name="TicinoMissing_other" xml:space="preserve">
+    <value>altri dati</value>
+  </data>
   <data name="ComplianceSummary_Subject_NoStays" xml:space="preserve">
     <value>Adempimenti di {0}: nessun soggiorno</value>
   </data>
@@ -863,6 +926,24 @@
   </data>
   <data name="Push_GuestCheckInCompleted_Body" xml:space="preserve">
     <value>{0}: un ospite ha completato il check-in online.</value>
+  </data>
+  <data name="Push_BookingFlowArrival_Title" xml:space="preserve">
+    <value>Arrivo registrato in automatico</value>
+  </data>
+  <data name="Push_BookingFlowArrival_Body" xml:space="preserve">
+    <value>{0}: il giorno di arrivo è finito, abbiamo registrato l'arrivo dell'ospite.</value>
+  </data>
+  <data name="Push_BookingFlowDeparture_Title" xml:space="preserve">
+    <value>Partenza registrata in automatico</value>
+  </data>
+  <data name="Push_BookingFlowDeparture_Body" xml:space="preserve">
+    <value>{0}: è passata l'ora del check-out, abbiamo registrato la partenza.</value>
+  </data>
+  <data name="Push_BookingFlowPropertyReady_Title" xml:space="preserve">
+    <value>Casa pronta per il prossimo ospite</value>
+  </data>
+  <data name="Push_BookingFlowPropertyReady_Body" xml:space="preserve">
+    <value>{0}: la pulizia è fatta, la casa è pronta per il prossimo ospite.</value>
   </data>
   <data name="Push_AssistVerified_Title" xml:space="preserve">
     <value>Il collegamento è attivo</value>
@@ -2826,6 +2907,18 @@
   </data>
   <data name="Push_OtaReviewActionFailed_Body" xml:space="preserve">
     <value>{0}: la tua risposta o la tua recensione non è arrivata sul canale. Apri la prenotazione e riprova.</value>
+  </data>
+  <data name="Push_TicinoNotificationDeclared_Title" xml:space="preserve">
+    <value>Notifica alla polizia dichiarata</value>
+  </data>
+  <data name="Push_TicinoNotificationDeclared_Body" xml:space="preserve">
+    <value>{0}: la notifica degli ospiti con arrivo il {1} è stata dichiarata come caricata sul portale della Polizia cantonale.</value>
+  </data>
+  <data name="Push_TicinoNotificationUndone_Title" xml:space="preserve">
+    <value>Dichiarazione di notifica annullata</value>
+  </data>
+  <data name="Push_TicinoNotificationUndone_Body" xml:space="preserve">
+    <value>{0}: la dichiarazione della notifica degli ospiti con arrivo il {1} è stata annullata: il giorno torna da notificare.</value>
   </data>
   <data name="TodoReason_CheckInLinkToSend" xml:space="preserve">
     <value>Il link del check-in non è ancora arrivato all'ospite: copialo dalla prenotazione e invialo tu.</value>

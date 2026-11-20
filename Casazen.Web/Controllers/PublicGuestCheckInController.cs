@@ -102,6 +102,7 @@ public class PublicGuestCheckInController(
             InvoiceRequested = view.InvoiceRequested,
             HasInvoiceData = view.HasInvoiceData,
             RequiredGuestFields = view.RequiredGuestFields ?? [],
+            AskVehiclePlate = view.AskVehiclePlate,
             Language = GuestLanguages.Resolve(view.Language, Request.Headers.AcceptLanguage.ToString()),
             SupportedLanguages = GuestLanguages.Supported,
         };
@@ -245,6 +246,7 @@ public class PublicGuestCheckInController(
             ConsentIpAddress = ip,
             PrivacyNoticeAcknowledged = request.PrivacyNoticeAcknowledged,
             Invoice = request.Invoice?.ToInput(),
+            VehiclePlate = request.VehiclePlate,
         };
 
         var result = await checkInService.SubmitAsync(token, submitRequest);

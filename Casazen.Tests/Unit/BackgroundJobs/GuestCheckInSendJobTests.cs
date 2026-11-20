@@ -26,6 +26,55 @@ namespace Casazen.Tests.Unit.BackgroundJobs;
 /// </summary>
 public class GuestCheckInSendJobTests
 {
+    /// <summary>casazen/backend#978: an org whose links the host sends (manual booking flow) gets no link from the daily job.</summary>
+    [Fact]
+    public async Task ExecuteAsync_OrgFlowManual_IssuesNoLink()
+    {
+        await using var db = CreateContext();
+        var booking = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 1);
+        db.BookingFlowSettings.Add(new BookingFlowSettings { OrgId = booking.OrgId, CheckInLinkMode = BookingFlowMode.Manual, CheckInLinkDaysBefore = 3 });
+        await db.SaveChangesAsync();
+        var harness = new Harness(db, EmailResult(EmailSendResult.Sent()));
+
+        await harness.RunSendJobAsync(withFlow: true);
+
+        Assert.False(await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == booking.Id));
+        Assert.Empty(harness.QueuedJobs);
+    }
+
+    /// <summary>casazen/backend#978: the days before the arrival are the org's (here 5, beyond the default window of 3), never beyond them.</summary>
+    [Fact]
+    public async Task ExecuteAsync_OrgFlowFiveDaysBefore_IssuesLinksWithinTheOrgWindowOnly()
+    {
+        await using var db = CreateContext();
+        var withinOrgWindow = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 5);
+        var beyondOrgWindow = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 6);
+        db.BookingFlowSettings.Add(new BookingFlowSettings { OrgId = withinOrgWindow.OrgId, CheckInLinkMode = BookingFlowMode.Automatic, CheckInLinkDaysBefore = 5 });
+        db.BookingFlowSettings.Add(new BookingFlowSettings { OrgId = beyondOrgWindow.OrgId, CheckInLinkMode = BookingFlowMode.Automatic, CheckInLinkDaysBefore = 5 });
+        await db.SaveChangesAsync();
+        var harness = new Harness(db, EmailResult(EmailSendResult.Sent()));
+
+        await harness.RunSendJobAsync(withFlow: true);
+
+        Assert.True(await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == withinOrgWindow.Id));
+        Assert.False(await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == beyondOrgWindow.Id));
+    }
+
+    /// <summary>casazen/backend#978: an org that never saved its flow is automatic, with the default window (3 days).</summary>
+    [Fact]
+    public async Task ExecuteAsync_OrgWithoutFlow_SendsWithTheDefaultWindow()
+    {
+        await using var db = CreateContext();
+        var lastDay = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 3);
+        var beyond = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 4);
+        var harness = new Harness(db, EmailResult(EmailSendResult.Sent()));
+
+        await harness.RunSendJobAsync(withFlow: true);
+
+        Assert.True(await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == lastDay.Id));
+        Assert.False(await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == beyond.Id));
+    }
+
     [Fact]
     public async Task ExecuteAsync_EmailRejected_KeepsLinkOpenWithFailedEmailAndIssuesNoSecondLink()
     {
@@ -434,7 +483,7 @@ public class GuestCheckInSendJobTests
         public GuestCheckInLinkEmailJob EmailJob() =>
             new(_db, Email.Object, EmailTestHelpers.Links(_publicSiteBaseUrl), _jobs.Object, NullLogger<GuestCheckInLinkEmailJob>.Instance);
 
-        public Task RunSendJobAsync() =>
+        public Task RunSendJobAsync(bool withFlow = false) =>
             new GuestCheckInSendJob(
                 _db,
                 CheckIn,
@@ -443,7 +492,10 @@ public class GuestCheckInSendJobTests
                 EmailTestHelpers.Links(_publicSiteBaseUrl),
                 _options,
                 Mock.Of<ILogger<GuestCheckInSendJob>>(),
-                _clock).ExecuteAsync();
+                _clock,
+                flowSettings: withFlow
+                    ? new BookingFlowSettingsService(_db, _options, _clock, NullLogger<BookingFlowSettingsService>.Instance)
+                    : null).ExecuteAsync();
 
         public async Task RunQueuedEmailJobsAsync()
         {

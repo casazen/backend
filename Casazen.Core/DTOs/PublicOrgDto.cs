@@ -90,6 +90,12 @@ public class PublicOrgDto
     /// </summary>
     public string? CanonicalUrl { get; set; }
 
+    /// <summary>
+    /// The embeddable pages are on (NF-144, E40/F01/US01): the flag <c>SiteEmbed</c>, the same value <c>resolve-host</c> gives, for the
+    /// embed shell on the CasaZen domain, which has no host to resolve. Set by the endpoint.
+    /// </summary>
+    public bool EmbedEnabled { get; set; }
+
     /// <param name="org">The public org.</param>
     /// <param name="effectiveTier">
     /// The org's effective tier (<c>IEntitlementService.ResolveEffectiveTier</c>), never the stored one: a canceled

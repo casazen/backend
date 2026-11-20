@@ -104,7 +104,8 @@ public sealed class GuestCheckInLinkEmailJob(
     PublicSiteLinks publicSiteLinks,
     IBackgroundJobClient backgroundJobClient,
     ILogger<GuestCheckInLinkEmailJob> logger,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    AgencyDomainLinks? agencyLinks = null)
 {
     /// <summary>Attempts of one email, the first one included.</summary>
     public const int MaxAttempts = 4;
@@ -153,7 +154,9 @@ public sealed class GuestCheckInLinkEmailJob(
         }
 
         // NF-40: the email is in the language of the guest page (the choice saved on the session, Italian otherwise); a link issued as the
-        // reminder of the missing data (ReminderSentAt set by the send job) carries the reminder text.
+        // reminder of the missing data (ReminderSentAt set by the send job) carries the reminder text. E40/F01/US01/T03: the link is on the
+        // agency's own domain when its guest area is served there (AgencyDomainLinks), on the CasaZen domain otherwise.
+        var link = (await agencyLinks.ForOrgOrPlatformAsync(publicSiteLinks, booking.OrgId)).GuestCheckIn(token);
         var culture = GuestLanguages.CultureOf(GuestLanguages.Resolve(session.Language, null));
         var content = session.ReminderSentAt is null
             ? EmailTemplates.GuestCheckInLink(
@@ -161,14 +164,14 @@ public sealed class GuestCheckInLinkEmailJob(
                 booking.Guest!.FirstName,
                 booking.Property.Name,
                 booking.CheckInDate,
-                publicSiteLinks.GuestCheckIn(token),
+                link,
                 session.ExpiresAt)
             : EmailTemplates.GuestCheckInReminder(
                 culture,
                 booking.Guest!.FirstName,
                 booking.Property.Name,
                 booking.CheckInDate,
-                publicSiteLinks.GuestCheckIn(token),
+                link,
                 session.ExpiresAt);
 
         EmailSendResult result;

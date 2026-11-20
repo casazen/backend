@@ -246,10 +246,22 @@ public static class TouristTaxYearEndExports
                 property.NightsWithoutDocument,
                 property.Currency,
                 ReportCell.Money(property.TouristTax),
-                property.CantonUnknown ? texts.Get("TtTicinoNoteCantonUnknown", language) : null);
+                NoteOf(property, texts, language));
         }
 
         return table;
+    }
+
+    /// <summary>
+    /// The note of a property of the count: a canton that is not known (it may be in Ticino, to be checked), or a municipality derived from the postal
+    /// code and the town and not yet confirmed on the property (E29/F01/US01/T02); nothing for a municipality the host confirmed.
+    /// </summary>
+    private static string? NoteOf(TicinoPropertyCount property, IDocumentTexts texts, string language)
+    {
+        if (property.CantonUnknown)
+            return texts.Get("TtTicinoNoteCantonUnknown", language);
+
+        return property.MunicipalityDerived ? texts.Get("TtTicinoNoteMunicipalityDerived", language) : null;
     }
 
     /// <summary>The CSV of the yearly count of Ticino.</summary>

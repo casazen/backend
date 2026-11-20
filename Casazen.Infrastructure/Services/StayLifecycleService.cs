@@ -34,7 +34,9 @@ public sealed class StayLifecycleService(
     ILogger<StayLifecycleService> logger,
     TimeProvider? timeProvider = null,
     IDomainEventRecorder? domainEvents = null,
-    IBackgroundJobClient? backgroundJobs = null) : IStayLifecycleService
+    IBackgroundJobClient? backgroundJobs = null,
+    IBookingFlowSettingsService? flowSettings = null,
+    IPushNotificationService? pushNotifications = null) : IStayLifecycleService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -82,7 +84,26 @@ public sealed class StayLifecycleService(
         return booking;
     }
 
-    public async Task<StayArrivalResult> RegisterArrivalAsync(Guid bookingId, CancellationToken cancellationToken = default)
+    public Task<StayArrivalResult> RegisterArrivalAsync(Guid bookingId, CancellationToken cancellationToken = default) =>
+        RegisterArrivalAsync(bookingId, BookingEventOrigin.Host, cancellationToken);
+
+    public async Task<StayArrivalResult?> RegisterArrivalAutomaticallyAsync(Guid bookingId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var result = await RegisterArrivalAsync(bookingId, BookingEventOrigin.System, cancellationToken);
+            PushFlowStep(result.Booking, BookingFlowAutomaticStep.Arrival);
+            return result;
+        }
+        catch (DomainException ex)
+        {
+            // The host moved first (registered it, marked a no-show, cancelled), or the day is not the right one any more: nothing to do.
+            logger.LogInformation("Automatic arrival of booking {BookingId} not registered: {Code}", bookingId, ex.Code);
+            return null;
+        }
+    }
+
+    private async Task<StayArrivalResult> RegisterArrivalAsync(Guid bookingId, BookingEventOrigin origin, CancellationToken cancellationToken)
     {
         Booking booking;
         await using (var transaction = await LockBookingAsync(bookingId, cancellationToken))
@@ -92,15 +113,20 @@ public sealed class StayLifecycleService(
             if (StayLifecycleRules.ArrivalError(booking, today) is { } error)
                 throw error;
 
-            await MarkArrivedAsync(booking, today, cancellationToken);
+            // The automation registers a stay the host did not mark a no-show: a mark made meanwhile wins.
+            if (origin == BookingEventOrigin.System && booking.NoShowAt is not null)
+                throw new DomainConflictException(BookingErrorCodes.NotConfirmed, "BookingArrivalNotConfirmed");
+
+            await MarkArrivedAsync(booking, today, origin, cancellationToken);
             await SaveAsync(transaction, cancellationToken);
         }
 
         await ScheduleAlloggiatiAsync(booking.Id);
         var guestDataComplete = await alloggiatiWebService.IsStayDataCompleteAsync(booking.Id);
         logger.LogInformation(
-            "Arrival of booking {BookingId} registered by the host (guest data complete: {GuestDataComplete})",
+            "Arrival of booking {BookingId} registered by the {Origin} (guest data complete: {GuestDataComplete})",
             booking.Id,
+            origin == BookingEventOrigin.System ? "booking flow" : "host",
             guestDataComplete);
         return new StayArrivalResult(booking, guestDataComplete);
     }
@@ -121,7 +147,7 @@ public sealed class StayLifecycleService(
 
             arrivalRegistered = booking.Status == BookingStatus.Confirmed;
             if (arrivalRegistered)
-                await MarkArrivedAsync(booking, today, cancellationToken);
+                await MarkArrivedAsync(booking, today, BookingEventOrigin.Host, cancellationToken);
 
             booking.CheckoutWizardStartedAt ??= UtcNow();
             booking.UpdatedAt = UtcNow();
@@ -139,10 +165,67 @@ public sealed class StayLifecycleService(
         return booking;
     }
 
-    public async Task<Booking> CheckOutAsync(
+    public Task<Booking> CheckOutAsync(
         Guid bookingId,
         StayCheckOut checkOut,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        CheckOutAsync(bookingId, checkOut, BookingEventOrigin.Host, cancellationToken);
+
+    public async Task<Booking?> CheckOutAutomaticallyAsync(Guid bookingId, bool registerArrival, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var booking = await CheckOutAsync(bookingId, new StayCheckOut(registerArrival), BookingEventOrigin.System, cancellationToken);
+            PushFlowStep(booking, BookingFlowAutomaticStep.Departure);
+            return booking;
+        }
+        catch (DomainException ex)
+        {
+            // The host moved first (checked it out, opened the wizard, marked a no-show, cancelled): nothing to do.
+            logger.LogInformation("Automatic departure of booking {BookingId} not registered: {Code}", bookingId, ex.Code);
+            return null;
+        }
+    }
+
+    public async Task<StayCheckout?> DeclarePropertyReadyAutomaticallyAsync(Guid bookingId, CancellationToken cancellationToken = default)
+    {
+        Booking booking;
+        StayCheckout record;
+        await using (var transaction = await LockBookingAsync(bookingId, cancellationToken))
+        {
+            booking = await LoadAsync(bookingId, cancellationToken);
+            if (booking.Status != BookingStatus.CheckedOut || flowSettings is null)
+                return null;
+
+            var flow = await flowSettings.GetAsync(booking.OrgId, cancellationToken);
+            if (!flow.DeclaresReadyWhenCleaningDone)
+                return null;
+
+            record = await LoadOrCreateCheckoutAsync(booking, cancellationToken);
+            // Declared already, or the host said «not yet» at the check-out (damages, missing items): the host declares it.
+            if (record.PropertyReadyAt is not null || record.PropertyReady == false)
+                return record;
+
+            record.PropertyReady = true;
+            record.PropertyReadyAt = UtcNow();
+            record.CurrentStep = CheckoutWizardStep.PropertyReady;
+            record.UpdatedAt = UtcNow();
+
+            // The declaration closes the cleaning "To do" of the stay, as the host's does: its event is saved with it, once.
+            await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.PropertyReadyDeclared, booking, BookingEventOrigin.System, cancellationToken);
+            await SaveAsync(transaction, cancellationToken);
+        }
+
+        logger.LogInformation("Property of booking {BookingId} declared ready by the booking flow: the cleaning is done", bookingId);
+        PushFlowStep(booking, BookingFlowAutomaticStep.PropertyReady);
+        return record;
+    }
+
+    private async Task<Booking> CheckOutAsync(
+        Guid bookingId,
+        StayCheckOut checkOut,
+        BookingEventOrigin origin,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(checkOut);
 
@@ -159,9 +242,13 @@ public sealed class StayLifecycleService(
             if (checkOut.Wizard is not null && booking.CheckoutWizardStartedAt is null)
                 throw new DomainConflictException(BookingErrorCodes.CheckoutWizardNotStarted, "CheckoutWizardNotStarted");
 
+            // The automation never closes a stay the host is closing (the wizard is open) or marked a no-show.
+            if (origin == BookingEventOrigin.System && (booking.CheckoutWizardStartedAt is not null || booking.NoShowAt is not null))
+                throw new DomainConflictException(BookingErrorCodes.CheckoutWizardNotStarted, "CheckoutWizardNotStarted");
+
             arrivalRegistered = booking.Status == BookingStatus.Confirmed;
             if (arrivalRegistered)
-                await MarkArrivedAsync(booking, today, cancellationToken);
+                await MarkArrivedAsync(booking, today, origin, cancellationToken);
 
             // Joins this transaction (same context): the request and the check-out are saved together or not at all.
             var turnoverRequest = checkOut.Turnover is null
@@ -176,16 +263,31 @@ public sealed class StayLifecycleService(
             var record = await LoadOrCreateCheckoutAsync(booking, cancellationToken);
             CloseCheckout(record, checkOut, turnoverRequest);
 
-            // The check-out, and the property declared ready at the same time when the wizard says so: saved with the check-out.
-            await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.CheckOutCompleted, booking, BookingEventOrigin.Host, cancellationToken);
+            // casazen/backend#978: a check-out that declares nothing (the endpoint, the automatic departure) leaves the property to the booking flow of the org, which
+            // declares it ready now when it says so (at the check-out, or when the cleaning of the stay is already done). The wizard's answer is the host's and wins.
+            var readyByFlow = record.PropertyReadyAt is null
+                && checkOut.Wizard is null
+                && record.PropertyReady != false
+                && await IsReadyAtCheckOutAsync(booking, cancellationToken);
+            if (readyByFlow)
+            {
+                record.PropertyReady = true;
+                record.PropertyReadyAt = UtcNow();
+                record.CurrentStep = CheckoutWizardStep.PropertyReady;
+            }
+
+            // The check-out, and the property declared ready at the same time when the wizard or the flow says so: saved with the check-out.
+            await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.CheckOutCompleted, booking, origin, cancellationToken);
             if (record.PropertyReadyAt is not null)
-                await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.PropertyReadyDeclared, booking, BookingEventOrigin.Host, cancellationToken);
+                await BookingEvents.RecordAsync(
+                    domainEvents, db, DomainEventType.PropertyReadyDeclared, booking, readyByFlow ? BookingEventOrigin.System : origin, cancellationToken);
             await SaveAsync(transaction, cancellationToken);
         }
 
         logger.LogInformation(
-            "Booking {BookingId} checked out by the host (arrival registered with the check-out: {ArrivalRegistered})",
+            "Booking {BookingId} checked out by the {Origin} (arrival registered with the check-out: {ArrivalRegistered})",
             booking.Id,
+            origin == BookingEventOrigin.System ? "booking flow" : "host",
             arrivalRegistered);
         return booking;
     }
@@ -329,7 +431,7 @@ public sealed class StayLifecycleService(
     /// is unknown, and the Alloggiati term keeps running from the start of the check-in day (never later than the legal
     /// one, <see cref="Casazen.Core.Regulatory.AlloggiatiTerms"/>).
     /// </summary>
-    private async Task MarkArrivedAsync(Booking booking, DateTime todayInRome, CancellationToken cancellationToken)
+    private async Task MarkArrivedAsync(Booking booking, DateTime todayInRome, BookingEventOrigin origin, CancellationToken cancellationToken)
     {
         booking.Status = BookingStatus.CheckedIn;
 
@@ -340,8 +442,31 @@ public sealed class StayLifecycleService(
         booking.UpdatedAt = UtcNow();
 
         // The check-in of the stay, whichever way the arrival is registered: saved with it, once per booking (ADR-022-R1, R8).
-        await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.CheckInCompleted, booking, BookingEventOrigin.Host, cancellationToken);
+        await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.CheckInCompleted, booking, origin, cancellationToken);
     }
+
+    /// <summary>
+    /// Whether the booking flow of the org declares the property of <paramref name="booking"/> ready at its check-out (casazen/backend#978): always with the trigger
+    /// «at the check-out»; with «when the cleaning is done» only when a cleaning of the stay is already done. No settings service (a test): never.
+    /// </summary>
+    private async Task<bool> IsReadyAtCheckOutAsync(Booking booking, CancellationToken cancellationToken)
+    {
+        if (flowSettings is null)
+            return false;
+
+        var flow = await flowSettings.GetAsync(booking.OrgId, cancellationToken);
+        if (flow.DeclaresReadyAtCheckOut)
+            return true;
+
+        return flow.DeclaresReadyWhenCleaningDone && await StayCleaningState.IsDoneAsync(db, booking.OrgId, booking.Id, cancellationToken);
+    }
+
+    /// <summary>
+    /// Tells the hosts of the booking, live, that CasaZen did a step of the stay in their place (bell, pop-up, the open page refreshed): best effort after the save, never
+    /// undoing the step. The property only, never the guest.
+    /// </summary>
+    private void PushFlowStep(Booking booking, BookingFlowAutomaticStep step) =>
+        BookingFlowLiveRefresh.Tell(pushNotifications, booking.Id, booking.Property?.Name, step, logger);
 
     private async Task SaveAsync(IDbContextTransaction? transaction, CancellationToken cancellationToken)
     {

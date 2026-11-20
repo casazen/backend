@@ -89,7 +89,7 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
     public const string GuestMailDomain = "ospiti-test.ch";
 
     /// <summary>The BFS number of Lugano, canton Ticino.</summary>
-    public const string LuganoMunicipality = "5113";
+    public const string LuganoMunicipality = "5192";
 
     public const string PropertyName = "TEST Casa Lago Lugano";
 
@@ -472,8 +472,9 @@ internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
                     AgencyUser);
             }
 
+            // Turning the recharge off with an account of the agency is a waiver: the agency acknowledges it (FIX/BE-V2-NO-RECHARGE).
             if (!rechargePortalCommissions)
-                await scope.PortalAccounts.SaveAsync(OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = false }, AgencyUser);
+                await scope.PortalAccounts.SaveAsync(OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = false, AcknowledgeRechargeWaiver = true }, AgencyUser);
         }
     }
 
@@ -2016,7 +2017,8 @@ internal sealed class AcceptanceScope : IAsyncDisposable
             StatementFiles,
             TaxChecks,
             new CleaningCostSource(db),
-            activities);
+            activities,
+            holders);
         Mandates = new OwnerMandateService(db, clock, accountingOptions, NullLogger<OwnerMandateService>.Instance);
         PortalAccounts = new PortalAccountSettingsService(db, clock, NullLogger<PortalAccountSettingsService>.Instance);
 

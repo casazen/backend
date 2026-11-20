@@ -438,10 +438,12 @@ public class BookingEventConsumersTests : IAsyncLifetime
         // that write to Octorate: the booking created on confirmation (E08/F01/US01/T03), the payment recorded once paid (T04) and the
         // cancellation pushed after the local one (E08/F02/US02/T02), the edit pushed after the local one (E08/F02/US01/T02), then the one that
         // raises the «To do» of a booking from the channel manager on taken nights (E08/F01/US02/T02). The one that keeps the automatic cleaning of a stay in step with the
-        // stay (E24/F01/US01/T02) comes after the three of E08/F06.
+        // stay (E24/F01/US01/T02) comes after the three of E08/F06. The one that declares the property ready once the cleaning of a stay is done
+        // (casazen/backend#978) is registered right after the cleaning «To do» it follows.
         Assert.Equal(
             [
                 typeof(BookingCleaningActivityHandler),
+                typeof(PropertyReadyAutomationHandler),
                 typeof(BookingSpecialRequestActivityHandler),
                 typeof(ChannelBookingAlertHandler),
                 typeof(CleaningBookingChangesHandler),

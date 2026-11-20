@@ -391,6 +391,7 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         }
 
         await ClearTaxExemptionReasonsAsync(bookingIds, cancellationToken);
+        await ClearVehiclePlatesAsync(bookingIds, now, cancellationToken);
         return perBooker;
     }
 
@@ -477,6 +478,11 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         row.TravelWay = null;
         row.EducationLevel = null;
         row.TaxExemptionCode = null;
+
+        // NF-132: the home of the guest (the Ticino police file) goes too.
+        row.ResidenceStreet = null;
+        row.ResidencePostalCode = null;
+        row.ResidenceCityName = null;
 
         var changed = Fingerprint(row) != before || row.AnonymizedAt is null;
         row.AnonymizedAt ??= now;
@@ -565,7 +571,8 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
             .Where(b => b.GuestId == guestId
                         && (b.SpecialRequests != "" || b.ExpectedArrivalTime != null
                             || b.AttributionSource != null || b.AttributionMedium != null
-                            || b.AttributionCampaign != null || b.AttributionReferrerHost != null))
+                            || b.AttributionCampaign != null || b.AttributionReferrerHost != null
+                            || b.VehiclePlate != null))
             .ToListAsync(cancellationToken);
         foreach (var booking in bookings)
         {
@@ -575,6 +582,31 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
             booking.AttributionMedium = null;
             booking.AttributionCampaign = null;
             booking.AttributionReferrerHost = null;
+
+            // NF-132: the plate of the car of the stay, typed at the check-in with the guests' data.
+            booking.VehiclePlate = null;
+            booking.UpdatedAt = now;
+        }
+
+        return bookings.Count;
+    }
+
+    /// <summary>
+    /// NF-132: the plate of the car of the stays whose guests are anonymized by the retention of the Alloggiati data goes with them (it was typed with
+    /// them at the check-in). Returns the bookings changed.
+    /// </summary>
+    private async Task<int> ClearVehiclePlatesAsync(IReadOnlyCollection<Guid> bookingIds, DateTime now, CancellationToken cancellationToken)
+    {
+        if (bookingIds.Count == 0)
+            return 0;
+
+        var ids = bookingIds.ToList();
+        var bookings = await db.Bookings
+            .Where(b => ids.Contains(b.Id) && b.VehiclePlate != null)
+            .ToListAsync(cancellationToken);
+        foreach (var booking in bookings)
+        {
+            booking.VehiclePlate = null;
             booking.UpdatedAt = now;
         }
 
@@ -826,7 +858,8 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         s.CitizenshipCode, s.CitizenshipName, s.DocumentType?.ToString(), s.DocumentTypeCode, s.DocumentNumber,
         s.DocumentIssuePlaceCode, s.DocumentIssuePlaceName, s.DocumentIssuedOn?.ToString("O"), s.DocumentExpiresOn?.ToString("O"),
         s.ResidenceInItaly?.ToString(), s.ResidenceComuneCode, s.ResidenceComuneName, s.ResidenceProvince, s.ResidenceCountryCode,
-        s.ResidenceCountryName, s.TourismType, s.TravelWay, s.EducationLevel, s.TaxExemptionCode);
+        s.ResidenceCountryName, s.TourismType, s.TravelWay, s.EducationLevel, s.TaxExemptionCode,
+        s.ResidenceStreet, s.ResidencePostalCode, s.ResidenceCityName);
 
     private static string Fingerprint(GuestContact c) => string.Join(
         '\u001f',
