@@ -16981,6 +16981,111 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("SwissMunicipalities");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.SwissNotificationDeclaration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("ArrivalDay")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("portal");
+
+                    b.Property<DateTime>("DeclaredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeclaredByUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ReceiptId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RegimeCode")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("ReceiptId");
+
+                    b.HasIndex("PropertyId", "ArrivalDay")
+                        .IsUnique()
+                        .HasDatabaseName("UX_SwissNotificationDeclarations_Property_Day")
+                        .HasFilter("\"RegimeCode\" IS NULL");
+
+                    b.HasIndex("PropertyId", "ArrivalDay", "RegimeCode")
+                        .IsUnique()
+                        .HasDatabaseName("UX_SwissNotificationDeclarations_Property_Day_Regime")
+                        .HasFilter("\"RegimeCode\" IS NOT NULL");
+
+                    b.ToTable("SwissNotificationDeclarations");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SwissNotificationFileEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("ArrivalDay")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("PropertyId", "ArrivalDay", "CreatedAt");
+
+                    b.ToTable("SwissNotificationFileEvents", t =>
+                        {
+                            t.HasCheckConstraint("CK_SwissNotificationFileEvents_Format", "\"Format\" IN ('csv', 'xml', 'register', 'groupSheet')");
+
+                            t.HasCheckConstraint("CK_SwissNotificationFileEvents_RowCount", "\"RowCount\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.TaxObligationEvidence", b =>
                 {
                     b.Property<Guid>("Id")
@@ -21892,6 +21997,41 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SwissNotificationDeclaration", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.SwissComplianceReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SwissNotificationFileEvent", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.TaxObligationEvidence", b =>

@@ -21,6 +21,12 @@ public sealed class TicinoNotificationRequest
     /// <summary><c>csv</c> (default, the official CSV model) or <c>xml</c> (the official XSD), case-insensitive.</summary>
     public string? Format { get; set; }
 
+    /// <summary>
+    /// <c>true</c> when the person confirmed that the file of a day that is already declared (or has a receipt of the portal) is generated again, knowing that the portal may create
+    /// duplicates (E30/F02/US02/T01, NF-128). Without it such a day answers 409 <c>ticino_day_already_declared</c>; a day that is not declared is never asked. Default <c>false</c>.
+    /// </summary>
+    public bool ConfirmRegenerate { get; set; }
+
     /// <summary>The format of <paramref name="value"/>: CSV when blank; false when it is neither <c>csv</c> nor <c>xml</c>.</summary>
     public static bool TryParseFormat(string? value, out TicinoPoliceFileFormat format)
     {
@@ -57,6 +63,14 @@ public sealed class TicinoNotificationRequest
 /// The characters of the rows that <paramref name="CsvCharset"/> cannot hold (NF-126): the CSV writes them without their accent, or as <c>?</c> as the
 /// last resort. More than zero: the page says that some names are written without a letter they have, before the host uploads the file.
 /// </param>
+/// <param name="DeclaredAt">When a person of the org declared the day uploaded to the portal (E30/F02/US02/T01), UTC; <c>null</c> while nobody did.</param>
+/// <param name="DeclaredBy">The display name (first and last name) of the person who declared it; <c>null</c> while nobody did, and when the account no longer exists.</param>
+/// <param name="FileGeneratedAt">When the file of the day (CSV or XML) was generated last, UTC; <c>null</c> when it never was.</param>
+/// <param name="FileGeneratedCount">How many times the file of the day (CSV or XML) was generated: more than one is the risk of duplicates on the portal.</param>
+/// <param name="AlreadyDeclared">
+/// The day is closed: it is declared (<paramref name="DeclaredAt"/> is set) or has a receipt (<paramref name="ReceiptCount"/> is more than zero), which is also the rule that takes it off the
+/// days to notify. Generating its file again needs <c>confirmRegenerate: true</c> (409 <c>ticino_day_already_declared</c> otherwise).
+/// </param>
 public sealed record TicinoNotificationDayResponse(
     Guid PropertyId,
     DateOnly Day,
@@ -72,7 +86,12 @@ public sealed record TicinoNotificationDayResponse(
     IReadOnlyList<TicinoPendingDayResponse> PendingDays,
     IReadOnlyList<TicinoStayWarningResponse> Warnings,
     string CsvCharset = "windows-1252",
-    int TransliteratedCount = 0)
+    int TransliteratedCount = 0,
+    DateTime? DeclaredAt = null,
+    string? DeclaredBy = null,
+    DateTime? FileGeneratedAt = null,
+    int FileGeneratedCount = 0,
+    bool AlreadyDeclared = false)
 {
     public static TicinoNotificationDayResponse From(TicinoNotificationDay day)
     {
@@ -92,7 +111,52 @@ public sealed record TicinoNotificationDayResponse(
             day.PendingDays.Select(p => new TicinoPendingDayResponse(p.Day, p.StayCount, p.DueAtUtc)).ToList(),
             day.Plan.Warnings.Select(w => new TicinoStayWarningResponse(w.BookingId, w.Code)).ToList(),
             day.CsvCharset,
-            day.TransliteratedCount);
+            day.TransliteratedCount,
+            day.DeclaredAtUtc,
+            day.DeclaredBy,
+            day.FileGeneratedAtUtc,
+            day.FileGeneratedCount,
+            day.AlreadyDeclared);
+    }
+}
+
+/// <summary>
+/// Body of <c>POST /api/properties/{propertyId}/swiss/ticino-notification/declare</c> (E30/F02/US02/T01, NF-128, decision D10): the arrival day the host uploaded to the police portal, and
+/// optionally the receipt of the portal they recorded for it.
+/// </summary>
+public sealed class DeclareTicinoDayRequest
+{
+    /// <summary>The arrival day, a calendar day (<c>yyyy-MM-dd</c>) in Switzerland (Europe/Zurich), not after today.</summary>
+    [Required(ErrorMessage = "SwissArrivalDayRequired")]
+    public DateOnly? ArrivalDay { get; set; }
+
+    /// <summary>
+    /// A <c>Police</c> receipt of this property whose report date is the arrival day (the id <c>POST …/upload-receipt</c> gave back): optional, the declaration closes the day without it. A
+    /// receipt of another property, of another day or of another type is refused (422 <c>ticino_declaration_receipt_invalid</c>).
+    /// </summary>
+    public Guid? ReceiptId { get; set; }
+}
+
+/// <summary>
+/// The declaration of an arrival day, answer of <c>POST …/ticino-notification/declare</c> (E30/F02/US02/T01): the same answer on every repeat of the call. No guest data: the day response
+/// (<see cref="TicinoNotificationDayResponse"/>) carries the guests and asks <c>guest.read</c>; this one only says that the day is declared, by whom and when.
+/// </summary>
+/// <param name="PropertyId">The property.</param>
+/// <param name="ArrivalDay">The arrival day.</param>
+/// <param name="DeclaredAt">When it was declared (UTC): the instant of the first declaration, whoever repeats the call.</param>
+/// <param name="DeclaredBy">The display name (first and last name) of the person who declared it; <c>null</c> when the account no longer exists.</param>
+/// <param name="ReceiptId">The receipt attached to the declaration; <c>null</c> when there is none.</param>
+/// <param name="Created">
+/// <c>true</c> when this call recorded the declaration (the other hosts were told); <c>false</c> when the day was declared already, by this person or by a co-host: the answer is then the
+/// declaration that was there.
+/// </param>
+public sealed record TicinoDeclarationResponse(Guid PropertyId, DateOnly ArrivalDay, DateTime DeclaredAt, string? DeclaredBy, Guid? ReceiptId, bool Created)
+{
+    public static TicinoDeclarationResponse From(TicinoDeclaration declaration)
+    {
+        ArgumentNullException.ThrowIfNull(declaration);
+        return new TicinoDeclarationResponse(
+            declaration.PropertyId, declaration.Day, declaration.DeclaredAtUtc, declaration.DeclaredBy, declaration.ReceiptId, declaration.Created);
     }
 }
 

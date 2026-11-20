@@ -342,6 +342,18 @@
   <data name="SwissReceiptDateTooOld" xml:space="preserve">
     <value>The date is more than {0} years ago: a document of this type is kept {0} years from its date, so the automatic retention would delete it at once. Check the date (the arrival day).</value>
   </data>
+  <data name="SwissArrivalDayRequired" xml:space="preserve">
+    <value>Provide the arrival day.</value>
+  </data>
+  <data name="TicinoDayAlreadyDeclared" xml:space="preserve">
+    <value>This day is already notified to the cantonal police: declared as uploaded, or with a receipt recorded. Uploading the file to the portal again may create duplicates. Generate the file only if you really need it, and confirm.</value>
+  </data>
+  <data name="TicinoDeclarationDayInFuture" xml:space="preserve">
+    <value>You cannot declare a day that has not started yet as notified: the guests have not arrived.</value>
+  </data>
+  <data name="TicinoDeclarationReceiptInvalid" xml:space="preserve">
+    <value>The receipt is not a police receipt of this property for this arrival day.</value>
+  </data>
   <data name="BookingNotFound" xml:space="preserve">
     <value>Booking not found</value>
   </data>
