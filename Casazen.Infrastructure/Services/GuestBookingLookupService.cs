@@ -15,7 +15,8 @@ namespace Casazen.Infrastructure.Services;
 /// Anonymous endpoints: org of the site, booking code and email are matched in one query, so a missing code, a code of
 /// another org and a wrong email take the same path and get the same 404. Only bookings of the public checkout
 /// (<see cref="BookingSource.Direct"/>): their guests are the ones who receive the code. Nothing is logged of what the
-/// guest typed.
+/// guest typed. The guest session may prove the booking with the last four digits of the phone instead of the e-mail
+/// (<see cref="LoadByPhoneAsync"/>, NF-143), with the same 404.
 /// </remarks>
 public sealed class GuestBookingLookupService(
     AppDbContext db,
@@ -27,6 +28,10 @@ public sealed class GuestBookingLookupService(
     TimeProvider? timeProvider = null,
     IBookingFlowSettingsService? flowSettings = null) : IGuestBookingLookupService
 {
+    // What the phone proof looks up when the guest typed something that is not a code: a stored code has only the characters of
+    // BookingCodes.Alphabet, so no booking has this one.
+    private const string UnmatchableCode = "-";
+
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public async Task<GuestBookingView> FindAsync(
@@ -141,6 +146,58 @@ public sealed class GuestBookingLookupService(
                 b.Guest.Email.Trim().ToLower() == email)
             .SingleOrDefaultAsync(cancellationToken);
 
+        return booking ?? throw NotFound();
+    }
+
+    /// <summary>
+    /// The booking of the site that matches <paramref name="credentials"/>, proved with the last four digits of the guest's phone instead of the
+    /// e-mail (NF-143, the guest session only); the same <see cref="NotFoundException"/> as the e-mail proof whatever does not match.
+    /// </summary>
+    /// <remarks>
+    /// One path for every outcome, so neither the answer nor its time tells whether a code exists: an unknown code, a code of another site, a string
+    /// that is not a code, a booking without a phone and wrong digits all run the same light query (the booking id and the guest's phone, nothing
+    /// else; a site or a code that cannot match is looked up all the same) and the same fixed-time comparison
+    /// (<see cref="GuestPhoneDigits.Matches"/>, against a placeholder when there is nothing to compare). The booking is loaded in full only after the
+    /// digits match. Direct bookings of an active org only, as the e-mail proof. Nothing the guest typed is logged.
+    /// </remarks>
+    internal async Task<Booking> LoadByPhoneAsync(GuestBookingPhoneCredentials credentials, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(credentials);
+        var slug = credentials.OrgSlug?.Trim() ?? string.Empty;
+
+        // The slug of the link may be a previous slug of the org (PL-04). A slug of no org and a string that is not a code still run the query below,
+        // with values no booking has.
+        var orgId = slug.Length == 0 ? null : await OrgService.ResolveOrgIdBySlugAsync(db, slug, cancellationToken);
+        var site = orgId ?? Guid.Empty;
+        var code = BookingCodes.TryNormalize(credentials.BookingCode, out var normalized) ? normalized : UnmatchableCode;
+
+        // Anonymous request: the tenant filter is off, the org comes from the site and code + digits are the access check. (OrgId, BookingCode) is
+        // unique, so the query finds at most one booking.
+        var candidate = await db.Bookings
+            .AsNoTracking()
+            .Where(b =>
+                b.BookingCode == code &&
+                b.Source == BookingSource.Direct &&
+                b.OrgId == site &&
+                b.Org.IsActive)
+            .Select(b => new { b.Id, b.Guest.PhoneNumber })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        var matches = GuestPhoneDigits.Matches(candidate?.PhoneNumber, credentials.PhoneLast4);
+        if (!matches || candidate is null)
+            throw NotFound();
+
+        var booking = await db.Bookings
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(b => b.Property)
+            .Include(b => b.Org)
+            .Include(b => b.Guest)
+            .Include(b => b.Payments)
+            .Where(b => b.Id == candidate.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        // Gone between the two reads: the answer of any other refusal.
         return booking ?? throw NotFound();
     }
 

@@ -68,16 +68,24 @@ public class ApprovalQueueService(
             throw new ArgumentException($"A situation code is a code of at most {ApprovalQueueItem.SituationCodeMaxLength} characters.", nameof(situationCode));
 
         string? thread = null;
+        MessageThreadKey parsedKey = default;
         if (threadKey is not null)
         {
-            thread = MessageThreadKey.TryParse(threadKey, out var parsed)
-                ? parsed.ToString()
-                : throw new ArgumentException("A thread key is 'ota:' or 'direct:' followed by a GUID.", nameof(threadKey));
+            if (!MessageThreadKey.TryParse(threadKey, out parsedKey))
+                throw new ArgumentException("A thread key is the key of a conversation or of a review (MessageThreadKey): a prefix and a GUID.", nameof(threadKey));
+
+            thread = parsedKey.ToString();
         }
 
+        // The draft of a message belongs to a conversation, never to a review; the draft of a reply to a review belongs to the review the item is about (E05/F06/US01/T03): a key of the
+        // other kind would let an approval send a message where a reply was written, or the other way round.
         var isMessageDraft = string.Equals(itemType, ApprovalItemTypes.MessageDraft, StringComparison.Ordinal);
-        if (isMessageDraft && thread is null)
+        if (isMessageDraft && (thread is null || parsedKey.IsReview))
             throw new ArgumentException("The draft of a message names the conversation it belongs to.", nameof(threadKey));
+
+        var isReviewReply = string.Equals(itemType, ApprovalItemTypes.ReviewReply, StringComparison.Ordinal);
+        if (isReviewReply && (thread is null || !parsedKey.IsReview || parsedKey.Id != itemId))
+            throw new ArgumentException("The draft of a reply to a review names the review it answers, which is the item.", nameof(threadKey));
 
         // What approving does is what the registry says for the type: an item that says it sends a message and has no action that sends it would be approved and do nothing.
         var action = actions.Find(itemType);

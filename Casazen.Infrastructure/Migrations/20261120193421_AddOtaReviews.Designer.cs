@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261120214631_AddGuestPortalLinks")]
-    partial class AddGuestPortalLinks
+    [Migration("20261120193421_AddOtaReviews")]
+    partial class AddOtaReviews
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -4468,61 +4468,6 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.GuestPortalLink", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("AccountAttachedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("AccountUserId")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<Guid>("BookingId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CreatedByUserId")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("OrgId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Token")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AccountUserId");
-
-                    b.HasIndex("BookingId")
-                        .IsUnique()
-                        .HasDatabaseName("UIX_GuestPortalLinks_BookingId_Active")
-                        .HasFilter("\"RevokedAt\" IS NULL");
-
-                    b.HasIndex("OrgId");
-
-                    b.HasIndex("Token")
-                        .IsUnique()
-                        .HasDatabaseName("UIX_GuestPortalLinks_Token");
-
-                    b.ToTable("GuestPortalLinks");
-                });
-
             modelBuilder.Entity("Casazen.Core.Entities.GuestPrivacyAuditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8506,6 +8451,147 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_OtaMessageThreads_Kind", "\"Kind\" IN (1, 2)");
 
                             t.HasCheckConstraint("CK_OtaMessageThreads_LastMessageDirection", "\"LastMessageDirection\" IS NULL OR \"LastMessageDirection\" IN (1, 2)");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OtaReview", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("GuestCategoryRatingsJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<decimal?>("GuestRating")
+                        .HasPrecision(3, 1)
+                        .HasColumnType("numeric(3,1)");
+
+                    b.Property<bool>("GuestReviewPublished")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("GuestReviewPublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("GuestReviewText")
+                        .HasColumnType("text")
+                        .HasColumnName("GuestReviewTextEncrypted");
+
+                    b.Property<string>("HostReplyError")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("HostReplyIdempotencyKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("HostReplyRequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("HostReplySentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("HostReplyState")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("HostReplyText")
+                        .HasColumnType("text")
+                        .HasColumnName("HostReplyTextEncrypted");
+
+                    b.Property<string>("HostReviewError")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("HostReviewIdempotencyKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("HostReviewJson")
+                        .HasColumnType("text")
+                        .HasColumnName("HostReviewJsonEncrypted");
+
+                    b.Property<DateTime?>("HostReviewRequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("HostReviewSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("HostReviewState")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("HostReviewWindow")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LastSyncError")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("LastSyncedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("NextPollAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OctorateRefer")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("PollCount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.HasIndex("NextPollAt")
+                        .HasDatabaseName("IX_OtaReviews_NextPollAt")
+                        .HasFilter("\"NextPollAt\" IS NOT NULL");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("OrgId", "BookingId", "Channel")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OtaReviews_OrgId_BookingId_Channel");
+
+                    b.HasIndex("OrgId", "PropertyId", "GuestReviewPublishedAt")
+                        .HasDatabaseName("IX_OtaReviews_OrgId_PropertyId_GuestReviewPublishedAt");
+
+                    b.ToTable("OtaReviews", t =>
+                        {
+                            t.HasCheckConstraint("CK_OtaReviews_Channel", "\"Channel\" IN (1, 2, 3, 4)");
+
+                            t.HasCheckConstraint("CK_OtaReviews_GuestRating", "\"GuestRating\" IS NULL OR \"GuestRating\" BETWEEN 1 AND 5");
+
+                            t.HasCheckConstraint("CK_OtaReviews_HostReplyState", "\"HostReplyState\" IN (0, 1, 2, 3)");
+
+                            t.HasCheckConstraint("CK_OtaReviews_HostReviewState", "\"HostReviewState\" IN (0, 1, 2, 3)");
+
+                            t.HasCheckConstraint("CK_OtaReviews_HostReviewWindow", "\"HostReviewWindow\" IN (0, 1, 2, 3)");
                         });
                 });
 
@@ -13477,11 +13563,6 @@ namespace Casazen.Infrastructure.Migrations
                         },
                         new
                         {
-                            RoleId = 1,
-                            PermissionKey = "guestportal.manage"
-                        },
-                        new
-                        {
                             RoleId = 2,
                             PermissionKey = "property.read"
                         },
@@ -13694,11 +13775,6 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             RoleId = 7,
                             PermissionKey = "verification.decision"
-                        },
-                        new
-                        {
-                            RoleId = 7,
-                            PermissionKey = "guestportal.manage"
                         },
                         new
                         {
@@ -19651,21 +19727,6 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Thread");
                 });
 
-            modelBuilder.Entity("Casazen.Core.Entities.GuestPortalLink", b =>
-                {
-                    b.HasOne("Casazen.Core.Entities.Booking", null)
-                        .WithMany()
-                        .HasForeignKey("BookingId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Casazen.Core.Entities.Org", null)
-                        .WithMany()
-                        .HasForeignKey("OrgId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Casazen.Core.Entities.GuestPrivacyAuditEntry", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", null)
@@ -20448,6 +20509,31 @@ namespace Casazen.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("PropertyId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Booking");
+
+                    b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OtaReview", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Booking", "Booking")
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Booking");
 

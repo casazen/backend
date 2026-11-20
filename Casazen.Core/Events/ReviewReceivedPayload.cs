@@ -17,4 +17,11 @@ public sealed record ReviewReceivedPayload(Guid ReviewId, Guid BookingId, Guid P
     /// one for each booking, so the key is a second wall (the unique index of the outbox refuses a second event with it).
     /// </summary>
     public static string DedupKeyOf(Guid reviewId) => $"review-received:{reviewId:N}";
+
+    /// <summary>
+    /// The dedup key of the event of a review of a channel (E05/F06/US01/T02): one event for each <c>OtaReview</c>, the first time the channel shows the guest's review published.
+    /// The event of such a review has the id of the <c>OtaReview</c> as <c>EntityId</c> and as <see cref="ReviewId"/> (the two tables have ids of their own), so a consumer finds the
+    /// review in the table it belongs to, in its own org, by that id.
+    /// </summary>
+    public static string OtaDedupKeyOf(Guid otaReviewId) => $"ota-review:{otaReviewId:N}";
 }

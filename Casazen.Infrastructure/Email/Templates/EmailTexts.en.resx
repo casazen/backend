@@ -868,7 +868,10 @@
     <value>The stay dates changed: the cleaning is already taken, decide whether to move or cancel it</value>
   </data>
   <data name="TodoReason_CleaningVatToState" xml:space="preserve">
-    <value>The cleaning to recharge to the owner has no VAT stated: state it (and the amount, if it is missing) before closing the statement</value>
+    <value>Cleaning to recharge to the owner: did the cleaning company apply VAT on this invoice?</value>
+  </data>
+  <data name="TodoReason_CleaningVatToStateAgain" xml:space="preserve">
+    <value>The month is closed and the VAT of this cleaning is still not stated: did the cleaning company apply VAT on this invoice?</value>
   </data>
   <data name="OwnerLedger_CleaningRecharge" xml:space="preserve">
     <value>Cleaning of {0}</value>
@@ -2893,6 +2896,20 @@
   </data>
   <data name="Push_CheckInLinkFailed_Body" xml:space="preserve">
     <value>{0}: the check-in link did not reach the guest automatically. Open the booking, copy it and send it yourself.</value>
+  </data>
+  <!-- E05/F06/US01/T02 (NF-69): the pushes to the host about the reviews of the channels: a review appeared, and a reply or a host review that did not reach the channel. The property
+       only: never the guest, the mark or a word of the review. No supplier is named. -->
+  <data name="Push_OtaReviewReceived_Title" xml:space="preserve">
+    <value>New review</value>
+  </data>
+  <data name="Push_OtaReviewReceived_Body" xml:space="preserve">
+    <value>{0}: a guest left a review. Open the booking to read it and reply.</value>
+  </data>
+  <data name="Push_OtaReviewActionFailed_Title" xml:space="preserve">
+    <value>Reply to the review not delivered</value>
+  </data>
+  <data name="Push_OtaReviewActionFailed_Body" xml:space="preserve">
+    <value>{0}: your reply or your review did not reach the channel. Open the booking and try again.</value>
   </data>
   <data name="Push_TicinoNotificationDeclared_Title" xml:space="preserve">
     <value>Police notification declared</value>

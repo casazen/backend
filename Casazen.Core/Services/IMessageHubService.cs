@@ -84,6 +84,20 @@ public interface IMessageHubService
     /// Ordered by property name.
     /// </summary>
     Task<IReadOnlyList<MessageChannelStatus>> GetChannelStatusAsync(HostScope scope, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One review of the list <c>kind=review</c> (E05/F06/US01/T03, NF-69): the stars and the categories, the words of the guest, the host's reply and where it stands, the host's own review
+    /// (a review of a channel only) and its window, the booking card and what the channel allows (<see cref="OtaReviewCapabilitiesView"/>: for a review of a channel the table of
+    /// <see cref="OtaReviewCapabilities"/> narrowed by the connector and the listing; for one of the booking site a reply once and no review of the host). <paramref name="key"/> has to be the key of a
+    /// review (<see cref="MessageThreadKey.IsReview"/>), and <paramref name="includeAmounts"/> is false for a caller without <c>payment.read</c>, as for a conversation. <see cref="Exceptions.NotFoundException"/>
+    /// <c>thread_not_found</c> (404) for the key of a conversation, and for a review that is not there, is of another org or is out of the reach of the scope (a review of a channel nobody
+    /// published yet is not there either).
+    /// </summary>
+    Task<ReviewThreadView> GetReviewThreadAsync(
+        HostScope scope,
+        MessageThreadKey key,
+        bool includeAmounts,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>The codes of <see cref="MessageChannelStatus.Status"/>.</summary>
@@ -119,11 +133,17 @@ public enum MessageHubChannel
     Storefront = 5,
 }
 
-/// <summary>What a conversation is about: a reservation, or a request with no booking yet (an inquiry). The numbers are those of <see cref="OtaThreadKind"/>; a direct conversation is always a reservation.</summary>
+/// <summary>
+/// What a row of the hub is about: a reservation, or a request with no booking yet (an inquiry). The numbers 1 and 2 are those of <see cref="OtaThreadKind"/>; a direct conversation is always a
+/// reservation. <see cref="Review"/> is the review a guest left (E05/F06/US01/T03): it is listed only under the filter <c>kind=review</c>, never in the default view, and opened with its own detail.
+/// </summary>
 public enum MessageHubThreadKind
 {
     Reservation = 1,
     Request = 2,
+
+    /// <summary>The review of a stay, of a channel (<see cref="MessageThreadSource.OtaReview"/>) or of the booking site (<see cref="MessageThreadSource.Review"/>): not a conversation.</summary>
+    Review = 3,
 }
 
 /// <summary>Whether the conversation is still being worked on: open, closed (a direct thread past the seventh day after the check-out) or archived on the channel manager.</summary>
@@ -143,7 +163,7 @@ public enum MessageHubThreadState
 /// <param name="Channel">The conversations of one channel, or the direct ones.</param>
 /// <param name="BookingId">The conversation of one booking.</param>
 /// <param name="Unread">True: with messages the host has not read. False: with none.</param>
-/// <param name="Kind">Reservations, or requests (a direct conversation is a reservation).</param>
+/// <param name="Kind">Reservations, or requests (a direct conversation is a reservation); <see cref="MessageHubThreadKind.Review"/> lists the reviews and nothing else (the default view has none).</param>
 /// <param name="Query">A piece of the name of the guest, of the booking code or of the name of the property.</param>
 public sealed record MessageHubFilter(
     bool? NeedsReply = null,
@@ -180,7 +200,8 @@ public sealed record MessageHubThreadSummary(
     MessageOrigin? LastMessageOrigin,
     string? Preview,
     int UnreadCount,
-    bool NeedsReply);
+    bool NeedsReply,
+    decimal? Rating = null);
 
 /// <summary>A page of the list of the hub.</summary>
 public sealed record MessageHubPage(IReadOnlyList<MessageHubThreadSummary> Items, int TotalCount, int Page, int PageSize);
@@ -267,6 +288,31 @@ public sealed record MessageThreadActions(
     /// <summary>Nothing is allowed because of <paramref name="reason"/>.</summary>
     public static MessageThreadActions Blocked(string reason) => new(false, false, false, false, reason);
 }
+
+/// <summary>
+/// One review with everything the screen shows beside it (E05/F06/US01/T03). The words of the guest and of the host are personal data: for the host only, never logged.
+/// <paramref name="Rating"/> is 1 to 5 (to one decimal for a channel); <paramref name="HostReview"/> is <c>null</c> for a review of the booking site, which has no review of the host;
+/// <paramref name="LastSyncedAt"/> and <paramref name="LastSyncError"/> say how the last read of the channel manager went (<c>null</c> for the booking site).
+/// </summary>
+public sealed record ReviewThreadView(
+    MessageThreadKey Key,
+    MessageThreadSource Source,
+    MessageHubChannel Channel,
+    Guid PropertyId,
+    string? PropertyName,
+    Guid BookingId,
+    string? GuestName,
+    DateTime? PublishedAt,
+    decimal? Rating,
+    IReadOnlyList<ReviewCategoryRating> CategoryRatings,
+    string? Text,
+    ReviewReplyView Reply,
+    OtaHostReviewView? HostReview,
+    MessageBookingCard? Booking,
+    Guid? CustomerGuestId,
+    OtaReviewCapabilitiesView Capabilities,
+    DateTime? LastSyncedAt,
+    string? LastSyncError);
 
 /// <summary>
 /// One conversation with everything the screen shows beside it. <paramref name="CustomerGuestId"/> is the guest of the booking, for the link to the

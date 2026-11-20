@@ -170,6 +170,12 @@ public class AppDbContext(
     public DbSet<TrustedSupplier> TrustedSuppliers { get; set; } = null!;
 
     /// <summary>
+    /// What an organization remembers of the VAT of a cleaning company («Ricorda per questa ditta», FIX/BE-CLEANING-VAT): tenant-owned, one row for each
+    /// organization and company. Only <c>CleaningVatService</c> writes it; the readers of the cleaning VAT read it with the org named.
+    /// </summary>
+    public DbSet<SupplierVatDefault> SupplierVatDefaults { get; set; } = null!;
+
+    /// <summary>
     /// Internal activities performed by staff on properties (NF-22): cleaning, maintenance, check-in assistance.
     /// Staff sees only activities within their perimeter (PropertyMemberAccess).
     /// </summary>
@@ -492,6 +498,10 @@ public class AppDbContext(
     public DbSet<OtaMessage> OtaMessages { get; set; } = null!;
     public DbSet<OtaMessageSyncState> OtaMessageSyncStates { get; set; } = null!;
     public DbSet<MessageTemplate> MessageTemplates { get; set; } = null!;
+
+    // What the channel manager says about the reviews of a booking of a channel (Airbnb): the guest's review, the host's reply and the host's own review, with the state
+    // of each and of the read; the words are encrypted (E05/F06/US01/T01, ADR-032, NF-69). The reviews of the booking site are the Reviews above.
+    public DbSet<OtaReview> OtaReviews { get; set; } = null!;
 
     // The assistant that answers the guests' messages (E05/F05/US01/T01, NF-66, NF-67): the knowledge base of a property and of an organization (the free text
     // encrypted), the rules of the organization and the exceptions of a property, what it does in each situation, the lessons it proposes, the log of what it
@@ -1755,6 +1765,10 @@ public class AppDbContext(
         // The lease a long-rent request is about (LR-03c): a link, set only when the landlord asks from the sheet of the contract.
         modelBuilder.ApplyConfiguration(new ServiceRequestLeaseConfiguration());
 
+        // The VAT of the company of a cleaning recharged to the owner (FIX/BE-CLEANING-VAT): the answer on the request, and what an organization remembers of a company.
+        modelBuilder.ApplyConfiguration(new ServiceRequestSupplierVatConfiguration());
+        modelBuilder.ApplyConfiguration(new SupplierVatDefaultConfiguration());
+
         // Whether an org's requests also go to backup suppliers: on for every org that exists (the rule is general), so the migration gives
         // the existing rows true. EF itself always writes the value of the entity: left to generate it, EF would take an explicit false for
         // «not set» and the insert would write the default (true) in its place, turning the rule back on for an org that switched it off.
@@ -2036,6 +2050,10 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OtaMessageConfiguration());
         modelBuilder.ApplyConfiguration(new OtaMessageSyncStateConfiguration());
         modelBuilder.ApplyConfiguration(new MessageTemplateConfiguration());
+
+        // The reviews of the channels (E05/F06/US01/T01, NF-69): one row per organization, booking and channel (UIX_OtaReviews_OrgId_BookingId_Channel); the words of the
+        // guest, the reply and the review of the host are encrypted (EncryptedColumns); xmin is the concurrency token, so a reply is saved, and sent, once.
+        modelBuilder.ApplyConfiguration(new OtaReviewConfiguration());
 
         // ─── The AI assistant (E05/F05/US01/T01, NF-66, NF-67, ADR-032) ───────────────
         // The free text of a host (the entries of the knowledge base, the lessons, the response templates) is encrypted by EncryptedColumns; the decision log holds ids

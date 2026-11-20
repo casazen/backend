@@ -1747,6 +1747,15 @@
   <data name="GuestBookingEmailInvalid" xml:space="preserve">
     <value>Invalid email address.</value>
   </data>
+  <data name="GuestSessionProofRequired" xml:space="preserve">
+    <value>Enter the email address you booked with or the last 4 digits of your phone number.</value>
+  </data>
+  <data name="GuestSessionProofExclusive" xml:space="preserve">
+    <value>Use either the email address or the last 4 digits of the phone, not both.</value>
+  </data>
+  <data name="GuestSessionPhoneLast4Invalid" xml:space="preserve">
+    <value>Enter only the last 4 digits of the phone number you booked with.</value>
+  </data>
   <data name="PublicPropertyNotFound" xml:space="preserve">
     <value>This property is not available for online booking.</value>
   </data>
@@ -8691,6 +8700,49 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="AgentTrainingGeneration" xml:space="preserve">
     <value>AI did not generate valid scenarios. Specify when to perform and when to skip the action, then try again.</value>
   </data>
+  <!-- E05/F06/US01/T02 (NF-69, OCT-12): the reviews of the channels. No supplier is named: «channel manager» only. -->
+  <data name="OtaReviewNotFound" xml:space="preserve">
+    <value>The review does not exist or is not accessible.</value>
+  </data>
+  <data name="OtaReviewChannelNotIntegrated" xml:space="preserve">
+    <value>The reviews of this channel are not connected to CasaZen: they cannot be read or answered from here.</value>
+  </data>
+  <data name="OtaReviewChannelNotSupported" xml:space="preserve">
+    <value>From CasaZen you can reply to Airbnb reviews and write your own review of the guest for Airbnb only.</value>
+  </data>
+  <data name="OtaReviewNotPublished" xml:space="preserve">
+    <value>The guest’s review is not published on the channel yet: there is nothing to reply to for now.</value>
+  </data>
+  <data name="OtaReviewWindowClosed" xml:space="preserve">
+    <value>The period to write your own review of the guest is not open.</value>
+  </data>
+  <data name="OtaReviewActionNotAllowed" xml:space="preserve">
+    <value>The channel did not accept the operation: it is not allowed or it was already done. Refresh the reviews of the booking to see the real state.</value>
+  </data>
+  <data name="OtaReviewReplyAlreadySent" xml:space="preserve">
+    <value>You have already replied to this review.</value>
+  </data>
+  <data name="OtaReviewHostReviewAlreadySent" xml:space="preserve">
+    <value>You have already written your own review of the guest.</value>
+  </data>
+  <data name="OtaReviewActionUnconfirmed" xml:space="preserve">
+    <value>An earlier attempt has not been confirmed by the channel yet: CasaZen checks it by itself and only marks it as not delivered after an hour. Wait before trying again.</value>
+  </data>
+  <data name="OtaReviewHostReviewInvalid" xml:space="preserve">
+    <value>Your review of the guest is not valid: it needs at least one whole rating from 1 to 5 for a category and the text.</value>
+  </data>
+  <data name="OtaReviewRefreshTooSoon" xml:space="preserve">
+    <value>The reviews of this booking were read a moment ago: try again in a few minutes.</value>
+  </data>
+  <data name="OtaReviewBookingNotReviewable" xml:space="preserve">
+    <value>There are no reviews to read for this booking: the stay did not happen (the booking was cancelled or the guest did not show up) or it has no usable reference on the channel.</value>
+  </data>
+  <data name="OctorateReviewNotAvailable" xml:space="preserve">
+    <value>The reviews of this property are not available in the channel manager (usually a permission is missing or the channel is not connected): they cannot be read for now.</value>
+  </data>
+  <data name="OctorateReviewActionNotAllowed" xml:space="preserve">
+    <value>The channel manager refused the operation on the review: it is not allowed or it was already done.</value>
+  </data>
   <data name="TicinoStructureIdInvalid" xml:space="preserve">
     <value>The LEAR / NO-LEAR identification number is not valid: 3 to 20 letters and digits, with single hyphens (e.g. NL-12345678).</value>
   </data>
@@ -8735,5 +8787,20 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="GuestPortalLinkInvalid" xml:space="preserve">
     <value>This stay link is not valid or no longer active: ask your host for the current link.</value>
+  </data>
+  <data name="CleaningVatAnswerInvalid" xml:space="preserve">
+    <value>State whether the cleaning company applied VAT: Yes, No or I don't know.</value>
+  </data>
+  <data name="CleaningVatNotCompleted" xml:space="preserve">
+    <value>The cleaning is not completed yet: the company's VAT is stated on the invoice of a completed cleaning.</value>
+  </data>
+  <data name="CleaningVatRateUnknown" xml:space="preserve">
+    <value>There is no standard VAT rate of the country of this cleaning for its day: answer No or I don't know.</value>
+  </data>
+  <data name="CleaningVatRememberUnknown" xml:space="preserve">
+    <value>«I don't know» cannot be remembered for the company: untick «Remember for this company» or answer Yes or No.</value>
+  </data>
+  <data name="CleaningVatRememberForbidden" xml:space="preserve">
+    <value>Only someone who manages the whole organization can remember the answer for the company: answer for this cleaning only.</value>
   </data>
 </root>

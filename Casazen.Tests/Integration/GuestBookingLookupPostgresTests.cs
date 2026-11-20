@@ -351,6 +351,132 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
     }
 
     [PostgresFact]
+    public async Task PhoneVariant_RightDigitsOpenTheSessionOfTheEmail_AndEveryRefusalLooksLikeAWrongEmail()
+    {
+        // NF-143 (E40/F01/US03/T01), WhiteLabelHost on in LookupFactory: the twin on PostgreSQL of the main path of the phone proof, and of the booking
+        // without a phone, which only its e-mail opens.
+        var org = await SeedOrgAsync();
+        var otherOrg = await SeedOrgAsync();
+        var seed = await SeedBookingAsync(org, BookingStatus.Confirmed, checkInInDays: 30, phone: PhoneOfTheGuest);
+        var withoutPhone = await SeedBookingAsync(org, BookingStatus.Confirmed, checkInInDays: 35, phone: string.Empty);
+        var otherSite = await SeedBookingAsync(otherOrg, BookingStatus.Confirmed, checkInInDays: 40, phone: PhoneOfTheGuest);
+
+        // The right digits: the session of the e-mail proof (same body, same booking), and its token reads the booking.
+        var byPhone = await PostAsync(SessionPath, new
+        {
+            orgSlug = org.Slug,
+            bookingCode = BookingCodes.Format(seed.Code).ToLowerInvariant(),
+            phoneLast4 = "7364",
+        });
+        Assert.Equal(HttpStatusCode.OK, byPhone.StatusCode);
+        var phoneSession = JsonDocument.Parse(await byPhone.Content.ReadAsStringAsync()).RootElement;
+        var byEmail = await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = seed.Code, email = seed.Email });
+        var emailSession = JsonDocument.Parse(await byEmail.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal(emailSession.EnumerateObject().Select(p => p.Name), phoneSession.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(BookingCodes.Format(seed.Code), phoneSession.GetProperty("bookingCode").GetString());
+        var token = phoneSession.GetProperty("accessToken").GetString()!;
+        Assert.Equal(org.PropertyName, await PropertyNameAsync(await GetAsync($"{GuestBookingsPath}/{BookingCodes.Format(seed.Code)}", token)));
+
+        // Wrong digits, a code that does not exist, another site's code, not a code, a booking without a phone, a wrong e-mail: one answer.
+        var refusals = new[]
+        {
+            await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = seed.Code, phoneLast4 = "4821" }),
+            await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = UnusedCode(seed.Code), phoneLast4 = "7364" }),
+            await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = otherSite.Code, phoneLast4 = "7364" }),
+            await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = seed.BookingId.ToString("D"), phoneLast4 = "7364" }),
+            await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = withoutPhone.Code, phoneLast4 = "0000" }),
+            await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = seed.Code, email = $"other.{Guid.NewGuid():N}@example.com" }),
+        };
+        var answers = new List<string>();
+        foreach (var refusal in refusals)
+        {
+            Assert.Equal(HttpStatusCode.NotFound, refusal.StatusCode);
+            var problem = JsonDocument.Parse(await refusal.Content.ReadAsStringAsync()).RootElement;
+
+            // The digits are looked for in what the answer says, not in its trace id: that is a random hexadecimal string and can hold any four digits.
+            var said = SupplierBookingManageHttp.SameBody(problem);
+            Assert.DoesNotContain("7364", said, StringComparison.Ordinal);
+            Assert.DoesNotContain("4821", said, StringComparison.Ordinal);
+            Assert.Equal(GuestBookingLookupErrorCodes.NotFound, problem.GetProperty("code").GetString());
+            answers.Add(JsonSerializer.Serialize(new
+            {
+                status = problem.GetProperty("status").GetInt32(),
+                code = problem.GetProperty("code").GetString(),
+                title = problem.GetProperty("title").GetString(),
+                detail = problem.GetProperty("detail").GetString(),
+                keys = problem.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).ToArray(),
+                headers = HeadersOf(refusal),
+            }));
+        }
+
+        Assert.Single(answers.Distinct(StringComparer.Ordinal));
+
+        // AC-NF143-4: the booking without a phone is not found by the phone, and its e-mail still opens it.
+        var withoutPhoneByEmail = await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = withoutPhone.Code, email = withoutPhone.Email });
+        Assert.Equal(HttpStatusCode.OK, withoutPhoneByEmail.StatusCode);
+    }
+
+    [PostgresFact]
+    public async Task PhoneVariant_FifthFailureLocksTheCode_EvenWithTheRightDigits_AndTheEmailStillOpensIt()
+    {
+        var org = await SeedOrgAsync();
+        var seed = await SeedBookingAsync(org, BookingStatus.Confirmed, checkInInDays: 30, phone: PhoneOfTheGuest);
+        var madeUp = UnusedCode(seed.Code);
+
+        // Five wrong attempts on each code, each from an IP of its own: the lock counts per code, whatever the IP and whether the code exists.
+        foreach (var code in new[] { seed.Code, madeUp })
+        {
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                var failed = await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = code, phoneLast4 = "4821" });
+                Assert.Equal(HttpStatusCode.NotFound, failed.StatusCode);
+            }
+        }
+
+        // Locked: the right digits are not even checked, and the wait names the whole window (60 minutes); the made-up code answers alike.
+        var locked = await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = BookingCodes.Format(seed.Code), phoneLast4 = "7364" });
+        var problem = await ClientIpRateLimitingIntegrationTests.AssertRateLimitedAsync(locked);
+        Assert.Equal(TimeSpan.FromMinutes(60), locked.Headers.RetryAfter?.Delta);
+        Assert.Equal(3600, problem.GetProperty("retryAfterSeconds").GetInt32());
+        var lockedMadeUp = await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = madeUp, phoneLast4 = "7364" });
+        await ClientIpRateLimitingIntegrationTests.AssertRateLimitedAsync(lockedMadeUp);
+        Assert.Equal(TimeSpan.FromMinutes(60), lockedMadeUp.Headers.RetryAfter?.Delta);
+
+        // The e-mail proof keeps its own limits: the same code opens with the address of the booking.
+        var byEmail = await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = seed.Code, email = seed.Email });
+        Assert.Equal(HttpStatusCode.OK, byEmail.StatusCode);
+    }
+
+    [PostgresFact]
+    public async Task PhoneVariant_TooManyCallsFromOneIp_TheEleventhIs429()
+    {
+        // The per-IP policy of the session (PublicGuestSession, 10 per 5 minutes, as in production: LookupFactory) covers the phone proof too. A code
+        // of its own at each call, so neither the limit per code nor the lock plays a part.
+        var org = await SeedOrgAsync();
+        var peer = NextPeer();
+
+        for (var call = 0; call < 10; call++)
+        {
+            var answer = await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = BookingCodes.New(), phoneLast4 = "7364" }, peer);
+            Assert.Equal(HttpStatusCode.NotFound, answer.StatusCode);
+        }
+
+        await ClientIpRateLimitingIntegrationTests.AssertRateLimitedAsync(
+            await PostAsync(SessionPath, new { orgSlug = org.Slug, bookingCode = BookingCodes.New(), phoneLast4 = "7364" }, peer));
+    }
+
+    /// <summary>The phone of the guests of the phone proofs: at most 20 characters and a valid <c>[Phone]</c>; its last four digits are 7364.</summary>
+    private const string PhoneOfTheGuest = "+39 347 555 7364";
+
+    /// <summary>The headers of an answer the client could compare (<c>name=value</c>, sorted), without those that change with the moment or the size.</summary>
+    private static string[] HeadersOf(HttpResponseMessage response) =>
+        response.Headers.Concat(response.Content.Headers)
+            .Where(header => header.Key is not ("Date" or "Content-Length"))
+            .Select(header => $"{header.Key}={string.Join(",", header.Value)}")
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+    [PostgresFact]
     public async Task GuestMessages_AGuestNeverReachesTheThreadOfAnotherGuestOrSite_AndAHostNeverListsTheThreadOfAnotherOrg()
     {
         // DB-14a: two sites with a guest each on THE SAME booking code and THE SAME email (codes are unique per org only), plus another
@@ -601,7 +727,10 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         return host.Email;
     }
 
-    /// <summary>A booking of the public checkout: 3 nights, 300 lodging + 50 cleaning + 12 tourist tax = 362.</summary>
+    /// <summary>
+    /// A booking of the public checkout: 3 nights, 300 lodging + 50 cleaning + 12 tourist tax = 362. The guest's phone is <paramref name="phone"/>
+    /// (empty: no phone; at most 20 characters and a valid <c>[Phone]</c>).
+    /// </summary>
     private async Task<BookingSeed> SeedBookingAsync(
         OrgSeed org,
         BookingStatus status,
@@ -611,7 +740,8 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         int createdMinutesAgo = 60,
         string? code = null,
         bool unpaidIntent = false,
-        string? email = null)
+        string? email = null,
+        string phone = "+393331112222")
     {
         var createdAt = DateTime.UtcNow.AddMinutes(-createdMinutesAgo);
         var checkIn = TimeProvider.System.TodayInRome().AddDays(checkInInDays);
@@ -621,7 +751,7 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
             FirstName = "Giulia",
             LastName = "Bianchi",
             Email = email ?? $"giulia.{Guid.NewGuid():N}@example.com",
-            PhoneNumber = "+393331112222",
+            PhoneNumber = phone,
             DataProcessingPurpose = "Direct Booking Checkout",
         };
         var booking = new Booking
@@ -690,7 +820,9 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
 
     /// <summary>
     /// The integration host with a recording email queue, client IPs from <see cref="TestPeerIpStartupFilter"/> and low
-    /// limits for "Le mie prenotazioni": 4 attempts per IP, 3 per email.
+    /// limits for "Le mie prenotazioni": 4 attempts per IP, 3 per email. The guest session keeps the per-IP limit of production
+    /// (10 per 5 minutes), and the flag <c>WhiteLabelHost</c> is on, so the session also takes the last four digits of the phone
+    /// (NF-143): the e-mail proofs of this class run with it on and answer as before.
     /// </summary>
     public sealed class LookupFactory : CasazenWebApplicationFactory
     {
@@ -706,6 +838,8 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
             {
                 ["RateLimiting:PublicGuestBookingLookup:PermitLimit"] = "4",
                 ["RateLimiting:GuestBookingLookupPerEmail:PermitLimit"] = "3",
+                ["RateLimiting:PublicGuestSession:PermitLimit"] = "10",
+                ["Features:WhiteLabelHost"] = "true",
                 ["CheckIn:SendWindowDays"] = "3",
                 ["Email:Provider"] = "Resend",
                 ["Email:ApiKey"] = "re_test_lookup",

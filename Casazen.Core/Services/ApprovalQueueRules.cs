@@ -15,6 +15,13 @@ public static class ApprovalItemTypes
     /// <summary>The draft of a message to a guest, written by the assistant (E05/F05): approving it sends the text to the conversation.</summary>
     public const string MessageDraft = "MessageDraft";
 
+    /// <summary>
+    /// The draft of the public reply to a review (E05/F06/US01/T03, NF-69), written by the assistant: approving it sends the reply, once, to the channel of the review through the channel manager
+    /// or to the booking site (<c>ReviewReplyApprovalAction</c>). The item is the review (<see cref="Entities.ApprovalQueueItem.ItemId"/>) and its <see cref="Entities.ApprovalQueueItem.ThreadKey"/> is the key of the
+    /// review (<c>otareview:{id}</c> or <c>review:{id}</c>): nothing is ever sent without the approval of a person.
+    /// </summary>
+    public const string ReviewReply = "ReviewReply";
+
     /// <summary>A message of a routine in test mode (NF-06): a pure decision.</summary>
     public const string Routine = "Routine";
 
@@ -31,7 +38,7 @@ public static class ApprovalOriginActions
     /// <summary>The campaign is approved and, when it has a time, scheduled (<c>CampaignApprovalAction</c>).</summary>
     public const string ApproveCampaign = "ApproveCampaign";
 
-    /// <summary>The reply to a review is sent (the reviews are not part of the product yet: no action is registered for it).</summary>
+    /// <summary>The reply to a review is sent, to the channel through the channel manager or to the booking site (<c>ReviewReplyApprovalAction</c>).</summary>
     public const string SendReviewReply = "SendReviewReply";
 
     /// <summary>Nothing runs: the approval is the whole decision.</summary>
@@ -146,6 +153,12 @@ public static class ApprovalQueueRules
         if (string.Equals(itemType, ApprovalItemTypes.Campaign, StringComparison.Ordinal))
         {
             return TryParseCampaignText(text, out var subject, out var body) ? CampaignTextOf(subject, body) : null;
+        }
+
+        // A reply to a review is public: plain text of at most the length of a reply (the rule of the reviews, never the one of a message).
+        if (string.Equals(itemType, ApprovalItemTypes.ReviewReply, StringComparison.Ordinal))
+        {
+            return ReviewRules.NormalizeText(text) is { Length: <= ReviewRules.ReplyMaxLength } reply ? reply : null;
         }
 
         return text.Trim();
