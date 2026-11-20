@@ -125,6 +125,8 @@ public class ConfigurationFeatureFlagsTests
                 "Auth0HostSync",
                 // E40/F01/US01/T01: the embeddable booking pages, the WordPress plugin and the GTM container of the agency, off until they are delivered.
                 "SiteEmbed",
+                // E30/F02/US01/T01: the staged alerts about the 24 hours of the notification of the guests of a Ticino property to the cantonal police, off until the product owner has seen them on an arrival.
+                "TicinoNotificationAlerts",
             },
             FeatureFlags.All);
     }
