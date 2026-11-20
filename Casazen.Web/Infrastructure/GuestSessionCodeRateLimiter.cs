@@ -27,9 +27,10 @@ public sealed class GuestSessionCodeRateLimiter(IConfiguration configuration) : 
 }
 
 /// <summary>
-/// Puts the opening of a guest session under <see cref="GuestSessionCodeRateLimiter"/>, for the code of its
-/// <see cref="GuestBookingLookupRequest"/>: over the limit it answers 429 <c>rate_limited</c> with <c>Retry-After</c> (the contract of the
-/// per-IP policies) and the booking is not read. Runs after the model validation.
+/// Puts the opening of a guest session under <see cref="GuestSessionCodeRateLimiter"/>, for the code of its body, read through
+/// <see cref="IGuestBookingCodeRequest"/> (the session's <see cref="GuestSessionRequest"/>, whichever proof it carries, e-mail or the digits of
+/// the phone): over the limit it answers 429 <c>rate_limited</c> with <c>Retry-After</c> (the contract of the per-IP policies) and the booking is not
+/// read. Runs after the model validation.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method)]
 public sealed class GuestSessionCodeRateLimitAttribute() : TypeFilterAttribute(typeof(GuestSessionCodeRateLimitFilter));
@@ -40,7 +41,7 @@ public sealed class GuestSessionCodeRateLimitFilter(
 {
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        var request = context.ActionArguments.Values.OfType<GuestBookingLookupRequest>().FirstOrDefault();
+        var request = context.ActionArguments.Values.OfType<IGuestBookingCodeRequest>().FirstOrDefault();
         if (request is null
             || string.IsNullOrWhiteSpace(request.BookingCode)
             || limiter.TryAcquire(null, request.BookingCode, out var retryAfter))
