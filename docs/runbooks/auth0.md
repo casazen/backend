@@ -749,6 +749,14 @@ Before turning it on, per environment:
 3. Check that the **first** Allowed Callback URL of that application is the platform origin of the environment (§ 1.2 rule 6): the code appends after
    it, never before it, and refuses to work on an application that has no callback URL.
 
+After turning it on, once per environment: the registration runs on the three events of the table below, not on the flag. Turning the flag on, or setting
+`Auth0__HostSync__ClientId` later, does **not** register a domain that is verified already and waits (`Pending`: for CasaZen's hand, or for the
+configuration) or that nobody asked for yet (`NotRequested`). List them (`GET api/admin/owner-login-hosts?state=Pending`, then `state=NotRequested`; the rows with
+`domainVerified: true`) and have each agency press the retry of its domain settings (`POST api/orgs/{orgId}/domain/owner-login` works from every state but `Ready`),
+or add their URLs by hand and record `Ready` (§ 13.2). The same goes for a registration that was interrupted (a «Verifica ora» cancelled, an instance restarted
+during the periodic check, between the check that made the domain verified and the registration): the domain stays verified and its state stays `NotRequested`
+or `Pending` until the retry; nothing else looks at it again.
+
 What the code does (`Auth0HostRegistrar`, `OwnerLoginHostSync`):
 
 | When | What |
