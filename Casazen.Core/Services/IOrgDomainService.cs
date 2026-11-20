@@ -94,10 +94,13 @@ public enum RetryOwnerLoginOutcome
     Success,
     NotFound,
 
-    /// <summary>The org's effective tier cannot use a custom domain — controller maps to 403 <c>plan_required</c>.</summary>
+    /// <summary>
+    /// The org has a verified custom domain but its effective tier no longer pays for it — controller maps to 403 <c>plan_required</c>. Asked after
+    /// <see cref="DomainNotVerified"/>, as <see cref="IOrgDomainService.VerifyDomainAsync"/> asks for a configured domain before the plan: an org with no verified domain is never refused for its plan.
+    /// </summary>
     PlanRequired,
 
-    /// <summary>The org has no verified custom domain to register — controller maps to 409 <c>org_domain_not_verified</c>.</summary>
+    /// <summary>The org has no verified custom domain to register, whatever its plan — controller maps to 409 <c>org_domain_not_verified</c>.</summary>
     DomainNotVerified,
 }
 

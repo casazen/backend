@@ -291,18 +291,20 @@ public partial class OrgDomainService(
         if (org is null)
             return new RetryOwnerLoginResult(RetryOwnerLoginOutcome.NotFound, null);
 
-        // The owner sign-in follows the domain's plan, as the surfaces do (the effective tier, A3-07).
-        var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId, cancellationToken);
-        if (!canUseCustomDomain)
-            return new RetryOwnerLoginResult(RetryOwnerLoginOutcome.PlanRequired, null);
-
-        // Only a verified domain is registered: Auth0 is never asked for a domain the org has not proved it controls.
+        // Only a verified domain is registered: Auth0 is never asked for a domain the org has not proved it controls. This comes first, as VerifyDomainAsync asks for a configured
+        // domain before the plan: an org with no custom domain answers 409 whatever its plan, never a 403, which is what the owner of an org must get from a POST with no body
+        // (OrgBillingAdminMembershipAccessTests).
         if (org.PublicHostMode != PublicHostMode.CustomDomain
             || string.IsNullOrEmpty(org.CustomDomain)
             || org.DomainVerificationStatus != DomainVerificationStatus.Verified)
         {
             return new RetryOwnerLoginResult(RetryOwnerLoginOutcome.DomainNotVerified, null);
         }
+
+        // The owner sign-in follows the domain's plan, as the surfaces do (the effective tier, A3-07): a verified domain whose plan lapsed registers nothing.
+        var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId, cancellationToken);
+        if (!canUseCustomDomain)
+            return new RetryOwnerLoginResult(RetryOwnerLoginOutcome.PlanRequired, null);
 
         if (ownerLogin is not null)
             await ownerLogin.RetryAsync(org, cancellationToken);

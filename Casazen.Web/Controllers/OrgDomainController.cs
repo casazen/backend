@@ -174,8 +174,8 @@ public class OrgDomainController(
     /// The agency's «retry» of the owner sign-in on its verified domain (E40/F01/US02/T01, NF-141): with <c>Auth0HostSync</c> on the domain is registered in
     /// Auth0 again (idempotent; nothing is asked while it is ready already), with it off the request goes back to CasaZen (<c>Pending</c>). The answer is the
     /// whole domain configuration, <c>surfaces.ownerLoginHostState</c> updated. 404 while <c>WhiteLabelHost</c> is off, 403 for another org's id, 409
-    /// <c>org_domain_not_verified</c> without a verified custom domain, 429 past five calls in ten minutes for the same person (<see cref="RateLimitPolicies.OwnerLoginRetry"/>:
-    /// the call reads and may write the Auth0 tenant that every host shares).
+    /// <c>org_domain_not_verified</c> without a verified custom domain (whatever the plan), 403 <c>plan_required</c> for a verified domain the org no longer pays for, 429 past
+    /// five calls in ten minutes for the same person (<see cref="RateLimitPolicies.OwnerLoginRetry"/>: the call reads and may write the Auth0 tenant that every host shares).
     /// </summary>
     [HttpPost("owner-login")]
     [FeatureGate(FeatureFlags.WhiteLabelHost)]

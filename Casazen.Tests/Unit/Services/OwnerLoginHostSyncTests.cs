@@ -137,6 +137,22 @@ public sealed class OwnerLoginHostSyncTests : IDisposable
         _registrar.VerifyNoOtherCalls();
     }
 
+    [Theory]
+    [InlineData(DomainVerificationStatus.Pending)]
+    [InlineData(DomainVerificationStatus.Failed)]
+    public async Task Retry_WithoutAVerifiedDomain_IsNotVerified_WhateverThePlan_AndAuth0IsNotAsked(DomainVerificationStatus domainStatus)
+    {
+        // The domain is asked for before the plan, as VerifyDomainAsync asks for a configured domain first: the owner of an org with nothing to register gets a 409, never a 403
+        // (OrgBillingAdminMembershipAccessTests: a POST with no body is not refused to the owner of the org).
+        var org = await SeedAsync(OwnerLoginHostState.Failed, domainStatus);
+
+        var result = await DomainService(Sync(FeatureFlags.WhiteLabelHost, FeatureFlags.Auth0HostSync), canUseCustomDomain: false).RetryOwnerLoginAsync(org.Id);
+
+        Assert.Equal(RetryOwnerLoginOutcome.DomainNotVerified, result.Outcome);
+        Assert.Equal(OwnerLoginHostState.Failed, await StoredStateAsync(org.Id));
+        _registrar.VerifyNoOtherCalls();
+    }
+
     [Fact]
     public void Retry_IsRateLimitedPerSignedInPerson_FiveEveryTenMinutes()
     {

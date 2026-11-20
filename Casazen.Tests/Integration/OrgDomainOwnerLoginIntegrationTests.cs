@@ -56,9 +56,11 @@ public class OrgDomainOwnerLoginIntegrationTests(CasazenWebApplicationFactory fl
     [Fact]
     public async Task Retry_WithoutPlan_PlanRequired()
     {
+        // A verified domain whose plan lapsed: the plan is asked for after the domain.
         var ownerId = $"auth0|owner-login-starter-{Guid.NewGuid():N}";
         var org = await flagsOn.SeedOrgForOwnerAsync(ownerId);
         await SetPlanAsync(flagsOn, org.Id, PlanTier.Starter);
+        await SetVerifiedDomainAsync(flagsOn, org.Id, $"starter-{Guid.NewGuid():N}.example.it");
         await UpdateOrgAsync(flagsOn, org.Id, o => o.OwnerLoginHostState = OwnerLoginHostState.Failed);
 
         using var client = flagsOn.CreateAuthenticatedClient(ownerId, "PropertyOwner");
@@ -67,6 +69,21 @@ public class OrgDomainOwnerLoginIntegrationTests(CasazenWebApplicationFactory fl
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal("plan_required", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
         Assert.Equal(OwnerLoginHostState.Failed, (await ReadOrgAsync(flagsOn, org.Id)).OwnerLoginHostState);
+    }
+
+    [Fact]
+    public async Task Retry_NoCustomDomain_WithoutPlan_IsConflict_NotForbidden()
+    {
+        // Nothing to register: the answer is the 409 of the domain whatever the plan, as the body-less POST verify answers 400 before its plan (the owner of an org is never refused by it).
+        var ownerId = $"auth0|owner-login-nodomain-{Guid.NewGuid():N}";
+        var org = await flagsOn.SeedOrgForOwnerAsync(ownerId);
+        await SetPlanAsync(flagsOn, org.Id, PlanTier.Starter);
+
+        using var client = flagsOn.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var response = await client.PostAsync($"/api/orgs/{org.Id}/domain/owner-login", content: null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("org_domain_not_verified", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
     }
 
     [Fact]
