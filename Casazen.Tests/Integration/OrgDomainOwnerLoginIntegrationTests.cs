@@ -54,6 +54,22 @@ public class OrgDomainOwnerLoginIntegrationTests(CasazenWebApplicationFactory fl
     }
 
     [Fact]
+    public async Task Retry_WithoutPlan_PlanRequired()
+    {
+        var ownerId = $"auth0|owner-login-starter-{Guid.NewGuid():N}";
+        var org = await flagsOn.SeedOrgForOwnerAsync(ownerId);
+        await SetPlanAsync(flagsOn, org.Id, PlanTier.Starter);
+        await UpdateOrgAsync(flagsOn, org.Id, o => o.OwnerLoginHostState = OwnerLoginHostState.Failed);
+
+        using var client = flagsOn.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var response = await client.PostAsync($"/api/orgs/{org.Id}/domain/owner-login", content: null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal("plan_required", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        Assert.Equal(OwnerLoginHostState.Failed, (await ReadOrgAsync(flagsOn, org.Id)).OwnerLoginHostState);
+    }
+
+    [Fact]
     public async Task Retry_DomainNotVerified_Conflict()
     {
         var ownerId = $"auth0|owner-login-pending-{Guid.NewGuid():N}";

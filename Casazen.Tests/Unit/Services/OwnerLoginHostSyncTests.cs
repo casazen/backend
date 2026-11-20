@@ -124,6 +124,20 @@ public sealed class OwnerLoginHostSyncTests : IDisposable
     }
 
     [Fact]
+    public async Task Retry_WithoutThePlanOfTheDomain_IsRefused_AndAuth0IsNotAsked()
+    {
+        // The owner sign-in follows the plan of the domain (the effective tier, as the surfaces do): an org that does not pay for a custom domain puts nothing in the shared tenant.
+        var org = await SeedAsync(OwnerLoginHostState.Failed);
+
+        var result = await DomainService(Sync(FeatureFlags.WhiteLabelHost, FeatureFlags.Auth0HostSync), canUseCustomDomain: false).RetryOwnerLoginAsync(org.Id);
+
+        Assert.Equal(RetryOwnerLoginOutcome.PlanRequired, result.Outcome);
+        Assert.Null(result.Config);
+        Assert.Equal(OwnerLoginHostState.Failed, await StoredStateAsync(org.Id));
+        _registrar.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public void Retry_IsRateLimitedPerSignedInPerson_FiveEveryTenMinutes()
     {
         // The retry reads and may write the Auth0 tenant that every host shares, under a lock that holds a database connection: a loop of retries must not reach it.
@@ -144,10 +158,10 @@ public sealed class OwnerLoginHostSyncTests : IDisposable
     private OwnerLoginHostSync Sync(params string[] flags) =>
         new(_db, _registrar.Object, new TestFeatureFlags(flags), _push.Object, _resolver.Object, _clock, NullLogger<OwnerLoginHostSync>.Instance);
 
-    private OrgDomainService DomainService(OwnerLoginHostSync sync)
+    private OrgDomainService DomainService(OwnerLoginHostSync sync, bool canUseCustomDomain = true)
     {
         var entitlements = new Mock<IEntitlementService>();
-        entitlements.Setup(e => e.CanUseCustomDomainAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        entitlements.Setup(e => e.CanUseCustomDomainAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(canUseCustomDomain);
         entitlements.Setup(e => e.ResolveEffectiveTier(It.IsAny<OrgEntity>())).Returns(PlanTier.Pro);
         var hostOptions = Options.Create(new PublicHostOptions { BaseDomain = "sites.example.test" });
         var links = EmailTestHelpers.Links();
