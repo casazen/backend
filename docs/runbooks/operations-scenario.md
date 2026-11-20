@@ -33,6 +33,7 @@ it covers.
 | `OperationsChain_NoDoubleTouristTax_Test` | The CasaZen site, with a difference | the tax is paid once; the same event delivered again, a second request to pay and a second confirmation of the tax change nothing, and Stripe is asked for one payment intent only | money: the tourist tax is never collected twice |
 | `OperationsChain_IdentityBeforeTheGuestsReachTheChannelManager_Test` | A portal, with the identity step on | the guest registers; the data is complete but nobody verified who the guest is, and the step has escalated to the operator: nothing leaves → the operator accepts → the guests reach the channel manager, once | privacy: no guest data leaves before the identity passed |
 | `OperationsChain_IstatRegionOfTheFlat_Test` | The flat in Como | the region of the flat reads «to verify» and the host is told to ask the support → the staff verifies the row on its source and saves the coverage → the next step is the connection in the panel → the proof of the month is filed and listed | data: a region is never claimed covered before a person verified it; CasaZen sends nothing to ISTAT |
+| `OperationsChain_RoutinesNeedAnAiProvider_Test` | A booking entered by hand, in a world whose AI provider is the one the application ships (`Ai:Provider=Stub`) | at the check-out time the ready routine fires and the planner has no provider: the execution is closed `Failed` with `routine_ai_unavailable` and no cleaning is made | prerequisite: the routine steps (B9, B10, B11) need an AI provider in effect, see § 4 |
 
 Every test asserts **states**, never texts: the state of the delivery of the link, the status and the light of the stay, the rows a step leaves, what the channel manager and Stripe
 were asked, what is left in the storage.
@@ -44,8 +45,9 @@ were asked, what is left in the storage.
   authorization), over the options of `Casazen.Web/appsettings.json` and one in-memory database. The outbox is delivered by the real dispatcher over the real event bus, each handler in
   a scope of its own under the org of its event; the jobs (`GuestCheckInSendJob`, `CheckInLinkDeliveryRetryJob`, `TimeEventEmitterJob`, `OutboxDispatcherJob`) are built as Hangfire
   builds them. A step that stands for a request of the host runs under the org of the agency; a step of a guest or of a job runs without a tenant.
-* **Replaced**: the channel manager (`Mock<IOctorateApiClient>`) and Stripe (`Mock<IStripeService>`): nothing reaches a network. The e-mail queue, the push queue and the Hangfire client
-  record what they are given and run nothing; the files are in memory; the clock is the scenario's. The Stripe webhook is the real `StripeWebhookHandler` given an event.
+* **Replaced**: the channel manager (`Mock<IOctorateApiClient>`), Stripe (`Mock<IStripeService>`) and **the AI provider that the engine of the routines asks** (`IAiProvider`, a strict mock that
+  answers «every operation of the routine»; see § 4, it is a prerequisite): nothing reaches a network. The e-mail queue, the push queue and the Hangfire client record what they are given and run
+  nothing; the files are in memory; the clock is the scenario's. The Stripe webhook is the real `StripeWebhookHandler` given an event.
 * **A recorder for one door**: the write of an automatic message in the conversation of a direct booking updates the thread with a bulk `ExecuteUpdate`, which the in-memory provider
   cannot run. `DirectThreadRecorder` takes the place of `IGuestMessageService` for that door only and keeps the text and the key of each message; the write itself is proved by the tests
   of the message layer (`guest-messages.md`), on PostgreSQL.
@@ -57,6 +59,13 @@ were asked, what is left in the storage.
 
 ## 4. Limits
 
+* **Prerequisite of the steps that go through the routines (B9, B10, B11).** The scheduled message, the cleaning at the check-out and the request of a review are actions of routines, and **every
+  execution of a routine asks an AI provider which of its operations to run** (`RoutineAgentPlanner`). The world answers «all of them», so the chain is proved without a model. In a real
+  environment the three steps run only with a provider in effect: `Ai__Provider` other than `Stub` (the default) and `Ai__ApiKey`. Without one the execution is closed `Failed` with
+  `routine_ai_unavailable` (the host reads it in the log of the routine): nothing is cleaned, sent or asked. `OperationsChain_RoutinesNeedAnAiProvider_Test` shows it with the provider the application
+  ships (`StubAiProvider`). The Railway test service has no `Ai__ApiKey`: set it there before relying on B9, B10 and B11. Second prerequisite: an organization with a commercial signup
+  (`Org.CommercialSignupJson`) runs routines only with the add-on `ai-agents` paid and the subscription active (`RoutineService`, a missing access starts nothing and records nothing); the agency of
+  the world is a legacy organization (no signup), which has the access.
 * The in-memory provider keeps no foreign key, unique index or transaction and cannot run a bulk `ExecuteUpdate`: what depends on them is proved on PostgreSQL by the slice that wrote it
   (the `*Postgres*` classes of each feature). This chain proves that the steps hand the stay to one another.
 * The recognition of the guest (the selfie, the models) is not run: no model is installed in a test. The identity test starts from what the flow leaves when it escalates to the operator (the session waiting, one row in the log of the verifications) and proves the gate the operator's decision opens; the pipeline has its own tests (`biometrics`). Every other test leaves the identity flag off, so the guests are written to the channel manager as soon as their data is complete.

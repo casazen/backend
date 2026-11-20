@@ -18,7 +18,7 @@ namespace Casazen.Tests.Unit.Operations;
 /// <summary>
 /// E28/F01/US01/T01 (NF-41, NF-119, NF-120, NF-121, NF-122, NF-123; the operations steps «O» of <c>pilota-flusso-completo-2026-11-14.md</c>): the end-to-end proof of the
 /// operations of the agency of Como for the four ways a stay is booked, one test for each origin. Each test is the stay from the booking to the day after the departure on the
-/// real code (see <see cref="OperationsScenarioBuilder"/>: the application's own registrations, the channel manager and Stripe replaced, the clock the scenario's), with every
+/// real code (see <see cref="OperationsScenarioBuilder"/>: the application's own registrations, the channel manager, Stripe and the AI planner of the routines replaced, the clock the scenario's), with every
 /// flag of the operations steps and every organization setting on, and asserts <b>states</b>, never texts: the state of the delivery of the link, the status of the stay, the rows
 /// the steps leave, what the channel manager and Stripe were asked. A link of the chain that breaks (a handler nobody registered, a rule that stopped giving the stay to the
 /// next step) fails the test at the step that needed it.
@@ -430,5 +430,26 @@ public class OperationsChainTests
         var proof = await world.UploadIstatProofAsync(World.Day(12, 31));
         Assert.Equal((ManualProofKind.IstatProof, world.PropertyId, "2026-12"), (proof.Kind, proof.PropertyId, proof.Period));
         Assert.Equal(proof.Id, Assert.Single((await world.ProofsOfAsync(ManualProofKind.IstatProof)).Items).Id);
+    }
+
+    // Prerequisito dei passi delle routine (messaggio programmato, pulizia al check-out, richiesta di recensione): senza un provider AI in effetto (Ai:Provider=Stub, il default) il pianificatore non sceglie nulla e ogni esecuzione finisce Failed.
+    [Fact]
+    [Trait("Scenario", "B9 B10 B11")]
+    public async Task OperationsChain_RoutinesNeedAnAiProvider_Test()
+    {
+        await using var world = await World.CreateWithoutAnAiProviderAsync();
+
+        // B1: the host enters the booking by hand two days before the arrival.
+        world.At(World.InRome(World.Day(12, 2), 9));
+        var bookingId = await world.EnterByHandAsync(World.CheckInDay, World.CheckOutDay, adults: 2, totalPrice: 400m);
+        await world.DeliverEventsAsync();
+
+        // B10: at the check-out time the ready routine fires and the planner has no provider to ask: the execution is closed Failed with its code (the host reads it in the log of the routine)
+        // and no cleaning is made. Every routine of the chain is in the same case, whatever its action.
+        await world.RunTheTimeTriggersAsync(World.InRome(World.CheckOutDay, 10, 5));
+        var run = Assert.Single(await world.ExecutionsOfAsync("Pulizia al check-out"));
+        Assert.Equal(RoutineExecutionOutcomes.Failed, run.Outcome);
+        Assert.Equal(RoutineCodes.AiUnavailable, RoutineExecutionResult.Parse(run.ResultJson).Code);
+        Assert.Empty(await world.CleaningsOfAsync(bookingId));
     }
 }

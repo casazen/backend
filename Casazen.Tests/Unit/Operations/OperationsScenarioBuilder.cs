@@ -32,6 +32,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using StripeIntent = Stripe.PaymentIntent;
 
@@ -47,7 +48,8 @@ namespace Casazen.Tests.Unit.Operations;
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>The real code, the external services replaced.</b> The channel manager (<see cref="Octorate"/>) and Stripe (<see cref="Stripe"/>) are mocks, nothing reaches a
-/// network; the e-mail queue, the push queue and the Hangfire client record what they are given (<see cref="Emails"/>, <see cref="Pushes"/>, <see cref="Jobs"/>); the files are
+/// network; so is the AI provider the engine of the routines asks which operations to run (it answers «all of them»: <see cref="CreateWithoutAnAiProviderAsync"/> is the world
+/// without one, which closes every routine); the e-mail queue, the push queue and the Hangfire client record what they are given (<see cref="Emails"/>, <see cref="Pushes"/>, <see cref="Jobs"/>); the files are
 /// in memory (<see cref="Storage"/>); the clock is the scenario's (<see cref="Clock"/>). The outbox is delivered by the real dispatcher over the real bus
 /// (<c>DeliverEventsAsync</c>): the handlers that run are the ones the application registers. The one door that cannot run in memory is the write of the
 /// conversation of a direct booking (the service updates the thread with a bulk <c>ExecuteUpdate</c>): it is a recorder (<see cref="DirectThread"/>), and the
@@ -113,9 +115,11 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
     private readonly Dictionary<string, string?> _settings = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentQueue<OctorateCheckInGuestUpsert> _guestsWritten = new();
     private readonly ConcurrentQueue<string> _chatMessages = new();
-    private readonly ConcurrentDictionary<string, (Dictionary<string, string> Metadata, long Cents)> _taxIntents = new();
+    private readonly ConcurrentDictionary<string, StripeIntent> _taxIntents = new();
+    private readonly ConcurrentDictionary<string, StripeIntent> _taxIntentsByKey = new();
     private ServiceProvider _provider = null!;
     private int _sequence;
+    private bool _noAiProvider;
 
     private OperationsScenarioBuilder()
     {
@@ -167,6 +171,19 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
         foreach (var flag in moreFlags)
             world._settings[$"{FeatureFlags.SectionName}:{flag}"] = "true";
 
+        world.Build();
+        world.SetUpTheExternalWorld();
+        await world.SetUpAsync();
+        return world;
+    }
+
+    /// <summary>
+    /// The same agency in an environment where no AI provider is in effect (<c>Ai:Provider=Stub</c>, the default, which is also an environment with no <c>Ai__ApiKey</c>): the routines are planned by the
+    /// provider the application ships (<see cref="StubAiProvider"/>) instead of the one of <see cref="CreateAsync"/>, which chooses every operation.
+    /// </summary>
+    public static async Task<OperationsScenarioBuilder> CreateWithoutAnAiProviderAsync()
+    {
+        var world = new OperationsScenarioBuilder { _noAiProvider = true };
         world.Build();
         world.SetUpTheExternalWorld();
         await world.SetUpAsync();
@@ -291,8 +308,12 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
         services.Replace(ServiceDescriptor.Singleton<IBackgroundJobClient>(Jobs));
         services.Replace(ServiceDescriptor.Singleton<IFileStorage>(Storage));
         services.Replace(ServiceDescriptor.Singleton<IGuestMessageService>(DirectThread));
-        // The planner of the routines chooses among the operations of a routine: it keeps them all.
-        services.Replace(ServiceDescriptor.Singleton(RoutineRig.SelectAllOperations()));
+        // The engine of the routines asks an AI provider which operations of a routine to run, on every execution (RoutineAgentPlanner): the cleaning at the check-out, the request of a review and the
+        // scheduled message all go through it. The world answers «all of them», so the chain does not depend on a model; an environment with no provider in effect (Ai:Provider=Stub, the default)
+        // closes every routine with routine_ai_unavailable (OperationsChain_RoutinesNeedAnAiProvider_Test), and an organization with a commercial signup also needs the add-on ai-agents (the world's
+        // agency has none: a legacy organization has the access). See docs/runbooks/operations-scenario.md § 3 and § 4.
+        IAiProvider planner = _noAiProvider ? new StubAiProvider(NullLogger<StubAiProvider>.Instance) : RoutineRig.SelectAllOperations();
+        services.Replace(ServiceDescriptor.Singleton(planner));
 
         _provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = false, ValidateOnBuild = false });
     }
