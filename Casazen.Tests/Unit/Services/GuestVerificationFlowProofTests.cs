@@ -261,6 +261,39 @@ public class GuestVerificationFlowProofTests
     }
 
     /// <summary>
+    /// Privacy rule (ADR-013-R6, R15; E29/F01/US01/T02, D6): the one resolver of the place of a Swiss property decides, and only a municipality the
+    /// host confirmed (stored) outside Ticino lets a document be kept. A place derived from the postal code, even outside Ticino (a postal code can
+    /// lie in two cantons, so the derived canton may be wrong), a postal code that leaves several municipalities open, a postal code the directory
+    /// does not have and a stored municipality in Ticino keep nothing: no photo in the storage, no row.
+    /// </summary>
+    [Theory]
+    [InlineData("8001", "Zürich", null, false)]
+    [InlineData("6900", "Lugano", null, false)]
+    [InlineData("6900", "Ticino", null, false)]
+    [InlineData("9999", "Nowhere", null, false)]
+    [InlineData("8001", "Zürich", "5192", false)]
+    [InlineData("8001", "Zürich", "261", true)]
+    public async Task SwissProperty_DocumentImage_IsKeptOnlyForAStoredMunicipalityOutsideTicino_Test(
+        string postalCode, string city, string? storedMunicipality, bool kept)
+    {
+        await using var world = await World.CreateAsync();
+        var propertyId = await world.AddSwissPropertyAsync(postalCode, city, storedMunicipality);
+        var session = await world.StayAsync("Carlo", "Rossi", propertyId: propertyId);
+        Assert.Equal(
+            BiometricConsentStatus.Recorded,
+            (await world.Flow().RecordConsentAsync(session, true, "TEST-biometric-v1", CancellationToken.None)).Status);
+
+        var read = await world.DocumentAsync(session, TestImages.Png(120, 80, seed: 9));
+
+        Assert.Equal(!kept, read.DocumentNotArchived);
+        Assert.Equal(kept, read.DocumentStored);
+        Assert.Equal(kept ? 1 : 0, world.Storage.Puts);
+        Assert.Equal(kept ? 1 : 0, world.Storage.Objects.Count);
+        Assert.Equal(kept ? 1 : 0, await world.Db.DocumentImages.CountAsync());
+        Assert.Equal(!kept, (await world.Flow().GetStateAsync(session, CancellationToken.None)).DocumentNotArchived);
+    }
+
+    /// <summary>
     /// Privacy rule (ADR-013-R2, R6): the photo of the document kept for the comparison is deleted on every way out of the verification, not only
     /// when it passes: a review, the last failed attempt, an error, a refused consent, a request for the operator, a document of a minor.
     /// </summary>
@@ -536,6 +569,43 @@ public class GuestVerificationFlowProofTests
             Db.Set<PropertyAccessCode>().Add(NewCode(property.Id));
             if (municipalityCode is not null && canton is not null)
                 Db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = municipalityCode, CantonCode = canton, OfficialName = "Lugano" });
+
+            await Db.SaveChangesAsync();
+            return property.Id;
+        }
+
+        /// <summary>
+        /// A property in Switzerland at <paramref name="postalCode"/> and <paramref name="city"/>, with the municipality the host confirmed when there
+        /// is one, over a small directory of the official kind: Zürich (ZH) and Lugano, Massagno and Paradiso, the three municipalities of the postal code 6900 (TI).
+        /// </summary>
+        public async Task<Guid> AddSwissPropertyAsync(string postalCode, string city, string? storedMunicipality)
+        {
+            var property = NewProperty(Guid.NewGuid(), "CH", storedMunicipality);
+            property.PostalCode = postalCode;
+            property.City = city;
+            Db.Properties.Add(property);
+            Db.Set<PropertyAccessCode>().Add(NewCode(property.Id));
+            foreach (var (code, name, canton) in new[] { ("261", "Zürich", "ZH"), ("5192", "Lugano", "TI"), ("5196", "Massagno", "TI"), ("5210", "Paradiso", "TI") })
+                Db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = code, CantonCode = canton, OfficialName = name });
+
+            foreach (var (zip, addOn, name, code, canton) in new[]
+                     {
+                         ("8001", "00", "Zürich", "261", "ZH"),
+                         ("6900", "00", "Lugano", "5192", "TI"),
+                         ("6900", "05", "Massagno", "5196", "TI"),
+                         ("6900", "09", "Paradiso", "5210", "TI"),
+                     })
+            {
+                Db.SwissLocalities.Add(new SwissLocality
+                {
+                    PostalCode = zip,
+                    AddOn = addOn,
+                    Name = name,
+                    NormalizedName = SwissLocality.NormalizeName(name),
+                    MunicipalityCode = code,
+                    CantonCode = canton,
+                });
+            }
 
             await Db.SaveChangesAsync();
             return property.Id;

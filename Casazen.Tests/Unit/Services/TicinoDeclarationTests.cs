@@ -856,7 +856,7 @@ public class TicinoDeclarationTests
     private static async Task<Property> SeedPropertyAsync(
         AppDbContext db, string country = "CH", string canton = "TI", string? structureId = null, string name = "TEST")
     {
-        var municipalityCode = canton == "TI" ? "5113" : "261";
+        var municipalityCode = canton == "TI" ? "5192" : "261";
         if (!await db.SwissMunicipalities.AnyAsync(m => m.MunicipalityCode == municipalityCode))
             db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = municipalityCode, CantonCode = canton, OfficialName = "TEST" });
         var org = new OrgEntity { Name = "TEST", Slug = Guid.NewGuid().ToString("N"), ContactEmail = "test@example.com" };
