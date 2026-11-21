@@ -8788,6 +8788,12 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="GuestRegistrationOverrideNotApplicable" xml:space="preserve">
     <value>Questa impostazione vale solo per gli immobili in Svizzera: in Italia i dati degli ospiti si comunicano sempre alla Questura.</value>
   </data>
+  <data name="SwissNotificationNotApplicable" xml:space="preserve">
+    <value>Per questo immobile CasaZen non prepara la notifica degli ospiti all'autorità cantonale: o si trova in Ticino (che ha la sua sezione), o il suo cantone chiede solo di tenere un registro, o il cantone non è noto.</value>
+  </data>
+  <data name="SwissDeclarationDayInFuture" xml:space="preserve">
+    <value>Non puoi dichiarare come notificato un giorno che non è ancora iniziato: gli ospiti devono ancora arrivare.</value>
+  </data>
   <data name="GuestRegistrationCountryNotSupported" xml:space="preserve">
     <value>Per il paese di questo immobile CasaZen non ha regole sulla notifica degli ospiti.</value>
   </data>

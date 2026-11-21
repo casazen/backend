@@ -74,4 +74,12 @@ public enum ComplianceAlertType
     /// (<c>yyyy-MM-dd</c>); the stages are <see cref="ComplianceAlertStage.TicinoFileToPrepare"/> to <see cref="ComplianceAlertStage.TicinoOverdueReminder"/>.
     /// </summary>
     TicinoNotification = 4,
+
+    /// <summary>
+    /// The guests of an arrival day of a property in a canton other than Ticino are not notified to the cantonal authority yet (E31/F02/US01/T01, NF-131): the same three stages as
+    /// <see cref="TicinoNotification"/>, measured against the deadline of the regime of the canton (<see cref="Services.ComplianceAlertSchedule.DueSwissStep"/>), only where the duty is
+    /// <c>Required</c> and the regime has a deadline. The reference is the arrival day (<c>yyyy-MM-dd</c>), like the Ticino one: the unique key (property, type, reference) tells them apart
+    /// by the type.
+    /// </summary>
+    SwissNotification = 5,
 }

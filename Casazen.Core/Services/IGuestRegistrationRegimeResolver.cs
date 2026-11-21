@@ -26,6 +26,14 @@ public interface IGuestRegistrationRegimeResolver
 
     /// <summary>The regime of a property already read (the property must come from the caller's org).</summary>
     Task<GuestRegistrationResolution> ResolveAsync(Property property, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The regimes of many properties already read, with at most two queries whatever their number (a list, a job: E31/F02/US01/T01): the answer has one entry for each property, keyed by
+    /// its id, and each entry is exactly what <see cref="ResolveAsync(Property, CancellationToken)"/> says of the property alone. An empty list is an empty answer.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, GuestRegistrationResolution>> ResolveManyAsync(
+        IReadOnlyCollection<Property> properties,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>What the resolver says of a property.</summary>

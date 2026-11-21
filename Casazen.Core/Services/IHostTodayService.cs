@@ -278,5 +278,8 @@ public static class HostTodoPriority
             Casazen.Core.Enums.ComplianceCockpitAction.DeclareTouristTax,
             // casazen/backend#979: the police notification of the Ticino properties lives in its own section of the cockpit.
             Casazen.Core.Enums.ComplianceCockpitAction.NotifyTicinoPolice,
+
+            // E31/F02/US01/T01: the same for the notification of the guests to the authority of a canton other than Ticino: its own section of the cockpit.
+            Casazen.Core.Enums.ComplianceCockpitAction.NotifyGuestsAuthority,
         };
 }

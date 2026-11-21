@@ -359,7 +359,8 @@ public sealed record ComplianceSummaryItem
             or ComplianceCockpitAction.EnterMunicipalityTaxRate
             or ComplianceCockpitAction.DeclareTouristTax
             or ComplianceCockpitAction.RenewPoliceCredentials
-            or ComplianceCockpitAction.NotifyTicinoPolice;
+            or ComplianceCockpitAction.NotifyTicinoPolice
+            or ComplianceCockpitAction.NotifyGuestsAuthority;
 
     public static ComplianceSummaryItem ForProperty(ComplianceCockpitAction action, Guid propertyId, string label) =>
         TargetsProperty(action)
@@ -448,4 +449,12 @@ public record ComplianceSummaryResult(
     /// the traffic light: it is the police obligation of those properties, which owe no Alloggiati communication.
     /// </summary>
     public ComplianceSummarySection TicinoNotifications { get; init; } = ComplianceSummarySection.Empty;
+
+    /// <summary>
+    /// The arrival days of the properties of a canton other than Ticino whose guests are not notified to the cantonal authority yet, where the canton asks for an
+    /// electronic notification and the duty of the property is <c>Required</c> (E31/F02/US01/T01, NF-131): one item per property and day
+    /// (<c>NotifyGuestsAuthority</c>, the day in <c>Period</c>, the deadline of the regime in <c>DueAt</c>, <c>null</c> where the regime has none), oldest first. Ticino is
+    /// never here: it has its own section above. Empty while <c>Features:GuestRegistrationRegimes</c> is off. Filled whatever the traffic light, like the Ticino section.
+    /// </summary>
+    public ComplianceSummarySection SwissNotifications { get; init; } = ComplianceSummarySection.Empty;
 }

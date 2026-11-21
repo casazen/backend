@@ -252,7 +252,7 @@ public class ShortRentReadRulesTests
         ];
 
         Assert.Equal(older.Order(), Enum.GetValues<ComplianceCockpitAction>().Except(HostTodoPriority.CockpitActionsOutsideTheDay).Order());
-        // The eight of the traffic light and the police notification of the Ticino properties (casazen/backend#979).
-        Assert.Equal(9, HostTodoPriority.CockpitActionsOutsideTheDay.Count);
+        // The eight of the traffic light, the police notification of the Ticino properties (casazen/backend#979) and the notification of the other cantons (E31/F02/US01/T01).
+        Assert.Equal(10, HostTodoPriority.CockpitActionsOutsideTheDay.Count);
     }
 }

@@ -938,7 +938,7 @@ public class ComplianceAlertTicinoTests : IDisposable
     public void ComplianceAlertType_StoredValuesAreNeverRenumbered_AndEveryTypeHasADeclaredPushType()
     {
         Assert.Equal(
-            [(1, "IstatPeriod"), (2, "TouristTaxPeriod"), (3, "ConnectionInactive"), (4, "TicinoNotification")],
+            [(1, "IstatPeriod"), (2, "TouristTaxPeriod"), (3, "ConnectionInactive"), (4, "TicinoNotification"), (5, "SwissNotification")],
             Enum.GetValues<ComplianceAlertType>().Select(t => ((int)t, t.ToString())).ToArray());
 
         var declared = typeof(PushTypes).GetFields(BindingFlags.Public | BindingFlags.Static)

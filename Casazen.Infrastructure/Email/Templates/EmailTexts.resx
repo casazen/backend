@@ -384,6 +384,45 @@
   <data name="TicinoMissing_other" xml:space="preserve">
     <value>altri dati</value>
   </data>
+  <data name="SwissNotificationAlert_ToPrepare_Subject" xml:space="preserve">
+    <value>Notifica degli ospiti all'autorità da preparare - {0} ({1})</value>
+  </data>
+  <data name="SwissNotificationAlert_ToPrepare_Body" xml:space="preserve">
+    <value>È il momento di preparare la notifica all'autorità cantonale degli ospiti con arrivo il &lt;strong&gt;{1}&lt;/strong&gt; a &lt;strong&gt;{0}&lt;/strong&gt;: per CasaZen va fatta entro &lt;strong&gt;{2}&lt;/strong&gt;. CasaZen non la trasmette: ti prepara i dati da copiare sul portale ufficiale.</value>
+  </data>
+  <data name="SwissNotificationAlert_Approaching_Subject" xml:space="preserve">
+    <value>Notifica degli ospiti all'autorità in scadenza - {0} ({1})</value>
+  </data>
+  <data name="SwissNotificationAlert_Approaching_Body" xml:space="preserve">
+    <value>La notifica all'autorità cantonale degli ospiti con arrivo il &lt;strong&gt;{1}&lt;/strong&gt; a &lt;strong&gt;{0}&lt;/strong&gt; scade il &lt;strong&gt;{2}&lt;/strong&gt; e in CasaZen non risulta ancora dichiarata.</value>
+  </data>
+  <data name="SwissNotificationAlert_Overdue_Subject" xml:space="preserve">
+    <value>Notifica degli ospiti all'autorità scaduta - {0} ({1})</value>
+  </data>
+  <data name="SwissNotificationAlert_Overdue_Body" xml:space="preserve">
+    <value>Il termine per notificare all'autorità cantonale gli ospiti con arrivo il &lt;strong&gt;{1}&lt;/strong&gt; a &lt;strong&gt;{0}&lt;/strong&gt; era il &lt;strong&gt;{2}&lt;/strong&gt; e in CasaZen non risulta che la notifica sia stata dichiarata.</value>
+  </data>
+  <data name="SwissNotificationAlert_Missing" xml:space="preserve">
+    <value>Dati ancora mancanti: {0}.</value>
+  </data>
+  <data name="SwissNotificationAlert_Action" xml:space="preserve">
+    <value>Apri la pagina Adempimenti di CasaZen: trovi i dati pronti da copiare e il link al portale ufficiale del cantone. Dopo aver fatto la notifica, dichiara in CasaZen che il giorno è stato notificato: non riceverai altri promemoria per quel giorno.</value>
+  </data>
+  <data name="SwissNotificationPush_Due_Title" xml:space="preserve">
+    <value>Notifica degli ospiti da fare</value>
+  </data>
+  <data name="SwissNotificationPush_Due_Body" xml:space="preserve">
+    <value>{0}: gli ospiti con arrivo il {1} vanno notificati all'autorità cantonale entro il {2}.</value>
+  </data>
+  <data name="SwissNotificationPush_Overdue_Title" xml:space="preserve">
+    <value>Notifica degli ospiti scaduta</value>
+  </data>
+  <data name="SwissNotificationPush_Overdue_Body" xml:space="preserve">
+    <value>{0}: la notifica degli ospiti con arrivo il {1} non risulta fatta.</value>
+  </data>
+  <data name="SwissNotificationPush_Missing" xml:space="preserve">
+    <value>Mancano: {0}.</value>
+  </data>
   <data name="ComplianceSummary_Subject_NoStays" xml:space="preserve">
     <value>Adempimenti di {0}: nessun soggiorno</value>
   </data>
@@ -2921,6 +2960,18 @@
     <value>Dichiarazione di notifica annullata</value>
   </data>
   <data name="Push_TicinoNotificationUndone_Body" xml:space="preserve">
+    <value>{0}: la dichiarazione della notifica degli ospiti con arrivo il {1} è stata annullata: il giorno torna da notificare.</value>
+  </data>
+  <data name="Push_SwissNotificationDeclared_Title" xml:space="preserve">
+    <value>Notifica degli ospiti dichiarata</value>
+  </data>
+  <data name="Push_SwissNotificationDeclared_Body" xml:space="preserve">
+    <value>{0}: la notifica degli ospiti con arrivo il {1} è stata dichiarata come fatta all'autorità cantonale.</value>
+  </data>
+  <data name="Push_SwissNotificationUndone_Title" xml:space="preserve">
+    <value>Dichiarazione di notifica annullata</value>
+  </data>
+  <data name="Push_SwissNotificationUndone_Body" xml:space="preserve">
     <value>{0}: la dichiarazione della notifica degli ospiti con arrivo il {1} è stata annullata: il giorno torna da notificare.</value>
   </data>
   <data name="TodoReason_CheckInLinkToSend" xml:space="preserve">

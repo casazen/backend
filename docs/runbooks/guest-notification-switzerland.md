@@ -8,7 +8,8 @@ The police of canton Ticino want every guest notified **within 24 hours of the a
 never keeps a password or the seed of a one-time code and never simulates a browser (decision D1): CasaZen writes the file, the host uploads it and records the
 receipt, or declares the day uploaded. Sections 1-7 are the file, its data, the groups and the minors, and the retention of the documents (E30/F01); sections 8-13 are the staged alerts that
 watch the 24 hours (E30/F02/US01/T01); sections 14-20 are the declaration of a day, the guard against duplicates and the audit of the files (E30/F02/US02/T01); sections 21-24 are the regimes of Italy
-and of the 26 cantons, the card of a property and the readiness of a Swiss property (E29/F02/US01), with the catalog in [`docs/compliance/guest-registration-switzerland.md`](../compliance/guest-registration-switzerland.md).
+and of the 26 cantons, the card of a property and the readiness of a Swiss property (E29/F02/US01), with the catalog in [`docs/compliance/guest-registration-switzerland.md`](../compliance/guest-registration-switzerland.md);
+section 25 is the assisted notification of the guests to the authority of a canton other than Ticino: the days, the data ready to copy, the declaration and the alerts (E31/F02/US01/T01).
 
 ## 1. The flow
 
@@ -384,3 +385,60 @@ SELECT "GuestNotificationOverride", count(*) FROM casazen_test."Properties" WHER
 the catalog with an obligation, a channel, a certainty, a date and a source; Ticino, Appenzell Innerrhoden and Italy as above; the sentences in both languages; no supplier name), `GuestRegistrationRegimeResolverTests`
 (Lugano, the unknown place, Italy, the effective-duty table, the flag, the tenant), `PropertyGuestRegistrationControllerTests` (another org, a collaborator «Solo alcuni», the missing member), `GuestRegistrationPartEvaluatorTests`,
 `PropertyComplianceStatusServiceTests` (the Swiss step).
+
+## 25. The assisted notification of the other cantons (E31/F02/US01/T01, NF-131)
+
+In a canton other than Ticino whose regime (§ 21) is an **obligation to report to an authority** and for which CasaZen's support is the assisted notification (today Basel-Stadt, Fribourg, Geneva, Neuchâtel,
+Nidwalden, Schaffhausen, Thurgau, Zug and Zurich: `SwissAssistedNotification.Covers`) CasaZen prepares what the host needs and watches the deadline, and **transmits nothing** (decision D1): the host copies the data onto the
+official portal of the canton (or sends the paper, the e-mail, the way the canton asks) and **declares the day notified**. A canton that only asks the host to keep a register is the register's (E31/F01), whatever the
+host says; Ticino keeps its own flow (§ 1-20) and never appears here. The whole of it is behind **`Features:GuestRegistrationRegimes`** (off by default); the alerts need `Features:TicinoNotificationAlerts` as well.
+
+- **Which days are raised.** A day is listed (cockpit, alerts) only when **all** of this holds: the flag is on; the property is Swiss and the one resolver (`IGuestRegistrationRegimeResolver`, § 21) puts it under a covered
+  regime; its **effective duty is `Required`** (the host said so with the setting of § 21, or the regime is verified as covering private rentals: today Schaffhausen and Zug), never `Ask` or `NotRequired`; and a stay arrived
+  on a day of the last 14 that is not declared (a stay owes a notification when its status is confirmed, checked in or checked out and it is not a no-show: `AlloggiatiStatusRules`, the one definition). An uncertain canton is
+  `Ask`: nothing in red until the host answers. `ISwissNotificationService.ListPendingDaysAsync` is **the one place** that decides it; the cockpit and the alerts read nothing else.
+- **The cockpit.** `GET api/compliance/summary` has a section `swissNotifications` (the action `NotifyGuestsAuthority`, the property as target, the arrival day `yyyy-MM-dd` in `period`, the deadline in `dueAt`, `null`
+  where the regime has none), oldest first, like `ticinoNotifications`. It is not an item of the traffic light and not in the Home «Da fare» (`ComplianceActivityFeeder.NotFedActions`,
+  `HostTodoPriority.CockpitActionsOutsideTheDay`); it is filled whatever `ComplianceTrafficLight`.
+- **The deadline** (`SwissAssistedNotification.DueAtUtc`, on the clock of the property, `Property.Timezone`; a deadline is never guessed):
+
+  | Kind (regimes) | Due |
+  |---|---|
+  | `AtArrival` (Geneva, Zug) | the arrival moment: the first arrival recorded among the stays of the day, else the end of the arrival day |
+  | `DailyByTime` (Basel-Stadt, Neuchâtel, Schaffhausen) | the day after the arrival at the time of the regime: Schaffhausen 02:00 (`GuestRegistrationRegime.DeadlineTime`; the brochure does not say which day the time refers to, and the note of the card says so); Basel-Stadt and Neuchâtel give no time (the end of the arrival day) |
+  | `Weekly` (Nidwalden) | Sunday 23:59 of the arrival week |
+  | `None` (Fribourg, Thurgau, Zurich) | none: the day is listed without `dueAt` and **no alert is sent** |
+  | `Hours24FromArrival` | not used here (Ticino and Italy have their own flows); the rule is the one of Ticino, so it is total |
+
+- **The day** (`GET api/properties/{id}/swiss/notification-day?date=`, `guest.read`, row check, never cached): the guests of the stays that arrive that day **as data ready to copy** (`bookingCode`, `arrival`,
+  `departure`, `firstName`, `lastName`, `birthDate`, `placeOfBirth`, `nationality` as entered and `nationalityCode` ISO alpha-3 where known, `documentType` `passport` / `identityCard` / `other`, `documentNumber`, `street`,
+  `postalCode`, `city`, `residenceCountryCode`, `plate`; a field not recorded is `null`), `issues` (what lacks, with the codes of the Ticino day: every guest needs a first name, a last name, a date of birth and a
+  nationality, an adult or a guest of unknown age also a document type, a stay with fewer guests than the booking counts lacks `guests`), the portal (`portalUrl`), the `deadlineKind`, its `deadlineNote`, the
+  `certainty` of the regime, the `effectiveDuty`, `dueAt`, who declared the day and when, and `pendingDays`. A guest with a gap stays in the list: the host types what is there and completes the rest. **Never in it**:
+  the tourist tax exemption (health-related data), a photograph of the document (D6), the contact of the booker. Without `date` the day is the oldest to notify, or today. It works for a property whose duty is `Ask` or
+  `NotRequired` too (it says so in `effectiveDuty`) but raises nothing; 422 `swiss_notification_not_applicable` for a property that is not covered (not Swiss, Ticino, a register-only canton, an unknown place).
+- **The declaration.** `POST api/properties/{id}/swiss/notification-declare` `{ "arrivalDay": "2026-11-19" }` (`alloggiati.submit`: the owner and the property managers) closes the day and `DELETE …?arrivalDay=` reopens it,
+  with the rules of § 14-15: idempotent, no day in the future (422 `swiss_declaration_day_in_future`), no guest data in the answer, `private, no-store`. The row is a `SwissNotificationDeclaration` with `RegimeCode` =
+  the code of the regime (`CH-SH`) and `Channel = assisted`: **no migration** (§ 19). One declaration for each property, day and regime, so a declaration made under another canton (the property changed municipality)
+  or of the Ticino police closes nothing here. The other hosts of the property are told live (`swiss-notification-declared`, route `/properties`, the property as `entityId`, `TicinoDeclarationLiveRefresh.TellSwiss`,
+  best effort after the row is saved, listed in the one legacy entry of `HostNotifyingPathsArchitectureTests`).
+- **The alerts** (`ComplianceAlertType.SwissNotification` = 5, `ComplianceAlertService.Swiss.cs`, the hourly `stay-alerts` job, flag `TicinoNotificationAlerts`): the **three stages of § 9 against the deadline of the
+  regime**, once each (state row of `ComplianceAlertStates` with the arrival day as reference, the type tells it from the Ticino rows), `ComplianceAlertSchedule.DueSwissStep`, which is `DueTicinoStep` with the Swiss type and
+  kinds: the arrival day (two hours after the first expected check-in, else 18:00, never after 23:00), six hours before the deadline, the deadline, then at most two reminders 24 hours apart. The thresholds are the **same
+  five options** `Compliance:Ticino*` (§ 11): no new configuration. Where the deadline is the arrival (`AtArrival`) a day whose arrival is recorded is overdue from that moment, so its first alert is the overdue one, at
+  the first hourly run after it. Push types `swiss-notification-due` and `swiss-notification-overdue`, the same audience, channels, privacy and bell entry as § 10 (the property as `entityId`); e-mail to the contact address of
+  the org; the text names the property, the day, the deadline and the types of field that miss, **never a guest**, and says «autorità cantonale» (no supplier is named). **Italian and English only**
+  (`SwissNotification*` of `EmailTexts.resx` and `.en.resx`): `EmailTextsParityTests` allows the guest languages to hold only the guest check-in texts, and a host alert is never sent in them. No «To do», no popup.
+- **Checking.** `SELECT "PropertyId", "ReferenceKey", "Stage", "AlertCount", "LastAlertAt" FROM casazen_test."ComplianceAlertStates" WHERE "Type" = 5 ORDER BY "UpdatedAt" DESC LIMIT 50;` and the declarations with
+  `"RegimeCode" IS NOT NULL` (§ 20). The bell entries: `"Type" IN ('swiss-notification-due', 'swiss-notification-overdue', 'swiss-notification-declared')`.
+- **Rolling back.** Turn `GuestRegistrationRegimes` off: the routes answer 404, the section is empty and the alerts stop (the service lists no day); nothing else changes, no migration to undo. To make a day to notify again
+  (a wrong declaration nobody can undo): `DELETE FROM casazen_test."SwissNotificationDeclarations" WHERE "PropertyId" = '<id>' AND "ArrivalDay" = 'yyyy-MM-dd' AND "RegimeCode" = 'CH-SH';`. To send a stage again, delete the
+  row of the day in `ComplianceAlertStates` (type 5).
+- **Code**: `Casazen.Core/Regulatory/GuestRegistration/SwissAssistedNotification.cs` (which regimes, the deadlines, the guests and what they lack), `Casazen.Core/Services/ISwissNotificationService.cs`,
+  `ComplianceAlertSchedule.Swiss.cs`, `Casazen.Infrastructure/Services/SwissNotificationService.cs`, `ComplianceAlertService.Swiss.cs`, `ComplianceWizardService.cs` (the section),
+  `GuestRegistrationRegimeResolver.cs` (`ResolveManyAsync`: the regime of many properties with at most two queries), `Casazen.Infrastructure/Email/Templates/EmailTemplates.SwissNotification.cs`,
+  `Casazen.Web/Controllers/SwissNotificationController.cs` (a controller of its own on the route of `SwissComplianceController`, behind the flag at class level) and `Casazen.Web/DTOs/SwissCompliance/SwissNotificationDtos.cs`.
+  **Tests**: `SwissAssistedNotificationTests` (the regimes, the deadlines on the clock of the property, the plan of the guests), `SwissNotificationServiceTests` (`Assisted_AskOrNotRequired_NeverRaisesItem_Test`,
+  `Assisted_Ticino_NotInThisSection_Test`, the closed day, the flag, isolation), `SwissNotificationControllerTests` (`Assisted_OtherOrganizationForbidden_Test`, the permissions, the flag gate), `ComplianceAlertSwissTests`,
+  `ComplianceWizardSwissNotificationsTests` (the section, the reach of a collaborator), `GuestRegistrationRegimeResolverManyTests` and the tests that list the cockpit actions, the alert types, the push types and
+  the registrations.

@@ -423,7 +423,7 @@ public class ComplianceLightRulesTests
             [
                 "ActivateProperty", "CompleteGuestCheckIn", "CheckOut", "SendAlloggiati", "ResolveAlloggiatiFailure", "ConfirmPropertyReady",
                 "VerifyIdentity", "UploadAlloggiatiReceipt", "ActivateOctorateSend", "SendAlloggiatiManually", "UploadIstatProof",
-                "EnterMunicipalityTaxRate", "DeclareTouristTax", "RenewPoliceCredentials", "NotifyTicinoPolice",
+                "EnterMunicipalityTaxRate", "DeclareTouristTax", "RenewPoliceCredentials", "NotifyTicinoPolice", "NotifyGuestsAuthority",
             ],
             Enum.GetNames<ComplianceCockpitAction>());
         Assert.Equal(0, (int)ComplianceCockpitAction.ActivateProperty);
@@ -431,7 +431,7 @@ public class ComplianceLightRulesTests
         Assert.Equal(6, (int)ComplianceCockpitAction.VerifyIdentity);
 
         // Property and booking: the target of each new action.
-        string[] propertyActions = ["ActivateProperty", "ActivateOctorateSend", "UploadIstatProof", "EnterMunicipalityTaxRate", "DeclareTouristTax", "RenewPoliceCredentials", "NotifyTicinoPolice"];
+        string[] propertyActions = ["ActivateProperty", "ActivateOctorateSend", "UploadIstatProof", "EnterMunicipalityTaxRate", "DeclareTouristTax", "RenewPoliceCredentials", "NotifyTicinoPolice", "NotifyGuestsAuthority"];
         foreach (var action in Enum.GetValues<ComplianceCockpitAction>())
             Assert.Equal(propertyActions.Contains(action.ToString()), ComplianceSummaryItem.TargetsProperty(action));
     }

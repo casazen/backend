@@ -487,6 +487,9 @@ public static class ServiceCollectionExtensions
         // NF-15: Swiss compliance files of the Ticino properties (ADR-016, E08): police notification XML, OTR overnight CSV and the
         // archive of the receipts the cantonal portal gives back. Used by SwissComplianceController.
         services.AddScoped<ITicinoNotificationService, TicinoNotificationService>();
+        // E31/F02/US01/T01 (NF-131): the assisted notification of the guests to the authority of a canton other than Ticino (the days to notify, the guests as data ready to copy, the
+        // declaration). The cockpit and the alerts read the days from it; the endpoints and the days are behind Features:GuestRegistrationRegimes.
+        services.AddScoped<ISwissNotificationService, SwissNotificationService>();
         services.AddScoped<IOtrTaxService, OtrTaxService>();
         services.AddScoped<ISwissComplianceReceiptService, SwissComplianceReceiptService>();
         // NF-126 (casazen/backend#979): the character set of the CSV of the Ticino police, GuestNotifications:TicinoCsvEncoding (windows-1252 by default,

@@ -384,6 +384,45 @@
   <data name="TicinoMissing_other" xml:space="preserve">
     <value>other data</value>
   </data>
+  <data name="SwissNotificationAlert_ToPrepare_Subject" xml:space="preserve">
+    <value>Guest notification to the authority to prepare - {0} ({1})</value>
+  </data>
+  <data name="SwissNotificationAlert_ToPrepare_Body" xml:space="preserve">
+    <value>It is time to prepare the notification to the cantonal authority of the guests arriving on &lt;strong&gt;{1}&lt;/strong&gt; at &lt;strong&gt;{0}&lt;/strong&gt;: for CasaZen it is due by &lt;strong&gt;{2}&lt;/strong&gt;. CasaZen does not transmit it: it prepares the data for you to copy onto the official portal.</value>
+  </data>
+  <data name="SwissNotificationAlert_Approaching_Subject" xml:space="preserve">
+    <value>Guest notification to the authority due soon - {0} ({1})</value>
+  </data>
+  <data name="SwissNotificationAlert_Approaching_Body" xml:space="preserve">
+    <value>The notification to the cantonal authority of the guests arriving on &lt;strong&gt;{1}&lt;/strong&gt; at &lt;strong&gt;{0}&lt;/strong&gt; is due on &lt;strong&gt;{2}&lt;/strong&gt; and CasaZen does not show it as declared yet.</value>
+  </data>
+  <data name="SwissNotificationAlert_Overdue_Subject" xml:space="preserve">
+    <value>Guest notification to the authority overdue - {0} ({1})</value>
+  </data>
+  <data name="SwissNotificationAlert_Overdue_Body" xml:space="preserve">
+    <value>The deadline to notify the cantonal authority of the guests arriving on &lt;strong&gt;{1}&lt;/strong&gt; at &lt;strong&gt;{0}&lt;/strong&gt; was &lt;strong&gt;{2}&lt;/strong&gt; and CasaZen does not show the notification as declared.</value>
+  </data>
+  <data name="SwissNotificationAlert_Missing" xml:space="preserve">
+    <value>Data still missing: {0}.</value>
+  </data>
+  <data name="SwissNotificationAlert_Action" xml:space="preserve">
+    <value>Open the Compliance page of CasaZen: you will find the data ready to copy and the link to the official portal of the canton. After making the notification, declare in CasaZen that the day was notified: you will get no more reminders for that day.</value>
+  </data>
+  <data name="SwissNotificationPush_Due_Title" xml:space="preserve">
+    <value>Guest notification to do</value>
+  </data>
+  <data name="SwissNotificationPush_Due_Body" xml:space="preserve">
+    <value>{0}: the guests arriving on {1} must be notified to the cantonal authority by {2}.</value>
+  </data>
+  <data name="SwissNotificationPush_Overdue_Title" xml:space="preserve">
+    <value>Guest notification overdue</value>
+  </data>
+  <data name="SwissNotificationPush_Overdue_Body" xml:space="preserve">
+    <value>{0}: the notification of the guests arriving on {1} is not shown as done.</value>
+  </data>
+  <data name="SwissNotificationPush_Missing" xml:space="preserve">
+    <value>Missing: {0}.</value>
+  </data>
   <data name="ComplianceSummary_Subject_NoStays" xml:space="preserve">
     <value>Compliance for {0}: no stays</value>
   </data>
@@ -2921,6 +2960,18 @@
     <value>Notification declaration undone</value>
   </data>
   <data name="Push_TicinoNotificationUndone_Body" xml:space="preserve">
+    <value>{0}: the declaration of the notification of the guests arriving on {1} was undone: the day is to be notified again.</value>
+  </data>
+  <data name="Push_SwissNotificationDeclared_Title" xml:space="preserve">
+    <value>Guest notification declared</value>
+  </data>
+  <data name="Push_SwissNotificationDeclared_Body" xml:space="preserve">
+    <value>{0}: the notification of the guests arriving on {1} was declared as made to the cantonal authority.</value>
+  </data>
+  <data name="Push_SwissNotificationUndone_Title" xml:space="preserve">
+    <value>Notification declaration undone</value>
+  </data>
+  <data name="Push_SwissNotificationUndone_Body" xml:space="preserve">
     <value>{0}: the declaration of the notification of the guests arriving on {1} was undone: the day is to be notified again.</value>
   </data>
   <data name="TodoReason_CheckInLinkToSend" xml:space="preserve">

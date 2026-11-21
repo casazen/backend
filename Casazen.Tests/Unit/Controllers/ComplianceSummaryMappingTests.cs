@@ -60,11 +60,18 @@ public class ComplianceSummaryMappingTests
             EvidenceSource = ComplianceEvidenceSources.ManualUpload,
             LastVerifiedAt = verifiedAt,
         };
+        var swissDueAt = new DateTime(2026, 11, 20, 1, 0, 0, DateTimeKind.Utc);
+        var swiss = ComplianceSummaryItem.ForProperty(ComplianceCockpitAction.NotifyGuestsAuthority, propertyId, "Casa Rosa") with
+        {
+            DueAt = swissDueAt,
+            Period = "2026-11-19",
+        };
         var empty = new ComplianceSummarySection(0, []);
         var summary = new ComplianceSummaryResult(empty, empty, empty, empty, new ComplianceSummarySection(1, [old]), empty)
         {
             ReceiptsToUpload = new ComplianceSummarySection(1, [entrusted]),
             PeriodItems = new ComplianceSummarySection(0, [period]),
+            SwissNotifications = new ComplianceSummarySection(1, [swiss]),
         };
 
         var wizard = new Mock<IComplianceWizardService>();
@@ -94,7 +101,7 @@ public class ComplianceSummaryMappingTests
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(dto, Json));
         var root = document.RootElement;
         string[] older = ["propertiesPending", "guestCheckInsIncomplete", "checkoutsDue", "alloggiatiFailures", "alloggiatiManualRequired", "turnoversPending"];
-        string[] added = ["identityPending", "receiptsToUpload", "manualSendsRequired", "connectionsToFix", "periodItems"];
+        string[] added = ["identityPending", "receiptsToUpload", "manualSendsRequired", "connectionsToFix", "periodItems", "ticinoNotifications", "swissNotifications"];
         foreach (var name in older.Concat(added))
             Assert.True(root.TryGetProperty(name, out var section) && section.TryGetProperty("count", out _) && section.TryGetProperty("items", out _), name);
 
@@ -125,5 +132,15 @@ public class ComplianceSummaryMappingTests
         Assert.Equal(JsonValueKind.Null, tax.GetProperty("bookingId").ValueKind);
         Assert.Equal(verifiedAt, tax.GetProperty("lastVerifiedAt").GetDateTime());
         Assert.Equal(0, root.GetProperty("periodItems").GetProperty("count").GetInt32());
+
+        // E31/F02/US01/T01: the arrival days of the other cantons to notify to the cantonal authority, a section of their own: the property is the target, the day is the period, the deadline of the regime is dueAt.
+        Assert.Equal(1, root.GetProperty("swissNotifications").GetProperty("count").GetInt32());
+        var notification = root.GetProperty("swissNotifications").GetProperty("items")[0];
+        Assert.Equal(("NotifyGuestsAuthority", "Casa Rosa", "2026-11-19"), (notification.GetProperty("action").GetString(), notification.GetProperty("label").GetString(), notification.GetProperty("period").GetString()));
+        Assert.Equal(propertyId, notification.GetProperty("propertyId").GetGuid());
+        Assert.Equal(propertyId, notification.GetProperty("id").GetGuid());
+        Assert.Equal(JsonValueKind.Null, notification.GetProperty("bookingId").ValueKind);
+        Assert.Equal(swissDueAt, notification.GetProperty("dueAt").GetDateTime());
+        Assert.Equal(0, root.GetProperty("ticinoNotifications").GetProperty("count").GetInt32());
     }
 }
