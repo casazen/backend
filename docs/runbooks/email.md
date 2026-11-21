@@ -183,7 +183,7 @@ Code: `Casazen.Infrastructure/Services/BookingNotifier.cs`, templates `GuestBook
 
 ### Language
 
-The booking does not record the language of the checkout and guests have no preference: every email goes out in Italian (`EmailTemplates.DefaultCulture`). The English texts exist for every template (`EmailTemplatesTests` checks both files). Sending in English needs the checkout to record the language (frontend field + column on `Bookings`), not done. The exception is the org team (AM-02): the invitation and its reminder go out
+The booking does not record the language of the checkout and guests have no preference: every email goes out in Italian (`EmailTemplates.DefaultCulture`) while `Features__GuestPortal` is off (with it on, the e-mails of the guest portal are written in the language of the guest: the five languages, see below). The English texts exist for every template (`EmailTemplatesTests` checks both files). Sending in English needs the checkout to record the language (frontend field + column on `Bookings`), not done. The exception is the org team (AM-02): the invitation and its reminder go out
 in the language the inviter chose (`it`, the default, or `en`, stored on the invitation); the note to the inviter is in Italian.
 
 **The e-mails to a guest in five languages (E50/F01/US03/T02, NF-155).** `EmailTexts.de.resx`, `.fr.resx` and `.es.resx` hold the texts of every e-mail to a guest, in the order of the Italian file: the check-in link
