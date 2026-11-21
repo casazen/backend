@@ -74,6 +74,18 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     }
 
     /// <summary>
+    /// The guest portal of a stay, the personal stay link of a booking (route <c>/s/{token}</c>, E50/F01/US01/T01, NF-152; the page is a frontend task):
+    /// short, so it fits the messages of the portals and a QR code. Only the random token of the link is in the address: no name, no booking id, no
+    /// date. The address is the one public domain of the product (<c>App:PublicSiteBaseUrl</c>); the agency's own domain is
+    /// <see cref="PublicSitePaths.HostGuestPortal"/>.
+    /// </summary>
+    public string GuestPortal(string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build(PublicSitePaths.HostGuestPortal(token));
+    }
+
+    /// <summary>
     /// Supplier registration page of the web app for an invite (SU-01). Only the token is in the link: the page reads
     /// email and comune from the API, so no personal data ends up in URLs and logs.
     /// </summary>

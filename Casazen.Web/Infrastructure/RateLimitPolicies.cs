@@ -276,6 +276,21 @@ public static class RateLimitPolicies
     public const string AccountantPackageSend = "AccountantPackageSend";
 
     /// <summary>
+    /// The guest portal (<c>api/public/guest-portal/{token}/…</c>, E50/F01/US01/T02, NF-152): the default of every endpoint of the portal
+    /// (<c>GuestPortalControllerBase</c>), the overview and the reads of the sections. Partitioned by client IP <b>and</b> a hash of the <c>{token}</c>
+    /// of the route, like <see cref="GuestCheckIn"/> (the partition never holds the token): 120 a minute, room for a page that reads several sections. A client
+    /// that changes the token at every request does not meet it twice, so a limit per client IP over every token (<see cref="GuestPortalIpRateLimiter"/>, 600 a
+    /// minute) is chained after it.
+    /// </summary>
+    public const string GuestPortal = "GuestPortal";
+
+    /// <summary>
+    /// What the guest writes in the portal (the later epics put it on their writing endpoints): 30 a minute for each client IP and token, partitioned
+    /// like <see cref="GuestPortal"/>.
+    /// </summary>
+    public const string GuestPortalWrite = "GuestPortalWrite";
+
+    /// <summary>
     /// The agency's «retry» of the owner sign-in on its own domain (<c>POST api/orgs/{orgId}/domain/owner-login</c>, E40/F01/US02/T01, NF-141): with <c>Auth0HostSync</c> on each call
     /// that finds the state not ready reads, and may write, the SPA application of the <b>shared</b> Auth0 tenant (the same Management API quota as the roles of every host) while it
     /// holds a database connection under the advisory lock. Partitioned by <b>person</b>: five in ten minutes, enough for a retry after CasaZen fixed a scope and a second try.
