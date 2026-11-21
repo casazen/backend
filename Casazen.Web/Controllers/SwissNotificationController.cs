@@ -49,7 +49,7 @@ public sealed class SwissNotificationController(
     /// <param name="cancellationToken">Aborts the request.</param>
     /// <response code="200"><see cref="SwissNotificationDayResponse"/>; never cached: it holds the personal data of the guests.</response>
     /// <response code="403">The caller may not read the bookings or the guests of this property.</response>
-    /// <response code="404"><c>property_not_found</c>: no such property in the caller's org; or the module is off.</response>
+    /// <response code="404"><c>property_not_found</c>: no such property in the caller's org (another org's is the same answer). With the module off the answer is the generic <c>not_found</c>, before authentication (<c>FeatureGateMiddleware</c>).</response>
     /// <response code="422"><c>swiss_notification_not_applicable</c>: the property is not one the assisted notification covers.</response>
     [HttpGet("notification-day")]
     [Authorize(Policy = CasazenPolicies.GuestRead)]
@@ -86,7 +86,7 @@ public sealed class SwissNotificationController(
     /// <response code="400"><c>validation_error</c>: <c>arrivalDay</c> is missing or is not a date.</response>
     /// <response code="401"><c>unauthorized</c>: the token has no subject.</response>
     /// <response code="403">The caller may not declare the communication of this property (<c>alloggiati.submit</c>, or the property is out of their reach).</response>
-    /// <response code="404"><c>property_not_found</c>: no such property in the caller's org; or the module is off.</response>
+    /// <response code="404"><c>property_not_found</c>: no such property in the caller's org (another org's is the same answer). With the module off the answer is the generic <c>not_found</c>, before authentication (<c>FeatureGateMiddleware</c>).</response>
     /// <response code="422"><c>swiss_notification_not_applicable</c>; <c>swiss_declaration_day_in_future</c>: the day has not started in Switzerland.</response>
     [HttpPost("notification-declare")]
     [Authorize(Policy = CasazenPolicies.AlloggiatiSubmit)]
@@ -129,7 +129,7 @@ public sealed class SwissNotificationController(
     /// <response code="400"><c>validation_error</c>: <c>arrivalDay</c> is missing or is not a date.</response>
     /// <response code="401"><c>unauthorized</c>: the token has no subject.</response>
     /// <response code="403">The caller may not declare the communication of this property (<c>alloggiati.submit</c>, or the property is out of their reach).</response>
-    /// <response code="404"><c>property_not_found</c>: no such property in the caller's org; or the module is off.</response>
+    /// <response code="404"><c>property_not_found</c>: no such property in the caller's org (another org's is the same answer). With the module off the answer is the generic <c>not_found</c>, before authentication (<c>FeatureGateMiddleware</c>).</response>
     /// <response code="422"><c>swiss_notification_not_applicable</c>.</response>
     [HttpDelete("notification-declare")]
     [Authorize(Policy = CasazenPolicies.AlloggiatiSubmit)]
