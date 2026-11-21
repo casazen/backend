@@ -16,6 +16,8 @@ namespace Casazen.Tests.Unit.Email;
 /// </summary>
 public class EmailTextsGuestParityTests
 {
+    private const string StayUrl = "https://app.casazen.test/s/AbCdEfGhIjKlMnOpQrStUv";
+
     private static readonly string[] Files =
     [
         "EmailTexts.resx",
@@ -28,7 +30,7 @@ public class EmailTextsGuestParityTests
     /// <summary>
     /// The prefixes of the keys of the guest e-mails: the layout of a guest e-mail, the keys the guest templates share (<c>Guest_</c>, <c>Booking_</c>) and the ones of the confirmation, the check-in link and its reminder,
     /// the check-in message of the chat, the video call of the verification, the payment link, the cancellation link, the review invitation, the answer of the host, the document of
-    /// the stay, the e-mail that sends the stay link again and the one that lets a guest find its link. A new guest template adds its prefix here, and its texts to the five files.
+    /// the stay, «Prepara il tuo arrivo» (the e-mail with the stay link) and the one that lets a guest find its link. A new guest template adds its prefix here, and its texts to the five files.
     /// </summary>
     public static readonly string[] GuestKeyPrefixes =
     [
@@ -39,6 +41,7 @@ public class EmailTextsGuestParityTests
         "GuestCheckInReminder_",
         "GuestCheckInChat_",
         "GuestVideoCall_",
+        "GuestPrepareArrival_",
         "GuestBookingConfirmed_",
         "BookingPaymentLink_",
         "GuestCancelLink_",
@@ -75,7 +78,7 @@ public class EmailTextsGuestParityTests
         Assert.Contains("FiscalDocumentDelivery_Kind_CreditNote", GuestKeys("EmailTexts.resx", "FiscalDocumentDelivery_"));
     }
 
-    /// <summary>A translation is a translation: no German, French or Spanish guest text is the Italian one (a text pasted in the wrong file), but the brand line.</summary>
+    /// <summary>A translation is a translation: no German, French or Spanish guest text is the Italian one (a text pasted in the wrong file).</summary>
     [Theory]
     [InlineData("EmailTexts.de.resx")]
     [InlineData("EmailTexts.fr.resx")]
@@ -86,7 +89,7 @@ public class EmailTextsGuestParityTests
         var own = Values(fileName);
 
         var same = own
-            .Where(pair => pair.Key != "Layout_PoweredBy" && italian.TryGetValue(pair.Key, out var text) && text == pair.Value)
+            .Where(pair => italian.TryGetValue(pair.Key, out var text) && text == pair.Value)
             .Select(pair => pair.Key)
             .ToList();
 
@@ -165,6 +168,12 @@ public class EmailTextsGuestParityTests
         rendered.Add(("reply", EmailTemplates.HostReplyToGuest(culture, "Anna", "Casa Aurora", "Villa Rosa", url, branding)));
         rendered.Add(("reply-no-link", EmailTemplates.HostReplyToGuest(culture, "Anna", "Casa Aurora", "Villa Rosa", null)));
         rendered.Add(("video-call", EmailTemplates.GuestVideoCall(culture, "Anna", "Villa Rosa", checkIn, url, branding)));
+        rendered.Add((
+            "confirmed-stay-link",
+            EmailTemplates.GuestBookingConfirmed(
+                culture, "Anna", summary, BookingConfirmationKind.PaidOnline, 362m, null, host, url, BookingCheckInNotice.WithLink(url, expires), branding, StayUrl)));
+        rendered.Add(("prepare-arrival", EmailTemplates.GuestPrepareArrival(culture, "Anna", "Villa Rosa", checkIn, StayUrl, url, expires, branding)));
+        rendered.Add(("prepare-arrival-stay-only", EmailTemplates.GuestPrepareArrival(culture, "Anna", "Villa Rosa", checkIn, StayUrl)));
         foreach (var kind in Enum.GetValues<FiscalDocumentKind>())
         {
             rendered.Add(($"document-{kind}", EmailTemplates.FiscalDocumentDelivery(culture, "Anna", "Casa Aurora", kind, "2026/7", checkIn, url, expires, branding)));
@@ -203,11 +212,18 @@ public class EmailTextsGuestParityTests
     {
         var culture = language == "it" ? CultureInfo.GetCultureInfo("it-IT") : CultureInfo.GetCultureInfo(language);
 
-        var text = EmailTemplates.GuestCheckInChatMessage(
-            culture, "Trullo", new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Utc), "https://app.casazen.test/checkin/abc", new DateTime(2026, 10, 17, 9, 0, 0, DateTimeKind.Utc));
+        var checkIn = new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Utc);
+        var expires = new DateTime(2026, 10, 17, 9, 0, 0, DateTimeKind.Utc);
+
+        var text = EmailTemplates.GuestCheckInChatMessage(culture, "Trullo", checkIn, "https://app.casazen.test/checkin/abc", expires);
+        var withStay = EmailTemplates.GuestCheckInChatMessage(culture, "Trullo", checkIn, "https://app.casazen.test/checkin/abc", expires, StayUrl);
 
         Assert.Contains(greeting, text, StringComparison.Ordinal);
         Assert.DoesNotMatch(@"\{\d+\}", text);
+        Assert.DoesNotContain("/s/", text, StringComparison.Ordinal);
+        Assert.StartsWith(text + "\n", withStay, StringComparison.Ordinal);
+        Assert.EndsWith(StayUrl, withStay, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"\{\d+\}", withStay);
     }
 
     private static bool IsGuestKey(string key) => GuestKeyPrefixes.Any(prefix => key.StartsWith(prefix, StringComparison.Ordinal));

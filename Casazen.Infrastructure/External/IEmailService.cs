@@ -34,7 +34,7 @@ public interface IEmailService
 
     /// <summary>
     /// The same email with the name of the host as the sender's display name (<c>From</c>) and, when there is one, the address an answer goes to
-    /// (<c>Reply-To</c>), for the emails to a guest (NF-155, D3): «Casa Aurora &lt;noreply@casazen.app&gt;», answers to the host. <b>Only the
+    /// (<c>Reply-To</c>), for the emails to a guest (NF-155, D3): the name of the host in front of the configured sender address, answers to the host. <b>Only the
     /// display name</b> changes: the address of the sender is always the configured one (a per-host address would need DNS verification per host).
     /// A sender that cannot set the display name sends the email without it (this default), so an implementation that does not know it keeps working.
     /// </summary>

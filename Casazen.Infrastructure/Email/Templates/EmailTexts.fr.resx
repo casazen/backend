@@ -16,7 +16,7 @@
        host and the document of the stay, in the order of the Italian file. Every other text (host, staff, suppliers, push) falls back to the neutral Italian resource and is never sent to a guest in
        French. To be reviewed by a native speaker before release. -->
   <data name="Layout_PoweredBy" xml:space="preserve">
-    <value>Powered by CasaZen</value>
+    <value>Propulsé par CasaZen</value>
   </data>
   <data name="GuestCheckInLink_Subject" xml:space="preserve">
     <value>Effectuez l'enregistrement pour votre séjour — {0}</value>
@@ -285,4 +285,12 @@
   </data>
   <data name="Guest_InvoiceRequest" xml:space="preserve"><value>Avez-vous besoin d’une facture pour ce séjour ? Contactez l’hébergement aux coordonnées de votre réservation et précisez le destinataire de la facture.</value></data>
   <data name="Guest_InvoiceCta" xml:space="preserve"><value>Demander une facture</value></data>
+  <!-- E50/F01/US03/T03 (NF-152): the stay link of the guest portal in the confirmation, in «Prepara il tuo arrivo» and in the message of the portal chat. -->
+  <data name="Guest_StayLinkCta" xml:space="preserve"><value>Ouvrir votre séjour</value></data>
+  <data name="GuestBookingConfirmed_StayLink" xml:space="preserve"><value>Votre séjour dispose d'un espace personnel, sans mot de passe : vous y préparez votre arrivée et y trouvez tout ce dont vous avez besoin.</value></data>
+  <data name="GuestPrepareArrival_Subject" xml:space="preserve"><value>Préparez votre arrivée — {0}</value></data>
+  <data name="GuestPrepareArrival_Heading" xml:space="preserve"><value>Préparez votre arrivée</value></data>
+  <data name="GuestPrepareArrival_Greeting" xml:space="preserve"><value>Bonjour {0},</value></data>
+  <data name="GuestPrepareArrival_Body" xml:space="preserve"><value>Votre séjour à &lt;strong&gt;{0}&lt;/strong&gt; commence le &lt;strong&gt;{1}&lt;/strong&gt;. Dans votre espace personnel, sans mot de passe, vous préparez votre arrivée tranquillement et vous y trouvez tout ce dont vous avez besoin.</value></data>
+  <data name="GuestCheckInChat_StayLink" xml:space="preserve"><value>Retrouvez tout votre séjour ici : {0}</value></data>
 </root>

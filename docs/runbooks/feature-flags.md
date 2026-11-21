@@ -116,6 +116,10 @@ Task E50/F01/US01/T01 (guest portal, NF-152..NF-187, issue #987, decision A6) ad
 portal read them): `GuestPortal` (the stay link of every booking and the whole portal behind it: link, sections, guide, chat, documents, reviews, the host's
 extras), `GuestPortalSupplierServices` (the services of the suppliers bought by the guests and the commission added on top of the price, off until the
 accountant answers) and `GuestPortalAutoReplies` (the replies the assistant sends on its own in the portal chat). They need no variable to start.
+Tasks E50/F01/US03/T01-T03 (NF-155, NF-152) read `GuestPortal` in the e-mails to the guests: with it on they carry the logo, the color and the name of the host and are sent in its name, they are
+written in the five languages of the guest, the confirmation and «Prepara il tuo arrivo» (which takes the place of the e-mail of the check-in link) carry the stay link, the check-in message of the portal
+chat gets a line with it, and `POST api/bookings/{id}/guest-portal/resend` sends «Prepara il tuo arrivo» again; with it off every one of those e-mails is the one CasaZen has always sent, to the byte
+(`docs/runbooks/email.md`).
 
 The functions of the redesign wave that had a flag of their own (the new interface, the org team and its activity log, the scheduled
 change of the rental mode, the in-app notifications, the global search) are always on: they have no flag any more, and a

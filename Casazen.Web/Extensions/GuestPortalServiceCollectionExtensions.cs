@@ -27,6 +27,11 @@ public static class GuestPortalServiceCollectionExtensions
         services.AddScoped<GuestPortalTokenFilter>();
         services.AddScoped<IGuestPortalOverviewService, GuestPortalOverviewService>();
 
+        // E50/F01/US03/T03 (NF-152): the stay link in the e-mails and in the chat message of the check-in link (made by the link service above and nowhere else), and the host's «send it
+        // again» of «Prepara il tuo arrivo». The services that send the messages take the provider as an optional dependency.
+        services.AddScoped<IGuestStayLinkProvider, GuestStayLinkProvider>();
+        services.AddScoped<IGuestPortalEmailService, GuestPortalEmailService>();
+
         return services;
     }
 

@@ -54,7 +54,7 @@ public sealed class GuestEmailBrandingTests : IDisposable
         Assert.Contains("<span style=\"font-size:18px;font-weight:bold;vertical-align:middle;\">Casa Aurora</span>", html, StringComparison.Ordinal);
         Assert.Contains("background:#336699;color:#ffffff;padding:14px 20px", html, StringComparison.Ordinal);
         Assert.Contains("background:#336699;color:#ffffff;text-decoration:none", html, StringComparison.Ordinal);
-        Assert.Contains("Powered by CasaZen</p>", html, StringComparison.Ordinal);
+        Assert.Contains("Con tecnologia CasaZen</p>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("gestione affitti brevi", html, StringComparison.Ordinal);
         Assert.DoesNotContain("#0d8abc", html, StringComparison.Ordinal);
 
@@ -426,7 +426,7 @@ public sealed class GuestEmailBrandingTests : IDisposable
         Assert.Equal("host@aurora.test", branded.ReplyTo);
         Assert.Contains("https://cdn.casazen.test/logos/aurora.png", branded.HtmlBody, StringComparison.Ordinal);
         Assert.Contains("background:#336699", branded.HtmlBody, StringComparison.Ordinal);
-        Assert.Contains("Powered by CasaZen", branded.HtmlBody, StringComparison.Ordinal);
+        Assert.Contains("Con tecnologia CasaZen", branded.HtmlBody, StringComparison.Ordinal);
 
         var plain = Assert.Single(off.Snapshot(), e => e.To == "anna.verdi@example.com").Content;
         Assert.Null(plain.FromName);
@@ -497,6 +497,7 @@ public sealed class GuestEmailBrandingTests : IDisposable
         Assert.Contains("<body style=\"font-family:Arial,sans-serif;color:#18181b;line-height:1.5;\">\n<", html, StringComparison.Ordinal);
         Assert.DoesNotContain("<div style=\"background:", html, StringComparison.Ordinal);
         Assert.DoesNotContain("<img", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Con tecnologia CasaZen", html, StringComparison.Ordinal);
         Assert.DoesNotContain("Powered by CasaZen", html, StringComparison.Ordinal);
         Assert.EndsWith(
             "<p style=\"font-size:12px;color:#a1a1aa;\">CasaZen — gestione affitti brevi</p>\n</body>\n</html>\n",

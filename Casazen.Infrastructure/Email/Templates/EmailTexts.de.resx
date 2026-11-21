@@ -285,4 +285,12 @@
   </data>
   <data name="Guest_InvoiceRequest" xml:space="preserve"><value>Benötigen Sie eine Rechnung für diesen Aufenthalt? Wenden Sie sich über die Kontaktdaten der Buchung an die Unterkunft und nennen Sie den Rechnungsempfänger.</value></data>
   <data name="Guest_InvoiceCta" xml:space="preserve"><value>Rechnung anfordern</value></data>
+  <!-- E50/F01/US03/T03 (NF-152): the stay link of the guest portal in the confirmation, in «Prepara il tuo arrivo» and in the message of the portal chat. -->
+  <data name="Guest_StayLinkCta" xml:space="preserve"><value>Ihren Aufenthalt öffnen</value></data>
+  <data name="GuestBookingConfirmed_StayLink" xml:space="preserve"><value>Ihr Aufenthalt hat einen persönlichen Bereich, ganz ohne Passwort: Dort bereiten Sie Ihre Anreise vor und finden alles, was Sie brauchen.</value></data>
+  <data name="GuestPrepareArrival_Subject" xml:space="preserve"><value>Bereiten Sie Ihre Anreise vor — {0}</value></data>
+  <data name="GuestPrepareArrival_Heading" xml:space="preserve"><value>Bereiten Sie Ihre Anreise vor</value></data>
+  <data name="GuestPrepareArrival_Greeting" xml:space="preserve"><value>Guten Tag {0},</value></data>
+  <data name="GuestPrepareArrival_Body" xml:space="preserve"><value>Ihr Aufenthalt in &lt;strong&gt;{0}&lt;/strong&gt; beginnt am &lt;strong&gt;{1}&lt;/strong&gt;. In Ihrem persönlichen Bereich, ganz ohne Passwort, bereiten Sie Ihre Anreise in Ruhe vor und finden alles, was Sie brauchen.</value></data>
+  <data name="GuestCheckInChat_StayLink" xml:space="preserve"><value>Hier finden Sie alles zu Ihrem Aufenthalt: {0}</value></data>
 </root>

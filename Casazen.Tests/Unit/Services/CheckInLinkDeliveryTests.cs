@@ -6,6 +6,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.GuestPortal;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
@@ -131,6 +132,68 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         var message = await _db.OtaMessages.AsNoTracking().SingleAsync(m => m.ThreadId == stay.Thread!.Id && m.Origin == MessageOrigin.Automation);
         Assert.Contains($"https://{domain}/checkin/{stay.Token}", message.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("https://public.test/checkin/", message.Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// PROOF TEST (E50/F01/US03/T03, NF-152): the message of the check-in link in the chat of a portal also carries the stay link of the booking, made by the link service of the guest portal,
+    /// only while <c>GuestPortal</c> is on; with it off the text is the one it has always been and no link is made; and the flag of the chat link still decides whether anything is sent: with
+    /// it off no message goes and no stay link is made.
+    /// </summary>
+    [Fact]
+    public async Task LinkDelivery_TheChatCarriesTheStayLink_OnlyWhileThePortalIsOn_Test()
+    {
+        var withPortal = await AddStayAsync(reservation: "RES-PORTAL-ON");
+        var withoutPortal = await AddStayAsync(reservation: "RES-PORTAL-OFF");
+        var chatOff = await AddStayAsync(reservation: "RES-CHAT-OFF");
+        var rig = new Rig(_db, _world, _clock, FeatureFlags.PortalChatCheckInLink, FeatureFlags.GuestPortal);
+        AcceptEveryMessage(rig.Messages);
+        var platform = EmailTestHelpers.Links("https://public.test");
+        var stayLinks = new GuestStayLinkProvider(
+            rig.Messages.Flags,
+            new GuestPortalLinkService(_db, platform, _clock, NullLogger<GuestPortalLinkService>.Instance),
+            platform,
+            NullLogger<GuestStayLinkProvider>.Instance);
+        var service = new CheckInLinkDeliveryService(
+            _db,
+            rig.Emails.Object,
+            rig.Messages.Service,
+            rig.Contacts.Object,
+            rig.Messages.Targets.Object,
+            new InternalActivityService(_db, NullLogger<InternalActivityService>.Instance, _clock),
+            rig.Messages.Flags,
+            platform,
+            NullLogger<CheckInLinkDeliveryService>.Instance,
+            _clock,
+            rig.Push.Object,
+            stayLinks: stayLinks);
+
+        // The portal on: the check-in link and the stay link of the booking, in the one message.
+        var on = await service.DeliverAsync(withPortal.Booking.Id, withPortal.Link);
+
+        Assert.Equal(CheckInLinkDeliveryState.Sent, on.State);
+        var link = await _db.GuestPortalLinks.AsNoTracking().SingleAsync(l => l.BookingId == withPortal.Booking.Id);
+        var message = await _db.OtaMessages.AsNoTracking().SingleAsync(m => m.ThreadId == withPortal.Thread!.Id && m.Origin == MessageOrigin.Automation);
+        Assert.Contains($"https://public.test/checkin/{withPortal.Token}", message.Text, StringComparison.Ordinal);
+        Assert.EndsWith($"https://public.test/s/{link.Token}", message.Text, StringComparison.Ordinal);
+
+        // The portal off: the text of today, and no link is made.
+        rig.Messages.Flags.Set(FeatureFlags.GuestPortal, false);
+        var off = await service.DeliverAsync(withoutPortal.Booking.Id, withoutPortal.Link);
+
+        Assert.Equal(CheckInLinkDeliveryState.Sent, off.State);
+        var plain = await _db.OtaMessages.AsNoTracking().SingleAsync(m => m.ThreadId == withoutPortal.Thread!.Id && m.Origin == MessageOrigin.Automation);
+        Assert.Contains($"https://public.test/checkin/{withoutPortal.Token}", plain.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("/s/", plain.Text, StringComparison.Ordinal);
+        Assert.Empty(await _db.GuestPortalLinks.AsNoTracking().Where(l => l.BookingId == withoutPortal.Booking.Id).ToListAsync());
+
+        // The chat flag of the link still decides: with it off, nothing is sent and no stay link is made, whatever the portal says.
+        rig.Messages.Flags.Set(FeatureFlags.GuestPortal, true);
+        rig.Messages.Flags.Set(FeatureFlags.PortalChatCheckInLink, false);
+        var gated = await service.DeliverAsync(chatOff.Booking.Id, chatOff.Link);
+
+        Assert.NotEqual(CheckInLinkDeliveryState.Sent, gated.State);
+        Assert.Empty(await _db.OtaMessages.AsNoTracking().Where(m => m.ThreadId == chatOff.Thread!.Id && m.Origin == MessageOrigin.Automation).ToListAsync());
+        Assert.Empty(await _db.GuestPortalLinks.AsNoTracking().Where(l => l.BookingId == chatOff.Booking.Id).ToListAsync());
     }
 
     /// <summary>

@@ -4,6 +4,7 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.GuestPortal;
 using Casazen.Infrastructure.Services;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
@@ -96,7 +97,9 @@ public sealed class GuestCheckInLinkEmailQueue(
 /// it is sent (current guest address, template <see cref="EmailTemplates.GuestCheckInLink"/>, or
 /// <see cref="EmailTemplates.GuestCheckInReminder"/> for the link the send job issued as the reminder of the missing data, in the
 /// language of the session), and only while the link is still usable. Temporary provider errors are retried up to
-/// <see cref="MaxAttempts"/> times; a refused email is not.
+/// <see cref="MaxAttempts"/> times; a refused email is not. With <c>Features:GuestPortal</c> on (E50/F01/US03/T01-T03) the e-mail of the link is
+/// «Prepara il tuo arrivo» (<see cref="EmailTemplates.GuestPrepareArrival"/>: the stay link first, the check-in link second), in the language and with the
+/// brand of the host, and goes in its name; the delivery tracking on the session is the same.
 /// </summary>
 public sealed class GuestCheckInLinkEmailJob(
     AppDbContext db,
@@ -107,7 +110,8 @@ public sealed class GuestCheckInLinkEmailJob(
     TimeProvider? timeProvider = null,
     AgencyDomainLinks? agencyLinks = null,
     IGuestEmailBrandingProvider? emailBranding = null,
-    IGuestEmailLanguageProvider? emailLanguage = null)
+    IGuestEmailLanguageProvider? emailLanguage = null,
+    IGuestStayLinkProvider? stayLinks = null)
 {
     /// <summary>Attempts of one email, the first one included.</summary>
     public const int MaxAttempts = 4;
@@ -168,15 +172,29 @@ public sealed class GuestCheckInLinkEmailJob(
             session.Language);
         // E50/F01/US03/T01: with the guest portal on, the e-mail carries the brand of the host and goes in its name; without it, it is the CasaZen e-mail.
         var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId);
+        // E50/F01/US03/T03: with the guest portal on, «Prepara il tuo arrivo» takes the place of the e-mail of the check-in link (same job, same timing, same delivery tracking below; the reminder
+        // of the missing data stays what it is): the stay link, made by the link service of the portal, is the main button and the check-in link of this session the second one. A booking that may
+        // not have a stay link gets the e-mail it always got.
+        var stayUrl = session.ReminderSentAt is null ? await stayLinks.UrlOrNullAsync(booking.OrgId, booking.Id) : null;
         var content = session.ReminderSentAt is null
-            ? EmailTemplates.GuestCheckInLink(
-                culture,
-                booking.Guest!.FirstName,
-                booking.Property.Name,
-                booking.CheckInDate,
-                link,
-                session.ExpiresAt,
-                branding)
+            ? stayUrl is null
+                ? EmailTemplates.GuestCheckInLink(
+                    culture,
+                    booking.Guest!.FirstName,
+                    booking.Property.Name,
+                    booking.CheckInDate,
+                    link,
+                    session.ExpiresAt,
+                    branding)
+                : EmailTemplates.GuestPrepareArrival(
+                    culture,
+                    booking.Guest!.FirstName,
+                    booking.Property.Name,
+                    booking.CheckInDate,
+                    stayUrl,
+                    link,
+                    session.ExpiresAt,
+                    branding)
             : EmailTemplates.GuestCheckInReminder(
                 culture,
                 booking.Guest!.FirstName,

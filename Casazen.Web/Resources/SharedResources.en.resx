@@ -8794,6 +8794,12 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="GuestPortalLinkInvalid" xml:space="preserve">
     <value>This stay link is not valid or no longer active: ask your host for the current link.</value>
   </data>
+  <data name="GuestPortalNoGuestEmail" xml:space="preserve">
+    <value>The guest of this booking has no e-mail address to write to: copy the stay link and send it yourself, for example in the chat of the portal the booking comes from.</value>
+  </data>
+  <data name="GuestPortalEmailNotSent" xml:space="preserve">
+    <value>The e-mail was not sent: sending e-mails is not available right now. Try again later or copy the stay link and send it yourself.</value>
+  </data>
   <data name="ActivationStepGuestRegistration" xml:space="preserve">
     <value>Guest registration</value>
   </data>

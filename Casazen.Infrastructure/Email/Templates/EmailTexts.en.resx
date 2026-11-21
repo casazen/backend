@@ -3015,6 +3015,14 @@
   </data>
   <data name="Guest_InvoiceRequest" xml:space="preserve"><value>Do you need an invoice for this stay? Contact the property using your booking details and specify the invoice recipient.</value></data>
   <data name="Guest_InvoiceCta" xml:space="preserve"><value>Request an invoice</value></data>
+  <!-- E50/F01/US03/T03 (NF-152): the stay link of the guest portal in the confirmation, in «Prepara il tuo arrivo» and in the message of the portal chat. -->
+  <data name="Guest_StayLinkCta" xml:space="preserve"><value>Open your stay</value></data>
+  <data name="GuestBookingConfirmed_StayLink" xml:space="preserve"><value>Your stay has a personal space, no password needed: prepare your arrival there and find everything you need.</value></data>
+  <data name="GuestPrepareArrival_Subject" xml:space="preserve"><value>Prepare your arrival — {0}</value></data>
+  <data name="GuestPrepareArrival_Heading" xml:space="preserve"><value>Prepare your arrival</value></data>
+  <data name="GuestPrepareArrival_Greeting" xml:space="preserve"><value>Dear {0},</value></data>
+  <data name="GuestPrepareArrival_Body" xml:space="preserve"><value>Your stay at &lt;strong&gt;{0}&lt;/strong&gt; starts on &lt;strong&gt;{1}&lt;/strong&gt;. In your personal space, no password needed, you can prepare your arrival at your own pace and find everything you need.</value></data>
+  <data name="GuestCheckInChat_StayLink" xml:space="preserve"><value>Everything about your stay is here: {0}</value></data>
   <data name="Push_ScheduledMessageIssue_Title" xml:space="preserve"><value>Scheduled message needs a look</value></data>
   <data name="Push_ScheduledMessageIssue_Body" xml:space="preserve"><value>A scheduled message for a guest did not go out or needs your attention. Open the booking to see what happened.</value></data>
   <data name="Push_ScheduledMessageIssueProperty_Body" xml:space="preserve"><value>{0}: a scheduled message for a guest did not go out or needs your attention. Open the booking to see what happened.</value></data>

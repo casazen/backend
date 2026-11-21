@@ -16,7 +16,7 @@
        host and the document of the stay, in the order of the Italian file. Every other text (host, staff, suppliers, push) falls back to the neutral Italian resource and is never sent to a guest in
        Spanish. To be reviewed by a native speaker before release. -->
   <data name="Layout_PoweredBy" xml:space="preserve">
-    <value>Powered by CasaZen</value>
+    <value>Con tecnología de CasaZen</value>
   </data>
   <data name="GuestCheckInLink_Subject" xml:space="preserve">
     <value>Completa el check-in de tu estancia — {0}</value>
@@ -285,4 +285,12 @@
   </data>
   <data name="Guest_InvoiceRequest" xml:space="preserve"><value>¿Necesitas una factura para esta estancia? Contacta con el alojamiento a través de tu reserva e indica a nombre de quién debe emitirse.</value></data>
   <data name="Guest_InvoiceCta" xml:space="preserve"><value>Solicitar factura</value></data>
+  <!-- E50/F01/US03/T03 (NF-152): the stay link of the guest portal in the confirmation, in «Prepara il tuo arrivo» and in the message of the portal chat. -->
+  <data name="Guest_StayLinkCta" xml:space="preserve"><value>Abrir tu estancia</value></data>
+  <data name="GuestBookingConfirmed_StayLink" xml:space="preserve"><value>Tu estancia tiene un espacio personal, sin contraseña: desde allí preparas la llegada y encuentras todo lo que necesitas.</value></data>
+  <data name="GuestPrepareArrival_Subject" xml:space="preserve"><value>Prepara tu llegada — {0}</value></data>
+  <data name="GuestPrepareArrival_Heading" xml:space="preserve"><value>Prepara tu llegada</value></data>
+  <data name="GuestPrepareArrival_Greeting" xml:space="preserve"><value>Hola {0}:</value></data>
+  <data name="GuestPrepareArrival_Body" xml:space="preserve"><value>Tu estancia en &lt;strong&gt;{0}&lt;/strong&gt; empieza el &lt;strong&gt;{1}&lt;/strong&gt;. En tu espacio personal, sin contraseña, preparas la llegada con calma y encuentras todo lo que necesitas.</value></data>
+  <data name="GuestCheckInChat_StayLink" xml:space="preserve"><value>Aquí tienes todo sobre tu estancia: {0}</value></data>
 </root>

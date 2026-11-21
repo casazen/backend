@@ -94,6 +94,7 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `onsite-request-declined` | guest | the host declined the request (with the host's optional message) | `OnSiteRequestNotifier`, queued |
 | `onsite-request-expired` | guest | the host did not answer in time | `OnSiteRequestNotifier` (expiry job), queued |
 | `guest-checkin-link` | guest | self check-in link: daily job before arrival, or "send link" / reminder by the host | `GuestCheckInSendJob` or `BookingCheckInLinkController` → `GuestCheckInLinkEmailJob` (queued, outcome on the link: [alloggiati.md](alloggiati.md#guest-check-in-link-and-host-fallback-co-09)) |
+| `guest-prepare-arrival` | guest | «Prepara il tuo arrivo» (E50/F01/US03/T03, only with `Features__GuestPortal` on): the host sends the stay link again from the booking (`POST api/bookings/{id}/guest-portal/resend`); the same e-mail, with the check-in link as its second button, is what `GuestCheckInLinkEmailJob` sends in place of `guest-checkin-link` ([the section below](#the-stay-link-in-the-guest-e-mails-e50f01us03t03)) | `GuestPortalEmailService`, queued; `GuestCheckInLinkEmailJob` |
 | `guest-checkin-incomplete` | host | "Dati ospiti mancanti": guest data for Alloggiati Web still incomplete the day before arrival | `stay-alerts` job → `NotificationService`, queued, once per stay (CO-10, [hangfire.md §9](hangfire.md#9-stay-alerts-co-10)) |
 | `alloggiati-deadline` | host | Alloggiati Web communication not sent, deadline approaching | same, once per stay |
 | `alloggiati-overdue` | host | Alloggiati Web deadline passed without the communication, then at most `StayAlerts__MaxOverdueReminders` daily reminders | same |
@@ -209,7 +210,8 @@ The guest portal (casazen/backend#987) sends its e-mails to the guests with the 
   byte for byte (same layout, footer «CasaZen — gestione affitti brevi», sender «CasaZen», no reply-to). The same when a service is built without the provider.
 - **What the guest sees.** A header bar in the primary color of the host's showcase (`Org.ThemeColor`, the one of `GET api/public/orgs/{slug}`) with the logo (`Org.LogoUrl`, on a white
   chip, at most 40 px high and 160 wide, the name as alt text) and the name (`Org.HostName`, else `Org.DisplayName`, else `Org.Name`); the buttons in the same color, with white or black text,
-  whichever reads better (at least 4.5 to 1); a small «Powered by CasaZen» footer instead of the CasaZen one. No brand (nothing usable in it) = the CasaZen layout.
+  whichever reads better (at least 4.5 to 1); a small «powered by CasaZen» footer instead of the CasaZen one (`Layout_PoweredBy`, in the language of the e-mail: «Con tecnologia CasaZen», «Powered by CasaZen»,
+  «Propulsé par CasaZen», «Con tecnología de CasaZen»). No brand (nothing usable in it) = the CasaZen layout.
 - **The sender.** The display name of the sender is the host's name (cleaned: no quote, bracket, control or format character, no separator of an address, at most 64 characters; a name that is
   nothing once cleaned leaves the configured one) and the answer goes to the host (`Org.ContactEmail`, only when it is one valid address: the guests already read it in the confirmation).
   **The address of the sender is always `Email__FromAddress`**: a per-host address would need DNS verification per host (the domain stays the one verified in step 1).
@@ -224,6 +226,30 @@ The guest portal (casazen/backend#987) sends its e-mails to the guests with the 
   a sender that does not know it sends the e-mail without.
 - **A failure to read the brand** (the database) is logged with the id of the org and the e-mail goes out as the CasaZen one, never lost.
 - **Rollback:** switch `Features__GuestPortal` off; the next e-mail is the CasaZen one.
+
+## The stay link in the guest e-mails (E50/F01/US03/T03)
+
+Code: `Casazen.Infrastructure/GuestPortal/GuestStayLinkProvider.cs` (the address, for every message that carries it), `GuestPortalEmailService.cs` (the host's «send it again»),
+`EmailTemplates.GuestPrepareArrival.cs`, `GuestCheckInLinkEmail.cs`, `BookingNotifier.cs`, `CheckInLinkDeliveryService.cs`, `GuestPortalLinkController.Resend`. The stay link is the address
+`/s/{token}` of the guest portal (the stay link of E50/F01/US01/T01, `GuestPortalLinkService`). Behind `Features__GuestPortal`: **off, all of this is what it was, to the byte**.
+
+- **One place makes the address.** `IGuestStayLinkProvider.UrlAsync` is `IGuestPortalLinkService.GetOrCreateAsync` + `BuildUrl` and nothing else; a template never builds it, it is handed the address.
+  It answers `null` (and makes no link) while the flag is off, for a booking that may not have a link (a request, a cancelled booking, a no-show, a stay over by 30 days), without
+  `App__PublicSiteBaseUrl`, and when the link cannot be made (logged with the ids): the message then goes out as it always did.
+- **The confirmation** (`guest-booking-confirmed`) gets «Apri il tuo soggiorno» as its **first button**, with the fallback link under it; the notice of the check-in, the button of «Le mie prenotazioni» and the rest
+  are unchanged. No link is made for a confirmation that has no address to go to.
+- **«Prepara il tuo arrivo»** (`EmailTemplates.GuestPrepareArrival`) **replaces the e-mail of the check-in link** (`guest-checkin-link`): the same job (`GuestCheckInSendJob` → `GuestCheckInLinkEmailQueue` →
+  `GuestCheckInLinkEmailJob`), the same timing (the window of `CheckIn__SendWindowDays`, or the days of the org's booking flow), the same delivery tracking on the session (`Queued`, `Sent` and when, `Failed` and why), because
+  it is the same job that sends it. The heading and the subject are «Prepara il tuo arrivo»; the stay link is the main button and the **check-in link stays the second one** (until the portal has its check-in section,
+  dropping it would block the guests), with the request of an invoice and the end of validity of the check-in link. The reminder of the missing data (`guest-checkin-link` with `ReminderSentAt`) is **not** replaced.
+- **The chat message of the check-in link** (`CheckInLinkDeliveryService.TryChatAsync`, `EmailTemplates.GuestCheckInChatMessage`) gets a last line with the stay link. The flag of the chat link
+  (`PortalChatCheckInLink`) still decides whether the message is sent at all: with it off nothing is sent and no stay link is made.
+- **The host sends it again:** `POST api/bookings/{bookingId}/guest-portal/resend` (`booking.write` on the property, like the other endpoints that change the link; behind the flag: 404 when it is off). It queues
+  «Prepara il tuo arrivo» to the e-mail address **of the booking's guest, never one the caller gives** (the request has no body); the link is made now if the booking has none; the answer is the link as
+  `GET` gives it. 409 `guest_portal_no_guest_email` for a guest with no address to write to (an OTA booking: the host copies the link and pastes it in the chat of the portal), `guest_portal_booking_not_eligible` as for the
+  first link, `guest_portal_email_not_sent` when the queue did not take it; 404 for a booking of another org. This e-mail has **no check-in link**: asking for a new one would replace the one the guest holds
+  (`POST api/bookings/{id}/checkin/resend-link` is the endpoint for that).
+- **Logs** carry the ids of the booking, of the org and of the link; never the address of the guest, its name or a token.
 
 ## Showcase booking emails (SP-10)
 

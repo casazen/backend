@@ -593,7 +593,8 @@ public static partial class EmailTemplates
 
     /// <summary>
     /// The booking is confirmed, to the guest (BK-10, A3-11, #58): booking code, stay, amounts with the tourist tax
-    /// (BK-03), what was paid or how it will be paid, link to "Le mie prenotazioni" and the host's public contact.
+    /// (BK-03), what was paid or how it will be paid, link to "Le mie prenotazioni" and the host's public contact. With
+    /// <paramref name="stayUrl"/> (E50/F01/US03/T03, only while the guest portal is on) the stay link is its first button.
     /// One template for every way a booking becomes confirmed (<paramref name="kind"/>): it replaces the BK-04 late
     /// payment and the BK-06 "request accepted" emails. <paramref name="paidEur"/> is what Stripe collected;
     /// <paramref name="deferredChargeDate"/> the day of the deferred charge, when known. <paramref name="checkIn"/> is what the email
@@ -610,7 +611,8 @@ public static partial class EmailTemplates
         BookingHostContact hostContact,
         string myBookingsUrl,
         BookingCheckInNotice? checkIn = null,
-        GuestEmailBranding? branding = null)
+        GuestEmailBranding? branding = null,
+        string? stayUrl = null)
     {
         ArgumentNullException.ThrowIfNull(booking);
         var builder = new EmailHtmlBuilder(culture, branding)
@@ -639,6 +641,16 @@ public static partial class EmailTemplates
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown confirmation kind.");
+        }
+
+        // E50/F01/US03/T03: the stay link of the guest portal is the first button, with its fallback link; the notice of the check-in below stays as it is. The address is made by the link
+        // service of the portal and handed in: a template never builds it. Without it (the portal off, a booking that may not have a link) the e-mail is the one of today.
+        if (stayUrl is not null)
+        {
+            builder
+                .Paragraph("GuestBookingConfirmed_StayLink")
+                .Button("Guest_StayLinkCta", stayUrl)
+                .LinkFallback("Booking_LinkFallback", stayUrl);
         }
 
         CheckInBlock(builder, checkIn);

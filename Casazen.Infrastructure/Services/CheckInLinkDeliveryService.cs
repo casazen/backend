@@ -11,6 +11,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Events;
+using Casazen.Infrastructure.GuestPortal;
 using Casazen.Infrastructure.Octorate;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -58,7 +59,8 @@ public sealed class CheckInLinkDeliveryService(
     ILogger<CheckInLinkDeliveryService> logger,
     TimeProvider? timeProvider = null,
     IPushNotificationService? push = null,
-    AgencyDomainLinks? agencyLinks = null) : ICheckInLinkDeliveryService
+    AgencyDomainLinks? agencyLinks = null,
+    IGuestStayLinkProvider? stayLinks = null) : ICheckInLinkDeliveryService
 {
     /// <summary>
     /// The codes of a failure worth a retry: the channel manager used up the calls of the org (<c>octorate_rate_limited</c>), or did not answer or answered something
@@ -516,7 +518,10 @@ public sealed class CheckInLinkDeliveryService(
 
         var key = await KeyOfAsync(booking, threadId.Value, token, ct);
         var agency = await agencyLinks.ForOrgOrPlatformAsync(publicSiteLinks, booking.OrgId, ct);
-        var text = ChatText(agency, booking, token, expiresAt, sessionLanguage);
+        // E50/F01/US03/T03: with the guest portal on the message also carries the stay link of the booking, made by the link service of the portal. The chat flag above still decides whether the
+        // message is sent at all; without the portal the text is the one it has always been.
+        var stayUrl = await stayLinks.UrlOrNullAsync(booking.OrgId, booking.Id, ct);
+        var text = ChatText(agency, booking, token, expiresAt, sessionLanguage, stayUrl);
 
         MessageReplyResult result;
         try
@@ -613,14 +618,14 @@ public sealed class CheckInLinkDeliveryService(
     /// The text of the message: the language the guest chose on the check-in page, else the one of the country on the booking, else Italian followed by English in the
     /// same message (a stay from a portal comes with no country, and the guest's language is not known). Plain text, short, no name of a portal or of a supplier.
     /// </summary>
-    private static string ChatText(AgencyLinks agency, Booking booking, string token, DateTime expiresAt, string? sessionLanguage)
+    private static string ChatText(AgencyLinks agency, Booking booking, string token, DateTime expiresAt, string? sessionLanguage, string? stayUrl = null)
     {
         // E40/F01/US01/T03: on the agency's own domain when its guest area is served there, on the CasaZen domain otherwise.
         var url = agency.GuestCheckIn(token);
         var language = GuestLanguages.Normalize(sessionLanguage) ?? GuestLanguages.OfCountry(booking.Guest?.Country);
 
         string Compose(string code) =>
-            EmailTemplates.GuestCheckInChatMessage(GuestLanguages.CultureOf(code), booking.Property.Name, booking.CheckInDate, url, expiresAt);
+            EmailTemplates.GuestCheckInChatMessage(GuestLanguages.CultureOf(code), booking.Property.Name, booking.CheckInDate, url, expiresAt, stayUrl);
 
         return language is { } known ? Compose(known) : Compose("it") + "\n\n" + Compose("en");
     }
