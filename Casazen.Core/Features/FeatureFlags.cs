@@ -376,7 +376,9 @@ public static class FeatureFlags
     /// the arrival day («prepare the file»), six hours before the deadline, and overdue followed by at most two reminders, to the contact address of the organization
     /// (the one e-mail) and to the person in charge of the property and the administrators of the organization (push, bell and the live update of the open pages, the
     /// types <c>ticino-notification-due</c> and <c>ticino-notification-overdue</c>). The cockpit section of the days to notify (<c>ticinoNotifications</c>) is not behind it. Independent of
-    /// <see cref="ComplianceTrafficLight"/>. It needs no variable to start. The thresholds are <c>Compliance__Ticino*</c>.
+    /// <see cref="ComplianceTrafficLight"/>. It needs no variable to start. The thresholds are <c>Compliance__Ticino*</c>. The same job and flag also run the alerts of the arrival
+    /// days of a property in another canton (E31/F02/US01/T01, <c>swiss-notification-due</c> and <c>swiss-notification-overdue</c>, the same thresholds), for the days that
+    /// <see cref="GuestRegistrationRegimes"/> lets the assisted notification list.
     /// </summary>
     public const string TicinoNotificationAlerts = "TicinoNotificationAlerts";
 
@@ -386,7 +388,9 @@ public static class FeatureFlags
     /// answer 404 before authentication, nothing reads the host's setting of a property (<c>Properties.GuestNotificationOverride</c>: the one resolver answers as if it were
     /// empty) and Ticino behaves exactly as before. On, the card of a property says what its place asks (obligation, channel, deadline, retention, sources and how certain they
     /// are, and what CasaZen does) and whether CasaZen treats the duty as required, not required or left to the host (<c>Ask</c>): only a regime verified as an obligation to report
-    /// to an authority that covers private rentals is <c>Required</c> by default, any other canton is <c>Ask</c>. The readiness of a Swiss property (the municipality, the structure
+    /// to an authority that covers private rentals is <c>Required</c> by default, any other canton is <c>Ask</c>. It also gates the assisted notification of the other cantons
+    /// (E31/F02/US01/T01, NF-131): <c>GET api/properties/{id}/swiss/notification-day</c> and <c>POST</c> and <c>DELETE …/swiss/notification-declare</c> (404 before authentication while off)
+    /// and the cockpit section <c>swissNotifications</c> (empty while off). The readiness of a Swiss property (the municipality, the structure
     /// number of Ticino) is <b>not</b> behind it. It needs no variable to start. The frontend reads the key <c>guestRegistrationRegimes</c>.
     /// </summary>
     public const string GuestRegistrationRegimes = "GuestRegistrationRegimes";

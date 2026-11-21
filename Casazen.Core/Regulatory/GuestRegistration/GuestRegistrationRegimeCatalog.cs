@@ -530,6 +530,10 @@ public static class GuestRegistrationRegimeCatalog
         Channel = GuestRegistrationChannel.PortalForm,
         DeadlineKind = GuestRegistrationDeadlineKind.DailyByTime,
         DeadlineNoteKey = DeadlineKeyOf("CH-SH"),
+
+        // The daily notification «by 02:00» of the brochure of the Schaffhauser Polizei (11/2023, ricerca-nordest.md): read as the night after the arrival day, the prudent reading;
+        // the note of the regime says that the brochure does not say which day the time refers to.
+        DeadlineTime = new TimeOnly(2, 0),
         PrivateRentals = GuestRegistrationPrivateRentals.Yes,
         PortalUrl = "https://gast.sh.ch",
         LegalReferences = ["Gastgewerbegesetz (SHR 935.100) art. 18", "Registerverordnung (SHR 354.112) § 9", "LStrI art. 16"],

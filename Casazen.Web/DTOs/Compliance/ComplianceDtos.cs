@@ -248,6 +248,13 @@ public class ComplianceSummaryDto
     /// casazen/backend#979): one item per property and day, the day in <c>period</c> (<c>yyyy-MM-dd</c>), due 24 hours from the arrival.
     /// </summary>
     public ComplianceSummarySectionDto TicinoNotifications { get; set; } = new();
+
+    /// <summary>
+    /// The arrival days of the properties in a canton other than Ticino whose guests are not notified to the cantonal authority yet (<c>NotifyGuestsAuthority</c>, E31/F02/US01/T01, NF-131):
+    /// one item per property and day, the day in <c>period</c> (<c>yyyy-MM-dd</c>), the deadline of the regime in <c>dueAt</c> (<c>null</c> where the regime has none). Only where the duty of the
+    /// property is <c>Required</c>, and empty while <c>Features:GuestRegistrationRegimes</c> is off.
+    /// </summary>
+    public ComplianceSummarySectionDto SwissNotifications { get; set; } = new();
 }
 
 /// <summary>

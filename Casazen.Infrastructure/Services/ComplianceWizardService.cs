@@ -28,7 +28,8 @@ public class ComplianceWizardService(
     IComplianceActivityFeeder? activityFeeder = null,
     IFeatureFlags? featureFlags = null,
     IBookingFlowSettingsService? flowSettings = null,
-    ITicinoNotificationService? ticinoNotifications = null) : IComplianceWizardService
+    ITicinoNotificationService? ticinoNotifications = null,
+    ISwissNotificationService? swissNotifications = null) : IComplianceWizardService
 {
     /// <summary>The most items listed in each section of the compliance status (the count covers all of the ones that need attention).</summary>
     internal const int StatusSectionMaxItems = 50;
@@ -183,6 +184,7 @@ public class ComplianceWizardService(
             await GetAlloggiatiSectionsAsync(scope, today, status is null ? null : statusOfStay, supersededByStatus, cancellationToken);
         var turnoversPending = await GetTurnoversPendingAsync(scope, flow, cancellationToken);
         var ticinoDays = await GetTicinoNotificationsAsync(scope, cancellationToken);
+        var swissDays = await GetSwissNotificationsAsync(scope, cancellationToken);
 
         // An item of the sections that existed: red with the code of its action when the traffic light is on, as it was (no light) when it is off.
         ComplianceSummaryItem Lit(ComplianceSummaryItem item) => status is null ? item : WithOpenVerdict(item);
@@ -210,6 +212,11 @@ public class ComplianceWizardService(
             TicinoNotifications = new ComplianceSummarySection(
                 ticinoDays.Count,
                 ticinoDays.Take(StatusSectionMaxItems)
+                    .Select(item => status is null ? item : WithVerdict(item, ComplianceLightRules.OpenAction(item.Action), item.Period))
+                    .ToList()),
+            SwissNotifications = new ComplianceSummarySection(
+                swissDays.Count,
+                swissDays.Take(StatusSectionMaxItems)
                     .Select(item => status is null ? item : WithVerdict(item, ComplianceLightRules.OpenAction(item.Action), item.Period))
                     .ToList()),
         };
@@ -253,6 +260,36 @@ public class ComplianceWizardService(
         var days = await ticinoNotifications.ListPendingDaysAsync(scope.OrgId, propertyIds, _clock.TodayInRomeAsDateOnly(), cancellationToken);
         return days
             .Select(d => ComplianceSummaryItem.ForProperty(ComplianceCockpitAction.NotifyTicinoPolice, d.PropertyId, d.PropertyName) with
+            {
+                DueAt = d.DueAtUtc,
+                Period = d.Day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// E31/F02/US01/T01: the arrival days of the properties of the caller's reach in a canton other than Ticino whose guests are not notified to the cantonal authority yet, oldest first:
+    /// one item per property and day, the day in <c>Period</c> (<c>yyyy-MM-dd</c>), due at the deadline of the regime (<c>null</c> where it has none). Only where the duty is <c>Required</c>
+    /// and while <c>Features:GuestRegistrationRegimes</c> is on: both are decided by <see cref="ISwissNotificationService.ListPendingDaysAsync"/>, the one place that lists them.
+    /// </summary>
+    private async Task<List<ComplianceSummaryItem>> GetSwissNotificationsAsync(HostScope scope, CancellationToken cancellationToken)
+    {
+        if (swissNotifications is null)
+            return [];
+
+        var propertyIds = await db.Properties
+            .AsNoTracking()
+            .Where(PropertyRentalModeRules.IsShortRent)
+            .Where(p => p.OrgId == scope.OrgId)
+            .InScope(scope)
+            .Select(p => p.Id)
+            .ToListAsync(cancellationToken);
+        if (propertyIds.Count == 0)
+            return [];
+
+        var days = await swissNotifications.ListPendingDaysAsync(scope.OrgId, propertyIds, _clock.TodayInRomeAsDateOnly(), cancellationToken);
+        return days
+            .Select(d => ComplianceSummaryItem.ForProperty(ComplianceCockpitAction.NotifyGuestsAuthority, d.PropertyId, d.PropertyName) with
             {
                 DueAt = d.DueAtUtc,
                 Period = d.Day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),

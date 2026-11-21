@@ -25,16 +25,44 @@ public sealed class GuestRegistrationRegimeResolver(AppDbContext db, IPropertySw
     {
         ArgumentNullException.ThrowIfNull(property);
 
+        // A place that is not known (none derived, or several left open) is the unknown Swiss place, never a canton chosen by the resolver.
+        var place = SwissPlace.IsSwissCountry(property.Country) ? await places.ResolveAsync(property, cancellationToken) : null;
+        return Compose(property, place, featureFlags.IsEnabled(FeatureFlags.GuestRegistrationRegimes));
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, GuestRegistrationResolution>> ResolveManyAsync(
+        IReadOnlyCollection<Property> properties,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(properties);
+
+        var swiss = properties.Where(p => SwissPlace.IsSwissCountry(p.Country)).Select(SwissPlaceLookup.From).ToList();
+        var swissPlaces = swiss.Count == 0
+            ? new Dictionary<Guid, SwissPlace>()
+            : new Dictionary<Guid, SwissPlace>(await places.ResolveManyAsync(swiss, cancellationToken));
+
+        var settingIsRead = featureFlags.IsEnabled(FeatureFlags.GuestRegistrationRegimes);
+        var resolutions = new Dictionary<Guid, GuestRegistrationResolution>();
+        foreach (var property in properties)
+            resolutions[property.Id] = Compose(property, swissPlaces.GetValueOrDefault(property.Id), settingIsRead);
+
+        return resolutions;
+    }
+
+    /// <summary>
+    /// The one composition of the answer, for one property and for many: the country, the place the place resolver gave (only a Swiss property has one), the catalog and the setting of the
+    /// host, which is read only while the module is on (<paramref name="settingIsRead"/>).
+    /// </summary>
+    private static GuestRegistrationResolution Compose(Property property, SwissPlace? place, bool settingIsRead)
+    {
         if (SwissPlace.IsSwissCountry(property.Country))
         {
-            // A place that is not known (none derived, or several left open) is the unknown Swiss place, never a canton chosen by the resolver.
-            var place = await places.ResolveAsync(property, cancellationToken);
             var regime = place is { IsKnown: true }
                 ? GuestRegistrationRegimeCatalog.ForCanton(place.CantonCode)
                 : GuestRegistrationRegimeCatalog.UnknownSwissPlace;
 
             // The setting of the host is read only while the module is on: off, the duty is the one of the regime, whatever the column holds.
-            var hostChoice = featureFlags.IsEnabled(FeatureFlags.GuestRegistrationRegimes) ? property.GuestNotificationOverride : null;
+            var hostChoice = settingIsRead ? property.GuestNotificationOverride : null;
             return new GuestRegistrationResolution(
                 property.Id,
                 regime,

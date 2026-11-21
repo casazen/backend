@@ -85,4 +85,10 @@ public static class SwissNotificationChannels
 {
     /// <summary>The host uploaded the file, or typed the guests, on the cantonal police portal: the only way of Ticino (notifiche.ti.ch), which has no API.</summary>
     public const string Portal = "portal";
+
+    /// <summary>
+    /// The host made the notification to the authority of a canton other than Ticino by the way that canton asks (a portal, a form, an e-mailed file, a paper) and told CasaZen
+    /// (E31/F02/US01/T01): CasaZen transmits nothing and does not know which of the ways it was, so the declaration says only that it was assisted. The regime of the row says which canton.
+    /// </summary>
+    public const string Assisted = "assisted";
 }
