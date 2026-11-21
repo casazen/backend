@@ -48,7 +48,9 @@ public sealed class GuestStayLinkProvider(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogWarning(ex, "The stay link of booking {BookingId} of org {OrgId} could not be made for a message: it goes without", bookingId, orgId);
+            // Only the kind of the error: the message of a database error can quote the value of a key, and the key of a link is its token.
+            logger.LogWarning(
+                "The stay link of booking {BookingId} of org {OrgId} could not be made for a message ({Error}): it goes without", bookingId, orgId, ex.GetType().Name);
             return null;
         }
     }

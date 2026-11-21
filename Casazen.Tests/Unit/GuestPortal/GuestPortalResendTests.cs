@@ -1,6 +1,7 @@
 using System.Reflection;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Features;
 using Casazen.Core.GuestPortal;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Email.Templates;
@@ -10,6 +11,7 @@ using Casazen.Tests.Unit.Email;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.GuestPortal;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -94,6 +96,17 @@ public sealed class GuestPortalResendTests : IDisposable
         Assert.Equal("POST", action.GetCustomAttribute<HttpPostAttribute>()!.HttpMethods.Single());
         Assert.Equal("{bookingId:guid}/guest-portal/resend", action.GetCustomAttribute<HttpPostAttribute>()!.Template);
         Assert.Equal(CasazenPolicies.BookingWrite, action.GetCustomAttribute<AuthorizeAttribute>()!.Policy);
+    }
+
+    /// <summary>With the guest portal off the endpoint does not exist (404 before authentication, like the other endpoints of the stay link), and its answers are never stored.</summary>
+    [Fact]
+    public void Resend_IsBehindTheGuestPortalFlag_AndItsAnswerIsPrivate()
+    {
+        var gate = typeof(GuestPortalLinkController).GetCustomAttribute<FeatureGateAttribute>();
+
+        Assert.NotNull(gate);
+        Assert.Equal(FeatureFlags.GuestPortal, gate.Flag);
+        Assert.NotNull(typeof(GuestPortalLinkController).GetCustomAttribute<PrivateAnswerAttribute>());
     }
 
     /// <summary>A caller who cannot write the booking (booking.write on its property) is refused, and nothing is queued or made.</summary>
