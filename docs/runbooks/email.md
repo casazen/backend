@@ -185,6 +185,20 @@ Code: `Casazen.Infrastructure/Services/BookingNotifier.cs`, templates `GuestBook
 The booking does not record the language of the checkout and guests have no preference: every email goes out in Italian (`EmailTemplates.DefaultCulture`). The English texts exist for every template (`EmailTemplatesTests` checks both files). Sending in English needs the checkout to record the language (frontend field + column on `Bookings`), not done. The exception is the org team (AM-02): the invitation and its reminder go out
 in the language the inviter chose (`it`, the default, or `en`, stored on the invitation); the note to the inviter is in Italian.
 
+**The e-mails to a guest in five languages (E50/F01/US03/T02, NF-155).** `EmailTexts.de.resx`, `.fr.resx` and `.es.resx` hold the texts of every e-mail to a guest, in the order of the Italian file: the check-in link
+and its reminder, the check-in message of the portal chat, the video call of the verification, the confirmation of a booking (and the keys `Booking_*` it shares), the payment link, the cancellation link, the review
+invitation, the answer of the host and the document of the stay, plus `Layout_PoweredBy` and the shared `Guest_*` keys (`EmailTextsGuestParityTests.GuestKeyPrefixes` lists the prefixes: a new guest template adds its
+prefix there and its texts to the five files; a missing key fails the test with its name, and the three languages hold **only** the guest texts). The other e-mails of the guests (cancellation by the host or the guest, refunds,
+changes of a booking, deferred charge, lock code, new photo, «pay at the property» requests) stay in Italian, with the brand of the host (see the section above).
+- **Which language** (one code path, `GuestLanguages.ResolveForEmail`, read by `IGuestEmailLanguageProvider`): the one the guest chose on the check-in page (the latest session of the booking that holds one, or the one of
+  the link being sent), else the one of the country on the booking (`GuestLanguages.OfCountry`, as the review invitation and the chat message of the check-in link already read it), else the language of the host's
+  account (`Org.DefaultLanguage`), else Italian; a code the five do not include is skipped. **Gap:** `Booking` has no language column (no migration here) and no public booking request carries one, so a confirmation written
+  before any check-in knows the guest only by its country, else by the host's account.
+- **Flag off = today's culture.** The provider answers the culture each service has always used (Italian for the booking e-mails, Italian or English for the review invitation and the document, the language of the check-in
+  page for the check-in link) while `Features__GuestPortal` is off, and for a service built without it. The German, French and Spanish texts are to be reviewed by a native speaker before the release; none of them
+  names a payment provider, a channel manager or an AI provider (`GuestTexts_NameNoTechnicalSupplier`). The Italian and English `BookingPaymentLink_Secure`, written before the portal, still names the payment provider: it is
+  left as it is so that this e-mail stays identical while the portal is off.
+
 ## Guest e-mails in the name of the host (E50/F01/US03/T01, NF-155, D3)
 
 Code: `Casazen.Infrastructure/Email/GuestEmailBranding.cs` (the brand, `IGuestEmailBrandingProvider`), `EmailHtmlBuilder(culture, branding)`, `EmailContent.FromName`,

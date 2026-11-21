@@ -12,8 +12,12 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <!-- German texts of the two guest check-in emails only (NF-40): every other text falls back to the neutral Italian resource and is never
-       sent to a guest in German. To be reviewed by a native speaker before release. -->
+  <!-- German texts of the e-mails to a guest (NF-40, NF-155): the check-in e-mails, the confirmation of a booking, the payment link, the cancellation link, the review invitation, the answer of the
+       host and the document of the stay, in the order of the Italian file. Every other text (host, staff, suppliers, push) falls back to the neutral Italian resource and is never sent to a guest in
+       German. To be reviewed by a native speaker before release. -->
+  <data name="Layout_PoweredBy" xml:space="preserve">
+    <value>Powered by CasaZen</value>
+  </data>
   <data name="GuestCheckInLink_Subject" xml:space="preserve">
     <value>Schließen Sie den Check-in für Ihren Aufenthalt ab — {0}</value>
   </data>
@@ -47,9 +51,155 @@
   <data name="GuestCheckInReminder_Validity" xml:space="preserve">
     <value>Der Link ist gültig bis {0}.</value>
   </data>
-  <!-- E23/F01/US01/T01 (NF-122): the message of the portal chat that carries the check-in link. -->
-  <data name="GuestCheckInChat_Body" xml:space="preserve">
-    <value>Guten Tag! Ihr Aufenthalt in {0} beginnt am {1}. Damit die Ankunft schneller geht, schließen Sie den Check-in bitte vorab über diesen Link ab: {2} Der Link ist gültig bis {3}.</value>
+  <data name="Booking_ContactHostDirectly" xml:space="preserve">
+    <value>Bei Fragen wenden Sie sich bitte direkt an den Gastgeber der Unterkunft.</value>
+  </data>
+  <data name="Booking_LinkFallback" xml:space="preserve">
+    <value>Falls die Schaltfläche nicht funktioniert, kopieren Sie diesen Link in Ihren Browser:</value>
+  </data>
+  <data name="Booking_Greeting" xml:space="preserve">
+    <value>Guten Tag {0},</value>
+  </data>
+  <data name="Booking_Code" xml:space="preserve">
+    <value>Buchungscode: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="Booking_FindIt" xml:space="preserve">
+    <value>Um die Buchung unter „Meine Buchungen“ wiederzufinden, benötigen Sie den Buchungscode und die E-Mail-Adresse, an die diese Nachricht gesendet wurde.</value>
+  </data>
+  <data name="Booking_MyBookingsCta" xml:space="preserve">
+    <value>Meine Buchungen</value>
+  </data>
+  <data name="Booking_Summary_Nights" xml:space="preserve">
+    <value>Nächte: {0}</value>
+  </data>
+  <data name="Booking_Summary_Guests" xml:space="preserve">
+    <value>Gäste: {0}</value>
+  </data>
+  <data name="Booking_Summary_Lodging" xml:space="preserve">
+    <value>Aufenthalt: {0}</value>
+  </data>
+  <data name="Booking_Summary_Cleaning" xml:space="preserve">
+    <value>Reinigung: {0}</value>
+  </data>
+  <data name="Booking_Summary_TouristTax" xml:space="preserve">
+    <value>Kurtaxe: {0} (im Gesamtbetrag enthalten)</value>
+  </data>
+  <data name="Booking_Summary_Total" xml:space="preserve">
+    <value>Gesamt: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="Booking_ContactHost" xml:space="preserve">
+    <value>Bei Fragen wenden Sie sich an &lt;strong&gt;{0}&lt;/strong&gt; unter {1}.</value>
+  </data>
+  <data name="Booking_ContactHostEmail" xml:space="preserve">
+    <value>Bei Fragen wenden Sie sich an den Gastgeber unter {0}.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Subject" xml:space="preserve">
+    <value>Buchung bestätigt - {0}</value>
+  </data>
+  <data name="GuestBookingConfirmed_Body" xml:space="preserve">
+    <value>Ihre Buchung in &lt;strong&gt;{0}&lt;/strong&gt; vom &lt;strong&gt;{1}&lt;/strong&gt; bis &lt;strong&gt;{2}&lt;/strong&gt; ist bestätigt.</value>
+  </data>
+  <data name="GuestBookingConfirmed_BodyOnSite" xml:space="preserve">
+    <value>Der Gastgeber hat Ihre Anfrage angenommen: Ihre Buchung in &lt;strong&gt;{0}&lt;/strong&gt; vom &lt;strong&gt;{1}&lt;/strong&gt; bis &lt;strong&gt;{2}&lt;/strong&gt; ist bestätigt.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Late" xml:space="preserve">
+    <value>Die Zahlung ist nach Ablauf der für den Abschluss der Buchung vorgesehenen Zeit eingegangen, aber die Daten waren noch frei.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Paid" xml:space="preserve">
+    <value>Zahlung erhalten: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestBookingConfirmed_DeferredOn" xml:space="preserve">
+    <value>Es wurde Ihnen noch nichts berechnet: Der Gesamtbetrag von &lt;strong&gt;{0}&lt;/strong&gt; wird am &lt;strong&gt;{1}&lt;/strong&gt; von der bei der Buchung gespeicherten Zahlungsmethode abgebucht.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Deferred" xml:space="preserve">
+    <value>Es wurde Ihnen noch nichts berechnet: Der Gesamtbetrag von &lt;strong&gt;{0}&lt;/strong&gt; wird zu dem bei der Buchung angegebenen Termin von der gespeicherten Zahlungsmethode abgebucht.</value>
+  </data>
+  <data name="GuestBookingConfirmed_OnSite" xml:space="preserve">
+    <value>Sie bezahlen &lt;strong&gt;{0}&lt;/strong&gt; direkt in der Unterkunft.</value>
+  </data>
+  <data name="GuestBookingConfirmed_NotFiscal" xml:space="preserve">
+    <value>Diese E-Mail bestätigt die Buchung und die erhaltene Zahlung; sie ist kein Steuerbeleg.</value>
+  </data>
+  <data name="GuestBookingConfirmed_CheckInOpen" xml:space="preserve">
+    <value>Der Online-Check-in ist bereits geöffnet: Schließen Sie ihn vorab mit der Schaltfläche unten ab.</value>
+  </data>
+  <data name="GuestBookingConfirmed_CheckInCta" xml:space="preserve">
+    <value>Online-Check-in durchführen</value>
+  </data>
+  <data name="GuestBookingConfirmed_CheckInOn" xml:space="preserve">
+    <value>Den Link für den Online-Check-in erhalten Sie am &lt;strong&gt;{0}&lt;/strong&gt; per E-Mail. Ab diesem Tag können Sie ihn auch unter „Meine Buchungen“ anfordern.</value>
+  </data>
+  <data name="GuestBookingConfirmed_CheckInRequest" xml:space="preserve">
+    <value>Den Link für den Online-Check-in können Sie unter „Meine Buchungen“ anfordern.</value>
+  </data>
+  <data name="GuestCancelLink_Subject" xml:space="preserve">
+    <value>Stornierung der Buchung - {0}</value>
+  </data>
+  <data name="GuestCancelLink_Greeting" xml:space="preserve">
+    <value>Guten Tag {0},</value>
+  </data>
+  <data name="GuestCancelLink_Body" xml:space="preserve">
+    <value>Sie haben die Stornierung Ihrer Buchung in &lt;strong&gt;{0}&lt;/strong&gt; vom &lt;strong&gt;{1}&lt;/strong&gt; bis &lt;strong&gt;{2}&lt;/strong&gt; angefordert. Klicken Sie auf die Schaltfläche unten, um die Stornierung zu bestätigen.</value>
+  </data>
+  <data name="GuestCancelLink_Policy" xml:space="preserve">
+    <value>Eine eventuelle Rückerstattung wird nach den Stornierungsbedingungen der Unterkunft berechnet, bezogen auf den Betrag des Aufenthalts ohne Kurtaxe.</value>
+  </data>
+  <data name="GuestCancelLink_Cta" xml:space="preserve">
+    <value>Stornierung bestätigen</value>
+  </data>
+  <data name="GuestCancelLink_LinkFallback" xml:space="preserve">
+    <value>Falls die Schaltfläche nicht funktioniert, kopieren Sie diesen Link in Ihren Browser:</value>
+  </data>
+  <data name="GuestCancelLink_Validity" xml:space="preserve">
+    <value>Der Link ist gültig bis {0} (italienische Zeit).</value>
+  </data>
+  <data name="GuestCancelLink_NotYou" xml:space="preserve">
+    <value>Wenn Sie diese Stornierung nicht angefordert haben, ignorieren Sie diese E-Mail: Ihre Buchung bleibt unverändert.</value>
+  </data>
+  <data name="ReviewInvite_Subject" xml:space="preserve">
+    <value>Wie war Ihr Aufenthalt? - {0}</value>
+  </data>
+  <data name="ReviewInvite_Greeting" xml:space="preserve">
+    <value>Guten Tag {0},</value>
+  </data>
+  <data name="ReviewInvite_Body" xml:space="preserve">
+    <value>Vielen Dank für Ihren Aufenthalt in &lt;strong&gt;{0}&lt;/strong&gt; vom &lt;strong&gt;{1}&lt;/strong&gt; bis &lt;strong&gt;{2}&lt;/strong&gt;. Der Gastgeber bittet Sie um eine Minute für eine Bewertung: Sie hilft anderen bei der Wahl ihrer Unterkunft und erzählt, wie es war.</value>
+  </data>
+  <data name="ReviewInvite_How" xml:space="preserve">
+    <value>Wählen Sie eine Bewertung von 1 bis 5 Sternen und schreiben Sie, wenn Sie möchten, ein paar Zeilen. Die Bewertung wird sofort auf der Buchungsseite der Unterkunft mit Ihrem Vornamen veröffentlicht; Sie können wählen, ihn nicht anzuzeigen.</value>
+  </data>
+  <data name="ReviewInvite_Cta" xml:space="preserve">
+    <value>Bewertung schreiben</value>
+  </data>
+  <data name="ReviewInvite_LinkFallback" xml:space="preserve">
+    <value>Falls die Schaltfläche nicht funktioniert, kopieren Sie diesen Link in Ihren Browser:</value>
+  </data>
+  <data name="ReviewInvite_Validity" xml:space="preserve">
+    <value>Der Link ist persönlich und gültig bis {0} (italienische Zeit).</value>
+  </data>
+  <data name="ReviewInvite_Once" xml:space="preserve">
+    <value>Sie erhalten diese E-Mail nur einmal, weil der Gastgeber um eine Bewertung für diesen Aufenthalt gebeten hat. Wenn Sie nichts schreiben möchten, können Sie sie ignorieren.</value>
+  </data>
+  <data name="HostReplyToGuest_Subject" xml:space="preserve">
+    <value>{0} hat Ihnen geantwortet</value>
+  </data>
+  <data name="HostReplyToGuest_Greeting" xml:space="preserve">
+    <value>Guten Tag {0},</value>
+  </data>
+  <data name="HostReplyToGuest_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; hat auf Ihre Nachricht zum Aufenthalt in &lt;strong&gt;{1}&lt;/strong&gt; geantwortet.</value>
+  </data>
+  <data name="HostReplyToGuest_How" xml:space="preserve">
+    <value>Um die Antwort zu lesen, öffnen Sie Ihre Buchung (Sie benötigen den Code und die E-Mail-Adresse der Buchung) und gehen Sie zum Bereich Nachrichten. Der Text der Antwort steht nicht in dieser E-Mail.</value>
+  </data>
+  <data name="HostReplyToGuest_Cta" xml:space="preserve">
+    <value>Meine Buchung öffnen</value>
+  </data>
+  <data name="HostReplyToGuest_LinkFallback" xml:space="preserve">
+    <value>Falls die Schaltfläche nicht funktioniert, kopieren Sie diesen Link in Ihren Browser:</value>
+  </data>
+  <data name="HostReplyToGuest_Why" xml:space="preserve">
+    <value>Sie erhalten diese E-Mail, weil der Gastgeber Ihnen geantwortet hat. Wir senden höchstens eine alle 10 Minuten pro Unterhaltung.</value>
   </data>
   <data name="GuestVideoCall_Subject" xml:space="preserve">
     <value>Videoanruf für Ihren Check-in — {0}</value>
@@ -71,6 +221,67 @@
   </data>
   <data name="GuestVideoCall_Hint" xml:space="preserve">
     <value>Anschließend schließt der Gastgeber die Identitätsprüfung ab. Wenn Sie diese Anfrage nicht erwartet haben, ignorieren Sie diese E-Mail.</value>
+  </data>
+  <data name="BookingPaymentLink_Subject" xml:space="preserve">
+    <value>Zahlung für Ihren Aufenthalt - {0}</value>
+  </data>
+  <data name="BookingPaymentLink_Greeting" xml:space="preserve">
+    <value>Guten Tag {0},</value>
+  </data>
+  <data name="BookingPaymentLink_Body" xml:space="preserve">
+    <value>Hier ist der Link zur Bezahlung Ihres Aufenthalts in &lt;strong&gt;{0}&lt;/strong&gt; vom &lt;strong&gt;{1}&lt;/strong&gt; bis &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="BookingPaymentLink_Amount" xml:space="preserve">
+    <value>Zu zahlender Betrag: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="BookingPaymentLink_Cta" xml:space="preserve">
+    <value>Jetzt bezahlen</value>
+  </data>
+  <data name="BookingPaymentLink_LinkFallback" xml:space="preserve">
+    <value>Falls die Schaltfläche nicht funktioniert, kopieren Sie diesen Link in Ihren Browser:</value>
+  </data>
+  <data name="BookingPaymentLink_Secure" xml:space="preserve">
+    <value>Die Zahlung erfolgt auf einer sicheren Zahlungsseite und geht direkt an Ihren Gastgeber. Wenn Sie einen neuen Link erhalten, verwenden Sie immer den neuesten: Der vorherige funktioniert nicht mehr.</value>
+  </data>
+  <data name="BookingPaymentLink_NotYou" xml:space="preserve">
+    <value>Wenn Sie diese Buchung nicht erkennen, ignorieren Sie diese E-Mail und zahlen Sie nicht.</value>
+  </data>
+  <!-- E23/F01/US01/T01 (NF-122): the message of the portal chat that carries the check-in link. -->
+  <data name="GuestCheckInChat_Body" xml:space="preserve">
+    <value>Guten Tag! Ihr Aufenthalt in {0} beginnt am {1}. Damit die Ankunft schneller geht, schließen Sie den Check-in bitte vorab über diesen Link ab: {2} Der Link ist gültig bis {3}.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Subject" xml:space="preserve">
+    <value>{0} Nr. {1} von {2}</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Greeting" xml:space="preserve">
+    <value>Guten Tag {0},</value>
+  </data>
+  <data name="FiscalDocumentDelivery_GreetingNoName" xml:space="preserve">
+    <value>Guten Tag,</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; hat Ihnen das Dokument &lt;strong&gt;{1} Nr. {2}&lt;/strong&gt; vom {3} gesendet. Sie können es über den Link unten ansehen und als PDF herunterladen.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Cta" xml:space="preserve">
+    <value>Dokument ansehen</value>
+  </data>
+  <data name="FiscalDocumentDelivery_LinkFallback" xml:space="preserve">
+    <value>Falls die Schaltfläche nicht funktioniert, kopieren Sie diesen Link und fügen Sie ihn in Ihren Browser ein:</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Validity" xml:space="preserve">
+    <value>Der Link ist gültig bis {0}.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_NotYou" xml:space="preserve">
+    <value>Wenn Sie diese Nachricht nicht erwartet haben, können Sie sie ignorieren.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_Invoice" xml:space="preserve">
+    <value>Rechnung</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_Receipt" xml:space="preserve">
+    <value>Quittung</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_CreditNote" xml:space="preserve">
+    <value>Gutschrift</value>
   </data>
   <data name="Guest_InvoiceRequest" xml:space="preserve"><value>Benötigen Sie eine Rechnung für diesen Aufenthalt? Wenden Sie sich über die Kontaktdaten der Buchung an die Unterkunft und nennen Sie den Rechnungsempfänger.</value></data>
   <data name="Guest_InvoiceCta" xml:space="preserve"><value>Rechnung anfordern</value></data>

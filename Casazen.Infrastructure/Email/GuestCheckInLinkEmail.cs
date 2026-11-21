@@ -106,7 +106,8 @@ public sealed class GuestCheckInLinkEmailJob(
     ILogger<GuestCheckInLinkEmailJob> logger,
     TimeProvider? timeProvider = null,
     AgencyDomainLinks? agencyLinks = null,
-    IGuestEmailBrandingProvider? emailBranding = null)
+    IGuestEmailBrandingProvider? emailBranding = null,
+    IGuestEmailLanguageProvider? emailLanguage = null)
 {
     /// <summary>Attempts of one email, the first one included.</summary>
     public const int MaxAttempts = 4;
@@ -158,7 +159,13 @@ public sealed class GuestCheckInLinkEmailJob(
         // reminder of the missing data (ReminderSentAt set by the send job) carries the reminder text. E40/F01/US01/T03: the link is on the
         // agency's own domain when its guest area is served there (AgencyDomainLinks), on the CasaZen domain otherwise.
         var link = (await agencyLinks.ForOrgOrPlatformAsync(publicSiteLinks, booking.OrgId)).GuestCheckIn(token);
-        var culture = GuestLanguages.CultureOf(GuestLanguages.Resolve(session.Language, null));
+        // E50/F01/US03/T02: with the guest portal on the language is the one of the guest page, else the country on the booking, else the account of the host, else Italian; without it, the one
+        // of the guest page, else Italian, as ever.
+        var culture = await emailLanguage.CultureOrAsync(
+            booking.OrgId,
+            booking.Id,
+            GuestLanguages.CultureOf(GuestLanguages.Resolve(session.Language, null)),
+            session.Language);
         // E50/F01/US03/T01: with the guest portal on, the e-mail carries the brand of the host and goes in its name; without it, it is the CasaZen e-mail.
         var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId);
         var content = session.ReminderSentAt is null

@@ -48,7 +48,8 @@ public sealed class BookingNotifier(
     TimeProvider? timeProvider = null,
     IBookingFlowSettingsService? flowSettings = null,
     AgencyDomainLinks? agencyLinks = null,
-    IGuestEmailBrandingProvider? emailBranding = null)
+    IGuestEmailBrandingProvider? emailBranding = null,
+    IGuestEmailLanguageProvider? emailLanguage = null)
 {
     /// <summary>
     /// The four optional services of the check-in link were given (the check-in, the delivery, its options, the clock): the container gives them. Built without them the notifier says
@@ -99,6 +100,10 @@ public sealed class BookingNotifier(
         // E50/F01/US03/T01: the brand of the host (its logo, color and name; sent in its name, answers to it) while the guest portal is on; never throws, null = the CasaZen e-mail.
         var branding = await emailBranding.ForOrgOrNullAsync(data.OrgId, cancellationToken);
 
+        // E50/F01/US03/T02: with the guest portal on, the confirmation is written in the language of the guest (the check-in page, the country on the booking, the account of the host, Italian);
+        // without it, in Italian as ever. Never throws.
+        var culture = await emailLanguage.CultureOrAsync(data.OrgId, data.BookingId, EmailTemplates.DefaultCulture, cancellationToken: cancellationToken);
+
         // A link that is about to leave is «in attesa» (queued, never sent) until the provider accepts the e-mail that carries it: written BEFORE the e-mail is queued, so that the job that
         // sends it cannot finish first.
         await RecordCheckInQueuedAsync(data, confirmationCheckIn);
@@ -106,7 +111,7 @@ public sealed class BookingNotifier(
         var queued = Queue(bookingId, EmailTemplates.Names.GuestBookingConfirmed, data.GuestEmail, () =>
         {
             var content = EmailTemplates.GuestBookingConfirmed(
-                EmailTemplates.DefaultCulture,
+                culture,
                 data.GuestFirstName,
                 data.Summary,
                 kind,

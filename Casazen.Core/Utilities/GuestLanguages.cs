@@ -64,6 +64,16 @@ public static class GuestLanguages
         };
     }
 
+    /// <summary>
+    /// The one choice of the language of an e-mail to a guest (E50/F01/US03/T02, NF-155, AC-NF155-3), in this order: the language the guest chose on the check-in page
+    /// (<paramref name="sessionLanguage"/>, when it is supported), the language of the country on the booking (<see cref="OfCountry"/>: what the review invitation and the chat message of
+    /// the check-in link already read), the language of the account of the host (<paramref name="orgDefaultLanguage"/>, <c>Org.DefaultLanguage</c>), Italian. A booking carries no
+    /// language of its own, and the public booking requests carry none: a confirmation written before any check-in knows the guest only by its country, else by the host's account.
+    /// An unsupported code at any step is skipped, so the result is always one of <see cref="Supported"/>.
+    /// </summary>
+    public static string ResolveForEmail(string? sessionLanguage, string? country, string? orgDefaultLanguage) =>
+        Resolve(Normalize(sessionLanguage) ?? OfCountry(country), orgDefaultLanguage);
+
     /// <summary>The culture the emails of <paramref name="language"/> are written in (Italian for an unsupported one).</summary>
     public static CultureInfo CultureOf(string? language) => Normalize(language) switch
     {

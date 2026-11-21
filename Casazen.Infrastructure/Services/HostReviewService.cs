@@ -34,7 +34,8 @@ public sealed class HostReviewService(
     PublicSiteLinks links,
     ILogger<HostReviewService> logger,
     TimeProvider? timeProvider = null,
-    IGuestEmailBrandingProvider? emailBranding = null) : IHostReviewService
+    IGuestEmailBrandingProvider? emailBranding = null,
+    IGuestEmailLanguageProvider? emailLanguage = null) : IHostReviewService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -265,8 +266,16 @@ public sealed class HostReviewService(
         var language = await LanguageOfGuestAsync(booking, cancellationToken);
         // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
         var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
-        var content = EmailTemplates.ReviewInvite(
+        // E50/F01/US03/T02: with the guest portal on the invitation is written in any of the five languages of the guest (the language it already read, else the account of the host, else Italian);
+        // without it, in Italian or English as ever.
+        var culture = await emailLanguage.CultureOrAsync(
+            booking.OrgId,
+            booking.Id,
             EmailTemplates.ReviewInviteCulture(language),
+            language,
+            cancellationToken);
+        var content = EmailTemplates.ReviewInvite(
+            culture,
             booking.GuestFirstName,
             booking.PropertyName,
             booking.CheckInDate,

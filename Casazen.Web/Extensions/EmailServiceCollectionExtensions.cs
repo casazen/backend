@@ -71,6 +71,8 @@ public static class EmailServiceCollectionExtensions
         services.AddScoped<BookingConfirmationEmailJob>();
         // E50/F01/US03/T01 (NF-155): the brand of a host (logo, color, name, reply-to) in the e-mails to its guests; null while Features:GuestPortal is off.
         services.AddScoped<IGuestEmailBrandingProvider, GuestEmailBrandingProvider>();
+        // E50/F01/US03/T02 (NF-155): the language of an e-mail to a guest (the check-in page, the country, the account of the host, Italian); today's culture while Features:GuestPortal is off.
+        services.AddScoped<IGuestEmailLanguageProvider, GuestEmailLanguageProvider>();
 
         return services;
     }
