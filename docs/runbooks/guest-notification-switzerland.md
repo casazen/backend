@@ -407,8 +407,9 @@ gives **no legal advice**: how long the host keeps it is the hint of the regime 
 - **The columns** (`GuestRegisterFile.HeaderKeys`; one header line and nothing else): arrival, departure, last name, first name, date of birth, nationality, document type, document number, street, postal code,
   city, country, vehicle plate, booking code, minor and **signature** (always empty, for the printed copy). Dates are `dd.MM.yyyy`; nationality and country are **alpha-3** (`TicinoCountryCodes`; a nationality that is
   not in the table is left empty, never guessed); the document type is passport, identity card or other; the plate and the booking code (`XXXXX-XXXXX`) are repeated on every line of the stay so that each line stands
-  on its own; **minor** is yes under 18 at the arrival, no from 18, and empty when the check-in has no date of birth. The header and the words yes, no, passport, identity card and other are resource keys of
-  `SharedResources` (`GuestRegisterCol*`, `GuestRegisterYes`...), Italian or English by the language of the request (any other is Italian); the codes and the dates never change.
+  on its own; **minor** is yes under 18 at the arrival, no from 18, and empty when the check-in has no date of birth. The header and the words yes, passport, identity card and other are resource keys of
+  `SharedResources` (`GuestRegisterCol*`, `GuestRegisterYes`...), Italian or English by the language of the request (any other is Italian); the word **no** reads the same in both languages, so it is a constant of
+  the code (`GuestRegisterFile.NoWord`) and not a key (the localization test of the resource files refuses a key whose English text is the Italian one); the codes and the dates never change.
 - **The file**: written by the one writer of the files the host opens in a spreadsheet (`CsvWriter`, SR-10): **UTF-8 with its byte order mark**, `;`, CRLF after every line, a text that a spreadsheet would run as a
   formula (it starts with `= + - @`, a tab or a CR) written with a leading apostrophe, a cell with a semicolon, a quote or a line break quoted. **No comment, title or note line**: it stays a table. A period with
   no guest is the header line alone (200, never an error). At most 9,999 guests (the writer takes 10,000 lines, the header included: 422 `csv_too_many_rows`). Name: `registro-ospiti-ch-{from}-{to}.csv`.

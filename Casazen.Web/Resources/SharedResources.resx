@@ -8842,9 +8842,6 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="GuestRegisterYes" xml:space="preserve">
     <value>Sì</value>
   </data>
-  <data name="GuestRegisterNo" xml:space="preserve">
-    <value>No</value>
-  </data>
   <data name="GuestRegisterDocumentPassport" xml:space="preserve">
     <value>Passaporto</value>
   </data>

@@ -53,8 +53,10 @@ public sealed record GuestRegisterRow(
 /// one header line, every line ended by CRLF. <b>No comment, title or note line</b>: the file stays a table a spreadsheet, a sort or a print can use as it is. A text that a spreadsheet would
 /// run as a formula (it starts with <c>= + - @</c>, a tab or a CR) is written with a leading apostrophe and never calculated; a cell with a semicolon, a quote or a line break is quoted.
 /// A register of a period with no guest is the header line alone: an answer, not an error. The dates are <c>dd.MM.yyyy</c>, as in the Ticino file and in the group sheet.</para>
-/// <para><b>The words</b> (the header, yes and no, the three kinds of document) are resource keys of <c>SharedResources</c>: the caller reads them in the language of the request
-/// (<see cref="Casazen.Core.Documents.IDocumentTexts"/>), so no text of the file is written in the code. The nationality and the country are codes, never words.</para>
+/// <para><b>The words</b> (the header, yes, the three kinds of document) are resource keys of <c>SharedResources</c>: the caller reads them in the language of the request
+/// (<see cref="Casazen.Core.Documents.IDocumentTexts"/>), so no text to translate is written in the code. The one word that reads the same in Italian and in English, «no»
+/// (<see cref="NoWord"/>), is a constant of the code and not a key: the localization test of the resource files refuses a key whose English text is the Italian one. The nationality and
+/// the country are codes, never words.</para>
 /// <para><b>Never stored.</b> The file is rebuilt from the check-in on every request; the service that serves it writes one audit row with no personal data.</para>
 /// </remarks>
 public static class GuestRegisterFile
@@ -74,8 +76,11 @@ public static class GuestRegisterFile
     /// <summary>The resource key of the word «yes» of the column «minor».</summary>
     public const string YesKey = "GuestRegisterYes";
 
-    /// <summary>The resource key of the word «no» of the column «minor».</summary>
-    public const string NoKey = "GuestRegisterNo";
+    /// <summary>
+    /// The word «no» of the column «minor»: it reads the same in Italian and in English, so it is not a text to translate and is not in the resource files (the localization test of
+    /// the resource files wants a different English text for every key).
+    /// </summary>
+    public const string NoWord = "No";
 
     /// <summary>The resource key of the word «passport» of the column «document type».</summary>
     public const string PassportKey = "GuestRegisterDocumentPassport";
@@ -108,7 +113,7 @@ public static class GuestRegisterFile
     ];
 
     /// <summary>Every resource key the file reads (for the tests that look for it in the two languages).</summary>
-    public static IReadOnlyList<string> AllKeys { get; } = [.. HeaderKeys, YesKey, NoKey, PassportKey, IdentityCardKey, OtherDocumentKey];
+    public static IReadOnlyList<string> AllKeys { get; } = [.. HeaderKeys, YesKey, PassportKey, IdentityCardKey, OtherDocumentKey];
 
     /// <summary>
     /// What is wrong with a period, as the code of the error, or <c>null</c> when the register can be made: <see cref="PeriodInvalidCode"/> when the end is before the start (or is the
@@ -201,11 +206,22 @@ public static class GuestRegisterFile
             row.Country,
             row.VehiclePlate,
             row.BookingCode,
-            row.Minor is { } minor ? text(minor ? YesKey : NoKey) : string.Empty,
+            MinorWord(row.Minor, text),
 
             // The signature column of the printed register: always empty, whoever the guest is.
             string.Empty,
         ];
+    }
+
+    /// <summary>The cell of the column «minor»: «yes» in the language of the reader, the word «no» of the code, empty while the age is not known.</summary>
+    private static string MinorWord(bool? minor, Func<string, string> text)
+    {
+        return minor switch
+        {
+            true => text(YesKey),
+            false => NoWord,
+            null => string.Empty,
+        };
     }
 
     private static string DocumentWord(TicinoDocumentKind? kind, Func<string, string> text)

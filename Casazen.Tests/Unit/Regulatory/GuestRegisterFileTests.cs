@@ -12,7 +12,7 @@ namespace Casazen.Tests.Unit.Regulatory;
 /// <summary>
 /// E31/F01/US01/T01 (NF-130, decision D12b): the guest register of a Swiss property as a clean table. The content is exact: UTF-8 with its byte order mark, <c>;</c>, one header line, no
 /// comment line, CRLF after every line, an empty signature column, the dates as <c>dd.MM.yyyy</c>, the nationality and the country as alpha-3 codes, the accents as they are, and a text a
-/// spreadsheet would run as a formula written as text. The words are the resource keys of the two languages.
+/// spreadsheet would run as a formula written as text. The words are the resource keys of the two languages, but «no», which reads the same in both and is a constant of the code.
 /// </summary>
 public class GuestRegisterFileTests
 {
@@ -59,6 +59,21 @@ public class GuestRegisterFileTests
         // The errors of the endpoints are in both languages too.
         foreach (var key in new[] { "GuestRegisterNotAvailable", "GuestRegisterFormatInvalid" })
             Assert.NotEqual(key, Texts.Get(key, language));
+    }
+
+    [Fact]
+    public void EveryResourceKeyOfTheFile_HasAnotherTextInEnglish_TheWordNoIsAConstantOfTheCode()
+    {
+        // The localization test of the resource files (SharedResourcesLocalizationTests, run by the CI) refuses a key whose English text is the Italian one. «No» reads the same in both
+        // languages, so it is a constant of the code (GuestRegisterFile.NoWord) and no resource file holds it; every other word of the file differs between the two languages.
+        string[] keys = [.. GuestRegisterFile.AllKeys, "GuestRegisterNotAvailable", "GuestRegisterFormatInvalid"];
+
+        var same = keys.Where(key => Texts.Get(key, "it") == Texts.Get(key, "en")).ToList();
+
+        Assert.True(same.Count == 0, $"The same text in Italian and in English: {string.Join(", ", same)}");
+        Assert.Equal("No", GuestRegisterFile.NoWord);
+        Assert.Equal("GuestRegisterNo", Texts.Get("GuestRegisterNo", "it"));
+        Assert.Equal("GuestRegisterNo", Texts.Get("GuestRegisterNo", "en"));
     }
 
     // ─── The content ───
