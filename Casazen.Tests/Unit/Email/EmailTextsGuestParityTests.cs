@@ -96,30 +96,69 @@ public class EmailTextsGuestParityTests
         Assert.True(same.Count == 0, $"{fileName} holds the Italian text of {string.Join(", ", same)}");
     }
 
+    private static readonly string[] BannedSuppliers = ["stripe", "octorate", "deepseek", "openai", "anthropic", "chatgpt", "claude", "gemini"];
+
     /// <summary>
-    /// No text of a guest e-mail names a technical supplier (A16: never Stripe, Octorate, the AI provider). The German, French and Spanish texts and the texts of this slice are checked
-    /// in full; the <c>BookingPaymentLink_Secure</c> text of the Italian and English files, written before the portal, still names the payment provider (it is left as it is: with the portal off
-    /// that e-mail must stay byte for byte what it was).
+    /// No text of a guest e-mail names a technical supplier (A16: never Stripe, Octorate, the AI provider), in any of the five files, with no exception. The sentence about the payment page
+    /// that was written before the portal with the name of the payment provider is not a guest key any more: it lives under <c>Legacy_BookingPaymentLink_Secure</c>, which only the CasaZen
+    /// e-mail of today reads (<see cref="BookingPaymentLink_NamesNoSupplierWithTheBrand_AndIsTheEmailOfTodayWithout"/>).
     /// </summary>
     [Fact]
     public void GuestTexts_NameNoTechnicalSupplier()
     {
-        string[] banned = ["stripe", "octorate", "deepseek", "openai", "anthropic", "chatgpt", "claude", "gemini"];
         var found = new List<string>();
         foreach (var file in Files)
         {
-            var legacy = file is "EmailTexts.resx" or "EmailTexts.en.resx";
             foreach (var (key, value) in Values(file))
             {
-                if (!IsGuestKey(key) || (legacy && key == "BookingPaymentLink_Secure"))
+                if (!IsGuestKey(key))
                     continue;
 
                 var lower = value.ToLowerInvariant();
-                found.AddRange(banned.Where(lower.Contains).Select(name => $"{file}:{key} names {name}"));
+                found.AddRange(BannedSuppliers.Where(lower.Contains).Select(name => $"{file}:{key} names {name}"));
             }
         }
 
         Assert.True(found.Count == 0, string.Join("; ", found));
+    }
+
+    /// <summary>
+    /// PROOF TEST (A16: no technical supplier in what a guest reads; and the CasaZen e-mail of today stays identical while the portal is off): the payment link, written before the portal with
+    /// the name of the payment provider in Italian and English, reads without it in every language when it carries the brand of a host (the portal is on), and without a brand it keeps the
+    /// sentence of today to the byte in Italian and English; in a language the portal added it never names the provider, brand or not.
+    /// </summary>
+    [Fact]
+    public void BookingPaymentLink_NamesNoSupplierWithTheBrand_AndIsTheEmailOfTodayWithout()
+    {
+        const string todayItalian = "Il pagamento avviene su una pagina sicura di Stripe e va direttamente al tuo host. Se ricevi un nuovo link, usa sempre l'ultimo: quello precedente non funziona più.";
+        const string todayEnglish = "The payment takes place on a secure Stripe page and goes straight to your host. If you receive a new link, always use the latest one: the previous one no longer works.";
+        var checkIn = new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Utc);
+        var branding = new GuestEmailBranding("Casa Aurora", "https://cdn.casazen.test/logo.png", "#336699", "host@aurora.test");
+
+        string Render(CultureInfo culture, GuestEmailBranding? brand) =>
+            EmailTemplates.BookingPaymentLink(culture, "Anna", "Villa Rosa", checkIn, checkIn.AddDays(3), 120.5m, "EUR", "https://app.casazen.test/pay", brand).HtmlBody;
+
+        string Sentence(string text) => $"<p style=\"font-size:13px;color:#71717a;\">{text}</p>";
+
+        foreach (var language in new[] { "it", "en", "de", "fr", "es" })
+        {
+            var culture = language == "it" ? CultureInfo.GetCultureInfo("it-IT") : CultureInfo.GetCultureInfo(language);
+
+            // The portal on: the brand of the host, the sentence without a name, in every language.
+            var branded = Render(culture, branding);
+            Assert.Contains(Sentence(EmailTexts.Get("BookingPaymentLink_Secure", culture)), branded, StringComparison.Ordinal);
+            Assert.All(BannedSuppliers, name => Assert.DoesNotContain(name, branded, StringComparison.OrdinalIgnoreCase));
+
+            // A language the portal added never names it, brand or not (an e-mail whose brand could not be read).
+            if (language is not ("it" or "en"))
+                Assert.All(BannedSuppliers, name => Assert.DoesNotContain(name, Render(culture, null), StringComparison.OrdinalIgnoreCase));
+        }
+
+        // The portal off (no brand): the sentence of today, to the byte, in the two languages there were.
+        Assert.Contains(Sentence(todayItalian), Render(CultureInfo.GetCultureInfo("it-IT"), null), StringComparison.Ordinal);
+        Assert.Contains(Sentence(todayEnglish), Render(CultureInfo.GetCultureInfo("en"), null), StringComparison.Ordinal);
+        Assert.DoesNotContain("Stripe", Render(CultureInfo.GetCultureInfo("it-IT"), branding), StringComparison.Ordinal);
+        Assert.DoesNotContain("Stripe", Render(CultureInfo.GetCultureInfo("en"), branding), StringComparison.Ordinal);
     }
 
     /// <summary>

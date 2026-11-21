@@ -2848,6 +2848,10 @@
     <value>Se il pulsante non funziona, copia questo link nel browser:</value>
   </data>
   <data name="BookingPaymentLink_Secure" xml:space="preserve">
+    <value>Il pagamento avviene su una pagina sicura e va direttamente al tuo host. Se ricevi un nuovo link, usa sempre l'ultimo: quello precedente non funziona più.</value>
+  </data>
+  <!-- E50/F01/US03/T01: the sentence above as it was written before the guest portal, naming the payment provider. It is NOT a text of the guests (no guest prefix): it stays only so that the CasaZen e-mail of today (no brand of the host) is identical to the byte while Features:GuestPortal is off. The e-mail with the brand reads BookingPaymentLink_Secure. -->
+  <data name="Legacy_BookingPaymentLink_Secure" xml:space="preserve">
     <value>Il pagamento avviene su una pagina sicura di Stripe e va direttamente al tuo host. Se ricevi un nuovo link, usa sempre l'ultimo: quello precedente non funziona più.</value>
   </data>
   <data name="BookingPaymentLink_NotYou" xml:space="preserve">

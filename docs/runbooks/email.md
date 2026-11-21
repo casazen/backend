@@ -196,9 +196,12 @@ changes of a booking, deferred charge, lock code, new photo, «pay at the proper
   account (`Org.DefaultLanguage`), else Italian; a code the five do not include is skipped. **Gap:** `Booking` has no language column (no migration here) and no public booking request carries one, so a confirmation written
   before any check-in knows the guest only by its country, else by the host's account.
 - **Flag off = today's culture.** The provider answers the culture each service has always used (Italian for the booking e-mails, Italian or English for the review invitation and the document, the language of the check-in
-  page for the check-in link) while `Features__GuestPortal` is off, and for a service built without it. The German, French and Spanish texts are to be reviewed by a native speaker before the release; none of them
-  names a payment provider, a channel manager or an AI provider (`GuestTexts_NameNoTechnicalSupplier`). The Italian and English `BookingPaymentLink_Secure`, written before the portal, still names the payment provider: it is
-  left as it is so that this e-mail stays identical while the portal is off.
+  page for the check-in link) while `Features__GuestPortal` is off, and for a service built without it. The German, French and Spanish texts are to be reviewed by a native speaker before the release; no text of a guest
+  e-mail names a payment provider, a channel manager or an AI provider, in any of the five files (`GuestTexts_NameNoTechnicalSupplier`, no exception).
+- **The payment page sentence.** The payment link was written, before the portal, with the name of the payment provider in Italian and English. That sentence is kept as `Legacy_BookingPaymentLink_Secure` (not a guest
+  key, so no guest test reads it as a text of the portal): only the CasaZen e-mail of today, the one with no brand, in Italian or English, reads it, so it stays identical to the byte while the portal is off. The e-mail with
+  the brand of a host, and every language the portal added, reads `BookingPaymentLink_Secure`, the same sentence without the name, in the five languages
+  (`BookingPaymentLink_NamesNoSupplierWithTheBrand_AndIsTheEmailOfTodayWithout`).
 
 ## Guest e-mails in the name of the host (E50/F01/US03/T01, NF-155, D3)
 
