@@ -77,6 +77,9 @@ public class CorsPolicyTests
             .ToList();
         Assert.Contains("Content-Disposition", exposed, StringComparer.OrdinalIgnoreCase);
         Assert.Contains(CalendarChangesController.TruncatedHeader, exposed, StringComparer.OrdinalIgnoreCase);
+
+        // The retention hint that comes with the guest register of a Swiss property (E31/F01/US01/T01): a page on another origin reads it from the answer of the download.
+        Assert.Contains(SwissComplianceController.RetentionYearsHeader, exposed, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]

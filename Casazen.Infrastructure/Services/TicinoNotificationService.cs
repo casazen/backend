@@ -438,56 +438,10 @@ public class TicinoNotificationService(
                 .ToListAsync(cancellationToken))
             .ToLookup(g => g.BookingId);
 
-        return bookings.Select(b =>
-        {
-            var rows = guests[b.Id].OrderBy(g => g.Position).ToList();
-            var facts = rows.Count > 0
-                ? rows.Select(g => FactsOf(g, g.Guest)).ToList()
-                : [FactsOf(StayGuest.FromBooker(b, b.Guest), b.Guest)];
-            var booker = $"{b.Guest?.FirstName} {b.Guest?.LastName}".Trim();
-
-            // NF-126: «Numero bollettino» is the code of the booking as hosts read it, «Numero autovettura» the plate of the stay.
-            return new StayRead(
-                new TicinoStayFacts(
-                    b.Id,
-                    booker,
-                    DateOnly.FromDateTime(b.CheckInDate),
-                    DateOnly.FromDateTime(b.CheckOutDate),
-                    b.NumberOfGuests,
-                    facts,
-                    string.IsNullOrWhiteSpace(b.BookingCode) ? null : BookingCodes.Format(b.BookingCode),
-                    b.VehiclePlate),
-                b.ArrivedAt);
-        }).ToList();
+        // NF-126: «Numero bollettino» is the code of the booking as hosts read it, «Numero autovettura» the plate of the stay; the one reading of a stay is shared with the
+        // guest register of E31/F01 (TicinoStayFacts.From).
+        return bookings.Select(b => new StayRead(TicinoStayFacts.From(b, guests[b.Id]), b.ArrivedAt)).ToList();
     }
-
-    /// <summary>
-    /// A guest of the stay as the file reads it. The home is the one the check-in recorded for the guest (NF-132); for the row linked to the booker's
-    /// record, a part the check-in does not have is taken from that record, as before NF-132.
-    /// </summary>
-    private static TicinoGuestFacts FactsOf(StayGuest guest, Guest? record) => new(
-        guest.Position,
-        guest.Type,
-        guest.FirstName,
-        guest.LastName,
-        guest.DateOfBirth is { } born ? DateOnly.FromDateTime(born) : null,
-        guest.CitizenshipCode,
-        guest.CitizenshipName,
-        guest.BornInItaly,
-        guest.BirthComuneName,
-        guest.BirthCountryName,
-        guest.DocumentType,
-        guest.DocumentTypeCode,
-        guest.DocumentNumber,
-        guest.ResidenceInItaly,
-        guest.ResidenceComuneName,
-        guest.ResidenceCountryCode,
-        guest.ResidenceCountryName,
-        FirstText(guest.ResidenceStreet, record?.Address),
-        FirstText(guest.ResidencePostalCode, record?.PostalCode),
-        FirstText(guest.ResidenceCityName, record?.City));
-
-    private static string? FirstText(string? recorded, string? fallback) => string.IsNullOrWhiteSpace(recorded) ? fallback : recorded;
 
     /// <summary>The declarations of the notification to the Ticino police (no regime code) of <paramref name="property"/> for <paramref name="day"/>; the org of the property is always named.</summary>
     private IQueryable<SwissNotificationDeclaration> DeclarationsOf(Property property, DateOnly day) =>

@@ -8785,6 +8785,72 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="TicinoNotAGroup" xml:space="preserve">
     <value>This stay is not a group of at least {0} persons (group leader and group members): no group sheet is needed.</value>
   </data>
+  <data name="GuestRegisterNotAvailable" xml:space="preserve">
+    <value>The downloadable guest register is for properties in Switzerland: for a property in Italy the register is the Alloggiati Web file.</value>
+  </data>
+  <data name="GuestRegisterFormatInvalid" xml:space="preserve">
+    <value>Invalid register format: only CSV is available.</value>
+  </data>
+  <data name="GuestRegisterColArrival" xml:space="preserve">
+    <value>Arrival</value>
+  </data>
+  <data name="GuestRegisterColDeparture" xml:space="preserve">
+    <value>Departure</value>
+  </data>
+  <data name="GuestRegisterColLastName" xml:space="preserve">
+    <value>Last name</value>
+  </data>
+  <data name="GuestRegisterColFirstName" xml:space="preserve">
+    <value>First name</value>
+  </data>
+  <data name="GuestRegisterColBirthDate" xml:space="preserve">
+    <value>Date of birth</value>
+  </data>
+  <data name="GuestRegisterColNationality" xml:space="preserve">
+    <value>Nationality</value>
+  </data>
+  <data name="GuestRegisterColDocumentType" xml:space="preserve">
+    <value>Document type</value>
+  </data>
+  <data name="GuestRegisterColDocumentNumber" xml:space="preserve">
+    <value>Document number</value>
+  </data>
+  <data name="GuestRegisterColStreet" xml:space="preserve">
+    <value>Street</value>
+  </data>
+  <data name="GuestRegisterColPostalCode" xml:space="preserve">
+    <value>Postal code</value>
+  </data>
+  <data name="GuestRegisterColCity" xml:space="preserve">
+    <value>City</value>
+  </data>
+  <data name="GuestRegisterColCountry" xml:space="preserve">
+    <value>Country</value>
+  </data>
+  <data name="GuestRegisterColVehiclePlate" xml:space="preserve">
+    <value>Vehicle plate</value>
+  </data>
+  <data name="GuestRegisterColBookingCode" xml:space="preserve">
+    <value>Booking code</value>
+  </data>
+  <data name="GuestRegisterColMinor" xml:space="preserve">
+    <value>Minor</value>
+  </data>
+  <data name="GuestRegisterColSignature" xml:space="preserve">
+    <value>Signature</value>
+  </data>
+  <data name="GuestRegisterYes" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+  <data name="GuestRegisterDocumentPassport" xml:space="preserve">
+    <value>Passport</value>
+  </data>
+  <data name="GuestRegisterDocumentIdentityCard" xml:space="preserve">
+    <value>Identity card</value>
+  </data>
+  <data name="GuestRegisterDocumentOther" xml:space="preserve">
+    <value>Other</value>
+  </data>
   <data name="GuestPortalBookingNotEligible" xml:space="preserve">
     <value>The stay link is only made for confirmed, checked-in or checked-out bookings: not for a request, a cancelled booking or a guest who did not show up.</value>
   </data>

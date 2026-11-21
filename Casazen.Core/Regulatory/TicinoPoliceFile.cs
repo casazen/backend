@@ -139,7 +139,44 @@ public sealed record TicinoGuestFacts(
     string? ResidenceCountryName,
     string? Street,
     string? PostalCode,
-    string? City);
+    string? City)
+{
+    /// <summary>
+    /// A guest of the stay as the file reads it, from the row of the check-in (the one reading of a <see cref="StayGuest"/> for the Ticino file and for the guest register
+    /// of E31/F01). The home is the one the check-in recorded for the guest (NF-132); for the row linked to the booker's record, a part the check-in does not have is taken
+    /// from that record, as before NF-132.
+    /// </summary>
+    /// <param name="guest">The row of the check-in.</param>
+    /// <param name="record">The guest record the row is linked to (the booker's), when it is; <c>null</c> otherwise.</param>
+    public static TicinoGuestFacts From(StayGuest guest, Guest? record)
+    {
+        ArgumentNullException.ThrowIfNull(guest);
+
+        return new TicinoGuestFacts(
+            guest.Position,
+            guest.Type,
+            guest.FirstName,
+            guest.LastName,
+            guest.DateOfBirth is { } born ? DateOnly.FromDateTime(born) : null,
+            guest.CitizenshipCode,
+            guest.CitizenshipName,
+            guest.BornInItaly,
+            guest.BirthComuneName,
+            guest.BirthCountryName,
+            guest.DocumentType,
+            guest.DocumentTypeCode,
+            guest.DocumentNumber,
+            guest.ResidenceInItaly,
+            guest.ResidenceComuneName,
+            guest.ResidenceCountryCode,
+            guest.ResidenceCountryName,
+            FirstText(guest.ResidenceStreet, record?.Address),
+            FirstText(guest.ResidencePostalCode, record?.PostalCode),
+            FirstText(guest.ResidenceCityName, record?.City));
+    }
+
+    private static string? FirstText(string? recorded, string? fallback) => string.IsNullOrWhiteSpace(recorded) ? fallback : recorded;
+}
 
 /// <summary>A stay that arrives on the day of the file, with the guests the check-in recorded (in their order).</summary>
 /// <param name="BookingId">The booking.</param>
@@ -158,7 +195,36 @@ public sealed record TicinoStayFacts(
     int NumberOfGuests,
     IReadOnlyList<TicinoGuestFacts> Guests,
     string? ReferenceNumber = null,
-    string? VehiclePlate = null);
+    string? VehiclePlate = null)
+{
+    /// <summary>
+    /// A stay as the file reads it, from its booking and the guests its check-in recorded (the one reading of a stay for the Ticino file and for the guest register of E31/F01):
+    /// the guests in their order, or the booker alone while the check-in has none; «Numero bollettino» is the code of the booking as hosts read it, «Numero autovettura» the plate of the stay.
+    /// </summary>
+    /// <param name="booking">The booking, with its booker (<see cref="Booking.Guest"/>) loaded.</param>
+    /// <param name="stayGuests">The rows of the check-in of the booking, with their guest record loaded when linked.</param>
+    public static TicinoStayFacts From(Booking booking, IEnumerable<StayGuest> stayGuests)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        ArgumentNullException.ThrowIfNull(stayGuests);
+
+        var rows = stayGuests.OrderBy(g => g.Position).ToList();
+        var guests = rows.Count > 0
+            ? rows.Select(g => TicinoGuestFacts.From(g, g.Guest)).ToList()
+            : [TicinoGuestFacts.From(StayGuest.FromBooker(booking, booking.Guest), booking.Guest)];
+        var booker = $"{booking.Guest?.FirstName} {booking.Guest?.LastName}".Trim();
+
+        return new TicinoStayFacts(
+            booking.Id,
+            booker,
+            DateOnly.FromDateTime(booking.CheckInDate),
+            DateOnly.FromDateTime(booking.CheckOutDate),
+            booking.NumberOfGuests,
+            guests,
+            string.IsNullOrWhiteSpace(booking.BookingCode) ? null : Services.BookingCodes.Format(booking.BookingCode),
+            booking.VehiclePlate);
+    }
+}
 
 /// <summary>One row of the file: one notified person (an adult, or a minor travelling without an adult), or the leader of a group of six or more.</summary>
 public sealed record TicinoRegistration(
@@ -533,7 +599,7 @@ public static class TicinoPoliceFile
     }
 
     /// <summary>«Domicilio»: the comune of residence of a guest living in Italy when the check-in has it, otherwise the town the guest wrote.</summary>
-    private static string? DomicileOf(TicinoGuestFacts guest) =>
+    public static string? DomicileOf(TicinoGuestFacts guest) =>
         guest.ResidenceInItaly == true && !string.IsNullOrWhiteSpace(guest.ResidenceComuneName) ? guest.ResidenceComuneName : guest.City;
 
     /// <summary>Full years at <paramref name="day"/>.</summary>
@@ -569,11 +635,12 @@ public static class TicinoPoliceFile
         };
     }
 
-    private static string? ResidenceNationOf(TicinoGuestFacts guest) =>
+    /// <summary>«Nazione»: <c>ITA</c> for a guest living in Italy, otherwise the alpha-3 code of the state of residence the check-in has; <c>null</c> when it is not known.</summary>
+    public static string? ResidenceNationOf(TicinoGuestFacts guest) =>
         guest.ResidenceInItaly == true ? "ITA" : TicinoCountryCodes.FromCheckIn(guest.ResidenceCountryCode, guest.ResidenceCountryName);
 
     /// <summary>Trimmed, inner runs of white space (line breaks included) as one space; empty when <c>null</c>.</summary>
-    private static string Clean(string? value) =>
+    public static string Clean(string? value) =>
         string.IsNullOrWhiteSpace(value) ? string.Empty : string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     // ─── Writers ────────────────────────────────────────────────────────────────────────────────────────
