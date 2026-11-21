@@ -104,7 +104,7 @@ data are kept.
 5. Moving a canton to `Verified` + `ReportToAuthority` + `Yes` makes its hosts see a **required** duty: do it only on the word of the product owner.
 6. The deadline of a `DailyByTime` regime has an optional time of day, `DeadlineTime` (Schaffhausen: 02:00, the day after the arrival): copy it from the source or leave it empty, never write a time nobody wrote
    (an empty time means no deadline: the day is listed in the cockpit with no due date and no alert is sent, as for a regime of kind `None`). The deadline of the assisted notification of a canton other than Ticino is computed from the kind and this time by `SwissAssistedNotification.DueAtUtc`
-   ([`guest-notification-switzerland.md`](../runbooks/guest-notification-switzerland.md) § 25).
+   ([`guest-notification-switzerland.md`](../runbooks/guest-notification-switzerland.md) § 26).
 
 ## 6. What the catalog does not hold
 

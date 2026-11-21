@@ -492,6 +492,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISwissNotificationService, SwissNotificationService>();
         services.AddScoped<IOtrTaxService, OtrTaxService>();
         services.AddScoped<ISwissComplianceReceiptService, SwissComplianceReceiptService>();
+        // E31/F01/US01/T01, NF-130 (casazen/backend#979): the guest register of a Swiss property for a period, a clean CSV table rebuilt on every request and never stored (one audit
+        // row without personal data); both of its endpoints of SwissComplianceController are behind Features:GuestRegistrationRegimes.
+        services.AddScoped<IGuestRegisterService, GuestRegisterService>();
         // NF-126 (casazen/backend#979): the character set of the CSV of the Ticino police, GuestNotifications:TicinoCsvEncoding (windows-1252 by default,
         // or utf-8); any other value stops the application at startup (docs/runbooks/guest-notification-switzerland.md).
         services.AddOptions<Casazen.Core.Options.GuestNotificationOptions>()

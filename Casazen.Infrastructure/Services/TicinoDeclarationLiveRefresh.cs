@@ -10,7 +10,7 @@ namespace Casazen.Infrastructure.Services;
 /// notification covers (<see cref="TellSwiss"/>: notified to the cantonal authority, E31/F02/US01/T01, NF-131). A push to the hosts of the property that the decorator
 /// (<c>InAppNotificationPushDecorator</c>) turns into the entry of the bell and the live <c>notificationsChanged</c> message of the open sessions, so the bell, the pop-up and the open
 /// cockpit and Ticino pages of the other hosts read the days to notify again without a reload (<c>docs/runbooks/in-app-notifications.md</c>,
-/// <c>docs/runbooks/guest-notification-switzerland.md</c> § 18 and § 25).
+/// <c>docs/runbooks/guest-notification-switzerland.md</c> § 18 and § 26).
 /// </summary>
 /// <remarks>
 /// The text names the property and the day only, never a guest, a value or the person who acted (the cockpit shows who). Best effort, after the declaration is saved: whatever goes
