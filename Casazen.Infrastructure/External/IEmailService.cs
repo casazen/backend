@@ -33,6 +33,17 @@ public interface IEmailService
         SendEmailAsync(to, subject, htmlContent);
 
     /// <summary>
+    /// The same email with the name of the host as the sender's display name (<c>From</c>) and, when there is one, the address an answer goes to
+    /// (<c>Reply-To</c>), for the emails to a guest (NF-155, D3): «Casa Aurora &lt;noreply@casazen.app&gt;», answers to the host. <b>Only the
+    /// display name</b> changes: the address of the sender is always the configured one (a per-host address would need DNS verification per host).
+    /// A sender that cannot set the display name sends the email without it (this default), so an implementation that does not know it keeps working.
+    /// </summary>
+    Task<EmailSendResult> SendEmailAsync(string to, string subject, string htmlContent, string? replyTo, string? fromName) =>
+        string.IsNullOrWhiteSpace(replyTo)
+            ? SendEmailAsync(to, subject, htmlContent)
+            : SendEmailAsync(to, subject, htmlContent, replyTo);
+
+    /// <summary>
     /// The same email with extra headers, for the marketing campaigns: <c>List-Unsubscribe</c> and <c>List-Unsubscribe-Post</c>
     /// (RFC 2369, RFC 8058), so the mail clients offer the one-click unsubscribe (DEB-01). A sender that cannot set headers sends the
     /// email without them (this default): the unsubscribe link in the body is still there.

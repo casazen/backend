@@ -55,7 +55,8 @@ public sealed class IdentityVerificationFlowService(
     ILogger<IdentityVerificationFlowService> logger,
     IDomainEventRecorder? domainEvents = null,
     ICheckInLegalTexts? legalTexts = null,
-    IPropertySwissPlaceResolver? swissPlaces = null) : IIdentityVerificationFlowService
+    IPropertySwissPlaceResolver? swissPlaces = null,
+    IGuestEmailBrandingProvider? emailBranding = null) : IIdentityVerificationFlowService
 {
     /// <summary>Data Protection purpose of the encrypted picture of a document in the private bucket. Never change it: stored pictures would become unreadable.</summary>
     public const string DocumentImageContentPurpose = "Casazen.DocumentImage.Content";
@@ -557,12 +558,15 @@ public sealed class IdentityVerificationFlowService(
         if (emailed is null)
             return code;
 
+        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
+        var branding = await emailBranding.ForOrgOrNullAsync(session.OrgId, ct);
         var email = EmailTemplates.GuestAccessCode(
             EmailTemplates.GuestAccessCodeCulture(session.Language),
             $"{guest.FirstName} {guest.LastName}".Trim(),
             booking.Property.Name,
             booking.CheckInDate,
-            emailed);
+            emailed,
+            branding);
         if (!emailQueue.Enqueue(guest.Email, email, EmailTemplates.Names.GuestAccessCode))
             logger.LogWarning("Access code e-mail of session {SessionId} not queued", session.Id);
 

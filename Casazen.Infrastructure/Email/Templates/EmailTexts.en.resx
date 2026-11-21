@@ -15,6 +15,9 @@
   <data name="Layout_Footer" xml:space="preserve">
     <value>CasaZen — short-term rental management</value>
   </data>
+  <data name="Layout_PoweredBy" xml:space="preserve">
+    <value>Powered by CasaZen</value>
+  </data>
   <data name="Format_Date" xml:space="preserve">
     <value>d MMMM yyyy</value>
   </data>

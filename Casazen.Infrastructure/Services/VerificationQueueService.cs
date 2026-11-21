@@ -36,7 +36,8 @@ public class VerificationQueueService(
     IAccessCodeService? accessCodes = null,
     IInternalActivityService? activities = null,
     IDomainEventRecorder? domainEvents = null,
-    AgencyDomainLinks? agencyLinks = null) : IVerificationQueueService
+    AgencyDomainLinks? agencyLinks = null,
+    IGuestEmailBrandingProvider? emailBranding = null) : IVerificationQueueService
 {
     /// <summary>The model name of an operator row when no automatic outcome came before it (a refused consent, a request of the guest).</summary>
     internal const string OperatorModelName = "operator";
@@ -190,12 +191,15 @@ public class VerificationQueueService(
         var propertyName = booking.Property.Name;
         var culture = EmailTemplates.DefaultCulture;
 
+        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
+        var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
         var email = EmailTemplates.GuestNewPhotoRequest(
             culture,
             guestName,
             propertyName,
             booking.CheckInDate,
-            checkInLink);
+            checkInLink,
+            branding);
 
         if (!emailQueue.Enqueue(guest.Email, email, EmailTemplates.Names.GuestNewPhotoRequest))
         {
@@ -268,12 +272,15 @@ public class VerificationQueueService(
         }
 
         var culture = GuestLanguages.CultureOf(GuestLanguages.Resolve(session.Language, null));
+        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
+        var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
         var email = EmailTemplates.GuestVideoCall(
             culture,
             $"{guest.FirstName} {guest.LastName}".Trim(),
             booking.Property.Name,
             booking.CheckInDate,
-            link.AbsoluteUri);
+            link.AbsoluteUri,
+            branding);
         if (!emailQueue.Enqueue(guest.Email, email, EmailTemplates.Names.GuestVideoCall))
         {
             logger.LogWarning("Video call e-mail of booking {BookingId} not queued", bookingId);
@@ -616,12 +623,15 @@ public class VerificationQueueService(
 
         var booking = session.Booking;
         var guest = booking.Guest;
+        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
+        var branding = await emailBranding.ForOrgOrNullAsync(session.OrgId, cancellationToken);
         var email = EmailTemplates.GuestAccessCode(
             EmailTemplates.GuestAccessCodeCulture(session.Language),
             $"{guest.FirstName} {guest.LastName}".Trim(),
             booking.Property.Name,
             booking.CheckInDate,
-            code);
+            code,
+            branding);
         if (!emailQueue.Enqueue(guest.Email, email, EmailTemplates.Names.GuestAccessCode))
             logger.LogWarning("Access code e-mail of booking {BookingId} not queued after the operator's approval", session.BookingId);
     }

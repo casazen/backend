@@ -22,6 +22,9 @@ public sealed class ResendEmailService(
     public Task<EmailSendResult> SendEmailAsync(string to, string subject, string htmlContent, string replyTo) =>
         SendAsync(to, subject, htmlContent, replyTo);
 
+    public Task<EmailSendResult> SendEmailAsync(string to, string subject, string htmlContent, string? replyTo, string? fromName) =>
+        SendAsync(to, subject, htmlContent, replyTo, headers: null, fromName);
+
     public Task<EmailSendResult> SendEmailWithHeadersAsync(
         string to,
         string subject,
@@ -34,7 +37,8 @@ public sealed class ResendEmailService(
         string subject,
         string htmlContent,
         string? replyTo,
-        IReadOnlyDictionary<string, string>? headers = null)
+        IReadOnlyDictionary<string, string>? headers = null,
+        string? fromName = null)
     {
         var settings = options.Value;
         if (!settings.IsConfigured)
@@ -47,7 +51,7 @@ public sealed class ResendEmailService(
 
         try
         {
-            var response = await resend.EmailSendAsync(BuildMessage(settings, to, subject, htmlContent, replyTo, headers));
+            var response = await resend.EmailSendAsync(BuildMessage(settings, to, subject, htmlContent, replyTo, headers, fromName));
             if (response.Success)
             {
                 logger.LogInformation("Email sent via Resend (id={EmailId})", response.Content);
@@ -70,7 +74,10 @@ public sealed class ResendEmailService(
     /// <summary>
     /// The message handed to Resend: the configured sender, unchanged. <paramref name="replyTo"/>, when given, is only the address an
     /// answer goes to (the host's answer to a visitor of the booking site); it never replaces the sender. <paramref name="headers"/>, when
-    /// given, are added as they are (the <c>List-Unsubscribe</c> pair of a campaign).
+    /// given, are added as they are (the <c>List-Unsubscribe</c> pair of a campaign). <paramref name="fromName"/>, when given, is the name of
+    /// the host an email to a guest is sent in (E50/F01/US03/T01, NF-155): it replaces <b>only the display name</b> of the sender, cleaned
+    /// (<see cref="GuestEmailBranding.CleanName"/>: no quote, no bracket, no control character, at most 64 characters), and a name that is nothing
+    /// after the cleaning leaves the configured one. The <b>address</b> of the sender is always <c>Email:FromAddress</c>.
     /// </summary>
     public static EmailMessage BuildMessage(
         EmailOptions settings,
@@ -78,14 +85,16 @@ public sealed class ResendEmailService(
         string subject,
         string htmlContent,
         string? replyTo = null,
-        IReadOnlyDictionary<string, string>? headers = null)
+        IReadOnlyDictionary<string, string>? headers = null,
+        string? fromName = null)
     {
         var message = new EmailMessage
         {
             From = new EmailAddress
             {
                 Email = settings.FromAddress!.Trim(),
-                DisplayName = string.IsNullOrWhiteSpace(settings.FromName) ? null : settings.FromName.Trim(),
+                DisplayName = GuestEmailBranding.CleanName(fromName)
+                    ?? (string.IsNullOrWhiteSpace(settings.FromName) ? null : settings.FromName.Trim()),
             },
             To = to,
             Subject = subject,

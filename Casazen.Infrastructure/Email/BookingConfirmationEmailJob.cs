@@ -40,12 +40,47 @@ public sealed class BookingConfirmationEmailJob(
 
     // Provider errors are handled (and retried) here; Hangfire retries only unexpected errors (e.g. database), then drops the job so the link does not stay in its tables.
     [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
-    public async Task SendAsync(string to, string subject, string htmlBody, string template, Guid bookingId, Guid sessionId, int attempt)
+    public Task SendAsync(string to, string subject, string htmlBody, string template, Guid bookingId, Guid sessionId, int attempt) =>
+        DeliverAsync(to, subject, htmlBody, template, bookingId, sessionId, attempt, replyTo: null, fromName: null);
+
+    /// <summary>
+    /// The same for the confirmation of a guest that carries the brand of its host (E50/F01/US03/T01, NF-155): sent in the host's name (<paramref name="fromName"/>, the sender's
+    /// display name; the address is the configured one) with the host as <paramref name="replyTo"/>, and, when it has to be tried again, scheduled again as this method. A <b>new
+    /// method</b>: the signature of <see cref="SendAsync"/> is the one the jobs already in the queue were created with, and never changes.
+    /// </summary>
+    [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
+    public Task SendBrandedAsync(
+        string to,
+        string subject,
+        string htmlBody,
+        string template,
+        Guid bookingId,
+        Guid sessionId,
+        int attempt,
+        string? replyTo,
+        string? fromName)
     {
+        return DeliverAsync(to, subject, htmlBody, template, bookingId, sessionId, attempt, replyTo, fromName);
+    }
+
+    private async Task DeliverAsync(
+        string to,
+        string subject,
+        string htmlBody,
+        string template,
+        Guid bookingId,
+        Guid sessionId,
+        int attempt,
+        string? replyTo,
+        string? fromName)
+    {
+        var branded = replyTo is not null || fromName is not null;
         EmailSendResult result;
         try
         {
-            result = await emailService.SendEmailAsync(to, subject, htmlBody);
+            result = branded
+                ? await emailService.SendEmailAsync(to, subject, htmlBody, replyTo, fromName)
+                : await emailService.SendEmailAsync(to, subject, htmlBody);
         }
         catch (Exception ex)
         {
@@ -72,9 +107,19 @@ public sealed class BookingConfirmationEmailJob(
         if (result.IsTransient && attempt < MaxAttempts)
         {
             var delay = RetryDelays[Math.Min(attempt, RetryDelays.Length) - 1];
-            backgroundJobClient.Schedule<BookingConfirmationEmailJob>(
-                job => job.SendAsync(to, subject, htmlBody, template, bookingId, sessionId, attempt + 1),
-                delay);
+            if (branded)
+            {
+                backgroundJobClient.Schedule<BookingConfirmationEmailJob>(
+                    job => job.SendBrandedAsync(to, subject, htmlBody, template, bookingId, sessionId, attempt + 1, replyTo, fromName),
+                    delay);
+            }
+            else
+            {
+                backgroundJobClient.Schedule<BookingConfirmationEmailJob>(
+                    job => job.SendAsync(to, subject, htmlBody, template, bookingId, sessionId, attempt + 1),
+                    delay);
+            }
+
             logger.LogWarning(
                 "Email {Template} of booking {BookingId} not delivered on attempt {Attempt}, retried in {Delay}: {Error}",
                 template,

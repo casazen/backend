@@ -33,7 +33,8 @@ public sealed class GuestBookingCancellationService(
     PublicSiteLinks links,
     IConfiguration configuration,
     ILogger<GuestBookingCancellationService> logger,
-    TimeProvider? timeProvider = null) : IGuestBookingCancellationService
+    TimeProvider? timeProvider = null,
+    IGuestEmailBrandingProvider? emailBranding = null) : IGuestBookingCancellationService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -81,6 +82,8 @@ public sealed class GuestBookingCancellationService(
             return;
         }
 
+        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
+        var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
         var content = EmailTemplates.GuestCancelLink(
             EmailTemplates.DefaultCulture,
             booking.Guest!.FirstName,
@@ -88,7 +91,8 @@ public sealed class GuestBookingCancellationService(
             booking.CheckInDate,
             booking.CheckOutDate,
             cancelUrl,
-            expiresAt);
+            expiresAt,
+            branding);
 
         emailQueue.Enqueue(guestEmail, content, EmailTemplates.Names.GuestCancelLink);
 

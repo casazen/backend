@@ -42,7 +42,8 @@ public sealed class FiscalDocumentDeliveryService(
     IServiceScopeFactory scopeFactory,
     IMemoryCache cache,
     TimeProvider timeProvider,
-    ILogger<FiscalDocumentDeliveryService> logger) : IFiscalDocumentDeliveryService
+    ILogger<FiscalDocumentDeliveryService> logger,
+    IGuestEmailBrandingProvider? emailBranding = null) : IFiscalDocumentDeliveryService
 {
     /// <summary>
     /// The top-level names the standards keep for what is never delivered: <c>.invalid</c>, <c>.test</c> and <c>.example</c> (RFC 2606), <c>.localhost</c>, and <c>.local</c> (the placeholder of an erased
@@ -207,6 +208,8 @@ public sealed class FiscalDocumentDeliveryService(
 
         var expiresAt = timeProvider.GetUtcNow() + FiscalDocumentLinkRules.Lifetime;
         var url = links.FiscalDocumentView(document.Id, tokens.Create(document.Id, expiresAt));
+        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
+        var branding = await emailBranding.ForOrgOrNullAsync(document.OrgId, ct);
         var content = EmailTemplates.FiscalDocumentDelivery(
             MessageReplyService.EmailCultureOf(guest.Country),
             guest.FirstName,
@@ -215,7 +218,8 @@ public sealed class FiscalDocumentDeliveryService(
             document.Number ?? string.Empty,
             (document.IssueDate ?? DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime)).ToDateTime(TimeOnly.MinValue),
             url,
-            expiresAt.UtcDateTime);
+            expiresAt.UtcDateTime,
+            branding);
 
         if (!emailQueue.Enqueue(address, content, EmailTemplates.Names.FiscalDocumentDelivery))
         {

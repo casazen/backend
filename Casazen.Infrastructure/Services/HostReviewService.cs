@@ -33,7 +33,8 @@ public sealed class HostReviewService(
     IEmailQueue emailQueue,
     PublicSiteLinks links,
     ILogger<HostReviewService> logger,
-    TimeProvider? timeProvider = null) : IHostReviewService
+    TimeProvider? timeProvider = null,
+    IGuestEmailBrandingProvider? emailBranding = null) : IHostReviewService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -262,6 +263,8 @@ public sealed class HostReviewService(
         var expiresAt = ReviewRules.WindowEndsAtUtc(booking.CheckOutDate);
         var reviewUrl = links.GuestReview(booking.OrgSlug, booking.Id, tokens.Create(booking.Id, new DateTimeOffset(expiresAt)));
         var language = await LanguageOfGuestAsync(booking, cancellationToken);
+        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
+        var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
         var content = EmailTemplates.ReviewInvite(
             EmailTemplates.ReviewInviteCulture(language),
             booking.GuestFirstName,
@@ -269,7 +272,8 @@ public sealed class HostReviewService(
             booking.CheckInDate,
             booking.CheckOutDate,
             reviewUrl,
-            expiresAt);
+            expiresAt,
+            branding);
 
         var invite = new ReviewInvite
         {

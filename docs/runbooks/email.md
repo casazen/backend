@@ -185,6 +185,32 @@ Code: `Casazen.Infrastructure/Services/BookingNotifier.cs`, templates `GuestBook
 The booking does not record the language of the checkout and guests have no preference: every email goes out in Italian (`EmailTemplates.DefaultCulture`). The English texts exist for every template (`EmailTemplatesTests` checks both files). Sending in English needs the checkout to record the language (frontend field + column on `Bookings`), not done. The exception is the org team (AM-02): the invitation and its reminder go out
 in the language the inviter chose (`it`, the default, or `en`, stored on the invitation); the note to the inviter is in Italian.
 
+## Guest e-mails in the name of the host (E50/F01/US03/T01, NF-155, D3)
+
+Code: `Casazen.Infrastructure/Email/GuestEmailBranding.cs` (the brand, `IGuestEmailBrandingProvider`), `EmailHtmlBuilder(culture, branding)`, `EmailContent.FromName`,
+`EmailDeliveryJob.SendBrandedAsync`, `BookingConfirmationEmailJob.SendBrandedAsync`, `IEmailService.SendEmailAsync(…, replyTo, fromName)`, `ResendEmailService.BuildMessage`.
+The guest portal (casazen/backend#987) sends its e-mails to the guests with the logo, the color and the name of the host.
+
+- **Behind `Features__GuestPortal`, off by default, no new variable.** Off: `IGuestEmailBrandingProvider.ForOrgAsync` answers `null` and every guest e-mail is the CasaZen e-mail of today,
+  byte for byte (same layout, footer «CasaZen — gestione affitti brevi», sender «CasaZen», no reply-to). The same when a service is built without the provider.
+- **What the guest sees.** A header bar in the primary color of the host's showcase (`Org.ThemeColor`, the one of `GET api/public/orgs/{slug}`) with the logo (`Org.LogoUrl`, on a white
+  chip, at most 40 px high and 160 wide, the name as alt text) and the name (`Org.HostName`, else `Org.DisplayName`, else `Org.Name`); the buttons in the same color, with white or black text,
+  whichever reads better (at least 4.5 to 1); a small «Powered by CasaZen» footer instead of the CasaZen one. No brand (nothing usable in it) = the CasaZen layout.
+- **The sender.** The display name of the sender is the host's name (cleaned: no quote, bracket, control or format character, no separator of an address, at most 64 characters; a name that is
+  nothing once cleaned leaves the configured one) and the answer goes to the host (`Org.ContactEmail`, only when it is one valid address: the guests already read it in the confirmation).
+  **The address of the sender is always `Email__FromAddress`**: a per-host address would need DNS verification per host (the domain stays the one verified in step 1).
+- **Which e-mails.** The templates to a guest: the confirmation, the check-in link and its reminder, the cancellation link, the cancellation, the change, the refunds, the deferred charge, the
+  payment link, the document, the review invitation, the answer of the host, the lock code, the new photo and the video call of the verification. Every other e-mail (host, staff, suppliers,
+  the pay-at-the-property requests) keeps the CasaZen layout. Each factory takes `branding = null` as its last argument.
+- **Nothing a host types can inject anything.** The brand is cleaned twice (when it is read and when the builder takes it): the logo must be an absolute `https` address with a host, no
+  credentials, no space, quote or angle bracket (otherwise it is dropped); the color exactly `#rrggbb` (otherwise the CasaZen blue); the reply-to one plain, valid address; the name as above.
+  Everything is HTML-encoded by the builder anyway. Proof: `GuestEmailBrandingTests`, `ResendEmailServiceTests.BuildMessage_FromName_IsSanitizedAndAddressUnchanged`.
+- **Jobs.** An e-mail with a sender name is queued as a **new** method (`EmailDeliveryJob.SendBrandedAsync`, or `BookingConfirmationEmailJob.SendBrandedAsync` for the confirmation that carries a
+  check-in link); the existing methods keep the signature the jobs already in the queue were created with (a test reads them by reflection). `IEmailService` has a default method with the name:
+  a sender that does not know it sends the e-mail without.
+- **A failure to read the brand** (the database) is logged with the id of the org and the e-mail goes out as the CasaZen one, never lost.
+- **Rollback:** switch `Features__GuestPortal` off; the next e-mail is the CasaZen one.
+
 ## Showcase booking emails (SP-10)
 
 Code: `Casazen.Infrastructure/Services/ShowcaseBookingNotifier.cs` (what is sent, when, to whom), `EmailTemplates.SupplierBooking.cs` (the nine templates),

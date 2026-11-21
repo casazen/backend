@@ -25,9 +25,10 @@ public static partial class EmailTemplates
         DateTime checkInDate,
         DateTime checkOutDate,
         string reviewUrl,
-        DateTime expiresAtUtc)
+        DateTime expiresAtUtc,
+        GuestEmailBranding? branding = null)
     {
-        var builder = new EmailHtmlBuilder(culture);
+        var builder = new EmailHtmlBuilder(culture, branding);
         return builder
             .Paragraph("ReviewInvite_Greeting", guestName)
             .Paragraph("ReviewInvite_Body", propertyName, checkInDate, checkOutDate)

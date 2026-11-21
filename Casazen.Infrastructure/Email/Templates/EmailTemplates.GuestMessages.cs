@@ -52,9 +52,10 @@ public static partial class EmailTemplates
         string guestName,
         string hostName,
         string propertyName,
-        string? guestAreaUrl)
+        string? guestAreaUrl,
+        GuestEmailBranding? branding = null)
     {
-        var builder = new EmailHtmlBuilder(culture);
+        var builder = new EmailHtmlBuilder(culture, branding);
         builder.Paragraph("HostReplyToGuest_Greeting", guestName);
         builder.Paragraph("HostReplyToGuest_Body", hostName, propertyName);
         builder.Paragraph("HostReplyToGuest_How");

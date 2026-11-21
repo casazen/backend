@@ -45,8 +45,9 @@ public static partial class EmailTemplates
         string guestName,
         string propertyName,
         DateTime checkInDate,
-        string checkInLink) =>
-        new EmailHtmlBuilder(culture)
+        string checkInLink,
+        GuestEmailBranding? branding = null) =>
+        new EmailHtmlBuilder(culture, branding)
             .Paragraph("GuestNewPhotoRequest_Greeting", guestName)
             .Paragraph("GuestNewPhotoRequest_Body", propertyName, checkInDate)
             .Paragraph("GuestNewPhotoRequest_Action")
@@ -99,8 +100,9 @@ public static partial class EmailTemplates
         string guestName,
         string propertyName,
         DateTime checkInDate,
-        string lockCode) =>
-        new EmailHtmlBuilder(culture)
+        string lockCode,
+        GuestEmailBranding? branding = null) =>
+        new EmailHtmlBuilder(culture, branding)
             .Paragraph("GuestAccessCode_Greeting", guestName)
             .Paragraph("GuestAccessCode_Body", propertyName, checkInDate)
             .Code(lockCode)
@@ -119,9 +121,10 @@ public static partial class EmailTemplates
         string guestName,
         string propertyName,
         DateTime checkInDate,
-        string meetingUrl)
+        string meetingUrl,
+        GuestEmailBranding? branding = null)
     {
-        return new EmailHtmlBuilder(culture)
+        return new EmailHtmlBuilder(culture, branding)
             .Paragraph("GuestVideoCall_Greeting", guestName)
             .Paragraph("GuestVideoCall_Body", propertyName, checkInDate)
             .Paragraph("GuestVideoCall_Instructions")

@@ -22,10 +22,11 @@ public static partial class EmailTemplates
         DateTime checkOutDate,
         decimal amount,
         string currency,
-        string paymentUrl)
+        string paymentUrl,
+        GuestEmailBranding? branding = null)
     {
         var amountText = string.Create(culture, $"{amount:N2} {currency}");
-        return new EmailHtmlBuilder(culture)
+        return new EmailHtmlBuilder(culture, branding)
             .Paragraph("BookingPaymentLink_Greeting", guestName)
             .Paragraph("BookingPaymentLink_Body", propertyName, checkInDate, checkOutDate)
             .Paragraph("BookingPaymentLink_Amount", amountText)

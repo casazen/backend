@@ -367,15 +367,17 @@ public static partial class EmailTemplates
 
     /// <summary>Tokenized self check-in link, to the guest.</summary>
     /// <param name="expiresAtUtc">End of validity of the link (CO-09: configurable lifetime), shown in Italian time.</param>
+    /// <param name="branding">The brand of the host (E50/F01/US03/T01): logo, color and name, sent in its name; <c>null</c> = the CasaZen e-mail, as ever.</param>
     public static EmailContent GuestCheckInLink(
         CultureInfo culture,
         string guestName,
         string propertyName,
         DateTime checkInDate,
         string checkInUrl,
-        DateTime expiresAtUtc)
+        DateTime expiresAtUtc,
+        GuestEmailBranding? branding = null)
     {
-        var builder = new EmailHtmlBuilder(culture);
+        var builder = new EmailHtmlBuilder(culture, branding);
         return builder
             .Paragraph("GuestCheckInLink_Greeting", guestName)
             .Paragraph("GuestCheckInLink_Body", propertyName, checkInDate)
@@ -399,9 +401,10 @@ public static partial class EmailTemplates
         string propertyName,
         DateTime checkInDate,
         string checkInUrl,
-        DateTime expiresAtUtc)
+        DateTime expiresAtUtc,
+        GuestEmailBranding? branding = null)
     {
-        var builder = new EmailHtmlBuilder(culture);
+        var builder = new EmailHtmlBuilder(culture, branding);
         return builder
             .Paragraph("GuestCheckInReminder_Greeting", guestName)
             .Paragraph("GuestCheckInReminder_Body", propertyName, checkInDate)
@@ -463,8 +466,9 @@ public static partial class EmailTemplates
         string propertyName,
         DateTime checkInDate,
         decimal amountEur,
-        string currency = Casazen.Core.Services.StayCurrency.Default) =>
-        new EmailHtmlBuilder(culture)
+        string currency = Casazen.Core.Services.StayCurrency.Default,
+        GuestEmailBranding? branding = null) =>
+        new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph("GuestRefundConfirmed_Body", Money(amountEur, currency, culture), propertyName, checkInDate)
             .Paragraph("GuestRefundConfirmed_Method")
@@ -482,8 +486,9 @@ public static partial class EmailTemplates
         DateTime checkInDate,
         DateTime checkOutDate,
         decimal amountEur,
-        string currency = Casazen.Core.Services.StayCurrency.Default) =>
-        new EmailHtmlBuilder(culture)
+        string currency = Casazen.Core.Services.StayCurrency.Default,
+        GuestEmailBranding? branding = null) =>
+        new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph("GuestPaymentRefundedDatesUnavailable_Body", propertyName, checkInDate, checkOutDate)
             .Paragraph("GuestPaymentRefundedDatesUnavailable_Refund", Money(amountEur, currency, culture))
@@ -514,10 +519,11 @@ public static partial class EmailTemplates
         BookingHostContact hostContact,
         BookingCancellationEmailCause cause = BookingCancellationEmailCause.Host,
         decimal retainedEur = 0m,
-        string currency = Casazen.Core.Services.StayCurrency.Default)
+        string currency = Casazen.Core.Services.StayCurrency.Default,
+        GuestEmailBranding? branding = null)
     {
         var byGuest = cause == BookingCancellationEmailCause.Guest;
-        var builder = new EmailHtmlBuilder(culture)
+        var builder = new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph(
                 cause switch
@@ -603,10 +609,11 @@ public static partial class EmailTemplates
         DateTime? deferredChargeDate,
         BookingHostContact hostContact,
         string myBookingsUrl,
-        BookingCheckInNotice? checkIn = null)
+        BookingCheckInNotice? checkIn = null,
+        GuestEmailBranding? branding = null)
     {
         ArgumentNullException.ThrowIfNull(booking);
-        var builder = new EmailHtmlBuilder(culture)
+        var builder = new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph(
                 kind == BookingConfirmationKind.OnSite ? "GuestBookingConfirmed_BodyOnSite" : "GuestBookingConfirmed_Body",
@@ -857,10 +864,11 @@ public static partial class EmailTemplates
         BookingEmailSummary booking,
         string payUrl,
         DateTime? payByDay,
-        BookingHostContact hostContact)
+        BookingHostContact hostContact,
+        GuestEmailBranding? branding = null)
     {
         ArgumentNullException.ThrowIfNull(booking);
-        var builder = new EmailHtmlBuilder(culture)
+        var builder = new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph(
                 "GuestDeferredChargeFailed_Body",
