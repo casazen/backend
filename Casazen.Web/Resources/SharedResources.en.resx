@@ -8875,6 +8875,12 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="GuestRegistrationOverrideNotApplicable" xml:space="preserve">
     <value>This setting applies only to properties in Switzerland: in Italy the guests' data are always reported to the Questura.</value>
   </data>
+  <data name="SwissNotificationNotApplicable" xml:space="preserve">
+    <value>CasaZen does not prepare the notification of the guests to the cantonal authority for this property: it is in Ticino (which has its own section), or its canton only asks for a register, or its canton is not known.</value>
+  </data>
+  <data name="SwissDeclarationDayInFuture" xml:space="preserve">
+    <value>You cannot declare a day that has not started yet as notified: the guests have not arrived.</value>
+  </data>
   <data name="GuestRegistrationCountryNotSupported" xml:space="preserve">
     <value>CasaZen has no guest registration rules for the country of this property.</value>
   </data>

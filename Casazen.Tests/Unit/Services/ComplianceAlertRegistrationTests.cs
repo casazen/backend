@@ -27,6 +27,8 @@ public class ComplianceAlertRegistrationTests
                      (typeof(IComplianceAlertFollowUp), typeof(ComplianceAlertFollowUp)),
                      // E30/F02/US01/T01: the service of the Ticino days the alert service reads them from (the only place that says a day is closed).
                      (typeof(ITicinoNotificationService), typeof(TicinoNotificationService)),
+                     // E31/F02/US01/T01: the service of the days of the other cantons, read by the alert service and by the cockpit (the one place that says a day is closed).
+                     (typeof(ISwissNotificationService), typeof(SwissNotificationService)),
                      (typeof(IComplianceAlertService), typeof(ComplianceAlertService)),
                      (typeof(IStayAlertService), typeof(StayAlertService)),
                      (typeof(IComplianceMonthlySummaryService), typeof(ComplianceMonthlySummaryService)),

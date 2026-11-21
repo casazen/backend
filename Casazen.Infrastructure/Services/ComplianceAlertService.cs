@@ -56,7 +56,8 @@ public sealed partial class ComplianceAlertService(
     IOptions<ComplianceOptions> options,
     ILogger<ComplianceAlertService> logger,
     TimeProvider? timeProvider = null,
-    ITicinoNotificationService? ticinoNotifications = null) : IComplianceAlertService
+    ITicinoNotificationService? ticinoNotifications = null,
+    ISwissNotificationService? swissNotifications = null) : IComplianceAlertService
 {
     /// <summary>
     /// The closed months looked at for the periods: the one just over and the one before it, because a deadline day late in the month plus the
@@ -84,9 +85,13 @@ public sealed partial class ComplianceAlertService(
                 + await SendConnectionAlertsAsync(now, cancellationToken);
         }
 
-        // Its own flag: the Ticino days are not part of the traffic light (the section of the cockpit is not either).
+        // Its own flag: the Ticino days are not part of the traffic light (the section of the cockpit is not either). The arrival days of the other cantons (E31/F02/US01/T01, NF-131) are
+        // told under the same flag, and they exist only while Features:GuestRegistrationRegimes is on too (the service of those days lists none otherwise).
         if (ticino)
+        {
             sent += await SendTicinoAlertsAsync(now, cancellationToken);
+            sent += await SendSwissAlertsAsync(now, cancellationToken);
+        }
 
         logger.LogInformation("Compliance alerts run completed: {Sent} alerts sent", sent);
         return new ComplianceAlertRunResult(Skipped: false, Sent: sent);
@@ -431,7 +436,7 @@ public sealed partial class ComplianceAlertService(
     {
         // A Ticino arrival day has no "To do" and no popup of the router: it is told by the bell, its live update and the e-mail, and listed by the cockpit
         // in the section of the days to notify (outside the feed of the "To do" on purpose: ComplianceActivityFeeder.NotFedActions).
-        if (step.Type == ComplianceAlertType.TicinoNotification)
+        if (step.Type is ComplianceAlertType.TicinoNotification or ComplianceAlertType.SwissNotification)
             return;
 
         try

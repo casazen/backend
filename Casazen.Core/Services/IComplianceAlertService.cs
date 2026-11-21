@@ -59,6 +59,17 @@ public enum ComplianceAlertKind
 
     /// <summary>The 24 hours of the notification of a Ticino arrival day are over and nothing says it was made (first alert, then the limited reminders).</summary>
     TicinoOverdue,
+
+    // E31/F02/US01/T01 (NF-131): the kinds below are appended, never renumbered.
+
+    /// <summary>Guests arrived on a day of a property in a canton other than Ticino and the host did not declare them notified to the cantonal authority yet: time to prepare it.</summary>
+    SwissNotificationToPrepare,
+
+    /// <summary>The deadline of the notification to the cantonal authority of an arrival day of a canton other than Ticino is near.</summary>
+    SwissNotificationApproaching,
+
+    /// <summary>The deadline of the notification of such an arrival day is over and the day is not declared (first alert, then the limited reminders).</summary>
+    SwissNotificationOverdue,
 }
 
 /// <summary>One alert to deliver for a property.</summary>

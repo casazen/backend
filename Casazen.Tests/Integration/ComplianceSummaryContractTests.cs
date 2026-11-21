@@ -55,6 +55,10 @@ public class ComplianceSummaryContractTests : IClassFixture<CasazenWebApplicatio
         AssertItem(summary, "checkoutsDue", departing, "CheckOut", "bookingId");
         AssertItem(summary, "alloggiatiManualRequired", departing, "SendAlloggiati", "bookingId");
         AssertItem(summary, "alloggiatiFailures", rejected, "ResolveAlloggiatiFailure", "bookingId");
+
+        // E31/F02/US01/T01: the section of the days to notify to the authority of the other cantons is there, empty (no Swiss property, and the module is off by default).
+        Assert.Equal(0, summary.GetProperty("swissNotifications").GetProperty("count").GetInt32());
+        Assert.Empty(summary.GetProperty("swissNotifications").GetProperty("items").EnumerateArray());
         foreach (var section in summary.EnumerateObject())
         {
             foreach (var item in section.Value.GetProperty("items").EnumerateArray())

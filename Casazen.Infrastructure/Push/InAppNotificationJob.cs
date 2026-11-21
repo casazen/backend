@@ -28,8 +28,9 @@ public sealed class QueuedInAppNotification
 
     /// <summary>
     /// The service request for the <c>service-request-*</c> types, the subject of the event for the platform staff (a «Fallo per me» request),
-    /// the property for the Ticino types, the two alerts and the declaration of a day (<see cref="PushTypes.IsTicinoNotification"/>), the org for its
-    /// administrators (the notices of its domain, <see cref="PushAudienceKind.OrgAdmins"/>), else the booking; <c>null</c> when there is none.
+    /// the property for the Ticino types, the two alerts and the declaration of a day (<see cref="PushTypes.IsTicinoNotification"/>), and for their twins of a canton other than Ticino
+    /// (<see cref="PushTypes.IsSwissNotification"/>), the org for its administrators (the notices of its domain, <see cref="PushAudienceKind.OrgAdmins"/>), else the booking; <c>null</c> when
+    /// there is none.
     /// </summary>
     public Guid? EntityId { get; set; }
 
@@ -58,6 +59,10 @@ public sealed class QueuedInAppNotification
         // E30/F02/US01/T01 and E30/F02/US02/T01: the alert about the 24 hours of a Ticino arrival day, and the declaration of a day, are about a property, and an arrival day is not an
         // entity of its own. The entry carries the property (the audience of the push), no booking and no day: the client opens the Ticino page of the property on its first day to notify.
         if (audience.Kind == PushAudienceKind.PropertyHosts && PushTypes.IsTicinoNotification(payload.Type))
+            return audience.Id;
+
+        // E31/F02/US01/T01: the same for the notification of an arrival day of a canton other than Ticino (the two alerts and the declaration of the day).
+        if (audience.Kind == PushAudienceKind.PropertyHosts && PushTypes.IsSwissNotification(payload.Type))
             return audience.Id;
 
         return payload.ServiceRequestId ?? payload.BookingId;

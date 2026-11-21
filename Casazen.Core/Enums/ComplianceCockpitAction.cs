@@ -78,4 +78,13 @@ public enum ComplianceCockpitAction
     /// Target: the property, with the arrival day in <c>Period</c> (<c>yyyy-MM-dd</c>).
     /// </summary>
     NotifyTicinoPolice,
+
+    /// <summary>
+    /// The guests who arrived at a Swiss property on a day are not notified to the cantonal authority yet, in a canton other than Ticino that asks for an
+    /// electronic notification (E31/F02/US01/T01, NF-131, casazen/backend#979): CasaZen never transmits, the host copies the data CasaZen prepared on the
+    /// official portal of the canton and declares the day notified. Only where the duty is <c>Required</c> (the host confirmed it, or the regime is verified as
+    /// covering private rentals) and only with <c>Features:GuestRegistrationRegimes</c> on. Target: the property, with the arrival day in <c>Period</c>
+    /// (<c>yyyy-MM-dd</c>) and the deadline of the regime in <c>DueAt</c>.
+    /// </summary>
+    NotifyGuestsAuthority,
 }

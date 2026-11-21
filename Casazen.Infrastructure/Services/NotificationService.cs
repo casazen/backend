@@ -141,6 +141,11 @@ public class NotificationService(
             Casazen.Core.Entities.ComplianceAlertType.TicinoNotification => (
                 EmailTemplates.Names.TicinoNotificationAlert,
                 EmailTemplates.TicinoNotificationAlert(culture, alert, property.Name, complianceUrl)),
+
+            // E31/F02/US01/T01 (NF-131): the same for a canton other than Ticino: the property, the day, the deadline and the types of field that are missing, never a guest.
+            Casazen.Core.Entities.ComplianceAlertType.SwissNotification => (
+                EmailTemplates.Names.SwissNotificationAlert,
+                EmailTemplates.SwissNotificationAlert(culture, alert, property.Name, complianceUrl)),
             _ => (
                 EmailTemplates.Names.CompliancePeriodAlert,
                 EmailTemplates.CompliancePeriodAlert(culture, alert, property.Name, complianceUrl)),
@@ -160,9 +165,12 @@ public class NotificationService(
         }
 
         // Queued on PushDeliveryJob (MO-04): the key of the stage makes a retried job send it once per device.
-        var push = alert.Type == Casazen.Core.Entities.ComplianceAlertType.TicinoNotification
-            ? EmailTemplates.TicinoNotificationPush(culture, alert, property.Name)
-            : EmailTemplates.CompliancePush(culture, alert, property.Name);
+        var push = alert.Type switch
+        {
+            Casazen.Core.Entities.ComplianceAlertType.TicinoNotification => EmailTemplates.TicinoNotificationPush(culture, alert, property.Name),
+            Casazen.Core.Entities.ComplianceAlertType.SwissNotification => EmailTemplates.SwissNotificationPush(culture, alert, property.Name),
+            _ => EmailTemplates.CompliancePush(culture, alert, property.Name),
+        };
         if (!pushNotifications.Enqueue(
                 deliveryKey,
                 PushAudience.PropertyHosts(alert.PropertyId),
