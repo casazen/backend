@@ -62,6 +62,16 @@ public static class PublicSitePaths
         return $"/checkin/{Uri.EscapeDataString(token)}";
     }
 
+    /// <summary>
+    /// The guest portal of a stay, the same path on the CasaZen domain and on the org's own host: <c>/s/{token}</c> (E50/F01/US01/T01, NF-152). Only the
+    /// random token of the stay link is in it.
+    /// </summary>
+    public static string HostGuestPortal(string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return $"/s/{Uri.EscapeDataString(token)}";
+    }
+
     /// <summary>«Le mie prenotazioni» on the org's own host: <c>/my-bookings</c>, with <c>?code=</c> when a code is given.</summary>
     public static string HostGuestBookings(string? bookingCode = null) =>
         string.IsNullOrWhiteSpace(bookingCode) ? "/my-bookings" : $"/my-bookings?code={Uri.EscapeDataString(bookingCode)}";

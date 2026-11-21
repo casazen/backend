@@ -50,4 +50,13 @@ public static class HostPermissions
     /// the migration of AM-03 added, this one comes with the migration <c>AddIdentityVerificationFields</c>.
     /// </summary>
     public const string VerificationDecision = "verification.decision";
+
+    /// <summary>
+    /// «Portale ospiti» (E50/F01/US01/T01, NF-152, guest portal plan decision A7, §5.11 of the specification): set up the guest portal of the org, its
+    /// house guide, extras, suppliers and their percentages, automatic replies and wizard. Given to the owner (always: the seed of its role and the token
+    /// fallback), the administrators and the property managers; the collaborator and the accountant do not have it. The links of the stays and the
+    /// orders and requests of the guests are not behind it: whoever already holds the permission on the bookings handles them. It is not one of
+    /// <see cref="ShortRentFine"/>: it comes with the migration <c>AddGuestPortalLinks</c>.
+    /// </summary>
+    public const string GuestPortalManage = "guestportal.manage";
 }
