@@ -192,9 +192,11 @@ invitation, the answer of the host and the document of the stay, plus `Layout_Po
 prefix there and its texts to the five files; a missing key fails the test with its name, and the three languages hold **only** the guest texts). The other e-mails of the guests (cancellation by the host or the guest, refunds,
 changes of a booking, deferred charge, lock code, new photo, «pay at the property» requests) stay in Italian, with the brand of the host (see the section above).
 - **Which language** (one code path, `GuestLanguages.ResolveForEmail`, read by `IGuestEmailLanguageProvider`): the one the guest chose on the check-in page (the latest session of the booking that holds one, or the one of
-  the link being sent), else the one of the country on the booking (`GuestLanguages.OfCountry`, as the review invitation and the chat message of the check-in link already read it), else the language of the host's
-  account (`Org.DefaultLanguage`), else Italian; a code the five do not include is skipped. **Gap:** `Booking` has no language column (no migration here) and no public booking request carries one, so a confirmation written
-  before any check-in knows the guest only by its country, else by the host's account.
+  the link being sent), else the one of the country on the booking **only when that country has one language beyond doubt** (`GuestLanguages.OfUnambiguousCountry`: Italy `it`, Germany and Austria `de`, France `fr`, Spain
+  `es`, the United Kingdom, the United States and Ireland `en`), else the language of the host's account (`Org.DefaultLanguage`), else Italian; a code the five do not include is skipped. Any other country,
+  Switzerland included, is the host's account: it is never turned into English (`GuestLanguages.OfCountry`, which writes English for every other country, is what the review invitation, the chat message of the check-in
+  link and the scheduled messages read while the portal is off, and it does not change). **Gap:** `Booking` has no language column (no migration here) and no public booking request carries one, so a confirmation
+  written before any check-in knows the guest only by a country of that short list, else by the host's account.
 - **Flag off = today's culture.** The provider answers the culture each service has always used (Italian for the booking e-mails, Italian or English for the review invitation and the document, the language of the check-in
   page for the check-in link) while `Features__GuestPortal` is off, and for a service built without it. The German, French and Spanish texts are to be reviewed by a native speaker before the release; no text of a guest
   e-mail names a payment provider, a channel manager or an AI provider, in any of the five files (`GuestTexts_NameNoTechnicalSupplier`, no exception).

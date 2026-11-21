@@ -266,14 +266,14 @@ public sealed class HostReviewService(
         var language = await LanguageOfGuestAsync(booking, cancellationToken);
         // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
         var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
-        // E50/F01/US03/T02: with the guest portal on the invitation is written in any of the five languages of the guest (the language it already read, else the account of the host, else Italian);
-        // without it, in Italian or English as ever.
+        // E50/F01/US03/T02: with the guest portal on the invitation is written in any of the five languages of the guest (the check-in page, the country when its language is beyond doubt, the account
+        // of the host, else Italian: the provider reads the session itself, and the language above, which turns every other country into English, is not handed to it); without it, in Italian or
+        // English as ever (the culture the provider answers while the portal is off).
         var culture = await emailLanguage.CultureOrAsync(
             booking.OrgId,
             booking.Id,
             EmailTemplates.ReviewInviteCulture(language),
-            language,
-            cancellationToken);
+            cancellationToken: cancellationToken);
         var content = EmailTemplates.ReviewInvite(
             culture,
             booking.GuestFirstName,

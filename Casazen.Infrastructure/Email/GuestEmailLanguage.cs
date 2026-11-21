@@ -16,10 +16,11 @@ public interface IGuestEmailLanguageProvider
 {
     /// <summary>
     /// The culture to write the e-mail to the guest of a booking in. While <c>Features:GuestPortal</c> is off it is <paramref name="todays"/>, the culture the caller has always used (the same
-    /// instance, nothing read). With the portal on it is the language the guest chose on the check-in page (<paramref name="chosenLanguage"/> when the caller already has it, otherwise the
-    /// latest session of the booking that holds one), else the one of the country on the booking, else the one of the host's account (<c>Org.DefaultLanguage</c>), else Italian
-    /// (<see cref="GuestLanguages.ResolveForEmail"/>); a code that is not one of the five is skipped. Never throws except for a cancellation: a failure is logged and gives
-    /// <paramref name="todays"/>.
+    /// instance, nothing read). With the portal on it is the language the guest chose on the check-in page (<paramref name="chosenLanguage"/> when the caller already has the choice of a
+    /// session, otherwise the latest session of the booking that holds one), else the one of the country on the booking when that country has one language beyond doubt (Italy, Germany,
+    /// Austria, France, Spain, the United Kingdom, the United States, Ireland: <see cref="GuestLanguages.OfUnambiguousCountry"/>), else the one of the host's account
+    /// (<c>Org.DefaultLanguage</c>), else Italian (<see cref="GuestLanguages.ResolveForEmail"/>); a code that is not one of the five is skipped. Never throws except for a cancellation: a
+    /// failure is logged and gives <paramref name="todays"/>.
     /// </summary>
     Task<CultureInfo> ForBookingAsync(
         Guid orgId,
@@ -34,7 +35,7 @@ public interface IGuestEmailLanguageProvider
 /// <para>Read by the org and the booking together (the tenant filter is off, as for every read of a job or of a service that is called by id, and the org is named in the predicate): a
 /// booking that is not the org's gives the host's account language, never another org's data. The logs carry the ids of the org and of the booking, never a language of a guest.</para>
 /// <para><b>The gap</b>: <c>Booking</c> has no language column (this slice has no migration) and no public booking request carries one, so a confirmation written before any check-in knows the
-/// language of the guest only by its country; without a country it is the language of the host's account.</para>
+/// language of the guest only by its country, and only when that country has one language beyond doubt; for any other country, and without a country, it is the language of the host's account.</para>
 /// </remarks>
 public sealed class GuestEmailLanguageProvider(
     AppDbContext db,

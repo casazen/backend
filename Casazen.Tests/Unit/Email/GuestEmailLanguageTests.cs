@@ -23,13 +23,26 @@ public sealed class GuestEmailLanguageTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    /// <summary>The rule itself, with no data: the first supported one of the session, the country, the account of the host, then Italian.</summary>
+    /// <summary>
+    /// The rule itself, with no data: the first supported one of the session, a country whose language is beyond doubt, the account of the host, then Italian. Any other country, Switzerland
+    /// included, is the account of the host: it is never turned into English.
+    /// </summary>
     [Theory]
     [InlineData("fr", "DE", "es", "fr")]
     [InlineData(" DE ", null, "it", "de")]
     [InlineData(null, "DE", "es", "de")]
     [InlineData(null, "Francia", "en", "fr")]
-    [InlineData(null, "NL", "it", "en")]
+    [InlineData(null, "NL", "it", "it")]
+    [InlineData(null, "NL", "de", "de")]
+    [InlineData(null, "CH", "it", "it")]
+    [InlineData(null, "CHE", "fr", "fr")]
+    [InlineData(null, "Svizzera", "de-CH", "de")]
+    [InlineData(null, "Switzerland", null, "it")]
+    [InlineData("de", "CH", "it", "de")]
+    [InlineData(null, "US", "it", "en")]
+    [InlineData(null, "GBR", "de", "en")]
+    [InlineData(null, "Ireland", "es", "en")]
+    [InlineData(null, "UK", "fr", "en")]
     [InlineData(null, null, "es", "es")]
     [InlineData(null, "", "en", "en")]
     [InlineData(null, null, "it", "it")]
@@ -37,9 +50,60 @@ public sealed class GuestEmailLanguageTests : IDisposable
     [InlineData("xx", null, "xx", "it")]
     [InlineData("xx", "IT", "en", "it")]
     [InlineData("pt", null, "de-CH", "de")]
-    public void ResolveForEmail_SessionThenCountryThenOrgDefaultThenItalian(string? session, string? country, string? orgDefault, string expected)
+    public void ResolveForEmail_SessionThenUnambiguousCountryThenOrgDefaultThenItalian(string? session, string? country, string? orgDefault, string expected)
     {
         Assert.Equal(expected, GuestLanguages.ResolveForEmail(session, country, orgDefault));
+    }
+
+    /// <summary>
+    /// The countries of the e-mails of the portal: only the ones whose language is beyond doubt, in the codes of two and three letters and the usual names; every other country, and none, is
+    /// <c>null</c>, so the account of the host decides.
+    /// </summary>
+    [Theory]
+    [InlineData("IT", "it")]
+    [InlineData("ita", "it")]
+    [InlineData("Italia", "it")]
+    [InlineData("DE", "de")]
+    [InlineData("AT", "de")]
+    [InlineData("Österreich", "de")]
+    [InlineData("FR", "fr")]
+    [InlineData("France", "fr")]
+    [InlineData("ES", "es")]
+    [InlineData("España", "es")]
+    [InlineData("GB", "en")]
+    [InlineData("Regno Unito", "en")]
+    [InlineData("US", "en")]
+    [InlineData("Stati Uniti", "en")]
+    [InlineData("IE", "en")]
+    [InlineData("Irlanda", "en")]
+    [InlineData("CH", null)]
+    [InlineData("Svizzera", null)]
+    [InlineData("NL", null)]
+    [InlineData("PT", null)]
+    [InlineData("  ", null)]
+    [InlineData(null, null)]
+    public void OfUnambiguousCountry_OnlyACountryWithOneLanguageGivesOne(string? country, string? expected)
+    {
+        Assert.Equal(expected, GuestLanguages.OfUnambiguousCountry(country));
+    }
+
+    /// <summary>
+    /// What the review invitation, the chat message of the check-in link and the scheduled messages read while the portal is off does not change: English for every other country, none for no
+    /// country.
+    /// </summary>
+    [Theory]
+    [InlineData("IT", "it")]
+    [InlineData("AT", "de")]
+    [InlineData("Francia", "fr")]
+    [InlineData("ES", "es")]
+    [InlineData("US", "en")]
+    [InlineData("CH", "en")]
+    [InlineData("NL", "en")]
+    [InlineData("  ", null)]
+    [InlineData(null, null)]
+    public void OfCountry_IsWhatTheEmailsOfTodayAlwaysRead(string? country, string? expected)
+    {
+        Assert.Equal(expected, GuestLanguages.OfCountry(country));
     }
 
     /// <summary>
@@ -60,9 +124,17 @@ public sealed class GuestEmailLanguageTests : IDisposable
         // The caller already knows the language of the session it is writing for (the check-in link of that session): it wins over the one stored.
         Assert.Equal("es", (await provider.ForBookingAsync(withSession.OrgId, withSession.BookingId, Italian, chosenLanguage: "es")).Name);
 
-        // No session: the country on the booking, as the review invitation and the chat message of the check-in link read it.
+        // No session: the country on the booking when its language is beyond doubt.
         var withCountry = await SeedAsync(orgDefault: "en", country: "FR", sessionLanguage: null);
         Assert.Equal("fr", (await provider.ForBookingAsync(withCountry.OrgId, withCountry.BookingId, Italian)).Name);
+        var american = await SeedAsync(orgDefault: "it", country: "US", sessionLanguage: null);
+        Assert.Equal("en", (await provider.ForBookingAsync(american.OrgId, american.BookingId, Italian)).Name);
+
+        // Any other country is the host's account, never English: Switzerland, where four languages are spoken, writes in the language of the account.
+        var swissGerman = await SeedAsync(orgDefault: "de", country: "CH", sessionLanguage: null);
+        Assert.Equal("de", (await provider.ForBookingAsync(swissGerman.OrgId, swissGerman.BookingId, English)).Name);
+        var swissItalian = await SeedAsync(orgDefault: "it", country: "Svizzera", sessionLanguage: null);
+        Assert.Equal("it-IT", (await provider.ForBookingAsync(swissItalian.OrgId, swissItalian.BookingId, English)).Name);
 
         // No session and no country: the language of the host's account.
         var orgDefault = await SeedAsync(orgDefault: "en", country: "", sessionLanguage: null);
