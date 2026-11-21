@@ -62,6 +62,48 @@ public class ConnectOnboardingIntegrationTests : IClassFixture<CasazenWebApplica
     }
 
     [Fact]
+    public async Task CreateAccount_ItalianDefault_AndSwissOrg_AreCreatedInTheirOwnCountry()
+    {
+        // Issue #1001: the Express account is created in the org's country. A Swiss org with an Italian account could never
+        // complete the hosted form (Stripe's country cannot be changed), in test or in production.
+        var italian = $"auth0|connect-it-{Guid.NewGuid():N}";
+        await _factory.SeedOrgForOwnerAsync(italian);
+        var swiss = $"auth0|connect-ch-{Guid.NewGuid():N}";
+        var swissOrg = await _factory.SeedOrgForOwnerAsync(swiss);
+        await SetBillingCountryAsync(swissOrg.Id, "CH");
+
+        var italianResponse = await PostAccountAsync(_factory.CreateAuthenticatedClient(userId: italian, roles: "PropertyOwner"));
+        Assert.Equal(HttpStatusCode.OK, italianResponse.StatusCode);
+        Assert.Equal("IT", _stripe.LastCreatedCountry);
+
+        var swissResponse = await PostAccountAsync(_factory.CreateAuthenticatedClient(userId: swiss, roles: "PropertyOwner"));
+        Assert.Equal(HttpStatusCode.OK, swissResponse.StatusCode);
+        Assert.Equal("CH", _stripe.LastCreatedCountry);
+        Assert.False(string.IsNullOrWhiteSpace((await GetOrgAsync(swissOrg.Id)).StripeConnectedAccountId));
+    }
+
+    [Fact]
+    public async Task OnboardingLink_SwissOrgWithAnUnsubmittedItalianAccount_ReplacesItWithASwissOne()
+    {
+        var owner = $"auth0|connect-ch-replace-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(owner);
+        await SetBillingCountryAsync(org.Id, "CH");
+        const string italian = "acct_italian_unsubmitted";
+        await LinkAccountAsync(org.Id, italian, chargesEnabled: false);
+        _stripe.NextSnapshot = new ConnectAccountSnapshot(italian, false, false, false, ["company.tax_id"], Country: "IT");
+        var client = _factory.CreateAuthenticatedClient(userId: owner, roles: "PropertyOwner");
+
+        var response = await client.PostAsync("/api/connect/onboarding-link", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("CH", _stripe.LastCreatedCountry);
+        Assert.Equal(new[] { $"connect-account:{org.Id:N}:replaces:{italian}" }, _stripe.IdempotencyKeys);
+        var replacement = (await GetOrgAsync(org.Id)).StripeConnectedAccountId;
+        Assert.False(string.IsNullOrWhiteSpace(replacement));
+        Assert.NotEqual(italian, replacement);
+    }
+
+    [Fact]
     public async Task AC2_OnboardingLink_BuildsReturnAndRefreshUrlsServerSide_IgnoringClientUrls()
     {
         var owner = $"auth0|connect-ac2-{Guid.NewGuid():N}";
@@ -312,6 +354,15 @@ public class ConnectOnboardingIntegrationTests : IClassFixture<CasazenWebApplica
         return doc.RootElement.GetProperty("code").GetString();
     }
 
+    private async Task SetBillingCountryAsync(Guid orgId, string country)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var org = await db.Orgs.SingleAsync(o => o.Id == orgId);
+        org.BillingCountry = country;
+        await db.SaveChangesAsync();
+    }
+
     private async Task LinkAccountAsync(Guid orgId, string accountId, bool chargesEnabled)
     {
         using var scope = _factory.Services.CreateScope();
@@ -392,6 +443,9 @@ internal sealed class FakeStripeConnectGateway : IStripeConnectGateway
     /// <summary>Calls of <see cref="CreateDashboardLoginLinkAsync"/> (SP-14).</summary>
     public int LoginLinkCallCount => Volatile.Read(ref _loginLinkCallCount);
     public string? LastAccountId { get; private set; }
+
+    /// <summary>The country the last <see cref="CreateExpressAccountAsync"/> was asked to create the account in (issue #1001).</summary>
+    public string? LastCreatedCountry { get; private set; }
     public string? LastLoginLinkAccountId { get; private set; }
     public ConnectAccountSnapshot? NextSnapshot { get; set; }
     public TimeSpan CreateDelay { get; set; }
@@ -409,6 +463,7 @@ internal sealed class FakeStripeConnectGateway : IStripeConnectGateway
         _loginLinkFailures.Clear();
         _idempotencyKeys.Clear();
         LastAccountId = null;
+        LastCreatedCountry = null;
         LastLoginLinkAccountId = null;
         NextSnapshot = null;
         CreateDelay = TimeSpan.Zero;
@@ -430,11 +485,13 @@ internal sealed class FakeStripeConnectGateway : IStripeConnectGateway
 
     public async Task<string> CreateExpressAccountAsync(
         string email,
+        string country,
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
         var number = Interlocked.Increment(ref _createAccountCallCount);
         _idempotencyKeys.Enqueue(idempotencyKey);
+        LastCreatedCountry = country;
         if (CreateDelay > TimeSpan.Zero)
             await Task.Delay(CreateDelay, cancellationToken);
 

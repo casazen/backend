@@ -1,6 +1,7 @@
 using System.Net;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Payments;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Stripe;
@@ -33,18 +34,20 @@ public class StripeConnectGateway(
 
     public async Task<string> CreateExpressAccountAsync(
         string email,
+        string country,
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(country);
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
         EnsureApiKey();
 
-        var country = configuration["Stripe:ConnectDefaultCountry"] ?? "IT";
+        var accountCountry = country.Trim().ToUpperInvariant();
 
         var options = new AccountCreateOptions
         {
             Type = "express",
-            Country = country,
+            Country = accountCountry,
             Capabilities = new AccountCapabilitiesOptions
             {
                 CardPayments = new AccountCapabilitiesCardPaymentsOptions { Requested = true },
@@ -65,9 +68,63 @@ public class StripeConnectGateway(
                 cancellationToken),
             cancellationToken);
 
-        logger.LogInformation("Stripe Express account created: {AccountId}", account.Id);
+        logger.LogInformation("Stripe Express account created: {AccountId} ({Country})", account.Id, accountCountry);
+
+        await PrefillTestDataAsync(account.Id, accountCountry, options.Email, cancellationToken);
         return account.Id;
     }
+
+    /// <summary>
+    /// With a Stripe <b>test-mode</b> key only (and unless <c>Stripe:ConnectTestPrefill</c> is <c>false</c>): fills the new account
+    /// with Stripe's published test data (<see cref="StripeConnectTestData"/>), so that its hosted onboarding has only the
+    /// acceptance of the terms left. In test mode Stripe verifies identities against nothing but those values: whoever types a
+    /// real name, birth date or address is refused with <c>verification_failed_keyed_identity</c> and cannot go on (issue #1001).
+    /// Best effort: the account exists and is linked, so a Stripe error here is logged and the host still reaches the form,
+    /// which then asks for everything. It runs only right after the creation (before any Account Link), the one moment the
+    /// platform may still write the data of an Express account.
+    /// </summary>
+    private async Task PrefillTestDataAsync(
+        string accountId,
+        string country,
+        string? email,
+        CancellationToken cancellationToken)
+    {
+        if (!TestPrefillEnabled)
+            return;
+
+        var testData = StripeConnectTestData.ForCountry(country);
+        if (testData is null)
+        {
+            logger.LogInformation(
+                "No Stripe test data for country {Country}: test account {AccountId} keeps the empty hosted onboarding",
+                country,
+                accountId);
+            return;
+        }
+
+        try
+        {
+            await new AccountService(Client).UpdateAsync(
+                accountId,
+                testData.ToUpdateOptions(email),
+                cancellationToken: cancellationToken);
+            logger.LogInformation("Stripe test account {AccountId} ({Country}) prefilled with Stripe test data", accountId, country);
+        }
+        catch (Exception ex) when (ex is StripeException or HttpRequestException
+                                   || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            logger.LogWarning(
+                ex,
+                "Could not prefill Stripe test account {AccountId} ({Country}) with test data: the hosted onboarding asks for everything",
+                accountId,
+                country);
+        }
+    }
+
+    /// <summary>A test-mode platform key, unless <c>Stripe:ConnectTestPrefill</c> turns the prefill off. A live key never prefills.</summary>
+    private bool TestPrefillEnabled =>
+        StripeKeyModes.Of(configuration["Stripe:SecretKey"]) == StripeKeyMode.Test
+        && configuration.GetValue("Stripe:ConnectTestPrefill", true);
 
     public async Task<ConnectAccountSnapshot> GetAccountAsync(
         string connectedAccountId,
@@ -221,6 +278,7 @@ public class StripeConnectGateway(
             account.ChargesEnabled,
             account.PayoutsEnabled,
             account.DetailsSubmitted,
-            requirements.ToList());
+            requirements.ToList(),
+            account.Country);
     }
 }
