@@ -391,6 +391,33 @@ public static class FeatureFlags
     /// </summary>
     public const string GuestRegistrationRegimes = "GuestRegistrationRegimes";
 
+    /// <summary>
+    /// E50-E60 (NF-152..NF-187, guest portal plan decision A6, casazen/backend#987): the guest portal, <b>off by default</b>. On, every booking of any source
+    /// gets its personal stay link <c>/s/{token}</c> on request (the host endpoints <c>api/bookings/{id}/guest-portal</c>) and the public portal
+    /// <c>api/public/guest-portal/{token}/…</c> answers with its sections (stay, check-in, guide, services, chat, documents, review) and the host's extras.
+    /// Off, every endpoint of the portal, of the host and of the guest, answers 404 before authentication like a route that does not exist, no link is
+    /// created and the links of today (check-in, cancellation, review, document) behave as before. It needs no variable to start. The frontend reads the
+    /// key <c>guestPortal</c>.
+    /// </summary>
+    public const string GuestPortal = "GuestPortal";
+
+    /// <summary>
+    /// E56-E58 (guest portal plan decision A6, §8 of the specification): the services of the suppliers bought by the guests in the portal (the ownership
+    /// of the suppliers, the host's percentage, the order, the card, the funds held until the service is done, the refunds and the disputes) and the
+    /// change of the CasaZen commission added on top of the price (D9, D21), <b>off by default</b> until the accountant answers. Off, the portal shows no
+    /// supplier service and the commission is computed as today. It works only with <see cref="GuestPortal"/> on. It needs no variable to start. The
+    /// frontend reads the key <c>guestPortalSupplierServices</c>.
+    /// </summary>
+    public const string GuestPortalSupplierServices = "GuestPortalSupplierServices";
+
+    /// <summary>
+    /// E52 (guest portal plan decision A6, D16): the replies the assistant sends on its own to the practical questions of the guests in the portal chat,
+    /// when it is sure and the answer is in the house guide, <b>off by default</b>. Off, every message of a guest goes to the host and nothing is sent
+    /// automatically. It works only with <see cref="GuestPortal"/> on. It needs no variable to start. The frontend reads the key
+    /// <c>guestPortalAutoReplies</c>.
+    /// </summary>
+    public const string GuestPortalAutoReplies = "GuestPortalAutoReplies";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -430,5 +457,8 @@ public static class FeatureFlags
         SiteEmbed,
         TicinoNotificationAlerts,
         GuestRegistrationRegimes,
+        GuestPortal,
+        GuestPortalSupplierServices,
+        GuestPortalAutoReplies,
     ];
 }

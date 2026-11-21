@@ -370,6 +370,9 @@ public class AppDbContext(
     public DbSet<GuestMergeCandidate> GuestMergeCandidates { get; set; } = null!;
     public DbSet<PropertyWelcomeLink> PropertyWelcomeLinks { get; set; } = null!;
 
+    // The personal stay link of a booking, the address of the guest portal (E50/F01/US01/T01, NF-152)
+    public DbSet<GuestPortalLink> GuestPortalLinks { get; set; } = null!;
+
     // Marketing campaigns and segments (NF-24, ADR-014)
     public DbSet<GuestSegment> GuestSegments { get; set; } = null!;
     public DbSet<Campaign> Campaigns { get; set; } = null!;
@@ -669,6 +672,9 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new GuestContactConfiguration());
         modelBuilder.ApplyConfiguration(new GuestMergeCandidateConfiguration());
         modelBuilder.ApplyConfiguration(new PropertyWelcomeLinkConfiguration());
+
+        // E50/F01/US01/T01 (NF-152): the stay link of a booking (the guest portal), one active link for each booking; it carries the org of the booking (TN-2).
+        modelBuilder.ApplyConfiguration(new GuestPortalLinkConfiguration());
 
         // CO-07: one safety checklist per property, going with it; its items go with the checklist. An evidence
         // document deleted by the host leaves the item without proof (SET NULL), never deletes the answer.
@@ -1947,6 +1953,8 @@ public class AppDbContext(
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.ApprovalDecide },
             // E03/F04/US02/T01: the owner decides the identity verifications of its guests (AddIdentityVerificationFields).
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.VerificationDecision },
+            // E50/F01/US01/T01: the owner always sets up its guest portal («Portale ospiti», AddGuestPortalLinks); the property manager's role follows the catalog.
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.GuestPortalManage },
             new RolePermission { RoleId = 2, PermissionKey = "property.read" },
             new RolePermission { RoleId = 2, PermissionKey = "property.write" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.read" },
