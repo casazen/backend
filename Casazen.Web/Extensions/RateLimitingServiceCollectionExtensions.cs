@@ -125,6 +125,9 @@ public static class RateLimitingServiceCollectionExtensions
 
         // «Send a test» of the package to the accountant (E15/F01/US02/T02): per signed-in person, since each call makes a package and sends an e-mail to a third party.
         new(RateLimitPolicies.AccountantPackageSend, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
+
+        // The agency's retry of the owner sign-in on its own domain (E40/F01/US02/T01): per signed-in person, since each call may read and write the Auth0 tenant that every host shares.
+        new(RateLimitPolicies.OwnerLoginRetry, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

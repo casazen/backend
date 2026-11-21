@@ -314,6 +314,88 @@ public class DomainRecheckServiceTests
         Assert.Null((await db.Orgs.SingleAsync(o => o.Id == org.Id)).DomainVercelAddedAt);
     }
 
+    // ─── Removals from the shared Auth0 tenant (E40/F01/US02/T01, NF-141) ───────────────────────────
+
+    [Fact]
+    public async Task RunAsync_Auth0HostSyncOn_RemovesTheDomainFromVercelAndFromAuth0_ThenTheRow()
+    {
+        await using var db = CreateDb();
+        db.PendingDomainRemovals.Add(new PendingDomainRemoval { Domain = "gone.example.it", RequestedAt = Ago(hours: 1) });
+        await db.SaveChangesAsync();
+        GivenVercelRemoves("gone.example.it");
+        var auth0 = new Mock<IAuth0HostRegistrar>(MockBehavior.Strict);
+        auth0.Setup(a => a.UnregisterAsync("gone.example.it", It.IsAny<CancellationToken>())).ReturnsAsync(Auth0HostRegistrationResult.Removed);
+
+        var summary = await CreateService(db, auth0.Object, new TestFeatureFlags(Casazen.Core.Features.FeatureFlags.Auth0HostSync)).RunAsync();
+
+        Assert.Equal(1, summary.Removed);
+        Assert.Empty(await db.PendingDomainRemovals.ToListAsync());
+        auth0.Verify(a => a.UnregisterAsync("gone.example.it", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(Auth0HostRegistrationResult.Unavailable, "auth0_unavailable")]
+    [InlineData(Auth0HostRegistrationResult.Rejected, "auth0_rejected")]
+    [InlineData(Auth0HostRegistrationResult.NotConfigured, "auth0_not_configured")]
+    public async Task RunAsync_Auth0RemovalFails_KeepsTheRowUntilBothRemovalsSucceeded(Auth0HostRegistrationResult firstAnswer, string code)
+    {
+        await using var db = CreateDb();
+        db.PendingDomainRemovals.Add(new PendingDomainRemoval { Domain = "gone.example.it", RequestedAt = Ago(hours: 1) });
+        await db.SaveChangesAsync();
+        GivenVercelRemoves("gone.example.it");
+        var auth0 = new Mock<IAuth0HostRegistrar>(MockBehavior.Strict);
+        auth0.SetupSequence(a => a.UnregisterAsync("gone.example.it", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(firstAnswer)
+            .ReturnsAsync(Auth0HostRegistrationResult.Removed);
+        var flags = new TestFeatureFlags(Casazen.Core.Features.FeatureFlags.Auth0HostSync);
+
+        var first = await CreateService(db, auth0.Object, flags).RunAsync();
+
+        // Off Vercel, still in Auth0: nothing is left half removed, the row waits for the next run with a stable code.
+        Assert.Equal(0, first.Removed);
+        Assert.Equal(1, first.RemovalsFailed);
+        var row = await db.PendingDomainRemovals.SingleAsync();
+        Assert.Equal(code, row.LastError);
+        Assert.Equal(1, row.Attempts);
+
+        var second = await CreateService(db, auth0.Object, flags).RunAsync();
+
+        Assert.Equal(1, second.Removed);
+        Assert.Empty(await db.PendingDomainRemovals.ToListAsync());
+        _vercel.Verify(v => v.RemoveDomainAsync("gone.example.it", It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task RunAsync_Auth0HostSyncOff_NeverCallsAuth0_AndVercelAloneDecides()
+    {
+        await using var db = CreateDb();
+        db.PendingDomainRemovals.Add(new PendingDomainRemoval { Domain = "gone.example.it", RequestedAt = Ago(hours: 1) });
+        await db.SaveChangesAsync();
+        GivenVercelRemoves("gone.example.it");
+        var auth0 = new Mock<IAuth0HostRegistrar>(MockBehavior.Strict);
+
+        var summary = await CreateService(db, auth0.Object, new TestFeatureFlags(Casazen.Core.Features.FeatureFlags.WhiteLabelHost)).RunAsync();
+
+        Assert.Equal(1, summary.Removed);
+        Assert.Empty(await db.PendingDomainRemovals.ToListAsync());
+        auth0.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task RunAsync_ADomainAnotherOrgNowUses_StaysInAuth0Too()
+    {
+        await using var db = CreateDb();
+        db.PendingDomainRemovals.Add(new PendingDomainRemoval { Domain = "shared.example.it", RequestedAt = Ago(hours: 1) });
+        await SeedAsync(db, "shared.example.it", DomainVerificationStatus.Verified, checkedAt: Ago(minutes: 1));
+        await db.SaveChangesAsync();
+        var auth0 = new Mock<IAuth0HostRegistrar>(MockBehavior.Strict);
+
+        await CreateService(db, auth0.Object, new TestFeatureFlags(Casazen.Core.Features.FeatureFlags.Auth0HostSync)).RunAsync();
+
+        Assert.Empty(await db.PendingDomainRemovals.ToListAsync());
+        auth0.VerifyNoOtherCalls();
+    }
+
     [Fact]
     public async Task EnqueueAsync_SameDomainTwice_QueuesItOnce()
     {
@@ -336,6 +418,15 @@ public class DomainRecheckServiceTests
         new(db, _verification.Object, _entitlements.Object, _vercel.Object,
             new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://public.example.test" })),
             Options.Create(_options), _clock, NullLogger<DomainRecheckService>.Instance);
+
+    private DomainRecheckService CreateService(AppDbContext db, IAuth0HostRegistrar auth0, TestFeatureFlags flags) =>
+        new(db, _verification.Object, _entitlements.Object, _vercel.Object,
+            new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://public.example.test" })),
+            Options.Create(_options), _clock, NullLogger<DomainRecheckService>.Instance, auth0, flags);
+
+    private void GivenVercelRemoves(string domain) =>
+        _vercel.Setup(v => v.RemoveDomainAsync(domain, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new VercelCallResult<bool>(VercelCallStatus.Ok, true));
 
     private static AppDbContext CreateDb()
     {

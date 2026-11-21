@@ -20,7 +20,10 @@ public class PendingDomainRemoval
 
     public DateTime? LastAttemptAt { get; set; }
 
-    /// <summary>Stable code of the last failure (<c>VercelCallStatus</c>), never a message from the provider.</summary>
+    /// <summary>
+    /// Stable code of the last failure (<c>VercelCallStatus</c>, or <c>auth0_…</c> when the domain left Vercel and is still in the shared Auth0 tenant,
+    /// E40/F01/US02/T01), never a message from the provider.
+    /// </summary>
     [MaxLength(64)]
     public string? LastError { get; set; }
 }
