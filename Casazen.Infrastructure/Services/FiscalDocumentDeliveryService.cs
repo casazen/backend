@@ -42,7 +42,9 @@ public sealed class FiscalDocumentDeliveryService(
     IServiceScopeFactory scopeFactory,
     IMemoryCache cache,
     TimeProvider timeProvider,
-    ILogger<FiscalDocumentDeliveryService> logger) : IFiscalDocumentDeliveryService
+    ILogger<FiscalDocumentDeliveryService> logger,
+    IGuestEmailBrandingProvider? emailBranding = null,
+    IGuestEmailLanguageProvider? emailLanguage = null) : IFiscalDocumentDeliveryService
 {
     /// <summary>
     /// The top-level names the standards keep for what is never delivered: <c>.invalid</c>, <c>.test</c> and <c>.example</c> (RFC 2606), <c>.localhost</c>, and <c>.local</c> (the placeholder of an erased
@@ -207,15 +209,23 @@ public sealed class FiscalDocumentDeliveryService(
 
         var expiresAt = timeProvider.GetUtcNow() + FiscalDocumentLinkRules.Lifetime;
         var url = links.FiscalDocumentView(document.Id, tokens.Create(document.Id, expiresAt));
+        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
+        var branding = await emailBranding.ForOrgOrNullAsync(document.OrgId, ct);
+        // E50/F01/US03/T02: with the guest portal on, in the language of the guest (the check-in page, the country, the account of the host); without it, Italian or English by the country as ever.
+        var culture = document.BookingId is { } documentBookingId
+            ? await emailLanguage.CultureOrAsync(
+                document.OrgId, documentBookingId, MessageReplyService.EmailCultureOf(guest.Country), cancellationToken: ct)
+            : MessageReplyService.EmailCultureOf(guest.Country);
         var content = EmailTemplates.FiscalDocumentDelivery(
-            MessageReplyService.EmailCultureOf(guest.Country),
+            culture,
             guest.FirstName,
             await IssuerNameAsync(document, ct),
             document.Kind,
             document.Number ?? string.Empty,
             (document.IssueDate ?? DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime)).ToDateTime(TimeOnly.MinValue),
             url,
-            expiresAt.UtcDateTime);
+            expiresAt.UtcDateTime,
+            branding);
 
         if (!emailQueue.Enqueue(address, content, EmailTemplates.Names.FiscalDocumentDelivery))
         {

@@ -34,7 +34,9 @@ public sealed class BookingPaymentLinkService(
     IEmailQueue emailQueue,
     PublicSiteLinks links,
     ILogger<BookingPaymentLinkService> logger,
-    TimeProvider? timeProvider = null) : IBookingPaymentLinkService
+    TimeProvider? timeProvider = null,
+    IGuestEmailBrandingProvider? emailBranding = null,
+    IGuestEmailLanguageProvider? emailLanguage = null) : IBookingPaymentLinkService
 {
     /// <summary>The description of the PaymentIntent and of the payment row of a link (no personal data).</summary>
     internal const string PaymentDescription = "Payment link of a host booking";
@@ -170,7 +172,7 @@ public sealed class BookingPaymentLinkService(
             await transaction.CommitAsync(ct);
 
         var url = links.CheckoutOutcome(org.Slug!, booking.Id, token);
-        var queued = QueueEmail(booking, balance, currency, url);
+        var queued = await QueueEmailAsync(booking, balance, currency, url);
         logger.LogInformation(
             "Payment link of booking {BookingId} made on payment {PaymentId} (e-mail queued: {Queued})", booking.Id, payment.Id, queued);
         return new BookingPaymentLink(booking.Id, url, balance, currency, now, queued);
@@ -225,7 +227,7 @@ public sealed class BookingPaymentLinkService(
         return kept;
     }
 
-    private bool QueueEmail(Booking booking, decimal amount, string currency, string url)
+    private async Task<bool> QueueEmailAsync(Booking booking, decimal amount, string currency, string url)
     {
         var to = booking.Guest?.Email?.Trim();
         if (string.IsNullOrEmpty(to))
@@ -234,15 +236,20 @@ public sealed class BookingPaymentLinkService(
             return false;
         }
 
+        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail). The link is committed: the e-mail is queued whatever happens to the request.
+        var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, CancellationToken.None);
+        // E50/F01/US03/T02: with the guest portal on, in the language of the guest (the check-in page, the country, the account of the host); without it, in Italian as ever.
+        var culture = await emailLanguage.CultureOrAsync(booking.OrgId, booking.Id, EmailTemplates.DefaultCulture, cancellationToken: CancellationToken.None);
         var content = EmailTemplates.BookingPaymentLink(
-            EmailTemplates.DefaultCulture,
+            culture,
             booking.Guest!.FirstName,
             booking.Property.Name,
             booking.CheckInDate,
             booking.CheckOutDate,
             amount,
             currency,
-            url);
+            url,
+            branding);
         return emailQueue.Enqueue(to, content, EmailTemplates.Names.BookingPaymentLink);
     }
 

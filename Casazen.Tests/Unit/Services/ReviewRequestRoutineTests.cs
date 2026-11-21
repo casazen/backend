@@ -876,4 +876,50 @@ public class ReviewRequestRoutineTests
 
         Assert.Equal(InvitationSubject("en"), Assert.Single(rig.Emails.Snapshot()).Content.Subject);
     }
+
+    /// <summary>
+    /// E50/F01/US03/T02, with the guest portal on: the invitation is written in any of the five languages of the guest (the check-in page, a country whose language is beyond doubt, else the
+    /// account of the host, else Italian). A guest from another country is not turned into English: Switzerland, where four languages are spoken, is the language of the host's account.
+    /// With the portal off it is the invitation of the tests above, in Italian or English.
+    /// </summary>
+    [Theory]
+    [InlineData("", "de", "de")]
+    [InlineData("CH", "de", "de")]
+    [InlineData("CH", "it", "it")]
+    [InlineData("US", "it", "en")]
+    [InlineData("DE", "it", "de")]
+    [InlineData("FR", "en", "fr")]
+    public async Task HostButton_PortalOn_WritesInTheLanguageOfTheGuestOrOfTheHostsAccount(string country, string accountLanguage, string written)
+    {
+        var rig = new RoutineRig();
+        await SeedOrgAsync(rig, OrgA, "org-a");
+        var (booking, guest) = await SeedStayAsync(rig, OrgA);
+        await ChangeGuestAsync(rig, guest.Id, g => g.Country = country);
+        await using (var seed = rig.NewDb())
+        {
+            (await seed.Orgs.SingleAsync(o => o.Id == OrgA)).DefaultLanguage = accountLanguage;
+            await seed.SaveChangesAsync();
+        }
+
+        var flags = new TestFeatureFlags(Casazen.Core.Features.FeatureFlags.GuestPortal);
+        await using (var db = rig.NewDb())
+        {
+            var reviews = new HostReviewService(
+                db,
+                rig.Tokens,
+                rig.Emails,
+                Casazen.Tests.Unit.Email.EmailTestHelpers.Links(),
+                NullLogger<HostReviewService>.Instance,
+                new FixedTimeProvider(RoutineRig.Now),
+                emailBranding: new Casazen.Infrastructure.Email.GuestEmailBrandingProvider(db, flags, NullLogger<Casazen.Infrastructure.Email.GuestEmailBrandingProvider>.Instance),
+                emailLanguage: new Casazen.Infrastructure.Email.GuestEmailLanguageProvider(db, flags, NullLogger<Casazen.Infrastructure.Email.GuestEmailLanguageProvider>.Instance));
+
+            await reviews.SendInviteAsync(booking.Id, "auth0|host");
+        }
+
+        var sent = Assert.Single(rig.Emails.Snapshot()).Content;
+        var expected = EmailTemplates.ReviewInvite(GuestLanguages.CultureOf(written), "Mario", "Casa", CheckOut.AddDays(-3), CheckOut, "https://example.com/review", CheckOut);
+        Assert.Equal(expected.Subject, sent.Subject);
+        Assert.Contains($"<html lang=\"{written}\">", sent.HtmlBody, StringComparison.Ordinal);
+    }
 }

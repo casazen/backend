@@ -15,6 +15,9 @@
   <data name="Layout_Footer" xml:space="preserve">
     <value>CasaZen — short-term rental management</value>
   </data>
+  <data name="Layout_PoweredBy" xml:space="preserve">
+    <value>Powered by CasaZen</value>
+  </data>
   <data name="Format_Date" xml:space="preserve">
     <value>d MMMM yyyy</value>
   </data>
@@ -2845,6 +2848,10 @@
     <value>If the button does not work, copy this link into your browser:</value>
   </data>
   <data name="BookingPaymentLink_Secure" xml:space="preserve">
+    <value>The payment takes place on a secure page and goes straight to your host. If you receive a new link, always use the latest one: the previous one no longer works.</value>
+  </data>
+  <!-- E50/F01/US03/T01: the sentence above as it was written before the guest portal, naming the payment provider. It is NOT a text of the guests (no guest prefix): it stays only so that the CasaZen e-mail of today (no brand of the host) is identical to the byte while Features:GuestPortal is off. The e-mail with the brand reads BookingPaymentLink_Secure. -->
+  <data name="Legacy_BookingPaymentLink_Secure" xml:space="preserve">
     <value>The payment takes place on a secure Stripe page and goes straight to your host. If you receive a new link, always use the latest one: the previous one no longer works.</value>
   </data>
   <data name="BookingPaymentLink_NotYou" xml:space="preserve">
@@ -3063,6 +3070,14 @@
   </data>
   <data name="Guest_InvoiceRequest" xml:space="preserve"><value>Do you need an invoice for this stay? Contact the property using your booking details and specify the invoice recipient.</value></data>
   <data name="Guest_InvoiceCta" xml:space="preserve"><value>Request an invoice</value></data>
+  <!-- E50/F01/US03/T03 (NF-152): the stay link of the guest portal in the confirmation, in «Prepara il tuo arrivo» and in the message of the portal chat. -->
+  <data name="Guest_StayLinkCta" xml:space="preserve"><value>Open your stay</value></data>
+  <data name="GuestBookingConfirmed_StayLink" xml:space="preserve"><value>Your stay has a personal space, no password needed: prepare your arrival there and find everything you need.</value></data>
+  <data name="GuestPrepareArrival_Subject" xml:space="preserve"><value>Prepare your arrival — {0}</value></data>
+  <data name="GuestPrepareArrival_Heading" xml:space="preserve"><value>Prepare your arrival</value></data>
+  <data name="GuestPrepareArrival_Greeting" xml:space="preserve"><value>Dear {0},</value></data>
+  <data name="GuestPrepareArrival_Body" xml:space="preserve"><value>Your stay at &lt;strong&gt;{0}&lt;/strong&gt; starts on &lt;strong&gt;{1}&lt;/strong&gt;. In your personal space, no password needed, you can prepare your arrival at your own pace and find everything you need.</value></data>
+  <data name="GuestCheckInChat_StayLink" xml:space="preserve"><value>Everything about your stay is here: {0}</value></data>
   <data name="Push_ScheduledMessageIssue_Title" xml:space="preserve"><value>Scheduled message needs a look</value></data>
   <data name="Push_ScheduledMessageIssue_Body" xml:space="preserve"><value>A scheduled message for a guest did not go out or needs your attention. Open the booking to see what happened.</value></data>
   <data name="Push_ScheduledMessageIssueProperty_Body" xml:space="preserve"><value>{0}: a scheduled message for a guest did not go out or needs your attention. Open the booking to see what happened.</value></data>

@@ -28,9 +28,10 @@ public static partial class EmailTemplates
         string number,
         DateTime issueDate,
         string documentUrl,
-        DateTime expiresAtUtc)
+        DateTime expiresAtUtc,
+        GuestEmailBranding? branding = null)
     {
-        var builder = new EmailHtmlBuilder(culture);
+        var builder = new EmailHtmlBuilder(culture, branding);
         var label = EmailTexts.Get(FiscalDocumentKindKey(kind), culture);
         return builder
             .Paragraph(string.IsNullOrWhiteSpace(guestName) ? "FiscalDocumentDelivery_GreetingNoName" : "FiscalDocumentDelivery_Greeting", guestName)

@@ -12,8 +12,12 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <!-- French texts of the two guest check-in emails only (NF-40): every other text falls back to the neutral Italian resource and is never
-       sent to a guest in French. To be reviewed by a native speaker before release. -->
+  <!-- French texts of the e-mails to a guest (NF-40, NF-155): the check-in e-mails, the confirmation of a booking, the payment link, the cancellation link, the review invitation, the answer of the
+       host and the document of the stay, in the order of the Italian file. Every other text (host, staff, suppliers, push) falls back to the neutral Italian resource and is never sent to a guest in
+       French. To be reviewed by a native speaker before release. -->
+  <data name="Layout_PoweredBy" xml:space="preserve">
+    <value>Propulsé par CasaZen</value>
+  </data>
   <data name="GuestCheckInLink_Subject" xml:space="preserve">
     <value>Effectuez l'enregistrement pour votre séjour — {0}</value>
   </data>
@@ -47,9 +51,155 @@
   <data name="GuestCheckInReminder_Validity" xml:space="preserve">
     <value>Le lien est valable jusqu'au {0}.</value>
   </data>
-  <!-- E23/F01/US01/T01 (NF-122): the message of the portal chat that carries the check-in link. -->
-  <data name="GuestCheckInChat_Body" xml:space="preserve">
-    <value>Bonjour ! Votre séjour à {0} commence le {1}. Pour accélérer votre arrivée, merci de faire le check-in en ligne avec ce lien : {2} Le lien est valable jusqu'au {3}.</value>
+  <data name="Booking_ContactHostDirectly" xml:space="preserve">
+    <value>Pour toute question, contactez directement l'hôte de l'hébergement.</value>
+  </data>
+  <data name="Booking_LinkFallback" xml:space="preserve">
+    <value>Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :</value>
+  </data>
+  <data name="Booking_Greeting" xml:space="preserve">
+    <value>Bonjour {0},</value>
+  </data>
+  <data name="Booking_Code" xml:space="preserve">
+    <value>Code de réservation : &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="Booking_FindIt" xml:space="preserve">
+    <value>Pour retrouver la réservation dans « Mes réservations », vous avez besoin du code de réservation et de l'adresse e-mail à laquelle ce message a été envoyé.</value>
+  </data>
+  <data name="Booking_MyBookingsCta" xml:space="preserve">
+    <value>Mes réservations</value>
+  </data>
+  <data name="Booking_Summary_Nights" xml:space="preserve">
+    <value>Nuits : {0}</value>
+  </data>
+  <data name="Booking_Summary_Guests" xml:space="preserve">
+    <value>Voyageurs : {0}</value>
+  </data>
+  <data name="Booking_Summary_Lodging" xml:space="preserve">
+    <value>Séjour : {0}</value>
+  </data>
+  <data name="Booking_Summary_Cleaning" xml:space="preserve">
+    <value>Ménage : {0}</value>
+  </data>
+  <data name="Booking_Summary_TouristTax" xml:space="preserve">
+    <value>Taxe de séjour : {0} (incluse dans le total)</value>
+  </data>
+  <data name="Booking_Summary_Total" xml:space="preserve">
+    <value>Total : &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="Booking_ContactHost" xml:space="preserve">
+    <value>Pour toute question, contactez &lt;strong&gt;{0}&lt;/strong&gt; à l'adresse {1}.</value>
+  </data>
+  <data name="Booking_ContactHostEmail" xml:space="preserve">
+    <value>Pour toute question, contactez l'hôte à l'adresse {0}.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Subject" xml:space="preserve">
+    <value>Réservation confirmée - {0}</value>
+  </data>
+  <data name="GuestBookingConfirmed_Body" xml:space="preserve">
+    <value>Votre réservation à &lt;strong&gt;{0}&lt;/strong&gt; du &lt;strong&gt;{1}&lt;/strong&gt; au &lt;strong&gt;{2}&lt;/strong&gt; est confirmée.</value>
+  </data>
+  <data name="GuestBookingConfirmed_BodyOnSite" xml:space="preserve">
+    <value>L'hôte a accepté votre demande : votre réservation à &lt;strong&gt;{0}&lt;/strong&gt; du &lt;strong&gt;{1}&lt;/strong&gt; au &lt;strong&gt;{2}&lt;/strong&gt; est confirmée.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Late" xml:space="preserve">
+    <value>Le paiement est arrivé après le délai prévu pour finaliser la réservation, mais les dates étaient encore disponibles.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Paid" xml:space="preserve">
+    <value>Paiement reçu : &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestBookingConfirmed_DeferredOn" xml:space="preserve">
+    <value>Rien ne vous a encore été débité : le total de &lt;strong&gt;{0}&lt;/strong&gt; sera débité le &lt;strong&gt;{1}&lt;/strong&gt; sur le moyen de paiement enregistré lors de la réservation.</value>
+  </data>
+  <data name="GuestBookingConfirmed_Deferred" xml:space="preserve">
+    <value>Rien ne vous a encore été débité : le total de &lt;strong&gt;{0}&lt;/strong&gt; sera débité à l'échéance indiquée lors de la réservation, sur le moyen de paiement enregistré.</value>
+  </data>
+  <data name="GuestBookingConfirmed_OnSite" xml:space="preserve">
+    <value>Vous paierez &lt;strong&gt;{0}&lt;/strong&gt; directement sur place.</value>
+  </data>
+  <data name="GuestBookingConfirmed_NotFiscal" xml:space="preserve">
+    <value>Cet e-mail confirme la réservation et le paiement reçu ; ce n'est pas un document fiscal.</value>
+  </data>
+  <data name="GuestBookingConfirmed_CheckInOpen" xml:space="preserve">
+    <value>L'enregistrement en ligne est déjà ouvert : effectuez-le à l'avance avec le bouton ci-dessous.</value>
+  </data>
+  <data name="GuestBookingConfirmed_CheckInCta" xml:space="preserve">
+    <value>Faire l'enregistrement en ligne</value>
+  </data>
+  <data name="GuestBookingConfirmed_CheckInOn" xml:space="preserve">
+    <value>Le lien pour l'enregistrement en ligne vous sera envoyé par e-mail le &lt;strong&gt;{0}&lt;/strong&gt;. À partir de ce jour, vous pouvez aussi le demander dans « Mes réservations ».</value>
+  </data>
+  <data name="GuestBookingConfirmed_CheckInRequest" xml:space="preserve">
+    <value>Vous pouvez demander le lien pour l'enregistrement en ligne dans « Mes réservations ».</value>
+  </data>
+  <data name="GuestCancelLink_Subject" xml:space="preserve">
+    <value>Annulation de la réservation - {0}</value>
+  </data>
+  <data name="GuestCancelLink_Greeting" xml:space="preserve">
+    <value>Bonjour {0},</value>
+  </data>
+  <data name="GuestCancelLink_Body" xml:space="preserve">
+    <value>Vous avez demandé l'annulation de votre réservation à &lt;strong&gt;{0}&lt;/strong&gt; du &lt;strong&gt;{1}&lt;/strong&gt; au &lt;strong&gt;{2}&lt;/strong&gt;. Cliquez sur le bouton ci-dessous pour confirmer l'annulation.</value>
+  </data>
+  <data name="GuestCancelLink_Policy" xml:space="preserve">
+    <value>L'éventuel remboursement sera calculé selon la politique d'annulation de l'hébergement, appliquée au montant du séjour hors taxe de séjour.</value>
+  </data>
+  <data name="GuestCancelLink_Cta" xml:space="preserve">
+    <value>Confirmer l'annulation</value>
+  </data>
+  <data name="GuestCancelLink_LinkFallback" xml:space="preserve">
+    <value>Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :</value>
+  </data>
+  <data name="GuestCancelLink_Validity" xml:space="preserve">
+    <value>Le lien est valable jusqu'au {0} (heure italienne).</value>
+  </data>
+  <data name="GuestCancelLink_NotYou" xml:space="preserve">
+    <value>Si vous n'êtes pas à l'origine de cette annulation, ignorez cet e-mail : votre réservation reste inchangée.</value>
+  </data>
+  <data name="ReviewInvite_Subject" xml:space="preserve">
+    <value>Comment s'est passé votre séjour ? - {0}</value>
+  </data>
+  <data name="ReviewInvite_Greeting" xml:space="preserve">
+    <value>Bonjour {0},</value>
+  </data>
+  <data name="ReviewInvite_Body" xml:space="preserve">
+    <value>Merci d'avoir séjourné à &lt;strong&gt;{0}&lt;/strong&gt; du &lt;strong&gt;{1}&lt;/strong&gt; au &lt;strong&gt;{2}&lt;/strong&gt;. L'hôte vous demande une minute pour laisser un avis : il aide ceux qui choisissent où dormir et raconte comment cela s'est passé.</value>
+  </data>
+  <data name="ReviewInvite_How" xml:space="preserve">
+    <value>Choisissez une note de 1 à 5 étoiles et, si vous le souhaitez, écrivez quelques lignes. L'avis est publié aussitôt sur le site de réservation de l'hébergement avec votre prénom ; vous pouvez choisir de ne pas l'afficher.</value>
+  </data>
+  <data name="ReviewInvite_Cta" xml:space="preserve">
+    <value>Écrire l'avis</value>
+  </data>
+  <data name="ReviewInvite_LinkFallback" xml:space="preserve">
+    <value>Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :</value>
+  </data>
+  <data name="ReviewInvite_Validity" xml:space="preserve">
+    <value>Le lien est personnel et valable jusqu'au {0} (heure italienne).</value>
+  </data>
+  <data name="ReviewInvite_Once" xml:space="preserve">
+    <value>Vous recevez cet e-mail une seule fois, parce que l'hôte a demandé un avis pour ce séjour. Si vous ne souhaitez rien écrire, vous pouvez l'ignorer.</value>
+  </data>
+  <data name="HostReplyToGuest_Subject" xml:space="preserve">
+    <value>{0} vous a répondu</value>
+  </data>
+  <data name="HostReplyToGuest_Greeting" xml:space="preserve">
+    <value>Bonjour {0},</value>
+  </data>
+  <data name="HostReplyToGuest_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; a répondu à votre message concernant le séjour à &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostReplyToGuest_How" xml:space="preserve">
+    <value>Pour lire la réponse, ouvrez votre réservation (vous avez besoin du code et de l'adresse e-mail de la réservation) et allez dans la section Messages. Le texte de la réponse ne figure pas dans cet e-mail.</value>
+  </data>
+  <data name="HostReplyToGuest_Cta" xml:space="preserve">
+    <value>Ouvrir ma réservation</value>
+  </data>
+  <data name="HostReplyToGuest_LinkFallback" xml:space="preserve">
+    <value>Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :</value>
+  </data>
+  <data name="HostReplyToGuest_Why" xml:space="preserve">
+    <value>Vous recevez cet e-mail parce que l'hôte vous a répondu. Nous en envoyons au maximum un toutes les 10 minutes par conversation.</value>
   </data>
   <data name="GuestVideoCall_Subject" xml:space="preserve">
     <value>Appel vidéo pour votre enregistrement — {0}</value>
@@ -72,6 +222,75 @@
   <data name="GuestVideoCall_Hint" xml:space="preserve">
     <value>Ensuite, l'hôte termine la vérification d'identité. Si vous n'attendiez pas cette demande, ignorez cet e-mail.</value>
   </data>
+  <data name="BookingPaymentLink_Subject" xml:space="preserve">
+    <value>Paiement de votre séjour - {0}</value>
+  </data>
+  <data name="BookingPaymentLink_Greeting" xml:space="preserve">
+    <value>Bonjour {0},</value>
+  </data>
+  <data name="BookingPaymentLink_Body" xml:space="preserve">
+    <value>Voici le lien pour payer votre séjour à &lt;strong&gt;{0}&lt;/strong&gt; du &lt;strong&gt;{1}&lt;/strong&gt; au &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="BookingPaymentLink_Amount" xml:space="preserve">
+    <value>Montant à payer : &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="BookingPaymentLink_Cta" xml:space="preserve">
+    <value>Payer maintenant</value>
+  </data>
+  <data name="BookingPaymentLink_LinkFallback" xml:space="preserve">
+    <value>Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :</value>
+  </data>
+  <data name="BookingPaymentLink_Secure" xml:space="preserve">
+    <value>Le paiement s'effectue sur une page sécurisée et va directement à votre hôte. Si vous recevez un nouveau lien, utilisez toujours le dernier : le précédent ne fonctionne plus.</value>
+  </data>
+  <data name="BookingPaymentLink_NotYou" xml:space="preserve">
+    <value>Si vous ne reconnaissez pas cette réservation, ignorez cet e-mail et ne payez pas.</value>
+  </data>
+  <!-- E23/F01/US01/T01 (NF-122): the message of the portal chat that carries the check-in link. -->
+  <data name="GuestCheckInChat_Body" xml:space="preserve">
+    <value>Bonjour ! Votre séjour à {0} commence le {1}. Pour accélérer votre arrivée, merci de faire le check-in en ligne avec ce lien : {2} Le lien est valable jusqu'au {3}.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Subject" xml:space="preserve">
+    <value>{0} n° {1} de {2}</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Greeting" xml:space="preserve">
+    <value>Bonjour {0},</value>
+  </data>
+  <data name="FiscalDocumentDelivery_GreetingNoName" xml:space="preserve">
+    <value>Bonjour,</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; vous a envoyé le document &lt;strong&gt;{1} n° {2}&lt;/strong&gt; du {3}. Vous pouvez le consulter et le télécharger en PDF avec le lien ci-dessous.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Cta" xml:space="preserve">
+    <value>Voir le document</value>
+  </data>
+  <data name="FiscalDocumentDelivery_LinkFallback" xml:space="preserve">
+    <value>Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur :</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Validity" xml:space="preserve">
+    <value>Le lien est valable jusqu'au {0}.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_NotYou" xml:space="preserve">
+    <value>Si vous n'attendiez pas ce message, vous pouvez l'ignorer.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_Invoice" xml:space="preserve">
+    <value>Facture</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_Receipt" xml:space="preserve">
+    <value>Reçu</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_CreditNote" xml:space="preserve">
+    <value>Avoir</value>
+  </data>
   <data name="Guest_InvoiceRequest" xml:space="preserve"><value>Avez-vous besoin d’une facture pour ce séjour ? Contactez l’hébergement aux coordonnées de votre réservation et précisez le destinataire de la facture.</value></data>
   <data name="Guest_InvoiceCta" xml:space="preserve"><value>Demander une facture</value></data>
+  <!-- E50/F01/US03/T03 (NF-152): the stay link of the guest portal in the confirmation, in «Prepara il tuo arrivo» and in the message of the portal chat. -->
+  <data name="Guest_StayLinkCta" xml:space="preserve"><value>Ouvrir votre séjour</value></data>
+  <data name="GuestBookingConfirmed_StayLink" xml:space="preserve"><value>Votre séjour dispose d'un espace personnel, sans mot de passe : vous y préparez votre arrivée et y trouvez tout ce dont vous avez besoin.</value></data>
+  <data name="GuestPrepareArrival_Subject" xml:space="preserve"><value>Préparez votre arrivée — {0}</value></data>
+  <data name="GuestPrepareArrival_Heading" xml:space="preserve"><value>Préparez votre arrivée</value></data>
+  <data name="GuestPrepareArrival_Greeting" xml:space="preserve"><value>Bonjour {0},</value></data>
+  <data name="GuestPrepareArrival_Body" xml:space="preserve"><value>Votre séjour à &lt;strong&gt;{0}&lt;/strong&gt; commence le &lt;strong&gt;{1}&lt;/strong&gt;. Dans votre espace personnel, sans mot de passe, vous préparez votre arrivée tranquillement et vous y trouvez tout ce dont vous avez besoin.</value></data>
+  <data name="GuestCheckInChat_StayLink" xml:space="preserve"><value>Retrouvez tout votre séjour ici : {0}</value></data>
 </root>

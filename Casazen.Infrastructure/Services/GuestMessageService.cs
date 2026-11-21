@@ -43,7 +43,9 @@ public sealed class GuestMessageService(
     TimeProvider? timeProvider = null,
     IDomainEventRecorder? events = null,
     IEnumerable<IThreadReplyObserver>? replyObservers = null,
-    AgencyDomainLinks? agencyLinks = null) : IGuestMessageService
+    AgencyDomainLinks? agencyLinks = null,
+    IGuestEmailBrandingProvider? emailBranding = null,
+    IGuestEmailLanguageProvider? emailLanguage = null) : IGuestMessageService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -535,12 +537,17 @@ public sealed class GuestMessageService(
                 return;
 
             var hostName = string.IsNullOrWhiteSpace(booking.Org.DisplayName) ? booking.Property.Name : booking.Org.DisplayName.Trim();
+            // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
+            var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
+            // E50/F01/US03/T02: with the guest portal on, in the language of the guest (the check-in page, the country, the account of the host); without it, in Italian as ever.
+            var culture = await emailLanguage.CultureOrAsync(booking.OrgId, booking.Id, EmailTemplates.DefaultCulture, cancellationToken: cancellationToken);
             var content = EmailTemplates.HostReplyToGuest(
-                EmailTemplates.DefaultCulture,
+                culture,
                 booking.Guest.FirstName,
                 hostName,
                 booking.Property.Name,
-                bookingArea);
+                bookingArea,
+                branding);
             if (!emailQueue.Enqueue(booking.Guest.Email, content, EmailTemplates.Names.HostReplyToGuest))
             {
                 await db.GuestThreads

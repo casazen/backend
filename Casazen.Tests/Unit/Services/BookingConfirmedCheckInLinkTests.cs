@@ -371,6 +371,95 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         _scheduler.Verify(c => c.Create(It.IsAny<Hangfire.Common.Job>(), It.IsAny<Hangfire.States.IState>()), Times.Once);
     }
 
+    // ---- The confirmation with the brand of the host (E50/F01/US03/T01): the same delivery tracking, through the branded job ------------------------
+
+    /// <summary>
+    /// PROOF TEST: data rule (CO-09, A5-26) with the guest portal on. The confirmation that carries the brand of the host is handed to the provider in the name of the host (the sender's display
+    /// name and the host as reply-to; the address of the sender is not part of it), by the branded job and by no other way, and the provider's acceptance is what makes the check-in link «sent»:
+    /// the session and the delivery record say so exactly as they do for the confirmation of today.
+    /// </summary>
+    [Fact]
+    public async Task BrandedConfirmation_Delivered_IsSentInTheHostsName_AndTheLinkIsSent_Test()
+    {
+        var bookingId = await SeedAsync(daysUntilArrival: 2);
+        await BrandedNotifier().BookingConfirmedAsync(bookingId, BookingConfirmationKind.PaidOnline);
+        var confirmation = Assert.Single(_emails.Snapshot(), e => e.To == GuestEmail).Content;
+        Assert.Equal("Villa Org", confirmation.FromName);
+        Assert.Equal("host@example.com", confirmation.ReplyTo);
+        var queued = Assert.IsType<CheckInLinkEmail>(confirmation.CheckInLink);
+
+        var emailService = await RunBrandedConfirmationJobAsync(EmailSendResult.Sent());
+
+        emailService.Verify(s => s.SendEmailAsync(GuestEmail, confirmation.Subject, confirmation.HtmlBody, "host@example.com", "Villa Org"), Times.Once);
+        emailService.Verify(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        var sent = await _db.GuestCheckInSessions.AsNoTracking().SingleAsync(s => s.BookingId == bookingId);
+        Assert.Equal(GuestCheckInLinkEmailStatus.Sent, sent.LinkEmailStatus);
+        Assert.Equal(Now.UtcDateTime, sent.SentAt);
+        var row = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == bookingId);
+        Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Sent), (row.Channel, row.State));
+        Assert.Equal(queued.SessionId, row.SessionId);
+        _scheduler.Verify(c => c.Create(It.IsAny<Hangfire.Common.Job>(), It.IsAny<Hangfire.States.IState>()), Times.Never);
+    }
+
+    /// <summary>
+    /// A temporary provider error is tried again by the branded job as the branded job, with the name and the reply-to of the host (a retry never turns the e-mail of a host into the CasaZen one),
+    /// the link stays «in attesa» (not sent, not failed) until the last attempt, and the last attempt that fails gives failed with its own code, as for the confirmation of today.
+    /// </summary>
+    [Fact]
+    public async Task BrandedConfirmation_TemporarilyNotDelivered_IsTriedAgainAsTheBrandedJob_AndFailsAfterTheLastAttempt_Test()
+    {
+        var bookingId = await SeedAsync(daysUntilArrival: 2);
+        await BrandedNotifier().BookingConfirmedAsync(bookingId, BookingConfirmationKind.PaidOnline);
+        var transient = new EmailSendResult(false, "RateLimitExceeded", IsTransient: true);
+
+        await RunBrandedConfirmationJobAsync(transient, attempt: 1);
+
+        _scheduler.Verify(
+            c => c.Create(
+                It.Is<Hangfire.Common.Job>(job =>
+                    job.Type == typeof(BookingConfirmationEmailJob)
+                    && job.Method.Name == nameof(BookingConfirmationEmailJob.SendBrandedAsync)
+                    && (int)job.Args[6] == 2
+                    && (string?)job.Args[7] == "host@example.com"
+                    && (string?)job.Args[8] == "Villa Org"),
+                It.IsAny<Hangfire.States.IState>()),
+            Times.Once);
+        var waiting = await _db.GuestCheckInSessions.AsNoTracking().SingleAsync(s => s.BookingId == bookingId);
+        Assert.Equal(GuestCheckInLinkEmailStatus.Queued, waiting.LinkEmailStatus);
+        Assert.Equal(GuestCheckInSessionStatus.Inviato, waiting.Status);
+
+        await RunBrandedConfirmationJobAsync(transient, attempt: BookingConfirmationEmailJob.MaxAttempts);
+
+        var failed = await _db.GuestCheckInSessions.AsNoTracking().SingleAsync(s => s.BookingId == bookingId);
+        Assert.Equal(GuestCheckInLinkEmailStatus.Failed, failed.LinkEmailStatus);
+        Assert.Equal(GuestCheckInLinkEmailErrors.NotDelivered, failed.LinkEmailError);
+        Assert.Equal(GuestCheckInSessionStatus.Scaduto, failed.Status);
+        var row = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == bookingId);
+        Assert.Equal((CheckInLinkDeliveryState.Failed, GuestCheckInLinkEmailErrors.NotDelivered), (row.State, row.LastErrorCode));
+        _scheduler.Verify(c => c.Create(It.IsAny<Hangfire.Common.Job>(), It.IsAny<Hangfire.States.IState>()), Times.Once);
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule (never «sent» when nothing left). A provider that is not configured is no delivery: the branded job writes failed with the code of the cause on the session and on
+    /// the delivery record, never «sent», and tries nothing again.
+    /// </summary>
+    [Fact]
+    public async Task BrandedConfirmation_ProviderNotConfigured_FailsTheLinkWithItsCode_AndIsNotTriedAgain_Test()
+    {
+        var bookingId = await SeedAsync(daysUntilArrival: 2);
+        await BrandedNotifier().BookingConfirmedAsync(bookingId, BookingConfirmationKind.PaidOnline);
+
+        await RunBrandedConfirmationJobAsync(EmailSendResult.NotConfigured());
+
+        var failed = await _db.GuestCheckInSessions.AsNoTracking().SingleAsync(s => s.BookingId == bookingId);
+        Assert.Equal(GuestCheckInLinkEmailStatus.Failed, failed.LinkEmailStatus);
+        Assert.Equal(GuestCheckInLinkEmailErrors.ProviderNotConfigured, failed.LinkEmailError);
+        Assert.Null(failed.SentAt);
+        var row = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == bookingId);
+        Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Failed, GuestCheckInLinkEmailErrors.ProviderNotConfigured), (row.Channel, row.State, row.LastErrorCode));
+        _scheduler.Verify(c => c.Create(It.IsAny<Hangfire.Common.Job>(), It.IsAny<Hangfire.States.IState>()), Times.Never);
+    }
+
     /// <summary>
     /// PROOF TEST: data rule. The delivery row of a stay that went by e-mail describes the link it was written for; the reminder, a link the guest asks for, the autopilot and the daily
     /// job after an expiry issue other links without touching it. <c>GET link-delivery</c> (<see cref="ICheckInLinkDeliveryService.GetAsync"/>) reads the row against the newest link of the
@@ -498,6 +587,39 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         var job = new BookingConfirmationEmailJob(emailService.Object, _deliveries, _scheduler.Object, NullLogger<BookingConfirmationEmailJob>.Instance);
 
         await job.SendAsync(to!, content.Subject, content.HtmlBody, template, link.BookingId, link.SessionId, attempt);
+    }
+
+    /// <summary>The notifier of the guest portal on: the confirmation carries the brand of the host (its name as the sender, the host as reply-to).</summary>
+    private BookingNotifier BrandedNotifier() =>
+        new(
+            _db,
+            _emails,
+            EmailTestHelpers.Links(),
+            _pushes,
+            _notifierLog,
+            _checkIn,
+            _deliveries,
+            _options,
+            _clock,
+            emailBranding: new GuestEmailBrandingProvider(_db, new TestFeatureFlags(Casazen.Core.Features.FeatureFlags.GuestPortal), NullLogger<GuestEmailBrandingProvider>.Instance));
+
+    /// <summary>
+    /// What the Hangfire worker does with the confirmation of a host that carries its brand: the branded job runs it with the arguments the queue gave it (the name and the reply-to of the
+    /// host included), the provider answering <paramref name="result"/>. The e-mail service is returned, so that a test reads how it was asked to send.
+    /// </summary>
+    private async Task<Mock<IEmailService>> RunBrandedConfirmationJobAsync(EmailSendResult result, int attempt = 1)
+    {
+        var (to, content, template) = Assert.Single(_emails.Snapshot(), e => e.To == GuestEmail);
+        var link = Assert.IsType<CheckInLinkEmail>(content.CheckInLink);
+        var emailService = new Mock<IEmailService>();
+        emailService
+            .Setup(s => s.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .ReturnsAsync(result);
+        var job = new BookingConfirmationEmailJob(emailService.Object, _deliveries, _scheduler.Object, NullLogger<BookingConfirmationEmailJob>.Instance);
+
+        await job.SendBrandedAsync(to!, content.Subject, content.HtmlBody, template, link.BookingId, link.SessionId, attempt, content.ReplyTo, content.FromName);
+
+        return emailService;
     }
 
     /// <summary>The real daily job over the same database, with the queue of the link e-mails watched: its calls are what a duplicate would be.</summary>

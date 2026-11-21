@@ -46,9 +46,19 @@ public static class GuestLanguages
     /// <summary>
     /// The language to write to a guest by the country on the booking (E23/F01/US01/T01), when the guest chose none: Italian for Italy, German for Germany and Austria, French
     /// for France, Spanish for Spain and English for every other country; <c>null</c> when the booking names no country (a stay from a portal comes with none), so the caller
-    /// decides. Accepts the two-letter and three-letter ISO codes and the usual names.
+    /// decides. Accepts the two-letter and three-letter ISO codes and the usual names. What the review invitation, the chat message of the check-in link and the scheduled messages have always
+    /// read, and still read while the guest portal is off: the e-mails of the portal read <see cref="OfUnambiguousCountry"/> instead.
     /// </summary>
-    public static string? OfCountry(string? country)
+    public static string? OfCountry(string? country) =>
+        string.IsNullOrWhiteSpace(country) ? null : OfUnambiguousCountry(country) ?? "en";
+
+    /// <summary>
+    /// The language to write to a guest by the country on the booking in the e-mails of the guest portal (E50/F01/US03/T02), when the guest chose none: only a country whose language is not in doubt
+    /// gives one — Italian for Italy, German for Germany and Austria, French for France, Spanish for Spain, English for the United Kingdom, the United States and Ireland. <c>null</c> for every other country
+    /// (Switzerland, where four languages are spoken, included) and when the booking names none, so the caller goes on to the language of the host's account instead of writing English to every guest
+    /// that happens to come from somewhere else. Accepts the two-letter and three-letter ISO codes and the usual names.
+    /// </summary>
+    public static string? OfUnambiguousCountry(string? country)
     {
         var value = country?.Trim().ToUpperInvariant();
         if (string.IsNullOrEmpty(value))
@@ -60,9 +70,22 @@ public static class GuestLanguages
             "DE" or "DEU" or "GERMANIA" or "GERMANY" or "DEUTSCHLAND" or "AT" or "AUT" or "AUSTRIA" or "ÖSTERREICH" => "de",
             "FR" or "FRA" or "FRANCIA" or "FRANCE" => "fr",
             "ES" or "ESP" or "SPAGNA" or "SPAIN" or "ESPAÑA" => "es",
-            _ => "en",
+            "GB" or "GBR" or "UK" or "REGNO UNITO" or "UNITED KINGDOM" => "en",
+            "US" or "USA" or "STATI UNITI" or "UNITED STATES" => "en",
+            "IE" or "IRL" or "IRLANDA" or "IRELAND" => "en",
+            _ => null,
         };
     }
+
+    /// <summary>
+    /// The one choice of the language of an e-mail to a guest (E50/F01/US03/T02, NF-155, AC-NF155-3), in this order: the language the guest chose on the check-in page
+    /// (<paramref name="sessionLanguage"/>, when it is supported), the language of the country on the booking when that country has one language beyond doubt
+    /// (<see cref="OfUnambiguousCountry"/>), the language of the account of the host (<paramref name="orgDefaultLanguage"/>, <c>Org.DefaultLanguage</c>), Italian. Any other country, Switzerland
+    /// included, leaves the choice to the host's account: it is never turned into English. A booking carries no language of its own, and the public booking requests carry none: a confirmation
+    /// written before any check-in knows the guest only by its country, else by the host's account. An unsupported code at any step is skipped, so the result is always one of <see cref="Supported"/>.
+    /// </summary>
+    public static string ResolveForEmail(string? sessionLanguage, string? country, string? orgDefaultLanguage) =>
+        Resolve(Normalize(sessionLanguage) ?? OfUnambiguousCountry(country), orgDefaultLanguage);
 
     /// <summary>The culture the emails of <paramref name="language"/> are written in (Italian for an unsupported one).</summary>
     public static CultureInfo CultureOf(string? language) => Normalize(language) switch

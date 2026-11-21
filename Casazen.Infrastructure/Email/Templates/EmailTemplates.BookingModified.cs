@@ -23,10 +23,11 @@ public static partial class EmailTemplates
         decimal refundedAmount,
         decimal chargedAmount,
         bool paymentLinkFollows,
-        BookingHostContact hostContact)
+        BookingHostContact hostContact,
+        GuestEmailBranding? branding = null)
     {
         ArgumentNullException.ThrowIfNull(booking);
-        var builder = new EmailHtmlBuilder(culture)
+        var builder = new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph("GuestBookingModified_Body", booking.PropertyName, booking.CheckInDate, booking.CheckOutDate, booking.Guests)
             .Paragraph("GuestBookingModified_Total", Money(booking.Total, booking.Currency, culture));

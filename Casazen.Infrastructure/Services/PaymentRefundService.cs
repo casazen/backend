@@ -36,7 +36,8 @@ public sealed class PaymentRefundService(
     IEmailQueue emailQueue,
     ILogger<PaymentRefundService> logger,
     TimeProvider? timeProvider = null,
-    IDomainEventRecorder? domainEvents = null) : IPaymentRefundService
+    IDomainEventRecorder? domainEvents = null,
+    IGuestEmailBrandingProvider? emailBranding = null) : IPaymentRefundService
 {
     /// <summary>Metadata key that links a Stripe refund to its <see cref="PaymentRefund"/> row.</summary>
     internal const string RefundIdMetadataKey = "paymentRefundId";
@@ -203,6 +204,7 @@ public sealed class PaymentRefundService(
                 {
                     r.Amount,
                     r.IdempotencyKey,
+                    r.OrgId,
                     r.Payment.Booking.CheckInDate,
                     r.Payment.Booking.CheckOutDate,
                     GuestFirstName = r.Payment.Booking.Guest.FirstName,
@@ -219,6 +221,8 @@ public sealed class PaymentRefundService(
             // currency of the charge, which is the one of the property (CHF-MONEY).
             var currency = StayCurrency.Normalize(details.PropertyCurrency);
             var latePayment = details.IdempotencyKey.StartsWith(LatePaymentRefundKeyPrefix, StringComparison.Ordinal);
+            // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
+            var branding = await emailBranding.ForOrgOrNullAsync(details.OrgId, cancellationToken);
             var email = latePayment
                 ? EmailTemplates.GuestPaymentRefundedDatesUnavailable(
                     EmailTemplates.DefaultCulture,
@@ -227,14 +231,16 @@ public sealed class PaymentRefundService(
                     details.CheckInDate,
                     details.CheckOutDate,
                     details.Amount,
-                    currency)
+                    currency,
+                    branding)
                 : EmailTemplates.GuestRefundConfirmed(
                     EmailTemplates.DefaultCulture,
                     details.GuestFirstName,
                     details.PropertyName,
                     details.CheckInDate,
                     details.Amount,
-                    currency);
+                    currency,
+                    branding);
             var template = latePayment
                 ? EmailTemplates.Names.GuestPaymentRefundedDatesUnavailable
                 : EmailTemplates.Names.GuestRefundConfirmed;

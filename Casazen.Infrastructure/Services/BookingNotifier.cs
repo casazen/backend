@@ -5,6 +5,7 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.GuestPortal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -47,7 +48,10 @@ public sealed class BookingNotifier(
     IOptions<GuestCheckInOptions>? checkInOptions = null,
     TimeProvider? timeProvider = null,
     IBookingFlowSettingsService? flowSettings = null,
-    AgencyDomainLinks? agencyLinks = null)
+    AgencyDomainLinks? agencyLinks = null,
+    IGuestEmailBrandingProvider? emailBranding = null,
+    IGuestEmailLanguageProvider? emailLanguage = null,
+    IGuestStayLinkProvider? stayLinks = null)
 {
     /// <summary>
     /// The four optional services of the check-in link were given (the check-in, the delivery, its options, the clock): the container gives them. Built without them the notifier says
@@ -95,6 +99,18 @@ public sealed class BookingNotifier(
         // E23/F02/US01/T01: what the confirmation says about the online check-in, with the link when the check-in is already open. Never throws.
         var confirmationCheckIn = await PrepareCheckInAsync(data, agency, cancellationToken);
 
+        // E50/F01/US03/T01: the brand of the host (its logo, color and name; sent in its name, answers to it) while the guest portal is on; never throws, null = the CasaZen e-mail.
+        var branding = await emailBranding.ForOrgOrNullAsync(data.OrgId, cancellationToken);
+
+        // E50/F01/US03/T02: with the guest portal on, the confirmation is written in the language of the guest (the check-in page, the country on the booking, the account of the host, Italian);
+        // without it, in Italian as ever. Never throws.
+        var culture = await emailLanguage.CultureOrAsync(data.OrgId, data.BookingId, EmailTemplates.DefaultCulture, cancellationToken: cancellationToken);
+
+        // E50/F01/US03/T03: with the guest portal on, the confirmation carries the stay link of the booking («Apri il tuo soggiorno»), made by the link service of the portal and nowhere else; the
+        // notice of the check-in stays. None when the portal is off, when the booking may not have a link or when the guest has no address to write to (no link is made for an e-mail that
+        // is not sent). Never throws.
+        var stayUrl = string.IsNullOrWhiteSpace(data.GuestEmail) ? null : await stayLinks.UrlOrNullAsync(data.OrgId, data.BookingId, cancellationToken);
+
         // A link that is about to leave is «in attesa» (queued, never sent) until the provider accepts the e-mail that carries it: written BEFORE the e-mail is queued, so that the job that
         // sends it cannot finish first.
         await RecordCheckInQueuedAsync(data, confirmationCheckIn);
@@ -102,7 +118,7 @@ public sealed class BookingNotifier(
         var queued = Queue(bookingId, EmailTemplates.Names.GuestBookingConfirmed, data.GuestEmail, () =>
         {
             var content = EmailTemplates.GuestBookingConfirmed(
-                EmailTemplates.DefaultCulture,
+                culture,
                 data.GuestFirstName,
                 data.Summary,
                 kind,
@@ -110,7 +126,9 @@ public sealed class BookingNotifier(
                 data.FreeRefundDeadline,
                 data.HostContact,
                 agency.GuestBookings(data.OrgSlug, data.Summary.BookingCode),
-                confirmationCheckIn?.Notice);
+                confirmationCheckIn?.Notice,
+                branding,
+                stayUrl);
 
             // The job that sends an e-mail with a link writes on the session whether the link really left.
             return confirmationCheckIn?.Link is { } issued
@@ -332,6 +350,7 @@ public sealed class BookingNotifier(
             return;
         }
 
+        var branding = await emailBranding.ForOrgOrNullAsync(data.OrgId, cancellationToken);
         Queue(bookingId, EmailTemplates.Names.GuestBookingCancelled, data.GuestEmail, () =>
             EmailTemplates.GuestBookingCancelled(
                 EmailTemplates.DefaultCulture,
@@ -342,7 +361,8 @@ public sealed class BookingNotifier(
                 refundedAmount,
                 refundStartedAmount,
                 data.HostContact,
-                currency: data.Summary.Currency));
+                currency: data.Summary.Currency,
+                branding: branding));
     }
 
     /// <summary>
@@ -363,6 +383,7 @@ public sealed class BookingNotifier(
         if (data is null)
             return;
 
+        var branding = await emailBranding.ForOrgOrNullAsync(data.OrgId, cancellationToken);
         Queue(bookingId, EmailTemplates.Names.GuestBookingCancelled, data.GuestEmail, () =>
             EmailTemplates.GuestBookingCancelled(
                 EmailTemplates.DefaultCulture,
@@ -375,7 +396,8 @@ public sealed class BookingNotifier(
                 data.HostContact,
                 BookingCancellationEmailCause.Guest,
                 retainedAmount,
-                data.Summary.Currency));
+                data.Summary.Currency,
+                branding));
         QueueToHost(data, EmailTemplates.Names.HostBookingCancelledByGuest, () =>
             EmailTemplates.HostBookingCancelledByGuest(
                 EmailTemplates.DefaultCulture,
@@ -404,6 +426,7 @@ public sealed class BookingNotifier(
         if (data.Status is not (BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut))
             return;
 
+        var branding = await emailBranding.ForOrgOrNullAsync(data.OrgId, cancellationToken);
         Queue(bookingId, EmailTemplates.Names.GuestBookingModified, data.GuestEmail, () =>
             EmailTemplates.GuestBookingModified(
                 EmailTemplates.DefaultCulture,
@@ -412,7 +435,8 @@ public sealed class BookingNotifier(
                 settlement.Action == BookingSettlementAction.Refund ? settlement.Amount : 0m,
                 settlement.Action == BookingSettlementAction.ChargeSavedCard ? settlement.Amount : 0m,
                 settlement.Action == BookingSettlementAction.PaymentLink,
-                data.HostContact));
+                data.HostContact,
+                branding));
     }
 
     /// <summary>
@@ -432,6 +456,7 @@ public sealed class BookingNotifier(
             return;
 
         var cancelOn = cancellationDay?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var branding = await emailBranding.ForOrgOrNullAsync(data.OrgId, cancellationToken);
         Queue(bookingId, EmailTemplates.Names.GuestDeferredChargeFailed, data.GuestEmail, () =>
             EmailTemplates.GuestDeferredChargeFailed(
                 EmailTemplates.DefaultCulture,
@@ -439,7 +464,8 @@ public sealed class BookingNotifier(
                 data.Summary,
                 links.CheckoutOutcome(data.OrgSlug, data.BookingId, checkoutToken),
                 cancelOn?.AddDays(-1),
-                data.HostContact));
+                data.HostContact,
+                branding));
         AlertHostOfFailedDeferredCharge(data, guestAsked: true, cancelOn);
     }
 
@@ -464,6 +490,7 @@ public sealed class BookingNotifier(
         if (data is null)
             return;
 
+        var branding = await emailBranding.ForOrgOrNullAsync(data.OrgId, cancellationToken);
         Queue(bookingId, EmailTemplates.Names.GuestBookingCancelled, data.GuestEmail, () =>
             EmailTemplates.GuestBookingCancelled(
                 EmailTemplates.DefaultCulture,
@@ -475,7 +502,8 @@ public sealed class BookingNotifier(
                 refundStartedEur: 0m,
                 data.HostContact,
                 BookingCancellationEmailCause.DeferredPaymentNotCompleted,
-                currency: data.Summary.Currency));
+                currency: data.Summary.Currency,
+                branding: branding));
         QueueToHost(data, EmailTemplates.Names.HostDeferredChargeCancelled, () =>
             EmailTemplates.HostDeferredChargeCancelled(
                 EmailTemplates.DefaultCulture,

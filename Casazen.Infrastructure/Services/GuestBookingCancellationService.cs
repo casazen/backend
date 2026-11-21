@@ -33,7 +33,9 @@ public sealed class GuestBookingCancellationService(
     PublicSiteLinks links,
     IConfiguration configuration,
     ILogger<GuestBookingCancellationService> logger,
-    TimeProvider? timeProvider = null) : IGuestBookingCancellationService
+    TimeProvider? timeProvider = null,
+    IGuestEmailBrandingProvider? emailBranding = null,
+    IGuestEmailLanguageProvider? emailLanguage = null) : IGuestBookingCancellationService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -81,14 +83,19 @@ public sealed class GuestBookingCancellationService(
             return;
         }
 
+        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
+        var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
+        // E50/F01/US03/T02: with the guest portal on, in the language of the guest (the check-in page, the country, the account of the host); without it, in Italian as ever.
+        var culture = await emailLanguage.CultureOrAsync(booking.OrgId, booking.Id, EmailTemplates.DefaultCulture, cancellationToken: cancellationToken);
         var content = EmailTemplates.GuestCancelLink(
-            EmailTemplates.DefaultCulture,
+            culture,
             booking.Guest!.FirstName,
             booking.Property.Name,
             booking.CheckInDate,
             booking.CheckOutDate,
             cancelUrl,
-            expiresAt);
+            expiresAt,
+            branding);
 
         emailQueue.Enqueue(guestEmail, content, EmailTemplates.Names.GuestCancelLink);
 

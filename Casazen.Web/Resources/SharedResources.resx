@@ -8860,6 +8860,12 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="GuestPortalLinkInvalid" xml:space="preserve">
     <value>Questo link del soggiorno non è valido o non è più attivo: chiedi all’host il link aggiornato.</value>
   </data>
+  <data name="GuestPortalNoGuestEmail" xml:space="preserve">
+    <value>L’ospite di questa prenotazione non ha un indirizzo e-mail a cui scrivere: copia il link del soggiorno e mandaglielo tu, per esempio nella chat del portale da cui arriva la prenotazione.</value>
+  </data>
+  <data name="GuestPortalEmailNotSent" xml:space="preserve">
+    <value>L’e-mail non è partita: l’invio delle e-mail non è disponibile in questo momento. Riprova più tardi o copia il link del soggiorno e mandaglielo tu.</value>
+  </data>
   <data name="ActivationStepGuestRegistration" xml:space="preserve">
     <value>Notifica degli ospiti</value>
   </data>

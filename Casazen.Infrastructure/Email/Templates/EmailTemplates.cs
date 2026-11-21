@@ -367,15 +367,17 @@ public static partial class EmailTemplates
 
     /// <summary>Tokenized self check-in link, to the guest.</summary>
     /// <param name="expiresAtUtc">End of validity of the link (CO-09: configurable lifetime), shown in Italian time.</param>
+    /// <param name="branding">The brand of the host (E50/F01/US03/T01): logo, color and name, sent in its name; <c>null</c> = the CasaZen e-mail, as ever.</param>
     public static EmailContent GuestCheckInLink(
         CultureInfo culture,
         string guestName,
         string propertyName,
         DateTime checkInDate,
         string checkInUrl,
-        DateTime expiresAtUtc)
+        DateTime expiresAtUtc,
+        GuestEmailBranding? branding = null)
     {
-        var builder = new EmailHtmlBuilder(culture);
+        var builder = new EmailHtmlBuilder(culture, branding);
         return builder
             .Paragraph("GuestCheckInLink_Greeting", guestName)
             .Paragraph("GuestCheckInLink_Body", propertyName, checkInDate)
@@ -399,9 +401,10 @@ public static partial class EmailTemplates
         string propertyName,
         DateTime checkInDate,
         string checkInUrl,
-        DateTime expiresAtUtc)
+        DateTime expiresAtUtc,
+        GuestEmailBranding? branding = null)
     {
-        var builder = new EmailHtmlBuilder(culture);
+        var builder = new EmailHtmlBuilder(culture, branding);
         return builder
             .Paragraph("GuestCheckInReminder_Greeting", guestName)
             .Paragraph("GuestCheckInReminder_Body", propertyName, checkInDate)
@@ -463,8 +466,9 @@ public static partial class EmailTemplates
         string propertyName,
         DateTime checkInDate,
         decimal amountEur,
-        string currency = Casazen.Core.Services.StayCurrency.Default) =>
-        new EmailHtmlBuilder(culture)
+        string currency = Casazen.Core.Services.StayCurrency.Default,
+        GuestEmailBranding? branding = null) =>
+        new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph("GuestRefundConfirmed_Body", Money(amountEur, currency, culture), propertyName, checkInDate)
             .Paragraph("GuestRefundConfirmed_Method")
@@ -482,8 +486,9 @@ public static partial class EmailTemplates
         DateTime checkInDate,
         DateTime checkOutDate,
         decimal amountEur,
-        string currency = Casazen.Core.Services.StayCurrency.Default) =>
-        new EmailHtmlBuilder(culture)
+        string currency = Casazen.Core.Services.StayCurrency.Default,
+        GuestEmailBranding? branding = null) =>
+        new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph("GuestPaymentRefundedDatesUnavailable_Body", propertyName, checkInDate, checkOutDate)
             .Paragraph("GuestPaymentRefundedDatesUnavailable_Refund", Money(amountEur, currency, culture))
@@ -514,10 +519,11 @@ public static partial class EmailTemplates
         BookingHostContact hostContact,
         BookingCancellationEmailCause cause = BookingCancellationEmailCause.Host,
         decimal retainedEur = 0m,
-        string currency = Casazen.Core.Services.StayCurrency.Default)
+        string currency = Casazen.Core.Services.StayCurrency.Default,
+        GuestEmailBranding? branding = null)
     {
         var byGuest = cause == BookingCancellationEmailCause.Guest;
-        var builder = new EmailHtmlBuilder(culture)
+        var builder = new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph(
                 cause switch
@@ -587,7 +593,8 @@ public static partial class EmailTemplates
 
     /// <summary>
     /// The booking is confirmed, to the guest (BK-10, A3-11, #58): booking code, stay, amounts with the tourist tax
-    /// (BK-03), what was paid or how it will be paid, link to "Le mie prenotazioni" and the host's public contact.
+    /// (BK-03), what was paid or how it will be paid, link to "Le mie prenotazioni" and the host's public contact. With
+    /// <paramref name="stayUrl"/> (E50/F01/US03/T03, only while the guest portal is on) the stay link is its first button.
     /// One template for every way a booking becomes confirmed (<paramref name="kind"/>): it replaces the BK-04 late
     /// payment and the BK-06 "request accepted" emails. <paramref name="paidEur"/> is what Stripe collected;
     /// <paramref name="deferredChargeDate"/> the day of the deferred charge, when known. <paramref name="checkIn"/> is what the email
@@ -603,10 +610,12 @@ public static partial class EmailTemplates
         DateTime? deferredChargeDate,
         BookingHostContact hostContact,
         string myBookingsUrl,
-        BookingCheckInNotice? checkIn = null)
+        BookingCheckInNotice? checkIn = null,
+        GuestEmailBranding? branding = null,
+        string? stayUrl = null)
     {
         ArgumentNullException.ThrowIfNull(booking);
-        var builder = new EmailHtmlBuilder(culture)
+        var builder = new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph(
                 kind == BookingConfirmationKind.OnSite ? "GuestBookingConfirmed_BodyOnSite" : "GuestBookingConfirmed_Body",
@@ -632,6 +641,16 @@ public static partial class EmailTemplates
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown confirmation kind.");
+        }
+
+        // E50/F01/US03/T03: the stay link of the guest portal is the first button, with its fallback link; the notice of the check-in below stays as it is. The address is made by the link
+        // service of the portal and handed in: a template never builds it. Without it (the portal off, a booking that may not have a link) the e-mail is the one of today.
+        if (stayUrl is not null)
+        {
+            builder
+                .Paragraph("GuestBookingConfirmed_StayLink")
+                .Button("Guest_StayLinkCta", stayUrl)
+                .LinkFallback("Booking_LinkFallback", stayUrl);
         }
 
         CheckInBlock(builder, checkIn);
@@ -857,10 +876,11 @@ public static partial class EmailTemplates
         BookingEmailSummary booking,
         string payUrl,
         DateTime? payByDay,
-        BookingHostContact hostContact)
+        BookingHostContact hostContact,
+        GuestEmailBranding? branding = null)
     {
         ArgumentNullException.ThrowIfNull(booking);
-        var builder = new EmailHtmlBuilder(culture)
+        var builder = new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph(
                 "GuestDeferredChargeFailed_Body",
@@ -1018,18 +1038,20 @@ public static partial class EmailTemplates
     /// <summary>
     /// An amount of a booking as the guest or the host reads it, with its currency (CHF-MONEY): <c>1.262,00 €</c> in Italian and
     /// <c>€1,262.00</c> in English for the euro (as the texts have always written it), <c>CHF 1.262,00</c> and <c>CHF 1,262.00</c> for
-    /// the franc. The texts of the booking emails carry no symbol of their own: the amount they are given has it.
+    /// the franc. English is the only language that puts the euro in front of the number; Italian and the languages of the guest portal (German, French,
+    /// Spanish) write it after it, with the separators of their own language (<c>1.262,00 €</c>, <c>1 262,00 €</c>), and the franc is written <c>CHF</c> in front of the number in
+    /// every language. The texts of the booking emails carry no symbol of their own: the amount they are given has it.
     /// </summary>
-    private static string Money(decimal amount, string? currency, CultureInfo culture)
+    internal static string Money(decimal amount, string? currency, CultureInfo culture)
     {
         var number = amount.ToString("N2", culture);
         var code = Casazen.Core.Services.StayCurrency.Normalize(currency);
         if (code != Casazen.Core.Services.StayCurrency.Euro)
             return $"{code} {number}";
 
-        return string.Equals(culture.TwoLetterISOLanguageName, "it", StringComparison.OrdinalIgnoreCase)
-            ? $"{number} €"
-            : $"€{number}";
+        return string.Equals(culture.TwoLetterISOLanguageName, "en", StringComparison.OrdinalIgnoreCase)
+            ? $"€{number}"
+            : $"{number} €";
     }
 }
 
