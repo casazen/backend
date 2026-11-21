@@ -265,6 +265,57 @@ public class EmailTextsGuestParityTests
         Assert.DoesNotMatch(@"\{\d+\}", withStay);
     }
 
+    /// <summary>
+    /// PROOF TEST (money: exact to the cent, in the currency of the house, no conversion): an amount of a booking is written the way the language of the e-mail writes it. English puts the euro
+    /// in front of the number; Italian, German, French and Spanish put it after it, with the separators of their language; the franc is <c>CHF</c> in front of the number in every language. The
+    /// space of a French number (thousands) is a non-breaking one: it is compared as a plain space, whatever the version of the locale data says.
+    /// </summary>
+    [Theory]
+    [InlineData("it", "EUR", "1.262,50 €", "9,90 €")]
+    [InlineData("en", "EUR", "€1,262.50", "€9.90")]
+    [InlineData("de", "EUR", "1.262,50 €", "9,90 €")]
+    [InlineData("fr", "EUR", "1 262,50 €", "9,90 €")]
+    [InlineData("es", "EUR", "1.262,50 €", "9,90 €")]
+    [InlineData("it", "CHF", "CHF 1.262,50", "CHF 9,90")]
+    [InlineData("en", "CHF", "CHF 1,262.50", "CHF 9.90")]
+    [InlineData("de", "CHF", "CHF 1.262,50", "CHF 9,90")]
+    [InlineData("fr", "CHF", "CHF 1 262,50", "CHF 9,90")]
+    [InlineData("es", "CHF", "CHF 1.262,50", "CHF 9,90")]
+    public void Money_IsWrittenInTheLanguageOfTheEmail_ToTheCent_InTheCurrencyOfTheHouse(string language, string currency, string thousands, string small)
+    {
+        var culture = language == "it" ? CultureInfo.GetCultureInfo("it-IT") : CultureInfo.GetCultureInfo(language);
+
+        Assert.Equal(thousands, PlainSpaces(EmailTemplates.Money(1262.50m, currency, culture)));
+        Assert.Equal(small, PlainSpaces(EmailTemplates.Money(9.90m, currency, culture)));
+    }
+
+    /// <summary>
+    /// What the confirmation of a booking prints is the amount of the booking, to the cent, written in the language of the guest: the total line of the e-mail in each of the five languages (euro)
+    /// and in German and French for the franc.
+    /// </summary>
+    [Theory]
+    [InlineData("it", "EUR", "Totale: <strong>1.262,50 €</strong>")]
+    [InlineData("en", "EUR", "Total: <strong>€1,262.50</strong>")]
+    [InlineData("de", "EUR", "Gesamt: <strong>1.262,50 €</strong>")]
+    [InlineData("fr", "EUR", "Total : <strong>1 262,50 €</strong>")]
+    [InlineData("es", "EUR", "Total: <strong>1.262,50 €</strong>")]
+    [InlineData("de", "CHF", "Gesamt: <strong>CHF 1.262,50</strong>")]
+    [InlineData("fr", "CHF", "Total : <strong>CHF 1 262,50</strong>")]
+    public void Confirmation_PrintsTheAmountOfTheBooking_ToTheCent_InTheLanguageOfTheGuest(string language, string currency, string expectedLine)
+    {
+        var culture = language == "it" ? CultureInfo.GetCultureInfo("it-IT") : CultureInfo.GetCultureInfo(language);
+        var checkIn = new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Utc);
+        var summary = new BookingEmailSummary("ABC123", "Villa Rosa", checkIn, checkIn.AddDays(3), 2, 1200m, 50m, 12.50m, 1262.50m, currency);
+
+        var content = EmailTemplates.GuestBookingConfirmed(
+            culture, "Anna", summary, BookingConfirmationKind.PaidOnline, 1262.50m, null, BookingHostContact.None, "https://app.casazen.test/x");
+
+        Assert.Contains(expectedLine, PlainSpaces(System.Net.WebUtility.HtmlDecode(content.HtmlBody)), StringComparison.Ordinal);
+    }
+
+    /// <summary>A number written with a non-breaking space (the thousands of a French amount) compared as the plain space a person types.</summary>
+    private static string PlainSpaces(string text) => text.Replace('\u00A0', ' ').Replace('\u202F', ' ');
+
     private static bool IsGuestKey(string key) => GuestKeyPrefixes.Any(prefix => key.StartsWith(prefix, StringComparison.Ordinal));
 
     private static List<string> GuestKeys(string fileName, string prefix) =>

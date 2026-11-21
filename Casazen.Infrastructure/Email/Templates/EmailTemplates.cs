@@ -1038,18 +1038,20 @@ public static partial class EmailTemplates
     /// <summary>
     /// An amount of a booking as the guest or the host reads it, with its currency (CHF-MONEY): <c>1.262,00 €</c> in Italian and
     /// <c>€1,262.00</c> in English for the euro (as the texts have always written it), <c>CHF 1.262,00</c> and <c>CHF 1,262.00</c> for
-    /// the franc. The texts of the booking emails carry no symbol of their own: the amount they are given has it.
+    /// the franc. English is the only language that puts the euro in front of the number; Italian and the languages of the guest portal (German, French,
+    /// Spanish) write it after it, with the separators of their own language (<c>1.262,00 €</c>, <c>1 262,00 €</c>), and the franc is written <c>CHF</c> in front of the number in
+    /// every language. The texts of the booking emails carry no symbol of their own: the amount they are given has it.
     /// </summary>
-    private static string Money(decimal amount, string? currency, CultureInfo culture)
+    internal static string Money(decimal amount, string? currency, CultureInfo culture)
     {
         var number = amount.ToString("N2", culture);
         var code = Casazen.Core.Services.StayCurrency.Normalize(currency);
         if (code != Casazen.Core.Services.StayCurrency.Euro)
             return $"{code} {number}";
 
-        return string.Equals(culture.TwoLetterISOLanguageName, "it", StringComparison.OrdinalIgnoreCase)
-            ? $"{number} €"
-            : $"€{number}";
+        return string.Equals(culture.TwoLetterISOLanguageName, "en", StringComparison.OrdinalIgnoreCase)
+            ? $"€{number}"
+            : $"{number} €";
     }
 }
 
