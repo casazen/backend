@@ -71,19 +71,30 @@ public class SwissAssistedNotificationTests
     [Theory]
     [InlineData("BS")]
     [InlineData("NE")]
-    public void DueAtUtc_DailyByTimeWithNoTimeInTheSource_IsTheEndOfTheArrivalDay_NeverATimeNobodyWrote(string canton)
+    public void DueAtUtc_DailyByTimeWithNoTimeInTheSource_HasNoDeadline_ADeadlineIsNeverMadeUp(string canton)
     {
         var regime = Regime(canton);
         Assert.Equal(GuestRegistrationDeadlineKind.DailyByTime, regime.DeadlineKind);
         Assert.Null(regime.DeadlineTime);
 
-        // The end of the arrival day on the clock of the property: midnight of the next day, 23:00Z in winter.
-        Assert.Equal(
-            Utc("2026-11-19T23:00:00Z"),
-            SwissAssistedNotification.DueAtUtc(regime, new DateOnly(2026, 11, 19), Zurich, null));
-        Assert.Equal(
-            Utc("2026-07-15T22:00:00Z"),
-            SwissAssistedNotification.DueAtUtc(regime, new DateOnly(2026, 7, 15), Zurich, null));
+        // «Every day», no cut-off in the source: no deadline, not the end of the arrival day, whatever the day, the clock of the property or the arrival recorded.
+        Assert.Null(SwissAssistedNotification.DueAtUtc(regime, new DateOnly(2026, 11, 19), Zurich, null));
+        Assert.Null(SwissAssistedNotification.DueAtUtc(regime, new DateOnly(2026, 7, 15), Zurich, null));
+        Assert.Null(SwissAssistedNotification.DueAtUtc(regime, new DateOnly(2026, 11, 19), TimeZoneInfo.Utc, Utc("2026-11-19T14:00:00Z")));
+    }
+
+    [Fact]
+    public void DueAtUtc_TheCoveredRegimesWithNoDeadline_AreExactlyTheOnesWhoseSourceGivesNone()
+    {
+        // A photograph of the catalog: a covered canton gets a deadline only where a source gives one (a time, the arrival, the week); the five below are listed in the cockpit with no due date
+        // and never alerted. A canton that gains a deadline in the catalog changes this list on purpose.
+        var withoutDeadline = GuestRegistrationRegimeCatalog.All
+            .Where(SwissAssistedNotification.Covers)
+            .Where(r => SwissAssistedNotification.DueAtUtc(r, new DateOnly(2026, 11, 19), Zurich, null) is null)
+            .Select(r => r.Code)
+            .Order(StringComparer.Ordinal);
+
+        Assert.Equal(["CH-BS", "CH-FR", "CH-NE", "CH-TG", "CH-ZH"], withoutDeadline);
     }
 
     [Fact]
@@ -157,10 +168,10 @@ public class SwissAssistedNotificationTests
     [Fact]
     public void DueAtUtc_TheClockOfTheProperty_IsTheOneOfItsOwnZone()
     {
-        // Midnight of the end of the day on a property whose clock is UTC is 00:00Z, not the 23:00Z of Zurich in winter.
+        // Zug, no arrival recorded: midnight of the end of the day on a property whose clock is UTC is 00:00Z, not the 23:00Z of Zurich in winter.
         Assert.Equal(
             Utc("2026-11-20T00:00:00Z"),
-            SwissAssistedNotification.DueAtUtc(Regime("BS"), new DateOnly(2026, 11, 19), TimeZoneInfo.Utc, null));
+            SwissAssistedNotification.DueAtUtc(Regime("ZG"), new DateOnly(2026, 11, 19), TimeZoneInfo.Utc, null));
     }
 
     [Fact]

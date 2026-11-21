@@ -137,6 +137,23 @@ public class ComplianceWizardSwissNotificationsTests : IDisposable
         Assert.Equal((noDeadline.Id, (DateTime?)null), (left.PropertyId, left.DueAt));
     }
 
+    [Theory]
+    [InlineData("BS")]
+    [InlineData("NE")]
+    public async Task Cockpit_ADailyRegimeWhoseSourceGivesNoTime_IsListedWithNoDueAt_ADeadlineIsNeverMadeUp(string canton)
+    {
+        // Basel-Stadt and Neuchâtel say «every day» and give no cut-off time: the day is an item of the cockpit (the host confirmed the duty), with no due date, not the end of the arrival day.
+        var org = _world.AddOrg();
+        var property = _world.AddProperty(canton, org, GuestNotificationOverride.Required, name: "Casa Senza Orario");
+        _world.AddStay(property);
+
+        var summary = await Service().GetSummaryAsync(new HostScope(org.Id));
+
+        var item = Assert.Single(summary.SwissNotifications.Items);
+        Assert.Equal(1, summary.SwissNotifications.Count);
+        Assert.Equal((property.Id, ComplianceCockpitAction.NotifyGuestsAuthority, "2026-11-19", (DateTime?)null), (item.PropertyId!.Value, item.Action, item.Period, item.DueAt));
+    }
+
     [Fact]
     public async Task Cockpit_WithTheTrafficLightOn_TheDayIsAnOpenItemTheHostActsOn_NeverGreen()
     {

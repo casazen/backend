@@ -405,7 +405,8 @@ host says; Ticino keeps its own flow (§ 1-20) and never appears here. The whole
   | Kind (regimes) | Due |
   |---|---|
   | `AtArrival` (Geneva, Zug) | the arrival moment: the first arrival recorded among the stays of the day, else the end of the arrival day |
-  | `DailyByTime` (Basel-Stadt, Neuchâtel, Schaffhausen) | the day after the arrival at the time of the regime: Schaffhausen 02:00 (`GuestRegistrationRegime.DeadlineTime`; the brochure does not say which day the time refers to, and the note of the card says so); Basel-Stadt and Neuchâtel give no time (the end of the arrival day) |
+  | `DailyByTime` (Schaffhausen) | the day after the arrival at the time of the regime: Schaffhausen 02:00 (`GuestRegistrationRegime.DeadlineTime`; the brochure does not say which day the time refers to, and the note of the card says so) |
+  | `DailyByTime` with no time in the source (Basel-Stadt, Neuchâtel: «every day», no cut-off) | none: `DeadlineTime` is empty, so, as for `None`, the day is listed without `dueAt` and **no alert is sent**; the end of the arrival day is **not** taken as a deadline (it would be a time nobody wrote) |
   | `Weekly` (Nidwalden) | Sunday 23:59 of the arrival week |
   | `None` (Fribourg, Thurgau, Zurich) | none: the day is listed without `dueAt` and **no alert is sent** |
   | `Hours24FromArrival` | not used here (Ticino and Italy have their own flows); the rule is the one of Ticino, so it is total |

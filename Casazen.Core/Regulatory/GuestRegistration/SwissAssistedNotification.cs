@@ -75,10 +75,10 @@ public sealed record SwissNotificationIssue(Guid BookingId, int? Position, strin
 /// <c>Ask</c> or <c>NotRequired</c> never raises an item or an alert.</para>
 /// <para><b>When it is due</b> (<see cref="DueAtUtc"/>, on the clock of the property, a deadline is never guessed): <see cref="GuestRegistrationDeadlineKind.AtArrival"/> is the
 /// arrival moment (the first arrival recorded among the stays of the day, else the end of the arrival day); <see cref="GuestRegistrationDeadlineKind.DailyByTime"/> is the day after the
-/// arrival at the time of the regime (Schaffhausen 02:00, whose brochure does not say which day the time means; a regime with no time: the end of the arrival day);
-/// <see cref="GuestRegistrationDeadlineKind.Weekly"/> is Sunday 23:59 of the arrival week (Nidwalden); <see cref="GuestRegistrationDeadlineKind.None"/> has no deadline and so no
-/// alert. <see cref="GuestRegistrationDeadlineKind.Hours24FromArrival"/> does not occur here (Ticino and Italy have their own flows): the rule is the one of the Ticino
-/// notification, so it is total.</para>
+/// arrival at the time of the regime (Schaffhausen 02:00, whose brochure does not say which day the time means); a daily regime whose source gives no time (Basel-Stadt, Neuchâtel:
+/// «every day», no cut-off) has no deadline, as none is invented, and so no alert; <see cref="GuestRegistrationDeadlineKind.Weekly"/> is Sunday 23:59 of the arrival week
+/// (Nidwalden); <see cref="GuestRegistrationDeadlineKind.None"/> has no deadline and so no alert. <see cref="GuestRegistrationDeadlineKind.Hours24FromArrival"/> does not occur here
+/// (Ticino and Italy have their own flows): the rule is the one of the Ticino notification, so it is total.</para>
 /// </remarks>
 public static class SwissAssistedNotification
 {
@@ -97,7 +97,8 @@ public static class SwissAssistedNotification
         && !string.Equals(regime.Code, GuestRegistrationRegimeCatalog.TicinoCode, StringComparison.Ordinal);
 
     /// <summary>
-    /// The instant the notification of <paramref name="arrivalDay"/> is due (UTC), or <c>null</c> when the regime has no deadline. <paramref name="firstArrivalUtc"/> is the
+    /// The instant the notification of <paramref name="arrivalDay"/> is due (UTC), or <c>null</c> when the regime has no deadline: the kind <c>None</c>, or a daily regime whose
+    /// source gives no time (<see cref="GuestRegistrationRegime.DeadlineTime"/> is <c>null</c>: Basel-Stadt, Neuchâtel); a deadline is never guessed. <paramref name="firstArrivalUtc"/> is the
     /// earliest arrival recorded among the stays of the day that owe a notification, <c>null</c> when none is recorded.
     /// </summary>
     public static DateTime? DueAtUtc(GuestRegistrationRegime regime, DateOnly arrivalDay, TimeZoneInfo propertyZone, DateTime? firstArrivalUtc)
@@ -108,7 +109,7 @@ public static class SwissAssistedNotification
         return regime.DeadlineKind switch
         {
             GuestRegistrationDeadlineKind.AtArrival => firstArrivalUtc is { } arrived ? AsUtc(arrived) : EndOfDayUtc(arrivalDay, propertyZone),
-            GuestRegistrationDeadlineKind.DailyByTime => RomeCalendar.ToUtc(arrivalDay.AddDays(1), regime.DeadlineTime ?? TimeOnly.MinValue, propertyZone),
+            GuestRegistrationDeadlineKind.DailyByTime => regime.DeadlineTime is { } time ? RomeCalendar.ToUtc(arrivalDay.AddDays(1), time, propertyZone) : (DateTime?)null,
             GuestRegistrationDeadlineKind.Weekly => RomeCalendar.ToUtc(SundayOf(arrivalDay), LastMinuteOfTheWeek, propertyZone),
             GuestRegistrationDeadlineKind.Hours24FromArrival => firstArrivalUtc is { } first ? AsUtc(first).AddHours(24) : EndOfDayUtc(arrivalDay, propertyZone),
             _ => null,

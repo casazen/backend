@@ -24,7 +24,7 @@ namespace Casazen.Web.DTOs.SwissCompliance;
 /// <param name="StayCount">The stays that arrive on the day and owe a notification.</param>
 /// <param name="Guests">The guests of those stays as data ready to copy, in the order of the stays.</param>
 /// <param name="Issues">What the guests (or the stays) still lack: the codes <c>firstName</c>, <c>lastName</c>, <c>birthDate</c>, <c>nationality</c>, <c>documentType</c> and <c>guests</c> (fewer guests recorded than the booking counts); the clients translate them.</param>
-/// <param name="DueAt">The deadline (UTC); <c>null</c> when the regime has none: a deadline is never guessed.</param>
+/// <param name="DueAt">The deadline (UTC); <c>null</c> when the regime has none (the kind <c>None</c>, or <c>DailyByTime</c> with no time in the source: Basel-Stadt, Neuchâtel): a deadline is never guessed.</param>
 /// <param name="DeclaredAt">When a person of the org declared the day notified (UTC); <c>null</c> while nobody did.</param>
 /// <param name="DeclaredBy">The display name (first and last name) of the person who declared it; <c>null</c> while nobody did, and when the account no longer exists.</param>
 /// <param name="AlreadyDeclared">The day is closed: it is declared, so the cockpit and the alerts no longer list it.</param>

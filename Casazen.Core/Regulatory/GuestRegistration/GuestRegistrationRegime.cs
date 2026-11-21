@@ -47,7 +47,7 @@ public enum GuestRegistrationDeadlineKind
     /// <summary>Within 24 hours of the arrival (Ticino, Italy).</summary>
     Hours24FromArrival = 1,
 
-    /// <summary>Every day, by a time or at the end of the day (Schaffhausen, Basel-Stadt, Neuchâtel).</summary>
+    /// <summary>Every day, by a time where the source gives one (Schaffhausen) or with no cut-off time (Basel-Stadt, Neuchâtel).</summary>
     DailyByTime = 2,
 
     /// <summary>At the arrival of the guest (Zug), or as soon as the guest has taken the accommodation.</summary>
@@ -150,8 +150,8 @@ public sealed record GuestRegistrationRegime
     /// <summary>
     /// The time of day, on the clock of the property, at which a <see cref="GuestRegistrationDeadlineKind.DailyByTime"/> deadline falls on the day after the arrival,
     /// where the sources give one (Schaffhausen: 02:00, and its brochure does not say which day the time refers to); <c>null</c> where they give none (Basel-Stadt and
-    /// Neuchâtel say «every day»: the end of the arrival day is then taken, never a time nobody wrote). Data copied from the source, never read for another kind of deadline
-    /// (E31/F02/US01/T01).
+    /// Neuchâtel say «every day» with no cut-off): the notification then has no deadline of its own and no alert, a time is never made up. Data copied from the source, never
+    /// read for another kind of deadline (E31/F02/US01/T01).
     /// </summary>
     public TimeOnly? DeadlineTime { get; init; }
 

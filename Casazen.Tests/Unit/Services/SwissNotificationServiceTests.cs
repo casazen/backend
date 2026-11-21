@@ -227,9 +227,10 @@ public class SwissNotificationServiceTests
         var daily = world.AddProperty("SH", org, name: "Schaffhausen");
         var atArrival = world.AddProperty("ZG", org, name: "Zug");
         var weekly = world.AddProperty("NW", org, GuestNotificationOverride.Required, name: "Nidwalden");
-        var noTime = world.AddProperty("BS", org, GuestNotificationOverride.Required, name: "Basel");
+        var noTimeBasel = world.AddProperty("BS", org, GuestNotificationOverride.Required, name: "Basel");
+        var noTimeNeuchatel = world.AddProperty("NE", org, GuestNotificationOverride.Required, name: "Neuchatel");
         var noDeadline = world.AddProperty("FR", org, GuestNotificationOverride.Required, name: "Fribourg");
-        foreach (var property in new[] { daily, weekly, noTime, noDeadline })
+        foreach (var property in new[] { daily, weekly, noTimeBasel, noTimeNeuchatel, noDeadline })
             world.AddStay(property);
         world.AddStay(atArrival, arrivedAtUtc: "2026-11-19T14:00:00Z");
 
@@ -238,8 +239,12 @@ public class SwissNotificationServiceTests
         Assert.Equal((DateTime?)Utc("2026-11-20T01:00:00Z"), days[daily.Id].DueAtUtc);
         Assert.Equal((DateTime?)Utc("2026-11-19T14:00:00Z"), days[atArrival.Id].DueAtUtc);
         Assert.Equal((DateTime?)Utc("2026-11-22T22:59:00Z"), days[weekly.Id].DueAtUtc);
-        Assert.Equal((DateTime?)Utc("2026-11-19T23:00:00Z"), days[noTime.Id].DueAtUtc);
+
+        // A daily regime whose source gives no time (Basel-Stadt, Neuchâtel) is listed like the one that has no deadline at all: the day is there, the due date is not.
+        Assert.Null(days[noTimeBasel.Id].DueAtUtc);
+        Assert.Null(days[noTimeNeuchatel.Id].DueAtUtc);
         Assert.Null(days[noDeadline.Id].DueAtUtc);
+        Assert.Equal(6, days.Count);
     }
 
     [Fact]
@@ -248,7 +253,7 @@ public class SwissNotificationServiceTests
         using var world = new SwissNotificationTestWorld();
         var org = world.AddOrg();
         var zug = world.AddProperty("ZG", org, timezone: "Europe/Zurich");
-        var utcClock = world.AddProperty("BS", org, GuestNotificationOverride.Required, timezone: "UTC", name: "On UTC");
+        var utcClock = world.AddProperty("ZG", org, timezone: "UTC", name: "On UTC");
         world.AddStay(zug, arrivedAtUtc: "2026-11-19T16:00:00Z");
         world.AddStay(zug, arrivedAtUtc: "2026-11-19T13:30:00Z");
         world.AddStay(zug);

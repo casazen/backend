@@ -309,18 +309,28 @@ public class ComplianceAlertSwissTests : IDisposable
             _emails.Snapshot().Select(e => e.Template).Order(StringComparer.Ordinal));
     }
 
-    [Fact]
-    public async Task SwissAlerts_ARegimeWithNoDeadline_IsNeverAlerted_ADeadlineIsNeverGuessed()
+    [Theory]
+    [InlineData("FR")]
+    [InlineData("ZH")]
+    [InlineData("BS")]
+    [InlineData("NE")]
+    public async Task SwissAlerts_ARegimeWithNoDeadline_IsNeverAlerted_ADeadlineIsNeverGuessed(string canton)
     {
-        var fribourg = Tenant("fr", "FR", GuestNotificationOverride.Required);
-        _world.AddStay(fribourg.Property);
+        // Fribourg and Zurich have no deadline at all; Basel-Stadt and Neuchâtel say «every day» with no cut-off time: none of them has a moment an alert could be measured against.
+        var tenant = Tenant(canton.ToLowerInvariant(), canton, GuestNotificationOverride.Required);
+        _world.AddStay(tenant.Property);
 
-        // The day is listed (the host said it is required) but has no deadline: no stage is due, whatever the time.
-        Assert.Equal(Day, Assert.Single(await _world.Service().ListPendingDaysAsync(null, null, Day)).Day);
+        // The day is listed (the host said it is required) but has no deadline: no stage is due, whatever the time (also the midnight that would end the arrival day, and the days after it).
+        var listed = Assert.Single(await _world.Service().ListPendingDaysAsync(null, null, Day));
+        Assert.Equal((Day, (DateTime?)null), (listed.Day, listed.DueAtUtc));
         Assert.Equal(0, await RunAtAsync("2026-11-19T17:00:00Z"));
+        Assert.Equal(0, await RunAtAsync("2026-11-19T23:30:00Z"));
+        Assert.Equal(0, await RunAtAsync("2026-11-20T08:00:00Z"));
         Assert.Equal(0, await RunAtAsync("2026-11-21T08:00:00Z"));
         Assert.Empty(_emails.Snapshot());
+        Assert.Empty(_pushes.Queued);
         Assert.Empty(await _world.Db.ComplianceAlertStates.ToListAsync());
+        _recipients.VerifyNoOtherCalls();
     }
 
     [Fact]
