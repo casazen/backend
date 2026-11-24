@@ -8,4 +8,4 @@ Questa iterazione parte da Short Rent e Super Admin e rende navigabili sette per
 
 ![Mappa dei sette percorsi](mappa.webp)
 
-I passaggi di revisione, configurazione e presa in carico sono provabili con dati dimostrativi. La simulazione conserva gli stati nel browser, permette di correggere i campi e mostra gli esiti sullo stesso caso dopo il cambio di ruolo. I servizi esterni e i suggerimenti AI sono simulati. Le procedure tecniche e i criteri di accettazione del pilot restano nella issue. [Issue #1026](https://github.com/casazen/backend/issues/1026)
+Per seguire la richiesta automatica avvia **Completare e pubblicare una scheda**. Dopo l’importazione, CasaZen fa comparire in Da fare i soli dati che richiedono l’intervento del gestore. I passaggi di revisione, configurazione e presa in carico sono provabili con dati dimostrativi. La simulazione conserva gli stati nel browser, permette di correggere i campi e mostra gli esiti sullo stesso caso dopo il cambio di ruolo. I servizi esterni e i suggerimenti AI sono simulati. La issue contiene le procedure tecniche e i criteri di accettazione del pilot. [Issue #1026](https://github.com/casazen/backend/issues/1026)
