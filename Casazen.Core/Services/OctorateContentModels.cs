@@ -48,6 +48,9 @@ public sealed record OctoratePropertyCreate
     /// <summary>The billing network, separate from the network used for access.</summary>
     public string? BillingNetworkName { get; init; }
 
+    /// <summary>Allow a verified, distinct property to reuse the organization's contact email in a staff batch.</summary>
+    public bool AcceptDuplicateContactEmail { get; init; }
+
     /// <summary>The first hour of check-in (0-23); <c>null</c> = not set.</summary>
     public int? CheckinStart { get; init; }
 
