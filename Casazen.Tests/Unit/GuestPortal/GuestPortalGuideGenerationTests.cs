@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.GuestPortal;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
@@ -8,6 +9,7 @@ using Casazen.Infrastructure.GuestPortal;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Xunit;
 
 namespace Casazen.Tests.Unit.GuestPortal;
 
@@ -28,7 +30,7 @@ public class GuestPortalGuideGenerationTests
                 12, 12, AiModelTier.Standard, FromCache: false));
 
         var result = await Build(ai.Object).GenerateAsync(Property(), "guide", CancellationToken.None);
-        var guide = Assert.IsType<Casazen.Core.GuestPortal.GuestHouseGuide>(result?.Guide);
+        var guide = Assert.IsType<GuestHouseGuide>(result?.Guide);
         Assert.Equal("ai", result!.GuideSource);
         Assert.Equal("L’alloggio dispone di Wi-Fi.", guide.House);
         Assert.Equal("Dalle 15:00 alle 20:30, ora locale.", guide.CheckInHours);
@@ -54,7 +56,7 @@ public class GuestPortalGuideGenerationTests
                 FromCache: false, ProviderConfigured: configured));
 
         var result = await Build(ai.Object).GenerateAsync(new Property(), "guide", CancellationToken.None);
-        var guide = Assert.IsType<Casazen.Core.GuestPortal.GuestHouseGuide>(result?.Guide);
+        var guide = Assert.IsType<GuestHouseGuide>(result?.Guide);
         Assert.Equal("property", result!.GuideSource);
         Assert.Contains("non è indicata", guide.Parking);
         Assert.Contains("non è indicata", guide.Wifi);
@@ -96,7 +98,7 @@ public class GuestPortalGuideGenerationTests
         Mock.Of<IWebSearchClient>(), new AiResponseCache(Options.Create(new AiCacheOptions())),
         Mock.Of<IComuneDirectory>(), NullLogger<GuestPortalSetupSuggestions>.Instance);
 
-    private static void AssertComplete(Casazen.Core.GuestPortal.GuestHouseGuide guide) =>
+    private static void AssertComplete(GuestHouseGuide guide) =>
         Assert.All(new[] { guide.Arrival, guide.CheckInHours, guide.House, guide.Departure, guide.CheckOutHours,
                 guide.Contacts, guide.LocalTips, guide.Access, guide.Wifi, guide.Parking },
             value => Assert.False(string.IsNullOrWhiteSpace(value)));
