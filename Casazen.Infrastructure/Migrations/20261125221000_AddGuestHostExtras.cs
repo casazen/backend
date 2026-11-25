@@ -10,24 +10,47 @@ public sealed class AddGuestHostExtras : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.Sql("""
-            CREATE TABLE "GuestHostExtras" (
-                "Id" uuid PRIMARY KEY, "OrgId" uuid NOT NULL, "PropertyIds" uuid[] NOT NULL,
-                "Name" varchar(120) NOT NULL, "Description" varchar(2000) NOT NULL,
-                "Price" numeric(12,2) NOT NULL, "Pricing" integer NOT NULL, "Inventory" integer,
-                "CutoffHours" integer NOT NULL, "DuringStay" boolean NOT NULL,
-                "RequiresApproval" boolean NOT NULL, "Calendar" integer NOT NULL
-            );
-            CREATE INDEX "IX_GuestHostExtras_OrgId" ON "GuestHostExtras" ("OrgId");
-            CREATE TABLE "GuestHostExtraOrders" (
-                "Id" uuid PRIMARY KEY, "OrgId" uuid NOT NULL, "BookingId" uuid NOT NULL,
-                "ExtraId" uuid NOT NULL, "Name" varchar(120) NOT NULL, "Quantity" integer NOT NULL,
-                "Amount" numeric(12,2) NOT NULL, "Currency" varchar(3) NOT NULL, "Status" integer NOT NULL,
-                "CreatedAt" timestamptz NOT NULL, "StripeIntentId" varchar(120), "StripeAccountId" varchar(120)
-            );
-            CREATE INDEX "IX_GuestHostExtraOrders_OrgId_BookingId" ON "GuestHostExtraOrders" ("OrgId", "BookingId");
-            CREATE INDEX "IX_GuestHostExtraOrders_OrgId_ExtraId" ON "GuestHostExtraOrders" ("OrgId", "ExtraId");
-            """);
+        migrationBuilder.CreateTable(
+            name: "GuestHostExtras",
+            columns: table => new
+            {
+                Id = table.Column<Guid>(type: "uuid", nullable: false),
+                OrgId = table.Column<Guid>(type: "uuid", nullable: false),
+                PropertyIds = table.Column<Guid[]>(type: "uuid[]", nullable: false),
+                Name = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: false),
+                Description = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
+                Price = table.Column<decimal>(type: "numeric(12,2)", nullable: false),
+                Pricing = table.Column<int>(type: "integer", nullable: false),
+                Inventory = table.Column<int>(type: "integer", nullable: true),
+                CutoffHours = table.Column<int>(type: "integer", nullable: false),
+                DuringStay = table.Column<bool>(type: "boolean", nullable: false),
+                RequiresApproval = table.Column<bool>(type: "boolean", nullable: false),
+                Calendar = table.Column<int>(type: "integer", nullable: false),
+            },
+            constraints: table => table.PrimaryKey("GuestHostExtras_pkey", x => x.Id));
+
+        migrationBuilder.CreateTable(
+            name: "GuestHostExtraOrders",
+            columns: table => new
+            {
+                Id = table.Column<Guid>(type: "uuid", nullable: false),
+                OrgId = table.Column<Guid>(type: "uuid", nullable: false),
+                BookingId = table.Column<Guid>(type: "uuid", nullable: false),
+                ExtraId = table.Column<Guid>(type: "uuid", nullable: false),
+                Name = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: false),
+                Quantity = table.Column<int>(type: "integer", nullable: false),
+                Amount = table.Column<decimal>(type: "numeric(12,2)", nullable: false),
+                Currency = table.Column<string>(type: "character varying(3)", maxLength: 3, nullable: false),
+                Status = table.Column<int>(type: "integer", nullable: false),
+                CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                StripeIntentId = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: true),
+                StripeAccountId = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: true),
+            },
+            constraints: table => table.PrimaryKey("GuestHostExtraOrders_pkey", x => x.Id));
+
+        migrationBuilder.CreateIndex("IX_GuestHostExtras_OrgId", "GuestHostExtras", "OrgId");
+        migrationBuilder.CreateIndex("IX_GuestHostExtraOrders_OrgId_BookingId", "GuestHostExtraOrders", new[] { "OrgId", "BookingId" });
+        migrationBuilder.CreateIndex("IX_GuestHostExtraOrders_OrgId_ExtraId", "GuestHostExtraOrders", new[] { "OrgId", "ExtraId" });
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)

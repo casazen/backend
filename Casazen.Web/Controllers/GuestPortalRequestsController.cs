@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.GuestPortal;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -11,7 +12,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Casazen.Web.Controllers;
 
 public sealed class GuestPortalRequestsController(AppDbContext db, IInternalActivityService activities,
-    TimeProvider clock, IPushNotificationService notifications)
+    TimeProvider clock, GuestPortalHostNotifications notifications)
     : GuestPortalControllerBase
 {
     [HttpGet("privacy/requests")]
@@ -55,7 +56,7 @@ public sealed class GuestPortalRequestsController(AppDbContext db, IInternalActi
             Deadline = clock.GetUtcNow().UtcDateTime.AddDays(30),
         }, ct);
 
-        NotifyHost(activityId);
+        await NotifyHostAsync(activityId, "guest.manage", ct);
         return Accepted();
     }
 
@@ -81,17 +82,13 @@ public sealed class GuestPortalRequestsController(AppDbContext db, IInternalActi
             Urgency = ActivityUrgency.Medium,
         }, ct);
 
-        NotifyHost(activityId);
+        await NotifyHostAsync(activityId, "payment.read", ct);
         return Accepted();
     }
 
-    private void NotifyHost(Guid activityId)
-    {
-        var bookingId = Portal.BookingId;
-        notifications.Enqueue($"guest-portal-request:{activityId:N}", PushAudience.BookingHosts(bookingId),
-            new PushNotificationPayload("Portale ospiti", "Hai una nuova richiesta da gestire.",
-                "guest-portal-request", bookingId, PushRoutes.Booking(bookingId)));
-    }
+    private Task NotifyHostAsync(Guid activityId, string requiredPermission, CancellationToken ct) =>
+        notifications.NotifyAsync(Portal.OrgId, Portal.PropertyId, Portal.BookingId, activityId,
+            "guest-portal-request", requiredPermission, ct);
 
     public sealed record PrivacyRequest([Required, MaxLength(16)] string Kind);
 }

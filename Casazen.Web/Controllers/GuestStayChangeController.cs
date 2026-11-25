@@ -4,6 +4,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.GuestPortal;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -13,7 +14,7 @@ using Npgsql;
 namespace Casazen.Web.Controllers;
 
 public sealed class GuestStayChangeController(AppDbContext db, IHostBookingService bookings,
-    IInAppNotificationPublisher notifications, TimeProvider clock) : GuestPortalControllerBase
+    GuestPortalHostNotifications notifications, TimeProvider clock) : GuestPortalControllerBase
 {
     internal const string NotificationType = "guest-stay-change-requested";
 
@@ -65,7 +66,10 @@ public sealed class GuestStayChangeController(AppDbContext db, IHostBookingServi
         {
             if (existing.Arrival == arrival && existing.Departure == departure && existing.Adults == input.Adults
                 && existing.ChildrenAges.SequenceEqual(ages) && existing.ProposedTotal == input.ExpectedTotal)
+            {
+                await NotifyHostAsync(existing.Id, ct);
                 return Ok(StayChangeView.From(existing));
+            }
 
             throw new DomainConflictException("guest_stay_change_pending", "GuestStayChangePending");
         }
@@ -92,21 +96,6 @@ public sealed class GuestStayChangeController(AppDbContext db, IHostBookingServi
             CreatedAt = clock.GetUtcNow().UtcDateTime
         };
         db.GuestStayChanges.Add(change);
-        var recipients = new[] { booking.Property.OwnerId, booking.Property.ResponsibleUserId }
-            .Where(user => !string.IsNullOrWhiteSpace(user)).Distinct().ToArray();
-        foreach (var user in recipients)
-        {
-            db.InAppNotifications.Add(new InAppNotification
-            {
-                OrgId = booking.OrgId,
-                UserId = user!,
-                Type = NotificationType,
-                EntityId = booking.Id,
-                DeliveryKey = $"guest-stay-change:{change.Id:N}",
-                CreatedAt = change.CreatedAt
-            });
-        }
-
         try
         {
             await db.SaveChangesAsync(ct);
@@ -117,10 +106,13 @@ public sealed class GuestStayChangeController(AppDbContext db, IHostBookingServi
             throw new DomainConflictException("guest_stay_change_pending", "GuestStayChangePending");
         }
 
-        foreach (var user in recipients)
-            await notifications.PublishAsync(user!, NotificationType, booking.Id, ct);
+        await NotifyHostAsync(change.Id, ct);
         return Ok(StayChangeView.From(change));
     }
+
+    private Task NotifyHostAsync(Guid id, CancellationToken ct) =>
+        notifications.NotifyAsync(Portal.OrgId, Portal.PropertyId, Portal.BookingId, id, NotificationType,
+            "booking.write", ct);
 
     private async Task<BookingEditQuote> Quote(Booking booking, StayChangeInput input, CancellationToken ct)
     {
