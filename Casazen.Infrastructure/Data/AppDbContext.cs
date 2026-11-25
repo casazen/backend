@@ -179,6 +179,8 @@ public class AppDbContext(
     /// with manual payment mode, 0% commission, and statement integration.
     /// </summary>
     public DbSet<TrustedSupplier> TrustedSuppliers { get; set; } = null!;
+    public DbSet<GuestSupplierOffer> GuestSupplierOffers => Set<GuestSupplierOffer>();
+    public DbSet<GuestSupplierOrder> GuestSupplierOrders => Set<GuestSupplierOrder>();
 
     /// <summary>
     /// What an organization remembers of the VAT of a cleaning company («Ricorda per questa ditta», FIX/BE-CLEANING-VAT): tenant-owned, one row for each
@@ -599,6 +601,8 @@ public class AppDbContext(
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.ApplyConfiguration(new GuestSupplierOfferConfiguration());
+        modelBuilder.ApplyConfiguration(new GuestSupplierOrderConfiguration());
 
         modelBuilder.Entity<PropertyActivationCredential>().HasIndex(p => new { p.OrgId, p.ExpiresAt });
         modelBuilder.Entity<PropertyActivationCredentialAssignment>(assignment =>
