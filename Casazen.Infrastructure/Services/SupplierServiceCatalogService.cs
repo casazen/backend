@@ -407,12 +407,18 @@ public class SupplierServiceCatalogService(
     /// row: the table is not tenant-filtered, so the supplier org is always an explicit predicate.
     /// </summary>
     internal static IQueryable<SupplierServiceListing> GuestPortalListings(
-        AppDbContext db, IQueryable<Guid> trustedSupplierIds, bool allowsRegionalSuppliers) =>
-        db.SupplierServiceListings.AsNoTracking()
+        AppDbContext db, IQueryable<Guid> trustedSupplierIds, bool allowsRegionalSuppliers)
+    {
+        var orgIds = trustedSupplierIds.Union(db.SupplierProfiles
+            .Where(profile => allowsRegionalSuppliers && profile.GuestPortalMarketplaceEnabled)
+            .Select(profile => profile.OrgId));
+
+        return db.SupplierServiceListings
+            .Where(l => orgIds.Contains(l.OrgId))
+            .AsNoTracking()
             .Where(listing => listing.DeletedAt == null && listing.Status == SupplierServiceListingStatus.Active
-                && listing.SupplierProfile.Status == SupplierStatus.Active
-                && (trustedSupplierIds.Contains(listing.OrgId)
-                    || allowsRegionalSuppliers && listing.SupplierProfile.GuestPortalMarketplaceEnabled));
+                && listing.SupplierProfile.Status == SupplierStatus.Active);
+    }
 
     private IQueryable<SupplierServiceListing> Listings(Guid orgId) => ListingsOf(db, orgId);
 
