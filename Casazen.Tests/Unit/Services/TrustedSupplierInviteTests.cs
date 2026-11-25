@@ -272,6 +272,25 @@ public class TrustedSupplierInviteTests
         Assert.NotNull((await db.SupplierInviteRecords.SingleAsync()).RevokedAt);
     }
 
+    [Fact]
+    public async Task IssuedInviteToIdentifiedSupplier_CannotRegisterNewProfileAfterContactChanges()
+    {
+        await using var db = CreateDbContext();
+        db.Orgs.Add(new Casazen.Core.Entities.Org { Id = HostOrgId, Name = "Host", Slug = "host" });
+        AddProperty(db, HostOrgId, "Roma", "058091");
+        var supplier = AddRegisteredSupplier(db, SupplierEmail);
+        await db.SaveChangesAsync();
+        var queue = new RecordingEmailQueue();
+        await CreateTrustedSupplierService(db, queue).InviteSupplierAsync(HostOrgId, new(SupplierEmail, []), HostUserId);
+        var token = InviteToken(Assert.Single(queue.Queued).Content.HtmlBody);
+        db.SupplierProfiles.Local.Single(p => p.OrgId == supplier).Email = "new-address@example.test";
+        await db.SaveChangesAsync();
+        await Assert.ThrowsAsync<DomainConflictException>(() => CreateSupplierService(db, queue).RegisterAsync(
+            new SupplierRegistration(SupplierEmail, "Other", "+390000000000", "058091", token, "auth0|other", SupplierEmail)));
+        Assert.Single(db.SupplierProfiles);
+        Assert.Empty(db.TrustedSuppliers);
+    }
+
     private static Property AddProperty(AppDbContext db, Guid orgId, string city, string? istatCode)
     {
         var property = new Property { OrgId = orgId, Name = $"Casa {city}", City = city, ComuneIstatCode = istatCode };

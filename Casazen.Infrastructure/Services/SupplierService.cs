@@ -128,7 +128,8 @@ public partial class SupplierService(
 
         // One profile per email (SU-14, A4-22): a second registration would create the duplicate that fix-orphaned had
         // to merge. The unique index is the guarantee under concurrency (23505 below); this check answers early.
-        if (await IsSupplierEmailTakenAsync(email, cancellationToken))
+        // An invitation bound to a known organization must still be accepted by that organization after a change of contact.
+        if (invite?.IdentifiedSupplierOrgId != null || await IsSupplierEmailTakenAsync(email, cancellationToken))
             throw SupplierEmailTaken();
 
         var slug = $"supplier-{Guid.NewGuid():N}"[..30];
