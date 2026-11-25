@@ -35,8 +35,10 @@ public class SupplierPaymentCompletionTests
         {
             s.Db.TrustedSuppliers.Add(new TrustedSupplier
             {
-                OrgId = s.HostOrgId, SupplierOrgId = s.SupplierOrgId,
-                HostOrigin = true, CreatedAt = s.Clock.GetUtcNow().UtcDateTime
+                OrgId = s.HostOrgId,
+                SupplierOrgId = s.SupplierOrgId,
+                HostOrigin = true,
+                CreatedAt = s.Clock.GetUtcNow().UtcDateTime
             });
             await s.Db.SaveChangesAsync();
         }
