@@ -135,6 +135,11 @@ public sealed class PublicGuestHostExtrasController(GuestHostExtraService extras
     [EnableRateLimiting(RateLimitPolicies.GuestPortalWrite)]
     public async Task<IActionResult> Pay(Guid id, CancellationToken ct) => Ok(await extras.PayAsync(Portal, id, ct));
 
+    [HttpPost("host-extra-orders/{id:guid}/authorization")]
+    [EnableRateLimiting(RateLimitPolicies.GuestPortalWrite)]
+    public async Task<IActionResult> ConfirmAuthorization(Guid id, CancellationToken ct) =>
+        await extras.ConfirmAuthorizationAsync(Portal, id, ct) ? NoContent() : NotFound();
+
     [HttpDelete("host-extra-orders/{id:guid}")]
     [EnableRateLimiting(RateLimitPolicies.GuestPortalWrite)]
     public async Task<IActionResult> Cancel(Guid id, CancellationToken ct) =>

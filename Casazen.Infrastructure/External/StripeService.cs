@@ -26,6 +26,13 @@ public interface IStripeService
         string? description,
         CancellationToken cancellationToken = default);
 
+    Task<PaymentIntent> CreateConnectedAuthorizationAsync(string connectedAccountId, long amountCents,
+        string currency, Dictionary<string, string> metadata, string idempotencyKey, string description, CancellationToken ct) =>
+        throw new NotSupportedException();
+
+    Task<PaymentIntent> CaptureConnectedAuthorizationAsync(string connectedAccountId, string paymentIntentId,
+        string idempotencyKey, CancellationToken ct) => throw new NotSupportedException();
+
     /// <summary>
     /// Creates a refund of a PaymentIntent (BK-02). Direct charges live on the connected account, so the request carries
     /// its <c>Stripe-Account</c> header (<see cref="StripeRefundCreateRequest.ConnectedAccountId"/>); null only for a
@@ -319,6 +326,23 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
             options: null,
             RequestOptionsFor(connectedAccountId),
             cancellationToken);
+
+    public Task<PaymentIntent> CreateConnectedAuthorizationAsync(string connectedAccountId, long amountCents,
+        string currency, Dictionary<string, string> metadata, string idempotencyKey, string description, CancellationToken ct) =>
+        new PaymentIntentService(Client).CreateAsync(new PaymentIntentCreateOptions
+        {
+            Amount = amountCents,
+            Currency = currency,
+            Metadata = metadata,
+            Description = description,
+            CaptureMethod = "manual",
+            AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions { Enabled = true, AllowRedirects = "never" },
+        }, RequestOptionsFor(connectedAccountId, idempotencyKey), ct);
+
+    public Task<PaymentIntent> CaptureConnectedAuthorizationAsync(string connectedAccountId, string paymentIntentId,
+        string idempotencyKey, CancellationToken ct) =>
+        new PaymentIntentService(Client).CaptureAsync(paymentIntentId, new PaymentIntentCaptureOptions(),
+            RequestOptionsFor(connectedAccountId, idempotencyKey), ct);
 
     public async Task<PaymentIntent> CancelPaymentIntentAsync(
         string paymentIntentId,

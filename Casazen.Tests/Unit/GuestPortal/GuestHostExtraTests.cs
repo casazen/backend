@@ -27,31 +27,45 @@ public sealed class GuestHostExtraTests
         var requestId = Guid.NewGuid();
         var order = await service.OrderAsync(portal, extra!.Value, 1, requestId, default);
         Assert.Equal(45m, order.Amount);
-        Assert.Equal(GuestHostExtraStatus.Requested, order.Status);
+        Assert.Equal(GuestHostExtraStatus.AwaitingAuthorization, order.Status);
         Assert.Equal(order, await service.OrderAsync(portal, extra.Value, 1, requestId, default));
-        await Assert.ThrowsAsync<DomainConflictException>(() => service.PayAsync(portal, order.Id, default));
+        await Assert.ThrowsAsync<DomainConflictException>(() => service.ChangeStatusAsync(portal.OrgId, portal.BookingId,
+            order.Id, GuestHostExtraStatus.CapturePending, true, default));
         Assert.Empty((await service.ListAsync(portal, default)).Offers);
 
-        Assert.True(await service.ChangeStatusAsync(portal.OrgId, portal.BookingId, order.Id,
-            GuestHostExtraStatus.ReadyToPay, true, default));
         var intent = new PaymentIntent
         {
             Id = "pi_extra", ClientSecret = "pi_extra_secret_mock", Status = "requires_payment_method",
-            Currency = "eur", Amount = 4500, AmountReceived = 4500,
+            Currency = "eur", Amount = 4500, CaptureMethod = "manual",
             Metadata = new() { ["order_id"] = order.Id.ToString("D"), ["org_id"] = portal.OrgId.ToString("D") },
         };
-        stripe.Setup(x => x.CreateConnectedAccountPaymentIntentAsync(
+        stripe.Setup(x => x.CreateConnectedAuthorizationAsync(
                 "acct_extra", 4500, "eur", It.Is<Dictionary<string, string>>(m => m["kind"] == "guest-host-extra"),
                 $"guest-host-extra:{order.Id:N}", "Culla e kit bimbo", default))
             .ReturnsAsync(intent);
         Assert.Equal("acct_extra", (await service.PayAsync(portal, order.Id, default)).StripeAccountId);
-        await service.SettleAsync(intent, "acct_other", default);
-        Assert.Equal(GuestHostExtraStatus.ReadyToPay, Assert.Single((await service.ListAsync(portal, default)).Orders).Status);
+        intent.Status = "requires_capture";
+        intent.AmountCapturable = 4500;
+        await service.ObserveAsync(intent, "acct_other", default);
+        Assert.Equal(GuestHostExtraStatus.AwaitingAuthorization, Assert.Single((await service.ListAsync(portal, default)).Orders).Status);
+        await service.ObserveAsync(intent, "acct_extra", default);
+        Assert.Equal(GuestHostExtraStatus.Requested, Assert.Single((await service.ListAsync(portal, default)).Orders).Status);
 
-        await service.SettleAsync(intent, "acct_extra", default);
+        stripe.Setup(x => x.GetPaymentIntentAsync(intent.Id, "acct_extra", default)).ReturnsAsync(intent);
+        stripe.Setup(x => x.CaptureConnectedAuthorizationAsync("acct_extra", intent.Id,
+                $"guest-host-extra-capture:{order.Id:N}", default))
+            .ReturnsAsync(new PaymentIntent { Id = intent.Id, Currency = "eur", Status = "processing" });
+        Assert.True(await service.ChangeStatusAsync(portal.OrgId, portal.BookingId, order.Id,
+            GuestHostExtraStatus.CapturePending, true, default));
+        Assert.Equal(GuestHostExtraStatus.CapturePending, Assert.Single((await service.ListAsync(portal, default)).Orders).Status);
+
+        intent.Status = "succeeded";
+        intent.AmountCapturable = 0;
+        intent.AmountReceived = 4500;
+        await service.ObserveAsync(intent, "acct_extra", default);
         Assert.True(await service.ChangeStatusAsync(portal.OrgId, portal.BookingId, order.Id,
             GuestHostExtraStatus.Fulfilled, true, default));
-        await service.SettleAsync(intent, "acct_extra", default);
+        await service.ObserveAsync(intent, "acct_extra", default);
         Assert.Equal(GuestHostExtraStatus.Fulfilled, Assert.Single((await service.ListAsync(portal, default)).Orders).Status);
     }
 

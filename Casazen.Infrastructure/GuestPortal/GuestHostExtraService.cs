@@ -120,7 +120,7 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
             Id = scopedId, OrgId = portal.OrgId, BookingId = portal.BookingId, ExtraId = extraId,
             Name = extra.Name, Quantity = quantity, Amount = amount,
             Currency = StayCurrency.ForProperty(booking!.Property), CreatedAt = clock.GetUtcNow().UtcDateTime,
-            Status = extra.RequiresApproval ? GuestHostExtraStatus.Requested : GuestHostExtraStatus.ReadyToPay
+            Status = extra.RequiresApproval ? GuestHostExtraStatus.AwaitingAuthorization : GuestHostExtraStatus.ReadyToPay
         };
         db.GuestHostExtraOrders.Add(order);
         await db.SaveChangesAsync(ct);
@@ -139,7 +139,8 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
 
         await using var tx = await LockAsync(orderKey.Value, ct);
         var order = await Orders(portal).SingleAsync(x => x.Id == orderId, ct);
-        if (order.Status != GuestHostExtraStatus.ReadyToPay)
+        var authorization = order.Status == GuestHostExtraStatus.AwaitingAuthorization;
+        if (!authorization && order.Status != GuestHostExtraStatus.ReadyToPay)
             throw Unavailable();
 
         var account = order.StripeAccountId ?? booking!.Org.StripeConnectedAccountId!;
@@ -151,10 +152,15 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
             if (extra is null || !await IsAvailableAsync(extra, booking!, order.Quantity, order.Id, ct))
                 throw Unavailable();
 
-            intent = await stripe.CreateConnectedAccountPaymentIntentAsync(account, Minor(order.Amount),
-                StayCurrency.ForStripe(order.Currency),
-                new() { ["kind"] = "guest-host-extra", ["order_id"] = order.Id.ToString("D"), ["org_id"] = portal.OrgId.ToString("D") },
-                $"guest-host-extra:{order.Id:N}", order.Name, ct);
+            var metadata = new Dictionary<string, string>
+            {
+                ["kind"] = "guest-host-extra", ["order_id"] = order.Id.ToString("D"), ["org_id"] = portal.OrgId.ToString("D"),
+            };
+            var key = $"guest-host-extra:{order.Id:N}";
+            var currency = StayCurrency.ForStripe(order.Currency);
+            intent = authorization
+                ? await stripe.CreateConnectedAuthorizationAsync(account, Minor(order.Amount), currency, metadata, key, order.Name, ct)
+                : await stripe.CreateConnectedAccountPaymentIntentAsync(account, Minor(order.Amount), currency, metadata, key, order.Name, ct);
             order.StripeIntentId = intent.Id;
             order.StripeAccountId = account;
             await db.SaveChangesAsync(ct);
@@ -163,6 +169,7 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
         {
             intent = await stripe.GetPaymentIntentAsync(order.StripeIntentId, account, ct);
         }
+        await ApplyObservationAsync(order, intent, account, ct);
         if (tx is not null) await tx.CommitAsync(ct);
         if (intent.Status is not ("requires_payment_method" or "requires_confirmation" or "requires_action"))
             throw Unavailable();
@@ -178,17 +185,49 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
 
         await using var tx = await LockAsync(key.Value, ct);
         var order = await orders.SingleAsync(x => x.Id == id, ct);
-        if (order.Status == target) return true;
+        if (order.Status == target || (target == GuestHostExtraStatus.CapturePending &&
+            order.Status is GuestHostExtraStatus.Paid or GuestHostExtraStatus.Fulfilled)) return true;
 
         var allowed = (isHost, order.Status, target) switch
         {
-            (true, GuestHostExtraStatus.Requested, GuestHostExtraStatus.ReadyToPay or GuestHostExtraStatus.Declined) => true,
+            (true, GuestHostExtraStatus.Requested, GuestHostExtraStatus.CapturePending or GuestHostExtraStatus.Declined) => true,
             (true, GuestHostExtraStatus.Paid, GuestHostExtraStatus.Fulfilled) => true,
-            (_, GuestHostExtraStatus.Requested or GuestHostExtraStatus.ReadyToPay, GuestHostExtraStatus.Cancelled) => true,
+            (_, GuestHostExtraStatus.Requested or GuestHostExtraStatus.ReadyToPay or GuestHostExtraStatus.AwaitingAuthorization,
+                GuestHostExtraStatus.Cancelled) => true,
             _ => false,
         };
         if (!allowed) throw Unavailable();
-        if (target == GuestHostExtraStatus.Cancelled && order.StripeIntentId is { } intentId)
+        if (target == GuestHostExtraStatus.CapturePending)
+        {
+            if (order.StripeIntentId is null || order.StripeAccountId is null) throw Unavailable();
+            var observed = await stripe.GetPaymentIntentAsync(order.StripeIntentId, order.StripeAccountId, ct);
+            await ApplyObservationAsync(order, observed, order.StripeAccountId, ct);
+            if (observed.Status == "canceled" || order.Status == GuestHostExtraStatus.Paid)
+            {
+                if (tx is not null) await tx.CommitAsync(ct);
+                return true;
+            }
+            if (observed.Status != "processing" && !IsCapturable(order, observed)) throw Unavailable();
+            if (observed.Status != "processing")
+            {
+                var booking = await db.Bookings.AsNoTracking().Include(x => x.Property).Include(x => x.Org)
+                    .SingleOrDefaultAsync(x => x.Id == bookingId && x.OrgId == orgId, ct);
+                var extra = await db.GuestHostExtras.SingleOrDefaultAsync(x => x.OrgId == orgId && x.Id == order.ExtraId, ct);
+                if (!CanSell(booking) || extra is null || !extra.PropertyIds.Contains(booking!.PropertyId) ||
+                    !await IsAvailableAsync(extra, booking, order.Quantity, order.Id, ct))
+                    throw Unavailable();
+                var captured = await stripe.CaptureConnectedAuthorizationAsync(order.StripeAccountId, order.StripeIntentId,
+                    $"guest-host-extra-capture:{order.Id:N}", ct);
+                if (captured.Status is not ("processing" or "succeeded")) throw Unavailable();
+                await ApplyObservationAsync(order, captured, order.StripeAccountId, ct);
+                if (order.Status == GuestHostExtraStatus.Paid)
+                {
+                    if (tx is not null) await tx.CommitAsync(ct);
+                    return true;
+                }
+            }
+        }
+        if ((target is GuestHostExtraStatus.Cancelled or GuestHostExtraStatus.Declined) && order.StripeIntentId is { } intentId)
         {
             var intent = await stripe.GetPaymentIntentAsync(intentId, order.StripeAccountId, ct);
             if (intent.Status is "processing" or "succeeded") throw Unavailable();
@@ -202,7 +241,7 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
     }
 
     // The signed Connect event and the initial order must agree on account, amount, currency and identity.
-    public async Task SettleAsync(PaymentIntent intent, string account, CancellationToken ct)
+    public async Task ObserveAsync(PaymentIntent intent, string account, CancellationToken ct)
     {
         if (intent.Metadata?.TryGetValue("order_id", out var id) != true || !Guid.TryParse(id, out var orderId) ||
             intent.Metadata?.TryGetValue("org_id", out var tenant) != true || !Guid.TryParse(tenant, out var orgId))
@@ -214,14 +253,50 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
         if (key is null) return;
         await using var tx = await LockAsync(key.Value, ct);
         var order = await orders.SingleAsync(ct);
-        if (order.Status != GuestHostExtraStatus.ReadyToPay || order.StripeIntentId != intent.Id ||
-            order.StripeAccountId != account || intent.AmountReceived != Minor(order.Amount) ||
-            intent.Currency != StayCurrency.ForStripe(order.Currency))
-            return;
-        order.Status = GuestHostExtraStatus.Paid;
-        await db.SaveChangesAsync(ct);
+        await ApplyObservationAsync(order, intent, account, ct);
         if (tx is not null) await tx.CommitAsync(ct);
     }
+
+    public async Task<bool> ConfirmAuthorizationAsync(PortalContext portal, Guid orderId, CancellationToken ct)
+    {
+        var key = await Orders(portal).Where(x => x.Id == orderId).Select(x => (Guid?)x.ExtraId).SingleOrDefaultAsync(ct);
+        if (key is null) return false;
+        await using var tx = await LockAsync(key.Value, ct);
+        var order = await Orders(portal).SingleAsync(x => x.Id == orderId, ct);
+        if (order.Status == GuestHostExtraStatus.AwaitingAuthorization &&
+            order.StripeIntentId is { } id && order.StripeAccountId is { } account)
+        {
+            var intent = await stripe.GetPaymentIntentAsync(id, account, ct);
+            await ApplyObservationAsync(order, intent, account, ct);
+        }
+        if (tx is not null) await tx.CommitAsync(ct);
+        return true;
+    }
+
+    private async Task ApplyObservationAsync(GuestHostExtraOrder order, PaymentIntent intent, string account, CancellationToken ct)
+    {
+        if (order.StripeIntentId != intent.Id || order.StripeAccountId != account ||
+            intent.Currency != StayCurrency.ForStripe(order.Currency))
+            return;
+
+        var status = (order.Status, intent.Status) switch
+        {
+            (GuestHostExtraStatus.AwaitingAuthorization, "requires_capture") when IsCapturable(order, intent) => GuestHostExtraStatus.Requested,
+            (GuestHostExtraStatus.Requested or GuestHostExtraStatus.CapturePending or GuestHostExtraStatus.ReadyToPay, "succeeded")
+                when intent.AmountReceived == Minor(order.Amount) => GuestHostExtraStatus.Paid,
+            (GuestHostExtraStatus.AwaitingAuthorization or GuestHostExtraStatus.Requested or GuestHostExtraStatus.CapturePending
+                or GuestHostExtraStatus.ReadyToPay, "canceled") => GuestHostExtraStatus.Cancelled,
+            _ => order.Status
+        };
+        if (status == order.Status) return;
+        order.Status = status;
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static bool IsCapturable(GuestHostExtraOrder order, PaymentIntent intent) =>
+        intent.Status == "requires_capture" && intent.CaptureMethod == "manual" &&
+        intent.AmountCapturable == Minor(order.Amount) && intent.AmountReceived == 0 &&
+        intent.Currency == StayCurrency.ForStripe(order.Currency);
 
     private async Task<bool> IsAvailableAsync(GuestHostExtra extra, Booking booking, int quantity, Guid? existingOrder,
         CancellationToken ct)

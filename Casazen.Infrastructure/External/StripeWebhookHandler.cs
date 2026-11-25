@@ -160,11 +160,11 @@ public class StripeWebhookHandler(
                     rentNotice = await HandleRentChargeAsync(
                         (PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type, source, stripeEvent.Account);
                     break;
-                case "payment_intent.succeeded" when stripeEvent.Account is { Length: > 0 } extraAccount
-                    && stripeEvent.Data.Object is PaymentIntent extraIntent
+                case "payment_intent.succeeded" or "payment_intent.amount_capturable_updated" or "payment_intent.canceled"
+                    when stripeEvent.Account is { Length: > 0 } extraAccount && stripeEvent.Data.Object is PaymentIntent extraIntent
                     && extraIntent.Metadata?.GetValueOrDefault("kind") == "guest-host-extra":
                     await (hostExtras ?? throw new InvalidOperationException("Host extra settlement is unavailable."))
-                        .SettleAsync(extraIntent, extraAccount, CancellationToken.None);
+                        .ObserveAsync(extraIntent, extraAccount, CancellationToken.None);
                     break;
                 // Tourist tax also settles independently of the lodging payment.
                 case "payment_intent.succeeded" when IsTouristTax(stripeEvent.Data.Object as PaymentIntent):
