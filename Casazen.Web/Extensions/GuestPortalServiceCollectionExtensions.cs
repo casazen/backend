@@ -28,6 +28,7 @@ public static class GuestPortalServiceCollectionExtensions
         services.AddScoped<GuestHostExtraService>();
         services.AddScoped<GuestSupplierOrders>();
         services.AddScoped<GuestPortalHostNotifications>();
+        services.AddScoped<GuestPortalInvoiceData>();
         services.AddScoped<GuestHostExtraTranslator>();
         services.AddScoped<GuestPortalRecovery>();
         services.AddScoped<GuestPortalContextAccessor>();

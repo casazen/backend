@@ -2,14 +2,32 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.GuestPortal;
+using Casazen.Web.DTOs.CheckIn;
+using Casazen.Web.Infrastructure;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
 
-public sealed class GuestPortalDocumentsController(AppDbContext db, IFiscalDocumentService documents)
+public sealed class GuestPortalDocumentsController(AppDbContext db, IFiscalDocumentService documents, GuestPortalInvoiceData invoiceData)
     : GuestPortalControllerBase
 {
+    [HttpGet("documents/invoice-data")]
+    public Task<GuestPortalInvoiceData.State> InvoiceData(CancellationToken ct) =>
+        invoiceData.GetAsync(Portal.OrgId, Portal.BookingId, ct);
+
+    [HttpPut("documents/invoice-data")]
+    [EnableRateLimiting(RateLimitPolicies.GuestPortalWrite)]
+    [RequestSizeLimit(8192)]
+    public async Task<IActionResult> SaveInvoiceData(PublicCheckInInvoiceDto request, CancellationToken ct)
+    {
+        var input = request.ToInput();
+        return await invoiceData.SaveAsync(Portal.OrgId, Portal.BookingId, input.NeedInvoice, input.Data, ct)
+            ? NoContent() : Conflict();
+    }
+
     [HttpGet("documents")]
     public async Task<ActionResult<IReadOnlyList<DocumentSummary>>> Get(CancellationToken ct) =>
         await ForStay().OrderByDescending(d => d.IssueDate)

@@ -288,7 +288,6 @@ public sealed partial class FiscalDocumentService(
         var profile = await IssuerProfileAsync(booking, organization, document.IssuerProfileId, requireComplete: true, ct);
         var rule = RuleOf(profile, booking);
         RequireDraftOfTheRule(document, rule);
-        await RequireDraftOfTheRecipientAsync(document, booking.Id, rule, ct);
         await RequireNoOtherDocumentAsync(booking.Id, document.Id, PartOf(document.ForAgencyServices, profile.IsOwnerProfile), ct);
 
         var today = timeProvider.TodayInRomeAsDateOnly();
@@ -1006,6 +1005,14 @@ public sealed partial class FiscalDocumentService(
             ? await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct)
             : null;
 
+        if (credited is null && bookingId is { } guestBookingId)
+        {
+            // A portal edit and the final recipient check must agree on which operation happened first.
+            await using var bookingLock = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct,
+                (PostgresAdvisoryLocks.Scope.FiscalDocumentBooking, guestBookingId.ToString("N")));
+            await RequireDraftOfTheRecipientAsync(document, guestBookingId, rule, ct);
+        }
+
         // The number of the issuer the document is issued on (E17/F01/US01/T01): its counter, its series. A document made before the issuers existed is the
         // organization's.
         document.IssuerProfileId ??= profile.Id;
@@ -1521,7 +1528,17 @@ public sealed partial class FiscalDocumentService(
     {
         var kind = rule.DocumentKind == RuleDocumentKind.Receipt ? DocumentKind.Receipt : DocumentKind.Invoice;
         if (!NeedsOnlyTheName(rule, kind))
+        {
+            var guestData = await invoiceData.GetAsync(bookingId, ct);
+            if (guestData?.Source == InvoiceDataSource.CheckIn)
+            {
+                var current = new FiscalDocument();
+                CopyRecipient(guestData, current);
+                if (!SameRecipient(draft, current))
+                    throw new DomainConflictException(FiscalDocumentErrors.DraftOutdated, "FiscalDocumentDraftOutdated");
+            }
             return;
+        }
 
         var (data, guestName, missing) = await RecipientOfAsync(bookingId, nameOnly: true, ct);
         if (missing.Count == 0)
