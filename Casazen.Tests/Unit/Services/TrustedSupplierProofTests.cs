@@ -14,6 +14,28 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class TrustedSupplierProofTests
 {
+    [Fact]
+    public async Task Remove_ArchivesEveryLegacyDuplicateForTheHostSupplierPair()
+    {
+        var host = Guid.NewGuid();
+        var supplier = Guid.NewGuid();
+        await using var db = CreateInMemoryDb(host);
+        var first = new TrustedSupplier { OrgId = host, SupplierOrgId = supplier, CreatedAt = DateTime.UtcNow };
+        var duplicate = new TrustedSupplier { OrgId = host, SupplierOrgId = supplier, CreatedAt = first.CreatedAt };
+        var otherHost = new TrustedSupplier { OrgId = Guid.NewGuid(), SupplierOrgId = supplier, CreatedAt = first.CreatedAt };
+        db.TrustedSuppliers.AddRange(first, duplicate, otherHost);
+        await db.SaveChangesAsync();
+        var service = new TrustedSupplierService(db, null!, new ActivityLog(db),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<TrustedSupplierService>.Instance);
+
+        await service.RemoveTrustedSupplierAsync(host, duplicate.Id, "user");
+
+        Assert.Empty(await db.TrustedSuppliers.Where(t => t.OrgId == host).ToListAsync());
+        Assert.NotNull(first.RemovedAt);
+        Assert.Equal(first.RemovedAt, duplicate.RemovedAt);
+        Assert.Null(otherHost.RemovedAt);
+    }
+
     private static AppDbContext CreateInMemoryDb(Guid tenantOrgId)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

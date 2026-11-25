@@ -253,9 +253,12 @@ public partial class SupplierService(
     private async Task AddTrustedSupplierAsync(
         Guid hostOrgId,
         Guid supplierOrgId,
-        List<Guid>? propertyIds,
+        SupplierInviteRecord invite,
         CancellationToken cancellationToken)
     {
+        // RegisterAsync owns the transaction and commits both the accepted invite and this relation.
+        await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken,
+            PostgresAdvisoryLocks.TrustedSupplierRelation(hostOrgId, supplierOrgId));
         var relations = db.TrustedSuppliers
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(t => t.OrgId == hostOrgId);

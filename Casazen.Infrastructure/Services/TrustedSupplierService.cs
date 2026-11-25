@@ -89,10 +89,16 @@ public sealed class TrustedSupplierService(
 
     public async Task RemoveTrustedSupplierAsync(Guid orgId, Guid trustedSupplierId, string actorUserId)
     {
-        var trustedSupplier = await db.TrustedSuppliers
-            .FirstOrDefaultAsync(ts => ts.Id == trustedSupplierId && ts.OrgId == orgId);
+        var supplierOrgId = await db.TrustedSuppliers.Where(ts => ts.Id == trustedSupplierId && ts.OrgId == orgId)
+            .Select(ts => (Guid?)ts.SupplierOrgId).FirstOrDefaultAsync();
+        await using var transaction = supplierOrgId is { } supplierId
+            ? await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, CancellationToken.None,
+                PostgresAdvisoryLocks.TrustedSupplierRelation(orgId, supplierId))
+            : null;
+        var activeRelations = await db.TrustedSuppliers
+            .Where(ts => ts.OrgId == orgId && ts.SupplierOrgId == supplierOrgId).ToListAsync();
 
-        if (trustedSupplier == null)
+        if (!activeRelations.Any(ts => ts.Id == trustedSupplierId))
         {
             throw new NotFoundException($"Trusted supplier {trustedSupplierId} not found for org {orgId}")
             {
@@ -101,27 +107,30 @@ public sealed class TrustedSupplierService(
             };
         }
 
-        trustedSupplier.RemovedAt = DateTime.UtcNow;
+        // Older data can contain several active rows for the same supplier, each exposing a different property.
+        var removedAt = DateTime.UtcNow;
+        foreach (var relation in activeRelations)
+            relation.RemovedAt = removedAt;
         var privateOffers = await db.GuestSupplierOffers.Where(o => o.HostOrgId == orgId &&
-            o.SupplierOrgId == trustedSupplier.SupplierOrgId && o.HostOrigin).ToListAsync();
+            o.SupplierOrgId == supplierOrgId && o.HostOrigin).ToListAsync();
         foreach (var offer in privateOffers)
         {
             offer.Enabled = false;
             offer.Accepted = false;
         }
-
-
         // Record activity event
         activityLog.Record(OrgActivity.Of(
             orgId,
             OrgActivityType.TrustedSupplierRemoved,
             actorUserId,
-            trustedSupplier.SupplierOrgId.ToString()));
+            supplierOrgId.ToString()));
 
         await db.SaveChangesAsync();
+        if (transaction is not null)
+            await transaction.CommitAsync();
 
         logger.LogInformation(
             "Trusted supplier removed: Id={Id} SupplierOrgId={SupplierOrgId} Actor={Actor}",
-            trustedSupplierId, trustedSupplier.SupplierOrgId, actorUserId);
+            trustedSupplierId, supplierOrgId, actorUserId);
     }
 }
