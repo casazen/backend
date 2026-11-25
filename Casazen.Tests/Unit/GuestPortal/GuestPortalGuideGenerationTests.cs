@@ -16,6 +16,18 @@ namespace Casazen.Tests.Unit.GuestPortal;
 public class GuestPortalGuideGenerationTests
 {
     [Fact]
+    public async Task FastDraftCompletesEverySectionWithoutCallingTheProvider()
+    {
+        var ai = new Mock<IAiProvider>(MockBehavior.Strict);
+        var result = await Build(ai.Object).GenerateAsync(Property(), "guide", CancellationToken.None, fast: true);
+        var guide = Assert.IsType<GuestHouseGuide>(result?.Guide);
+        Assert.Equal("property", result!.GuideSource);
+        Assert.Equal("Dalle 15:00 alle 20:30, ora locale.", guide.CheckInHours);
+        AssertComplete(guide);
+        ai.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task ProviderDraftFillsAllSectionsWithoutSendingPrivatePropertyDetails()
     {
         var ai = new Mock<IAiProvider>(MockBehavior.Strict);

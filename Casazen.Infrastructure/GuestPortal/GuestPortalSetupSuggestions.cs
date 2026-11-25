@@ -19,10 +19,13 @@ public sealed class GuestPortalSetupSuggestions(
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public async Task<Suggestion?> GenerateAsync(Property property, string kind, CancellationToken ct)
+    public async Task<Suggestion?> GenerateAsync(Property property, string kind, CancellationToken ct, bool fast = false)
     {
         if (kind == "guide")
-            return await GenerateGuideAsync(property, ct);
+        {
+            var draft = GuideFromProperty(property);
+            return fast ? PropertySuggestion(draft) : await GenerateGuideAsync(property, draft, ct);
+        }
 
         // Send the structured accommodation facts. The name, street address, access codes and guest data never enter a prompt.
         var facts = JsonSerializer.Serialize(new
@@ -86,9 +89,8 @@ public sealed class GuestPortalSetupSuggestions(
         }
     }
 
-    private async Task<Suggestion> GenerateGuideAsync(Property property, CancellationToken ct)
+    private async Task<Suggestion> GenerateGuideAsync(Property property, GuestHouseGuide fallback, CancellationToken ct)
     {
-        var fallback = GuideFromProperty(property);
         // Only the accommodation facts go to the provider. Arrival directions, codes, credentials and contacts stay out of the prompt.
         var amenities = AmenityCatalog.Entries.Where(entry => property.Amenities.Contains(entry.Amenity)).Select(entry => entry.LabelIt);
         var facts = JsonSerializer.Serialize(new
@@ -121,7 +123,7 @@ public sealed class GuestPortalSetupSuggestions(
                 if (draft is null)
                 {
                     logger.LogInformation("Guest portal guide provider returned no usable draft (configured: {Configured})", reply.ProviderConfigured);
-                    return new Suggestion(fallback, null, null) { GuideSource = "property" };
+                    return PropertySuggestion(fallback);
                 }
                 cache.Set(property.OrgId, key, draft);
             }
@@ -137,9 +139,12 @@ public sealed class GuestPortalSetupSuggestions(
                                   (e is OperationCanceledException && !ct.IsCancellationRequested))
         {
             logger.LogWarning("Guest portal guide provider unavailable ({ErrorType})", e.GetType().Name);
-            return new Suggestion(fallback, null, null) { GuideSource = "property" };
+            return PropertySuggestion(fallback);
         }
     }
+
+    private static Suggestion PropertySuggestion(GuestHouseGuide guide) =>
+        new(guide, null, null) { GuideSource = "property" };
 
     private static GuestHouseGuide GuideFromProperty(Property property)
     {
