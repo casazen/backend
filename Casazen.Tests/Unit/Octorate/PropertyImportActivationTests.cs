@@ -13,6 +13,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
+using Organization = Casazen.Core.Entities.Org;
 
 namespace Casazen.Tests.Unit.Octorate;
 
@@ -108,8 +109,8 @@ public sealed class PropertyImportActivationTests
     public async Task PreparationCandidates_ShowExistingListingsWithoutImportAndExcludeMasterMappedAndQueuedListings()
     {
         await using var db = Database();
-        var org = new Org { Name = "Quokka360", Slug = "quokka360", ContactEmail = "booking@example.com" };
-        var master = new Org { Name = "Master", Slug = "master" };
+        var org = new Organization { Name = "Quokka360", Slug = "quokka360", ContactEmail = "booking@example.com" };
+        var master = new Organization { Name = "Master", Slug = "master" };
         db.Orgs.AddRange(org, master);
         AddProperty(db, master.Id).Name = "Master property";
         var candidate = AddProperty(db, org.Id);
