@@ -133,7 +133,10 @@ public sealed class GuestPortalSetupSuggestions(
                 Arrival = draft.Arrival ?? fallback.Arrival,
                 House = draft.House ?? fallback.House,
                 Departure = draft.Departure ?? fallback.Departure,
-            }, null, null) { GuideSource = "ai" };
+            }, null, null)
+            {
+                GuideSource = "ai",
+            };
         }
         catch (Exception e) when (e is AiBudgetExceededException or HttpRequestException or JsonException ||
                                   (e is OperationCanceledException && !ct.IsCancellationRequested))
