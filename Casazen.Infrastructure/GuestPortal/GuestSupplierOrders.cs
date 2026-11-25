@@ -37,8 +37,15 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         return from item in Listings(hostOrgId, propertyId, allowsRegional)
                let hostOrigin = hostOriginIds.Contains(item.OrgId)
                where hostOrigin ? assignedIds.Contains(item.OrgId) : allowsRegional && item.SupplierProfile.GuestPortalMarketplaceEnabled
-               select new ManagementListing { Id = item.Id, Name = item.Name, Category = item.Category,
-                   OrgId = item.OrgId, Supplier = item.SupplierProfile.LegalName, HostOrigin = hostOrigin };
+               select new ManagementListing
+               {
+                   Id = item.Id,
+                   Name = item.Name,
+                   Category = item.Category,
+                   OrgId = item.OrgId,
+                   Supplier = item.SupplierProfile.LegalName,
+                   HostOrigin = hostOrigin
+               };
     }
 
     public sealed class ManagementListing

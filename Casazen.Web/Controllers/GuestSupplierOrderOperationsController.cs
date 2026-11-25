@@ -76,11 +76,19 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
             from item in candidates
             where localIds.Contains(item.OrgId)
             orderby item.Name, item.Id
-            select new { item.Id, item.Name, item.Category, item.OrgId, item.Supplier,
-                item.HostOrigin, CommissionBasisPoints = item.HostOrigin
+            select new
+            {
+                item.Id,
+                item.Name,
+                item.Category,
+                item.OrgId,
+                item.Supplier,
+                item.HostOrigin,
+                CommissionBasisPoints = item.HostOrigin
                     ? db.GuestSupplierOffers.Where(o => o.PropertyId == propertyId && o.ServiceId == item.Id)
                         .Select(o => o.CommissionBasisPoints).FirstOrDefault()
-                    : marketplaceRate }
+                    : marketplaceRate
+            }
         ).Take(30).ToListAsync(ct);
         return Ok(matches);
     }

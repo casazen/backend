@@ -116,8 +116,14 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
             var properties = await db.Properties.IgnoreQueryFilters().Where(p => p.Id == first.Id || p.Id == second.Id).ToListAsync();
             foreach (var property in properties) { property.City = area; property.ComuneIstatCode = null; }
             (await db.SupplierProfiles.SingleAsync(p => p.OrgId == supplier.OrgId)).GuestPortalMarketplaceEnabled = false;
-            db.TrustedSuppliers.Add(new TrustedSupplier { OrgId = properties[0].OrgId, SupplierOrgId = supplier.OrgId,
-                AssignedPropertyIds = [first.Id], HostOrigin = true, CreatedAt = DateTime.UtcNow });
+            db.TrustedSuppliers.Add(new TrustedSupplier
+            {
+                OrgId = properties[0].OrgId,
+                SupplierOrgId = supplier.OrgId,
+                AssignedPropertyIds = [first.Id],
+                HostOrigin = true,
+                CreatedAt = DateTime.UtcNow
+            });
             await db.SaveChangesAsync();
         }
 

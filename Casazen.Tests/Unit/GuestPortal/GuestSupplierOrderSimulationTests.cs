@@ -35,12 +35,28 @@ public class GuestSupplierOrderSimulationTests
     {
         using var world = new GuestPortalTestWorld();
         var stay = await world.ContextAsync();
-        var partner = new SupplierProfile { OrgId = Guid.NewGuid(), LegalName = "Local",
-            GuestPortalMarketplaceEnabled = false, Status = SupplierStatus.Active };
-        var listing = new SupplierServiceListing { OrgId = partner.OrgId, Category = "cleaning", Slug = "cleaning",
-            Name = "Cleaning", Status = SupplierServiceListingStatus.Active };
-        var trusted = new TrustedSupplier { OrgId = stay.OrgId, SupplierOrgId = partner.OrgId,
-            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), AssignedPropertyIds = [stay.PropertyId] };
+        var partner = new SupplierProfile
+        {
+            OrgId = Guid.NewGuid(),
+            LegalName = "Local",
+            GuestPortalMarketplaceEnabled = false,
+            Status = SupplierStatus.Active
+        };
+        var listing = new SupplierServiceListing
+        {
+            OrgId = partner.OrgId,
+            Category = "cleaning",
+            Slug = "cleaning",
+            Name = "Cleaning",
+            Status = SupplierServiceListingStatus.Active
+        };
+        var trusted = new TrustedSupplier
+        {
+            OrgId = stay.OrgId,
+            SupplierOrgId = partner.OrgId,
+            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            AssignedPropertyIds = [stay.PropertyId]
+        };
         world.Db.AddRange(partner, listing, trusted);
         await world.Db.SaveChangesAsync();
         var orders = new GuestSupplierOrders(world.Db, TimeProvider.System);

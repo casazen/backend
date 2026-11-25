@@ -53,8 +53,14 @@ public class ServiceRequestServiceTests
         await using var db = CreateDb();
         var (orgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
         (await db.SupplierProfiles.SingleAsync(p => p.OrgId == supplierOrgId)).GuestPortalMarketplaceEnabled = false;
-        var relation = new TrustedSupplier { OrgId = orgId, SupplierOrgId = supplierOrgId,
-            AssignedPropertyIds = [propertyId], CreatedAt = DateTime.UtcNow, HostOrigin = true };
+        var relation = new TrustedSupplier
+        {
+            OrgId = orgId,
+            SupplierOrgId = supplierOrgId,
+            AssignedPropertyIds = [propertyId],
+            CreatedAt = DateTime.UtcNow,
+            HostOrigin = true
+        };
         db.TrustedSuppliers.Add(relation);
         await db.SaveChangesAsync();
         var service = CreateService(db);
