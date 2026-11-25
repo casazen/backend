@@ -164,7 +164,31 @@ public class OrgEmptinessCheckerTests
         object? row;
         try
         {
-            row = Activator.CreateInstance(table);
+            row = table.Name switch
+            {
+                nameof(PropertyActivationCredential) => new PropertyActivationCredential
+                {
+                    Service = "alloggiati",
+                    Username = "sandbox-user",
+                    Password = "sandbox-password",
+                    ExpiresAt = DateTime.UtcNow.AddDays(1),
+                },
+                nameof(PropertyActivationCredentialAssignment) => new PropertyActivationCredentialAssignment
+                {
+                    Service = "alloggiati",
+                    PropertyId = Guid.NewGuid(),
+                    AccountId = Guid.NewGuid(),
+                },
+                nameof(PropertyImportReview) => new PropertyImportReview
+                {
+                    Id = Guid.NewGuid(),
+                    Provider = "kross",
+                    SourceId = "test-listing",
+                    Snapshot = "{}",
+                    ResolvedFields = "[]",
+                },
+                _ => Activator.CreateInstance(table),
+            };
         }
         catch (MissingMethodException)
         {
