@@ -150,6 +150,8 @@ public static class ReviewInviteSkipReasons
     /// <summary>The booking did not come from the booking site (a portal asks its own guests, the host's own entries are not asked): only direct bookings are reviewed.</summary>
     public const string NotDirect = "not_direct";
 
+    public const string ReviewsDisabled = "reviews_disabled";
+
     /// <summary>The booking was cancelled, or never confirmed.</summary>
     public const string NotConfirmed = "not_confirmed";
 

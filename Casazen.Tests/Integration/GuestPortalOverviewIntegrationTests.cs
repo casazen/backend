@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.GuestPortal;
+using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
@@ -156,6 +157,45 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
         Assert.Equal(HttpStatusCode.OK, review.StatusCode);
         using var after = JsonDocument.Parse(await client.GetStringAsync($"{path}/stay"));
         Assert.False(after.RootElement.GetProperty("reviewAvailable").GetBoolean());
+    }
+
+    [PostgresFact]
+    public async Task OtaReviewInvite_UsesTheGuestPortalAndSharesTheRoutineAndHostMarker()
+    {
+        var token = await SeedStayWithLinkAsync(departureOffset: -2);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var reviews = scope.ServiceProvider.GetRequiredService<IHostReviewService>();
+        var booking = await db.GuestPortalLinks.Where(l => l.Token == token)
+            .Select(l => l.BookingId).SingleAsync();
+        var stay = await db.Bookings.Include(b => b.Guest).Include(b => b.Property).SingleAsync(b => b.Id == booking);
+        var count = factory.SentEmails().Count;
+
+        // The synthetic example.com address, then the host's opt-out, each prevent the request.
+        Assert.False((await reviews.GetInviteStatusAsync(booking)).HasGuestEmail);
+        Assert.Equal(ReviewInviteSkipReasons.NoEmail, (await reviews.RequestInviteAsync(stay.OrgId, booking)).Reason);
+        stay.Guest.Email = $"synthetic-{Guid.NewGuid():N}@guest.booking.com";
+        stay.Property.GuestPortalSetupJson = new GuestPortalSetup { ReviewsEnabled = false }.Write();
+        await db.SaveChangesAsync();
+        Assert.Equal(ReviewEligibility.ReviewsDisabled, (await reviews.GetInviteStatusAsync(booking)).Eligibility);
+        Assert.Equal(ReviewInviteSkipReasons.ReviewsDisabled, (await reviews.RequestInviteAsync(stay.OrgId, booking)).Reason);
+        Assert.Equal(count, factory.SentEmails().Count);
+
+        stay.Property.GuestPortalSetupJson = new GuestPortalSetup { ReviewsEnabled = true }.Write();
+        await db.SaveChangesAsync();
+        Assert.Equal(ReviewEligibility.Eligible, (await reviews.GetInviteStatusAsync(booking)).Eligibility);
+        await reviews.SendInviteAsync(booking, "host-of-test-booking");
+        var mail = Assert.Single(factory.SentEmails().Skip(count));
+        Assert.Equal(stay.Guest.Email, mail.To);
+        Assert.Contains($"/s/{token}?page=review", mail.Content.HtmlBody, StringComparison.Ordinal);
+        Assert.Equal(ReviewInviteSkipReasons.AlreadyInvited, (await reviews.RequestInviteAsync(stay.OrgId, booking)).Reason);
+        Assert.Single(await db.ReviewInvites.Where(i => i.BookingId == booking).ToListAsync());
+
+        using var client = factory.CreateClient();
+        using var submitted = await client.PostAsJsonAsync($"/api/public/guest-portal/{token}/review", new { rating = 2, showName = false });
+        Assert.Equal(HttpStatusCode.OK, submitted.StatusCode);
+        Assert.Equal(ReviewInviteSkipReasons.AlreadyReviewed, (await reviews.RequestInviteAsync(stay.OrgId, booking)).Reason);
+        Assert.Equal(count + 1, factory.SentEmails().Count);
     }
 
     [PostgresFact]
