@@ -50,7 +50,7 @@ public sealed class GuestPortalSupplierOrdersController(
             RomeCalendar.TodayAt(requestedFor) > Portal.CheckOutDate.Date)
             return BadRequest();
 
-        var entry = await (await CatalogAsync(ct)).SingleOrDefaultAsync(x => x.Id == request.OfferId, ct);
+        var entry = await (await CatalogAsync(ct, request.OfferId)).SingleOrDefaultAsync(ct);
         if (entry is null)
             return NotFound();
         var offer = await db.GuestSupplierOffers.SingleAsync(x => x.Id == entry.Id, ct);
@@ -130,9 +130,9 @@ public sealed class GuestPortalSupplierOrdersController(
 
     private bool Sandbox => configuration.GetValue<bool>(GuestSupplierOrders.SimulationSetting);
 
-    private async Task<IQueryable<GuestSupplierOrders.CatalogEntry>> CatalogAsync(CancellationToken ct) =>
+    private async Task<IQueryable<GuestSupplierOrders.CatalogEntry>> CatalogAsync(CancellationToken ct, Guid? offerId = null) =>
         orders.Catalog(Portal.OrgId, Portal.PropertyId,
-            await orders.AllowsRegionalSuppliersAsync(Portal.OrgId, Portal.PropertyId, ct));
+            await orders.AllowsRegionalSuppliersAsync(Portal.OrgId, Portal.PropertyId, ct), offerId);
 
     private IQueryable<GuestSupplierOrder> StayOrders() => db.GuestSupplierOrders
         .Where(x => x.HostOrgId == Portal.OrgId && x.BookingId == Portal.BookingId && x.PropertyId == Portal.PropertyId);

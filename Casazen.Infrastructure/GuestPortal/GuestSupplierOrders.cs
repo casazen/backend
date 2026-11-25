@@ -30,13 +30,13 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
     public IQueryable<SupplierServiceListing> Listings(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers) =>
         SupplierServiceCatalogService.GuestPortalListings(db, TrustedSupplierIds(orgId, propertyId), allowsRegionalSuppliers);
 
-    public IQueryable<CatalogEntry> Catalog(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers)
+    public IQueryable<CatalogEntry> Catalog(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers, Guid? offerId = null)
     {
         return
         from offer in db.GuestSupplierOffers.AsNoTracking()
         join listing in Listings(orgId, propertyId, allowsRegionalSuppliers) on offer.ServiceId equals listing.Id
         join supplier in db.SupplierProfiles.IgnoreQueryFilters() on offer.SupplierOrgId equals supplier.OrgId
-        where offer.HostOrgId == orgId && offer.PropertyId == propertyId && offer.Accepted && offer.Enabled
+        where (offerId == null || offer.Id == offerId) && offer.HostOrgId == orgId && offer.PropertyId == propertyId && offer.Accepted && offer.Enabled
               && listing.OrgId == supplier.OrgId
               && (listing.RequiresQuote || listing.PriceFromCents > 0)
         orderby listing.SortOrder, listing.Name

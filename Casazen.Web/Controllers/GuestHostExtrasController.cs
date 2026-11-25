@@ -126,7 +126,7 @@ public sealed class GuestHostExtrasController(
     public sealed record ExtraInput(
         [Required, MaxLength(120)] string Name,
         [MaxLength(2000)] string? Description,
-        [Range(typeof(decimal), "0.50", "10000.00")] decimal Price,
+        [Range(typeof(decimal), "0.50", "10000.00", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true)] decimal Price,
         GuestHostExtraPricing Pricing,
         [Range(1, 10000)] int? Inventory,
         [Range(0, 720)] int CutoffHours,

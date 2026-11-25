@@ -1,7 +1,11 @@
+using System.ComponentModel.DataAnnotations;
+using System.Globalization;
+using System.Reflection;
 using Casazen.Core.Exceptions;
 using Casazen.Core.GuestPortal;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.GuestPortal;
+using Casazen.Web.Controllers;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using Stripe;
@@ -11,6 +15,29 @@ namespace Casazen.Tests.Unit.GuestPortal;
 
 public sealed class GuestHostExtraTests
 {
+    [Fact]
+    public void PriceValidationUsesTheSameDecimalRangeInItalian()
+    {
+        var culture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("it-IT");
+            var priceParameter = typeof(GuestHostExtrasController.ExtraInput).GetConstructors().Single()
+                .GetParameters().Single(parameter => parameter.Name == "Price");
+            var range = priceParameter.GetCustomAttribute<RangeAttribute>()!;
+
+            Assert.True(range.IsValid(0.50m));
+            Assert.True(range.IsValid(15.25m));
+            Assert.True(range.IsValid(10000m));
+            Assert.False(range.IsValid(0.49m));
+            Assert.False(range.IsValid(10000.01m));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+    }
+
     [Fact]
     public async Task ApprovalGatesConnectedPaymentAndMatchingWebhookAllowsFulfilment()
     {
