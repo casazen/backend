@@ -26,6 +26,7 @@ internal sealed class GuestSupplierOrderConfiguration : IEntityTypeConfiguration
         builder.HasOne<Org>().WithMany().HasForeignKey(x => x.HostOrgId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne<Org>().WithMany().HasForeignKey(x => x.SupplierOrgId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne<Property>().WithMany().HasForeignKey(x => x.PropertyId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(x => x.StripePaymentIntentId).IsUnique();
         builder.HasIndex(x => new { x.BookingId, x.RequestId }).IsUnique();
         builder.HasIndex(x => new { x.SupplierOrgId, x.State });
         builder.HasIndex(x => new { x.HostOrgId, x.PropertyId });

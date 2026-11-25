@@ -65,7 +65,7 @@ public sealed class GuestPortalOverviewService(
         var features = new GuestPortalFeatures(
             paidServices,
             paidServices && featureFlags.IsEnabled(FeatureFlags.GuestPortalSupplierServices)
-                && configuration?.GetValue<bool>(GuestSupplierOrders.SimulationSetting) == true,
+                && GuestSupplierCheckout.OrdersEnabled(configuration),
             featureFlags.IsEnabled(FeatureFlags.GuestPortalAutoReplies));
 
         return new GuestPortalOverview(
