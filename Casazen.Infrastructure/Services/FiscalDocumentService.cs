@@ -288,7 +288,6 @@ public sealed partial class FiscalDocumentService(
         var profile = await IssuerProfileAsync(booking, organization, document.IssuerProfileId, requireComplete: true, ct);
         var rule = RuleOf(profile, booking);
         RequireDraftOfTheRule(document, rule);
-        await RequireDraftOfTheRecipientAsync(document, booking.Id, rule, ct);
         await RequireNoOtherDocumentAsync(booking.Id, document.Id, PartOf(document.ForAgencyServices, profile.IsOwnerProfile), ct);
 
         var today = timeProvider.TodayInRomeAsDateOnly();
@@ -1006,6 +1005,14 @@ public sealed partial class FiscalDocumentService(
             ? await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct)
             : null;
 
+        if (credited is null && bookingId is { } guestBookingId)
+        {
+            // A portal edit and the final recipient check must agree on which operation happened first.
+            await using var bookingLock = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct,
+                (PostgresAdvisoryLocks.Scope.FiscalDocumentBooking, guestBookingId.ToString("N")));
+            await RequireDraftOfTheRecipientAsync(document, guestBookingId, rule, ct);
+        }
+
         // The number of the issuer the document is issued on (E17/F01/US01/T01): its counter, its series. A document made before the issuers existed is the
         // organization's.
         document.IssuerProfileId ??= profile.Id;
@@ -1515,13 +1522,23 @@ public sealed partial class FiscalDocumentService(
     /// The draft of a document that needs only a name is still made out to who the booking says now (FIX/DOC-RECIPIENT): the draft made with the name of the guest is no longer the document once the
     /// booking has invoice data with a name (it wins), once the guest was erased or asked to be erased (a document is never made out to a name that is no longer theirs) or when the name changed;
     /// a draft made from invoice data is no longer it when the data changed or is gone. 409 <c>document_draft_outdated</c> and nothing is numbered: the host makes the draft again, which is then
-    /// the 422 of the draft when there is nobody to make it out to. The draft of an Italian invoice is not read again: it never falls back and is issued as it always was.
+    /// the 422 of the draft when there is nobody to make it out to. For a full invoice, a change in the guest-supplied recipient also requires a new draft.
     /// </summary>
     private async Task RequireDraftOfTheRecipientAsync(FiscalDocument draft, Guid bookingId, FiscalTaxRule rule, CancellationToken ct)
     {
         var kind = rule.DocumentKind == RuleDocumentKind.Receipt ? DocumentKind.Receipt : DocumentKind.Invoice;
         if (!NeedsOnlyTheName(rule, kind))
+        {
+            var guestData = await invoiceData.GetAsync(bookingId, ct);
+            if (guestData is { InvoiceRequested: true } or { Source: InvoiceDataSource.CheckIn })
+            {
+                var current = new FiscalDocument();
+                CopyRecipient(guestData, current);
+                if (!SameRecipient(draft, current))
+                    throw new DomainConflictException(FiscalDocumentErrors.DraftOutdated, "FiscalDocumentDraftOutdated");
+            }
             return;
+        }
 
         var (data, guestName, missing) = await RecipientOfAsync(bookingId, nameOnly: true, ct);
         if (missing.Count == 0)
