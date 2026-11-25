@@ -10,7 +10,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
 
-public sealed class GuestPortalRequestsController(AppDbContext db, IInternalActivityService activities, TimeProvider clock)
+public sealed class GuestPortalRequestsController(AppDbContext db, IInternalActivityService activities,
+    TimeProvider clock, IPushNotificationService notifications)
     : GuestPortalControllerBase
 {
     [HttpGet("privacy/requests")]
@@ -42,7 +43,7 @@ public sealed class GuestPortalRequestsController(AppDbContext db, IInternalActi
         if (type is null)
             return BadRequest();
 
-        await activities.CreateAsync(new CreateTodoRequest
+        var activityId = await activities.CreateAsync(new CreateTodoRequest
         {
             Type = type.Value,
             Action = ActivityAction.ReviewBooking,
@@ -54,6 +55,7 @@ public sealed class GuestPortalRequestsController(AppDbContext db, IInternalActi
             Deadline = clock.GetUtcNow().UtcDateTime.AddDays(30),
         }, ct);
 
+        NotifyHost(activityId);
         return Accepted();
     }
 
@@ -68,7 +70,7 @@ public sealed class GuestPortalRequestsController(AppDbContext db, IInternalActi
                 && d.Kind == FiscalDocumentKind.Invoice, ct))
             return LinkInvalid();
 
-        await activities.CreateAsync(new CreateTodoRequest
+        var activityId = await activities.CreateAsync(new CreateTodoRequest
         {
             Type = ActivityType.GuestInvoiceCorrectionRequested,
             Action = ActivityAction.CorrectInvoice,
@@ -79,7 +81,16 @@ public sealed class GuestPortalRequestsController(AppDbContext db, IInternalActi
             Urgency = ActivityUrgency.Medium,
         }, ct);
 
+        NotifyHost(activityId);
         return Accepted();
+    }
+
+    private void NotifyHost(Guid activityId)
+    {
+        var bookingId = Portal.BookingId;
+        notifications.Enqueue($"guest-portal-request:{activityId:N}", PushAudience.BookingHosts(bookingId),
+            new PushNotificationPayload("Portale ospiti", "Hai una nuova richiesta da gestire.",
+                "guest-portal-request", bookingId, PushRoutes.Booking(bookingId)));
     }
 
     public sealed record PrivacyRequest([property: Required, MaxLength(16)] string Kind);
