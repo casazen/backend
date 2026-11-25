@@ -120,12 +120,18 @@ public sealed class PropertyImportActivationTests
         db.OctorateConnections.Add(connection);
         db.OctorateListingMappings.Add(new OctorateListingMapping
         {
-            OrgId = org.Id, ConnectionId = connection.Id, PropertyId = linked.Id,
-            Status = OctorateMappingStatus.Confirmed, OctorateAccommodationId = "101",
+            OrgId = org.Id,
+            ConnectionId = connection.Id,
+            PropertyId = linked.Id,
+            Status = OctorateMappingStatus.Confirmed,
+            OctorateAccommodationId = "101",
         });
         db.OctoratePreparations.Add(new OctoratePreparation
         {
-            BatchId = Guid.NewGuid(), OrgId = org.Id, PropertyId = queued.Id, Environment = OctorateEnvironment.Test,
+            BatchId = Guid.NewGuid(),
+            OrgId = org.Id,
+            PropertyId = queued.Id,
+            Environment = OctorateEnvironment.Test,
         });
         await db.SaveChangesAsync();
         var host = new Mock<IHostEnvironment>();
