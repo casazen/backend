@@ -197,9 +197,6 @@ public static class CasazenPolicies
     /// <summary>Manage the organisation’s trusted suppliers on any subscription.</summary>
     public const string TrustedSupplierManage = "host.trusted-supplier.manage";
 
-    /// <summary>Manage trusted suppliers (agency B2B).</summary>
-    public const string AgencySupplierManage = Agency + AgencyPermissions.SupplierManage;
-
     /// <summary>Invite and manage property owners (agency B2B, ADR-011-R4).</summary>
     public const string AgencyOwnerManage = Agency + AgencyPermissions.OwnerManage;
 
@@ -264,7 +261,6 @@ public static class CasazenPolicies
         AgencyWithholdingManage,
         AgencyWireManage,
         AgencyActivityManage,
-        AgencySupplierManage,
         AgencyOwnerFinancialManage,
         AgencyStatementPublish,
     ];
