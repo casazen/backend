@@ -27,6 +27,8 @@ public sealed class OctoratePreparationService(
     TimeProvider clock)
 {
     private const string Tenant = AppDbContext.TenantQueryFilter;
+    private const string LegacyCreationPreconditionFailed = "octorate_network_unknown";
+    private const string CreationPreconditionFailed = "octorate_preparation_create_precondition_failed";
     private const string EnvironmentCheckFailed = "octorate_preparation_environment_mismatch";
     private const string MasterCheckFailed = "octorate_preparation_master_check_failed";
     private readonly OctorateEnvironment _environment = OctorateEnvironments.Of(host);
@@ -204,8 +206,9 @@ public sealed class OctoratePreparationService(
                     await UpdateAsync(row, OctoratePreparationStatus.Queued, null, ct);
 
                 var property = await ReadPropertyAsync(row, ct);
-                if (row.Status == OctoratePreparationStatus.Queued ||
-                    (row.Status == OctoratePreparationStatus.NeedsReview && row.AccommodationId is null && row.ErrorCode == "octorate_preparation_invalid_data"))
+                if (row.AccommodationId is null && (row.Status == OctoratePreparationStatus.Queued ||
+                    (row.Status == OctoratePreparationStatus.NeedsReview && row.ErrorCode == "octorate_preparation_invalid_data") ||
+                    (row.Status == OctoratePreparationStatus.ReconcileCreation && row.ErrorCode == LegacyCreationPreconditionFailed)))
                 {
                     if (await IsLinkedAsync(row, ct))
                     {
@@ -216,17 +219,25 @@ public sealed class OctoratePreparationService(
                     using (scope.Use(masterId))
                     {
                         masterInventory ??= await client.GetPropertiesAsync(ct);
-                        var candidate = masterInventory.FirstOrDefault(p => Matches(property, p));
+                        var candidate = masterInventory.FirstOrDefault(p => NameAndAddressMatch(property, p));
                         if (candidate is not null)
                         {
                             await UpdateAsync(row, OctoratePreparationStatus.ReconcileCreation, "octorate_preparation_candidate_found", ct);
                             continue;
                         }
                         await UpdateAsync(row, OctoratePreparationStatus.ReconcileCreation, "octorate_preparation_creation_uncertain", ct);
-                        var created = await client.CreatePropertyAsync(request, ct);
-                        row.AccommodationId = created.AccommodationId;
-                        row.EncryptedRefreshToken = created.RefreshToken;
-                        await UpdateAsync(row, OctoratePreparationStatus.WaitingForLicense, null, CancellationToken.None);
+                        try
+                        {
+                            var created = await client.CreatePropertyAsync(request, ct);
+                            row.AccommodationId = created.AccommodationId;
+                            row.EncryptedRefreshToken = created.RefreshToken;
+                            await UpdateAsync(row, OctoratePreparationStatus.WaitingForLicense, null, CancellationToken.None);
+                        }
+                        catch (OctorateNetworkUnknownException)
+                        {
+                            // Octorate returned HTTP 412 even with the shared contact explicitly allowed.
+                            await UpdateAsync(row, OctoratePreparationStatus.ReconcileCreation, CreationPreconditionFailed, CancellationToken.None);
+                        }
                     }
                 }
 
@@ -393,9 +404,12 @@ public sealed class OctoratePreparationService(
         await PostgresAdvisoryLocks.TryAcquireSessionLockAsync(db, PostgresAdvisoryLocks.Scope.PropertyPreparation, batchId.ToString("N"), ct)
         ?? throw Invalid("octorate_preparation_busy");
 
-    private static bool Matches(Property p, OctorateProperty external) =>
+    private static bool NameAndAddressMatch(Property p, OctorateProperty external) =>
         string.Equals(p.Name.Trim(), external.Name?.Trim(), StringComparison.OrdinalIgnoreCase)
-        && string.Equals(p.Address.Trim(), external.Address?.Trim(), StringComparison.OrdinalIgnoreCase)
+        && string.Equals(p.Address.Trim(), external.Address?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static bool Matches(Property p, OctorateProperty external) =>
+        NameAndAddressMatch(p, external)
         && string.Equals(p.City.Trim(), external.City?.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private static DomainConflictException Invalid(string code) => new(code, "OctoratePreparationUnavailable");

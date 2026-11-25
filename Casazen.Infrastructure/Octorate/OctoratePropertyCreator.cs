@@ -129,7 +129,11 @@ public sealed class OctoratePropertyCreator(
     /// </summary>
     internal async Task<OctoratePropertyCreate> BuildPreparationRequestAsync(
         Property property, string userId, string billingNetworkName, CancellationToken ct) =>
-        (await BuildRequestAsync(property, userId, connected: false, ct)) with { BillingNetworkName = billingNetworkName };
+        (await BuildRequestAsync(property, userId, connected: false, ct)) with
+        {
+            BillingNetworkName = billingNetworkName,
+            AcceptDuplicateContactEmail = true,
+        };
 
     internal static List<OctorateFieldError> PropertyErrors(Property property, string? email, string? phone)
     {

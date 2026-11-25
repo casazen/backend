@@ -61,6 +61,26 @@ public class OctorateContentRequestsTests
     }
 
     [Fact]
+    public void PropertyCreateBody_UsesSharedContactForBatchWithoutChangingSwissCountryOrCurrency()
+    {
+        var request = Request() with
+        {
+            Country = "CH",
+            Currency = "CHF",
+            TimeZone = "Europe/Zurich",
+            AcceptDuplicateContactEmail = true,
+        };
+        var body = JsonNode.Parse(OctorateContentRequests.PropertyCreateBody(request))!;
+
+        Assert.True(body["accept_duplicates"]!.GetValue<bool>());
+        Assert.Equal("host@example.com", body["email"]!.GetValue<string>());
+        Assert.Equal("CH", body["country"]!.GetValue<string>());
+        Assert.Equal("CHF", body["currency"]!.GetValue<string>());
+        Assert.Equal("Europe/Zurich", body["timeZone"]!.GetValue<string>());
+        Assert.Null(body["network_name"]);
+    }
+
+    [Fact]
     public void ReadCreated_NeedsBothTheAccommodationAndTheRefreshToken()
     {
         var created = OctorateContentRequests.ReadCreated("""{"status":"created","codice":["585492"],"ids":"585492","refresh_token":"r-1"}""");
