@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
+using Xunit;
+
 namespace Casazen.Tests.Unit.GuestPortal;
 
 public class GuestSupplierOrderSimulationTests
