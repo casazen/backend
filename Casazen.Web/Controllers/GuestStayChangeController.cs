@@ -29,7 +29,9 @@ public sealed class GuestStayChangeController(AppDbContext db, IHostBookingServi
         return Ok(new
         {
             canRequest = Eligible(booking) && latest is not { ApprovedAt: null, RejectedAt: null },
-            adults, children, latest = latest is null ? null : StayChangeView.From(latest)
+            adults,
+            children,
+            latest = latest is null ? null : StayChangeView.From(latest)
         });
     }
 
@@ -74,12 +76,20 @@ public sealed class GuestStayChangeController(AppDbContext db, IHostBookingServi
 
         var change = new GuestStayChange
         {
-            OrgId = booking.OrgId, BookingId = booking.Id,
-            OriginalArrival = booking.CheckInDate, OriginalDeparture = booking.CheckOutDate,
-            OriginalGuests = booking.NumberOfGuests, OriginalChildren = booking.NumberOfChildren,
-            Arrival = arrival, Departure = departure, Adults = input.Adults, ChildrenAges = ages,
-            OriginalTotal = quote.PreviousTotal, ProposedTotal = quote.NewTotal,
-            Currency = quote.Currency, CreatedAt = clock.GetUtcNow().UtcDateTime
+            OrgId = booking.OrgId,
+            BookingId = booking.Id,
+            OriginalArrival = booking.CheckInDate,
+            OriginalDeparture = booking.CheckOutDate,
+            OriginalGuests = booking.NumberOfGuests,
+            OriginalChildren = booking.NumberOfChildren,
+            Arrival = arrival,
+            Departure = departure,
+            Adults = input.Adults,
+            ChildrenAges = ages,
+            OriginalTotal = quote.PreviousTotal,
+            ProposedTotal = quote.NewTotal,
+            Currency = quote.Currency,
+            CreatedAt = clock.GetUtcNow().UtcDateTime
         };
         db.GuestStayChanges.Add(change);
         var recipients = new[] { booking.Property.OwnerId, booking.Property.ResponsibleUserId }
@@ -88,8 +98,12 @@ public sealed class GuestStayChangeController(AppDbContext db, IHostBookingServi
         {
             db.InAppNotifications.Add(new InAppNotification
             {
-                OrgId = booking.OrgId, UserId = user!, Type = NotificationType, EntityId = booking.Id,
-                DeliveryKey = $"guest-stay-change:{change.Id:N}", CreatedAt = change.CreatedAt
+                OrgId = booking.OrgId,
+                UserId = user!,
+                Type = NotificationType,
+                EntityId = booking.Id,
+                DeliveryKey = $"guest-stay-change:{change.Id:N}",
+                CreatedAt = change.CreatedAt
             });
         }
 
@@ -98,7 +112,7 @@ public sealed class GuestStayChangeController(AppDbContext db, IHostBookingServi
             await db.SaveChangesAsync(ct);
         }
         catch (DbUpdateException error) when (error.InnerException is PostgresException
-            { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "UIX_GuestStayChanges_Pending" })
+        { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "UIX_GuestStayChanges_Pending" })
         {
             throw new DomainConflictException("guest_stay_change_pending", "GuestStayChangePending");
         }

@@ -84,8 +84,13 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
         {
             var listing = await db.SupplierServiceListings.IgnoreQueryFilters().AsNoTracking()
                 .Where(x => x.Id == serviceId && x.Status == SupplierServiceListingStatus.Active && x.DeletedAt == null)
-                .Select(x => new { x.OrgId, x.SupplierProfile.Status, x.SupplierProfile.GuestPortalMarketplaceEnabled,
-                    x.SupplierProfile.GuestPortalMarketplaceFirstPublishedAt })
+                .Select(x => new
+                {
+                    x.OrgId,
+                    x.SupplierProfile.Status,
+                    x.SupplierProfile.GuestPortalMarketplaceEnabled,
+                    x.SupplierProfile.GuestPortalMarketplaceFirstPublishedAt
+                })
                 .SingleOrDefaultAsync(ct);
             if (listing is null || listing.Status != SupplierStatus.Active)
                 return NotFound();
@@ -105,7 +110,9 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
 
             existing = new GuestSupplierOffer
             {
-                HostOrgId = orgId, PropertyId = propertyId, ServiceId = serviceId,
+                HostOrgId = orgId,
+                PropertyId = propertyId,
+                ServiceId = serviceId,
                 SupplierOrgId = listing.OrgId,
                 HostOrigin = previousOrigin ?? (trustedAt is not null &&
                     (listing.GuestPortalMarketplaceFirstPublishedAt is null || trustedAt < listing.GuestPortalMarketplaceFirstPublishedAt))
@@ -124,7 +131,7 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateConcurrencyException) { return Conflict(); }
         catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
-                   { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_GuestSupplierOffers_PropertyId_ServiceId" })
+        { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_GuestSupplierOffers_PropertyId_ServiceId" })
         { return Conflict(); }
         return Ok(existing);
     }

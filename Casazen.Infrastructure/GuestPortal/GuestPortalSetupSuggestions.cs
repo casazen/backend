@@ -22,8 +22,16 @@ public sealed class GuestPortalSetupSuggestions(
         // Send the structured accommodation facts. The name, street address, access codes and guest data never enter a prompt.
         var facts = JsonSerializer.Serialize(new
         {
-            property.AccommodationType, property.AreaKind, property.MaxGuests, property.Beds, property.Amenities,
-            property.CheckInFrom, property.CheckOutBy, property.PetsPolicy, property.SmokingPolicy, property.PartiesPolicy,
+            property.AccommodationType,
+            property.AreaKind,
+            property.MaxGuests,
+            property.Beds,
+            property.Amenities,
+            property.CheckInFrom,
+            property.CheckOutBy,
+            property.PetsPolicy,
+            property.SmokingPolicy,
+            property.PartiesPolicy,
         }, Json);
         var town = kind == "local" ? await comuni.FindByIstatCodeAsync(property.ComuneIstatCode, activeOnly: false, ct) : null;
         var prompt = kind switch

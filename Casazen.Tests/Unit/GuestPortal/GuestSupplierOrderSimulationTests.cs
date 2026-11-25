@@ -21,19 +21,30 @@ public class GuestSupplierOrderSimulationTests
         var supplierId = Guid.NewGuid();
         var listing = new SupplierServiceListing
         {
-            OrgId = supplierId, Name = "Transfer", Category = "transport", Slug = "transfer",
-            RequiresQuote = true, Status = SupplierServiceListingStatus.Active
+            OrgId = supplierId,
+            Name = "Transfer",
+            Category = "transport",
+            Slug = "transfer",
+            RequiresQuote = true,
+            Status = SupplierServiceListingStatus.Active
         };
         world.Db.SupplierProfiles.Add(new SupplierProfile
         {
-            OrgId = supplierId, LegalName = "Example Supplier", Email = "supplier@example.com",
-            GuestPortalMarketplaceEnabled = true, Status = SupplierStatus.Active
+            OrgId = supplierId,
+            LegalName = "Example Supplier",
+            Email = "supplier@example.com",
+            GuestPortalMarketplaceEnabled = true,
+            Status = SupplierStatus.Active
         });
         world.Db.SupplierServiceListings.Add(listing);
         var offer = new GuestSupplierOffer
         {
-            HostOrgId = context.OrgId, PropertyId = context.PropertyId, ServiceId = listing.Id, SupplierOrgId = supplierId,
-            Enabled = true, CommissionBasisPoints = 1000
+            HostOrgId = context.OrgId,
+            PropertyId = context.PropertyId,
+            ServiceId = listing.Id,
+            SupplierOrgId = supplierId,
+            Enabled = true,
+            CommissionBasisPoints = 1000
         };
         world.Db.GuestSupplierOffers.Add(offer);
         await world.Db.SaveChangesAsync(CancellationToken.None);

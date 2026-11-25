@@ -60,11 +60,20 @@ public sealed class GuestPortalSupplierOrdersController(
 
         var order = new GuestSupplierOrder
         {
-            HostOrgId = Portal.OrgId, PropertyId = Portal.PropertyId, BookingId = Portal.BookingId,
-            SupplierOrgId = offer.SupplierOrgId, HostOrigin = entry.HostOrigin, OfferId = offer.Id,
-            RequestId = request.RequestId, ServiceName = entry.ServiceName, SupplierName = entry.SupplierName,
-            RequestedFor = requestedFor, CreatedAt = orders.Now, RequestNote = request.Note?.Trim(),
-            CommissionBasisPoints = entry.CommissionBasisPoints, SupplierPriceCents = price,
+            HostOrgId = Portal.OrgId,
+            PropertyId = Portal.PropertyId,
+            BookingId = Portal.BookingId,
+            SupplierOrgId = offer.SupplierOrgId,
+            HostOrigin = entry.HostOrigin,
+            OfferId = offer.Id,
+            RequestId = request.RequestId,
+            ServiceName = entry.ServiceName,
+            SupplierName = entry.SupplierName,
+            RequestedFor = requestedFor,
+            CreatedAt = orders.Now,
+            RequestNote = request.Note?.Trim(),
+            CommissionBasisPoints = entry.CommissionBasisPoints,
+            SupplierPriceCents = price,
             CommissionCents = GuestSupplierOrders.Commission(price, entry.CommissionBasisPoints),
             State = price == 0 ? GuestSupplierOrderState.PendingQuote : GuestSupplierOrderState.Quoted
         };
@@ -142,7 +151,7 @@ public sealed class GuestPortalSupplierOrdersController(
     {
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException
-                   { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_GuestSupplierOrders_BookingId_RequestId" })
+        { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_GuestSupplierOrders_BookingId_RequestId" })
         { return false; }
         return true;
     }

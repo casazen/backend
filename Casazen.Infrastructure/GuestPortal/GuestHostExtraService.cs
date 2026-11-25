@@ -117,9 +117,15 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
 
         var order = new GuestHostExtraOrder
         {
-            Id = scopedId, OrgId = portal.OrgId, BookingId = portal.BookingId, ExtraId = extraId,
-            Name = extra.Name, Quantity = quantity, Amount = amount,
-            Currency = StayCurrency.ForProperty(booking!.Property), CreatedAt = clock.GetUtcNow().UtcDateTime,
+            Id = scopedId,
+            OrgId = portal.OrgId,
+            BookingId = portal.BookingId,
+            ExtraId = extraId,
+            Name = extra.Name,
+            Quantity = quantity,
+            Amount = amount,
+            Currency = StayCurrency.ForProperty(booking!.Property),
+            CreatedAt = clock.GetUtcNow().UtcDateTime,
             Status = extra.RequiresApproval ? GuestHostExtraStatus.AwaitingAuthorization : GuestHostExtraStatus.ReadyToPay
         };
         db.GuestHostExtraOrders.Add(order);
@@ -154,7 +160,9 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
 
             var metadata = new Dictionary<string, string>
             {
-                ["kind"] = "guest-host-extra", ["order_id"] = order.Id.ToString("D"), ["org_id"] = portal.OrgId.ToString("D"),
+                ["kind"] = "guest-host-extra",
+                ["order_id"] = order.Id.ToString("D"),
+                ["org_id"] = portal.OrgId.ToString("D"),
             };
             var key = $"guest-host-extra:{order.Id:N}";
             var currency = StayCurrency.ForStripe(order.Currency);

@@ -32,8 +32,18 @@ public sealed class GuestHostExtrasController(
             .OrderBy(x => x.Name).ToListAsync(ct);
         return Ok(records.Select(x => new
         {
-            x.Id, x.Name, x.Description, x.Price, x.Pricing, x.Inventory, x.CutoffHours, x.DuringStay, x.RequiresApproval,
-            x.Calendar, HasTranslations = x.TranslationsJson != null, Published = x.PropertyIds.Contains(propertyId)
+            x.Id,
+            x.Name,
+            x.Description,
+            x.Price,
+            x.Pricing,
+            x.Inventory,
+            x.CutoffHours,
+            x.DuringStay,
+            x.RequiresApproval,
+            x.Calendar,
+            HasTranslations = x.TranslationsJson != null,
+            Published = x.PropertyIds.Contains(propertyId)
         }));
     }
 
@@ -52,9 +62,15 @@ public sealed class GuestHostExtrasController(
 
         var (savedId, forbidden) = await extras.SaveAsync(scope.OrgId, propertyId, id, new GuestHostExtra
         {
-            Name = input.Name.Trim(), Description = input.Description?.Trim() ?? "", Price = input.Price,
-            Pricing = input.Pricing, Inventory = input.Inventory, CutoffHours = input.CutoffHours,
-            DuringStay = input.DuringStay, RequiresApproval = input.RequiresApproval, Calendar = input.Calendar,
+            Name = input.Name.Trim(),
+            Description = input.Description?.Trim() ?? "",
+            Price = input.Price,
+            Pricing = input.Pricing,
+            Inventory = input.Inventory,
+            CutoffHours = input.CutoffHours,
+            DuringStay = input.DuringStay,
+            RequiresApproval = input.RequiresApproval,
+            Calendar = input.Calendar,
         }, input.Published, async otherId =>
         {
             var other = await resources.ForPropertyAsync(otherId, ct);

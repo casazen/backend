@@ -20,7 +20,10 @@ public sealed class GuestHostExtraTests
         var service = Service(world, stripe);
         var (extra, _) = await service.SaveAsync(portal.OrgId, portal.PropertyId, Guid.Empty, new GuestHostExtra
         {
-            Name = "Culla e kit bimbo", Price = 15m, RequiresApproval = true, Pricing = GuestHostExtraPricing.PerNight,
+            Name = "Culla e kit bimbo",
+            Price = 15m,
+            RequiresApproval = true,
+            Pricing = GuestHostExtraPricing.PerNight,
             Inventory = 1
         }, true, _ => Task.FromResult(true), default);
 
@@ -35,8 +38,12 @@ public sealed class GuestHostExtraTests
 
         var intent = new PaymentIntent
         {
-            Id = "pi_extra", ClientSecret = "pi_extra_secret_mock", Status = "requires_payment_method",
-            Currency = "eur", Amount = 4500, CaptureMethod = "manual",
+            Id = "pi_extra",
+            ClientSecret = "pi_extra_secret_mock",
+            Status = "requires_payment_method",
+            Currency = "eur",
+            Amount = 4500,
+            CaptureMethod = "manual",
             Metadata = new() { ["order_id"] = order.Id.ToString("D"), ["org_id"] = portal.OrgId.ToString("D") },
         };
         stripe.Setup(x => x.CreateConnectedAuthorizationAsync(
