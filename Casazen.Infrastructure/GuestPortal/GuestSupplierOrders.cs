@@ -18,7 +18,7 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         var json = await db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(x => x.Id == propertyId && x.OrgId == orgId)
             .Select(x => x.GuestPortalSetupJson).SingleOrDefaultAsync(ct);
-        return GuestPortalSetup.Read(json).RegionalSuppliers != false;
+        return GuestPortalSetup.Read(json).RegionalSuppliers == true;
     }
 
     public IQueryable<Guid> TrustedSupplierIds(Guid orgId, Guid propertyId) =>

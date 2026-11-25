@@ -21,7 +21,7 @@ namespace Casazen.Web.Controllers;
 [FeatureGate(FeatureFlags.GuestPortalSupplierServices)]
 [PrivateAnswer]
 public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupplierOrders orders, IConfiguration configuration,
-    IHostResourceLookup resources, IAuthorizationService authorization, IOrgContextResolver orgs, IHostSupplierCatalogService catalog) : ControllerBase
+    IHostResourceLookup resources, IAuthorizationService authorization, IOrgContextResolver orgs, IHostSupplierCatalogService catalog, ITrustedSupplierService invitations) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List(Guid propertyId, CancellationToken ct)
@@ -33,6 +33,22 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
         var history = await Orders(orgId, propertyId).AsNoTracking().OrderByDescending(x => x.CreatedAt).ToListAsync(ct);
         return Ok(new { offers, orders = history.Select(x => orders.View(x, x.HostOrigin) with { Complaint = x.HostOrigin ? x.Complaint : null }) });
     }
+
+    [HttpPost("invite")]
+    public async Task<IActionResult> Invite(Guid propertyId, InviteSupplier request, CancellationToken ct)
+    {
+        var (orgId, failure) = await ScopeAsync(propertyId, ct);
+        if (failure is not null)
+            return failure;
+        var actor = User.GetUserId();
+        if (actor is null)
+            return Unauthorized();
+
+        await invitations.InviteSupplierAsync(orgId, new InviteSupplierRequest(request.Email, [propertyId]), actor);
+        return NoContent();
+    }
+
+    public sealed record InviteSupplier([property: Required, EmailAddress, MaxLength(255)] string Email);
 
     [HttpGet("catalog")]
     public async Task<IActionResult> Search(Guid propertyId, [FromQuery] string? search, CancellationToken ct)
