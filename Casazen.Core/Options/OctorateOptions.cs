@@ -11,6 +11,10 @@ public sealed class OctorateOptions
 {
     public const string SectionName = "Octorate";
 
+    public Guid? MasterOrganizationId { get; set; }
+
+    public string? BillingNetworkName { get; set; }
+
     /// <summary>Minutes a consent state lives when the setting is not given.</summary>
     public const int DefaultStateLifetimeMinutes = 10;
 

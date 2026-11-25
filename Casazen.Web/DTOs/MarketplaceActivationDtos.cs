@@ -19,7 +19,9 @@ public sealed record MarketplaceActivationPlanDto(
     bool Creatable,
     bool PropertyLinked,
     Guid? ActivationId,
-    MarketplaceActivationStatus? ActivationStatus)
+    MarketplaceActivationStatus? ActivationStatus,
+    string? VerifiedHotelId = null,
+    bool ManagedByStaff = false)
 {
     public static MarketplaceActivationPlanDto From(MarketplaceActivationPlan plan)
     {
@@ -33,7 +35,9 @@ public sealed record MarketplaceActivationPlanDto(
             plan.Creatable,
             plan.PropertyLinked,
             plan.ActivationId,
-            plan.ActivationStatus);
+            plan.ActivationStatus,
+            plan.VerifiedHotelId,
+            plan.ManagedByStaff);
     }
 }
 

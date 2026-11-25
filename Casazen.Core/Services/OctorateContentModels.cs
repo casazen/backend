@@ -45,6 +45,9 @@ public sealed record OctoratePropertyCreate
     /// <summary>The network of the organization's existing connection (<c>network_name</c>), when it has one; <c>null</c> = none.</summary>
     public string? NetworkName { get; init; }
 
+    /// <summary>The billing network, separate from the network used for access.</summary>
+    public string? BillingNetworkName { get; init; }
+
     /// <summary>The first hour of check-in (0-23); <c>null</c> = not set.</summary>
     public int? CheckinStart { get; init; }
 

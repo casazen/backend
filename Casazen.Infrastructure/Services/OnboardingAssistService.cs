@@ -97,17 +97,25 @@ public sealed class OnboardingAssistService(
         string? channelCode,
         CancellationToken ct)
     {
-        // One open request for each part, property and channel: «Fallo per me» on one portal never stands for, nor blocks, another portal.
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, ct, OpenGroupLock(orgId, part, propertyId, channelCode));
+
+        // The two compliance services can proceed independently. A general request still covers the whole part.
+        var independentContext = IndependentComplianceContext(context);
         var open = await db.OnboardingAssistRequests
             .FirstOrDefaultAsync(
                 r => r.OrgId == orgId
                      && r.PartKey == part
                      && r.PropertyId == propertyId
                      && r.ChannelCode == channelCode
+                     && (independentContext == null || r.Context != independentContext)
                      && OpenStatuses.Contains(r.Status),
                 ct);
         if (open is not null)
         {
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+
             // A request saved without its "To do" (the call failed between the two saves) gets it now: the host that asks again is told the request
             // exists, as before, and finds its status behind a "To do" from then on. CreateAsync is idempotent: a "To do" that exists is linked.
             if (open.ActivityId is null)
@@ -179,6 +187,8 @@ public sealed class OnboardingAssistService(
         db.OnboardingAssistRequests.Add(request);
         activityLog.Record(LogLine(orgId, OrgActivityType.OnboardingAssistRequested, userId, part, context, OnboardingAssistStatus.Requested));
         await db.SaveChangesAsync(ct);
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
 
         // The request is stored: the staff learns of it now, before the host's "To do", so a failure of the "To do" does not leave them unaware.
         TellStaff(request);
@@ -382,13 +392,16 @@ public sealed class OnboardingAssistService(
             if (request.Status != OnboardingAssistStatus.Done)
                 throw new DomainConflictException(OnboardingAssistCodes.NotDone, "AssistRequestNotDone");
 
-            // Another open request of the same part, property and channel stands for it (the partial unique index would refuse the save anyway).
+            await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+                db, ct, OpenGroupLock(request.OrgId, request.PartKey, request.PropertyId, request.ChannelCode));
+            var independentContext = IndependentComplianceContext(request.Context);
             if (await db.OnboardingAssistRequests.AnyAsync(
                     r => r.Id != request.Id
                          && r.OrgId == request.OrgId
                          && r.PartKey == request.PartKey
                          && r.PropertyId == request.PropertyId
                          && r.ChannelCode == request.ChannelCode
+                         && (independentContext == null || r.Context != independentContext)
                          && OpenStatuses.Contains(r.Status),
                     ct))
             {
@@ -736,6 +749,16 @@ public sealed class OnboardingAssistService(
 
     /// <summary>Whether the scope reaches a request of <paramref name="propertyId"/> (the whole org for none), as the host's other operations decide it.</summary>
     private Task<bool> CanReachAsync(HostScope scope, Guid? propertyId, CancellationToken ct) => OnboardingReach.CanReachAsync(db, scope, propertyId, ct);
+
+    private static (PostgresAdvisoryLocks.Scope, string) OpenGroupLock(Guid orgId, OnboardingPartKey part, Guid? propertyId, string? channelCode) =>
+        (PostgresAdvisoryLocks.Scope.OnboardingPanelAssist, $"open:{orgId:N}:{part}:{propertyId:N}:{channelCode}");
+
+    private static string? IndependentComplianceContext(string context) => context switch
+    {
+        OnboardingAssistContexts.PanelPolice => OnboardingAssistContexts.PanelIstat,
+        OnboardingAssistContexts.PanelIstat => OnboardingAssistContexts.PanelPolice,
+        _ => null,
+    };
 
     /// <summary>
     /// Closes a "To do" of the org of the request, as the staff user (the save is the caller's). It does not go through

@@ -89,7 +89,9 @@ public sealed record MarketplaceActivationPlan(
     bool Creatable,
     bool PropertyLinked,
     Guid? ActivationId,
-    MarketplaceActivationStatus? ActivationStatus);
+    MarketplaceActivationStatus? ActivationStatus,
+    string? VerifiedHotelId = null,
+    bool ManagedByStaff = false);
 
 /// <summary>
 /// The start of an activation: the portal, the property and the access data the portal asked for. The username and password are request-only: they

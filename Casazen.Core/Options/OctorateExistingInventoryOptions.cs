@@ -39,6 +39,9 @@ public sealed class OctorateExistingInventoryOptions
     /// <summary>The capability flags of each channel, keyed by the portal code (for example <c>142</c>), compared without regard to case.</summary>
     public Dictionary<string, OctorateExistingInventoryChannelOptions> Channels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Approved initial calendar source, keyed by accommodation ID for this environment.</summary>
+    public Dictionary<string, string> InitialCalendarPortals { get; set; } = new(StringComparer.Ordinal);
+
     /// <summary>The checks of the access, brought into their ranges.</summary>
     public int EffectiveAccessCheckMaxAttempts =>
         AccessCheckMaxAttempts is >= 1 and <= MaxAccessCheckMaxAttempts ? AccessCheckMaxAttempts : DefaultAccessCheckMaxAttempts;
@@ -98,4 +101,7 @@ public sealed class OctorateExistingInventoryChannelOptions
 
     /// <summary><c>MARK_CONNECTED</c> was verified for this channel (<c>Octorate:ExistingInventory:Channels:{code}:MarkConnected</c>).</summary>
     public bool MarkConnected { get; set; }
+
+    /// <summary>Whether this channel requires and supports committing the mapping after it has been read back.</summary>
+    public bool CommitMapping { get; set; }
 }

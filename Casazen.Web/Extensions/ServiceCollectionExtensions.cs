@@ -1015,6 +1015,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceRequestAssistService, ServiceRequestAssistService>();
         // Internal activities performed by staff on properties (NF-22, agency tier).
         services.AddScoped<IInternalActivityService, InternalActivityService>();
+        services.AddScoped<IPropertyImportReviewService, PropertyImportReviewService>();
+        services.AddScoped<PropertyActivationServices>();
+        services.AddScoped<PropertyActivationAccounts>();
         services.AddScoped<CalendarSyncService>();
         // The supplier's answers about the "Available" events of its calendar (they occupy until answered).
         services.AddScoped<SupplierFreeEventService>();

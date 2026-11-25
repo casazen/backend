@@ -9019,4 +9019,33 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="CleaningVatRememberForbidden" xml:space="preserve">
     <value>Only someone who manages the whole organization can remember the answer for the company: answer for this cleaning only.</value>
   </data>
+  <data name="MarketplaceMappingPending" xml:space="preserve">
+    <value>The room mappings are awaiting confirmation. Check them and retry.</value>
+  </data>
+  <data name="MarketplaceReservationImportUnknown" xml:space="preserve">
+    <value>The reservation import result is unknown. Ask staff to check it.</value>
+  </data>
+  <data name="MarketplaceReservationImportIncomplete" xml:space="preserve">
+    <value>The reservation read is incomplete. Try again.</value>
+  </data>
+  <data name="MarketplaceCalendarPending" xml:space="preserve">
+    <value>Prices and availability are awaiting verification. Check the calendar and retry.</value>
+  </data>
+  <data name="MarketplaceCalendarSourceRequired" xml:space="preserve">
+    <value>The calendar is empty. Ask staff to select the portal for the initial import.</value>
+  </data>
+  <data name="MarketplaceActivationBusy" xml:space="preserve">
+    <value>Another operation is running for this property. Try again shortly.</value>
+  </data>
+  <data name="MarketplaceConnectionUnconfirmed" xml:space="preserve">
+    <value>The connection result is unknown. Ask staff to check it before retrying.</value>
+  </data>
+  <data name="PropertyImportInvalid" xml:space="preserve">
+    <value>The imported data is invalid.</value>
+  </data>
+  <data name="PropertyImportSourceAssigned" xml:space="preserve">
+    <value>The source identity is already assigned to a listing.</value>
+  </data>
+  <data name="OctoratePreparationUnavailable" xml:space="preserve"><value>The property preparation requires a staff review.</value></data>
+  <data name="PropertyActivationServicesUnavailable" xml:space="preserve"><value>Check the required portals and publication status before continuing.</value></data>
 </root>

@@ -357,6 +357,17 @@ public static class EncryptedColumns
             OctorateOAuthPurpose,
             nameof(OctorateConnection.EncryptedAccessToken),
             nameof(OctorateConnection.EncryptedRefreshToken)),
+        new EncryptedEntity<OctoratePreparation>(
+            "Casazen.Octorate.Preparation",
+            nameof(OctoratePreparation.EncryptedRefreshToken)),
+        new EncryptedEntity<PropertyActivationCredential>(
+            "Casazen.PropertyActivation.Credential",
+            nameof(PropertyActivationCredential.Username),
+            nameof(PropertyActivationCredential.Password),
+            nameof(PropertyActivationCredential.WebServiceKey)),
+        new EncryptedEntity<PropertyActivationCredentialAssignment>(
+            "Casazen.PropertyActivation.Assignment",
+            nameof(PropertyActivationCredentialAssignment.UnitCode)),
         // NF-89: the value and the display name of a CRM contact (E07/F01/US01/T01).
         new EncryptedEntity<GuestContact>(
             GuestContactPurpose,

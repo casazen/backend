@@ -104,7 +104,7 @@ public sealed class MarketplaceActivationsController(
         return Ok(MarketplaceActivationStateDto.From(await activations.GetStateAsync(caller.OrgId, caller.Scope, id, cancellationToken)));
     }
 
-    /// <summary>Imports the rooms, the reservations and the calendar of the channel into the channel manager (asynchronous there) and answers the state.</summary>
+    /// <summary>Requests room import ahead of mapping and returns the connection state.</summary>
     /// <response code="200">The state.</response>
     /// <response code="404"><c>marketplace_activation_not_found</c>.</response>
     /// <response code="409">

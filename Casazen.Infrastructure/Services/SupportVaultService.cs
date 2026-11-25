@@ -210,7 +210,8 @@ public sealed class SupportVaultService(
             values.Password,
             string.IsNullOrEmpty(values.ExtraCode) ? null : values.ExtraCode,
             now,
-            now.AddSeconds(SupportVaultLimits.VisibleSeconds));
+            now.AddSeconds(SupportVaultLimits.VisibleSeconds),
+            values.UnitCode);
     }
 
     /// <summary>
@@ -226,7 +227,7 @@ public sealed class SupportVaultService(
                 return await SecretOfAsync(request.OrgId, request.PropertyId, SupportVaultSecretKind.OctoratePanel, ct);
 
             case SupportVaultCredentialKind.Police:
-                return await db.PropertyQuesturaCredentials
+                return await SharedAsync(request, "alloggiati", ct) ?? await db.PropertyQuesturaCredentials
                     .IgnoreQueryFilters([Tenant])
                     .AsNoTracking()
                     .Where(c => c.OrgId == request.OrgId && c.PropertyId == request.PropertyId)
@@ -234,7 +235,7 @@ public sealed class SupportVaultService(
                     .FirstOrDefaultAsync(ct);
 
             case SupportVaultCredentialKind.RegionalIstat:
-                return await db.PropertyIstatCredentials
+                return await SharedAsync(request, "istat", ct) ?? await db.PropertyIstatCredentials
                            .IgnoreQueryFilters([Tenant])
                            .AsNoTracking()
                            .Where(c => c.OrgId == request.OrgId && c.PropertyId == request.PropertyId)
@@ -245,6 +246,20 @@ public sealed class SupportVaultService(
             default:
                 return null;
         }
+    }
+
+    private Task<VaultValues?> SharedAsync(OnboardingAssistRequest request, string service, CancellationToken ct)
+    {
+        var now = Now();
+        return (from assignment in db.PropertyActivationCredentialAssignments.IgnoreQueryFilters([Tenant]).AsNoTracking()
+                join account in db.PropertyActivationCredentials.IgnoreQueryFilters([Tenant]).AsNoTracking()
+                   on assignment.AccountId equals account.Id
+                where assignment.OrgId == request.OrgId && account.OrgId == request.OrgId
+                   && assignment.PropertyId == request.PropertyId && assignment.Service == service && account.Service == service
+                   && account.ExpiresAt > now
+                select new VaultValues(account.Username, account.Password,
+                   service == "alloggiati" ? account.WebServiceKey : assignment.UnitCode,
+                   service == "alloggiati" ? assignment.UnitCode : null)).SingleOrDefaultAsync(ct);
     }
 
     private Task<VaultValues?> SecretOfAsync(Guid orgId, Guid? propertyId, SupportVaultSecretKind kind, CancellationToken ct) =>
@@ -286,7 +301,7 @@ public sealed class SupportVaultService(
     private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
 
     /// <summary>The values of a credential, in clear, inside the service only: it hides them from <c>ToString</c> too.</summary>
-    private sealed record VaultValues(string Username, string Password, string? ExtraCode)
+    private sealed record VaultValues(string Username, string Password, string? ExtraCode, string? UnitCode = null)
     {
         public override string ToString() => nameof(VaultValues) + " { *** }";
     }

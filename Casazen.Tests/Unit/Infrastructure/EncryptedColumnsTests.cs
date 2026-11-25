@@ -73,6 +73,7 @@ public class EncryptedColumnsTests
                 // ADR-023-R1: the OAuth tokens of the Octorate connection of an organization.
                 "OctorateConnection.EncryptedAccessToken:Casazen.Octorate.OAuth",
                 "OctorateConnection.EncryptedRefreshToken:Casazen.Octorate.OAuth",
+                "OctoratePreparation.EncryptedRefreshToken:Casazen.Octorate.Preparation",
                 // E11/F01/US01/T01: the IBAN and the QR-IBAN of the issuer of an organization; E17/F01/US01/T01: the personal data of an issuer (an owner who
                 // issues is often a private person): legal name, fiscal code, VAT number, street, house number, postal code, city and PEC.
                 "OrgFiscalIssuerProfile.AddressCivic:Casazen.OrgFiscalIssuerProfile",
@@ -113,6 +114,10 @@ public class EncryptedColumnsTests
                 "PlatformAiSettings.ApiKey:Casazen.PlatformAiSettings",
                 // NF-13: encrypted property access codes (gate, lockbox, smart lock PIN).
                 "PropertyAccessCode.EncryptedCode:Casazen.PropertyAccessCode",
+                "PropertyActivationCredential.Password:Casazen.PropertyActivation.Credential",
+                "PropertyActivationCredential.Username:Casazen.PropertyActivation.Credential",
+                "PropertyActivationCredential.WebServiceKey:Casazen.PropertyActivation.Credential",
+                "PropertyActivationCredentialAssignment.UnitCode:Casazen.PropertyActivation.Assignment",
                 "PropertyICalFeed.ImportUrl:Casazen.PropertyICalFeed.ImportUrl",
                 // E20/F03/US01/T01: the regional ISTAT credentials the host enters (write-only, opened only through the support vault).
                 "PropertyIstatCredentials.Password:Casazen.PropertyIstatCredentials",

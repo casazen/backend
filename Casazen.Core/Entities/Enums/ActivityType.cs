@@ -227,4 +227,5 @@ public enum ActivityType
     /// Listed only to who holds <c>agency.invoice.manage</c>, and closed by the system when no draft of the month is left open (every one issued or discarded).
     /// </summary>
     SelfBillingDraftsToReview = 171,
+    ImportedPropertyReview = 180,
 }
