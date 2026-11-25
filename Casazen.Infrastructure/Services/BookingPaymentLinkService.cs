@@ -141,7 +141,7 @@ public sealed class BookingPaymentLinkService(
     public async Task<GuestStayBalance?> ReadGuestBalanceAsync(Guid orgId, Guid bookingId, CancellationToken ct)
     {
         var booking = await ForGuestStay(orgId, bookingId).AsNoTracking().SingleOrDefaultAsync(ct);
-        return booking is null ? null : await GuestBalanceAsync(booking, ct);
+        return booking is null ? null : (await GuestBalanceAsync(booking, ct)).Balance;
     }
 
     public async Task<GuestStayBalanceIntent> PrepareGuestBalanceAsync(Guid orgId, Guid bookingId, CancellationToken ct)
@@ -151,9 +151,11 @@ public sealed class BookingPaymentLinkService(
             (PostgresAdvisoryLocks.Scope.BookingCancellation, bookingId.ToString("N")),
             (PostgresAdvisoryLocks.Scope.BookingPayment, bookingId.ToString("N")));
         var booking = await ForGuestStay(orgId, bookingId).SingleOrDefaultAsync(ct) ?? throw NotFound();
-        var balance = await GuestBalanceAsync(booking, ct);
+        var (balance, retryDeferred) = await GuestBalanceAsync(booking, ct);
         if (!balance.CanPay)
             throw Unavailable();
+        if (retryDeferred)
+            return await ResumeDeferredBalanceAsync(booking, balance.Amount, ct);
 
         var prepared = await PrepareIntentAsync(booking, balance.Amount, _clock.GetUtcNow().UtcDateTime, fromGuestPortal: true, ct);
         if (string.IsNullOrWhiteSpace(prepared.Intent.ClientSecret))
@@ -165,6 +167,24 @@ public sealed class BookingPaymentLinkService(
         return new GuestStayBalanceIntent(prepared.Intent.ClientSecret, booking.Org.StripeConnectedAccountId!, balance.Amount);
     }
 
+    private async Task<GuestStayBalanceIntent> ResumeDeferredBalanceAsync(Booking booking, decimal amount, CancellationToken ct)
+    {
+        var payment = DeferredCharges.FindPayment(booking, booking.Payments);
+        var account = payment?.StripeAccountId ?? booking.Org.StripeConnectedAccountId;
+        if (payment is null || PaymentRefundService.PaymentIntentIdOf(payment) is not { } intentId
+            || string.IsNullOrWhiteSpace(account))
+            throw Unavailable();
+
+        // The deadline job retries this same intent, so opening it on-session cannot create a second charge.
+        var intent = await stripeService.GetPaymentIntentAsync(intentId, account, ct);
+        if (intent.Status is null || !PayableIntentStatuses.Contains(intent.Status)
+            || intent.Amount != (long)Math.Round(amount * 100m, MidpointRounding.AwayFromZero)
+            || string.IsNullOrWhiteSpace(intent.ClientSecret))
+            throw Unavailable();
+
+        return new GuestStayBalanceIntent(intent.ClientSecret, account, amount);
+    }
+
     private IQueryable<Booking> ForGuestStay(Guid orgId, Guid bookingId) =>
         db.Bookings.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(b => b.OrgId == orgId && b.Id == bookingId)
@@ -172,28 +192,31 @@ public sealed class BookingPaymentLinkService(
             .Include(b => b.Org)
             .Include(b => b.Payments);
 
-    private async Task<GuestStayBalance> GuestBalanceAsync(Booking booking, CancellationToken ct)
+    private async Task<(GuestStayBalance Balance, bool RetryDeferred)> GuestBalanceAsync(Booking booking, CancellationToken ct)
     {
         var currency = StayCurrency.ForProperty(booking.Property);
         if (booking.Source != BookingSource.Direct || booking.Status == BookingStatus.Cancelled)
-            return new GuestStayBalance(0m, 0m, currency, false, false, false);
+            return (new GuestStayBalance(0m, 0m, currency, false, false, false), false);
 
         // The Octorate booking engine also maps to Direct, but CasaZen never collects an imported stay.
         if (!string.IsNullOrWhiteSpace(booking.OctorateReservationId)
             && !await db.OctorateBookingSyncs.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
                 .AnyAsync(s => s.BookingId == booking.Id && s.OrgId == booking.OrgId, ct))
-            return new GuestStayBalance(0m, 0m, currency, false, false, false, External: true);
+            return (new GuestStayBalance(0m, 0m, currency, false, false, false, External: true), false);
 
         var amount = HostPaymentLinks.BalanceOf(booking, booking.Payments);
         var deferredPayment = DeferredCharges.FindPayment(booking, booking.Payments);
         var deferred = amount > 0m && booking.PaymentOption == PaymentOption.OnCancellationDeadline
             && (deferredPayment is null || !DeferredCharges.IsCollected(deferredPayment.Status));
+        var retry = deferred && deferredPayment is not null
+            && DeferredCharges.AwaitsGuestPayment(booking)
+            && PaymentRefundService.PaymentIntentIdOf(deferredPayment) is not null;
         var processing = amount > 0m && booking.Payments.Any(p => p.Status == PaymentStatus.Processing);
         // On-site bookings keep their agreed collection method and the separately settled tourist tax.
-        var canPay = amount > 0m && !deferred && !processing && booking.Org.CanTakeDirectPayments
+        var canPay = amount > 0m && (!deferred || retry) && !processing && booking.Org.CanTakeDirectPayments
             && booking.PaymentOption != PaymentOption.OnSite
             && booking.NoShowAt is null && booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
-        return new GuestStayBalance(amount, booking.TotalPrice, currency, canPay, deferred, processing);
+        return (new GuestStayBalance(amount, booking.TotalPrice, currency, canPay, deferred && !retry, processing), retry);
     }
 
     private async Task<(Payment Payment, Stripe.PaymentIntent Intent)> PrepareIntentAsync(

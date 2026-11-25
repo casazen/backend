@@ -262,6 +262,33 @@ public class BookingPaymentLinkProofTests
         Assert.Empty(h.LastIntentId);
     }
 
+    [Fact]
+    public async Task GuestBalance_ResumesTheExistingFailedDeadlineIntent()
+    {
+        var h = new Harness();
+        var booking = await h.SeedBookingAsync(300m, b =>
+        {
+            AtItsDeadline(b);
+            b.DeferredChargeFailedAt = new DateTime(2026, 11, 5, 6, 0, 0, DateTimeKind.Utc);
+        }, DeferredRow("seti_1", PaymentStatus.Failed, intentId: "pi_deferred"));
+        h.AddIntent(new PaymentIntent
+        {
+            Id = "pi_deferred",
+            Status = "requires_action",
+            Amount = 30000,
+            ClientSecret = "existing_intent_secret",
+        });
+
+        await using var db = h.NewDb(null);
+        var service = h.Service(db);
+        Assert.Equal(new GuestStayBalance(300m, 300m, "EUR", true, false, false),
+            await service.ReadGuestBalanceAsync(OrgA, booking, CancellationToken.None));
+        Assert.Equal(new GuestStayBalanceIntent("existing_intent_secret", Account, 300m),
+            await service.PrepareGuestBalanceAsync(OrgA, booking, CancellationToken.None));
+        Assert.Empty(h.LastIntentId);
+        Assert.Single(await db.Payments.ToListAsync());
+    }
+
     private sealed class Harness
     {
         private readonly string _database = $"payment-link-{Guid.NewGuid():N}";
@@ -332,6 +359,8 @@ public class BookingPaymentLinkProofTests
 
         /// <summary>The PaymentIntent the last link made.</summary>
         public string LastIntentId { get; private set; } = string.Empty;
+
+        public void AddIntent(PaymentIntent intent) => _intents.Add(intent.Id, intent);
 
         /// <summary>The PaymentIntents cancelled on Stripe, in order.</summary>
         public List<string> CancelledIntents { get; } = [];
