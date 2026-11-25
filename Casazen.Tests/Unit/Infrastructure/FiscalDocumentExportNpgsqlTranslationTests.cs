@@ -65,8 +65,12 @@ public class FiscalDocumentExportNpgsqlTranslationTests
         Assert.Contains("\"PropertyMemberAccesses\"", documents, StringComparison.Ordinal);
         Assert.Contains("EXISTS", documents, StringComparison.Ordinal);
 
-        // Never the XML of an invoice, the lines, nor the fiscal data of the recipient: only the columns of the file.
-        foreach (var never in new[] { "\"FatturaPaXml\"", "\"FiscalDocumentLines\"", "\"RecipientFiscalCode\"", "\"RecipientVatNumber\"", "\"RecipientAddressStreet\"", "\"RecipientPec\"" })
+        // The amount of settled extras is a correlated aggregate. The export does not read the full line contents.
+        Assert.Contains("\"FiscalDocumentLines\"", documents, StringComparison.Ordinal);
+        Assert.Contains("SUM(", documents, StringComparison.Ordinal);
+        Assert.Contains("\"LineType\"", documents, StringComparison.Ordinal);
+        // Never the XML or the fiscal data of the recipient.
+        foreach (var never in new[] { "\"FatturaPaXml\"", "\"RecipientFiscalCode\"", "\"RecipientVatNumber\"", "\"RecipientAddressStreet\"", "\"RecipientPec\"" })
             Assert.DoesNotContain(never, documents, StringComparison.Ordinal);
 
         // The bookings of the rows by their ids, with the name of the property even when it was deleted (no soft-delete filter on that read).
@@ -121,8 +125,9 @@ public class FiscalDocumentExportNpgsqlTranslationTests
         new FakeTimeProvider(new DateTimeOffset(2026, 11, 12, 10, 0, 0, TimeSpan.Zero)),
         NullLogger<FiscalDocumentService>.Instance);
 
-    /// <summary>The table a statement reads from first (its main table): the first <c>FROM</c> of the statement.</summary>
-    private static string MainTable(string sql) => Regex.Match(sql, "\\sFROM\\s+\"(?<table>\\w+)\"").Groups["table"].Value;
+    /// <summary>The outer FROM is unindented. A projection may have a FROM inside a correlated subquery.</summary>
+    private static string MainTable(string sql) =>
+        Regex.Match(sql, "^FROM\\s+\"(?<table>\\w+)\"", RegexOptions.Multiline).Groups["table"].Value;
 
     /// <summary>
     /// One row for the documents and one for the bookings, so the statements that come after the first are compiled too; the payments and the figures of the channel manager (the second
@@ -136,10 +141,10 @@ public class FiscalDocumentExportNpgsqlTranslationTests
                 ("Id", typeof(Guid)), ("BookingId", typeof(Guid)), ("Kind", typeof(int)), ("Number", typeof(string)), ("IssueDate", typeof(DateOnly)),
                 ("RecipientName", typeof(string)), ("TaxableBase", typeof(decimal)), ("VatAmount", typeof(decimal)), ("StampDuty", typeof(decimal)),
                 ("Total", typeof(decimal)), ("Currency", typeof(string)), ("PaymentState", typeof(int)), ("SdiStatus", typeof(string)), ("Source", typeof(int)), ("PaymentChannel", typeof(int)),
-                ("Purpose", typeof(int)),
+                ("Purpose", typeof(int)), ("PaidExtras", typeof(decimal)),
             ],
             Guid.NewGuid(), BookingId, (int)DocumentKind.Invoice, "2026/1", new DateOnly(2026, 10, 5), "TEST Cliente Srl", 330.18m, 31.82m, 0m, 362m, "EUR",
-            (int)FiscalDocumentPaymentState.Unknown, FiscalDocumentSdiStatuses.ToSend, (int)FiscalDocumentSource.CasaZen, (int)FiscalPaymentChannel.CasaZen, (int)FiscalDocumentPurpose.GuestStay),
+            (int)FiscalDocumentPaymentState.Unknown, FiscalDocumentSdiStatuses.ToSend, (int)FiscalDocumentSource.CasaZen, (int)FiscalPaymentChannel.CasaZen, (int)FiscalDocumentPurpose.GuestStay, 0m),
         "Bookings" => Table([("Id", typeof(Guid)), ("BookingCode", typeof(string)), ("Name", typeof(string))], BookingId, "ABCDEFGHJK", "Trullo"),
         _ => null,
     };
