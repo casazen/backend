@@ -77,6 +77,26 @@ public sealed class AssistantRulesService(
         return EffectiveAssistantRules.Of(row);
     }
 
+    public async Task SetEnabledAsync(Guid orgId, bool enabled, string userId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        var row = await FindRulesAsync(orgId, ct);
+        if ((row?.Enabled ?? false) == enabled)
+            return;
+
+        if (row is null)
+        {
+            row = new OrgAssistantRules { OrgId = orgId };
+            db.OrgAssistantRules.Add(row);
+        }
+
+        row.Enabled = enabled;
+        row.InstructionVersion = checked(row.InstructionVersion + 1);
+        row.UpdatedAt = Now();
+        row.UpdatedByUserId = userId;
+        await AssistantStore.SaveAsync(db, ct);
+    }
+
     public async Task<PropertyAssistantSettingsItem> GetPropertySettingsAsync(Guid orgId, Guid propertyId, CancellationToken ct = default)
     {
         await AssistantStore.EnsurePropertyAsync(db, orgId, propertyId, ct);

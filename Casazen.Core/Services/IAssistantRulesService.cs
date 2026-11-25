@@ -30,6 +30,9 @@ public interface IAssistantRulesService
     /// </summary>
     Task<EffectiveAssistantRules> SaveAsync(Guid orgId, AssistantRulesInput rules, string userId, CancellationToken ct = default);
 
+    /// <summary>Sets the organization switch while preserving its other assistant instructions.</summary>
+    Task SetEnabledAsync(Guid orgId, bool enabled, string userId, CancellationToken ct = default);
+
     /// <summary>
     /// The exceptions of a property, a null field meaning «as the organization»; all null when the property has none. 404 <c>property_not_found</c> for a property that
     /// is not the organization's.
