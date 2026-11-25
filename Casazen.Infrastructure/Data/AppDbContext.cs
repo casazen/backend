@@ -48,6 +48,14 @@ public class AppDbContext(
 
     /// <summary>Custom domains to remove from the Vercel project (BK-17); not tenant-owned, read by the platform job only.</summary>
     public DbSet<PendingDomainRemoval> PendingDomainRemovals { get; set; } = null!;
+    public DbSet<PropertyActivationCredential> PropertyActivationCredentials => Set<PropertyActivationCredential>();
+
+    public DbSet<PropertyActivationCredentialAssignment> PropertyActivationCredentialAssignments => Set<PropertyActivationCredentialAssignment>();
+
+    public DbSet<OctoratePreparation> OctoratePreparations => Set<OctoratePreparation>();
+
+    public DbSet<PropertyImportReview> PropertyImportReviews => Set<PropertyImportReview>();
+
     public DbSet<Property> Properties { get; set; } = null!;
     public DbSet<PropertyOwner> PropertyOwners { get; set; } = null!;
     public DbSet<PropertyOwnership> PropertyOwnerships { get; set; } = null!;
@@ -586,6 +594,28 @@ public class AppDbContext(
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<PropertyActivationCredential>().HasIndex(p => new { p.OrgId, p.ExpiresAt });
+        modelBuilder.Entity<PropertyActivationCredentialAssignment>(assignment =>
+        {
+            assignment.HasOne<Property>().WithMany().HasForeignKey(a => a.PropertyId).OnDelete(DeleteBehavior.Cascade);
+            assignment.HasOne<PropertyActivationCredential>().WithMany().HasForeignKey(a => a.AccountId).OnDelete(DeleteBehavior.Cascade);
+            assignment.HasIndex(a => new { a.OrgId, a.PropertyId, a.Service }).IsUnique();
+        });
+
+        modelBuilder.Entity<OctoratePreparation>(row =>
+        {
+            row.HasOne<Property>().WithMany().HasForeignKey(p => p.PropertyId).OnDelete(DeleteBehavior.Cascade);
+            row.HasIndex(p => new { p.Environment, p.PropertyId }).IsUnique();
+            row.HasIndex(p => new { p.Environment, p.AccommodationId }).IsUnique();
+            row.HasIndex(p => new { p.Environment, p.BatchId });
+        });
+
+        modelBuilder.Entity<PropertyImportReview>(review =>
+        {
+            review.HasOne<Property>().WithOne().HasForeignKey<PropertyImportReview>(p => p.Id).OnDelete(DeleteBehavior.Cascade);
+            review.HasIndex(p => new { p.OrgId, p.Provider, p.SourceId }).IsUnique();
+        });
 
         modelBuilder.Entity<Property>()
             .HasMany(p => p.Bookings)

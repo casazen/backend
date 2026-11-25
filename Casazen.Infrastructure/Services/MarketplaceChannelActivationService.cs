@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -23,11 +24,8 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// <para><b>Credentials.</b> The username and password reach <see cref="StartAsync"/> inside <see cref="MarketplaceActivationStart"/>, go to the
 /// channel manager in one call and are forgotten: no column, no draft, no log line, no message holds them.</para>
-/// <para><b>One connection.</b> The start runs under an advisory lock keyed by org, property and portal. Under it the activation is looked up; one that
-/// has its connection is returned. Otherwise the connections of the accommodation are listed first: the channel manager has no idempotency key, so a
-/// connection of the channel that already exists is never joined by a second one. If the activation row exists without its connection (an earlier
-/// start whose answer was lost) the connection found is taken; if there is no row, the connection was not made by CasaZen and is a 409. When the
-/// answer of the create is lost the row is kept without its id, so the next start finds the connection in the list.</para>
+/// <para><b>One connection.</b> Start is serialized per organization, accommodation and portal. An existing connection is adopted only when a single
+/// candidate matches the supplied listing ID. A timed-out create cannot be repeated until the outcome has been reconciled.</para>
 /// <para><b>A connection that is gone.</b> A step that finds the connection of the activation no longer listed (removed on the channel manager) frees the
 /// activation: it forgets the connection id and is To fix with <c>connection_missing</c>, then answers the 409. The next start goes through the list and
 /// makes (or takes) a connection on the same row. The start itself never frees a row, because the list may lag just after a create, and a read of the
@@ -46,6 +44,7 @@ namespace Casazen.Infrastructure.Services;
 public sealed class MarketplaceChannelActivationService(
     AppDbContext db,
     IOctorateApiClient client,
+    IBookingImportService bookings,
     IOctorateOrgScope orgScope,
     IFeatureFlags featureFlags,
     IHostEnvironment hostEnvironment,
@@ -58,14 +57,6 @@ public sealed class MarketplaceChannelActivationService(
 
     /// <summary>The code kept on a row whose create may or may not have reached the channel manager (the same as <see cref="OctorateServerException"/>).</summary>
     private const string UnknownOutcomeCode = "octorate_unavailable";
-
-    /// <summary>The imports of the D6 sequence, in order: the rooms first (they are what is mapped), then the reservations and the calendar.</summary>
-    private static readonly (OctorateConnectionAction Action, OctorateD6Operation Operation)[] ImportActions =
-    [
-        (OctorateConnectionAction.ImportRooms, OctorateD6Operation.ImportRooms),
-        (OctorateConnectionAction.ImportReservations, OctorateD6Operation.ImportReservations),
-        (OctorateConnectionAction.ImportCalendar, OctorateD6Operation.ImportCalendar),
-    ];
 
     public async Task<MarketplaceActivationPlan> GetPlanAsync(
         Guid orgId,
@@ -80,7 +71,7 @@ public sealed class MarketplaceChannelActivationService(
         await MarketplaceReads.EnsurePropertyInScopeAsync(db, orgId, scope, propertyId, ct);
         var connectionKey = await ConnectedAccountAsync(orgId, ct) ?? throw NotConnected();
 
-        var linked = await LinkOfAsync(orgId, propertyId, connectionKey, ct) is not null;
+        var link = await LinkOfAsync(orgId, propertyId, connectionKey, ct);
         var existing = await db.MarketplaceActivations.AsNoTracking()
             .Where(a => a.OrgId == orgId && a.PropertyId == propertyId && a.Kind == kind && a.TargetCode == portal.PortalCode)
             .Select(a => new { a.Id, a.Status })
@@ -103,9 +94,11 @@ public sealed class MarketplaceChannelActivationService(
             propertyId,
             requirements,
             IsCreatable(portal),
-            linked,
+            link is not null,
             existing?.Id,
-            existing?.Status);
+            existing?.Status,
+            portal.RequiresHotelId ? link?.HotelIdFor(portal.PortalCode) : null,
+            await db.OctorateConnections.AsNoTracking().AnyAsync(c => c.Id == connectionKey && c.OrgId == orgId && c.UsesMasterAccount, ct));
     }
 
     public async Task<MarketplaceActivationState> StartAsync(
@@ -122,12 +115,12 @@ public sealed class MarketplaceChannelActivationService(
         if (!IsCreatable(portal))
             throw new DomainRuleException(MarketplaceActivationErrorCodes.PortalNotCreatable, "MarketplacePortalNotCreatable");
 
-        // One start of this property and portal at a time. The lock is held until the commit, the calls to the channel manager included: the
-        // request that waits then finds the activation of the one before it. Outside PostgreSQL there is no lock.
+        // The remote connection belongs to the accommodation, which can cover several CasaZen properties.
+        // Serialize the read and possible creation for that accommodation and portal.
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db,
             ct,
-            (PostgresAdvisoryLocks.Scope.MarketplaceChannelActivation, $"{orgId:N}:{request.PropertyId:N}:{portal.PortalCode}"));
+            (PostgresAdvisoryLocks.Scope.MarketplaceChannelActivation, $"{orgId:N}:{link.AccommodationId}:{portal.PortalCode}"));
 
         var activation = await db.MarketplaceActivations.FirstOrDefaultAsync(
             a => a.OrgId == orgId && a.PropertyId == request.PropertyId && a.Kind == request.Kind && a.TargetCode == portal.PortalCode,
@@ -141,15 +134,27 @@ public sealed class MarketplaceChannelActivationService(
 
         // What the portal asks for is checked only when a connection is to be made: a second start that carries no credentials (the wizard keeps none)
         // still gets the activation that exists.
-        var create = ConnectionDataOf(portal, request);
+        var knownHotelId = portal.RequiresHotelId ? link.HotelIdFor(portal.PortalCode) : null;
+        var create = ConnectionDataOf(portal, knownHotelId is null ? request : request with { HotelId = knownHotelId });
 
         OctorateConnectionInfo[] listed;
         using (orgScope.Use(orgId))
             listed = await client.ListConnectionsAsync(link.AccommodationId, ct);
 
-        var found = listed.FirstOrDefault(c => string.Equals(c.PortalCode, portal.PortalCode, StringComparison.Ordinal));
-        if (found is not null && activation is null)
+        var candidates = listed.Where(c => string.Equals(c.PortalCode, portal.PortalCode, StringComparison.Ordinal)).ToArray();
+        var found = candidates.Length == 1 && create.HotelId is not null
+            && string.Equals(candidates[0].HotelId, create.HotelId, StringComparison.Ordinal)
+            ? candidates[0]
+            : null;
+        if (candidates.Length > 0 && (found is null || await db.MarketplaceActivations.AnyAsync(
+                a => a.OrgId == orgId && a.PropertyId != request.PropertyId && a.TargetCode == portal.PortalCode
+                     && a.OctorateConnectionId == found.ConnectionId && a.Status != MarketplaceActivationStatus.Deactivated,
+                ct)))
+        {
             throw new DomainConflictException(MarketplaceActivationErrorCodes.ConnectionExists, "MarketplaceConnectionExists");
+        }
+        if (found is null && activation?.LastErrorCode == UnknownOutcomeCode)
+            throw new DomainConflictException("marketplace_connection_unconfirmed", "MarketplaceConnectionUnconfirmed");
 
         var now = Now();
         var isNew = activation is null;
@@ -209,6 +214,16 @@ public sealed class MarketplaceChannelActivationService(
             }
         }
 
+        if (activation.OctorateConnectionId != connection.ConnectionId)
+        {
+            activation.RoomsImportRequestedAt = null;
+            activation.ReservationsImportRequestedAt = null;
+            activation.ReservationsImportAcceptedAt = null;
+            activation.CalendarImportRequestedAt = null;
+            activation.MarkConnectedRequestedAt = null;
+            activation.MappingCommittedAt = null;
+        }
+
         activation.OctorateConnectionId = connection.ConnectionId;
         activation.Status = MarketplaceActivationStatus.Pending;
         activation.IsDeclared = false;
@@ -240,27 +255,23 @@ public sealed class MarketplaceChannelActivationService(
         var activation = await FindActivationAsync(orgId, scope, activationId, track: true, ct);
         var link = await RequireLinkAsync(orgId, activation.PropertyId!.Value, ct);
 
-        // Fail closed (D6): a channel whose first operation was never verified is asked nothing, not even to list its connection.
-        EnsureVerified(activation, ImportActions[0].Operation);
+        EnsureVerified(activation, OctorateD6Operation.ImportRooms);
+        await using var operationLock = await LockOperationAsync(link, ct);
+        await db.Entry(activation).ReloadAsync(ct);
         var connection = await RequireConnectionAsync(orgId, link, activation, ct);
         await EnsurePanelAccessAsync(activation, connection, ct);
-        var connectionId = activation.OctorateConnectionId!;
+        var connectionId = connection.ConnectionId;
 
-        await WithChannelManagerAsync(
-            orgId,
-            activation,
-            async () =>
+        await WithChannelManagerAsync(orgId, activation, async () =>
+        {
+            var rooms = await client.GetConnectionMappingAsync(link.AccommodationId, connectionId, ct);
+            if (rooms.Length == 0 && activation.RoomsImportRequestedAt is null)
             {
-                foreach (var (action, operation) in ImportActions)
-                {
-                    // The operations that are verified run in order and the import stops at the first one that is not (the first was checked above).
-                    EnsureVerified(activation, operation);
-                    await client.RunConnectionActionAsync(link.AccommodationId, connectionId, action, ct);
-                }
-            },
-            ct);
+                await RunActionOnceAsync(activation, link, connectionId, OctorateConnectionAction.ImportRooms,
+                    (a, at) => a.RoomsImportRequestedAt = at, ct);
+            }
+        }, ct);
 
-        // The imports are asynchronous there: the state is read again, and a failure of the channel recorded earlier no longer stands.
         var fresh = await FindConnectionAsync(orgId, link, activation, ct);
         var now = Now();
         await SaveAsync(
@@ -278,8 +289,6 @@ public sealed class MarketplaceChannelActivationService(
                 a.UpdatedAt = now;
             },
             ct);
-
-        logger.LogInformation("Marketplace activation {ActivationId} of org {OrgId}: rooms, reservations and calendar imported", activation.Id, orgId);
         return StateOf(activation, fresh);
     }
 
@@ -336,29 +345,41 @@ public sealed class MarketplaceChannelActivationService(
             throw new DomainRuleException(MarketplaceActivationErrorCodes.MappingInvalid, "MarketplaceMappingInvalid");
         }
 
-        await RequireConnectionAsync(orgId, link, activation, ct);
-        var connectionId = activation.OctorateConnectionId!;
+        await using var operationLock = await LockOperationAsync(link, ct);
+        await db.Entry(activation).ReloadAsync(ct);
+        var connection = await RequireConnectionAsync(orgId, link, activation, ct);
+        await EnsurePanelAccessAsync(activation, connection, ct);
+        var connectionId = connection.ConnectionId;
 
         await WithChannelManagerAsync(
             orgId,
             activation,
             async () =>
             {
-                // The rooms and the products are read again: a choice is checked against what the channel manager holds now, never against what the
-                // page showed.
                 var rooms = await client.GetConnectionMappingAsync(link.AccommodationId, connectionId, ct);
                 var products = await client.GetRoomsAsync(link.AccommodationId, ct);
-                var manageable = rooms.Where(room => room.Manageable).Select(room => room.ChannelRoomId).ToHashSet(StringComparer.Ordinal);
+                var manageable = rooms.Where(room => room.Manageable).ToLookup(room => room.ChannelRoomId, StringComparer.Ordinal);
                 var offered = products.Select(product => product.Id).ToHashSet(StringComparer.Ordinal);
-                if (choices.Any(c => !manageable.Contains(c.ChannelRoomId.Trim()) || !offered.Contains(c.ProductId.Trim())))
+                var requested = choices.Select(c => new OctorateRoomMapping(c.ProductId.Trim(), c.ChannelRoomId.Trim())).ToArray();
+                if (requested.Any(c => manageable[c.ChannelRoomId].Count() != 1 || !offered.Contains(c.ProductId)))
                     throw new DomainRuleException(MarketplaceActivationErrorCodes.MappingInvalid, "MarketplaceMappingInvalid");
 
-                await client.SaveConnectionMappingAsync(
-                    link.AccommodationId,
-                    connectionId,
-                    [.. choices.Select(c => new OctorateRoomMapping(c.ProductId.Trim(), c.ChannelRoomId.Trim()))],
-                    ct);
-                await client.RunConnectionActionAsync(link.AccommodationId, connectionId, OctorateConnectionAction.CommitMappingAsCompleted, ct);
+                var outstanding = requested.Where(c => manageable[c.ChannelRoomId].Single().MappedProductId != c.ProductId).ToArray();
+                if (outstanding.Length > 0)
+                {
+                    await SaveAsync(activation, a => a.MappingCommittedAt = null, ct);
+                    await client.SaveConnectionMappingAsync(link.AccommodationId, connectionId, outstanding, ct);
+                    rooms = await client.GetConnectionMappingAsync(link.AccommodationId, connectionId, ct);
+                }
+
+                if (requested.Any(c => !rooms.Any(r => r.ChannelRoomId == c.ChannelRoomId && r.MappedProductId == c.ProductId)))
+                    throw new DomainConflictException("marketplace_mapping_pending", "MarketplaceMappingPending");
+
+                if (NeedsMappingCommit(activation) && activation.MappingCommittedAt is null)
+                {
+                    await client.RunConnectionActionAsync(link.AccommodationId, connectionId, OctorateConnectionAction.CommitMappingAsCompleted, ct);
+                    await SaveAsync(activation, a => a.MappingCommittedAt = Now(), ct);
+                }
             },
             ct);
 
@@ -391,6 +412,8 @@ public sealed class MarketplaceChannelActivationService(
 
         // Fail closed (D6): «mark connected», and the switching on of the pulls that goes with it, need the flag of the channel. Nothing is asked before.
         EnsureVerified(activation, OctorateD6Operation.MarkConnected);
+        await using var operationLock = await LockOperationAsync(link, ct);
+        await db.Entry(activation).ReloadAsync(ct);
         var current = await RequireConnectionAsync(orgId, link, activation, ct);
         await EnsurePanelAccessAsync(activation, current, ct);
 
@@ -406,15 +429,30 @@ public sealed class MarketplaceChannelActivationService(
             activation,
             async () =>
             {
-                // D6: the pulls of the connection start only after the mapping.
                 var rooms = await client.GetConnectionMappingAsync(link.AccommodationId, connectionId, ct);
-                if (!rooms.Any(room => room.MappedProductId is not null))
+                var mapped = rooms.Where(room => room.Manageable && room.MappedProductId is not null).ToArray();
+                if (mapped.Length == 0 || (NeedsMappingCommit(activation) && activation.MappingCommittedAt is null))
+                {
                     throw new DomainRuleException(MarketplaceActivationErrorCodes.MappingRequired, "MarketplaceMappingRequired");
+                }
 
-                await client.RunConnectionActionAsync(link.AccommodationId, connectionId, OctorateConnectionAction.MarkConnected, ct);
+                var productIds = mapped.Select(room => room.MappedProductId!).Distinct(StringComparer.Ordinal).ToArray();
+                var products = await client.GetRoomsAsync(link.AccommodationId, ct);
+                if (productIds.Any(id => !products.Any(product => product.Id == id)))
+                    throw new DomainRuleException(MarketplaceActivationErrorCodes.MappingInvalid, "MarketplaceMappingInvalid");
 
-                // The proof is what the channel manager lists, not the answer of the action. The pulls are switched on under the flag of «mark
-                // connected», checked at the top of the step (the operations of the D6 sequence have no flag of their own for it).
+                if (activation.Kind == MarketplaceActivationKind.Channel)
+                {
+                    await ImportReservationsAsync(activation, link, connectionId, ct);
+                    await VerifyCalendarAsync(activation, link, connectionId, productIds, ct);
+                }
+
+                if (activation.MarkConnectedRequestedAt is null && !current.IsConnected)
+                {
+                    await RunActionOnceAsync(activation, link, connectionId, OctorateConnectionAction.MarkConnected,
+                        (a, at) => a.MarkConnectedRequestedAt = at, ct);
+                }
+
                 verified = Match(await client.ListConnectionsAsync(link.AccommodationId, ct), activation);
                 if (verified is { IsConnected: true, PullsAreOn: false })
                 {
@@ -423,12 +461,13 @@ public sealed class MarketplaceChannelActivationService(
                         connectionId,
                         new OctorateConnectionPatch { UpdateCalendar = true, PullReservations = true },
                         ct);
+                    verified = Match(await client.ListConnectionsAsync(link.AccommodationId, ct), activation);
                 }
             },
             ct);
 
         var now = Now();
-        if (verified is { IsConnected: true })
+        if (verified is { IsConnected: true, PullsAreOn: true })
         {
             await SaveAsync(
                 activation,
@@ -453,7 +492,7 @@ public sealed class MarketplaceChannelActivationService(
         }
         else
         {
-            await SetToFixAsync(activation, MarketplaceActivationErrorCodes.ConnectionNotEnabled, ct, now);
+            await SetToFixAsync(activation, verified.IsConnected ? "marketplace_sync_pending" : MarketplaceActivationErrorCodes.ConnectionNotEnabled, ct, now);
             logger.LogWarning(
                 "Marketplace activation {ActivationId} of org {OrgId} is not active: {Error}",
                 activation.Id, orgId, MarketplaceActivationErrorCodes.ConnectionNotEnabled);
@@ -462,10 +501,110 @@ public sealed class MarketplaceChannelActivationService(
         return StateOf(activation, verified);
     }
 
+    private async Task ImportReservationsAsync(MarketplaceActivation activation, Link link, string connectionId, CancellationToken ct)
+    {
+        if (activation.ReservationsImportAcceptedAt is null)
+        {
+            EnsureVerified(activation, OctorateD6Operation.ImportReservations);
+            if (activation.ReservationsImportRequestedAt is not null)
+                throw new DomainConflictException(OctorateInventoryErrorCodes.D6ResultUnknown, "MarketplaceReservationImportUnknown");
+
+            await RunActionOnceAsync(activation, link, connectionId, OctorateConnectionAction.ImportReservations,
+                (a, at) => a.ReservationsImportRequestedAt = at, ct);
+            await SaveAsync(activation, a => a.ReservationsImportAcceptedAt = Now(), CancellationToken.None);
+        }
+
+        var imported = await bookings.ImportAllAsync(activation.PropertyId!.Value, ct);
+        // The importer may clear the shared change tracker.
+        if (db.Entry(activation).State == EntityState.Detached)
+            db.Attach(activation);
+        await db.Entry(activation).ReloadAsync(ct);
+        if (!imported.IsComplete)
+            throw new DomainConflictException(OctorateInventoryErrorCodes.ReservationImportIncomplete, "MarketplaceReservationImportIncomplete");
+    }
+
+    private async Task VerifyCalendarAsync(
+        MarketplaceActivation activation, Link link, string connectionId, string[] productIds, CancellationToken ct)
+    {
+        const int daysToCheck = 30;
+        var from = DateOnly.FromDateTime(Now());
+        var to = from.AddDays(daysToCheck - 1);
+        var calendar = await client.GetCalendarAsync(link.AccommodationId, productIds, from, to, ct);
+        if (CalendarVerified(calendar, productIds))
+            return;
+
+        // A partially priced or incomplete calendar stays in review. An import could overwrite prices that already exist.
+        var blankDays = calendar.Where(day => day.HasSignal && day.Price == 0)
+            .Select(day => (day.ProductId, day.Date)).ToHashSet();
+        if (calendar.Any(day => day.Price > 0)
+            || productIds.Any(id => !Enumerable.Range(0, daysToCheck).All(offset => blankDays.Contains((id, from.AddDays(offset))))))
+        {
+            throw new DomainConflictException("marketplace_calendar_pending", "MarketplaceCalendarPending");
+        }
+
+        if (!options.Value.ExistingInventory.InitialCalendarPortals.TryGetValue(link.AccommodationId, out var source)
+            || !string.Equals(source, activation.TargetCode, StringComparison.Ordinal))
+        {
+            throw new DomainConflictException("marketplace_calendar_source_required", "MarketplaceCalendarSourceRequired");
+        }
+
+        EnsureVerified(activation, OctorateD6Operation.ImportCalendar);
+        if (activation.CalendarImportRequestedAt is null)
+        {
+            await RunActionOnceAsync(activation, link, connectionId, OctorateConnectionAction.ImportCalendar,
+                (a, at) => a.CalendarImportRequestedAt = at, ct);
+            calendar = await client.GetCalendarAsync(link.AccommodationId, productIds, from, to, ct);
+        }
+
+        if (!CalendarVerified(calendar, productIds))
+            throw new DomainConflictException("marketplace_calendar_pending", "MarketplaceCalendarPending");
+    }
+
+    private async Task RunActionOnceAsync(
+        MarketplaceActivation activation,
+        Link link,
+        string connectionId,
+        OctorateConnectionAction action,
+        Action<MarketplaceActivation, DateTime?> stamp,
+        CancellationToken ct)
+    {
+        await SaveAsync(activation, a => stamp(a, Now()), ct);
+        try
+        {
+            await client.RunConnectionActionAsync(link.AccommodationId, connectionId, action, ct);
+        }
+        catch (OctorateException ex) when (ex is OctorateRateLimitException or OctorateRequestRejectedException)
+        {
+            // An explicit refusal allows another attempt. Timeouts and channel failures require reconciliation.
+            await SaveAsync(activation, a => stamp(a, null), CancellationToken.None);
+            throw;
+        }
+    }
+
+    private static bool CalendarVerified(OctorateCalendarDay[] days, string[] productIds) =>
+        productIds.All(id => days.Any(day => day.ProductId == id && day.Price > 0 && day.HasSignal));
+
+    private bool NeedsMappingCommit(MarketplaceActivation activation) =>
+        options.Value.ExistingInventory.Channels.TryGetValue(activation.TargetCode, out var channel) && channel.CommitMapping;
+
+    private async Task<IAsyncDisposable> LockOperationAsync(Link link, CancellationToken ct) =>
+        await PostgresAdvisoryLocks.TryAcquireSessionLockAsync(
+            db, PostgresAdvisoryLocks.Scope.MarketplaceChannelActivation, link.AccommodationId, ct)
+        ?? throw new DomainConflictException("marketplace_activation_busy", "MarketplaceActivationBusy");
+
     // ─── The checks every step shares ────────────────────────────────────────────────────────────────────────
 
     /// <summary>The listing a property is confirmed to: its accommodation id (the <c>acc</c> of every call) and the room the connect wizard chose.</summary>
-    private sealed record Link(string AccommodationId, string? ProductId);
+    private sealed record Link(string AccommodationId, string? ProductId, string ChannelIdsJson)
+    {
+        public string? HotelIdFor(string portalCode)
+        {
+            using var stored = JsonDocument.Parse(ChannelIdsJson);
+            return stored.RootElement.ValueKind == JsonValueKind.Object
+                && stored.RootElement.TryGetProperty(portalCode, out var id) && id.ValueKind == JsonValueKind.String
+                && id.GetString() is { Length: > 0 and <= 100 } value ? value : null;
+        }
+    }
 
     /// <summary>
     /// The activation of the caller: one of the org, of a channel or a tool, whose property is inside the scope. Another org's, one outside the scope
@@ -534,7 +673,7 @@ public sealed class MarketplaceChannelActivationService(
                         && m.PropertyId == propertyId
                         && m.ConnectionId == connectionKey
                         && m.Status == OctorateMappingStatus.Confirmed)
-            .Select(m => new Link(m.OctorateAccommodationId, m.OctorateProductId))
+            .Select(m => new Link(m.OctorateAccommodationId, m.OctorateProductId, m.ChannelIdsJson))
             .FirstOrDefaultAsync(ct);
 
     private static string ConnectionIdOf(MarketplaceActivation activation) =>
@@ -619,7 +758,7 @@ public sealed class MarketplaceChannelActivationService(
             .Where(p => p.PortalCode == activation.TargetCode)
             .Select(p => p.RequiresTokenAuthentication)
             .FirstOrDefaultAsync(ct);
-        if (needsPanel && !connection.PanelAccessDone)
+        if ((needsPanel || connection.UserLogged == true) && !connection.PanelAccessDone)
             throw new DomainConflictException(MarketplaceActivationErrorCodes.PanelAccessPending, "MarketplacePanelAccessPending");
     }
 

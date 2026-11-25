@@ -104,6 +104,7 @@ public sealed class OnboardingAssistService(
                      && r.PartKey == part
                      && r.PropertyId == propertyId
                      && r.ChannelCode == channelCode
+                     && r.Context == context
                      && OpenStatuses.Contains(r.Status),
                 ct);
         if (open is not null)
@@ -389,6 +390,7 @@ public sealed class OnboardingAssistService(
                          && r.PartKey == request.PartKey
                          && r.PropertyId == request.PropertyId
                          && r.ChannelCode == request.ChannelCode
+                         && r.Context == request.Context
                          && OpenStatuses.Contains(r.Status),
                     ct))
             {

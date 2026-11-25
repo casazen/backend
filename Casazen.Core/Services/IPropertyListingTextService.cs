@@ -15,7 +15,7 @@ public static class ListingTextLimits
     public const int TitleMaxLength = PropertyHouseRules.ListingTitleMaxLength;
 
     /// <summary>The description: the limit of the field of the property.</summary>
-    public const int DescriptionMaxLength = 2000;
+    public const int DescriptionMaxLength = 10_000;
 }
 
 /// <summary>What a suggestion was written from, for the line the host reads under it («Basato su: 6 foto, Como, 3 annunci simili»).</summary>

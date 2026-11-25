@@ -127,4 +127,5 @@ public enum ActivityAction
     /// is the one of its type (140, the cleaning recharge of E14), clear of the values the tasks that run in parallel append after 50 and 120.
     /// </summary>
     StateCleaningVat = 140,
+    ReviewImportedProperty = 150,
 }

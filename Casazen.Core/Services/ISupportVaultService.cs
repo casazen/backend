@@ -81,7 +81,8 @@ public sealed record SupportVaultReveal(
     string Password,
     string? ExtraCode,
     DateTime OpenedAt,
-    DateTime VisibleUntil)
+    DateTime VisibleUntil,
+    string? UnitCode = null)
 {
     /// <summary>Hides the values from logs and debugger output.</summary>
     public override string ToString() => nameof(SupportVaultReveal) + " { *** }";

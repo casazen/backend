@@ -39,7 +39,8 @@ public sealed partial class OctorateApiClient(
     IOctorateOrgScope orgScope,
     IConfiguration configuration,
     TimeProvider timeProvider,
-    ILogger<OctorateApiClient> logger) : IOctorateApiClient
+    ILogger<OctorateApiClient> logger,
+    OctorateMasterBoundary? master = null) : IOctorateApiClient
 {
     /// <summary>Longest accommodation id CasaZen accepts (the id column of the mappings is 64 characters).</summary>
     public const int MaxAccommodationIdLength = 64;
@@ -115,6 +116,14 @@ public sealed partial class OctorateApiClient(
 
     public async Task<OctorateProperty[]> GetPropertiesAsync(CancellationToken ct)
     {
+        if (master is not null && await master.AssignedAsync(orgScope.OrgId, ct) is { } assigned)
+        {
+            var properties = new List<OctorateProperty>();
+            foreach (var id in assigned)
+                properties.Add(await GetPropertyAsync(id, ct));
+            return [.. properties];
+        }
+
         var found = new List<OctorateProperty>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         for (var page = 0; page < MaxAccommodationPages; page++)
@@ -1092,11 +1101,17 @@ public sealed partial class OctorateApiClient(
         bool binary = false)
     {
         var orgId = orgScope.OrgId;
+        var quotaOrg = orgId;
+        if (master is not null)
+        {
+            using var candidate = createRequest();
+            quotaOrg = await master.AuthorizeAsync(orgId, candidate.Method, candidate.RequestUri!, ct);
+        }
         var caller = new Caller(
             $"org {orgId}",
             token => tokenService.GetAccessTokenAsync(orgId, token),
             (rejected, token) => tokenService.RefreshRejectedTokenAsync(orgId, rejected, token),
-            () => rateLimiter.TryAcquireAsync(orgId));
+            () => rateLimiter.TryAcquireAsync(quotaOrg));
         return await SendAsync(createRequest, operation, caller, ct, answerStatus, translateError, mapError, binary);
     }
 
@@ -1485,6 +1500,8 @@ public sealed partial class OctorateApiClient(
             Longitude = longitude,
             Category = OctorateHttp.StringOf(item, "propertyCategory"),
             NetworkId = OctorateHttp.StringOf(network, "accessNetwork"),
+            BillingNetworkName = OctorateHttp.StringOf(item, "billingNetworkName"),
+            NetworkAccessEnabled = BoolOf(network, "accessEnabled"),
             SandboxProperty = BoolOf(item, "sandboxProperty"),
         };
     }

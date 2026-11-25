@@ -58,7 +58,7 @@ public class Property : ITenantOwned
     [JsonIgnore]
     public string? DoorToken { get; set; }
 
-    [MaxLength(2000)]
+    [MaxLength(Casazen.Core.Services.ListingTextLimits.DescriptionMaxLength)]
     public string Description { get; set; } = string.Empty;
 
     [Required, MaxLength(500)]
@@ -288,6 +288,8 @@ public class Property : ITenantOwned
     [JsonIgnore]
     [Column(TypeName = "jsonb")]
     public string? SiteProfileJson { get; set; }
+
+    public string? RequiredActivationPortalsJson { get; set; }
 
     /// <summary>
     /// The alternative text of the photos of the gallery: a JSON map from the URL of a photo to its text in Italian and English

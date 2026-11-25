@@ -37,7 +37,7 @@ public class UpdatePropertyRequest
     public string? Name { get; set; }
 
     /// <summary>Full description shown to guests (may be sent empty).</summary>
-    [MaxLength(2000, ErrorMessage = "PropertyDescriptionTooLong")]
+    [MaxLength(Casazen.Core.Services.ListingTextLimits.DescriptionMaxLength, ErrorMessage = "PropertyDescriptionTooLong")]
     public string? Description { get; set; }
 
     /// <summary>Street address of the property; when sent, not blank.</summary>

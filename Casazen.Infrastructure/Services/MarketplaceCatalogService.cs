@@ -154,7 +154,8 @@ public sealed class MarketplaceCatalogService(
                     state.PropertyCount,
                     action.CanActivate,
                     action.Reason,
-                    ConnectByPropertyId: MarketplaceCardRules.ConnectsByPropertyId(portal));
+                    ConnectByPropertyId: MarketplaceCardRules.ConnectsByPropertyId(portal),
+                    RequiresCredentials: portal.RequiresPassword);
             }),
         ];
     }

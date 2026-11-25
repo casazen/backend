@@ -35,6 +35,8 @@ public class OctorateConnection : ITenantOwned
     /// <summary>Tenant: the organization the consent was given for.</summary>
     public Guid OrgId { get; set; }
 
+    public bool UsesMasterAccount { get; set; }
+
     /// <summary>The Octorate environment of the tokens: verified against <c>GET /rest/v1/api/configuration</c> at every connection.</summary>
     public OctorateEnvironment Environment { get; set; }
 

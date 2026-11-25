@@ -80,7 +80,7 @@ internal sealed class OnboardingAssistRequestConfiguration : IEntityTypeConfigur
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Cascade);
         entity.HasOne<Org>().WithMany().HasForeignKey(r => r.OrgId).OnDelete(DeleteBehavior.Restrict);
-        entity.HasIndex(r => new { r.OrgId, r.PartKey, r.PropertyId, r.ChannelCode })
+        entity.HasIndex(r => new { r.OrgId, r.PartKey, r.PropertyId, r.ChannelCode, r.Context })
             .IsUnique()
             .AreNullsDistinct(false)
             .HasFilter(

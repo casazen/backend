@@ -48,6 +48,10 @@ public sealed record OctorateProperty
     /// <summary>The network the accommodation is reached through (<c>networkInfo.accessNetwork</c>), when it is in one.</summary>
     public string? NetworkId { get; init; }
 
+    public string? BillingNetworkName { get; init; }
+
+    public bool? NetworkAccessEnabled { get; init; }
+
     /// <summary>The <c>sandboxProperty</c> flag of a test accommodation, when Octorate sends it.</summary>
     public bool? SandboxProperty { get; init; }
 }

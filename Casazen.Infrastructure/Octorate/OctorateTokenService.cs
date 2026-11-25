@@ -73,7 +73,7 @@ public sealed partial class OctorateTokenService(
     public async Task<string> GetAccessTokenAsync(Guid orgId, CancellationToken ct)
     {
         EnsureCallerOrg(orgId);
-        var connection = await FindAsync(orgId, ct);
+        var connection = await FindForReadAsync(orgId, ct);
         if (connection is not { Status: OctorateConnectionStatus.Connected })
             throw OctorateAuthException.NotConnected();
 
@@ -97,6 +97,8 @@ public sealed partial class OctorateTokenService(
     {
         ArgumentNullException.ThrowIfNull(tokens);
         EnsureCallerOrg(orgId);
+        if (await FindAsync(orgId, ct) is { UsesMasterAccount: true })
+            throw OctorateAuthException.NotConnected();
         if (string.IsNullOrEmpty(tokens.AccessToken) && string.IsNullOrEmpty(tokens.RefreshToken))
             throw new ArgumentException("Octorate answered no token to save.", nameof(tokens));
 
@@ -147,7 +149,7 @@ public sealed partial class OctorateTokenService(
     /// </summary>
     private async Task<string> RefreshAsync(Guid orgId, string? rejectedAccessToken, CancellationToken ct)
     {
-        var connection = await FindAsync(orgId, ct) ?? throw OctorateAuthException.NotConnected();
+        var connection = await FindForReadAsync(orgId, ct) ?? throw OctorateAuthException.NotConnected();
 
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, ct, (PostgresAdvisoryLocks.Scope.OctorateTokenRefresh, connection.Id.ToString("N")));
@@ -342,6 +344,19 @@ public sealed partial class OctorateTokenService(
 
             return winner;
         }
+    }
+
+    private async Task<OctorateConnection?> FindForReadAsync(Guid orgId, CancellationToken ct)
+    {
+        var connection = await FindAsync(orgId, ct);
+        if (connection is not { UsesMasterAccount: true })
+            return connection;
+        var masterId = configuration.GetValue<Guid?>("Octorate:MasterOrganizationId");
+        if (connection.Status != OctorateConnectionStatus.Connected || masterId is null || masterId == orgId)
+            return null;
+        var environment = Environment;
+        return await db.OctorateConnections.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .SingleOrDefaultAsync(c => c.OrgId == masterId && c.Environment == environment && !c.UsesMasterAccount, ct);
     }
 
     private Task<OctorateConnection?> FindAsync(Guid orgId, CancellationToken ct)

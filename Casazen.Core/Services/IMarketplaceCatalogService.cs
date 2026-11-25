@@ -134,7 +134,8 @@ public sealed record MarketplaceCatalogEntry(
     string? WebsiteUrl = null,
     IReadOnlyList<string>? ServiceCategories = null,
     string? OctoratePortalCode = null,
-    bool ConnectByPropertyId = false);
+    bool ConnectByPropertyId = false,
+    bool RequiresCredentials = false);
 
 /// <summary>A group of the catalog. The home services have no entries and say that their flow is unchanged (<see cref="UnchangedFlow"/>).</summary>
 public sealed record MarketplaceGroup(string Id, bool UnchangedFlow, IReadOnlyList<MarketplaceCatalogEntry> Entries);

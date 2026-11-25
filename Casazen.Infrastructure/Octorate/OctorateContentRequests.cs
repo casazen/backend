@@ -73,6 +73,8 @@ internal static class OctorateContentRequests
             body["timeZone"] = request.TimeZone;
         if (!string.IsNullOrWhiteSpace(request.NetworkName))
             body["network_name"] = request.NetworkName;
+        if (!string.IsNullOrWhiteSpace(request.BillingNetworkName))
+            body["billingNetworkName"] = request.BillingNetworkName.Trim();
         if (request.CheckinStart is { } start)
             body["checkinStart"] = start;
         if (request.CheckinEnd is { } end)

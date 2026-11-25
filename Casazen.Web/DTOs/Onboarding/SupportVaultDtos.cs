@@ -37,6 +37,8 @@ public sealed class SupportVaultRevealDto
 
     public DateTime VisibleUntil { get; set; }
 
+    public string? UnitCode { get; set; }
+
     public static SupportVaultRevealDto From(SupportVaultReveal reveal) => new()
     {
         Kind = reveal.Kind,
@@ -45,6 +47,7 @@ public sealed class SupportVaultRevealDto
         ExtraCode = reveal.ExtraCode,
         OpenedAt = reveal.OpenedAt,
         VisibleUntil = reveal.VisibleUntil,
+        UnitCode = reveal.UnitCode,
     };
 
     /// <summary>Hides the values from logs and debugger output.</summary>
