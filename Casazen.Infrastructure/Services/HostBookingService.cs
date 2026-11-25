@@ -67,6 +67,9 @@ public sealed class HostBookingService(
             await checkoutHoldExpiry.ExpireOverlappingHoldsAsync(current.PropertyId, checkIn, checkOut, cancellationToken);
 
         await using var transaction = await LockBookingAsync(current.PropertyId, update.BookingId, cancellationToken);
+        // Join the booking transaction before reading the ledger. Manual receipts and guest payment intent creation use this same lock.
+        await using var paymentLock = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken,
+            (PostgresAdvisoryLocks.Scope.BookingPayment, update.BookingId.ToString("N")));
         var booking = await LoadAsync(update.BookingId, cancellationToken);
         GuestStayChange? guestChange = null;
         if (update.GuestStayChangeId is { } requestId)
