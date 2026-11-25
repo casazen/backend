@@ -9055,4 +9055,13 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="GuestStayChangeStale" xml:space="preserve"><value>The stay or quote has changed. A new request is needed.</value></data>
   <data name="GuestStayChangePending" xml:space="preserve"><value>A stay change request is already pending.</value></data>
   <data name="GuestHostExtraUnavailable" xml:space="preserve"><value>This extra is unavailable for the stay.</value></data>
+  <data name="SupplierInviteIdentityInvalid" xml:space="preserve">
+    <value>Check the VAT number, tax code and phone number.</value>
+  </data>
+  <data name="SupplierIdentityReviewClosed" xml:space="preserve">
+    <value>This review has been resolved or has expired.</value>
+  </data>
+  <data name="SupplierIdentityChoiceInvalid" xml:space="preserve">
+    <value>Select one of the matching profiles or close the request.</value>
+  </data>
 </root>

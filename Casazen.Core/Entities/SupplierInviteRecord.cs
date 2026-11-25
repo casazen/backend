@@ -46,6 +46,10 @@ public class SupplierInviteRecord
     /// <summary>The existing profile identified by the invited email, verified again on acceptance.</summary>
     public Guid? IdentifiedSupplierOrgId { get; set; }
 
+    /// <summary>Staff-only evidence for an unresolved invite. No token is issued until a reviewer chooses the recipient.</summary>
+    [ConcurrencyCheck]
+    public string? IdentityReviewJson { get; set; }
+
     /// <summary>
     /// The properties of <see cref="InvitedByOrgId"/> the supplier may work on, copied to
     /// <see cref="TrustedSupplier.AssignedPropertyIds"/> (null or empty = all of them).
@@ -65,6 +69,7 @@ public class SupplierInviteRecord
     /// UTC moment an admin revoked the invite (SU-12): its link no longer works. The row is kept, so the invites list
     /// and the audit trail still show it.
     /// </summary>
+    [ConcurrencyCheck]
     public DateTime? RevokedAt { get; set; }
 
     public DateTime ExpiresAt { get; set; }

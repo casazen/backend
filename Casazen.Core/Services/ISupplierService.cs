@@ -209,7 +209,11 @@ public interface ISupplierService
         Guid hostOrgId,
         string email,
         IReadOnlyCollection<Guid> propertyIds,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        SupplierInviteIdentity? identity = null);
+
+    Task<IReadOnlyList<SupplierIdentityReview>> ListIdentityReviewsAsync(int page, CancellationToken cancellationToken);
+    Task ResolveIdentityReviewAsync(Guid inviteId, string decision, Guid? supplierOrgId, string actor, CancellationToken cancellationToken);
 
     /// <summary>
     /// Resolves the caller's supplier org, provisioning org + profile when a Supplier user has none yet.
@@ -307,6 +311,11 @@ public record SupplierTosState(
     bool BlocksActions);
 
 public record SupplierInvite(Guid InviteId, DateTime ExpiresAt);
+
+public sealed record SupplierInviteIdentity(string? VatNumber, string? FiscalCode, string? Phone);
+public sealed record SupplierIdentityCandidate(Guid SupplierOrgId, string Name, string Email, IReadOnlyList<string> MatchedBy);
+public sealed record SupplierIdentityReview(Guid Id, string HostName, string Email, SupplierInviteIdentity Supplied,
+    DateTime ExpiresAt, IReadOnlyList<SupplierIdentityCandidate> Candidates);
 
 /// <summary>
 /// Outcome of <see cref="ISupplierService.RegisterAsync"/>. <paramref name="Claim"/> is set only for an anonymous

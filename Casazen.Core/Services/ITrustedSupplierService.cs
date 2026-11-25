@@ -7,7 +7,7 @@ namespace Casazen.Core.Services;
 /// </summary>
 /// <param name="Email">Supplier email to invite.</param>
 /// <param name="PropertyIds">Properties the supplier may work on (empty = all).</param>
-public sealed record InviteSupplierRequest(string Email, List<Guid> PropertyIds);
+public sealed record InviteSupplierRequest(string Email, List<Guid> PropertyIds, string? VatNumber = null, string? FiscalCode = null, string? Phone = null);
 
 /// <summary>
 /// Result of a supplier invitation. The link token only travels in the email to the supplier (A4-04).

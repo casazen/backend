@@ -212,7 +212,7 @@ public sealed class SupplierAdminService(
         var now = Now();
 
         // Invites have no org: the admin lists them all (the endpoint is AdminOnly).
-        var invites = db.SupplierInviteRecords.AsNoTracking().AsQueryable();
+        var invites = db.SupplierInviteRecords.AsNoTracking().Where(i => i.IdentityReviewJson == null);
 
         if (query.State is { } state)
             invites = invites.Where(StatePredicate(state, now));
@@ -240,7 +240,7 @@ public sealed class SupplierAdminService(
 
         var invite = await GetInviteOrThrowAsync(inviteId, cancellationToken);
         var now = Now();
-        if (invite.IsUsed || invite.RevokedAt is not null)
+        if (invite.IsUsed || invite.RevokedAt is not null || invite.IdentityReviewJson is not null)
         {
             throw new DomainConflictException(
                 SupplierAdminErrorCodes.InviteNotResendable, SupplierAdminErrorCodes.InviteNotResendableMessageKey);
