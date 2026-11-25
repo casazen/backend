@@ -1,11 +1,13 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.GuestPortal;
+using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.GuestPortal;
 using Casazen.Web.Controllers;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -14,6 +16,20 @@ namespace Casazen.Tests.Unit.GuestPortal;
 
 public class GuestSupplierOrderSimulationTests
 {
+    [Fact]
+    public void CatalogLookupByOfferIdTranslatesOnPostgres()
+    {
+        using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Database=casazen_design;Username=postgres;Password=postgres").Options);
+        var sql = new GuestSupplierOrders(db, TimeProvider.System)
+            .Catalog(Guid.NewGuid(), Guid.NewGuid(), true, Guid.NewGuid())
+            .Take(2).ToQueryString();
+
+        Assert.Contains(".\"Id\" = @", sql, StringComparison.Ordinal);
+        Assert.Contains(".\"HostOrgId\" = @", sql, StringComparison.Ordinal);
+        Assert.Contains(".\"PropertyId\" = @", sql, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Quote_Authorize_Accept_Complete_Dispute_AndRefundAreScopedToTheParticipants()
     {
