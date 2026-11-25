@@ -1522,7 +1522,7 @@ public sealed partial class FiscalDocumentService(
     /// The draft of a document that needs only a name is still made out to who the booking says now (FIX/DOC-RECIPIENT): the draft made with the name of the guest is no longer the document once the
     /// booking has invoice data with a name (it wins), once the guest was erased or asked to be erased (a document is never made out to a name that is no longer theirs) or when the name changed;
     /// a draft made from invoice data is no longer it when the data changed or is gone. 409 <c>document_draft_outdated</c> and nothing is numbered: the host makes the draft again, which is then
-    /// the 422 of the draft when there is nobody to make it out to. The draft of an Italian invoice is not read again: it never falls back and is issued as it always was.
+    /// the 422 of the draft when there is nobody to make it out to. For a full invoice, a change in the guest-supplied recipient also requires a new draft.
     /// </summary>
     private async Task RequireDraftOfTheRecipientAsync(FiscalDocument draft, Guid bookingId, FiscalTaxRule rule, CancellationToken ct)
     {

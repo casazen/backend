@@ -44,7 +44,9 @@ public class GuestPortalInvoiceDataTests
         await invoices.SaveAsync(world.Booking.Id, recipient, InvoiceDataSource.Host);
         var state = await portal.GetAsync(world.Org.Id, world.Booking.Id, default);
         Assert.True(state.HostManaged);
-        Assert.False(await portal.SaveAsync(world.Org.Id, world.Booking.Id, true, recipient with { Name = "Jane" }, default));
-        Assert.Equal("Mario Rossi", (await invoices.GetAsync(world.Booking.Id))?.Name);
+        Assert.True(await portal.SaveAsync(world.Org.Id, world.Booking.Id, true, recipient with { Name = "Jane", City = "Roma" }, default));
+        var saved = await invoices.GetAsync(world.Booking.Id);
+        Assert.Equal("Mario Rossi", saved?.Name);
+        Assert.Equal("Roma", saved?.City);
     }
 }

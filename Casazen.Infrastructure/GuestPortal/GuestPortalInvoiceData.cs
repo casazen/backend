@@ -25,8 +25,7 @@ public sealed class GuestPortalInvoiceData(AppDbContext db, IInvoiceDataService 
     {
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct,
             (PostgresAdvisoryLocks.Scope.FiscalDocumentBooking, bookingId.ToString("N")));
-        var state = await GetAsync(orgId, bookingId, ct);
-        if (state.Issued || state.HostManaged)
+        if (await HasIssuedInvoiceAsync(orgId, bookingId, ct))
             return false;
         if (requested && data.HasContent)
             await invoices.SaveAsync(bookingId, data, InvoiceDataSource.CheckIn, save: false, ct: ct);
