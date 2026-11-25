@@ -68,7 +68,32 @@ public sealed class HostBookingService(
 
         await using var transaction = await LockBookingAsync(current.PropertyId, update.BookingId, cancellationToken);
         var booking = await LoadAsync(update.BookingId, cancellationToken);
+        GuestStayChange? guestChange = null;
+        if (update.GuestStayChangeId is { } requestId)
+        {
+            var requests = db.Database.IsNpgsql()
+                ? db.GuestStayChanges.FromSqlInterpolated(
+                    $"SELECT * FROM \"GuestStayChanges\" WHERE \"Id\" = {requestId} FOR UPDATE")
+                : db.GuestStayChanges;
+            guestChange = await requests.SingleOrDefaultAsync(change =>
+                change.Id == requestId && change.BookingId == booking.Id && change.OrgId == booking.OrgId, cancellationToken);
+            if (guestChange?.ApprovedAt is not null)
+                return new HostBookingUpdateResult(booking, BookingEditSettlement.NotNeeded(guestChange.Currency));
+
+            if (guestChange is null || guestChange.RejectedAt is not null
+                || booking.Status != BookingStatus.Confirmed || booking.NoShowAt is not null
+                || booking.CheckInDate.Date < _clock.TodayInRome()
+                || guestChange.OriginalArrival != booking.CheckInDate || guestChange.OriginalDeparture != booking.CheckOutDate
+                || guestChange.OriginalGuests != booking.NumberOfGuests || guestChange.OriginalChildren != booking.NumberOfChildren)
+            {
+                throw new DomainConflictException("guest_stay_change_stale", "GuestStayChangeStale");
+            }
+        }
+
         var edit = await EvaluateAsync(booking, update, checkIn, checkOut, cancellationToken);
+        if (guestChange is not null && (guestChange.OriginalTotal != edit.Quote.PreviousTotal
+            || guestChange.ProposedTotal != edit.Quote.NewTotal || guestChange.Currency != edit.Quote.Currency))
+            throw new DomainConflictException("guest_stay_change_stale", "GuestStayChangeStale");
 
         // Money moves only for who may handle it (payment.write). The plan is known now, under the lock: before any date check, any call to Stripe and any
         // write, and whatever the plan was when the caller was first asked (the controller worked it out too, but a payment may have come in since).
@@ -103,8 +128,11 @@ public sealed class HostBookingService(
                 booking.FreeRefundDeadline = edit.Price!.FreeRefundDeadline;
         }
 
-        booking.SpecialRequests = update.SpecialRequests?.Trim() ?? string.Empty;
+        if (guestChange is null)
+            booking.SpecialRequests = update.SpecialRequests?.Trim() ?? string.Empty;
         booking.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
+        if (guestChange is not null)
+            guestChange.ApprovedAt = booking.UpdatedAt;
 
         if (money.Charge is { } charge)
             await RecordChargeAsync(booking, charge, cancellationToken);
@@ -320,7 +348,7 @@ public sealed class HostBookingService(
 
         // The money follows the price only for a confirmed booking of the booking site; the bookings of the host are settled by hand ("Registra incasso").
         var plan = booking.Source == BookingSource.Direct && price is not null
-            ? BookingEditSettlementRules.Plan(newTotal, money.Paid, money.Refundable, money.CollectsOnline, HasSavedCard(booking))
+            ? BookingEditSettlementRules.Plan(newTotal, money.Paid, money.Refundable, money.CollectsOnline, !update.GuestWillPay && HasSavedCard(booking))
             : BookingEditPlan.None;
 
         // A link that cannot be made is known before the host confirms: the answer is the same as the edit's.
@@ -373,16 +401,19 @@ public sealed class HostBookingService(
             PaymentRefundService.PaymentIntentIdOf(p) is not null
             && p.Status is PaymentStatus.Completed or PaymentStatus.PartiallyRefunded or PaymentStatus.Refunded);
         var deferredPayment = DeferredCharges.FindPayment(booking, payments);
-        var awaitsGuest = booking.PaymentOption == PaymentOption.OnCancellationDeadline
-                          && booking.DeferredChargeFailedAt is not null
-                          && deferredPayment?.Status == PaymentStatus.Failed;
+        var awaitsDeferredPayment = booking.PaymentOption == PaymentOption.OnCancellationDeadline
+                                    && booking.DeferredChargeFailedAt is not null
+                                    && deferredPayment?.Status == PaymentStatus.Failed;
+        var awaitsPaymentLink = payments.Any(payment =>
+            payment != deferredPayment && !string.IsNullOrWhiteSpace(payment.StripePaymentIntentId)
+            && payment.Status is PaymentStatus.Pending or PaymentStatus.Failed);
 
         return new MoneyFacts(
             paid,
             [.. shares.OrderByDescending(s => s.At).ThenBy(s => s.Id).Select(s => new BookingRefundableShare(s.Id, s.Refundable))],
             booking.PaymentOption != PaymentOption.OnSite && paidOnline,
             payments.Any(p => p.Status == PaymentStatus.Processing),
-            awaitsGuest,
+            awaitsDeferredPayment || awaitsPaymentLink,
             deferredPayment?.StripeAccountId);
     }
 

@@ -9051,4 +9051,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="OctoratePreparationUnavailable" xml:space="preserve"><value>La preparazione della struttura richiede una verifica dello staff.</value></data>
   <data name="PropertyActivationServicesUnavailable" xml:space="preserve"><value>Verifica i portali richiesti e lo stato della pubblicazione prima di proseguire.</value></data>
+  <data name="GuestStayChangeInvalid" xml:space="preserve"><value>La modifica del soggiorno non è disponibile per queste date o questo numero di ospiti.</value></data>
+  <data name="GuestStayChangeStale" xml:space="preserve"><value>Il soggiorno o il preventivo è cambiato. Serve una nuova richiesta.</value></data>
+  <data name="GuestStayChangePending" xml:space="preserve"><value>C’è già una richiesta di modifica in attesa.</value></data>
 </root>
