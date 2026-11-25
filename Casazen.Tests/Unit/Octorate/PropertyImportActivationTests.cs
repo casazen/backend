@@ -74,14 +74,19 @@ public sealed class PropertyImportActivationTests
         {
             var connection = new OctorateConnection
             {
-                OrgId = property.OrgId, UsesMasterAccount = true, Environment = OctorateEnvironment.Test,
+                OrgId = property.OrgId,
+                UsesMasterAccount = true,
+                Environment = OctorateEnvironment.Test,
                 Status = OctorateConnectionStatus.Connected,
             };
             db.OctorateConnections.Add(connection);
             db.OctorateListingMappings.Add(new OctorateListingMapping
             {
-                OrgId = property.OrgId, ConnectionId = connection.Id, PropertyId = property.Id,
-                OctorateAccommodationId = id, Status = OctorateMappingStatus.Confirmed,
+                OrgId = property.OrgId,
+                ConnectionId = connection.Id,
+                PropertyId = property.Id,
+                OctorateAccommodationId = id,
+                Status = OctorateMappingStatus.Confirmed,
             });
         }
         await db.SaveChangesAsync();
@@ -106,9 +111,18 @@ public sealed class PropertyImportActivationTests
     {
         var property = new Property
         {
-            OrgId = orgId, OwnerId = "owner", Name = "Lario Suite", Address = "Via del Lago 1", City = "Brienno",
-            PostalCode = "22010", Country = "IT", Currency = "EUR", PhotoUrls = ["https://example.test/photo.jpg"],
-            MaxGuests = 2, Beds = 1, CinCode = "IT015146A12HOLV2MZ",
+            OrgId = orgId,
+            OwnerId = "owner",
+            Name = "Lario Suite",
+            Address = "Via del Lago 1",
+            City = "Brienno",
+            PostalCode = "22010",
+            Country = "IT",
+            Currency = "EUR",
+            PhotoUrls = ["https://example.test/photo.jpg"],
+            MaxGuests = 2,
+            Beds = 1,
+            CinCode = "IT015146A12HOLV2MZ",
         };
         db.Properties.Add(property);
         return property;

@@ -50,8 +50,12 @@ public sealed class PropertyImportReviewService(AppDbContext db, TimeProvider cl
         {
             review = new PropertyImportReview
             {
-                Id = propertyId, OrgId = orgId, Provider = provider, SourceId = sourceId,
-                Snapshot = serialized, ResolvedFields = "[]",
+                Id = propertyId,
+                OrgId = orgId,
+                Provider = provider,
+                SourceId = sourceId,
+                Snapshot = serialized,
+                ResolvedFields = "[]",
             };
             db.PropertyImportReviews.Add(review);
             Prefill(property, snapshot);
@@ -133,9 +137,16 @@ public sealed class PropertyImportReviewService(AppDbContext db, TimeProvider cl
             {
                 todo = new InternalActivity
                 {
-                    OrgId = review.OrgId, PropertyId = property.Id, EntityId = property.Id, EntityType = TodoEntity,
-                    ActivityType = ActivityType.ImportedPropertyReview.ToString(), Action = ActivityAction.ReviewImportedProperty,
-                    Urgency = ActivityUrgency.Medium, ScheduledAt = now, CreatedAt = now, Status = InternalActivity.StatusPending,
+                    OrgId = review.OrgId,
+                    PropertyId = property.Id,
+                    EntityId = property.Id,
+                    EntityType = TodoEntity,
+                    ActivityType = ActivityType.ImportedPropertyReview.ToString(),
+                    Action = ActivityAction.ReviewImportedProperty,
+                    Urgency = ActivityUrgency.Medium,
+                    ScheduledAt = now,
+                    CreatedAt = now,
+                    Status = InternalActivity.StatusPending,
                 };
                 db.InternalActivities.Add(todo);
                 review.TodoId = todo.Id;

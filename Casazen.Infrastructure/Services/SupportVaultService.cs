@@ -252,14 +252,14 @@ public sealed class SupportVaultService(
     {
         var now = Now();
         return (from assignment in db.PropertyActivationCredentialAssignments.IgnoreQueryFilters([Tenant]).AsNoTracking()
-         join account in db.PropertyActivationCredentials.IgnoreQueryFilters([Tenant]).AsNoTracking()
-            on assignment.AccountId equals account.Id
-         where assignment.OrgId == request.OrgId && account.OrgId == request.OrgId
-            && assignment.PropertyId == request.PropertyId && assignment.Service == service && account.Service == service
-            && account.ExpiresAt > now
-         select new VaultValues(account.Username, account.Password,
-            service == "alloggiati" ? account.WebServiceKey : assignment.UnitCode,
-            service == "alloggiati" ? assignment.UnitCode : null)).SingleOrDefaultAsync(ct);
+                join account in db.PropertyActivationCredentials.IgnoreQueryFilters([Tenant]).AsNoTracking()
+                   on assignment.AccountId equals account.Id
+                where assignment.OrgId == request.OrgId && account.OrgId == request.OrgId
+                   && assignment.PropertyId == request.PropertyId && assignment.Service == service && account.Service == service
+                   && account.ExpiresAt > now
+                select new VaultValues(account.Username, account.Password,
+                   service == "alloggiati" ? account.WebServiceKey : assignment.UnitCode,
+                   service == "alloggiati" ? assignment.UnitCode : null)).SingleOrDefaultAsync(ct);
     }
 
     private Task<VaultValues?> SecretOfAsync(Guid orgId, Guid? propertyId, SupportVaultSecretKind kind, CancellationToken ct) =>

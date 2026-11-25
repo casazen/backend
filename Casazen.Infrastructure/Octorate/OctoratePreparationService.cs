@@ -61,7 +61,11 @@ public sealed class OctoratePreparationService(
         foreach (var item in selection)
             db.OctoratePreparations.Add(new OctoratePreparation
             {
-                BatchId = batchId, Environment = _environment, OrgId = item.OrgId, PropertyId = item.PropertyId, UpdatedAt = Now,
+                BatchId = batchId,
+                Environment = _environment,
+                OrgId = item.OrgId,
+                PropertyId = item.PropertyId,
+                UpdatedAt = Now,
             });
         await db.SaveChangesAsync(ct);
         if (transaction is not null)
@@ -213,8 +217,11 @@ public sealed class OctoratePreparationService(
                 await db.SaveChangesAsync(ct);
                 await client.CreateRoomAsync(acc, new OctorateRoomCreate
                 {
-                    Name = property.Name, RateNames = new Dictionary<string, string> { ["IT"] = property.Name },
-                    Adults = property.MaxGuests, Bedrooms = property.Bedrooms, Beds = property.Beds ?? property.MaxGuests,
+                    Name = property.Name,
+                    RateNames = new Dictionary<string, string> { ["IT"] = property.Name },
+                    Adults = property.MaxGuests,
+                    Bedrooms = property.Bedrooms,
+                    Beds = property.Beds ?? property.MaxGuests,
                     Bathrooms = property.Bathrooms,
                 }, ct);
                 rooms = await client.GetRoomsAsync(acc, ct);
@@ -247,15 +254,24 @@ public sealed class OctoratePreparationService(
         {
             connection = new OctorateConnection
             {
-                OrgId = row.OrgId, Environment = _environment, UsesMasterAccount = true,
-                Status = OctorateConnectionStatus.Connected, CreatedAt = Now, UpdatedAt = Now,
+                OrgId = row.OrgId,
+                Environment = _environment,
+                UsesMasterAccount = true,
+                Status = OctorateConnectionStatus.Connected,
+                CreatedAt = Now,
+                UpdatedAt = Now,
             };
             db.OctorateConnections.Add(connection);
         }
         db.OctorateListingMappings.Add(new OctorateListingMapping
         {
-            OrgId = row.OrgId, ConnectionId = connection.Id, PropertyId = property.Id, OctorateAccommodationId = acc,
-            OctorateProductId = product, Status = OctorateMappingStatus.Confirmed, ConfirmedAt = Now,
+            OrgId = row.OrgId,
+            ConnectionId = connection.Id,
+            PropertyId = property.Id,
+            OctorateAccommodationId = acc,
+            OctorateProductId = product,
+            Status = OctorateMappingStatus.Confirmed,
+            ConfirmedAt = Now,
             SnapshotName = property.Name[..Math.Min(property.Name.Length, OctorateListingMapping.SnapshotNameMaxLength)],
         });
         await UpdateAsync(row, OctoratePreparationStatus.Ready, null, ct);

@@ -60,8 +60,12 @@ public sealed class PropertyActivationAccounts(
             (PostgresAdvisoryLocks.Scope.PropertyPreparation, $"accounts:{scope.OrgId:N}:{input.Service}"));
         var account = new PropertyActivationCredential
         {
-            OrgId = scope.OrgId, Service = input.Service, Username = input.Username.Trim(), Password = input.Password,
-            WebServiceKey = input.Service == "alloggiati" ? input.WebServiceKey?.Trim() : null, ExpiresAt = Now.AddDays(7),
+            OrgId = scope.OrgId,
+            Service = input.Service,
+            Username = input.Username.Trim(),
+            Password = input.Password,
+            WebServiceKey = input.Service == "alloggiati" ? input.WebServiceKey?.Trim() : null,
+            ExpiresAt = Now.AddDays(7),
         };
         db.PropertyActivationCredentials.Add(account);
         var old = await db.PropertyActivationCredentialAssignments.Where(a =>
@@ -73,7 +77,9 @@ public sealed class PropertyActivationAccounts(
             {
                 assignment = new PropertyActivationCredentialAssignment
                 {
-                    OrgId = scope.OrgId, Service = input.Service, PropertyId = item.PropertyId,
+                    OrgId = scope.OrgId,
+                    Service = input.Service,
+                    PropertyId = item.PropertyId,
                 };
                 db.PropertyActivationCredentialAssignments.Add(assignment);
             }
