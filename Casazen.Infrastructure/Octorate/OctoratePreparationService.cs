@@ -27,7 +27,11 @@ public sealed class OctoratePreparationService(
     TimeProvider clock)
 {
     private const string Tenant = AppDbContext.TenantQueryFilter;
+    private const string EnvironmentCheckFailed = "octorate_preparation_environment_mismatch";
+    private const string MasterCheckFailed = "octorate_preparation_master_check_failed";
     private readonly OctorateEnvironment _environment = OctorateEnvironments.Of(host);
+    private OctorateEnvironment ExpectedApiEnvironment =>
+        OctorateEnvironments.ExpectedApiEnvironment(_environment, options.Value.AllowProductionApiInTest);
     private DateTime Now => clock.GetUtcNow().UtcDateTime;
     private IQueryable<OctoratePreparation> Rows => db.OctoratePreparations.IgnoreQueryFilters([Tenant])
         .Where(r => r.Environment == _environment);
@@ -168,7 +172,7 @@ public sealed class OctoratePreparationService(
         var property = await ReadPropertyAsync(row, ct);
         using (scope.Use(masterId))
         {
-            OctorateEnvironments.EnsureMatches(_environment, await client.GetConfigurationAsync(ct));
+            OctorateEnvironments.EnsureMatches(ExpectedApiEnvironment, await client.GetConfigurationAsync(ct));
             var external = await client.GetPropertyAsync(accommodationId, ct);
             if (!Matches(property, external) || external.NetworkAccessEnabled == false
                 || (external.BillingNetworkName is { } network && network != billingNetwork))
@@ -184,16 +188,21 @@ public sealed class OctoratePreparationService(
     public async Task RunAsync(Guid batchId, string staffUserId, CancellationToken ct)
     {
         await using var operation = await LockAsync(batchId, ct);
-        var (masterId, billingNetwork) = Settings();
-        using (scope.Use(masterId))
-            OctorateEnvironments.EnsureMatches(_environment, await client.GetConfigurationAsync(ct));
         var rows = await Rows.Where(r => r.BatchId == batchId && r.Status != OctoratePreparationStatus.Ready)
             .OrderBy(r => r.PropertyId).ToListAsync(ct);
+        if (rows.Count == 0)
+            return;
+
+        var (masterId, billingNetwork) = await VerifyMasterAsync(rows, ct);
         OctorateProperty[]? masterInventory = null;
         foreach (var row in rows)
         {
             try
             {
+                if (row.Status == OctoratePreparationStatus.NeedsReview && row.AccommodationId is null
+                    && row.ErrorCode is EnvironmentCheckFailed or MasterCheckFailed)
+                    await UpdateAsync(row, OctoratePreparationStatus.Queued, null, ct);
+
                 var property = await ReadPropertyAsync(row, ct);
                 if (row.Status == OctoratePreparationStatus.Queued ||
                     (row.Status == OctoratePreparationStatus.NeedsReview && row.AccommodationId is null && row.ErrorCode == "octorate_preparation_invalid_data"))
@@ -223,6 +232,8 @@ public sealed class OctoratePreparationService(
 
                 if (row.AccommodationId is not null && row.SupplierReference is not null)
                     await VerifyAsync(row, property, masterId, billingNetwork, ct);
+                else if (row.ErrorCode is EnvironmentCheckFailed or MasterCheckFailed)
+                    await UpdateAsync(row, row.Status, null, ct);
             }
             catch (DomainRuleException)
             {
@@ -239,6 +250,36 @@ public sealed class OctoratePreparationService(
                 var code = ex is OctoratePropertyRejectedException ? "octorate_preparation_invalid_data" : ex.Code;
                 await UpdateAsync(row, status, code, CancellationToken.None);
             }
+        }
+    }
+
+    private async Task<(Guid MasterId, string BillingNetwork)> VerifyMasterAsync(
+        IReadOnlyList<OctoratePreparation> rows, CancellationToken ct)
+    {
+        try
+        {
+            var settings = Settings();
+            using (scope.Use(settings.MasterId))
+                OctorateEnvironments.EnsureMatches(ExpectedApiEnvironment, await client.GetConfigurationAsync(ct));
+            return settings;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            var code = exception is OctorateWrongEnvironmentException ? EnvironmentCheckFailed : MasterCheckFailed;
+            var now = Now;
+            foreach (var row in rows)
+            {
+                if (row.Status == OctoratePreparationStatus.Queued)
+                    row.Status = OctoratePreparationStatus.NeedsReview;
+                else if (row.ErrorCode is not (null or EnvironmentCheckFailed or MasterCheckFailed))
+                    continue;
+
+                row.ErrorCode = code;
+                row.UpdatedAt = now;
+            }
+
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw;
         }
     }
 

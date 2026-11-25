@@ -147,6 +147,47 @@ public sealed class PropertyImportActivationTests
         Assert.Empty((await service.CandidatesAsync("unmatched", CancellationToken.None)).Items);
     }
 
+    [Fact]
+    public async Task PreparationRun_RecordsEnvironmentMismatchAndCanResumeAgainstExplicitlyEnabledProduction()
+    {
+        await using var db = Database();
+        var row = new OctoratePreparation
+        {
+            BatchId = Guid.NewGuid(),
+            OrgId = Guid.NewGuid(),
+            PropertyId = Guid.NewGuid(),
+            Environment = OctorateEnvironment.Test,
+        };
+        db.OctoratePreparations.Add(row);
+        await db.SaveChangesAsync();
+
+        var api = new Mock<IOctorateApiClient>(MockBehavior.Strict);
+        api.Setup(client => client.GetConfigurationAsync(CancellationToken.None))
+            .ReturnsAsync(new OctorateConfiguration("PRODUCTION", null, null, null));
+        var host = new Mock<IHostEnvironment>();
+        host.SetupGet(environment => environment.EnvironmentName).Returns("Staging");
+        var options = new OctorateOptions { MasterOrganizationId = Guid.NewGuid(), BillingNetworkName = "test-network" };
+        var service = new OctoratePreparationService(db, api.Object, Mock.Of<IOctorateOrgScope>(), null!,
+            Options.Create(options), host.Object, TimeProvider.System);
+
+        await Assert.ThrowsAsync<OctorateWrongEnvironmentException>(() =>
+            service.RunAsync(row.BatchId, "staff", CancellationToken.None));
+
+        db.ChangeTracker.Clear();
+        var failed = Assert.Single((await service.ViewAsync(row.BatchId, CancellationToken.None)).Rows);
+        Assert.Equal("NeedsReview", failed.Status);
+        Assert.Equal("octorate_preparation_environment_mismatch", failed.ErrorCode);
+        Assert.Null(failed.AccommodationId);
+
+        options.AllowProductionApiInTest = true;
+        await service.RunAsync(row.BatchId, "staff", CancellationToken.None);
+
+        db.ChangeTracker.Clear();
+        var resumed = Assert.Single((await service.ViewAsync(row.BatchId, CancellationToken.None)).Rows);
+        Assert.Equal("octorate_preparation_invalid_data", resumed.ErrorCode);
+        api.Verify(client => client.GetConfigurationAsync(CancellationToken.None), Times.Exactly(2));
+    }
+
     private static AppDbContext Database() => new(new DbContextOptionsBuilder<AppDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options);
 
