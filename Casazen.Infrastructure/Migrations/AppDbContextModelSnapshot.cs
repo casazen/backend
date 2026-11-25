@@ -4469,6 +4469,113 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Casazen.Core.GuestPortal.GuestHostExtra", b =>
+                {
+                    b.Property<int>("Calendar")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CutoffHours")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<bool>("DuringStay")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("Inventory")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<int>("Pricing")
+                        .HasColumnType("integer");
+
+                    b.PrimitiveCollection<Guid[]>("PropertyIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.Property<bool>("RequiresApproval")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.ToTable("GuestHostExtras");
+                });
+
+            modelBuilder.Entity("Casazen.Core.GuestPortal.GuestHostExtraOrder", b =>
+                {
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<Guid>("ExtraId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StripeAccountId")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("StripeIntentId")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "BookingId");
+
+                    b.HasIndex("OrgId", "ExtraId");
+
+                    b.ToTable("GuestHostExtraOrders");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.GuestPortalLink", b =>
                 {
                     b.Property<Guid>("Id")

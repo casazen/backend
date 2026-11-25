@@ -1,3 +1,4 @@
+using Casazen.Core.GuestPortal;
 using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -97,6 +98,13 @@ public sealed class GuestDocumentLineBuilder(
             lines.Add(Line(texts.Get(CleaningKey, language), cleaning, FiscalLineType.Cleaning, rule));
         if (tax.Amount > 0m)
             lines.Add(Line(texts.Get(TouristTaxKeyOf(rule, paymentChannel), language), tax.Amount, FiscalLineType.TouristTax, rule));
+
+        var extras = await db.GuestHostExtraOrders.AsNoTracking()
+            .Where(x => x.OrgId == stay.OrgId && x.BookingId == stay.Id &&
+                (x.Status == GuestHostExtraStatus.Paid || x.Status == GuestHostExtraStatus.Fulfilled))
+            .OrderBy(x => x.CreatedAt).ToListAsync(ct);
+        foreach (var extra in extras)
+            lines.Add(Line(extra.Name, extra.Amount, FiscalLineType.ExtraService, rule));
 
         return new GuestDocumentLines(lines, paymentChannel, tax.Amount > 0m && tax.FromDefault);
     }

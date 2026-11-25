@@ -12,7 +12,7 @@ namespace Casazen.Core.Services;
 /// <item><b>Accommodation.</b> <c>BasePrice</c> without <c>CleaningFee</c>: <c>BasePrice</c> is «nightly rate × nights + cleaning» for a booking made in CasaZen (direct, manual),
 /// and the room price the portal reports for a booking of a channel, whose import never writes a cleaning fee. The cleaning is billed once, never inside the stay and again
 /// as its own line. For a booking of a portal the amount is the price of the host, never the service fee the portal charges the guest.</item>
-/// <item><b>Cleaning.</b> <c>CleaningFee</c> when it is more than zero. The model has no extras of a booking: no line of type <see cref="FiscalLineType.ExtraService"/> is made.</item>
+/// <item><b>Cleaning.</b> <c>CleaningFee</c> when it is more than zero. Paid host extras are added as <see cref="FiscalLineType.ExtraService"/> lines.</item>
 /// <item><b>Tourist tax.</b> Italy: the confirmed <see cref="StayTouristTax"/> of the stay, else <c>Booking.TouristTax</c>, only when the host or the agency collects it
 /// (<see cref="Casazen.Core.TouristTax.ItalianPortalTouristTax.Decide"/>: the channel rule of the comune, the record of the stay, the organization's own list of portals, and last the
 /// default, <b>the host at the property</b>: a portal is never taken to have collected a tax it was not recorded to collect). When the portal collects a tax the stay owes, the line of the

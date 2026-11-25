@@ -1,3 +1,4 @@
+using Casazen.Core.GuestPortal;
 using Casazen.Infrastructure.Data.Configurations;
 using System.Reflection;
 using Casazen.Core.Authorization;
@@ -71,6 +72,8 @@ public class AppDbContext(
     public DbSet<F24Record> F24Records { get; set; } = null!;
     public DbSet<OwnerInvitation> OwnerInvitations { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
+    public DbSet<GuestHostExtra> GuestHostExtras => Set<GuestHostExtra>();
+    public DbSet<GuestHostExtraOrder> GuestHostExtraOrders => Set<GuestHostExtraOrder>();
     public DbSet<Guest> Guests { get; set; } = null!;
     public DbSet<Payment> Payments { get; set; } = null!;
     public DbSet<PaymentRefund> PaymentRefunds { get; set; } = null!;
@@ -2472,6 +2475,9 @@ public class AppDbContext(
         // UI-13a: the stored search keys and their indexes (global search, docs/runbooks/global-search.md).
         SearchKeyModel.Configure(modelBuilder);
 
+        modelBuilder.Entity<GuestHostExtraOrder>().HasIndex(x => new { x.OrgId, x.BookingId });
+        modelBuilder.Entity<GuestHostExtraOrder>().HasIndex(x => new { x.OrgId, x.ExtraId });
+        modelBuilder.Entity<GuestHostExtra>().HasIndex(x => x.OrgId);
         ApplyTenantQueryFilters(modelBuilder);
     }
 

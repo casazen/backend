@@ -1,3 +1,4 @@
+using Casazen.Infrastructure.GuestPortal;
 using Stripe;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -43,7 +44,8 @@ public class StripeWebhookHandler(
     IDomainEventRecorder? domainEvents = null,
     IBankLinkService? bankLinks = null,
     ITouristTaxCollectionService? touristTaxCollection = null,
-    Microsoft.Extensions.Configuration.IConfiguration? commercialConfiguration = null)
+    Microsoft.Extensions.Configuration.IConfiguration? commercialConfiguration = null,
+    GuestHostExtraService? hostExtras = null)
 {
     private const string DirectBookingKind = "direct-booking";
 
@@ -162,6 +164,12 @@ public class StripeWebhookHandler(
                 // drop every kind but direct-booking on the Connect endpoint and would look for a booking payment on the platform one. Recorded on the stay's
                 // tourist tax with the amount and the currency of the intent, once; never a Payment row. A failed, canceled or processing intent changes
                 // nothing: the stay stays to collect and the guest can pay again.
+                case "payment_intent.succeeded" when source == WebhookSource.Connected && stripeEvent.Account is { } extraAccount
+                    && stripeEvent.Data.Object is PaymentIntent extraIntent
+                    && extraIntent.Metadata?.GetValueOrDefault("kind") == "guest-host-extra":
+                    await (hostExtras ?? throw new InvalidOperationException("Host extra settlement is unavailable."))
+                        .SettleAsync(extraIntent, extraAccount, CancellationToken.None);
+                    break;
                 case "payment_intent.succeeded" when IsTouristTax(stripeEvent.Data.Object as PaymentIntent):
                     touristTaxPaid = await HandleTouristTaxPaymentAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent);
                     break;
