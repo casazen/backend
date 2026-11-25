@@ -119,6 +119,11 @@ def collect(row, quote, pause):
     path = row["sourcePath"]
     if not re.fullmatch(r"/[a-zA-Z0-9_-]+", path):
         raise ValueError("sourcePath must be a single sitemap path")
+    override = row.get("quote", {})
+    quote = {**quote, **{key: override[key] for key in ("from", "to", "guests", "currency") if key in override}}
+    if quote["currency"] not in ("EUR", "CHF") or not (1 <= int(quote["guests"]) <= 100):
+        raise ValueError("unsupported quote currency or occupancy")
+    quote["guests_rooms"] = f"{quote['guests']},0;"
     source, italian, rates, selected = listing(path, "it", quote)
     time.sleep(pause)
     english_source, english, _, _ = listing(path, "en", quote)
@@ -141,8 +146,19 @@ def collect(row, quote, pause):
         } for rate in rates if rate["amount"] > 0
     ]
     selected_rate = next((plan for plan in plans if plan["id"] == selected), None)
+    price_source = None
     if selected_rate is None:
-        findings.append({"field": "nightlyRate", "status": "missing", "reason": "La fonte non espone un prezzo per le date e l’occupazione scelte.", "source": url})
+        alternative = row.get("alternateNightlyRate") or {}
+        alternative_url = urlsplit(alternative.get("sourceUrl", ""))
+        alternative_amount = alternative.get("amount")
+        if (alternative_url.scheme == "https" and alternative_url.netloc and not alternative_url.username
+                and alternative.get("currency") == quote["currency"] and alternative.get("unit") == "night"
+                and isinstance(alternative_amount, (float, int)) and not isinstance(alternative_amount, bool)
+                and 0 < alternative_amount <= 100_000):
+            selected_rate = {"amount": alternative_amount}
+            price_source = alternative.get("sourceUrl")
+        else:
+            findings.append({"field": "nightlyRate", "status": "missing", "reason": "La fonte non espone un prezzo per le date e l’occupazione scelte.", "source": url})
     for text in (italian, english):
         if text and len(text.encode("utf-16-le")) // 2 > 10_000:
             raise ValueError("source description exceeds the configured limit")
@@ -152,7 +168,8 @@ def collect(row, quote, pause):
                      "parentSourceId": row.get("parentSourceId"), "descriptionIt": italian, "descriptionEn": english,
                      "nightlyRate": selected_rate["amount"] if selected_rate else None, "currency": quote["currency"],
                      "ratePlans": plans, "findings": findings,
-                     "unmappedFields": {**row.get("unmappedFields", {}), "quoteSource": url + "?" + urlencode(quote)}},
+                     "unmappedFields": {**row.get("unmappedFields", {}), "quoteSource": url + "?" + urlencode(quote),
+                                        **({"nightlyRateSource": price_source} if price_source else {})}},
     }
 
 
