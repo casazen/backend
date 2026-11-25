@@ -13,6 +13,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
+using Organization = Casazen.Core.Entities.Org;
 
 namespace Casazen.Tests.Unit.Octorate;
 
@@ -102,6 +103,48 @@ public sealed class PropertyImportActivationTests
             new Uri("https://api.example.test/connect/rest/v1/connection/IMPORT_ROOMS/202/9"), CancellationToken.None));
         await Assert.ThrowsAsync<OctorateAuthException>(() => boundary.AuthorizeAsync(first.OrgId, HttpMethod.Get,
             new Uri("https://api.example.test/connect/rest/v1/accommodation?page=0"), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task PreparationCandidates_ShowExistingListingsWithoutImportAndExcludeMasterMappedAndQueuedListings()
+    {
+        await using var db = Database();
+        var org = new Organization { Name = "Quokka360", Slug = "quokka360", ContactEmail = "booking@example.com" };
+        var master = new Organization { Name = "Master", Slug = "master" };
+        db.Orgs.AddRange(org, master);
+        AddProperty(db, master.Id).Name = "Master property";
+        var candidate = AddProperty(db, org.Id);
+        AddProperty(db, org.Id).PublishedOnSite = false;
+        var linked = AddProperty(db, org.Id);
+        var queued = AddProperty(db, org.Id);
+        var connection = new OctorateConnection { OrgId = org.Id, Environment = OctorateEnvironment.Test };
+        db.OctorateConnections.Add(connection);
+        db.OctorateListingMappings.Add(new OctorateListingMapping
+        {
+            OrgId = org.Id,
+            ConnectionId = connection.Id,
+            PropertyId = linked.Id,
+            Status = OctorateMappingStatus.Confirmed,
+            OctorateAccommodationId = "101",
+        });
+        db.OctoratePreparations.Add(new OctoratePreparation
+        {
+            BatchId = Guid.NewGuid(),
+            OrgId = org.Id,
+            PropertyId = queued.Id,
+            Environment = OctorateEnvironment.Test,
+        });
+        await db.SaveChangesAsync();
+        var host = new Mock<IHostEnvironment>();
+        host.SetupGet(h => h.EnvironmentName).Returns("Staging");
+        var service = new OctoratePreparationService(db, Mock.Of<IOctorateApiClient>(), Mock.Of<IOctorateOrgScope>(), null!,
+            Options.Create(new OctorateOptions { MasterOrganizationId = master.Id }), host.Object, TimeProvider.System);
+
+        var result = Assert.Single((await service.CandidatesAsync(null, CancellationToken.None)).Items);
+        Assert.Equal((candidate.Id, "Lario Suite", "Quokka360"), (result.PropertyId, result.PropertyName, result.OrganizationName));
+        Assert.Equal(["location", "contact.phone"], result.MissingFields);
+        Assert.Single((await service.CandidatesAsync("QUOKKA", CancellationToken.None)).Items);
+        Assert.Empty((await service.CandidatesAsync("unmatched", CancellationToken.None)).Items);
     }
 
     private static AppDbContext Database() => new(new DbContextOptionsBuilder<AppDbContext>()
