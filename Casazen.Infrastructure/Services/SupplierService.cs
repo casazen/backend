@@ -946,14 +946,16 @@ public partial class SupplierService(
         Guid hostOrgId,
         string email,
         IReadOnlyCollection<Guid> propertyIds,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        SupplierInviteIdentity? identity = null)
     {
         email = email.Trim();
         var assigned = propertyIds.Distinct().ToList();
+        await using var transaction = await LockHostInviteAsync(hostOrgId, email, cancellationToken);
 
         // One pending invite per host and email; an admin invite, or another host's, does not block it.
         var duplicate = await db.SupplierInviteRecords.AnyAsync(
-            i => i.Email == email && i.InvitedByOrgId == hostOrgId && i.TokenHash != null && !i.IsUsed && i.RevokedAt == null
+            i => i.Email.ToLower() == email.ToLower() && i.InvitedByOrgId == hostOrgId && (i.TokenHash != null || i.IdentityReviewJson != null) && !i.IsUsed && i.RevokedAt == null
                 && i.ExpiresAt > DateTime.UtcNow,
             cancellationToken);
         if (duplicate)
@@ -961,19 +963,31 @@ public partial class SupplierService(
                 SupplierAdminErrorCodes.DuplicateInvite, SupplierAdminErrorCodes.DuplicateInviteMessageKey);
 
         var (comuneCode, comuneName) = await ResolveHostInviteComuneAsync(hostOrgId, assigned, cancellationToken);
-        var normalized = SupplierProfileEmailIndex.Normalize(email);
-        var known = await db.SupplierProfiles.AsNoTracking().Where(p => p.Email.Trim().ToLower() == normalized)
-            .Select(p => new { p.OrgId, p.GuestPortalMarketplaceEnabled }).SingleOrDefaultAsync(cancellationToken);
+        var supplied = NormalizeIdentity(identity);
+        var matches = await FindIdentityMatchesAsync(email, supplied, cancellationToken);
+        var known = matches.SingleOrDefault(x => x.EmailMatch);
         var invite = new SupplierInviteRecord
         {
             Email = email,
             ComuneCode = comuneCode,
             InvitedByOrgId = hostOrgId,
-            HostOriginAtInvitation = known?.GuestPortalMarketplaceEnabled != true,
-            IdentifiedSupplierOrgId = known?.OrgId,
+            HostOriginAtInvitation = known?.Published != true,
+            IdentifiedSupplierOrgId = known?.Id,
             AssignedPropertyIds = assigned.Count == 0 ? null : assigned,
         };
-        return await IssueInviteAsync(invite, comuneName, cancellationToken);
+        if (matches.Any(x => !x.EmailMatch) || known != null &&
+            ((supplied.VatNumber != null && known.HasVat && !known.VatMatch) ||
+             (supplied.FiscalCode != null && known.HasFiscal && !known.FiscalMatch) ||
+             (supplied.Phone != null && known.HasPhone && !known.PhoneMatch)))
+        {
+            invite.IdentityReviewJson = JsonSerializer.Serialize(new ReviewEvidence(supplied, matches), JsonOpts);
+            invite.ExpiresAt = DateTime.UtcNow.Add(SupplierInviteTokens.Validity);
+            db.SupplierInviteRecords.Add(invite);
+            await db.SaveChangesAsync(cancellationToken);
+            if (transaction != null) await transaction.CommitAsync(cancellationToken);
+            return new SupplierInvite(invite.Id, invite.ExpiresAt);
+        }
+        return await IssueInviteAsync(invite, comuneName, cancellationToken, transaction);
     }
 
     /// <summary>
@@ -983,7 +997,8 @@ public partial class SupplierService(
     private async Task<SupplierInvite> IssueInviteAsync(
         SupplierInviteRecord invite,
         string? comuneName,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null)
     {
         var token = SupplierInviteTokens.Generate();
         invite.TokenHash = SupplierInviteTokens.Hash(token);
@@ -992,9 +1007,12 @@ public partial class SupplierService(
         // Rendered before saving: a missing App:PublicSiteBaseUrl is a configuration error, not an invite with a wrong link.
         var inviteEmail = BuildInviteEmail(invite, token, comuneName);
 
-        db.SupplierInviteRecords.Add(invite);
+        if (db.Entry(invite).State == EntityState.Detached)
+            db.SupplierInviteRecords.Add(invite);
         await db.SaveChangesAsync(cancellationToken);
 
+        if (transaction != null)
+            await transaction.CommitAsync(cancellationToken);
         if (!emailQueue.Enqueue(invite.Email, inviteEmail, EmailTemplates.Names.SupplierInvite))
             logger.LogWarning("Supplier invite {InviteId} created but its email was not queued", invite.Id);
 

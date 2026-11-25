@@ -16979,6 +16979,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool?>("HostOriginAtInvitation")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("IdentityReviewJson")
+                        .IsConcurrencyToken()
+                        .HasColumnType("text");
+
                     b.Property<Guid?>("IdentifiedSupplierOrgId")
                         .HasColumnType("uuid");
 
@@ -16993,6 +16997,7 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("character varying(1000)");
 
                     b.Property<DateTime?>("RevokedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("TokenHash")

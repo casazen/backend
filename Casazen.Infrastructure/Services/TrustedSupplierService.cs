@@ -41,7 +41,7 @@ public sealed class TrustedSupplierService(
             throw new DomainConflictException("trusted_supplier_already_added", "TrustedSupplierAlreadyAdded");
 
         // The invite, its email and its acceptance are the ones of the supplier registration (#977).
-        var invite = await supplierService.CreateTrustedSupplierInviteAsync(orgId, email, propertyIds);
+        var invite = await supplierService.CreateTrustedSupplierInviteAsync(orgId, email, propertyIds, identity: new(request.VatNumber, request.FiscalCode, request.Phone));
 
         logger.LogInformation(
             "Trusted supplier invite {InviteId} of org {OrgId} created by {Actor}", invite.InviteId, orgId, actorUserId);

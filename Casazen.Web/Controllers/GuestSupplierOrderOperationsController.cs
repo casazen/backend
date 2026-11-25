@@ -46,11 +46,12 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
         if (actor is null)
             return Unauthorized();
 
-        await invitations.InviteSupplierAsync(orgId, new InviteSupplierRequest(request.Email, [propertyId]), actor);
+        await invitations.InviteSupplierAsync(orgId, new InviteSupplierRequest(request.Email, [propertyId], request.VatNumber, request.FiscalCode, request.Phone), actor);
         return NoContent();
     }
 
-    public sealed record InviteSupplier([Required, EmailAddress, MaxLength(255)] string Email);
+    public sealed record InviteSupplier([Required, EmailAddress, MaxLength(255)] string Email,
+        [MaxLength(32)] string? VatNumber = null, [MaxLength(24)] string? FiscalCode = null, [MaxLength(50)] string? Phone = null);
 
     [HttpGet("catalog")]
     public async Task<IActionResult> Search(Guid propertyId, [FromQuery] string? search, CancellationToken ct, [FromQuery] string? origin = null)

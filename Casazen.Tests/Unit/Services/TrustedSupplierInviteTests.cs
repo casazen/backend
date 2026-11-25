@@ -210,6 +210,68 @@ public class TrustedSupplierInviteTests
         Assert.False(Assert.Single(db.SupplierInviteRecords).IsUsed);
     }
 
+    [Theory]
+    [InlineData("vat")]
+    [InlineData("fiscal")]
+    [InlineData("phone")]
+    public async Task AlternativeIdentifier_RequiresStaffConfirmationAndTheExistingAccount(string field)
+    {
+        await using var db = CreateDbContext();
+        db.Orgs.Add(new Casazen.Core.Entities.Org { Id = HostOrgId, Name = "Host", Slug = "host" });
+        AddProperty(db, HostOrgId, "Roma", "058091");
+        var id = AddRegisteredSupplier(db, SupplierEmail, SupplierUserId);
+        var profile = db.SupplierProfiles.Local.Single(p => p.OrgId == id);
+        profile.Phone = "(+39) 333-1234567";
+        profile.VatNumber = "IT12345678901";
+        db.Orgs.Local.Single(o => o.Id == id).BillingFiscalCode = "RSSMRA80A01H501U";
+        await db.SaveChangesAsync();
+        var q = new RecordingEmailQueue();
+        var svc = CreateSupplierService(db, q);
+        var request = new InviteSupplierRequest("other-address@example.test", [],
+            field == "vat" ? "12345678901" : null, field == "fiscal" ? "rssmra80a01h501u" : null,
+            field == "phone" ? "0039 333 1234567" : null);
+        var receipt = await CreateTrustedSupplierService(db, q).InviteSupplierAsync(HostOrgId, request, HostUserId);
+        Assert.Empty(q.Queued);
+        Assert.Empty(db.TrustedSuppliers);
+        var review = Assert.Single(await svc.ListIdentityReviewsAsync(1, default));
+        Assert.Equal(receipt.InviteId, review.Id);
+        Assert.Equal(field, Assert.Single(Assert.Single(review.Candidates).MatchedBy));
+        await Assert.ThrowsAsync<DomainRuleException>(() => svc.ResolveIdentityReviewAsync(review.Id, "existing", Guid.NewGuid(), "staff", default));
+        await svc.ResolveIdentityReviewAsync(review.Id, "existing", id, "staff", default);
+        Assert.Empty(await svc.ListIdentityReviewsAsync(1, default));
+        Assert.Equal(SupplierEmail, (await db.SupplierInviteRecords.SingleAsync()).Email);
+        var token = InviteToken(Assert.Single(q.Queued).Content.HtmlBody);
+        await Assert.ThrowsAsync<DomainConflictException>(() => svc.ResolveIdentityReviewAsync(review.Id, "reject", null, "staff", default));
+        Assert.Empty(db.TrustedSuppliers);
+        await svc.RegisterAsync(new SupplierRegistration(SupplierEmail, "Pulizie Test", "+390000000000", "058091",
+            token, SupplierUserId, SupplierEmail));
+        Assert.Equal(id, Assert.Single(db.TrustedSuppliers).SupplierOrgId);
+        Assert.Single(db.SupplierProfiles);
+    }
+
+    [Fact]
+    public async Task ConflictingEmailAndPhone_AreHeldUntilStaffRejects_WithoutSendingEitherAddress()
+    {
+        await using var db = CreateDbContext();
+        db.Orgs.Add(new Casazen.Core.Entities.Org { Id = HostOrgId, Name = "Host", Slug = "host" });
+        AddProperty(db, HostOrgId, "Roma", "058091");
+        AddRegisteredSupplier(db, SupplierEmail);
+        var otherId = AddRegisteredSupplier(db, "other@test.com");
+        db.SupplierProfiles.Local.Single(p => p.OrgId == otherId).Phone = "+39 333 1234567";
+        await db.SaveChangesAsync();
+        var q = new RecordingEmailQueue();
+        var svc = CreateSupplierService(db, q);
+        var request = new InviteSupplierRequest(SupplierEmail, [], Phone: "+39 333 1234567");
+        var receipt = await CreateTrustedSupplierService(db, q).InviteSupplierAsync(HostOrgId, request, HostUserId);
+        Assert.Equal(2, Assert.Single(await svc.ListIdentityReviewsAsync(1, default)).Candidates.Count);
+        await Assert.ThrowsAsync<DomainConflictException>(() => CreateTrustedSupplierService(db, q).InviteSupplierAsync(HostOrgId, request, HostUserId));
+        await Assert.ThrowsAsync<DomainRuleException>(() => svc.ResolveIdentityReviewAsync(receipt.InviteId, "distinct", null, "staff", default));
+        await svc.ResolveIdentityReviewAsync(receipt.InviteId, "reject", null, "staff", default);
+        Assert.Empty(q.Queued);
+        Assert.Empty(db.TrustedSuppliers);
+        Assert.NotNull((await db.SupplierInviteRecords.SingleAsync()).RevokedAt);
+    }
+
     private static Property AddProperty(AppDbContext db, Guid orgId, string city, string? istatCode)
     {
         var property = new Property { OrgId = orgId, Name = $"Casa {city}", City = city, ComuneIstatCode = istatCode };

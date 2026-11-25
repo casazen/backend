@@ -9055,4 +9055,13 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="GuestStayChangeStale" xml:space="preserve"><value>Il soggiorno o il preventivo è cambiato. Serve una nuova richiesta.</value></data>
   <data name="GuestStayChangePending" xml:space="preserve"><value>C’è già una richiesta di modifica in attesa.</value></data>
   <data name="GuestHostExtraUnavailable" xml:space="preserve"><value>Questo extra non è disponibile per il soggiorno.</value></data>
+  <data name="SupplierInviteIdentityInvalid" xml:space="preserve">
+    <value>Verifica partita IVA, codice fiscale e numero di telefono.</value>
+  </data>
+  <data name="SupplierIdentityReviewClosed" xml:space="preserve">
+    <value>La richiesta è già stata gestita oppure è scaduta.</value>
+  </data>
+  <data name="SupplierIdentityChoiceInvalid" xml:space="preserve">
+    <value>Seleziona un profilo tra quelli verificati oppure archivia la richiesta.</value>
+  </data>
 </root>

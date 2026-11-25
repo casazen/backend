@@ -41,7 +41,7 @@ public class TrustedSuppliersController(
 
         var result = await trustedSupplierService.InviteSupplierAsync(
             orgId.Value,
-            new InviteSupplierRequest(request.Email, request.PropertyIds ?? new List<Guid>()),
+            new InviteSupplierRequest(request.Email, request.PropertyIds ?? [], request.VatNumber, request.FiscalCode, request.Phone),
             actorUserId);
 
         return Ok(new InviteSupplierResponse(result.InviteId, result.ExpiresAt));
@@ -122,7 +122,10 @@ public class TrustedSuppliersController(
 }
 
 // DTOs
-public sealed record InviteSupplierRequestDto(string Email, List<Guid>? PropertyIds);
+public sealed record InviteSupplierRequestDto(string Email, List<Guid>? PropertyIds,
+    [System.ComponentModel.DataAnnotations.MaxLength(32)] string? VatNumber = null,
+    [System.ComponentModel.DataAnnotations.MaxLength(24)] string? FiscalCode = null,
+    [System.ComponentModel.DataAnnotations.MaxLength(50)] string? Phone = null);
 public sealed record InviteSupplierResponse(Guid InviteId, DateTime ExpiresAt);
 public sealed record UpdateVisibilityRequest(bool Visible);
 
