@@ -131,17 +131,32 @@ public sealed class OctoratePropertyCreator(
         Property property, string userId, string billingNetworkName, CancellationToken ct) =>
         (await BuildRequestAsync(property, userId, connected: false, ct)) with { BillingNetworkName = billingNetworkName };
 
+    internal static List<OctorateFieldError> PropertyErrors(Property property, string? email, string? phone)
+    {
+        var errors = new List<OctorateFieldError>();
+        void Require(bool present, string field)
+        {
+            if (!present)
+                errors.Add(new OctorateFieldError(field, "required"));
+        }
+
+        var country = property.Country?.Trim().ToUpperInvariant();
+        Require(!string.IsNullOrWhiteSpace(property.Name), "name");
+        Require(!string.IsNullOrWhiteSpace(property.Address), "address");
+        Require(!string.IsNullOrWhiteSpace(property.City), "city");
+        Require(!string.IsNullOrWhiteSpace(property.PostalCode), "zipCode");
+        Require(country is { Length: 2 } && country.All(char.IsAsciiLetterUpper), "country");
+        Require(property is { Latitude: >= -90m and <= 90m, Longitude: >= -180m and <= 180m }
+            && !(property.Latitude == 0m && property.Longitude == 0m), "location");
+        Require(!string.IsNullOrWhiteSpace(email) && new EmailAddressAttribute().IsValid(email.Trim()), "contact.email");
+        Require(!string.IsNullOrWhiteSpace(phone), "contact.phone");
+        return errors;
+    }
+
     private async Task<OctoratePropertyCreate> BuildRequestAsync(Property property, string userId, bool connected, CancellationToken ct)
     {
         var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == property.OrgId, ct);
         var person = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
-
-        var invalid = new List<OctorateFieldError>();
-        void Require(bool ok, string field, string message)
-        {
-            if (!ok)
-                invalid.Add(new OctorateFieldError(field, message));
-        }
 
         var country = property.Country?.Trim().ToUpperInvariant();
         var name = property.Name?.Trim();
@@ -150,19 +165,11 @@ public sealed class OctoratePropertyCreator(
         var firstName = person?.FirstName?.Trim();
         var lastName = person?.LastName?.Trim();
 
-        Require(!string.IsNullOrEmpty(name), "name", "required");
-        Require(!string.IsNullOrWhiteSpace(property.Address), "address", "required");
-        Require(!string.IsNullOrWhiteSpace(property.City), "city", "required");
-        Require(!string.IsNullOrWhiteSpace(property.PostalCode), "zipCode", "required");
-        Require(country is { Length: 2 } && country.All(char.IsAsciiLetterUpper), "country", "required");
-        Require(
-            property is { Latitude: >= -90m and <= 90m, Longitude: >= -180m and <= 180m } && !(property.Latitude == 0m && property.Longitude == 0m),
-            "location",
-            "required");
-        Require(!string.IsNullOrEmpty(email) && new EmailAddressAttribute().IsValid(email), "contact.email", "required");
-        Require(!string.IsNullOrEmpty(phone), "contact.phone", "required");
-        Require(!string.IsNullOrEmpty(firstName), "contact.firstName", "required");
-        Require(!string.IsNullOrEmpty(lastName), "contact.lastName", "required");
+        var invalid = PropertyErrors(property, email, phone);
+        if (string.IsNullOrEmpty(firstName))
+            invalid.Add(new OctorateFieldError("contact.firstName", "required"));
+        if (string.IsNullOrEmpty(lastName))
+            invalid.Add(new OctorateFieldError("contact.lastName", "required"));
         if (invalid.Count > 0)
             throw PropertyInvalid(invalid);
 

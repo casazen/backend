@@ -11,6 +11,8 @@ using Microsoft.Extensions.Options;
 namespace Casazen.Infrastructure.Octorate;
 
 public sealed record PreparationSelection(Guid OrgId, Guid PropertyId);
+public sealed record PreparationCandidate(Guid OrgId, Guid PropertyId, string OrganizationName, string PropertyName, IReadOnlyList<string> MissingFields);
+public sealed record PreparationCandidates(IReadOnlyList<PreparationCandidate> Items, bool HasMore);
 public sealed record PreparationRow(Guid Id, Guid BatchId, Guid OrgId, Guid PropertyId, string PropertyName,
     string Status, string? AccommodationId, string? SupplierReference, string? ErrorCode, DateTime UpdatedAt);
 public sealed record PreparationBatch(Guid Id, IReadOnlyList<PreparationRow> Rows);
@@ -29,6 +31,34 @@ public sealed class OctoratePreparationService(
     private DateTime Now => clock.GetUtcNow().UtcDateTime;
     private IQueryable<OctoratePreparation> Rows => db.OctoratePreparations.IgnoreQueryFilters([Tenant])
         .Where(r => r.Environment == _environment);
+    private IQueryable<Property> PublishedShortRentProperties => db.Properties.IgnoreQueryFilters([Tenant]).AsNoTracking()
+        .Where(p => p.RentalMode == RentalMode.Short && p.IsActive && p.PublishedOnSite);
+    private IQueryable<OctorateListingMapping> ConfirmedMappings =>
+        from mapping in db.OctorateListingMappings.IgnoreQueryFilters([Tenant])
+        join connection in db.OctorateConnections.IgnoreQueryFilters([Tenant]) on mapping.ConnectionId equals connection.Id
+        where connection.Environment == _environment && mapping.Status == OctorateMappingStatus.Confirmed
+        select mapping;
+
+    public async Task<PreparationCandidates> CandidatesAsync(string? search, CancellationToken ct)
+    {
+        const int limit = 300;
+        var masterId = options.Value.MasterOrganizationId;
+        var term = search?.Trim().ToLowerInvariant();
+        var candidates = from property in PublishedShortRentProperties
+                         join org in db.Orgs.AsNoTracking() on property.OrgId equals org.Id
+                         where property.OrgId != masterId
+                             && !Rows.Any(row => row.OrgId == property.OrgId && row.PropertyId == property.Id)
+                             && !ConfirmedMappings.Any(mapping => mapping.OrgId == property.OrgId && mapping.PropertyId == property.Id)
+                         select new { Property = property, org.Name, org.ContactEmail, org.ContactPhone };
+        if (!string.IsNullOrEmpty(term))
+            candidates = candidates.Where(row => row.Property.Name.ToLower().Contains(term) || row.Name.ToLower().Contains(term));
+
+        var rows = await candidates.OrderBy(row => row.Name).ThenBy(row => row.Property.Name).ThenBy(row => row.Property.Id)
+            .Take(limit + 1).ToListAsync(ct);
+        return new PreparationCandidates(rows.Take(limit).Select(row => new PreparationCandidate(row.Property.OrgId, row.Property.Id,
+            row.Name, row.Property.Name, OctoratePropertyCreator.PropertyErrors(row.Property, row.ContactEmail, row.ContactPhone)
+                .Select(error => error.Field).ToArray())).ToArray(), rows.Count > limit);
+    }
 
     public async Task<PreparationBatch> StartAsync(IReadOnlyList<PreparationSelection> selection, CancellationToken ct)
     {
@@ -44,8 +74,7 @@ public sealed class OctoratePreparationService(
         var propertyIds = selection.Select(s => s.PropertyId).ToArray();
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct,
             (PostgresAdvisoryLocks.Scope.PropertyPreparation, $"batch:{_environment}"));
-        var properties = await db.Properties.IgnoreQueryFilters([Tenant]).AsNoTracking()
-            .Where(p => propertyIds.Contains(p.Id) && p.RentalMode == RentalMode.Short && p.IsActive && p.PublishedOnSite).ToListAsync(ct);
+        var properties = await PublishedShortRentProperties.Where(p => propertyIds.Contains(p.Id)).ToListAsync(ct);
         if (selection.Any(s => !properties.Any(p => p.Id == s.PropertyId && p.OrgId == s.OrgId)))
             throw Invalid("octorate_preparation_selection");
 
@@ -280,21 +309,13 @@ public sealed class OctoratePreparationService(
     }
 
     private Task<bool> IsAssignedAsync(string acc, CancellationToken ct) =>
-        (from mapping in db.OctorateListingMappings.IgnoreQueryFilters([Tenant])
-         join connection in db.OctorateConnections.IgnoreQueryFilters([Tenant]) on mapping.ConnectionId equals connection.Id
-         where connection.Environment == _environment && mapping.OctorateAccommodationId == acc && mapping.Status == OctorateMappingStatus.Confirmed
-         select mapping.Id).AnyAsync(ct);
+        ConfirmedMappings.AnyAsync(mapping => mapping.OctorateAccommodationId == acc, ct);
 
     private Task<bool> IsLinkedAsync(OctoratePreparation row, CancellationToken ct) =>
-        (from mapping in db.OctorateListingMappings.IgnoreQueryFilters([Tenant])
-         join connection in db.OctorateConnections.IgnoreQueryFilters([Tenant]) on mapping.ConnectionId equals connection.Id
-         where mapping.OrgId == row.OrgId && mapping.PropertyId == row.PropertyId && connection.Environment == _environment
-             && mapping.Status == OctorateMappingStatus.Confirmed
-         select mapping.Id).AnyAsync(ct);
+        ConfirmedMappings.AnyAsync(mapping => mapping.OrgId == row.OrgId && mapping.PropertyId == row.PropertyId, ct);
 
     private async Task<Property> ReadPropertyAsync(OctoratePreparation row, CancellationToken ct) =>
-        await db.Properties.IgnoreQueryFilters([Tenant]).AsNoTracking()
-            .SingleOrDefaultAsync(p => p.Id == row.PropertyId && p.OrgId == row.OrgId && p.IsActive && p.PublishedOnSite && p.RentalMode == RentalMode.Short, ct)
+        await PublishedShortRentProperties.SingleOrDefaultAsync(p => p.Id == row.PropertyId && p.OrgId == row.OrgId, ct)
         ?? throw new DomainRuleException("octorate_preparation_invalid_data", "PropertyImportInvalid");
 
     private async Task UpdateAsync(OctoratePreparation row, OctoratePreparationStatus status, string? code, CancellationToken ct)

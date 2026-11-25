@@ -18,6 +18,10 @@ public sealed class AdminOctoratePreparationController(OctoratePreparationServic
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<PreparationRow>>> Recent(CancellationToken ct) => Ok(await preparations.RecentAsync(ct));
 
+    [HttpGet("candidates")]
+    public async Task<ActionResult<PreparationCandidates>> Candidates([FromQuery, MaxLength(120)] string? search, CancellationToken ct) =>
+        Ok(await preparations.CandidatesAsync(search, ct));
+
     [HttpGet("{batchId:guid}")]
     public async Task<ActionResult<PreparationBatch>> Get(Guid batchId, CancellationToken ct) => Ok(await preparations.ViewAsync(batchId, ct));
 
