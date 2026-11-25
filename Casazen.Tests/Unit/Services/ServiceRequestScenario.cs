@@ -347,6 +347,7 @@ internal sealed class ServiceRequestScenario : IDisposable
         Db.Orgs.Add(org);
         Db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = org.Id,
             Email = "other@test.com",
             LegalName = "Other Srl",
@@ -454,6 +455,7 @@ internal sealed class ServiceRequestScenario : IDisposable
         Db.Orgs.Add(supplierOrg);
         Db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = supplierOrg.Id,
             Email = "supplier@test.com",
             LegalName = "Supplier Srl",

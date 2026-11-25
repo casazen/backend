@@ -371,6 +371,7 @@ public class HostServiceRequestListPostgresTests : IClassFixture<CasazenWebAppli
         };
         var supplierProfile = new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = supplierOrg.Id,
             Email = supplierOrg.ContactEmail,
             LegalName = "SR08a Pulizie e Idraulica Srl",

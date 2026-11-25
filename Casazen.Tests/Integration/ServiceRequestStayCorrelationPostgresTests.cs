@@ -422,6 +422,7 @@ public class ServiceRequestStayCorrelationPostgresTests : IClassFixture<CasazenW
         };
         var supplierProfile = new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = supplierOrg.Id,
             Email = supplierOrg.ContactEmail,
             LegalName = "SU07 Pulizie e Idraulica Srl",

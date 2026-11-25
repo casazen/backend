@@ -141,7 +141,7 @@ public class LongRentServiceRequestsController(
         var (property, denied) = await AuthorizePropertyAsync(propertyId, LongRentPropertyOperations.Read, cancellationToken);
         if (denied is not null) return denied;
 
-        var suppliers = await supplierService.GetActiveByComuneAsync(new ComuneTarget(property!.ComuneIstatCode, property.City), category, cancellationToken);
+        var suppliers = await supplierService.GetActiveForPropertyAsync(property!.OrgId, propertyId, [new ComuneTarget(property.ComuneIstatCode, property.City)], category, cancellationToken);
 
         var listed = await comuneDirectory.GetByIstatCodesAsync(
             suppliers.SelectMany(SupplierComuniView.IstatCodes), cancellationToken);

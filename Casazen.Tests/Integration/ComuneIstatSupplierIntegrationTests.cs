@@ -256,6 +256,7 @@ public class ComuneIstatSupplierIntegrationTests
         db.Users.Add(new User { Id = userId, Email = org.ContactEmail, FirstName = "Test", LastName = "Supplier", OrgId = org.Id, IsActive = true });
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = org.Id,
             Email = org.ContactEmail,
             LegalName = "Fornitore di prova",

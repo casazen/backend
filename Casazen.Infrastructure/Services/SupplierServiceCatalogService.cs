@@ -402,10 +402,15 @@ public class SupplierServiceCatalogService(
         }
     }
 
-    /// <summary>
-    /// The services of <paramref name="orgId"/> that are not deleted. <b>The only way</b> this service reads or changes a
-    /// row: the table is not tenant-filtered, so the supplier org is always an explicit predicate.
-    /// </summary>
+    /// <summary>Suppliers that this host can request for the authorised property.</summary>
+    internal static IQueryable<SupplierProfile> SuppliersForProperty(AppDbContext db, Guid hostOrgId, Guid propertyId)
+    {
+        var trusted = db.TrustedSuppliers.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(t => t.OrgId == hostOrgId && (t.AssignedPropertyIds.Count == 0 || t.AssignedPropertyIds.Contains(propertyId)))
+            .Select(t => t.SupplierOrgId);
+        return db.SupplierProfiles.Where(p => p.GuestPortalMarketplaceEnabled || trusted.Contains(p.OrgId));
+    }
+
     internal static IQueryable<SupplierServiceListing> GuestPortalListings(
         AppDbContext db, IQueryable<Guid> trustedSupplierIds, bool allowsRegionalSuppliers)
     {
@@ -420,6 +425,10 @@ public class SupplierServiceCatalogService(
                 && listing.SupplierProfile.Status == SupplierStatus.Active);
     }
 
+    /// <summary>
+    /// The services of <paramref name="orgId"/> that are not deleted. <b>The only way</b> this service reads or changes a
+    /// row: the table is not tenant-filtered, so the supplier org is always an explicit predicate.
+    /// </summary>
     private IQueryable<SupplierServiceListing> Listings(Guid orgId) => ListingsOf(db, orgId);
 
     /// <inheritdoc cref="Listings"/>

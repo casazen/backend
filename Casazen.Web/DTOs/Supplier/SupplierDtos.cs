@@ -292,6 +292,7 @@ public class AdminInviteResponse
 
 public class GetSuppliersQuery
 {
+    public bool IncludeTrusted { get; set; }
     public bool AccountScope { get; set; }
     public string? Comune { get; set; }
     public Guid? PropertyId { get; set; }

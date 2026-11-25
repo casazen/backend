@@ -48,12 +48,20 @@ public sealed class TrustedSupplierService(
         return new InviteSupplierResult(invite.InviteId, invite.ExpiresAt);
     }
 
-    public async Task<List<TrustedSupplier>> GetTrustedSuppliersAsync(Guid orgId)
+    public async Task<List<TrustedSupplierSummary>> GetTrustedSuppliersAsync(Guid orgId)
     {
         return await db.TrustedSuppliers
             .Where(ts => ts.OrgId == orgId)
             .OrderBy(ts => ts.Priority)
             .ThenBy(ts => ts.CreatedAt)
+            .Select(ts => new TrustedSupplierSummary(ts.Id, ts.OrgId, ts.SupplierOrgId, ts.AssignedPropertyIds,
+                ts.Priority, ts.VisibleInMarketplace, ts.CreatedAt,
+                db.SupplierProfiles.Where(p => p.OrgId == ts.SupplierOrgId).Select(p => p.LegalName).FirstOrDefault(),
+                db.GuestSupplierOffers.Where(o => o.HostOrgId == ts.OrgId && o.SupplierOrgId == ts.SupplierOrgId)
+                    .OrderBy(o => o.Id).Select(o => (bool?)o.HostOrigin).FirstOrDefault()
+                ?? ts.HostOrigin ?? !db.SupplierProfiles.Any(p => p.OrgId == ts.SupplierOrgId &&
+                    (p.GuestPortalMarketplaceFirstPublishedAt <= ts.CreatedAt ||
+                     (p.GuestPortalMarketplaceFirstPublishedAt == null && p.GuestPortalMarketplaceEnabled)))))
             .ToListAsync();
     }
 
@@ -93,7 +101,15 @@ public sealed class TrustedSupplierService(
             };
         }
 
-        db.TrustedSuppliers.Remove(trustedSupplier);
+        trustedSupplier.RemovedAt = DateTime.UtcNow;
+        var privateOffers = await db.GuestSupplierOffers.Where(o => o.HostOrgId == orgId &&
+            o.SupplierOrgId == trustedSupplier.SupplierOrgId && o.HostOrigin).ToListAsync();
+        foreach (var offer in privateOffers)
+        {
+            offer.Enabled = false;
+            offer.Accepted = false;
+        }
+
 
         // Record activity event
         activityLog.Record(OrgActivity.Of(

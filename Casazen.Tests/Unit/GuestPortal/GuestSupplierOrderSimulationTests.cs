@@ -31,6 +31,32 @@ public class GuestSupplierOrderSimulationTests
     }
 
     [Fact]
+    public async Task PrivateSupplierStaysWithItsHostAfterPartnershipAndRequiresAssignedProperty()
+    {
+        using var world = new GuestPortalTestWorld();
+        var stay = await world.ContextAsync();
+        var partner = new SupplierProfile { OrgId = Guid.NewGuid(), LegalName = "Local",
+            GuestPortalMarketplaceEnabled = false, Status = SupplierStatus.Active };
+        var listing = new SupplierServiceListing { OrgId = partner.OrgId, Category = "cleaning", Slug = "cleaning",
+            Name = "Cleaning", Status = SupplierServiceListingStatus.Active };
+        var trusted = new TrustedSupplier { OrgId = stay.OrgId, SupplierOrgId = partner.OrgId,
+            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), AssignedPropertyIds = [stay.PropertyId] };
+        world.Db.AddRange(partner, listing, trusted);
+        await world.Db.SaveChangesAsync();
+        var orders = new GuestSupplierOrders(world.Db, TimeProvider.System);
+        var otherOrg = Guid.NewGuid();
+        Assert.Empty(await orders.ManagementListings(otherOrg, stay.PropertyId, true).ToListAsync());
+        Assert.Empty(await orders.ManagementListings(stay.OrgId, Guid.NewGuid(), false).ToListAsync());
+        Assert.True((await orders.ManagementListings(stay.OrgId, stay.PropertyId, false).SingleAsync()).HostOrigin);
+        partner.GuestPortalMarketplaceEnabled = true;
+        partner.GuestPortalMarketplaceFirstPublishedAt = trusted.CreatedAt.AddHours(1);
+        await world.Db.SaveChangesAsync();
+        Assert.True((await orders.ManagementListings(stay.OrgId, stay.PropertyId, false).SingleAsync()).HostOrigin);
+        Assert.False((await orders.ManagementListings(otherOrg, stay.PropertyId, true).SingleAsync()).HostOrigin);
+        Assert.Empty(await orders.ManagementListings(otherOrg, stay.PropertyId, false).ToListAsync());
+    }
+
+    [Fact]
     public async Task Quote_Authorize_Accept_Complete_Dispute_AndRefundAreScopedToTheParticipants()
     {
         using var world = new GuestPortalTestWorld();

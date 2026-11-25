@@ -194,6 +194,9 @@ public static class CasazenPolicies
     /// <summary>Manage internal staff activities (agency B2B).</summary>
     public const string AgencyActivityManage = Agency + AgencyPermissions.ActivityManage;
 
+    /// <summary>Manage the organisation’s trusted suppliers on any subscription.</summary>
+    public const string TrustedSupplierManage = "host.trusted-supplier.manage";
+
     /// <summary>Manage trusted suppliers (agency B2B).</summary>
     public const string AgencySupplierManage = Agency + AgencyPermissions.SupplierManage;
 

@@ -30,13 +30,56 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
     public IQueryable<SupplierServiceListing> Listings(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers) =>
         SupplierServiceCatalogService.GuestPortalListings(db, TrustedSupplierIds(orgId, propertyId), allowsRegionalSuppliers);
 
+    public IQueryable<ManagementListing> ManagementListings(Guid hostOrgId, Guid propertyId, bool allowsRegional)
+    {
+        var trustedIds = TrustedSupplierIds(hostOrgId, propertyId);
+        var relations = db.TrustedSuppliers.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).Where(t => t.OrgId == hostOrgId);
+        return from item in Listings(hostOrgId, propertyId, allowsRegional)
+               let savedOrigin = db.GuestSupplierOffers.Where(o => o.HostOrgId == hostOrgId && o.SupplierOrgId == item.OrgId)
+                   .OrderBy(o => o.Id).Select(o => (bool?)o.HostOrigin).FirstOrDefault()
+               let hostOrigin = savedOrigin ?? relations.Where(t => t.SupplierOrgId == item.OrgId).Select(t => t.HostOrigin).FirstOrDefault()
+                   ?? relations.Any(t => t.SupplierOrgId == item.OrgId &&
+                   (t.CreatedAt < item.SupplierProfile.GuestPortalMarketplaceFirstPublishedAt ||
+                    (item.SupplierProfile.GuestPortalMarketplaceFirstPublishedAt == null && !item.SupplierProfile.GuestPortalMarketplaceEnabled)))
+               where hostOrigin ? trustedIds.Contains(item.OrgId) : allowsRegional && item.SupplierProfile.GuestPortalMarketplaceEnabled
+               select new ManagementListing { Id = item.Id, Name = item.Name, Category = item.Category,
+                   OrgId = item.OrgId, Supplier = item.SupplierProfile.LegalName, HostOrigin = hostOrigin };
+    }
+
+    public sealed class ManagementListing
+    {
+        public Guid Id { get; init; }
+        public required string Name { get; init; }
+        public required string Category { get; init; }
+        public Guid OrgId { get; init; }
+        public required string Supplier { get; init; }
+        public bool HostOrigin { get; init; }
+    }
+
+    public IQueryable<OfferView> OfferViews(IQueryable<GuestSupplierOffer> offers) =>
+        from o in offers.AsNoTracking()
+        join service in db.SupplierServiceListings on o.ServiceId equals service.Id
+        join supplier in db.SupplierProfiles on o.SupplierOrgId equals supplier.OrgId
+        join property in db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]) on o.PropertyId equals property.Id
+        join host in db.Orgs on o.HostOrgId equals host.Id
+        where property.OrgId == o.HostOrgId && service.OrgId == o.SupplierOrgId
+        select new OfferView(o.Id, o.HostOrgId, o.PropertyId, o.ServiceId, o.SupplierOrgId,
+            o.HostOrigin, o.CommissionBasisPoints, o.Accepted, o.Enabled, o.Version,
+            service.Name, supplier.LegalName, property.Name, host.Name);
+
+    public sealed record OfferView(Guid Id, Guid HostOrgId, Guid PropertyId, Guid ServiceId, Guid SupplierOrgId,
+        bool HostOrigin, int CommissionBasisPoints, bool Accepted, bool Enabled, uint Version, string ServiceName,
+        string SupplierName, string PropertyName, string HostName);
+
     public IQueryable<CatalogEntry> Catalog(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers, Guid? offerId = null)
     {
+        var trusted = TrustedSupplierIds(orgId, propertyId);
         return
         from offer in db.GuestSupplierOffers.AsNoTracking()
         join listing in Listings(orgId, propertyId, allowsRegionalSuppliers) on offer.ServiceId equals listing.Id
         join supplier in db.SupplierProfiles.IgnoreQueryFilters() on offer.SupplierOrgId equals supplier.OrgId
         where (offerId == null || offer.Id == offerId) && offer.HostOrgId == orgId && offer.PropertyId == propertyId && offer.Accepted && offer.Enabled
+              && (offer.HostOrigin ? trusted.Contains(offer.SupplierOrgId) : allowsRegionalSuppliers && supplier.GuestPortalMarketplaceEnabled)
               && listing.OrgId == supplier.OrgId
               && (listing.RequiresQuote || listing.PriceFromCents > 0)
         orderby listing.SortOrder, listing.Name

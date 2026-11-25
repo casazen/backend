@@ -258,6 +258,7 @@ public class ServiceRequestAssistIntegrationTests(RequestAssistFactory factory) 
         db.Orgs.Add(supplierOrg);
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = supplierOrg.Id,
             Status = SupplierStatus.Active,
             LegalName = $"Idraulica Bianchi {suffix}",

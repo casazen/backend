@@ -167,6 +167,10 @@ public interface ISupplierService
         string? category,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Marketplace partners and the host's trusted suppliers assigned to the authorised property.</summary>
+    Task<IReadOnlyList<SupplierProfile>> GetActiveForPropertyAsync(Guid hostOrgId, Guid propertyId,
+        IReadOnlyCollection<Casazen.Core.Suppliers.ComuneTarget> targets, string? category, CancellationToken cancellationToken = default);
+
     /// <summary>Active suppliers covering any of the specified municipalities.</summary>
     Task<IReadOnlyList<SupplierProfile>> GetActiveByComuniAsync(
         IReadOnlyCollection<Casazen.Core.Suppliers.ComuneTarget> targets,

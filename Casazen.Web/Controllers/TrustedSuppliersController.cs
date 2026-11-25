@@ -7,12 +7,11 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Trusted supplier management for agency tier orgs (NF-21, ADR-010).
-/// All endpoints require Agency tier.
+/// Trusted supplier management for the authorised organisation.
 /// </summary>
 [ApiController]
 [Route("api/trusted-suppliers")]
-[Authorize(Policy = CasazenPolicies.AgencySupplierManage)]
+[Authorize(Policy = CasazenPolicies.TrustedSupplierManage)]
 public class TrustedSuppliersController(
     ITrustedSupplierService trustedSupplierService,
     IOrgContextResolver orgContextResolver) : ControllerBase
@@ -67,6 +66,8 @@ public class TrustedSuppliersController(
         {
             Id = s.Id,
             SupplierOrgId = s.SupplierOrgId,
+            SupplierName = s.SupplierName,
+            HostOrigin = s.HostOrigin,
             AssignedPropertyIds = s.AssignedPropertyIds,
             Priority = s.Priority,
             VisibleInMarketplace = s.VisibleInMarketplace,
@@ -130,6 +131,8 @@ public sealed class TrustedSupplierDto
     public Guid Id { get; set; }
     public Guid SupplierOrgId { get; set; }
     public List<Guid> AssignedPropertyIds { get; set; } = new();
+    public string? SupplierName { get; set; }
+    public bool HostOrigin { get; set; }
     public int Priority { get; set; }
     public bool VisibleInMarketplace { get; set; }
     public DateTime CreatedAt { get; set; }

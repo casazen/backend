@@ -259,14 +259,30 @@ public partial class SupplierService(
         var relations = db.TrustedSuppliers
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(t => t.OrgId == hostOrgId);
-        if (await relations.AnyAsync(t => t.SupplierOrgId == supplierOrgId, cancellationToken))
+        var previous = await db.TrustedSuppliers
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter, AppDbContext.TrustedSupplierActiveFilter])
+            .Where(t => t.OrgId == hostOrgId && t.SupplierOrgId == supplierOrgId)
+            .OrderBy(t => t.RemovedAt != null).ThenBy(t => t.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (previous is not null)
+        {
+            if (previous.RemovedAt is not null)
+            {
+                previous.RemovedAt = null;
+                previous.AssignedPropertyIds = propertyIds?.Distinct().ToList() ?? [];
+                previous.VisibleInMarketplace = false;
+            }
             return;
+        }
 
+        var hostOrigin = !await db.SupplierProfiles.AnyAsync(p => p.OrgId == supplierOrgId &&
+            p.GuestPortalMarketplaceEnabled, cancellationToken);
         var lastPriority = await relations.MaxAsync(t => (int?)t.Priority, cancellationToken);
         db.TrustedSuppliers.Add(new TrustedSupplier
         {
             OrgId = hostOrgId,
             SupplierOrgId = supplierOrgId,
+            HostOrigin = hostOrigin,
             AssignedPropertyIds = propertyIds?.Distinct().ToList() ?? [],
             Priority = (lastPriority ?? -1) + 1,
             CreatedAt = DateTime.UtcNow,
@@ -771,17 +787,25 @@ public partial class SupplierService(
         CancellationToken cancellationToken = default) =>
         GetActiveByComuniAsync([target], category, cancellationToken);
 
-    public async Task<IReadOnlyList<SupplierProfile>> GetActiveByComuniAsync(
+    public Task<IReadOnlyList<SupplierProfile>> GetActiveForPropertyAsync(Guid hostOrgId, Guid propertyId,
+        IReadOnlyCollection<ComuneTarget> targets, string? category, CancellationToken cancellationToken = default) =>
+        ActiveCoveringAsync(SupplierServiceCatalogService.SuppliersForProperty(db, hostOrgId, propertyId), targets, category, cancellationToken);
+
+    public Task<IReadOnlyList<SupplierProfile>> GetActiveByComuniAsync(
         IReadOnlyCollection<ComuneTarget> targets,
         string? category,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ActiveCoveringAsync(db.SupplierProfiles.Where(sp => sp.GuestPortalMarketplaceEnabled), targets, category, cancellationToken);
+
+    private async Task<IReadOnlyList<SupplierProfile>> ActiveCoveringAsync(IQueryable<SupplierProfile> profiles,
+        IReadOnlyCollection<ComuneTarget> targets, string? category, CancellationToken cancellationToken)
     {
         // An unknown category remains a 422, including when there are no service areas.
         var categoryCode = string.IsNullOrWhiteSpace(category) ? null : ServiceCategories.Require(category);
         if (targets.Count == 0)
             return [];
 
-        var active = await db.SupplierProfiles
+        var active = await profiles.AsNoTracking()
             .Where(sp => sp.Status == SupplierStatus.Active)
             .ToListAsync(cancellationToken);
         var covering = await comuneMatcher.FilterAnyAsync(active, targets, cancellationToken);

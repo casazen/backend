@@ -569,6 +569,7 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
             db.Orgs.Add(supplierOrg);
             db.SupplierProfiles.Add(new SupplierProfile
             {
+                GuestPortalMarketplaceEnabled = true,
                 OrgId = supplierOrg.Id,
                 Email = email,
                 LegalName = "Doppio Srl",
