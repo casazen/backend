@@ -1,3 +1,4 @@
+using Casazen.Core.Features;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -30,7 +31,8 @@ public sealed partial class MessageHubService(
     IOtaAttachmentFetcher attachments,
     ILogger<MessageHubService> logger,
     TimeProvider? timeProvider = null,
-    IOtaReviewService? otaReviews = null) : IMessageHubService
+    IOtaReviewService? otaReviews = null,
+    IFeatureFlags? flags = null) : IMessageHubService
 {
     /// <summary>Stable code of the 404 of a conversation that is not there or not within reach.</summary>
     public const string ThreadNotFoundCode = "thread_not_found";
@@ -252,7 +254,7 @@ public sealed partial class MessageHubService(
         var direct = db.GuestThreads
             .AsNoTracking()
             .Where(t => t.OrgId == orgId)
-            .Where(GuestMessageRules.IsThreadOfADirectBooking)
+            .Where(GuestMessageRules.EligibleThreads(flags?.IsEnabled(FeatureFlags.GuestPortal) == true))
             .InScope(scope)
             .Select(t => new HubRow
             {

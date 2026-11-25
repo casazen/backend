@@ -6,6 +6,8 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit.Services;
+using Casazen.Web.Infrastructure;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -98,14 +100,81 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
             Assert.Equal("confirmed", stay.GetProperty("status").GetString());
             Assert.False(body.RootElement.GetProperty("canSeeReserved").GetBoolean());
 
+            var details = await client.GetAsync($"/api/public/guest-portal/{token}/stay");
+            Assert.Equal(HttpStatusCode.OK, details.StatusCode);
+
             var unknown = await client.GetAsync("/api/public/guest-portal/Unknown_Token_0000000000000000000");
             await OrgTeamHttp.AssertProblemAsync(unknown, HttpStatusCode.NotFound, GuestPortalRules.LinkInvalidCode);
             Assert.Equal("no-store", unknown.Headers.CacheControl?.ToString());
         }
     }
 
+    [PostgresFact]
+    public async Task StayAndChat_UseTheTokenAndProtectTheGuide()
+    {
+        var token = await SeedStayWithLinkAsync();
+        using var client = factory.CreateClient();
+        var path = $"/api/public/guest-portal/{token}";
+
+        var stay = await client.GetStringAsync($"{path}/stay");
+        Assert.Contains("Informazioni pubbliche", stay, StringComparison.Ordinal);
+        Assert.DoesNotContain(Address, stay, StringComparison.Ordinal);
+        Assert.DoesNotContain("wifi-riservato", stay, StringComparison.Ordinal);
+
+        var send = new HttpRequestMessage(HttpMethod.Post, $"{path}/chat")
+        {
+            Content = System.Net.Http.Json.JsonContent.Create(new { text = "A che ora posso arrivare?" })
+        };
+        send.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+        var sent = await client.SendAsync(send);
+        Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
+
+        var chat = await client.GetStringAsync($"{path}/chat");
+        Assert.Contains("A che ora posso arrivare?", chat, StringComparison.Ordinal);
+
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"{path}/cancellation")).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.GetAsync($"{path}/review")).StatusCode);
+        Assert.Equal("[]", await client.GetStringAsync($"{path}/documents"));
+    }
+
+    [PostgresFact]
+    public async Task PortalCheckIn_RejectsMissingOrOutdatedHouseRulesAcknowledgement()
+    {
+        var token = await SeedStayWithLinkAsync(withCheckIn: true);
+        using var client = factory.CreateClient();
+        var path = $"/api/public/checkin/stay_{token}";
+
+        using var context = JsonDocument.Parse(await client.GetStringAsync(path));
+        Assert.Equal("Rispetta il silenzio.", context.RootElement.GetProperty("houseRules").GetString());
+        Assert.Equal(64, context.RootElement.GetProperty("houseRulesVersion").GetString()!.Length);
+
+        using var refused = await client.PostAsync(path, System.Net.Http.Json.JsonContent.Create(new { guests = Array.Empty<object>() }));
+        await OrgTeamHttp.AssertProblemAsync(refused, HttpStatusCode.Conflict, "guest_house_rules_acknowledgement_required");
+    }
+
+    [PostgresFact]
+    public async Task GuestAccount_OpensOnlyStaysOfItsVerifiedEmail()
+    {
+        var token = await SeedStayWithLinkAsync();
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var link = await db.GuestPortalLinks.SingleAsync(l => l.Token == token);
+        var email = await db.Bookings.Where(b => b.Id == link.BookingId).Select(b => b.Guest.Email).SingleAsync();
+        using var matching = factory.CreateAuthenticatedClient($"auth0|guest-{Guid.NewGuid():N}", email: email, emailVerified: true);
+        using var unverified = factory.CreateAuthenticatedClient($"auth0|guest-{Guid.NewGuid():N}", email: email, emailVerified: false);
+        using var other = factory.CreateAuthenticatedClient($"auth0|guest-{Guid.NewGuid():N}", email: $"{Guid.NewGuid():N}@example.com", emailVerified: true);
+
+        var path = $"/api/guest/stays/{link.BookingId:D}/open";
+        Assert.Equal(HttpStatusCode.Forbidden, (await unverified.GetAsync("/api/guest/stays")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await other.PostAsync(path, null)).StatusCode);
+        using var response = await matching.PostAsync(path, null);
+        response.EnsureSuccessStatusCode();
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.EndsWith($"/s/{token}", body.RootElement.GetProperty("url").GetString());
+    }
+
     /// <summary>A confirmed stay from a portal at a house of a new org, arriving in five days, and its stay link.</summary>
-    private async Task<string> SeedStayWithLinkAsync()
+    private async Task<string> SeedStayWithLinkAsync(bool withCheckIn = false)
     {
         var ownerId = $"auth0|portale-{Guid.NewGuid():N}";
         var org = await factory.SeedOrgForOwnerAsync(ownerId);
@@ -113,6 +182,11 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var property = HostScopeScenario.NewProperty(org.Id, ownerId, "Casa del Portale");
         property.Address = Address;
+        property.GuestHouseGuideJson = scope.ServiceProvider.GetRequiredService<GuestHouseGuideStorage>().Protect(property.Id, new GuestHouseGuide
+        {
+            Arrival = "Informazioni pubbliche",
+            Wifi = "wifi-riservato",
+        });
         var guest = new Guest { OrgId = org.Id, FirstName = "Anna", LastName = "Ospite", Email = $"{Guid.NewGuid():N}@example.com" };
         var today = TimeProvider.System.TodayInRome();
         var booking = new Booking
@@ -131,6 +205,17 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
         db.Properties.Add(property);
         db.Guests.Add(guest);
         db.Bookings.Add(booking);
+        if (withCheckIn)
+        {
+            property.HouseRules = "Rispetta il silenzio.";
+            db.GuestCheckInSessions.Add(new GuestCheckInSession
+            {
+                BookingId = booking.Id,
+                OrgId = org.Id,
+                TokenHash = Guid.NewGuid().ToString("N"),
+                ExpiresAt = DateTime.UtcNow.AddDays(7),
+            });
+        }
         await db.SaveChangesAsync();
 
         var links = scope.ServiceProvider.GetRequiredService<IGuestPortalLinkService>();

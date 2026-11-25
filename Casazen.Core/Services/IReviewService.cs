@@ -1,3 +1,4 @@
+using Casazen.Core.GuestPortal;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 
@@ -10,6 +11,10 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IPublicReviewService
 {
+    Task<ReviewLinkInfo> GetPortalReviewAsync(PortalContext portal, CancellationToken ct = default);
+
+    Task<PublicReview> SubmitPortalReviewAsync(PortalContext portal, SubmitReviewCommand command, CancellationToken ct = default);
+
     /// <summary>
     /// The public reviews of a published property of the org, newest first, a page at a time (<c>Published</c> and <c>Reported</c>
     /// ones; a removed one is never listed). <c>null</c> when the org has no such property on its site.

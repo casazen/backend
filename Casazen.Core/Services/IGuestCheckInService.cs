@@ -98,6 +98,8 @@ public class GuestCheckInSubmitRequest
 
     public bool? PrivacyNoticeAcknowledged { get; set; }
 
+    public string? HouseRulesVersion { get; set; }
+
     /// <summary>The guest ticked the e-mail channel of the per-channel marketing consent (NF-05).</summary>
     public bool MarketingConsentEmail { get; set; }
 

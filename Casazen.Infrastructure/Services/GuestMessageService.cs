@@ -1,3 +1,4 @@
+using Casazen.Core.Features;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -8,6 +9,7 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.GuestPortal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -45,14 +47,18 @@ public sealed class GuestMessageService(
     IEnumerable<IThreadReplyObserver>? replyObservers = null,
     AgencyDomainLinks? agencyLinks = null,
     IGuestEmailBrandingProvider? emailBranding = null,
-    IGuestEmailLanguageProvider? emailLanguage = null) : IGuestMessageService
+    IGuestEmailLanguageProvider? emailLanguage = null,
+    IFeatureFlags? flags = null,
+    IGuestStayLinkProvider? stayLinks = null) : IGuestMessageService
 {
+    private bool PortalEnabled => flags?.IsEnabled(FeatureFlags.GuestPortal) == true;
+
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public async Task<GuestThreadView> GetForGuestAsync(Booking booking, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(booking);
-        var state = GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, Now());
+        var state = GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, Now(), PortalEnabled);
         if (state == GuestThreadState.Unavailable)
             throw GuestNotFound();
 
@@ -70,7 +76,7 @@ public sealed class GuestMessageService(
     {
         ArgumentNullException.ThrowIfNull(booking);
         var now = Now();
-        var state = GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, now);
+        var state = GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, now, PortalEnabled);
         if (state == GuestThreadState.Unavailable)
             throw GuestNotFound();
         if (state == GuestThreadState.Closed)
@@ -112,7 +118,7 @@ public sealed class GuestMessageService(
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw new NotFoundException($"Booking {bookingId} not found");
 
-        var state = GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, Now());
+        var state = GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, Now(), PortalEnabled);
         if (state == GuestThreadState.Unavailable)
             return new HostThreadView(state, null, 0, false, []);
 
@@ -172,7 +178,7 @@ public sealed class GuestMessageService(
             ?? throw new NotFoundException($"Booking {bookingId} not found");
 
         var now = Now();
-        if (GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, now) != GuestThreadState.Open)
+        if (GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, now, PortalEnabled) != GuestThreadState.Open)
             throw ThreadClosed();
 
         var (clean, key) = Validate(text, idempotencyKey);
@@ -256,7 +262,7 @@ public sealed class GuestMessageService(
         var threads = db.GuestThreads
             .AsNoTracking()
             .Where(t => t.OrgId == scope.OrgId)
-            .Where(GuestMessageRules.IsThreadOfADirectBooking)
+            .Where(GuestMessageRules.EligibleThreads(PortalEnabled))
             .InScope(scope);
         if (propertyId is { } id)
             threads = threads.Where(t => t.PropertyId == id);
@@ -336,7 +342,7 @@ public sealed class GuestMessageService(
         var rows = await db.GuestThreads
             .AsNoTracking()
             .Where(t => t.OrgId == scope.OrgId && t.LastGuestMessageAt != null && t.Booking.CheckOutDate >= openFrom)
-            .Where(GuestMessageRules.IsThreadOfADirectBooking)
+            .Where(GuestMessageRules.EligibleThreads(PortalEnabled))
             .InScope(scope)
             .Select(t => new
             {
@@ -525,9 +531,11 @@ public sealed class GuestMessageService(
 
             // E40/F01/US01/T03: the booking area of the agency's own domain when its guest area is served there. Read before the claim below, so
             // nothing can stop between the claim and the e-mail.
-            var bookingArea = links.IsConfigured
+            var portalUrl = PortalEnabled && stayLinks is not null
+                ? await stayLinks.UrlAsync(booking.OrgId, booking.Id, cancellationToken) : null;
+            var bookingArea = portalUrl ?? (links.IsConfigured
                 ? (await agencyLinks.ForOrgOrPlatformAsync(links, booking.OrgId, cancellationToken)).GuestBookings(booking.Org.Slug, BookingCodes.Format(booking.BookingCode))
-                : null;
+                : null);
 
             var cutoff = now.AddMinutes(-GuestMessageRules.NotifyIntervalMinutes);
             var claimed = await db.GuestThreads

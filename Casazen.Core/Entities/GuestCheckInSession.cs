@@ -49,6 +49,9 @@ public class GuestCheckInSession : ITenantOwned
 
     public DateTime? CompletedAt { get; set; }
 
+    [MaxLength(64)]
+    public string? AcceptedHouseRulesVersion { get; set; }
+
     /// <summary>
     /// Number of biometric (face comparison) attempts in this session (NF-11, ADR-013-R5).
     /// Max 3 attempts per session; after max, escalates to operator verification.
