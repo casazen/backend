@@ -2,6 +2,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
+using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -403,6 +404,55 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
     }
 
     [PostgresFact]
+    public async Task PortalGuideReplyWritesOnceAndDoesNotQueueADraftOrHostAlert()
+    {
+        var world = await SeedAsync();
+        await using var db = NewDb();
+        var booking = await db.Bookings.Include(b => b.Property).Include(b => b.Org).Include(b => b.Guest).SingleAsync(b => b.Id == world.BookingId);
+        var service = PortalService(db);
+
+        var first = await service.SendFromPortalAsync(booking, "Where can I park?", "key-guide-first", "Automatic house-guide reply", CancellationToken.None);
+        var replay = await service.SendFromPortalAsync(booking, "Where can I park?", "key-guide-first", "Automatic house-guide reply", CancellationToken.None);
+
+        Assert.Equal(first.Message.Id, replay.Message.Id);
+        Assert.True(replay.Replayed);
+        var hostView = await service.GetForHostAsync(world.BookingId);
+        Assert.Collection(hostView.Messages,
+            message => Assert.Equal(GuestMessageSender.Guest, message.Sender),
+            message => Assert.Equal("Automatic house-guide reply", message.Text));
+        Assert.False(hostView.NeedsReply);
+        Assert.Equal(0, hostView.UnreadCount);
+        Assert.Empty(_push.Invocations);
+        Assert.False(await db.OutboxEvents.AnyAsync(e => e.EventType == DomainEventType.GuestMessageReceived));
+    }
+
+    [PostgresFact]
+    public async Task PortalGuideReplyKeepsAnEarlierUnansweredQuestionInHostTriage()
+    {
+        var world = await SeedAsync();
+        await using var db = NewDb();
+        var booking = await db.Bookings.Include(b => b.Property).Include(b => b.Org).Include(b => b.Guest).SingleAsync(b => b.Id == world.BookingId);
+        var service = PortalService(db);
+
+        await service.SendFromPortalAsync(booking, "May I change my stay?", "key-guide-human", null, CancellationToken.None);
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        await service.SendFromPortalAsync(booking, "Where can I park?", "key-guide-second", "Automatic house-guide reply", CancellationToken.None);
+
+        var hostView = await service.GetForHostAsync(world.BookingId);
+        Assert.True(hostView.NeedsReply);
+        Assert.Single(_push.Invocations);
+        Assert.False(await db.OutboxEvents.AnyAsync(e => e.EventType == DomainEventType.GuestMessageReceived));
+    }
+
+    private GuestMessageService PortalService(AppDbContext db)
+    {
+        var flags = new Mock<IFeatureFlags>();
+        flags.Setup(f => f.IsEnabled(FeatureFlags.GuestPortal)).Returns(true);
+        flags.Setup(f => f.IsEnabled(FeatureFlags.GuestPortalAutoReplies)).Returns(true);
+        return Service(db, new DomainEventRecorder(db, NullTenantContext.Instance, _clock), flags: flags.Object);
+    }
+
+    [PostgresFact]
     public async Task ReplyAsHost_ByAPerson_TellsTheObserversOfTheReplies_AnAnswerWithNoUserDoesNot()
     {
         var world = await SeedAsync();
@@ -422,7 +472,7 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
 
     private AppDbContext NewDb() => _database!.CreateContext();
 
-    private GuestMessageService Service(AppDbContext db, IDomainEventRecorder? events = null, IEnumerable<IThreadReplyObserver>? replyObservers = null)
+    private GuestMessageService Service(AppDbContext db, IDomainEventRecorder? events = null, IEnumerable<IThreadReplyObserver>? replyObservers = null, IFeatureFlags? flags = null)
     {
         var links = new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://public.example.test/" }));
         var delivery = new HostMessageAlertDelivery(
@@ -444,7 +494,8 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
             NullLogger<GuestMessageService>.Instance,
             _clock,
             events,
-            replyObservers);
+            replyObservers,
+            flags: flags);
     }
 
     private async Task<World> SeedAsync(bool collaboratorInChargeWithoutAccess = false)

@@ -12,6 +12,17 @@ public sealed class SendMessageRequest
     public string Text { get; set; } = string.Empty;
 }
 
+/// <summary>A message sent from a portal stay link.</summary>
+public sealed class SendPortalMessageRequest
+{
+    [Required(ErrorMessage = "GuestMessageTextInvalid")]
+    [MaxLength(GuestMessageRules.TextMaxLength, ErrorMessage = "GuestMessageTextInvalid")]
+    public string Text { get; init; } = string.Empty;
+    [MaxLength(2)]
+    public string? Language { get; init; }
+    public bool RequestHost { get; init; }
+}
+
 /// <summary>A message of the thread. <c>Sender</c> is <c>Guest</c> or <c>Host</c>; the text is plain text, to be shown as text.</summary>
 public sealed class GuestMessageDto
 {
