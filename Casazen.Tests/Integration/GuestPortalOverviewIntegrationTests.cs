@@ -118,7 +118,7 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
         var path = $"/api/public/guest-portal/{token}";
 
         var stay = await client.GetStringAsync($"{path}/stay");
-        using var stayJson = System.Text.Json.JsonDocument.Parse(stay);
+        using var stayJson = JsonDocument.Parse(stay);
         Assert.Equal("BookingCom", stayJson.RootElement.GetProperty("bookingChannel").GetString());
         Assert.True(stayJson.RootElement.GetProperty("chatOpen").GetBoolean());
         Assert.False(stayJson.RootElement.GetProperty("reviewAvailable").GetBoolean());
@@ -140,6 +140,22 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"{path}/cancellation")).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await client.GetAsync($"{path}/review")).StatusCode);
         Assert.Equal("[]", await client.GetStringAsync($"{path}/documents"));
+    }
+
+    [PostgresFact]
+    public async Task PostStay_OffersOneReviewAndKeepsExpiredChatReadOnly()
+    {
+        var token = await SeedStayWithLinkAsync(departureOffset: -8);
+        using var client = factory.CreateClient();
+        var path = $"/api/public/guest-portal/{token}";
+        using var before = JsonDocument.Parse(await client.GetStringAsync($"{path}/stay"));
+        Assert.True(before.RootElement.GetProperty("reviewAvailable").GetBoolean());
+        Assert.False(before.RootElement.GetProperty("chatOpen").GetBoolean());
+
+        using var review = await client.PostAsJsonAsync($"{path}/review", new { rating = 4, showName = false });
+        Assert.Equal(HttpStatusCode.OK, review.StatusCode);
+        using var after = JsonDocument.Parse(await client.GetStringAsync($"{path}/stay"));
+        Assert.False(after.RootElement.GetProperty("reviewAvailable").GetBoolean());
     }
 
     [PostgresFact]
@@ -208,7 +224,7 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
     }
 
     /// <summary>A confirmed stay from a portal at a house of a new org, arriving in five days, and its stay link.</summary>
-    private async Task<string> SeedStayWithLinkAsync(bool withCheckIn = false)
+    private async Task<string> SeedStayWithLinkAsync(bool withCheckIn = false, int departureOffset = 8)
     {
         var ownerId = $"auth0|portale-{Guid.NewGuid():N}";
         var org = await factory.SeedOrgForOwnerAsync(ownerId);
@@ -228,8 +244,8 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
             OrgId = org.Id,
             PropertyId = property.Id,
             GuestId = guest.Id,
-            CheckInDate = today.AddDays(5),
-            CheckOutDate = today.AddDays(8),
+            CheckInDate = today.AddDays(departureOffset - 3),
+            CheckOutDate = today.AddDays(departureOffset),
             NumberOfGuests = 2,
             Status = BookingStatus.Confirmed,
             Source = BookingSource.BookingCom,
