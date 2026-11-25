@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.GuestPortal;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,17 +13,37 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
     public const int MaxPriceCents = 10_000_000;
     public static readonly TimeSpan DisputeWindow = TimeSpan.FromHours(24);
 
-    public IQueryable<CatalogEntry> Catalog(Guid orgId, Guid propertyId) =>
+    public async Task<bool> AllowsRegionalSuppliersAsync(Guid orgId, Guid propertyId, CancellationToken ct)
+    {
+        var json = await db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(x => x.Id == propertyId && x.OrgId == orgId)
+            .Select(x => x.GuestPortalSetupJson).SingleOrDefaultAsync(ct);
+        return GuestPortalSetup.Read(json).RegionalSuppliers != false;
+    }
+
+    public IQueryable<Guid> TrustedSupplierIds(Guid orgId, Guid propertyId) =>
+        db.TrustedSuppliers.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(x => x.OrgId == orgId && (x.AssignedPropertyIds.Count == 0 || x.AssignedPropertyIds.Contains(propertyId)))
+            .Select(x => x.SupplierOrgId);
+
+    public IQueryable<CatalogEntry> Catalog(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers)
+    {
+        var trusted = TrustedSupplierIds(orgId, propertyId);
+        return
         from offer in db.GuestSupplierOffers.AsNoTracking()
         join listing in db.SupplierServiceListings.IgnoreQueryFilters() on offer.ServiceId equals listing.Id
         join supplier in db.SupplierProfiles.IgnoreQueryFilters() on offer.SupplierOrgId equals supplier.OrgId
         where offer.HostOrgId == orgId && offer.PropertyId == propertyId && offer.Accepted && offer.Enabled
+              && (trusted.Contains(offer.SupplierOrgId) ||
+                  allowsRegionalSuppliers && supplier.ShowcaseSlug != null &&
+                  !db.SupplierShowcaseContents.Any(x => x.OrgId == supplier.OrgId && (x.PublishedJson == null || x.PausedAt != null)))
               && listing.OrgId == supplier.OrgId && supplier.Status == SupplierStatus.Active
               && listing.Status == SupplierServiceListingStatus.Active && listing.DeletedAt == null
               && (listing.RequiresQuote || listing.PriceFromCents > 0)
         orderby listing.SortOrder, listing.Name
         select new CatalogEntry(offer.Id, listing.Name, supplier.LegalName, listing.Category,
             listing.Summary, listing.RequiresQuote || listing.PriceUnit != SupplierServicePriceUnit.PerJob || !listing.PricesIncludeVat ? null : listing.PriceFromCents, offer.CommissionBasisPoints, offer.HostOrigin);
+    }
 
     public static int Commission(int price, int basisPoints) =>
         (int)Math.Round(price * (decimal)basisPoints / 10_000, MidpointRounding.AwayFromZero);

@@ -26,7 +26,8 @@ public class GuestSupplierOrderSimulationTests
         };
         world.Db.SupplierProfiles.Add(new SupplierProfile
         {
-            OrgId = supplierId, LegalName = "Example Supplier", Email = "supplier@example.com", Status = SupplierStatus.Active
+            OrgId = supplierId, LegalName = "Example Supplier", Email = "supplier@example.com",
+            ShowcaseSlug = "example-supplier", Status = SupplierStatus.Active
         });
         world.Db.SupplierServiceListings.Add(listing);
         var offer = new GuestSupplierOffer
@@ -56,6 +57,13 @@ public class GuestSupplierOrderSimulationTests
         var supplier = new SupplierGuestOrdersController(world.Db, service, config, new SupplierOrg(supplierId));
         var consent = new SupplierGuestOrdersController.ConsentTerms(true, 1000, offer.Version);
         Assert.IsType<OkObjectResult>(await supplier.Consent(offer.Id, consent, ct));
+
+        var property = await world.Db.Properties.FindAsync([context.PropertyId], ct);
+        property!.GuestPortalSetupJson = new GuestPortalSetup { RegionalSuppliers = false }.Write();
+        await world.Db.SaveChangesAsync(ct);
+        Assert.IsType<NotFoundResult>(await guest.Create(input, ct));
+        property.GuestPortalSetupJson = new GuestPortalSetup { RegionalSuppliers = true }.Write();
+        await world.Db.SaveChangesAsync(ct);
 
         var order = View(await guest.Create(input, ct));
         Assert.Equal("PendingQuote", order.State);

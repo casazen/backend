@@ -44,10 +44,12 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
         if (term is not { Length: >= 2 and <= 100 })
             return BadRequest();
 
+        var allowRegional = await orders.AllowsRegionalSuppliersAsync(orgId, propertyId, ct);
+        var trusted = orders.TrustedSupplierIds(orgId, propertyId);
         var matches = await db.SupplierServiceListings.AsNoTracking()
             .Where(x => x.Status == SupplierServiceListingStatus.Active && x.SupplierProfile.Status == SupplierStatus.Active)
-            .Where(x => x.SupplierProfile.ShowcaseSlug != null || db.TrustedSuppliers.Any(t =>
-                t.OrgId == orgId && t.SupplierOrgId == x.OrgId && (t.AssignedPropertyIds.Count == 0 || t.AssignedPropertyIds.Contains(propertyId))))
+            .Where(x => trusted.Contains(x.OrgId) || allowRegional && x.SupplierProfile.ShowcaseSlug != null &&
+                !db.SupplierShowcaseContents.Any(s => s.OrgId == x.OrgId && (s.PublishedJson == null || s.PausedAt != null)))
             .Where(x => x.Name.ToLower().Contains(term.ToLower()) || x.SupplierProfile.LegalName.ToLower().Contains(term.ToLower()))
             .OrderBy(x => x.Name)
             .Take(30)
@@ -72,9 +74,9 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
             if (listing is null || listing.Status != SupplierStatus.Active)
                 return NotFound();
 
-            var trusted = await db.TrustedSuppliers.IgnoreQueryFilters().AnyAsync(x =>
-                x.OrgId == orgId && x.SupplierOrgId == listing.OrgId && (x.AssignedPropertyIds.Count == 0 || x.AssignedPropertyIds.Contains(propertyId)), ct);
-            if (!trusted && listing.ShowcaseSlug is null)
+            var trusted = await orders.TrustedSupplierIds(orgId, propertyId).ContainsAsync(listing.OrgId, ct);
+            if (!trusted && (listing.ShowcaseSlug is null || !await orders.AllowsRegionalSuppliersAsync(orgId, propertyId, ct)
+                || await db.SupplierShowcaseContents.AnyAsync(s => s.OrgId == listing.OrgId && (s.PublishedJson == null || s.PausedAt != null), ct)))
                 return NotFound();
 
             await catalog.ListServicesAsync(orgId, propertyId, listing.OrgId, null, ct);

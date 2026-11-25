@@ -23,7 +23,7 @@ public sealed class GuestPortalSupplierOrdersController(
         if (!Sandbox)
             return NotFound();
 
-        var offers = await CanOrderAsync(ct) ? await orders.Catalog(Portal.OrgId, Portal.PropertyId).ToListAsync(ct) : [];
+        var offers = await CanOrderAsync(ct) ? await (await CatalogAsync(ct)).ToListAsync(ct) : [];
         var history = await StayOrders().AsNoTracking().OrderByDescending(x => x.CreatedAt).ToListAsync(ct);
         return Ok(new { environment = "simulation", offers, orders = history.Select(x => orders.View(x)) });
     }
@@ -50,7 +50,7 @@ public sealed class GuestPortalSupplierOrdersController(
             RomeCalendar.TodayAt(requestedFor) > Portal.CheckOutDate.Date)
             return BadRequest();
 
-        var entry = await orders.Catalog(Portal.OrgId, Portal.PropertyId).SingleOrDefaultAsync(x => x.Id == request.OfferId, ct);
+        var entry = await (await CatalogAsync(ct)).SingleOrDefaultAsync(x => x.Id == request.OfferId, ct);
         if (entry is null)
             return NotFound();
         var offer = await db.GuestSupplierOffers.SingleAsync(x => x.Id == entry.Id, ct);
@@ -120,6 +120,10 @@ public sealed class GuestPortalSupplierOrdersController(
     }
 
     private bool Sandbox => configuration.GetValue<bool>(GuestSupplierOrders.SimulationSetting);
+
+    private async Task<IQueryable<GuestSupplierOrders.CatalogEntry>> CatalogAsync(CancellationToken ct) =>
+        orders.Catalog(Portal.OrgId, Portal.PropertyId,
+            await orders.AllowsRegionalSuppliersAsync(Portal.OrgId, Portal.PropertyId, ct));
 
     private IQueryable<GuestSupplierOrder> StayOrders() => db.GuestSupplierOrders
         .Where(x => x.HostOrgId == Portal.OrgId && x.BookingId == Portal.BookingId && x.PropertyId == Portal.PropertyId);
