@@ -1,3 +1,4 @@
+using Casazen.Core.GuestPortal;
 using Casazen.Infrastructure.Data.Configurations;
 using System.Reflection;
 using Casazen.Core.Authorization;
@@ -71,6 +72,8 @@ public class AppDbContext(
     public DbSet<F24Record> F24Records { get; set; } = null!;
     public DbSet<OwnerInvitation> OwnerInvitations { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
+    public DbSet<GuestHostExtra> GuestHostExtras => Set<GuestHostExtra>();
+    public DbSet<GuestHostExtraOrder> GuestHostExtraOrders => Set<GuestHostExtraOrder>();
     public DbSet<Guest> Guests { get; set; } = null!;
     public DbSet<Payment> Payments { get; set; } = null!;
     public DbSet<PaymentRefund> PaymentRefunds { get; set; } = null!;
@@ -176,6 +179,8 @@ public class AppDbContext(
     /// with manual payment mode, 0% commission, and statement integration.
     /// </summary>
     public DbSet<TrustedSupplier> TrustedSuppliers { get; set; } = null!;
+    public DbSet<GuestSupplierOffer> GuestSupplierOffers => Set<GuestSupplierOffer>();
+    public DbSet<GuestSupplierOrder> GuestSupplierOrders => Set<GuestSupplierOrder>();
 
     /// <summary>
     /// What an organization remembers of the VAT of a cleaning company («Ricorda per questa ditta», FIX/BE-CLEANING-VAT): tenant-owned, one row for each
@@ -379,6 +384,8 @@ public class AppDbContext(
     public DbSet<PropertyWelcomeLink> PropertyWelcomeLinks { get; set; } = null!;
 
     // The personal stay link of a booking, the address of the guest portal (E50/F01/US01/T01, NF-152)
+    public DbSet<GuestStayChange> GuestStayChanges { get; set; } = null!;
+
     public DbSet<GuestPortalLink> GuestPortalLinks { get; set; } = null!;
 
     // Marketing campaigns and segments (NF-24, ADR-014)
@@ -594,6 +601,8 @@ public class AppDbContext(
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.ApplyConfiguration(new GuestSupplierOfferConfiguration());
+        modelBuilder.ApplyConfiguration(new GuestSupplierOrderConfiguration());
 
         modelBuilder.Entity<PropertyActivationCredential>().HasIndex(p => new { p.OrgId, p.ExpiresAt });
         modelBuilder.Entity<PropertyActivationCredentialAssignment>(assignment =>
@@ -705,6 +714,14 @@ public class AppDbContext(
 
         // E50/F01/US01/T01 (NF-152): the stay link of a booking (the guest portal), one active link for each booking; it carries the org of the booking (TN-2).
         modelBuilder.ApplyConfiguration(new GuestPortalLinkConfiguration());
+        modelBuilder.Entity<GuestStayChange>(entity =>
+        {
+            entity.HasOne<Booking>().WithMany().HasForeignKey(change => change.BookingId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>().WithMany().HasForeignKey(change => change.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(change => change.BookingId).IsUnique().HasFilter("\"ApprovedAt\" IS NULL AND \"RejectedAt\" IS NULL")
+                .HasDatabaseName("UIX_GuestStayChanges_Pending");
+            entity.Property(change => change.Currency).HasMaxLength(3);
+        });
 
         // CO-07: one safety checklist per property, going with it; its items go with the checklist. An evidence
         // document deleted by the host leaves the item without proof (SET NULL), never deletes the answer.
@@ -2462,6 +2479,9 @@ public class AppDbContext(
         // UI-13a: the stored search keys and their indexes (global search, docs/runbooks/global-search.md).
         SearchKeyModel.Configure(modelBuilder);
 
+        modelBuilder.Entity<GuestHostExtraOrder>().HasIndex(x => new { x.OrgId, x.BookingId });
+        modelBuilder.Entity<GuestHostExtraOrder>().HasIndex(x => new { x.OrgId, x.ExtraId });
+        modelBuilder.Entity<GuestHostExtra>().HasIndex(x => x.OrgId);
         ApplyTenantQueryFilters(modelBuilder);
     }
 

@@ -82,7 +82,9 @@ public sealed record HostBookingUpdate(
     string? SpecialRequests,
     OtaAmountsInput? OtaAmounts = null,
     string? RequestedByUserId = null,
-    bool CanMoveMoney = false);
+    bool CanMoveMoney = false,
+    Guid? GuestStayChangeId = null,
+    bool GuestWillPay = false);
 
 /// <summary>
 /// The commission, net, paid and balance amounts of the channel as a request to change a booking carried them (each <c>null</c> when it did

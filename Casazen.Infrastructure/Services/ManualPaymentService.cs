@@ -156,9 +156,8 @@ public sealed class ManualPaymentService(
     }
 
     /// <summary>
-    /// Cancels on Stripe the open PaymentIntents of the payment link of a host booking (a PaymentIntent that is pending or failed: the guest can
-    /// still pay it) and marks their rows Canceled, in the unit of work of the receipt; a PaymentIntent that Stripe already cancelled only has its
-    /// row marked. Nothing for a booking that has no payment link.
+    /// Cancels the open balance PaymentIntents from the host's payment link or the guest portal
+    /// before recording a manual receipt. A PaymentIntent already cancelled on Stripe has only its row marked.
     /// </summary>
     /// <exception cref="DomainConflictException">
     /// 409 <see cref="PaymentInProgressCode"/>: a PaymentIntent of the link succeeded or is processing (the guest is paying, or has just paid, and
@@ -170,11 +169,16 @@ public sealed class ManualPaymentService(
         DateTime now,
         CancellationToken cancellationToken)
     {
-        if (!HostPaymentLinks.IsHostPaymentLink(booking))
-            return;
+        var hasHostPaymentLink = HostPaymentLinks.IsHostPaymentLink(booking);
+        var balanceIntents = payments
+            .Where(p => !string.IsNullOrEmpty(p.StripePaymentIntentId)
+                && (hasHostPaymentLink || p.Description == BookingPaymentLinkService.GuestPaymentDescription))
+            .ToList();
+        if (balanceIntents.Any(p => p.Status == PaymentStatus.Processing))
+            throw new DomainConflictException(PaymentInProgressCode, "PaymentInProgress");
 
-        var open = payments
-            .Where(p => !string.IsNullOrEmpty(p.StripePaymentIntentId) && p.Status is PaymentStatus.Pending or PaymentStatus.Failed)
+        var open = balanceIntents
+            .Where(p => p.Status is PaymentStatus.Pending or PaymentStatus.Failed)
             .ToList();
         if (open.Count == 0)
             return;
@@ -203,7 +207,7 @@ public sealed class ManualPaymentService(
             }
 
             var intent = await stripeService.GetPaymentIntentAsync(intentId, account, cancellationToken);
-            if (intent.Status is "succeeded" or "processing")
+            if (intent.Status is "succeeded" or "processing" or "requires_capture")
                 throw new DomainConflictException(PaymentInProgressCode, "PaymentInProgress");
 
             if (intent.Status != "canceled")

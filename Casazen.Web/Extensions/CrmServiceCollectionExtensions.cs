@@ -1,3 +1,4 @@
+using Casazen.Core.GuestPortal;
 using Casazen.Core.Events;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
@@ -66,7 +67,9 @@ public static class CrmServiceCollectionExtensions
         services.AddScoped<IWelcomeConsentService, WelcomeConsentService>();
 
         // E07/F04/US01/T04 (NF-90): the marketing choices of the guest of a booking, on the guest page (policy GuestSession, not behind the flag).
-        services.AddScoped<IGuestMarketingPreferencesService, GuestMarketingPreferencesService>();
+        services.AddScoped<GuestMarketingPreferencesService>();
+        services.AddScoped<IGuestMarketingPreferencesService>(sp => sp.GetRequiredService<GuestMarketingPreferencesService>());
+        services.AddScoped<IPortalMarketingPreferences>(sp => sp.GetRequiredService<GuestMarketingPreferencesService>());
 
         // E07/F01/US03 (NF-88): the profile API of the host screens. The read model decides the scope of the CRM (the profiles a caller reaches), the
         // list, the detail and the tags; the controller behind Features:CrmMarketing is a thin layer over it.

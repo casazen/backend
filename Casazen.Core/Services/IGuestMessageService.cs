@@ -1,5 +1,6 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
@@ -34,6 +35,9 @@ public interface IGuestMessageService
     /// <see cref="GetForGuestAsync"/>. The same key twice is the same message: the second call answers the first one and writes nothing.
     /// </summary>
     Task<SentGuestMessage> SendAsGuestAsync(Booking booking, string? text, string? idempotencyKey, CancellationToken cancellationToken = default);
+
+    /// <summary>Sends a portal message with its optional local house-guide answer in a single save.</summary>
+    Task<SentGuestMessage> SendFromPortalAsync(Booking booking, string? text, string? idempotencyKey, string? guideAnswer, CancellationToken cancellationToken = default);
 
     /// <summary>The thread of a booking for its host: messages, how many the host has not read, whether the guest waits for an answer.</summary>
     /// <exception cref="Exceptions.NotFoundException">The booking is not one of the caller's org.</exception>
@@ -79,7 +83,10 @@ public interface IGuestMessageService
 }
 
 /// <summary>A message as the screens show it.</summary>
-public sealed record GuestThreadMessage(Guid Id, GuestMessageSender Sender, string Text, DateTime CreatedAt);
+public sealed record GuestThreadMessage(Guid Id, GuestMessageSender Sender, string Text, DateTime CreatedAt)
+{
+    public MessageOrigin? Origin { get; init; }
+}
 
 /// <summary>The guest's view of its thread: <paramref name="ClosesAt"/> is when it stops taking messages.</summary>
 public sealed record GuestThreadView(GuestThreadState State, DateTime ClosesAt, IReadOnlyList<GuestThreadMessage> Messages);

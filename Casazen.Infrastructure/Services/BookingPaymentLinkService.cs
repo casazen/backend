@@ -40,6 +40,7 @@ public sealed class BookingPaymentLinkService(
 {
     /// <summary>The description of the PaymentIntent and of the payment row of a link (no personal data).</summary>
     internal const string PaymentDescription = "Payment link of a host booking";
+    internal const string GuestPaymentDescription = "Guest portal stay balance";
 
     /// <summary>The <c>kind</c> of the metadata of the checkout's PaymentIntents: the Connect webhook settles only these.</summary>
     internal const string CheckoutPaymentKind = "direct-booking";
@@ -116,50 +117,9 @@ public sealed class BookingPaymentLinkService(
         if (balance <= 0m)
             throw Unavailable();
 
-        var account = org.StripeConnectedAccountId!;
         var currency = StayCurrency.ForProperty(booking.Property);
-        var amountCents = (long)Math.Round(balance * 100m, MidpointRounding.AwayFromZero);
         var now = _clock.GetUtcNow().UtcDateTime;
-
-        var payment = await KeepOrReplaceOpenIntentAsync(booking, account, amountCents, now, ct);
-        if (payment is null)
-        {
-            payment = new Payment
-            {
-                Id = Guid.NewGuid(),
-                BookingId = booking.Id,
-                OrgId = booking.OrgId,
-                Amount = balance,
-                Status = PaymentStatus.Pending,
-                Method = PaymentMethod.CreditCard,
-                StripeAccountId = account,
-                Description = PaymentDescription,
-                CreatedAt = now,
-                UpdatedAt = now,
-            };
-
-            Stripe.PaymentIntent intent;
-            try
-            {
-                intent = await stripeService.CreateConnectedAccountPaymentIntentAsync(
-                    account,
-                    amountCents,
-                    StayCurrency.ForStripe(currency),
-                    MetadataOf(booking),
-                    $"payment-link:{booking.Id:N}:{payment.Id:N}",
-                    PaymentDescription,
-                    ct);
-            }
-            catch (Stripe.StripeException ex)
-            {
-                logger.LogError(ex, "Payment link of booking {BookingId}: Stripe did not create the PaymentIntent", booking.Id);
-                throw new PaymentProcessingException("Payment link initialization failed", ex);
-            }
-
-            payment.TransactionId = intent.Id;
-            payment.StripePaymentIntentId = intent.Id;
-            db.Payments.Add(payment);
-        }
+        var prepared = await PrepareIntentAsync(booking, balance, now, fromGuestPortal: false, ct);
 
         // A new token: the previous link stops working, and only the hash is kept.
         var token = CheckoutOutcomes.NewToken();
@@ -174,8 +134,143 @@ public sealed class BookingPaymentLinkService(
         var url = links.CheckoutOutcome(org.Slug!, booking.Id, token);
         var queued = await QueueEmailAsync(booking, balance, currency, url);
         logger.LogInformation(
-            "Payment link of booking {BookingId} made on payment {PaymentId} (e-mail queued: {Queued})", booking.Id, payment.Id, queued);
+            "Payment link of booking {BookingId} made on payment {PaymentId} (e-mail queued: {Queued})", booking.Id, prepared.Payment.Id, queued);
         return new BookingPaymentLink(booking.Id, url, balance, currency, now, queued);
+    }
+
+    public async Task<GuestStayBalance?> ReadGuestBalanceAsync(Guid orgId, Guid bookingId, CancellationToken ct)
+    {
+        var booking = await ForGuestStay(orgId, bookingId).AsNoTracking().SingleOrDefaultAsync(ct);
+        return booking is null ? null : (await GuestBalanceAsync(booking, ct)).Balance;
+    }
+
+    public async Task<GuestStayBalanceIntent> PrepareGuestBalanceAsync(Guid orgId, Guid bookingId, CancellationToken ct)
+    {
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, ct,
+            (PostgresAdvisoryLocks.Scope.BookingCancellation, bookingId.ToString("N")),
+            (PostgresAdvisoryLocks.Scope.BookingPayment, bookingId.ToString("N")));
+        var booking = await ForGuestStay(orgId, bookingId).SingleOrDefaultAsync(ct) ?? throw NotFound();
+        var (balance, retryDeferred) = await GuestBalanceAsync(booking, ct);
+        if (!balance.CanPay)
+            throw Unavailable();
+        if (retryDeferred)
+            return await ResumeDeferredBalanceAsync(booking, balance.Amount, ct);
+
+        var prepared = await PrepareIntentAsync(booking, balance.Amount, _clock.GetUtcNow().UtcDateTime, fromGuestPortal: true, ct);
+        if (string.IsNullOrWhiteSpace(prepared.Intent.ClientSecret))
+            throw Unavailable();
+        await db.SaveChangesAsync(ct);
+        if (transaction is not null)
+            await transaction.CommitAsync(ct);
+
+        return new GuestStayBalanceIntent(prepared.Intent.ClientSecret, booking.Org.StripeConnectedAccountId!, balance.Amount);
+    }
+
+    private async Task<GuestStayBalanceIntent> ResumeDeferredBalanceAsync(Booking booking, decimal amount, CancellationToken ct)
+    {
+        var payment = DeferredCharges.FindPayment(booking, booking.Payments);
+        var account = payment?.StripeAccountId ?? booking.Org.StripeConnectedAccountId;
+        if (payment is null || PaymentRefundService.PaymentIntentIdOf(payment) is not { } intentId
+            || string.IsNullOrWhiteSpace(account))
+            throw Unavailable();
+
+        // The deadline job retries this same intent, so opening it on-session cannot create a second charge.
+        var intent = await stripeService.GetPaymentIntentAsync(intentId, account, ct);
+        if (intent.Status is null || !PayableIntentStatuses.Contains(intent.Status)
+            || intent.Amount != (long)Math.Round(amount * 100m, MidpointRounding.AwayFromZero)
+            || string.IsNullOrWhiteSpace(intent.ClientSecret))
+            throw Unavailable();
+
+        return new GuestStayBalanceIntent(intent.ClientSecret, account, amount);
+    }
+
+    private IQueryable<Booking> ForGuestStay(Guid orgId, Guid bookingId) =>
+        db.Bookings.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(b => b.OrgId == orgId && b.Id == bookingId)
+            .Include(b => b.Property)
+            .Include(b => b.Org)
+            .Include(b => b.Payments);
+
+    private async Task<(GuestStayBalance Balance, bool RetryDeferred)> GuestBalanceAsync(Booking booking, CancellationToken ct)
+    {
+        var currency = StayCurrency.ForProperty(booking.Property);
+        if (booking.Source != BookingSource.Direct || booking.Status == BookingStatus.Cancelled)
+            return (new GuestStayBalance(0m, 0m, currency, false, false, false), false);
+
+        // The Octorate booking engine also maps to Direct, but CasaZen never collects an imported stay.
+        if (!string.IsNullOrWhiteSpace(booking.OctorateReservationId)
+            && !await db.OctorateBookingSyncs.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                .AnyAsync(s => s.BookingId == booking.Id && s.OrgId == booking.OrgId, ct))
+            return (new GuestStayBalance(0m, 0m, currency, false, false, false, External: true), false);
+
+        var amount = HostPaymentLinks.BalanceOf(booking, booking.Payments);
+        var deferredPayment = DeferredCharges.FindPayment(booking, booking.Payments);
+        var deferred = amount > 0m && booking.PaymentOption == PaymentOption.OnCancellationDeadline
+            && (deferredPayment is null || !DeferredCharges.IsCollected(deferredPayment.Status));
+        var retry = deferred && deferredPayment is not null
+            && DeferredCharges.AwaitsGuestPayment(booking)
+            && PaymentRefundService.PaymentIntentIdOf(deferredPayment) is not null;
+        var processing = amount > 0m && booking.Payments.Any(p => p.Status == PaymentStatus.Processing);
+        // On-site bookings keep their agreed collection method and the separately settled tourist tax.
+        var canPay = amount > 0m && (!deferred || retry) && !processing && booking.Org.CanTakeDirectPayments
+            && booking.PaymentOption != PaymentOption.OnSite
+            && booking.NoShowAt is null && booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
+        return (new GuestStayBalance(amount, booking.TotalPrice, currency, canPay, deferred && !retry, processing), retry);
+    }
+
+    private async Task<(Payment Payment, Stripe.PaymentIntent Intent)> PrepareIntentAsync(
+        Booking booking, decimal balance, DateTime now, bool fromGuestPortal, CancellationToken ct)
+    {
+        var account = booking.Org.StripeConnectedAccountId!;
+        var currency = StayCurrency.ForProperty(booking.Property);
+        var amountCents = (long)Math.Round(balance * 100m, MidpointRounding.AwayFromZero);
+
+        var open = await KeepOrReplaceOpenIntentAsync(booking, account, amountCents, now, ct);
+        if (open is { } existing)
+        {
+            if (fromGuestPortal && existing.Payment.Description != PaymentDescription)
+                existing.Payment.Description = GuestPaymentDescription;
+            return existing;
+        }
+
+        var description = fromGuestPortal ? GuestPaymentDescription : PaymentDescription;
+        var payment = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            Amount = balance,
+            Status = PaymentStatus.Pending,
+            Method = PaymentMethod.CreditCard,
+            StripeAccountId = account,
+            Description = description,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+        Stripe.PaymentIntent intent;
+        try
+        {
+            intent = await stripeService.CreateConnectedAccountPaymentIntentAsync(
+                account,
+                amountCents,
+                StayCurrency.ForStripe(currency),
+                MetadataOf(booking, fromGuestPortal),
+                $"payment-link:{booking.Id:N}:{payment.Id:N}",
+                description,
+                ct);
+        }
+        catch (Stripe.StripeException ex)
+        {
+            logger.LogError(ex, "Payment link of booking {BookingId}: Stripe did not create the PaymentIntent", booking.Id);
+            throw new PaymentProcessingException("Payment link initialization failed", ex);
+        }
+
+        payment.TransactionId = intent.Id;
+        payment.StripePaymentIntentId = intent.Id;
+        db.Payments.Add(payment);
+        return (payment, intent);
     }
 
     /// <summary>
@@ -183,14 +278,14 @@ public sealed class BookingPaymentLinkService(
     /// (kept, back to pending); every other open one is cancelled on Stripe. <c>null</c> when none is kept.
     /// </summary>
     /// <exception cref="DomainRuleException">A PaymentIntent of the booking is being paid or was paid: the webhook records it.</exception>
-    private async Task<Payment?> KeepOrReplaceOpenIntentAsync(
+    private async Task<(Payment Payment, Stripe.PaymentIntent Intent)?> KeepOrReplaceOpenIntentAsync(
         Booking booking,
         string account,
         long amountCents,
         DateTime now,
         CancellationToken ct)
     {
-        Payment? kept = null;
+        (Payment Payment, Stripe.PaymentIntent Intent)? kept = null;
         var open = booking.Payments
             .Where(p => p.StripePaymentIntentId != null && p.Status is PaymentStatus.Pending or PaymentStatus.Failed)
             .OrderByDescending(p => p.CreatedAt)
@@ -199,7 +294,7 @@ public sealed class BookingPaymentLinkService(
         {
             var intentAccount = payment.StripeAccountId ?? account;
             var intent = await stripeService.GetPaymentIntentAsync(payment.StripePaymentIntentId!, intentAccount, ct);
-            if (intent.Status is "succeeded" or "processing")
+            if (intent.Status is "succeeded" or "processing" or "requires_capture")
                 throw Unavailable();
 
             if (kept is null
@@ -210,7 +305,7 @@ public sealed class BookingPaymentLinkService(
             {
                 payment.Status = PaymentStatus.Pending;
                 payment.UpdatedAt = now;
-                kept = payment;
+                kept = (payment, intent);
                 continue;
             }
 
@@ -253,13 +348,13 @@ public sealed class BookingPaymentLinkService(
         return emailQueue.Enqueue(to, content, EmailTemplates.Names.BookingPaymentLink);
     }
 
-    private static Dictionary<string, string> MetadataOf(Booking booking) => new()
+    private static Dictionary<string, string> MetadataOf(Booking booking, bool fromGuestPortal) => new()
     {
         ["bookingId"] = booking.Id.ToString(),
         ["propertyId"] = booking.PropertyId.ToString(),
         ["orgId"] = booking.OrgId.ToString(),
         ["kind"] = CheckoutPaymentKind,
-        ["source"] = "host-payment-link",
+        ["source"] = fromGuestPortal ? "guest-portal" : "host-payment-link",
     };
 
     private static NotFoundException NotFound() =>

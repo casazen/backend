@@ -31,7 +31,16 @@ public interface IBookingPaymentLinkService
     /// Stripe account ready or no public site address.
     /// </exception>
     Task<BookingPaymentLink> CreateAsync(Guid bookingId, CancellationToken ct);
+
+    /// <summary>Reads the direct stay balance of a booking already authorized by a guest portal token.</summary>
+    Task<GuestStayBalance?> ReadGuestBalanceAsync(Guid orgId, Guid bookingId, CancellationToken ct);
+
+    /// <summary>Prepares the balance PaymentIntent without changing the booking checkout token or sending e-mail.</summary>
+    Task<GuestStayBalanceIntent> PrepareGuestBalanceAsync(Guid orgId, Guid bookingId, CancellationToken ct);
 }
+
+public sealed record GuestStayBalance(decimal Amount, decimal Total, string Currency, bool CanPay, bool Deferred, bool Processing, bool External = false);
+public sealed record GuestStayBalanceIntent(string ClientSecret, string StripeAccountId, decimal Amount);
 
 /// <summary>A payment link made by <see cref="IBookingPaymentLinkService.CreateAsync"/>.</summary>
 /// <param name="BookingId">The booking.</param>

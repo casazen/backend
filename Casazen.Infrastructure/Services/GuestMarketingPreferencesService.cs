@@ -1,3 +1,4 @@
+using Casazen.Core.GuestPortal;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -34,7 +35,7 @@ public class GuestMarketingPreferencesService(
     IOptions<GdprOptions> gdprOptions,
     IOptions<CrmOptions> crmOptions,
     TimeProvider timeProvider,
-    ILogger<GuestMarketingPreferencesService> logger) : IGuestMarketingPreferencesService
+    ILogger<GuestMarketingPreferencesService> logger) : IGuestMarketingPreferencesService, IPortalMarketingPreferences
 {
     /// <summary>How an opt-out of the guest page is written on the contact and on the suppression list (the person unsubscribed).</summary>
     private const string WithdrawalSource = "unsubscribe";
@@ -59,6 +60,18 @@ public class GuestMarketingPreferencesService(
 
         // The uniform 404 comes first: nothing in the body can tell a booking of another guest from one that does not exist.
         var booking = await sessions.FindBookingAsync(ticket, bookingCode, cancellationToken);
+        return await UpdateAsync(booking, change, ipAddress, cancellationToken);
+    }
+
+    public async Task<GuestMarketingPreferences> GetAsync(PortalContext portal, CancellationToken ct) =>
+        await ViewAsync(await PortalBookingAsync(portal, ct), ct);
+
+    public async Task<GuestMarketingPreferences> SetAsync(PortalContext portal, GuestMarketingChange change, string? ipAddress, CancellationToken ct) =>
+        await UpdateAsync(await PortalBookingAsync(portal, ct), change, ipAddress, ct);
+
+    private async Task<GuestMarketingPreferences> UpdateAsync(
+        Booking booking, GuestMarketingChange change, string? ipAddress, CancellationToken cancellationToken)
+    {
 
         var enableEmail = change.Email is { Enabled: true };
         var enableWhatsApp = change.WhatsApp is { Enabled: true };
@@ -113,6 +126,20 @@ public class GuestMarketingPreferencesService(
         CancellationToken cancellationToken = default)
     {
         var booking = await sessions.FindBookingAsync(ticket, bookingCode, cancellationToken);
+        return await ResendAsync(booking, cancellationToken);
+    }
+
+    public async Task<MarketingConfirmationSendOutcome> ResendAsync(PortalContext portal, CancellationToken ct) =>
+        await ResendAsync(await PortalBookingAsync(portal, ct), ct);
+
+    private async Task<Booking> PortalBookingAsync(PortalContext portal, CancellationToken ct) =>
+        await db.Bookings.AsNoTracking().Include(b => b.Guest).Include(b => b.Org)
+            .SingleOrDefaultAsync(b => b.Id == portal.BookingId && b.OrgId == portal.OrgId
+                && b.PropertyId == portal.PropertyId && b.Guest.DataAnonymizedDate == null, ct)
+        ?? throw GuestAccountBookings.NotFound();
+
+    private async Task<MarketingConfirmationSendOutcome> ResendAsync(Booking booking, CancellationToken cancellationToken)
+    {
         var channels = await ReadAsync(booking, cancellationToken);
         var pending = channels.Email
             .Where(contact => StateOf(contact) == GuestMarketingStates.Pending)

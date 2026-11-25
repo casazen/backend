@@ -1,3 +1,4 @@
+using Casazen.Infrastructure.GuestPortal;
 using Stripe;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -43,7 +44,8 @@ public class StripeWebhookHandler(
     IDomainEventRecorder? domainEvents = null,
     IBankLinkService? bankLinks = null,
     ITouristTaxCollectionService? touristTaxCollection = null,
-    Microsoft.Extensions.Configuration.IConfiguration? commercialConfiguration = null)
+    Microsoft.Extensions.Configuration.IConfiguration? commercialConfiguration = null,
+    GuestHostExtraService? hostExtras = null)
 {
     private const string DirectBookingKind = "direct-booking";
 
@@ -158,10 +160,13 @@ public class StripeWebhookHandler(
                     rentNotice = await HandleRentChargeAsync(
                         (PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type, source, stripeEvent.Account);
                     break;
-                // The tourist tax a guest paid online in the check-in (E25/F01/US01/T01, kind = tourist-tax): BEFORE the generic payment_intent events, which
-                // drop every kind but direct-booking on the Connect endpoint and would look for a booking payment on the platform one. Recorded on the stay's
-                // tourist tax with the amount and the currency of the intent, once; never a Payment row. A failed, canceled or processing intent changes
-                // nothing: the stay stays to collect and the guest can pay again.
+                case "payment_intent.succeeded" or "payment_intent.amount_capturable_updated" or "payment_intent.canceled"
+                    when stripeEvent.Account is { Length: > 0 } extraAccount && stripeEvent.Data.Object is PaymentIntent extraIntent
+                    && extraIntent.Metadata?.GetValueOrDefault("kind") == "guest-host-extra":
+                    await (hostExtras ?? throw new InvalidOperationException("Host extra settlement is unavailable."))
+                        .ObserveAsync(extraIntent, extraAccount, CancellationToken.None);
+                    break;
+                // Tourist tax also settles independently of the lodging payment.
                 case "payment_intent.succeeded" when IsTouristTax(stripeEvent.Data.Object as PaymentIntent):
                     touristTaxPaid = await HandleTouristTaxPaymentAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent);
                     break;

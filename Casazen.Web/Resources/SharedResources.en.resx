@@ -9051,4 +9051,8 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="OctoratePreparationUnavailable" xml:space="preserve"><value>The property preparation requires a staff review.</value></data>
   <data name="PropertyActivationServicesUnavailable" xml:space="preserve"><value>Check the required portals and publication status before continuing.</value></data>
+  <data name="GuestStayChangeInvalid" xml:space="preserve"><value>The stay change is unavailable for these dates or this guest count.</value></data>
+  <data name="GuestStayChangeStale" xml:space="preserve"><value>The stay or quote has changed. A new request is needed.</value></data>
+  <data name="GuestStayChangePending" xml:space="preserve"><value>A stay change request is already pending.</value></data>
+  <data name="GuestHostExtraUnavailable" xml:space="preserve"><value>This extra is unavailable for the stay.</value></data>
 </root>

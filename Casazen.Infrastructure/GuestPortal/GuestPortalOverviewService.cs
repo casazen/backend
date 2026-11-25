@@ -5,6 +5,7 @@ using Casazen.Core.GuestPortal;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.GuestPortal;
@@ -28,7 +29,8 @@ public sealed class GuestPortalOverviewService(
     IEnumerable<IGuestPortalNextStep> nextSteps,
     IEnumerable<IGuestPortalPolicy> policies,
     IFeatureFlags featureFlags,
-    ILogger<GuestPortalOverviewService> logger) : IGuestPortalOverviewService
+    ILogger<GuestPortalOverviewService> logger,
+    IConfiguration? configuration = null) : IGuestPortalOverviewService
 {
     public async Task<GuestPortalOverview?> GetAsync(PortalContext context, CancellationToken cancellationToken = default)
     {
@@ -62,7 +64,8 @@ public sealed class GuestPortalOverviewService(
         var paidServices = await CanShowPaidServicesAsync(context, cancellationToken);
         var features = new GuestPortalFeatures(
             paidServices,
-            paidServices && featureFlags.IsEnabled(FeatureFlags.GuestPortalSupplierServices),
+            paidServices && featureFlags.IsEnabled(FeatureFlags.GuestPortalSupplierServices)
+                && configuration?.GetValue<bool>(GuestSupplierOrders.SimulationSetting) == true,
             featureFlags.IsEnabled(FeatureFlags.GuestPortalAutoReplies));
 
         return new GuestPortalOverview(

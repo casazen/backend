@@ -68,11 +68,29 @@ public sealed class GuestMessageService(
             await ReadMessagesAsync(booking.Id, cancellationToken));
     }
 
-    public async Task<SentGuestMessage> SendAsGuestAsync(
+    public Task<SentGuestMessage> SendAsGuestAsync(
         Booking booking,
         string? text,
         string? idempotencyKey,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        SendGuestMessageAsync(booking, text, idempotencyKey, null, queueDraft: true, cancellationToken);
+
+    public Task<SentGuestMessage> SendFromPortalAsync(
+        Booking booking,
+        string? text,
+        string? idempotencyKey,
+        string? guideAnswer,
+        CancellationToken cancellationToken = default) =>
+        // Portal chat may contain personal data. External drafting requires its own anonymization pipeline.
+        SendGuestMessageAsync(booking, text, idempotencyKey, guideAnswer, queueDraft: false, cancellationToken);
+
+    private async Task<SentGuestMessage> SendGuestMessageAsync(
+        Booking booking,
+        string? text,
+        string? idempotencyKey,
+        string? guideAnswer,
+        bool queueDraft,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(booking);
         var now = Now();
@@ -86,26 +104,43 @@ public sealed class GuestMessageService(
         var stored = GuestMessageRules.Redact(clean, out var redacted);
 
         var threadId = await EnsureThreadAsync(booking, now, cancellationToken);
-        var received = new GuestMessageReceivedPayload(
+        var answersFromGuide = PortalEnabled && flags?.IsEnabled(FeatureFlags.GuestPortalAutoReplies) == true
+            && !redacted && !string.IsNullOrWhiteSpace(guideAnswer);
+        var received = queueDraft ? new GuestMessageReceivedPayload(
             MessageThreadKey.ForDirect(booking.Id).ToString(),
             GuestMessageReceivedPayload.DirectSource,
             booking.PropertyId,
             booking.Id,
-            GuestMessageReceivedPayload.DirectSource);
-        var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Guest, GuestMessageRules.OriginOf(GuestMessageSender.Guest), stored, key, null, now, received, cancellationToken);
+            GuestMessageReceivedPayload.DirectSource) : null;
+        var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Guest, GuestMessageRules.OriginOf(GuestMessageSender.Guest), stored, key, null, now, received,
+            cancellationToken, answersFromGuide ? guideAnswer : null);
         if (replayed)
             return new SentGuestMessage(message, redacted, true);
 
+        var latest = answersFromGuide ? now.AddMilliseconds(1) : now;
         await db.GuestThreads
             .Where(t => t.Id == threadId)
             .ExecuteUpdateAsync(
-                set => set
-                    .SetProperty(t => t.LastMessageAt, t => t.LastMessageAt > now ? t.LastMessageAt : now)
-                    .SetProperty(t => t.LastGuestMessageAt, t => t.LastGuestMessageAt > now ? t.LastGuestMessageAt : now),
+                set =>
+                {
+                    set.SetProperty(t => t.LastMessageAt, t => t.LastMessageAt > latest ? t.LastMessageAt : latest);
+                    set.SetProperty(t => t.LastGuestMessageAt, t => t.LastGuestMessageAt > now ? t.LastGuestMessageAt : now);
+                    if (answersFromGuide)
+                    {
+                        // Keep an earlier unanswered question in the human queue.
+                        set.SetProperty(t => t.LastHostMessageAt,
+                            t => t.LastGuestMessageAt == null || (t.LastHostMessageAt != null && t.LastGuestMessageAt <= t.LastHostMessageAt)
+                                ? (t.LastHostMessageAt > now ? t.LastHostMessageAt : now) : t.LastHostMessageAt);
+                        set.SetProperty(t => t.HostReadAt,
+                            t => t.LastGuestMessageAt == null || (t.HostReadAt != null && t.LastGuestMessageAt <= t.HostReadAt)
+                                ? (t.HostReadAt > now ? t.HostReadAt : now) : t.HostReadAt);
+                    }
+                },
                 cancellationToken);
 
         logger.LogInformation("Guest message {MessageId} written in thread {ThreadId} of booking {BookingId}", message.Id, threadId, booking.Id);
-        await AlertHostsAsync(booking, threadId, message.Id, now, cancellationToken);
+        if (!answersFromGuide)
+            await AlertHostsAsync(booking, threadId, message.Id, now, cancellationToken);
         return new SentGuestMessage(message, redacted, false);
     }
 
@@ -372,7 +407,7 @@ public sealed class GuestMessageService(
             .OrderByDescending(m => m.CreatedAt)
             .ThenByDescending(m => m.Id)
             .Take(GuestMessageRules.TranscriptMaxMessages)
-            .Select(m => new GuestThreadMessage(m.Id, m.Sender, m.Text, m.CreatedAt))
+            .Select(m => new GuestThreadMessage(m.Id, m.Sender, m.Text, m.CreatedAt) { Origin = m.Origin })
             .ToListAsync(cancellationToken);
         latest.Reverse();
         return latest;
@@ -432,7 +467,8 @@ public sealed class GuestMessageService(
         string? userId,
         DateTime now,
         GuestMessageReceivedPayload? received,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? guideAnswer = null)
     {
         var earlier = await FindByKeyAsync(threadId, key, cancellationToken);
         if (earlier is not null)
@@ -450,6 +486,19 @@ public sealed class GuestMessageService(
             AuthorUserId = userId,
         };
         db.GuestMessages.Add(message);
+        if (guideAnswer is not null)
+        {
+            db.GuestMessages.Add(new GuestMessage
+            {
+                OrgId = orgId,
+                ThreadId = threadId,
+                Sender = GuestMessageSender.Host,
+                Origin = MessageOrigin.Assistant,
+                Text = guideAnswer,
+                CreatedAt = now.AddMilliseconds(1),
+                IdempotencyKey = $"guide:{message.Id:N}",
+            });
+        }
         if (received is not null)
             events?.Record(DomainEventType.GuestMessageReceived, message.Id, received, $"direct-msg:{message.Id:N}", orgId);
 
@@ -468,14 +517,14 @@ public sealed class GuestMessageService(
             return (winner, true);
         }
 
-        return (new GuestThreadMessage(message.Id, message.Sender, message.Text, message.CreatedAt), false);
+        return (new GuestThreadMessage(message.Id, message.Sender, message.Text, message.CreatedAt) { Origin = message.Origin }, false);
     }
 
     private Task<GuestThreadMessage?> FindByKeyAsync(Guid threadId, string key, CancellationToken cancellationToken) =>
         db.GuestMessages
             .AsNoTracking()
             .Where(m => m.ThreadId == threadId && m.IdempotencyKey == key)
-            .Select(m => new GuestThreadMessage(m.Id, m.Sender, m.Text, m.CreatedAt))
+            .Select(m => new GuestThreadMessage(m.Id, m.Sender, m.Text, m.CreatedAt) { Origin = m.Origin })
             .FirstOrDefaultAsync(cancellationToken);
 
     /// <summary>
