@@ -1,5 +1,10 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Models;
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Orgs;
@@ -31,6 +36,51 @@ public class GdprController(
     IOrgActivityService orgActivity,
     ILogger<GdprController> logger) : ControllerBase
 {
+    [HttpGet("guests/{id:guid}/portal-requests")]
+    [FeatureGate(FeatureFlags.GuestPortal)]
+    [Authorize(Policy = CasazenPolicies.GuestManage)]
+    [PrivateAnswer]
+    public async Task<IActionResult> GetPortalRequests(Guid id, [FromServices] AppDbContext db, CancellationToken ct)
+    {
+        if (await ResolveGuestReachAsync(id) is not { } reach)
+            return NotFound();
+        if (!await IsAllowedAsync(reach.OrgId, GuestOperations.Manage))
+            return Forbid();
+
+        var requests = await OpenPortalRequests(db, reach.Scope, id).AsNoTracking()
+            .OrderBy(r => r.Deadline).Take(50)
+            .Select(r => new { r.Id, r.ActivityType, r.Deadline }).ToListAsync(ct);
+        return Ok(requests);
+    }
+
+    [HttpPost("guests/{id:guid}/portal-requests/{requestId:guid}/complete")]
+    [FeatureGate(FeatureFlags.GuestPortal)]
+    [Authorize(Policy = CasazenPolicies.GuestManage)]
+    [PrivateAnswer]
+    public async Task<IActionResult> CompletePortalRequest(Guid id, Guid requestId, [FromServices] AppDbContext db,
+        [FromServices] IInternalActivityService activities, CancellationToken ct)
+    {
+        if (await ResolveGuestReachAsync(id) is not { } reach)
+            return NotFound();
+        if (!await IsAllowedAsync(reach.OrgId, GuestOperations.Manage))
+            return Forbid();
+        if (!await OpenPortalRequests(db, reach.Scope, id).AnyAsync(r => r.Id == requestId, ct))
+            return NotFound();
+
+        await activities.CloseAsync(requestId, User.GetUserId()!, ct);
+        return NoContent();
+    }
+
+    private static IQueryable<InternalActivity> OpenPortalRequests(AppDbContext db, HostScope scope, Guid guestId)
+    {
+        var bookings = db.Bookings.InScope(scope).Where(b => b.OrgId == scope.OrgId && b.GuestId == guestId);
+        return db.InternalActivities.InScope(scope).Where(r => r.OrgId == scope.OrgId
+            && r.EntityType == InternalActivity.BookingEntityType && r.CompletedAt == null
+            && (r.ActivityType == nameof(ActivityType.GuestDataCopyRequested)
+                || r.ActivityType == nameof(ActivityType.GuestDataErasureRequested))
+            && bookings.Any(b => b.Id == r.EntityId));
+    }
+
     /// <summary>Consents with their versions, retention per category and status of the guest's data.</summary>
     [HttpGet("guests/{id:guid}")]
     [Authorize(Policy = CasazenPolicies.GuestRead)]

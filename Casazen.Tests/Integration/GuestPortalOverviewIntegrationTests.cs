@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.GuestPortal;
@@ -135,6 +136,35 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"{path}/cancellation")).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await client.GetAsync($"{path}/review")).StatusCode);
         Assert.Equal("[]", await client.GetStringAsync($"{path}/documents"));
+    }
+
+    [PostgresFact]
+    public async Task PrivacyRequests_AreIdempotentAndScopedToTheStay()
+    {
+        var token = await SeedStayWithLinkAsync();
+        var otherToken = await SeedStayWithLinkAsync();
+        using var client = factory.CreateClient();
+        var path = $"/api/public/guest-portal/{token}";
+        var endpoint = $"{path}/privacy/requests";
+
+        using var copy = await client.PostAsJsonAsync(endpoint, new { kind = "copy" });
+        using var repeated = await client.PostAsJsonAsync(endpoint, new { kind = "copy" });
+        using var erasure = await client.PostAsJsonAsync(endpoint, new { kind = "erasure" });
+        Assert.Equal(HttpStatusCode.Accepted, copy.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, repeated.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, erasure.StatusCode);
+
+        using var requests = JsonDocument.Parse(await client.GetStringAsync(endpoint));
+        Assert.Equal(2, requests.RootElement.GetArrayLength());
+        Assert.All(requests.RootElement.EnumerateArray(), request =>
+        {
+            Assert.Equal(JsonValueKind.Null, request.GetProperty("completedAt").ValueKind);
+            Assert.Equal(30, (request.GetProperty("deadline").GetDateTime() -
+                request.GetProperty("createdAt").GetDateTime()).TotalDays, precision: 3);
+        });
+        Assert.Equal("[]", await client.GetStringAsync($"/api/public/guest-portal/{otherToken}/privacy/requests"));
+        using var foreign = await client.PostAsync($"{path}/documents/{Guid.NewGuid()}/correction-request", null);
+        Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
     }
 
     [PostgresFact]
