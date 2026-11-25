@@ -359,7 +359,8 @@ public sealed partial class OctorateApiClient
             BoolOf(item, "userLogged"),
             loginAt,
             BoolOf(item, "updateCalendar"),
-            BoolOf(item, "pullReservations"));
+            BoolOf(item, "pullReservations"),
+            OctorateHttp.StringOf(item, "hotelId"));
     }
 
     /// <summary>

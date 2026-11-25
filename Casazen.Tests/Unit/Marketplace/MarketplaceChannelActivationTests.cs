@@ -86,7 +86,10 @@ public class MarketplaceChannelActivationTests
         }
 
         lost.CreateFailure = null;
-        lost.Connections.Add(new OctorateConnectionInfo("7009", "142", "WAITING", null, null));
+        Assert.Equal("marketplace_connection_unconfirmed",
+            (await Assert.ThrowsAsync<DomainConflictException>(() => lost.StartAsync())).Code);
+        Assert.Single(lost.Created);
+        lost.Connections.Add(new OctorateConnectionInfo("7009", "142", "WAITING", null, null, HotelId: HotelId));
         await using (var db = lost.NewDb())
         {
             var retried = await lost.Service(db).StartAsync(lost.OrgA, lost.OrgWide, start with { PropertyId = lost.PropertyId });
@@ -276,7 +279,7 @@ public class MarketplaceChannelActivationTests
         // The connection is there: the next start takes it, on the same row, and neither makes a second one nor refuses it as one CasaZen did not make.
         w.OnCreate = null;
         w.CreateFailure = null;
-        w.Connections.Add(new OctorateConnectionInfo("7009", "142", "WAITING", null, null));
+        w.Connections.Add(new OctorateConnectionInfo("7009", "142", "WAITING", null, null, HotelId: HotelId));
         var restarted = await w.StartAsync();
         Assert.Equal((kept.Id, MarketplaceActivationStatus.Pending, true), (restarted.ActivationId, restarted.Status, restarted.ConnectionFound));
         Assert.Equal("7009", Assert.Single(await w.ActivationsAsync()).OctorateConnectionId);
@@ -342,7 +345,7 @@ public class MarketplaceChannelActivationTests
     // ─── Import, mapping, activation ──────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task ImportAsync_RunsTheThreeImportsInOrder_AndReadsTheStateAgain()
+    public async Task ImportAsync_RequestsOnlyRoomsAndDoesNotRepeatAfterReload()
     {
         var w = await World.CreateAsync();
         var started = await w.StartAsync();
@@ -352,7 +355,10 @@ public class MarketplaceChannelActivationTests
         await using (var db = w.NewDb())
             state = await w.Service(db).ImportAsync(w.OrgA, w.OrgWide, started.ActivationId);
 
-        Assert.Equal(["ImportRooms", "ImportReservations", "ImportCalendar"], w.Calls);
+        await using (var db = w.NewDb())
+            await w.Service(db).ImportAsync(w.OrgA, w.OrgWide, started.ActivationId);
+
+        Assert.Equal(["ImportRooms"], w.Calls);
         Assert.Equal((MarketplaceActivationStatus.Pending, true, "WAITING"), (state.Status, state.ConnectionFound, state.ConnectionStatus));
         Assert.Equal(w.Now, state.LastSyncedAt);
     }
@@ -378,11 +384,12 @@ public class MarketplaceChannelActivationTests
         Assert.Empty(w.Client.Invocations);
         Assert.Equal(before, await w.RowsAsync());
 
-        // Only the rooms are verified: they are imported, and the import stops at the first operation that is not.
+        // Room import needs only its own capability. The later phases run after mapping.
         w.Octorate.ExistingInventory.Channels["142"] = new OctorateExistingInventoryChannelOptions { ImportRooms = true };
+        w.Rooms.Clear();
         w.Calls.Clear();
         await using (var db = w.NewDb())
-            Assert.Equal("d6_operation_unverified", (await Assert.ThrowsAsync<DomainConflictException>(() => w.Service(db).ImportAsync(w.OrgA, w.OrgWide, started.ActivationId))).Code);
+            await w.Service(db).ImportAsync(w.OrgA, w.OrgWide, started.ActivationId);
 
         Assert.Equal(["ImportRooms"], w.Calls);
 
@@ -433,6 +440,15 @@ public class MarketplaceChannelActivationTests
         await using (var db = w.NewDb())
         {
             var service = w.Service(db);
+            Assert.False((await service.GetStateAsync(w.OrgA, w.OrgWide, started.ActivationId)).PanelAccessDone);
+            await Assert.ThrowsAsync<DomainConflictException>(() => service.ImportAsync(w.OrgA, w.OrgWide, started.ActivationId));
+            Assert.Empty(w.Calls);
+        }
+
+        w.Connections[0] = w.Connections[0] with { Status = "ENABLED" };
+        await using (var db = w.NewDb())
+        {
+            var service = w.Service(db);
             Assert.True((await service.GetStateAsync(w.OrgA, w.OrgWide, started.ActivationId)).PanelAccessDone);
             var verifier = new ChannelAccessPanelVerifier(db, service);
             Assert.Equal(PanelVerificationOutcome.Verified, await verifier.VerifyAsync(w.Step(w.PropertyId, "142"), CancellationToken.None));
@@ -454,7 +470,7 @@ public class MarketplaceChannelActivationTests
             Assert.True(imported.PanelAccessDone);
         }
 
-        Assert.Equal(["ImportRooms", "ImportReservations", "ImportCalendar"], w.Calls);
+        Assert.Empty(w.Calls); // previously imported rooms were already listed
 
         // The verifier only reads: the activation is as the import left it.
         Assert.Equal(MarketplaceActivationStatus.Pending, Assert.Single(await w.ActivationsAsync()).Status);
@@ -566,9 +582,10 @@ public class MarketplaceChannelActivationTests
     public async Task SaveMappingAsync_SavesThenCompletes_AndRefusesWhatIsNotTheChannelsOrTheListings()
     {
         var w = await World.CreateAsync();
+        w.Octorate.ExistingInventory.Channels["142"].CommitMapping = true;
         var started = await w.StartAsync();
         w.Products.Clear();
-        w.Rooms.AddRange([new OctorateChannelRoom("3301", "Camera", null), new OctorateChannelRoom("3302", "Suite", null), new OctorateChannelRoom("3303", "Garden", null, null, false)]);
+        w.Rooms.AddRange([new OctorateChannelRoom("3301", "Camera", "956528"), new OctorateChannelRoom("3302", "Suite", null), new OctorateChannelRoom("3303", "Garden", null, null, false)]);
         w.Products.AddRange([new OctorateRoom { Id = "956528", Name = "Camera" }, new OctorateRoom { Id = "956529", Name = "Suite" }]);
         w.Calls.Clear();
 
@@ -606,7 +623,7 @@ public class MarketplaceChannelActivationTests
         }
 
         Assert.Equal(["SaveMapping", "CommitMappingAsCompleted"], w.Calls);
-        Assert.Equal([new OctorateRoomMapping("956528", "3301"), new OctorateRoomMapping("956529", "3302")], w.Saved);
+        Assert.Equal(new OctorateRoomMapping("956529", "3302"), Assert.Single(w.Saved));
     }
 
     [Fact]
@@ -630,7 +647,7 @@ public class MarketplaceChannelActivationTests
             Assert.Equal(calls, w.Calls.Count);
         }
 
-        Assert.Equal(["MarkConnected", "Patch"], w.Calls);
+        Assert.Equal(["ImportReservations", "MarkConnected", "Patch"], w.Calls);
         var patch = Assert.Single(w.Patches);
         Assert.Equal((true, true), (patch.UpdateCalendar, patch.PullReservations));
         var row = Assert.Single(await w.ActivationsAsync());
@@ -704,6 +721,56 @@ public class MarketplaceChannelActivationTests
     }
 
     [Fact]
+    public async Task ActivateAsync_EmptyCalendarWaitsForTheApprovedSource_AndRereadsAfterImport()
+    {
+        var world = await World.CreateAsync();
+        var started = await world.StartAsync();
+        world.Rooms.Add(new OctorateChannelRoom("3301", "Camera", "956528"));
+        world.CalendarPriced = false;
+
+        await using (var db = world.NewDb())
+        {
+            var error = await Assert.ThrowsAsync<DomainConflictException>(
+                () => world.Service(db).ActivateAsync(world.OrgA, world.OrgWide, started.ActivationId));
+            Assert.Equal("marketplace_calendar_source_required", error.Code);
+        }
+        Assert.Equal(["ImportReservations"], world.Calls);
+        var calendarRead = Assert.Single(world.Client.Invocations, i => i.Method.Name == nameof(IOctorateApiClient.GetCalendarAsync));
+        world.Octorate.ExistingInventory.InitialCalendarPortals[(string)calendarRead.Arguments[0]] = "142";
+
+        await using (var db = world.NewDb())
+        {
+            var error = await Assert.ThrowsAsync<DomainConflictException>(
+                () => world.Service(db).ActivateAsync(world.OrgA, world.OrgWide, started.ActivationId));
+            Assert.Equal("marketplace_calendar_pending", error.Code);
+        }
+        Assert.Equal(["ImportReservations", "ImportCalendar"], world.Calls);
+
+        world.CalendarPriced = true;
+        await using (var db = world.NewDb())
+            Assert.Equal(MarketplaceActivationStatus.Active,
+                (await world.Service(db).ActivateAsync(world.OrgA, world.OrgWide, started.ActivationId)).Status);
+
+        Assert.Equal(["ImportReservations", "ImportCalendar", "MarkConnected", "Patch"], world.Calls);
+    }
+
+    [Fact]
+    public async Task ActivateAsync_PatchMustBeVisibleOnReread()
+    {
+        var world = await World.CreateAsync();
+        var started = await world.StartAsync();
+        world.Rooms.Add(new OctorateChannelRoom("3301", "Camera", "956528"));
+        world.ApplyPatch = false;
+
+        await using var db = world.NewDb();
+        var state = await world.Service(db).ActivateAsync(world.OrgA, world.OrgWide, started.ActivationId);
+
+        Assert.Equal(MarketplaceActivationStatus.ToFix, state.Status);
+        Assert.Equal("marketplace_sync_pending", state.LastErrorCode);
+        Assert.Equal(["ImportReservations", "MarkConnected", "Patch"], world.Calls);
+    }
+
+    [Fact]
     public async Task ActivateAsync_FinishesAnEnabledConnectionWhosePullsAreOff_AndTheSyncOfTheHealthNeverDoesItInsteadOfTheWizard()
     {
         var w = await World.CreateAsync();
@@ -736,7 +803,7 @@ public class MarketplaceChannelActivationTests
         await using (var db = w.NewDb())
             Assert.Equal(MarketplaceActivationStatus.Active, (await w.Service(db).ActivateAsync(w.OrgA, w.OrgWide, started.ActivationId)).Status);
 
-        Assert.Equal(["MarkConnected", "Patch"], w.Calls);
+        Assert.Equal(["Patch"], w.Calls);
         var patch = Assert.Single(w.Patches);
         Assert.Equal((true, true), (patch.UpdateCalendar, patch.PullReservations));
 
@@ -759,7 +826,7 @@ public class MarketplaceChannelActivationTests
         await using (var db = w.NewDb())
             Assert.Equal(MarketplaceActivationStatus.Active, (await w.Service(db).ActivateAsync(w.OrgA, w.OrgWide, started.ActivationId)).Status);
 
-        Assert.Equal(["MarkConnected", "Patch"], w.Calls);
+        Assert.Equal(["Patch"], w.Calls);
         Assert.Single(w.Patches);
     }
 
@@ -788,7 +855,7 @@ public class MarketplaceChannelActivationTests
 
         // The channel manager did make it: the next start takes it, on the same row, and makes no third connection.
         w.CreateFailure = null;
-        w.Connections.Add(new OctorateConnectionInfo("7002", "142", "WAITING", null, null));
+        w.Connections.Add(new OctorateConnectionInfo("7002", "142", "WAITING", null, null, HotelId: HotelId));
         var restarted = await w.StartAsync();
         Assert.Equal((first.ActivationId, MarketplaceActivationStatus.Pending), (restarted.ActivationId, restarted.Status));
         Assert.Equal("7002", Assert.Single(await w.ActivationsAsync()).OctorateConnectionId);
@@ -954,6 +1021,10 @@ public class MarketplaceChannelActivationTests
 
         public List<OctorateChannelRoom> Rooms { get; } = [];
 
+        public bool CalendarPriced { get; set; } = true;
+
+        public bool ApplyPatch { get; set; } = true;
+
         public List<OctorateRoom> Products { get; } = [new OctorateRoom { Id = "956528", Name = "Double Room" }];
 
         public Dictionary<OctorateConnectionAction, Exception> ActionFailures { get; } = [];
@@ -1009,9 +1080,13 @@ public class MarketplaceChannelActivationTests
             flags.Setup(f => f.IsEnabled(FeatureFlags.OctorateConnector)).Returns(() => FlagOn);
             var host = new Mock<IHostEnvironment>();
             host.SetupGet(h => h.EnvironmentName).Returns("Staging");
+            var bookings = new Mock<IBookingImportService>();
+            bookings.Setup(b => b.ImportAllAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>(), null))
+                .ReturnsAsync(new ImportResult(0, 0, 0, []));
             return new MarketplaceChannelActivationService(
                 db,
                 Client.Object,
+                bookings.Object,
                 new OctorateOrgScope(NullTenantContext.Instance),
                 flags.Object,
                 host.Object,
@@ -1204,8 +1279,22 @@ public class MarketplaceChannelActivationTests
                 {
                     Calls.Add("SaveMapping");
                     Saved.AddRange(mappings);
+                    foreach (var mapping in mappings)
+                    {
+                        var index = Rooms.FindIndex(room => room.ChannelRoomId == mapping.ChannelRoomId);
+                        Rooms[index] = Rooms[index] with { MappedProductId = mapping.ProductId };
+                    }
+
                     return Task.CompletedTask;
                 });
+
+            Client
+                .Setup(c => c.GetCalendarAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>>(),
+                    It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+                .Returns((string _, IReadOnlyCollection<string> products, DateOnly from, DateOnly to, CancellationToken _) =>
+                    Task.FromResult(products.SelectMany(id => Enumerable.Range(0, to.DayNumber - from.DayNumber + 1)
+                        .Select(offset => new OctorateCalendarDay(id, from.AddDays(offset), 1,
+                            CalendarPriced ? 90m : 0m, false, null, null, null, null))).ToArray()));
 
             Client
                 .Setup(c => c.UpdateConnectionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<OctorateConnectionPatch>(), It.IsAny<CancellationToken>()))
@@ -1213,6 +1302,9 @@ public class MarketplaceChannelActivationTests
                 {
                     Calls.Add("Patch");
                     Patches.Add(patch);
+
+                    if (!ApplyPatch)
+                        return Task.CompletedTask;
 
                     // The channel manager keeps what it is sent: from then on it lists the connection with the pulls the change set.
                     for (var i = 0; i < Connections.Count; i++)

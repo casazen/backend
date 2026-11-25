@@ -81,6 +81,18 @@ public class MarketplaceActivation : ITenantOwned
 
     public DateTime? LastErrorAt { get; set; }
 
+    public DateTime? RoomsImportRequestedAt { get; set; }
+
+    public DateTime? ReservationsImportRequestedAt { get; set; }
+
+    public DateTime? ReservationsImportAcceptedAt { get; set; }
+
+    public DateTime? CalendarImportRequestedAt { get; set; }
+
+    public DateTime? MarkConnectedRequestedAt { get; set; }
+
+    public DateTime? MappingCommittedAt { get; set; }
+
     /// <summary>The open To do item raised for the problem of this activation; written by the active integrations work. No foreign key.</summary>
     public Guid? TodoActivityId { get; set; }
 

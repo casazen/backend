@@ -27,6 +27,7 @@ namespace Casazen.Core.Services;
 /// <param name="LoginAt">When the person logged in on the channel (UTC); <c>null</c> when not said.</param>
 /// <param name="UpdateCalendar">Whether Octorate sends calendar, prices and availability to the channel; <c>null</c> when not said.</param>
 /// <param name="PullReservations">Whether Octorate pulls the reservations of the channel; <c>null</c> when not said.</param>
+/// <param name="HotelId">The listing identifier as reported by this connection.</param>
 public sealed record OctorateConnectionInfo(
     string ConnectionId,
     string PortalCode,
@@ -36,7 +37,8 @@ public sealed record OctorateConnectionInfo(
     bool? UserLogged = null,
     DateTime? LoginAt = null,
     bool? UpdateCalendar = null,
-    bool? PullReservations = null)
+    bool? PullReservations = null,
+    string? HotelId = null)
 {
     /// <summary>The <c>status</c> of a connection that works.</summary>
     public const string EnabledStatus = OctorateConnectionSummary.EnabledStatus;
@@ -45,10 +47,9 @@ public sealed record OctorateConnectionInfo(
     public bool IsConnected => string.Equals(Status?.Trim(), EnabledStatus, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// The person gave the access on the channel: Octorate says the person logged in, or the connection already works. A connection that is only
-    /// waiting, disabled or silent is not an access given.
+    /// The provider reports the connection as enabled. A login alone can also be returned for a waiting connection with an invalid listing ID.
     /// </summary>
-    public bool PanelAccessDone => UserLogged == true || IsConnected;
+    public bool PanelAccessDone => IsConnected;
 
     /// <summary>
     /// The pulls of the connection are on: Octorate sends calendar, prices and availability to the channel and pulls its reservations (both reported

@@ -26,7 +26,8 @@ public class PropertyService(
     IPropertyComplianceStatusService complianceStatus,
     CinDeadlineCalendar cinDeadline,
     ILogger<PropertyService> logger,
-    TimeProvider? timeProvider = null) : IPropertyService
+    TimeProvider? timeProvider = null,
+    IPropertyImportReviewService? importReviews = null) : IPropertyService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -133,6 +134,8 @@ public class PropertyService(
         }
 
         await complianceStatus.ReevaluateAsync(updated.Id);
+        if (importReviews is not null)
+            await importReviews.RefreshAsync(updated.OrgId, updated.Id, CancellationToken.None);
         return updated;
     }
 

@@ -131,7 +131,7 @@ public sealed class ListingTextsRequest
     [MaxLength(4000, ErrorMessage = "PropertySiteProfilePayloadTooLong")]
     public string? Title { get; set; }
 
-    [MaxLength(4000, ErrorMessage = "PropertySiteProfilePayloadTooLong")]
+    [MaxLength(Casazen.Core.Services.ListingTextLimits.DescriptionMaxLength, ErrorMessage = "PropertySiteProfilePayloadTooLong")]
     public string? Description { get; set; }
 
     [MaxLength(4000, ErrorMessage = "PropertySiteProfilePayloadTooLong")]

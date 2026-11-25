@@ -23,7 +23,7 @@ public class CreatePropertyRequest
     public string Name { get; set; } = string.Empty;
 
     /// <summary>Full description shown to guests.</summary>
-    [MaxLength(2000, ErrorMessage = "PropertyDescriptionTooLong")]
+    [MaxLength(Casazen.Core.Services.ListingTextLimits.DescriptionMaxLength, ErrorMessage = "PropertyDescriptionTooLong")]
     public string Description { get; set; } = string.Empty;
 
     /// <summary>Street address of the property.</summary>

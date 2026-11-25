@@ -31,6 +31,7 @@ public static class OctorateServiceCollectionExtensions
         // rate-limit buckets are the application's (one per org).
         services.AddHttpClient<IOctorateApiClient, OctorateApiClient>(OctorateHttp.Configure);
         services.AddScoped<IOctorateOrgScope, OctorateOrgScope>();
+        services.AddScoped<OctorateMasterBoundary>();
         services.AddSingleton<OctorateRateLimiter>();
 
         // The webhook (E02/F01/US01/T03): the secret of the address, compared in constant time; the controller needs no registration.
@@ -79,7 +80,9 @@ public static class OctorateServiceCollectionExtensions
 
         // The creation of a property on Octorate (E02/F03/US01/T06, PO-19): only for a property declared never published; it saves the refresh
         // token Octorate gives once and confirms the new accommodation as the mapping of the property.
-        services.AddScoped<IOctoratePropertyCreator, OctoratePropertyCreator>();
+        services.AddScoped<OctoratePropertyCreator>();
+        services.AddScoped<IOctoratePropertyCreator>(provider => provider.GetRequiredService<OctoratePropertyCreator>());
+        services.AddScoped<OctoratePreparationService>();
 
         // The publication of a listing (E02/F03/US01/T02, NF-27): the content channels and their rules (ListingChannels), the public photos, the
         // reader of the groups of the content (the baseline of the changes made outside CasaZen), the «To do» of the channels, the service and its

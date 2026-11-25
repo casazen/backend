@@ -191,7 +191,7 @@ public sealed class OutsideChangeService(
     {
         var italianDescription = held.Description.GetValueOrDefault("IT");
         var italianRules = held.HouseRules.GetValueOrDefault("IT");
-        if (italianDescription is { } description && description.Length > 2000)
+        if (italianDescription is { } description && description.Length > ListingTextLimits.DescriptionMaxLength)
             throw TextTooLong("description");
         if (italianRules is { } rules && rules.Length > 1000)
             throw TextTooLong("houseRules");

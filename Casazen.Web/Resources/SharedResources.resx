@@ -9022,4 +9022,33 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="GuestHouseRulesAcknowledgementRequired" xml:space="preserve">
     <value>Leggi e accetta la versione corrente delle regole della casa.</value>
   </data>
+  <data name="MarketplaceMappingPending" xml:space="preserve">
+    <value>Le associazioni non risultano ancora confermate. Verificale e riprova.</value>
+  </data>
+  <data name="MarketplaceReservationImportUnknown" xml:space="preserve">
+    <value>L’esito dell’importazione delle prenotazioni è incerto. Chiedi allo staff di verificarlo.</value>
+  </data>
+  <data name="MarketplaceReservationImportIncomplete" xml:space="preserve">
+    <value>La lettura delle prenotazioni è incompleta. Riprova.</value>
+  </data>
+  <data name="MarketplaceCalendarPending" xml:space="preserve">
+    <value>Prezzi e disponibilità non sono ancora verificati. Controlla il calendario e riprova.</value>
+  </data>
+  <data name="MarketplaceCalendarSourceRequired" xml:space="preserve">
+    <value>Il calendario è vuoto. Chiedi allo staff di indicare il portale da usare per il primo import.</value>
+  </data>
+  <data name="MarketplaceActivationBusy" xml:space="preserve">
+    <value>È in corso un’altra operazione per questa struttura. Riprova tra poco.</value>
+  </data>
+  <data name="MarketplaceConnectionUnconfirmed" xml:space="preserve">
+    <value>L’esito del collegamento è incerto. Chiedi allo staff di verificarlo prima di riprovare.</value>
+  </data>
+  <data name="PropertyImportInvalid" xml:space="preserve">
+    <value>I dati importati non sono validi.</value>
+  </data>
+  <data name="PropertyImportSourceAssigned" xml:space="preserve">
+    <value>L’identità sorgente è già associata a una scheda.</value>
+  </data>
+  <data name="OctoratePreparationUnavailable" xml:space="preserve"><value>La preparazione della struttura richiede una verifica dello staff.</value></data>
+  <data name="PropertyActivationServicesUnavailable" xml:space="preserve"><value>Verifica i portali richiesti e lo stato della pubblicazione prima di proseguire.</value></data>
 </root>

@@ -99,7 +99,7 @@ public static partial class ListingTextPrompt
         "La descrizione deve essere approfondita, tra 1.300 e 1.900 caratteri quando i fatti disponibili lo consentono; " +
         "non allungarla con ripetizioni se i dati sono pochi. Mantieni una voce naturale, concreta e distinta dai concorrenti. " +
         "Le seguenti istruzioni sostituiscono lo schema JSON e la lunghezza precedenti. " +
-        "Restituisci solo JSON con sette stringhe: title (max60), description (max2000), spaces (max120), access (max200), " +
+        "Restituisci solo JSON con sette stringhe: title (max60), description (max10000), spaces (max120), access (max200), " +
         "neighborhood (max120), transport (max1000), rules (max1000). " +
         "spaces descrive gli ambienti noti; access solo modalita e orari comunicati; neighborhood solo il comune e la zona verificati; " +
         "transport solo indicazioni di trasporto fornite esplicitamente; rules solo regole comunicate. " +

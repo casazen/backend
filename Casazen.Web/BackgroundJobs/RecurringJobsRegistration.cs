@@ -3,6 +3,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Jobs;
+using Casazen.Infrastructure.Services;
 using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
@@ -26,6 +27,10 @@ public static class RecurringJobsRegistration
         recurringJobManager.AddOrUpdate<AgencyUsageJob>(
             "agency-monthly-unit-usage", job => job.ExecuteAsync(CancellationToken.None),
             "*/5 * * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<PropertyActivationAccounts>(
+            "expire-activation-credentials", accounts => accounts.PurgeExpiredAsync(CancellationToken.None),
+            "10 3 * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         ConfigureOtaPartnerJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OtaPartnerApi));
 

@@ -61,7 +61,8 @@ public sealed record MarketplaceCatalogEntryDto(
     string? WebsiteUrl,
     IReadOnlyList<string>? ServiceCategories,
     string? OctoratePortalCode,
-    bool ConnectByPropertyId)
+    bool ConnectByPropertyId,
+    bool RequiresCredentials = false)
 {
     public static MarketplaceCatalogEntryDto From(MarketplaceCatalogEntry entry)
     {
@@ -82,7 +83,8 @@ public sealed record MarketplaceCatalogEntryDto(
             entry.WebsiteUrl,
             entry.ServiceCategories,
             entry.OctoratePortalCode,
-            entry.ConnectByPropertyId);
+            entry.ConnectByPropertyId,
+            entry.RequiresCredentials);
     }
 }
 

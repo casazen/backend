@@ -60,9 +60,8 @@ public interface IMarketplaceChannelActivationService
     Task<MarketplaceActivationState> GetStateAsync(Guid orgId, HostScope scope, Guid activationId, CancellationToken ct = default);
 
     /// <summary>
-    /// Imports the rooms, the reservations and the calendar of the channel into the channel manager (the imports are asynchronous there) and answers
-    /// the state. A channel that needs the access on the panel is not asked before the person gave it. Each of the three is called only when its D6 flag
-    /// is on for the channel: the verified ones run in order and the import stops at the first that is not.
+    /// Requests the verified room import for the channel and returns the connection state.
+    /// A channel that requires authorization waits for provider evidence before any import.
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
     /// <c>d6_operation_unverified</c>, <c>marketplace_panel_access_pending</c>, <c>marketplace_connection_missing</c> (the connection is no longer on the
@@ -74,8 +73,8 @@ public interface IMarketplaceChannelActivationService
     Task<MarketplaceActivationMapping> GetMappingAsync(Guid orgId, HostScope scope, Guid activationId, CancellationToken ct = default);
 
     /// <summary>
-    /// Saves the mapping the person chose and completes it on the channel manager. An empty choice is a 422, never «all»; a room that is not the
-    /// channel's, or a product that is not the listing's, is a 422.
+    /// Saves and verifies the selected mapping. Channels that require a separate completion action run it after verification.
+    /// A choice must contain at least one pair of valid channel and listing products.
     /// </summary>
     Task<MarketplaceActivationState> SaveMappingAsync(
         Guid orgId,
@@ -85,9 +84,8 @@ public interface IMarketplaceChannelActivationService
         CancellationToken ct = default);
 
     /// <summary>
-    /// Marks the connection connected, verifies it and, once it works, switches the calendar and reservation pulls on. Active only when the channel
-    /// manager shows the connection working; otherwise To fix with the error code. Needs at least one room mapped (D6), and the D6 flag of «mark
-    /// connected» for the channel, which also covers the switching on of the pulls.
+    /// For booking channels, checks the mapping, imports the reservations and verifies the calendar before marking the connection ready.
+    /// Enables synchronization for the verified profile and only reports Active once the provider confirms both settings on read-back.
     /// </summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
     /// <c>d6_operation_unverified</c>, <c>marketplace_panel_access_pending</c>, <c>marketplace_connection_missing</c>.

@@ -50,6 +50,17 @@ public class OctorateContentRequestsTests
     }
 
     [Fact]
+    public void PropertyCreateBody_SendsBillingAndAccessNetworksAsSeparateStrings()
+    {
+        var request = Request("AccessNetwork") with { BillingNetworkName = " 441856 " };
+        var body = JsonNode.Parse(OctorateContentRequests.PropertyCreateBody(request))!;
+
+        Assert.Equal("441856", body["billingNetworkName"]!.GetValue<string>());
+        Assert.Equal("AccessNetwork", body["network_name"]!.GetValue<string>());
+        Assert.Null(JsonNode.Parse(OctorateContentRequests.PropertyCreateBody(Request()))!["billingNetworkName"]);
+    }
+
+    [Fact]
     public void ReadCreated_NeedsBothTheAccommodationAndTheRefreshToken()
     {
         var created = OctorateContentRequests.ReadCreated("""{"status":"created","codice":["585492"],"ids":"585492","refresh_token":"r-1"}""");

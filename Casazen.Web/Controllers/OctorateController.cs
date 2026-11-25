@@ -1,3 +1,6 @@
+using Casazen.Core.Options;
+using Casazen.Infrastructure.Octorate;
+using Microsoft.Extensions.Options;
 using Casazen.Core.Authorization;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
@@ -29,7 +32,10 @@ namespace Casazen.Web.Controllers;
 public sealed class OctorateController(
     IOctorateConnectService connectService,
     IOrgContextResolver orgContextResolver,
-    IHostScopeResolver hostScopeResolver) : ControllerBase
+    IHostScopeResolver hostScopeResolver,
+    IAuthorizationService? authorization = null,
+    IOptions<OctorateOptions>? options = null,
+    OctorateMasterBoundary? masterBoundary = null) : ControllerBase
 {
     /// <summary>Where the org's connection stands, with the quota Octorate reports while it is connected.</summary>
     /// <response code="200">The connection (Disconnected when the org never connected).</response>
@@ -113,6 +119,14 @@ public sealed class OctorateController(
             || await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken) is not { } orgId)
         {
             return (Guid.Empty, string.Empty, NoOrg());
+        }
+
+        if ((options?.Value.MasterOrganizationId == orgId
+             && (authorization is null || !(await authorization.AuthorizeAsync(User, null, CasazenPolicies.AdminOnly)).Succeeded))
+            || (masterBoundary is not null && await masterBoundary.IsManagedAsync(orgId, cancellationToken)))
+        {
+            return (Guid.Empty, string.Empty, this.ApiProblem(
+                StatusCodes.Status403Forbidden, "octorate_managed_by_staff", "OctoratePreparationUnavailable"));
         }
 
         var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId, cancellationToken);

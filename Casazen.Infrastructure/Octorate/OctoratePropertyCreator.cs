@@ -68,6 +68,10 @@ public sealed class OctoratePropertyCreator(
         }
 
         var orgId = property.OrgId;
+        var environment = OctorateEnvironments.Of(hostEnvironment);
+        if (await db.OctorateConnections.AsNoTracking()
+            .AnyAsync(c => c.OrgId == orgId && c.Environment == environment && c.UsesMasterAccount, ct))
+            throw new DomainConflictException("octorate_managed_by_staff", "OctoratePreparationUnavailable");
 
         // Only new inventory is ever created (D6): the declaration of a person, not the absence of a mapping.
         await scenarios.EnsureNewInventoryAsync(orgId, propertyId, ct);
@@ -123,6 +127,10 @@ public sealed class OctoratePropertyCreator(
     /// The data of the new accommodation, checked before the call: the country, the position, the address and the contact of the organization.
     /// Every field that is missing is named, so the wizard shows them all at once on their steps.
     /// </summary>
+    internal async Task<OctoratePropertyCreate> BuildPreparationRequestAsync(
+        Property property, string userId, string billingNetworkName, CancellationToken ct) =>
+        (await BuildRequestAsync(property, userId, connected: false, ct)) with { BillingNetworkName = billingNetworkName };
+
     private async Task<OctoratePropertyCreate> BuildRequestAsync(Property property, string userId, bool connected, CancellationToken ct)
     {
         var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == property.OrgId, ct);

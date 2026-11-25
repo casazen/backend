@@ -528,6 +528,10 @@ internal static class PostgresAdvisoryLocks
         /// </summary>
         SwissPlacesSeed = 29_011,
 
+        PropertyImportReview = 29_026,
+
+        PropertyPreparation = 29_027,
+
         /// <summary>
         /// The callback, logout and web-origin lists of the SPA application of the environment in the shared Auth0 tenant (key: the client id of the application,
         /// <c>Auth0:HostSync:ClientId</c>, E40/F01/US02/T01, NF-141): the registration and the removal of the host of an agency read the lists, write them back in one
