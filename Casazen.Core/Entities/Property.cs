@@ -174,6 +174,8 @@ public class Property : ITenantOwned
 
     [System.Text.Json.Serialization.JsonIgnore]
     public string? GuestHouseGuideJson { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? GuestPortalSetupJson { get; set; }
 
     // The fields of the wizard «Aggiungi immobile» (SR-07a). All optional: null = the host never said, which is every property
     // that existed before them, and nothing reads them to decide a booking, a price or a refund. Only PublishedOnSite changes

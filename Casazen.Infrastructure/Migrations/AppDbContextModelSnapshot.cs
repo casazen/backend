@@ -11402,6 +11402,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int?>("GuestNotificationOverride")
                         .HasColumnType("integer");
 
+                    b.Property<string>("GuestPortalSetupJson")
+                        .HasColumnType("text");
+
                     b.Property<string>("HouseRules")
                         .IsRequired()
                         .HasMaxLength(1000)
