@@ -49,14 +49,32 @@ public sealed class OctoratePreparationService(
                          where property.OrgId != masterId
                              && !Rows.Any(row => row.OrgId == property.OrgId && row.PropertyId == property.Id)
                              && !ConfirmedMappings.Any(mapping => mapping.OrgId == property.OrgId && mapping.PropertyId == property.Id)
-                         select new { Property = property, org.Name, org.ContactEmail, org.ContactPhone };
+                         select new { Property = property, OrganizationName = org.Name, org.ContactEmail, org.ContactPhone };
         if (!string.IsNullOrEmpty(term))
-            candidates = candidates.Where(row => row.Property.Name.ToLower().Contains(term) || row.Name.ToLower().Contains(term));
+            candidates = candidates.Where(row => row.Property.Name.ToLower().Contains(term) || row.OrganizationName.ToLower().Contains(term));
 
-        var rows = await candidates.OrderBy(row => row.Name).ThenBy(row => row.Property.Name).ThenBy(row => row.Property.Id)
-            .Take(limit + 1).ToListAsync(ct);
+        var rows = await candidates.OrderBy(row => row.OrganizationName).ThenBy(row => row.Property.Name).ThenBy(row => row.Property.Id)
+            .Take(limit + 1)
+            .Select(row => new
+            {
+                Property = new Property
+                {
+                    Id = row.Property.Id,
+                    OrgId = row.Property.OrgId,
+                    Name = row.Property.Name,
+                    Address = row.Property.Address,
+                    City = row.Property.City,
+                    PostalCode = row.Property.PostalCode,
+                    Country = row.Property.Country,
+                    Latitude = row.Property.Latitude,
+                    Longitude = row.Property.Longitude,
+                },
+                row.OrganizationName,
+                row.ContactEmail,
+                row.ContactPhone,
+            }).ToListAsync(ct);
         return new PreparationCandidates(rows.Take(limit).Select(row => new PreparationCandidate(row.Property.OrgId, row.Property.Id,
-            row.Name, row.Property.Name, OctoratePropertyCreator.PropertyErrors(row.Property, row.ContactEmail, row.ContactPhone)
+            row.OrganizationName, row.Property.Name, OctoratePropertyCreator.PropertyErrors(row.Property, row.ContactEmail, row.ContactPhone)
                 .Select(error => error.Field).ToArray())).ToArray(), rows.Count > limit);
     }
 
