@@ -24,9 +24,15 @@ public class GuestPortalInvoiceDataTests
         Assert.Equal(new GuestPortalInvoiceData.State(false, true, true, false), await portal.GetAsync(org, booking, default));
         world.Db.FiscalDocuments.Add(new FiscalDocument
         {
-            Id = Guid.NewGuid(), OrgId = org, BookingId = booking, Purpose = FiscalDocumentPurpose.GuestStay,
-            Kind = FiscalDocumentKind.Invoice, Source = FiscalDocumentSource.CasaZen, Status = FiscalDocumentStatus.Issued,
-            Number = "1", IssueDate = new DateOnly(2026, 10, 10),
+            Id = Guid.NewGuid(),
+            OrgId = org,
+            BookingId = booking,
+            Purpose = FiscalDocumentPurpose.GuestStay,
+            Kind = FiscalDocumentKind.Invoice,
+            Source = FiscalDocumentSource.CasaZen,
+            Status = FiscalDocumentStatus.Issued,
+            Number = "1",
+            IssueDate = new DateOnly(2026, 10, 10),
         });
         await world.Db.SaveChangesAsync();
         Assert.False(await portal.SaveAsync(org, booking, true, recipient, default));
