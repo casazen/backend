@@ -431,6 +431,62 @@ public class HostBookingEditSettlementTests
             () => h.Service(db).QuoteEditAsync(h.GuestsEdit(bookingId, guests: 1), CancellationToken.None));
     }
 
+    [Fact]
+    public async Task GuestStayChangeApproval_RechecksAcceptedQuoteAndSettlesOnlyOnce()
+    {
+        var h = new Harness();
+        var (bookingId, _) = await h.SeedAsync(payments: [h.StripePayment("pi_1", 400m)]);
+        var original = await h.ReadBookingAsync(bookingId);
+        var refunds = h.AllowRefunds();
+        var request = new GuestStayChange
+        {
+            OrgId = OrgId,
+            BookingId = bookingId,
+            OriginalArrival = original.CheckInDate,
+            OriginalDeparture = original.CheckOutDate,
+            OriginalGuests = original.NumberOfGuests,
+            OriginalChildren = original.NumberOfChildren,
+            Arrival = original.CheckInDate,
+            Departure = original.CheckOutDate,
+            Adults = 1,
+            OriginalTotal = 400m,
+            ProposedTotal = 300m,
+            Currency = "EUR",
+            CreatedAt = Clock.GetUtcNow().UtcDateTime,
+        };
+        await using (var db = h.NewDb())
+        {
+            db.GuestStayChanges.Add(request);
+            await db.SaveChangesAsync();
+        }
+
+        var command = h.GuestsEdit(bookingId, guests: 1) with { GuestStayChangeId = request.Id, GuestWillPay = true };
+        h.PriceOf(350m);
+        await using (var db = h.NewDb())
+        {
+            var error = await Assert.ThrowsAsync<DomainConflictException>(() => h.Service(db).UpdateAsync(command));
+            Assert.Equal("guest_stay_change_stale", error.Code);
+            Assert.Null((await db.GuestStayChanges.SingleAsync()).ApprovedAt);
+            Assert.Equal(400m, (await db.Bookings.SingleAsync()).TotalPrice);
+            Assert.Empty(refunds);
+        }
+
+        h.PriceOf(300m);
+        await using (var db = h.NewDb())
+        {
+            var edit = await h.Service(db).UpdateAsync(command);
+            Assert.Equal(BookingSettlementAction.Refund, edit.Settlement.Action);
+            Assert.Equal(300m, edit.Booking.TotalPrice);
+            Assert.NotNull((await db.GuestStayChanges.SingleAsync()).ApprovedAt);
+        }
+        await using (var db = h.NewDb())
+        {
+            var duplicate = await h.Service(db).UpdateAsync(command);
+            Assert.Equal(BookingSettlementAction.None, duplicate.Settlement.Action);
+        }
+        Assert.Single(refunds);
+    }
+
     // --- The fixes after the review --------------------------------------------------------------------------------------------
 
     /// <summary>

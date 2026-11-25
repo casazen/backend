@@ -28,7 +28,7 @@ public sealed class HostStayChangeController(AppDbContext db, IHostResourceLooku
             return denied;
 
         var change = await Changes(booking!).Where(change => change.ApprovedAt == null && change.RejectedAt == null).SingleOrDefaultAsync(ct);
-        return change is null ? NoContent() : Ok(GuestStayChangeController.StayChangeView.From(change));
+        return Ok(new { pending = change is null ? null : GuestStayChangeController.StayChangeView.From(change) });
     }
 
     [HttpPost("{id:guid}/approve")]
