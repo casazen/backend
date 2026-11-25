@@ -70,6 +70,9 @@ public class ServiceRequestPayment
     /// <summary><see cref="AmountCents"/> minus <see cref="ApplicationFeeCents"/>: what the supplier receives before Stripe's own fees (snapshot).</summary>
     public int NetCents { get; set; }
 
+    /// <summary>The host agreed to pay the platform fee on top of the supplier price for this request.</summary>
+    public bool CommissionAddedToPrice { get; set; }
+
     /// <summary>
     /// VAT treatment of the commission. Empty until the tax consultant decides (decision D4, <b>[CONSULENTE FISCALE]</b>);
     /// nothing sets it yet.

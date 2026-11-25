@@ -64,6 +64,13 @@ public sealed partial class SupplierPaymentService
         NeedsReview,
     }
 
+    // For D21 payments the platform returns its proportional share of a refund. Older agreements
+    // continue to deduct the entire refund from the supplier's share.
+    private static int SupplierRefundShare(ServiceRequestPayment payment, int grossRefund) =>
+        payment.CommissionAddedToPrice
+            ? grossRefund - SupplierCommission.FeeRefundedCents(payment.ApplicationFeeCents, payment.AmountCents, grossRefund)
+            : grossRefund;
+
     public async Task<ServiceRequestPayment> ConfirmOkAsync(Guid requestId, CancellationToken cancellationToken = default)
     {
         var latest = await FindLatestHeldAsync(requestId, cancellationToken);
@@ -115,7 +122,7 @@ public sealed partial class SupplierPaymentService
                     payment.TransferNextAttemptAt,
                     payment.StripeTransferId,
                     payment.NetCents,
-                    payment.RefundedCents,
+                    SupplierRefundShare(payment, payment.RefundedCents),
                     inProgress,
                     requestStatus ?? ServiceRequestStatus.Annullato,
                     confirmedByPayer),
@@ -139,7 +146,7 @@ public sealed partial class SupplierPaymentService
                 payment.ReleaseAt = payment.ReleaseAt is { } due && due < now ? due : now;
             }
 
-            var releasable = HeldPaymentRules.ReleasableCents(payment.NetCents, payment.RefundedCents, inProgress);
+            var releasable = HeldPaymentRules.ReleasableCents(payment.NetCents, SupplierRefundShare(payment, payment.RefundedCents), inProgress);
             (result, notice) = await TransferAsync(payment, releasable, confirmedByPayer, now, cancellationToken);
             await SaveAsync(cancellationToken);
             await CommitAsync(transaction, cancellationToken);

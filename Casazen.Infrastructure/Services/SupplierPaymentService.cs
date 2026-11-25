@@ -206,8 +206,12 @@ public sealed partial class SupplierPaymentService(
         DateTime now,
         CancellationToken cancellationToken)
     {
-        var percent = await ReadCommissionPercentAsync(request.SupplierOrgId, cancellationToken);
-        var fee = SupplierCommission.FeeCents(amountCents, percent);
+        var percent = request.HostSurchargePercent ?? await ReadCommissionPercentAsync(request.SupplierOrgId, cancellationToken);
+        var added = request.HostSurchargePercent.HasValue;
+        var fee = added ? SupplierCommission.SurchargeCents(amountCents, percent) : SupplierCommission.FeeCents(amountCents, percent);
+        var total = added ? checked(amountCents + fee) : amountCents;
+        if (added && fee > 0)
+            lines = [.. lines, new ServiceRequestPriceLine(ServiceRequestPriceLineKinds.PlatformFee, "Commissione CasaZen", fee)];
         var (payerKind, payerOrgId) = PayerOf(request);
 
         // SP-15c-b (decision VT-D1): what a host pays for a completed job goes through CasaZen — the card is charged on the platform, CasaZen
@@ -221,11 +225,12 @@ public sealed partial class SupplierPaymentService(
             SupplierOrgId = request.SupplierOrgId,
             PayerKind = payerKind,
             PayerOrgId = payerOrgId,
-            AmountCents = amountCents,
+            AmountCents = total,
+            CommissionAddedToPrice = added,
             Currency = ServiceCharges.Currency,
             CommissionPercent = percent,
             ApplicationFeeCents = fee,
-            NetCents = SupplierCommission.NetCents(amountCents, fee),
+            NetCents = SupplierCommission.NetCents(total, fee),
             Status = ServicePaymentStatus.Requested,
             FundsModel = held ? ServiceFundsModel.PlatformHeld : ServiceFundsModel.DirectCharge,
             TransferGroup = held ? ServiceCharges.TransferGroup(request.Id) : null,

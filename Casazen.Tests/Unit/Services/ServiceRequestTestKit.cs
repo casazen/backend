@@ -151,7 +151,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Flags,
             BackupSelector,
             Reliability,
-            recorder);
+            recorder,
+            supplierPaymentOptions: Microsoft.Extensions.Options.Options.Create(PaymentOptions));
         Booking = new ShowcaseBookingService(
             db,
             Catalog,

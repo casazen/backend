@@ -59,7 +59,8 @@ public partial class ServiceRequestService(
     IFeatureFlags? featureFlags = null,
     ServiceRequestBackupSelector? backupSelector = null,
     ISupplierReliabilityService? reliability = null,
-    IDomainEventRecorder? recorder = null) : IServiceRequestService
+    IDomainEventRecorder? recorder = null,
+    IOptions<SupplierPaymentsOptions>? supplierPaymentOptions = null) : IServiceRequestService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -194,6 +195,17 @@ public partial class ServiceRequestService(
             // supplier's own rule has nothing to wait for, so it has no backups. The primary's window is the hour of the rule, not the 120 minutes.
             if (!request.AutoAccepted && backupSuppliers.Count > 0)
                 backups = AttachBackupGroup(request, backupSuppliers, slotPlanned: command.DurationMinutes is null, now);
+
+            if (supplierPaymentOptions?.Value.AddMarketplaceFeeToNewHostRequests == true)
+            {
+                var requests = backups.Select(b => b.Request).Prepend(request).ToArray();
+                var supplierIds = requests.Select(r => r.SupplierOrgId).ToArray();
+                var privateIds = await SupplierServiceCatalogService.HostOriginSupplierIds(db, request.OrgId)
+                    .Where(id => supplierIds.Contains(id)).ToHashSetAsync(cancellationToken);
+                var marketplaceRate = supplierPaymentOptions.Value.RequireCommissionPercent();
+                foreach (var item in requests)
+                    item.HostSurchargePercent = privateIds.Contains(item.SupplierOrgId) ? 0m : marketplaceRate;
+            }
 
             // E24/F01/US01/T02: the request is on the event bus, in the save that creates it (and with it, in the same transaction, whatever else the caller keys to it).
             RecordEvent(DomainEventType.ServiceRequestCreated, request, request.Status, ServiceRequestEventPayload.CreatedKeyPrefix);

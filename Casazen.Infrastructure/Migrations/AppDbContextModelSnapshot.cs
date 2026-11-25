@@ -15106,6 +15106,9 @@ namespace Casazen.Infrastructure.Migrations
 
             modelBuilder.Entity("Casazen.Core.Entities.ServiceRequest", b =>
                 {
+                    b.Property<decimal?>("HostSurchargePercent")
+                        .HasColumnType("numeric");
+
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
@@ -15571,6 +15574,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("CardDisputeStatus")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<bool>("CommissionAddedToPrice")
+                        .HasColumnType("boolean");
 
                     b.Property<decimal>("CommissionPercent")
                         .HasColumnType("numeric(5,2)");
