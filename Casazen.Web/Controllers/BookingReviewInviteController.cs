@@ -37,7 +37,7 @@ public class BookingReviewInviteController(
     }
 
     /// <summary>
-    /// Sends the guest the one email with the link to write the review: only for a booking made through the site, not cancelled, whose
+    /// Sends the guest the one email with the link to write the review: for a stay eligible for a guest portal review (only site bookings when the portal is off), whose
     /// stay ended no more than 14 days ago, with the guest's address (422 <c>review_invite_not_allowed</c> otherwise), once per booking
     /// (409 <c>review_invite_already_sent</c>, also when a routine sent it) and not when the review exists (409 <c>review_already_submitted</c>).
     /// Answers the state after the call. This email leaves from this call or from the routine action <c>RequestReview</c> only.

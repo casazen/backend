@@ -21,6 +21,8 @@ public enum ReviewEligibility
 
     /// <summary>The 14 days after the check-out are gone.</summary>
     WindowClosed = 4,
+    ReviewsDisabled = 5,
+    NoShow = 6,
 }
 
 /// <summary>

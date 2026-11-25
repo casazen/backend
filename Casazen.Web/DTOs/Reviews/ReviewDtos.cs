@@ -161,6 +161,8 @@ public sealed class ReviewInviteStatusDto
             ReviewEligibility.BookingNotConfirmed => "booking_not_confirmed",
             ReviewEligibility.StayNotEnded => "stay_not_ended",
             ReviewEligibility.WindowClosed => "window_closed",
+            ReviewEligibility.ReviewsDisabled => "reviews_disabled",
+            ReviewEligibility.NoShow => "no_show",
             _ => status.HasGuestEmail ? null : "no_guest_address",
         };
 

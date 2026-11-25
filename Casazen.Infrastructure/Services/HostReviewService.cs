@@ -1,11 +1,14 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
+using Casazen.Core.GuestPortal;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.GuestPortal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -35,7 +38,9 @@ public sealed class HostReviewService(
     ILogger<HostReviewService> logger,
     TimeProvider? timeProvider = null,
     IGuestEmailBrandingProvider? emailBranding = null,
-    IGuestEmailLanguageProvider? emailLanguage = null) : IHostReviewService
+    IGuestEmailLanguageProvider? emailLanguage = null,
+    IFeatureFlags? flags = null,
+    IGuestStayLinkProvider? stayLinks = null) : IHostReviewService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -148,7 +153,7 @@ public sealed class HostReviewService(
         var booking = await db.Bookings
             .AsNoTracking()
             .Where(b => b.Id == bookingId)
-            .Select(b => new { b.Source, b.Status, b.CheckOutDate, b.Guest.Email, b.Guest.DataAnonymizedDate })
+            .Select(b => new { b.Source, b.Status, b.CheckOutDate, b.Guest.Email, b.Guest.DataAnonymizedDate, b.Guest.ErasureRequested, b.Guest.IsDeleted, b.NoShowAt, b.Property.GuestPortalSetupJson })
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw new NotFoundException($"Booking {bookingId} not found");
 
@@ -160,8 +165,8 @@ public sealed class HostReviewService(
         var reviewed = await db.Reviews.AnyAsync(r => r.BookingId == bookingId, cancellationToken);
 
         return new ReviewInviteStatus(
-            ReviewRules.Evaluate(booking.Source, booking.Status, booking.CheckOutDate, _clock.TodayInRomeAsDateOnly()),
-            HasAddress(booking.Email, booking.DataAnonymizedDate),
+            Eligibility(booking.Source, booking.Status, booking.CheckOutDate, booking.GuestPortalSetupJson, booking.NoShowAt),
+            Reachable(booking.Email, booking.DataAnonymizedDate, booking.ErasureRequested, booking.IsDeleted, automatic: false),
             sentAt,
             reviewed);
     }
@@ -236,12 +241,13 @@ public sealed class HostReviewService(
                 b.Guest.DataAnonymizedDate,
                 b.Guest.ErasureRequested,
                 b.Guest.IsDeleted,
-                b.Guest.Country))
+                b.Guest.Country,
+                b.Property.GuestPortalSetupJson))
             .FirstOrDefaultAsync(cancellationToken);
         if (booking is null)
             return ReviewInviteRequestResult.BookingNotFound;
 
-        var eligibility = ReviewRules.Evaluate(booking.Source, booking.Status, booking.CheckOutDate, _clock.TodayInRomeAsDateOnly());
+        var eligibility = Eligibility(booking.Source, booking.Status, booking.CheckOutDate, booking.PortalSetup, booking.NoShowAt);
         if (eligibility != ReviewEligibility.Eligible)
             return ReviewInviteRequestResult.Skipped(SkipReasonOf(eligibility));
 
@@ -250,7 +256,7 @@ public sealed class HostReviewService(
             return ReviewInviteRequestResult.Skipped(ReviewInviteSkipReasons.NoShow);
 
         var address = booking.GuestEmail.Trim();
-        var reachable = HasAddress(address, booking.GuestAnonymizedAt) && !(automatic && (booking.GuestErasureRequested || booking.GuestDeleted));
+        var reachable = Reachable(address, booking.GuestAnonymizedAt, booking.GuestErasureRequested, booking.GuestDeleted, automatic);
         if (!reachable)
             return ReviewInviteRequestResult.Skipped(ReviewInviteSkipReasons.NoEmail);
 
@@ -262,7 +268,18 @@ public sealed class HostReviewService(
 
         // The link and the email are made first: a missing public URL is a configuration error, and nothing was marked as sent yet. The email is in the language of the guest.
         var expiresAt = ReviewRules.WindowEndsAtUtc(booking.CheckOutDate);
-        var reviewUrl = links.GuestReview(booking.OrgSlug, booking.Id, tokens.Create(booking.Id, new DateTimeOffset(expiresAt)));
+        string reviewUrl;
+        if (PortalEnabled)
+        {
+            var stayUrl = await stayLinks.UrlOrNullAsync(booking.OrgId, booking.Id, cancellationToken);
+            if (stayUrl is null)
+                return ReviewInviteRequestResult.NotQueued;
+            reviewUrl = $"{stayUrl}?page=review";
+        }
+        else
+        {
+            reviewUrl = links.GuestReview(booking.OrgSlug, booking.Id, tokens.Create(booking.Id, new DateTimeOffset(expiresAt)));
+        }
         var language = await LanguageOfGuestAsync(booking, cancellationToken);
         // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
         var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
@@ -336,6 +353,8 @@ public sealed class HostReviewService(
     private static string SkipReasonOf(ReviewEligibility eligibility) => eligibility switch
     {
         ReviewEligibility.NotDirectBooking => ReviewInviteSkipReasons.NotDirect,
+        ReviewEligibility.ReviewsDisabled => ReviewInviteSkipReasons.ReviewsDisabled,
+        ReviewEligibility.NoShow => ReviewInviteSkipReasons.NoShow,
         ReviewEligibility.BookingNotConfirmed => ReviewInviteSkipReasons.NotConfirmed,
         ReviewEligibility.StayNotEnded => ReviewInviteSkipReasons.TooEarly,
         ReviewEligibility.WindowClosed => ReviewInviteSkipReasons.TooLate,
@@ -377,6 +396,27 @@ public sealed class HostReviewService(
         ReviewRules.StayMonthOf(r.StayEndedOn), r.PublishedAt, r.Status, r.HostReply, r.HostRepliedAt, r.ReportedAt);
 
     // An erased guest keeps a placeholder address that is never deliverable (GuestDataEraser).
+    private bool PortalEnabled => flags?.IsEnabled(FeatureFlags.GuestPortal) is true;
+
+    private ReviewEligibility Eligibility(BookingSource source, BookingStatus status, DateTime checkOut, string? setup, DateTime? noShow)
+    {
+        var portal = PortalEnabled;
+        if (portal && GuestPortalSetup.Read(setup).ReviewsEnabled is false)
+            return ReviewEligibility.ReviewsDisabled;
+        if (portal && noShow.HasValue)
+            return ReviewEligibility.NoShow;
+        return ReviewRules.Evaluate(source, status, checkOut, _clock.TodayInRomeAsDateOnly(), guestPortal: portal);
+    }
+
+    private bool Reachable(string? email, DateTime? anonymizedAt, bool erasureRequested, bool deleted, bool automatic)
+    {
+        if ((automatic || PortalEnabled) && (erasureRequested || deleted))
+            return false;
+        return PortalEnabled
+            ? FiscalDocumentDeliveryService.TryUseAddress(email, anonymizedAt, out _)
+            : HasAddress(email, anonymizedAt);
+    }
+
     private static bool HasAddress(string? email, DateTime? anonymizedAt) =>
         anonymizedAt is null && !string.IsNullOrWhiteSpace(email);
 
@@ -399,7 +439,8 @@ public sealed class HostReviewService(
         DateTime? GuestAnonymizedAt,
         bool GuestErasureRequested,
         bool GuestDeleted,
-        string? GuestCountry);
+        string? GuestCountry,
+        string? PortalSetup);
 
     private sealed record HostReviewRow(
         Guid Id,
