@@ -68,14 +68,18 @@ public sealed class GuestSupplierStripeSandboxTests
             var intent = await intents.GetAsync(id);
             Assert.False(intent.Livemode);
             Assert.Equal("requires_capture", intent.Status);
+            using var actualIntent = JsonDocument.Parse(intent.ToJson());
             var json = JsonSerializer.Serialize(new
             {
                 id = "evt_sandbox_fixture",
+                created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                request = new { id = "req_fixture", idempotency_key = (string?)null },
+                pending_webhooks = 1,
                 @object = "event",
                 type = "payment_intent.amount_capturable_updated",
                 api_version = StripeConfiguration.ApiVersion,
                 livemode = false,
-                data = new { @object = new { id, @object = "payment_intent", metadata = intent.Metadata } }
+                data = new { @object = actualIntent.RootElement }
             });
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var hash = HMACSHA256.HashData(Encoding.UTF8.GetBytes(webhookKey), Encoding.UTF8.GetBytes($"{timestamp}.{json}"));
@@ -109,6 +113,26 @@ public sealed class GuestSupplierStripeSandboxTests
             else if (!intent.Livemode && intent.Status != "canceled")
                 await intents.CancelAsync(id);
         }
+    }
+
+    [Theory]
+    [InlineData("not json")]
+    [InlineData("{}")]
+    [InlineData("""{"id":"evt_test","object":"event","livemode":false,"type":"payment_intent.succeeded","data":{}}""")]
+    [InlineData("""{"id":"evt_test","object":"event","livemode":true,"type":"payment_intent.succeeded"}""")]
+    public async Task SignedMalformedOrLiveEvent_ReturnsBadRequest(string json)
+    {
+        const string webhookKey = "whsec_synthetic";
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var signature = HMACSHA256.HashData(Encoding.UTF8.GetBytes(webhookKey), Encoding.UTF8.GetBytes($"{timestamp}.{json}"));
+        var context = new DefaultHttpContext();
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(json));
+        context.Request.Headers["Stripe-Signature"] = $"t={timestamp},v1={Convert.ToHexStringLower(signature)}";
+        var controller = new GuestSupplierStripeWebhookController(null!, null!, Config("sk_test_fake", "pk_test_fake", webhookKey))
+        {
+            ControllerContext = new ControllerContext { HttpContext = context }
+        };
+        Assert.IsType<BadRequestResult>(await controller.Receive(default));
     }
 
     [PostgresFact]
