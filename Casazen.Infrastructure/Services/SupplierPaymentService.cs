@@ -210,6 +210,7 @@ public sealed partial class SupplierPaymentService(
         var added = request.HostSurchargePercent.HasValue;
         var fee = added ? SupplierCommission.SurchargeCents(amountCents, percent) : SupplierCommission.FeeCents(amountCents, percent);
         var total = added ? checked(amountCents + fee) : amountCents;
+        ServiceRequestPricing.EnsureValidAmount(total);
         if (added && fee > 0)
             lines = [.. lines, new ServiceRequestPriceLine(ServiceRequestPriceLineKinds.PlatformFee, "Commissione CasaZen", fee)];
         var (payerKind, payerOrgId) = PayerOf(request);
