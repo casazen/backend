@@ -48,7 +48,7 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
         return NoContent();
     }
 
-    public sealed record InviteSupplier([property: Required, EmailAddress, MaxLength(255)] string Email);
+    public sealed record InviteSupplier([Required, EmailAddress, MaxLength(255)] string Email);
 
     [HttpGet("catalog")]
     public async Task<IActionResult> Search(Guid propertyId, [FromQuery] string? search, CancellationToken ct)
@@ -166,7 +166,7 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
             ? (orgId.Value, null) : (Guid.Empty, Forbid());
     }
 
-    public sealed record OfferTerms([property: Range(0, 5000)] int CommissionBasisPoints, bool Enabled);
+    public sealed record OfferTerms([Range(0, 5000)] int CommissionBasisPoints, bool Enabled);
 }
 
 [ApiController]
@@ -254,9 +254,9 @@ public sealed class SupplierGuestOrdersController(AppDbContext db, GuestSupplier
 
     public sealed record ConsentTerms(bool Accepted, int CommissionBasisPoints, uint Version);
     public sealed record SupplierTransition(
-        [property: Required, MaxLength(20)] string Action,
-        [property: Range(1, GuestSupplierOrders.MaxPriceCents)] int? PriceCents,
-        [property: MaxLength(2000)] string? Text);
+        [Required, MaxLength(20)] string Action,
+        [Range(1, GuestSupplierOrders.MaxPriceCents)] int? PriceCents,
+        [MaxLength(2000)] string? Text);
 }
 
 [ApiController]
@@ -325,8 +325,8 @@ public sealed class AdminGuestSupplierOrdersController(AppDbContext db, GuestSup
     }
 }
 
-public sealed record GuestSupplierDecision([property: Range(0, int.MaxValue)] int RefundCents,
-    [property: Required, MaxLength(2000)] string Text);
+public sealed record GuestSupplierDecision([Range(0, int.MaxValue)] int RefundCents,
+    [Required, MaxLength(2000)] string Text);
 
 internal static class GuestSupplierDecisions
 {

@@ -42,5 +42,5 @@ public sealed class GuestPortalAutoReplySettingsController(
         return NoContent();
     }
 
-    public sealed record Settings([property: Required] bool? Enabled);
+    public sealed record Settings([Required] bool? Enabled);
 }

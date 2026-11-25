@@ -164,7 +164,7 @@ public sealed class GuestPortalSupplierOrdersController(
     }
 
     public sealed record CreateOrder(Guid RequestId, Guid OfferId, DateTimeOffset RequestedFor,
-        [property: MaxLength(2000)] string? Note);
-    public sealed record AuthorizeOrderRequest([property: Range(1, int.MaxValue)] int TotalCents);
-    public sealed record OpenDispute([property: Required, MaxLength(2000)] string Text);
+        [MaxLength(2000)] string? Note);
+    public sealed record AuthorizeOrderRequest([Range(1, int.MaxValue)] int TotalCents);
+    public sealed record OpenDispute([Required, MaxLength(2000)] string Text);
 }

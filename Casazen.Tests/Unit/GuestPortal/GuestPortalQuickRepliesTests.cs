@@ -26,7 +26,7 @@ public class GuestPortalQuickRepliesTests
         Assert.Equal(topic, reply.Topic);
         Assert.Contains(content, reply.Text, StringComparison.Ordinal);
         Assert.Contains(handoff, reply.Text, StringComparison.Ordinal);
-        Assert.Contains("automat", reply.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(language == "es" ? "automát" : "automat", reply.Text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

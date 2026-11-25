@@ -93,5 +93,5 @@ public sealed class GuestPortalRequestsController(AppDbContext db, IInternalActi
                 "guest-portal-request", bookingId, PushRoutes.Booking(bookingId)));
     }
 
-    public sealed record PrivacyRequest([property: Required, MaxLength(16)] string Kind);
+    public sealed record PrivacyRequest([Required, MaxLength(16)] string Kind);
 }

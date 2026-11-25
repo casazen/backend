@@ -41,7 +41,7 @@ public sealed class GuestPortalReviewController(IPublicReviewService reviews, Ap
     }
 
     public sealed record ReviewRequest(
-        [property: Range(ReviewRules.MinRating, ReviewRules.MaxRating)] int Rating,
-        [property: MaxLength(ReviewRules.TextMaxLength)] string? Text,
+        [Range(ReviewRules.MinRating, ReviewRules.MaxRating)] int Rating,
+        [MaxLength(ReviewRules.TextMaxLength)] string? Text,
         bool ShowName);
 }

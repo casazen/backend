@@ -124,12 +124,12 @@ public sealed class GuestHostExtrasController(
 
     public sealed record OrderStatusInput(GuestHostExtraStatus Status);
     public sealed record ExtraInput(
-        [property: Required, MaxLength(120)] string Name,
-        [property: MaxLength(2000)] string? Description,
-        [property: Range(typeof(decimal), "0.50", "10000.00")] decimal Price,
+        [Required, MaxLength(120)] string Name,
+        [MaxLength(2000)] string? Description,
+        [Range(typeof(decimal), "0.50", "10000.00")] decimal Price,
         GuestHostExtraPricing Pricing,
-        [property: Range(1, 10000)] int? Inventory,
-        [property: Range(0, 720)] int CutoffHours,
+        [Range(1, 10000)] int? Inventory,
+        [Range(0, 720)] int CutoffHours,
         bool DuringStay, bool RequiresApproval, GuestHostExtraCalendar Calendar, bool Published);
 }
 
