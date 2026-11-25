@@ -118,6 +118,10 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
         var path = $"/api/public/guest-portal/{token}";
 
         var stay = await client.GetStringAsync($"{path}/stay");
+        using var stayJson = System.Text.Json.JsonDocument.Parse(stay);
+        Assert.Equal("BookingCom", stayJson.RootElement.GetProperty("bookingChannel").GetString());
+        Assert.True(stayJson.RootElement.GetProperty("chatOpen").GetBoolean());
+        Assert.False(stayJson.RootElement.GetProperty("reviewAvailable").GetBoolean());
         Assert.Contains("Informazioni pubbliche", stay, StringComparison.Ordinal);
         Assert.DoesNotContain(Address, stay, StringComparison.Ordinal);
         Assert.DoesNotContain("wifi-riservato", stay, StringComparison.Ordinal);

@@ -30,6 +30,8 @@ public sealed class GuestPortalStayController(AppDbContext db, PortalCheckInSess
             Address = portal.CanSeeReserved ? b.Property.Address : null,
             b.ExpectedArrivalTime,
             b.NoShowAt,
+            b.Property.GuestPortalSetupJson,
+            HasReview = db.Reviews.Any(r => r.BookingId == b.Id && r.OrgId == b.OrgId),
             b.Property.GuestHouseGuideJson,
             b.Property.HouseRules
         }).SingleOrDefaultAsync(ct);
@@ -46,8 +48,14 @@ public sealed class GuestPortalStayController(AppDbContext db, PortalCheckInSess
                 guide = guide with { Access = null };
         }
 
+        var reviewAvailable = !row.HasReview && GuestPortalSetup.Read(row.GuestPortalSetupJson).ReviewsEnabled is not false
+            && ReviewRules.Evaluate(portal.Source, portal.Status, portal.CheckOutDate, clock.TodayInRomeAsDateOnly(), guestPortal: true)
+                == ReviewEligibility.Eligible;
+        var chatOpen = GuestMessageRules.StateOf(portal.Source, portal.Status, portal.CheckOutDate,
+            clock.GetUtcNow().UtcDateTime, guestPortal: true) == GuestThreadState.Open;
+
         return new StayDetails(row.Address, row.HouseRules, row.ExpectedArrivalTime,
-            canEdit && row.NoShowAt is null, available && row.NoShowAt is null, guide);
+            canEdit && row.NoShowAt is null, available && row.NoShowAt is null, guide, portal.IsOta ? portal.Source.ToString() : null, reviewAvailable, chatOpen);
     }
 
     [HttpPost("access-code")]
@@ -82,7 +90,8 @@ public sealed class GuestPortalStayController(AppDbContext db, PortalCheckInSess
         return db.Bookings.Where(b => b.Id == portal.BookingId && b.OrgId == portal.OrgId && b.PropertyId == portal.PropertyId);
     }
 
-    public sealed record StayDetails(string? Address, string HouseRules, string? ArrivalTime, bool CanEditArrival, bool CheckInAvailable, GuestHouseGuide Guide);
+    public sealed record StayDetails(string? Address, string HouseRules, string? ArrivalTime, bool CanEditArrival, bool CheckInAvailable, GuestHouseGuide Guide,
+        string? BookingChannel, bool ReviewAvailable, bool ChatOpen);
 
     public sealed record ArrivalRequest(string? Time);
 }
