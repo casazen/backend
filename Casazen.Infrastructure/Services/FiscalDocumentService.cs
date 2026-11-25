@@ -1530,7 +1530,7 @@ public sealed partial class FiscalDocumentService(
         if (!NeedsOnlyTheName(rule, kind))
         {
             var guestData = await invoiceData.GetAsync(bookingId, ct);
-            if (guestData?.Source == InvoiceDataSource.CheckIn)
+            if (guestData is { InvoiceRequested: true } or { Source: InvoiceDataSource.CheckIn })
             {
                 var current = new FiscalDocument();
                 CopyRecipient(guestData, current);

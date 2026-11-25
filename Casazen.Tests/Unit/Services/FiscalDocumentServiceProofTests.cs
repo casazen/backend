@@ -35,6 +35,23 @@ public class FiscalDocumentServiceProofTests
     private static readonly DateTimeOffset Now = new(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public async Task RequestedInvoiceWithStaleRecipientMustBeRefreshedBeforeNumbering()
+    {
+        await using var db = NewDb();
+        var booking = await SeedAsync(db, BookingSource.Direct);
+        var service = Service(db);
+        var draft = await service.CreateDraftAsync(booking, null);
+        draft.RecipientName = "Older recipient";
+        await db.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() => service.IssueAsync(draft.Id, confirm: true));
+        Assert.Equal(FiscalDocumentErrors.DraftOutdated, error.Code);
+        Assert.Empty(await db.FiscalNumberSequences.ToListAsync());
+        await service.RefreshDraftAsync(draft.Id);
+        Assert.Equal("TEST Cliente Srl", (await service.IssueAsync(draft.Id, confirm: true)).RecipientName);
+    }
+
+    [Fact]
     public async Task FiscalDocument_Totals_CentAccurate_Test()
     {
         await using var db = NewDb();
