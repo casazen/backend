@@ -439,6 +439,21 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Request_AlloggiatiAndIstat_CanProceedSeparatelyOnTheSameProperty()
+    {
+        var service = HostService();
+        var police = Input(OnboardingPartKey.Compliance, OnboardingAssistContexts.PanelPolice, _world.Granted.Id);
+        var istat = Input(OnboardingPartKey.Compliance, OnboardingAssistContexts.PanelIstat, _world.Granted.Id);
+
+        var first = await service.RequestAsync(_world.OrgWide, _world.OwnerUserId, police, Ct);
+        var second = await service.RequestAsync(_world.OrgWide, _world.OwnerUserId, istat, Ct);
+
+        Assert.NotEqual(first.Id, second.Id);
+        Assert.Equal(2, await _db.OnboardingAssistRequests.CountAsync());
+        await Assert.ThrowsAsync<DomainConflictException>(() => service.RequestAsync(_world.OrgWide, _world.OwnerUserId, police, Ct));
+    }
+
+    [Fact]
     public async Task Request_ForAPanelStepAlreadyDone_Is409_AndLeavesNothing()
     {
         var done = await StartStepAsync(PanelStepKind.IstatConnection, _world.Granted.Id);
