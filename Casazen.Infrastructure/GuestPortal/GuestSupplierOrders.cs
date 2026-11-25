@@ -60,11 +60,12 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
 
     public IQueryable<OfferView> OfferViews(IQueryable<GuestSupplierOffer> offers) =>
         from o in offers.AsNoTracking()
-        join service in db.SupplierServiceListings on o.ServiceId equals service.Id
+        join service in SupplierServiceCatalogService.ListingsForOffers(db, offers.Select(x => x.SupplierOrgId))
+            on new { o.ServiceId, o.SupplierOrgId } equals new { ServiceId = service.Id, SupplierOrgId = service.OrgId }
         join supplier in db.SupplierProfiles on o.SupplierOrgId equals supplier.OrgId
         join property in db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]) on o.PropertyId equals property.Id
         join host in db.Orgs on o.HostOrgId equals host.Id
-        where property.OrgId == o.HostOrgId && service.OrgId == o.SupplierOrgId
+        where property.OrgId == o.HostOrgId
         select new OfferView(o.Id, o.HostOrgId, o.PropertyId, o.ServiceId, o.SupplierOrgId,
             o.HostOrigin, o.CommissionBasisPoints, o.Accepted, o.Enabled, o.Version,
             service.Name, supplier.LegalName, property.Name, host.Name);

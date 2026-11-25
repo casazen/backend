@@ -426,6 +426,10 @@ public class SupplierServiceCatalogService(
         return db.SupplierProfiles.Where(p => p.GuestPortalMarketplaceEnabled || trusted.Contains(p.OrgId));
     }
 
+    // Consents and historical offers still identify services the supplier has since archived.
+    internal static IQueryable<SupplierServiceListing> ListingsForOffers(AppDbContext db, IQueryable<Guid> orgIds) =>
+        db.SupplierServiceListings.Where(l => orgIds.Contains(l.OrgId)).AsNoTracking();
+
     internal static IQueryable<SupplierServiceListing> GuestPortalListings(
         AppDbContext db, IQueryable<Guid> trustedSupplierIds, bool allowsRegionalSuppliers)
     {
