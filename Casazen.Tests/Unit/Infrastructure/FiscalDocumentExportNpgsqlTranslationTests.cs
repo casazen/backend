@@ -67,7 +67,7 @@ public class FiscalDocumentExportNpgsqlTranslationTests
 
         // The amount of settled extras is a correlated aggregate. The export does not read the full line contents.
         Assert.Contains("\"FiscalDocumentLines\"", documents, StringComparison.Ordinal);
-        Assert.Contains("SUM(", documents, StringComparison.Ordinal);
+        Assert.Contains("SUM(", documents, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"LineType\"", documents, StringComparison.Ordinal);
         // Never the XML or the fiscal data of the recipient.
         foreach (var never in new[] { "\"FatturaPaXml\"", "\"RecipientFiscalCode\"", "\"RecipientVatNumber\"", "\"RecipientAddressStreet\"", "\"RecipientPec\"" })
