@@ -25,8 +25,14 @@ public sealed class SupplierIdentityReviewIntegrationTests(CasazenWebApplication
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             db.Orgs.Add(new OrgEntity { Id = supplierId, Slug = $"supplier-{Guid.NewGuid():N}"[..28], Name = "Private supplier", OrgType = OrgType.Supplier });
-            db.SupplierProfiles.Add(new SupplierProfile { OrgId = supplierId, Email = email, Phone = phone,
-                LegalName = "Private supplier", Status = SupplierStatus.Active });
+            db.SupplierProfiles.Add(new SupplierProfile
+            {
+                OrgId = supplierId,
+                Email = email,
+                Phone = phone,
+                LegalName = "Private supplier",
+                Status = SupplierStatus.Active
+            });
             var selected = await db.Properties.IgnoreQueryFilters().SingleAsync(p => p.Id == property.Id);
             selected.City = "Roma";
             await db.SaveChangesAsync();
