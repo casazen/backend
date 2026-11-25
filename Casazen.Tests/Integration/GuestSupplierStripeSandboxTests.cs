@@ -9,6 +9,8 @@ using Moq;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Controllers;
+using Casazen.Web.BackgroundJobs;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -58,16 +60,23 @@ public sealed class GuestSupplierStripeSandboxTests
             confirm.Headers.Authorization = new AuthenticationHeaderValue("Bearer", publishable);
             confirm.Content = new FormUrlEncodedContent(new Dictionary<string, string>
             {
-                ["client_secret"] = session.ClientSecret, ["payment_method"] = "pm_card_visa"
+                ["client_secret"] = session.ClientSecret,
+                ["payment_method"] = "pm_card_visa"
             });
             using var confirmation = await http.SendAsync(confirm);
             confirmation.EnsureSuccessStatusCode();
             var intent = await intents.GetAsync(id);
             Assert.False(intent.Livemode);
             Assert.Equal("requires_capture", intent.Status);
-            var json = JsonSerializer.Serialize(new { id = "evt_sandbox_fixture", @object = "event",
-                type = "payment_intent.amount_capturable_updated", api_version = StripeConfiguration.ApiVersion, livemode = false,
-                data = new { @object = new { id, @object = "payment_intent", metadata = intent.Metadata } } });
+            var json = JsonSerializer.Serialize(new
+            {
+                id = "evt_sandbox_fixture",
+                @object = "event",
+                type = "payment_intent.amount_capturable_updated",
+                api_version = StripeConfiguration.ApiVersion,
+                livemode = false,
+                data = new { @object = new { id, @object = "payment_intent", metadata = intent.Metadata } }
+            });
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var hash = HMACSHA256.HashData(Encoding.UTF8.GetBytes(webhookKey), Encoding.UTF8.GetBytes($"{timestamp}.{json}"));
             var signature = $"t={timestamp},v1={Convert.ToHexStringLower(hash)}";
@@ -77,7 +86,7 @@ public sealed class GuestSupplierStripeSandboxTests
                 context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(json));
                 context.Request.Headers["Stripe-Signature"] = header;
                 return await new GuestSupplierStripeWebhookController(db, checkout, config)
-                    { ControllerContext = new ControllerContext { HttpContext = context } }.Receive(default);
+                { ControllerContext = new ControllerContext { HttpContext = context } }.Receive(default);
             }
             Assert.IsType<BadRequestResult>(await Callback($"t={timestamp},v1=invalid"));
             Assert.Equal(GuestSupplierOrderState.Quoted, order.State);
@@ -111,9 +120,13 @@ public sealed class GuestSupplierStripeSandboxTests
         var config = Config("sk_test_synthetic", "pk_test_synthetic", "whsec_synthetic");
         var intent = new PaymentIntent
         {
-            Id = "pi_fixture", Currency = "eur", Amount = 110, CaptureMethod = "manual",
+            Id = "pi_fixture",
+            Currency = "eur",
+            Amount = 110,
+            CaptureMethod = "manual",
             Metadata = new() { ["kind"] = GuestSupplierCheckout.Kind, ["orderId"] = order.Id.ToString("D") },
-            ClientSecret = "pi_fixture_secret_fixture", Status = "requires_payment_method"
+            ClientSecret = "pi_fixture_secret_fixture",
+            Status = "requires_payment_method"
         };
         var client = new Mock<IStripeClient>();
         var createCount = 0;
@@ -162,6 +175,24 @@ public sealed class GuestSupplierStripeSandboxTests
         Assert.Equal(1, cancelCount);
         Assert.Equal(GuestSupplierOrderState.Declined, order.State);
         Assert.False(await checkout.SupplierActionAsync(order, "accept", default));
+
+        order = await SeedOrderAsync(db, DateTime.UtcNow);
+        intent.Id = "pi_expiry";
+        intent.Status = "requires_payment_method";
+        intent.Metadata["orderId"] = order.Id.ToString("D");
+        Assert.NotNull(await checkout.StartAsync(order, 110, default));
+        intent.Status = "requires_capture";
+        Assert.True(await checkout.ReconcileAsync(order, default));
+        order.RequestedFor = DateTime.UtcNow.AddMinutes(-1);
+        await db.SaveChangesAsync();
+        var job = new GuestSupplierStripeExpiryJob(db, checkout, config, TimeProvider.System, NullLogger<GuestSupplierStripeExpiryJob>.Instance);
+        await job.ExecuteAsync(default);
+        Assert.Equal(GuestSupplierOrderState.Declined, order.State);
+        Assert.Equal(2, cancelCount);
+
+        order.State = GuestSupplierOrderState.Completed;
+        order.CompletedAt = DateTime.UtcNow.AddDays(-2);
+        Assert.Equal("Completed", new GuestSupplierOrders(db, TimeProvider.System).View(order).State);
     }
 
     [Theory]
@@ -179,12 +210,32 @@ public sealed class GuestSupplierStripeSandboxTests
         var supplier = HostScopeScenario.NewOrg("Supplier", $"supplier-{suffix}");
         var property = HostScopeScenario.NewProperty(host.Id, $"sandbox-{suffix}", "Sandbox");
         var guest = new Guest { OrgId = host.Id, FirstName = "Test", LastName = "Guest" };
-        var booking = new Booking { OrgId = host.Id, PropertyId = property.Id, GuestId = guest.Id,
-            CheckInDate = now.Date, CheckOutDate = now.Date.AddDays(2), NumberOfGuests = 1 };
-        var order = new GuestSupplierOrder { HostOrgId = host.Id, SupplierOrgId = supplier.Id, BookingId = booking.Id,
-            PropertyId = property.Id, OfferId = Guid.NewGuid(), RequestId = Guid.NewGuid(), StripeSandbox = true,
-            ServiceName = "Sandbox", SupplierName = "Sandbox", SupplierPriceCents = 100, CommissionCents = 10,
-            CreatedAt = now, RequestedFor = now.AddHours(2), State = GuestSupplierOrderState.Quoted };
+        var booking = new Booking
+        {
+            OrgId = host.Id,
+            PropertyId = property.Id,
+            GuestId = guest.Id,
+            CheckInDate = now.Date,
+            CheckOutDate = now.Date.AddDays(2),
+            NumberOfGuests = 1
+        };
+        var order = new GuestSupplierOrder
+        {
+            HostOrgId = host.Id,
+            SupplierOrgId = supplier.Id,
+            BookingId = booking.Id,
+            PropertyId = property.Id,
+            OfferId = Guid.NewGuid(),
+            RequestId = Guid.NewGuid(),
+            StripeSandbox = true,
+            ServiceName = "Sandbox",
+            SupplierName = "Sandbox",
+            SupplierPriceCents = 100,
+            CommissionCents = 10,
+            CreatedAt = now,
+            RequestedFor = now.AddHours(2),
+            State = GuestSupplierOrderState.Quoted
+        };
         db.AddRange(host, supplier, property, guest, booking, order);
         await db.SaveChangesAsync();
         return order;

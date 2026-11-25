@@ -74,7 +74,7 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         bool HostOrigin, int CommissionBasisPoints, bool Accepted, bool Enabled, uint Version, string ServiceName,
         string SupplierName, string PropertyName, string HostName);
 
-    public IQueryable<CatalogEntry> Catalog(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers, Guid? offerId = null)
+    public IQueryable<CatalogEntry> Catalog(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers, Guid? offerId = null, bool fixedPriceOnly = false)
     {
         var trusted = TrustedSupplierIds(orgId, propertyId);
         return
@@ -83,6 +83,9 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         join supplier in db.SupplierProfiles.IgnoreQueryFilters() on offer.SupplierOrgId equals supplier.OrgId
         where (offerId == null || offer.Id == offerId) && offer.HostOrgId == orgId && offer.PropertyId == propertyId && offer.Accepted && offer.Enabled
               && (offer.HostOrigin ? trusted.Contains(offer.SupplierOrgId) : allowsRegionalSuppliers && supplier.GuestPortalMarketplaceEnabled)
+              && (!fixedPriceOnly || !listing.RequiresQuote && listing.PriceUnit == SupplierServicePriceUnit.PerJob &&
+                  listing.PricesIncludeVat && listing.PriceFromCents > 0 && listing.PriceFromCents <= MaxPriceCents &&
+                  (listing.PriceFromCents * (10_000L + offer.CommissionBasisPoints) + 5_000) / 10_000 >= GuestSupplierCheckout.MinTotalCents)
               && listing.OrgId == supplier.OrgId
               && (listing.RequiresQuote || listing.PriceFromCents > 0)
         orderby listing.SortOrder, listing.Name

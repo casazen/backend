@@ -99,6 +99,10 @@ public static class RecurringJobsRegistration
             PopupAlertDueJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        recurringJobManager.AddOrUpdate<GuestSupplierStripeExpiryJob>(
+            "guest-supplier-stripe-expiry", job => job.ExecuteAsync(CancellationToken.None),
+            "*/5 * * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         ConfigureServiceRequestAutoCancel(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.SupplierRequestAutoCancel));
 
         // E09/F01/US01/T02 (ADR-023): the cache of the portal catalog of the marketplace is refreshed every day, only while the Octorate connector is on.

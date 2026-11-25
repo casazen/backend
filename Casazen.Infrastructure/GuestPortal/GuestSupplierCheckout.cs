@@ -10,6 +10,7 @@ namespace Casazen.Infrastructure.GuestPortal;
 public sealed class GuestSupplierCheckout(AppDbContext db, TimeProvider clock, IConfiguration configuration)
 {
     public const string Section = "GuestPortal:SupplierStripeSandbox";
+    public const int MinTotalCents = 50;
     public const string Kind = "guest_supplier_order";
     public static readonly TimeSpan Horizon = TimeSpan.FromHours(48);
     public sealed record Session(string ClientSecret, string PublishableKey);
@@ -21,7 +22,8 @@ public sealed class GuestSupplierCheckout(AppDbContext db, TimeProvider clock, I
         config[$"{Section}:WebhookSecret"]?.StartsWith("whsec_", StringComparison.Ordinal) == true;
 
     public static bool OrdersEnabled(IConfiguration? config) =>
-        Enabled(config) || config?.GetValue<bool>(GuestSupplierOrders.SimulationSetting) == true;
+        config?.GetValue<bool>($"{Section}:Enabled") == true
+            ? Enabled(config) : config?.GetValue<bool>(GuestSupplierOrders.SimulationSetting) == true;
 
     private IStripeClient? client;
 
@@ -42,7 +44,7 @@ public sealed class GuestSupplierCheckout(AppDbContext db, TimeProvider clock, I
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await LockAsync(order, ct);
         if (order.State != GuestSupplierOrderState.Quoted || total != order.SupplierPriceCents + order.CommissionCents ||
-            total < 50 || order.RequestedFor <= Now || order.RequestedFor > Now + Horizon)
+            total < MinTotalCents || order.RequestedFor <= Now || order.RequestedFor > Now + Horizon)
             return null;
 
         PaymentIntent intent;
@@ -52,7 +54,10 @@ public sealed class GuestSupplierCheckout(AppDbContext db, TimeProvider clock, I
             if (order.StripeCheckoutStartedAt is not { } first || Now >= first.AddHours(23)) return null;
             intent = await Intents.CreateAsync(new PaymentIntentCreateOptions
             {
-                Amount = total, Currency = "eur", CaptureMethod = "manual", PaymentMethodTypes = ["card"],
+                Amount = total,
+                Currency = "eur",
+                CaptureMethod = "manual",
+                PaymentMethodTypes = ["card"],
                 Metadata = new() { ["kind"] = Kind, ["orderId"] = order.Id.ToString("D") }
             }, Key(order, "create"), ct);
             if (!Matches(order, intent)) return null;
@@ -143,6 +148,7 @@ public sealed class GuestSupplierCheckout(AppDbContext db, TimeProvider clock, I
 
     internal static bool Matches(GuestSupplierOrder order, PaymentIntent intent) =>
         order.StripeSandbox && !intent.Livemode && !string.IsNullOrEmpty(intent.Id) &&
+        intent.TransferData is null && intent.ApplicationFeeAmount is null && string.IsNullOrEmpty(intent.OnBehalfOfId) &&
         (order.StripePaymentIntentId is null || intent.Id == order.StripePaymentIntentId) &&
         intent.Metadata?.GetValueOrDefault("kind") == Kind && intent.Metadata.GetValueOrDefault("orderId") == order.Id.ToString("D") &&
         intent.CaptureMethod == "manual" && intent.Currency == "eur" && intent.Amount == order.SupplierPriceCents + order.CommissionCents;

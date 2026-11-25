@@ -56,7 +56,7 @@ public sealed class GuestPortalSupplierOrdersController(
         var offer = await db.GuestSupplierOffers.SingleAsync(x => x.Id == entry.Id, ct);
         var price = entry.PriceCents.GetValueOrDefault();
         if (price > GuestSupplierOrders.MaxPriceCents || StripeSandbox && (price <= 0 ||
-            price + GuestSupplierOrders.Commission(price, entry.CommissionBasisPoints) < 50 ||
+            price + GuestSupplierOrders.Commission(price, entry.CommissionBasisPoints) < GuestSupplierCheckout.MinTotalCents ||
             requestedFor > orders.Now + GuestSupplierCheckout.Horizon))
             return BadRequest();
 
@@ -159,9 +159,8 @@ public sealed class GuestPortalSupplierOrdersController(
 
     private async Task<IQueryable<GuestSupplierOrders.CatalogEntry>> CatalogAsync(CancellationToken ct, Guid? offerId = null)
     {
-        var catalog = orders.Catalog(Portal.OrgId, Portal.PropertyId,
-            await orders.AllowsRegionalSuppliersAsync(Portal.OrgId, Portal.PropertyId, ct), offerId);
-        return StripeSandbox ? catalog.Where(x => x.PriceCents > 0) : catalog;
+        return orders.Catalog(Portal.OrgId, Portal.PropertyId,
+            await orders.AllowsRegionalSuppliersAsync(Portal.OrgId, Portal.PropertyId, ct), offerId, fixedPriceOnly: StripeSandbox);
     }
 
     private IQueryable<GuestSupplierOrder> StayOrders() => db.GuestSupplierOrders
