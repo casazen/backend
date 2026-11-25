@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.GuestMessages;
@@ -28,6 +29,7 @@ public sealed class GuestMessageDto
 {
     public Guid Id { get; init; }
     public GuestMessageSender Sender { get; init; }
+    public MessageOrigin? Origin { get; init; }
     public string Text { get; init; } = string.Empty;
     public DateTime CreatedAt { get; init; }
 
@@ -35,6 +37,7 @@ public sealed class GuestMessageDto
     {
         Id = message.Id,
         Sender = message.Sender,
+        Origin = message.Origin,
         Text = message.Text,
         CreatedAt = message.CreatedAt,
     };

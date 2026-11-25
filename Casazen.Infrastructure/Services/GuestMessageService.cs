@@ -407,7 +407,7 @@ public sealed class GuestMessageService(
             .OrderByDescending(m => m.CreatedAt)
             .ThenByDescending(m => m.Id)
             .Take(GuestMessageRules.TranscriptMaxMessages)
-            .Select(m => new GuestThreadMessage(m.Id, m.Sender, m.Text, m.CreatedAt))
+            .Select(m => new GuestThreadMessage(m.Id, m.Sender, m.Text, m.CreatedAt) { Origin = m.Origin })
             .ToListAsync(cancellationToken);
         latest.Reverse();
         return latest;
@@ -517,14 +517,14 @@ public sealed class GuestMessageService(
             return (winner, true);
         }
 
-        return (new GuestThreadMessage(message.Id, message.Sender, message.Text, message.CreatedAt), false);
+        return (new GuestThreadMessage(message.Id, message.Sender, message.Text, message.CreatedAt) { Origin = message.Origin }, false);
     }
 
     private Task<GuestThreadMessage?> FindByKeyAsync(Guid threadId, string key, CancellationToken cancellationToken) =>
         db.GuestMessages
             .AsNoTracking()
             .Where(m => m.ThreadId == threadId && m.IdempotencyKey == key)
-            .Select(m => new GuestThreadMessage(m.Id, m.Sender, m.Text, m.CreatedAt))
+            .Select(m => new GuestThreadMessage(m.Id, m.Sender, m.Text, m.CreatedAt) { Origin = m.Origin })
             .FirstOrDefaultAsync(cancellationToken);
 
     /// <summary>

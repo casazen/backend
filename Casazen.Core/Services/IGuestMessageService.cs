@@ -1,5 +1,6 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
@@ -82,7 +83,10 @@ public interface IGuestMessageService
 }
 
 /// <summary>A message as the screens show it.</summary>
-public sealed record GuestThreadMessage(Guid Id, GuestMessageSender Sender, string Text, DateTime CreatedAt);
+public sealed record GuestThreadMessage(Guid Id, GuestMessageSender Sender, string Text, DateTime CreatedAt)
+{
+    public MessageOrigin? Origin { get; init; }
+}
 
 /// <summary>The guest's view of its thread: <paramref name="ClosesAt"/> is when it stops taking messages.</summary>
 public sealed record GuestThreadView(GuestThreadState State, DateTime ClosesAt, IReadOnlyList<GuestThreadMessage> Messages);
