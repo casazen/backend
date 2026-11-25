@@ -56,9 +56,9 @@ public static partial class GuestMessageRules
     /// that was confirmed and not cancelled has a thread; it is open until the end of the seventh day after the check-out day
     /// (Europe/Rome).
     /// </summary>
-    public static GuestThreadState StateOf(BookingSource source, BookingStatus status, DateTime checkOutDate, DateTime nowUtc)
+    public static GuestThreadState StateOf(BookingSource source, BookingStatus status, DateTime checkOutDate, DateTime nowUtc, bool guestPortal = false)
     {
-        if (source != BookingSource.Direct || status is not (BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut))
+        if ((!guestPortal && source != BookingSource.Direct) || status is not (BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut))
             return GuestThreadState.Unavailable;
 
         return nowUtc >= ClosesAtUtc(checkOutDate) ? GuestThreadState.Closed : GuestThreadState.Open;
@@ -75,6 +75,13 @@ public static partial class GuestMessageRules
         && (thread.Booking.Status == BookingStatus.Confirmed
             || thread.Booking.Status == BookingStatus.CheckedIn
             || thread.Booking.Status == BookingStatus.CheckedOut);
+
+    public static Expression<Func<GuestThread, bool>> EligibleThreads(bool guestPortal) =>
+        guestPortal
+            ? thread => thread.Booking.Status == BookingStatus.Confirmed
+                || thread.Booking.Status == BookingStatus.CheckedIn
+                || thread.Booking.Status == BookingStatus.CheckedOut
+            : IsThreadOfADirectBooking;
 
     /// <summary>The UTC instant from which the thread is closed: the start, in Europe/Rome, of the day after the last day to write.</summary>
     public static DateTime ClosesAtUtc(DateTime checkOutDate) =>

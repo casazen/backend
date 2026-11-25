@@ -1,3 +1,6 @@
+using Casazen.Core.GuestPortal;
+using Casazen.Core.Exceptions;
+using Casazen.Infrastructure.GuestPortal;
 using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
@@ -38,7 +41,8 @@ public class GuestCheckInService(
     IOptions<CrmOptions>? crmOptions = null,
     IInvoiceDataService? invoiceDataService = null,
     ICheckInLinkDeliveryService? linkDeliveries = null,
-    ITicinoNotificationService? ticinoNotifications = null) : IGuestCheckInService
+    ITicinoNotificationService? ticinoNotifications = null,
+    PortalCheckInSessions? portalSessions = null) : IGuestCheckInService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -368,12 +372,16 @@ public class GuestCheckInService(
     private async Task<GuestCheckInSession?> GetUsableSessionByTokenAsync(string token)
     {
         var tokenHash = ComputeSha256Hex(token);
-        var session = await db.GuestCheckInSessions
+        var sessions = db.GuestCheckInSessions.Where(s => s.TokenHash == tokenHash);
+        if (portalSessions is not null && PortalCheckInSessions.IsProof(token))
+            sessions = await portalSessions.ResolveAsync(token);
+
+        var session = await sessions
             .Include(s => s.Booking)
                 .ThenInclude(b => b.Property)
             .Include(s => s.Booking)
                 .ThenInclude(b => b.Guest)
-            .FirstOrDefaultAsync(s => s.TokenHash == tokenHash);
+            .FirstOrDefaultAsync();
 
         if (session is null)
             return null;
@@ -429,6 +437,11 @@ public class GuestCheckInService(
 
         if (IsCompleted(session.Status))
             return new GuestCheckInSubmitResult { Success = false, Duplicate = true, SessionId = session.Id };
+
+        var houseRulesVersion = PortalCheckInSessions.IsProof(token)
+            ? GuestHouseGuide.RulesVersion(session.Booking.Property.HouseRules) : null;
+        if (houseRulesVersion is not null && request.HouseRulesVersion != houseRulesVersion)
+            throw new DomainConflictException("guest_house_rules_acknowledgement_required", "GuestHouseRulesAcknowledgementRequired");
 
         // The marketing consent is offered only with a versioned text (Gdpr:MarketingConsentVersion, CO-15). The per-channel
         // consent (NF-05) is checked here too, and its errors come with the ones of the guests: one answer, every error.
@@ -506,6 +519,7 @@ public class GuestCheckInService(
 
         session.Status = GuestCheckInSessionStatus.Completo;
         session.CompletedAt = now;
+        session.AcceptedHouseRulesVersion = houseRulesVersion;
         session.UpdatedAt = now;
 
         await db.SaveChangesAsync();

@@ -12,6 +12,12 @@ namespace Casazen.Web.DTOs.CheckIn;
 /// </summary>
 public class PublicCheckInContextResponse
 {
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? HouseRules { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? HouseRulesVersion { get; set; }
+
     public bool Completed { get; set; }
     public string Status { get; set; } = string.Empty;
 
@@ -393,6 +399,9 @@ public class PublicCheckInSubmitRequest
     public bool MarketingConsent { get; set; }
 
     public bool? PrivacyNoticeAcknowledged { get; set; }
+
+    [MaxLength(64)]
+    public string? HouseRulesVersion { get; set; }
 
     /// <summary>
     /// The guest ticked the e-mail box of the consent step (NF-05). Default <c>false</c>; requires <see cref="MarketingEmail"/>.

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.GuestPortal;
 using Casazen.Core.Multitenancy;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -66,7 +67,8 @@ public interface IRequestTenantContext : ITenantContext
 public sealed class TenantContext(
     IHttpContextAccessor httpContextAccessor,
     IServiceScopeFactory scopeFactory,
-    ILogger<TenantContext> logger) : IRequestTenantContext, IBackgroundTenantScope
+    ILogger<TenantContext> logger,
+    IGuestPortalContextAccessor? portal = null) : IRequestTenantContext, IBackgroundTenantScope
 {
     private bool _resolved;
     private bool _unresolvedReadLogged;
@@ -76,12 +78,15 @@ public sealed class TenantContext(
     private Guid? _orgId;
 
     public bool FilterEnabled =>
-        _backgroundOrgScope || httpContextAccessor.HttpContext?.User.Identity?.IsAuthenticated == true;
+        portal?.Current is not null || _backgroundOrgScope || httpContextAccessor.HttpContext?.User.Identity?.IsAuthenticated == true;
 
     public Guid? OrgId
     {
         get
         {
+            if (portal?.Current is { } stay)
+                return stay.OrgId;
+
             if (!_resolved && FilterEnabled && !_unresolvedReadLogged)
             {
                 _unresolvedReadLogged = true;

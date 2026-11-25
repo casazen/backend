@@ -57,9 +57,9 @@ public static class ReviewRules
     /// is the Europe/Rome day; the check-out day itself is not over yet, the day after is the first day to review, and the last is the
     /// check-out day plus <see cref="WindowDays"/>. It does not prove that the guest arrived, and the page that explains «verified» says so.
     /// </summary>
-    public static ReviewEligibility Evaluate(BookingSource source, BookingStatus status, DateTime checkOutDate, DateOnly today)
+    public static ReviewEligibility Evaluate(BookingSource source, BookingStatus status, DateTime checkOutDate, DateOnly today, bool guestPortal = false)
     {
-        if (source != BookingSource.Direct)
+        if (source != BookingSource.Direct && !guestPortal)
             return ReviewEligibility.NotDirectBooking;
 
         // The statuses of a stay that happens are the one definition of the product (a request, a hold and a cancelled booking are not): never a list of its own.

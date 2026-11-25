@@ -514,7 +514,7 @@ public sealed class MessageReplyService(
 
         if (booking.Source == BookingSource.Direct)
         {
-            return GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, Now()) switch
+            return GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, Now(), featureFlags.IsEnabled(FeatureFlags.GuestPortal)) switch
             {
                 GuestThreadState.Open => new Choice(
                     booking.Id,

@@ -9019,4 +9019,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="CleaningVatRememberForbidden" xml:space="preserve">
     <value>Solo chi gestisce tutta l'organizzazione può ricordare la risposta per la ditta: rispondi solo per questa pulizia.</value>
   </data>
+  <data name="GuestHouseRulesAcknowledgementRequired" xml:space="preserve">
+    <value>Leggi e accetta la versione corrente delle regole della casa.</value>
+  </data>
 </root>

@@ -1,3 +1,5 @@
+using Casazen.Core.GuestPortal;
+using Casazen.Infrastructure.GuestPortal;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -113,6 +115,14 @@ public class PublicGuestCheckInController(
             var state = await verificationFlow.GetStateAsync(session, HttpContext.RequestAborted);
             response.DocumentNotArchived = state.DocumentNotArchived;
             response.IdentityVerification = PublicIdentityVerificationStateDto.From(state);
+        }
+
+        if (PortalCheckInSessions.IsProof(token)
+            && await checkInService.GetSessionByTokenAsync(token) is { } portalSession)
+        {
+            var rules = portalSession.Booking.Property.HouseRules;
+            response.HouseRulesVersion = GuestHouseGuide.RulesVersion(rules);
+            response.HouseRules = response.HouseRulesVersion is null ? null : rules;
         }
 
         return Ok(response);
@@ -245,6 +255,7 @@ public class PublicGuestCheckInController(
             MarketingEmail = request.MarketingEmail,
             ConsentIpAddress = ip,
             PrivacyNoticeAcknowledged = request.PrivacyNoticeAcknowledged,
+            HouseRulesVersion = request.HouseRulesVersion,
             Invoice = request.Invoice?.ToInput(),
             VehiclePlate = request.VehiclePlate,
         };

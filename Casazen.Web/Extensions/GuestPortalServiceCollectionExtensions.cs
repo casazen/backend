@@ -22,6 +22,9 @@ public static class GuestPortalServiceCollectionExtensions
         // E50/F01/US01/T02 (NF-152, NF-153): the context of a portal request, made from the token by the filter of GuestPortalControllerBase, and the
         // overview of the portal.
         services.AddScoped<PortalContextFactory>();
+        services.AddScoped<PortalCheckInSessions>();
+        services.AddScoped<GuestHouseGuideStorage>();
+        services.AddScoped<GuestPortalRecovery>();
         services.AddScoped<GuestPortalContextAccessor>();
         services.AddScoped<IGuestPortalContextAccessor>(provider => provider.GetRequiredService<GuestPortalContextAccessor>());
         services.AddScoped<GuestPortalTokenFilter>();

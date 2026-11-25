@@ -1,3 +1,4 @@
+using Casazen.Infrastructure.GuestPortal;
 using Casazen.Core.Documents;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -45,7 +46,8 @@ public sealed class TouristTaxCollectionService(
     IOptions<SwissTouristTaxOptions> swissTouristTax,
     ILogger<TouristTaxCollectionService> logger,
     IPushNotificationService? push = null,
-    TimeProvider? timeProvider = null) : ITouristTaxCollectionService
+    TimeProvider? timeProvider = null,
+    PortalCheckInSessions? portalSessions = null) : ITouristTaxCollectionService
 {
     /// <summary>The reasons of the host's «To do» (<see cref="ActivityType.TouristTaxRefundDue"/>): keys of <c>SharedResources</c>, in the language of the org.</summary>
     internal const string RefundDifferenceReason = "TouristTaxTodoRefundDifference";
@@ -542,10 +544,12 @@ public sealed class TouristTaxCollectionService(
             return null;
 
         var tokenHash = GuestCheckInService.HashToken(token);
-        var session = await db.GuestCheckInSessions
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .AsNoTracking()
-            .Where(s => s.TokenHash == tokenHash)
+        var sessions = db.GuestCheckInSessions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(s => s.TokenHash == tokenHash);
+        if (portalSessions is not null && PortalCheckInSessions.IsProof(token))
+            sessions = await portalSessions.ResolveAsync(token, ct);
+
+        var session = await sessions.AsNoTracking()
             .Select(s => new { s.BookingId, s.OrgId, s.Status, s.ExpiresAt })
             .FirstOrDefaultAsync(ct);
         if (session is null || session.Status == GuestCheckInSessionStatus.Scaduto || session.ExpiresAt < UtcNow())

@@ -4031,6 +4031,10 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AcceptedHouseRulesVersion")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<int>("BiometricAttempts")
                         .HasColumnType("integer");
 
@@ -11313,6 +11317,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int?>("FloorLevel")
                         .HasColumnType("integer");
+
+                    b.Property<string>("GuestHouseGuideJson")
+                        .HasColumnType("text");
 
                     b.Property<int?>("GuestNotificationOverride")
                         .HasColumnType("integer");
