@@ -132,6 +132,9 @@ public sealed class SupplierPaymentsOptions
     /// </summary>
     public bool HeldForHosts { get; set; } = true;
 
+    /// <summary>Apply D21 to newly created host requests after the fiscal rollout is approved.</summary>
+    public bool AddMarketplaceFeeToNewHostRequests { get; set; }
+
     // ─── The complaint and the dispute (SP-15c-c, decision VT-D16). The times are configuration: they are the product owner's to change. ───
 
     /// <summary>Longest the times of a dispute may be set to, in hours (30 days).</summary>

@@ -131,7 +131,7 @@ public sealed partial class SupplierPaymentService
             return;
 
         // What the supplier is still paid: its part, minus everything given back, as the decision left it.
-        var remaining = forCustomer ? Math.Max(0, payment.NetCents - (dispute.RefundTargetCents ?? refund)) : PayableToSupplier(payment);
+        var remaining = forCustomer ? Math.Max(0, payment.NetCents - SupplierRefundShare(payment, dispute.RefundTargetCents ?? refund)) : PayableToSupplier(payment);
         emailQueue.Enqueue(
             supplier,
             EmailTemplates.ServiceDisputeResolvedToSupplier(
@@ -190,7 +190,7 @@ public sealed partial class SupplierPaymentService
 
     /// <summary>What the supplier is owed while the money is held: its part of the price, minus what was already refunded.</summary>
     private static int PayableToSupplier(ServiceRequestPayment payment) =>
-        HeldPaymentRules.ReleasableCents(payment.NetCents, payment.RefundedCents, 0);
+        HeldPaymentRules.ReleasableCents(payment.NetCents, SupplierRefundShare(payment, payment.RefundedCents), 0);
 
     /// <summary>
     /// The page where a showcase customer manages its booking (with the code filled in; it still asks for the e-mail). A host reads its requests in its

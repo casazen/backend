@@ -70,6 +70,9 @@ public class ServiceRequest
 
     public DateTime? PaidAt { get; set; }
 
+    /// <summary>D21 terms recorded at creation. Null keeps the original price agreement; zero is a private supplier.</summary>
+    public decimal? HostSurchargePercent { get; set; }
+
     public bool ChargeToGuest { get; set; }
 
     [MaxLength(500)]

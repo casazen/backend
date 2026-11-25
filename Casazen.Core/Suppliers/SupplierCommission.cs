@@ -28,6 +28,10 @@ public static class SupplierCommission
         return fee > 0m && fee < amountCents ? (int)fee : 0;
     }
 
+    /// <summary>D21 commission added on top of a supplier price, with commercial rounding.</summary>
+    public static int SurchargeCents(int priceCents, decimal percent) =>
+        checked((int)decimal.Round(priceCents * percent / 100m, 0, MidpointRounding.AwayFromZero));
+
     /// <summary>What the supplier receives before Stripe's own fees: the amount minus the commission that is charged.</summary>
     public static int NetCents(int amountCents, int feeCents) => amountCents - feeCents;
 
