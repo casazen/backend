@@ -19,7 +19,8 @@ namespace Casazen.Web.Controllers;
 [FeatureGate(FeatureFlags.GuestPortal)]
 [PrivateAnswer]
 public sealed class GuestHostExtrasController(
-    AppDbContext db, IHostResourceLookup resources, IAuthorizationService authorization, GuestHostExtraService extras) : ControllerBase
+    AppDbContext db, IHostResourceLookup resources, IAuthorizationService authorization, GuestHostExtraService extras,
+    GuestHostExtraTranslator translator) : ControllerBase
 {
     [HttpGet("api/properties/{propertyId:guid}/guest-host-extras")]
     public async Task<IActionResult> Get(Guid propertyId, CancellationToken ct)
@@ -32,7 +33,7 @@ public sealed class GuestHostExtrasController(
         return Ok(records.Select(x => new
         {
             x.Id, x.Name, x.Description, x.Price, x.Pricing, x.Inventory, x.CutoffHours, x.DuringStay, x.RequiresApproval,
-            x.Calendar, Published = x.PropertyIds.Contains(propertyId)
+            x.Calendar, HasTranslations = x.TranslationsJson != null, Published = x.PropertyIds.Contains(propertyId)
         }));
     }
 
@@ -60,6 +61,28 @@ public sealed class GuestHostExtrasController(
             return other is not null && await authorization.IsAuthorizedAsync(User, other, PropertyOperations.Write);
         }, ct);
         return forbidden ? Forbid() : savedId is { } itemId ? Ok(itemId) : NotFound();
+    }
+
+    [HttpPost("api/properties/{propertyId:guid}/guest-host-extras/{id:guid}/translate")]
+    public async Task<IActionResult> Translate(Guid propertyId, Guid id, CancellationToken ct)
+    {
+        var scope = await resources.ForPropertyAsync(propertyId, ct);
+        if (scope is null || !await authorization.IsAuthorizedAsync(User, scope, PropertyOperations.Write))
+            return NotFound();
+        var query = db.GuestHostExtras.Where(x => x.OrgId == scope.OrgId && x.Id == id);
+        var extra = await query.AsNoTracking().SingleOrDefaultAsync(ct);
+        if (extra is null) return NotFound();
+        foreach (var otherId in extra.PropertyIds.Where(x => x != propertyId))
+        {
+            var other = await resources.ForPropertyAsync(otherId, ct);
+            if (other is null || !await authorization.IsAuthorizedAsync(User, other, PropertyOperations.Write))
+                return Forbid();
+        }
+        var translations = await translator.TranslateAsync(extra.OrgId, extra.Name, extra.Description, ct);
+        if (translations is null) return UnprocessableEntity();
+        var count = await query.Where(x => x.Name == extra.Name && x.Description == extra.Description && x.PropertyIds == extra.PropertyIds)
+            .ExecuteUpdateAsync(x => x.SetProperty(e => e.TranslationsJson, translations), ct);
+        return count == 1 ? NoContent() : Conflict();
     }
 
     [HttpGet("api/bookings/{bookingId:guid}/guest-host-extras")]
@@ -97,9 +120,9 @@ public sealed class GuestHostExtrasController(
 public sealed class PublicGuestHostExtrasController(GuestHostExtraService extras) : GuestPortalControllerBase
 {
     [HttpGet("host-extras")]
-    public async Task<IActionResult> Get(CancellationToken ct)
+    public async Task<IActionResult> Get([FromQuery] string? lang, CancellationToken ct)
     {
-        var (offers, orders) = await extras.ListAsync(Portal, ct);
+        var (offers, orders) = await extras.ListAsync(Portal, ct, lang);
         return Ok(new { offers, orders });
     }
 

@@ -16,6 +16,7 @@ public sealed class GuestHostExtra : ITenantOwned
     public Guid[] PropertyIds { get; set; } = [];
     [MaxLength(120)] public string Name { get; set; } = "";
     [MaxLength(2000)] public string Description { get; set; } = "";
+    public string? TranslationsJson { get; set; }
     [Precision(12, 2)] public decimal Price { get; set; }
     public GuestHostExtraPricing Pricing { get; set; }
     public int? Inventory { get; set; }

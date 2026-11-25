@@ -45,6 +45,8 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
                 foreach (var otherId in extra.PropertyIds.Where(x => x != propertyId))
                     if (!await canEdit(otherId)) return (null, true);
         }
+        if (extra.Name != values.Name || extra.Description != values.Description)
+            extra.TranslationsJson = null;
         extra.Name = values.Name;
         extra.Description = values.Description;
         extra.Price = values.Price;
@@ -62,8 +64,9 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
     }
 
     public async Task<(IReadOnlyList<GuestHostExtraOffer> Offers, IReadOnlyList<GuestHostExtraOrderView> Orders)> ListAsync(
-        PortalContext portal, CancellationToken ct)
+        PortalContext portal, CancellationToken ct, string? language = null)
     {
+        var displayLanguage = GuestLanguages.Normalize(language) ?? portal.Language;
         var offers = new List<GuestHostExtraOffer>();
         var orders = await Orders(portal).OrderByDescending(x => x.CreatedAt).ToListAsync(ct);
         var booking = await BookingAsync(portal, ct);
@@ -76,8 +79,11 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
             {
                 if (!orders.Any(x => x.ExtraId == extra.Id && IsActive(x.Status)) &&
                     await IsAvailableAsync(extra, booking!, 1, null, ct))
-                    offers.Add(new(extra.Id, extra.Name, extra.Description, Price(extra, booking!, 1),
+                {
+                    var copy = GuestHostExtraTranslator.ForLanguage(extra.TranslationsJson, displayLanguage);
+                    offers.Add(new(extra.Id, copy?.Name ?? extra.Name, copy?.Description ?? extra.Description, Price(extra, booking!, 1),
                         StayCurrency.ForProperty(booking!.Property), extra.Pricing == GuestHostExtraPricing.PerUnit, extra.RequiresApproval));
+                }
             }
         }
         return (offers, orders.Select(GuestHostExtraOrderView.From).ToList());

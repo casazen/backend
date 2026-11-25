@@ -4514,6 +4514,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("RequiresApproval")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("TranslationsJson")
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OrgId");
