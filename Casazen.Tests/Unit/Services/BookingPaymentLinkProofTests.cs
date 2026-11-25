@@ -196,6 +196,72 @@ public class BookingPaymentLinkProofTests
         return Uri.UnescapeDataString(query["?token=".Length..]);
     }
 
+    [Fact]
+    public async Task GuestBalance_ReusesIntentAndProtectsAgainstAConcurrentManualReceipt()
+    {
+        var h = new Harness();
+        var booking = await h.SeedBookingAsync(300m, b =>
+        {
+            b.Source = BookingSource.Direct;
+            b.HostPaymentArrangement = HostPaymentArrangement.None;
+            b.CheckoutTokenHash = "existing-checkout-proof";
+        });
+        await h.RecordCashAsync(booking, 100m, "deposit");
+
+        await using var read = h.NewDb(new HostTenant(Guid.NewGuid()));
+        var guest = h.Service(read);
+        Assert.Null(await guest.ReadGuestBalanceAsync(Guid.NewGuid(), booking, CancellationToken.None));
+        Assert.Equal(new GuestStayBalance(200m, 300m, "EUR", true, false, false),
+            await guest.ReadGuestBalanceAsync(OrgA, booking, CancellationToken.None));
+
+        var first = await guest.PrepareGuestBalanceAsync(OrgA, booking, CancellationToken.None);
+        var intentId = h.LastIntentId;
+        Assert.Equal(new GuestStayBalanceIntent(h.ClientSecretOf(20000), Account, 200m), first);
+
+        read.ChangeTracker.Clear();
+        var again = await guest.PrepareGuestBalanceAsync(OrgA, booking, CancellationToken.None);
+        Assert.Equal(first, again);
+        Assert.Equal(intentId, h.LastIntentId);
+        var stay = await read.Bookings.IgnoreQueryFilters().AsNoTracking().SingleAsync();
+        Assert.Equal("existing-checkout-proof", stay.CheckoutTokenHash);
+        Assert.Equal(HostPaymentArrangement.None, stay.HostPaymentArrangement);
+        Assert.Null(stay.PaymentLinkSentAt);
+
+        h.SetIntentStatus(intentId, "processing");
+        var processing = await Assert.ThrowsAsync<DomainConflictException>(
+            () => h.RecordCashAsync(booking, 50m, "while-paying"));
+        Assert.Equal("payment_in_progress", processing.Code);
+        h.SetIntentStatus(intentId, "requires_payment_method");
+        await h.RecordCashAsync(booking, 50m, "another-receipt");
+        Assert.Equal(intentId, Assert.Single(h.CancelledIntents));
+
+        read.ChangeTracker.Clear();
+        var remaining = await guest.PrepareGuestBalanceAsync(OrgA, booking, CancellationToken.None);
+        Assert.Equal(150m, remaining.Amount);
+        Assert.NotEqual(first.ClientSecret, remaining.ClientSecret);
+    }
+
+    [Fact]
+    public async Task GuestBalance_RefusesDeferredAndImportedPayments()
+    {
+        var h = new Harness();
+        var deferred = await h.SeedBookingAsync(300m, AtItsDeadline,
+            DeferredRow("seti_1", PaymentStatus.Pending, intentId: null));
+        var imported = await h.SeedBookingAsync(300m, b =>
+        {
+            b.Source = BookingSource.Direct;
+            b.OctorateReservationId = "external-stay";
+        });
+        await using var db = h.NewDb(null);
+        var service = h.Service(db);
+
+        Assert.Equal(new GuestStayBalance(300m, 300m, "EUR", false, true, false),
+            await service.ReadGuestBalanceAsync(OrgA, deferred, CancellationToken.None));
+        await Assert.ThrowsAsync<DomainRuleException>(() => service.PrepareGuestBalanceAsync(OrgA, deferred, CancellationToken.None));
+        await Assert.ThrowsAsync<DomainRuleException>(() => service.PrepareGuestBalanceAsync(OrgA, imported, CancellationToken.None));
+        Assert.Empty(h.LastIntentId);
+    }
+
     private sealed class Harness
     {
         private readonly string _database = $"payment-link-{Guid.NewGuid():N}";
@@ -332,17 +398,21 @@ public class BookingPaymentLinkProofTests
         public async Task<BookingPaymentLink> LinkAsync(Guid bookingId)
         {
             await using var db = NewDb(new HostTenant(OrgA));
+            return await Service(db).CreateAsync(bookingId, CancellationToken.None);
+        }
+
+        public BookingPaymentLinkService Service(AppDbContext db)
+        {
             var emails = new Mock<IEmailQueue>();
             emails.Setup(e => e.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>())).Returns(true);
             var links = new PublicSiteLinks(Microsoft.Extensions.Options.Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://casazen.test" }));
-            var service = new BookingPaymentLinkService(
+            return new BookingPaymentLinkService(
                 db,
                 _stripe.Object,
                 emails.Object,
                 links,
                 NullLogger<BookingPaymentLinkService>.Instance,
                 new FixedTimeProvider(new DateTimeOffset(2026, 11, 6, 9, 0, 0, TimeSpan.Zero)));
-            return await service.CreateAsync(bookingId, CancellationToken.None);
         }
 
         /// <summary>The anonymous checkout page of the guest (no tenant: the token is the only check).</summary>
