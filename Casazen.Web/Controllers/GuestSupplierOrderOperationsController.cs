@@ -61,10 +61,7 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
             return BadRequest();
 
         var allowRegional = await orders.AllowsRegionalSuppliersAsync(orgId, propertyId, ct);
-        var trusted = orders.TrustedSupplierIds(orgId, propertyId);
-        var matches = await db.SupplierServiceListings.AsNoTracking()
-            .Where(x => x.Status == SupplierServiceListingStatus.Active && x.SupplierProfile.Status == SupplierStatus.Active)
-            .Where(x => trusted.Contains(x.OrgId) || allowRegional && x.SupplierProfile.GuestPortalMarketplaceEnabled)
+        var matches = await orders.Listings(orgId, propertyId, allowRegional)
             .Where(x => x.Name.ToLower().Contains(term.ToLower()) || x.SupplierProfile.LegalName.ToLower().Contains(term.ToLower()))
             .OrderBy(x => x.Name)
             .Take(30)
@@ -82,8 +79,8 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
         var existing = await Offers(orgId, propertyId).SingleOrDefaultAsync(x => x.ServiceId == serviceId, ct);
         if (existing is null)
         {
-            var listing = await db.SupplierServiceListings.IgnoreQueryFilters().AsNoTracking()
-                .Where(x => x.Id == serviceId && x.Status == SupplierServiceListingStatus.Active && x.DeletedAt == null)
+            var allowRegional = await orders.AllowsRegionalSuppliersAsync(orgId, propertyId, ct);
+            var listing = await orders.Listings(orgId, propertyId, allowRegional).Where(x => x.Id == serviceId)
                 .Select(x => new
                 {
                     x.OrgId,

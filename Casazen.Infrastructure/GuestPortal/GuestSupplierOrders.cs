@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.GuestPortal;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.GuestPortal;
@@ -26,18 +27,17 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
             .Where(x => x.OrgId == orgId && (x.AssignedPropertyIds.Count == 0 || x.AssignedPropertyIds.Contains(propertyId)))
             .Select(x => x.SupplierOrgId);
 
+    public IQueryable<SupplierServiceListing> Listings(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers) =>
+        SupplierServiceCatalogService.GuestPortalListings(db, TrustedSupplierIds(orgId, propertyId), allowsRegionalSuppliers);
+
     public IQueryable<CatalogEntry> Catalog(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers)
     {
-        var trusted = TrustedSupplierIds(orgId, propertyId);
         return
         from offer in db.GuestSupplierOffers.AsNoTracking()
-        join listing in db.SupplierServiceListings.IgnoreQueryFilters() on offer.ServiceId equals listing.Id
+        join listing in Listings(orgId, propertyId, allowsRegionalSuppliers) on offer.ServiceId equals listing.Id
         join supplier in db.SupplierProfiles.IgnoreQueryFilters() on offer.SupplierOrgId equals supplier.OrgId
         where offer.HostOrgId == orgId && offer.PropertyId == propertyId && offer.Accepted && offer.Enabled
-              && (trusted.Contains(offer.SupplierOrgId) ||
-                  allowsRegionalSuppliers && supplier.GuestPortalMarketplaceEnabled)
-              && listing.OrgId == supplier.OrgId && supplier.Status == SupplierStatus.Active
-              && listing.Status == SupplierServiceListingStatus.Active && listing.DeletedAt == null
+              && listing.OrgId == supplier.OrgId
               && (listing.RequiresQuote || listing.PriceFromCents > 0)
         orderby listing.SortOrder, listing.Name
         select new CatalogEntry(offer.Id, listing.Name, supplier.LegalName, listing.Category,

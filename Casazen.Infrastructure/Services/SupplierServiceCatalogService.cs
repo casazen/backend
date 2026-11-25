@@ -406,6 +406,20 @@ public class SupplierServiceCatalogService(
     /// The services of <paramref name="orgId"/> that are not deleted. <b>The only way</b> this service reads or changes a
     /// row: the table is not tenant-filtered, so the supplier org is always an explicit predicate.
     /// </summary>
+    internal static IQueryable<SupplierServiceListing> GuestPortalListings(
+        AppDbContext db, IQueryable<Guid> trustedSupplierIds, bool allowsRegionalSuppliers)
+    {
+        var orgIds = trustedSupplierIds.Union(db.SupplierProfiles
+            .Where(profile => allowsRegionalSuppliers && profile.GuestPortalMarketplaceEnabled)
+            .Select(profile => profile.OrgId));
+
+        return db.SupplierServiceListings
+            .Where(l => orgIds.Contains(l.OrgId))
+            .AsNoTracking()
+            .Where(listing => listing.DeletedAt == null && listing.Status == SupplierServiceListingStatus.Active
+                && listing.SupplierProfile.Status == SupplierStatus.Active);
+    }
+
     private IQueryable<SupplierServiceListing> Listings(Guid orgId) => ListingsOf(db, orgId);
 
     /// <inheritdoc cref="Listings"/>
