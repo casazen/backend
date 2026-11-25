@@ -63,13 +63,15 @@ public class GuestPortalGuideGenerationTests
         AssertComplete(guide);
     }
 
-    [Fact]
-    public async Task TemporaryProviderFailureUsesThePropertyAndCanRecoverOnTheNextAttempt()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TemporaryProviderFailureUsesThePropertyAndCanRecoverOnTheNextAttempt(bool timedOut)
     {
         var ai = new Mock<IAiProvider>();
         ai.SetupSequence(provider => provider.GenerateAsync(It.IsAny<AiRequest>(), AiModelTier.Standard,
                 It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException())
+            .ThrowsAsync(timedOut ? new OperationCanceledException() : new HttpRequestException())
             .ReturnsAsync(new AiGenerationResult(
                 """{"guide":{"house":"L’alloggio dispone di Wi-Fi."}}""",
                 12, 12, AiModelTier.Standard, FromCache: false));
