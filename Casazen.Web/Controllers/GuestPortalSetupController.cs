@@ -41,7 +41,7 @@ public sealed class GuestPortalSetupController(
     }
 
     [HttpPost("suggestions/{kind}")]
-    public async Task<IActionResult> Suggest(Guid propertyId, string kind, CancellationToken ct)
+    public async Task<IActionResult> Suggest(Guid propertyId, string kind, CancellationToken ct, [FromQuery] bool fast = false)
     {
         var scope = await resources.ForPropertyAsync(propertyId, ct);
         if (scope is null || !await authorization.IsAuthorizedAsync(User, scope, PropertyOperations.Write))
@@ -51,7 +51,7 @@ public sealed class GuestPortalSetupController(
         if (property is null)
             return NotFound();
 
-        var result = await suggestions.GenerateAsync(property, kind, ct);
+        var result = await suggestions.GenerateAsync(property, kind, ct, fast);
         return result is null ? NoContent() : Ok(result);
     }
 
