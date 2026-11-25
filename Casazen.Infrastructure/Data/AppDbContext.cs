@@ -710,6 +710,7 @@ public class AppDbContext(
         modelBuilder.Entity<GuestStayChange>(entity =>
         {
             entity.HasOne<Booking>().WithMany().HasForeignKey(change => change.BookingId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>().WithMany().HasForeignKey(change => change.OrgId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(change => change.BookingId).IsUnique().HasFilter("\"ApprovedAt\" IS NULL AND \"RejectedAt\" IS NULL")
                 .HasDatabaseName("UIX_GuestStayChanges_Pending");
             entity.Property(change => change.Currency).HasMaxLength(3);

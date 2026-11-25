@@ -37,7 +37,10 @@ public sealed class AddGuestStayChanges : Migration
                 table.PrimaryKey("PK_GuestStayChanges", change => change.Id);
                 table.ForeignKey("FK_GuestStayChanges_Bookings_BookingId", change => change.BookingId,
                     "Bookings", "Id", onDelete: ReferentialAction.Cascade);
+                table.ForeignKey("FK_GuestStayChanges_Orgs_OrgId", change => change.OrgId,
+                    "Orgs", "Id", onDelete: ReferentialAction.Restrict);
             });
+        migrationBuilder.CreateIndex("IX_GuestStayChanges_OrgId", "GuestStayChanges", "OrgId");
         migrationBuilder.CreateIndex("UIX_GuestStayChanges_Pending", "GuestStayChanges", "BookingId", unique: true,
             filter: "\"ApprovedAt\" IS NULL AND \"RejectedAt\" IS NULL");
     }

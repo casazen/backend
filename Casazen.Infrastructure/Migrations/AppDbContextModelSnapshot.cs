@@ -4590,6 +4590,75 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("GuestSegments");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.GuestStayChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Adults")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("Arrival")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int[]>("ChildrenAges")
+                        .IsRequired()
+                        .HasColumnType("integer[]");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<DateTime>("Departure")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("OriginalArrival")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("OriginalChildren")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("OriginalDeparture")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("OriginalGuests")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("OriginalTotal")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("ProposedTotal")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime?>("RejectedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_GuestStayChanges_Pending")
+                        .HasFilter("\"ApprovedAt\" IS NULL AND \"RejectedAt\" IS NULL");
+
+                    b.HasIndex("OrgId");
+
+                    b.ToTable("GuestStayChanges");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.GuestThread", b =>
                 {
                     b.Property<Guid>("Id")
@@ -20062,6 +20131,21 @@ namespace Casazen.Infrastructure.Migrations
 
             modelBuilder.Entity("Casazen.Core.Entities.GuestPrivacyAuditEntry", b =>
                 {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.GuestStayChange", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Booking", null)
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("Casazen.Core.Entities.Org", null)
                         .WithMany()
                         .HasForeignKey("OrgId")
