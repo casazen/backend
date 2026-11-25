@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -99,6 +100,49 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
         Assert.Empty(await SearchAsync(client, comune, "bozza"));
         Assert.Empty(await SearchAsync(client, comune, "eliminata"));
         Assert.Empty(await SearchAsync(client, comune, "del pending"));
+    }
+
+    [Fact]
+    public async Task PrivateSupplier_GoesOnlyToAssignedProperty_UntilStaffPublishes()
+    {
+        var area = $"Local{Guid.NewGuid():N}"[..16];
+        var owner = $"auth0|host-{Guid.NewGuid():N}";
+        var first = await factory.SeedPropertyAsync(owner);
+        var second = await factory.SeedPropertyAsync(owner);
+        var supplier = await SeedSupplierAsync(area, SupplierStatus.Active, VatNumber);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var properties = await db.Properties.IgnoreQueryFilters().Where(p => p.Id == first.Id || p.Id == second.Id).ToListAsync();
+            foreach (var property in properties) { property.City = area; property.ComuneIstatCode = null; }
+            (await db.SupplierProfiles.SingleAsync(p => p.OrgId == supplier.OrgId)).GuestPortalMarketplaceEnabled = false;
+            db.TrustedSuppliers.Add(new TrustedSupplier
+            {
+                OrgId = properties[0].OrgId,
+                SupplierOrgId = supplier.OrgId,
+                AssignedPropertyIds = [first.Id],
+                HostOrigin = true,
+                CreatedAt = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var host = factory.CreateAuthenticatedClient(owner, "PropertyOwner");
+        var detail = $"/api/suppliers/{supplier.OrgId}";
+        Assert.Equal(HttpStatusCode.NotFound, (await host.GetAsync($"{detail}?propertyId={first.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await host.GetAsync($"{detail}?propertyId={first.Id}&includeTrusted=true")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await host.GetAsync($"{detail}?propertyId={second.Id}&includeTrusted=true")).StatusCode);
+        var publication = $"/api/admin/suppliers/marketplace/{supplier.OrgId}";
+        Assert.Equal(HttpStatusCode.Forbidden, (await host.PutAsJsonAsync(publication, new { enabled = true })).StatusCode);
+        using var admin = factory.CreateAuthenticatedClient($"auth0|admin-{Guid.NewGuid():N}", "Admin");
+        Assert.Equal(HttpStatusCode.NoContent, (await admin.PutAsJsonAsync(publication, new { enabled = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await host.GetAsync($"{detail}?propertyId={second.Id}")).StatusCode);
+        var published = await host.GetFromJsonAsync<JsonElement>($"{detail}?propertyId={first.Id}&includeTrusted=true");
+        Assert.True(published.GetProperty("hostOrigin").GetBoolean());
+        Assert.Equal(HttpStatusCode.NoContent, (await admin.PutAsJsonAsync(publication, new { enabled = false })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await host.GetAsync($"{detail}?propertyId={second.Id}")).StatusCode);
+        var retained = await host.GetFromJsonAsync<JsonElement>($"{detail}?propertyId={first.Id}&includeTrusted=true");
+        Assert.True(retained.GetProperty("hostOrigin").GetBoolean());
     }
 
     [Fact]
@@ -274,6 +318,7 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
         var slug = $"fornitore-{key[..8]}";
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = org.Id,
             Status = status,
             Email = org.ContactEmail,

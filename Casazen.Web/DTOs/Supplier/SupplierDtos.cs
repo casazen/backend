@@ -292,6 +292,7 @@ public class AdminInviteResponse
 
 public class GetSuppliersQuery
 {
+    public bool IncludeTrusted { get; set; }
     public bool AccountScope { get; set; }
     public string? Comune { get; set; }
     public Guid? PropertyId { get; set; }
@@ -315,6 +316,9 @@ public class GetSuppliersQuery
 public class SupplierPickerDto
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
+
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? HostOrigin { get; set; }
 
     public Guid OrgId { get; set; }
     public string LegalName { get; set; } = string.Empty;
@@ -392,9 +396,10 @@ public class SupplierPickerDto
         IReadOnlyDictionary<string, Comune>? listed,
         IReadOnlyList<SupplierPickerService> services,
         int? medianResponseMinutes,
-        int maxServices = SupplierPickerLimits.MaxServices)
+        int maxServices = SupplierPickerLimits.MaxServices, bool? hostOrigin = null)
     {
         var dto = From(sp, listed);
+        dto.HostOrigin = hostOrigin;
         var cheapest = services.Where(s => s.PriceFromCents is not null).OrderBy(s => s.PriceFromCents).FirstOrDefault();
 
         dto.Services = services.Take(maxServices).Select(SupplierPickerServiceDto.From).ToList();

@@ -30,13 +30,59 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
     public IQueryable<SupplierServiceListing> Listings(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers) =>
         SupplierServiceCatalogService.GuestPortalListings(db, TrustedSupplierIds(orgId, propertyId), allowsRegionalSuppliers);
 
+    public IQueryable<ManagementListing> ManagementListings(Guid hostOrgId, Guid propertyId, bool allowsRegional)
+    {
+        var assignedIds = TrustedSupplierIds(hostOrgId, propertyId);
+        var hostOriginIds = SupplierServiceCatalogService.HostOriginSupplierIds(db, hostOrgId);
+        return from item in Listings(hostOrgId, propertyId, allowsRegional)
+               let hostOrigin = hostOriginIds.Contains(item.OrgId)
+               where hostOrigin ? assignedIds.Contains(item.OrgId) : allowsRegional && item.SupplierProfile.GuestPortalMarketplaceEnabled
+               select new ManagementListing
+               {
+                   Id = item.Id,
+                   Name = item.Name,
+                   Category = item.Category,
+                   OrgId = item.OrgId,
+                   Supplier = item.SupplierProfile.LegalName,
+                   HostOrigin = hostOrigin
+               };
+    }
+
+    public sealed class ManagementListing
+    {
+        public Guid Id { get; init; }
+        public required string Name { get; init; }
+        public required string Category { get; init; }
+        public Guid OrgId { get; init; }
+        public required string Supplier { get; init; }
+        public bool HostOrigin { get; init; }
+    }
+
+    public IQueryable<OfferView> OfferViews(IQueryable<GuestSupplierOffer> offers) =>
+        from o in offers.AsNoTracking()
+        join service in SupplierServiceCatalogService.ListingsForOffers(db, offers.Select(x => x.SupplierOrgId))
+            on new { o.ServiceId, o.SupplierOrgId } equals new { ServiceId = service.Id, SupplierOrgId = service.OrgId }
+        join supplier in db.SupplierProfiles on o.SupplierOrgId equals supplier.OrgId
+        join property in db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]) on o.PropertyId equals property.Id
+        join host in db.Orgs on o.HostOrgId equals host.Id
+        where property.OrgId == o.HostOrgId
+        select new OfferView(o.Id, o.HostOrgId, o.PropertyId, o.ServiceId, o.SupplierOrgId,
+            o.HostOrigin, o.CommissionBasisPoints, o.Accepted, o.Enabled, o.Version,
+            service.Name, supplier.LegalName, property.Name, host.Name);
+
+    public sealed record OfferView(Guid Id, Guid HostOrgId, Guid PropertyId, Guid ServiceId, Guid SupplierOrgId,
+        bool HostOrigin, int CommissionBasisPoints, bool Accepted, bool Enabled, uint Version, string ServiceName,
+        string SupplierName, string PropertyName, string HostName);
+
     public IQueryable<CatalogEntry> Catalog(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers, Guid? offerId = null)
     {
+        var trusted = TrustedSupplierIds(orgId, propertyId);
         return
         from offer in db.GuestSupplierOffers.AsNoTracking()
         join listing in Listings(orgId, propertyId, allowsRegionalSuppliers) on offer.ServiceId equals listing.Id
         join supplier in db.SupplierProfiles.IgnoreQueryFilters() on offer.SupplierOrgId equals supplier.OrgId
         where (offerId == null || offer.Id == offerId) && offer.HostOrgId == orgId && offer.PropertyId == propertyId && offer.Accepted && offer.Enabled
+              && (offer.HostOrigin ? trusted.Contains(offer.SupplierOrgId) : allowsRegionalSuppliers && supplier.GuestPortalMarketplaceEnabled)
               && listing.OrgId == supplier.OrgId
               && (listing.RequiresQuote || listing.PriceFromCents > 0)
         orderby listing.SortOrder, listing.Name

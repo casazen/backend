@@ -115,7 +115,7 @@ public partial class ServiceRequestService(
                 ServiceRequestErrorCodes.ChargeToGuestNotAllowed, ServiceRequestErrorCodes.ChargeToGuestNotAllowedMessageKey);
         }
 
-        var supplier = await db.SupplierProfiles
+        var supplier = await SupplierServiceCatalogService.SuppliersForProperty(db, command.OrgId, command.PropertyId)
             .Include(sp => sp.Org)
             .FirstOrDefaultAsync(sp => sp.OrgId == command.SupplierOrgId, cancellationToken)
             ?? throw new NotFoundException($"Supplier {command.SupplierOrgId} not found")

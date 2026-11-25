@@ -16976,6 +16976,12 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool?>("HostOriginAtInvitation")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("IdentifiedSupplierOrgId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("InvitedByOrgId")
                         .HasColumnType("uuid");
 
@@ -18944,11 +18950,17 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool?>("HostOrigin")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("Priority")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("SupplierOrgId")
                         .HasColumnType("uuid");

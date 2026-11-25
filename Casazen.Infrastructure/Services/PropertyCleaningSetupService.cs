@@ -208,7 +208,7 @@ public sealed class PropertyCleaningSetupService(
             var supplierOrgId = input.SupplierOrgId!.Value;
 
             // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the supplier org id.
-            var supplier = await db.SupplierProfiles
+            var supplier = await SupplierServiceCatalogService.SuppliersForProperty(db, property.OrgId, property.Id)
                                .AsNoTracking()
                                .FirstOrDefaultAsync(sp => sp.OrgId == supplierOrgId, cancellationToken)
                            ?? throw new DomainRuleException(PropertyCleaningSetupRules.SupplierNotFound, "CleaningSetupSupplierNotFound");

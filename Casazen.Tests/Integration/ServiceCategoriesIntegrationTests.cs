@@ -260,6 +260,7 @@ public class ServiceCategoriesIntegrationTests : IClassFixture<CasazenWebApplica
         });
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = org.Id,
             Email = org.ContactEmail,
             LegalName = "SU-03 Supplier Srl",

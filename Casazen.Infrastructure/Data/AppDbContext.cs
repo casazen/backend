@@ -2482,11 +2482,14 @@ public class AppDbContext(
         modelBuilder.Entity<GuestHostExtraOrder>().HasIndex(x => new { x.OrgId, x.BookingId });
         modelBuilder.Entity<GuestHostExtraOrder>().HasIndex(x => new { x.OrgId, x.ExtraId });
         modelBuilder.Entity<GuestHostExtra>().HasIndex(x => x.OrgId);
+        modelBuilder.Entity<TrustedSupplier>()
+            .HasQueryFilter(TrustedSupplierActiveFilter, supplier => supplier.RemovedAt == null);
         ApplyTenantQueryFilters(modelBuilder);
     }
 
     /// <summary>Key of the global tenant query filter, for <c>IgnoreQueryFilters([TenantQueryFilter])</c>.</summary>
     public const string TenantQueryFilter = "Tenant";
+    public const string TrustedSupplierActiveFilter = "ActiveTrustedSupplier";
 
     /// <summary>
     /// Key of the global soft-delete filter on <see cref="Property"/> (PC-05), for

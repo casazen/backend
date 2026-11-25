@@ -368,6 +368,7 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
         };
         var supplierProfile = new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = supplierOrg.Id,
             Email = supplierOrg.ContactEmail,
             LegalName = "TN-3 Pulizie Srl",

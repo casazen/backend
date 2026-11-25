@@ -269,6 +269,10 @@ public static class ServiceCollectionExtensions
                 policy.Requirements.Add(new OwnerPortalHostOriginRequirement());
             });
 
+        builder.AddPolicy(CasazenPolicies.TrustedSupplierManage, policy => policy
+            .RequireAuthenticatedUser()
+            .AddRequirements(new AgencyPermissionRequirement(AgencyPermissions.SupplierManage)));
+
         foreach (var policyName in CasazenPolicies.ContextPolicies)
         {
             var (contextKeys, permissionKey) = CasazenPolicies.ParseContextPolicy(policyName);

@@ -22,6 +22,9 @@ namespace Casazen.Infrastructure.Data;
 /// </remarks>
 internal static class PostgresAdvisoryLocks
 {
+    internal static (Scope, string) TrustedSupplierRelation(Guid hostOrgId, Guid supplierOrgId) =>
+        (Scope.TrustedSupplierRelation, $"{hostOrgId:N}:{supplierOrgId:N}");
+
     /// <summary>First integer of the lock key: what the lock protects.</summary>
     internal enum Scope
     {
@@ -30,6 +33,7 @@ internal static class PostgresAdvisoryLocks
 
         StorefrontChat = 1_948,
         GuestHostExtra = 1_957,
+        TrustedSupplierRelation = 1_975,
 
         /// <summary>Allocation of one org slug (unique <c>Orgs.Slug</c>).</summary>
         OrgSlug = 1_002,

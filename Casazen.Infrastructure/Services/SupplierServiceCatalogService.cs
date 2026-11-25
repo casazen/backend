@@ -402,10 +402,34 @@ public class SupplierServiceCatalogService(
         }
     }
 
-    /// <summary>
-    /// The services of <paramref name="orgId"/> that are not deleted. <b>The only way</b> this service reads or changes a
-    /// row: the table is not tenant-filtered, so the supplier org is always an explicit predicate.
-    /// </summary>
+    internal static IQueryable<Guid> HostOriginSupplierIds(AppDbContext db, Guid hostOrgId)
+    {
+        var relationships =
+        from t in db.TrustedSuppliers.IgnoreQueryFilters([AppDbContext.TenantQueryFilter, AppDbContext.TrustedSupplierActiveFilter])
+        where t.OrgId == hostOrgId
+        let existing = db.GuestSupplierOffers.Where(o => o.HostOrgId == hostOrgId && o.SupplierOrgId == t.SupplierOrgId)
+            .OrderBy(o => o.Id).Select(o => (bool?)o.HostOrigin).FirstOrDefault()
+        where existing ?? t.HostOrigin ?? !db.SupplierProfiles.Any(p => p.OrgId == t.SupplierOrgId &&
+            (p.GuestPortalMarketplaceFirstPublishedAt <= t.CreatedAt ||
+             (p.GuestPortalMarketplaceFirstPublishedAt == null && p.GuestPortalMarketplaceEnabled)))
+        select t.SupplierOrgId;
+        return relationships.Union(db.GuestSupplierOffers.Where(o => o.HostOrgId == hostOrgId && o.HostOrigin)
+            .Select(o => o.SupplierOrgId));
+    }
+
+    /// <summary>Suppliers that this host can request for the authorised property.</summary>
+    internal static IQueryable<SupplierProfile> SuppliersForProperty(AppDbContext db, Guid hostOrgId, Guid propertyId)
+    {
+        var trusted = db.TrustedSuppliers.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(t => t.OrgId == hostOrgId && (t.AssignedPropertyIds.Count == 0 || t.AssignedPropertyIds.Contains(propertyId)))
+            .Select(t => t.SupplierOrgId);
+        return db.SupplierProfiles.Where(p => p.GuestPortalMarketplaceEnabled || trusted.Contains(p.OrgId));
+    }
+
+    // Consents and historical offers still identify services the supplier has since archived.
+    internal static IQueryable<SupplierServiceListing> ListingsForOffers(AppDbContext db, IQueryable<Guid> orgIds) =>
+        db.SupplierServiceListings.Where(l => orgIds.Contains(l.OrgId)).AsNoTracking();
+
     internal static IQueryable<SupplierServiceListing> GuestPortalListings(
         AppDbContext db, IQueryable<Guid> trustedSupplierIds, bool allowsRegionalSuppliers)
     {
@@ -420,6 +444,10 @@ public class SupplierServiceCatalogService(
                 && listing.SupplierProfile.Status == SupplierStatus.Active);
     }
 
+    /// <summary>
+    /// The services of <paramref name="orgId"/> that are not deleted. <b>The only way</b> this service reads or changes a
+    /// row: the table is not tenant-filtered, so the supplier org is always an explicit predicate.
+    /// </summary>
     private IQueryable<SupplierServiceListing> Listings(Guid orgId) => ListingsOf(db, orgId);
 
     /// <inheritdoc cref="Listings"/>

@@ -48,6 +48,37 @@ public class ServiceRequestServiceTests
     }
 
     [Fact]
+    public async Task RemovedPrivateSupplier_CanFinishAnOpenRequestButCannotReceiveANewOne()
+    {
+        await using var db = CreateDb();
+        var (orgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        (await db.SupplierProfiles.SingleAsync(p => p.OrgId == supplierOrgId)).GuestPortalMarketplaceEnabled = false;
+        var relation = new TrustedSupplier
+        {
+            OrgId = orgId,
+            SupplierOrgId = supplierOrgId,
+            AssignedPropertyIds = [propertyId],
+            CreatedAt = DateTime.UtcNow,
+            HostOrigin = true
+        };
+        db.TrustedSuppliers.Add(relation);
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var command = new CreateServiceRequestCommand(orgId, TestAuthHandler.DefaultUserId, propertyId, bookingId,
+            supplierOrgId, "cleaning", ServiceRequestUrgency.Normal, null, false);
+        var open = await service.CreateAsync(command);
+        relation.RemovedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        var missing = await Assert.ThrowsAsync<NotFoundException>(() => service.CreateAsync(command));
+        Assert.Equal(ServiceRequestErrorCodes.SupplierNotFound, missing.Code);
+        await service.TakeAsync(open.Id, supplierOrgId, "supplier-user");
+        var scope = new HostScope(orgId, TestAuthHandler.DefaultUserId);
+        var (history, _) = await service.ListForHostAsync(scope, ServiceRequestRentalContext.ShortRent,
+            status: null, propertyId: propertyId, bookingId: bookingId, page: 1, pageSize: 20);
+        Assert.Equal(ServiceRequestStatus.PresoInCarico, Assert.Single(history).Status);
+    }
+
+    [Fact]
     public async Task CreateAsync_ShortRentWithUnknownBooking_ThrowsBookingMismatch()
     {
         await using var db = CreateDb();
@@ -1141,6 +1172,7 @@ public class ServiceRequestServiceTests
 
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = supplierOrg.Id,
             Email = "supplier@test.com",
             LegalName = "Supplier Srl",

@@ -160,18 +160,24 @@ public class TrustedSupplierInviteTests
         Assert.Equal(result.Org.Id, (await db.Users.SingleAsync(u => u.Id == SupplierUserId)).SupplierOrgId);
     }
 
-    [Fact]
-    public async Task RegisterAsync_HostInviteOfARegisteredSupplier_AddsTheRelationToItsOrgWithoutASecondProfile()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RegisterAsync_MarketplaceChangesWhileInviteIsPending_KeepsOriginalBeneficiary(bool publishedAtInvite)
     {
         await using var db = CreateDbContext();
         AddProperty(db, HostOrgId, "Roma", "058091");
         var supplierOrgId = AddRegisteredSupplier(db, SupplierEmail, linkedUserId: SupplierUserId);
+        var profile = db.SupplierProfiles.Local.Single(p => p.OrgId == supplierOrgId);
+        profile.GuestPortalMarketplaceEnabled = publishedAtInvite;
         await db.SaveChangesAsync();
         var queue = new RecordingEmailQueue();
         await CreateTrustedSupplierService(db, queue)
             .InviteSupplierAsync(HostOrgId, new InviteSupplierRequest(SupplierEmail, []), HostUserId);
         var token = InviteToken(Assert.Single(queue.Queued).Content.HtmlBody);
 
+        profile.GuestPortalMarketplaceEnabled = !publishedAtInvite;
+        await db.SaveChangesAsync();
         var result = await CreateSupplierService(db, queue).RegisterAsync(
             new SupplierRegistration(SupplierEmail, "Pulizie Test", "+390000000000", "058091", token, SupplierUserId, SupplierEmail));
 
@@ -179,6 +185,7 @@ public class TrustedSupplierInviteTests
         var relation = Assert.Single(db.TrustedSuppliers);
         Assert.Equal(HostOrgId, relation.OrgId);
         Assert.Equal(supplierOrgId, relation.SupplierOrgId);
+        Assert.Equal(!publishedAtInvite, relation.HostOrigin);
         Assert.True(Assert.Single(db.SupplierInviteRecords).IsUsed);
         Assert.Single(db.SupplierProfiles);
     }

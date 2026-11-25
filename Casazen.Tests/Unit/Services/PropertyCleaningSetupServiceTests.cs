@@ -47,6 +47,7 @@ public class PropertyCleaningSetupServiceTests
         db.Orgs.Add(org);
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = org.Id,
             Email = "altro@test.com",
             LegalName = "Altro Srl",
@@ -65,6 +66,7 @@ public class PropertyCleaningSetupServiceTests
     {
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = world.SupplierOrgId,
             Email = "fornitore@test.com",
             LegalName = "Fornitore Srl",

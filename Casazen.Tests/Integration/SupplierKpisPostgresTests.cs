@@ -393,6 +393,7 @@ public class SupplierKpisPostgresTests : IClassFixture<CasazenWebApplicationFact
             };
             var profile = new SupplierProfile
             {
+                GuestPortalMarketplaceEnabled = true,
                 OrgId = supplierOrg.Id,
                 Email = supplierOrg.ContactEmail,
                 LegalName = $"SU11 {name} Srl",

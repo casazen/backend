@@ -3,6 +3,8 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
+public sealed record PropertySupplierChoices(IReadOnlyList<SupplierProfile> Suppliers, IReadOnlySet<Guid>? HostOriginIds);
+
 public interface ISupplierService
 {
     /// <summary>
@@ -166,6 +168,10 @@ public interface ISupplierService
         Casazen.Core.Suppliers.ComuneTarget target,
         string? category,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Marketplace partners and the host's trusted suppliers assigned to the authorised property.</summary>
+    Task<PropertySupplierChoices> GetActiveForPropertyAsync(Guid hostOrgId, Guid propertyId,
+        IReadOnlyCollection<Casazen.Core.Suppliers.ComuneTarget> targets, string? category, CancellationToken cancellationToken = default);
 
     /// <summary>Active suppliers covering any of the specified municipalities.</summary>
     Task<IReadOnlyList<SupplierProfile>> GetActiveByComuniAsync(

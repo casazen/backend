@@ -477,6 +477,7 @@ public class SupplierInboxPostgresTests : IClassFixture<CasazenWebApplicationFac
                 Email = supplierOrg.ContactEmail,
                 LegalName = $"SU08 {name} Srl",
                 Phone = "+39 06 000000",
+                GuestPortalMarketplaceEnabled = true,
                 Status = SupplierStatus.Active,
                 ComuniJson = "[\"058091\"]",
                 CategoriesJson = "[\"cleaning\"]",

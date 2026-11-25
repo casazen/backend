@@ -40,6 +40,7 @@ public class CleaningAutomationPostgresTests : IAsyncLifetime
         _bookingId = (await db.Bookings.AsNoTracking().SingleAsync(b => b.PropertyId == _world.Granted.Id && b.Status == BookingStatus.CheckedOut)).Id;
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = _world.SupplierOrgId,
             Email = "fornitore@example.com",
             LegalName = "Fornitore Srl",

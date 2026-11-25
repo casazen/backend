@@ -16,6 +16,9 @@ public sealed record InviteSupplierRequest(string Email, List<Guid> PropertyIds)
 /// <param name="ExpiresAt">When the invitation expires.</param>
 public sealed record InviteSupplierResult(Guid InviteId, DateTime ExpiresAt);
 
+public sealed record TrustedSupplierSummary(Guid Id, Guid OrgId, Guid SupplierOrgId, List<Guid> AssignedPropertyIds,
+    int Priority, bool VisibleInMarketplace, DateTime CreatedAt, string? SupplierName, bool HostOrigin);
+
 /// <summary>
 /// Manages trusted supplier relationships for agency tier orgs (NF-21, ADR-020).
 /// Trusted suppliers work with PaymentMode.Manual, 0% commission, and their
@@ -47,7 +50,7 @@ public interface ITrustedSupplierService
     /// </summary>
     /// <param name="orgId">The agency org.</param>
     /// <returns>List of trusted suppliers.</returns>
-    Task<List<TrustedSupplier>> GetTrustedSuppliersAsync(Guid orgId);
+    Task<List<TrustedSupplierSummary>> GetTrustedSuppliersAsync(Guid orgId);
 
     /// <summary>
     /// Toggles marketplace visibility for a trusted supplier.
