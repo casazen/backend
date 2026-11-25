@@ -27,7 +27,7 @@ public class GuestSupplierOrderSimulationTests
         world.Db.SupplierProfiles.Add(new SupplierProfile
         {
             OrgId = supplierId, LegalName = "Example Supplier", Email = "supplier@example.com",
-            ShowcaseSlug = "example-supplier", Status = SupplierStatus.Active
+            GuestPortalMarketplaceEnabled = true, Status = SupplierStatus.Active
         });
         world.Db.SupplierServiceListings.Add(listing);
         var offer = new GuestSupplierOffer

@@ -35,8 +35,7 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         join supplier in db.SupplierProfiles.IgnoreQueryFilters() on offer.SupplierOrgId equals supplier.OrgId
         where offer.HostOrgId == orgId && offer.PropertyId == propertyId && offer.Accepted && offer.Enabled
               && (trusted.Contains(offer.SupplierOrgId) ||
-                  allowsRegionalSuppliers && supplier.ShowcaseSlug != null &&
-                  !db.SupplierShowcaseContents.Any(x => x.OrgId == supplier.OrgId && (x.PublishedJson == null || x.PausedAt != null)))
+                  allowsRegionalSuppliers && supplier.GuestPortalMarketplaceEnabled)
               && listing.OrgId == supplier.OrgId && supplier.Status == SupplierStatus.Active
               && listing.Status == SupplierServiceListingStatus.Active && listing.DeletedAt == null
               && (listing.RequiresQuote || listing.PriceFromCents > 0)

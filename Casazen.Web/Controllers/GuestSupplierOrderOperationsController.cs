@@ -31,7 +31,7 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
             return failure;
         var offers = await Offers(orgId, propertyId).AsNoTracking().ToListAsync(ct);
         var history = await Orders(orgId, propertyId).AsNoTracking().OrderByDescending(x => x.CreatedAt).ToListAsync(ct);
-        return Ok(new { offers, orders = history.Select(x => orders.View(x, true)) });
+        return Ok(new { offers, orders = history.Select(x => orders.View(x, x.HostOrigin) with { Complaint = x.HostOrigin ? x.Complaint : null }) });
     }
 
     [HttpGet("catalog")]
@@ -48,8 +48,7 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
         var trusted = orders.TrustedSupplierIds(orgId, propertyId);
         var matches = await db.SupplierServiceListings.AsNoTracking()
             .Where(x => x.Status == SupplierServiceListingStatus.Active && x.SupplierProfile.Status == SupplierStatus.Active)
-            .Where(x => trusted.Contains(x.OrgId) || allowRegional && x.SupplierProfile.ShowcaseSlug != null &&
-                !db.SupplierShowcaseContents.Any(s => s.OrgId == x.OrgId && (s.PublishedJson == null || s.PausedAt != null)))
+            .Where(x => trusted.Contains(x.OrgId) || allowRegional && x.SupplierProfile.GuestPortalMarketplaceEnabled)
             .Where(x => x.Name.ToLower().Contains(term.ToLower()) || x.SupplierProfile.LegalName.ToLower().Contains(term.ToLower()))
             .OrderBy(x => x.Name)
             .Take(30)
@@ -69,26 +68,31 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
         {
             var listing = await db.SupplierServiceListings.IgnoreQueryFilters().AsNoTracking()
                 .Where(x => x.Id == serviceId && x.Status == SupplierServiceListingStatus.Active && x.DeletedAt == null)
-                .Select(x => new { x.OrgId, x.SupplierProfile.Email, x.SupplierProfile.ShowcaseSlug, x.SupplierProfile.Status, x.SupplierProfile.CreatedAt })
+                .Select(x => new { x.OrgId, x.SupplierProfile.Status, x.SupplierProfile.GuestPortalMarketplaceEnabled,
+                    x.SupplierProfile.GuestPortalMarketplaceFirstPublishedAt })
                 .SingleOrDefaultAsync(ct);
             if (listing is null || listing.Status != SupplierStatus.Active)
                 return NotFound();
 
-            var trusted = await orders.TrustedSupplierIds(orgId, propertyId).ContainsAsync(listing.OrgId, ct);
-            if (!trusted && (listing.ShowcaseSlug is null || !await orders.AllowsRegionalSuppliersAsync(orgId, propertyId, ct)
-                || await db.SupplierShowcaseContents.AnyAsync(s => s.OrgId == listing.OrgId && (s.PublishedJson == null || s.PausedAt != null), ct)))
+            var trusted = orders.TrustedSupplierIds(orgId, propertyId);
+            var trustedAt = await db.TrustedSuppliers.IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                .Where(x => x.OrgId == orgId && x.SupplierOrgId == listing.OrgId && trusted.Contains(x.SupplierOrgId))
+                .Select(x => (DateTime?)x.CreatedAt).SingleOrDefaultAsync(ct);
+            if (trustedAt is null && (!listing.GuestPortalMarketplaceEnabled ||
+                !await orders.AllowsRegionalSuppliersAsync(orgId, propertyId, ct)))
                 return NotFound();
 
             await catalog.ListServicesAsync(orgId, propertyId, listing.OrgId, null, ct);
+            var previousOrigin = await db.GuestSupplierOffers
+                .Where(x => x.HostOrgId == orgId && x.SupplierOrgId == listing.OrgId)
+                .OrderBy(x => x.Id).Select(x => (bool?)x.HostOrigin).FirstOrDefaultAsync(ct);
 
-            var email = listing.Email.Trim().ToLowerInvariant();
-            var origin = email.Length == 0 ? null : await db.SupplierInviteRecords.IgnoreQueryFilters()
-                .Where(x => x.IsUsed && x.Email.Trim().ToLower() == email && x.CreatedAt <= listing.CreatedAt && x.ExpiresAt > listing.CreatedAt)
-                .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).Select(x => x.InvitedByOrgId).FirstOrDefaultAsync(ct);
             existing = new GuestSupplierOffer
             {
                 HostOrgId = orgId, PropertyId = propertyId, ServiceId = serviceId,
-                SupplierOrgId = listing.OrgId, HostOrigin = trusted && origin == orgId
+                SupplierOrgId = listing.OrgId,
+                HostOrigin = previousOrigin ?? (trustedAt is not null &&
+                    (listing.GuestPortalMarketplaceFirstPublishedAt is null || trustedAt < listing.GuestPortalMarketplaceFirstPublishedAt))
             };
             db.GuestSupplierOffers.Add(existing);
         }
@@ -251,6 +255,40 @@ public sealed class AdminGuestSupplierOrdersController(AppDbContext db, GuestSup
             .OrderBy(x => x.CreatedAt).ToListAsync(ct);
         return Ok(open.Select(x => orders.View(x, true)));
     }
+
+    [HttpGet("marketplace")]
+    public async Task<IActionResult> Marketplace([FromQuery] string? search, CancellationToken ct)
+    {
+        if (!configuration.GetValue<bool>(GuestSupplierOrders.SimulationSetting))
+            return NotFound();
+        var term = search?.Trim().ToLowerInvariant();
+        if (term is not { Length: >= 2 and <= 100 })
+            return BadRequest();
+
+        var suppliers = await db.SupplierProfiles.AsNoTracking()
+            .Where(x => x.Status == SupplierStatus.Active && x.LegalName.ToLower().Contains(term))
+            .OrderBy(x => x.LegalName).Take(30)
+            .Select(x => new { x.OrgId, x.LegalName, Enabled = x.GuestPortalMarketplaceEnabled }).ToListAsync(ct);
+        return Ok(suppliers);
+    }
+
+    [HttpPut("marketplace/{supplierId:guid}")]
+    public async Task<IActionResult> Marketplace(Guid supplierId, MarketplaceChoice request, CancellationToken ct)
+    {
+        if (!configuration.GetValue<bool>(GuestSupplierOrders.SimulationSetting))
+            return NotFound();
+        var now = orders.Now;
+        var updated = await db.SupplierProfiles
+            .Where(x => x.OrgId == supplierId && x.Status == SupplierStatus.Active)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.GuestPortalMarketplaceEnabled, request.Enabled)
+                .SetProperty(x => x.GuestPortalMarketplaceFirstPublishedAt,
+                    x => x.GuestPortalMarketplaceFirstPublishedAt ?? (request.Enabled ? (DateTime?)now : null)),
+                ct);
+        return updated == 0 ? NotFound() : NoContent();
+    }
+
+    public sealed record MarketplaceChoice(bool Enabled);
 
     [HttpPost("{id:guid}/resolve")]
     public async Task<IActionResult> Resolve(Guid id, GuestSupplierDecision request, CancellationToken ct)

@@ -17070,6 +17070,12 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
 
+                    b.Property<bool>("GuestPortalMarketplaceEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("GuestPortalMarketplaceFirstPublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("IcalFeedUrl")
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
