@@ -1141,6 +1141,7 @@ public class ServiceRequestServiceTests
 
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = supplierOrg.Id,
             Email = "supplier@test.com",
             LegalName = "Supplier Srl",

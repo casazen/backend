@@ -768,6 +768,7 @@ public class SupplierAdminPostgresTests(SupplierRegistrationIntegrationTests.Pil
             },
             new SupplierProfile
             {
+                GuestPortalMarketplaceEnabled = true,
                 OrgId = org.Id,
                 Email = email,
                 LegalName = legalName,
