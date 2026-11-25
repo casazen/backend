@@ -297,7 +297,7 @@ public class SuppliersController(
         if (failure is not null)
             return failure;
 
-        var suppliers = await PickerSuppliersAsync(query.IncludeTrusted, query.PropertyId, targets, query.Category, cancellationToken);
+        var (suppliers, hostOriginIds) = await PickerSuppliersAsync(query.IncludeTrusted, query.PropertyId, targets, query.Category, cancellationToken);
 
         // The comuni chosen from the official list are shown by name (SU-04).
         var listed = await comuneDirectory.GetByIstatCodesAsync(
@@ -319,7 +319,7 @@ public class SuppliersController(
                 sp,
                 listed,
                 services.TryGetValue(sp.OrgId, out var published) ? published : [],
-                medians.GetValueOrDefault(sp.OrgId))),
+                medians.GetValueOrDefault(sp.OrgId), hostOrigin: hostOriginIds?.Contains(sp.OrgId))),
             query.Q,
             sort,
             services,
@@ -362,8 +362,8 @@ public class SuppliersController(
         if (failure is not null)
             return failure;
 
-        var supplier = (await PickerSuppliersAsync(includeTrusted, propertyId, targets, null, cancellationToken))
-            .FirstOrDefault(sp => sp.OrgId == orgId);
+        var choices = await PickerSuppliersAsync(includeTrusted, propertyId, targets, null, cancellationToken);
+        var supplier = choices.Suppliers.FirstOrDefault(sp => sp.OrgId == orgId);
         if (supplier is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ServiceRequestErrorCodes.SupplierNotFound, ServiceRequestErrorCodes.SupplierNotFoundMessageKey);
 
@@ -376,10 +376,10 @@ public class SuppliersController(
             listed,
             services.TryGetValue(orgId, out var published) ? published : [],
             medians.GetValueOrDefault(orgId),
-            maxServices: int.MaxValue));
+            maxServices: int.MaxValue, hostOrigin: choices.HostOriginIds?.Contains(orgId)));
     }
 
-    private async Task<IReadOnlyList<SupplierProfile>> PickerSuppliersAsync(bool includeTrusted, Guid? propertyId,
+    private async Task<PropertySupplierChoices> PickerSuppliersAsync(bool includeTrusted, Guid? propertyId,
         IReadOnlyCollection<ComuneTarget> targets, string? category, CancellationToken ct)
     {
         if (includeTrusted && propertyId is { } property && await orgContextResolver.GetOrProvisionOrgIdAsync(ct) is { } org)
@@ -387,7 +387,7 @@ public class SuppliersController(
             Response.Headers.CacheControl = "private, no-store";
             return await supplierService.GetActiveForPropertyAsync(org, property, targets, category, ct);
         }
-        return await supplierService.GetActiveByComuniAsync(targets, category, ct);
+        return new PropertySupplierChoices(await supplierService.GetActiveByComuniAsync(targets, category, ct), null);
     }
 
     /// <summary>Resolves the search areas, using the caller's property permissions for account and property searches.</summary>

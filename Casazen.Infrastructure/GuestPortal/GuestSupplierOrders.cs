@@ -32,16 +32,11 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
 
     public IQueryable<ManagementListing> ManagementListings(Guid hostOrgId, Guid propertyId, bool allowsRegional)
     {
-        var trustedIds = TrustedSupplierIds(hostOrgId, propertyId);
-        var relations = db.TrustedSuppliers.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).Where(t => t.OrgId == hostOrgId);
+        var assignedIds = TrustedSupplierIds(hostOrgId, propertyId);
+        var hostOriginIds = SupplierServiceCatalogService.HostOriginSupplierIds(db, hostOrgId);
         return from item in Listings(hostOrgId, propertyId, allowsRegional)
-               let savedOrigin = db.GuestSupplierOffers.Where(o => o.HostOrgId == hostOrgId && o.SupplierOrgId == item.OrgId)
-                   .OrderBy(o => o.Id).Select(o => (bool?)o.HostOrigin).FirstOrDefault()
-               let hostOrigin = savedOrigin ?? relations.Where(t => t.SupplierOrgId == item.OrgId).Select(t => t.HostOrigin).FirstOrDefault()
-                   ?? relations.Any(t => t.SupplierOrgId == item.OrgId &&
-                   (t.CreatedAt < item.SupplierProfile.GuestPortalMarketplaceFirstPublishedAt ||
-                    (item.SupplierProfile.GuestPortalMarketplaceFirstPublishedAt == null && !item.SupplierProfile.GuestPortalMarketplaceEnabled)))
-               where hostOrigin ? trustedIds.Contains(item.OrgId) : allowsRegional && item.SupplierProfile.GuestPortalMarketplaceEnabled
+               let hostOrigin = hostOriginIds.Contains(item.OrgId)
+               where hostOrigin ? assignedIds.Contains(item.OrgId) : allowsRegional && item.SupplierProfile.GuestPortalMarketplaceEnabled
                select new ManagementListing { Id = item.Id, Name = item.Name, Category = item.Category,
                    OrgId = item.OrgId, Supplier = item.SupplierProfile.LegalName, HostOrigin = hostOrigin };
     }

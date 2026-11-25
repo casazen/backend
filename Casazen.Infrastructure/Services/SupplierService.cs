@@ -174,7 +174,7 @@ public partial class SupplierService(
 
         // The invite of a host: the new supplier is one of its trusted suppliers, in the same save (#977).
         if (invite?.InvitedByOrgId is Guid invitingOrgId)
-            await AddTrustedSupplierAsync(invitingOrgId, org.Id, invite.AssignedPropertyIds, cancellationToken);
+            await AddTrustedSupplierAsync(invitingOrgId, org.Id, invite, cancellationToken);
 
         // Link the authenticated user to the new org so subsequent supplier endpoint
         // calls resolve the org via User.SupplierOrgId instead of falling back to
@@ -234,10 +234,13 @@ public partial class SupplierService(
             return;
 
         EnsureInviteUsable(invite);
-        if (!EmailsMatch(invite.Email, accountEmail))
+        var profileEmail = await db.SupplierProfiles.Where(p => p.OrgId == supplierOrgId)
+            .Select(p => p.Email).SingleAsync(cancellationToken);
+        if (!EmailsMatch(invite.Email, accountEmail) || !EmailsMatch(invite.Email, profileEmail) ||
+            invite.IdentifiedSupplierOrgId is { } matched && matched != supplierOrgId)
             throw new DomainRuleException("supplier_invite_email_mismatch", "SupplierInviteEmailMismatch");
 
-        await AddTrustedSupplierAsync(invitingOrgId, supplierOrgId, invite.AssignedPropertyIds, cancellationToken);
+        await AddTrustedSupplierAsync(invitingOrgId, supplierOrgId, invite, cancellationToken);
         invite.IsUsed = true;
         await db.SaveChangesAsync(cancellationToken);
 
@@ -272,21 +275,22 @@ public partial class SupplierService(
             if (previous.RemovedAt is not null)
             {
                 previous.RemovedAt = null;
-                previous.AssignedPropertyIds = propertyIds?.Distinct().ToList() ?? [];
+                previous.AssignedPropertyIds = invite.AssignedPropertyIds?.Distinct().ToList() ?? [];
                 previous.VisibleInMarketplace = false;
             }
             return;
         }
 
-        var hostOrigin = !await db.SupplierProfiles.AnyAsync(p => p.OrgId == supplierOrgId &&
-            p.GuestPortalMarketplaceEnabled, cancellationToken);
+        var hostOrigin = invite.HostOriginAtInvitation ?? !await db.SupplierProfiles.AnyAsync(p => p.OrgId == supplierOrgId &&
+            (p.GuestPortalMarketplaceFirstPublishedAt <= invite.CreatedAt ||
+             (p.GuestPortalMarketplaceFirstPublishedAt == null && p.GuestPortalMarketplaceEnabled)), cancellationToken);
         var lastPriority = await relations.MaxAsync(t => (int?)t.Priority, cancellationToken);
         db.TrustedSuppliers.Add(new TrustedSupplier
         {
             OrgId = hostOrgId,
             SupplierOrgId = supplierOrgId,
             HostOrigin = hostOrigin,
-            AssignedPropertyIds = propertyIds?.Distinct().ToList() ?? [],
+            AssignedPropertyIds = invite.AssignedPropertyIds?.Distinct().ToList() ?? [],
             Priority = (lastPriority ?? -1) + 1,
             CreatedAt = DateTime.UtcNow,
         });
@@ -790,9 +794,16 @@ public partial class SupplierService(
         CancellationToken cancellationToken = default) =>
         GetActiveByComuniAsync([target], category, cancellationToken);
 
-    public Task<IReadOnlyList<SupplierProfile>> GetActiveForPropertyAsync(Guid hostOrgId, Guid propertyId,
-        IReadOnlyCollection<ComuneTarget> targets, string? category, CancellationToken cancellationToken = default) =>
-        ActiveCoveringAsync(SupplierServiceCatalogService.SuppliersForProperty(db, hostOrgId, propertyId), targets, category, cancellationToken);
+    public async Task<PropertySupplierChoices> GetActiveForPropertyAsync(Guid hostOrgId, Guid propertyId,
+        IReadOnlyCollection<ComuneTarget> targets, string? category, CancellationToken cancellationToken = default)
+    {
+        var visible = await ActiveCoveringAsync(SupplierServiceCatalogService.SuppliersForProperty(db, hostOrgId, propertyId),
+            targets, category, cancellationToken);
+        var ids = visible.Select(s => s.OrgId).ToArray();
+        var hostOrigin = await SupplierServiceCatalogService.HostOriginSupplierIds(db, hostOrgId)
+            .Where(id => ids.Contains(id)).ToHashSetAsync(cancellationToken);
+        return new PropertySupplierChoices(visible, hostOrigin);
+    }
 
     public Task<IReadOnlyList<SupplierProfile>> GetActiveByComuniAsync(
         IReadOnlyCollection<ComuneTarget> targets,
@@ -950,11 +961,16 @@ public partial class SupplierService(
                 SupplierAdminErrorCodes.DuplicateInvite, SupplierAdminErrorCodes.DuplicateInviteMessageKey);
 
         var (comuneCode, comuneName) = await ResolveHostInviteComuneAsync(hostOrgId, assigned, cancellationToken);
+        var normalized = SupplierProfileEmailIndex.Normalize(email);
+        var known = await db.SupplierProfiles.AsNoTracking().Where(p => p.Email.Trim().ToLower() == normalized)
+            .Select(p => new { p.OrgId, p.GuestPortalMarketplaceEnabled }).SingleOrDefaultAsync(cancellationToken);
         var invite = new SupplierInviteRecord
         {
             Email = email,
             ComuneCode = comuneCode,
             InvitedByOrgId = hostOrgId,
+            HostOriginAtInvitation = known?.GuestPortalMarketplaceEnabled != true,
+            IdentifiedSupplierOrgId = known?.OrgId,
             AssignedPropertyIds = assigned.Count == 0 ? null : assigned,
         };
         return await IssueInviteAsync(invite, comuneName, cancellationToken);

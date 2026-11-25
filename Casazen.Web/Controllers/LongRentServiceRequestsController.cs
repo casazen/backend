@@ -141,7 +141,7 @@ public class LongRentServiceRequestsController(
         var (property, denied) = await AuthorizePropertyAsync(propertyId, LongRentPropertyOperations.Read, cancellationToken);
         if (denied is not null) return denied;
 
-        var suppliers = await supplierService.GetActiveForPropertyAsync(property!.OrgId, propertyId, [new ComuneTarget(property.ComuneIstatCode, property.City)], category, cancellationToken);
+        var (suppliers, hostOriginIds) = await supplierService.GetActiveForPropertyAsync(property!.OrgId, propertyId, [new ComuneTarget(property.ComuneIstatCode, property.City)], category, cancellationToken);
 
         var listed = await comuneDirectory.GetByIstatCodesAsync(
             suppliers.SelectMany(SupplierComuniView.IstatCodes), cancellationToken);
@@ -149,7 +149,7 @@ public class LongRentServiceRequestsController(
         // SP-REL: in the order of the ranking, like the list of the short-rent search (the first one marked "recommended" when it leads).
         var scores = await matcher.ScoresAsync(suppliers, ServiceRequestUrgency.Normal, cancellationToken);
         var items = SupplierPickerSearch.Apply(
-            suppliers.Select(sp => SupplierPickerDto.From(sp, listed)), q: null, SupplierPickerSort.Recommended, services: null, scores);
+            suppliers.Select(sp => SupplierPickerDto.From(sp, listed, [], null, hostOrigin: hostOriginIds?.Contains(sp.OrgId))), q: null, SupplierPickerSort.Recommended, services: null, scores);
         return Ok(new PagedResultDto<SupplierPickerDto>
         {
             Items = items,

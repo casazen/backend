@@ -131,9 +131,12 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
         using var admin = factory.CreateAuthenticatedClient($"auth0|admin-{Guid.NewGuid():N}", "Admin");
         Assert.Equal(HttpStatusCode.NoContent, (await admin.PutAsJsonAsync(publication, new { enabled = true })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await host.GetAsync($"{detail}?propertyId={second.Id}")).StatusCode);
+        var published = await host.GetFromJsonAsync<JsonElement>($"{detail}?propertyId={first.Id}&includeTrusted=true");
+        Assert.True(published.GetProperty("hostOrigin").GetBoolean());
         Assert.Equal(HttpStatusCode.NoContent, (await admin.PutAsJsonAsync(publication, new { enabled = false })).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await host.GetAsync($"{detail}?propertyId={second.Id}")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await host.GetAsync($"{detail}?propertyId={first.Id}&includeTrusted=true")).StatusCode);
+        var retained = await host.GetFromJsonAsync<JsonElement>($"{detail}?propertyId={first.Id}&includeTrusted=true");
+        Assert.True(retained.GetProperty("hostOrigin").GetBoolean());
     }
 
     [Fact]

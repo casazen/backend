@@ -40,6 +40,12 @@ public class SupplierInviteRecord
     /// </summary>
     public Guid? InvitedByOrgId { get; set; }
 
+    /// <summary>Attribution when the host issued this invite. Null on older invites and staff invites.</summary>
+    public bool? HostOriginAtInvitation { get; set; }
+
+    /// <summary>The existing profile identified by the invited email, verified again on acceptance.</summary>
+    public Guid? IdentifiedSupplierOrgId { get; set; }
+
     /// <summary>
     /// The properties of <see cref="InvitedByOrgId"/> the supplier may work on, copied to
     /// <see cref="TrustedSupplier.AssignedPropertyIds"/> (null or empty = all of them).

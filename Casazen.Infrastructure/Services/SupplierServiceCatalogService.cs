@@ -402,6 +402,21 @@ public class SupplierServiceCatalogService(
         }
     }
 
+    internal static IQueryable<Guid> HostOriginSupplierIds(AppDbContext db, Guid hostOrgId)
+    {
+        var relationships =
+        from t in db.TrustedSuppliers.IgnoreQueryFilters([AppDbContext.TenantQueryFilter, AppDbContext.TrustedSupplierActiveFilter])
+        where t.OrgId == hostOrgId
+        let existing = db.GuestSupplierOffers.Where(o => o.HostOrgId == hostOrgId && o.SupplierOrgId == t.SupplierOrgId)
+            .OrderBy(o => o.Id).Select(o => (bool?)o.HostOrigin).FirstOrDefault()
+        where existing ?? t.HostOrigin ?? !db.SupplierProfiles.Any(p => p.OrgId == t.SupplierOrgId &&
+            (p.GuestPortalMarketplaceFirstPublishedAt <= t.CreatedAt ||
+             (p.GuestPortalMarketplaceFirstPublishedAt == null && p.GuestPortalMarketplaceEnabled)))
+        select t.SupplierOrgId;
+        return relationships.Union(db.GuestSupplierOffers.Where(o => o.HostOrgId == hostOrgId && o.HostOrigin)
+            .Select(o => o.SupplierOrgId));
+    }
+
     /// <summary>Suppliers that this host can request for the authorised property.</summary>
     internal static IQueryable<SupplierProfile> SuppliersForProperty(AppDbContext db, Guid hostOrgId, Guid propertyId)
     {

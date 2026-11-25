@@ -145,7 +145,7 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
         return await GuestSupplierDecisions.ResolveAsync(db, orders, order, request, ct);
     }
 
-    private int MarketplaceRate => decimal.ToInt32(decimal.Round(paymentOptions.Value.CommissionPercent!.Value * 100m, 0, MidpointRounding.AwayFromZero));
+    private int MarketplaceRate => decimal.ToInt32(decimal.Round(paymentOptions.Value.RequireCommissionPercent() * 100m, 0, MidpointRounding.AwayFromZero));
 
     private IQueryable<GuestSupplierOffer> Offers(Guid orgId, Guid propertyId) =>
         db.GuestSupplierOffers.Where(x => x.HostOrgId == orgId && x.PropertyId == propertyId);
