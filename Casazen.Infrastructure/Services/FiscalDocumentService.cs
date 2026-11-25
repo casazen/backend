@@ -5,6 +5,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
+using Casazen.Core.GuestPortal;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
@@ -278,7 +279,10 @@ public sealed partial class FiscalDocumentService(
         // The draft is still the document the plan wants (E17/F01/US01/T02): a draft made before the owner, the ownership or the mandate of today (or one of before
         // the owners issued, moved to the organization by the migration) is never issued in the name of an issuer that no longer bills it. An owner whose profile
         // cannot issue gets its «Da fare» (422 owner_issuer_missing); any other change is 409 document_draft_outdated, and the draft made again follows the plan.
-        RequireDraftOfThePlan(document, (await RequirePlanAsync(booking, ct)).Of(document.ForAgencyServices), organization);
+        var planned = (await RequirePlanAsync(booking, ct)).Of(document.ForAgencyServices);
+        RequireDraftOfThePlan(document, planned, organization);
+        if (planned!.Bills(FiscalLineType.ExtraService))
+            await RequireDraftOfTheExtrasAsync(document, booking.OrgId, booking.Id, ct);
 
         // The issuer of the draft (E17/F01/US01/T02): an owner's draft is issued on the owner's profile, in the owner's series, with the owner's rule.
         var profile = await IssuerProfileAsync(booking, organization, document.IssuerProfileId, requireComplete: true, ct);
@@ -628,12 +632,13 @@ public sealed partial class FiscalDocumentService(
         limit = Math.Max(1, limit);
 
         // The same scope and filters as the list, and only the documents that were issued. The columns the file has and no more: the XML of an invoice is
-        // the heavy part of a document and is never read here.
+        // Only aggregate extra amounts are read from the lines, so they do not inflate the open balance of the document.
         var documents = await InListOrder(Matching(scope, criteria with { Status = FiscalDocumentStatus.Issued }))
             .Take(limit)
             .Select(d => new ExportSource(
                 d.Id, d.BookingId, d.Kind, d.Number, d.IssueDate, d.RecipientName, d.TaxableBase, d.VatAmount, d.StampDuty, d.Total, d.Currency, d.PaymentState, d.SdiStatus, d.Source,
-                d.PaymentChannel, d.Purpose))
+                d.PaymentChannel, d.Purpose,
+                d.Lines.Where(line => line.LineType == FiscalLineType.ExtraService).Sum(line => line.TotalPrice + (line.VatAmount ?? 0m))))
             .ToListAsync(ct);
         if (documents.Count == 0)
             return [];
@@ -667,7 +672,7 @@ public sealed partial class FiscalDocumentService(
                     d.StampDuty,
                     d.Total,
                     d.Currency,
-                    IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId, d.PaymentChannel) ? PaymentStateOf(collected.GetValueOrDefault(d.BookingId!.Value), d.Total) : d.PaymentState,
+                    IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId, d.PaymentChannel) ? PaymentStateOf(collected.GetValueOrDefault(d.BookingId!.Value), d.Total - d.PaidExtras) : d.PaymentState,
                     d.SdiStatus,
                     d.Source,
                     d.Purpose);
@@ -732,7 +737,8 @@ public sealed partial class FiscalDocumentService(
         string SdiStatus,
         FiscalDocumentSource Source,
         FiscalPaymentChannel PaymentChannel,
-        FiscalDocumentPurpose Purpose);
+        FiscalDocumentPurpose Purpose,
+        decimal PaidExtras);
 
     public async Task<string> GetXmlAsync(Guid documentId, CancellationToken ct = default)
     {
@@ -874,7 +880,7 @@ public sealed partial class FiscalDocumentService(
         draft.PaymentChannel = built.PaymentChannel;
         draft.PaymentState = built.PaymentChannel == FiscalPaymentChannel.Portal
             ? FiscalDocumentPaymentState.Paid
-            : await PaymentStateAsync(booking.Id, draft.Total, ct);
+            : await PaymentStateAsync(booking.Id, draft.Total - ExtraGrossAmount(draft.Lines), ct);
         draft.UpdatedAt = UtcNow;
         if (isNew)
             db.FiscalDocuments.Add(draft);
@@ -1600,6 +1606,19 @@ public sealed partial class FiscalDocumentService(
         throw new DomainConflictException(FiscalDocumentErrors.DraftOutdated, "FiscalDocumentDraftOutdated");
     }
 
+    private async Task RequireDraftOfTheExtrasAsync(FiscalDocument document, Guid orgId, Guid bookingId, CancellationToken ct)
+    {
+        var paid = await db.GuestHostExtraOrders.AsNoTracking()
+            .Where(x => x.OrgId == orgId && x.BookingId == bookingId &&
+                (x.Status == GuestHostExtraStatus.Paid || x.Status == GuestHostExtraStatus.Fulfilled))
+            .Select(x => new { x.Name, x.Amount }).ToListAsync(ct);
+        var stored = document.Lines.Where(x => x.LineType == FiscalLineType.ExtraService)
+            .Select(x => (x.Description, x.TotalPrice + (x.VatAmount ?? 0m)));
+        var expected = paid.Select(x => (x.Name, x.Amount));
+        if (!stored.Order().SequenceEqual(expected.Order()))
+            throw new DomainConflictException(FiscalDocumentErrors.DraftOutdated, "FiscalDocumentDraftOutdated");
+    }
+
     private static bool HasTheVatOfTheRule(FiscalDocumentLine line, FiscalTaxRule rule) =>
         rule.Rates.TryGetValue(line.LineType, out var rate) && line.VatRatePercent == rate.Percent && string.Equals(line.VatNatureCode, rate.NatureCode, StringComparison.Ordinal);
 
@@ -1613,6 +1632,9 @@ public sealed partial class FiscalDocumentService(
     /// <summary>The series of a guest document: the pattern of the profile (<c>GuestDocumentSeries</c>), else the default pattern (the year).</summary>
     private static string SeriesOf(OrgFiscalIssuerProfile profile, DateOnly today) =>
         FiscalNumberFormat.SeriesFor(profile.GuestDocumentSeries, today);
+
+    private static decimal ExtraGrossAmount(IEnumerable<FiscalDocumentLine> lines) =>
+        lines.Where(x => x.LineType == FiscalLineType.ExtraService).Sum(x => x.TotalPrice + (x.VatAmount ?? 0m));
 
     private async Task<FiscalDocumentPaymentState> PaymentStateAsync(Guid bookingId, decimal total, CancellationToken ct)
     {
@@ -1674,8 +1696,15 @@ public sealed partial class FiscalDocumentService(
             return;
 
         var collected = await CollectedByBookingAsync(db, own.Select(d => d.BookingId!.Value).Distinct().ToList(), ct);
+        var ids = own.Select(d => d.Id).ToList();
+        var paidExtras = await db.FiscalDocumentLines.AsNoTracking()
+            .Where(x => ids.Contains(x.DocumentId) && x.LineType == FiscalLineType.ExtraService)
+            .GroupBy(x => x.DocumentId)
+            .Select(g => new { DocumentId = g.Key, Paid = g.Sum(x => x.TotalPrice + (x.VatAmount ?? 0m)) })
+            .ToDictionaryAsync(x => x.DocumentId, x => x.Paid, ct);
         foreach (var document in own)
-            document.PaymentState = PaymentStateOf(collected.GetValueOrDefault(document.BookingId!.Value), document.Total);
+            document.PaymentState = PaymentStateOf(collected.GetValueOrDefault(document.BookingId!.Value),
+                document.Total - paidExtras.GetValueOrDefault(document.Id));
     }
 
     /// <summary>

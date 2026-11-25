@@ -112,10 +112,13 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
             !await IsAvailableAsync(extra, booking!, quantity, null, ct))
             throw Unavailable();
 
+        var amount = Price(extra, booking!, quantity);
+        if (amount > 999_999.99m) throw Unavailable();
+
         var order = new GuestHostExtraOrder
         {
             Id = scopedId, OrgId = portal.OrgId, BookingId = portal.BookingId, ExtraId = extraId,
-            Name = extra.Name, Quantity = quantity, Amount = Price(extra, booking!, quantity),
+            Name = extra.Name, Quantity = quantity, Amount = amount,
             Currency = StayCurrency.ForProperty(booking!.Property), CreatedAt = clock.GetUtcNow().UtcDateTime,
             Status = extra.RequiresApproval ? GuestHostExtraStatus.Requested : GuestHostExtraStatus.ReadyToPay
         };

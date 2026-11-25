@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.GuestPortal;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -86,9 +87,11 @@ public sealed class DocumentPlanService(AppDbContext db, IFiscalTaxRuleResolver 
         var services = DocumentPlanRules.AgencyServiceLineTypes(organization.CleaningFeeTreatment);
         var stay = new PlannedDocument(profile!.Id, signatoryOwnerId, false, DocumentPlanRules.AllLineTypes.Except(services).ToList(), coOwners);
 
-        // The agency's own document only when it bills something: the cleaning of the booking as its service (the model has no extras of a booking yet).
         var cleaning = Math.Clamp(booking.CleaningFee, 0m, Math.Max(booking.BasePrice, 0m));
-        return services.Contains(FiscalLineType.Cleaning) && cleaning > 0m
+        var agencyBillsExtras = await db.GuestHostExtraOrders.AsNoTracking().AnyAsync(x =>
+            x.OrgId == booking.OrgId && x.BookingId == booking.Id &&
+            (x.Status == GuestHostExtraStatus.Paid || x.Status == GuestHostExtraStatus.Fulfilled), ct);
+        return agencyBillsExtras || (services.Contains(FiscalLineType.Cleaning) && cleaning > 0m)
             ? new DocumentPlan(booking.Id, [stay, new PlannedDocument(organization.Id, null, true, services, [])], [])
             : new DocumentPlan(booking.Id, [stay], []);
     }
