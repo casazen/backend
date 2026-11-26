@@ -180,6 +180,7 @@ public class AppDbContext(
     /// </summary>
     public DbSet<TrustedSupplier> TrustedSuppliers { get; set; } = null!;
     public DbSet<GuestSupplierOffer> GuestSupplierOffers => Set<GuestSupplierOffer>();
+    public DbSet<GuestSupplierOrderDocument> GuestSupplierOrderDocuments => Set<GuestSupplierOrderDocument>();
     public DbSet<GuestSupplierOrder> GuestSupplierOrders => Set<GuestSupplierOrder>();
 
     /// <summary>
@@ -608,6 +609,11 @@ public class AppDbContext(
         base.OnModelCreating(modelBuilder);
         modelBuilder.ApplyConfiguration(new GuestSupplierOfferConfiguration());
         modelBuilder.ApplyConfiguration(new GuestSupplierOrderConfiguration());
+        modelBuilder.Entity<GuestSupplierOrderDocument>(entity =>
+        {
+            entity.HasOne<GuestSupplierOrder>().WithMany().HasForeignKey(d => d.OrderId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(d => new { d.OrderId, d.ContentHash }).IsUnique();
+        });
 
         modelBuilder.Entity<PropertyActivationCredential>().HasIndex(p => new { p.OrgId, p.ExpiresAt });
         modelBuilder.Entity<PropertyActivationCredentialAssignment>(assignment =>
@@ -2485,6 +2491,7 @@ public class AppDbContext(
         // UI-13a: the stored search keys and their indexes (global search, docs/runbooks/global-search.md).
         SearchKeyModel.Configure(modelBuilder);
 
+        modelBuilder.Entity<GuestHostExtraOrder>().HasOne<FiscalDocument>().WithMany().HasForeignKey(x => x.SupplementToDocumentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<GuestHostExtraOrder>().HasIndex(x => new { x.OrgId, x.BookingId });
         modelBuilder.Entity<GuestHostExtraOrder>().HasIndex(x => new { x.OrgId, x.ExtraId });
         modelBuilder.Entity<GuestHostExtra>().HasIndex(x => x.OrgId);
