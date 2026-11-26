@@ -17,13 +17,22 @@ public sealed class GuestSupplierStripeExpiryJob(
     {
         if (!GuestSupplierCheckout.Enabled(configuration)) return;
         var now = clock.GetUtcNow().UtcDateTime;
-        var expired = await db.GuestSupplierOrders
-            .Where(x => x.StripeSandbox && x.RequestedFor <= now &&
-                (x.State == GuestSupplierOrderState.Quoted || x.State == GuestSupplierOrderState.Authorized))
+        var pending = await db.GuestSupplierOrders
+            .Where(x => x.StripeSandbox && (x.State == GuestSupplierOrderState.PaymentProcessing ||
+                (x.State == GuestSupplierOrderState.Authorized && x.StripeCaptureBefore <= now) ||
+                (x.RequestedFor <= now && (x.State == GuestSupplierOrderState.Quoted || x.State == GuestSupplierOrderState.Authorized ||
+                    x.State == GuestSupplierOrderState.CardSaved || x.State == GuestSupplierOrderState.PaymentFailed ||
+                    x.State == GuestSupplierOrderState.PaymentActionRequired))))
             .OrderBy(x => x.RequestedFor).Take(100).ToListAsync(ct);
-        foreach (var order in expired)
+        foreach (var order in pending)
         {
-            try { await checkout.SupplierActionAsync(order, "decline", ct); }
+            try
+            {
+                if (order.RequestedFor > now || order.State == GuestSupplierOrderState.PaymentProcessing)
+                    await checkout.ReconcileAsync(order, ct);
+                else
+                    await checkout.SupplierActionAsync(order, "decline", ct);
+            }
             catch (StripeException ex)
             {
                 logger.LogWarning("Guest order {OrderId} expiry will retry, Stripe code {StripeCode}", order.Id, ex.StripeError?.Code);

@@ -10,6 +10,10 @@ namespace Casazen.Infrastructure.GuestPortal;
 /// <summary>Catalog and ledger rules for the guest portal supplier sandbox.</summary>
 public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
 {
+    public Task<int?> ConfiguredResponseMinutesAsync(Guid supplierOrgId, CancellationToken ct) =>
+        SupplierAgendaService.SettingsOf(db, supplierOrgId)
+            .Select(settings => (int?)settings.RespondWithinMinutes).SingleOrDefaultAsync(ct);
+
     public const string SimulationSetting = "GuestPortal:SupplierOrderSimulation";
     public const int MaxPriceCents = 10_000_000;
     public static readonly TimeSpan DisputeWindow = TimeSpan.FromHours(24);
@@ -74,7 +78,19 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         bool HostOrigin, int CommissionBasisPoints, bool Accepted, bool Enabled, uint Version, string ServiceName,
         string SupplierName, string PropertyName, string HostName);
 
-    public IQueryable<CatalogEntry> Catalog(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers, Guid? offerId = null, bool fixedPriceOnly = false)
+    public static bool Quote(GuestSupplierOrder order, int price, DateTime now)
+    {
+        if (order.State != GuestSupplierOrderState.PendingQuote || order.RequestedFor <= now || price is <= 0 or > MaxPriceCents)
+            return false;
+        var commission = Commission(price, order.CommissionBasisPoints);
+        if (order.StripeSandbox && price + commission < GuestSupplierCheckout.MinTotalCents) return false;
+        order.SupplierPriceCents = price;
+        order.CommissionCents = commission;
+        order.State = GuestSupplierOrderState.Quoted;
+        return true;
+    }
+
+    public IQueryable<CatalogEntry> Catalog(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers, Guid? offerId = null, bool fixedPriceOnly = false, bool includeQuoteRequests = false)
     {
         var trusted = TrustedSupplierIds(orgId, propertyId);
         return
@@ -83,7 +99,7 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         join supplier in db.SupplierProfiles.IgnoreQueryFilters() on offer.SupplierOrgId equals supplier.OrgId
         where (offerId == null || offer.Id == offerId) && offer.HostOrgId == orgId && offer.PropertyId == propertyId && offer.Accepted && offer.Enabled
               && (offer.HostOrigin ? trusted.Contains(offer.SupplierOrgId) : allowsRegionalSuppliers && supplier.GuestPortalMarketplaceEnabled)
-              && (!fixedPriceOnly || !listing.RequiresQuote && listing.PriceUnit == SupplierServicePriceUnit.PerJob &&
+              && (!fixedPriceOnly || includeQuoteRequests && listing.RequiresQuote || !listing.RequiresQuote && listing.PriceUnit == SupplierServicePriceUnit.PerJob &&
                   listing.PricesIncludeVat && listing.PriceFromCents > 0 && listing.PriceFromCents <= MaxPriceCents &&
                   (listing.PriceFromCents * (10_000L + offer.CommissionBasisPoints) + 5_000) / 10_000 >= GuestSupplierCheckout.MinTotalCents)
               && listing.OrgId == supplier.OrgId
@@ -113,7 +129,7 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
             order.RequestedFor, order.CompletedAt, order.SupplierPriceCents, order.CommissionCents,
             order.HostOrigin, total, order.RefundCents, commissionRefund, order.RequestNote, order.Complaint,
             includeInternal ? order.SupplierReply : null, order.Decision, order.StripeSandbox, order.RefundStatus == "retrying" ? "processing" : order.RefundStatus, order.RefundRequestedCents,
-            includeInternal ? order.BankDisputeStatus : null)
+            includeInternal ? order.BankDisputeStatus : null, order.StripeDeferred)
         {
             Payout = includeInternal && order.StripeSandbox && (order.StripePayoutClaimedAt != null || order.StripePayoutFailureCode != null)
                 ? new(order.StripeCardFeeCents, order.StripeSupplierTransferCents, order.StripeHostTransferCents,
@@ -128,7 +144,7 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
     public sealed record GuestSupplierOrderView(Guid Id, string ServiceName, string SupplierName, string State,
         DateTime RequestedFor, DateTime? CompletedAt, int SupplierPriceCents, int CommissionCents,
         bool HostOrigin, int TotalCents, int RefundCents, int CommissionRefundCents, string? RequestNote,
-        string? Complaint, string? SupplierReply, string? Decision, bool StripeSandbox, string? RefundStatus, int RefundRequestedCents, string? BankDisputeStatus)
+        string? Complaint, string? SupplierReply, string? Decision, bool StripeSandbox, string? RefundStatus, int RefundRequestedCents, string? BankDisputeStatus, bool StripeDeferred = false)
     {
         public GuestSupplierPayoutView? Payout { get; init; }
     }

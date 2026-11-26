@@ -4778,6 +4778,34 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("State")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("StripeDeferred")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("ExpectedSupplierConfirmationAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("StripeCaptureBefore")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("StripeSetupConsentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StripeSetupConsentVersion")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("StripeSetupIntentId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("StripeCustomerId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("StripeExpiredHoldIntentId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<int?>("StripeCardFeeCents")
                         .HasColumnType("integer");
 
@@ -4887,6 +4915,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("PropertyId");
+
+                    b.HasIndex("StripeSetupIntentId")
+                        .IsUnique();
 
                     b.HasIndex("StripePaymentIntentId")
                         .IsUnique();

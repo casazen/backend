@@ -232,11 +232,7 @@ public sealed partial class SupplierGuestOrdersController(AppDbContext db, Guest
 
         switch (request.Action)
         {
-            case "quote" when order.State == GuestSupplierOrderState.PendingQuote &&
-                    request.PriceCents is { } price && order.RequestedFor > orders.Now:
-                order.SupplierPriceCents = price;
-                order.CommissionCents = GuestSupplierOrders.Commission(price, order.CommissionBasisPoints);
-                order.State = GuestSupplierOrderState.Quoted;
+            case "quote" when request.PriceCents is { } price && GuestSupplierOrders.Quote(order, price, orders.Now):
                 break;
             case "accept" when order.State is GuestSupplierOrderState.Authorized or GuestSupplierOrderState.CardSaved &&
                     order.RequestedFor > orders.Now:

@@ -13,7 +13,7 @@ public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider 
     public const int MinTotalCents = 50;
     public const string Kind = "guest_supplier_order";
     public static readonly TimeSpan Horizon = TimeSpan.FromHours(48);
-    public sealed record Session(string ClientSecret, string PublishableKey);
+    public sealed record Session(string ClientSecret, string PublishableKey, string Mode = "payment");
 
     public static bool Enabled(IConfiguration? config) =>
         config?.GetValue<bool>($"{Section}:Enabled") == true &&
@@ -33,18 +33,20 @@ public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider 
     private PaymentIntentService Intents => new(client ??= new StripeClient(configuration[$"{Section}:SecretKey"]));
     private DateTime Now => clock.GetUtcNow().UtcDateTime;
 
-    public async Task<Session?> StartAsync(GuestSupplierOrder order, int total, CancellationToken ct)
+    public async Task<Session?> StartAsync(GuestSupplierOrder order, int total, CancellationToken ct, string? consentVersion = null)
     {
         if (!Enabled(configuration) || !order.StripeSandbox) return null;
         if (total != order.SupplierPriceCents + order.CommissionCents) return null;
+        if (order.StripeDeferred)
+            return await StartDeferredAsync(order, total, consentVersion, ct);
         var startedAt = Now;
         // Commit the first attempt timestamp before contacting Stripe, even if the SDK succeeds and the process dies.
         await db.GuestSupplierOrders.Where(x => x.Id == order.Id && x.StripeSandbox && x.StripeCheckoutStartedAt == null)
             .ExecuteUpdateAsync(u => u.SetProperty(x => x.StripeCheckoutStartedAt, startedAt), ct);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await LockAsync(order, ct);
-        if (order.State != GuestSupplierOrderState.Quoted || total != order.SupplierPriceCents + order.CommissionCents ||
-            total < MinTotalCents || order.RequestedFor <= Now || order.RequestedFor > Now + Horizon)
+        if (order.StripeDeferred || order.State != GuestSupplierOrderState.Quoted || total != order.SupplierPriceCents + order.CommissionCents ||
+            total < MinTotalCents || order.RequestedFor <= Now || NeedsSavedCard(order.CreatedAt, order.RequestedFor, order.ExpectedSupplierConfirmationAt))
             return null;
 
         PaymentIntent intent;
@@ -65,7 +67,7 @@ public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider 
         }
         else
         {
-            intent = await Intents.GetAsync(order.StripePaymentIntentId, cancellationToken: ct);
+            intent = await ReadIntentAsync(order.StripePaymentIntentId, ct);
             if (!Matches(order, intent)) return null;
         }
         Apply(order, intent);
@@ -80,11 +82,26 @@ public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider 
         if (!Enabled(configuration) || !order.StripeSandbox) return false;
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await LockAsync(order, ct);
+        if (order.StripeDeferred)
+        {
+            if (!await RefreshDeferredAsync(order, ct)) return false;
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return true;
+        }
         if (order.StripePaymentIntentId is null) return false;
-        var intent = await Intents.GetAsync(order.StripePaymentIntentId, cancellationToken: ct);
+        var intent = await ReadIntentAsync(order.StripePaymentIntentId, ct);
         if (!Matches(order, intent)) return false;
-        if (intent.Status == "requires_capture" && order.RequestedFor <= Now)
+        ReadCaptureDeadline(order, intent);
+        if (intent.Status == "requires_capture" && (order.RequestedFor <= Now || order.StripeCaptureBefore <= Now))
             intent = await ChangeAsync(order, capture: false, ct);
+        if (intent.Status == "canceled" && order.RequestedFor > Now && order.State is GuestSupplierOrderState.Quoted or GuestSupplierOrderState.Authorized)
+        {
+            RecoverExpiredHold(order);
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return true;
+        }
         if (!Matches(order, intent)) return false;
         Apply(order, intent);
         await db.SaveChangesAsync(ct);
@@ -97,6 +114,19 @@ public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider 
         if (!Enabled(configuration) || !order.StripeSandbox || action is not ("accept" or "decline")) return false;
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await LockAsync(order, ct);
+        if (order.StripeDeferred)
+        {
+            if (!await PrepareSupplierDecisionAsync(order, action, ct)) return false;
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            // Never confirm a PaymentIntent until its ID and the supplier decision have committed.
+            if (action == "accept" && order.State == GuestSupplierOrderState.PaymentProcessing)
+            {
+                await transaction.DisposeAsync();
+                return await ReconcileAsync(order, ct);
+            }
+            return true;
+        }
         var target = action == "accept" ? GuestSupplierOrderState.Accepted : GuestSupplierOrderState.Declined;
         if (order.State == target) return true;
         if (order.State is not (GuestSupplierOrderState.Quoted or GuestSupplierOrderState.Authorized)) return false;
@@ -107,15 +137,29 @@ public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider 
         }
         else
         {
-            var intent = await Intents.GetAsync(order.StripePaymentIntentId, cancellationToken: ct);
+            var intent = await ReadIntentAsync(order.StripePaymentIntentId, ct);
             if (!Matches(order, intent)) return false;
+            ReadCaptureDeadline(order, intent);
+            if (action == "accept" && order.RequestedFor > Now && (intent.Status == "canceled" ||
+                intent.Status == "requires_capture" && order.StripeCaptureBefore <= Now))
+            {
+                if (intent.Status != "canceled") intent = await ChangeAsync(order, capture: false, ct);
+                if (!Matches(order, intent) || intent.Status != "canceled") return false;
+                RecoverExpiredHold(order);
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                return false;
+            }
             if (action == "decline" && intent.Status is not ("canceled" or "succeeded") ||
                 intent.Status == "requires_capture" && order.RequestedFor <= Now)
                 intent = await ChangeAsync(order, capture: false, ct);
             else if (action == "accept" && intent.Status == "requires_capture" && intent.AmountCapturable == intent.Amount)
                 intent = await ChangeAsync(order, capture: true, ct);
             if (!Matches(order, intent)) return false;
-            Apply(order, intent);
+            if (action == "accept" && intent.Status == "canceled" && order.RequestedFor > Now)
+                RecoverExpiredHold(order);
+            else
+                Apply(order, intent);
         }
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
@@ -137,7 +181,7 @@ public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider 
                 ? await Intents.CaptureAsync(order.StripePaymentIntentId!, null, Key(order, "capture"), ct)
                 : await Intents.CancelAsync(order.StripePaymentIntentId!, null, Key(order, "cancel"), ct);
         }
-        catch (StripeException ex) when (ex.StripeError?.Code == "payment_intent_unexpected_state")
+        catch (StripeException ex) when (ex.StripeError?.Code is "payment_intent_unexpected_state" or "charge_expired_for_capture")
         {
             return await Intents.GetAsync(order.StripePaymentIntentId!, cancellationToken: ct);
         }
@@ -151,7 +195,9 @@ public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider 
         intent.TransferData is null && intent.ApplicationFeeAmount is null && string.IsNullOrEmpty(intent.OnBehalfOfId) &&
         (order.StripePaymentIntentId is null || intent.Id == order.StripePaymentIntentId) &&
         intent.Metadata?.GetValueOrDefault("kind") == Kind && intent.Metadata.GetValueOrDefault("orderId") == order.Id.ToString("D") &&
-        intent.CaptureMethod == "manual" && intent.Currency == "eur" && intent.Amount == order.SupplierPriceCents + order.CommissionCents;
+        (order.StripeDeferred
+            ? intent.CaptureMethod == "automatic" && order.StripeCustomerId is not null && intent.CustomerId == order.StripeCustomerId
+            : intent.CaptureMethod == "manual") && intent.Currency == "eur" && intent.Amount == order.SupplierPriceCents + order.CommissionCents;
 
     internal static void Apply(GuestSupplierOrder order, PaymentIntent intent)
     {
