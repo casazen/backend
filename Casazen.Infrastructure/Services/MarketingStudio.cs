@@ -201,7 +201,14 @@ public sealed partial class MarketingStudio(AppDbContext db, IAiProvider ai, IWe
         return campaign.Id;
     }
 
-    public static string TaggedDestination(MarketingAsset asset) =>
-        QueryHelpers.AddQueryString(asset.Destination!, new Dictionary<string, string?>
-        { ["utm_source"] = "casazen", ["utm_medium"] = asset.Channel, ["utm_campaign"] = asset.Id.ToString("D") });
+    public static string TaggedDestination(MarketingAsset asset)
+    {
+        var destination = new UriBuilder(asset.Destination!);
+        var query = QueryHelpers.ParseQuery(destination.Query);
+        query["utm_source"] = "casazen";
+        query["utm_medium"] = asset.Channel;
+        query["utm_campaign"] = asset.Id.ToString("D");
+        destination.Query = Microsoft.AspNetCore.Http.QueryString.Create(query).Value;
+        return destination.Uri.AbsoluteUri;
+    }
 }

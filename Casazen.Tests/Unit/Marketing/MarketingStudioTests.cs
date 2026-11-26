@@ -19,7 +19,7 @@ public class MarketingStudioTests
     [Fact]
     public void TrackingPreservesDestinationAndIncludesStableCampaignIdentity()
     {
-        var asset = new MarketingAsset { Destination = "https://villa.example.org/book?language=fr#availability", Channel = "newsletter" };
+        var asset = new MarketingAsset { Destination = "https://villa.example.org/book?language=fr&utm_campaign=old&utm_medium=other#availability", Channel = "newsletter" };
         var url = new Uri(MarketingStudio.TaggedDestination(asset));
         var query = QueryHelpers.ParseQuery(url.Query);
         Assert.Equal("fr", query["language"].ToString());
