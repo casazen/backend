@@ -79,14 +79,10 @@ public class AdminService(
             .Where(p => p.Status == PaymentStatus.Completed)
             .SumAsync(p => (decimal?)p.Amount) ?? 0m;
 
-        // OTA sync health — server-side aggregates; DateTime.MinValue means never synced
-        // (filter bypassed — platform-wide; OtaIntegrations is tenant-scoped since TN-2)
-        var otaSyncCutoff = now - OtaSyncThreshold;
-        var otaNever = await dbContext.OtaIntegrations.IgnoreQueryFilters().CountAsync(o => o.LastSyncAt == default);
-        var otaSynced = await dbContext.OtaIntegrations.IgnoreQueryFilters().CountAsync(o =>
-            o.LastSyncAt != default && o.LastSyncAt >= otaSyncCutoff);
-        var otaFailed = await dbContext.OtaIntegrations.IgnoreQueryFilters().CountAsync(o =>
-            o.LastSyncAt != default && o.LastSyncAt < otaSyncCutoff);
+        var cutoff = _clock.GetUtcNow().UtcDateTime - OtaSyncThreshold;
+        var otaNever = await OtaIntegrationsByStatus("neverSynced", cutoff).CountAsync();
+        var otaSynced = await OtaIntegrationsByStatus("synced", cutoff).CountAsync();
+        var otaFailed = await OtaIntegrationsByStatus("failed", cutoff).CountAsync();
 
         return new AdminStats(
             TotalProperties: totalProperties,
@@ -102,6 +98,35 @@ public class AdminService(
             OtaSynced: otaSynced,
             OtaFailed: otaFailed,
             OtaNeverSynced: otaNever);
+    }
+
+    private IQueryable<OtaIntegration> OtaIntegrationsByStatus(string status, DateTime cutoff)
+    {
+        var integrations = dbContext.OtaIntegrations.IgnoreQueryFilters().AsNoTracking();
+        return status switch
+        {
+            "neverSynced" => integrations.Where(row => row.LastSyncAt == default),
+            "synced" => integrations.Where(row => row.LastSyncAt != default && row.LastSyncAt >= cutoff),
+            "failed" => integrations.Where(row => row.LastSyncAt != default && row.LastSyncAt < cutoff),
+            _ => throw new ArgumentOutOfRangeException(nameof(status))
+        };
+    }
+
+    public async Task<(IEnumerable<OtaSyncItem> Items, int TotalCount)> GetOtaSyncAsync(
+        string status, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        LogPrivilegedCrossOrgRead(nameof(GetOtaSyncAsync));
+        var query = OtaIntegrationsByStatus(status, _clock.GetUtcNow().UtcDateTime - OtaSyncThreshold);
+        var total = await query.CountAsync(cancellationToken);
+        var offset = ((long)page - 1) * pageSize;
+        if (offset >= total) return ([], total);
+
+        var rows = await query.OrderBy(row => row.LastSyncAt).ThenBy(row => row.Id)
+            .Skip((int)offset).Take(pageSize)
+            .Select(row => new OtaSyncItem(row.Id, row.Property.Name, row.Platform,
+                row.LastSyncAt == default ? null : row.LastSyncAt))
+            .ToListAsync(cancellationToken);
+        return (rows, total);
     }
 
     public async Task<(IEnumerable<CinComplianceItem> Items, int TotalCount)> GetCinComplianceAsync(

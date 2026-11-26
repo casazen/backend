@@ -175,6 +175,41 @@ public class AdminServiceTests
     }
 
     [Fact]
+    public async Task OtaSyncReport_MatchesCountersAcrossOrganizationsAndPages()
+    {
+        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 11, 26, 9, 0, 0, TimeSpan.Zero));
+        var now = clock.GetUtcNow().UtcDateTime;
+        var org = Guid.NewGuid();
+        using var ctx = CreateTenantScopedContext(nameof(OtaSyncReport_MatchesCountersAcrossOrganizationsAndPages), org);
+        var other = Guid.NewGuid();
+        foreach (var (tenant, platform, lastSync) in new[] {
+            (org, "A", now.AddHours(-6)), (other, "B", now.AddHours(-7)),
+            (other, "C", now.AddHours(-9)), (other, "D", default(DateTime))
+        })
+        {
+            var property = new Property { OrgId = tenant, Name = platform, OwnerId = "owner", Address = "Via", City = "Roma" };
+            ctx.Properties.Add(property);
+            ctx.OtaIntegrations.Add(new OtaIntegration { OrgId = tenant, Property = property,
+                Platform = platform, ExternalPropertyId = platform, LastSyncAt = lastSync });
+        }
+        await ctx.SaveChangesAsync();
+        var service = CreateService(ctx, clock);
+        var stats = await service.GetStatsAsync();
+        var (failed, total) = await service.GetOtaSyncAsync("failed", 1, 1, default);
+        Assert.Equal(2, total);
+        Assert.Equal(stats.OtaFailed, total);
+        Assert.Equal("C", Assert.Single(failed).PropertyName);
+        var (second, _) = await service.GetOtaSyncAsync("failed", 2, 1, default);
+        Assert.Equal("B", Assert.Single(second).Platform);
+        var (never, neverTotal) = await service.GetOtaSyncAsync("neverSynced", 1, 20, default);
+        Assert.Equal(stats.OtaNeverSynced, neverTotal);
+        Assert.Null(Assert.Single(never).LastSyncAt);
+        var (synced, syncedTotal) = await service.GetOtaSyncAsync("synced", 1, 20, default);
+        Assert.Equal(stats.OtaSynced, syncedTotal);
+        Assert.Equal("A", Assert.Single(synced).Platform);
+    }
+
+    [Fact]
     public async Task GetCinComplianceAsync_AuthenticatedAdminContext_ReturnsRowsAcrossAllOrgs()
     {
         // Companion to F-H1 for the CIN-compliance bypass site: the regulatory report must remain
