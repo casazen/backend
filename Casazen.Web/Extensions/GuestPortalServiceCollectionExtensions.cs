@@ -29,10 +29,12 @@ public static class GuestPortalServiceCollectionExtensions
         services.AddScoped<GuestSupplierOrders>();
         services.AddScoped<GuestSupplierDocuments>();
         services.AddScoped<GuestSupplierCheckout>();
+        services.AddScoped<GuestSupplierCaseFiles>();
         services.AddScoped<GuestSupplierPayouts>();
         services.AddScoped<GuestPortalHostNotifications>();
         services.AddScoped<GuestPortalInvoiceData>();
         services.AddScoped<GuestHostExtraTranslator>();
+        services.AddScoped<GuestGuideTranslator>();
         services.AddScoped<GuestPortalRecovery>();
         services.AddScoped<GuestPortalContextAccessor>();
         services.AddScoped<IGuestPortalContextAccessor>(provider => provider.GetRequiredService<GuestPortalContextAccessor>());

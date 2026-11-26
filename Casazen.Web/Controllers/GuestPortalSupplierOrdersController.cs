@@ -13,7 +13,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Casazen.Web.Controllers;
 
 [FeatureGate(FeatureFlags.GuestPortalSupplierServices)]
-public sealed class GuestPortalSupplierOrdersController(
+public sealed partial class GuestPortalSupplierOrdersController(
     AppDbContext db, GuestSupplierOrders orders, IConfiguration configuration, IEnumerable<IGuestPortalPolicy> policies)
     : GuestPortalControllerBase
 {

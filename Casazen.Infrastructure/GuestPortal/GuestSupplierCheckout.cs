@@ -7,7 +7,7 @@ using Stripe;
 namespace Casazen.Infrastructure.GuestPortal;
 
 /// <summary>Platform-account card holds for guest supplier orders in a dedicated Stripe test environment.</summary>
-public sealed class GuestSupplierCheckout(AppDbContext db, TimeProvider clock, IConfiguration configuration)
+public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider clock, IConfiguration configuration)
 {
     public const string Section = "GuestPortal:SupplierStripeSandbox";
     public const int MinTotalCents = 50;

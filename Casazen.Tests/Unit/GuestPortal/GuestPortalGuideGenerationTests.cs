@@ -108,6 +108,33 @@ public class GuestPortalGuideGenerationTests
         Amenities = [PropertyAmenity.WiFi, PropertyAmenity.FreeParking],
     };
 
+    [Theory]
+    [InlineData("{\"house\":\"Hausschuhe tragen\"}", "Hausschuhe tragen")]
+    [InlineData("{\"wifi\":\"invented\"}", "Usare le pantofole")]
+    public async Task VisitorTranslationIncludesOnlyPublicProseAndFallsBackOnUnexpectedFields(string reply, string expected)
+    {
+        var ai = new Mock<IAiProvider>(MockBehavior.Strict);
+        ai.Setup(provider => provider.GenerateAsync(
+                It.Is<AiRequest>(r => r.Prompt == "{\"house\":\"Usare le pantofole\"}"),
+                AiModelTier.Economy, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AiGenerationResult(reply, 0, 0, AiModelTier.Economy, FromCache: false, ProviderConfigured: true));
+        var translator = new GuestGuideTranslator(ai.Object, Mock.Of<IAiResponseCache>(), NullLogger<GuestGuideTranslator>.Instance);
+        var guide = new GuestHouseGuide
+        {
+            House = "Usare le pantofole",
+            Arrival = "Contattare host@example.org",
+            Wifi = "secret-password",
+            Access = "entry-code",
+            Contacts = "private number"
+        };
+        var result = await translator.TranslateAsync(Guid.NewGuid(), guide.ForVisitor(false), "de", default);
+        Assert.Equal(expected, result.House);
+        Assert.Equal(guide.Arrival, result.Arrival);
+        Assert.Null(result.Wifi);
+        Assert.Null(result.Access);
+        Assert.Equal(guide.Contacts, result.Contacts);
+    }
+
     private static GuestPortalSetupSuggestions Build(IAiProvider ai) => new(ai,
         Mock.Of<IWebSearchClient>(), new AiResponseCache(Options.Create(new AiCacheOptions())),
         Mock.Of<IComuneDirectory>(), NullLogger<GuestPortalSetupSuggestions>.Instance);

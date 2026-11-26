@@ -85,6 +85,7 @@ public sealed class GuestSupplierPayouts(AppDbContext db, IConfiguration configu
             var recoveryError = await RecoverAsync(order, ct);
             if (recoveryError != null) return recoveryError;
         }
+        if (GuestSupplierRefunds.BlocksPayout(order)) return "adjustment_pending";
         if (order.State is not (GuestSupplierOrderState.Completed or GuestSupplierOrderState.Resolved))
             return "order_disputed";
         var intent = await new PaymentIntentService(Client).GetAsync(order.StripePaymentIntentId!,
@@ -96,10 +97,11 @@ public sealed class GuestSupplierPayouts(AppDbContext db, IConfiguration configu
         if (charge.BalanceTransaction is not { Currency: "eur" } balance || balance.Amount != charge.AmountCaptured ||
             balance.Fee < 0 || balance.Fee > int.MaxValue ||
             balance.Fee == 0 && balance.FeeDetails is not { Count: > 0 }) return "fee_unavailable";
-        if (charge.Disputed)
+        if (charge.Disputed || order.BankLossCents > 0)
         {
             var disputes = await new DisputeService(Client).ListAsync(new DisputeListOptions { Charge = charge.Id, Limit = 100 }, cancellationToken: ct);
-            if (disputes.HasMore || disputes.Data.Count == 0 || disputes.Data.Any(d => d.Status is not ("won" or "warning_closed")))
+            if (disputes.HasMore || disputes.Data.Count == 0 || disputes.Data.Any(d => d.Status is not ("won" or "lost" or "prevented" or "warning_closed")) ||
+                Math.Min(charge.AmountCaptured - order.RefundCents, disputes.Data.Where(d => d.Status == "lost").Sum(d => d.Amount)) != order.BankLossCents)
                 return "bank_dispute";
         }
         var refunds = await new RefundService(Client).ListAsync(new RefundListOptions { Charge = charge.Id, Limit = 100 }, cancellationToken: ct);
@@ -107,7 +109,14 @@ public sealed class GuestSupplierPayouts(AppDbContext db, IConfiguration configu
             refunds.Data.Where(r => r.Status == "succeeded").Sum(r => r.Amount) != order.RefundCents ||
             charge.AmountRefunded != order.RefundCents) return "refund_unreconciled";
 
-        var share = Split(order, (int)balance.Fee);
+        if (!order.StripePayoutClaimedAt.HasValue && order.BankLossCents + order.RefundCents == intent.AmountReceived)
+        {
+            // The entire charge was returned to the guest. There is no connected balance to pay.
+            order.StripeCardFeeCents = (int)balance.Fee;
+            order.StripeReleasedAt = now;
+            return null;
+        }
+        var share = Split(order, (int)balance.Fee, order.BankLossCents);
         if (share.Supplier < 0 || (share.Supplier == 0 && share.Host == 0))
             return "no_distributable_supplier_balance";
         if (!order.StripePayoutClaimedAt.HasValue)
@@ -149,13 +158,14 @@ public sealed class GuestSupplierPayouts(AppDbContext db, IConfiguration configu
         var transfers = await new TransferService(Client).ListAsync(
             new TransferListOptions { TransferGroup = Group(order), Limit = 100 }, cancellationToken: ct);
         if (transfers.HasMore) return "unexpected_transfers";
+        var reversed = false;
         foreach (var transfer in transfers.Data)
         {
             var role = transfer.Metadata?.GetValueOrDefault("role");
             if (role is not ("supplier" or "host") || !Record(order, role, transfer)) return "transfer_unverified";
-            if (transfer.AmountReversed != 0) return "transfer_reversed";
+            reversed |= transfer.AmountReversed != 0;
         }
-        return null;
+        return reversed ? "transfer_reversed" : null;
     }
 
     private async Task<string?> CreateTransferAsync(GuestSupplierOrder order, string role, CancellationToken ct)

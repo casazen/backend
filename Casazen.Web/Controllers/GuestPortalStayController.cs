@@ -13,11 +13,11 @@ using Microsoft.EntityFrameworkCore;
 namespace Casazen.Web.Controllers;
 
 public sealed class GuestPortalStayController(AppDbContext db, PortalCheckInSessions sessions, TimeProvider clock,
-    IAccessCodeService accessCodes, IFeatureFlags flags, GuestHouseGuideStorage guides)
+    IAccessCodeService accessCodes, IFeatureFlags flags, GuestHouseGuideStorage guides, GuestGuideTranslator translator)
     : GuestPortalControllerBase
 {
     [HttpGet("stay")]
-    public async Task<ActionResult<StayDetails>> GetStay(CancellationToken ct)
+    public async Task<ActionResult<StayDetails>> GetStay(CancellationToken ct, [FromQuery] string? guideLanguage = null)
     {
         var portal = Portal;
         var tomorrow = clock.TodayInRome().AddDays(1);
@@ -47,6 +47,8 @@ public sealed class GuestPortalStayController(AppDbContext db, PortalCheckInSess
             if (!accessAllowed)
                 guide = guide with { Access = null };
         }
+
+        guide = await translator.TranslateAsync(portal.OrgId, guide, guideLanguage, ct);
 
         var reviewAvailable = !row.HasReview && GuestPortalSetup.Read(row.GuestPortalSetupJson).ReviewsEnabled is not false
             && ReviewRules.Evaluate(portal.Source, portal.Status, portal.CheckOutDate, clock.TodayInRomeAsDateOnly(), guestPortal: true)

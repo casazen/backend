@@ -34,6 +34,16 @@ public sealed class GuestSupplierOrder
     public int SupplierPriceCents { get; set; }
     public int CommissionCents { get; set; }
     public int RefundCents { get; set; }
+    public string? CaseFileJson { get; set; }
+    public bool HumanReviewPending { get; set; }
+    [MaxLength(32)] public string? RefundStatus { get; set; }
+    public int RefundRequestedCents { get; set; }
+    public Guid? StripeRefundAttempt { get; set; }
+    public DateTime? StripeRefundAttemptedAt { get; set; }
+    [MaxLength(255)] public string? StripeRefundId { get; set; }
+    [MaxLength(32)] public string? BankDisputeStatus { get; set; }
+    public int BankLossCents { get; set; }
+    public string? BankDisputesJson { get; set; }
     public DateTime? StripeCheckoutStartedAt { get; set; }
     public bool StripeSandbox { get; set; }
     [MaxLength(255)] public string? StripePaymentIntentId { get; set; }
