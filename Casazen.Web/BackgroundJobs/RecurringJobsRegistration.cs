@@ -24,6 +24,12 @@ public static class RecurringJobsRegistration
     /// <param name="routineOptions">The interval of the time triggers of the routines (section <c>Routine</c>); the defaults when omitted.</param>
     public static void Configure(IRecurringJobManager recurringJobManager, IFeatureFlags featureFlags, RoutineOptions? routineOptions = null)
     {
+        if (featureFlags.IsEnabled(FeatureFlags.CrmMarketing))
+            recurringJobManager.AddOrUpdate<MarketingStudioJob>("marketing-studio", job => job.DispatchAsync(CancellationToken.None),
+                Cron.Hourly(), new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+        else
+            recurringJobManager.RemoveIfExists("marketing-studio");
+
         recurringJobManager.AddOrUpdate<AgencyUsageJob>(
             "agency-monthly-unit-usage", job => job.ExecuteAsync(CancellationToken.None),
             "*/5 * * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });

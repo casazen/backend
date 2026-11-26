@@ -513,6 +513,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISuppressionService, SuppressionService>();
         // NF-24: Marketing campaigns and guest segmentation (ADR-014).
         services.AddScoped<IConditionEvaluator, ConditionEvaluator>();
+        services.AddScoped<MarketingAiQuota>();
+        services.AddScoped<MarketingStudio>();
         services.AddScoped<ICampaignService, CampaignService>();
         // NF-26: Automation routines (ADR-022).
         services.AddScoped<RoutineBookingActions>();
