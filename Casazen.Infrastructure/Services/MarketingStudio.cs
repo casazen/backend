@@ -30,8 +30,11 @@ public sealed partial class MarketingStudio(AppDbContext db, IAiProvider ai, IWe
     public static readonly string[] Channels = ["email", "newsletter", "instagram", "facebook", "linkedin",
         "google-ads", "meta-ads", "linkedin-ads", "microsoft-ads", "chatgpt-ads"];
 
-    public IQueryable<MarketingAsset> Assets(HostScope scope) =>
-        db.MarketingAssets.Where(a => a.OrgId == scope.OrgId && a.DismissedAt == null && db.Properties.Where(p => p.OrgId == scope.OrgId).InScope(scope).Any(p => p.Id == a.PropertyId));
+    public IQueryable<MarketingAsset> Assets(HostScope scope)
+    {
+        var properties = db.Properties.Where(p => p.OrgId == scope.OrgId).InScope(scope);
+        return db.MarketingAssets.Where(a => a.OrgId == scope.OrgId && a.DismissedAt == null && properties.Any(p => p.Id == a.PropertyId));
+    }
 
     public async Task<StudioSettings> SettingsAsync(HostScope scope, CancellationToken ct)
     {
