@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.GuestPortal;
 using Casazen.Infrastructure.Data;
 using Moq;
@@ -239,8 +240,8 @@ public sealed class GuestSupplierStripeSandboxTests
             OrgId = host.Id,
             PropertyId = property.Id,
             GuestId = guest.Id,
-            CheckInDate = now.Date,
-            CheckOutDate = now.Date.AddDays(2),
+            CheckInDate = RomeCalendar.TodayAt(now),
+            CheckOutDate = RomeCalendar.TodayAt(now).AddDays(2),
             NumberOfGuests = 1
         };
         var order = new GuestSupplierOrder
