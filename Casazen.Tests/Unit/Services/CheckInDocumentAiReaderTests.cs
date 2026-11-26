@@ -35,9 +35,19 @@ public class CheckInDocumentAiReaderTests
     {
         var card = new DocumentOcrResult
         {
-            GivenNames = "ALBA", Surname = "ROSSI", Sex = "F", DocumentKind = "IdentityCard", HasDocumentEvidence = true,
-            DocumentNumber = "CA12345ZZ", DateOfBirth = new DateTime(1994, 2, 12), BirthPlace = "ROMA", BirthProvince = "RM",
-            PlaceOfIssue = "MILANO", DateOfIssue = new DateTime(2022, 3, 11), ExpirationDate = new DateTime(2032, 3, 11), Nationality = "ITA",
+            GivenNames = "ALBA",
+            Surname = "ROSSI",
+            Sex = "F",
+            DocumentKind = "IdentityCard",
+            HasDocumentEvidence = true,
+            DocumentNumber = "CA12345ZZ",
+            DateOfBirth = new DateTime(1994, 2, 12),
+            BirthPlace = "ROMA",
+            BirthProvince = "RM",
+            PlaceOfIssue = "MILANO",
+            DateOfIssue = new DateTime(2022, 3, 11),
+            ExpirationDate = new DateTime(2032, 3, 11),
+            Nationality = "ITA",
         };
         var result = await ReadAsync("", new(card));
         Assert.True(result.Read);
@@ -49,10 +59,22 @@ public class CheckInDocumentAiReaderTests
     [Fact]
     public async Task MachineReadableBackSuppliesIdentityAndPrintedResidenceOnSameImage()
     {
-        var mrz = new MrzExtractionResult { CheckDigitsValid = true, Surname = "ROSSI", GivenNames = "ALBA",
-            DocumentType = "IdCard", IssuingState = "ITA", DocumentNumber = "CA12345ZZ" };
-        var printed = new DocumentOcrResult { ResidenceStreet = "VIA ROMA 8", ResidencePostalCode = "00100",
-            ResidenceCityName = "ROMA", ResidenceProvince = "RM" };
+        var mrz = new MrzExtractionResult
+        {
+            CheckDigitsValid = true,
+            Surname = "ROSSI",
+            GivenNames = "ALBA",
+            DocumentType = "IdCard",
+            IssuingState = "ITA",
+            DocumentNumber = "CA12345ZZ"
+        };
+        var printed = new DocumentOcrResult
+        {
+            ResidenceStreet = "VIA ROMA 8",
+            ResidencePostalCode = "00100",
+            ResidenceCityName = "ROMA",
+            ResidenceProvince = "RM"
+        };
         var result = await ReadAsync("", new(printed), mrz);
         Assert.True(result.Read);
         Assert.Equal("back", result.Side);
