@@ -103,6 +103,10 @@ public static class RecurringJobsRegistration
             "guest-supplier-stripe-adjustments", job => job.ExecuteAsync(CancellationToken.None),
             "*/5 * * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        recurringJobManager.AddOrUpdate<GuestSupplierPayoutJob>(
+            "guest-supplier-sandbox-transfers", job => job.ExecuteAsync(CancellationToken.None),
+            "*/5 * * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<GuestSupplierStripeExpiryJob>(
             "guest-supplier-stripe-expiry", job => job.ExecuteAsync(CancellationToken.None),
             "*/5 * * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
