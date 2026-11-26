@@ -30,10 +30,24 @@ public class MarketingStudioWorkflowHttpTests(MarketingWorkflowFactory factory) 
         var property = await factory.SeedPropertyAsync(owner);
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var approve = new Core.Entities.MarketingAsset { OrgId = org, PropertyId = property.Id, SegmentId = Guid.NewGuid(),
-            Channel = "instagram", Body = "Post", Subject = "Ospitalità" };
-        var dismiss = new Core.Entities.MarketingAsset { OrgId = org, PropertyId = property.Id, SegmentId = approve.SegmentId,
-            Channel = "facebook", Body = "Post", Subject = "Estate" };
+        var approve = new Core.Entities.MarketingAsset
+        {
+            OrgId = org,
+            PropertyId = property.Id,
+            SegmentId = Guid.NewGuid(),
+            Channel = "instagram",
+            Body = "Post",
+            Subject = "Ospitalità"
+        };
+        var dismiss = new Core.Entities.MarketingAsset
+        {
+            OrgId = org,
+            PropertyId = property.Id,
+            SegmentId = approve.SegmentId,
+            Channel = "facebook",
+            Body = "Post",
+            Subject = "Estate"
+        };
         db.MarketingAssets.AddRange(approve, dismiss);
         await db.SaveChangesAsync();
 

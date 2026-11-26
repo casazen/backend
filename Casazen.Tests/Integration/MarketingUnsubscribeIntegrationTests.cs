@@ -56,8 +56,17 @@ public class MarketingUnsubscribeIntegrationTests(CasazenWebApplicationFactory f
         await using var host = factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
             config.AddInMemoryCollection(new Dictionary<string, string?> { ["Email:MarketingWebhookSecret"] = "whsec-" + Convert.ToBase64String(key) })));
         var org = await factory.SeedOrgForOwnerAsync($"auth0|marketing-metrics-{Guid.NewGuid():N}");
-        var delivery = new CampaignDelivery { OrgId = org.Id, CampaignId = Guid.NewGuid(), ProfileId = Guid.NewGuid(),
-            ContactId = Guid.NewGuid(), Month = 202611, Slot = 1, CreatedAt = DateTime.UtcNow, Status = "Sent" };
+        var delivery = new CampaignDelivery
+        {
+            OrgId = org.Id,
+            CampaignId = Guid.NewGuid(),
+            ProfileId = Guid.NewGuid(),
+            ContactId = Guid.NewGuid(),
+            Month = 202611,
+            Slot = 1,
+            CreatedAt = DateTime.UtcNow,
+            Status = "Sent"
+        };
         await using (var scope = host.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

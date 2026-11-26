@@ -28,8 +28,15 @@ public sealed partial class MarketingStudio
     {
         var property = await db.Properties.Where(p => p.OrgId == scope.OrgId).InScope(scope).SingleOrDefaultAsync(p => p.Id == propertyId, ct)
             ?? throw Invalid("property_not_found");
-        var asset = new MarketingAsset { OrgId = scope.OrgId, PropertyId = propertyId, SegmentId = segmentId,
-            Channel = "email", Subject = subject, Body = html };
+        var asset = new MarketingAsset
+        {
+            OrgId = scope.OrgId,
+            PropertyId = propertyId,
+            SegmentId = segmentId,
+            Channel = "email",
+            Subject = subject,
+            Body = html
+        };
         await SetDestinationAsync(asset, await SettingsAsync(scope, ct), property, ct);
         await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
         var campaign = await campaigns.CreateDraftAsync(scope.OrgId, segmentId, subject, WithPropertyLink(asset, html), aiGenerated, ct, propertyId);

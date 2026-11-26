@@ -22,11 +22,14 @@ public class MarketingStudioAudienceTests
         var org = new OrgEntity { Name = "Host" };
         var property = new Property { OrgId = org.Id, OwnerId = "host", Name = "Villa" };
         var segment = new GuestSegment { OrgId = org.Id, Name = "Guests", ConditionJson = "{}" };
-        db.AddRange(org, property, segment, new MarketingStudioSettings { OrgId = org.Id,
-            PropertyUrlsJson = JsonSerializer.Serialize(new Dictionary<Guid, string> { [property.Id] = "https://villa.example" }) });
+        db.AddRange(org, property, segment, new MarketingStudioSettings
+        {
+            OrgId = org.Id,
+            PropertyUrlsJson = JsonSerializer.Serialize(new Dictionary<Guid, string> { [property.Id] = "https://villa.example" })
+        });
         await db.SaveChangesAsync();
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-            { ["App:ApiBaseUrl"] = "https://api.example" }).Build();
+        { ["App:ApiBaseUrl"] = "https://api.example" }).Build();
         var campaigns = Casazen.Tests.Unit.Services.CampaignServiceTests.NewService(db, Mock.Of<Casazen.Infrastructure.External.IEmailService>(),
             Casazen.Tests.Unit.Services.CampaignServiceTests.Links());
         var studio = new MarketingStudio(db, Mock.Of<IAiProvider>(), Mock.Of<IWebSearchClient>(), null!,
