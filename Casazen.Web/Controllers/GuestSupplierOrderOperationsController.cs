@@ -20,7 +20,7 @@ namespace Casazen.Web.Controllers;
 [FeatureGate(FeatureFlags.GuestPortal)]
 [FeatureGate(FeatureFlags.GuestPortalSupplierServices)]
 [PrivateAnswer]
-public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupplierOrders orders, IConfiguration configuration,
+public sealed partial class HostGuestSupplierOrdersController(AppDbContext db, GuestSupplierOrders orders, IConfiguration configuration,
     IHostResourceLookup resources, IAuthorizationService authorization, IOrgContextResolver orgs, IHostSupplierCatalogService catalog, ITrustedSupplierService invitations, ISupplierComuneMatcher comuneMatcher,
     Microsoft.Extensions.Options.IOptions<Casazen.Core.Options.SupplierPaymentsOptions> paymentOptions, GuestSupplierCheckout? checkout = null) : ControllerBase
 {
@@ -181,7 +181,7 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
 [FeatureGate(FeatureFlags.GuestPortal)]
 [FeatureGate(FeatureFlags.GuestPortalSupplierServices)]
 [PrivateAnswer]
-public sealed class SupplierGuestOrdersController(AppDbContext db, GuestSupplierOrders orders, IConfiguration configuration,
+public sealed partial class SupplierGuestOrdersController(AppDbContext db, GuestSupplierOrders orders, IConfiguration configuration,
     ISupplierOrgContextResolver orgs, GuestSupplierCheckout? checkout = null) : ControllerBase
 {
     [HttpGet]
@@ -279,7 +279,7 @@ public sealed class SupplierGuestOrdersController(AppDbContext db, GuestSupplier
 [FeatureGate(FeatureFlags.GuestPortal)]
 [FeatureGate(FeatureFlags.GuestPortalSupplierServices)]
 [PrivateAnswer]
-public sealed class AdminGuestSupplierOrdersController(AppDbContext db, GuestSupplierOrders orders, IConfiguration configuration, GuestSupplierCheckout? checkout = null) : ControllerBase
+public sealed partial class AdminGuestSupplierOrdersController(AppDbContext db, GuestSupplierOrders orders, IConfiguration configuration, GuestSupplierCheckout? checkout = null) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct)
@@ -288,7 +288,7 @@ public sealed class AdminGuestSupplierOrdersController(AppDbContext db, GuestSup
             return NotFound();
 
         var open = await db.GuestSupplierOrders.AsNoTracking()
-            .Where(x => (!x.HostOrigin && x.State == GuestSupplierOrderState.Disputed) ||
+            .Where(x => (!x.HostOrigin && (x.State == GuestSupplierOrderState.Disputed || x.HumanReviewPending)) ||
                 x.BankDisputeStatus == "open" || x.BankDisputeStatus == "recovery_pending")
             .OrderBy(x => x.CreatedAt).ToListAsync(ct);
         return Ok(open.Select(x => orders.View(x, true)));

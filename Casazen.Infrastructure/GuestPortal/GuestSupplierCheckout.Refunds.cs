@@ -7,7 +7,7 @@ namespace Casazen.Infrastructure.GuestPortal;
 public static class GuestSupplierRefunds
 {
     public static bool BlocksPayout(GuestSupplierOrder order) =>
-        order.RefundStatus is "processing" or "failed" or "review" ||
+        order.HumanReviewPending || order.RefundStatus is "processing" or "failed" or "review" ||
         order.BankDisputeStatus is "open" or "recovery_pending";
 }
 
