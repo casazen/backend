@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Ross1000;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -15,7 +16,8 @@ namespace Casazen.Infrastructure.Services;
 public sealed class PropertyIstatCredentialsService(
     AppDbContext db,
     ILogger<PropertyIstatCredentialsService> logger,
-    TimeProvider? timeProvider = null) : IPropertyIstatCredentialsService
+    TimeProvider? timeProvider = null,
+    IRoss1000DirectRoute? directRoute = null) : IPropertyIstatCredentialsService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -40,7 +42,11 @@ public sealed class PropertyIstatCredentialsService(
         ArgumentNullException.ThrowIfNull(credentials);
         var now = _clock.GetUtcNow().UtcDateTime;
 
+        await using var guard = await LockAsync(db, propertyId, cancellationToken);
         var row = await db.PropertyIstatCredentials.FirstOrDefaultAsync(c => c.PropertyId == propertyId, cancellationToken);
+        if (directRoute != null && await directRoute.EffectiveFromAsync(orgId, propertyId, cancellationToken) != null &&
+            !string.Equals(row?.StructureCode, credentials.StructureCode?.Trim(), StringComparison.Ordinal))
+            throw new Ross1000Problem("ross1000_structure_locked");
         if (row is null)
         {
             row = new PropertyIstatCredentials { PropertyId = propertyId, OrgId = orgId, CreatedAt = now };
@@ -68,15 +74,23 @@ public sealed class PropertyIstatCredentialsService(
 
     public async Task<bool> DeleteAsync(Guid propertyId, CancellationToken cancellationToken = default)
     {
+        await using var guard = await LockAsync(db, propertyId, cancellationToken);
         var row = await db.PropertyIstatCredentials.FirstOrDefaultAsync(c => c.PropertyId == propertyId, cancellationToken);
         if (row is null)
             return false;
 
+        if (directRoute != null && await directRoute.EffectiveFromAsync(row.OrgId, propertyId, cancellationToken) != null)
+            throw new Ross1000Problem("ross1000_structure_locked");
         db.PropertyIstatCredentials.Remove(row);
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("ISTAT credentials of property {PropertyId} removed", propertyId);
         return true;
     }
+
+    // The same cross-process lock as activation. Outside PostgreSQL the shared helper is a no-op.
+    internal static async Task<IAsyncDisposable> LockAsync(AppDbContext context, Guid propertyId, CancellationToken ct) =>
+        await PostgresAdvisoryLocks.TryAcquireSessionLockAsync(context,
+            (PostgresAdvisoryLocks.Scope)21145, propertyId.ToString("N"), ct) ?? throw new Ross1000Problem("ross1000_sender_busy");
 
     private static void Apply(PropertyIstatCredentials row, IstatCredentialsInput credentials, DateTime now)
     {

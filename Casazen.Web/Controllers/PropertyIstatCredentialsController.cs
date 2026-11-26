@@ -1,4 +1,7 @@
 using Casazen.Core.Authorization;
+using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Ross1000;
+using Microsoft.EntityFrameworkCore;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
@@ -19,18 +22,22 @@ namespace Casazen.Web.Controllers;
 /// <para>TN-3: the property is authorized as a <see cref="HostResource"/> (org, <c>property.*</c> permission, owner of the property or org-wide role).
 /// Another org's property answers 404, a property of the same org the caller may not manage answers 403. Every change is logged with the user and
 /// the property, never with a value.</para>
-/// <para>Behind <c>Features:OctorateOnboarding</c>, like the support vault: 404 while it is off, before authentication.</para>
+/// <para>Available through onboarding or for a property in the enabled Como direct-submission pilot.</para>
 /// </remarks>
 [ApiController]
 [Route("api/properties/{propertyId:guid}/istat-credentials")]
-[FeatureGate(FeatureFlags.OctorateOnboarding)]
+
 [Authorize(Policy = CasazenPolicies.PropertyRead)]
 [PrivateAnswer]
 public sealed class PropertyIstatCredentialsController(
     IPropertyIstatCredentialsService credentialsService,
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
-    ILogger<PropertyIstatCredentialsController> logger) : ControllerBase
+    ILogger<PropertyIstatCredentialsController> logger,
+    IFeatureFlags flags,
+    AppDbContext db,
+    IConfiguration configuration,
+    IHostEnvironment environment) : ControllerBase
 {
     /// <summary>Whether the property has ISTAT credentials, and since when.</summary>
     [HttpGet]
@@ -60,7 +67,9 @@ public sealed class PropertyIstatCredentialsController(
         if (denied is not null)
             return denied;
 
-        var status = await credentialsService.SetAsync(propertyId, resource!.OrgId, request.ToInput(), HttpContext.RequestAborted);
+        IstatCredentialsStatus status;
+        try { status = await credentialsService.SetAsync(propertyId, resource!.OrgId, request.ToInput(), HttpContext.RequestAborted); }
+        catch (Ross1000Problem problem) { return CredentialConflict(problem); }
         logger.LogInformation("User {UserId} set the ISTAT credentials of property {PropertyId}", User.GetUserId(), propertyId);
         return Ok(IstatCredentialsStatusDto.From(status));
     }
@@ -77,17 +86,30 @@ public sealed class PropertyIstatCredentialsController(
         if (denied is not null)
             return denied;
 
-        if (await credentialsService.DeleteAsync(propertyId, HttpContext.RequestAborted))
+        bool deleted;
+        try { deleted = await credentialsService.DeleteAsync(propertyId, HttpContext.RequestAborted); }
+        catch (Ross1000Problem problem) { return CredentialConflict(problem); }
+        if (deleted)
             logger.LogInformation("User {UserId} removed the ISTAT credentials of property {PropertyId}", User.GetUserId(), propertyId);
 
         return NoContent();
     }
 
+    private ConflictObjectResult CredentialConflict(Ross1000Problem problem) => Conflict(new
+    {
+        code = problem.Message,
+        detail = problem.Message == "ross1000_structure_locked"
+            ? "La struttura usa l'invio diretto. Mantieni lo stesso codice ROSS1000 per aggiornare le credenziali."
+            : "È in corso un cambio di mittente. Riprova al termine."
+    });
+
     private async Task<(HostResource? Resource, ActionResult? Denied)> AuthorizePropertyAsync(Guid propertyId, HostOperationRequirement operation)
     {
         // Tenant filter: another org's property is not found.
         var resource = await hostResources.ForPropertyAsync(propertyId, HttpContext.RequestAborted);
-        if (resource is null)
+        if (resource is null || (!flags.IsEnabled(FeatureFlags.OctorateOnboarding) &&
+            (!Ross1000DayService.IsEnabled(configuration, environment) || !await db.Properties.AnyAsync(p => p.Id == propertyId &&
+                p.OrgId == resource.OrgId && p.Country == "IT" && p.ComuneIstatCode != null && p.ComuneIstatCode.StartsWith("013"), HttpContext.RequestAborted))))
             return (null, this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound"));
 
         if (!await authorizationService.IsAuthorizedAsync(User, resource, operation))
