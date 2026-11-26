@@ -20,6 +20,7 @@ using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit.Push;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Npgsql;
 using Xunit;
 using Xunit.Sdk;
 using World = Casazen.Tests.Integration.Acceptance.AcceptanceScenarioBuilder;
@@ -510,7 +511,24 @@ public class TicinoPilotScenarioTests
             var declaration = await scope.Db.SwissNotificationDeclarations.AsNoTracking().SingleAsync();
             Assert.Equal((world.PropertyId, Arrival), (declaration.PropertyId, declaration.ArrivalDay));
             if (scope.Db.Database.IsNpgsql())
+            {
                 Assert.Null(declaration.ReceiptId);
+
+                // What only the database keeps: a day is declared once even when two people declare it at the same moment (the service replays the first declaration, but it is the unique index
+                // that decides the race). A second declaration of the day inserted straight into the table is refused with 23505 on that index.
+                await using var duplicate = world.OpenTicinoScope();
+                duplicate.Db.SwissNotificationDeclarations.Add(new SwissNotificationDeclaration
+                {
+                    OrgId = world.OrgId,
+                    PropertyId = world.PropertyId,
+                    ArrivalDay = Arrival,
+                    DeclaredByUserId = World.AgencyUser,
+                    DeclaredAt = world.Clock.GetUtcNow().UtcDateTime,
+                });
+                var refused = await Assert.ThrowsAsync<DbUpdateException>(() => duplicate.Db.SaveChangesAsync());
+                var violation = Assert.IsType<PostgresException>(refused.InnerException);
+                Assert.Equal((PostgresErrorCodes.UniqueViolation, SwissNotificationDeclaration.DefaultRegimeIndexName), (violation.SqlState, violation.ConstraintName));
+            }
         }
 
         // ------------------------------------------------------------ NF-128: no personal data
