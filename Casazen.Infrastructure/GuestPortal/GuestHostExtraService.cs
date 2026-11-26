@@ -12,8 +12,6 @@ using Stripe;
 
 namespace Casazen.Infrastructure.GuestPortal;
 
-public sealed record GuestHostExtraOffer(Guid Id, string Name, string Description, decimal UnitPrice,
-    string Currency, bool ByQuantity, bool RequiresApproval);
 public sealed record GuestHostExtraPayment(string ClientSecret, string PublishableKey, string StripeAccountId);
 public sealed record GuestHostExtraOrderView(Guid Id, string Name, int Quantity, decimal Amount, string Currency, GuestHostExtraStatus Status)
 {
@@ -63,11 +61,11 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
         return (extra.Id, false);
     }
 
-    public async Task<(IReadOnlyList<GuestHostExtraOffer> Offers, IReadOnlyList<GuestHostExtraOrderView> Orders)> ListAsync(
+    public async Task<(IReadOnlyList<DirectCheckoutExtraOffer> Offers, IReadOnlyList<GuestHostExtraOrderView> Orders)> ListAsync(
         PortalContext portal, CancellationToken ct, string? language = null)
     {
         var displayLanguage = GuestLanguages.Normalize(language) ?? portal.Language;
-        var offers = new List<GuestHostExtraOffer>();
+        var offers = new List<DirectCheckoutExtraOffer>();
         var orders = await Orders(portal).OrderByDescending(x => x.CreatedAt).ToListAsync(ct);
         var booking = await BookingAsync(portal, ct);
         if (CanSell(booking) && await AllowsSalesAsync(portal, ct))
@@ -80,13 +78,117 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
                 if (!orders.Any(x => x.ExtraId == extra.Id && IsActive(x.Status)) &&
                     await IsAvailableAsync(extra, booking!, 1, null, ct))
                 {
-                    var copy = GuestHostExtraTranslator.ForLanguage(extra.TranslationsJson, displayLanguage);
-                    offers.Add(new(extra.Id, copy?.Name ?? extra.Name, copy?.Description ?? extra.Description, Price(extra, booking!, 1),
-                        StayCurrency.ForProperty(booking!.Property), extra.Pricing == GuestHostExtraPricing.PerUnit, extra.RequiresApproval));
+                    offers.Add(Offer(extra, booking!, displayLanguage));
                 }
             }
         }
         return (offers, orders.Select(GuestHostExtraOrderView.From).ToList());
+    }
+
+    public async Task<IReadOnlyList<DirectCheckoutExtraOffer>> CheckoutOffersAsync(Property property, DateTime arrival,
+        DateTime departure, int guests, string? language, CancellationToken ct)
+    {
+        if (!CheckoutUsesTestKeys() || await db.Orgs.AsNoTracking().SingleOrDefaultAsync(x => x.Id == property.OrgId, ct) is not { CanTakeDirectPayments: true })
+            return [];
+
+        var stay = new Booking
+        {
+            PropertyId = property.Id,
+            Property = property,
+            OrgId = property.OrgId,
+            CheckInDate = arrival,
+            CheckOutDate = departure,
+            NumberOfGuests = guests
+        };
+        var catalog = await db.GuestHostExtras.AsNoTracking()
+            .Where(x => x.OrgId == property.OrgId && x.PropertyIds.Contains(property.Id)).OrderBy(x => x.Name).ToListAsync(ct);
+        var offers = new List<DirectCheckoutExtraOffer>();
+        foreach (var extra in catalog)
+        {
+            if (!await IsAvailableAsync(extra, stay, 1, null, ct)) continue;
+            offers.Add(Offer(extra, stay, language));
+        }
+        return offers;
+    }
+
+    private bool CheckoutUsesTestKeys()
+    {
+        var secret = configuration["Stripe:SecretKey"];
+        return configuration["Stripe:PublishableKey"]?.StartsWith("pk_test_", StringComparison.Ordinal) == true &&
+            (secret?.StartsWith("sk_test_", StringComparison.Ordinal) == true || secret?.StartsWith("rk_test_", StringComparison.Ordinal) == true);
+    }
+
+    private static DirectCheckoutExtraOffer Offer(GuestHostExtra extra, Booking booking, string? language)
+    {
+        var copy = GuestHostExtraTranslator.ForLanguage(extra.TranslationsJson, GuestLanguages.Normalize(language) ?? "it");
+        return new(extra.Id, copy?.Name ?? extra.Name, copy?.Description ?? extra.Description, Price(extra, booking, 1),
+            StayCurrency.ForProperty(booking.Property), extra.Pricing == GuestHostExtraPricing.PerUnit, extra.RequiresApproval);
+    }
+
+    public async Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction?> LockCheckoutAsync(
+        IReadOnlyList<DirectCheckoutExtra> selections, CancellationToken ct)
+    {
+        if (!CheckoutUsesTestKeys() || selections.Count > 50 || selections.Any(s => s is null || s.Id == Guid.Empty || s.Quantity is < 1 or > 100) ||
+            selections.Select(s => s.Id).Distinct().Count() != selections.Count)
+            throw Unavailable();
+        return await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct, selections.Select(s => s.Id).Order()
+            .Select(id => (PostgresAdvisoryLocks.Scope.GuestHostExtra, id.ToString("N"))).ToArray());
+    }
+
+    public async Task<decimal> PrepareCheckoutAsync(Booking booking, Property property,
+        IReadOnlyList<DirectCheckoutExtra> selections, CancellationToken ct)
+    {
+        var ids = selections.Select(s => s.Id).ToArray();
+        var catalog = await db.GuestHostExtras.AsNoTracking().Where(x => x.OrgId == booking.OrgId &&
+            x.PropertyIds.Contains(property.Id) && ids.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+        // Use the same stay facts as the portal without attaching the existing property to the new booking graph.
+        var stay = new Booking
+        {
+            Id = booking.Id,
+            OrgId = booking.OrgId,
+            PropertyId = booking.PropertyId,
+            Property = property,
+            CheckInDate = booking.CheckInDate,
+            CheckOutDate = booking.CheckOutDate,
+            NumberOfGuests = booking.NumberOfGuests
+        };
+        decimal collected = 0;
+        var orders = new List<GuestHostExtraOrder>();
+        foreach (var selection in selections)
+        {
+            if (!catalog.TryGetValue(selection.Id, out var extra) ||
+                (extra.Pricing != GuestHostExtraPricing.PerUnit && selection.Quantity != 1) ||
+                Price(extra, stay, 1) != selection.ExpectedUnitPrice ||
+                !await IsAvailableAsync(extra, stay, selection.Quantity, null, ct))
+                throw Unavailable();
+            var amount = Price(extra, stay, selection.Quantity);
+            if (amount > 999_999.99m) throw Unavailable();
+            var bundled = !extra.RequiresApproval && booking.PaymentOption != PaymentOption.OnSite;
+            if (bundled) collected += amount;
+            orders.Add(new()
+            {
+                OrgId = booking.OrgId,
+                BookingId = booking.Id,
+                ExtraId = extra.Id,
+                Name = extra.Name,
+                Quantity = selection.Quantity,
+                Amount = amount,
+                Currency = StayCurrency.ForProperty(property),
+                CreatedAt = clock.GetUtcNow().UtcDateTime,
+                Status = bundled ? GuestHostExtraStatus.PendingBookingPayment :
+                    extra.RequiresApproval ? GuestHostExtraStatus.AwaitingAuthorization : GuestHostExtraStatus.ReadyToPay
+            });
+        }
+        db.GuestHostExtraOrders.AddRange(orders);
+        return collected;
+    }
+
+    public static async Task RecordBookingPaymentAsync(AppDbContext db, Booking booking, CancellationToken ct)
+    {
+        var rows = await db.GuestHostExtraOrders.Where(x => x.OrgId == booking.OrgId && x.BookingId == booking.Id &&
+            x.Status == GuestHostExtraStatus.PendingBookingPayment).ToListAsync(ct);
+        foreach (var row in rows)
+            await GuestExtraFiscalPayment.SavePaidAsync(db, row, ct);
     }
 
     public async Task<GuestHostExtraOrderView> OrderAsync(PortalContext portal, Guid extraId, int quantity, Guid requestId,

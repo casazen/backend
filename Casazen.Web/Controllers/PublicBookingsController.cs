@@ -254,7 +254,8 @@ public class PublicBookingsController(
             request.MarketingConsentEmail ?? false,
             request.MarketingConsentWhatsApp ?? false,
             request.SoftOptInNoticeVersion,
-            request.Attribution?.ToInput()));
+            request.Attribution?.ToInput(),
+            request.Extras));
 
         return Ok(new DirectBookingResponse
         {

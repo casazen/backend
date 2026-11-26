@@ -317,7 +317,7 @@ public sealed class DeferredChargeService(
                 : (Step.Error, null);
         }
 
-        var notice = ApplyPaymentIntent(booking, payment, paymentIntent, account);
+        var notice = await ApplyPaymentIntentAsync(booking, payment, paymentIntent, account, cancellationToken);
         logger.LogInformation(
             "Deferred charge of booking {BookingId}: attempt {Attempt}, payment intent {PaymentIntentId} {Status}",
             booking.Id,
@@ -467,7 +467,7 @@ public sealed class DeferredChargeService(
         if (DeferredCharges.StatusOf(paymentIntent.Status) == PaymentStatus.Processing)
             return (Step.Skipped, null);
 
-        var notice = ApplyPaymentIntent(booking, payment, paymentIntent, account);
+        var notice = await ApplyPaymentIntentAsync(booking, payment, paymentIntent, account, cancellationToken);
         return (StepOf(paymentIntent.Status), notice);
     }
 
@@ -487,7 +487,7 @@ public sealed class DeferredChargeService(
             if (current.Status != "canceled")
             {
                 if (current.Status is null || !PayableStatuses.Contains(current.Status))
-                    return (StepOf(current.Status), ApplyPaymentIntent(booking, payment, current, account));
+                    return (StepOf(current.Status), await ApplyPaymentIntentAsync(booking, payment, current, account, cancellationToken));
 
                 try
                 {
@@ -501,7 +501,7 @@ public sealed class DeferredChargeService(
                 }
 
                 if (current.Status != "canceled")
-                    return (StepOf(current.Status), ApplyPaymentIntent(booking, payment, current, account));
+                    return (StepOf(current.Status), await ApplyPaymentIntentAsync(booking, payment, current, account, cancellationToken));
             }
         }
 
@@ -654,6 +654,8 @@ public sealed class DeferredChargeService(
             return DeferredChargeWebhookResult.Ignored;
 
         payment = EnsurePaymentRow(booking, payment, paymentIntent, eventAccountId);
+        if (status == PaymentStatus.Completed)
+            await GuestPortal.GuestHostExtraService.RecordBookingPaymentAsync(db, booking, cancellationToken);
         var notice = ApplyStatus(booking, payment, paymentIntent, eventAccountId, status);
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation(
@@ -684,10 +686,13 @@ public sealed class DeferredChargeService(
     }
 
     /// <summary>Records <paramref name="paymentIntent"/>'s status on the deferred payment (created when missing).</summary>
-    private DeferredChargeNotice? ApplyPaymentIntent(Booking booking, Payment? payment, PaymentIntent paymentIntent, string? account)
+    private async Task<DeferredChargeNotice?> ApplyPaymentIntentAsync(Booking booking, Payment? payment, PaymentIntent paymentIntent, string? account, CancellationToken cancellationToken)
     {
         payment = EnsurePaymentRow(booking, payment, paymentIntent, account);
-        return ApplyStatus(booking, payment, paymentIntent, account, DeferredCharges.StatusOf(paymentIntent.Status));
+        var status = DeferredCharges.StatusOf(paymentIntent.Status);
+        if (status == PaymentStatus.Completed)
+            await GuestPortal.GuestHostExtraService.RecordBookingPaymentAsync(db, booking, cancellationToken);
+        return ApplyStatus(booking, payment, paymentIntent, account, status);
     }
 
     /// <summary>
