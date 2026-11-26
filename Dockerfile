@@ -22,7 +22,13 @@ COPY --from=publish /app/publish .
 
 # Required by System.Net.Mail.SmtpClient on Linux for SMTP authentication.
 # Without this lib, SmtpClient hangs/timeouts when connecting to Gmail/any SMTP.
-RUN apt-get update && apt-get install -y --no-install-recommends libgssapi-krb5-2 tesseract-ocr tesseract-ocr-ita tesseract-ocr-eng poppler-utils util-linux && rm -rf /var/lib/apt/lists/*
+# Ubuntu security mirrors can briefly serve an index from the previous publication.
+# Keep signature and checksum verification enabled on both official mirrors.
+RUN (apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=3 update || { \
+        find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) \
+          -exec sed -i 's|https\?://security\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' {} +; \
+        apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=3 update; \
+    }) && apt-get -o Acquire::Retries=3 install -y --no-install-recommends libgssapi-krb5-2 tesseract-ocr tesseract-ocr-ita tesseract-ocr-eng poppler-utils util-linux && rm -rf /var/lib/apt/lists/*
 
 # Railway (and most cloud providers) terminate TLS at the edge.
 # The container listens on plain HTTP on PORT (default 8080).
