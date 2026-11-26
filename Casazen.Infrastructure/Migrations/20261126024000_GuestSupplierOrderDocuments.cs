@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Casazen.Infrastructure.Migrations;
 
 [DbContext(typeof(AppDbContext))]
-[Migration("20261126023000_GuestSupplierOrderDocuments")]
+[Migration("20261126024000_GuestSupplierOrderDocuments")]
 public sealed class GuestSupplierOrderDocuments : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
