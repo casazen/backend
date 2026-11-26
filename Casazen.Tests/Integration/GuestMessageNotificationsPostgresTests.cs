@@ -434,7 +434,18 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         var booking = await db.Bookings.Include(b => b.Property).Include(b => b.Org).Include(b => b.Guest).SingleAsync(b => b.Id == world.BookingId);
         var service = PortalService(db);
 
-        await service.SendFromPortalAsync(booking, "May I change my stay?", "key-guide-human", null, CancellationToken.None);
+        const string localAnswer = "I’ll check and get back to you.";
+        var inbound = await service.SendFromPortalAsync(booking, "May I change my stay?", "key-guide-human", null, CancellationToken.None, localAnswer);
+        var retry = await service.SendFromPortalAsync(booking, "May I change my stay?", "key-guide-human", null, CancellationToken.None, localAnswer);
+        Assert.True(retry.Replayed);
+        var draft = Assert.Single(await db.ApprovalQueueItems.Where(i => i.OrgId == booking.OrgId).ToListAsync());
+        Assert.Equal(inbound.Message.Id, draft.ItemId);
+        Assert.Equal(booking.PropertyId, draft.PropertyId);
+        Assert.Equal(MessageThreadKey.ForDirect(booking.Id).ToString(), draft.ThreadKey);
+        Assert.Equal(ApprovalStatus.Pending, draft.Status);
+        Assert.Equal(localAnswer, draft.ContentText);
+        Assert.False(draft.IsAiGenerated);
+        Assert.False(await db.GuestMessages.AnyAsync(m => m.Text == localAnswer));
         _clock.Advance(TimeSpan.FromMinutes(1));
         await service.SendFromPortalAsync(booking, "Where can I park?", "key-guide-second", "Automatic house-guide reply", CancellationToken.None);
 
