@@ -61,7 +61,7 @@ public class CampaignsController(
         var errors = evaluator.ValidateCondition(request.Condition);
         if (errors.Count > 0 || request.Condition.Groups.SelectMany(g => g.Rules).Any(r =>
             !MarketingSegmentRules.Fields.Any(f => f.FieldId == r.FieldId && f.Operators.Contains(r.Operator))))
-            return BadRequest(new { error = "invalid_segment_rules", errors });
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "invalid_segment_rules", "marketing_invalid_condition");
 
         // Serialize condition to JSON (ADR-014-R1)
         var conditionJson = JsonSerializer.Serialize(request.Condition);

@@ -158,7 +158,7 @@ public sealed class MarketingGuestCategoryService(AppDbContext db, ICrmProfileRe
         }
         catch (DbUpdateConcurrencyException)
         {
-            throw new DomainConflictException("marketing_categories_changed", "Marketing categories changed. Reload and retry.");
+            throw new DomainConflictException("marketing_categories_changed", "marketing_categories_changed");
         }
     }
 }

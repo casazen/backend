@@ -9064,4 +9064,24 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="SupplierIdentityChoiceInvalid" xml:space="preserve">
     <value>Seleziona un profilo tra quelli verificati oppure archivia la richiesta.</value>
   </data>
+  <data name="marketing_invalid_scope" xml:space="preserve"><value>Seleziona un pubblico della tua organizzazione.</value></data>
+  <data name="marketing_invalid_condition" xml:space="preserve"><value>Controlla i campi, gli operatori e i valori delle regole del pubblico.</value></data>
+  <data name="segment_not_found" xml:space="preserve"><value>Il pubblico selezionato non è disponibile.</value></data>
+  <data name="property_not_found" xml:space="preserve"><value>La struttura selezionata non è disponibile.</value></data>
+  <data name="marketing_import_busy" xml:space="preserve"><value>Un altro import ha aggiornato gli stessi contatti. Riprova con lo stesso file.</value></data>
+  <data name="marketing_invalid_mapping" xml:space="preserve"><value>Controlla l’abbinamento delle colonne del file.</value></data>
+  <data name="marketing_invalid_source" xml:space="preserve"><value>Indica la fonte che documenta la base giuridica dei contatti importati.</value></data>
+  <data name="marketing_invalid_basis" xml:space="preserve"><value>Seleziona una base giuridica valida per questi contatti.</value></data>
+  <data name="marketing_categories_changed" xml:space="preserve"><value>Le categorie sono cambiate. Ricarica la scheda prima di salvare.</value></data>
+  <data name="marketing_ai_unavailable" xml:space="preserve"><value>Il servizio AI non è disponibile. Riprova più tardi.</value></data>
+  <data name="marketing_ai_invalid" xml:space="preserve"><value>La risposta AI non è utilizzabile. Riprova o modifica la richiesta.</value></data>
+  <data name="marketing_ai_quota_exhausted" xml:space="preserve"><value>La quota AI mensile dell’organizzazione è esaurita.</value></data>
+  <data name="marketing_asset_not_found" xml:space="preserve"><value>La proposta selezionata non è disponibile.</value></data>
+  <data name="marketing_brief_invalid" xml:space="preserve"><value>Controlla il canale e il testo della proposta.</value></data>
+  <data name="marketing_city_required" xml:space="preserve"><value>Aggiungi il comune della struttura prima di cercare eventi.</value></data>
+  <data name="marketing_email_required" xml:space="preserve"><value>Seleziona una proposta email o newsletter.</value></data>
+  <data name="marketing_event_period_invalid" xml:space="preserve"><value>Scegli un intervallo valido di massimo 180 giorni.</value></data>
+  <data name="marketing_search_unavailable" xml:space="preserve"><value>La ricerca degli eventi non è disponibile. Riprova più tardi.</value></data>
+  <data name="marketing_settings_invalid" xml:space="preserve"><value>Controlla i valori delle impostazioni marketing e le strutture selezionate.</value></data>
+  <data name="marketing_voice_invalid" xml:space="preserve"><value>Fornisci testi di esempio o un indirizzo web HTTPS valido.</value></data>
 </root>

@@ -261,11 +261,11 @@ public class CampaignService(
         Guid? propertyId, CancellationToken ct)
     {
         if (scope.OrgId != orgId)
-            throw new DomainRuleException("invalid_scope", "Audience scope must belong to the campaign organization.");
+            throw new DomainRuleException("invalid_scope", "marketing_invalid_scope");
         var segment = await db.GuestSegments.AsNoTracking().SingleOrDefaultAsync(s => s.Id == segmentId && s.OrgId == orgId, ct)
-            ?? throw new DomainRuleException("segment_not_found", "Segment not found");
+            ?? throw new DomainRuleException("segment_not_found", "segment_not_found");
         var condition = JsonSerializer.Deserialize<Condition>(segment.ConditionJson) ??
-            throw new DomainRuleException("invalid_condition_json", "Invalid segment condition");
+            throw new DomainRuleException("invalid_condition_json", "marketing_invalid_condition");
         if (conditionEvaluator.ValidateCondition(condition).Count > 0 ||
             condition.Groups.SelectMany(g => g.Rules).Any(rule => !MarketingSegmentRules.Fields.Any(f =>
                 f.FieldId == rule.FieldId && f.Operators.Contains(rule.Operator)))) return [];

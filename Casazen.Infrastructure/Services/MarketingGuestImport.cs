@@ -42,17 +42,17 @@ public sealed class MarketingGuestImport(AppDbContext db, ICrmContactIndex index
         if ((!mapping.ContainsKey("email") && !mapping.ContainsKey("phone"))
             || mapping.Values.Distinct().Count() != mapping.Count
             || mapping.Any(pair => !Fields.Contains(pair.Key) || pair.Value < 0 || pair.Value >= table[0].Cells.Count))
-            throw new DomainRuleException("invalid_mapping", "Invalid column mapping");
+            throw new DomainRuleException("invalid_mapping", "marketing_invalid_mapping");
         var legalBasis = basis switch
         {
             "consent" => GuestContactLegalBasis.Consent,
             "softOptIn" => GuestContactLegalBasis.SoftOptIn,
             "serviceOnly" => GuestContactLegalBasis.ServiceOnly,
-            _ => throw new DomainRuleException("invalid_basis", "Invalid legal basis"),
+            _ => throw new DomainRuleException("invalid_basis", "marketing_invalid_basis"),
         };
         source = source.Trim();
         if (source.Length is 0 or > GuestContact.BasisVersionMaxLength)
-            throw new DomainRuleException("invalid_source", "Invalid evidence source");
+            throw new DomainRuleException("invalid_source", "marketing_invalid_source");
 
         var result = new MarketingImportResult(0, 0, []);
         var candidates = new List<Candidate>();
@@ -154,7 +154,7 @@ public sealed class MarketingGuestImport(AppDbContext db, ICrmContactIndex index
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex))
         {
             // SaveChanges rolls back the entire import. Re-reading the same file will see the competing commit.
-            throw new DomainConflictException("import_concurrent_write", "Import overlaps another write. Retry the same file.");
+            throw new DomainConflictException("import_concurrent_write", "marketing_import_busy");
         }
         return result with { Imported = imported, Skipped = candidates.Count - imported };
     }
