@@ -153,8 +153,7 @@ public sealed partial class MarketingStudio(AppDbContext db, IAiProvider ai, IWe
         var copy = Parse<StudioCopy>(result.Content);
         if (string.IsNullOrWhiteSpace(copy.Subject) || copy.Subject.Length > 200 || string.IsNullOrWhiteSpace(copy.Body) || copy.Body.Length > 20000)
             throw Invalid("marketing_ai_invalid");
-        var external = settings.PropertyUrls.GetValueOrDefault(property.Id);
-        var org = await db.Orgs.SingleAsync(o => o.Id == scope.OrgId, ct);
+
         var asset = new MarketingAsset
         {
             OrgId = scope.OrgId,
@@ -167,10 +166,9 @@ public sealed partial class MarketingStudio(AppDbContext db, IAiProvider ai, IWe
             Audience = copy.Audience ?? "",
             Budget = copy.Budget ?? "",
             SourceEventJson = brief.SourceEvent is null ? null : JsonSerializer.Serialize(brief.SourceEvent, Json),
-            Occurrence = occurrence,
-            ExternalDestination = external != null,
-            Destination = external ?? sites.TryPropertyUrl(org, property.Slug ?? property.Id.ToString())
+            Occurrence = occurrence
         };
+        await SetDestinationAsync(asset, settings, property, ct);
         db.Add(asset);
         await db.SaveChangesAsync(ct);
         return asset;
@@ -191,7 +189,7 @@ public sealed partial class MarketingStudio(AppDbContext db, IAiProvider ai, IWe
         if (string.IsNullOrWhiteSpace(subject) || subject.Length > 200 || string.IsNullOrWhiteSpace(body) || body.Length > 20000)
             throw Invalid("marketing_brief_invalid");
         var html = WebUtility.HtmlEncode(body).Replace("\n", "<br>");
-        if (TrackingUrl(asset) is { } url) html += $"<p><a href=\"{WebUtility.HtmlEncode(url)}\">Scopri la struttura</a></p>";
+        html = WithPropertyLink(asset, html);
         var campaign = await campaigns.CreateDraftAsync(scope.OrgId, asset.SegmentId, subject, html, true, ct, asset.PropertyId);
         asset.CampaignId = campaign.Id;
         asset.Subject = subject;

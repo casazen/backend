@@ -16,10 +16,33 @@ namespace Casazen.Tests.Unit.Marketing;
 public class MarketingStudioAudienceTests
 {
     [Fact]
+    public async Task ManualPropertyEmailLinksToTheSameTrackedDestination()
+    {
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var org = new OrgEntity { Name = "Host" };
+        var property = new Property { OrgId = org.Id, OwnerId = "host", Name = "Villa" };
+        var segment = new GuestSegment { OrgId = org.Id, Name = "Guests", ConditionJson = "{}" };
+        db.AddRange(org, property, segment, new MarketingStudioSettings { OrgId = org.Id,
+            PropertyUrlsJson = JsonSerializer.Serialize(new Dictionary<Guid, string> { [property.Id] = "https://villa.example" }) });
+        await db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            { ["App:ApiBaseUrl"] = "https://api.example" }).Build();
+        var campaigns = Casazen.Tests.Unit.Services.CampaignServiceTests.NewService(db, Mock.Of<Casazen.Infrastructure.External.IEmailService>(),
+            Casazen.Tests.Unit.Services.CampaignServiceTests.Links());
+        var studio = new MarketingStudio(db, Mock.Of<IAiProvider>(), Mock.Of<IWebSearchClient>(), null!,
+            new MarketingAiQuota(db, config, TimeProvider.System), config, campaigns, TimeProvider.System, null!);
+        var draft = await studio.CreatePropertyDraftAsync(new HostScope(org.Id), property.Id, segment.Id, "Soggiorno", "<p>Novità</p>", false, default);
+        var asset = await db.MarketingAssets.SingleAsync(a => a.CampaignId == draft.Id);
+        Assert.Equal("https://villa.example", asset.Destination);
+        Assert.Contains($"https://api.example/api/marketing/visit/{asset.Id:D}", draft.Body);
+        Assert.Equal(CampaignStatus.Draft, draft.Status);
+    }
+
+    [Fact]
     public async Task StudioUsesOnlyPropertyAndEditorialInputsAndKeepsAssetsInScope()
     {
         await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
-        var org = new Org { Name = "Host", Slug = "host" };
+        var org = new OrgEntity { Name = "Host", Slug = "host" };
         var property = new Property { OrgId = org.Id, OwnerId = "host", Name = "Casa", City = "Lugano", Country = "CH" };
         var segment = new GuestSegment { OrgId = org.Id, Name = "Privato", ConditionJson = "{}" };
         db.AddRange(org, property, segment, new MarketingStudioSettings

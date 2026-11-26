@@ -5,6 +5,7 @@ using Casazen.Core.Features;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -151,15 +152,11 @@ public class CampaignsController(
 
         var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted);
         if (scope == null || (!scope.IsOrgWide && request.PropertyId == null)) return Forbid();
-        if (request.PropertyId.HasValue && !await db.Properties.Where(p => p.OrgId == orgId.Value).InScope(scope)
-            .AnyAsync(p => p.Id == request.PropertyId, HttpContext.RequestAborted)) return NotFound();
-        var campaign = await campaignService.CreateDraftAsync(
-            orgId.Value,
-            request.SegmentId,
-            request.Subject,
-            request.Body,
-            request.IsAiGenerated,
-            HttpContext.RequestAborted, request.PropertyId);
+        var campaign = request.PropertyId is { } propertyId
+            ? await HttpContext.RequestServices.GetRequiredService<MarketingStudio>().CreatePropertyDraftAsync(scope, propertyId,
+                request.SegmentId, request.Subject, request.Body, request.IsAiGenerated, HttpContext.RequestAborted)
+            : await campaignService.CreateDraftAsync(orgId.Value, request.SegmentId, request.Subject, request.Body, request.IsAiGenerated,
+                HttpContext.RequestAborted);
 
         return Ok(MapToCampaignDto(campaign));
     }
