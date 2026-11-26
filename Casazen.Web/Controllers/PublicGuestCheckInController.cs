@@ -59,12 +59,8 @@ public class PublicGuestCheckInController(
     /// </summary>
     public const int MaxImageRequestBytes = 10_000_000;
 
-    /// <summary>
-    /// Largest request of <c>/selfie</c> (15 MB, E22/F01/US01/T02): the selfie and, for a property that keeps no document (Ticino), the pictures of the document read
-    /// before, the front and the back of a card, so three pictures with the budget each of them always had (5 MB: 10 MB were for the two of before). Buffered in
-    /// memory up to this size like <see cref="MaxImageRequestBytes"/>, never in a temporary file (ADR-013-R2). A request over it is refused by the server with 413.
-    /// </summary>
-    public const int MaxSelfieRequestBytes = 15_000_000;
+    /// <summary>Two live captures and up to two document sides, 5 MiB each plus multipart headers, buffered in memory.</summary>
+    public const int MaxSelfieRequestBytes = 4 * CheckInDocumentLimits.MaxImageBytes + 64 * 1024;
 
     private static readonly string[] AllowedImageTypes = ["image/jpeg", "image/jpg", "image/png"];
 
@@ -471,6 +467,23 @@ public class PublicGuestCheckInController(
         }
     }
 
+    /// <summary>Issues a short-lived, one-time pose challenge after consent and a document ready for comparison.</summary>
+    [HttpPost("{token}/selfie-challenge")]
+    [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<SelfieChallenge>> IssueSelfieChallenge(string token)
+    {
+        var session = await checkInService.GetSessionByTokenAsync(token);
+        if (session is null)
+            return NotFound();
+
+        var challenge = await verificationFlow.IssueSelfieChallengeAsync(session, HttpContext.RequestAborted);
+        if (challenge is null)
+            return this.ApiProblem(StatusCodes.Status409Conflict, "selfie_challenge_unavailable", "CheckInSelfieChallengeUnavailable");
+        return Ok(challenge);
+    }
+
     /// <summary>
     /// The selfie of the guest who leaves the document, compared with the photo of the document by the verification agent in the request
     /// (ADR-013-R1, E03/F04/US02/T04): <c>{ result: ok | retry | operator, guidanceCodes, attemptsRemaining, operatorPathOpen, lockCode? }</c>.
@@ -484,8 +497,8 @@ public class PublicGuestCheckInController(
     /// A document of two sides (E22/F01/US01/T02, <c>side</c> <c>front</c> and <c>back</c> of <c>/document</c>): <c>documentPhoto</c> is the front (the face)
     /// and, for a property in Ticino, which keeps nothing, <c>documentPhotoBack</c> is the back; both are the pictures that were read, or 400
     /// <c>document_photo_required</c> and 409 <c>document_photo_mismatch</c>. Elsewhere neither is needed. 409 <c>document_check_required</c> also while
-    /// the face or the MRZ of such a document is still missing, with no attempt spent. The whole request is at most <see cref="MaxSelfieRequestBytes"/> (15 MB,
-    /// the 5 MB of each of three pictures); over it the server answers 413.
+    /// the face or the MRZ of such a document is still missing, with no attempt spent. Send the frontal <c>selfie</c>, the requested <c>turnedSelfie</c> and
+    /// the <c>challengeToken</c> issued by <c>/selfie-challenge</c>. A missing, expired or consumed challenge returns 409 <c>selfie_challenge_required</c>.
     /// </para>
     /// </summary>
     [HttpPost("{token}/selfie")]
@@ -497,7 +510,9 @@ public class PublicGuestCheckInController(
         string token,
         [FromForm] IFormFile selfie,
         [FromForm] IFormFile? documentPhoto = null,
-        [FromForm] IFormFile? documentPhotoBack = null)
+        [FromForm] IFormFile? documentPhotoBack = null,
+        [FromForm] IFormFile? turnedSelfie = null,
+        [FromForm] string? challengeToken = null)
     {
         var session = await checkInService.GetSessionByTokenAsync(token);
         if (session is null)
@@ -506,7 +521,11 @@ public class PublicGuestCheckInController(
         if (selfie == null || selfie.Length == 0)
             return this.ApiProblem(StatusCodes.Status400BadRequest, "selfie_required", "CheckInSelfieRequired");
 
-        if (!IsImage(selfie))
+        if (selfie.Length > CheckInDocumentLimits.MaxImageBytes || turnedSelfie?.Length > CheckInDocumentLimits.MaxImageBytes
+            || documentPhoto?.Length > CheckInDocumentLimits.MaxImageBytes || documentPhotoBack?.Length > CheckInDocumentLimits.MaxImageBytes)
+            return this.ApiProblem(StatusCodes.Status413PayloadTooLarge, "selfie_image_too_large", "CheckInSelfieImageTooLarge");
+
+        if (!IsImage(selfie) || (turnedSelfie is not null && (turnedSelfie.Length == 0 || !IsImage(turnedSelfie))))
             return this.ApiProblem(StatusCodes.Status400BadRequest, "selfie_type_unsupported", "CheckInSelfieTypeUnsupported");
 
         if (documentPhoto is not null && (documentPhoto.Length == 0 || !IsImage(documentPhoto)))
@@ -522,7 +541,9 @@ public class PublicGuestCheckInController(
             await using var selfieStream = selfie.OpenReadStream();
             await using var documentStream = documentPhoto?.OpenReadStream();
             await using var documentBackStream = documentPhotoBack?.OpenReadStream();
-            result = await verificationFlow.SubmitSelfieAsync(session, selfieStream, documentStream, documentBackStream, HttpContext.RequestAborted);
+            await using var turnedStream = turnedSelfie?.OpenReadStream();
+            result = await verificationFlow.SubmitChallengedSelfieAsync(session, selfieStream, turnedStream, challengeToken,
+                documentStream, documentBackStream, HttpContext.RequestAborted);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -532,6 +553,8 @@ public class PublicGuestCheckInController(
 
         return result.Status switch
         {
+            SelfieStepStatus.ChallengeRequired =>
+                this.ApiProblem(StatusCodes.Status409Conflict, "selfie_challenge_required", "CheckInSelfieChallengeRequired"),
             SelfieStepStatus.ConsentRequired =>
                 this.ApiProblem(StatusCodes.Status409Conflict, BiometricConsentRequiredCode, "CheckInBiometricConsentRequired"),
             SelfieStepStatus.DocumentRequired =>

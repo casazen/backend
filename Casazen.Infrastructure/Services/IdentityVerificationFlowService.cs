@@ -40,7 +40,7 @@ namespace Casazen.Infrastructure.Services;
 /// the session, never the decision of a person. The operator opens the way again by asking for a new photo from the queue.</para>
 /// <para><b>Privacy</b>: the logs say the session, the step and the codes; never a picture, a value of the document or a name.</para>
 /// </remarks>
-public sealed class IdentityVerificationFlowService(
+public sealed partial class IdentityVerificationFlowService(
     AppDbContext db,
     IIdentityVerificationAgent agent,
     IVerificationOperatorAlerts alerts,
@@ -56,7 +56,8 @@ public sealed class IdentityVerificationFlowService(
     IDomainEventRecorder? domainEvents = null,
     ICheckInLegalTexts? legalTexts = null,
     IPropertySwissPlaceResolver? swissPlaces = null,
-    IGuestEmailBrandingProvider? emailBranding = null) : IIdentityVerificationFlowService
+    IGuestEmailBrandingProvider? emailBranding = null,
+    IActivePoseVerificationService? activePose = null) : IIdentityVerificationFlowService
 {
     /// <summary>Data Protection purpose of the encrypted picture of a document in the private bucket. Never change it: stored pictures would become unreadable.</summary>
     public const string DocumentImageContentPurpose = "Casazen.DocumentImage.Content";
@@ -318,26 +319,20 @@ public sealed class IdentityVerificationFlowService(
         return SubmitSelfieAsync(session, selfie, documentPhoto, null, ct);
     }
 
-    public async Task<SelfieStepResult> SubmitSelfieAsync(
-        GuestCheckInSession session,
-        Stream selfie,
-        Stream? documentPhoto,
-        Stream? documentPhotoBack,
-        CancellationToken ct)
+    public Task<SelfieStepResult> SubmitSelfieAsync(GuestCheckInSession session, Stream selfie, Stream? documentPhoto,
+        Stream? documentPhotoBack, CancellationToken ct) =>
+        SubmitChallengedSelfieAsync(session, selfie, null, null, documentPhoto, documentPhotoBack, ct);
+
+    private async Task<SelfieStepResult> VerifySelfieAsync(GuestCheckInSession session, Stream selfie, Stream? turnedSelfie,
+        string? challengeToken, Stream? documentPhoto, Stream? documentPhotoBack, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(selfie);
         var context = await ContextAsync(session, ct);
         var policy = context.Policy;
 
-        // Passed already: the code is shown again (a reload of the page), nothing is run or sent again.
         if (session.BiometricOutcome == BiometricOutcome.Accept)
-        {
-            await DeleteStoredDocumentAsync(session, ct);
-            await db.SaveChangesAsync(ct);
-            var code = await accessCodes.ReleaseToGuestAsync(session.BookingId, AccessCodeReleaseChannels.CheckInScreen, ct);
-            return Done(IdentityVerificationGuestResults.Ok, [], Remaining(session, policy), code, await HoldReasonAsync(session, code, ct));
-        }
+            return Refused(SelfieStepStatus.ChallengeRequired, session, policy);
 
         // Also a new link of a booking that is with an operator (rejected, or a hand-off still open): the session is new, the decision is not.
         if (InOperatorPath(session, context))
@@ -392,8 +387,12 @@ public sealed class IdentityVerificationFlowService(
             return await OperatorAsync(session, VerificationAlertReasons.AttemptsExhausted, policy, ct);
         }
 
+        if (turnedSelfie is null || !IsCurrentChallenge(session, stored, challengeToken))
+            return Refused(SelfieStepStatus.ChallengeRequired, session, policy);
+
         var attempt = session.BiometricAttempts + 1;
         IdentityVerificationOutcome outcome;
+        byte[]? neutralBytes = null;
         byte[]? documentBytes = null;
         byte[]? backBytes = null;
         try
@@ -431,7 +430,32 @@ public sealed class IdentityVerificationFlowService(
             using var documentStream = new MemoryStream(documentBytes, writable: false);
             try
             {
-                outcome = await agent.VerifyAsync(new IdentityVerificationRequest(selfie, documentStream, stored.Check, policy, attempt), ct);
+                var direction = stored.Pose!.NoseToRight;
+                session.DocumentCheckJson = JsonSerializer.Serialize(stored with { Pose = null }, Json);
+                await db.SaveChangesAsync(ct);
+                if (activePose is null)
+                {
+                    await DeleteStoredDocumentAsync(session, ct);
+                    return await OperatorAsync(session, VerificationAlertReasons.TechnicalError, policy, ct);
+                }
+                neutralBytes = await ImageBytes.ReadAllAsync(selfie, CheckInDocumentLimits.MaxImageBytes, ct);
+                using var neutral = new MemoryStream(neutralBytes, writable: false);
+                outcome = await agent.VerifyAsync(new IdentityVerificationRequest(neutral, documentStream, stored.Check, policy, attempt), ct);
+                if (outcome.Result == IdentityVerificationResult.Ok)
+                {
+                    neutral.Position = 0;
+                    var start = System.Diagnostics.Stopwatch.GetTimestamp();
+                    var passed = await activePose.VerifyAsync(neutral, turnedSelfie, direction, policy.AcceptThreshold, ct);
+                    var reason = new VerificationReason("active_pose", passed ? VerificationReasons.Results.Passed : VerificationReasons.Results.Failed);
+                    outcome = outcome with
+                    {
+                        Reasons = [.. outcome.Reasons, reason],
+                        DurationMs = outcome.DurationMs + (int)System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds,
+                        Result = passed ? outcome.Result : IdentityVerificationResult.NotOk,
+                        GuidanceCodes = passed ? outcome.GuidanceCodes : ["active_pose_retry"],
+                        LastAttempt = !passed && attempt >= policy.MaxAttempts,
+                    };
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -444,6 +468,7 @@ public sealed class IdentityVerificationFlowService(
         }
         finally
         {
+            ImageBytes.Zero(neutralBytes);
             ImageBytes.Zero(documentBytes);
             ImageBytes.Zero(backBytes);
         }
@@ -1171,4 +1196,5 @@ internal sealed record StoredDocumentCheck(
     StoredDocumentPicture? Back = null,
     bool TwoSided = false,
     int VerifyingGuestPosition = 0,
-    string? ProofKey = null);
+    string? ProofKey = null,
+    StoredPoseChallenge? Pose = null);

@@ -474,6 +474,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFaceEmbedder, FaceEmbedder>();
         services.AddScoped<IAntiSpoofingService, AntiSpoofingService>();
         services.AddScoped<IBiometricVerificationService, BiometricVerificationService>();
+        services.AddScoped<IActivePoseVerificationService, ActivePoseVerificationService>();
         // E03/F04/US02/T02: the identity verification agent on top of that pipeline: the capture checks and one rule-based decision with
         // versioned thresholds. No AI provider, no logger, no storage among its dependencies (PO-09).
         services.AddSingleton<CaptureQualityAssessor>();

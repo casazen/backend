@@ -1576,6 +1576,15 @@
   <data name="CheckInSelfieProcessingFailed" xml:space="preserve">
     <value>Selfie processing failed. Please try again.</value>
   </data>
+  <data name="CheckInSelfieChallengeUnavailable" xml:space="preserve">
+    <value>Complete consent and document capture first.</value>
+  </data>
+  <data name="CheckInSelfieChallengeRequired" xml:space="preserve">
+    <value>Start a new capture and follow the requested head movement.</value>
+  </data>
+  <data name="CheckInSelfieImageTooLarge" xml:space="preserve">
+    <value>Each image may be up to 5 MiB.</value>
+  </data>
   <data name="CheckInSelfieRequired" xml:space="preserve">
     <value>Selfie is required for biometric verification.</value>
   </data>

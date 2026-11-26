@@ -1576,6 +1576,15 @@
   <data name="CheckInSelfieProcessingFailed" xml:space="preserve">
     <value>Elaborazione del selfie non riuscita. Riprova.</value>
   </data>
+  <data name="CheckInSelfieChallengeUnavailable" xml:space="preserve">
+    <value>Completa prima il consenso e la lettura del documento.</value>
+  </data>
+  <data name="CheckInSelfieChallengeRequired" xml:space="preserve">
+    <value>Avvia una nuova acquisizione e segui il movimento indicato.</value>
+  </data>
+  <data name="CheckInSelfieImageTooLarge" xml:space="preserve">
+    <value>Ogni immagine può occupare al massimo 5 MiB.</value>
+  </data>
   <data name="CheckInSelfieRequired" xml:space="preserve">
     <value>Il selfie è obbligatorio per la verifica biometrica.</value>
   </data>

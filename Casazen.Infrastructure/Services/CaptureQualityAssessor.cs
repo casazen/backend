@@ -66,6 +66,11 @@ public sealed class CaptureQualityAssessor(IFaceDetector faceDetector, IOptions<
             return CaptureAssessment.NotAssessed with { Tips = SelfieTips };
         }
 
+        return AssessSelfie(image, faces, settings);
+    }
+
+    internal static CaptureAssessment AssessSelfie(RasterImage image, IReadOnlyList<DetectedFace> faces, BiometricModelOptions settings)
+    {
         var guidance = new List<string>();
         if (faces.Count == 0)
         {
