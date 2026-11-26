@@ -23,6 +23,33 @@ public sealed class MarketingWorkflowFactory : CasazenWebApplicationFactory
 public class MarketingStudioWorkflowHttpTests(MarketingWorkflowFactory factory) : IClassFixture<MarketingWorkflowFactory>
 {
     [Fact]
+    public async Task ApprovingAndDismissingSocialAssetsStayWithinTheHostScope()
+    {
+        var (owner, org) = await OrgTeamHttp.SeedOwnerWithTeamRowsAsync(factory);
+        var (otherOwner, _) = await OrgTeamHttp.SeedOwnerWithTeamRowsAsync(factory);
+        var property = await factory.SeedPropertyAsync(owner);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var approve = new Core.Entities.MarketingAsset { OrgId = org, PropertyId = property.Id, SegmentId = Guid.NewGuid(),
+            Channel = "instagram", Body = "Post", Subject = "Ospitalità" };
+        var dismiss = new Core.Entities.MarketingAsset { OrgId = org, PropertyId = property.Id, SegmentId = approve.SegmentId,
+            Channel = "facebook", Body = "Post", Subject = "Estate" };
+        db.MarketingAssets.AddRange(approve, dismiss);
+        await db.SaveChangesAsync();
+
+        using var other = factory.CreateAuthenticatedClient(otherOwner, roles: "PropertyOwner");
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, (await other.PostAsync($"/api/campaigns/studio/assets/{approve.Id}/approve", null)).StatusCode);
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, (await other.PostAsync($"/api/campaigns/studio/assets/{dismiss.Id}/dismiss", null)).StatusCode);
+        using var host = factory.CreateAuthenticatedClient(owner, roles: "PropertyOwner");
+        (await host.PostAsync($"/api/campaigns/studio/assets/{approve.Id}/approve", null)).EnsureSuccessStatusCode();
+        (await host.PostAsync($"/api/campaigns/studio/assets/{dismiss.Id}/dismiss", null)).EnsureSuccessStatusCode();
+        await db.Entry(approve).ReloadAsync();
+        await db.Entry(dismiss).ReloadAsync();
+        Assert.NotNull(approve.ApprovedAt);
+        Assert.NotNull(dismiss.DismissedAt);
+    }
+
+    [Fact]
     public async Task OwnerCanCreateAudienceAndApproveDraftWithoutSending()
     {
         var (owner, org) = await OrgTeamHttp.SeedOwnerWithTeamRowsAsync(factory);

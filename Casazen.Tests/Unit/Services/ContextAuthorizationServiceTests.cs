@@ -21,7 +21,7 @@ public class ContextAuthorizationServiceTests
     [InlineData(true, true)]
     public async Task CollaboratorMarketingFollowsTheOwnersGrant(bool grant, bool expected)
     {
-        await using var db = CreateDbContext();
+        await using var db = OrgTeamTestData.NewDb();
         const string id = "auth0|marketing-collaborator";
         await SeedOnboardedUserAsync(db, id);
         var user = await db.Users.SingleAsync(u => u.Id == id);
