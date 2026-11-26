@@ -400,14 +400,14 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
 
     // ─── The matrix of the roles ────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The levels of each role in the order of the screen (booking, prices, guests, money, leases, rents, jobs, people, billing, suppliers, settings, security).</summary>
+    /// <summary>The levels of each role in the order of the screen (booking, prices, marketing, guests, money, leases, rents, jobs, people, billing, suppliers, settings, security).</summary>
     private static readonly (OrgRole Role, string Levels)[] ExpectedLevels =
     [
-        (OrgRole.Owner, "Y Y Y Y Y Y Y Y Y Y Y Y"),
-        (OrgRole.Admin, "Y Y Y Y Y Y Y Y Y Y Y Y"),
-        (OrgRole.PropertyManager, "Y Y Y Y Y Y Y N N Y N N"),
-        (OrgRole.Collaborator, "R R Y N N N Y N N N N N"),
-        (OrgRole.Accountant, "R R N R R R R N R N N N"),
+        (OrgRole.Owner, "Y Y Y Y Y Y Y Y Y Y Y Y Y"),
+        (OrgRole.Admin, "Y Y N Y Y Y Y Y Y Y Y Y Y"),
+        (OrgRole.PropertyManager, "Y Y N Y Y Y Y Y N N Y N N"),
+        (OrgRole.Collaborator, "R R N Y N N N Y N N N N N"),
+        (OrgRole.Accountant, "R R N N R R R R N R N N N"),
     ];
 
     [PostgresFact]

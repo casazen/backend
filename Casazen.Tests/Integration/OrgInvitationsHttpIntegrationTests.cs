@@ -534,7 +534,7 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         // The owner gives every role but its own; only the collaborator can be limited to some properties.
         Assert.Equal([false, true, true, true, true], roles.Select(r => r.GetProperty("assignable").GetBoolean()));
         Assert.Equal(["Collaborator"], roles.Where(r => r.GetProperty("scopeSupported").GetBoolean()).Select(r => r.GetProperty("role").GetString()));
-        Assert.All(roles, r => Assert.Equal(12, r.GetProperty("capabilities").GetArrayLength()));
+        Assert.All(roles, r => Assert.Equal(13, r.GetProperty("capabilities").GetArrayLength()));
 
         // The levels are read from the permissions of the seeded roles: the collaborator reads the prices, handles the guests and has
         // no account; the property manager holds the restricted membership of the account.

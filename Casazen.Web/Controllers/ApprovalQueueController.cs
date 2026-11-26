@@ -13,10 +13,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Approval queue for items requiring human decision before taking effect (NF-06), and a decision that executes (E05/F04/US01/T02, NF-68, ADR-032). Every action needs
-/// <c>approval.decide</c> (<see cref="CasazenPolicies.ApprovalDecide"/>: the owner, the administrators and the property managers; no longer the broad <c>property.read</c>
-/// and <c>property.write</c>, which a collaborator holds), and what a caller reaches follows its <see cref="HostScope"/> in SQL: an item of another org or of a property out of its
-/// reach is a 404, never a 403. The answers carry the text of messages to guests, so they are private and never cached, and no text and no reason is ever logged.
+/// Approval queue for drafts awaiting a human decision. The caller needs marketing access for campaigns or approval.decide for other items.
+/// The host scope limits both listing and deciding to the caller's organization and properties. The answers contain private guest messages.
 /// </summary>
 /// <remarks>
 /// 404 <c>approval_item_not_found</c>; 409 <c>approval_item_not_pending</c> (already rejected or expired), <c>approval_origin_action_failed</c> (the action failed, the item stays
@@ -24,7 +22,7 @@ namespace Casazen.Web.Controllers;
 /// </remarks>
 [ApiController]
 [Route("api/approval-queue")]
-[Authorize]
+[Authorize(Policy = CasazenPolicies.ApprovalQueueAccess)]
 [PrivateAnswer]
 public class ApprovalQueueController(
     IApprovalQueueService approvalQueueService,

@@ -38,13 +38,12 @@ public class ApprovalDecidePolicyTests
             .ToList();
         Assert.Equal(Actions.Order(StringComparer.Ordinal), methods.Select(m => m.Name).Order(StringComparer.Ordinal));
         var classPolicies = typeof(ApprovalQueueController).GetCustomAttributes(inherit: true).OfType<IAuthorizeData>().Select(a => a.Policy).ToList();
-        Assert.Single(classPolicies);
-        Assert.Null(classPolicies[0]); // The controller selects the required permission by item type.
+        Assert.Equal([CasazenPolicies.ApprovalQueueAccess], classPolicies);
         foreach (var method in methods)
         {
             var attributes = method.GetCustomAttributes(inherit: true);
             Assert.DoesNotContain(attributes, a => a is IAllowAnonymous);
-            Assert.All(attributes.OfType<IAuthorizeData>(), a => Assert.Equal(CasazenPolicies.ApprovalDecide, a.Policy));
+            Assert.All(attributes.OfType<IAuthorizeData>(), a => Assert.Equal(CasazenPolicies.ApprovalQueueAccess, a.Policy));
         }
 
         // Who passes it: the permission rows each role is seeded with, in the short-rent context.
@@ -81,6 +80,16 @@ public class ApprovalDecidePolicyTests
     // ─── Evaluating a policy with the production handler ───
 
     private static ClaimsPrincipal User() => new(new ClaimsIdentity([new Claim("sub", "auth0|approver")], "TestAuth"));
+
+    [Theory]
+    [InlineData("marketing.manage", true)]
+    [InlineData("approval.decide", true)]
+    [InlineData("guest.write", false)]
+    public async Task QueueAccessAcceptsEitherRelevantShortRentPermission(string permission, bool expected)
+    {
+        Assert.Equal(expected, await PassesAsync(CasazenPolicies.ApprovalQueueAccess, (context, key) =>
+            context == OrgRoleCatalog.ShortRent && key == permission));
+    }
 
     private static async Task<bool> PassesAsync(string policyName, Func<string, string, bool> hasPermission)
     {

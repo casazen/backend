@@ -23,6 +23,42 @@ public sealed class MarketingWorkflowFactory : CasazenWebApplicationFactory
 public class MarketingStudioWorkflowHttpTests(MarketingWorkflowFactory factory) : IClassFixture<MarketingWorkflowFactory>
 {
     [Fact]
+    public async Task OwnerGrantLetsCollaboratorReadOnlyCampaignsAndRevocationTakesEffectImmediately()
+    {
+        var (owner, org) = await OrgTeamHttp.SeedOwnerWithTeamRowsAsync(factory);
+        var collaborator = await OrgTeamHttp.AddMemberAsync(factory, org, OrgRole.Collaborator, ["short-rent"]);
+        using var ownerClient = factory.CreateAuthenticatedClient(owner, roles: "PropertyOwner");
+        using var delegateClient = factory.CreateAuthenticatedClient(collaborator, roles: "");
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var member = await db.OrgMembers.SingleAsync(m => m.OrgId == org && m.UserId == collaborator);
+        Core.Entities.ApprovalQueueItem Item(string type) => new()
+        {
+            OrgId = org,
+            ItemId = Guid.NewGuid(),
+            ItemType = type,
+            ContentText = "Test",
+            ExpiresAt = DateTime.UtcNow.AddDays(1)
+        };
+        var campaign = Item(Core.Services.ApprovalItemTypes.Campaign);
+        var message = Item(Core.Services.ApprovalItemTypes.MessageDraft);
+        db.ApprovalQueueItems.AddRange(campaign, message);
+        await db.SaveChangesAsync();
+
+        const string queue = "/api/approval-queue";
+        var grant = $"/api/orgs/me/members/{member.Id}/marketing";
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, (await delegateClient.GetAsync(queue)).StatusCode);
+        (await ownerClient.PutAsJsonAsync(grant, new { enabled = true })).EnsureSuccessStatusCode();
+        var items = await delegateClient.GetFromJsonAsync<JsonElement>(queue);
+        Assert.Equal(campaign.Id, Assert.Single(items.EnumerateArray()).GetProperty("id").GetGuid());
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, (await delegateClient.PostAsync($"{queue}/{message.Id}/approve", null)).StatusCode);
+        (await ownerClient.PutAsJsonAsync(grant, new { enabled = false })).EnsureSuccessStatusCode();
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, (await delegateClient.GetAsync(queue)).StatusCode);
+        await db.Entry(message).ReloadAsync();
+        Assert.Equal(ApprovalStatus.Pending, message.Status);
+    }
+
+    [Fact]
     public async Task ApprovingAndDismissingSocialAssetsStayWithinTheHostScope()
     {
         var (owner, org) = await OrgTeamHttp.SeedOwnerWithTeamRowsAsync(factory);

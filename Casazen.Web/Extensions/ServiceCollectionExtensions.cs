@@ -280,6 +280,10 @@ public static class ServiceCollectionExtensions
                 policy.Requirements.Add(new ContextPermissionRequirement(contextKeys, permissionKey)));
         }
 
+        var queuePermissions = CasazenPolicies.ApprovalQueuePolicies.Select(name => CasazenPolicies.ParseContextPolicy(name).PermissionKey).ToArray();
+        builder.AddPolicy(CasazenPolicies.ApprovalQueueAccess, policy => policy.Requirements.Add(
+            new ContextPermissionRequirement([OrgRoleCatalog.ShortRent], queuePermissions[0], queuePermissions[1..])));
+
         // Agency tier policies (ADR-010): Org.PlanTier == PlanTier.Agency and, since DEB-01, the agency permission of the policy
         // held by the caller's org role (OrgRoleCatalog.AgencyPermissionsOf).
         foreach (var policyName in CasazenPolicies.AgencyPolicies)

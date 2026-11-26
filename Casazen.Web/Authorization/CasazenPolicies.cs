@@ -140,6 +140,9 @@ public static class CasazenPolicies
     /// </summary>
     public const string ApprovalDecide = ShortRent + HostPermissions.ApprovalDecide;
 
+    public const string ApprovalQueueAccess = "ApprovalQueueAccess";
+    public static IReadOnlyList<string> ApprovalQueuePolicies { get; } = [ApprovalDecide, Marketing];
+
     /// <summary>
     /// «Portale ospiti» (E50/F01/US01/T01, NF-152, guest portal plan decision A7): set up the guest portal of the org (house guide, extras, suppliers and
     /// their percentages, automatic replies, the wizard). Owner, administrators and property managers; not the collaborator nor the accountant.
