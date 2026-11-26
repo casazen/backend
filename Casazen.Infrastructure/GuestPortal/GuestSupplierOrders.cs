@@ -112,7 +112,13 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         return new GuestSupplierOrderView(order.Id, order.ServiceName, order.SupplierName, state.ToString(),
             order.RequestedFor, order.CompletedAt, order.SupplierPriceCents, order.CommissionCents,
             order.HostOrigin, total, order.RefundCents, commissionRefund, order.RequestNote, order.Complaint,
-            includeInternal ? order.SupplierReply : null, order.Decision, order.StripeSandbox);
+            includeInternal ? order.SupplierReply : null, order.Decision, order.StripeSandbox)
+        {
+            Payout = includeInternal && order.StripeSandbox && (order.StripePayoutClaimedAt != null || order.StripePayoutFailureCode != null)
+                ? new(order.StripeCardFeeCents, order.StripeSupplierTransferCents, order.StripeHostTransferCents,
+                    order.StripeSupplierTransferId != null, order.StripeHostTransferId != null, order.StripeReleasedAt, order.StripePayoutFailureCode)
+                : null
+        };
     }
 
     public sealed record CatalogEntry(Guid Id, string ServiceName, string SupplierName, string Category,
@@ -121,5 +127,11 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
     public sealed record GuestSupplierOrderView(Guid Id, string ServiceName, string SupplierName, string State,
         DateTime RequestedFor, DateTime? CompletedAt, int SupplierPriceCents, int CommissionCents,
         bool HostOrigin, int TotalCents, int RefundCents, int CommissionRefundCents, string? RequestNote,
-        string? Complaint, string? SupplierReply, string? Decision, bool StripeSandbox);
+        string? Complaint, string? SupplierReply, string? Decision, bool StripeSandbox)
+    {
+        public GuestSupplierPayoutView? Payout { get; init; }
+    }
+
+    public sealed record GuestSupplierPayoutView(int? CardFeeCents, int SupplierTransferCents, int HostTransferCents,
+        bool SupplierTransferred, bool HostTransferred, DateTime? ReleasedAt, string? HoldCode);
 }
