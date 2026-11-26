@@ -264,6 +264,35 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
     }
 
     /// <summary>A confirmed stay from a portal at a house of a new org, arriving in five days, and its stay link.</summary>
+    [PostgresFact]
+    public async Task OtaLink_AddsOnlyThisStayToOneVerifiedAccountUntilRevoked()
+    {
+        var token = await SeedStayWithLinkAsync();
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var link = await db.GuestPortalLinks.SingleAsync(l => l.Token == token);
+        using var first = factory.CreateAuthenticatedClient($"auth0|guest-{Guid.NewGuid():N}", email: "guest-one@example.com", emailVerified: true);
+        using var second = factory.CreateAuthenticatedClient($"auth0|guest-{Guid.NewGuid():N}", email: "guest-two@example.com", emailVerified: true);
+        Task<HttpResponseMessage> Attach(HttpClient client) =>
+            client.PostAsync("/api/guest/stays/attach", System.Net.Http.Json.JsonContent.Create(new { token }));
+        var open = $"/api/guest/stays/{link.BookingId:D}/open";
+
+        Assert.Equal(HttpStatusCode.NotFound, (await Attach(first)).StatusCode);
+        var guest = await db.Bookings.Where(b => b.Id == link.BookingId).Select(b => b.Guest).SingleAsync();
+        guest.Email = $"{Guid.NewGuid():N}@guest.booking.com";
+        await db.SaveChangesAsync();
+        Assert.Equal(HttpStatusCode.NoContent, (await Attach(first)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await Attach(first)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Attach(second)).StatusCode);
+        Assert.Contains(link.BookingId.ToString(), await first.GetStringAsync("/api/guest/stays"));
+        Assert.Equal(HttpStatusCode.NotFound, (await second.PostAsync(open, null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await first.PostAsync(open, null)).StatusCode);
+
+        link.RevokedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        Assert.Equal(HttpStatusCode.NotFound, (await first.PostAsync(open, null)).StatusCode);
+    }
+
     private async Task<string> SeedStayWithLinkAsync(bool withCheckIn = false, int departureOffset = 8)
     {
         var ownerId = $"auth0|portale-{Guid.NewGuid():N}";

@@ -4912,6 +4912,33 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int?>("StripeCardFeeCents")
                         .HasColumnType("integer");
 
+                    b.Property<string>("BankDisputeStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("BankDisputesJson")
+                        .HasColumnType("text");
+
+                    b.Property<int>("BankLossCents")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RefundRequestedCents")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RefundStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid?>("StripeRefundAttempt")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("StripeRefundAttemptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StripeRefundId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<DateTime?>("StripeCheckoutStartedAt")
                         .HasColumnType("timestamp with time zone");
 
