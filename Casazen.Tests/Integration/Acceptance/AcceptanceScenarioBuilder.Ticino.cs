@@ -21,8 +21,8 @@ namespace Casazen.Tests.Integration.Acceptance;
 
 /// <summary>
 /// The Ticino pilot of the acceptance scenario (E30/F03/US01/T01, NF-133, casazen/backend#979): an agency of Lugano with a flat whose postal code and city are the only things
-/// that say where it is (6900 «Lugano», no municipality stored), a second agency of Locarno that must see nothing of it, and a family of three from Zurich (two adults and a girl
-/// of nine) that books the flat, completes the online check-in and arrives. The services are the real ones over one database (in memory, or PostgreSQL for the twin of the main
+/// that say where it is (6900 «Lugano», no municipality stored), a second agency of Locarno with a guest who arrives the same day and that must see nothing of the first, and a
+/// family of three from Zurich (two adults and a girl of nine) that books the flat, completes the online check-in and arrives. The services are the real ones over one database (in memory, or PostgreSQL for the twin of the main
 /// path); only the e-mail transport, the push queue, the storage of the receipts and the audience of the alerts are stand-ins that record what they are given. The clock is the one of
 /// the world and starts on <see cref="TicinoStartDay"/>, the one fixed date of the pilot: every other date is relative to it.
 /// </summary>
@@ -43,9 +43,19 @@ internal sealed partial class AcceptanceScenarioBuilder
     /// <summary>The second agency: its address, its flat in Locarno and its structure number.</summary>
     public const string OtherAgencyEmail = "agenzia.locarno@example.com";
 
+    /// <summary>The person of the second agency: the owner of its flat and the one who is told about its alerts.</summary>
+    public const string OtherAgencyUser = "auth0|test-locarno-agency";
+
     public const string OtherPropertyName = "TEST Casa Locarno";
 
     public const string OtherStructureNumber = "NL-87654321";
+
+    /// <summary>The guest of Locarno who arrives on the same day as the family of Zurich, and the code of his booking as it is stored.</summary>
+    public const string OtherGuestFirstName = "Mirko";
+
+    public const string OtherGuestLastName = "Bernasconi";
+
+    public const string OtherBookingCode = "LC7401XY2Z";
 
     /// <summary>
     /// The first day of the pilot, a Tuesday of the past in winter time: the clock of the world starts there at 09:00 in Lugano and every other date of the scenario is relative to it
@@ -60,6 +70,9 @@ internal sealed partial class AcceptanceScenarioBuilder
     public Guid OtherOrgId { get; } = Guid.NewGuid();
 
     public Guid OtherPropertyId { get; } = Guid.NewGuid();
+
+    /// <summary>The stay of the guest of Locarno (set up with the world): confirmed, arriving on <see cref="TicinoArrivalDay"/>, with no check-in done.</summary>
+    public Guid OtherBookingId { get; private set; }
 
     /// <summary>The push queue: what the alerts and the declarations tell the hosts (the bell, the pop-up and the open pages are made from it by the decorator of the application).</summary>
     public RecordingPushQueue Pushes { get; } = new();
@@ -139,12 +152,12 @@ internal sealed partial class AcceptanceScenarioBuilder
             UpdatedAt = now,
         });
 
-        // The flat of the other agency: in Ticino too (6600 «Locarno», no municipality stored), already active, with its own structure number and no stay.
+        // The flat of the other agency: in Ticino too (6600 «Locarno», no municipality stored), already active, with its own structure number.
         db.Properties.Add(new Property
         {
             Id = OtherPropertyId,
             OrgId = OtherOrgId,
-            OwnerId = "auth0|test-locarno-agency",
+            OwnerId = OtherAgencyUser,
             Name = OtherPropertyName,
             Address = "Via della Pace 3",
             City = "Locarno",
@@ -160,10 +173,45 @@ internal sealed partial class AcceptanceScenarioBuilder
             ComplianceStatus = PropertyComplianceStatus.Active,
             IsActive = true,
         });
+
+        // A guest of Locarno arrives on the same day as the family of Zurich, so the agency of Locarno has a day to notify of its own: whatever tells the two agencies apart (the days the job reads
+        // for every org, the audience of each alert, the tenant filter) has something on each side. The guest never does the check-in: the day is told with what it misses.
+        var otherGuest = new Guest
+        {
+            OrgId = OtherOrgId,
+            FirstName = OtherGuestFirstName,
+            LastName = OtherGuestLastName,
+            Email = $"mirko.bernasconi@{GuestMailDomain}",
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        var otherBooking = new Booking
+        {
+            OrgId = OtherOrgId,
+            PropertyId = OtherPropertyId,
+            GuestId = otherGuest.Id,
+            CheckInDate = StoredDay(TicinoArrivalDay),
+            CheckOutDate = StoredDay(TicinoArrivalDay.AddDays(2)),
+            NumberOfGuests = 1,
+            NumberOfAdults = 1,
+            NumberOfChildren = 0,
+            Status = BookingStatus.Confirmed,
+            ConfirmedAt = now,
+            Source = BookingSource.Direct,
+            BookingCode = OtherBookingCode,
+            ExpectedArrivalTime = "15:00",
+            BasePrice = 300m,
+            TotalPrice = 300m,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.Guests.Add(otherGuest);
+        db.Bookings.Add(otherBooking);
+        OtherBookingId = otherBooking.Id;
         await db.SaveChangesAsync();
 
         _audiences[OrgId] = new ComplianceAlertRecipients([TicinoAgencyEmail], [AgencyUser]);
-        _audiences[OtherOrgId] = new ComplianceAlertRecipients([OtherAgencyEmail], ["auth0|test-locarno-agency"]);
+        _audiences[OtherOrgId] = new ComplianceAlertRecipients([OtherAgencyEmail], [OtherAgencyUser]);
     }
 
     // ---------------------------------------------------------------- the steps the pilot shares
@@ -389,6 +437,7 @@ internal sealed class TicinoScope : IAsyncDisposable
             log.For<GuestCheckInService>(),
             stayGuestService: stayGuests,
             timeProvider: clock,
+            pushNotifications: world.Pushes,
             ticinoNotifications: Ticino);
         Stays = new StayLifecycleService(
             db,
