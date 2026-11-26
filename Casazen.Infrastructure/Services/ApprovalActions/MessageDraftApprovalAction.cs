@@ -43,9 +43,9 @@ public sealed class MessageDraftApprovalAction(IMessageReplyService replies, ILo
         if (!MessageThreadKey.TryParse(item.ThreadKey, out var key))
             return ApprovalActionResult.Failed(MessageThreadKey.InvalidCode);
 
-        var edited = item.EditedContentText is not null;
-        var origin = edited ? MessageOrigin.Person : MessageOrigin.Assistant;
-        var ruleCode = !edited && !string.IsNullOrWhiteSpace(item.SituationCode) ? item.SituationCode : null;
+        var hostSelected = item.EditedContentText is not null || item.ContentVersion == ApprovalQueueRules.PortalLocalDraftVersion;
+        var origin = hostSelected ? MessageOrigin.Person : MessageOrigin.Assistant;
+        var ruleCode = !hostSelected && !string.IsNullOrWhiteSpace(item.SituationCode) ? item.SituationCode : null;
         var scope = new HostScope(item.OrgId);
 
         try
