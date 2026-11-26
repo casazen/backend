@@ -116,6 +116,10 @@ public sealed class GuestSupplierPayoutTests
         Assert.False(await payouts.ReleaseAsync(order.Id, default));
         Assert.Equal("bank_dispute", (await ReloadAsync(db, order.Id)).StripePayoutFailureCode);
         intent.LatestCharge.Disputed = false;
+        intent.LatestCharge.AmountRefunded = 55;
+        Assert.False(await payouts.ReleaseAsync(order.Id, default));
+        Assert.Equal("refund_unreconciled", (await ReloadAsync(db, order.Id)).StripePayoutFailureCode);
+        intent.LatestCharge.AmountRefunded = 0;
         Assert.False(await payouts.ReleaseAsync(order.Id, default));
         Assert.Single(transfers);
         Assert.Null((await ReloadAsync(db, order.Id)).StripeSupplierTransferId);
@@ -134,9 +138,9 @@ public sealed class GuestSupplierPayoutTests
     }
 
     [AttributeUsage(AttributeTargets.Method)]
-    public sealed class ConnectSandboxFactAttribute : FactAttribute
+    public sealed class ConnectSandboxTheoryAttribute : TheoryAttribute
     {
-        public ConnectSandboxFactAttribute()
+        public ConnectSandboxTheoryAttribute()
         {
             if (Environment.GetEnvironmentVariable("STRIPE_TEST_SECRET_KEY")?.StartsWith("sk_test_") != true ||
                 Environment.GetEnvironmentVariable("STRIPE_TEST_PUBLISHABLE_KEY")?.StartsWith("pk_test_") != true ||
@@ -146,8 +150,10 @@ public sealed class GuestSupplierPayoutTests
         }
     }
 
-    [ConnectSandboxFact]
-    public async Task StripeSandbox_SplitsRealCharge()
+    [ConnectSandboxTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task StripeSandbox_SplitsRealCharge(bool hostOrigin)
     {
         var secret = Environment.GetEnvironmentVariable("STRIPE_TEST_SECRET_KEY")!;
         var supplier = Environment.GetEnvironmentVariable("STRIPE_TEST_SUPPLIER_ACCOUNT")!;
@@ -157,6 +163,14 @@ public sealed class GuestSupplierPayoutTests
         await using var database = await PostgresTestDatabase.CreateMigratedAsync("payoutstripe");
         await using var db = database.CreateContext();
         var order = await SeedAsync(db, supplier, host);
+        order.HostOrigin = hostOrigin;
+        if (!hostOrigin)
+        {
+            var org = await db.Orgs.FindAsync(order.HostOrgId);
+            org!.StripeConnectedAccountId = null;
+            org.ConnectPayoutsEnabled = false;
+        }
+        await db.SaveChangesAsync();
         var client = new StripeClient(secret);
         var intents = new PaymentIntentService(client);
         var checkout = new GuestSupplierCheckout(db, TimeProvider.System, config);
@@ -187,10 +201,13 @@ public sealed class GuestSupplierPayoutTests
             Assert.True(intent.LatestCharge.BalanceTransaction.Fee > 0);
             Assert.Equal(intent.LatestCharge.BalanceTransaction.Fee, (long)order.StripeCardFeeCents!.Value);
             var list = await transfers.ListAsync(new TransferListOptions { TransferGroup = group });
-            Assert.Equal(2, list.Data.Count);
+            Assert.Equal(hostOrigin ? 2 : 1, list.Data.Count);
             Assert.All(list.Data, transfer => { Assert.False(transfer.Livemode); Assert.Equal(intent.LatestChargeId, transfer.SourceTransactionId); });
             Assert.Equal(1000 - intent.LatestCharge.BalanceTransaction.Fee, list.Data.Single(t => t.DestinationId == supplier).Amount);
-            Assert.Equal(100, list.Data.Single(t => t.DestinationId == host).Amount);
+            if (hostOrigin)
+                Assert.Equal(100, list.Data.Single(t => t.DestinationId == host).Amount);
+            else
+                Assert.DoesNotContain(list.Data, t => t.DestinationId == host);
         }
         finally
         {
