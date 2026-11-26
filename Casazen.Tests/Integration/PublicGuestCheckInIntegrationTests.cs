@@ -95,6 +95,9 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         var root = json.RootElement;
         Assert.False(root.GetProperty("completed").GetBoolean());
         Assert.Equal("InCompilazione", root.GetProperty("status").GetString());
+        // NF-140: the answer says which org the stay belongs to, with or without a published privacy notice (this org has none).
+        Assert.Equal(await OrgSlugOfAsync(seed.BookingId), root.GetProperty("orgSlug").GetString());
+        Assert.False(root.TryGetProperty("privacyNoticeOrgSlug", out _));
         Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("propertyName").GetString()));
         Assert.Equal(2, root.GetProperty("declaredGuests").GetInt32());
         Assert.Equal(0, root.GetProperty("availableCodeTables").GetArrayLength());
@@ -125,15 +128,19 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
-        foreach (var pii in new[] { "YA1234567", "567", "Luigi", "Verdi", "1990", "Roma", "Italia", "example.com" })
-            Assert.DoesNotContain(pii, body);
         using var json = JsonDocument.Parse(body);
         var root = json.RootElement;
+        // The slug of the org is public data and holds a random id, digits included: the guest's data is looked for in every other property.
+        var guestData = string.Concat(root.EnumerateObject().Where(p => p.Name != "orgSlug").Select(p => p.Value.ToString()));
+        foreach (var pii in new[] { "YA1234567", "567", "Luigi", "Verdi", "1990", "Roma", "Italia", "example.com" })
+            Assert.DoesNotContain(pii, guestData);
         Assert.True(root.GetProperty("completed").GetBoolean());
         // Alloggiati is only scheduled for the arrival day: without a receipt the session stays Completo (CO-11).
         Assert.Equal("Completo", root.GetProperty("status").GetString());
+        // NF-140: a completed link still says which org it belongs to (public data), and nothing else.
+        Assert.Equal(await OrgSlugOfAsync(seed.BookingId), root.GetProperty("orgSlug").GetString());
         var properties = root.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToArray();
-        Assert.Equal(new[] { "completed", "status" }, properties);
+        Assert.Equal(new[] { "completed", "orgSlug", "status" }, properties);
     }
 
     [Fact]
@@ -400,6 +407,15 @@ public class PublicGuestCheckInIntegrationTests : IClassFixture<CasazenWebApplic
         var booking = await db.Bookings.FindAsync(bookingId);
         var service = new GuestCheckInService(db, NullLogger<GuestCheckInService>.Instance);
         return await service.CreateSessionAsync(bookingId, booking!.OrgId);
+    }
+
+    /// <summary>The slug of the org that owns the booking, as the database holds it.</summary>
+    private async Task<string> OrgSlugOfAsync(Guid bookingId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var booking = await db.Bookings.FindAsync(bookingId);
+        return (await db.Orgs.SingleAsync(o => o.Id == booking!.OrgId)).Slug;
     }
 
     private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)

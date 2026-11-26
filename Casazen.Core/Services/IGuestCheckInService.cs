@@ -13,7 +13,8 @@ public interface IGuestCheckInService
     /// <summary>
     /// What the public check-in portal may show for the raw token, or null if the token is unknown, expired or
     /// its booking is no longer eligible. A completed session exposes only its status (no booking data, no guest
-    /// PII); an open one the booking context and a guest prefill whose document number is masked.
+    /// PII); an open one the booking context and a guest prefill whose document number is masked. Both carry the slug
+    /// of the org that owns the stay (<see cref="GuestCheckInPublicView.OrgSlug"/>, public data).
     /// </summary>
     Task<GuestCheckInPublicView?> GetPublicViewAsync(string token);
 
@@ -199,8 +200,16 @@ public sealed class GuestCheckInPublicView
 {
     public required GuestCheckInSessionStatus Status { get; init; }
 
-    /// <summary>True once the guest has submitted the data: then every other property is null.</summary>
+    /// <summary>True once the guest has submitted the data: then every other property is null, but <see cref="OrgSlug"/>.</summary>
     public bool IsCompleted { get; init; }
+
+    /// <summary>
+    /// The slug of the org that owns the stay (NF-140), filled for every usable link, a completed one included. It is public data (it is in every public address of the org), not personal
+    /// data, so the rule that a completed link shows only that the check-in is done (A5-28) does not hide it. The page on an agency's own domain compares it with the org of the domain,
+    /// so the check-in of another agency never opens there under the domain's name. Unlike <see cref="PrivacyNoticeOrgSlug"/> it does not depend on a published privacy notice.
+    /// Null only when the org cannot be read, which the foreign key of the booking does not allow.
+    /// </summary>
+    public string? OrgSlug { get; init; }
 
     public Guid? SessionId { get; init; }
     public string? PropertyName { get; init; }

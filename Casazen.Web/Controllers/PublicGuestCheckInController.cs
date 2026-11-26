@@ -66,8 +66,8 @@ public class PublicGuestCheckInController(
 
     /// <summary>
     /// Returns booking context for the guest form. Transitions session Inviato→InCompilazione on first open.
-    /// Before completion the guests on file are returned with masked document numbers; after completion only the status is
-    /// returned (no booking data, no PII), so the guest still sees that the check-in is done (A5-28). While
+    /// Before completion the guests on file are returned with masked document numbers; after completion only the status and the
+    /// slug of the org (public data, <c>orgSlug</c>) are returned (no booking data, no PII), so the guest still sees that the check-in is done (A5-28). While
     /// <see cref="FeatureFlags.CheckInIdentityVerification"/> is on, an open session also says whether the property keeps no document
     /// (<c>documentNotArchived</c>, ADR-013-R15) and where the identity verification stands (E03/F04/US02/T04).
     /// </summary>
@@ -79,13 +79,15 @@ public class PublicGuestCheckInController(
         if (view is null)
             return NotFound();
 
+        // The slug of the org is public data, so a completed link carries it too: the page on an agency's own domain needs it to tell a link of another agency (NF-140).
         if (view.IsCompleted)
-            return Ok(new PublicCheckInContextResponse { Completed = true, Status = view.Status.ToString() });
+            return Ok(new PublicCheckInContextResponse { Completed = true, Status = view.Status.ToString(), OrgSlug = view.OrgSlug });
 
         var response = new PublicCheckInContextResponse
         {
             Completed = false,
             Status = view.Status.ToString(),
+            OrgSlug = view.OrgSlug,
             SessionId = view.SessionId,
             PropertyName = view.PropertyName,
             CheckInDate = view.CheckInDate,

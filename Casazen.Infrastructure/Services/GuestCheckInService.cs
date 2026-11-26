@@ -240,11 +240,14 @@ public class GuestCheckInService(
         if (session is null)
             return null;
 
-        // After submission the link (possibly forwarded) shows only that the check-in is done (A5-28).
-        if (IsCompleted(session.Status))
-            return new GuestCheckInPublicView { Status = session.Status, IsCompleted = true };
-
+        // The slug of the org that owns the stay is public data, not personal data: every usable link carries it, a completed one too, at the cost of this one lookup (NF-140).
         var booking = session.Booking;
+        var orgSlug = await GetOrgSlugAsync(booking.OrgId);
+
+        // After submission the link (possibly forwarded) shows only that the check-in is done (A5-28), and the org it belongs to.
+        if (IsCompleted(session.Status))
+            return new GuestCheckInPublicView { Status = session.Status, IsCompleted = true, OrgSlug = orgSlug };
+
         var guests = await _stayGuests.GetForBookingAsync(booking);
         var tables = await _codeTables.GetStatusAsync();
 
@@ -262,6 +265,7 @@ public class GuestCheckInService(
             InvoiceRequested = invoice?.InvoiceRequested ?? false,
             HasInvoiceData = invoice?.HasRecipientData ?? false,
             Status = session.Status,
+            OrgSlug = orgSlug,
             SessionId = session.Id,
             PropertyName = booking.Property.Name,
             CheckInDate = booking.CheckInDate,
@@ -280,6 +284,19 @@ public class GuestCheckInService(
             AskVehiclePlate = inTicino,
             Language = session.Language,
         };
+    }
+
+    /// <summary>
+    /// The current slug of an org, for the anonymous check-in link (NF-140): the link carries no tenant, so the tenant filter does not apply (the same reading as the privacy notice above).
+    /// Null when the org cannot be found.
+    /// </summary>
+    private async Task<string?> GetOrgSlugAsync(Guid orgId)
+    {
+        return await db.Orgs
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(o => o.Id == orgId)
+            .Select(o => o.Slug)
+            .FirstOrDefaultAsync();
     }
 
     /// <summary>The statistical fields the region of the property requires of its guests: the ones its row of the region table names, none otherwise.</summary>

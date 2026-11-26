@@ -100,6 +100,162 @@ public class GuestCheckInServiceTests
         Assert.Null((await svc.GetPublicViewAsync(token))?.PrivacyNoticeOrgSlug);
     }
 
+    /// <summary>The org row of the seed (the seed has none) with the slug its links must carry (NF-140).</summary>
+    private static async Task<Casazen.Core.Entities.Org> AddOrgAsync(Seed seed, string slug)
+    {
+        var org = new Casazen.Core.Entities.Org { Id = seed.OrgId, Slug = slug, Name = slug, DisplayName = slug };
+        seed.Db.Orgs.Add(org);
+        await seed.Db.SaveChangesAsync();
+        return org;
+    }
+
+    /// <summary>A confirmed booking of another org, with its org row and its slug, in the same database as the seed.</summary>
+    private static async Task<(Guid BookingId, Guid OrgId)> AddStayOfAnotherOrgAsync(AppDbContext db, string slug)
+    {
+        var orgId = Guid.NewGuid();
+        var guestId = Guid.NewGuid();
+        var propertyId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+
+        db.Orgs.Add(new Casazen.Core.Entities.Org { Id = orgId, Slug = slug, Name = slug, DisplayName = slug });
+        db.Guests.Add(new Guest { Id = guestId, FirstName = "Anna", LastName = "Bianchi", Email = "anna@example.com" });
+        db.Properties.Add(new Property
+        {
+            Id = propertyId,
+            OrgId = orgId,
+            OwnerId = "owner-other",
+            Name = "Other Property",
+            Address = "Via Milano 2",
+            City = "Milano",
+            PostalCode = "20100",
+            NightlyRate = 100m,
+            IsActive = true,
+        });
+        db.Bookings.Add(new Booking
+        {
+            Id = bookingId,
+            PropertyId = propertyId,
+            NumberOfGuests = 1,
+            GuestId = guestId,
+            OrgId = orgId,
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(3),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(6),
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Direct,
+        });
+
+        await db.SaveChangesAsync();
+        return (bookingId, orgId);
+    }
+
+    /// <summary>
+    /// NF-140: a link with a published privacy notice carries the slug of its org, and the slug the consent step links the notice through
+    /// is the same one, as it always was.
+    /// </summary>
+    [Fact]
+    public async Task GetPublicView_PublishedPrivacyNotice_ReturnsTheOrgSlugAndTheNoticeSlug()
+    {
+        await using var seed = await SeedAsync();
+        var org = await AddOrgAsync(seed, "agenzia-uno");
+        seed.Db.OrgSiteDocuments.Add(new OrgSiteDocument { Org = org, Kind = OrgSiteDocumentKind.Privacy, Version = 1 });
+        await seed.Db.SaveChangesAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.NotNull(view);
+        Assert.Equal("agenzia-uno", view.OrgSlug);
+        Assert.Equal("agenzia-uno", view.PrivacyNoticeOrgSlug);
+    }
+
+    /// <summary>NF-140: the notice was withdrawn, so the consent step has no notice to link, and the link still says which org it belongs to.</summary>
+    [Fact]
+    public async Task GetPublicView_WithdrawnPrivacyNotice_ReturnsTheOrgSlugAndNoNoticeSlug()
+    {
+        await using var seed = await SeedAsync();
+        var org = await AddOrgAsync(seed, "agenzia-uno");
+        seed.Db.OrgSiteDocuments.Add(new OrgSiteDocument
+        {
+            Org = org,
+            Kind = OrgSiteDocumentKind.Privacy,
+            Version = 1,
+            WithdrawnAt = DateTime.UtcNow,
+        });
+        await seed.Db.SaveChangesAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.NotNull(view);
+        Assert.Equal("agenzia-uno", view.OrgSlug);
+        Assert.Null(view.PrivacyNoticeOrgSlug);
+    }
+
+    /// <summary>NF-140: an org that never published a notice: the slug the consent step uses stays empty, the slug of the org does not.</summary>
+    [Fact]
+    public async Task GetPublicView_NoPrivacyNotice_ReturnsTheOrgSlugAndNoNoticeSlug()
+    {
+        await using var seed = await SeedAsync();
+        await AddOrgAsync(seed, "agenzia-uno");
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.NotNull(view);
+        Assert.False(view.IsCompleted);
+        Assert.Equal("agenzia-uno", view.OrgSlug);
+        Assert.Null(view.PrivacyNoticeOrgSlug);
+    }
+
+    /// <summary>
+    /// NF-140 and A5-28: a completed link shows that the check-in is done and the slug of its org, public data, and nothing of the booking or of the
+    /// guests, even where the org has a published notice (the notice slug is part of the consent step, which a completed link no longer has).
+    /// </summary>
+    [Fact]
+    public async Task GetPublicView_CompletedSession_ReturnsTheOrgSlugAndNothingOfTheStay()
+    {
+        await using var seed = await SeedAsync();
+        var org = await AddOrgAsync(seed, "agenzia-uno");
+        seed.Db.OrgSiteDocuments.Add(new OrgSiteDocument { Org = org, Kind = OrgSiteDocumentKind.Privacy, Version = 1 });
+        await seed.Db.SaveChangesAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        Assert.True((await svc.SubmitAsync(token, BuildValidSubmitRequest())).Success);
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.NotNull(view);
+        Assert.True(view.IsCompleted);
+        Assert.Equal(GuestCheckInSessionStatus.Completo, view.Status);
+        Assert.Equal("agenzia-uno", view.OrgSlug);
+        Assert.Null(view.PrivacyNoticeOrgSlug);
+        Assert.Null(view.SessionId);
+        Assert.Null(view.PropertyName);
+        Assert.Null(view.CheckInDate);
+        Assert.Null(view.Guests);
+    }
+
+    /// <summary>
+    /// NF-140, isolation between agencies: in one database each link carries the slug of the org that owns its own stay, never the slug of another org.
+    /// The page on an agency's domain relies on it to refuse the link of another agency.
+    /// </summary>
+    [Fact]
+    public async Task GetPublicView_TwoOrgsInTheSameDatabase_EachLinkCarriesTheSlugOfItsOwnOrg()
+    {
+        await using var seed = await SeedAsync();
+        await AddOrgAsync(seed, "agenzia-uno");
+        var other = await AddStayOfAnotherOrgAsync(seed.Db, "agenzia-due");
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var ownToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var otherToken = await svc.CreateSessionAsync(other.BookingId, other.OrgId);
+
+        Assert.Equal("agenzia-uno", (await svc.GetPublicViewAsync(ownToken))?.OrgSlug);
+        Assert.Equal("agenzia-due", (await svc.GetPublicViewAsync(otherToken))?.OrgSlug);
+    }
+
     [Fact]
     public async Task CreateSession_StoresHashedToken_ReturnsRawToken()
     {

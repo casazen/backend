@@ -8,7 +8,7 @@ namespace Casazen.Web.DTOs.CheckIn;
 
 /// <summary>
 /// Public check-in portal context. Once the guest has submitted (<see cref="Completed"/>) only
-/// <see cref="Completed"/> and <see cref="Status"/> are returned: no booking data and no guest PII (A5-28).
+/// <see cref="Completed"/>, <see cref="Status"/> and <see cref="OrgSlug"/> (public data) are returned: no booking data and no guest PII (A5-28).
 /// </summary>
 public class PublicCheckInContextResponse
 {
@@ -20,6 +20,14 @@ public class PublicCheckInContextResponse
 
     public bool Completed { get; set; }
     public string Status { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The slug of the org that owns the stay (NF-140), sent with every usable link, a completed one too: it is public data, not personal data, so A5-28 does not hide it. The page on an
+    /// agency's own domain compares it with the org of the domain, so the check-in of another agency never opens there under the domain's name. Unlike <see cref="PrivacyNoticeOrgSlug"/>
+    /// it does not depend on a published privacy notice.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? OrgSlug { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Guid? SessionId { get; set; }
@@ -49,6 +57,7 @@ public class PublicCheckInContextResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PrivacyNoticeVersion { get; set; }
 
+    /// <summary>The slug the consent step links the privacy notice of the org through; absent while the org has no published (not withdrawn) privacy notice. It is not the way to tell the org of the stay: see <see cref="OrgSlug"/>.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PrivacyNoticeOrgSlug { get; set; }
 
