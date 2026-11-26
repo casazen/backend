@@ -122,7 +122,7 @@ public sealed class GuestPortalOverviewService(
                 && mapping.Status == OctorateMappingStatus.Confirmed && connection.Status == OctorateConnectionStatus.Connected
                 && connection.Environment == environment
                 && sync.LastRecentPassAt != null && sync.LastError == null
-            select thread.Id;
+            select thread;
         return await conversations.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AnyAsync(ct);
     }
 
