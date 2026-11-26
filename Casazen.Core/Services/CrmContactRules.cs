@@ -104,6 +104,7 @@ public static class CrmContactRules
         contact.Channel == GuestContactChannel.Email
         && !contact.IsSuppressed
         && contact.Origin != GuestContactOrigin.OtaForward
+        && (contact.Origin != GuestContactOrigin.Imported || contact.Confirmation == GuestContactConfirmation.Confirmed)
         && (contact.LegalBasis == GuestContactLegalBasis.SoftOptIn
             || (contact.LegalBasis == GuestContactLegalBasis.Consent && contact.Confirmation == GuestContactConfirmation.Confirmed));
 
@@ -123,6 +124,7 @@ public static class CrmContactRules
         {
             GuestContactChannel.Email =>
                 contact.Origin != GuestContactOrigin.OtaForward
+                && (contact.Origin != GuestContactOrigin.Imported || contact.Confirmation == GuestContactConfirmation.Confirmed)
                 && (contact.LegalBasis == GuestContactLegalBasis.SoftOptIn
                     || (contact.LegalBasis == GuestContactLegalBasis.Consent && contact.Confirmation == GuestContactConfirmation.Confirmed)),
             _ => contact.LegalBasis == GuestContactLegalBasis.Consent,
@@ -160,7 +162,8 @@ public static class CrmContactRules
 
         if (!CanReceiveMarketing(contact))
         {
-            return contact.Channel == GuestContactChannel.Email && contact.LegalBasis == GuestContactLegalBasis.Consent
+            return contact.Channel == GuestContactChannel.Email && (contact.LegalBasis == GuestContactLegalBasis.Consent
+                || (contact.Origin == GuestContactOrigin.Imported && contact.LegalBasis == GuestContactLegalBasis.SoftOptIn))
                 ? ReasonNotConfirmed
                 : ReasonNoBasis;
         }

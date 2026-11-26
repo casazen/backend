@@ -155,6 +155,9 @@ public static class FeatureFlags
     /// </summary>
     public const string CrmMarketing = "CrmMarketing";
 
+    /// <summary>Host-requested interest proposals from anonymous topic counts, enabled after provider/privacy review.</summary>
+    public const string MarketingGuestInterestAi = "MarketingGuestInterestAi";
+
     /// <summary>
     /// E10/F01/US01/T02 (NF-104..NF-107): the activation of CasaZen with Octorate, <b>off by default</b> until the plan, the flows and the
     /// panel steps are ready to be shown. Off, every endpoint of epic E10 answers 404 before authentication
@@ -464,5 +467,6 @@ public static class FeatureFlags
         GuestPortal,
         GuestPortalSupplierServices,
         GuestPortalAutoReplies,
+        MarketingGuestInterestAi,
     ];
 }

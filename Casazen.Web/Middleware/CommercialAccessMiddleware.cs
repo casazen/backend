@@ -2,6 +2,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Web.Infrastructure;
+using Casazen.Web.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.EntityFrameworkCore;
@@ -23,7 +24,7 @@ public sealed class CommercialAccessMiddleware(RequestDelegate next)
         var hostOperation = policies?.Any(a => a.Policy?.StartsWith("RequireContext:short-rent", StringComparison.Ordinal) == true ||
                       a.Policy?.StartsWith("RequireContext:long-rent", StringComparison.Ordinal) == true) == true;
         var controller = context.GetEndpoint()?.Metadata.GetMetadata<ControllerActionDescriptor>()?.ControllerName;
-        var module = ModuleForController(controller);
+        var module = policies?.Any(a => a.Policy == CasazenPolicies.Marketing) == true ? "crm" : ModuleForController(controller);
         var action = context.GetEndpoint()?.Metadata.GetMetadata<ControllerActionDescriptor>()?.ActionName;
         // Passive dashboard summaries remain part of the base experience.
         if (controller == "Compliance" && action == "GetSummary") module = null;
@@ -65,7 +66,7 @@ public sealed class CommercialAccessMiddleware(RequestDelegate next)
         "ServiceRequests" or "ServiceRequestSuppliers" or "ServiceRequestAssist" or "LongRentServiceRequests" => "operations",
         "FiscalDocuments" or "FiscalDocumentSettings" or "FiscalDocumentSdi" or "FiscalDocumentExports" or "OctorateDocuments" or "LongRentFiscal" => "fiscal",
         "PricingAdapter" => "revenue",
-        "Crm" or "CrmContacts" => "crm",
+        "Crm" or "CrmContacts" or "Campaigns" or "MarketingImport" => "crm",
         _ => null,
     };
 }

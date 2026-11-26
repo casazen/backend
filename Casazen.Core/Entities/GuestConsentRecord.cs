@@ -117,6 +117,9 @@ public enum GuestConsentSource
 
     /// <summary>The guest, on the guest page of a stay (NF-90).</summary>
     GuestPage = 6,
+
+    /// <summary>Existing evidence declared by the host when importing historical contacts.</summary>
+    HistoricalImport = 7,
 }
 
 /// <summary>
