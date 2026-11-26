@@ -4881,6 +4881,16 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("State")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("StripeCheckoutStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StripePaymentIntentId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<bool>("StripeSandbox")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("SupplierName")
                         .IsRequired()
                         .HasMaxLength(250)
@@ -4905,6 +4915,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("PropertyId");
+
+                    b.HasIndex("StripePaymentIntentId")
+                        .IsUnique();
 
                     b.HasIndex("BookingId", "RequestId")
                         .IsUnique();

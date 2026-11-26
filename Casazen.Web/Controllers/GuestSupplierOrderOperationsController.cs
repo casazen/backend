@@ -31,7 +31,7 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
         if (failure is not null)
             return failure;
         var offers = await orders.OfferViews(Offers(orgId, propertyId)).ToListAsync(ct);
-        var history = configuration.GetValue<bool>(GuestSupplierOrders.SimulationSetting)
+        var history = GuestSupplierCheckout.OrdersEnabled(configuration)
             ? await Orders(orgId, propertyId).AsNoTracking().OrderByDescending(x => x.CreatedAt).ToListAsync(ct) : [];
         return Ok(new { offers, orders = history.Select(x => orders.View(x, x.HostOrigin) with { Complaint = x.HostOrigin ? x.Complaint : null }) });
     }
@@ -146,7 +146,7 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
         var (orgId, failure) = await ScopeAsync(propertyId, ct);
         if (failure is not null)
             return failure;
-        if (!configuration.GetValue<bool>(GuestSupplierOrders.SimulationSetting))
+        if (!GuestSupplierCheckout.OrdersEnabled(configuration))
             return NotFound();
         var order = await Orders(orgId, propertyId).SingleOrDefaultAsync(x => x.Id == id && x.HostOrigin, ct);
         if (order is null)
@@ -182,7 +182,7 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
 [FeatureGate(FeatureFlags.GuestPortalSupplierServices)]
 [PrivateAnswer]
 public sealed class SupplierGuestOrdersController(AppDbContext db, GuestSupplierOrders orders, IConfiguration configuration,
-    ISupplierOrgContextResolver orgs) : ControllerBase
+    ISupplierOrgContextResolver orgs, GuestSupplierCheckout? checkout = null) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct)
@@ -191,7 +191,7 @@ public sealed class SupplierGuestOrdersController(AppDbContext db, GuestSupplier
             return NotFound();
 
         var offers = await orders.OfferViews(db.GuestSupplierOffers.Where(x => x.SupplierOrgId == id && x.Enabled)).ToListAsync(ct);
-        var history = configuration.GetValue<bool>(GuestSupplierOrders.SimulationSetting)
+        var history = GuestSupplierCheckout.OrdersEnabled(configuration)
             ? await db.GuestSupplierOrders.AsNoTracking().Where(x => x.SupplierOrgId == id)
                 .OrderByDescending(x => x.CreatedAt).ToListAsync(ct) : [];
         return Ok(new { offers, orders = history.Select(x => orders.View(x, true)) });
@@ -222,6 +222,13 @@ public sealed class SupplierGuestOrdersController(AppDbContext db, GuestSupplier
         var order = await db.GuestSupplierOrders.SingleOrDefaultAsync(x => x.Id == id && x.SupplierOrgId == supplier, ct);
         if (order is null)
             return NotFound();
+
+        if (order.StripeSandbox && request.Action is "accept" or "decline")
+        {
+            if (!GuestSupplierCheckout.Enabled(configuration) || checkout is null) return NotFound();
+            return await checkout.SupplierActionAsync(order, request.Action, ct) ? Ok(orders.View(order, true)) : Conflict();
+        }
+        if (!order.StripeSandbox && !configuration.GetValue<bool>(GuestSupplierOrders.SimulationSetting)) return Conflict();
 
         switch (request.Action)
         {
@@ -257,7 +264,7 @@ public sealed class SupplierGuestOrdersController(AppDbContext db, GuestSupplier
     }
 
     private async Task<Guid?> SupplierAsync(CancellationToken ct) =>
-        configuration.GetValue<bool>(GuestSupplierOrders.SimulationSetting) ? await orgs.GetLinkedSupplierOrgIdAsync(ct) : null;
+        GuestSupplierCheckout.OrdersEnabled(configuration) ? await orgs.GetLinkedSupplierOrgIdAsync(ct) : null;
 
     public sealed record ConsentTerms(bool Accepted, int CommissionBasisPoints, uint Version);
     public sealed record SupplierTransition(
@@ -277,7 +284,7 @@ public sealed class AdminGuestSupplierOrdersController(AppDbContext db, GuestSup
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct)
     {
-        if (!configuration.GetValue<bool>(GuestSupplierOrders.SimulationSetting))
+        if (!GuestSupplierCheckout.OrdersEnabled(configuration))
             return NotFound();
 
         var open = await db.GuestSupplierOrders.AsNoTracking()
@@ -289,7 +296,7 @@ public sealed class AdminGuestSupplierOrdersController(AppDbContext db, GuestSup
     [HttpPost("{id:guid}/resolve")]
     public async Task<IActionResult> Resolve(Guid id, GuestSupplierDecision request, CancellationToken ct)
     {
-        if (!configuration.GetValue<bool>(GuestSupplierOrders.SimulationSetting))
+        if (!GuestSupplierCheckout.OrdersEnabled(configuration))
             return NotFound();
         var order = await db.GuestSupplierOrders.SingleOrDefaultAsync(x => x.Id == id && !x.HostOrigin, ct);
         if (order is null)
@@ -306,7 +313,7 @@ internal static class GuestSupplierDecisions
     internal static async Task<IActionResult> ResolveAsync(AppDbContext db, GuestSupplierOrders orders, GuestSupplierOrder order,
         GuestSupplierDecision request, CancellationToken ct)
     {
-        if (order.State != GuestSupplierOrderState.Disputed || request.RefundCents > order.SupplierPriceCents + order.CommissionCents)
+        if (order.StripeSandbox && request.RefundCents != 0 || order.State != GuestSupplierOrderState.Disputed || request.RefundCents > order.SupplierPriceCents + order.CommissionCents)
             return new ConflictResult();
 
         order.RefundCents = request.RefundCents;

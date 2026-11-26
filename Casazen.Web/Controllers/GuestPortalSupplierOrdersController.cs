@@ -25,7 +25,7 @@ public sealed class GuestPortalSupplierOrdersController(
 
         var offers = await CanOrderAsync(ct) ? await (await CatalogAsync(ct)).ToListAsync(ct) : [];
         var history = await StayOrders().AsNoTracking().OrderByDescending(x => x.CreatedAt).ToListAsync(ct);
-        return Ok(new { environment = "simulation", offers, orders = history.Select(x => orders.View(x)) });
+        return Ok(new { environment = StripeSandbox ? "stripe-sandbox" : "simulation", offers, orders = history.Select(x => orders.View(x)) });
     }
 
     [HttpPost("supplier-orders")]
@@ -55,7 +55,9 @@ public sealed class GuestPortalSupplierOrdersController(
             return NotFound();
         var offer = await db.GuestSupplierOffers.SingleAsync(x => x.Id == entry.Id, ct);
         var price = entry.PriceCents.GetValueOrDefault();
-        if (price > GuestSupplierOrders.MaxPriceCents)
+        if (price > GuestSupplierOrders.MaxPriceCents || StripeSandbox && (price <= 0 ||
+            price + GuestSupplierOrders.Commission(price, entry.CommissionBasisPoints) < GuestSupplierCheckout.MinTotalCents ||
+            requestedFor > orders.Now + GuestSupplierCheckout.Horizon))
             return BadRequest();
 
         var order = new GuestSupplierOrder
@@ -67,6 +69,7 @@ public sealed class GuestPortalSupplierOrdersController(
             HostOrigin = entry.HostOrigin,
             OfferId = offer.Id,
             RequestId = request.RequestId,
+            StripeSandbox = StripeSandbox,
             ServiceName = entry.ServiceName,
             SupplierName = entry.SupplierName,
             RequestedFor = requestedFor,
@@ -98,7 +101,8 @@ public sealed class GuestPortalSupplierOrdersController(
         var order = await StayOrders().SingleOrDefaultAsync(x => x.Id == id, ct);
         if (order is null)
             return NotFound();
-        if (!await CanOrderAsync(ct) || order.State != GuestSupplierOrderState.Quoted ||
+        if (order.StripeSandbox || !configuration.GetValue<bool>(GuestSupplierOrders.SimulationSetting) ||
+            !await CanOrderAsync(ct) || order.State != GuestSupplierOrderState.Quoted ||
             order.RequestedFor <= orders.Now || request.TotalCents != order.SupplierPriceCents + order.CommissionCents)
             return Conflict();
 
@@ -128,11 +132,36 @@ public sealed class GuestPortalSupplierOrdersController(
         return await SaveTransitionAsync(order, ct);
     }
 
-    private bool Sandbox => configuration.GetValue<bool>(GuestSupplierOrders.SimulationSetting);
+    private bool StripeSandbox => GuestSupplierCheckout.Enabled(configuration);
+    private bool Sandbox => GuestSupplierCheckout.OrdersEnabled(configuration);
 
-    private async Task<IQueryable<GuestSupplierOrders.CatalogEntry>> CatalogAsync(CancellationToken ct, Guid? offerId = null) =>
-        orders.Catalog(Portal.OrgId, Portal.PropertyId,
-            await orders.AllowsRegionalSuppliersAsync(Portal.OrgId, Portal.PropertyId, ct), offerId);
+    [HttpPost("supplier-orders/{id:guid}/checkout")]
+    [EnableRateLimiting(RateLimitPolicies.GuestPortalWrite)]
+    public async Task<IActionResult> Checkout(Guid id, AuthorizeOrderRequest request, [FromServices] GuestSupplierCheckout checkout, CancellationToken ct)
+    {
+        if (!StripeSandbox) return NotFound();
+        var order = await StayOrders().SingleOrDefaultAsync(x => x.Id == id && x.StripeSandbox, ct);
+        if (order is null) return NotFound();
+        if (!await CanOrderAsync(ct)) return Conflict();
+        var result = await checkout.StartAsync(order, request.TotalCents, ct);
+        return result is null ? Conflict() : Ok(result);
+    }
+
+    [HttpPost("supplier-orders/{id:guid}/reconcile")]
+    [EnableRateLimiting(RateLimitPolicies.GuestPortalWrite)]
+    public async Task<IActionResult> Reconcile(Guid id, [FromServices] GuestSupplierCheckout checkout, CancellationToken ct)
+    {
+        if (!StripeSandbox) return NotFound();
+        var order = await StayOrders().SingleOrDefaultAsync(x => x.Id == id && x.StripeSandbox, ct);
+        if (order is null) return NotFound();
+        return await checkout.ReconcileAsync(order, ct) ? Ok(orders.View(order)) : Conflict();
+    }
+
+    private async Task<IQueryable<GuestSupplierOrders.CatalogEntry>> CatalogAsync(CancellationToken ct, Guid? offerId = null)
+    {
+        return orders.Catalog(Portal.OrgId, Portal.PropertyId,
+            await orders.AllowsRegionalSuppliersAsync(Portal.OrgId, Portal.PropertyId, ct), offerId, fixedPriceOnly: StripeSandbox);
+    }
 
     private IQueryable<GuestSupplierOrder> StayOrders() => db.GuestSupplierOrders
         .Where(x => x.HostOrgId == Portal.OrgId && x.BookingId == Portal.BookingId && x.PropertyId == Portal.PropertyId);

@@ -1,0 +1,51 @@
+using System.Text.Json;
+using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.GuestPortal;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Stripe;
+
+namespace Casazen.Web.Controllers;
+
+[ApiController]
+[AllowAnonymous]
+[Route("webhooks/stripe/guest-supplier-sandbox")]
+public sealed class GuestSupplierStripeWebhookController(
+    AppDbContext db, GuestSupplierCheckout checkout, IConfiguration configuration) : ControllerBase
+{
+    [HttpPost]
+    [RequestSizeLimit(512 * 1024)]
+    public async Task<IActionResult> Receive(CancellationToken ct)
+    {
+        if (!GuestSupplierCheckout.Enabled(configuration)) return NotFound();
+        if (string.IsNullOrEmpty(Request.Headers["Stripe-Signature"])) return BadRequest();
+        using var reader = new StreamReader(Request.Body);
+        var json = await reader.ReadToEndAsync(ct);
+        Envelope? stripeEvent;
+        try
+        {
+            EventUtility.ValidateSignature(json, Request.Headers["Stripe-Signature"],
+                configuration[$"{GuestSupplierCheckout.Section}:WebhookSecret"], 300);
+            stripeEvent = JsonSerializer.Deserialize<Envelope>(json, JsonSerializerOptions.Web);
+        }
+        catch (StripeException) { return BadRequest(); }
+        catch (JsonException) { return BadRequest(); }
+
+        if (stripeEvent is not { Object: "event", Livemode: false } || string.IsNullOrEmpty(stripeEvent.Id) ||
+            string.IsNullOrEmpty(stripeEvent.Type) || !string.IsNullOrEmpty(stripeEvent.Account)) return BadRequest();
+        if (stripeEvent.Type is not ("payment_intent.amount_capturable_updated" or "payment_intent.canceled" or "payment_intent.succeeded"))
+            return Ok();
+        if (stripeEvent.Data?.Object is not { Object: "payment_intent", Id.Length: > 0 } intent) return BadRequest();
+        if (intent.Metadata?.GetValueOrDefault("kind") != GuestSupplierCheckout.Kind) return Ok();
+        if (!Guid.TryParse(intent.Metadata.GetValueOrDefault("orderId"), out var id)) return BadRequest();
+        var order = await db.GuestSupplierOrders.SingleOrDefaultAsync(x => x.Id == id && x.StripeSandbox && x.StripePaymentIntentId == intent.Id, ct);
+        if (order is null) return BadRequest();
+        // Fetch Stripe's current state so a delayed event cannot revert a capture or revive a canceled hold.
+        return await checkout.ReconcileAsync(order, ct) ? Ok() : Conflict();
+    }
+
+    private sealed record Envelope(string? Id, string? Object, bool? Livemode, string? Type, string? Account, EventData? Data);
+    private sealed record EventData(IntentReference? Object);
+    private sealed record IntentReference(string? Id, string? Object, Dictionary<string, string>? Metadata);
+}

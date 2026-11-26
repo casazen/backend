@@ -17,7 +17,7 @@ public sealed class GuestSupplierOffer
     [Timestamp] public uint Version { get; set; }
 }
 
-/// <summary>An order in the guest portal's simulated payment environment. No Stripe objects are created.</summary>
+/// <summary>An order with a fixed price and commission snapshot for the stay.</summary>
 public sealed class GuestSupplierOrder
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -34,6 +34,9 @@ public sealed class GuestSupplierOrder
     public int SupplierPriceCents { get; set; }
     public int CommissionCents { get; set; }
     public int RefundCents { get; set; }
+    public DateTime? StripeCheckoutStartedAt { get; set; }
+    public bool StripeSandbox { get; set; }
+    [MaxLength(255)] public string? StripePaymentIntentId { get; set; }
     public GuestSupplierOrderState State { get; set; }
     public DateTime RequestedFor { get; set; }
     public DateTime CreatedAt { get; set; }
