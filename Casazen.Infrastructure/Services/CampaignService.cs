@@ -309,7 +309,8 @@ public class CampaignService(
         var previous = await db.CampaignDeliveries.FirstOrDefaultAsync(d => d.OrgId == campaign.OrgId && d.CampaignId == campaign.Id && d.ProfileId == profileId, ct);
         if (previous != null)
             return previous.Status == "Retry" && previous.ContactId == contact.Id && previous.CreatedAt > now.AddHours(-23) ? previous : null;
-        var configuredLimit = configuration?.GetValue<int?>("Marketing:MonthlyOrganizationEmails");
+        var configuredLimit = configuration?.GetValue<int?>($"Marketing:Organizations:{campaign.OrgId:D}:MonthlyEmails")
+            ?? configuration?.GetValue<int?>("Marketing:MonthlyOrganizationEmails");
         await using var transaction = configuredLimit.HasValue && db.Database.IsRelational()
             ? await db.Database.BeginTransactionAsync(ct) : null;
         if (configuredLimit.HasValue)

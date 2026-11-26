@@ -57,7 +57,7 @@ public sealed class MarketingDeliveryWebhookController(AppDbContext db, IConfigu
         var expected = HMACSHA256.HashData(key, Encoding.UTF8.GetBytes($"{id}.{timestamp}.{payload}"));
         var candidate = new byte[32];
         return signatures.Split(' ', StringSplitOptions.RemoveEmptyEntries).Any(s => s.StartsWith("v1,", StringComparison.Ordinal) &&
-            Convert.TryFromBase64String(s.AsSpan(3), candidate, out var length) && length == expected.Length &&
+            Convert.TryFromBase64Chars(s.AsSpan(3), candidate, out var length) && length == expected.Length &&
             CryptographicOperations.FixedTimeEquals(expected, candidate));
     }
 }

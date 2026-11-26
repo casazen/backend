@@ -1717,6 +1717,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("PropertyId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime?>("ScheduledAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1745,6 +1748,61 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("SegmentId");
 
                     b.ToTable("Campaigns");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.CampaignDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Bounced")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Clicked")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("ContactId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Month")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Opened")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Slot")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("UnsubscribedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignId", "ProfileId")
+                        .IsUnique();
+
+                    b.HasIndex("OrgId", "ProfileId", "Month", "Slot")
+                        .IsUnique();
+
+                    b.ToTable("CampaignDeliveries");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.CancellationPolicy", b =>
@@ -4315,6 +4373,13 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("LastStayAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("MarketingCategoryOverridesJson")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("{}");
+
                     b.Property<bool>("MarketingConsentEmail")
                         .HasColumnType("boolean");
 
@@ -4722,8 +4787,21 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BankDisputeStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("BankDisputesJson")
+                        .HasColumnType("text");
+
+                    b.Property<int>("BankLossCents")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("BookingId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("CaseFileJson")
+                        .HasColumnType("text");
 
                     b.Property<int>("CommissionBasisPoints")
                         .HasColumnType("integer");
@@ -4751,6 +4829,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("HostOrigin")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("HumanReviewPending")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("OfferId")
                         .HasColumnType("uuid");
 
@@ -4759,6 +4840,13 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("RefundCents")
                         .HasColumnType("integer");
+
+                    b.Property<int>("RefundRequestedCents")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RefundStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<Guid>("RequestId")
                         .HasColumnType("uuid");
@@ -4780,39 +4868,6 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int?>("StripeCardFeeCents")
                         .HasColumnType("integer");
-
-                    b.Property<string>("CaseFileJson")
-                        .HasColumnType("text");
-
-                    b.Property<bool>("HumanReviewPending")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("BankDisputeStatus")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<string>("BankDisputesJson")
-                        .HasColumnType("text");
-
-                    b.Property<int>("BankLossCents")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("RefundRequestedCents")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("RefundStatus")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<Guid?>("StripeRefundAttempt")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("StripeRefundAttemptedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("StripeRefundId")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
 
                     b.Property<DateTime?>("StripeCheckoutStartedAt")
                         .HasColumnType("timestamp with time zone");
@@ -4843,6 +4898,16 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("StripePayoutFailureCode")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid?>("StripeRefundAttempt")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("StripeRefundAttemptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StripeRefundId")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
@@ -6296,6 +6361,98 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("ManualComplianceProofProperties");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.MarketingAiUsage", b =>
+                {
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("Month")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Requests")
+                        .HasColumnType("integer");
+
+                    b.HasKey("OrgId", "Month");
+
+                    b.ToTable("MarketingAiUsage");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.MarketingAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Audience")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Budget")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("CampaignId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Clicks")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Destination")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("DismissedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("ExternalDestination")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Keywords")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Occurrence")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SegmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceEventJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "Occurrence")
+                        .IsUnique();
+
+                    b.HasIndex("OrgId", "PropertyId", "CreatedAt");
+
+                    b.ToTable("MarketingAssets");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.MarketingConsentRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -6345,6 +6502,79 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("GuestId");
 
                     b.ToTable("MarketingConsentRecords");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.MarketingEventSearch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateOnly>("From")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Locality")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateOnly>("To")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Locality", "From", "To")
+                        .IsUnique();
+
+                    b.ToTable("MarketingEventSearches");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.MarketingStudioSettings", b =>
+                {
+                    b.Property<Guid>("OrgId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("LostMonths")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LoyalStays")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MonthlyEmailLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("NewsletterJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime?>("NextEventSearchAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("NextNewsletterAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PropertyNotesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("PropertyUrlsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Voice")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("OrgId");
+
+                    b.ToTable("MarketingStudioSettings");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.MarketplaceActivation", b =>
@@ -8448,6 +8678,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime?>("DeactivatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("MarketingGranted")
+                        .HasColumnType("boolean");
 
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
@@ -14164,6 +14397,11 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             RoleId = 1,
                             PermissionKey = "guestportal.manage"
+                        },
+                        new
+                        {
+                            RoleId = 1,
+                            PermissionKey = "marketing.manage"
                         },
                         new
                         {
