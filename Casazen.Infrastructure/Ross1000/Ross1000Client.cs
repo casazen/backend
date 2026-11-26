@@ -74,7 +74,9 @@ public sealed class Ross1000Client(HttpClient http)
                 (record.Name == "partenza" && record.Parent?.Name != "partenze")) return new("unknown");
             var success = record.Element("successo")?.Value;
             if (!expected.Remove(key) || success is not ("true" or "false" or "1" or "0")) return new("unknown");
-            var ok = success is "true" or "1" && string.IsNullOrWhiteSpace((string?)record.Element("errore"));
+            var ok = success is "true" or "1";
+            if (ok && !string.IsNullOrWhiteSpace((string?)record.Element("errore")))
+                return new("unknown", accepted, rejected) { Records = outcomes };
             outcomes.Add(new(key, ok ? "accepted" : "rejected"));
             if (ok) accepted++; else rejected++;
         }

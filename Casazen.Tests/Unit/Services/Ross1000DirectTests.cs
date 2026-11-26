@@ -78,6 +78,9 @@ public sealed class Ross1000DirectTests
         Assert.Equal("accepted", partial.Records.Last().State);
         valid.Descendants("arrivo").First().Remove();
         Assert.Equal("unknown", Ross1000Client.Interpret(valid, m).State);
+        var contradictory = Response(m);
+        contradictory.Descendants("arrivo").First().Add(new XElement("errore", "warning or error"));
+        Assert.Equal("unknown", Ross1000Client.Interpret(contradictory, m).State);
         var wrong = Response(m);
         wrong.Descendants("giorno").Single().SetAttributeValue("data", "20261124");
         Assert.Equal("unknown", Ross1000Client.Interpret(wrong, m).State);
