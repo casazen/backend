@@ -22,8 +22,12 @@ public class MarketingStudioAudienceTests
         var org = new Org { Name = "Host", Slug = "host" };
         var property = new Property { OrgId = org.Id, OwnerId = "host", Name = "Casa", City = "Lugano", Country = "CH" };
         var segment = new GuestSegment { OrgId = org.Id, Name = "Privato", ConditionJson = "{}" };
-        db.AddRange(org, property, segment, new MarketingStudioSettings { OrgId = org.Id, Voice = "Informale",
-            PropertyUrlsJson = JsonSerializer.Serialize(new Dictionary<Guid, string> { [property.Id] = "https://villa.example.org" }) });
+        db.AddRange(org, property, segment, new MarketingStudioSettings
+        {
+            OrgId = org.Id,
+            Voice = "Informale",
+            PropertyUrlsJson = JsonSerializer.Serialize(new Dictionary<Guid, string> { [property.Id] = "https://villa.example.org" })
+        });
         await db.SaveChangesAsync();
         AiRequest? sent = null;
         var provider = new Mock<IAiProvider>();

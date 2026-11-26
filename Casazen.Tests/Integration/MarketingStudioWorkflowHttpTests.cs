@@ -30,9 +30,16 @@ public class MarketingStudioWorkflowHttpTests(MarketingWorkflowFactory factory) 
         var settings = await client.GetFromJsonAsync<JsonElement>("/api/campaigns/studio/settings");
         Assert.True(settings.GetProperty("canEdit").GetBoolean());
         Assert.Equal(2, settings.GetProperty("monthlyEmailLimit").GetInt32());
-        var segment = await client.PostAsJsonAsync("/api/campaigns/segments", new { name = "Ospiti di ritorno",
-            condition = new { version = "1.0", groups = new[] { new { @operator = "AND", rules = new[] {
-                new { fieldId = "totalStays", @operator = "greaterThan", value = 1 } } } } } });
+        var segment = await client.PostAsJsonAsync("/api/campaigns/segments", new
+        {
+            name = "Ospiti di ritorno",
+            condition = new
+            {
+                version = "1.0",
+                groups = new[] { new { @operator = "AND", rules = new[] {
+                new { fieldId = "totalStays", @operator = "greaterThan", value = 1 } } } }
+            }
+        });
         segment.EnsureSuccessStatusCode();
         var segmentId = (await segment.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         var preview = await client.GetFromJsonAsync<JsonElement>($"/api/campaigns/segments/{segmentId}/preview");

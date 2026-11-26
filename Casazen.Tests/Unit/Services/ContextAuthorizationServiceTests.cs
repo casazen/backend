@@ -25,8 +25,13 @@ public class ContextAuthorizationServiceTests
         const string id = "auth0|marketing-collaborator";
         await SeedOnboardedUserAsync(db, id);
         var user = await db.Users.SingleAsync(u => u.Id == id);
-        db.OrgMembers.Add(new Core.Entities.OrgMember { UserId = id, OrgId = user.OrgId!.Value,
-            Role = Core.Entities.Enums.OrgRole.Collaborator, MarketingGranted = grant });
+        db.OrgMembers.Add(new Core.Entities.OrgMember
+        {
+            UserId = id,
+            OrgId = user.OrgId!.Value,
+            Role = Core.Entities.Enums.OrgRole.Collaborator,
+            MarketingGranted = grant
+        });
         db.UserContextMemberships.Add(new Core.Entities.UserContextMembership { UserId = id, ContextKey = "short-rent", RoleId = 9 });
         await db.SaveChangesAsync();
         var service = CreateService(db, BuildHttpContext(id, ["PropertyOwner"]));

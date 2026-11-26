@@ -49,7 +49,8 @@ public static class MarketingSegmentRules
             if (!DateTimeOffset.TryParse(args[0], CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var start)) return false;
             return rule.Operator switch
             {
-                "before" => date < start.UtcDateTime, "after" => date > start.UtcDateTime,
+                "before" => date < start.UtcDateTime,
+                "after" => date > start.UtcDateTime,
                 "between" => args.Length == 2 && DateTimeOffset.TryParse(args[1], CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var end) && date >= start.UtcDateTime && date <= end.UtcDateTime,
                 _ => false,
             };
@@ -58,7 +59,9 @@ public static class MarketingSegmentRules
         if (!decimal.TryParse(args[0], NumberStyles.Number, CultureInfo.InvariantCulture, out var lower)) return false;
         return rule.Operator switch
         {
-            "equals" => value == lower, "greaterThan" => value > lower, "lessThan" => value < lower,
+            "equals" => value == lower,
+            "greaterThan" => value > lower,
+            "lessThan" => value < lower,
             "between" => args.Length == 2 && decimal.TryParse(args[1], NumberStyles.Number, CultureInfo.InvariantCulture, out var upper) && value >= lower && value <= upper,
             _ => false,
         };

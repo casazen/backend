@@ -129,9 +129,10 @@ public class CampaignServiceTests
         var org = Guid.NewGuid();
         var delivery = Guid.NewGuid();
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?>
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            [MarketingUnsubscribeLinks.SecretVariable] = LinkSecret, ["App:ApiBaseUrl"] = Api,
+            [MarketingUnsubscribeLinks.SecretVariable] = LinkSecret,
+            ["App:ApiBaseUrl"] = Api,
         }).Build();
         var links = new MarketingUnsubscribeLinks(config, new PublicSiteLinks(Options.Create(
             new PublicSiteOptions { PublicSiteBaseUrl = WebApp })), clock, CrmTestIndex.Create());
@@ -237,8 +238,11 @@ public class CampaignServiceTests
         db.GuestCrmProfiles.Add(profile);
         db.GuestContacts.Add(new GuestContact
         {
-            OrgId = orgId, GuestCrmProfileId = profile.Id, Channel = GuestContactChannel.Email,
-            Value = email, ValueHash = CrmTestIndex.Create().Hash(ShowcaseBookingRules.NormalizeEmail(email)),
+            OrgId = orgId,
+            GuestCrmProfileId = profile.Id,
+            Channel = GuestContactChannel.Email,
+            Value = email,
+            ValueHash = CrmTestIndex.Create().Hash(ShowcaseBookingRules.NormalizeEmail(email)),
             LegalBasis = GuestContactLegalBasis.Consent,
             Confirmation = confirmed ? GuestContactConfirmation.Confirmed : GuestContactConfirmation.Unconfirmed,
         });

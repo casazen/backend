@@ -16,11 +16,23 @@ public class CampaignDeliveryConcurrencyPostgresTests
     public async Task CampaignsAndRetriesShareTheGuestsLastMonthlySlot()
     {
         await using var database = await PostgresTestDatabase.CreateMigratedAsync();
-        var org = new OrgEntity { Name = "Marketing", DisplayName = "Marketing", Slug = $"marketing-{Guid.NewGuid():N}",
-            ContactEmail = "host@example.test", IsActive = true };
+        var org = new OrgEntity
+        {
+            Name = "Marketing",
+            DisplayName = "Marketing",
+            Slug = $"marketing-{Guid.NewGuid():N}",
+            ContactEmail = "host@example.test",
+            IsActive = true
+        };
         var segment = new GuestSegment { OrgId = org.Id, Name = "All", ConditionJson = """{"Version":"1.0","Groups":[]}""" };
-        var campaigns = Enumerable.Range(0, 3).Select(i => new Campaign { OrgId = org.Id, SegmentId = segment.Id,
-            Subject = $"Issue {i}", Body = "<p>Issue</p>", Status = CampaignStatus.Approved }).ToArray();
+        var campaigns = Enumerable.Range(0, 3).Select(i => new Campaign
+        {
+            OrgId = org.Id,
+            SegmentId = segment.Id,
+            Subject = $"Issue {i}",
+            Body = "<p>Issue</p>",
+            Status = CampaignStatus.Approved
+        }).ToArray();
         await using (var db = database.CreateContext())
         {
             db.Orgs.Add(org);

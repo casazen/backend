@@ -324,8 +324,16 @@ public class CampaignService(
         for (int slot = 1; slot <= Math.Clamp(limit, 0, 2); slot++)
         {
             if (used.Contains(slot)) continue;
-            var delivery = new CampaignDelivery { CampaignId = campaign.Id, OrgId = campaign.OrgId, ProfileId = profileId,
-                ContactId = contact.Id, Month = month, Slot = slot, CreatedAt = now };
+            var delivery = new CampaignDelivery
+            {
+                CampaignId = campaign.Id,
+                OrgId = campaign.OrgId,
+                ProfileId = profileId,
+                ContactId = contact.Id,
+                Month = month,
+                Slot = slot,
+                CreatedAt = now
+            };
             db.CampaignDeliveries.Add(delivery);
             try
             {

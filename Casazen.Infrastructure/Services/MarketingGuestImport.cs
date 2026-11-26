@@ -97,12 +97,18 @@ public sealed class MarketingGuestImport(AppDbContext db, ICrmContactIndex index
                 continue;
             var profile = new GuestCrmProfile
             {
-                OrgId = scope.OrgId, Country = row.Country, Language = row.Language,
+                OrgId = scope.OrgId,
+                Country = row.Country,
+                Language = row.Language,
                 CompositeKeyHash = index.Hash(GuestMatchRules.CompositeKeyText(row.Email, row.Name, "", null, null)),
-                PhoneKeyHash = row.PhoneHash, PropertyIdsJson = JsonSerializer.Serialize(new[] { propertyId }),
-                TagsJson = CrmProfileRules.SerializeTags(row.Tags), FirstStayAt = row.First ?? row.Last ?? default,
-                LastStayAt = row.Last ?? row.First ?? default, TotalStays = row.First != null || row.Last != null ? 1 : 0,
-                CreatedAt = now, UpdatedAt = now,
+                PhoneKeyHash = row.PhoneHash,
+                PropertyIdsJson = JsonSerializer.Serialize(new[] { propertyId }),
+                TagsJson = CrmProfileRules.SerializeTags(row.Tags),
+                FirstStayAt = row.First ?? row.Last ?? default,
+                LastStayAt = row.Last ?? row.First ?? default,
+                TotalStays = row.First != null || row.Last != null ? 1 : 0,
+                CreatedAt = now,
+                UpdatedAt = now,
             };
             db.GuestCrmProfiles.Add(profile);
             if (row.EmailHash is not null)
@@ -121,11 +127,23 @@ public sealed class MarketingGuestImport(AppDbContext db, ICrmContactIndex index
                 seen.Add(hash);
                 db.GuestContacts.Add(new GuestContact
                 {
-                    OrgId = scope.OrgId, GuestCrmProfileId = profile.Id, Channel = channel, Value = value, ValueHash = hash,
-                    DisplayName = row.Name, Language = row.Language, Origin = origin, LegalBasis = contactBasis,
-                    ConsentSource = GuestConsentSource.HistoricalImport, BasisVersion = source, BasisRecordedAt = now,
-                    IsSuppressed = blocked, SuppressedSource = blocked ? CrmContactRules.SuppressionSourceList : null,
-                    SuppressedAt = blocked ? now : null, CreatedAt = now, UpdatedAt = now,
+                    OrgId = scope.OrgId,
+                    GuestCrmProfileId = profile.Id,
+                    Channel = channel,
+                    Value = value,
+                    ValueHash = hash,
+                    DisplayName = row.Name,
+                    Language = row.Language,
+                    Origin = origin,
+                    LegalBasis = contactBasis,
+                    ConsentSource = GuestConsentSource.HistoricalImport,
+                    BasisVersion = source,
+                    BasisRecordedAt = now,
+                    IsSuppressed = blocked,
+                    SuppressedSource = blocked ? CrmContactRules.SuppressionSourceList : null,
+                    SuppressedAt = blocked ? now : null,
+                    CreatedAt = now,
+                    UpdatedAt = now,
                 });
             }
         }

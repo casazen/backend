@@ -110,8 +110,23 @@ public sealed class MarketingStudioController(MarketingStudio studio, AppDbConte
         return Ok(new { asset.Clicks, bookings = revenue.Sum(g => g.count), revenueByCurrency = revenue, asset.ExternalDestination });
     });
 
-    private object ViewAsset(MarketingAsset a) => new { a.Id, a.PropertyId, a.SegmentId, a.CampaignId, a.Channel, a.Subject,
-        a.Body, a.Keywords, a.Audience, a.Budget, a.ApprovedAt, a.CreatedAt, sourceEvent = a.SourceEventJson == null ? null : System.Text.Json.JsonSerializer.Deserialize<LocalEvent>(a.SourceEventJson, System.Text.Json.JsonSerializerOptions.Web), trackingUrl = studio.TrackingUrl(a) };
+    private object ViewAsset(MarketingAsset a) => new
+    {
+        a.Id,
+        a.PropertyId,
+        a.SegmentId,
+        a.CampaignId,
+        a.Channel,
+        a.Subject,
+        a.Body,
+        a.Keywords,
+        a.Audience,
+        a.Budget,
+        a.ApprovedAt,
+        a.CreatedAt,
+        sourceEvent = a.SourceEventJson == null ? null : System.Text.Json.JsonSerializer.Deserialize<LocalEvent>(a.SourceEventJson, System.Text.Json.JsonSerializerOptions.Web),
+        trackingUrl = studio.TrackingUrl(a)
+    };
 }
 
 [ApiController]

@@ -258,11 +258,24 @@ public class CampaignsController(
         var campaign = await (await AccessibleAsync(orgId.Value)).SingleOrDefaultAsync(c => c.Id == id, ct);
         if (campaign == null) return NotFound();
         var metrics = await db.CampaignDeliveries.Where(d => d.OrgId == orgId.Value && d.CampaignId == id)
-            .GroupBy(d => d.CampaignId).Select(g => new { Opened = g.Count(d => d.Opened), Clicked = g.Count(d => d.Clicked),
-                Bounced = g.Count(d => d.Bounced), Unsubscribed = g.Count(d => d.UnsubscribedAt != null) }).SingleOrDefaultAsync(ct);
-        return Ok(new { campaign.Id, campaign.Status, campaign.SentCount, campaign.ErrorCount, openedCount = metrics?.Opened ?? 0,
-            clickedCount = metrics?.Clicked ?? 0, bouncedCount = metrics?.Bounced ?? 0,
-            unsubscribeCount = metrics?.Unsubscribed ?? campaign.UnsubscribeCount });
+            .GroupBy(d => d.CampaignId).Select(g => new
+            {
+                Opened = g.Count(d => d.Opened),
+                Clicked = g.Count(d => d.Clicked),
+                Bounced = g.Count(d => d.Bounced),
+                Unsubscribed = g.Count(d => d.UnsubscribedAt != null)
+            }).SingleOrDefaultAsync(ct);
+        return Ok(new
+        {
+            campaign.Id,
+            campaign.Status,
+            campaign.SentCount,
+            campaign.ErrorCount,
+            openedCount = metrics?.Opened ?? 0,
+            clickedCount = metrics?.Clicked ?? 0,
+            bouncedCount = metrics?.Bounced ?? 0,
+            unsubscribeCount = metrics?.Unsubscribed ?? campaign.UnsubscribeCount
+        });
     }
 
     private static CampaignDto MapToCampaignDto(Campaign campaign)

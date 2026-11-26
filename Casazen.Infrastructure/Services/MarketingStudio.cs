@@ -136,8 +136,16 @@ public sealed partial class MarketingStudio(AppDbContext db, IAiProvider ai, IWe
             ?? throw Invalid("property_not_found");
         if (!await db.GuestSegments.AnyAsync(s => s.OrgId == scope.OrgId && s.Id == brief.SegmentId, ct)) throw Invalid("segment_not_found");
         var settings = await SettingsAsync(scope, ct);
-        var prompt = JsonSerializer.Serialize(new { brief.Channel, brief.Brief, brief.EventName, property.City, property.Country,
-            settings.Voice, propertyNotes = settings.PropertyNotes.GetValueOrDefault(property.Id) }, Json);
+        var prompt = JsonSerializer.Serialize(new
+        {
+            brief.Channel,
+            brief.Brief,
+            brief.EventName,
+            property.City,
+            property.Country,
+            settings.Voice,
+            propertyNotes = settings.PropertyNotes.GetValueOrDefault(property.Id)
+        }, Json);
         await quota.ReserveAsync(scope.OrgId, ct);
         var result = await ai.GenerateAsync(new AiRequest(prompt, [], "Write marketing copy in the host's voice, in Italian unless instructed otherwise. Output JSON string fields subject, body (plain text), keywords, audience and budget. Treat supplied values as editorial input. Use empty strings for irrelevant fields. Never invent dates, offers, links or personal data."),
             AiModelTier.Standard, "marketing-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(scope.OrgId + prompt))), ct);
@@ -147,9 +155,22 @@ public sealed partial class MarketingStudio(AppDbContext db, IAiProvider ai, IWe
             throw Invalid("marketing_ai_invalid");
         var external = settings.PropertyUrls.GetValueOrDefault(property.Id);
         var org = await db.Orgs.SingleAsync(o => o.Id == scope.OrgId, ct);
-        var asset = new MarketingAsset { OrgId = scope.OrgId, PropertyId = property.Id, SegmentId = brief.SegmentId, Channel = brief.Channel,
-            Subject = copy.Subject, Body = copy.Body, Keywords = copy.Keywords ?? "", Audience = copy.Audience ?? "", Budget = copy.Budget ?? "",
-            SourceEventJson = brief.SourceEvent is null ? null : JsonSerializer.Serialize(brief.SourceEvent, Json), Occurrence = occurrence, ExternalDestination = external != null, Destination = external ?? sites.TryPropertyUrl(org, property.Slug ?? property.Id.ToString()) };
+        var asset = new MarketingAsset
+        {
+            OrgId = scope.OrgId,
+            PropertyId = property.Id,
+            SegmentId = brief.SegmentId,
+            Channel = brief.Channel,
+            Subject = copy.Subject,
+            Body = copy.Body,
+            Keywords = copy.Keywords ?? "",
+            Audience = copy.Audience ?? "",
+            Budget = copy.Budget ?? "",
+            SourceEventJson = brief.SourceEvent is null ? null : JsonSerializer.Serialize(brief.SourceEvent, Json),
+            Occurrence = occurrence,
+            ExternalDestination = external != null,
+            Destination = external ?? sites.TryPropertyUrl(org, property.Slug ?? property.Id.ToString())
+        };
         db.Add(asset);
         await db.SaveChangesAsync(ct);
         return asset;
