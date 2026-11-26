@@ -47,14 +47,22 @@ public sealed class GuestSupplierDocuments(AppDbContext db, IFileStorage storage
         var fileName = Path.GetFileNameWithoutExtension(name.Replace('\\', '/'));
         fileName = string.Concat(fileName.Where(c => !char.IsControl(c))).Trim();
         if (fileName.Length == 0) fileName = "documento";
-        var document = new GuestSupplierOrderDocument { OrderId = orderId, ContentHash = hash,
-            FileName = fileName[..Math.Min(fileName.Length, 170)] + ".pdf", UploadedAt = clock.GetUtcNow().UtcDateTime };
+        var document = new GuestSupplierOrderDocument
+        {
+            OrderId = orderId,
+            ContentHash = hash,
+            FileName = fileName[..Math.Min(fileName.Length, 170)] + ".pdf",
+            UploadedAt = clock.GetUtcNow().UtcDateTime
+        };
         buffer.Position = 0;
         await storage.PutAsync(StorageBucket.Private, Key(document), buffer, "application/pdf", ct);
         db.GuestSupplierOrderDocuments.Add(document);
         try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation,
-            ConstraintName: "IX_GuestSupplierOrderDocuments_OrderId_ContentHash" })
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation,
+            ConstraintName: "IX_GuestSupplierOrderDocuments_OrderId_ContentHash"
+        })
         {
             db.Entry(document).State = EntityState.Detached;
             document = await db.GuestSupplierOrderDocuments.AsNoTracking().SingleAsync(d => d.OrderId == orderId && d.ContentHash == hash, ct);

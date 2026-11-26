@@ -399,7 +399,8 @@ public class SupplierAgendaService(
             closedDays.Select(day => new SupplierClosedDay(day.Date, day.Source)).ToList(),
             timeOff,
             windows,
-            agendaRequests) { GuestOrders = guestOrders };
+            agendaRequests)
+        { GuestOrders = guestOrders };
     }
 
     public Task<SupplierPlanningInput> BuildPlanningInputAsync(
