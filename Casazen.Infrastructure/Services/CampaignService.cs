@@ -232,13 +232,16 @@ public class CampaignService(
         logger.LogInformation("Campaign returned to a draft after a rejection: campaignId={CampaignId}", campaignId);
     }
 
-    public async Task<List<string>> GetRecipientsAsync(
+    public Task<List<string>> GetRecipientsAsync(
         Guid segmentId,
         Guid orgId,
         HostScope scope,
         CancellationToken cancellationToken = default)
+        => EligibleEmailsAsync(segmentId, orgId, scope, null, cancellationToken);
+
+    private async Task<List<string>> EligibleEmailsAsync(Guid segmentId, Guid orgId, HostScope scope, Guid? propertyId, CancellationToken cancellationToken)
     {
-        var recipients = await ResolveAudienceAsync(segmentId, orgId, scope, null, cancellationToken);
+        var recipients = await ResolveAudienceAsync(segmentId, orgId, scope, propertyId, cancellationToken);
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var month = now.Year * 100 + now.Month;
         var limit = await db.Set<MarketingStudioSettings>().Where(s => s.OrgId == orgId)
@@ -250,6 +253,10 @@ public class CampaignService(
         return recipients.Where(r => !capped.Contains(r.GuestCrmProfileId!.Value)).Select(r => r.Value).ToList();
     }
 
+    private IQueryable<GuestContact> CampaignEmailContacts() =>
+        db.GuestContacts.AsNoTracking().Where(CrmContactRules.MarketableEmail)
+            .Where(c => c.Confirmation == GuestContactConfirmation.Confirmed);
+
     private async Task<List<GuestContact>> ResolveAudienceAsync(Guid segmentId, Guid orgId, HostScope scope,
         Guid? propertyId, CancellationToken ct)
     {
@@ -259,6 +266,9 @@ public class CampaignService(
             ?? throw new DomainRuleException("segment_not_found", "Segment not found");
         var condition = JsonSerializer.Deserialize<Condition>(segment.ConditionJson) ??
             throw new DomainRuleException("invalid_condition_json", "Invalid segment condition");
+        if (conditionEvaluator.ValidateCondition(condition).Count > 0 ||
+            condition.Groups.SelectMany(g => g.Rules).Any(rule => !MarketingSegmentRules.Fields.Any(f =>
+                f.FieldId == rule.FieldId && f.Operators.Contains(rule.Operator)))) return [];
         HashSet<Guid>? properties = null;
         if (propertyId.HasValue || !scope.IsOrgWide)
         {
@@ -266,7 +276,7 @@ public class CampaignService(
                 .Where(p => !propertyId.HasValue || p.Id == propertyId).Select(p => p.Id).ToListAsync(ct)).ToHashSet();
         }
 
-        var rows = await (from contact in db.GuestContacts.AsNoTracking().Where(CrmContactRules.MarketableEmail)
+        var rows = await (from contact in CampaignEmailContacts()
                           join profile in db.GuestCrmProfiles.AsNoTracking() on contact.GuestCrmProfileId equals profile.Id
                           where contact.OrgId == orgId && profile.OrgId == orgId && profile.MergedIntoProfileId == null
                           orderby profile.Id, contact.ConfirmedAt descending, contact.Id
@@ -274,6 +284,8 @@ public class CampaignService(
         var result = new List<GuestContact>();
         var settings = await db.Set<MarketingStudioSettings>().AsNoTracking().FirstOrDefaultAsync(s => s.OrgId == orgId, ct);
         var today = timeProvider.GetUtcNow().UtcDateTime;
+        var suppressed = (await db.SuppressionListEntries.AsNoTracking().Where(e => e.OrgId == orgId)
+            .Select(e => e.EmailHash).ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
         var selected = new HashSet<Guid>();
         foreach (var row in rows)
         {
@@ -281,7 +293,7 @@ public class CampaignService(
             if (properties != null && !MarketingSegmentRules.PropertyIds(row.profile).Any(properties.Contains)) continue;
             var stage = MarketingGuestCategories.Loyalty(row.profile.TotalStays, row.profile.LastStayAt, today, settings?.LoyalStays ?? 3, settings?.LostMonths ?? 24);
             if (!await conditionEvaluator.EvaluateAsync(condition, new MarketingSegmentFacts(row.profile, today, stage), scope, ct)) continue;
-            if (await suppressionService.IsSuppressedAsync(orgId, row.contact.Value, ct)) continue;
+            if (suppressed.Contains(row.contact.ValueHash) || suppressed.Contains(SuppressionService.LegacyEmailHash(row.contact.Value))) continue;
             selected.Add(row.profile.Id);
             result.Add(row.contact);
         }
@@ -392,13 +404,13 @@ public class CampaignService(
         foreach (var candidate in recipients)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var contact = await db.GuestContacts.AsNoTracking().Where(CrmContactRules.MarketableEmail)
+            var contact = await CampaignEmailContacts()
                 .SingleOrDefaultAsync(c => c.OrgId == campaign.OrgId && c.Id == candidate.Id &&
                     c.GuestCrmProfileId == candidate.GuestCrmProfileId, cancellationToken);
             if (contact == null || await suppressionService.IsSuppressedAsync(campaign.OrgId, contact.Value, cancellationToken)) continue;
             var delivery = await ReserveAsync(campaign, contact, limit, cancellationToken);
             if (delivery == null) continue;
-            if (!await db.GuestContacts.AsNoTracking().Where(CrmContactRules.MarketableEmail)
+            if (!await CampaignEmailContacts()
                     .AnyAsync(c => c.Id == contact.Id && c.OrgId == campaign.OrgId && c.GuestCrmProfileId == delivery.ProfileId, cancellationToken) ||
                 await suppressionService.IsSuppressedAsync(campaign.OrgId, contact.Value, cancellationToken))
             {
@@ -443,9 +455,9 @@ public class CampaignService(
         Guid segmentId,
         Guid orgId,
         HostScope scope,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, Guid? propertyId = null)
     {
-        var recipients = await GetRecipientsAsync(segmentId, orgId, scope, cancellationToken);
+        var recipients = await EligibleEmailsAsync(segmentId, orgId, scope, propertyId, cancellationToken);
         return recipients.Count;
     }
 

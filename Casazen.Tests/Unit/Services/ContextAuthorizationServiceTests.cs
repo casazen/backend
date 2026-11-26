@@ -16,6 +16,24 @@ namespace Casazen.Tests.Unit.Services;
 
 public class ContextAuthorizationServiceTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task CollaboratorMarketingFollowsTheOwnersGrant(bool grant, bool expected)
+    {
+        await using var db = CreateDbContext();
+        const string id = "auth0|marketing-collaborator";
+        await SeedOnboardedUserAsync(db, id);
+        var user = await db.Users.SingleAsync(u => u.Id == id);
+        db.OrgMembers.Add(new Core.Entities.OrgMember { UserId = id, OrgId = user.OrgId!.Value,
+            Role = Core.Entities.Enums.OrgRole.Collaborator, MarketingGranted = grant });
+        db.UserContextMemberships.Add(new Core.Entities.UserContextMembership { UserId = id, ContextKey = "short-rent", RoleId = 9 });
+        await db.SaveChangesAsync();
+        var service = CreateService(db, BuildHttpContext(id, ["PropertyOwner"]));
+        Assert.Equal(expected, await service.HasPermissionAsync(id, "short-rent", HostPermissions.Marketing));
+        Assert.False(await service.HasPermissionAsync(id, "short-rent", HostPermissions.ApprovalDecide));
+    }
+
     [Fact]
     public async Task HasPermissionAsync_UserNotInDatabaseWithJwtPropertyOwner_DeniesHostContext()
     {

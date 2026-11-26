@@ -223,13 +223,14 @@ public class PublicMarketingController(
 
         if (expiresAt.StartsWith("v2-", StringComparison.Ordinal) && Guid.TryParseExact(expiresAt[3..], "N", out var deliveryId))
         {
-            var delivery = await db.CampaignDeliveries.SingleOrDefaultAsync(d => d.Id == deliveryId && d.OrgId == orgId, HttpContext.RequestAborted);
+            var deliveries = db.CampaignDeliveries.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).Where(d => d.OrgId == orgId);
+            var delivery = await deliveries.SingleOrDefaultAsync(d => d.Id == deliveryId, HttpContext.RequestAborted);
             if (delivery != null && delivery.UnsubscribedAt == null)
             {
                 delivery.UnsubscribedAt = DateTime.UtcNow;
                 await db.SaveChangesAsync(HttpContext.RequestAborted);
-                await db.Campaigns.Where(c => c.Id == delivery.CampaignId && c.OrgId == orgId).ExecuteUpdateAsync(
-                    update => update.SetProperty(c => c.UnsubscribeCount, c => db.CampaignDeliveries.Count(d => d.CampaignId == c.Id && d.UnsubscribedAt != null)),
+                await db.Campaigns.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).Where(c => c.Id == delivery.CampaignId && c.OrgId == orgId).ExecuteUpdateAsync(
+                    update => update.SetProperty(c => c.UnsubscribeCount, c => deliveries.Count(d => d.CampaignId == c.Id && d.UnsubscribedAt != null)),
                     HttpContext.RequestAborted);
             }
         }

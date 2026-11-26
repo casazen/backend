@@ -118,7 +118,7 @@ public class CampaignsController(
     [HttpGet("segments/{id}/preview")]
     [ProducesResponseType(typeof(SegmentPreviewDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<SegmentPreviewDto>> PreviewSegment(Guid id)
+    public async Task<ActionResult<SegmentPreviewDto>> PreviewSegment(Guid id, [FromQuery] Guid? propertyId = null)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
         if (orgId is null)
@@ -128,7 +128,7 @@ public class CampaignsController(
         if (scope is null)
             return Unauthorized();
 
-        var count = await campaignService.PreviewCountAsync(id, orgId.Value, scope, HttpContext.RequestAborted);
+        var count = await campaignService.PreviewCountAsync(id, orgId.Value, scope, HttpContext.RequestAborted, propertyId);
 
         return Ok(new SegmentPreviewDto { Count = count });
     }

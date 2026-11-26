@@ -136,7 +136,7 @@ public class ApprovalQueueRegistrationTests
     {
         public IApprovalQueueService Queue => queue;
 
-        public Task<Campaign> CreateDraftAsync(Guid orgId, Guid segmentId, string subject, string body, bool isAiGenerated, CancellationToken cancellationToken = default) =>
+        public Task<Campaign> CreateDraftAsync(Guid orgId, Guid segmentId, string subject, string body, bool isAiGenerated, CancellationToken cancellationToken = default, Guid? propertyId = null) =>
             throw new NotSupportedException();
 
         public Task SubmitForApprovalAsync(Guid campaignId, Guid orgId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -153,7 +153,7 @@ public class ApprovalQueueRegistrationTests
 
         public Task SendCampaignAsync(Guid campaignId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<int> PreviewCountAsync(Guid segmentId, Guid orgId, HostScope scope, CancellationToken cancellationToken = default) =>
+        public Task<int> PreviewCountAsync(Guid segmentId, Guid orgId, HostScope scope, CancellationToken cancellationToken = default, Guid? propertyId = null) =>
             throw new NotSupportedException();
     }
 

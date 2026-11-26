@@ -342,3 +342,12 @@ guest's address in the query, on a hard-coded host (`https://app.casazen.com/uns
 4. In a request handler, queue with `IEmailQueue.Enqueue(...)` after the data is saved; inside a Hangfire job you may call `IEmailService` directly.
 5. A booking status email goes in `BookingNotifier` (called after the commit, by the code that makes the transition, so a repeated request or webhook sends nothing).
 6. Add it to [Complete list of emails](#complete-list-of-emails).
+
+
+## Host marketing campaigns
+
+Campaigns send from the configured verified CasaZen address with the host organization’s display name. The approved delivery carries a signed unsubscribe link, RFC 8058 headers and a stable Resend idempotency key. Keep `SIGNED_LINK_SECRET` stable so previously issued unsubscribe links continue to work. Configure `App__PublicSiteBaseUrl` for the guest page and an HTTPS `App__ApiBaseUrl` for one-click email-client requests.
+
+For provider metrics, register `POST /api/webhooks/marketing/resend` on the environment’s public API and subscribe to `email.opened`, `email.clicked` and `email.bounced`. Store that endpoint’s signing secret in `Email__MarketingWebhookSecret`. Enable domain tracking in Resend for the metrics approved for the rollout. Each signed event updates a unique delivery, so repeated callbacks count once. Keep development and production webhooks and secrets separate.
+
+`Marketing__MonthlyOrganizationEmails` sets the optional monthly delivery budget per organization. Each guest already has a limit of two marketing emails per UTC calendar month, shared with newsletters. The host can lower that limit. A reserved delivery retains its slot on an uncertain provider outcome.

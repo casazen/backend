@@ -93,6 +93,58 @@ public class CampaignServiceTests
         Assert.Equal((CampaignStatus.Sent, 1, 0), (campaign.Status, campaign.SentCount, campaign.ErrorCount));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SoftOptInRequiresAConfirmedAddressForCampaigns(bool confirmed)
+    {
+        var (options, orgId, campaignId) = await SeedApprovedCampaignAsync("existing@example.com");
+        await using var db = new AppDbContext(options);
+        var contact = await db.GuestContacts.SingleAsync();
+        contact.LegalBasis = GuestContactLegalBasis.SoftOptIn;
+        contact.Confirmation = confirmed ? GuestContactConfirmation.Confirmed : GuestContactConfirmation.Unconfirmed;
+        await db.SaveChangesAsync();
+        var segmentId = await db.Campaigns.Where(c => c.Id == campaignId).Select(c => c.SegmentId).SingleAsync();
+        var service = NewService(db, Mock.Of<IEmailService>(), Links());
+        Assert.Equal(confirmed ? 1 : 0, await service.PreviewCountAsync(segmentId, orgId, new HostScope(orgId)));
+    }
+
+    [Fact]
+    public async Task WithdrawalAfterApprovalSkipsTheRecipient()
+    {
+        var (options, _, id) = await SeedApprovedCampaignAsync("withdrawn@example.com");
+        var email = new Mock<IEmailService>(MockBehavior.Strict);
+        await using var db = new AppDbContext(options);
+        var contact = await db.GuestContacts.SingleAsync();
+        contact.IsSuppressed = true;
+        await db.SaveChangesAsync();
+        await NewService(db, email.Object, Links()).SendCampaignAsync(id);
+        Assert.Empty(await db.CampaignDeliveries.ToListAsync());
+        email.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public void PermanentUnsubscribeIsBoundToTheOrganizationAndDelivery()
+    {
+        var org = Guid.NewGuid();
+        var delivery = Guid.NewGuid();
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?>
+        {
+            [MarketingUnsubscribeLinks.SecretVariable] = LinkSecret, ["App:ApiBaseUrl"] = Api,
+        }).Build();
+        var links = new MarketingUnsubscribeLinks(config, new PublicSiteLinks(Options.Create(
+            new PublicSiteOptions { PublicSiteBaseUrl = WebApp })), clock, CrmTestIndex.Create());
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(links.Create(org, "guest@example.com", delivery).OneClickUrl!).Query);
+        var hash = query["emailHash"].ToString();
+        var token = query["expiresAt"].ToString();
+        var signature = query["signature"].ToString();
+        clock.Advance(TimeSpan.FromDays(3650));
+        Assert.Equal(MarketingUnsubscribeCheck.Valid, links.Verify(org, hash, token, signature));
+        Assert.Equal(MarketingUnsubscribeCheck.InvalidSignature, links.Verify(Guid.NewGuid(), hash, token, signature));
+        Assert.Equal(MarketingUnsubscribeCheck.InvalidSignature, links.Verify(org, hash, $"v2-{Guid.NewGuid():N}", signature));
+    }
+
     /// <summary>DEB-01: without the secret of the signed links a campaign sends nothing (no e-mail without its unsubscribe link).</summary>
     [Fact]
     public async Task Campaign_WithoutTheLinkSecret_SendsNothing()

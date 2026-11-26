@@ -117,5 +117,5 @@ public interface ICampaignService
         Guid segmentId,
         Guid orgId,
         HostScope scope,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default, Guid? propertyId = null);
 }
