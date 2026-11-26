@@ -74,6 +74,18 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         bool HostOrigin, int CommissionBasisPoints, bool Accepted, bool Enabled, uint Version, string ServiceName,
         string SupplierName, string PropertyName, string HostName);
 
+    public static bool Quote(GuestSupplierOrder order, int price, DateTime now)
+    {
+        if (order.State != GuestSupplierOrderState.PendingQuote || order.RequestedFor <= now || price is <= 0 or > MaxPriceCents)
+            return false;
+        var commission = Commission(price, order.CommissionBasisPoints);
+        if (order.StripeSandbox && price + commission < GuestSupplierCheckout.MinTotalCents) return false;
+        order.SupplierPriceCents = price;
+        order.CommissionCents = commission;
+        order.State = GuestSupplierOrderState.Quoted;
+        return true;
+    }
+
     public IQueryable<CatalogEntry> Catalog(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers, Guid? offerId = null, bool fixedPriceOnly = false, bool includeQuoteRequests = false)
     {
         var trusted = TrustedSupplierIds(orgId, propertyId);

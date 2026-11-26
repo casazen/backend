@@ -193,6 +193,7 @@ public sealed partial class GuestSupplierCheckout
         {
             "succeeded" when intent.AmountReceived == intent.Amount => GuestSupplierOrderState.Accepted,
             "requires_action" => GuestSupplierOrderState.PaymentActionRequired,
+            "requires_payment_method" when intent.LastPaymentError?.Code == "authentication_required" => GuestSupplierOrderState.PaymentActionRequired,
             "requires_payment_method" => GuestSupplierOrderState.PaymentFailed,
             "processing" => GuestSupplierOrderState.PaymentProcessing,
             "canceled" => GuestSupplierOrderState.Declined,

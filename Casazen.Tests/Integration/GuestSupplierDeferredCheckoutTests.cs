@@ -25,6 +25,60 @@ public sealed partial class GuestSupplierStripeSandboxTests
     }
 
     [PostgresFact]
+    public async Task ExpiredCaptureDeadlineRecoversWithConsentInsteadOfChargingTheOldHold()
+    {
+        await using var database = await PostgresTestDatabase.CreateMigratedAsync("guestexpiredhold");
+        await using var db = database.CreateContext();
+        var now = DateTime.UtcNow;
+        var order = await SeedOrderAsync(db, now);
+        order.State = GuestSupplierOrderState.Authorized;
+        order.StripePaymentIntentId = "pi_hold";
+        await db.SaveChangesAsync();
+        var intent = new PaymentIntent
+        {
+            Id = "pi_hold",
+            Amount = 110,
+            AmountCapturable = 110,
+            Currency = "eur",
+            Status = "requires_capture",
+            CaptureMethod = "manual",
+            Metadata = new() { ["kind"] = GuestSupplierCheckout.Kind, ["orderId"] = order.Id.ToString("D") },
+            LatestCharge = new Charge
+            {
+                Id = "ch_hold",
+                PaymentMethodDetails = new ChargePaymentMethodDetails
+                {
+                    Card = new ChargePaymentMethodDetailsCard { CaptureBefore = now.AddMinutes(-1) }
+                }
+            }
+        };
+        var client = new Mock<IStripeClient>();
+        client.SetupGet(x => x.ApiBase).Returns("https://api.stripe.com");
+        var cancellations = 0;
+        client.Setup(x => x.RequestAsync<PaymentIntent>(It.IsAny<HttpMethod>(), It.IsAny<string>(), It.IsAny<BaseOptions>(),
+                It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .Returns((HttpMethod method, string path, BaseOptions options, RequestOptions request, CancellationToken _) =>
+            {
+                if (method == HttpMethod.Post)
+                {
+                    Assert.EndsWith("/cancel", path);
+                    cancellations++;
+                    intent.Status = "canceled";
+                }
+                else Assert.Contains("latest_charge", Assert.IsType<PaymentIntentGetOptions>(options).Expand);
+                return Task.FromResult(intent);
+            });
+        var checkout = new GuestSupplierCheckout(db, TimeProvider.System, Config("sk_test_mock", "pk_test_mock", "whsec_mock"), client.Object);
+        Assert.False(await checkout.SupplierActionAsync(order, "accept", default));
+        Assert.Equal(1, cancellations);
+        Assert.Equal("pi_hold", order.StripeExpiredHoldIntentId);
+        Assert.Null(order.StripePaymentIntentId);
+        Assert.True(order.StripeDeferred);
+        Assert.Equal(GuestSupplierOrderState.Quoted, order.State);
+        Assert.Null(await checkout.StartAsync(order, 110, default));
+    }
+
+    [PostgresFact]
     public async Task SetupConsent_SupplierAcceptance_BankChallengeAndRetry_UseOneCharge()
     {
         await using var database = await PostgresTestDatabase.CreateMigratedAsync("guestdeferred");

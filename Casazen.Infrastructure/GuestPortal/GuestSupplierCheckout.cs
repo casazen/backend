@@ -45,7 +45,7 @@ public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider 
             .ExecuteUpdateAsync(u => u.SetProperty(x => x.StripeCheckoutStartedAt, startedAt), ct);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await LockAsync(order, ct);
-        if (order.State != GuestSupplierOrderState.Quoted || total != order.SupplierPriceCents + order.CommissionCents ||
+        if (order.StripeDeferred || order.State != GuestSupplierOrderState.Quoted || total != order.SupplierPriceCents + order.CommissionCents ||
             total < MinTotalCents || order.RequestedFor <= Now || NeedsSavedCard(order.CreatedAt, order.RequestedFor, order.ExpectedSupplierConfirmationAt))
             return null;
 
