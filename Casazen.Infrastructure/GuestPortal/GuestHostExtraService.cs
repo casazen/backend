@@ -398,6 +398,11 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
             _ => order.Status
         };
         if (status == order.Status) return;
+        if (status == GuestHostExtraStatus.Paid)
+        {
+            await GuestExtraFiscalPayment.SavePaidAsync(db, order, ct);
+            return;
+        }
         order.Status = status;
         await db.SaveChangesAsync(ct);
     }

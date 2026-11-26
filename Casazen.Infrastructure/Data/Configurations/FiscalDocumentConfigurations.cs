@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.GuestPortal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -117,6 +118,9 @@ internal sealed class FiscalDocumentConfiguration : IEntityTypeConfiguration<Fis
                 + $"AND \"Kind\" <> {(int)FiscalDocumentKind.CreditNote} AND NOT \"CreditedInFull\" AND \"RecipientOwnerId\" IS NOT NULL")
             .HasDatabaseName(FiscalDocument.OwnerPeriodIndexName);
 
+        entity.HasOne<GuestHostExtraOrder>().WithMany().HasForeignKey(d => d.SupplementForExtraOrderId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasIndex(d => d.SupplementForExtraOrderId).IsUnique()
+            .HasFilter("\"SupplementForExtraOrderId\" IS NOT NULL AND \"Status\" <> 3");
         entity.HasIndex(d => new { d.OrgId, d.IssuerProfileId, d.Series, d.SequenceNumber })
             .IsUnique()
             .HasFilter("\"SequenceNumber\" IS NOT NULL")

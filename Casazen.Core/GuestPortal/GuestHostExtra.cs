@@ -36,6 +36,7 @@ public sealed class GuestHostExtraOrder : ITenantOwned
     public int Quantity { get; set; }
     [Precision(12, 2)] public decimal Amount { get; set; }
     [MaxLength(3)] public string Currency { get; set; } = "";
+    public Guid? SupplementToDocumentId { get; set; }
     public GuestHostExtraStatus Status { get; set; }
     public DateTime CreatedAt { get; set; }
     [MaxLength(120)] public string? StripeIntentId { get; set; }
