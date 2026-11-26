@@ -1,6 +1,6 @@
 # Runbook: notification of the guests to the police in Switzerland (Ticino)
 
-**Issue:** casazen/backend#979 · **Requirements:** NF-126 (complete Ticino file), NF-127 (the 24 hours: staged alerts), NF-128 (retention, declaration, duplicates), NF-130 (the guest register), NF-132 (Swiss data at the check-in) · **Format of the file:**
+**Issue:** casazen/backend#979 · **Requirements:** NF-126 (complete Ticino file), NF-127 (the 24 hours: staged alerts), NF-128 (retention, declaration, duplicates), NF-130 (the guest register), NF-132 (Swiss data at the check-in), NF-133 (the acceptance scenario of the pilot) · **Format of the file:**
 [`docs/compliance/ticino-notification-format.md`](../compliance/ticino-notification-format.md) · **Analysis:** `alloggiati-ch/analisi-tecnica.md`
 (decisions D1-D16) and `alloggiati-ch/specifica-ticino.md` (verified rules).
 
@@ -10,7 +10,8 @@ receipt, or declares the day uploaded. Sections 1-7 are the file, its data, the 
 watch the 24 hours (E30/F02/US01/T01); sections 14-20 are the declaration of a day, the guard against duplicates and the audit of the files (E30/F02/US02/T01); sections 21-24 are the regimes of Italy
 and of the 26 cantons, the card of a property and the readiness of a Swiss property (E29/F02/US01), with the catalog in [`docs/compliance/guest-registration-switzerland.md`](../compliance/guest-registration-switzerland.md);
 section 25 is the guest register of any Swiss property, Ticino included, a table to keep and to print (E31/F01/US01);
-section 26 is the assisted notification of the guests to the authority of a canton other than Ticino: the days, the data ready to copy, the declaration and the alerts (E31/F02/US01/T01).
+section 26 is the assisted notification of the guests to the authority of a canton other than Ticino: the days, the data ready to copy, the declaration and the alerts (E31/F02/US01/T01);
+section 27 is the acceptance scenario that walks the whole chain of Ticino, from a flat with only a postal code to a declared day and a receipt deleted after five years, on the real services (E30/F03/US01/T01).
 
 ## 1. The flow
 
@@ -504,3 +505,39 @@ host says; Ticino keeps its own flow (§ 1-20) and never appears here. The whole
   `Assisted_Ticino_NotInThisSection_Test`, the closed day, the flag, isolation), `SwissNotificationControllerTests` (`Assisted_OtherOrganizationForbidden_Test`, the permissions, the flag gate), `ComplianceAlertSwissTests`,
   `ComplianceWizardSwissNotificationsTests` (the section, the reach of a collaborator), `GuestRegistrationRegimeResolverManyTests` and the tests that list the cockpit actions, the alert types, the push types and
   the registrations.
+
+## 27. The acceptance scenario of the Ticino pilot (E30/F03/US01/T01, NF-133)
+
+One integration test walks the whole chain of this runbook on the real services, from a flat that only has a postal code to a day declared, a receipt kept and the same receipt deleted five years later.
+Run it after any change to a service named in §§ 1-26: it is the one test that fails when two of them stop fitting together. **No flag, no variable and no migration**: it is a test.
+
+- **Where.** `Casazen.Tests/Integration/Acceptance/TicinoPilotScenarioTests.cs` (the story) over the Ticino part of the shared world of the acceptance scenarios, `AcceptanceScenarioBuilder.Ticino.cs`. The main path runs
+  on the in-memory database; its `[PostgresFact]` twin (`…_Postgres`) runs on PostgreSQL in CI and asserts, besides the same story, the two things only a real database does: the `SET NULL` that leaves the
+  declaration without the receipt the retention deleted, and the unique index of the declaration (a second declaration of the same day inserted straight into the table is refused with 23505 on
+  `UX_SwissNotificationDeclarations_Property_Day`). The foreign keys are only checked by every insert of the story: no step violates one. Run it with
+  `dotnet test Casazen.Tests --filter "FullyQualifiedName~TicinoPilotScenarioTests"`, or by requirement with `--filter "Scenario~NF-127"`.
+- **The story.** An agency of Lugano creates a flat with the postal code 6900 and the city «Lugano» (no municipality, no structure number); a second agency, in Locarno, exists all along, with a flat of its own
+  and a guest who arrives on the same day (he never does the check-in: his day is told with what it misses). A family of three from Zurich (two adults and a girl of nine) books the flat of Lugano, completes the
+  online check-in and arrives. The clock of the world starts on 10 November 2026 (the one fixed date of the scenario, a day of the past in winter time); every other date is relative to it (the booking a day
+  later, the arrival nine days after, the retention five years after the arrival), so nothing in it expires with the calendar.
+- **The steps.** Each is a method of the test named after the requirement it proves, and a failure begins with `Step <name> failed`. The display name of the test is the default one on purpose: the planner of the test
+  shards of the CI (`scripts/ci/test_shards.py`) reads it to place the test in its class.
+
+  | Step | Requirement | What it asserts |
+  |---|---|---|
+  | `NF124_TheFlatOfLuganoIsInTicino_WithNoMunicipalityStored` | NF-124 | The one resolver places the flat in Lugano (BFS 5192, canton TI, derived from the postal code and the city) with the Ticino part of the official directory of swisstopo (the file the application loads at startup); nothing is stored on the flat. |
+  | `NF129_WithoutTheStructureNumberTheFlatStaysPending_WithTheNumberItIsActive` | NF-129 | The activation is refused with `ticino_structure_id_missing` and the flat stays pending; the onboarding part says the same property by property; the number typed in lower case with spaces is stored normalised, then the flat activates and the part is done. |
+  | `NF132_TheFamilyCompletesTheCheckIn_WithTheDocumentOfBothAdultsAndTheirSwissHome` | NF-132 | The public link asks the fields of Ticino and the plate; without the document of the second adult the check-in is refused (`1.DocumentType`, `1.DocumentNumber`) and nothing is saved; complete, both documents, the Swiss home of every guest and the plate are stored. |
+  | `NF127_TheArrivalIsRegistered_AndTheCockpitShowsOneDayDue24HoursLater` | NF-127 | Once the arrival is registered the cockpit has ONE item `NotifyTicinoPolice` (the property, the day in `period`) due exactly 24 hours after the arrival; the guest of Locarno arrives in the same minute, and the list the alerts read, for every org, has one day for each agency. |
+  | `NF133_Tenant_AnotherAgencySeesNothingOfThePendingDay`, `NF133_Tenant_AnotherAgencySeesNothingOfTheDeclaredDayNorOfItsReceipt` | NF-133 | With the tenant filter on, each agency reads its own cockpit, its own list (even the one the job reads for every org gives it its own day only) and its own day (the positive control), and the other agency's list is empty and its flat, day, file, declaration, undo, group sheet, receipts and receipt answer `property_not_found`: Lugano asked about Locarno and Locarno about Lugano, while the day of Lugano is pending and again after its declaration and receipt (the day of Locarno stays pending, so that list is never empty for want of data). |
+  | `NF127_TheThreeAlertsAreQueuedOnceEach_AndTheFlagOffQueuesNothing` | NF-127 | The shipped flag is off and, off, the job reads no day, writes no state and queues nothing; on, one e-mail and one push for each stage (the arrival evening, six hours before the deadline, the deadline) to each of the two agencies (two alerts in a run), once each whatever the number of runs, each to the address and the hosts of its own flat only. |
+  | `NF126_TheCsvOfTheDayIsTheExpectedBytes` | NF-126 | The CSV is, byte for byte, what the test writes from the facts of the check-in: the header of the official model, Windows-1252 (the single bytes of «à» and «ü», no UTF-8), the two adults as rows, the girl counted in «Min14» on the head of the family who also has the plate, the code of the booking in «Numero bollettino»; one audit row, with no personal data. |
+  | `NF128_DeclaringClosesTheDayAndTheCockpitItem_AndANewFileAsksForTheConfirmation` | NF-128 | Declaring closes the day and the cockpit item, says who declared it and when (the instant of the clock), and tells the hosts of the flat once; a second declaration is the first one; a new file asks for the confirmation (409 `ticino_day_already_declared`) and with it is the same file; the closed day stops the reminders (the first reminder of that moment goes to the agency of Locarno, whose day is open, and none to Lugano). |
+  | `NF128_TheReceiptIsStoredEncrypted_AttachedToTheDeclaration_AndTheRetentionLeavesItWhileYoung` | NF-128 | The receipt is stored encrypted in the private bucket and the archive gives the original back; it joins the declaration that had none; the retention job leaves it while it is young. |
+  | `NF128_TheRetentionDeletesTheReceiptAfterFiveYears_AndKeepsTheDeclaration` | NF-128 | The night the receipt is exactly five years old it is kept (its day is the cut day); the night after, the file and the row are deleted and the declaration stays. |
+  | `NF128_NothingOfTheGuestsIsInTheAlertsNorInTheLogs` | NF-128 | No e-mail, push (the alerts, the declaration and the «check-in completed» one: the service of the check-in is built with the queue), event of the outbox or log line of the whole pilot holds a surname, a first name, a document number, the street, the postal code or the city of the home, the plate or the e-mail address of a guest of either agency (the first names and the postal code as whole words; every term is first shown to find what the guests typed). |
+
+- **What is a stand-in.** The e-mail queue, the push queue (the bell, the pop-up and the live refresh of the open pages are made from it by the decorator of the application, § 18), the private bucket (in memory), the
+  audience of the alerts (one address and one person for each agency, chosen by its org; the rule that picks the people has its own tests, `ComplianceAlertRecipientResolverTests`) and the services of the other duties (Alloggiati, the traffic light, the channel manager). The
+  police portal is never involved: CasaZen has no access to it (decision D1), so the declaration of the host stands for the upload.
+- **When it fails.** The name of the step is the requirement. A step that proves a rule of a service and fails because of a defect of that service is a defect of the service: fix it there, never loosen the step.
