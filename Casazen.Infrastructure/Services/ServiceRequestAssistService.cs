@@ -40,6 +40,9 @@ public sealed class ServiceRequestAssistService(
         ArgumentNullException.ThrowIfNull(property);
         ArgumentNullException.ThrowIfNull(text);
 
+        // The known property address can include building identifiers outside the generic street pattern.
+        if (!string.IsNullOrWhiteSpace(property.Address))
+            text = text.Replace(property.Address.Trim(), " ", StringComparison.OrdinalIgnoreCase);
         var cleaned = ServiceRequestAssistPrompt.CleanText(text);
         if (cleaned.Length < ServiceRequestAssistLimits.MinTextLength)
         {
