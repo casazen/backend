@@ -97,6 +97,28 @@ public class SupplierPaymentSummaryTests
 
     // ─── The record ───
 
+    [Theory]
+    [InlineData(true, ServicePayerKind.Host, false, true)]
+    [InlineData(true, ServicePayerKind.Host, true, false)]
+    [InlineData(false, ServicePayerKind.Host, false, false)]
+    [InlineData(true, ServicePayerKind.Private, false, false)]
+    public async Task HostDocumentPlan_UsesOnlyExplicitHostPurchaseTerms(bool d21, ServicePayerKind payer, bool offline, bool expected)
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var request = await s.SeedCompletedAsync(finalAmountCents: 10000, mode: ServiceRequestPaymentMode.Online);
+        var payment = await s.AddPaymentAsync(request.Id, amountCents: 11000);
+        payment.PayerKind = payer;
+        payment.PayerOrgId = payer == ServicePayerKind.Host ? s.HostOrgId : null;
+        payment.CommissionAddedToPrice = d21;
+        payment.PaidVia = offline ? ServicePaymentChannel.Offline : null;
+        payment.ApplicationFeeCents = 1000;
+        payment.RefundedCents = 5500;
+        await s.Db.SaveChangesAsync();
+
+        var summary = (await s.Reader.GetAsync(request.Id, s.SupplierOrgId))!.Payment!;
+        Assert.Equal(expected ? new HostServiceDocumentPlan(11000, 5500, 1000, 500) : null, summary.HostDocuments);
+    }
+
     [Fact]
     public async Task Payment_OfAJobAskedInsideCasaZen_ShowsTheSplitAndWhereItStands()
     {

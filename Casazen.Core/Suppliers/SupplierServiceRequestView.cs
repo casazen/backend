@@ -143,7 +143,13 @@ public sealed record SupplierJobPayment(
     bool Late,
     bool NeedsAmountConfirmation,
     bool CanRequest,
-    bool CanRecordOffline);
+    bool CanRecordOffline)
+{
+    public HostServiceDocumentPlan? HostDocuments { get; init; }
+}
+
+/// <summary>Commercial amounts of a host purchase under the snapshotted D21 terms, before any tax classification.</summary>
+public sealed record HostServiceDocumentPlan(int GrossCents, int RefundedCents, int CommissionCents, int CommissionRefundedCents);
 
 /// <summary>The values of <see cref="SupplierServiceRequestView.Source"/>.</summary>
 public static class SupplierRequestSources
