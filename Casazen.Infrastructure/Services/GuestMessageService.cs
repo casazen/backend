@@ -511,11 +511,19 @@ public sealed class GuestMessageService(
             // One save ties the draft to the inbound message, including competing retries.
             draft = new ApprovalQueueItem
             {
-                OrgId = orgId, PropertyId = draftBooking.PropertyId, ItemId = message.Id,
-                ItemType = ApprovalItemTypes.MessageDraft, ThreadKey = MessageThreadKey.ForDirect(draftBooking.Id).ToString(),
-                ContentText = localDraft, ContentVersion = ApprovalQueueRules.PortalLocalDraftVersion, IsAiGenerated = false,
-                OriginAction = ApprovalOriginActions.SendGuestMessage, OriginActionStatus = ApprovalOriginActionStatus.Pending,
-                Status = ApprovalStatus.Pending, CreatedAt = now, ExpiresAt = now.AddDays(ApprovalQueueRules.ExpirationDays),
+                OrgId = orgId,
+                PropertyId = draftBooking.PropertyId,
+                ItemId = message.Id,
+                ItemType = ApprovalItemTypes.MessageDraft,
+                ThreadKey = MessageThreadKey.ForDirect(draftBooking.Id).ToString(),
+                ContentText = localDraft,
+                ContentVersion = ApprovalQueueRules.PortalLocalDraftVersion,
+                IsAiGenerated = false,
+                OriginAction = ApprovalOriginActions.SendGuestMessage,
+                OriginActionStatus = ApprovalOriginActionStatus.Pending,
+                Status = ApprovalStatus.Pending,
+                CreatedAt = now,
+                ExpiresAt = now.AddDays(ApprovalQueueRules.ExpirationDays),
             };
             db.ApprovalQueueItems.Add(draft);
         }
