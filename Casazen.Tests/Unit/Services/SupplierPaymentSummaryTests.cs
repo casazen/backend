@@ -106,12 +106,14 @@ public class SupplierPaymentSummaryTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var request = await s.SeedCompletedAsync(finalAmountCents: 10000, mode: ServiceRequestPaymentMode.Online);
-        var payment = await s.AddPaymentAsync(request.Id, amountCents: 11000);
+        var channel = offline ? ServicePaymentChannel.Offline : ServicePaymentChannel.Stripe;
+        var payment = await s.AddPaymentAsync(request.Id, ServicePaymentStatus.PartiallyRefunded, amountCents: 11000, paidVia: channel);
+        s.Db.ServiceRequestPayments.Attach(payment);
         payment.PayerKind = payer;
         payment.PayerOrgId = payer == ServicePayerKind.Host ? s.HostOrgId : null;
         payment.CommissionAddedToPrice = d21;
-        payment.PaidVia = offline ? ServicePaymentChannel.Offline : null;
         payment.ApplicationFeeCents = 1000;
+        payment.NetCents = 10000;
         payment.RefundedCents = 5500;
         await s.Db.SaveChangesAsync();
 
