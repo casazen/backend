@@ -11,6 +11,7 @@ public sealed class ComoMonthlyDeclaration
     public int TaxableGuestNights { get; private set; }
     public decimal HostTax { get; private set; }
     public int UnconfirmedStays { get; private set; }
+    public int DeparturesToReview { get; private set; }
     public int ChannelStaysToReconcile { get; private set; }
     public SortedDictionary<string, ComoExemptionCount> Exemptions { get; } = new(StringComparer.Ordinal);
 
@@ -19,8 +20,18 @@ public sealed class ComoMonthlyDeclaration
         var start = RomeCalendar.StartOfDayUtc(monthStart);
         var end = RomeCalendar.StartOfDayUtc(monthStart.AddMonths(1));
         return bookings.Where(b => b.OrgId == orgId && b.PropertyId == propertyId
-            && b.CheckOutDate >= start && b.CheckOutDate < end && b.NoShowAt == null
+            && (b.CheckedOutAt ?? b.CheckOutDate) >= start && (b.CheckedOutAt ?? b.CheckOutDate) < end && b.NoShowAt == null
             && (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn || b.Status == BookingStatus.CheckedOut));
+    }
+
+    /// <summary>The confirmed tax uses the booking dates. A changed actual departure requires a corrected tax calculation.</summary>
+    public bool CanIncludeDeparture(BookingStatus status, DateTime? actualCheckout, DateTime scheduledCheckout)
+    {
+        if (status == BookingStatus.CheckedOut && actualCheckout.HasValue &&
+            RomeCalendar.DateInRome(actualCheckout.Value) == RomeCalendar.DateInRome(scheduledCheckout))
+            return true;
+        DeparturesToReview++;
+        return false;
     }
 
     public void Add(StayTouristTaxView tax, int expectedGuests, bool canReadReasons)

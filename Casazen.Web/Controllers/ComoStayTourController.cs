@@ -36,12 +36,15 @@ public sealed class ComoStayTourController(
             return NotFound();
 
         var departures = await ComoMonthlyDeclaration.DeparturesInMonth(db.Bookings.AsNoTracking(), resource.OrgId, propertyId, day)
-            .Select(b => new { b.Id, b.NumberOfGuests }).ToListAsync(ct);
+            .Select(b => new { b.Id, b.NumberOfGuests, b.Status, b.CheckedOutAt, b.CheckOutDate }).ToListAsync(ct);
 
         var canReadReasons = await authorization.IsAuthorizedAsync(User, resource, GuestOperations.Read);
         var report = new ComoMonthlyDeclaration();
         foreach (var stay in departures)
-            report.Add(await stayTax.GetAsync(stay.Id, ct), stay.NumberOfGuests, canReadReasons);
+        {
+            if (report.CanIncludeDeparture(stay.Status, stay.CheckedOutAt, stay.CheckOutDate))
+                report.Add(await stayTax.GetAsync(stay.Id, ct), stay.NumberOfGuests, canReadReasons);
+        }
         return Ok(report);
     }
 }

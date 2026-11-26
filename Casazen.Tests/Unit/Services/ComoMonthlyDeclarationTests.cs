@@ -35,6 +35,24 @@ public sealed class ComoMonthlyDeclarationTests
         Assert.Same(december, Assert.Single(result));
     }
 
+    [Fact]
+    public void EarlyCheckoutBelongsToItsActualMonthAndNeedsTheAmountsReconciled()
+    {
+        var planned = new DateTime(2026, 12, 2, 0, 0, 0, DateTimeKind.Utc);
+        var actual = new DateTime(2026, 11, 30, 9, 0, 0, DateTimeKind.Utc);
+        var booking = new Booking { OrgId = Guid.NewGuid(), PropertyId = Guid.NewGuid(), Status = BookingStatus.CheckedOut, CheckedOutAt = actual, CheckOutDate = planned };
+        var bookings = new[] { booking }.AsQueryable();
+        Assert.Same(booking, Assert.Single(ComoMonthlyDeclaration.DeparturesInMonth(bookings, booking.OrgId, booking.PropertyId, new DateOnly(2026, 11, 1))));
+        Assert.Empty(ComoMonthlyDeclaration.DeparturesInMonth(bookings, booking.OrgId, booking.PropertyId, new DateOnly(2026, 12, 1)));
+        var report = new ComoMonthlyDeclaration();
+        Assert.False(report.CanIncludeDeparture(booking.Status, booking.CheckedOutAt, booking.CheckOutDate));
+        Assert.False(report.CanIncludeDeparture(BookingStatus.CheckedIn, null, planned));
+        Assert.False(report.CanIncludeDeparture(BookingStatus.CheckedOut, null, planned));
+        Assert.True(report.CanIncludeDeparture(BookingStatus.CheckedOut, planned.AddHours(9), planned));
+        Assert.Equal(3, report.DeparturesToReview);
+        Assert.Equal(0m, report.HostTax);
+    }
+
     [Theory]
     [InlineData(true, "health_care")]
     [InlineData(false, "restricted")]
