@@ -112,7 +112,7 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         return new GuestSupplierOrderView(order.Id, order.ServiceName, order.SupplierName, state.ToString(),
             order.RequestedFor, order.CompletedAt, order.SupplierPriceCents, order.CommissionCents,
             order.HostOrigin, total, order.RefundCents, commissionRefund, order.RequestNote, order.Complaint,
-            includeInternal ? order.SupplierReply : null, order.Decision, order.StripeSandbox, order.RefundStatus, order.RefundRequestedCents,
+            includeInternal ? order.SupplierReply : null, order.Decision, order.StripeSandbox, order.RefundStatus == "retrying" ? "processing" : order.RefundStatus, order.RefundRequestedCents,
             includeInternal ? order.BankDisputeStatus : null)
         {
             Payout = includeInternal && order.StripeSandbox && (order.StripePayoutClaimedAt != null || order.StripePayoutFailureCode != null)
