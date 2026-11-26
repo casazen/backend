@@ -590,6 +590,9 @@ public static class ServiceCollectionExtensions
         // Who sends the police and ISTAT communications of a property (stored, or the default of PO-02) through one write path, and the
         // delegation of the Alloggiati transmission of the org (ADR-029, AW-R02, E03/F01/US05/T02). The sender switch with its checks
         // and the endpoints sit on top of them (E03/F01/US02/T01).
+        services.AddScoped<DirectPortalRoutes>();
+        services.AddScoped<IDirectAlloggiatiRoute>(sp => sp.GetRequiredService<DirectPortalRoutes>());
+        services.AddScoped<IRoss1000DirectRoute>(sp => sp.GetRequiredService<DirectPortalRoutes>());
         services.AddScoped<IPropertySenderStore, PropertySenderStore>();
         services.AddScoped<IAlloggiatiDelegationService, AlloggiatiDelegationService>();
         // The sender of a property for the host (E03/F01/US02/T01): its state, the switch with the confirmation and the delegation, the connection

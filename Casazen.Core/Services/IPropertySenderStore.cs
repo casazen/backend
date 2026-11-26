@@ -92,4 +92,5 @@ public sealed record PropertySenderInfo(
     SenderSource Source,
     bool Applies,
     DateTime? LastChangedAt,
-    string? LastChangedByUserId);
+    string? LastChangedByUserId,
+    bool DirectCutover = false);

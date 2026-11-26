@@ -64,5 +64,11 @@ public class PropertyComplianceSender : ITenantOwned
     [MaxLength(UserIdMaxLength)]
     public string? ActivationDeclaredByUserId { get; set; }
 
+    [ConcurrencyCheck]
+    public DateOnly? DirectAlloggiatiFrom { get; set; }
+
+    [ConcurrencyCheck]
+    public DateOnly? DirectIstatFrom { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -89,6 +89,8 @@ public sealed class PropertySenderStore(
             throw new DomainRuleException(NotApplicableCode, "SenderNotApplicable");
 
         var row = await db.PropertyComplianceSenders.FirstOrDefaultAsync(s => s.PropertyId == property.Id, ct);
+        if (row?.DirectAlloggiatiFrom != null || row?.DirectIstatFrom != null)
+            throw new DomainConflictException("direct_route_managed_separately", "SenderChangedConcurrently");
         if (row is not null && row.AlloggiatiSender == sender && row.IstatSender == sender)
             return Stored(row); // The same sender again: nothing changes, nothing is recorded.
 
@@ -129,7 +131,7 @@ public sealed class PropertySenderStore(
             var current = await db.PropertyComplianceSenders
                 .AsNoTracking()
                 .FirstOrDefaultAsync(s => s.PropertyId == property.Id, ct);
-            if (current is not null && current.AlloggiatiSender == sender)
+            if (current is not null && current.DirectAlloggiatiFrom is null && current.DirectIstatFrom is null && current.AlloggiatiSender == sender)
                 return Stored(current);
 
             throw new DomainConflictException(ChangedConcurrentlyCode, "SenderChangedConcurrently");
@@ -237,7 +239,9 @@ public sealed class PropertySenderStore(
     }
 
     private static PropertySenderInfo Stored(PropertyComplianceSender row) =>
-        new(row.PropertyId, row.OrgId, row.AlloggiatiSender, row.IstatSender, SenderSource.Stored, true, row.LastChangedAt, row.LastChangedByUserId);
+        new(row.PropertyId, row.OrgId,
+            row.DirectAlloggiatiFrom.HasValue ? ComplianceSenderType.CasaZen : row.AlloggiatiSender,
+            row.DirectIstatFrom.HasValue ? ComplianceSenderType.CasaZen : row.IstatSender, SenderSource.Stored, true, row.LastChangedAt, row.LastChangedByUserId, row.DirectAlloggiatiFrom.HasValue || row.DirectIstatFrom.HasValue);
 
     private static PropertySenderInfo Default(PropertyRef property, ComplianceSenderType sender, SenderSource source, bool applies) =>
         new(property.Id, property.OrgId, sender, sender, source, applies, null, null);

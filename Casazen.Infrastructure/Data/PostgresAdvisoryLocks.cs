@@ -31,6 +31,7 @@ internal static class PostgresAdvisoryLocks
         /// <summary>Org provisioning of one user (one org per user).</summary>
         OrgProvisioningUser = 1_001,
 
+        InstitutionalSenderCutover = 21_145,
         StorefrontChat = 1_948,
         GuestHostExtra = 1_957,
         TrustedSupplierRelation = 1_975,
@@ -615,7 +616,8 @@ internal static class PostgresAdvisoryLocks
         DbContext context,
         Scope scope,
         string key,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool shared = false)
     {
         if (!IsSupported(context))
             return NoLock.Instance;
@@ -625,11 +627,12 @@ internal static class PostgresAdvisoryLocks
         await context.Database.OpenConnectionAsync(cancellationToken);
         try
         {
-            var acquired = await context.Database
-                .SqlQuery<bool>($"SELECT pg_try_advisory_lock({scopeId}, {keyHash}) AS \"Value\"")
-                .SingleAsync(cancellationToken);
+            var attempt = shared
+                ? context.Database.SqlQuery<bool>($"SELECT pg_try_advisory_lock_shared({scopeId}, {keyHash}) AS \"Value\"")
+                : context.Database.SqlQuery<bool>($"SELECT pg_try_advisory_lock({scopeId}, {keyHash}) AS \"Value\"");
+            var acquired = await attempt.SingleAsync(cancellationToken);
             if (acquired)
-                return new SessionLock(context, scopeId, keyHash);
+                return new SessionLock(context, scopeId, keyHash, shared);
         }
         catch
         {
@@ -645,13 +648,16 @@ internal static class PostgresAdvisoryLocks
     internal static int Hash(string key) =>
         BinaryPrimitives.ReadInt32LittleEndian(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
 
-    private sealed class SessionLock(DbContext context, int scopeId, int keyHash) : IAsyncDisposable
+    private sealed class SessionLock(DbContext context, int scopeId, int keyHash, bool shared) : IAsyncDisposable
     {
         public async ValueTask DisposeAsync()
         {
             try
             {
-                await context.Database.ExecuteSqlAsync($"SELECT pg_advisory_unlock({scopeId}, {keyHash})");
+                if (shared)
+                    await context.Database.ExecuteSqlAsync($"SELECT pg_advisory_unlock_shared({scopeId}, {keyHash})");
+                else
+                    await context.Database.ExecuteSqlAsync($"SELECT pg_advisory_unlock({scopeId}, {keyHash})");
             }
             finally
             {

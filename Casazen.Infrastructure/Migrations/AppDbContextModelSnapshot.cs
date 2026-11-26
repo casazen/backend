@@ -12489,6 +12489,14 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateOnly?>("DirectAlloggiatiFrom")
+                        .IsConcurrencyToken()
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("DirectIstatFrom")
+                        .IsConcurrencyToken()
+                        .HasColumnType("date");
+
                     b.Property<int>("IstatSender")
                         .HasColumnType("integer");
 
