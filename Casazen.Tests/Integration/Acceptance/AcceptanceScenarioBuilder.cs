@@ -63,7 +63,7 @@ namespace Casazen.Tests.Integration.Acceptance;
 /// </list>
 /// Everything is invented and obviously test data: the IBANs are valid examples with their check digits, the UID is the example of eCH-0097.
 /// </remarks>
-internal sealed class AcceptanceScenarioBuilder : IAsyncDisposable
+internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
 {
     public const string AgencyLegalName = "TEST Quokka Gestioni SA";
 
