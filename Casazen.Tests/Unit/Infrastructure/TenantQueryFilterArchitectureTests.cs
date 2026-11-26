@@ -30,6 +30,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(OwnerUser)] = "Property owner users (ADR-011): cross-organization entities representing natural persons who own properties managed by multiple agencies (different orgs). Each OwnerUser can be linked to properties across multiple organizations. A tenant filter would incorrectly scope them to a single agency org, breaking the owner portal's ability to show properties across all agencies that manage their real estate.",
 
         // Platform reference data and platform-wide state.
+        [typeof(MarketingEventSearch)] = "Shared public event catalog keyed by municipality, country and date range. Entries contain public event names, dates, source URLs, descriptions and confidence. No property, guest or organization identifiers are stored.",
         [typeof(TouristTaxRate)] = "Platform reference data: tourist tax rates per comune, managed by admins and read by every org.",
         [typeof(CancellationPolicy)] = "Platform catalog of cancellation policies shared by the properties of every org.",
         [typeof(TerritorialRentAgreement)] = "Platform reference data: territorial rent agreements (canone concordato).",

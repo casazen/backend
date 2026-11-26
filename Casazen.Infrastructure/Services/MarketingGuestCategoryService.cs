@@ -8,6 +8,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -54,7 +55,7 @@ public sealed class MarketingGuestCategoryService(AppDbContext db, ICrmProfileRe
         var profile = await ProfileAsync(scope, id, ct);
         var settings = await db.MarketingStudioSettings.AsNoTracking().SingleOrDefaultAsync(s => s.OrgId == scope.OrgId, ct);
         var choices = MarketingGuestCategories.Choices(profile);
-        var today = clock.GetUtcNow().UtcDateTime.Date;
+        var today = clock.TodayInRome();
         var bookings = await profiles.BookingsInScope(scope).Where(b => b.Guest.GuestCrmProfileId == id)
             .Select(b => new { b.Status, b.CheckInDate, b.CheckOutDate, b.TotalPrice, b.Source, b.CreatedAt, b.NumberOfAdults, b.NumberOfChildren, b.NumberOfGuests })
             .ToListAsync(ct);
