@@ -178,6 +178,8 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             return;
 
         var guestId = booking.GuestId;
+        context.GuestHostExtraOrders.RemoveRange(await context.GuestHostExtraOrders.Where(x =>
+            x.OrgId == booking.OrgId && x.BookingId == booking.Id).ToListAsync());
         context.Payments.RemoveRange(booking.Payments);
         context.Bookings.Remove(booking);
         // The attempt was never a booking (BK-18): the events of its creation, not published yet, go with it.

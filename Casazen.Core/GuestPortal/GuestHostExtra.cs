@@ -6,7 +6,7 @@ namespace Casazen.Core.GuestPortal;
 
 public enum GuestHostExtraPricing { Fixed, PerNight, PerGuest, PerUnit }
 public enum GuestHostExtraCalendar { None, EarlyCheckIn, LateCheckOut }
-public enum GuestHostExtraStatus { Requested, ReadyToPay, Paid, Declined, Fulfilled, Cancelled, AwaitingAuthorization, CapturePending }
+public enum GuestHostExtraStatus { Requested, ReadyToPay, Paid, Declined, Fulfilled, Cancelled, AwaitingAuthorization, CapturePending, PendingBookingPayment }
 
 public sealed class GuestHostExtra : ITenantOwned
 {
