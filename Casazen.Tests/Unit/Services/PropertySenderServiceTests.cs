@@ -510,6 +510,30 @@ public class PropertySenderServiceTests
         Assert.Single(await db.PropertyComplianceSenders.ToListAsync());
     }
 
+    [Fact]
+    public async Task DirectCutover_IsIndependentByService_AndNeverRestoresOctorate()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var world = await SeedAsync(dbName);
+        await using var db = OrgTeamTestData.NewDb(dbName);
+        var clock = new FakeTimeProvider();
+        var activity = new ActivityLog(db, clock);
+        var store = new PropertySenderStore(db, activity, Mock.Of<IHostEnvironment>(h => h.EnvironmentName == "Staging"), clock);
+        var routes = new DirectPortalRoutes(db, clock, activity, store);
+        var checks = 0;
+        Task Verify(CancellationToken _) { checks++; return Task.CompletedTask; }
+        var first = await routes.ActivateAsync(world.OrgId, world.Connected, true, Host, Verify, default);
+        Assert.NotNull(first.Alloggiati);
+        Assert.Null(first.Istat);
+        Assert.Equal(first, await routes.ActivateAsync(world.OrgId, world.Connected, true, Host, Verify, default));
+        Assert.Equal(1, checks);
+        var read = await store.GetAsync(world.Connected, default);
+        Assert.Equal(ComplianceSenderType.CasaZen, read.AlloggiatiSender);
+        Assert.Equal(ComplianceSenderType.Manual, read.IstatSender);
+        Assert.Null((await routes.ReadAsync(Guid.NewGuid(), world.Connected, default)).Alloggiati);
+        await Assert.ThrowsAsync<DomainConflictException>(() => store.SetAsync(world.Connected, ComplianceSenderType.ChannelManager, Host, default));
+    }
+
     /// <summary>The sender service over the real store and delegation service, with the clock, Octorate and the flags under the test's control.</summary>
     private static PropertySenderService NewService(AppDbContext db, FakeTimeProvider clock, Mock<IOctorateApiClient> octorate)
     {

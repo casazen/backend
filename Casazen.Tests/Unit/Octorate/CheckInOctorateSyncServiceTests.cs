@@ -37,13 +37,22 @@ public class CheckInOctorateSyncServiceTests
             Enum.GetValues<ComplianceSenderType>(),
             sender => Assert.Equal(sender != ComplianceSenderType.ChannelManager, OctorateCheckInMapper.DraftFor(sender)));
 
-        // With the switch on every sender sends, and the payloads carry the rule: draft = false only for the channel manager.
+        // Migrated properties never forward guests to Octorate, even with draft synchronization enabled.
         foreach (var sender in Enum.GetValues<ComplianceSenderType>())
         {
             var h = await Harness.CreateAsync(sender, sendWhenNotChannelManager: true);
 
             var result = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
 
+            if (sender == ComplianceSenderType.CasaZen)
+            {
+                Assert.Equal(OctorateCheckInSendState.NotApplicable, result.State);
+                Assert.Empty(h.Sent);
+                var retry = await h.Service().RetryGuestsAsync(h.BookingId, CancellationToken.None);
+                Assert.Equal(OctorateCheckInSendState.NotApplicable, retry.State);
+                h.Client.VerifyNoOtherCalls();
+                continue;
+            }
             var expectedDraft = sender != ComplianceSenderType.ChannelManager;
             Assert.Equal(OctorateCheckInSendState.Sent, result.State);
             Assert.Equal(expectedDraft, result.Draft);

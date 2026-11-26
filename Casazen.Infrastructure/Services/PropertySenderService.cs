@@ -131,6 +131,8 @@ public sealed class PropertySenderService(
         bool delegationConsent,
         CancellationToken ct)
     {
+        if (current.AlloggiatiSender == ComplianceSenderType.CasaZen || current.IstatSender == ComplianceSenderType.CasaZen)
+            throw new DomainConflictException("direct_route_managed_separately", "SenderChangedConcurrently");
         if (!current.Applies)
             throw new DomainRuleException(PropertySenderStore.NotApplicableCode, "SenderNotApplicable");
 
@@ -176,6 +178,8 @@ public sealed class PropertySenderService(
         if (!info.Applies || info.AlloggiatiSender == ComplianceSenderType.Manual)
             return Result(info, SenderConnectionTestOutcome.NotApplicable, null, null, checkedAt);
 
+        if (info.DirectCutover && info.AlloggiatiSender == ComplianceSenderType.CasaZen)
+            return Result(info, SenderConnectionTestOutcome.Unverifiable, null, null, checkedAt);
         if (info.AlloggiatiSender == ComplianceSenderType.CasaZen)
             return Result(info, SenderConnectionTestOutcome.NotAvailable, SenderReasonCodes.CasaZenNotAvailable, null, checkedAt);
 
@@ -233,7 +237,8 @@ public sealed class PropertySenderService(
     private async Task<PropertySenderView> BuildAsync(PropertySenderInfo info, CancellationToken ct)
     {
         var accommodationId = info.Applies ? await ConfirmedAccommodationIdAsync(info.PropertyId, info.OrgId, ct) : null;
-        var channelManagerAvailable = info.Applies && accommodationId is not null && featureFlags.IsEnabled(FeatureFlags.OctorateConnector);
+        var direct = info.AlloggiatiSender == ComplianceSenderType.CasaZen || info.IstatSender == ComplianceSenderType.CasaZen;
+        var channelManagerAvailable = !direct && info.Applies && accommodationId is not null && featureFlags.IsEnabled(FeatureFlags.OctorateConnector);
 
         PoliceReading? police = null;
         if (info.AlloggiatiSender == ComplianceSenderType.ChannelManager && channelManagerAvailable)
@@ -246,7 +251,7 @@ public sealed class PropertySenderService(
         var (state, verification, reason) = Evaluate(info, police, channelManagerAvailable, declaredAt is not null);
         // What the host can choose now: nothing outside Italy; manual always; the channel manager when the property can use it.
         var available = new List<ComplianceSenderType>(2);
-        if (info.Applies)
+        if (info.Applies && !direct)
         {
             if (channelManagerAvailable)
                 available.Add(ComplianceSenderType.ChannelManager);
@@ -295,7 +300,9 @@ public sealed class PropertySenderService(
             case ComplianceSenderType.Manual:
                 return (SenderState.NotConfigured, SenderVerification.NotApplicable, null);
             case ComplianceSenderType.CasaZen:
-                // Not available in this release: nothing sends for this sender, whatever the row says.
+                if (info.DirectCutover)
+                    return (SenderState.Unverified, SenderVerification.Unverifiable, null);
+                // A legacy row alone does not activate a direct route.
                 return (SenderState.Inactive, SenderVerification.NotApplicable, SenderReasonCodes.CasaZenNotAvailable);
         }
 

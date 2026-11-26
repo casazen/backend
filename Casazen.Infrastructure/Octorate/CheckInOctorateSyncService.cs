@@ -162,6 +162,12 @@ public sealed class CheckInOctorateSyncService(
         if (!AlloggiatiStatusRules.IsDue(booking))
             return Nothing(OctorateCheckInSendState.NotApplicable, ReasonBookingNotActive);
 
+        // Share the property lock with cutover so even an already queued retry cannot outlive the handover.
+        await using var routingLock = await PostgresAdvisoryLocks.TryAcquireSessionLockAsync(db,
+            PostgresAdvisoryLocks.Scope.InstitutionalSenderCutover, booking.PropertyId.ToString("N"), cancellationToken, shared: true);
+        if (routingLock is null)
+            return Nothing(OctorateCheckInSendState.NothingToSend, ReasonSendInProgress);
+
         PropertySenderInfo sender;
         try
         {
@@ -174,6 +180,9 @@ public sealed class CheckInOctorateSyncService(
 
         if (!sender.Applies)
             return Nothing(OctorateCheckInSendState.NotApplicable, ReasonSenderNotApplicable);
+
+        if (sender.AlloggiatiSender == ComplianceSenderType.CasaZen || sender.IstatSender == ComplianceSenderType.CasaZen)
+            return Nothing(OctorateCheckInSendState.NotApplicable, ReasonSenderNotChannelManager);
 
         var draft = OctorateCheckInMapper.DraftFor(sender.AlloggiatiSender);
         if (draft && !options.Value.SendGuestsWhenSenderIsNotChannelManager)
