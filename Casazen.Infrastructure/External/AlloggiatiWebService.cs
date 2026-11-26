@@ -31,7 +31,7 @@ public class AlloggiatiWebService(
     TimeProvider? timeProvider = null,
     IStayGuestService? stayGuestService = null,
     IAlloggiatiCodeTableService? codeTableService = null,
-    IComplianceSendLog? complianceSendLog = null) : IAlloggiatiWebService
+    IComplianceSendLog? complianceSendLog = null, IDirectAlloggiatiRoute? directRoute = null) : IAlloggiatiWebService
 {
     /// <summary>Error code of a sent date before the check-in date.</summary>
     public const string ManualDateBeforeArrivalCode = "alloggiati_manual_date_before_arrival";
@@ -362,6 +362,11 @@ public class AlloggiatiWebService(
         if (!TouristTaxComune.IsItalianCountry(booking.Property.Country))
             return BuildStatusInfo(booking, null, await IsDataCompleteAsync(booking));
 
+        await using var tx = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(context, CancellationToken.None,
+            (PostgresAdvisoryLocks.Scope.InstitutionalSenderCutover, booking.PropertyId.ToString("N")));
+        if (directRoute != null && await directRoute.EffectiveFromAsync(booking.OrgId, booking.PropertyId, CancellationToken.None) is { } cutoff &&
+            DateOnly.FromDateTime(booking.CheckInDate) >= cutoff)
+            throw new DomainConflictException("alloggiati_direct_sender", "AlloggiatiDirectSender");
         var sentDate = sentOn.Date;
         if (sentDate < booking.CheckInDate.Date)
             throw new DomainRuleException(ManualDateBeforeArrivalCode, "AlloggiatiManualDateBeforeArrival");
@@ -371,7 +376,8 @@ public class AlloggiatiWebService(
         var now = UtcNow();
         var reports = await ReportsOfAsync(bookingId, tracking: true);
         var report = SlotReport(reports, booking.GuestId);
-        if (report is not null && AlloggiatiStatusRules.IsSent(report.Status))
+        if (report is not null && (AlloggiatiStatusRules.IsSent(report.Status) || report.Status is AlloggiatiWebStatus.Sending
+            or AlloggiatiWebStatus.ToVerify or AlloggiatiWebStatus.SentReceiptPending or AlloggiatiWebStatus.PartiallyAccepted))
             throw new DomainConflictException(AlreadySentCode, "AlloggiatiAlreadySent");
 
         if (report is null)
@@ -408,6 +414,7 @@ public class AlloggiatiWebService(
         });
 
         logger.LogInformation("Alloggiati report of booking {BookingId} declared sent manually by the host", bookingId);
+        if (tx != null) await tx.CommitAsync();
         return BuildStatusInfo(booking, report, await IsDataCompleteAsync(booking));
     }
 

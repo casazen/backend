@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
+using Casazen.Infrastructure.Data;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Regulatory;
@@ -41,7 +43,7 @@ public class AlloggiatiController(
     IStringLocalizer<SharedResources> localizer,
     ILogger<AlloggiatiController> logger,
     IComplianceStatusService complianceStatus,
-    ICheckInOctorateSyncService octorateSync) : ControllerBase
+    ICheckInOctorateSyncService octorateSync, IDirectAlloggiatiRoute? directRoute = null, AppDbContext? directDb = null) : ControllerBase
 {
     /// <summary>Code of a send request: CasaZen has no Alloggiati Web client (422).</summary>
     public const string TransmissionUnavailableCode = "alloggiati_transmission_unavailable";
@@ -82,12 +84,43 @@ public class AlloggiatiController(
     [HttpGet("{bookingId:guid}/status")]
     public async Task<ActionResult<AlloggiatiStatusDto>> GetStatus(Guid bookingId)
     {
-        var (_, denied) = await AuthorizeBookingAsync(bookingId, BookingOperations.Read);
-        if (denied is not null)
-            return denied;
-
+        var (booking, denied) = await AuthorizeBookingAsync(bookingId, BookingOperations.Read);
+        if (denied is not null) return denied;
         var status = await alloggiatiWebService.GetStatusAsync(bookingId);
-        return Ok(AlloggiatiStatusDto.From(status, await GetStayStatusAsync(bookingId)));
+        var dto = AlloggiatiStatusDto.From(status, await GetStayStatusAsync(bookingId));
+        if (directRoute != null && directDb != null && booking != null)
+        {
+            var ct = HttpContext.RequestAborted;
+            var cutoff = await directRoute.EffectiveFromAsync(booking.OrgId, booking.PropertyId, ct);
+            var attempt = await directDb.AlloggiatiSendAttempts.AsNoTracking()
+                .Where(a => a.OrgId == booking.OrgId && a.BookingId == booking.Id && a.Mode == AlloggiatiMode.Live)
+                .OrderByDescending(a => a.ReservedAt).Select(a => new { a.Status, a.ReceiptId }).FirstOrDefaultAsync(ct);
+            dto.DirectSubmission = attempt != null || (cutoff.HasValue && DateOnly.FromDateTime(booking.CheckInDate) >= cutoff);
+            dto.DirectAttempt = attempt?.Status.ToString();
+            dto.CanDownloadDirectReceipt = attempt?.ReceiptId != null &&
+                (await hostScopeResolver.ResolveHostScopeAsync(User, booking.OrgId, ct))?.IsOrgWide == true;
+        }
+        return Ok(dto);
+    }
+
+    [HttpGet("{bookingId:guid}/direct-receipt")]
+    public async Task<IActionResult> DirectReceipt(Guid bookingId, [FromServices] AppDbContext db, [FromServices] IFileStorage storage)
+    {
+        var (booking, denied) = await AuthorizeBookingAsync(bookingId, BookingOperations.Read);
+        if (denied != null) return denied;
+        var ct = HttpContext.RequestAborted;
+        // A daily receipt can cover apartments outside a member's scope and records submitted on the portal itself.
+        if ((await hostScopeResolver.ResolveHostScopeAsync(User, booking!.OrgId, ct))?.IsOrgWide != true) return Forbid();
+        var receipt = await (from a in db.AlloggiatiSendAttempts
+            join r in db.AlloggiatiReceipts on a.ReceiptId equals r.Id
+            where a.BookingId == bookingId && a.OrgId == booking.OrgId && r.OrgId == a.OrgId &&
+                r.AccountKey == a.AccountKey && a.Mode == AlloggiatiMode.Live && r.Mode == AlloggiatiMode.Live
+            select new { r.StorageKey, r.ReceiptDate }).FirstOrDefaultAsync(ct);
+        if (receipt == null) return NotFound();
+        var stream = await storage.OpenReadAsync(StorageBucket.Private, receipt.StorageKey, ct);
+        if (stream == null) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        return File(stream, "application/pdf", $"alloggiati-{receipt.ReceiptDate:yyyy-MM-dd}.pdf");
     }
 
     /// <summary>

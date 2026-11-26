@@ -306,7 +306,7 @@ public class AlloggiatiRecordFileTests
         Assert.Equal(AlloggiatiRecordFile.Build(guests).Text, Encoding.UTF8.GetString(bytes));
     }
 
-    private static AlloggiatiGuestRow SingleGuest(
+    internal static AlloggiatiGuestRow SingleGuest(
         int position = 0,
         StayGuestType type = StayGuestType.SingleGuest,
         string typeCode = "16") =>

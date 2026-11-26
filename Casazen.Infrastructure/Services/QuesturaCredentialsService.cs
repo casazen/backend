@@ -16,7 +16,7 @@ namespace Casazen.Infrastructure.Services;
 public sealed class QuesturaCredentialsService(
     AppDbContext db,
     ILogger<QuesturaCredentialsService> logger,
-    TimeProvider? timeProvider = null) : IQuesturaCredentialsService
+    TimeProvider? timeProvider = null, IDirectAlloggiatiRoute? directRoute = null) : IQuesturaCredentialsService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -41,6 +41,8 @@ public sealed class QuesturaCredentialsService(
         ArgumentNullException.ThrowIfNull(credentials);
         var now = _clock.GetUtcNow().UtcDateTime;
 
+        await using var tx = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken,
+            (PostgresAdvisoryLocks.Scope.InstitutionalSenderCutover, propertyId.ToString("N")));
         var row = await db.PropertyQuesturaCredentials
             .FirstOrDefaultAsync(c => c.PropertyId == propertyId, cancellationToken);
         if (row is null)
@@ -51,6 +53,7 @@ public sealed class QuesturaCredentialsService(
             try
             {
                 await db.SaveChangesAsync(cancellationToken);
+                if (tx != null) await tx.CommitAsync(cancellationToken);
                 logger.LogInformation("Questura credentials of property {PropertyId} configured", propertyId);
                 return new QuesturaCredentialsStatus(true, row.UpdatedAt);
             }
@@ -63,25 +66,63 @@ public sealed class QuesturaCredentialsService(
             }
         }
 
+        if (!string.Equals(row.Username, credentials.Username.Trim(), StringComparison.OrdinalIgnoreCase) ||
+            credentials.ApartmentId.HasValue && credentials.ApartmentId.Value != (int.TryParse(row.ApartmentId, out var currentApartment) ? currentApartment : 0))
+            await EnsureCanRetireAccountAsync(row, cancellationToken);
         Apply(row, credentials, now);
         await db.SaveChangesAsync(cancellationToken);
+        if (tx != null) await tx.CommitAsync(cancellationToken);
         logger.LogInformation("Questura credentials of property {PropertyId} replaced", propertyId);
         return new QuesturaCredentialsStatus(true, row.UpdatedAt);
     }
 
     public async Task<bool> DeleteAsync(Guid propertyId, CancellationToken cancellationToken = default)
     {
+        await using var tx = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken,
+            (PostgresAdvisoryLocks.Scope.InstitutionalSenderCutover, propertyId.ToString("N")));
+        var current = await db.PropertyQuesturaCredentials.AsNoTracking().FirstOrDefaultAsync(c => c.PropertyId == propertyId, cancellationToken);
+        if (current == null) return false;
+        await EnsureCanRetireAccountAsync(current, cancellationToken);
         var deleted = await db.PropertyQuesturaCredentials
             .Where(c => c.PropertyId == propertyId)
             .ExecuteDeleteAsync(cancellationToken);
+        if (tx != null) await tx.CommitAsync(cancellationToken);
         if (deleted > 0)
             logger.LogInformation("Questura credentials of property {PropertyId} removed", propertyId);
         return deleted > 0;
     }
 
+    private async Task EnsureCanRetireAccountAsync(PropertyQuesturaCredentials current, CancellationToken ct)
+    {
+        if (directRoute != null && await directRoute.EffectiveFromAsync(current.OrgId, current.PropertyId, ct) != null ||
+            await db.AlloggiatiSendAttempts.AnyAsync(a => a.OrgId == current.OrgId && a.AccountKey == current.AccountKey &&
+                a.Mode == AlloggiatiMode.Live && a.ReceiptId == null && (a.Status == AlloggiatiAttemptStatus.Accepted ||
+                a.Status == AlloggiatiAttemptStatus.PartiallyAccepted || a.Status == AlloggiatiAttemptStatus.Sending ||
+                a.Status == AlloggiatiAttemptStatus.ToVerify), ct))
+            throw new Casazen.Core.Exceptions.DomainConflictException("alloggiati_account_in_use", "AlloggiatiAccountInUse");
+    }
+
     private static void Apply(PropertyQuesturaCredentials row, QuesturaCredentialsInput credentials, DateTime now)
     {
-        row.Username = credentials.Username.Trim();
+        var user = credentials.Username.Trim();
+        var accountChanged = !string.Equals(row.Username, user, StringComparison.OrdinalIgnoreCase);
+        if (row.Username.Length > 0) row.CredentialVersion++;
+        if (credentials.ApartmentId.HasValue)
+        {
+            row.Profile = credentials.ApartmentId > 0 ? Casazen.Core.Entities.Enums.AlloggiatiProfile.ApartmentsManagement
+                : Casazen.Core.Entities.Enums.AlloggiatiProfile.SingleStructure;
+            row.ApartmentId = credentials.ApartmentId > 0 ? credentials.ApartmentId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
+        }
+        if (accountChanged || credentials.ApartmentId.HasValue)
+        {
+            // One account/day receipt can cover multiple properties in the same organization.
+            var identity = System.Text.Encoding.UTF8.GetBytes($"{row.OrgId:N}:{user.ToUpperInvariant()}");
+            row.AccountKey = new Guid(System.Security.Cryptography.SHA256.HashData(identity).AsSpan(0, 16));
+        }
+        row.LastVerificationOk = null;
+        row.LastVerificationCode = null;
+        row.LastVerifiedAt = null;
+        row.Username = user;
         // The password is kept exactly as typed: spaces may be part of it.
         row.Password = credentials.Password;
         row.WsKey = credentials.WsKey.Trim();

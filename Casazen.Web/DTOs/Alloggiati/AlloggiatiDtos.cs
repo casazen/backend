@@ -100,6 +100,10 @@ public sealed record AlloggiatiRetryResultDto(OctorateCheckInSendState State, st
 
 public class AlloggiatiStatusDto
 {
+    public bool DirectSubmission { get; set; }
+    public string? DirectAttempt { get; set; }
+    public bool CanDownloadDirectReceipt { get; set; }
+
     public Guid BookingId { get; set; }
 
     /// <summary>
