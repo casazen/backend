@@ -16,7 +16,7 @@ namespace Casazen.Infrastructure.Services;
 
 public record NewsletterPlan(Guid? SegmentId = null, Guid? PropertyId = null, int CadenceDays = 30, string Instructions = "", bool Enabled = false);
 public record StudioSettings(string Voice, Dictionary<Guid, string> PropertyNotes, Dictionary<Guid, string> PropertyUrls,
-    int MonthlyEmailLimit, int LoyalStays, int LostMonths, NewsletterPlan Newsletter);
+    int MonthlyEmailLimit, int LoyalStays, int LostMonths, NewsletterPlan Newsletter, bool CanEdit = true);
 public record StudioBrief(Guid PropertyId, Guid SegmentId, string Channel, string Brief, string? EventName = null);
 public record EventRequest(Guid PropertyId, DateOnly From, DateOnly To);
 public record LocalEvent(string Name, DateOnly Date, string Source, string Description);
@@ -47,7 +47,7 @@ public sealed partial class MarketingStudio(AppDbContext db, IAiProvider ai, IWe
             urls = urls.Where(x => allowed.Contains(x.Key)).ToDictionary();
             if (newsletter.PropertyId is Guid id && !allowed.Contains(id)) newsletter = new();
         }
-        return new(row.Voice, notes, urls, row.MonthlyEmailLimit, row.LoyalStays, row.LostMonths, newsletter);
+        return new(row.Voice, notes, urls, row.MonthlyEmailLimit, row.LoyalStays, row.LostMonths, newsletter, scope.IsOrgWide);
     }
 
     public async Task SaveSettingsAsync(HostScope scope, StudioSettings value, CancellationToken ct)
