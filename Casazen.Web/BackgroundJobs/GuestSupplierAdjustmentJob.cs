@@ -17,7 +17,7 @@ public sealed class GuestSupplierAdjustmentJob(AppDbContext db, GuestSupplierChe
         while (!ct.IsCancellationRequested)
         {
             var batch = await db.GuestSupplierOrders.Where(x => x.StripeSandbox &&
-                    (x.RefundStatus == "processing" || x.BankDisputeStatus == "recovery_pending") &&
+                    (x.RefundStatus == "processing" || x.RefundStatus == "retrying" || x.BankDisputeStatus == "recovery_pending") &&
                     (after == null || x.Id.CompareTo(after.Value) > 0))
                 .OrderBy(x => x.Id).Take(50).ToListAsync(ct);
             if (batch.Count == 0) return;
@@ -26,7 +26,7 @@ public sealed class GuestSupplierAdjustmentJob(AppDbContext db, GuestSupplierChe
                 try
                 {
                     if (order.BankDisputeStatus == "recovery_pending") await checkout.RecoverTransfersAsync(order, ct);
-                    if (order.RefundStatus == "processing") await checkout.ReconcileRefundAsync(order, ct);
+                    if (order.RefundStatus is "processing" or "retrying") await checkout.ReconcileRefundAsync(order, ct);
                 }
                 catch (StripeException ex)
                 {
