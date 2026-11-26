@@ -21,8 +21,15 @@ public sealed class GuestSupplierPayoutTests
     public void Split_DeductsFeeFromSupplierAndReturnsCommissionProportionally(
         bool hostOrigin, int refunded, int supplier, int host, int platform)
     {
-        var order = new GuestSupplierOrder { ServiceName = "Service", SupplierName = "Supplier", HostOrigin = hostOrigin,
-            SupplierPriceCents = 1000, CommissionCents = 100, RefundCents = refunded };
+        var order = new GuestSupplierOrder
+        {
+            ServiceName = "Service",
+            SupplierName = "Supplier",
+            HostOrigin = hostOrigin,
+            SupplierPriceCents = 1000,
+            CommissionCents = 100,
+            RefundCents = refunded
+        };
         Assert.Equal(new GuestSupplierPayouts.Shares(supplier, host, platform), GuestSupplierPayouts.Split(order, 40));
     }
 
@@ -39,10 +46,22 @@ public sealed class GuestSupplierPayoutTests
         await db.SaveChangesAsync();
         var intent = new PaymentIntent
         {
-            Id = "pi_fixture", Status = "succeeded", Currency = "eur", CaptureMethod = "manual", Amount = 1100, AmountReceived = 1100,
+            Id = "pi_fixture",
+            Status = "succeeded",
+            Currency = "eur",
+            CaptureMethod = "manual",
+            Amount = 1100,
+            AmountReceived = 1100,
             Metadata = new() { ["kind"] = GuestSupplierCheckout.Kind, ["orderId"] = order.Id.ToString("D") },
-            LatestCharge = new Charge { Id = "ch_fixture", Currency = "eur", AmountCaptured = 1100, Paid = true,
-                Captured = true, PaymentIntentId = "pi_fixture" }
+            LatestCharge = new Charge
+            {
+                Id = "ch_fixture",
+                Currency = "eur",
+                AmountCaptured = 1100,
+                Paid = true,
+                Captured = true,
+                PaymentIntentId = "pi_fixture"
+            }
         };
         var transfers = new List<Transfer>();
         var client = new Mock<IStripeClient>();
@@ -65,9 +84,16 @@ public sealed class GuestSupplierPayoutTests
             var role = create.Metadata["role"];
             Assert.Equal($"group_pi_fixture:{role}", request.IdempotencyKey);
             Assert.Null(request.StripeAccount);
-            var transfer = new Transfer { Id = $"tr_{role}", DestinationId = create.Destination, Amount = create.Amount!.Value,
-                Currency = create.Currency, SourceTransactionId = create.SourceTransaction, TransferGroup = create.TransferGroup,
-                Metadata = create.Metadata };
+            var transfer = new Transfer
+            {
+                Id = $"tr_{role}",
+                DestinationId = create.Destination,
+                Amount = create.Amount!.Value,
+                Currency = create.Currency,
+                SourceTransactionId = create.SourceTransaction,
+                TransferGroup = create.TransferGroup,
+                Metadata = create.Metadata
+            };
             Assert.DoesNotContain(transfers, t => t.Id == transfer.Id);
             transfers.Add(transfer);
             if (role == "supplier") throw new StripeException("response lost after transfer creation");

@@ -164,7 +164,9 @@ public sealed class GuestSupplierPayouts(AppDbContext db, IConfiguration configu
         var transfer = await new TransferService(Client).CreateAsync(new TransferCreateOptions
         {
             Amount = supplier ? order.StripeSupplierTransferCents : order.StripeHostTransferCents,
-            Currency = "eur", SourceTransaction = order.StripePayoutChargeId, TransferGroup = Group(order),
+            Currency = "eur",
+            SourceTransaction = order.StripePayoutChargeId,
+            TransferGroup = Group(order),
             Destination = supplier ? order.StripeSupplierDestination : order.StripeHostDestination,
             Metadata = new() { ["kind"] = GuestSupplierCheckout.Kind, ["orderId"] = order.Id.ToString("D"), ["role"] = role }
         }, new RequestOptions { IdempotencyKey = $"{Group(order)}:{role}" }, ct);
