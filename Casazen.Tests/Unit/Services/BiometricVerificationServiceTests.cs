@@ -112,6 +112,39 @@ public class BiometricVerificationServiceTests
     }
 
     [Fact]
+    public void DocumentPortrait_CaptureGuidanceStopsAsSoonAsAPortraitIsFound()
+    {
+        using var document = new RasterImage(64, 40, new byte[64 * 40 * 3]);
+        var detector = new ScriptedFaceDetector([Face(0.1)]);
+
+        var face = DocumentPortrait.Find(detector, document, new BiometricModelOptions(), default, out var rotated, requireAlignment: false);
+
+        Assert.NotNull(face);
+        Assert.Null(rotated);
+        Assert.Equal(1, detector.Calls);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_DocumentRotatedWithoutMetadata_FindsPortraitAndScrubsRotatedBuffers()
+    {
+        var sideways = Face(0.1) with { Score = 0.78f };
+        var upright = Face(0.1) with { Score = 0.94f };
+        var detector = new ScriptedFaceDetector([Face(0.3)], [sideways], [], [upright]);
+        var embedder = new Mock<IFaceEmbedder>();
+        embedder.Setup(e => e.Embed(It.IsAny<RasterImage>(), It.IsAny<DetectedFace>(), It.IsAny<CancellationToken>()))
+            .Returns(() => new[] { 1f, 0f });
+        var service = Service(Liveness(true, 0.99).Object, detector, embedder.Object);
+
+        var result = await Verify(service);
+
+        Assert.Equal(BiometricOutcome.Accept, result.Outcome);
+        Assert.Equal(5, detector.Calls);
+        embedder.Verify(e => e.Embed(It.Is<RasterImage>(image => image.Width == 40 && image.Height == 64),
+            upright, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.All(detector.SeenPixels, pixels => Assert.All(pixels, value => Assert.Equal((byte)0, value)));
+    }
+
+    [Fact]
     public async Task VerifyAsync_TwoFacesInTheSelfie_Rejects()
     {
         var detector = new ScriptedFaceDetector([Face(0.3), Face(0.2)], [Face(0.1)]);

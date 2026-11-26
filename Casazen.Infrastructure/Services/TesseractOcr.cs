@@ -31,6 +31,8 @@ public interface IPageTextReader
     /// <see cref="DocumentReaderUnavailableException"/> when the reader cannot run at all.
     /// </summary>
     Task<string?> ReadPageAsync(GrayBitmap page, CancellationToken cancellationToken);
+
+    Task<string?> ReadLayoutAsync(GrayBitmap page, bool sparse, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 }
 
 /// <summary>
@@ -149,23 +151,26 @@ internal static class TesseractNative
 /// </summary>
 internal sealed class TesseractPool : IDisposable
 {
-    private const int PixelsPerInch = 300;
+    private const int DefaultPixelsPerInch = 300;
 
     private readonly TesseractNative.Api _api;
     private readonly string _dataPath;
     private readonly string _languages;
     private readonly int _pageSegMode;
+    private readonly int _pixelsPerInch;
     private readonly string? _whitelist;
     private readonly SemaphoreSlim _slots;
     private readonly ConcurrentBag<IntPtr> _idle = [];
     private readonly ConcurrentBag<IntPtr> _all = [];
 
-    public TesseractPool(TesseractNative.Api api, string dataPath, string languages, int pageSegMode, string? whitelist, int size)
+    public TesseractPool(TesseractNative.Api api, string dataPath, string languages, int pageSegMode, string? whitelist, int size,
+        int pixelsPerInch = DefaultPixelsPerInch)
     {
         _api = api;
         _dataPath = dataPath;
         _languages = languages;
         _pageSegMode = pageSegMode;
+        _pixelsPerInch = pixelsPerInch;
         _whitelist = whitelist;
         _slots = new SemaphoreSlim(size, size);
         // The first engine is created now, so a language file the library cannot load is found before the first document.
@@ -173,7 +178,7 @@ internal sealed class TesseractPool : IDisposable
         _idle.Add(first);
     }
 
-    public async Task<string?> ReadAsync(GrayBitmap image, CancellationToken cancellationToken)
+    public async Task<string?> ReadAsync(GrayBitmap image, CancellationToken cancellationToken, int? segmentation = null)
     {
         await _slots.WaitAsync(cancellationToken);
         var engine = IntPtr.Zero;
@@ -182,6 +187,7 @@ internal sealed class TesseractPool : IDisposable
             if (!_idle.TryTake(out engine))
                 engine = CreateEngine();
 
+            _api.SetPageSegMode(engine, segmentation ?? _pageSegMode);
             var handle = engine;
             return await Task.Run(() => Recognize(handle, image), CancellationToken.None);
         }
@@ -235,7 +241,7 @@ internal sealed class TesseractPool : IDisposable
         {
             Marshal.Copy(image.Pixels, 0, buffer, length);
             _api.SetImage(engine, buffer, image.Width, image.Height, 1, image.Width);
-            _api.SetSourceResolution(engine, PixelsPerInch);
+            _api.SetSourceResolution(engine, _pixelsPerInch);
             var text = _api.GetUtf8Text(engine);
             if (text == IntPtr.Zero)
                 return null;
@@ -381,6 +387,8 @@ public sealed class TesseractMrzTextReader : IMrzTextReader, IDisposable
 public sealed class TesseractPageTextReader : IPageTextReader, IDisposable
 {
     private const int PageSegmentationAuto = 3;
+    // Phone images often have no meaningful DPI. At 300 DPI the small labels on a full card look like undersized print to page segmentation.
+    private const int PhotoPixelsPerInch = 96;
 
     private readonly LazyTesseractPool _pool;
 
@@ -411,7 +419,7 @@ public sealed class TesseractPageTextReader : IPageTextReader, IDisposable
                     "+",
                     System.IO.Path.GetFileNameWithoutExtension(italian.Path),
                     System.IO.Path.GetFileNameWithoutExtension(english.Path));
-                return new TesseractPool(api, folder, languages, PageSegmentationAuto, null, settings.MaxConcurrency);
+                return new TesseractPool(api, folder, languages, PageSegmentationAuto, null, settings.MaxConcurrency, PhotoPixelsPerInch);
             },
             logger,
             "visual-zone");
@@ -421,6 +429,13 @@ public sealed class TesseractPageTextReader : IPageTextReader, IDisposable
     {
         var pool = await _pool.GetAsync(cancellationToken);
         return await pool.ReadAsync(page, cancellationToken);
+    }
+
+    public async Task<string?> ReadLayoutAsync(GrayBitmap page, bool sparse, CancellationToken cancellationToken)
+    {
+        var pool = await _pool.GetAsync(cancellationToken);
+        // Sparse text (11) preserves isolated printed fields. A single block (6) preserves values sharing a row.
+        return await pool.ReadAsync(page, cancellationToken, sparse ? 11 : 6);
     }
 
     public void Dispose() => _pool.Dispose();

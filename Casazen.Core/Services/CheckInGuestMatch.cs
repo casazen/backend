@@ -8,13 +8,24 @@ public static class CheckInGuestMatch
     public static bool SameName(string? booked, string? entered) =>
         string.Equals(AlloggiatiRecordRules.NormalizeDescription(booked), AlloggiatiRecordRules.NormalizeDescription(entered), StringComparison.Ordinal);
 
-    // A single substitution can suggest a guest for confirmation, never establish identity.
+    // A single OCR character error can suggest a guest for confirmation, never establish identity.
     private static bool OneMisreadLetter(string booked, string read)
     {
-        if (booked.Length < 3 || booked.Length != read.Length)
+        if (booked.Length < 3)
             return false;
 
-        return booked.Zip(read).Count(pair => pair.First != pair.Second) == 1;
+        if (booked.Length == read.Length)
+            return booked.Zip(read).Count(pair => pair.First != pair.Second) == 1;
+
+        var (longer, shorter) = booked.Length > read.Length ? (booked, read) : (read, booked);
+        if (shorter.Length < 3 || longer.Length - shorter.Length != 1)
+            return false;
+
+        var index = 0;
+        while (index < shorter.Length && longer[index] == shorter[index])
+            index++;
+
+        return longer.AsSpan(index + 1).SequenceEqual(shorter.AsSpan(index));
     }
 
     public static (int Position, bool Confirm)? Find(IReadOnlyList<StayGuest> roster, CheckInDocumentFields fields)

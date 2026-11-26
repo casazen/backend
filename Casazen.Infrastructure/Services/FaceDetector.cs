@@ -27,6 +27,48 @@ public interface IFaceDetector
     IReadOnlyList<DetectedFace> Detect(RasterImage image, double minScore, CancellationToken cancellationToken);
 }
 
+internal static class DocumentPortrait
+{
+    // A document shared through a messenger can lose its orientation tag. YuNet expects upright faces.
+    // Keep the rotated image and its landmarks together, so SFace uses the same coordinates as YuNet.
+    public static DetectedFace? Find(IFaceDetector detector, RasterImage document, BiometricModelOptions settings,
+        CancellationToken token, out RasterImage? rotatedDocument, bool requireAlignment = true)
+    {
+        rotatedDocument = null;
+        var face = detector.Detect(document, settings.DocumentDetectionScoreThreshold, token).FirstOrDefault();
+        if (!requireAlignment && face is not null)
+            return face;
+
+        // Sideways faces can also yield a detection, with inaccurate eye and mouth landmarks.
+        // Select the orientation by detector confidence before comparing any identities.
+        var longest = Math.Max(document.Width, document.Height);
+        var scale = Math.Min(1.0, (double)settings.DetectorInputSize / longest);
+        using var reduced = scale < 1
+            ? document.Resized(Math.Max(1, (int)Math.Round(document.Width * scale)), Math.Max(1, (int)Math.Round(document.Height * scale)))
+            : null;
+        var bestOrientation = 1;
+        var preview = reduced ?? document;
+        foreach (var orientation in new[] { 6, 8, 3 })
+        {
+            token.ThrowIfCancellationRequested();
+            using var candidate = preview.Oriented(orientation);
+            var detected = detector.Detect(candidate, settings.DocumentDetectionScoreThreshold, token).FirstOrDefault();
+            if (detected is not null && (face is null || detected.Score > face.Score))
+            {
+                if (!requireAlignment)
+                    return detected;
+
+                bestOrientation = orientation;
+                face = detected;
+            }
+        }
+
+        if (bestOrientation != 1)
+            rotatedDocument = preview.Oriented(bestOrientation);
+        return face;
+    }
+}
+
 /// <summary>
 /// YuNet (MIT, OpenCV Zoo) run with ONNX Runtime: the faces of a picture with five landmarks each (ADR-013, NF-24, NF-51). The picture is scaled to
 /// fit <c>Biometrics:DetectorInputSize</c>, padded with black to multiples of 32 and given as blue-green-red values; the twelve outputs (class,

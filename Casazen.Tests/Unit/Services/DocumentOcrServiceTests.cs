@@ -100,6 +100,63 @@ public class DocumentOcrServiceTests
     }
 
     [Fact]
+    public void ReadsItalianCardColumnsAndUnlabelledCardNumber()
+    {
+        const string text = "CARTA DI IDENTITA\nCA12345ZZ\nCOGNOME ROSSI\nNOME ALBA\n"
+            + "MUNICIPALITY\nROMA\nLUOGO E DATA DI NASCITA\nROMA (RM) 12.02.1994\n"
+            + "SESSO STATURA CITTADINANZA\nSEX HEIGHT NATIONALITY\nF 168 ITA\n"
+            + "EMISSIONE / ISSUING    SCADENZA / EXPIRY\n11,03,2022    11.03.2032";
+
+        var result = DocumentOcrService.ParseOcrText(text, Today)!;
+        Assert.True(result.HasDocumentEvidence);
+        Assert.Equal("IdentityCard", result.DocumentKind);
+        Assert.Equal("CA12345ZZ", result.DocumentNumber);
+        Assert.Equal("ROMA", result.BirthPlace);
+        Assert.Equal("RM", result.BirthProvince);
+        Assert.Equal(Utc(1994, 2, 12), result.DateOfBirth);
+        Assert.Equal("F", result.Sex);
+        Assert.Equal("ITA", result.Nationality);
+        Assert.Equal(Utc(2022, 3, 11), result.DateOfIssue);
+        Assert.Equal(Utc(2032, 3, 11), result.ExpirationDate);
+    }
+
+    [Fact]
+    public void IssuingTownAndDateAfterExpiryNeverSupplyTheBirthplace()
+    {
+        const string text = "CARTA DI IDENTITA\nCOGNOME ROSSI\nNOME ALBA\nSESSO F\n"
+            + "EMISSIONE / ISSUING    SCADENZA / EXPIRY\n11.03.2022    11.03.2032\nMILANO (MI) 11.03.2022";
+        var read = DocumentOcrService.ParseOcrText(text, Today)!;
+        Assert.Null(read.DateOfBirth);
+        Assert.Null(read.BirthPlace);
+        Assert.Null(read.BirthProvince);
+    }
+
+    [Fact]
+    public void ReadsResidenceOnlyFromTheResidentialAddressLabel()
+    {
+        var read = DocumentOcrService.ParseOcrText("INDIRIZZO DI RESIDENZA / RESIDENCE\nVIA ROMA 8\n00100 ROMA (RM)", Today)!;
+        Assert.Equal("VIA ROMA 8", read.ResidenceStreet);
+        Assert.Equal("00100", read.ResidencePostalCode);
+        Assert.Equal("ROMA", read.ResidenceCityName);
+        Assert.Equal("RM", read.ResidenceProvince);
+        Assert.Null(read.BirthPlace);
+        Assert.Null(read.PlaceOfIssue);
+        Assert.False(read.HasDocumentEvidence);
+
+        var front = DocumentOcrService.ParseOcrText(ItalianCard, Today)!;
+        Assert.Null(front.ResidenceStreet);
+        Assert.Null(front.ResidenceCityName);
+    }
+
+    [Fact]
+    public void ContactDetailsAloneDoNotIdentifyADocument()
+    {
+        var read = DocumentOcrService.ParseOcrText("COGNOME ROSSI\nNOME ALBA\nDATA DI NASCITA 12.02.1994", Today);
+        Assert.NotNull(read);
+        Assert.False(read.HasDocumentEvidence);
+    }
+
+    [Fact]
     public async Task ExtractAsync_ReadsThePictureFromMemory()
     {
         var service = new DocumentOcrService(
@@ -110,6 +167,63 @@ public class DocumentOcrServiceTests
         Assert.NotNull(result);
         Assert.Equal("COMUNE DI ROMA", result.PlaceOfIssue);
         Assert.Equal(Utc(2021, 1, 15), result.DateOfIssue);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_RetriesAQuarterTurnWhenTheImageHasNoOrientationTag()
+    {
+        var reader = new QuarterTurnReader();
+        var service = new DocumentOcrService(NullLogger<DocumentOcrService>.Instance, reader, timeProvider: Clock);
+
+        using var photo = new MemoryStream(TestImages.Png(48, 32, seed: 2));
+        var result = await service.ExtractAsync(photo);
+
+        Assert.NotNull(result);
+        Assert.Equal("ALBA", result.GivenNames);
+        Assert.Equal("ROSSI", result.Surname);
+        Assert.Equal(3, reader.Attempts);
+    }
+
+    [Fact]
+    public async Task TimeoutDuringSupplementaryLayoutCannotReturnUncheckedCieDates()
+    {
+        const int width = 700, height = 470;
+        var pixels = new byte[width * height * 3];
+        for (int y = 70; y < 390; y++)
+        {
+            for (int x = 100; x < 600; x++)
+                pixels[(y * width + x) * 3 + 2] = 160;
+        }
+        var service = new DocumentOcrService(NullLogger<DocumentOcrService>.Instance, new InterruptedLayoutReader(), timeProvider: Clock);
+        using var photo = new MemoryStream(TestImages.Png(width, height, pixels));
+
+        var result = await service.ObserveAsync(photo);
+        Assert.Equal("unreadable", result.Failure);
+        Assert.Equal("MARIO", result.Fields?.GivenNames);
+        Assert.Null(result.Fields!.DateOfBirth);
+        Assert.Null(result.Fields.DateOfIssue);
+    }
+
+    private sealed class InterruptedLayoutReader : IPageTextReader
+    {
+        public Task<string?> ReadPageAsync(GrayBitmap page, CancellationToken cancellationToken) =>
+            Task.FromResult<string?>(ItalianCard.Replace("DATA DI RILASCIO", "EMISSIONE", StringComparison.Ordinal));
+
+        public Task<string?> ReadLayoutAsync(GrayBitmap page, bool sparse, CancellationToken cancellationToken) =>
+            throw new OperationCanceledException();
+    }
+
+    private sealed class QuarterTurnReader : IPageTextReader
+    {
+        public int Attempts { get; private set; }
+
+        public Task<string?> ReadPageAsync(GrayBitmap page, CancellationToken cancellationToken)
+        {
+            Attempts++;
+            return Task.FromResult<string?>(page.Width < page.Height
+                ? "COGNOME / SURNAME\nROSSI\nNOME / NAME =\nALBA"
+                : null);
+        }
     }
 
     [Fact]

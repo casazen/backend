@@ -14,7 +14,13 @@ public interface IDocumentOcrService
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Extraction result with OCR-parsed fields, or null if nothing could be read.</returns>
     Task<DocumentOcrResult?> ExtractAsync(Stream imageStream, CancellationToken cancellationToken = default);
+
+    async Task<DocumentOcrObservation> ObserveAsync(Stream imageStream, CancellationToken cancellationToken = default) =>
+        new(await ExtractAsync(imageStream, cancellationToken));
 }
+
+/// <summary>A visual reading can distinguish an examined picture from a reader that could not run.</summary>
+public sealed record DocumentOcrObservation(DocumentOcrResult? Fields, string? Failure = null);
 
 /// <summary>
 /// Result of OCR extraction from a document (fallback when MRZ is not available). Fields only, never the raw text of the document.
@@ -23,6 +29,16 @@ public class DocumentOcrResult
 {
     /// <summary>Full name extracted from document.</summary>
     public string? FullName { get; set; }
+    public string? DocumentKind { get; set; }
+    public string? BirthPlace { get; set; }
+    public string? BirthProvince { get; set; }
+    public string? ResidenceStreet { get; set; }
+    public string? ResidencePostalCode { get; set; }
+    public string? ResidenceCityName { get; set; }
+    public string? ResidenceProvince { get; set; }
+
+    // A title or a combination of document-specific printed fields distinguishes a card from generic contact details.
+    public bool HasDocumentEvidence { get; set; }
     public string? GivenNames { get; set; }
     public string? Surname { get; set; }
 

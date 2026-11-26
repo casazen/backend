@@ -196,7 +196,21 @@ public sealed class IdentityVerificationFlowService(
             {
                 using var copy = new MemoryStream(bytes, writable: false);
                 var fromOcr = await ocr.ExtractAsync(copy, ct);
-                reading = fromOcr is null ? DocumentReading.Nothing : FromOcr(fromOcr);
+                reading = fromOcr is { HasDocumentEvidence: true } ? FromOcr(fromOcr) : DocumentReading.Nothing;
+            }
+
+            if (reading.Method == DocumentReadingMethod.None)
+            {
+                var existing = ReadCheck(session);
+                var rejectionGuidance = (assessment?.GuidanceCodes ?? [])
+                    .Concat(CaptureGuidanceCodes.FromMrzQuality(mrzReading.Quality))
+                    .Append(CaptureGuidanceCodes.ShowWholeDocument)
+                    .Append("document_not_recognized")
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+                return new DocumentStepResult(reading, false, rejectionGuidance,
+                    false, context.DocumentNotArchived, side,
+                    existing is null ? [] : SidesOf(existing.TwoSided, existing.Front, existing.Back));
             }
 
             var now = UtcNow();
@@ -1106,9 +1120,9 @@ public sealed class IdentityVerificationFlowService(
         null,
         read.Confidence < DocumentReading.ManualReviewBelow,
         new DocumentReadingFields(
-            null,
-            null,
-            null,
+            read.DocumentKind,
+            read.Surname,
+            read.GivenNames,
             read.FullName,
             read.DocumentNumber,
             DateOf(read.DateOfBirth),

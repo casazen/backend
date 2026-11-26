@@ -17,6 +17,8 @@ public class CheckInGuestMatchTests
     [Theory]
     [InlineData("Lùca", "D ANGELO", false)]
     [InlineData("EUCA", "DANGELO", true)]
+    [InlineData("UCA", "DANGELO", true)]
+    [InlineData("LLuCA", "DANGELO", true)]
     public void UniqueName_SelectsBookedPosition(string first, string last, bool confirmation) =>
         Assert.Equal((1, confirmation), CheckInGuestMatch.Find([Guest], Read(first, last)));
 
@@ -25,6 +27,9 @@ public class CheckInGuestMatchTests
     {
         Assert.Null(CheckInGuestMatch.Find([Guest], Read("Luca", "Rossi")));
         Assert.Null(CheckInGuestMatch.Find([Guest, Guest], Read("Luca", "Dangelo")));
+        Assert.Null(CheckInGuestMatch.Find([Guest], Read("UC", "Dangelo")));
+        Assert.Null(CheckInGuestMatch.Find([Guest], Read("UCA", "DANGEL")));
+        Assert.Null(CheckInGuestMatch.Find([Guest, Guest], Read("UCA", "Dangelo")));
     }
 
     [Fact]

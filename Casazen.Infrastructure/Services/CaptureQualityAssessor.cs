@@ -113,7 +113,8 @@ public sealed class CaptureQualityAssessor(IFaceDetector faceDetector, IOptions<
         {
             try
             {
-                if (faceDetector.Detect(image, options.Value.DocumentDetectionScoreThreshold, cancellationToken).Count == 0)
+                var portrait = DocumentPortrait.Find(faceDetector, image, options.Value, cancellationToken, out _, requireAlignment: false);
+                if (portrait is null)
                     guidance.Add(CaptureGuidanceCodes.ShowDocumentPhoto);
             }
             catch (BiometricUnavailableException)

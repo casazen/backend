@@ -44,6 +44,7 @@ public class BiometricVerificationService(
         byte[]? documentBytes = null;
         RasterImage? selfie = null;
         RasterImage? document = null;
+        RasterImage? rotatedDocument = null;
         float[]? selfieVector = null;
         float[]? documentVector = null;
         try
@@ -78,10 +79,10 @@ public class BiometricVerificationService(
 
             // Step 2: YuNet on both pictures. No face in either one is a Reject; the selfie must hold one face, large enough.
             var selfieFaces = faceDetector.Detect(selfie, settings.DetectionScoreThreshold, token);
-            var documentFaces = faceDetector.Detect(document, settings.DocumentDetectionScoreThreshold, token);
+            var portrait = DocumentPortrait.Find(faceDetector, document, settings, token, out rotatedDocument);
             result.FaceInSelfie = selfieFaces.Count > 0;
-            result.FaceInDocument = documentFaces.Count > 0;
-            if (!result.FaceInSelfie || !result.FaceInDocument)
+            result.FaceInDocument = portrait is not null;
+            if (!result.FaceInSelfie || portrait is null)
                 return Finish(result, BiometricOutcome.Reject, BiometricReasonCodes.NoFace, started);
 
             result.FaceAreaRatioSelfie = selfieFaces[0].AreaRatio;
@@ -104,7 +105,7 @@ public class BiometricVerificationService(
 
             // Step 4: crop, align, normalise, embed both faces and compare them. The document photo is the largest face of its picture.
             selfieVector = faceEmbedder.Embed(selfie, selfieFaces[0], token);
-            documentVector = faceEmbedder.Embed(document, documentFaces[0], token);
+            documentVector = faceEmbedder.Embed(rotatedDocument ?? document, portrait, token);
             result.Similarity = Math.Clamp(EmbeddingMath.CosineSimilarity(selfieVector, documentVector), 0.0, 1.0);
 
             // Step 5: the outcome of the thresholds (ADR-013-R4).
@@ -140,6 +141,7 @@ public class BiometricVerificationService(
             ImageBytes.Zero(documentVector);
             selfie?.Dispose();
             document?.Dispose();
+            rotatedDocument?.Dispose();
         }
     }
 

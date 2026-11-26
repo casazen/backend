@@ -390,6 +390,23 @@ public class IdentityTwoSidedDocumentTests
         Assert.Null(state.DocumentSideNeeded);
     }
 
+    [Fact]
+    public async Task UnrelatedImageLeavesTheAlreadyAcceptedSideAndFileUnchanged()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        await world.DocumentAsync(session, Pic("FACE", 1), DocumentSide.Front);
+        var check = session.DocumentCheckJson;
+        var key = Assert.Single(world.Storage.Objects).Key;
+
+        var rejected = await world.DocumentAsync(session, Pic("BLANK", 2), DocumentSide.Front);
+        Assert.False(rejected.Acceptable);
+        Assert.False(rejected.DocumentStored);
+        Assert.Contains("document_not_recognized", rejected.GuidanceCodes);
+        Assert.Equal(check, session.DocumentCheckJson);
+        Assert.Equal(key, Assert.Single(world.Storage.Objects).Key);
+    }
+
     /// <summary>The back first: the MRZ is read, the face is missing, so the front is asked for; the selfie waits for it.</summary>
     [Fact]
     public async Task TwoSided_TheBackFirst_AsksForTheFront()
@@ -454,8 +471,10 @@ public class IdentityTwoSidedDocumentTests
 
         Assert.False(front.Acceptable);
         Assert.Contains(CaptureGuidanceCodes.ShowDocumentPhoto, front.GuidanceCodes);
-        Assert.DoesNotContain(CaptureGuidanceCodes.DocumentBackNeeded, front.GuidanceCodes);
-        Assert.Equal(DocumentSides.Front, (await world.Flow().GetStateAsync(session, CancellationToken.None)).DocumentSideNeeded);
+        Assert.Contains("document_not_recognized", front.GuidanceCodes);
+        Assert.Empty(front.SidesReceived!);
+        Assert.Null(session.DocumentCheckJson);
+        Assert.Empty(world.Storage.Objects);
     }
 
     /// <summary>
@@ -523,12 +542,12 @@ public class IdentityTwoSidedDocumentTests
         var options = Options.Create(new BiometricModelOptions());
 
         // A document picture with no face: the photo of the document is missing.
-        var noFace = new ScriptedFaceDetector(Array.Empty<DetectedFace>());
+        var noFace = new ScriptedFaceDetector([], [], [], []);
         using (var image = RasterImage.Decode(picture, options.Value.MaxImagePixels))
         {
             var front = new CaptureQualityAssessor(noFace, options).Assess(image, CaptureKind.Document, CancellationToken.None);
             Assert.Contains(CaptureGuidanceCodes.ShowDocumentPhoto, front.GuidanceCodes);
-            Assert.Equal(1, noFace.Calls);
+            Assert.Equal(4, noFace.Calls);
         }
 
         // The back of a card: no face is looked for, even with models that cannot run.
@@ -734,7 +753,7 @@ public class IdentityTwoSidedDocumentTests
             _codes.Object,
             _queue.Object,
             Mrz,
-            Mock.Of<IDocumentOcrService>(),
+            new PictureOcr(),
             new StayGuestService(Db, Mock.Of<IAlloggiatiCodeTableService>()),
             Storage,
             _dataProtection,
@@ -902,6 +921,18 @@ public class IdentityTwoSidedDocumentTests
             using var copy = new MemoryStream();
             await stream.CopyToAsync(copy, ct);
             return copy.ToArray();
+        }
+    }
+
+    private sealed class PictureOcr : IDocumentOcrService
+    {
+        public async Task<DocumentOcrResult?> ExtractAsync(Stream imageStream, CancellationToken ct = default)
+        {
+            using var reader = new StreamReader(imageStream);
+            var label = await reader.ReadToEndAsync(ct);
+            return label.Contains("FACE", StringComparison.Ordinal)
+                ? new DocumentOcrResult { DocumentKind = "IdentityCard", HasDocumentEvidence = true, GivenNames = "ANNA", Surname = "ROSSI" }
+                : null;
         }
     }
 

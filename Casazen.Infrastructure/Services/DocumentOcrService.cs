@@ -27,11 +27,16 @@ public class DocumentOcrService(
     /// <summary>The fallback is never presented as certain: the guest confirms every field (the check-in page asks for review under 0.80).</summary>
     internal const double FallbackConfidence = 0.55;
 
+    private const int CardWorkingSide = 880;
+
     /// <summary>
     /// Performs OCR on an identity document image when MRZ extraction fails or is not applicable.
     /// Uses Tesseract (Apache-2.0) for text extraction.
     /// </summary>
-    public async Task<DocumentOcrResult?> ExtractAsync(Stream imageStream, CancellationToken cancellationToken = default)
+    public async Task<DocumentOcrResult?> ExtractAsync(Stream imageStream, CancellationToken cancellationToken = default) =>
+        (await ObserveAsync(imageStream, cancellationToken)).Fields;
+
+    public async Task<DocumentOcrObservation> ObserveAsync(Stream imageStream, CancellationToken cancellationToken = default)
     {
         var settings = options?.Value ?? new MrzOcrOptions();
         var started = Stopwatch.GetTimestamp();
@@ -39,12 +44,14 @@ public class DocumentOcrService(
         RasterImage? colour = null;
         GrayBitmap? page = null;
         GrayBitmap? scaled = null;
+        DocumentOcrResult? result = null;
+        var pendingCieDateCheck = false;
         try
         {
             if (pageReader is null)
             {
                 logger.LogInformation("Document OCR not run: the document reader is not configured");
-                return null;
+                return new(null, "unavailable");
             }
 
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -55,28 +62,81 @@ public class DocumentOcrService(
             colour = RasterImage.Decode(bytes, settings.MaxImagePixels);
             ImageBytes.Zero(bytes);
             page = colour.ToGray();
+            using var card = CropBlueCard(colour, page);
             colour.Dispose();
 
-            var longest = Math.Max(page.Width, page.Height);
-            if (longest > settings.MaxWorkingSide)
+            var today = (timeProvider ?? TimeProvider.System).TodayInRomeAsDateOnly();
+            foreach (var candidate in card is null ? new[] { page } : new[] { card, page })
             {
-                scaled = page.Resized(
-                    Math.Max(1, (int)Math.Round((double)page.Width * settings.MaxWorkingSide / longest)),
-                    Math.Max(1, (int)Math.Round((double)page.Height * settings.MaxWorkingSide / longest)));
+                var longest = Math.Max(candidate.Width, candidate.Height);
+                var limit = candidate == card ? Math.Min(CardWorkingSide, settings.MaxWorkingSide) : settings.MaxWorkingSide;
+                if (longest > limit)
+                {
+                    scaled = candidate.Resized(
+                        Math.Max(1, (int)Math.Round((double)candidate.Width * limit / longest)),
+                        Math.Max(1, (int)Math.Round((double)candidate.Height * limit / longest)));
+                }
+
+                var working = scaled ?? candidate;
+                int[] orientations = working.Height > working.Width ? [6, 8, 1, 3] : [1, 3, 6, 8];
+                foreach (var orientation in orientations)
+                {
+                    token.ThrowIfCancellationRequested();
+                    using var turned = orientation == 1 ? null : working.Oriented(orientation);
+                    var text = await pageReader.ReadPageAsync(turned ?? working, token);
+                    var read = ParseOcrText(text ?? string.Empty, today);
+                    if (read is null)
+                        continue;
+
+                    if (result is null || CountFields(read) > CountFields(result))
+                        result = read;
+                    if (read is { GivenNames: not null, Surname: not null })
+                    {
+                        result = read;
+                        using var orientedCandidate = orientation == 1 ? null : candidate.Oriented(orientation);
+                        var detail = orientedCandidate ?? candidate;
+                        if (Math.Max(detail.Width, detail.Height) > settings.MaxWorkingSide)
+                            detail = turned ?? working;
+                        pendingCieDateCheck = candidate == card && detail.Width > detail.Height
+                            && (text?.Contains("EMISSIONE", StringComparison.OrdinalIgnoreCase) ?? false);
+                        foreach (var sparse in new[] { true, false })
+                        {
+                            token.ThrowIfCancellationRequested();
+                            var layout = await pageReader.ReadLayoutAsync(detail, sparse, token);
+                            if (ParseOcrText(layout ?? string.Empty, today) is { } supplement)
+                                MergePrintedFields(read, supplement);
+                        }
+                        if (pendingCieDateCheck && read.DocumentKind == "IdentityCard")
+                        {
+                            // A partial digit can still give a plausible date. Compare the two CIE rows against
+                            // a second segmentation of their printed values before sending them to the guest.
+                            var birth = read.DateOfBirth;
+                            var issued = read.DateOfIssue;
+                            read.DateOfBirth = null;
+                            read.DateOfIssue = null;
+                            pendingCieDateCheck = false;
+                            read.DateOfBirth = await CheckCieDateAsync(detail, birth, birth: true, token);
+                            read.DateOfIssue = await CheckCieDateAsync(detail, issued, birth: false, token);
+                        }
+                        break;
+                    }
+                }
+
+                scaled?.Dispose();
+                scaled = null;
+                if (result is { GivenNames: not null, Surname: not null })
+                    break;
             }
 
-            var text = await pageReader.ReadPageAsync(scaled ?? page, token);
-            var today = (timeProvider ?? TimeProvider.System).TodayInRomeAsDateOnly();
-            var result = ParseOcrText(text ?? string.Empty, today);
             logger.LogInformation(
                 "Document OCR: fieldsRead={Fields} durationMs={DurationMs}",
                 result is null ? 0 : CountFields(result), (int)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-            return result;
+            return new(result);
         }
         catch (DocumentReaderUnavailableException ex)
         {
             logger.LogWarning("Document OCR not run: the reader is not available ({Reason})", ex.ReasonCode);
-            return null;
+            return new(null, "unavailable");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -84,19 +144,24 @@ public class DocumentOcrService(
         }
         catch (OperationCanceledException)
         {
-            logger.LogWarning("Document OCR timed out; the guided manual entry applies");
-            return null;
+            if (pendingCieDateCheck && result is not null)
+            {
+                result.DateOfBirth = null;
+                result.DateOfIssue = null;
+            }
+            logger.LogWarning("Document OCR timed out with {Fields} fields read", result is null ? 0 : CountFields(result));
+            return new(result, "unreadable");
         }
         catch (InvalidDataException)
         {
             logger.LogInformation("Document OCR: the picture could not be decoded");
-            return null;
+            return new(null, "unreadable");
         }
         catch (Exception ex)
         {
             // The type only: a message could carry what was being read.
             logger.LogError("Document OCR failed ({ErrorType}); the guided manual entry applies", ex.GetType().Name);
-            return null;
+            return new(null, "unavailable");
         }
         finally
         {
@@ -107,11 +172,105 @@ public class DocumentOcrService(
         }
     }
 
+    /// <summary>
+    /// Finds a candidate for the blue face of an electronic identity card photographed against a neutral background.
+    /// The full image remains a fallback. A crop is only tried if the colour projections describe a card-sized rectangle.
+    /// </summary>
+    private static GrayBitmap? CropBlueCard(RasterImage image, GrayBitmap page)
+    {
+        const int sampleStep = 4;
+        var columns = new int[image.Width];
+        var rows = new int[image.Height];
+        for (var y = 0; y < image.Height; y += sampleStep)
+        {
+            for (var x = 0; x < image.Width; x += sampleStep)
+            {
+                var offset = (y * image.Width + x) * 3;
+                var blue = image.Rgb[offset + 2];
+                if (blue - image.Rgb[offset] < 12 || blue - image.Rgb[offset + 1] < -5)
+                    continue;
+
+                columns[x]++;
+                rows[y]++;
+            }
+        }
+
+        static (int Start, int End) Bounds(int[] projection)
+        {
+            var minimum = Math.Max(3, projection.Max() / 10);
+            return (Array.FindIndex(projection, count => count >= minimum),
+                Array.FindLastIndex(projection, count => count >= minimum));
+        }
+
+        var (left, right) = Bounds(columns);
+        var (top, bottom) = Bounds(rows);
+        var width = right - left + sampleStep;
+        var height = bottom - top + sampleStep;
+        var shortSide = Math.Min(width, height);
+        var aspect = (double)Math.Max(width, height) / shortSide;
+        if (left < 0 || top < 0 || shortSide < 240 || aspect is < 1.3 or > 1.9
+            || (long)width * height > (long)image.Width * image.Height * 0.9)
+            return null;
+
+        var padding = shortSide / 25;
+        return page.Cropped(left - padding, top - padding, width + 2 * padding, height + 2 * padding);
+    }
+
+    private async Task<DateTime?> CheckCieDateAsync(GrayBitmap card, DateTime? printedDate, bool birth, CancellationToken token)
+    {
+        if (printedDate is null || pageReader is null)
+            return printedDate;
+
+        var left = (int)(card.Width * (birth ? .30 : .31));
+        var top = (int)(card.Height * (birth ? .47 : .641));
+        var width = (int)(card.Width * (birth ? .37 : .23));
+        var height = (int)(card.Height * (birth ? .074 : .075));
+        using var line = card.Cropped(left, top, width, height);
+        if (line is null)
+            return printedDate;
+
+        var confirmed = false;
+        using var enlarged = line.Resized(line.Width * 2, line.Height * 2);
+        foreach (var candidate in new[] { line, enlarged })
+        {
+            token.ThrowIfCancellationRequested();
+            var text = await pageReader.ReadLayoutAsync(candidate, sparse: false, token);
+            var matches = NumericDate.Matches(text ?? string.Empty);
+            if (matches.Count != 1 || matches[0].Groups["d"].Length != 2 || matches[0].Groups["m"].Length != 2)
+                continue;
+            var date = Date(matches[0].Value, new DateOnly(1900, 1, 1), new DateOnly(2100, 12, 31));
+            if (date.HasValue && date != printedDate)
+                return null;
+            confirmed |= date == printedDate;
+        }
+        return confirmed ? printedDate : null;
+    }
+
+    private static void MergePrintedFields(DocumentOcrResult target, DocumentOcrResult other)
+    {
+        target.HasDocumentEvidence |= other.HasDocumentEvidence;
+        target.DocumentKind ??= other.DocumentKind;
+        target.DocumentNumber ??= other.DocumentNumber;
+        target.DateOfBirth ??= other.DateOfBirth;
+        target.BirthPlace ??= other.BirthPlace;
+        target.BirthProvince ??= other.BirthProvince;
+        target.ResidenceStreet ??= other.ResidenceStreet;
+        target.ResidencePostalCode ??= other.ResidencePostalCode;
+        target.ResidenceCityName ??= other.ResidenceCityName;
+        target.ResidenceProvince ??= other.ResidenceProvince;
+        target.DateOfIssue ??= other.DateOfIssue;
+        target.PlaceOfIssue ??= other.PlaceOfIssue;
+        target.ExpirationDate ??= other.ExpirationDate;
+        target.IsExpired ??= other.IsExpired;
+        target.Nationality ??= other.Nationality;
+        target.Sex ??= other.Sex;
+    }
+
     private static int CountFields(DocumentOcrResult result) =>
         new object?[]
         {
             result.FullName, result.DocumentNumber, result.DateOfBirth, result.Nationality, result.ExpirationDate, result.Sex,
-            result.DateOfIssue, result.PlaceOfIssue,
+            result.DateOfIssue, result.PlaceOfIssue, result.ResidenceStreet, result.ResidenceCityName,
         }.Count(value => value is not null);
 
     private enum Field
@@ -120,6 +279,8 @@ public class DocumentOcrService(
         GivenNames,
         DocumentNumber,
         DateOfBirth,
+        BirthPlace,
+        ResidenceAddress,
         ExpirationDate,
         DateOfIssue,
         PlaceOfIssue,
@@ -131,13 +292,15 @@ public class DocumentOcrService(
     private static readonly (Field Field, string[] Labels)[] LabelSets =
     [
         (Field.Surname, ["COGNOME", "SURNAME", "FAMILY NAME", "NOM", "APELLIDOS", "NACHNAME"]),
-        (Field.GivenNames, ["NOME", "GIVEN NAMES", "GIVEN NAME", "FIRST NAME", "PRENOMS", "PRENOM", "NOMBRE", "VORNAME", "VORNAMEN"]),
+        (Field.GivenNames, ["NOME / NAME", "NOME/NAME", "NOME", "GIVEN NAMES", "GIVEN NAME", "FIRST NAME", "PRENOMS", "PRENOM", "NOMBRE", "VORNAME", "VORNAMEN"]),
         (Field.DocumentNumber, ["NUMERO DOCUMENTO", "N DOCUMENTO", "DOCUMENT NUMBER", "DOCUMENT NO", "PASSPORT NO", "PASSPORT NUMBER", "CARD NO", "NUMERO DU DOCUMENT", "DOKUMENTENNUMMER", "NUMERO DE DOCUMENTO"]),
         (Field.DateOfBirth, ["DATA DI NASCITA", "NATO IL", "NATA IL", "DATE OF BIRTH", "DATE DE NAISSANCE", "GEBURTSDATUM", "FECHA DE NACIMIENTO"]),
-        (Field.ExpirationDate, ["DATA DI SCADENZA", "SCADENZA", "VALIDO FINO AL", "DATE OF EXPIRY", "EXPIRY DATE", "DATE D EXPIRATION", "GULTIG BIS", "FECHA DE CADUCIDAD"]),
-        (Field.DateOfIssue, ["DATA DI RILASCIO", "DATA DI EMISSIONE", "RILASCIATO IL", "DATE OF ISSUE", "DATE DE DELIVRANCE", "AUSSTELLUNGSDATUM", "FECHA DE EXPEDICION"]),
-        (Field.PlaceOfIssue, ["LUOGO DI RILASCIO", "RILASCIATO DA", "EMESSO DA", "PLACE OF ISSUE", "ISSUING AUTHORITY", "AUTHORITY", "ISSUED BY", "AUTORITE", "AUTORITA", "BEHORDE"]),
+        (Field.BirthPlace, ["LUOGO E DATA DI NASCITA", "PLACE AND DATE OF BIRTH", "LUOGO DI NASCITA", "PLACE OF BIRTH", "LIEU DE NAISSANCE", "GEBURTSORT", "LUGAR DE NACIMIENTO"]),
+        (Field.ExpirationDate, ["DATA DI SCADENZA", "SCADENZA", "VALIDO FINO AL", "DATE OF EXPIRY", "EXPIRY DATE", "EXPIRY", "DATE D EXPIRATION", "GULTIG BIS", "FECHA DE CADUCIDAD"]),
+        (Field.DateOfIssue, ["DATA DI RILASCIO", "DATA DI EMISSIONE", "RILASCIATO IL", "DATE OF ISSUE", "EMISSIONE", "ISSUING", "DATE DE DELIVRANCE", "AUSSTELLUNGSDATUM", "FECHA DE EXPEDICION"]),
+        (Field.PlaceOfIssue, ["LUOGO DI RILASCIO", "MUNICIPALITY", "RILASCIATO DA", "EMESSO DA", "PLACE OF ISSUE", "ISSUING AUTHORITY", "AUTHORITY", "ISSUED BY", "AUTORITE", "AUTORITA", "BEHORDE"]),
         (Field.Nationality, ["CITTADINANZA", "NATIONALITY", "NATIONALITE", "STAATSANGEHORIGKEIT", "NACIONALIDAD"]),
+        (Field.ResidenceAddress, ["INDIRIZZO DI RESIDENZA", "RESIDENCE ADDRESS", "RESIDENTIAL ADDRESS", "RESIDENCE", "WOHNANSCHRIFT", "DOMICILIO"]),
         (Field.Sex, ["SESSO", "SEX", "SEXE", "GESCHLECHT", "SEXO"]),
     ];
 
@@ -153,7 +316,7 @@ public class DocumentOcrService(
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex NumericDate = new(
-        @"\b(?<d>\d{1,2})\s*[./\-]\s*(?<m>\d{1,2})\s*[./\-]\s*(?<y>\d{4})\b",
+        @"\b(?<d>\d{1,2})\s*[.,/\-]\s*(?<m>\d{1,2})\s*[.,/\-]\s*(?<y>\d{4})\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex WordDate = new(
@@ -204,10 +367,11 @@ public class DocumentOcrService(
                     continue;
 
                 var value = ValueAfter(lines[i], match.Index + match.Length);
-                if (value.Length == 0 && i + 1 < lines.Count && !AnyLabel.IsMatch(lines[i + 1]))
+                var nameNoise = field is Field.Surname or Field.GivenNames && value.Count(char.IsLetter) < 2;
+                if ((!value.Any(char.IsLetterOrDigit) || nameNoise) && i + 1 < lines.Count && !AnyLabel.IsMatch(lines[i + 1]))
                     value = lines[i + 1];
 
-                if (value.Length > 0)
+                if (value.Any(char.IsLetterOrDigit))
                     values[field] = value;
             }
         }
@@ -225,9 +389,111 @@ public class DocumentOcrService(
         result.PlaceOfIssue = values.TryGetValue(Field.PlaceOfIssue, out var rawPlace) ? Name(rawPlace) : null;
         result.Nationality = values.TryGetValue(Field.Nationality, out var rawNationality) ? Nationality(rawNationality) : null;
         result.Sex = values.TryGetValue(Field.Sex, out var rawSex) ? Sex(rawSex) : null;
+        var pageText = string.Join('\n', lines);
+        result.DocumentKind = Regex.IsMatch(pageText, @"\b(?:CARTA\s*DI\s*IDENTITA|IDENTITY CARD|CARTE D.IDENTITE|PERSONALAUSWEIS|DOCUMENTO NACIONAL DE IDENTIDAD)\b") ? "IdentityCard"
+            : Regex.IsMatch(pageText, @"\b(?:PASSAPORTO|PASSPORT|PASSEPORT|REISEPASS|PASAPORTE)\b") ? "Passport"
+            : Regex.IsMatch(pageText, @"\b(?:PATENTE DI GUIDA|DRIV(?:ING|ER.S) LICEN[CS]E|PERMIS DE CONDUIRE|FUHRERSCHEIN)\b") ? "DriversLicense" : null;
+        var cieNumber = Regex.Match(pageText, @"\bC[A-Z]\d{5}[A-Z]{2}\b");
+        var italianCard = pageText.Contains("COGNOME") && pageText.Contains("NOME") && (pageText.Contains("IDENTITA")
+            || cieNumber.Success || (pageText.Contains("EMISSIONE") && pageText.Contains("SCADENZA") && pageText.Contains("HOLDER")));
+        if (italianCard)
+        {
+            result.DocumentKind ??= "IdentityCard";
+            if (cieNumber.Success)
+                result.DocumentNumber ??= cieNumber.Value;
+        }
+        if (values.TryGetValue(Field.BirthPlace, out var birthLine))
+        {
+            var place = Regex.Match(birthLine, @"(?<place>[A-Z][A-Z' -]+?)\s*[({]\s*(?<province>[A-Z]{2})\s*[)}]");
+            if (place.Success && Casazen.Core.Regulatory.AlloggiatiRecordRules.IsValidProvince(place.Groups["province"].Value))
+            {
+                result.BirthPlace = Name(place.Groups["place"].Value);
+                result.BirthProvince = place.Groups["province"].Value;
+            }
+            else if (!birthLine.Any(char.IsDigit))
+                result.BirthPlace = Name(birthLine);
+        }
+        if (italianCard)
+        {
+            // The CIE prints town, province and birth date on one line and issue/expiry dates on another.
+            var nameRow = lines.FindIndex(line => Regex.IsMatch(line, @"\b(?:NOME|GIVEN NAMES?)\b"));
+            var lastBirthRow = nameRow < 0 ? -1 : lines.FindIndex(nameRow + 1, line =>
+                Regex.IsMatch(line, @"\b(?:SESSO|SEX|EMISSIONE|SCADENZA|RESIDENCE)\b"));
+            if (lastBirthRow < 0)
+                lastBirthRow = Math.Min(lines.Count, nameRow + 8);
+            for (int lineIndex = nameRow + 1; nameRow >= 0 && lineIndex < lastBirthRow; lineIndex++)
+            {
+                var line = lines[lineIndex];
+                var combinedBirth = Regex.Match(line, @"(?<place>[A-Z][A-Z' -]+?)\s*[(]\s*(?<province>[A-Z]{2})\s*[)}]\s*(?<date>\d.*)");
+                if (combinedBirth.Success && Casazen.Core.Regulatory.AlloggiatiRecordRules.IsValidProvince(combinedBirth.Groups["province"].Value))
+                {
+                    result.BirthPlace ??= Name(combinedBirth.Groups["place"].Value);
+                    result.BirthProvince ??= combinedBirth.Groups["province"].Value;
+                    result.DateOfBirth ??= Date(combinedBirth.Groups["date"].Value, new DateOnly(1900, 1, 1), now);
+                }
+            }
+            var sexRow = lines.FindIndex(line => Regex.IsMatch(line, @"\b(?:SESSO|SEX)\b"));
+            var issueRow = lines.FindIndex(line => line.Contains("EMISSIONE"));
+            if (sexRow >= 0 && issueRow > sexRow)
+            {
+                var details = string.Join(' ', lines.GetRange(sexRow, issueRow - sexRow));
+                var row = Regex.Match(details, @"\b(?<sex>M{1,2}|F{1,2}|X{1,2})\s+\d{3}\s+(?<country>[A-Z]{3})\b");
+                if (row.Success)
+                {
+                    result.Sex ??= row.Groups["sex"].Value[..1];
+                    result.Nationality ??= row.Groups["country"].Value;
+                }
+            }
+            for (int i = 0; i + 1 < lines.Count; i++)
+            {
+                if (!lines[i].Contains("EMISSIONE"))
+                    continue;
+                var sameRow = lines[i].Contains("SCADENZA");
+                var adjacentLabels = !sameRow && lines[i + 1].Contains("SCADENZA") && !NumericDate.IsMatch(lines[i + 1]);
+                if (!sameRow && !adjacentLabels)
+                    continue;
+                result.DateOfIssue = null;
+                result.ExpirationDate = null;
+                if (adjacentLabels)
+                    continue;
+                var dates = NumericDate.Matches(lines[i + 1]);
+                if (dates.Count != 2 || dates.Any(date => date.Groups["d"].Length != 2 || date.Groups["m"].Length != 2))
+                    continue;
+                var issued = Date(dates[0].Value, new DateOnly(1980, 1, 1), now);
+                var expiryDate = Date(dates[1].Value, now.AddYears(-30), now.AddYears(30));
+                if (issued < expiryDate)
+                {
+                    result.DateOfIssue = issued;
+                    result.ExpirationDate = expiryDate;
+                }
+            }
+        }
+        if (values.TryGetValue(Field.ResidenceAddress, out var address))
+        {
+            var addressLine = lines.IndexOf(address);
+            if (addressLine >= 0 && addressLine + 1 < lines.Count && !AnyLabel.IsMatch(lines[addressLine + 1]))
+                ReadResidence(result, address + " " + lines[addressLine + 1]);
+            if (result.ResidenceStreet is null)
+                ReadResidence(result, address);
+        }
+        result.HasDocumentEvidence = (result.DocumentKind is not null && (result.DateOfBirth is not null || result.DocumentNumber is not null
+            || result.ExpirationDate is not null || result.DateOfIssue is not null || result.PlaceOfIssue is not null || result.Nationality is not null)) ||
+            (result.DocumentNumber is not null && (result.DateOfBirth is not null || result.ExpirationDate is not null || result.Nationality is not null));
         result.IsExpired = result.ExpirationDate is { } expires ? DateOnly.FromDateTime(expires) < now : null;
 
         return CountFields(result) == 0 ? null : result;
+    }
+
+    private static void ReadResidence(DocumentOcrResult result, string address)
+    {
+        // Only the address printed after the residence label. A town elsewhere may be the birthplace or issuing authority.
+        var match = Regex.Match(address, @"^(?<street>(?:VIA(?:LE)?|PIAZZA(?:LE)?|CORSO|VICOLO|LARGO|STRADA|LOCALITA) [A-Z0-9'., /-]{1,110}?\s+\d+(?:/\w+)?)\s*[,;-]?\s*(?:(?<postal>\d{5})\s+)?(?<city>[A-Z][A-Z' -]{1,65})\s*\((?<province>[A-Z]{2})\)\s*$");
+        if (!match.Success || !Casazen.Core.Regulatory.AlloggiatiRecordRules.IsValidProvince(match.Groups["province"].Value))
+            return;
+        result.ResidenceStreet = match.Groups["street"].Value;
+        result.ResidenceCityName = match.Groups["city"].Value.Trim();
+        result.ResidencePostalCode = match.Groups["postal"].Success ? match.Groups["postal"].Value : null;
+        result.ResidenceProvince = match.Groups["province"].Value;
     }
 
     /// <summary>Upper case, no accents, one space between words, the quotation marks and dashes of the print made plain.</summary>
