@@ -78,17 +78,28 @@ public class GuestPortalOverviewServiceTests
         var connection = new OctorateConnection { OrgId = context.OrgId, Status = OctorateConnectionStatus.Connected, Environment = OctorateEnvironment.Test };
         var mapping = new OctorateListingMapping
         {
-            OrgId = context.OrgId, PropertyId = context.PropertyId, ConnectionId = connection.Id,
-            OctorateAccommodationId = "123", Status = OctorateMappingStatus.Confirmed,
+            OrgId = context.OrgId,
+            PropertyId = context.PropertyId,
+            ConnectionId = connection.Id,
+            OctorateAccommodationId = "123",
+            Status = OctorateMappingStatus.Confirmed,
         };
         var sync = new OtaMessageSyncState
         {
-            OrgId = context.OrgId, ConnectionId = connection.Id, OctorateAccommodationId = "123", LastRecentPassAt = DateTime.UtcNow,
+            OrgId = context.OrgId,
+            ConnectionId = connection.Id,
+            OctorateAccommodationId = "123",
+            LastRecentPassAt = DateTime.UtcNow,
         };
         var thread = new OtaMessageThread
         {
-            OrgId = context.OrgId, BookingId = context.BookingId, PropertyId = context.PropertyId,
-            OctorateAccommodationId = "123", OctorateThreadId = "456", Kind = OtaThreadKind.Reservation, ChannelSource = OtaChannel.Airbnb,
+            OrgId = context.OrgId,
+            BookingId = context.BookingId,
+            PropertyId = context.PropertyId,
+            OctorateAccommodationId = "123",
+            OctorateThreadId = "456",
+            Kind = OtaThreadKind.Reservation,
+            ChannelSource = OtaChannel.Airbnb,
         };
         world.Db.AddRange(connection, mapping, sync, thread);
         await world.Db.SaveChangesAsync();
