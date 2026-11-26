@@ -36,6 +36,14 @@ public sealed class GuestSupplierOrder
     public int RefundCents { get; set; }
     public DateTime? StripeCheckoutStartedAt { get; set; }
     public bool StripeSandbox { get; set; }
+    public bool StripeDeferred { get; set; }
+    public DateTime? ExpectedSupplierConfirmationAt { get; set; }
+    public DateTime? StripeCaptureBefore { get; set; }
+    public DateTime? StripeSetupConsentAt { get; set; }
+    [MaxLength(64)] public string? StripeSetupConsentVersion { get; set; }
+    [MaxLength(255)] public string? StripeSetupIntentId { get; set; }
+    [MaxLength(255)] public string? StripeCustomerId { get; set; }
+    [MaxLength(255)] public string? StripeExpiredHoldIntentId { get; set; }
     [MaxLength(255)] public string? StripePaymentIntentId { get; set; }
     public GuestSupplierOrderState State { get; set; }
     public DateTime RequestedFor { get; set; }
@@ -59,5 +67,8 @@ public enum GuestSupplierOrderState
     Completed,
     Disputed,
     Resolved,
-    Released
+    Released,
+    PaymentActionRequired,
+    PaymentFailed,
+    PaymentProcessing
 }

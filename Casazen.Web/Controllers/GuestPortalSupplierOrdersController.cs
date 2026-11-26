@@ -55,11 +55,15 @@ public sealed class GuestPortalSupplierOrdersController(
             return NotFound();
         var offer = await db.GuestSupplierOffers.SingleAsync(x => x.Id == entry.Id, ct);
         var price = entry.PriceCents.GetValueOrDefault();
-        if (price > GuestSupplierOrders.MaxPriceCents || StripeSandbox && (price <= 0 ||
-            price + GuestSupplierOrders.Commission(price, entry.CommissionBasisPoints) < GuestSupplierCheckout.MinTotalCents ||
-            requestedFor > orders.Now + GuestSupplierCheckout.Horizon))
+        if (price > GuestSupplierOrders.MaxPriceCents || StripeSandbox && entry.PriceCents.HasValue && (price <= 0 ||
+            price + GuestSupplierOrders.Commission(price, entry.CommissionBasisPoints) < GuestSupplierCheckout.MinTotalCents))
             return BadRequest();
 
+        var responseMinutes = StripeSandbox
+            ? await db.SupplierSettings.Where(x => x.OrgId == offer.SupplierOrgId)
+                .Select(x => (int?)x.RespondWithinMinutes).SingleOrDefaultAsync(ct)
+            : null;
+        var confirmationAt = GuestSupplierCheckout.ExpectedConfirmation(orders.Now, requestedFor, responseMinutes);
         var order = new GuestSupplierOrder
         {
             HostOrgId = Portal.OrgId,
@@ -70,6 +74,8 @@ public sealed class GuestPortalSupplierOrdersController(
             OfferId = offer.Id,
             RequestId = request.RequestId,
             StripeSandbox = StripeSandbox,
+            ExpectedSupplierConfirmationAt = confirmationAt,
+            StripeDeferred = StripeSandbox && GuestSupplierCheckout.NeedsSavedCard(orders.Now, requestedFor, confirmationAt),
             ServiceName = entry.ServiceName,
             SupplierName = entry.SupplierName,
             RequestedFor = requestedFor,
@@ -143,7 +149,7 @@ public sealed class GuestPortalSupplierOrdersController(
         var order = await StayOrders().SingleOrDefaultAsync(x => x.Id == id && x.StripeSandbox, ct);
         if (order is null) return NotFound();
         if (!await CanOrderAsync(ct)) return Conflict();
-        var result = await checkout.StartAsync(order, request.TotalCents, ct);
+        var result = await checkout.StartAsync(order, request.TotalCents, ct, request.ConsentVersion);
         return result is null ? Conflict() : Ok(result);
     }
 
@@ -160,7 +166,7 @@ public sealed class GuestPortalSupplierOrdersController(
     private async Task<IQueryable<GuestSupplierOrders.CatalogEntry>> CatalogAsync(CancellationToken ct, Guid? offerId = null)
     {
         return orders.Catalog(Portal.OrgId, Portal.PropertyId,
-            await orders.AllowsRegionalSuppliersAsync(Portal.OrgId, Portal.PropertyId, ct), offerId, fixedPriceOnly: StripeSandbox);
+            await orders.AllowsRegionalSuppliersAsync(Portal.OrgId, Portal.PropertyId, ct), offerId, fixedPriceOnly: StripeSandbox, includeQuoteRequests: StripeSandbox);
     }
 
     private IQueryable<GuestSupplierOrder> StayOrders() => db.GuestSupplierOrders
@@ -194,6 +200,6 @@ public sealed class GuestPortalSupplierOrdersController(
 
     public sealed record CreateOrder(Guid RequestId, Guid OfferId, DateTimeOffset RequestedFor,
         [MaxLength(2000)] string? Note);
-    public sealed record AuthorizeOrderRequest([Range(1, int.MaxValue)] int TotalCents);
+    public sealed record AuthorizeOrderRequest([Range(1, int.MaxValue)] int TotalCents, [MaxLength(64)] string? ConsentVersion = null);
     public sealed record OpenDispute([Required, MaxLength(2000)] string Text);
 }

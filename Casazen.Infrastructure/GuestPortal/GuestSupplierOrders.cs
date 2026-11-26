@@ -74,7 +74,7 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         bool HostOrigin, int CommissionBasisPoints, bool Accepted, bool Enabled, uint Version, string ServiceName,
         string SupplierName, string PropertyName, string HostName);
 
-    public IQueryable<CatalogEntry> Catalog(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers, Guid? offerId = null, bool fixedPriceOnly = false)
+    public IQueryable<CatalogEntry> Catalog(Guid orgId, Guid propertyId, bool allowsRegionalSuppliers, Guid? offerId = null, bool fixedPriceOnly = false, bool includeQuoteRequests = false)
     {
         var trusted = TrustedSupplierIds(orgId, propertyId);
         return
@@ -83,7 +83,7 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         join supplier in db.SupplierProfiles.IgnoreQueryFilters() on offer.SupplierOrgId equals supplier.OrgId
         where (offerId == null || offer.Id == offerId) && offer.HostOrgId == orgId && offer.PropertyId == propertyId && offer.Accepted && offer.Enabled
               && (offer.HostOrigin ? trusted.Contains(offer.SupplierOrgId) : allowsRegionalSuppliers && supplier.GuestPortalMarketplaceEnabled)
-              && (!fixedPriceOnly || !listing.RequiresQuote && listing.PriceUnit == SupplierServicePriceUnit.PerJob &&
+              && (!fixedPriceOnly || includeQuoteRequests && listing.RequiresQuote || !listing.RequiresQuote && listing.PriceUnit == SupplierServicePriceUnit.PerJob &&
                   listing.PricesIncludeVat && listing.PriceFromCents > 0 && listing.PriceFromCents <= MaxPriceCents &&
                   (listing.PriceFromCents * (10_000L + offer.CommissionBasisPoints) + 5_000) / 10_000 >= GuestSupplierCheckout.MinTotalCents)
               && listing.OrgId == supplier.OrgId
@@ -112,7 +112,7 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         return new GuestSupplierOrderView(order.Id, order.ServiceName, order.SupplierName, state.ToString(),
             order.RequestedFor, order.CompletedAt, order.SupplierPriceCents, order.CommissionCents,
             order.HostOrigin, total, order.RefundCents, commissionRefund, order.RequestNote, order.Complaint,
-            includeInternal ? order.SupplierReply : null, order.Decision, order.StripeSandbox);
+            includeInternal ? order.SupplierReply : null, order.Decision, order.StripeSandbox, order.StripeDeferred);
     }
 
     public sealed record CatalogEntry(Guid Id, string ServiceName, string SupplierName, string Category,
@@ -121,5 +121,5 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
     public sealed record GuestSupplierOrderView(Guid Id, string ServiceName, string SupplierName, string State,
         DateTime RequestedFor, DateTime? CompletedAt, int SupplierPriceCents, int CommissionCents,
         bool HostOrigin, int TotalCents, int RefundCents, int CommissionRefundCents, string? RequestNote,
-        string? Complaint, string? SupplierReply, string? Decision, bool StripeSandbox);
+        string? Complaint, string? SupplierReply, string? Decision, bool StripeSandbox, bool StripeDeferred = false);
 }

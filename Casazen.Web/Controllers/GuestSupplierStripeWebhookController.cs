@@ -34,12 +34,14 @@ public sealed class GuestSupplierStripeWebhookController(
 
         if (stripeEvent is not { Object: "event", Livemode: false } || string.IsNullOrEmpty(stripeEvent.Id) ||
             string.IsNullOrEmpty(stripeEvent.Type) || !string.IsNullOrEmpty(stripeEvent.Account)) return BadRequest();
-        if (stripeEvent.Type is not ("payment_intent.amount_capturable_updated" or "payment_intent.canceled" or "payment_intent.succeeded"))
+        var setup = stripeEvent.Type is "setup_intent.succeeded" or "setup_intent.canceled" or "setup_intent.setup_failed";
+        if (!setup && stripeEvent.Type is not ("payment_intent.amount_capturable_updated" or "payment_intent.canceled"
+            or "payment_intent.succeeded" or "payment_intent.requires_action" or "payment_intent.payment_failed" or "payment_intent.processing"))
             return Ok();
-        if (stripeEvent.Data?.Object is not { Object: "payment_intent", Id.Length: > 0 } intent) return BadRequest();
+        if (stripeEvent.Data?.Object is not { Id.Length: > 0 } intent || intent.Object != (setup ? "setup_intent" : "payment_intent")) return BadRequest();
         if (intent.Metadata?.GetValueOrDefault("kind") != GuestSupplierCheckout.Kind) return Ok();
         if (!Guid.TryParse(intent.Metadata.GetValueOrDefault("orderId"), out var id)) return BadRequest();
-        var order = await db.GuestSupplierOrders.SingleOrDefaultAsync(x => x.Id == id && x.StripeSandbox && x.StripePaymentIntentId == intent.Id, ct);
+        var order = await db.GuestSupplierOrders.SingleOrDefaultAsync(x => x.Id == id && x.StripeSandbox && (setup ? x.StripeSetupIntentId == intent.Id : x.StripePaymentIntentId == intent.Id), ct);
         if (order is null) return BadRequest();
         // Fetch Stripe's current state so a delayed event cannot revert a capture or revive a canceled hold.
         return await checkout.ReconcileAsync(order, ct) ? Ok() : Conflict();
