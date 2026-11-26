@@ -11,7 +11,7 @@ Il titolare del trattamento è l'agenzia che gestisce l'alloggio. CasaZen fornis
 ## Quali dati trattiamo
 
 - i dati che scrivi nel check-in: nome, data di nascita, cittadinanza e dati del documento;
-- la foto del tuo documento d'identità e un selfie, solo se acconsenti alla verifica con il viso.
+- la foto del tuo documento d'identità e due foto del viso, solo se acconsenti alla verifica con il viso.
 
 ## Il documento non viene archiviato
 
@@ -19,7 +19,7 @@ Per un alloggio in Ticino non conserviamo la foto del tuo documento. La usiamo s
 
 ## Le foto vengono cancellate subito
 
-Un programma sul nostro server confronta il selfie con la foto del documento. Le due foto servono soltanto per questo confronto e vengono cancellate subito, appena finisce: non le salviamo e non le usiamo per altro.
+Dopo la foto del documento, scatti una foto del viso guardando la fotocamera. Il sistema ti chiede poi di girare la testa a destra o a sinistra per un secondo scatto. Sul nostro server confrontiamo il primo scatto con il documento e verifichiamo che nei due scatti compaia lo stesso viso nella posizione richiesta. Entrambe le immagini del viso vengono elaborate in memoria e cancellate al termine della verifica.
 
 ## La verifica con il viso è facoltativa
 

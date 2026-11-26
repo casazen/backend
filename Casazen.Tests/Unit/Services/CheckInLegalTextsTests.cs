@@ -65,7 +65,7 @@ public sealed class CheckInLegalTextsTests : IDisposable
         var shippedProduction = new CheckInLegalTexts(Config(shipped), Env("Production"), NullLogger<CheckInLegalTexts>.Instance);
         Assert.All(shippedProduction.GetForStay(documentNotArchived: true, "it"), text => Assert.False(text.IsDraft));
         Assert.True(shippedProduction.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent) is null or { IsDraft: false });
-        Assert.True(shippedProduction.FindServedVersion(CheckInLegalTextKinds.BiometricConsent, "checkin-biometric-2026-11") is null or { IsDraft: false });
+        Assert.True(shippedProduction.FindServedVersion(CheckInLegalTextKinds.BiometricConsent, "checkin-biometric-2026-11-pose") is null or { IsDraft: false });
 
         var shippedStaging = new CheckInLegalTexts(Config(shipped), Env("Staging"), NullLogger<CheckInLegalTexts>.Instance);
         var staged = shippedStaging.GetForStay(documentNotArchived: true, "it");

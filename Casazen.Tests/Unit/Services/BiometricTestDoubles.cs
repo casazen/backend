@@ -110,7 +110,7 @@ internal sealed class ScriptedFaceDetector(params IReadOnlyList<DetectedFace>[] 
         if (Failure is not null)
             throw Failure;
 
-        return _answers.Dequeue();
+        return _answers.TryDequeue(out var faces) ? faces : [];
     }
 }
 

@@ -4,7 +4,7 @@ Para darle el código de acceso del alojamiento, comparamos un selfie con la fot
 
 ## Qué ocurre
 
-Usted fotografía su documento y después se hace un selfie con la cámara. Un programa de nuestro servidor compara ambos. Su selfie nunca se guarda: se elimina en cuanto termina la comparación.
+Después de fotografiar su documento, tome una primera foto mirando de frente a la cámara. Luego le pediremos que gire la cabeza a la izquierda o a la derecha para una segunda foto. En nuestro servidor comparamos la primera foto con el documento y comprobamos que ambas fotos muestran el mismo rostro en las posiciones indicadas. Ambas fotos del rostro se procesan en memoria y se eliminan al finalizar la verificación.
 
 <!-- if:document-archived -->
 La foto de su documento se conserva cifrada solo hasta que termine la comprobación y después se elimina.

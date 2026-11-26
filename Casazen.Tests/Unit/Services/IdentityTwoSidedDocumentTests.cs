@@ -36,6 +36,124 @@ public class IdentityTwoSidedDocumentTests
     private const string LockCode = "7391";
     private static readonly DateTimeOffset Now = new(2026, 11, 14, 9, 0, 0, TimeSpan.Zero);
 
+    [Fact]
+    public async Task PoseChallengeRequiresConsentAndDocumentAndExpiresWithoutSpendingAnAttempt()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        var flow = world.Flow();
+        Assert.Null(await flow.IssueSelfieChallengeAsync(session, CancellationToken.None));
+        await world.DocumentAsync(session, Pic("FACE-MRZ", 1));
+        var challenge = Assert.IsType<SelfieChallenge>(await flow.IssueSelfieChallengeAsync(session, CancellationToken.None));
+        var repeated = Assert.IsType<SelfieChallenge>(await flow.IssueSelfieChallengeAsync(session, CancellationToken.None));
+        Assert.Equal(challenge.NoseToRight, repeated.NoseToRight);
+        Assert.Equal(challenge.ExpiresAt, repeated.ExpiresAt);
+        world.Clock.Advance(TimeSpan.FromMinutes(3));
+        Assert.Equal(SelfieStepStatus.ChallengeRequired, (await SendPoseAsync(flow, session, challenge)).Status);
+        Assert.Equal(0, session.BiometricAttempts);
+        Assert.Equal(0, world.Pose.Calls);
+    }
+
+    [Fact]
+    public async Task ChangedConsentTextRequiresNewConsentBeforeAnyPoseProcessing()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        await world.DocumentAsync(session, Pic("FACE-MRZ", 1));
+        var flow = world.Flow();
+        var oldChallenge = Assert.IsType<SelfieChallenge>(await flow.IssueSelfieChallengeAsync(session, CancellationToken.None));
+        var updated = new CheckInLegalVersion(CheckInLegalTextKinds.BiometricConsent, "TEST-biometric-v2", false, new string('b', 64));
+        world.ConsentRegistry.Setup(registry => registry.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent)).Returns(updated);
+        var state = await flow.GetStateAsync(session, CancellationToken.None);
+        Assert.Equal(IdentityVerificationSteps.Consent, state.Step);
+        Assert.False(state.ConsentRecorded);
+        Assert.Null(await flow.IssueSelfieChallengeAsync(session, CancellationToken.None));
+        Assert.Equal(SelfieStepStatus.ConsentRequired, (await SendPoseAsync(flow, session, oldChallenge)).Status);
+        Assert.Equal(0, world.Agent.Calls);
+        Assert.Equal(0, world.Pose.Calls);
+        Assert.Equal(BiometricConsentStatus.Recorded,
+            (await flow.RecordConsentAsync(session, true, updated.Version, CancellationToken.None)).Status);
+        Assert.Equal(IdentityVerificationSteps.Selfie, (await flow.GetStateAsync(session, CancellationToken.None)).Step);
+        Assert.NotNull(await flow.IssueSelfieChallengeAsync(session, CancellationToken.None));
+        Assert.Equal(SelfieStepStatus.ChallengeRequired, (await SendPoseAsync(flow, session, oldChallenge)).Status);
+    }
+
+    [Fact]
+    public async Task InvalidMissingOrCrossSessionChallengeNeverReleasesTheCode()
+    {
+        await using var world = await World.CreateAsync();
+        var left = await world.ConsentedStayAsync();
+        var right = await world.ConsentedStayAsync();
+        await world.DocumentAsync(left, Pic("FACE-MRZ", 1));
+        await world.DocumentAsync(right, Pic("FACE-MRZ", 2));
+        var flow = world.Flow();
+        var challenge = Assert.IsType<SelfieChallenge>(await flow.IssueSelfieChallengeAsync(left, CancellationToken.None));
+        Assert.NotNull(await flow.IssueSelfieChallengeAsync(right, CancellationToken.None));
+        using var photo = new MemoryStream([1]);
+        Assert.Equal(SelfieStepStatus.ChallengeRequired, (await flow.SubmitSelfieAsync(left, photo, null, CancellationToken.None)).Status);
+        Assert.Equal(SelfieStepStatus.ChallengeRequired, (await SendPoseAsync(flow, right, challenge)).Status);
+        Assert.Equal(SelfieStepStatus.ChallengeRequired, (await SendPoseAsync(flow, left, challenge with { ChallengeToken = "invalid" })).Status);
+        Assert.Empty(await world.Db.AccessCodeReleaseLogs.ToListAsync());
+        Assert.Equal(0, world.Agent.Calls);
+    }
+
+    [Fact]
+    public async Task RejectedPoseSpendsOneAttemptAndCannotBeReplayed()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        await world.DocumentAsync(session, Pic("FACE-MRZ", 1));
+        var flow = world.Flow();
+        var challenge = Assert.IsType<SelfieChallenge>(await flow.IssueSelfieChallengeAsync(session, CancellationToken.None));
+        world.Agent.Next(Outcome(IdentityVerificationResult.Ok));
+        world.Pose.Passed = false;
+        var results = await Task.WhenAll(SendPoseAsync(flow, session, challenge), SendPoseAsync(flow, session, challenge));
+        var rejected = Assert.Single(results, result => result.Status == SelfieStepStatus.Done);
+        Assert.Contains("active_pose_retry", rejected.GuidanceCodes);
+        Assert.Null(rejected.LockCode);
+        Assert.Single(results, result => result.Status == SelfieStepStatus.ChallengeRequired);
+        Assert.Equal(1, world.Pose.Calls);
+        Assert.Equal(challenge.NoseToRight, world.Pose.Direction);
+        Assert.Equal(1, session.BiometricAttempts);
+        Assert.Empty(await world.Db.AccessCodeReleaseLogs.ToListAsync());
+        Assert.NotNull(await flow.IssueSelfieChallengeAsync(session, CancellationToken.None));
+    }
+
+    private static async Task<SelfieStepResult> SendPoseAsync(IdentityVerificationFlowService flow, GuestCheckInSession session, SelfieChallenge challenge)
+    {
+        using var neutral = new MemoryStream([1]);
+        using var turned = new MemoryStream([2]);
+        return await flow.SubmitChallengedSelfieAsync(session, neutral, turned, challenge.ChallengeToken, null, null, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task AlreadyVerifiedGuestCanRecoverTheCodeAfterTheTaxIsPaidWithoutAnotherComparison()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        await world.DocumentAsync(session, Pic("FACE-MRZ", 1));
+        var flow = world.Flow();
+        var challenge = Assert.IsType<SelfieChallenge>(await flow.IssueSelfieChallengeAsync(session, CancellationToken.None));
+        world.SetCodeHeld(true);
+        world.Agent.Next(Outcome(IdentityVerificationResult.Ok));
+        var accepted = await SendPoseAsync(flow, session, challenge);
+        Assert.Equal(IdentityVerificationGuestResults.Ok, accepted.Result);
+        Assert.Null(accepted.LockCode);
+        Assert.Equal("tourist_tax_due", accepted.LockCodeHeld);
+        Assert.Equal(SelfieStepStatus.ChallengeRequired, (await SendPoseAsync(flow, session, challenge)).Status);
+        using var ignoredPhoto = new MemoryStream([1]);
+        var stillHeld = await flow.SubmitSelfieAsync(session, ignoredPhoto, null, CancellationToken.None);
+        Assert.Null(stillHeld.LockCode);
+        Assert.Equal("tourist_tax_due", stillHeld.LockCodeHeld);
+        world.SetCodeHeld(false);
+        var paid = await flow.SubmitSelfieAsync(session, ignoredPhoto, null, CancellationToken.None);
+        Assert.Equal(LockCode, paid.LockCode);
+        Assert.Null(paid.LockCodeHeld);
+        Assert.Equal(1, world.Pose.Calls);
+        Assert.Equal(1, world.Agent.Calls);
+        Assert.Equal(1, session.BiometricAttempts);
+    }
+
     // ─── The proofs of the brief ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -390,6 +508,23 @@ public class IdentityTwoSidedDocumentTests
         Assert.Null(state.DocumentSideNeeded);
     }
 
+    [Fact]
+    public async Task UnrelatedImageLeavesTheAlreadyAcceptedSideAndFileUnchanged()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        await world.DocumentAsync(session, Pic("FACE", 1), DocumentSide.Front);
+        var check = session.DocumentCheckJson;
+        var key = Assert.Single(world.Storage.Objects).Key;
+
+        var rejected = await world.DocumentAsync(session, Pic("BLANK", 2), DocumentSide.Front);
+        Assert.False(rejected.Acceptable);
+        Assert.False(rejected.DocumentStored);
+        Assert.Contains("document_not_recognized", rejected.GuidanceCodes);
+        Assert.Equal(check, session.DocumentCheckJson);
+        Assert.Equal(key, Assert.Single(world.Storage.Objects).Key);
+    }
+
     /// <summary>The back first: the MRZ is read, the face is missing, so the front is asked for; the selfie waits for it.</summary>
     [Fact]
     public async Task TwoSided_TheBackFirst_AsksForTheFront()
@@ -454,8 +589,10 @@ public class IdentityTwoSidedDocumentTests
 
         Assert.False(front.Acceptable);
         Assert.Contains(CaptureGuidanceCodes.ShowDocumentPhoto, front.GuidanceCodes);
-        Assert.DoesNotContain(CaptureGuidanceCodes.DocumentBackNeeded, front.GuidanceCodes);
-        Assert.Equal(DocumentSides.Front, (await world.Flow().GetStateAsync(session, CancellationToken.None)).DocumentSideNeeded);
+        Assert.Contains("document_not_recognized", front.GuidanceCodes);
+        Assert.Empty(front.SidesReceived!);
+        Assert.Null(session.DocumentCheckJson);
+        Assert.Empty(world.Storage.Objects);
     }
 
     /// <summary>
@@ -523,12 +660,12 @@ public class IdentityTwoSidedDocumentTests
         var options = Options.Create(new BiometricModelOptions());
 
         // A document picture with no face: the photo of the document is missing.
-        var noFace = new ScriptedFaceDetector(Array.Empty<DetectedFace>());
+        var noFace = new ScriptedFaceDetector([], [], [], []);
         using (var image = RasterImage.Decode(picture, options.Value.MaxImagePixels))
         {
             var front = new CaptureQualityAssessor(noFace, options).Assess(image, CaptureKind.Document, CancellationToken.None);
             Assert.Contains(CaptureGuidanceCodes.ShowDocumentPhoto, front.GuidanceCodes);
-            Assert.Equal(1, noFace.Calls);
+            Assert.Equal(4, noFace.Calls);
         }
 
         // The back of a card: no face is looked for, even with models that cannot run.
@@ -609,8 +746,8 @@ public class IdentityTwoSidedDocumentTests
     {
         var flow = new Mock<IIdentityVerificationFlowService>();
         Stream? seenBack = null;
-        flow.Setup(f => f.SubmitSelfieAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<Stream>(), It.IsAny<Stream?>(), It.IsAny<Stream?>(), It.IsAny<CancellationToken>()))
-            .Callback<GuestCheckInSession, Stream, Stream?, Stream?, CancellationToken>((_, _, _, back, _) => seenBack = back)
+        flow.Setup(f => f.SubmitChallengedSelfieAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<Stream>(), It.IsAny<Stream?>(), It.IsAny<string?>(), It.IsAny<Stream?>(), It.IsAny<Stream?>(), It.IsAny<CancellationToken>()))
+            .Callback<GuestCheckInSession, Stream, Stream?, string?, Stream?, Stream?, CancellationToken>((_, _, _, _, _, back, _) => seenBack = back)
             .ReturnsAsync(new SelfieStepResult(SelfieStepStatus.Done, IdentityVerificationGuestResults.Retry, [], 3, null));
 
         var result = await Controller(flow).UploadSelfie("token", Image("selfie"), Image("documentPhoto"), Image("documentPhotoBack"));
@@ -687,6 +824,14 @@ public class IdentityTwoSidedDocumentTests
         private readonly Mock<IEmailQueue> _queue = new();
         private readonly Mock<IAccessCodeService> _codes = new();
 
+        public void SetCodeHeld(bool held)
+        {
+            _codes.Setup(c => c.ReleaseToGuestAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(held ? null : LockCode);
+            _codes.Setup(c => c.GetHoldReasonAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(held ? "tourist_tax_due" : null);
+        }
+
         private World()
         {
             Db = new AppDbContext(_options, null, _dataProtection);
@@ -709,6 +854,9 @@ public class IdentityTwoSidedDocumentTests
         public MemoryStorage Storage { get; } = new();
 
         public List<string> Logs { get; } = [];
+
+        public ActivePoseFlowTestVerifier Pose { get; } = new();
+        public Mock<ICheckInLegalTexts> ConsentRegistry { get; } = ActivePoseFlowTestVerifier.CreateRegistry();
 
         public static async Task<World> CreateAsync()
         {
@@ -734,12 +882,12 @@ public class IdentityTwoSidedDocumentTests
             _codes.Object,
             _queue.Object,
             Mrz,
-            Mock.Of<IDocumentOcrService>(),
+            new PictureOcr(),
             new StayGuestService(Db, Mock.Of<IAlloggiatiCodeTableService>()),
             Storage,
             _dataProtection,
             Clock,
-            new ListLogger<IdentityVerificationFlowService>(Logs));
+            new ListLogger<IdentityVerificationFlowService>(Logs), legalTexts: ConsentRegistry.Object, activePose: Pose);
 
         /// <summary>A property in another country: Switzerland without a canton CasaZen knows keeps no document, like Ticino.</summary>
         public async Task<Guid> AddPropertyAsync(string country)
@@ -827,7 +975,10 @@ public class IdentityTwoSidedDocumentTests
             using var selfie = new MemoryStream(Pic("SELFIE", 0));
             using var frontStream = front is null ? null : new MemoryStream(front);
             using var backStream = back is null ? null : new MemoryStream(back);
-            return await Flow().SubmitSelfieAsync(session, selfie, frontStream, backStream, CancellationToken.None);
+            var flow = Flow();
+            var challenge = await flow.IssueSelfieChallengeAsync(session, CancellationToken.None);
+            using var turned = new MemoryStream([1, 2, 3]);
+            return await flow.SubmitChallengedSelfieAsync(session, selfie, turned, challenge?.ChallengeToken, frontStream, backStream, CancellationToken.None);
         }
 
         public async Task<SelfieStepResult> SelfieAsync(GuestCheckInSession session, byte[]? front = null, byte[]? back = null)
@@ -902,6 +1053,18 @@ public class IdentityTwoSidedDocumentTests
             using var copy = new MemoryStream();
             await stream.CopyToAsync(copy, ct);
             return copy.ToArray();
+        }
+    }
+
+    private sealed class PictureOcr : IDocumentOcrService
+    {
+        public async Task<DocumentOcrResult?> ExtractAsync(Stream imageStream, CancellationToken ct = default)
+        {
+            using var reader = new StreamReader(imageStream);
+            var label = await reader.ReadToEndAsync(ct);
+            return label.Contains("FACE", StringComparison.Ordinal)
+                ? new DocumentOcrResult { DocumentKind = "IdentityCard", HasDocumentEvidence = true, GivenNames = "ANNA", Surname = "ROSSI" }
+                : null;
         }
     }
 

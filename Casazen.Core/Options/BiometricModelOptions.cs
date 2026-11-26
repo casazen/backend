@@ -92,8 +92,8 @@ public class BiometricModelOptions
     /// <summary>Minutes a model download may take before it is given up.</summary>
     public int DownloadTimeoutMinutes { get; set; } = 30;
 
-    /// <summary>Threads of one model run; 0 lets ONNX Runtime decide.</summary>
-    public int IntraOpThreads { get; set; }
+    /// <summary>Threads per model run. The bounded default matches appsettings; an explicit 0 lets ONNX Runtime decide.</summary>
+    public int IntraOpThreads { get; set; } = 2;
 
     /// <summary>Largest picture accepted, in bytes (the endpoint limit is 10 MB).</summary>
     public int MaxImageBytes { get; set; } = 12_000_000;

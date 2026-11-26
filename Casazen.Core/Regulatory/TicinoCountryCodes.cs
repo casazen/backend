@@ -263,6 +263,14 @@ public static class TicinoCountryCodes
 
     private static readonly HashSet<string> Alpha3Codes = Rows.Select(r => r.Alpha3).ToHashSet(StringComparer.Ordinal);
 
+    /// <summary>The official country name for an unambiguous document nationality code.</summary>
+    public static string? DescriptionFromAlpha3(string? code)
+    {
+        if (code?.Length != 3) return null;
+        var matches = Rows.Where(row => string.Equals(row.Alpha3, code, StringComparison.OrdinalIgnoreCase)).Take(2).ToArray();
+        return matches.Length == 1 ? matches[0].Description : null;
+    }
+
     /// <summary>The number of countries of the table (for the tests).</summary>
     public static int Count => Rows.Length;
 

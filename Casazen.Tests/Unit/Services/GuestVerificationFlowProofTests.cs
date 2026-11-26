@@ -517,6 +517,9 @@ public class GuestVerificationFlowProofTests
 
         public List<string> Logs { get; } = [];
 
+        public ActivePoseFlowTestVerifier Pose { get; } = new();
+        public Mock<ICheckInLegalTexts> ConsentRegistry { get; } = ActivePoseFlowTestVerifier.CreateRegistry();
+
         public static async Task<World> CreateAsync()
         {
             var world = new World();
@@ -547,7 +550,7 @@ public class GuestVerificationFlowProofTests
             Storage,
             _dataProtection,
             Clock,
-            new ListLogger<IdentityVerificationFlowService>(Logs));
+            new ListLogger<IdentityVerificationFlowService>(Logs), legalTexts: ConsentRegistry.Object, activePose: Pose);
 
         public AccessCodeService AccessCodes() => new(Db, new ListLogger<AccessCodeService>(Logs));
 
@@ -688,7 +691,10 @@ public class GuestVerificationFlowProofTests
         {
             using var stream = new MemoryStream(selfie ?? TestImages.Png(96, 96, seed: 5));
             using var photo = documentPhoto is null ? null : new MemoryStream(documentPhoto);
-            return await Flow().SubmitSelfieAsync(session, stream, photo, CancellationToken.None);
+            var flow = Flow();
+            var challenge = await flow.IssueSelfieChallengeAsync(session, CancellationToken.None);
+            using var turned = new MemoryStream([1, 2, 3]);
+            return await flow.SubmitChallengedSelfieAsync(session, stream, turned, challenge?.ChallengeToken, photo, null, CancellationToken.None);
         }
 
         public async Task<SelfieStepResult> SelfieAsync(GuestCheckInSession session, byte[]? selfie = null, byte[]? documentPhoto = null)

@@ -20,42 +20,42 @@ using Xunit;
 namespace Casazen.Tests.Unit.Controllers;
 
 /// <summary>
-/// E22/F01/US01/T02: the selfie of a property in Ticino, which keeps no document, carries three pictures (the selfie and the two sides of the document that were
+/// E22/F01/US01/T02: the selfie of a property in Ticino, which keeps no document, carries four pictures (both captures and the two sides of the document that were
 /// read), and the 10 MB that the request had for the two of before refused them: a guest with pictures of about 4 MB each got a 413 and could not finish. The
-/// request of <c>/selfie</c> is 15 MB now, the same 5 MB for each picture. The proof runs a real Kestrel on the loopback, with the limits that the action itself
-/// declares (<see cref="RequestSizeLimitAttribute"/> and <see cref="RequestFormLimitsAttribute"/>, read from <c>UploadSelfie</c>): three pictures of about 4 MB
-/// pass, and a request that is over the cap is refused with 413, as the old cap refused the same three pictures.
+/// request of <c>/selfie</c> is 20 MiB plus multipart overhead, the same 5 MB for each picture. The proof runs a real Kestrel on the loopback, with the limits that the action itself
+/// declares (<see cref="RequestSizeLimitAttribute"/> and <see cref="RequestFormLimitsAttribute"/>, read from <c>UploadSelfie</c>): four pictures of about 4 MB
+/// pass, and a request that is over the cap is refused with 413, as the old cap refused the same four pictures.
 /// </summary>
 public class SelfieRequestSizeTests
 {
     private const int PictureBytes = 4_000_000;
 
     [Fact]
-    public void Selfie_HasTheCapOfThreePictures_AndTheDocumentKeepsItsOwn()
+    public void Selfie_HasTheCapOfFourPictures_AndTheDocumentKeepsItsOwn()
     {
         var selfie = Limits(nameof(PublicGuestCheckInController.UploadSelfie));
         var document = Limits(nameof(PublicGuestCheckInController.UploadDocument));
 
         Assert.Equal((long)PublicGuestCheckInController.MaxSelfieRequestBytes, selfie.Cap);
-        Assert.Equal(3L * (PublicGuestCheckInController.MaxImageRequestBytes / 2), selfie.Cap);
+        Assert.Equal(4L * Casazen.Core.Services.CheckInDocumentLimits.MaxImageBytes + 64 * 1024, selfie.Cap);
         Assert.Equal((long)PublicGuestCheckInController.MaxImageRequestBytes, document.Cap);
         Assert.True(selfie.Form.MemoryBufferThreshold >= selfie.Cap, "the whole request is buffered in memory, never in a temporary file");
         Assert.True(selfie.Form.MultipartBodyLengthLimit >= selfie.Cap);
 
-        // The three pictures of the proof did not fit the old cap, and fit the new one with the framing of the form.
-        Assert.True(3L * PictureBytes > PublicGuestCheckInController.MaxImageRequestBytes);
-        Assert.True(3L * PictureBytes + 10_000 < selfie.Cap);
+        // The four pictures of the proof did not fit the old cap, and fit the new one with the framing of the form.
+        Assert.True(4L * PictureBytes > PublicGuestCheckInController.MaxImageRequestBytes);
+        Assert.True(4L * PictureBytes + 10_000 < selfie.Cap);
     }
 
     [Fact]
-    public async Task Selfie_ThreePicturesOfAbout4MB_Pass()
+    public async Task Selfie_FourPicturesOfAbout4MB_Pass()
     {
         var (cap, form) = Limits(nameof(PublicGuestCheckInController.UploadSelfie));
         await using var host = await ProbeHost.StartAsync(cap, form);
         using var client = new HttpClient { BaseAddress = host.BaseAddress, Timeout = TimeSpan.FromSeconds(60) };
 
         using var content = new MultipartFormDataContent();
-        foreach (var field in new[] { "selfie", "documentPhoto", "documentPhotoBack" })
+        foreach (var field in new[] { "selfie", "turnedSelfie", "documentPhoto", "documentPhotoBack" })
         {
             var picture = new ByteArrayContent(new byte[PictureBytes]);
             picture.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
@@ -65,11 +65,11 @@ public class SelfieRequestSizeTests
         var answer = await client.PostAsync("/selfie", content);
 
         Assert.Equal(HttpStatusCode.OK, answer.StatusCode);
-        Assert.Equal("3", await answer.Content.ReadAsStringAsync());
+        Assert.Equal("4", await answer.Content.ReadAsStringAsync());
     }
 
     [Fact]
-    public async Task Selfie_ARequestOverTheCap_Is413_AndTheOldCapRefusedTheSameThreePictures()
+    public async Task Selfie_ARequestOverTheCap_Is413_AndTheOldCapRefusedTheSameFourPictures()
     {
         var (cap, form) = Limits(nameof(PublicGuestCheckInController.UploadSelfie));
         await using (var host = await ProbeHost.StartAsync(cap, form))
@@ -78,10 +78,10 @@ public class SelfieRequestSizeTests
             Assert.Equal(413, await host.StatusOfDeclaredBodyAsync(cap + 1));
         }
 
-        // The cap of before, 10 MB for the whole request: the size of the same three pictures (about 12 MB) was a 413.
+        // The cap of before, 10 MB for the whole request: the size of the same four pictures (about 12 MB) was a 413.
         var (oldCap, oldForm) = Limits(nameof(PublicGuestCheckInController.UploadDocument));
         await using var old = await ProbeHost.StartAsync(oldCap, oldForm);
-        Assert.Equal(413, await old.StatusOfDeclaredBodyAsync((3L * PictureBytes) + 10_000));
+        Assert.Equal(413, await old.StatusOfDeclaredBodyAsync((4L * PictureBytes) + 10_000));
     }
 
     /// <summary>The cap and the form limits that an action declares, as the server will apply them.</summary>

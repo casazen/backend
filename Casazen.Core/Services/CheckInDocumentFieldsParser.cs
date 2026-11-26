@@ -28,15 +28,21 @@ public static class CheckInDocumentFieldsParser
                 Text(root, "lastName", 50),
                 Gender(root),
                 Date(root, "dateOfBirth", today, past: true),
-                Born(root),
+                Boolean(root, "bornInItaly"),
                 Text(root, "birthPlace", 100),
-                Province(root),
+                Province(root, "birthProvince"),
                 Text(root, "citizenship", 100),
                 DocumentKind(root),
                 DocumentNumber(root),
                 Text(root, "issuePlace", 100),
                 Date(root, "documentIssuedOn", today, past: true),
-                Date(root, "documentExpiresOn", today, past: false));
+                Date(root, "documentExpiresOn", today, past: false),
+                Text(root, "residenceStreet", 200, allowDigits: true),
+                PostalCode(root),
+                Text(root, "residenceCityName", 100),
+                Province(root, "residenceProvince"),
+                Text(root, "residenceCountryName", 100),
+                Boolean(root, "residenceInItaly"));
             if (string.CompareOrdinal(fields.DocumentIssuedOn, fields.DocumentExpiresOn) > 0)
                 fields = fields with { DocumentExpiresOn = null };
 
@@ -66,7 +72,7 @@ public static class CheckInDocumentFieldsParser
         return start >= 0 && end > start ? content[start..(end + 1)] : null;
     }
 
-    private static string? Text(JsonElement root, string name, int max)
+    private static string? Text(JsonElement root, string name, int max, bool allowDigits = false)
     {
         if (!root.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String)
             return null;
@@ -74,9 +80,16 @@ public static class CheckInDocumentFieldsParser
         var text = string.Join(' ', value.GetString()!.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         if (text.Length == 0 || text.Length > max)
             return null;
-        if (text.Any(c => char.IsDigit(c)))
+        if (!allowDigits && text.Any(char.IsDigit))
             return null;
         return text;
+    }
+
+    private static string? PostalCode(JsonElement root)
+    {
+        var postal = ReadString(root, "residencePostalCode")?.Trim().ToUpperInvariant();
+        return postal is { Length: >= 2 and <= 12 } && postal.Any(char.IsAsciiDigit)
+            && postal.All(c => char.IsAsciiLetterOrDigit(c) || c is ' ' or '-') ? postal : null;
     }
 
     private static string? Gender(JsonElement root)
@@ -103,9 +116,9 @@ public static class CheckInDocumentFieldsParser
         return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     }
 
-    private static bool? Born(JsonElement root)
+    private static bool? Boolean(JsonElement root, string field)
     {
-        if (!root.TryGetProperty("bornInItaly", out var value))
+        if (!root.TryGetProperty(field, out var value))
             return null;
         return value.ValueKind switch
         {
@@ -115,9 +128,9 @@ public static class CheckInDocumentFieldsParser
         };
     }
 
-    private static string? Province(JsonElement root)
+    private static string? Province(JsonElement root, string field)
     {
-        var text = ReadString(root, "birthProvince");
+        var text = ReadString(root, field);
         if (text is null)
             return null;
         var code = text.Trim().ToUpperInvariant();

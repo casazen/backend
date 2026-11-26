@@ -59,6 +59,25 @@ one way for the operator to decide).
 The first save of an organization that has no row writes the plan's default of `enabled` into it when the administrator did not send it: from then on the row, not the plan, decides.
 The table has no unique index on the organization (the model is not changed by this task): two first saves in the same instant could write two rows, and every reader takes the oldest.
 
+### Two-frame head-turn check
+
+The guest looks straight ahead, then turns their face about 30° towards the indicated side. Directions refer to the pixels received by the API. Both captures must meet the selfie quality rules and contain exactly one face. A weak-perspective estimate uses the nose offset along the eye line and the canonical ratio of nose depth to interocular distance (0.636267). The first estimate must be within 15° of frontal, the second must reach 20° on the requested side and the change must be at least 15°. Individual anatomy and landmark error affect these approximate angles. [MediaPipe canonical geometry](https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model.obj)
+
+The bundled SFace 2021dec model uses a cosine similarity of at least 0.363 between the two camera frames. This operating point comes from the publisher's implementation and applies only with the shipped model hash and its RGB preprocessing. Other models use the configured organisation acceptance threshold. The document-to-neutral-selfie comparison separately enforces the organisation's thresholds and the existing liveness check. [OpenCV Zoo reference implementation](https://github.com/opencv/opencv_zoo/blob/main/models/face_recognition_sface/sface.py)
+
+An isolated offline benchmark computed quality, pose and cosine scores once per capture. Within each corpus it evaluated every genuine pair, every same-person pair with the opposite direction, and every cross-person pair in the requested direction. Input frames were used at native resolution.
+
+| Corpus and prespecified captures | Genuine turns accepted | Wrong directions accepted | Different-person pairs accepted |
+| --- | ---: | ---: | ---: |
+| Pointing'04 series 2, 15 participants, frontal and ±30° | 16/30 | 0/30 | 0/420 |
+| Pointing'04 series 1, same participants and angles | 15/30 | 0/30 | 0/420 |
+| CMU Face Images, 20 other participants, neutral expression and open eyes | 29/40 | 0/40 | 0/760 |
+| MAPIR Faces, 16 other participants, centre and both horizontal grid extremes | 4/32 | 0/32 | 0/480 |
+
+A separate run of the complete timed service on Pointing'04 series 2 accepted 15/30, including 9 left and 6 right turns. The existing selfie quality checks rejected 28/32 MAPIR pairs in the wide camera framing. Repeated comparisons reuse subjects. The results measure consistency in still images and give no estimate of resistance to presentation attacks. A guest needs recapture and operator review when the check fails.
+
+Benchmark data are from [Gourier, Hall and Crowley (2004), distributed in FASSEG Multipose01 by Khan et al. (2017)](https://github.com/massimomauro/FASSEG-repository#dataset-descriptions), [T. Mitchell, CMU Face Images, UCI (1997), CC BY 4.0](https://doi.org/10.24432/C5JC79) and [S.-F. Baltanas, J.-R. Ruiz-Sarmiento and J. Gonzalez-Jimenez, MAPIR Faces (2020), CC BY 4.0](https://doi.org/10.5281/zenodo.4311765).
+
 ### Video call (`POST api/verification/{bookingId}/video-call`)
 
 1. The operator creates a meeting with any provider (Meet, Teams, Zoom, Jitsi...) and pastes its address.

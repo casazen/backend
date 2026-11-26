@@ -852,6 +852,7 @@ public class CheckInDocumentReadResponse
     public bool Read { get; set; }
     public string? Reason { get; set; }
     public CheckInDocumentFields? Guest { get; set; }
+    public string? Side { get; set; }
     public int? GuestPosition { get; set; }
     public bool ConfirmGuest { get; set; }
 
@@ -859,6 +860,10 @@ public class CheckInDocumentReadResponse
     {
         Read = read.Read,
         Reason = read.Reason,
-        Guest = read.Fields,
+        Guest = read.Fields is { } fields ? fields with
+        {
+            Citizenship = TicinoCountryCodes.DescriptionFromAlpha3(fields.Citizenship) ?? fields.Citizenship,
+        } : null,
+        Side = read.Side,
     };
 }

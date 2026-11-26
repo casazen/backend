@@ -65,6 +65,11 @@ public interface IIdentityVerificationFlowService
         Stream? documentPhotoBack,
         CancellationToken ct);
 
+    Task<SelfieChallenge?> IssueSelfieChallengeAsync(GuestCheckInSession session, CancellationToken ct);
+
+    Task<SelfieStepResult> SubmitChallengedSelfieAsync(GuestCheckInSession session, Stream selfie, Stream? turnedSelfie,
+        string? challengeToken, Stream? documentPhoto, Stream? documentPhotoBack, CancellationToken ct);
+
     /// <summary>The guest asks for a person, at any step, also after a retry or a failed attempt (AC-NF51-11): the operators are alerted at once.</summary>
     Task<IdentityVerificationState> RequestOperatorAsync(GuestCheckInSession session, CancellationToken ct);
 }
@@ -233,6 +238,7 @@ public enum SelfieStepStatus
 
     /// <summary>The photo of the document sent with the selfie is not the one that was read (409).</summary>
     DocumentPhotoMismatch = 5,
+    ChallengeRequired = 6,
 }
 
 /// <summary>
@@ -251,3 +257,6 @@ public sealed record SelfieStepResult(
     /// <summary>The way to a person is always open.</summary>
     public bool OperatorPathOpen => true;
 }
+
+/// <summary>The direction refers to the unmirrored image sent to the server.</summary>
+public sealed record SelfieChallenge(string ChallengeToken, bool NoseToRight, DateTimeOffset ExpiresAt);

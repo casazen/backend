@@ -20,7 +20,7 @@ public interface ICheckInDocumentReader
 /// Why nothing was read: <c>unavailable</c> (no AI provider), <c>unreadable</c>, <c>unsupported_file</c>,
 /// <c>too_large</c>, <c>budget</c>. Null when <paramref name="Read"/> is true.
 /// </param>
-public sealed record CheckInDocumentRead(bool Read, string? Reason, CheckInDocumentFields? Fields)
+public sealed record CheckInDocumentRead(bool Read, string? Reason, CheckInDocumentFields? Fields, string? Side = null)
 {
     public static CheckInDocumentRead Failed(string reason) => new(false, reason, null);
 }
@@ -39,4 +39,10 @@ public sealed record CheckInDocumentFields(
     string? DocumentNumber,
     string? IssuePlace,
     string? DocumentIssuedOn = null,
-    string? DocumentExpiresOn = null);
+    string? DocumentExpiresOn = null,
+    string? ResidenceStreet = null,
+    string? ResidencePostalCode = null,
+    string? ResidenceCityName = null,
+    string? ResidenceProvince = null,
+    string? ResidenceCountryName = null,
+    bool? ResidenceInItaly = null);
