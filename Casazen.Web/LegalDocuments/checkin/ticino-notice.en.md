@@ -11,7 +11,7 @@ The controller is the agency that manages the property. CasaZen provides the pla
 ## What we process
 
 - the data you write in the check-in: name, date of birth, citizenship and the details of your document;
-- the photo of your identity document and a selfie, only if you agree to the face check.
+- the photo of your identity document and two photos of your face, only if you agree to the face check.
 
 ## Your document is not archived
 
@@ -19,7 +19,7 @@ For a property in Ticino we do not keep the photo of your document. We use it on
 
 ## The photos are deleted at once
 
-A program on our server compares the selfie with the photo of the document. The two photos serve only for this comparison and are deleted as soon as it ends: we do not save them and do not use them for anything else.
+After photographing your document, take one photo facing the camera. We then ask you to turn your head left or right for a second photo. On our server we compare the first photo with the document and check that both photos show the same face in the requested positions. Both face photos are processed in memory and deleted when the check ends.
 
 ## The face check is optional
 

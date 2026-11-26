@@ -4,7 +4,7 @@ Um Ihnen den Zugangscode der Unterkunft zu geben, vergleichen wir ein Selfie mit
 
 ## Was passiert
 
-Sie fotografieren Ihr Dokument und nehmen dann mit der Kamera ein Selfie auf. Ein Programm auf unserem Server vergleicht beides. Ihr Selfie wird nie gespeichert: Es wird gelöscht, sobald der Vergleich endet.
+Fotografieren Sie Ihr Dokument und machen Sie ein erstes Foto, auf dem Sie gerade in die Kamera schauen. Drehen Sie dann wie angezeigt den Kopf nach links oder rechts und machen Sie ein zweites Foto. Unser Server vergleicht das erste Foto mit dem Dokument und prüft, ob beide Bilder dasselbe Gesicht in den geforderten Positionen zeigen. Beide Gesichtsfotos werden im Arbeitsspeicher verarbeitet und nach der Prüfung gelöscht.
 
 <!-- if:document-archived -->
 Das Foto Ihres Dokuments wird nur bis zum Ende der Prüfung verschlüsselt aufbewahrt und danach gelöscht.

@@ -45,7 +45,7 @@ public class CheckInIdentityFactory : CasazenWebApplicationFactory
 /// </summary>
 public class DoorCheckInHttpIntegrationTests(CheckInIdentityFactory factory) : IClassFixture<CheckInIdentityFactory>
 {
-    private const string ConsentVersion = "checkin-biometric-2026-11";
+    private const string ConsentVersion = "checkin-biometric-2026-11-pose";
 
     /// <summary>
     /// Permission rule (scope): the owner makes, reads and replaces the code of any property of its org; a property of another org is a 404 for both calls; a collaborator «Solo alcuni» (who may not write

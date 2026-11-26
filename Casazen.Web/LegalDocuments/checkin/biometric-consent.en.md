@@ -4,7 +4,7 @@ To give you the access code of the property, we compare a selfie with the photo 
 
 ## What happens
 
-You photograph your document and then take a selfie with the camera. A program on our server compares the two. Your selfie is never saved: it is deleted as soon as the comparison ends.
+After photographing your document, take one photo facing the camera. We then ask you to turn your head left or right for a second photo. On our server we compare the first photo with the document and check that both photos show the same face in the requested positions. Both face photos are processed in memory and deleted when the check ends.
 
 <!-- if:document-archived -->
 The photo of your document is kept encrypted only until the check is over, then it is deleted.
