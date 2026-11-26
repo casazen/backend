@@ -32,7 +32,7 @@ public class MarketingStudioAudienceTests
             .ReturnsAsync(new AiGenerationResult("""{"subject":"Musica","body":"La aspettiamo","keywords":"","audience":"","budget":""}""", 1, 1, AiModelTier.Standard, false));
         var config = new ConfigurationBuilder().Build();
         var studio = new MarketingStudio(db, provider.Object, Mock.Of<IWebSearchClient>(), null!,
-            new MarketingAiQuota(db, config, TimeProvider.System), config, Mock.Of<ICampaignService>(), TimeProvider.System);
+            new MarketingAiQuota(db, config, TimeProvider.System), config, Mock.Of<ICampaignService>(), TimeProvider.System, null!);
         var brief = new StudioBrief(property.Id, segment.Id, "email", "Invito al festival");
         await Assert.ThrowsAsync<DomainRuleException>(() => studio.GenerateAsync(new HostScope(Guid.NewGuid()), brief, default));
         var asset = await studio.GenerateAsync(new HostScope(org.Id), brief, default);

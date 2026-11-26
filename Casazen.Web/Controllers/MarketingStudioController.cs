@@ -72,14 +72,25 @@ public sealed class MarketingStudioController(MarketingStudio studio, AppDbConte
         return Ok(rows.Select(ViewAsset));
     });
 
+    [HttpPost("assets/{id:guid}/dismiss")]
+    public Task<IActionResult> Dismiss(Guid id, CancellationToken ct) => WithinScope(async scope =>
+    {
+        var now = clock.GetUtcNow().UtcDateTime;
+        var updated = await studio.Assets(scope).Where(a => a.Id == id && a.ApprovedAt == null && a.CampaignId == null)
+            .ExecuteUpdateAsync(u => u.SetProperty(a => a.DismissedAt, now), ct);
+        return updated == 0 ? NotFound() : NoContent();
+    });
+
     [HttpPost("assets/{id:guid}/approve")]
     public Task<IActionResult> Approve(Guid id, CancellationToken ct) => WithinScope(async scope =>
     {
-        var asset = await studio.Assets(scope).SingleOrDefaultAsync(a => a.Id == id, ct);
+        var query = studio.Assets(scope).Where(a => a.Id == id);
+        var now = clock.GetUtcNow().UtcDateTime;
+        await query.Where(a => a.Channel != "email" && a.Channel != "newsletter" && a.ApprovedAt == null)
+            .ExecuteUpdateAsync(u => u.SetProperty(a => a.ApprovedAt, now), ct);
+        var asset = await query.AsNoTracking().SingleOrDefaultAsync(ct);
         if (asset == null) return NotFound();
-        if (asset.Channel is "email" or "newsletter") return Conflict();
-        asset.ApprovedAt ??= clock.GetUtcNow().UtcDateTime;
-        await db.SaveChangesAsync(ct);
+        if (asset.ApprovedAt == null) return Conflict();
         return Ok(ViewAsset(asset));
     });
 
@@ -100,7 +111,7 @@ public sealed class MarketingStudioController(MarketingStudio studio, AppDbConte
     });
 
     private object ViewAsset(MarketingAsset a) => new { a.Id, a.PropertyId, a.SegmentId, a.CampaignId, a.Channel, a.Subject,
-        a.Body, a.Keywords, a.Audience, a.Budget, a.ApprovedAt, a.CreatedAt, trackingUrl = studio.TrackingUrl(a) };
+        a.Body, a.Keywords, a.Audience, a.Budget, a.ApprovedAt, a.CreatedAt, sourceEvent = a.SourceEventJson == null ? null : System.Text.Json.JsonSerializer.Deserialize<LocalEvent>(a.SourceEventJson, System.Text.Json.JsonSerializerOptions.Web), trackingUrl = studio.TrackingUrl(a) };
 }
 
 [ApiController]

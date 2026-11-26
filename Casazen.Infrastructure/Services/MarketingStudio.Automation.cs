@@ -85,7 +85,7 @@ public sealed partial class MarketingStudio
                 await using var tx = await db.Database.BeginTransactionAsync(ct);
                 db.Add(segment);
                 await db.SaveChangesAsync(ct);
-                await GenerateAsync(scope, new(property, segment.Id, "email", brief, item.Name), ct, key);
+                await GenerateAsync(scope, new(property, segment.Id, "email", brief, item.Name, item), ct, key);
                 await tx.CommitAsync(ct);
             }
         }

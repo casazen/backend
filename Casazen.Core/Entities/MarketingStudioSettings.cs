@@ -41,6 +41,9 @@ public class MarketingAsset : ITenantOwned
     public string Budget { get; set; } = string.Empty;
     public string? Destination { get; set; }
     public bool ExternalDestination { get; set; }
+    [Column(TypeName = "jsonb")]
+    public string? SourceEventJson { get; set; }
+    public DateTime? DismissedAt { get; set; }
     public DateTime? ApprovedAt { get; set; }
     public int Clicks { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

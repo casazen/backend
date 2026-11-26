@@ -17,21 +17,21 @@ namespace Casazen.Infrastructure.Services;
 public record NewsletterPlan(Guid? SegmentId = null, Guid? PropertyId = null, int CadenceDays = 30, string Instructions = "", bool Enabled = false);
 public record StudioSettings(string Voice, Dictionary<Guid, string> PropertyNotes, Dictionary<Guid, string> PropertyUrls,
     int MonthlyEmailLimit, int LoyalStays, int LostMonths, NewsletterPlan Newsletter, bool CanEdit = true);
-public record StudioBrief(Guid PropertyId, Guid SegmentId, string Channel, string Brief, string? EventName = null);
+public record StudioBrief(Guid PropertyId, Guid SegmentId, string Channel, string Brief, string? EventName = null, LocalEvent? SourceEvent = null);
 public record EventRequest(Guid PropertyId, DateOnly From, DateOnly To);
-public record LocalEvent(string Name, DateOnly Date, string Source, string Description);
+public record LocalEvent(string Name, DateOnly Date, string Source, string Description, string? Confidence = null);
 public record StudioCopy(string Subject, string Body, string Keywords, string Audience, string Budget);
 public record StudioEdit(string Subject, string Body);
 
 public sealed partial class MarketingStudio(AppDbContext db, IAiProvider ai, IWebSearchClient web, PublicOrgSiteUrls sites,
-    MarketingAiQuota quota, IConfiguration configuration, ICampaignService campaigns, TimeProvider clock)
+    MarketingAiQuota quota, IConfiguration configuration, ICampaignService campaigns, TimeProvider clock, MarketingOpenEvents openEvents)
 {
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     public static readonly string[] Channels = ["email", "newsletter", "instagram", "facebook", "linkedin",
         "google-ads", "meta-ads", "linkedin-ads", "microsoft-ads", "chatgpt-ads"];
 
     public IQueryable<MarketingAsset> Assets(HostScope scope) =>
-        db.MarketingAssets.Where(a => a.OrgId == scope.OrgId && db.Properties.Where(p => p.OrgId == scope.OrgId).InScope(scope).Any(p => p.Id == a.PropertyId));
+        db.MarketingAssets.Where(a => a.OrgId == scope.OrgId && a.DismissedAt == null && db.Properties.Where(p => p.OrgId == scope.OrgId).InScope(scope).Any(p => p.Id == a.PropertyId));
 
     public async Task<StudioSettings> SettingsAsync(HostScope scope, CancellationToken ct)
     {
@@ -101,10 +101,12 @@ public sealed partial class MarketingStudio(AppDbContext db, IAiProvider ai, IWe
         var row = await db.MarketingEventSearches.SingleOrDefaultAsync(e => e.Locality == locality && e.From == request.From && e.To == request.To, ct);
         if (row is not null && row.CheckedAt > clock.GetUtcNow().UtcDateTime.AddDays(-7))
             return JsonSerializer.Deserialize<List<LocalEvent>>(row.EventsJson, Json)!;
-        var prompt = $"Find recurring public events in {locality} from {request.From:yyyy-MM-dd} to {request.To:yyyy-MM-dd}. Verify dates with the organizer. Return only a JSON array, up to 12 entries, with name, date (YYYY-MM-DD), source (official https URL), description in Italian. Use [] if none can be verified.";
+        var prompt = $"Find recurring public events in {locality} from {request.From:yyyy-MM-dd} to {request.To:yyyy-MM-dd}. Verify dates with the organizer. Return only a JSON array, up to 12 entries, with name, date (YYYY-MM-DD), source (official https URL), description in Italian, confidence (confirmed if the organizer published these dates, otherwise provisional). Prefer Open Data Hub for South Tyrol and Switzerland Tourism for Swiss events, and give a direct source link. Use [] if none can be verified.";
         await quota.ReserveAsync(scope.OrgId, ct);
-        var raw = await web.SearchAsync(prompt, ct) ?? throw Invalid("marketing_search_unavailable");
-        var events = Parse<List<LocalEvent>>(raw).Where(e => e != null && !string.IsNullOrWhiteSpace(e.Name) &&
+        var official = await openEvents.ReadAsync(property, request.From, request.To, ct);
+        var raw = await web.SearchAsync(prompt, ct);
+        if (raw == null && official.Count == 0) throw Invalid("marketing_search_unavailable");
+        var events = official.Concat(raw == null ? [] : Parse<List<LocalEvent>>(raw)).Where(e => e != null && !string.IsNullOrWhiteSpace(e.Name) &&
             e.Date >= request.From && e.Date <= request.To && IsPublicUrl(e.Source)).DistinctBy(e => (e.Name, e.Date)).Take(12).ToList();
         if (row is null)
         {
@@ -128,7 +130,7 @@ public sealed partial class MarketingStudio(AppDbContext db, IAiProvider ai, IWe
 
     public async Task<MarketingAsset> GenerateAsync(HostScope scope, StudioBrief brief, CancellationToken ct, string? occurrence = null)
     {
-        if (!Channels.Contains(brief.Channel) || string.IsNullOrWhiteSpace(brief.Brief) || brief.Brief.Length > 4000 || brief.EventName?.Length > 300)
+        if (!Channels.Contains(brief.Channel) || string.IsNullOrWhiteSpace(brief.Brief) || brief.Brief.Length > 4000 || brief.EventName?.Length > 300 || (brief.SourceEvent is { } e && (!IsPublicUrl(e.Source) || e.Name?.Length > 300 || e.Description?.Length > 4000)))
             throw Invalid("marketing_brief_invalid");
         var property = await db.Properties.Where(p => p.OrgId == scope.OrgId).InScope(scope).SingleOrDefaultAsync(p => p.Id == brief.PropertyId, ct)
             ?? throw Invalid("property_not_found");
@@ -147,7 +149,7 @@ public sealed partial class MarketingStudio(AppDbContext db, IAiProvider ai, IWe
         var org = await db.Orgs.SingleAsync(o => o.Id == scope.OrgId, ct);
         var asset = new MarketingAsset { OrgId = scope.OrgId, PropertyId = property.Id, SegmentId = brief.SegmentId, Channel = brief.Channel,
             Subject = copy.Subject, Body = copy.Body, Keywords = copy.Keywords ?? "", Audience = copy.Audience ?? "", Budget = copy.Budget ?? "",
-            Occurrence = occurrence, ExternalDestination = external != null, Destination = external ?? sites.TryPropertyUrl(org, property.Slug ?? property.Id.ToString()) };
+            SourceEventJson = brief.SourceEvent is null ? null : JsonSerializer.Serialize(brief.SourceEvent, Json), Occurrence = occurrence, ExternalDestination = external != null, Destination = external ?? sites.TryPropertyUrl(org, property.Slug ?? property.Id.ToString()) };
         db.Add(asset);
         await db.SaveChangesAsync(ct);
         return asset;

@@ -29,6 +29,23 @@ public class MarketingStudioTests
     }
 
     [Fact]
+    public void OpenDataHubPreservesSourceAndSkipsUnlicensedAndCancelledOccurrences()
+    {
+        using var data = System.Text.Json.JsonDocument.Parse("""
+            {"Items":[{"Self":"https://tourism.api.opendatahub.com/v1/Event/123","Detail":{"it":{"Title":"Festival"}},
+            "LicenseInfo":{"License":"CC-BY","Author":"Organizzatore"},
+            "EventDate":[{"From":"2026-12-01T10:00:00"},{"From":"2026-12-02T10:00:00","IsCancelled":true}]},
+            {"Self":"https://tourism.api.opendatahub.com/v1/Event/456","Detail":{"it":{"Title":"Privato"}},
+            "LicenseInfo":{"License":"closed"},"EventDate":[{"From":"2026-12-01T00:00:00"}]}]}
+            """);
+        var entry = Assert.Single(MarketingOpenEvents.Read(data.RootElement, new(2026, 11, 26), new(2027, 1, 1)));
+        Assert.Equal("Festival", entry.Name);
+        Assert.Equal(new DateOnly(2026, 12, 1), entry.Date);
+        Assert.Contains("Organizzatore", entry.Description);
+        Assert.EndsWith("/123", entry.Source);
+    }
+
+    [Fact]
     public void ReadsFencedJsonAndRejectsPlainTextFromProvider()
     {
         var content = MarketingStudio.Parse<StudioCopy>("```json\n{\"subject\":\"Titolo\",\"body\":\"Un invito\"}\n```");

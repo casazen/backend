@@ -513,6 +513,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISuppressionService, SuppressionService>();
         // NF-24: Marketing campaigns and guest segmentation (ADR-014).
         services.AddScoped<IConditionEvaluator, ConditionEvaluator>();
+        services.AddHttpClient<MarketingOpenEvents>(client =>
+        {
+            client.BaseAddress = new Uri("https://tourism.api.opendatahub.com/");
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
         services.AddScoped<MarketingAiQuota>();
         services.AddScoped<MarketingStudio>();
         services.AddScoped<ICampaignService, CampaignService>();
