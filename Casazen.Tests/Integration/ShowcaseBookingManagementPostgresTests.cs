@@ -102,7 +102,7 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
     }
 
     [PostgresFact]
-    public async Task Reschedule_AndTheSupplierTaking_AtTheSameMoment_OneWins_AndTheRequestIsWhollyOneOrTheOther()
+    public async Task ConcurrentRescheduleAndTake_PersistEverySuccessfulActionAndFreeTheUnusedSlot()
     {
         var supplier = await PublicBookingTestData.SeedAsync(factory);
         using var setup = factory.CreateClient();
@@ -112,31 +112,28 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         // Both sides take the supplier calendar lock; SaveRendezvous under that lock deadlocks (500/500).
         using var customer = factory.CreateClient();
         using var asSupplier = AppClient(factory, supplier);
-        var moveTask = Task.Run(() => Http.PostAsync(customer, "reschedule", booked.Access(new { startUtc = newStart })));
-        var takeTask = Task.Run(() => asSupplier.PostAsync($"/api/service-requests/{booked.RequestId}/take", content: null));
+        var responses = await InParallelAsync([
+            () => Http.PostAsync(customer, "reschedule", booked.Access(new { startUtc = newStart })),
+            () => asSupplier.PostAsync($"/api/service-requests/{booked.RequestId}/take", content: null)
+        ]);
+        using var move = responses[0];
+        using var take = responses[1];
+        var moved = move.StatusCode == HttpStatusCode.OK;
+        var taken = take.StatusCode == HttpStatusCode.OK;
 
-        var move = await moveTask;
-        var take = await takeTask;
-
-        AssertOneWinsOneLoses(move, take);
+        // A move leaves the request open. If take reads it after the move commits, both operations may succeed.
+        // The reverse order forbids moving a taken request. A stale write can also lose to optimistic concurrency.
+        if (!moved || !taken)
+            AssertOneWinsOneLoses(move, take);
         var stored = await LoadRequestAsync(booked.RequestId);
-        if (move.StatusCode == HttpStatusCode.OK)
-        {
-            // Moved first: the request is still new, at the new time; the take got 409.
-            Assert.Equal(ServiceRequestStatus.Richiesto, stored.Status);
-            Assert.Equal(newStart, stored.ScheduledStartUtc);
-            Assert.Null(stored.TakenAt);
-        }
-        else
-        {
-            // Taken first: the request is taken at the time it was asked for, and the move got 409 and changed nothing.
-            Assert.Equal(ServiceRequestStatus.PresoInCarico, stored.Status);
-            Assert.Equal(PublicBookingTestData.TuesdayAt9, stored.ScheduledStartUtc);
+        Assert.Equal(moved ? newStart : PublicBookingTestData.TuesdayAt9, stored.ScheduledStartUtc);
+        Assert.Equal(taken ? ServiceRequestStatus.PresoInCarico : ServiceRequestStatus.Richiesto, stored.Status);
+        Assert.Equal(taken, stored.TakenAt.HasValue);
+        if (!moved)
             Assert.DoesNotContain(factory.EmailsTo(supplier.ContactEmail), e => e.Template == EmailTemplates.Names.SupplierBookingRescheduledByCustomer);
-        }
 
         // Whichever time the request ended up with, the other one is free: a new customer can book it.
-        var freed = move.StatusCode == HttpStatusCode.OK ? PublicBookingTestData.TuesdayAt9 : newStart;
+        var freed = moved ? PublicBookingTestData.TuesdayAt9 : newStart;
         var next = await setup.PostAsJsonAsync(
             $"/api/public/suppliers/{supplier.Slug}/bookings",
             PublicBookingTestData.Body(supplier.Service, freed, PublicBookingTestData.NewEmail()));
