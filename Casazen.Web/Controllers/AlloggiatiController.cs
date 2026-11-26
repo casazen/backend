@@ -95,7 +95,7 @@ public class AlloggiatiController(
             var attempt = await directDb.AlloggiatiSendAttempts.AsNoTracking()
                 .Where(a => a.OrgId == booking.OrgId && a.BookingId == booking.Id && a.Mode == AlloggiatiMode.Live)
                 .OrderByDescending(a => a.ReservedAt).Select(a => new { a.Status, a.ReceiptId, a.GuestsJson }).FirstOrDefaultAsync(ct);
-            dto.DirectSubmission = attempt != null || (cutoff.HasValue && DateOnly.FromDateTime(booking.CheckInDate) >= cutoff);
+            dto.DirectSubmission = attempt != null || (cutoff.HasValue && Casazen.Core.Utilities.RomeCalendar.DateInRome(booking.CheckInDate) >= cutoff);
             dto.DirectAttempt = attempt?.Status.ToString();
             if (attempt?.GuestsJson is { } guests)
             {

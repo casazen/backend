@@ -88,6 +88,8 @@ public sealed class DirectAlloggiatiDispatch(AppDbContext db, DirectAlloggiatiSo
         {
             var claimed = await db.AlloggiatiWebReports.Where(r => r.Id == report.Id && r.Status == AlloggiatiWebStatus.DaInviareManualmente
                 && !r.ManuallyCompleted && r.Booking.NoShowAt == null && r.Booking.ArrivedAt == booking.ArrivedAt && r.Booking.CheckInDate == booking.CheckInDate && r.GuestId == r.Booking.GuestId
+                && r.Booking.PropertyId == account.PropertyId && r.Booking.Property.Country == "IT" && r.Booking.NumberOfGuests == rows.Length
+                && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(r.Booking.Status)
                 && db.PropertyQuesturaCredentials.Any(c => c.Id == account.Id && c.CredentialVersion == account.CredentialVersion && c.UpdatedAt == account.UpdatedAt && c.LastVerificationOk == true))
                 .ExecuteUpdateAsync(set => set.SetProperty(r => r.Status, AlloggiatiWebStatus.Sending), ct);
             if (claimed != 1 || !await EligibleAsync(booking, ct)) return;
