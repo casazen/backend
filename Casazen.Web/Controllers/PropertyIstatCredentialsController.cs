@@ -95,13 +95,9 @@ public sealed class PropertyIstatCredentialsController(
         return NoContent();
     }
 
-    private ConflictObjectResult CredentialConflict(Ross1000Problem problem) => Conflict(new
-    {
-        code = problem.Message,
-        detail = problem.Message == "ross1000_structure_locked"
-            ? "La struttura usa l'invio diretto. Mantieni lo stesso codice ROSS1000 per aggiornare le credenziali."
-            : "È in corso un cambio di mittente. Riprova al termine."
-    });
+    private ObjectResult CredentialConflict(Ross1000Problem problem) =>
+        this.ApiProblem(StatusCodes.Status409Conflict, problem.Message,
+            problem.Message == "ross1000_structure_locked" ? "Ross1000StructureLocked" : "Ross1000SenderCutoverInProgress");
 
     private async Task<(HostResource? Resource, ActionResult? Denied)> AuthorizePropertyAsync(Guid propertyId, HostOperationRequirement operation)
     {
