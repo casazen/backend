@@ -100,7 +100,7 @@ public sealed class GuestDocumentLineBuilder(
             lines.Add(Line(texts.Get(TouristTaxKeyOf(rule, paymentChannel), language), tax.Amount, FiscalLineType.TouristTax, rule));
 
         var extras = await db.GuestHostExtraOrders.AsNoTracking()
-            .Where(x => x.OrgId == stay.OrgId && x.BookingId == stay.Id &&
+            .Where(x => x.OrgId == stay.OrgId && x.BookingId == stay.Id && x.SupplementToDocumentId == null &&
                 (x.Status == GuestHostExtraStatus.Paid || x.Status == GuestHostExtraStatus.Fulfilled))
             .OrderBy(x => x.CreatedAt).ToListAsync(ct);
         foreach (var extra in extras)
@@ -274,7 +274,7 @@ public sealed class GuestDocumentLineBuilder(
         return swissTouristTax.Value.TaxOf(canton, DateOnly.FromDateTime(stay.CheckIn), stay.Nights, stay.NumberOfGuests) ?? 0m;
     }
 
-    private static FiscalDocumentGrossLine Line(string description, decimal gross, FiscalLineType type, FiscalTaxRule rule)
+    internal static FiscalDocumentGrossLine Line(string description, decimal gross, FiscalLineType type, FiscalTaxRule rule)
     {
         var rate = rule.RateOf(type);
         return new FiscalDocumentGrossLine(description, 1m, gross, rate.Percent, rate.NatureCode, type);

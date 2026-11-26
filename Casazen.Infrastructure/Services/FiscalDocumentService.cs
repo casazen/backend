@@ -157,6 +157,7 @@ public sealed partial class FiscalDocumentService(
             logger.LogInformation("Draft {DocumentId} of booking {BookingId} discarded: the plan of the booking has no such document any more", stale.Id, booking.Id);
         }
 
+        made.AddRange(await SupplementalDraftsAsync(booking.Id, booking.OrgId, userId, ct));
         return made;
     }
 
@@ -281,14 +282,15 @@ public sealed partial class FiscalDocumentService(
         // cannot issue gets its «Da fare» (422 owner_issuer_missing); any other change is 409 document_draft_outdated, and the draft made again follows the plan.
         var planned = (await RequirePlanAsync(booking, ct)).Of(document.ForAgencyServices);
         RequireDraftOfThePlan(document, planned, organization);
-        if (planned!.Bills(FiscalLineType.ExtraService))
-            await RequireDraftOfTheExtrasAsync(document, booking.OrgId, booking.Id, ct);
+        if (document.SupplementForExtraOrderId is { } extraId)
+            await SupplementOrderAsync(booking.OrgId, booking.Id, extraId, planned!.IssuerProfileId, ct);
 
         // The issuer of the draft (E17/F01/US01/T02): an owner's draft is issued on the owner's profile, in the owner's series, with the owner's rule.
         var profile = await IssuerProfileAsync(booking, organization, document.IssuerProfileId, requireComplete: true, ct);
         var rule = RuleOf(profile, booking);
         RequireDraftOfTheRule(document, rule);
-        await RequireNoOtherDocumentAsync(booking.Id, document.Id, PartOf(document.ForAgencyServices, profile.IsOwnerProfile), ct);
+        if (document.SupplementForExtraOrderId is null)
+            await RequireNoOtherDocumentAsync(booking.Id, document.Id, PartOf(document.ForAgencyServices, profile.IsOwnerProfile), ct);
 
         var today = timeProvider.TodayInRomeAsDateOnly();
         var series = SeriesOf(profile, today);
@@ -835,7 +837,7 @@ public sealed partial class FiscalDocumentService(
 
         var profile = await IssuerProfileAsync(booking, organization, planned.IssuerProfileId, requireComplete: true, ct);
         var rule = RuleOf(profile, booking);
-        if (isNew)
+        if (isNew && draft.SupplementForExtraOrderId is null)
             await RequireNoOtherDocumentAsync(booking.Id, draft.Id, PartOf(planned.ForAgencyServices, profile.IsOwnerProfile), ct, countPlannedCredit: true);
 
         var kind = rule.DocumentKind == RuleDocumentKind.Receipt ? DocumentKind.Receipt : DocumentKind.Invoice;
@@ -854,11 +856,17 @@ public sealed partial class FiscalDocumentService(
         // The lines of the stay whatever its source (E12/F01/US01/T01): the amounts of the portal, the tourist tax only when the host collects it (the agency's choice of
         // the portals that collect it), who collected the money; then only the lines this document bills (E17/F01/US01/T02).
         var built = await _lines.BuildAsync(booking.Id, rule, _lines.PlatformCollectedChannelsOf(organization), ct);
-        var amounts = FiscalDocumentTotals.FromGross(GuestDocumentLineBuilder.LinesOf(built.Lines, planned), rule.StampDuty);
+        var amountLines = GuestDocumentLineBuilder.LinesOf(built.Lines, planned);
+        if (draft.SupplementForExtraOrderId is { } extraId)
+        {
+            var order = await SupplementOrderAsync(booking.OrgId, booking.Id, extraId, profile.Id, ct);
+            amountLines = [GuestDocumentLineBuilder.Line(order.Name, order.Amount, FiscalLineType.ExtraService, rule)];
+        }
+        var amounts = FiscalDocumentTotals.FromGross(amountLines, rule.StampDuty);
 
         draft.OrgId = booking.OrgId;
         draft.PropertyId = booking.PropertyId;
-        draft.Purpose = planned.Purpose;
+        draft.Purpose = draft.SupplementForExtraOrderId is null ? planned.Purpose : FiscalDocumentPurpose.GuestExtraSupplement;
         draft.IssuerProfileId = profile.Id;
         draft.ForAgencyServices = planned.ForAgencyServices;
         draft.ServicePeriodFrom = DateOnly.FromDateTime(booking.CheckIn);
@@ -876,8 +884,8 @@ public sealed partial class FiscalDocumentService(
         ApplyAmounts(draft, amounts);
 
         // The money of a booking of a portal is the portal's: the document is paid through it. Any other document is paid or to collect by what CasaZen collected.
-        draft.PaymentChannel = built.PaymentChannel;
-        draft.PaymentState = built.PaymentChannel == FiscalPaymentChannel.Portal
+        draft.PaymentChannel = draft.SupplementForExtraOrderId is null ? built.PaymentChannel : FiscalPaymentChannel.CasaZen;
+        draft.PaymentState = draft.SupplementForExtraOrderId is not null || built.PaymentChannel == FiscalPaymentChannel.Portal
             ? FiscalDocumentPaymentState.Paid
             : await PaymentStateAsync(booking.Id, draft.Total - ExtraGrossAmount(draft.Lines), ct);
         draft.UpdatedAt = UtcNow;
@@ -1011,6 +1019,8 @@ public sealed partial class FiscalDocumentService(
             await using var bookingLock = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct,
                 (PostgresAdvisoryLocks.Scope.FiscalDocumentBooking, guestBookingId.ToString("N")));
             await RequireDraftOfTheRecipientAsync(document, guestBookingId, rule, ct);
+            if ((await RequirePlanAsync(await BookingOfAsync(guestBookingId, ct), ct)).Of(document.ForAgencyServices)?.Bills(FiscalLineType.ExtraService) == true)
+                await RequireDraftOfTheExtrasAsync(document, orgId, guestBookingId, ct);
         }
 
         // The number of the issuer the document is issued on (E17/F01/US01/T01): its counter, its series. A document made before the issuers existed is the
@@ -1037,7 +1047,7 @@ public sealed partial class FiscalDocumentService(
         // and period (the unique index of the live owner invoices), and the concurrency token of the row refuses a second issue of the same draft.
         if (credited is null)
         {
-            if (bookingId is { } booking)
+            if (document.SupplementForExtraOrderId is null && bookingId is { } booking)
                 await RequireNoOtherDocumentAsync(booking, document.Id, PartOf(document.ForAgencyServices, profile.IsOwnerProfile), ct);
         }
         else
@@ -1078,7 +1088,7 @@ public sealed partial class FiscalDocumentService(
             document.SdiStatus = FiscalDocumentSdiStatuses.NotApplicable;
         }
 
-        if (credited is null && bookingId is { } lockedBooking)
+        if (credited is null && document.SupplementForExtraOrderId is null && bookingId is { } lockedBooking)
             await issuers.LockIssuerAsync(lockedBooking, BookingDocumentIssuerKind.CasaZen, document.Id, save: false, ct);
 
         document.Status = FiscalDocumentStatus.Issued;
@@ -1627,6 +1637,7 @@ public sealed partial class FiscalDocumentService(
     {
         var paid = await db.GuestHostExtraOrders.AsNoTracking()
             .Where(x => x.OrgId == orgId && x.BookingId == bookingId &&
+                (document.SupplementForExtraOrderId.HasValue ? x.Id == document.SupplementForExtraOrderId : x.SupplementToDocumentId == null) &&
                 (x.Status == GuestHostExtraStatus.Paid || x.Status == GuestHostExtraStatus.Fulfilled))
             .Select(x => new { x.Name, x.Amount }).ToListAsync(ct);
         var stored = document.Lines.Where(x => x.LineType == FiscalLineType.ExtraService)
