@@ -45,6 +45,18 @@ public sealed class GuestSupplierOrder
     [MaxLength(255)] public string? StripeCustomerId { get; set; }
     [MaxLength(255)] public string? StripeExpiredHoldIntentId { get; set; }
     [MaxLength(255)] public string? StripePaymentIntentId { get; set; }
+    [MaxLength(255)] public string? StripePayoutChargeId { get; set; }
+    public int? StripeCardFeeCents { get; set; }
+    public int StripeSupplierTransferCents { get; set; }
+    public int StripeHostTransferCents { get; set; }
+    [MaxLength(255)] public string? StripeSupplierTransferId { get; set; }
+    [MaxLength(255)] public string? StripeHostTransferId { get; set; }
+    [MaxLength(255)] public string? StripeSupplierDestination { get; set; }
+    [MaxLength(255)] public string? StripeHostDestination { get; set; }
+    public DateTime? StripePayoutClaimedAt { get; set; }
+    public DateTime? StripeReleasedAt { get; set; }
+    public DateTime? StripePayoutAttemptAfter { get; set; }
+    [MaxLength(255)] public string? StripePayoutFailureCode { get; set; }
     public GuestSupplierOrderState State { get; set; }
     public DateTime RequestedFor { get; set; }
     public DateTime CreatedAt { get; set; }

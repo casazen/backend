@@ -228,7 +228,7 @@ public sealed partial class GuestSupplierStripeSandboxTests
     public void IncompleteOrLiveConfigurationKeepsSandboxOff(bool enabled, string secret, string publishable, string? webhook)
         => Assert.False(GuestSupplierCheckout.Enabled(Config(secret, publishable, webhook, enabled)));
 
-    private static async Task<GuestSupplierOrder> SeedOrderAsync(AppDbContext db, DateTime now)
+    internal static async Task<GuestSupplierOrder> SeedOrderAsync(AppDbContext db, DateTime now)
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var host = HostScopeScenario.NewOrg("Sandbox", $"sandbox-{suffix}");

@@ -4909,15 +4909,57 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<int?>("StripeCardFeeCents")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("StripeCheckoutStartedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StripeHostDestination")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("StripeHostTransferCents")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StripeHostTransferId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<string>("StripePaymentIntentId")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<DateTime?>("StripePayoutAttemptAfter")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StripePayoutChargeId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("StripePayoutClaimedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StripePayoutFailureCode")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("StripeReleasedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("StripeSandbox")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("StripeSupplierDestination")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("StripeSupplierTransferCents")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StripeSupplierTransferId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<string>("SupplierName")
                         .IsRequired()
