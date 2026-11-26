@@ -11,6 +11,11 @@ public sealed class ActivePoseVerificationService(
     IOptions<BiometricModelOptions> options,
     ILogger<ActivePoseVerificationService> logger) : IActivePoseVerificationService
 {
+    // OpenCV Zoo's SFace reference publishes this cosine threshold for same-person comparisons.
+    // Bind it to the exact model and preprocessing; replacement models retain the caller's threshold.
+    private const string SFace2021DecSha256 = "0BA9FBFA01B5270C96627C4EF784DA859931E02F04419C829E83484087C34E79";
+    private const double SFacePoseSimilarity = 0.363;
+
     public async Task<bool> VerifyAsync(Stream neutral, Stream turned, bool noseToRight, double acceptThreshold,
         CancellationToken cancellationToken)
     {
@@ -40,7 +45,7 @@ public sealed class ActivePoseVerificationService(
             turnedVector = embedder.Embed(second, turnedFace, token);
             var similarity = EmbeddingMath.CosineSimilarity(neutralVector, turnedVector);
             token.ThrowIfCancellationRequested();
-            return double.IsFinite(similarity) && similarity >= acceptThreshold;
+            return double.IsFinite(similarity) && similarity >= PoseSimilarityThreshold(settings, acceptThreshold);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -57,6 +62,12 @@ public sealed class ActivePoseVerificationService(
             ImageBytes.Zero(turnedVector);
         }
     }
+
+    internal static double PoseSimilarityThreshold(BiometricModelOptions settings, double fallback) =>
+        string.Equals(settings.FaceRecognition.Sha256, SFace2021DecSha256, StringComparison.OrdinalIgnoreCase) &&
+        settings.RecognitionMean == 0 && settings.RecognitionStd == 1 && settings.RecognitionRgbOrder
+            ? SFacePoseSimilarity
+            : fallback;
 
     private static async Task<RasterImage> DecodeAsync(Stream stream, BiometricModelOptions settings, CancellationToken token)
     {
@@ -79,15 +90,14 @@ public sealed class ActivePoseVerificationService(
 
     internal static bool IsRequestedTurn(DetectedFace first, DetectedFace second, bool noseToRight)
     {
-        // Offset is measured in interocular distances along the eye line, independent of translation, scale and mild roll.
-        // Separate neutral/turned ranges and a minimum change avoid classifying small landmark jitter as a head turn.
-        var frontal = NoseOffset(first.Landmarks);
-        var turned = NoseOffset(second.Landmarks);
+        // The weak-perspective estimate is a guide to a deliberate turn, not a calibrated anatomical measurement.
+        var frontal = YawDegrees(first.Landmarks);
+        var turned = YawDegrees(second.Landmarks);
         var direction = noseToRight ? 1 : -1;
-        return Math.Abs(frontal) <= 0.15 && direction * turned >= 0.22 && direction * (turned - frontal) >= 0.20;
+        return Math.Abs(frontal) <= 15 && direction * turned >= 20 && direction * (turned - frontal) >= 15;
     }
 
-    private static double NoseOffset(float[] points)
+    private static double YawDegrees(float[] points)
     {
         if (points.Length != 10 || !points.All(float.IsFinite))
             return double.NaN;
@@ -104,6 +114,11 @@ public sealed class ActivePoseVerificationService(
         if (dx * noseY <= dy * noseX || dx * mouthY <= dy * mouthX)
             return double.NaN;
 
-        return (noseX * dx + noseY * dy) / eyeDistanceSquared;
+        // Under yaw, nose displacement projects with sin(yaw) and eye separation with cos(yaw).
+        // Nose depth / frontal eye-centre separation from MediaPipe's canonical_face_model.obj:
+        // nose landmark 1, eye centres from the midpoints of 33/133 and 263/362.
+        const double noseDepthOverEyeDistance = 0.636267;
+        var offset = (noseX * dx + noseY * dy) / eyeDistanceSquared;
+        return Math.Atan(offset / noseDepthOverEyeDistance) * (180 / Math.PI);
     }
 }

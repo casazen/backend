@@ -38,6 +38,17 @@ public sealed class ActivePoseVerificationServiceTests
     }
 
     [Fact]
+    public void CrossPoseThreshold_UsesOpenCvReferenceOnlyForThePinnedSFaceModelAndItsPreprocessing()
+    {
+        var options = new BiometricModelOptions();
+        Assert.Equal(.85, ActivePoseVerificationService.PoseSimilarityThreshold(options, .85));
+        options.FaceRecognition.Sha256 = "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79";
+        Assert.Equal(.363, ActivePoseVerificationService.PoseSimilarityThreshold(options, .85));
+        options.RecognitionMean = 127.5;
+        Assert.Equal(.85, ActivePoseVerificationService.PoseSimilarityThreshold(options, .85));
+    }
+
+    [Fact]
     public async Task Verify_RejectsTheSamePixelsBeforeInference()
     {
         var detector = new ScriptedFaceDetector();
