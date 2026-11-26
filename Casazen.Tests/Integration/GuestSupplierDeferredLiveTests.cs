@@ -16,6 +16,48 @@ public sealed partial class GuestSupplierStripeSandboxTests
     public Task LiveDeferredQuote_DeclinedOffSessionCharge_RetryOnSameIntent() =>
         VerifyLiveDeferredQuoteAsync("pm_card_chargeCustomerFail", declineFirst: true);
 
+    [StripeSandboxFact]
+    public async Task LiveDeferredQuote_3DSCardRequiresBankActionBeforeCardIsConsideredSaved()
+    {
+        var secret = Environment.GetEnvironmentVariable("STRIPE_TEST_SECRET_KEY")!;
+        var publishable = Environment.GetEnvironmentVariable("STRIPE_TEST_PUBLISHABLE_KEY")!;
+        var stripe = new StripeClient(secret);
+        var setups = new SetupIntentService(stripe);
+        await using var database = await PostgresTestDatabase.CreateMigratedAsync("guestdeferredchallenge");
+        await using var db = database.CreateContext();
+        var order = await SeedOrderAsync(db, DateTime.UtcNow);
+        order.StripeDeferred = true;
+        order.RequestedFor = order.CreatedAt.AddDays(12);
+        await db.SaveChangesAsync();
+        var checkout = new GuestSupplierCheckout(db, TimeProvider.System, Config(secret, publishable, "whsec_local_test"));
+        try
+        {
+            Assert.NotNull(await checkout.StartAsync(order, 110, default, GuestSupplierCheckout.ConsentVersion));
+            var challenged = await setups.ConfirmAsync(order.StripeSetupIntentId!, new SetupIntentConfirmOptions
+            {
+                PaymentMethod = "pm_card_threeDSecure2Required",
+                UseStripeSdk = true,
+                ReturnUrl = "https://example.test/sandbox-return"
+            });
+            Assert.False(challenged.Livemode);
+            Assert.Equal("requires_action", challenged.Status);
+            Assert.NotNull(challenged.NextAction);
+            Assert.True(await checkout.ReconcileAsync(order, default));
+            Assert.Equal(GuestSupplierOrderState.Quoted, order.State);
+            Assert.False(await checkout.SupplierActionAsync(order, "accept", default));
+            Assert.Null(order.StripePaymentIntentId);
+        }
+        finally
+        {
+            if (order.StripeSetupIntentId is { } id)
+            {
+                var setup = await setups.GetAsync(id);
+                if (!setup.Livemode && setup.Status is not ("succeeded" or "canceled")) await setups.CancelAsync(id);
+            }
+            if (order.StripeCustomerId is { } customerId) await new CustomerService(stripe).DeleteAsync(customerId);
+        }
+    }
+
     private static async Task VerifyLiveDeferredQuoteAsync(string testMethod, bool declineFirst)
     {
         var secret = Environment.GetEnvironmentVariable("STRIPE_TEST_SECRET_KEY")!;

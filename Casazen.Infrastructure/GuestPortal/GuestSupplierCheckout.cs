@@ -156,7 +156,10 @@ public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider 
             else if (action == "accept" && intent.Status == "requires_capture" && intent.AmountCapturable == intent.Amount)
                 intent = await ChangeAsync(order, capture: true, ct);
             if (!Matches(order, intent)) return false;
-            Apply(order, intent);
+            if (action == "accept" && intent.Status == "canceled" && order.RequestedFor > Now)
+                RecoverExpiredHold(order);
+            else
+                Apply(order, intent);
         }
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
@@ -178,7 +181,7 @@ public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider 
                 ? await Intents.CaptureAsync(order.StripePaymentIntentId!, null, Key(order, "capture"), ct)
                 : await Intents.CancelAsync(order.StripePaymentIntentId!, null, Key(order, "cancel"), ct);
         }
-        catch (StripeException ex) when (ex.StripeError?.Code == "payment_intent_unexpected_state")
+        catch (StripeException ex) when (ex.StripeError?.Code is "payment_intent_unexpected_state" or "charge_expired_for_capture")
         {
             return await Intents.GetAsync(order.StripePaymentIntentId!, cancellationToken: ct);
         }
