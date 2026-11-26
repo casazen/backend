@@ -7,7 +7,12 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Infrastructure.Ross1000;
 
-public sealed record Ross1000Result(string State, int Accepted = 0, int Rejected = 0);
+public sealed record Ross1000RecordOutcome(string Key, string State);
+public sealed record Ross1000Result(string State, int Accepted = 0, int Rejected = 0)
+{
+    // Only keys matched against this payload leave the parser. Remote text may include personal data.
+    public IReadOnlyList<Ross1000RecordOutcome> Records { get; init; } = [];
+}
 public sealed class Ross1000Client(HttpClient http)
 {
     public static readonly Uri Lombardia = new("https://www.flussituristici.servizirl.it/Turismo5/app/ws/checkinV2");
@@ -43,7 +48,7 @@ public sealed class Ross1000Client(HttpClient http)
 
     public static Ross1000Result Interpret(XDocument response, Ross1000Movement movement)
     {
-        var result = response.Root?.Element(Soap + "Body")?.Element(Service + "inviaMovimentazioneListResponse")?.Element("return");
+        var result = response.Root?.Name == Soap + "Envelope" ? response.Root.Element(Soap + "Body")?.Element(Service + "inviaMovimentazioneListResponse")?.Element("return") : null;
         if (result is null) return new("unknown");
         var structures = result.Elements("struttura").ToArray();
         if (structures.Length != 1 || (string?)structures[0].Attribute("codice") != movement.Xml.Element("codice")?.Value)
@@ -53,18 +58,27 @@ public sealed class Ross1000Client(HttpClient http)
             !string.IsNullOrWhiteSpace((string?)result.Element("errore")) || !string.IsNullOrWhiteSpace((string?)structures[0].Element("errore")))
             return new("unknown");
 
+        var day = days[0];
+        // Italy's current XSD defines day errors at the parent levels only. Treat explicit error extensions and unknown
+        // children as unconfirmed as well, especially for a day with no guest records to corroborate acceptance.
+        if (day.Elements().Any(e => e.Name != "arrivi" && e.Name != "partenze" && e.Name != "prenotazioni" && e.Name != "retifiche"))
+            return new("unknown");
         var expected = movement.RecordKeys.ToHashSet(StringComparer.Ordinal);
+        var outcomes = new List<Ross1000RecordOutcome>();
         var accepted = 0;
         var rejected = 0;
         foreach (var record in days[0].Elements().SelectMany(group => group.Elements()))
         {
             var key = record.Name.LocalName + "/" + record.Element("idswh")?.Value;
+            if ((record.Name == "arrivo" && record.Parent?.Name != "arrivi") ||
+                (record.Name == "partenza" && record.Parent?.Name != "partenze")) return new("unknown");
             var success = record.Element("successo")?.Value;
             if (!expected.Remove(key) || success is not ("true" or "false" or "1" or "0")) return new("unknown");
-            if (success is "true" or "1" && string.IsNullOrWhiteSpace((string?)record.Element("errore"))) accepted++;
-            else rejected++;
+            var ok = success is "true" or "1" && string.IsNullOrWhiteSpace((string?)record.Element("errore"));
+            outcomes.Add(new(key, ok ? "accepted" : "rejected"));
+            if (ok) accepted++; else rejected++;
         }
-        if (expected.Count > 0) return new("unknown", accepted, rejected);
-        return new(rejected == 0 ? "accepted" : accepted > 0 ? "partial" : "rejected", accepted, rejected);
+        if (expected.Count > 0) return new("unknown", accepted, rejected) { Records = outcomes };
+        return new(rejected == 0 ? "accepted" : accepted > 0 ? "partial" : "rejected", accepted, rejected) { Records = outcomes };
     }
 }

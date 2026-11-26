@@ -70,15 +70,31 @@ public sealed class Ross1000DirectTests
     {
         var m = Ross1000MovementBuilder.Build("test", Day, Day, Open, [Family()]);
         var valid = Response(m);
-        Assert.Equal(new Ross1000Result("accepted", 2, 0), Ross1000Client.Interpret(valid, m));
+        Assert.All(Ross1000Client.Interpret(valid, m).Records, r => Assert.Equal("accepted", r.State));
         valid.Descendants("successo").First().Value = "false";
-        Assert.Equal(new Ross1000Result("partial", 1, 1), Ross1000Client.Interpret(valid, m));
+        var partial = Ross1000Client.Interpret(valid, m);
+        Assert.Equal(("partial", 1, 1), (partial.State, partial.Accepted, partial.Rejected));
+        Assert.Equal("rejected", partial.Records.First().State);
+        Assert.Equal("accepted", partial.Records.Last().State);
         valid.Descendants("arrivo").First().Remove();
         Assert.Equal("unknown", Ross1000Client.Interpret(valid, m).State);
         var wrong = Response(m);
         wrong.Descendants("giorno").Single().SetAttributeValue("data", "20261124");
         Assert.Equal("unknown", Ross1000Client.Interpret(wrong, m).State);
         Assert.Equal("rejected", Ross1000Client.Interpret(Response(m, false), m).State);
+    }
+
+    [Fact]
+    public void EmptyDayNeedsANamedDayWithoutAnError()
+    {
+        var m = Ross1000MovementBuilder.Build("test", Day, Day, new(false, 0, 0, 0), []);
+        var xml = Response(m);
+        Assert.Equal("accepted", Ross1000Client.Interpret(xml, m).State);
+        var day = xml.Descendants("giorno").Single();
+        day.Add(new XElement("errore", "data bloccata"));
+        Assert.Equal("unknown", Ross1000Client.Interpret(xml, m).State);
+        day.Remove();
+        Assert.Equal("unknown", Ross1000Client.Interpret(xml, m).State);
     }
 
     [Fact]
