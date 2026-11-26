@@ -131,6 +131,13 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
             includeInternal ? order.SupplierReply : null, order.Decision, order.StripeSandbox, order.RefundStatus == "retrying" ? "processing" : order.RefundStatus, order.RefundRequestedCents,
             includeInternal ? order.BankDisputeStatus : null, order.StripeDeferred)
         {
+            // The service seller documents the full guest price. The commercial commission is already in that
+            // price and is payable by the supplier to the holder of the snapshotted distribution relationship.
+            DocumentPlan = includeInternal && total > 0
+                ? new(order.SupplierOrgId, total, order.RefundCents,
+                    order.CommissionCents == 0 ? null : new(order.HostOrigin ? "host" : "platform",
+                        order.HostOrigin ? order.HostOrgId : null, order.SupplierOrgId, order.CommissionCents, commissionRefund))
+                : null,
             Payout = includeInternal && order.StripeSandbox && (order.StripePayoutClaimedAt != null || order.StripePayoutFailureCode != null)
                 ? new(order.StripeCardFeeCents, order.StripeSupplierTransferCents, order.StripeHostTransferCents,
                     order.StripeSupplierTransferId != null, order.StripeHostTransferId != null, order.StripeReleasedAt, order.StripePayoutFailureCode)
@@ -146,8 +153,13 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         bool HostOrigin, int TotalCents, int RefundCents, int CommissionRefundCents, string? RequestNote,
         string? Complaint, string? SupplierReply, string? Decision, bool StripeSandbox, string? RefundStatus, int RefundRequestedCents, string? BankDisputeStatus, bool StripeDeferred = false)
     {
+        public ServiceDocumentPlan? DocumentPlan { get; init; }
         public GuestSupplierPayoutView? Payout { get; init; }
     }
+
+    /// <summary>Commercial amounts, inclusive of any applicable VAT. A planning view does not issue a document.</summary>
+    public sealed record ServiceDocumentPlan(Guid SellerOrgId, int GuestGrossCents, int GuestRefundCents, CommissionDocumentPlan? Commission);
+    public sealed record CommissionDocumentPlan(string IssuerRole, Guid? IssuerOrgId, Guid DebtorOrgId, int GrossCents, int RefundedCents);
 
     public sealed record GuestSupplierPayoutView(int? CardFeeCents, int SupplierTransferCents, int HostTransferCents,
         bool SupplierTransferred, bool HostTransferred, DateTime? ReleasedAt, string? HoldCode);

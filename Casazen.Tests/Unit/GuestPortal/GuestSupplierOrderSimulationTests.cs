@@ -16,6 +16,41 @@ namespace Casazen.Tests.Unit.GuestPortal;
 
 public class GuestSupplierOrderSimulationTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void DocumentPlanSeparatesFullGuestPriceFromSupplierCommission(bool hostOrigin)
+    {
+        using var world = new GuestPortalTestWorld();
+        var service = new GuestSupplierOrders(world.Db, TimeProvider.System);
+        var order = new GuestSupplierOrder
+        {
+            SupplierOrgId = Guid.NewGuid(),
+            HostOrgId = Guid.NewGuid(),
+            SupplierName = "Transfer",
+            ServiceName = "Airport transfer",
+            State = GuestSupplierOrderState.Resolved,
+            HostOrigin = hostOrigin,
+            SupplierPriceCents = 10000,
+            CommissionCents = 1000,
+            RefundCents = 5500,
+            BankLossCents = 2500,
+            StripeCardFeeCents = 90
+        };
+
+        var plan = Assert.IsType<GuestSupplierOrders.ServiceDocumentPlan>(service.View(order, true).DocumentPlan);
+        Assert.Equal(order.SupplierOrgId, plan.SellerOrgId);
+        Assert.Equal(11000, plan.GuestGrossCents);
+        Assert.Equal(5500, plan.GuestRefundCents);
+        Assert.Equal(new GuestSupplierOrders.CommissionDocumentPlan(hostOrigin ? "host" : "platform",
+            hostOrigin ? order.HostOrgId : null, order.SupplierOrgId, 1000, 500), plan.Commission);
+        Assert.Null(service.View(order).DocumentPlan);
+        order.CommissionCents = 0;
+        Assert.Null(service.View(order, true).DocumentPlan!.Commission);
+        order.SupplierPriceCents = 0;
+        Assert.Null(service.View(order, true).DocumentPlan);
+    }
+
     [Fact]
     public void CatalogLookupByOfferIdTranslatesOnPostgres()
     {
