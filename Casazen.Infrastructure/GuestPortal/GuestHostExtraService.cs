@@ -128,7 +128,7 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
     public async Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction?> LockCheckoutAsync(
         IReadOnlyList<DirectCheckoutExtra> selections, CancellationToken ct)
     {
-        if (!CheckoutUsesTestKeys() || selections.Count > 50 || selections.Any(s => s.Id == Guid.Empty || s.Quantity is < 1 or > 100) ||
+        if (!CheckoutUsesTestKeys() || selections.Count > 50 || selections.Any(s => s is null || s.Id == Guid.Empty || s.Quantity is < 1 or > 100) ||
             selections.Select(s => s.Id).Distinct().Count() != selections.Count)
             throw Unavailable();
         return await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct, selections.Select(s => s.Id).Order()
@@ -187,7 +187,8 @@ public sealed class GuestHostExtraService(AppDbContext db, IStripeService stripe
     {
         var rows = await db.GuestHostExtraOrders.Where(x => x.OrgId == booking.OrgId && x.BookingId == booking.Id &&
             x.Status == GuestHostExtraStatus.PendingBookingPayment).ToListAsync(ct);
-        foreach (var row in rows) row.Status = GuestHostExtraStatus.Paid;
+        foreach (var row in rows)
+            await GuestExtraFiscalPayment.SavePaidAsync(db, row, ct);
     }
 
     public async Task<GuestHostExtraOrderView> OrderAsync(PortalContext portal, Guid extraId, int quantity, Guid requestId,
