@@ -33,7 +33,7 @@ public class CampaignServiceTests
     private const string Api = "https://api.casazen.test";
 
     /// <summary>The signed unsubscribe links as a configured environment builds them; no secret: not configured.</summary>
-    private static MarketingUnsubscribeLinks Links(string? secret = LinkSecret) =>
+    internal static MarketingUnsubscribeLinks Links(string? secret = LinkSecret) =>
         new(
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -54,9 +54,9 @@ public class CampaignServiceTests
         var (options, orgId, campaignId) = await SeedApprovedCampaignAsync("Guest.Person+promo@Example.com");
         var sent = new List<(string To, string Html, IReadOnlyDictionary<string, string> Headers)>();
         var email = new Mock<IEmailService>();
-        email.Setup(e => e.SendEmailWithHeadersAsync(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, string>>()))
-            .Callback<string, string, string, IReadOnlyDictionary<string, string>>((to, _, html, headers) => sent.Add((to, html, headers)))
+        email.Setup(e => e.SendCampaignEmailAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<string>(), It.IsAny<Guid>()))
+            .Callback<string, string, string, IReadOnlyDictionary<string, string>, string, Guid>((to, _, html, headers, _, _) => sent.Add((to, html, headers)))
             .ReturnsAsync(EmailSendResult.Sent());
         var links = Links();
 
@@ -83,10 +83,10 @@ public class CampaignServiceTests
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(oneClick.Trim('<', '>')).Query);
         var (expiresAt, signature) = (query["expiresAt"].ToString(), query["signature"].ToString());
         Assert.Equal(emailHash, query["emailHash"].ToString());
-        Assert.Equal(MarketingUnsubscribeCheck.Valid, links.Verify(emailHash, expiresAt, signature));
+        Assert.Equal(MarketingUnsubscribeCheck.Valid, links.Verify(orgId, emailHash, expiresAt, signature));
         Assert.Equal(
             MarketingUnsubscribeCheck.InvalidSignature,
-            links.Verify(CrmTestIndex.Create().Hash("someone.else@example.com"), expiresAt, signature));
+            links.Verify(orgId, CrmTestIndex.Create().Hash("someone.else@example.com"), expiresAt, signature));
 
         await using var verify = new AppDbContext(options);
         var campaign = await verify.Campaigns.SingleAsync(c => c.Id == campaignId);
@@ -163,7 +163,7 @@ public class CampaignServiceTests
         Assert.DoesNotContain("example.com", log.AllOutput, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static CampaignService NewService(AppDbContext context, IEmailService email, MarketingUnsubscribeLinks links) =>
+    internal static CampaignService NewService(AppDbContext context, IEmailService email, MarketingUnsubscribeLinks links) =>
         new(
             context,
             new ConditionEvaluator(Mock.Of<ILogger<ConditionEvaluator>>()),
@@ -179,6 +179,19 @@ public class CampaignServiceTests
     private static IFeatureFlags ModuleOn() => new TestFeatureFlags(FeatureFlags.CrmMarketing);
 
     /// <summary>One guest with marketing consent, a segment that takes everybody and an approved campaign to it.</summary>
+    internal static void AddContact(AppDbContext db, Guid orgId, string email, bool confirmed = true)
+    {
+        var profile = new GuestCrmProfile { OrgId = orgId, CompositeKeyHash = Guid.NewGuid().ToString("N") };
+        db.GuestCrmProfiles.Add(profile);
+        db.GuestContacts.Add(new GuestContact
+        {
+            OrgId = orgId, GuestCrmProfileId = profile.Id, Channel = GuestContactChannel.Email,
+            Value = email, ValueHash = CrmTestIndex.Create().Hash(ShowcaseBookingRules.NormalizeEmail(email)),
+            LegalBasis = GuestContactLegalBasis.Consent,
+            Confirmation = confirmed ? GuestContactConfirmation.Confirmed : GuestContactConfirmation.Unconfirmed,
+        });
+    }
+
     private static async Task<(DbContextOptions<AppDbContext> Options, Guid OrgId, Guid CampaignId)> SeedApprovedCampaignAsync(string guestEmail)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -189,6 +202,8 @@ public class CampaignServiceTests
         var campaignId = Guid.NewGuid();
 
         await using var context = new AppDbContext(options);
+        context.Orgs.Add(new OrgEntity { Id = orgId });
+        AddContact(context, orgId, guestEmail);
         context.Guests.Add(new Guest
         {
             Id = Guid.NewGuid(),
@@ -275,6 +290,8 @@ public class CampaignServiceTests
 
         await using (var context = new AppDbContext(options))
         {
+            AddContact(context, orgId, guestWithConsent.Email);
+            AddContact(context, orgId, guestWithoutConsent.Email, false);
             context.Guests.AddRange(guestWithConsent, guestWithoutConsent);
             context.GuestSegments.Add(segment);
             await context.SaveChangesAsync();
@@ -366,6 +383,8 @@ public class CampaignServiceTests
 
         await using (var context = new AppDbContext(options))
         {
+            AddContact(context, orgId, guestSuppressed.Email);
+            AddContact(context, orgId, guestNotSuppressed.Email);
             context.Guests.AddRange(guestSuppressed, guestNotSuppressed);
             context.GuestSegments.Add(segment);
             await context.SaveChangesAsync();

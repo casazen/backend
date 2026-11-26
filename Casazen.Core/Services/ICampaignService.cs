@@ -17,6 +17,7 @@ public interface ICampaignService
     /// <param name="segmentId">Segment ID for recipient selection.</param>
     /// <param name="subject">Email subject line.</param>
     /// <param name="body">Email body (HTML).</param>
+    /// <param name="propertyId">Optional property whose audience receives the campaign.</param>
     /// <param name="isAiGenerated">True if content was AI-generated.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Created campaign.</returns>
@@ -26,7 +27,7 @@ public interface ICampaignService
         string subject,
         string body,
         bool isAiGenerated,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default, Guid? propertyId = null);
 
     /// <summary>
     /// Submits a draft campaign for approval (AC-NF24-5).

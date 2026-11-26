@@ -22,20 +22,32 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/campaigns")]
 [FeatureGate(FeatureFlags.CrmMarketing)]
-[Authorize(Policy = CasazenPolicies.GuestRead)]
+[Authorize(Policy = CasazenPolicies.Marketing)]
 public class CampaignsController(
     ICampaignService campaignService,
     AppDbContext db,
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
+    private async Task<IQueryable<Campaign>> AccessibleAsync(Guid orgId)
+    {
+        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId, HttpContext.RequestAborted);
+        var campaigns = db.Campaigns.Where(c => c.OrgId == orgId);
+        if (scope == null) return campaigns.Where(c => false);
+        if (scope.IsOrgWide) return campaigns;
+        var properties = db.Properties.Where(p => p.OrgId == orgId).InScope(scope);
+        return campaigns.Where(c => c.PropertyId.HasValue && properties.Any(p => p.Id == c.PropertyId));
+    }
+
+    [HttpGet("fields")]
+    public IActionResult Fields() => Ok(MarketingSegmentRules.Fields.Select(f => new { f.FieldId, fieldType = f.Type.ToString(), f.DisplayNameKey, f.Operators }));
+
     #region Segments
 
     /// <summary>
     /// Creates a guest segment (AC-NF24-1).
     /// </summary>
     [HttpPost("segments")]
-    [Authorize(Policy = CasazenPolicies.GuestWrite)]
     [ProducesResponseType(typeof(GuestSegmentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<GuestSegmentDto>> CreateSegment([FromBody] CreateSegmentRequest request)
@@ -43,6 +55,12 @@ public class CampaignsController(
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
         if (orgId is null)
             return Unauthorized();
+
+        var evaluator = HttpContext.RequestServices.GetRequiredService<IConditionEvaluator>();
+        var errors = evaluator.ValidateCondition(request.Condition);
+        if (errors.Count > 0 || request.Condition.Groups.SelectMany(g => g.Rules).Any(r =>
+            !MarketingSegmentRules.Fields.Any(f => f.FieldId == r.FieldId && f.Operators.Contains(r.Operator))))
+            return BadRequest(new { error = "invalid_segment_rules", errors });
 
         // Serialize condition to JSON (ADR-014-R1)
         var conditionJson = JsonSerializer.Serialize(request.Condition);
@@ -123,7 +141,6 @@ public class CampaignsController(
     /// Creates a draft campaign (AC-NF24-4).
     /// </summary>
     [HttpPost]
-    [Authorize(Policy = CasazenPolicies.GuestWrite)]
     [ProducesResponseType(typeof(CampaignDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<CampaignDto>> CreateCampaign([FromBody] CreateCampaignRequest request)
@@ -132,13 +149,17 @@ public class CampaignsController(
         if (orgId is null)
             return Unauthorized();
 
+        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted);
+        if (scope == null || (!scope.IsOrgWide && request.PropertyId == null)) return Forbid();
+        if (request.PropertyId.HasValue && !await db.Properties.Where(p => p.OrgId == orgId.Value).InScope(scope)
+            .AnyAsync(p => p.Id == request.PropertyId, HttpContext.RequestAborted)) return NotFound();
         var campaign = await campaignService.CreateDraftAsync(
             orgId.Value,
             request.SegmentId,
             request.Subject,
             request.Body,
             request.IsAiGenerated,
-            HttpContext.RequestAborted);
+            HttpContext.RequestAborted, request.PropertyId);
 
         return Ok(MapToCampaignDto(campaign));
     }
@@ -154,7 +175,7 @@ public class CampaignsController(
         if (orgId is null)
             return Unauthorized();
 
-        var campaigns = await db.Campaigns
+        var campaigns = await (await AccessibleAsync(orgId.Value))
             .Include(c => c.Segment)
             .Where(c => c.OrgId == orgId.Value)
             .OrderByDescending(c => c.CreatedAt)
@@ -177,7 +198,7 @@ public class CampaignsController(
         if (orgId is null)
             return Unauthorized();
 
-        var campaign = await db.Campaigns
+        var campaign = await (await AccessibleAsync(orgId.Value))
             .Include(c => c.Segment)
             .Where(c => c.Id == id && c.OrgId == orgId.Value)
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
@@ -192,7 +213,6 @@ public class CampaignsController(
     /// Submits a campaign for approval (AC-NF24-5).
     /// </summary>
     [HttpPost("{id}/submit")]
-    [Authorize(Policy = CasazenPolicies.GuestWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -202,6 +222,7 @@ public class CampaignsController(
         if (orgId is null)
             return Unauthorized();
 
+        if (!await (await AccessibleAsync(orgId.Value)).AnyAsync(c => c.Id == id, HttpContext.RequestAborted)) return NotFound();
         await campaignService.SubmitForApprovalAsync(id, orgId.Value, HttpContext.RequestAborted);
 
         return NoContent();
@@ -211,7 +232,6 @@ public class CampaignsController(
     /// Schedules an approved campaign (AC-NF24-6).
     /// </summary>
     [HttpPost("{id}/schedule")]
-    [Authorize(Policy = CasazenPolicies.GuestWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -221,6 +241,7 @@ public class CampaignsController(
         if (orgId is null)
             return Unauthorized();
 
+        if (!await (await AccessibleAsync(orgId.Value)).AnyAsync(c => c.Id == id, HttpContext.RequestAborted)) return NotFound();
         await campaignService.ScheduleAsync(id, request.ScheduledAt, orgId.Value, HttpContext.RequestAborted);
 
         return NoContent();
@@ -228,11 +249,28 @@ public class CampaignsController(
 
     #endregion
 
+    [HttpGet("{id:guid}/report")]
+    public async Task<IActionResult> Report(Guid id)
+    {
+        var ct = HttpContext.RequestAborted;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
+        if (!orgId.HasValue) return Unauthorized();
+        var campaign = await (await AccessibleAsync(orgId.Value)).SingleOrDefaultAsync(c => c.Id == id, ct);
+        if (campaign == null) return NotFound();
+        var metrics = await db.CampaignDeliveries.Where(d => d.OrgId == orgId.Value && d.CampaignId == id)
+            .GroupBy(d => d.CampaignId).Select(g => new { Opened = g.Count(d => d.Opened), Clicked = g.Count(d => d.Clicked),
+                Bounced = g.Count(d => d.Bounced), Unsubscribed = g.Count(d => d.UnsubscribedAt != null) }).SingleOrDefaultAsync(ct);
+        return Ok(new { campaign.Id, campaign.Status, campaign.SentCount, campaign.ErrorCount, openedCount = metrics?.Opened ?? 0,
+            clickedCount = metrics?.Clicked ?? 0, bouncedCount = metrics?.Bounced ?? 0,
+            unsubscribeCount = metrics?.Unsubscribed ?? campaign.UnsubscribeCount });
+    }
+
     private static CampaignDto MapToCampaignDto(Campaign campaign)
     {
         return new CampaignDto
         {
             Id = campaign.Id,
+            PropertyId = campaign.PropertyId,
             SegmentId = campaign.SegmentId,
             SegmentName = campaign.Segment?.Name,
             Subject = campaign.Subject,
@@ -272,6 +310,7 @@ public record SegmentPreviewDto
 
 public record CreateCampaignRequest
 {
+    public Guid? PropertyId { get; init; }
     public Guid SegmentId { get; init; }
     public required string Subject { get; init; }
     public required string Body { get; init; }
@@ -280,6 +319,7 @@ public record CreateCampaignRequest
 
 public record CampaignDto
 {
+    public Guid? PropertyId { get; init; }
     public Guid Id { get; init; }
     public Guid SegmentId { get; init; }
     public string? SegmentName { get; init; }

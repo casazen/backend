@@ -200,7 +200,7 @@ public class PublicMarketingController(
             return this.ApiProblem(StatusCodes.Status400BadRequest, "org_id_missing", "OrgIdMissing");
 
         // Expiry and HMAC signature (ADR-007-R18)
-        switch (unsubscribeLinks.Verify(emailHash, expiresAt, signature))
+        switch (unsubscribeLinks.Verify(orgId, emailHash, expiresAt, signature))
         {
             case MarketingUnsubscribeCheck.Valid:
                 break;
@@ -221,6 +221,18 @@ public class PublicMarketingController(
         // It logs the org and the source only.
         await suppressionService.AddByHashAsync(orgId, emailHash, "unsubscribe", HttpContext.RequestAborted);
 
+        if (expiresAt.StartsWith("v2-", StringComparison.Ordinal) && Guid.TryParseExact(expiresAt[3..], "N", out var deliveryId))
+        {
+            var delivery = await db.CampaignDeliveries.SingleOrDefaultAsync(d => d.Id == deliveryId && d.OrgId == orgId, HttpContext.RequestAborted);
+            if (delivery != null && delivery.UnsubscribedAt == null)
+            {
+                delivery.UnsubscribedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync(HttpContext.RequestAborted);
+                await db.Campaigns.Where(c => c.Id == delivery.CampaignId && c.OrgId == orgId).ExecuteUpdateAsync(
+                    update => update.SetProperty(c => c.UnsubscribeCount, c => db.CampaignDeliveries.Count(d => d.CampaignId == c.Id && d.UnsubscribedAt != null)),
+                    HttpContext.RequestAborted);
+            }
+        }
         return Ok(new { unsubscribed = true });
     }
 }

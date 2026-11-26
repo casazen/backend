@@ -390,6 +390,11 @@ public class AppDbContext(
 
     // Marketing campaigns and segments (NF-24, ADR-014)
     public DbSet<GuestSegment> GuestSegments { get; set; } = null!;
+    public DbSet<MarketingStudioSettings> MarketingStudioSettings => Set<MarketingStudioSettings>();
+    public DbSet<MarketingAiUsage> MarketingAiUsage => Set<MarketingAiUsage>();
+    public DbSet<MarketingAsset> MarketingAssets => Set<MarketingAsset>();
+    public DbSet<MarketingEventSearch> MarketingEventSearches => Set<MarketingEventSearch>();
+    public DbSet<CampaignDelivery> CampaignDeliveries => Set<CampaignDelivery>();
     public DbSet<Campaign> Campaigns { get; set; } = null!;
 
     // Automation routines and execution log (NF-26, ADR-022)
@@ -2002,6 +2007,7 @@ public class AppDbContext(
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.VerificationDecision },
             // E50/F01/US01/T01: the owner always sets up its guest portal («Portale ospiti», AddGuestPortalLinks); the property manager's role follows the catalog.
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.GuestPortalManage },
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.Marketing },
             new RolePermission { RoleId = 2, PermissionKey = "property.read" },
             new RolePermission { RoleId = 2, PermissionKey = "property.write" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.read" },
@@ -2484,6 +2490,7 @@ public class AppDbContext(
         modelBuilder.Entity<GuestHostExtra>().HasIndex(x => x.OrgId);
         modelBuilder.Entity<TrustedSupplier>()
             .HasQueryFilter(TrustedSupplierActiveFilter, supplier => supplier.RemovedAt == null);
+        modelBuilder.Entity<GuestCrmProfile>().Property(p => p.MarketingCategoryOverridesJson).HasDefaultValue("{}");
         ApplyTenantQueryFilters(modelBuilder);
     }
 

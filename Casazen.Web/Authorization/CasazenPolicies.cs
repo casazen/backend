@@ -99,6 +99,7 @@ public static class CasazenPolicies
     public const string PaymentRead = ShortRent + "payment.read";
     public const string PaymentWrite = ShortRent + "payment.write";
     public const string GuestRead = ShortRent + "guest.read";
+    public const string Marketing = ShortRent + HostPermissions.Marketing;
     public const string GuestWrite = ShortRent + "guest.write";
     public const string OtaRead = ShortRent + "ota.read";
     public const string OtaWrite = ShortRent + "ota.write";
@@ -238,7 +239,7 @@ public static class CasazenPolicies
         SharedPropertyRead, SharedPropertyWrite,
         BookingRead, BookingWrite,
         PaymentRead, PaymentWrite,
-        GuestRead, GuestWrite,
+        GuestRead, GuestWrite, Marketing,
         OtaRead, OtaWrite,
         ServiceRequestWrite, GuestManage, AlloggiatiSubmit,
         VerificationDecision,

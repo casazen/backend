@@ -30,6 +30,7 @@ public static class ContextAccessBootstrap
                 HostPermissions.VerificationDecision,
                 // E50/F01/US01/T01: the owner always sets up its guest portal («Portale ospiti»), as the seeded role 1 does.
                 HostPermissions.GuestPortalManage,
+                HostPermissions.Marketing,
             ]),
         new(
             JwtRole: "LongTermLandlord",

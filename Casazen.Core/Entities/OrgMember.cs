@@ -34,6 +34,8 @@ public class OrgMember : ITenantOwned
 
     public OrgRole Role { get; set; }
 
+    public bool MarketingGranted { get; set; }
+
     public OrgMemberStatus Status { get; set; } = OrgMemberStatus.Active;
 
     /// <summary>

@@ -38,7 +38,8 @@ public class ApprovalDecidePolicyTests
             .ToList();
         Assert.Equal(Actions.Order(StringComparer.Ordinal), methods.Select(m => m.Name).Order(StringComparer.Ordinal));
         var classPolicies = typeof(ApprovalQueueController).GetCustomAttributes(inherit: true).OfType<IAuthorizeData>().Select(a => a.Policy).ToList();
-        Assert.Equal([CasazenPolicies.ApprovalDecide], classPolicies);
+        Assert.Single(classPolicies);
+        Assert.Null(classPolicies[0]); // The controller selects the required permission by item type.
         foreach (var method in methods)
         {
             var attributes = method.GetCustomAttributes(inherit: true);

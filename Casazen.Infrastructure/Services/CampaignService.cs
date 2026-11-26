@@ -10,6 +10,7 @@ using Casazen.Infrastructure.Email;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using System.Net;
 using System.Text.Json;
 
@@ -26,7 +27,8 @@ public class CampaignService(
     IFeatureFlags featureFlags,
     TimeProvider timeProvider,
     ILogger<CampaignService> logger,
-    IApprovalQueueService? approvalQueue = null) : ICampaignService
+    IApprovalQueueService? approvalQueue = null,
+    IConfiguration? configuration = null) : ICampaignService
 {
     public async Task<Campaign> CreateDraftAsync(
         Guid orgId,
@@ -34,7 +36,7 @@ public class CampaignService(
         string subject,
         string body,
         bool isAiGenerated,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, Guid? propertyId = null)
     {
         ArgumentNullException.ThrowIfNull(subject);
         ArgumentNullException.ThrowIfNull(body);
@@ -51,6 +53,7 @@ public class CampaignService(
         {
             OrgId = orgId,
             SegmentId = segmentId,
+            PropertyId = propertyId,
             Subject = subject,
             Body = body,
             IsAiGenerated = isAiGenerated,
@@ -92,6 +95,7 @@ public class CampaignService(
             campaignId,
             ApprovalQueueRules.CampaignTextOf(campaign.Subject, campaign.Body),
             campaign.IsAiGenerated,
+            propertyId: campaign.PropertyId,
             originAction: ApprovalOriginActions.ApproveCampaign,
             cancellationToken: cancellationToken);
 
@@ -109,6 +113,7 @@ public class CampaignService(
         if (campaign is null)
             throw new DomainRuleException("campaign_not_found", $"Campaign {campaignId} not found");
 
+        if (campaign.Status == CampaignStatus.Scheduled && campaign.ScheduledAt == scheduledAt) return;
         if (campaign.Status != CampaignStatus.Approved)
             throw new DomainRuleException("campaign_not_approved", "Only approved campaigns can be scheduled");
 
@@ -121,9 +126,17 @@ public class CampaignService(
         await db.SaveChangesAsync(cancellationToken);
 
         // Schedule Hangfire job for the specified time (AC-NF24-6)
-        backgroundJobClient.Schedule<Jobs.CampaignSendJob>(
-            job => job.SendCampaignAsync(campaignId, CancellationToken.None),
-            scheduledAt);
+        try
+        {
+            backgroundJobClient.Schedule<Jobs.CampaignSendJob>(job => job.SendCampaignAsync(campaignId, CancellationToken.None), scheduledAt);
+        }
+        catch
+        {
+            campaign.Status = CampaignStatus.Approved;
+            campaign.ScheduledAt = null;
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw;
+        }
 
         logger.LogInformation(
             "Campaign scheduled: campaignId={CampaignId}, scheduledAt={ScheduledAt}",
@@ -225,44 +238,95 @@ public class CampaignService(
         HostScope scope,
         CancellationToken cancellationToken = default)
     {
-        var segment = await db.GuestSegments
-            .Where(s => s.Id == segmentId && s.OrgId == orgId)
-            .FirstOrDefaultAsync(cancellationToken);
+        var recipients = await ResolveAudienceAsync(segmentId, orgId, scope, null, cancellationToken);
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var month = now.Year * 100 + now.Month;
+        var limit = await db.Set<MarketingStudioSettings>().Where(s => s.OrgId == orgId)
+            .Select(s => (int?)s.MonthlyEmailLimit).SingleOrDefaultAsync(cancellationToken) ?? 2;
+        if (limit <= 0) return [];
+        var capped = (await db.CampaignDeliveries.AsNoTracking().Where(d => d.OrgId == orgId && d.Month == month)
+            .GroupBy(d => d.ProfileId).Where(g => g.Count() >= Math.Min(limit, 2)).Select(g => g.Key)
+            .ToListAsync(cancellationToken)).ToHashSet();
+        return recipients.Where(r => !capped.Contains(r.GuestCrmProfileId!.Value)).Select(r => r.Value).ToList();
+    }
 
-        if (segment is null)
-            throw new DomainRuleException("segment_not_found", $"Segment {segmentId} not found");
-
-        // Deserialize condition from JSON (ADR-014-R1)
-        var condition = JsonSerializer.Deserialize<Condition>(segment.ConditionJson);
-        if (condition is null)
-            throw new DomainRuleException("invalid_condition_json", "Segment condition JSON is invalid");
-
-        // Get all guests in the org with marketing consent (AC-NF24-2)
-        var eligibleGuests = await db.Guests
-            .Where(g => g.OrgId == orgId && g.MarketingConsent && !g.IsDeleted)
-            .ToListAsync(cancellationToken);
-
-        // Filter by segment condition (server-side evaluation, ADR-014-R3)
-        var recipients = new List<string>();
-        foreach (var guest in eligibleGuests)
+    private async Task<List<GuestContact>> ResolveAudienceAsync(Guid segmentId, Guid orgId, HostScope scope,
+        Guid? propertyId, CancellationToken ct)
+    {
+        if (scope.OrgId != orgId)
+            throw new DomainRuleException("invalid_scope", "Audience scope must belong to the campaign organization.");
+        var segment = await db.GuestSegments.AsNoTracking().SingleOrDefaultAsync(s => s.Id == segmentId && s.OrgId == orgId, ct)
+            ?? throw new DomainRuleException("segment_not_found", "Segment not found");
+        var condition = JsonSerializer.Deserialize<Condition>(segment.ConditionJson) ??
+            throw new DomainRuleException("invalid_condition_json", "Invalid segment condition");
+        HashSet<Guid>? properties = null;
+        if (propertyId.HasValue || !scope.IsOrgWide)
         {
-            var matches = await conditionEvaluator.EvaluateAsync(condition, guest, scope, cancellationToken);
-            if (matches)
-            {
-                // Check suppression list (AC-NF24-11)
-                var suppressed = await suppressionService.IsSuppressedAsync(orgId, guest.Email, cancellationToken);
-                if (!suppressed)
-                {
-                    recipients.Add(guest.Email);
-                }
-            }
+            properties = (await db.Properties.Where(p => p.OrgId == orgId).InScope(scope)
+                .Where(p => !propertyId.HasValue || p.Id == propertyId).Select(p => p.Id).ToListAsync(ct)).ToHashSet();
         }
 
-        logger.LogInformation(
-            "Recipients for segment {SegmentId}: {Count} eligible (from {TotalGuests} guests with consent)",
-            segmentId, recipients.Count, eligibleGuests.Count);
+        var rows = await (from contact in db.GuestContacts.AsNoTracking().Where(CrmContactRules.MarketableEmail)
+                          join profile in db.GuestCrmProfiles.AsNoTracking() on contact.GuestCrmProfileId equals profile.Id
+                          where contact.OrgId == orgId && profile.OrgId == orgId && profile.MergedIntoProfileId == null
+                          orderby profile.Id, contact.ConfirmedAt descending, contact.Id
+                          select new { contact, profile }).ToListAsync(ct);
+        var result = new List<GuestContact>();
+        var settings = await db.Set<MarketingStudioSettings>().AsNoTracking().FirstOrDefaultAsync(s => s.OrgId == orgId, ct);
+        var today = timeProvider.GetUtcNow().UtcDateTime;
+        var selected = new HashSet<Guid>();
+        foreach (var row in rows)
+        {
+            if (selected.Contains(row.profile.Id)) continue;
+            if (properties != null && !MarketingSegmentRules.PropertyIds(row.profile).Any(properties.Contains)) continue;
+            var stage = MarketingGuestCategories.Loyalty(row.profile.TotalStays, row.profile.LastStayAt, today, settings?.LoyalStays ?? 3, settings?.LostMonths ?? 24);
+            if (!await conditionEvaluator.EvaluateAsync(condition, new MarketingSegmentFacts(row.profile, today, stage), scope, ct)) continue;
+            if (await suppressionService.IsSuppressedAsync(orgId, row.contact.Value, ct)) continue;
+            selected.Add(row.profile.Id);
+            result.Add(row.contact);
+        }
+        return result;
+    }
 
-        return recipients;
+    private async Task<CampaignDelivery?> ReserveAsync(Campaign campaign, GuestContact contact, int limit, CancellationToken ct)
+    {
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        int month = now.Year * 100 + now.Month;
+        var profileId = contact.GuestCrmProfileId!.Value;
+        var history = db.CampaignDeliveries.AsNoTracking().Where(d => d.OrgId == campaign.OrgId && d.ProfileId == profileId);
+        var previous = await db.CampaignDeliveries.FirstOrDefaultAsync(d => d.OrgId == campaign.OrgId && d.CampaignId == campaign.Id && d.ProfileId == profileId, ct);
+        if (previous != null)
+            return previous.Status == "Retry" && previous.ContactId == contact.Id && previous.CreatedAt > now.AddHours(-23) ? previous : null;
+        var configuredLimit = configuration?.GetValue<int?>("Marketing:MonthlyOrganizationEmails");
+        await using var transaction = configuredLimit.HasValue && db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct) : null;
+        if (configuredLimit.HasValue)
+        {
+            if (db.Database.IsNpgsql())
+                await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({campaign.OrgId.ToString()}, 981))", ct);
+            if (await db.CampaignDeliveries.CountAsync(d => d.OrgId == campaign.OrgId && d.Month == month, ct) >= configuredLimit.Value)
+                return null;
+        }
+        var used = await history.Where(d => d.Month == month).Select(d => d.Slot).ToListAsync(ct);
+        for (int slot = 1; slot <= Math.Clamp(limit, 0, 2); slot++)
+        {
+            if (used.Contains(slot)) continue;
+            var delivery = new CampaignDelivery { CampaignId = campaign.Id, OrgId = campaign.OrgId, ProfileId = profileId,
+                ContactId = contact.Id, Month = month, Slot = slot, CreatedAt = now };
+            db.CampaignDeliveries.Add(delivery);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                if (transaction != null) await transaction.CommitAsync(ct);
+                return delivery;
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation })
+            {
+                db.Entry(delivery).State = EntityState.Detached;
+                if (await history.AnyAsync(d => d.CampaignId == campaign.Id, ct)) return null;
+            }
+        }
+        return null;
     }
 
     public async Task SendCampaignAsync(Guid campaignId, CancellationToken cancellationToken = default)
@@ -287,6 +351,8 @@ public class CampaignService(
             return;
         }
 
+        if (campaign.Status == CampaignStatus.Scheduled && campaign.ScheduledAt > timeProvider.GetUtcNow().UtcDateTime) return;
+
         // E07/F06/US01/T01: the endpoints are closed by Features:CrmMarketing, but this job is the way a campaign leaves and a send scheduled
         // before the module was closed is still in Hangfire. With the flag off nothing is sent, whatever the key and the secret say: the job
         // ends here (it does not fail, so Hangfire does not retry it) and a campaign that was scheduled goes back to Approved, an explicit state
@@ -306,6 +372,9 @@ public class CampaignService(
             return;
         }
 
+        var org = await db.Orgs.AsNoTracking().SingleOrDefaultAsync(o => o.Id == campaign.OrgId, cancellationToken);
+        if (org == null || !CommercialSignup.HasCrmMarketing(org)) return;
+
         // DEB-01: a marketing e-mail leaves only with its signed unsubscribe link. Without the secret or the public URL of the web app
         // nothing is sent and the job fails, so the error shows and the job is retried.
         if (!unsubscribeLinks.IsConfigured)
@@ -316,51 +385,50 @@ public class CampaignService(
         }
 
         // Re-evaluate segment recipients at send time (AC-NF24-2)
-        var scope = new HostScope(campaign.OrgId); // Job runs without user context, org-wide scope
-        var recipients = await GetRecipientsAsync(campaign.SegmentId, campaign.OrgId, scope, cancellationToken);
-
-        if (recipients.Count == 0)
+        var recipients = await ResolveAudienceAsync(campaign.SegmentId, campaign.OrgId, new HostScope(campaign.OrgId),
+            campaign.PropertyId, cancellationToken);
+        var limit = await db.Set<MarketingStudioSettings>().Where(s => s.OrgId == campaign.OrgId)
+            .Select(s => (int?)s.MonthlyEmailLimit).SingleOrDefaultAsync(cancellationToken) ?? 2;
+        foreach (var candidate in recipients)
         {
-            logger.LogInformation(
-                "Campaign {CampaignId} has no eligible recipients, marked as sent",
-                campaignId);
-            campaign.Status = CampaignStatus.Sent;
-            campaign.SentAt = timeProvider.GetUtcNow().UtcDateTime;
-            await db.SaveChangesAsync(cancellationToken);
-            return;
-        }
-
-        int sentCount = 0;
-        int errorCount = 0;
-
-        // Send emails (AC-NF24-7, AC-NF24-8, AC-NF24-9)
-        foreach (var email in recipients)
-        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var contact = await db.GuestContacts.AsNoTracking().Where(CrmContactRules.MarketableEmail)
+                .SingleOrDefaultAsync(c => c.OrgId == campaign.OrgId && c.Id == candidate.Id &&
+                    c.GuestCrmProfileId == candidate.GuestCrmProfileId, cancellationToken);
+            if (contact == null || await suppressionService.IsSuppressedAsync(campaign.OrgId, contact.Value, cancellationToken)) continue;
+            var delivery = await ReserveAsync(campaign, contact, limit, cancellationToken);
+            if (delivery == null) continue;
+            if (!await db.GuestContacts.AsNoTracking().Where(CrmContactRules.MarketableEmail)
+                    .AnyAsync(c => c.Id == contact.Id && c.OrgId == campaign.OrgId && c.GuestCrmProfileId == delivery.ProfileId, cancellationToken) ||
+                await suppressionService.IsSuppressedAsync(campaign.OrgId, contact.Value, cancellationToken))
+            {
+                delivery.Status = "Suppressed";
+                await db.SaveChangesAsync(cancellationToken);
+                continue;
+            }
+            var unsubscribe = unsubscribeLinks.Create(campaign.OrgId, contact.Value, delivery.Id);
+            var enrichedBody = EnrichEmailBody(campaign.Body, campaignId, unsubscribe.PageUrl);
             try
             {
-                // Build email body with UTM params and the signed unsubscribe link (DEB-01: no address in it)
-                var unsubscribe = unsubscribeLinks.Create(campaign.OrgId, email);
-                var enrichedBody = EnrichEmailBody(campaign.Body, campaignId, unsubscribe.PageUrl);
-
-                // Send via IEmailService (no tracking pixel, AC-NF24-8), with the one-click unsubscribe headers
-                var result = await emailService.SendEmailWithHeadersAsync(
-                    email, campaign.Subject, enrichedBody, UnsubscribeHeaders(unsubscribe));
-                if (result.Success)
-                    sentCount++;
-                else
-                    errorCount++;
+                var result = await emailService.SendCampaignEmailAsync(contact.Value, campaign.Subject, enrichedBody, UnsubscribeHeaders(unsubscribe), org.DisplayName, delivery.Id);
+                delivery.Status = result.Success ? "Sent" : result.IsTransient ? "Retry" : "Failed";
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // Never the address in the log (DEB-01).
-                logger.LogError(ex, "Error sending campaign {CampaignId} to one recipient", campaignId);
-                errorCount++;
+                logger.LogError(ex, "Provider outcome unknown for campaign delivery {DeliveryId}", delivery.Id);
+                delivery.Status = "Unknown";
             }
+            await db.SaveChangesAsync(cancellationToken);
         }
-
-        // Update campaign stats (AC-NF24-10)
-        campaign.SentCount = sentCount;
-        campaign.ErrorCount = errorCount;
+        var deliveries = db.CampaignDeliveries.Where(d => d.OrgId == campaign.OrgId && d.CampaignId == campaignId);
+        campaign.SentCount = await deliveries.CountAsync(d => d.Status == "Sent", cancellationToken);
+        campaign.ErrorCount = await deliveries.CountAsync(d => d.Status != "Sent", cancellationToken);
+        var retryWindow = timeProvider.GetUtcNow().UtcDateTime.AddHours(-23);
+        if (await deliveries.AnyAsync(d => d.Status == "Retry" && d.CreatedAt > retryWindow, cancellationToken))
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            throw new InvalidOperationException("The email provider requested a retry; reserved deliveries retain their idempotency keys.");
+        }
         campaign.Status = CampaignStatus.Sent;
         campaign.SentAt = timeProvider.GetUtcNow().UtcDateTime;
 
@@ -368,7 +436,7 @@ public class CampaignService(
 
         logger.LogInformation(
             "Campaign {CampaignId} sent: {SentCount} successful, {ErrorCount} failed",
-            campaignId, sentCount, errorCount);
+            campaignId, campaign.SentCount, campaign.ErrorCount);
     }
 
     public async Task<int> PreviewCountAsync(

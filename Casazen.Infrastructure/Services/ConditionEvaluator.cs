@@ -219,14 +219,8 @@ public class ConditionEvaluator(
             return RoutineConditions.Satisfies(rule, routineFacts);
         }
 
-        // For MVP: placeholder implementation
-        // Full implementation will extract field values from context and apply operators
-        logger.LogDebug(
-            "Evaluating rule: {FieldId} {Operator} {Value} for org {OrgId}",
-            rule.FieldId,
-            rule.Operator,
-            rule.Value,
-            scope.OrgId);
+        if (context is MarketingSegmentFacts facts)
+            return MarketingSegmentRules.Matches(rule, facts.Profile, facts.Today, facts.Stage);
 
         await Task.CompletedTask;
         return false;

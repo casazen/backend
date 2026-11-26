@@ -7,6 +7,8 @@ namespace Casazen.Core.Authorization;
 /// </summary>
 public static class HostPermissions
 {
+    public const string Marketing = "marketing.manage";
+
     /// <summary>
     /// Create a request to a supplier (an intervention) for a stay, find a supplier for it, mark it paid. It used to be
     /// <c>property.write</c>. Given to the owner, the property managers and the collaborator.
