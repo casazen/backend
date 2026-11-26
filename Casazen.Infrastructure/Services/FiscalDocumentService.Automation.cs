@@ -87,18 +87,18 @@ public sealed partial class FiscalDocumentService
                         && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status)
                         && b.NoShowAt == null
                         && b.CheckOutDate < todayStart
-                        && b.CheckOutDate >= since
-                        && (supplements.Any(o => o.BookingId == b.Id && o.OrgId == b.OrgId) || !db.FiscalDocuments.Any(d => d.BookingId == b.Id
+                        && (supplements.Any(o => o.BookingId == b.Id && o.OrgId == b.OrgId)
+                            || (b.CheckOutDate >= since && !db.FiscalDocuments.Any(d => d.BookingId == b.Id
                                                          && d.Purpose == FiscalDocumentPurpose.GuestStay
                                                          && d.Status != FiscalDocumentStatus.Discarded
                                                          && d.Kind != DocumentKind.CreditNote
                                                          && d.Kind != DocumentKind.Proforma
                                                          && !d.CreditedInFull
-                                                         && (!autoIssue || d.Status == FiscalDocumentStatus.Issued))
+                                                         && (!autoIssue || d.Status == FiscalDocumentStatus.Issued)))
                             || (autoIssue && db.FiscalDocuments.Any(d => d.BookingId == b.Id
                                                                          && d.Source == FiscalDocumentSource.CasaZen
                                                                          && (d.Purpose == FiscalDocumentPurpose.GuestStay || d.Purpose == FiscalDocumentPurpose.GuestExtraSupplement)
-                                                                         && (d.ForAgencyServices || d.SupplementForExtraOrderId != null)
+                                                                         && ((b.CheckOutDate >= since && d.ForAgencyServices) || d.SupplementForExtraOrderId != null)
                                                                          && d.Status == FiscalDocumentStatus.Draft
                                                                          && d.Kind != DocumentKind.CreditNote))))
             .OrderByDescending(b => b.CheckOutDate)
@@ -319,7 +319,7 @@ public sealed partial class FiscalDocumentService
         {
             // The drafts of the stays of the period (their last day) and of the properties; a correction (a credit note) is only issued when it is named.
             var selected = reach.Where(d => d.Source == FiscalDocumentSource.CasaZen
-                                            && d.Purpose == FiscalDocumentPurpose.GuestStay
+                                            && (d.Purpose == FiscalDocumentPurpose.GuestStay || d.Purpose == FiscalDocumentPurpose.GuestExtraSupplement)
                                             && d.Status == FiscalDocumentStatus.Draft
                                             && d.Kind != DocumentKind.CreditNote
                                             && !requested.Contains(d.Id));
