@@ -91,6 +91,8 @@ builder.Services.AddCasazenOpenAccessConfiguration(builder.Configuration);
 
 // Services
 builder.Services.AddCasazenServices();
+builder.Services.AddDirectAlloggiati(builder.Environment.IsProduction() && builder.Configuration.GetValue<bool>("Alloggiati:DirectEnabled"));
+builder.Services.AddRoss1000Direct();
 builder.Services.AddScoped<IGuestService, GuestService>();
 builder.Services.AddScoped<IPropertyService, PropertyService>();
 builder.Services.AddScoped<IBookingService, BookingService>();
@@ -520,6 +522,8 @@ if (hangfireStorage is not null)
             .LogInformation("Hangfire storage schema: {HangfireSchema}", hangfireStorage.Schema);
         using var scope = app.Services.CreateScope();
         var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+        DirectAlloggiatiExtensions.ConfigureJobs(recurringJobManager,
+            app.Services.GetRequiredService<Casazen.Infrastructure.External.AlloggiatiTransportEnvironment>().Live);
         RecurringJobsRegistration.Configure(
             recurringJobManager,
             scope.ServiceProvider.GetRequiredService<IFeatureFlags>(),

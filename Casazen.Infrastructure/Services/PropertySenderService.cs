@@ -36,7 +36,8 @@ public sealed class PropertySenderService(
     IHostEnvironment hostEnvironment,
     ILogger<PropertySenderService> logger,
     TimeProvider? timeProvider = null,
-    IOrgGuestAutoSendSetting? autoSendSetting = null) : IPropertySenderService
+    IOrgGuestAutoSendSetting? autoSendSetting = null,
+    IDirectAlloggiatiAccount? directAccount = null) : IPropertySenderService
 {
     /// <summary>How long the read of a sender, and its connection test, wait for Octorate before they answer without the police fields.</summary>
     internal static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(8);
@@ -178,8 +179,12 @@ public sealed class PropertySenderService(
         if (!info.Applies || info.AlloggiatiSender == ComplianceSenderType.Manual)
             return Result(info, SenderConnectionTestOutcome.NotApplicable, null, null, checkedAt);
 
-        if (info.DirectCutover && info.AlloggiatiSender == ComplianceSenderType.CasaZen)
-            return Result(info, SenderConnectionTestOutcome.Unverifiable, null, null, checkedAt);
+        if (info.DirectCutover && info.AlloggiatiSender == ComplianceSenderType.CasaZen && directAccount is not null)
+        {
+            var verified = await directAccount.VerifyAsync(propertyId, ct);
+            return Result(info, verified ? SenderConnectionTestOutcome.Verified : SenderConnectionTestOutcome.Inactive,
+                verified ? null : SenderReasonCodes.PoliceAccountInvalid, null, checkedAt);
+        }
         if (info.AlloggiatiSender == ComplianceSenderType.CasaZen)
             return Result(info, SenderConnectionTestOutcome.NotAvailable, SenderReasonCodes.CasaZenNotAvailable, null, checkedAt);
 
