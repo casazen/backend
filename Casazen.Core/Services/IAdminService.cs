@@ -30,6 +30,8 @@ public record CinComplianceItem(
     string CinStatus,
     string City);
 
+public record OtaSyncItem(Guid Id, string PropertyName, string Platform, DateTime? LastSyncAt);
+
 /// <summary>Hangfire recurring-job status row.</summary>
 public record JobStatus(
     string JobName,
@@ -44,6 +46,9 @@ public interface IAdminService
 
     Task<(IEnumerable<CinComplianceItem> Items, int TotalCount)> GetCinComplianceAsync(
         string? cinStatus, int page, int pageSize);
+
+    Task<(IEnumerable<OtaSyncItem> Items, int TotalCount)> GetOtaSyncAsync(
+        string status, int page, int pageSize, CancellationToken cancellationToken);
 
     Task<IEnumerable<JobStatus>> GetJobStatusesAsync();
 }
