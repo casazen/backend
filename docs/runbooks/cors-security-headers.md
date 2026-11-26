@@ -68,16 +68,21 @@ by the API are not meant to be framed either.
 
 ## 3. Web app headers (`vercel.json`)
 
-Two disjoint rules, so a path never gets two values of the same header:
+Disjoint rules (the first one excludes the paths of the others), so a path never gets two values of the same header:
 
 | Paths | Framing (enforced) | CSP |
 |---|---|---|
-| everything except `/book/…` | `Content-Security-Policy: frame-ancestors 'none'` + `X-Frame-Options: DENY` | report-only, `frame-ancestors 'none'` |
+| everything except `/book/…`, `/fornitori/…`, `/checkin/…` and `/embed/…`: `/login`, `/app/…`, `/portale-proprietari/…`, `/my-bookings`… | `Content-Security-Policy: frame-ancestors 'none'` + `X-Frame-Options: DENY` | report-only, `frame-ancestors 'none'` |
+| `/checkin/…` (guest check-in) | the same, `frame-ancestors 'none'` + `X-Frame-Options: DENY`; a rule of its own only for the camera (below) | report-only, `frame-ancestors 'none'` |
 | `/book/…` (public booking site) | `frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN`: the "Vetrina" settings page previews the site in a same-origin iframe | report-only, `frame-ancestors 'self'` |
+| `/fornitori/…` (public site of a supplier) | as `/book/…`: `frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN` | report-only, `frame-ancestors 'self'` |
+| `/embed/…` except `/embed/v1/…`: the widget pages `/embed/booking`, `/embed/property/…`, `/embed/guest-access` (on the CasaZen domain `/embed/<orgSlug>/…`) and any other address under `/embed/` (NF-144, [`site-integration.md`](site-integration.md)) | `Content-Security-Policy: frame-ancestors https:` and **no** `X-Frame-Options`: the only pages that any https page may frame; `X-Robots-Tag: noindex, nofollow` | report-only, `frame-ancestors https:` |
+| `/embed/v1/…` (the files `embed.js`, `search.js` and `manifest.json` that other sites load, and any other address under it) | not framable: `frame-ancestors 'none'` + `X-Frame-Options: DENY`; `Cross-Origin-Resource-Policy: cross-origin` (another site loads the script), `X-Robots-Tag: noindex`, `Cache-Control: public, max-age=300, must-revalidate` | none |
 
-Both also send `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` and
-`Permissions-Policy: camera=(), microphone=(), geolocation=(self)` (geolocation stays for the supplier check-in page
-until task SU-11 removes it). Vercel adds HSTS on its domains by itself.
+Every rule sends `X-Content-Type-Options: nosniff`. All of them but `/embed/v1/…` also send `Referrer-Policy: strict-origin-when-cross-origin` and a
+`Permissions-Policy`, which is `camera=(), microphone=(), geolocation=(self)` (geolocation stays for the supplier check-in page
+until task SU-11 removes it) except on two rules: `/checkin/…` has `camera=(self)` (the selfie step of the check-in cannot start without it) and the
+widget pages of `/embed/…` have `camera=(), microphone=(), geolocation=()`. Vercel adds HSTS on its domains by itself.
 
 The CSP (`Content-Security-Policy-Report-Only`) is:
 
