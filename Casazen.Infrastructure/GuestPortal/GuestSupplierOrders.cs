@@ -112,7 +112,8 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
         return new GuestSupplierOrderView(order.Id, order.ServiceName, order.SupplierName, state.ToString(),
             order.RequestedFor, order.CompletedAt, order.SupplierPriceCents, order.CommissionCents,
             order.HostOrigin, total, order.RefundCents, commissionRefund, order.RequestNote, order.Complaint,
-            includeInternal ? order.SupplierReply : null, order.Decision, order.StripeSandbox)
+            includeInternal ? order.SupplierReply : null, order.Decision, order.StripeSandbox, order.RefundStatus == "retrying" ? "processing" : order.RefundStatus, order.RefundRequestedCents,
+            includeInternal ? order.BankDisputeStatus : null)
         {
             Payout = includeInternal && order.StripeSandbox && (order.StripePayoutClaimedAt != null || order.StripePayoutFailureCode != null)
                 ? new(order.StripeCardFeeCents, order.StripeSupplierTransferCents, order.StripeHostTransferCents,
@@ -127,7 +128,7 @@ public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
     public sealed record GuestSupplierOrderView(Guid Id, string ServiceName, string SupplierName, string State,
         DateTime RequestedFor, DateTime? CompletedAt, int SupplierPriceCents, int CommissionCents,
         bool HostOrigin, int TotalCents, int RefundCents, int CommissionRefundCents, string? RequestNote,
-        string? Complaint, string? SupplierReply, string? Decision, bool StripeSandbox)
+        string? Complaint, string? SupplierReply, string? Decision, bool StripeSandbox, string? RefundStatus, int RefundRequestedCents, string? BankDisputeStatus)
     {
         public GuestSupplierPayoutView? Payout { get; init; }
     }

@@ -20,7 +20,7 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-public sealed class GuestSupplierStripeSandboxTests
+public sealed partial class GuestSupplierStripeSandboxTests
 {
     [AttributeUsage(AttributeTargets.Method)]
     public sealed class StripeSandboxFactAttribute : FactAttribute
