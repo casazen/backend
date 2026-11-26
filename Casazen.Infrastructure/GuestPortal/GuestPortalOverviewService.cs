@@ -8,6 +8,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.GuestPortal;
@@ -32,6 +33,7 @@ public sealed class GuestPortalOverviewService(
     IEnumerable<IGuestPortalPolicy> policies,
     IFeatureFlags featureFlags,
     ILogger<GuestPortalOverviewService> logger,
+    IHostEnvironment hostEnvironment,
     IConfiguration? configuration = null) : IGuestPortalOverviewService
 {
     public async Task<GuestPortalOverview?> GetAsync(PortalContext context, CancellationToken cancellationToken = default)
@@ -104,6 +106,7 @@ public sealed class GuestPortalOverviewService(
             || OtaChannelMapper.Of(context.Source) is not { } channel)
             return false;
 
+        var environment = OctorateEnvironments.Of(hostEnvironment);
         var conversations =
             from thread in db.OtaMessageThreads
             join mapping in db.OctorateListingMappings
@@ -117,6 +120,7 @@ public sealed class GuestPortalOverviewService(
             where thread.OrgId == context.OrgId && thread.PropertyId == context.PropertyId && thread.BookingId == context.BookingId
                 && thread.ChannelSource == channel && thread.Kind == OtaThreadKind.Reservation && !thread.IsArchived && thread.AnonymizedAt == null
                 && mapping.Status == OctorateMappingStatus.Confirmed && connection.Status == OctorateConnectionStatus.Connected
+                && connection.Environment == environment
                 && sync.LastRecentPassAt != null && sync.LastError == null
             select thread.Id;
         return await conversations.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AnyAsync(ct);

@@ -75,7 +75,7 @@ public class GuestPortalOverviewServiceTests
         using var world = new GuestPortalTestWorld();
         var context = await world.ContextAsync();
         var overview = world.OverviewService(flags: new TestFeatureFlags(FeatureFlags.GuestPortal, FeatureFlags.OctorateConnector));
-        var connection = new OctorateConnection { OrgId = context.OrgId, Status = OctorateConnectionStatus.Connected };
+        var connection = new OctorateConnection { OrgId = context.OrgId, Status = OctorateConnectionStatus.Connected, Environment = OctorateEnvironment.Test };
         var mapping = new OctorateListingMapping
         {
             OrgId = context.OrgId, PropertyId = context.PropertyId, ConnectionId = connection.Id,
@@ -103,6 +103,10 @@ public class GuestPortalOverviewServiceTests
         await world.Db.SaveChangesAsync();
         Assert.False((await overview.GetAsync(context))!.Features.HasSyncedChannelConversation);
         sync.LastError = null;
+        connection.Environment = OctorateEnvironment.Production;
+        await world.Db.SaveChangesAsync();
+        Assert.False((await overview.GetAsync(context))!.Features.HasSyncedChannelConversation);
+        connection.Environment = OctorateEnvironment.Test;
         mapping.Status = OctorateMappingStatus.Ambiguous;
         await world.Db.SaveChangesAsync();
         Assert.False((await overview.GetAsync(context))!.Features.HasSyncedChannelConversation);
