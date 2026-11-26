@@ -60,8 +60,7 @@ public sealed class GuestPortalSupplierOrdersController(
             return BadRequest();
 
         var responseMinutes = StripeSandbox
-            ? await db.SupplierSettings.Where(x => x.OrgId == offer.SupplierOrgId)
-                .Select(x => (int?)x.RespondWithinMinutes).SingleOrDefaultAsync(ct)
+            ? await orders.ConfiguredResponseMinutesAsync(offer.SupplierOrgId, ct)
             : null;
         var confirmationAt = GuestSupplierCheckout.ExpectedConfirmation(orders.Now, requestedFor, responseMinutes);
         var order = new GuestSupplierOrder

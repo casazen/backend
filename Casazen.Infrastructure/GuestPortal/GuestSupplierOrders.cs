@@ -10,6 +10,10 @@ namespace Casazen.Infrastructure.GuestPortal;
 /// <summary>Catalog and ledger rules for the guest portal supplier sandbox.</summary>
 public sealed class GuestSupplierOrders(AppDbContext db, TimeProvider clock)
 {
+    public Task<int?> ConfiguredResponseMinutesAsync(Guid supplierOrgId, CancellationToken ct) =>
+        SupplierAgendaService.SettingsOf(db, supplierOrgId)
+            .Select(settings => (int?)settings.RespondWithinMinutes).SingleOrDefaultAsync(ct);
+
     public const string SimulationSetting = "GuestPortal:SupplierOrderSimulation";
     public const int MaxPriceCents = 10_000_000;
     public static readonly TimeSpan DisputeWindow = TimeSpan.FromHours(24);
