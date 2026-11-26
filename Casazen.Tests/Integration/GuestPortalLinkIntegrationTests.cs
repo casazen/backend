@@ -34,7 +34,7 @@ public class GuestPortalEnabledFactory : CasazenWebApplicationFactory
     {
         base.ConfigureWebHost(builder);
         builder.ConfigureAppConfiguration((_, config) =>
-            config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:GuestPortal"] = "true" }));
+            config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:GuestPortal"] = "true", ["Features:GuestPortalAutoReplies"] = "true" }));
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IEmailQueue>();

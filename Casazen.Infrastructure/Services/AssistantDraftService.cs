@@ -74,6 +74,24 @@ public sealed class AssistantDraftService(
         if (existing is not null && !options.Requested)
             return OutcomeOf(existing, alreadyProcessed: true);
 
+        if (threadKey.Source == MessageThreadSource.Direct)
+        {
+            // A manual regeneration or later legacy inbox event may share this transcript.
+            // Keep the conversation local once an off-guide portal question entered the queue.
+            var key = threadKey.ToString();
+            var local = await db.ApprovalQueueItems.AsNoTracking()
+                .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                .Where(i => i.OrgId == orgId && i.ThreadKey == key && i.ContentVersion == ApprovalQueueRules.PortalLocalDraftVersion)
+                .OrderByDescending(i => i.ItemId == inboundMessageId).ThenByDescending(i => i.CreatedAt)
+                .Select(i => new { i.Id, i.ItemId, i.Status }).FirstOrDefaultAsync(ct);
+            if (local is not null)
+            {
+                var pending = local.ItemId == inboundMessageId && local.Status == ApprovalStatus.Pending;
+                return new AssistantDraftOutcome(inboundMessageId, pending ? AssistantDecision.Drafted : AssistantDecision.NotHandled,
+                    pending ? null : "portal_host_review", null, null, null, pending ? local.Id : null, null, true);
+            }
+        }
+
         var run = new Run(orgId, threadKey, inboundMessageId, options, existing);
 
         // (a) The conversation, read for the whole org (a job has no caller): its property, its channel, the message.

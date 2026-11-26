@@ -51,6 +51,8 @@ public static class ApprovalOriginActions
 /// </summary>
 public static class ApprovalQueueRules
 {
+    public const string PortalLocalDraftVersion = "portal-local-v1";
+
     /// <summary>Days an item waits for a decision before the daily job expires it.</summary>
     public const int ExpirationDays = 7;
 

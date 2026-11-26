@@ -39,34 +39,40 @@ public sealed class GuestPortalChatController(
         if (booking is null)
             return LinkInvalid();
 
-        var answer = await GuideAnswerAsync(booking, request, ct);
-        return SentGuestMessageDto.From(await messages.SendFromPortalAsync(booking, request.Text, key, answer, ct));
+        var (answer, draft) = await GuideAnswerAsync(booking, request, ct);
+        return SentGuestMessageDto.From(await messages.SendFromPortalAsync(booking, request.Text, key, answer, ct, draft));
     }
 
-    private async Task<string?> GuideAnswerAsync(Booking booking, SendPortalMessageRequest request, CancellationToken ct)
+    private async Task<(string? Answer, string? Draft)> GuideAnswerAsync(Booking booking, SendPortalMessageRequest request, CancellationToken ct)
     {
         if (request.RequestHost || !flags.IsEnabled(FeatureFlags.GuestPortalAutoReplies))
-            return null;
+            return default;
 
         var language = GuestLanguages.Normalize(request.Language) ?? Portal.Language;
         var guide = guides.Read(booking.PropertyId, booking.Property.GuestHouseGuideJson);
         var answer = GuestPortalQuickReplies.Answer(guide, request.Text, language, Portal.CanSeeReserved);
-        if (answer is null)
-            return null;
 
         var rules = await assistantRules.ResolveEffectiveAsync(booking.OrgId, booking.PropertyId, ct);
-        if (!rules.Enabled || !rules.Languages.Contains(language)
-            || AssistantTopicNames.IsListed(rules.ForbiddenTopics, answer.Situation, answer.Topic)
+        if (!rules.Enabled || !rules.Languages.Contains(language) || guide.AutoReplies?.Enabled != true)
+            return default;
+        if (answer is null)
+            return (null, GuestPortalQuickReplies.Acknowledgment(language));
+        if (AssistantTopicNames.IsListed(rules.ForbiddenTopics, answer.Situation, answer.Topic)
             || (rules.AllowedTopics.Count > 0 && !AssistantTopicNames.IsListed(rules.AllowedTopics, answer.Situation, answer.Topic)))
-            return null;
+            return default;
 
         if (rules.HoursFrom is { } from && rules.HoursTo is { } to
             && (!TimeZoneInfo.TryFindSystemTimeZoneById(booking.Property.Timezone, out var zone)
                 || !TimeOnly.FromDateTime(TimeZoneInfo.ConvertTime(clock.GetUtcNow(), zone).DateTime).IsBetween(from, to)))
-            return null;
+            return default;
 
         var situation = await situations.ResolveAsync(booking.OrgId, booking.PropertyId, answer.Situation, ct);
-        return situation.Mode == AssistantMode.Escalate ? null : answer.Text;
+        return situation.Mode switch
+        {
+            AssistantMode.Draft => (null, answer.ReviewedText),
+            AssistantMode.Automatic or AssistantMode.AutomaticWithExceptions => (answer.Text, null),
+            _ => default,
+        };
     }
 
     private Task<Booking?> BookingAsync(CancellationToken ct)

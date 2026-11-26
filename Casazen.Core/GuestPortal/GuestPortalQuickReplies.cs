@@ -34,8 +34,17 @@ public static class GuestPortalQuickReplies
             "de" => ("Automatische Antwort aus dem Hausführer", "Wähle „Gastgeber kontaktieren“, um mit einer Person zu sprechen."),
             _ => ("Risposta automatica dalla guida della casa", "Seleziona «Scrivi all’host» per parlare con una persona."),
         };
-        return new($"{intro}\n\n{answer.Trim()}\n\n{handoff}", situation, topic);
+        return new($"{intro}\n\n{answer.Trim()}\n\n{handoff}", situation, topic, answer.Trim());
     }
+
+    public static string Acknowledgment(string language) => language switch
+    {
+        "en" => "Thank you for your message. I’ll check the details and get back to you here.",
+        "de" => "Danke für Ihre Nachricht. Ich prüfe die Details und antworte Ihnen hier.",
+        "fr" => "Merci pour votre message. Je vais vérifier les détails et vous répondre ici.",
+        "es" => "Gracias por tu mensaje. Voy a comprobar los detalles y te responderé por aquí.",
+        _ => "Grazie per il messaggio. Verifico i dettagli e ti rispondo qui.",
+    };
 
     private static string WifiLocation(string language) => language switch
     {
@@ -47,4 +56,4 @@ public static class GuestPortalQuickReplies
     };
 }
 
-public sealed record GuestPortalQuickReply(string Text, AssistantSituation Situation, KnowledgeTopic Topic);
+public sealed record GuestPortalQuickReply(string Text, AssistantSituation Situation, KnowledgeTopic Topic, string ReviewedText);

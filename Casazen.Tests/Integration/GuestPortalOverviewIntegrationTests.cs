@@ -293,7 +293,43 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
         Assert.Equal(HttpStatusCode.NotFound, (await first.PostAsync(open, null)).StatusCode);
     }
 
-    private async Task<string> SeedStayWithLinkAsync(bool withCheckIn = false, int departureOffset = 8)
+    [PostgresFact]
+    public async Task PortalChat_LocalDraft_EditApproveOrReject_DeliversOnlyApprovedReply()
+    {
+        var token = await SeedStayWithLinkAsync(localDrafts: true);
+        using var client = factory.CreateClient();
+        var path = $"/api/public/guest-portal/{token}/chat";
+        async Task Send(string question)
+        {
+            using var message = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(new { text = question, language = "en" }) };
+            message.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+            using var response = await client.SendAsync(message);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        await Send("Could I leave my bags with you?");
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var orgId = await db.GuestPortalLinks.Where(l => l.Token == token).Select(l => l.OrgId).SingleAsync();
+        var host = new Casazen.Core.Authorization.HostScope(orgId);
+        var approvals = scope.ServiceProvider.GetRequiredService<IApprovalQueueService>();
+        var first = Assert.Single(await approvals.GetPendingAsync(host));
+        Assert.Equal(GuestPortalQuickReplies.Acknowledgment("en"), first.ContentText);
+        Assert.DoesNotContain(first.ContentText, await client.GetStringAsync(path));
+        await approvals.EditAsync(host, first.Id, "Yes, please bring them to reception.", "reviewer");
+        await approvals.ApproveAsync(host, first.Id, "reviewer");
+        await approvals.ApproveAsync(host, first.Id, "reviewer");
+
+        await Send("Can I move my booking to another week?");
+        var second = Assert.Single(await approvals.GetPendingAsync(host));
+        await approvals.RejectAsync(host, second.Id, "reviewer", "Needs a personal answer");
+        var chat = await client.GetStringAsync(path);
+        Assert.Contains("Yes, please bring them to reception.", chat);
+        Assert.DoesNotContain(second.ContentText, chat);
+        Assert.Equal(1, await db.GuestMessages.CountAsync(m => m.OrgId == orgId && m.Sender == GuestMessageSender.Host));
+    }
+
+    private async Task<string> SeedStayWithLinkAsync(bool withCheckIn = false, int departureOffset = 8, bool localDrafts = false)
     {
         var ownerId = $"auth0|portale-{Guid.NewGuid():N}";
         var org = await factory.SeedOrgForOwnerAsync(ownerId);
@@ -305,7 +341,9 @@ public class GuestPortalOverviewIntegrationTests(GuestPortalEnabledFactory facto
         {
             Arrival = "Informazioni pubbliche",
             Wifi = "wifi-riservato",
+            AutoReplies = localDrafts ? new(true, true, true, true, true) : null,
         });
+        if (localDrafts) db.OrgAssistantRules.Add(new OrgAssistantRules { OrgId = org.Id, Enabled = true });
         var guest = new Guest { OrgId = org.Id, FirstName = "Anna", LastName = "Ospite", Email = $"{Guid.NewGuid():N}@example.com" };
         var today = TimeProvider.System.TodayInRome();
         var booking = new Booking

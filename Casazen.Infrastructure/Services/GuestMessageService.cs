@@ -49,7 +49,8 @@ public sealed class GuestMessageService(
     IGuestEmailBrandingProvider? emailBranding = null,
     IGuestEmailLanguageProvider? emailLanguage = null,
     IFeatureFlags? flags = null,
-    IGuestStayLinkProvider? stayLinks = null) : IGuestMessageService
+    IGuestStayLinkProvider? stayLinks = null,
+    ApprovalAlertDelivery? draftAlerts = null) : IGuestMessageService
 {
     private bool PortalEnabled => flags?.IsEnabled(FeatureFlags.GuestPortal) == true;
 
@@ -80,9 +81,10 @@ public sealed class GuestMessageService(
         string? text,
         string? idempotencyKey,
         string? guideAnswer,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default,
+        string? localDraft = null) =>
         // Portal chat may contain personal data. External drafting requires its own anonymization pipeline.
-        SendGuestMessageAsync(booking, text, idempotencyKey, guideAnswer, queueDraft: false, cancellationToken);
+        SendGuestMessageAsync(booking, text, idempotencyKey, guideAnswer, queueDraft: false, cancellationToken, localDraft);
 
     private async Task<SentGuestMessage> SendGuestMessageAsync(
         Booking booking,
@@ -90,7 +92,8 @@ public sealed class GuestMessageService(
         string? idempotencyKey,
         string? guideAnswer,
         bool queueDraft,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? localDraft = null)
     {
         ArgumentNullException.ThrowIfNull(booking);
         var now = Now();
@@ -113,7 +116,8 @@ public sealed class GuestMessageService(
             booking.Id,
             GuestMessageReceivedPayload.DirectSource) : null;
         var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Guest, GuestMessageRules.OriginOf(GuestMessageSender.Guest), stored, key, null, now, received,
-            cancellationToken, answersFromGuide ? guideAnswer : null);
+            cancellationToken, answersFromGuide ? guideAnswer : null,
+            !answersFromGuide && localDraft is not null ? booking : null, localDraft);
         if (replayed)
             return new SentGuestMessage(message, redacted, true);
 
@@ -468,7 +472,9 @@ public sealed class GuestMessageService(
         DateTime now,
         GuestMessageReceivedPayload? received,
         CancellationToken cancellationToken,
-        string? guideAnswer = null)
+        string? guideAnswer = null,
+        Booking? draftBooking = null,
+        string? localDraft = null)
     {
         var earlier = await FindByKeyAsync(threadId, key, cancellationToken);
         if (earlier is not null)
@@ -499,6 +505,20 @@ public sealed class GuestMessageService(
                 IdempotencyKey = $"guide:{message.Id:N}",
             });
         }
+        ApprovalQueueItem? draft = null;
+        if (draftBooking is not null && localDraft is not null)
+        {
+            // One save ties the draft to the inbound message, including competing retries.
+            draft = new ApprovalQueueItem
+            {
+                OrgId = orgId, PropertyId = draftBooking.PropertyId, ItemId = message.Id,
+                ItemType = ApprovalItemTypes.MessageDraft, ThreadKey = MessageThreadKey.ForDirect(draftBooking.Id).ToString(),
+                ContentText = localDraft, ContentVersion = ApprovalQueueRules.PortalLocalDraftVersion, IsAiGenerated = false,
+                OriginAction = ApprovalOriginActions.SendGuestMessage, OriginActionStatus = ApprovalOriginActionStatus.Pending,
+                Status = ApprovalStatus.Pending, CreatedAt = now, ExpiresAt = now.AddDays(ApprovalQueueRules.ExpirationDays),
+            };
+            db.ApprovalQueueItems.Add(draft);
+        }
         if (received is not null)
             events?.Record(DomainEventType.GuestMessageReceived, message.Id, received, $"direct-msg:{message.Id:N}", orgId);
 
@@ -516,6 +536,9 @@ public sealed class GuestMessageService(
 
             return (winner, true);
         }
+
+        if (draft is not null && draftAlerts is not null)
+            await draftAlerts.RaiseOrRetryAsync(new ApprovalAlert(orgId, draft.Id, now), cancellationToken);
 
         return (new GuestThreadMessage(message.Id, message.Sender, message.Text, message.CreatedAt) { Origin = message.Origin }, false);
     }

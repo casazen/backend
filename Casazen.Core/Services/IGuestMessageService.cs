@@ -37,7 +37,7 @@ public interface IGuestMessageService
     Task<SentGuestMessage> SendAsGuestAsync(Booking booking, string? text, string? idempotencyKey, CancellationToken cancellationToken = default);
 
     /// <summary>Sends a portal message with its optional local house-guide answer in a single save.</summary>
-    Task<SentGuestMessage> SendFromPortalAsync(Booking booking, string? text, string? idempotencyKey, string? guideAnswer, CancellationToken cancellationToken = default);
+    Task<SentGuestMessage> SendFromPortalAsync(Booking booking, string? text, string? idempotencyKey, string? guideAnswer, CancellationToken cancellationToken = default, string? localDraft = null);
 
     /// <summary>The thread of a booking for its host: messages, how many the host has not read, whether the guest waits for an answer.</summary>
     /// <exception cref="Exceptions.NotFoundException">The booking is not one of the caller's org.</exception>

@@ -720,7 +720,7 @@ internal sealed class DirectThreadRecorder(TimeProvider clock) : IGuestMessageSe
 
     public Task<GuestThreadView> GetForGuestAsync(Booking booking, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-    public Task<SentGuestMessage> SendFromPortalAsync(Booking booking, string? text, string? idempotencyKey, string? guideAnswer, CancellationToken cancellationToken = default) =>
+    public Task<SentGuestMessage> SendFromPortalAsync(Booking booking, string? text, string? idempotencyKey, string? guideAnswer, CancellationToken cancellationToken = default, string? localDraft = null) =>
         SendAsGuestAsync(booking, text, idempotencyKey, cancellationToken);
 
     public Task<SentGuestMessage> SendAsGuestAsync(Booking booking, string? text, string? idempotencyKey, CancellationToken cancellationToken = default) =>
