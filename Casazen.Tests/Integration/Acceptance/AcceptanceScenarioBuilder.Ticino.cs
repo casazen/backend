@@ -103,7 +103,6 @@ internal sealed partial class AcceptanceScenarioBuilder
         db.SwissMunicipalities.AddRange(directory.Municipalities.Where(m => m.CantonCode == SwissPlace.TicinoCantonCode));
         db.SwissLocalities.AddRange(directory.Localities.Where(l => l.CantonCode == SwissPlace.TicinoCantonCode));
 
-
         var now = Clock.GetUtcNow().UtcDateTime;
         db.Orgs.Add(new OrgEntity
         {
