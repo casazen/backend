@@ -189,8 +189,14 @@ public class AdminServiceTests
         {
             var property = new Property { OrgId = tenant, Name = platform, OwnerId = "owner", Address = "Via", City = "Roma" };
             ctx.Properties.Add(property);
-            ctx.OtaIntegrations.Add(new OtaIntegration { OrgId = tenant, Property = property,
-                Platform = platform, ExternalPropertyId = platform, LastSyncAt = lastSync });
+            ctx.OtaIntegrations.Add(new OtaIntegration
+            {
+                OrgId = tenant,
+                Property = property,
+                Platform = platform,
+                ExternalPropertyId = platform,
+                LastSyncAt = lastSync
+            });
         }
         await ctx.SaveChangesAsync();
         var service = CreateService(ctx, clock);
