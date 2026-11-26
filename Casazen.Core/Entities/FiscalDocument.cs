@@ -96,6 +96,9 @@ public class FiscalDocument : ITenantOwned
     /// <summary>What the document is for: the stay of a guest (the default), an invoice to an owner, a self-billed invoice.</summary>
     public FiscalDocumentPurpose Purpose { get; set; } = FiscalDocumentPurpose.GuestStay;
 
+    /// <summary>The paid extra billed by this supplementary guest document.</summary>
+    public Guid? SupplementForExtraOrderId { get; set; }
+
     /// <summary>
     /// The issuer the document is (or will be) issued on (E17/F01/US01/T01): the profile of the organization, or the profile of an owner who issues the
     /// document of the stay. It chooses the series and the counter of the number. Written with every draft CasaZen makes; the documents of before were moved to

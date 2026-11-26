@@ -14,4 +14,7 @@ public enum FiscalDocumentPurpose
 
     /// <summary>A self-billed invoice (Italian TD17, E17).</summary>
     SelfBilling = 3,
+
+    /// <summary>A paid host extra purchased after the guest document was issued.</summary>
+    GuestExtraSupplement = 4,
 }

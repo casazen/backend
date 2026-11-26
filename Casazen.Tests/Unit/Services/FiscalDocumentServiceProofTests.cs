@@ -5,10 +5,12 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.GuestPortal;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
+using Casazen.Infrastructure.GuestPortal;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs.Fiscal;
 using Casazen.Web.Resources;
@@ -33,6 +35,43 @@ public class FiscalDocumentServiceProofTests
 {
     private static readonly Guid OrgId = Guid.NewGuid();
     private static readonly DateTimeOffset Now = new(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public async Task PaidExtraAfterIssueGetsOneSupplementWithoutBillingTheStayAgain()
+    {
+        await using var db = NewDb();
+        var booking = await SeedAsync(db, BookingSource.Direct);
+        var service = Service(db);
+        var original = await service.IssueAsync((await service.CreateDraftAsync(booking, null)).Id, confirm: true);
+        var originalTotal = original.Total;
+        var order = new GuestHostExtraOrder
+        {
+            OrgId = OrgId,
+            BookingId = booking,
+            ExtraId = Guid.NewGuid(),
+            Name = "Parcheggio",
+            Amount = 22m,
+            Currency = original.Currency,
+            Status = GuestHostExtraStatus.ReadyToPay
+        };
+        db.GuestHostExtraOrders.Add(order);
+        await db.SaveChangesAsync();
+
+        await GuestExtraFiscalPayment.SavePaidAsync(db, order, default);
+        await GuestExtraFiscalPayment.SavePaidAsync(db, order, default);
+        Assert.Equal(original.Id, order.SupplementToDocumentId);
+        var draft = await service.CreateDraftAsync(booking, null);
+        Assert.Equal(draft.Id, (await service.CreateDraftAsync(booking, null)).Id);
+        Assert.Equal(order.Id, draft.SupplementForExtraOrderId);
+        Assert.Equal(FiscalDocumentPurpose.GuestExtraSupplement, draft.Purpose);
+        Assert.Equal(22m, draft.Total);
+        Assert.Equal(FiscalLineType.ExtraService, Assert.Single(draft.Lines).LineType);
+        var issued = await service.IssueAsync(draft.Id, confirm: true);
+        Assert.Equal(FiscalDocumentStatus.Issued, issued.Status);
+        Assert.NotEqual(original.SequenceNumber, issued.SequenceNumber);
+        Assert.Equal(originalTotal, original.Total);
+        await Assert.ThrowsAsync<DomainConflictException>(() => service.CreateDraftAsync(booking, null));
+    }
 
     [Fact]
     public async Task RequestedInvoiceWithStaleRecipientMustBeRefreshedBeforeNumbering()

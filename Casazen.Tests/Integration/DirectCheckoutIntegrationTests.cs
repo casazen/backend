@@ -1,4 +1,7 @@
+using Casazen.Core.GuestPortal;
 using System.Net;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities;
@@ -24,6 +27,67 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
     {
         _factory = factory;
         FakeStripeService.Reset();
+    }
+
+    [Fact]
+    public async Task CheckoutExtras_UsesOneBookingPaymentAndChargesOnlyConfirmedExtras()
+    {
+        using var sandbox = _factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
+            config.AddInMemoryCollection(new Dictionary<string, string?> { ["Stripe:SecretKey"] = "sk_test_fixture" })));
+        var property = await SeedConnectReadyPropertyAsync(sandbox.Services);
+        using var scope = sandbox.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        using var client = sandbox.CreateClient();
+        var kit = new GuestHostExtra
+        {
+            OrgId = property.OrgId,
+            PropertyIds = [property.Id],
+            Name = "Kit",
+            Price = 15m,
+            Pricing = GuestHostExtraPricing.PerUnit,
+            Inventory = 2
+        };
+        var breakfast = new GuestHostExtra
+        {
+            OrgId = property.OrgId,
+            PropertyIds = [property.Id],
+            Name = "Breakfast",
+            Price = 10m,
+            RequiresApproval = true
+        };
+        db.GuestHostExtras.AddRange(kit, breakfast);
+        await db.SaveChangesAsync();
+
+        var stay = BuildPayload(property.Id);
+        using var quoteResponse = await client.PostAsync("/api/public/bookings/quote",
+            new StringContent(JsonSerializer.Serialize(stay), Encoding.UTF8, "application/json"));
+        quoteResponse.EnsureSuccessStatusCode();
+        using var quote = JsonDocument.Parse(await quoteResponse.Content.ReadAsStringAsync());
+        Assert.Equal(2, quote.RootElement.GetProperty("extraOffers").GetArrayLength());
+        var stayTotal = quote.RootElement.GetProperty("totalPrice").GetDecimal();
+
+        var wrongPrice = BuildPayload(property.Id, extras: [new { id = kit.Id, quantity = 2, expectedUnitPrice = 1 }]);
+        Assert.Equal(HttpStatusCode.Conflict, (await PostDirectBookingAsync(client, wrongPrice)).StatusCode);
+        var payload = BuildPayload(property.Id, extras: [new { id = kit.Id, quantity = 2, expectedUnitPrice = 15 },
+            new { id = breakfast.Id, quantity = 1, expectedUnitPrice = 10 }]);
+        using var booked = await PostDirectBookingAsync(client, payload);
+        booked.EnsureSuccessStatusCode();
+        using var result = JsonDocument.Parse(await booked.Content.ReadAsStringAsync());
+        Assert.Equal(stayTotal + 30, result.RootElement.GetProperty("amount").GetDecimal());
+        var bookingId = result.RootElement.GetProperty("bookingId").GetGuid();
+        Assert.Equal(HttpStatusCode.Conflict, (await PostDirectBookingAsync(client, payload)).StatusCode);
+        var payment = await db.Payments.AsNoTracking().SingleAsync(x => x.BookingId == bookingId);
+        Assert.Equal(stayTotal + 30, payment.Amount);
+        var handler = scope.ServiceProvider.GetRequiredService<StripeWebhookHandler>();
+        var paid = DirectBookingPaymentSucceeded(payment.StripePaymentIntentId!, bookingId, decimal.ToInt64(payment.Amount * 100));
+        await handler.HandleEventAsync(paid, WebhookSource.Connected);
+        await handler.HandleEventAsync(paid, WebhookSource.Connected);
+        db.ChangeTracker.Clear();
+        var rows = await db.GuestHostExtraOrders.AsNoTracking().Where(x => x.BookingId == bookingId).ToListAsync();
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(GuestHostExtraStatus.Paid, rows.Single(x => x.ExtraId == kit.Id).Status);
+        Assert.Null(rows.Single(x => x.ExtraId == kit.Id).StripeIntentId);
+        Assert.Equal(GuestHostExtraStatus.AwaitingAuthorization, rows.Single(x => x.ExtraId == breakfast.Id).Status);
     }
 
     [Fact]
@@ -409,7 +473,7 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         db.ChangeTracker.Clear();
     }
 
-    private static Event DirectBookingPaymentSucceeded(string paymentIntentId, Guid bookingId) => new()
+    private static Event DirectBookingPaymentSucceeded(string paymentIntentId, Guid bookingId, long amountCents = 65000) => new()
     {
         Type = "payment_intent.succeeded",
         Data = new EventData
@@ -417,7 +481,7 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
             Object = new PaymentIntent
             {
                 Id = paymentIntentId,
-                Amount = 65000,
+                Amount = amountCents,
                 Metadata = new Dictionary<string, string>
                 {
                     ["kind"] = "direct-booking",
@@ -785,7 +849,8 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         string guestLastName = "Rossi",
         string guestPhone = "+393331234567",
         string guestCountry = "IT",
-        PaymentOption paymentOption = PaymentOption.Immediate)
+        PaymentOption paymentOption = PaymentOption.Immediate,
+        object[]? extras = null)
     {
         var inDate = checkIn ?? TimeProvider.System.TodayInRome().AddDays(30);
         var outDate = checkOut ?? inDate.AddDays(4);
@@ -810,6 +875,7 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
                 consentVersion = ConsentVersion,
             },
             paymentOption = paymentOption.ToString(),
+            extras,
         };
     }
 
@@ -836,9 +902,9 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         return await db.Orgs.AsNoTracking().Where(o => o.Id == orgId).Select(o => o.Slug).SingleAsync();
     }
 
-    private async Task<Property> SeedConnectReadyPropertyAsync()
+    private async Task<Property> SeedConnectReadyPropertyAsync(IServiceProvider? services = null)
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = (services ?? _factory.Services).CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var org = new OrgEntity

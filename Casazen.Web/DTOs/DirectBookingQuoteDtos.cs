@@ -35,6 +35,7 @@ public class DirectBookingQuoteRequest : IValidatableObject
 /// <summary>Price of the stay: the same numbers <c>POST /api/public/bookings</c> records and charges.</summary>
 public class DirectBookingQuoteResponse
 {
+    public IReadOnlyList<DirectCheckoutExtraOffer> ExtraOffers { get; set; } = [];
     public Guid PropertyId { get; set; }
     public DateTime CheckInDate { get; set; }
     public DateTime CheckOutDate { get; set; }
@@ -99,6 +100,7 @@ public class DirectBookingQuoteResponse
     public static DirectBookingQuoteResponse From(DirectBookingQuote quote) => new()
     {
         PropertyId = quote.PropertyId,
+        ExtraOffers = quote.ExtraOffers,
         CheckInDate = quote.CheckInDate,
         CheckOutDate = quote.CheckOutDate,
         Nights = quote.Nights,

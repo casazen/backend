@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Bookings;
+using Casazen.Core.Services;
 using Casazen.Core.Entities;
 
 namespace Casazen.Web.DTOs;
@@ -63,6 +64,9 @@ public class CreateDirectBookingAttributionRequest
 
 public class CreateDirectBookingRequest : IValidatableObject
 {
+    [MaxLength(50)]
+    public DirectCheckoutExtra[]? Extras { get; set; }
+
     [Required(ErrorMessage = "PropertyRequired")]
     public Guid PropertyId { get; set; }
 
@@ -123,7 +127,7 @@ public class CreateDirectBookingRequest : IValidatableObject
 
     /// <summary>
     /// The version of the soft opt-in notice (art. 130 c. 4 Codice privacy) the checkout showed, as the public org gave it
-    /// (<c>softOptInNoticeVersion</c>); left out when it showed none. Recorded as Â«notice presentedÂ» only when it is the current one: any other
+    /// (<c>softOptInNoticeVersion</c>); left out when it showed none. Recorded as «notice presented» only when it is the current one: any other
     /// is 409 <c>direct_booking_soft_opt_in_notice_outdated</c>. It is not a consent and the guest ticks nothing for it.
     /// </summary>
     [MaxLength(100)]

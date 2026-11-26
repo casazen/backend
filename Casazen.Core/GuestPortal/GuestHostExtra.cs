@@ -6,7 +6,7 @@ namespace Casazen.Core.GuestPortal;
 
 public enum GuestHostExtraPricing { Fixed, PerNight, PerGuest, PerUnit }
 public enum GuestHostExtraCalendar { None, EarlyCheckIn, LateCheckOut }
-public enum GuestHostExtraStatus { Requested, ReadyToPay, Paid, Declined, Fulfilled, Cancelled, AwaitingAuthorization, CapturePending }
+public enum GuestHostExtraStatus { Requested, ReadyToPay, Paid, Declined, Fulfilled, Cancelled, AwaitingAuthorization, CapturePending, PendingBookingPayment }
 
 public sealed class GuestHostExtra : ITenantOwned
 {
@@ -36,6 +36,7 @@ public sealed class GuestHostExtraOrder : ITenantOwned
     public int Quantity { get; set; }
     [Precision(12, 2)] public decimal Amount { get; set; }
     [MaxLength(3)] public string Currency { get; set; } = "";
+    public Guid? SupplementToDocumentId { get; set; }
     public GuestHostExtraStatus Status { get; set; }
     public DateTime CreatedAt { get; set; }
     [MaxLength(120)] public string? StripeIntentId { get; set; }

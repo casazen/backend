@@ -49,7 +49,7 @@ public sealed class GuestPortalDocumentsController(AppDbContext db, IFiscalDocum
         var portal = Portal;
         return db.FiscalDocuments.AsNoTracking()
             .Where(d => d.BookingId == portal.BookingId && d.OrgId == portal.OrgId
-                && d.Purpose == FiscalDocumentPurpose.GuestStay && d.Source == FiscalDocumentSource.CasaZen
+                && (d.Purpose == FiscalDocumentPurpose.GuestStay || d.Purpose == FiscalDocumentPurpose.GuestExtraSupplement) && d.Source == FiscalDocumentSource.CasaZen
                 && d.Status == FiscalDocumentStatus.Issued && d.Number != null && d.IssueDate != null);
     }
 

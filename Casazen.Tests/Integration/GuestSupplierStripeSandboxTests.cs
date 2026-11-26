@@ -105,6 +105,11 @@ public sealed partial class GuestSupplierStripeSandboxTests
             Assert.False(captured.Livemode);
             Assert.Equal("succeeded", captured.Status);
             Assert.Equal(110, captured.AmountReceived);
+            var documents = new GuestSupplierDocuments(db, new InMemoryFileStorage(), clock, config);
+            var stay = documents.ForStay(order.HostOrgId, order.BookingId, order.PropertyId);
+            var receipt = await documents.ReceiptAsync(stay, order.Id, default);
+            Assert.True(Uri.TryCreate(receipt, UriKind.Absolute, out var url) && url.Host == "pay.stripe.com");
+            Assert.Null(await documents.ReceiptAsync(documents.ForStay(order.HostOrgId, Guid.NewGuid(), order.PropertyId), order.Id, default));
         }
         finally
         {

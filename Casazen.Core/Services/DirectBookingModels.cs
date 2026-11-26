@@ -4,6 +4,10 @@ using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.TouristTax;
 
+public sealed record DirectCheckoutExtra(Guid Id, int Quantity, decimal ExpectedUnitPrice);
+public sealed record DirectCheckoutExtraOffer(Guid Id, string Name, string Description, decimal UnitPrice,
+    string Currency, bool ByQuantity, bool RequiresApproval);
+
 public record DirectBookingGuestInput(
     string FirstName,
     string LastName,
@@ -54,7 +58,8 @@ public record DirectBookingCreateInput(
     bool MarketingConsentEmail = false,
     bool MarketingConsentWhatsApp = false,
     string? SoftOptInNoticeVersion = null,
-    BookingAttributionInput? Attribution = null);
+    BookingAttributionInput? Attribution = null,
+    IReadOnlyList<DirectCheckoutExtra>? Extras = null);
 
 /// <summary>Stay to price before booking (checkout quote).</summary>
 /// <param name="ChildrenAges">Age of each minor at check-in, needed when the tourist tax depends on it.</param>
@@ -101,7 +106,10 @@ public record DirectBookingQuote(
     DateTime FreeRefundDeadline,
     DirectBookingPaymentOptions PaymentOptions,
     StayLodging Lodging,
-    StayCancellation? Cancellation = null);
+    StayCancellation? Cancellation = null)
+{
+    public IReadOnlyList<DirectCheckoutExtraOffer> ExtraOffers { get; init; } = [];
+}
 
 /// <summary>
 /// The lodging part of a quote (DB-03, D20): <see cref="WeekdayNights"/> nights at <see cref="NightlyRate"/> and
