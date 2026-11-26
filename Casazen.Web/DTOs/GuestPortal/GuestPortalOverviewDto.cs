@@ -80,6 +80,7 @@ public sealed class GuestPortalOverviewDto
                 PaidServices = overview.Features.PaidServices,
                 SupplierServices = overview.Features.SupplierServices,
                 AutoReplies = overview.Features.AutoReplies,
+                HasSyncedChannelConversation = overview.Features.HasSyncedChannelConversation,
             },
         };
     }
@@ -166,4 +167,6 @@ public sealed class GuestPortalFeaturesDto
     public bool SupplierServices { get; init; }
 
     public bool AutoReplies { get; init; }
+
+    public bool HasSyncedChannelConversation { get; init; }
 }

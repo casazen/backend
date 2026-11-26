@@ -77,4 +77,4 @@ public sealed record GuestPortalSectionView(string Key, int Order, string State,
 /// What the portal offers for the stay: the paid services (every <see cref="IGuestPortalPolicy"/> agrees), the services of the suppliers (the paid
 /// services and <c>Features:GuestPortalSupplierServices</c>) and the automatic replies of the chat (<c>Features:GuestPortalAutoReplies</c>).
 /// </summary>
-public sealed record GuestPortalFeatures(bool PaidServices, bool SupplierServices, bool AutoReplies);
+public sealed record GuestPortalFeatures(bool PaidServices, bool SupplierServices, bool AutoReplies, bool HasSyncedChannelConversation = false);
