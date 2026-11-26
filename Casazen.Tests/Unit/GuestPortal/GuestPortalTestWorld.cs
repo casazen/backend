@@ -92,7 +92,8 @@ internal sealed class GuestPortalTestWorld : IDisposable
             nextSteps ?? [new StayOverviewNextStep()],
             policies ?? [new DefaultGuestPortalPolicy()],
             flags ?? new TestFeatureFlags(FeatureFlags.GuestPortal),
-            Logs.CreateLogger<GuestPortalOverviewService>());
+            Logs.CreateLogger<GuestPortalOverviewService>(),
+            Moq.Mock.Of<Microsoft.Extensions.Hosting.IHostEnvironment>(e => e.EnvironmentName == "Test"));
     }
 
     /// <summary>The portal context of the stay, as the token filter makes it from its link.</summary>

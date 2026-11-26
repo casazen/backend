@@ -1,11 +1,14 @@
 using System.Globalization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.GuestPortal;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Octorate;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.GuestPortal;
@@ -30,6 +33,7 @@ public sealed class GuestPortalOverviewService(
     IEnumerable<IGuestPortalPolicy> policies,
     IFeatureFlags featureFlags,
     ILogger<GuestPortalOverviewService> logger,
+    IHostEnvironment hostEnvironment,
     IConfiguration? configuration = null) : IGuestPortalOverviewService
 {
     public async Task<GuestPortalOverview?> GetAsync(PortalContext context, CancellationToken cancellationToken = default)
@@ -66,7 +70,8 @@ public sealed class GuestPortalOverviewService(
             paidServices,
             paidServices && featureFlags.IsEnabled(FeatureFlags.GuestPortalSupplierServices)
                 && GuestSupplierCheckout.OrdersEnabled(configuration),
-            featureFlags.IsEnabled(FeatureFlags.GuestPortalAutoReplies));
+            featureFlags.IsEnabled(FeatureFlags.GuestPortalAutoReplies),
+            await HasSyncedChannelConversationAsync(context, cancellationToken));
 
         return new GuestPortalOverview(
             stay,
@@ -92,6 +97,34 @@ public sealed class GuestPortalOverviewService(
         BookingStatus.Cancelled => "cancelled",
         _ => "pending",
     };
+
+    // A channel account link is offered for the synced thread of this stay only.
+    // The impersonation-free guest action is to open the channel as themselves.
+    private async Task<bool> HasSyncedChannelConversationAsync(PortalContext context, CancellationToken ct)
+    {
+        if (!context.IsOta || !featureFlags.IsEnabled(FeatureFlags.OctorateConnector)
+            || OtaChannelMapper.Of(context.Source) is not { } channel)
+            return false;
+
+        var environment = OctorateEnvironments.Of(hostEnvironment);
+        var conversations =
+            from thread in db.OtaMessageThreads
+            join mapping in db.OctorateListingMappings
+                on new { thread.OrgId, thread.PropertyId, thread.OctorateAccommodationId }
+                equals new { mapping.OrgId, mapping.PropertyId, mapping.OctorateAccommodationId }
+            join sync in db.OtaMessageSyncStates
+                on new { mapping.OrgId, mapping.ConnectionId, mapping.OctorateAccommodationId }
+                equals new { sync.OrgId, sync.ConnectionId, sync.OctorateAccommodationId }
+            join connection in db.OctorateConnections
+                on new { mapping.OrgId, mapping.ConnectionId } equals new { connection.OrgId, ConnectionId = connection.Id }
+            where thread.OrgId == context.OrgId && thread.PropertyId == context.PropertyId && thread.BookingId == context.BookingId
+                && thread.ChannelSource == channel && thread.Kind == OtaThreadKind.Reservation && !thread.IsArchived && thread.AnonymizedAt == null
+                && mapping.Status == OctorateMappingStatus.Confirmed && connection.Status == OctorateConnectionStatus.Connected
+                && connection.Environment == environment
+                && sync.LastRecentPassAt != null && sync.LastError == null
+            select thread;
+        return await conversations.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AnyAsync(ct);
+    }
 
     private async Task<List<GuestPortalSectionView>> SectionsAsync(PortalContext context, CancellationToken cancellationToken)
     {

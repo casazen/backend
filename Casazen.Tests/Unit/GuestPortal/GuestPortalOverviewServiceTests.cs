@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.GuestPortal;
 using Casazen.Infrastructure.GuestPortal;
@@ -61,11 +62,65 @@ public class GuestPortalOverviewServiceTests
             document.RootElement.GetProperty("sections")[0].EnumerateObject().Select(p => p.Name));
         Assert.Equal(["key", "section", "panel", "params"], document.RootElement.GetProperty("nextStep").EnumerateObject().Select(p => p.Name));
         Assert.Equal(
-            ["paidServices", "supplierServices", "autoReplies"],
+            ["paidServices", "supplierServices", "autoReplies", "hasSyncedChannelConversation"],
             document.RootElement.GetProperty("features").EnumerateObject().Select(p => p.Name));
         Assert.DoesNotContain(GuestPortalTestWorld.HouseAddress, json, StringComparison.Ordinal);
         Assert.DoesNotContain("address", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("wifi", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Overview_OffersTheChannelOnlyForTheSyncedThreadOfThisStay()
+    {
+        using var world = new GuestPortalTestWorld();
+        var context = await world.ContextAsync();
+        var overview = world.OverviewService(flags: new TestFeatureFlags(FeatureFlags.GuestPortal, FeatureFlags.OctorateConnector));
+        var connection = new OctorateConnection { OrgId = context.OrgId, Status = OctorateConnectionStatus.Connected, Environment = OctorateEnvironment.Test };
+        var mapping = new OctorateListingMapping
+        {
+            OrgId = context.OrgId,
+            PropertyId = context.PropertyId,
+            ConnectionId = connection.Id,
+            OctorateAccommodationId = "123",
+            Status = OctorateMappingStatus.Confirmed,
+        };
+        var sync = new OtaMessageSyncState
+        {
+            OrgId = context.OrgId,
+            ConnectionId = connection.Id,
+            OctorateAccommodationId = "123",
+            LastRecentPassAt = DateTime.UtcNow,
+        };
+        var thread = new OtaMessageThread
+        {
+            OrgId = context.OrgId,
+            BookingId = context.BookingId,
+            PropertyId = context.PropertyId,
+            OctorateAccommodationId = "123",
+            OctorateThreadId = "456",
+            Kind = OtaThreadKind.Reservation,
+            ChannelSource = OtaChannel.Airbnb,
+        };
+        world.Db.AddRange(connection, mapping, sync, thread);
+        await world.Db.SaveChangesAsync();
+        Assert.True((await overview.GetAsync(context))!.Features.HasSyncedChannelConversation);
+        Assert.False((await world.OverviewService().GetAsync(context))!.Features.HasSyncedChannelConversation);
+
+        thread.BookingId = null;
+        await world.Db.SaveChangesAsync();
+        Assert.False((await overview.GetAsync(context))!.Features.HasSyncedChannelConversation);
+        thread.BookingId = context.BookingId;
+        sync.LastError = "chat_not_licensed";
+        await world.Db.SaveChangesAsync();
+        Assert.False((await overview.GetAsync(context))!.Features.HasSyncedChannelConversation);
+        sync.LastError = null;
+        connection.Environment = OctorateEnvironment.Production;
+        await world.Db.SaveChangesAsync();
+        Assert.False((await overview.GetAsync(context))!.Features.HasSyncedChannelConversation);
+        connection.Environment = OctorateEnvironment.Test;
+        mapping.Status = OctorateMappingStatus.Ambiguous;
+        await world.Db.SaveChangesAsync();
+        Assert.False((await overview.GetAsync(context))!.Features.HasSyncedChannelConversation);
     }
 
     /// <summary>Data rule: a completed check-in opens the reserved data (only there) and the language is the one the guest chose last.</summary>
