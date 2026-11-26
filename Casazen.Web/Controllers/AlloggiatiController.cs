@@ -120,10 +120,10 @@ public class AlloggiatiController(
         // A daily receipt can cover apartments outside a member's scope and records submitted on the portal itself.
         if ((await hostScopeResolver.ResolveHostScopeAsync(User, booking!.OrgId, ct))?.IsOrgWide != true) return Forbid();
         var receipt = await (from a in db.AlloggiatiSendAttempts
-            join r in db.AlloggiatiReceipts on a.ReceiptId equals r.Id
-            where a.BookingId == bookingId && a.OrgId == booking.OrgId && r.OrgId == a.OrgId &&
-                r.AccountKey == a.AccountKey && a.Mode == AlloggiatiMode.Live && r.Mode == AlloggiatiMode.Live
-            select new { r.StorageKey, r.ReceiptDate }).FirstOrDefaultAsync(ct);
+                             join r in db.AlloggiatiReceipts on a.ReceiptId equals r.Id
+                             where a.BookingId == bookingId && a.OrgId == booking.OrgId && r.OrgId == a.OrgId &&
+                                 r.AccountKey == a.AccountKey && a.Mode == AlloggiatiMode.Live && r.Mode == AlloggiatiMode.Live
+                             select new { r.StorageKey, r.ReceiptDate }).FirstOrDefaultAsync(ct);
         if (receipt == null) return NotFound();
         var stream = await storage.OpenReadAsync(StorageBucket.Private, receipt.StorageKey, ct);
         if (stream == null) return NotFound();

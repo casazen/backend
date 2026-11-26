@@ -516,7 +516,7 @@ public class PropertySenderServiceTests
         var dbName = Guid.NewGuid().ToString();
         var world = await SeedAsync(dbName);
         await using var db = OrgTeamTestData.NewDb(dbName);
-        var clock = new FakeTimeProvider();
+        var clock = new FakeTimeProvider(Start);
         var activity = new ActivityLog(db, clock);
         var store = new PropertySenderStore(db, activity, Mock.Of<IHostEnvironment>(h => h.EnvironmentName == "Staging"), clock);
         var routes = new DirectPortalRoutes(db, clock, activity, store);

@@ -16,15 +16,22 @@ public sealed class Ross1000DirectTests
     {
         StayGuest Guest(StayGuestType type, int position) => new()
         {
-            Type = type, Position = position, DateOfBirth = new DateTime(2000, 2, 4),
-            CitizenshipCode = "100000100", ResidenceInItaly = true, ResidenceComuneCode = "403015146",
-            Gender = Gender.Female, LastName = "NeverTransmitGuestName", DocumentNumber = "NeverTransmitDocument"
+            Type = type,
+            Position = position,
+            DateOfBirth = new DateTime(2000, 2, 4),
+            CitizenshipCode = "100000100",
+            ResidenceInItaly = true,
+            ResidenceComuneCode = "403015146",
+            Gender = Gender.Female,
+            LastName = "NeverTransmitGuestName",
+            DocumentNumber = "NeverTransmitDocument"
         };
         return new Booking
         {
             ArrivedAt = new DateTime(2026, 11, 24, 23, 15, 0, DateTimeKind.Utc),
             CheckedOutAt = new DateTime(2026, 11, 26, 9, 0, 0, DateTimeKind.Utc),
-            NumberOfGuests = 2, Status = BookingStatus.CheckedOut,
+            NumberOfGuests = 2,
+            Status = BookingStatus.CheckedOut,
             StayGuests = [Guest(StayGuestType.FamilyMember, 1), Guest(StayGuestType.HeadOfFamily, 0)]
         };
     }

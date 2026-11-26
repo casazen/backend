@@ -33,8 +33,15 @@ public sealed class DirectAlloggiatiPostgresTests(CasazenWebApplicationFactory f
         b.ArrivedAt = clock.GetUtcNow().UtcDateTime;
         b.Property.Country = "IT";
         b.NumberOfGuests = 1;
-        var account = new PropertyQuesturaCredentials { OrgId = b.OrgId, PropertyId = b.PropertyId,
-            Username = "synthetic", Password = "local", WsKey = "fixture", LastVerificationOk = true };
+        var account = new PropertyQuesturaCredentials
+        {
+            OrgId = b.OrgId,
+            PropertyId = b.PropertyId,
+            Username = "synthetic",
+            Password = "local",
+            WsKey = "fixture",
+            LastVerificationOk = true
+        };
         var report = new AlloggiatiWebReport { OrgId = b.OrgId, GuestId = b.GuestId, BookingId = b.Id, Status = AlloggiatiWebStatus.DaInviareManualmente };
         db.AddRange(account, report);
         await db.SaveChangesAsync();
@@ -101,8 +108,11 @@ public sealed class DirectAlloggiatiPostgresTests(CasazenWebApplicationFactory f
                 "Ricevuta" => "<RicevutaResult><esito>true</esito></RicevutaResult><PDF>JVBERi0x</PDF>",
                 _ => throw new InvalidOperationException()
             };
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
-                $"<s:Envelope xmlns:s='http://schemas.xmlsoap.org/soap/envelope/'><s:Body><{op}Response xmlns='AlloggiatiService'>{content}</{op}Response></s:Body></s:Envelope>", Encoding.UTF8, "text/xml") });
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                $"<s:Envelope xmlns:s='http://schemas.xmlsoap.org/soap/envelope/'><s:Body><{op}Response xmlns='AlloggiatiService'>{content}</{op}Response></s:Body></s:Envelope>", Encoding.UTF8, "text/xml")
+            });
         }
     }
 }

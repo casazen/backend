@@ -58,9 +58,17 @@ public sealed class DirectAlloggiatiDispatch(AppDbContext db, DirectAlloggiatiSo
         var now = clock.GetUtcNow().UtcDateTime;
         var attempt = new AlloggiatiSendAttempt
         {
-            OrgId = booking.OrgId, BookingId = booking.Id, PropertyId = booking.PropertyId, AccountKey = account.AccountKey,
-            CredentialVersion = account.CredentialVersion, Mode = AlloggiatiMode.Live, SnapshotHash = hash,
-            Trigger = AlloggiatiAttemptTriggers.ArrivalDayJob, GuestCount = rows.Length, ReservedAt = now, LeaseExpiresAt = now.AddMinutes(2),
+            OrgId = booking.OrgId,
+            BookingId = booking.Id,
+            PropertyId = booking.PropertyId,
+            AccountKey = account.AccountKey,
+            CredentialVersion = account.CredentialVersion,
+            Mode = AlloggiatiMode.Live,
+            SnapshotHash = hash,
+            Trigger = AlloggiatiAttemptTriggers.ArrivalDayJob,
+            GuestCount = rows.Length,
+            ReservedAt = now,
+            LeaseExpiresAt = now.AddMinutes(2),
             GuestsJson = JsonSerializer.Serialize(summary.Guests.Select(g => new { stayGuestId = g.StayGuestId, position = g.Position, outcome = "pending" }))
         };
         if (tested.Any(x => !x))
@@ -140,8 +148,12 @@ public sealed class DirectAlloggiatiDispatch(AppDbContext db, DirectAlloggiatiSo
     }
 
     private static string Outcomes(AlloggiatiGuestSummaryInfo summary, bool[] results, string positive) =>
-        JsonSerializer.Serialize(summary.Guests.Select((g, i) => new { stayGuestId = g.StayGuestId, position = g.Position,
-            outcome = results[i] ? positive : "rejected" }));
+        JsonSerializer.Serialize(summary.Guests.Select((g, i) => new
+        {
+            stayGuestId = g.StayGuestId,
+            position = g.Position,
+            outcome = results[i] ? positive : "rejected"
+        }));
 }
 
 public sealed record AlloggiatiJobTarget(Guid OrgId, Guid Id);

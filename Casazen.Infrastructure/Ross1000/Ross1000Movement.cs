@@ -46,8 +46,12 @@ public static class Ross1000MovementBuilder
                 var id = GuestId(guest.Id);
                 var type = guest.Type switch
                 {
-                    StayGuestType.SingleGuest => "16", StayGuestType.HeadOfFamily => "17", StayGuestType.HeadOfGroup => "18",
-                    StayGuestType.FamilyMember => "19", StayGuestType.GroupMember => "20", _ => throw new Ross1000Problem("invalid_guest")
+                    StayGuestType.SingleGuest => "16",
+                    StayGuestType.HeadOfFamily => "17",
+                    StayGuestType.HeadOfGroup => "18",
+                    StayGuestType.FamilyMember => "19",
+                    StayGuestType.GroupMember => "20",
+                    _ => throw new Ross1000Problem("invalid_guest")
                 };
                 if (arrival == day)
                 {
@@ -99,8 +103,16 @@ public static class Ross1000MovementBuilder
             new XElement("cittadinanza", citizenship), new XElement("statoresidenza", country), new XElement("luogoresidenza", place),
             new XElement("datanascita", DateCode(DateOnly.FromDateTime(g.DateOfBirth.Value))),
             new XElement("tipoturismo", g.TourismType switch { "business" => "Congressuale/Affari", "other" => "Altro motivo", _ => "Non specificato" }),
-            new XElement("mezzotrasporto", g.TravelWay switch { "car" => "Auto", "train" => "Treno", "plane" => "Aereo", "bus" => "Pullman",
-                "ship" => "Barca/Nave/Traghetto", "other" => "Altro mezzo", _ => "Non specificato" }));
+            new XElement("mezzotrasporto", g.TravelWay switch
+            {
+                "car" => "Auto",
+                "train" => "Treno",
+                "plane" => "Aereo",
+                "bus" => "Pullman",
+                "ship" => "Barca/Nave/Traghetto",
+                "other" => "Altro mezzo",
+                _ => "Non specificato"
+            }));
     }
 
     private static string Code(string? value) => value is { Length: 9 } && value.All(char.IsAsciiDigit)

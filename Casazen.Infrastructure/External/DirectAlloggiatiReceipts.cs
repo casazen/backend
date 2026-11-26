@@ -56,9 +56,18 @@ public sealed class DirectAlloggiatiReceipts(AppDbContext db, DirectAlloggiatiSo
             using var stream = new MemoryStream(bytes, writable: false);
             await storage.PutAsync(StorageBucket.Private, key, stream, "application/pdf", ct);
             var now = clock.GetUtcNow().UtcDateTime;
-            receipt = new AlloggiatiReceipt { OrgId = attempt.OrgId, AccountKey = attempt.AccountKey, ReceiptDate = date,
-                Mode = AlloggiatiMode.Live, StorageKey = key, ContentHash = hash, SizeBytes = bytes.Length,
-                RetrievedAt = now, RetainUntil = now.AddYears(AlloggiatiReceipt.RetentionYears) };
+            receipt = new AlloggiatiReceipt
+            {
+                OrgId = attempt.OrgId,
+                AccountKey = attempt.AccountKey,
+                ReceiptDate = date,
+                Mode = AlloggiatiMode.Live,
+                StorageKey = key,
+                ContentHash = hash,
+                SizeBytes = bytes.Length,
+                RetrievedAt = now,
+                RetainUntil = now.AddYears(AlloggiatiReceipt.RetentionYears)
+            };
             db.Add(receipt);
         }
         attempt.ReceiptId = receipt.Id;
