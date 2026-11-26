@@ -20,11 +20,12 @@ public sealed class DirectAlloggiatiDispatch(AppDbContext db, DirectAlloggiatiSo
     public async Task<List<AlloggiatiJobTarget>> CandidatesAsync(CancellationToken ct)
     {
         if (!environment.Live) return [];
-        var yesterday = clock.TodayInRome().AddDays(-1);
-        var today = yesterday.AddDays(1);
+        var today = clock.TodayInRomeAsDateOnly();
+        var yesterdayStart = RomeCalendar.StartOfDayUtc(today.AddDays(-1));
+        var tomorrowStart = RomeCalendar.StartOfDayUtc(today.AddDays(1));
         return await db.AlloggiatiWebReports.AsNoTracking()
             .Where(r => r.Status == AlloggiatiWebStatus.DaInviareManualmente && r.GuestId == r.Booking.GuestId
-                && r.Booking.CheckInDate >= yesterday && r.Booking.CheckInDate <= today && r.Booking.NoShowAt == null
+                && r.Booking.ArrivedAt >= yesterdayStart && r.Booking.ArrivedAt < tomorrowStart && r.Booking.NoShowAt == null
                 && r.Booking.ArrivedAt != null && r.Booking.Property.Country == "IT"
                 && db.PropertyQuesturaCredentials.Any(c => c.PropertyId == r.Booking.PropertyId && c.LastVerificationOk == true))
             .Select(r => new AlloggiatiJobTarget(r.OrgId, r.Id)).ToListAsync(ct);
@@ -43,6 +44,8 @@ public sealed class DirectAlloggiatiDispatch(AppDbContext db, DirectAlloggiatiSo
         if (account == null) return;
         var summary = await reports.GetGuestSummaryAsync(booking.Id);
         if (!summary.ExportReady || summary.Guests.Count != booking.NumberOfGuests || summary.Guests.Any(g => !g.StayGuestId.HasValue)) return;
+        var actualArrival = RomeCalendar.DateInRome(booking.ArrivedAt.Value);
+        if (summary.Guests.Any(g => DateOnly.FromDateTime(g.ArrivalDate) != actualArrival)) return;
         var file = AlloggiatiRecordFile.Build(summary.Guests);
         if (file.Text == null || !file.Success) return;
         var rows = file.Text.Split("\r\n", StringSplitOptions.None);
@@ -84,7 +87,7 @@ public sealed class DirectAlloggiatiDispatch(AppDbContext db, DirectAlloggiatiSo
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
             var claimed = await db.AlloggiatiWebReports.Where(r => r.Id == report.Id && r.Status == AlloggiatiWebStatus.DaInviareManualmente
-                && !r.ManuallyCompleted && r.Booking.NoShowAt == null && r.Booking.ArrivedAt != null && r.GuestId == r.Booking.GuestId
+                && !r.ManuallyCompleted && r.Booking.NoShowAt == null && r.Booking.ArrivedAt == booking.ArrivedAt && r.Booking.CheckInDate == booking.CheckInDate && r.GuestId == r.Booking.GuestId
                 && db.PropertyQuesturaCredentials.Any(c => c.Id == account.Id && c.CredentialVersion == account.CredentialVersion && c.UpdatedAt == account.UpdatedAt && c.LastVerificationOk == true))
                 .ExecuteUpdateAsync(set => set.SetProperty(r => r.Status, AlloggiatiWebStatus.Sending), ct);
             if (claimed != 1 || !await EligibleAsync(booking, ct)) return;
@@ -122,7 +125,9 @@ public sealed class DirectAlloggiatiDispatch(AppDbContext db, DirectAlloggiatiSo
         // Previously entrusted or ambiguous Octorate writes must be reconciled, even if the new owner is now CasaZen.
         if (await db.StayGuestOctorateLinks.AnyAsync(l => l.OrgId == booking.OrgId && l.BookingId == booking.Id
             && !l.SentAsDraft, ct)) return false;
-        var date = DateOnly.FromDateTime(booking.CheckInDate);
+        if (booking.ArrivedAt is not { } arrival) return false;
+        var date = RomeCalendar.DateInRome(arrival);
+        if (date != RomeCalendar.DateInRome(booking.CheckInDate)) return false;
         var today = clock.TodayInRomeAsDateOnly();
         var from = await route.EffectiveFromAsync(booking.OrgId, booking.PropertyId, ct);
         if (from == null || date < from.Value || date > today || date < today.AddDays(-1) ||

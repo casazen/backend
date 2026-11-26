@@ -28,7 +28,7 @@ public sealed class DirectAlloggiatiPostgresTests(CasazenWebApplicationFactory f
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var b = await db.Bookings.Include(x => x.Property).SingleAsync(x => x.Id == seed.BookingId);
         var clock = new MutableClock();
-        b.CheckInDate = clock.TodayInRome();
+        b.CheckInDate = clock.TodayInRome().AddHours(8);
         b.CheckOutDate = b.CheckInDate.AddDays(3);
         b.ArrivedAt = clock.GetUtcNow().UtcDateTime;
         b.Property.Country = "IT";
@@ -53,6 +53,13 @@ public sealed class DirectAlloggiatiPostgresTests(CasazenWebApplicationFactory f
         var live = new AlloggiatiTransportEnvironment(true);
         var dispatch = new DirectAlloggiatiDispatch(db, soap, reports.Object, delegation.Object, route.Object, clock, Mock.Of<IFeatureFlags>(), live);
         Assert.Contains(new AlloggiatiJobTarget(b.OrgId, report.Id), await dispatch.CandidatesAsync(default));
+        var arrivedAt = b.ArrivedAt;
+        b.ArrivedAt = arrivedAt!.Value.AddDays(-1);
+        await db.SaveChangesAsync();
+        await dispatch.ProcessAsync(report.Id, default);
+        Assert.Equal(0, handler.Sends);
+        b.ArrivedAt = arrivedAt;
+        await db.SaveChangesAsync();
         await dispatch.ProcessAsync(report.Id, default);
         await dispatch.ProcessAsync(report.Id, default);
         Assert.Equal(1, handler.Sends);
