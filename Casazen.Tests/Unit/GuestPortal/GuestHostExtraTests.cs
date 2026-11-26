@@ -15,6 +15,27 @@ namespace Casazen.Tests.Unit.GuestPortal;
 
 public sealed class GuestHostExtraTests
 {
+    [Theory]
+    [InlineData("pk_live_fixture", "sk_live_fixture")]
+    [InlineData("pk_test_fixture", "sk_live_fixture")]
+    [InlineData("pk_test_fixture", null)]
+    public async Task CheckoutExtrasAreUnavailableOutsideStripeTestMode(string publishable, string? secret)
+    {
+        using var world = new GuestPortalTestWorld();
+        var portal = await OpenAsync(world);
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Stripe:PublishableKey"] = publishable,
+            ["Stripe:SecretKey"] = secret
+        }).Build();
+        var service = new GuestHostExtraService(world.Db, new Mock<IStripeService>(MockBehavior.Strict).Object,
+            config, [], world.Clock, world.Logs.CreateLogger<GuestHostExtraService>());
+        var (id, _) = await service.SaveAsync(portal.OrgId, portal.PropertyId, Guid.Empty,
+            new GuestHostExtra { Name = "Kit", Price = 5m }, true, _ => Task.FromResult(true), default);
+        Assert.Empty(await service.CheckoutOffersAsync(world.Property, world.Booking.CheckInDate, world.Booking.CheckOutDate, 2, "en", default));
+        await Assert.ThrowsAsync<DomainConflictException>(() => service.LockCheckoutAsync([new(id!.Value, 1, 5m)], default));
+    }
+
     [Fact]
     public void PriceValidationUsesTheSameDecimalRangeInItalian()
     {

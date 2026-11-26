@@ -11,6 +11,7 @@ using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Core.Validation;
 using Casazen.Infrastructure.Events;
+using Casazen.Infrastructure.GuestPortal;
 using Casazen.Infrastructure.External;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -39,7 +40,8 @@ public class BookingService(
     IDomainEventRecorder? domainEvents = null,
     ICrmContactService? crmContacts = null,
     IMarketingConfirmationService? marketingConfirmation = null,
-    ICrmContactIndex? contactIndex = null) : IBookingService
+    ICrmContactIndex? contactIndex = null,
+    GuestHostExtraService? hostExtras = null) : IBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -284,6 +286,16 @@ public class BookingService(
         {
             // The hold is created (Pending): its event is saved with it, in the same insert (a checkout whose payment cannot be started
             // is removed with its events, BK-18). The confirmation follows with the payment.
+            var selections = input.Extras ?? [];
+            if (selections.Count > 0 && hostExtras is null)
+                throw new DomainConflictException("guest_host_extra_unavailable", "GuestHostExtraUnavailable");
+            await using var extraLock = selections.Count == 0 ? null :
+                await hostExtras!.LockCheckoutAsync(selections, CancellationToken.None);
+            if (selections.Count > 0)
+            {
+                totalPrice += await hostExtras!.PrepareCheckoutAsync(booking, property, selections, CancellationToken.None);
+                booking.TotalPrice = totalPrice;
+            }
             BookingEvents.RecordCreated(domainEvents, booking, BookingEventOrigin.Guest);
 
             // Booking and guest snapshot (and the privacy history of the checkout, when there is some) in one insert: a concurrent
@@ -291,6 +303,7 @@ public class BookingService(
             createdBooking = consentRecords.Count == 0
                 ? await repository.AddAsync(booking)
                 : await repository.AddWithGuestConsentsAsync(booking, consentRecords);
+            if (extraLock is not null) await extraLock.CommitAsync();
         }
         catch (InvalidOperationException ex) when (
             ex.Message.Contains("Property not available", StringComparison.OrdinalIgnoreCase))
@@ -379,9 +392,13 @@ public class BookingService(
         var (checkIn, checkOut) = await ValidateStayAsync(
             property, input.CheckInDate, input.CheckOutDate, input.NumberOfAdults + input.NumberOfChildren, cancellationToken);
 
-        return await PriceStayAsync(
-            property, checkIn, checkOut, input.NumberOfAdults, input.NumberOfChildren, input.ChildrenAges,
-            cancellationToken);
+        var quote = await PriceStayAsync(
+            property, checkIn, checkOut, input.NumberOfAdults, input.NumberOfChildren, input.ChildrenAges, cancellationToken);
+        return hostExtras is null ? quote : quote with
+        {
+            ExtraOffers = await hostExtras.CheckoutOffersAsync(property,
+            checkIn, checkOut, input.NumberOfAdults + input.NumberOfChildren, System.Globalization.CultureInfo.CurrentUICulture.Name, cancellationToken)
+        };
     }
 
     /// <summary>

@@ -148,6 +148,7 @@ public sealed class CheckoutPaymentSettlementService(
             MarkCompleted(payment, paymentIntentId, eventAccountId, onPlatform);
 
             // E08/F01/US01/T04: the payment became paid; its event is saved with the status (the Octorate handler records it on the reservation).
+            await GuestPortal.GuestHostExtraService.RecordBookingPaymentAsync(db, booking, cancellationToken);
             await PaymentEvents.RecordSucceededAsync(
                 domainEvents, db, payment, await PaymentEvents.CurrencyOfAsync(db, booking, cancellationToken), cancellationToken);
             await paymentRepository.UpdateAsync(payment);
@@ -184,6 +185,7 @@ public sealed class CheckoutPaymentSettlementService(
         MarkCompleted(payment, paymentIntentId, eventAccountId, onPlatform);
         if (completedNow && datesFree)
         {
+            await GuestPortal.GuestHostExtraService.RecordBookingPaymentAsync(db, booking, cancellationToken);
             await PaymentEvents.RecordSucceededAsync(
                 domainEvents, db, payment, await PaymentEvents.CurrencyOfAsync(db, booking, cancellationToken), cancellationToken);
         }
