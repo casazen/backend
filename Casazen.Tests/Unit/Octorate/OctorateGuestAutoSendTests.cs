@@ -97,27 +97,38 @@ public class OctorateGuestAutoSendTests
         Assert.Equal(StayGuestsAutoSendOutcome.Sent, (await off.AutoSend().TrySendAsync(OrgA, off.BookingId, CancellationToken.None)).Outcome);
     }
 
-    /// <summary>
-    /// Proof (data, CHK-02 kept): a property whose sender is not the channel manager never sends anything that is not a draft, by itself either: with the
-    /// switch of the drafts off nothing leaves; with it on every payload is a draft.
-    /// </summary>
     [Theory]
-    [InlineData(ComplianceSenderType.Manual)]
-    [InlineData(ComplianceSenderType.CasaZen)]
-    public async Task AutoSend_SenderNotChannelManager_NeverNonDraft_Test(ComplianceSenderType sender)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ManualSender_OnlySendsDraftsWhenEnabled(bool draftsEnabled)
     {
-        var off = await World.CreateAsync(sender: sender, sendDraftsWhenNotChannelManager: false);
-        var held = await off.AutoSend().TrySendAsync(OrgA, off.BookingId, CancellationToken.None);
+        var world = await World.CreateAsync(sender: ComplianceSenderType.Manual, sendDraftsWhenNotChannelManager: draftsEnabled);
+        var result = await world.AutoSend().TrySendAsync(OrgA, world.BookingId, CancellationToken.None);
 
-        Assert.Equal(OctorateCheckInSendState.NotApplicable, held.Send!.State);
-        Assert.Equal(CheckInOctorateSyncService.ReasonSenderNotChannelManager, held.Send.Reason);
-        Assert.Empty(off.Sent);
+        if (draftsEnabled)
+        {
+            Assert.NotEmpty(world.Sent);
+            Assert.All(world.Sent, upsert => Assert.True(upsert.Draft));
+        }
+        else
+        {
+            Assert.Equal(OctorateCheckInSendState.NotApplicable, result.Send!.State);
+            Assert.Equal(CheckInOctorateSyncService.ReasonSenderNotChannelManager, result.Send.Reason);
+            Assert.Empty(world.Sent);
+        }
+    }
 
-        var drafts = await World.CreateAsync(sender: sender, sendDraftsWhenNotChannelManager: true);
-        await drafts.AutoSend().TrySendAsync(OrgA, drafts.BookingId, CancellationToken.None);
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CasaZenDirectSender_AlwaysKeepsGuestDataOffOctorate(bool draftsEnabled)
+    {
+        var world = await World.CreateAsync(sender: ComplianceSenderType.CasaZen, sendDraftsWhenNotChannelManager: draftsEnabled);
+        var result = await world.AutoSend().TrySendAsync(OrgA, world.BookingId, CancellationToken.None);
 
-        Assert.NotEmpty(drafts.Sent);
-        Assert.DoesNotContain(drafts.Sent, upsert => !upsert.Draft);
+        Assert.Equal(OctorateCheckInSendState.NotApplicable, result.Send!.State);
+        Assert.Equal(CheckInOctorateSyncService.ReasonSenderNotChannelManager, result.Send.Reason);
+        Assert.Empty(world.Sent);
     }
 
     /// <summary>
