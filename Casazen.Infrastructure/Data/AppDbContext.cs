@@ -180,6 +180,7 @@ public class AppDbContext(
     /// </summary>
     public DbSet<TrustedSupplier> TrustedSuppliers { get; set; } = null!;
     public DbSet<GuestSupplierOffer> GuestSupplierOffers => Set<GuestSupplierOffer>();
+    public DbSet<GuestSupplierOrderDocument> GuestSupplierOrderDocuments => Set<GuestSupplierOrderDocument>();
     public DbSet<GuestSupplierOrder> GuestSupplierOrders => Set<GuestSupplierOrder>();
 
     /// <summary>
@@ -603,6 +604,11 @@ public class AppDbContext(
         base.OnModelCreating(modelBuilder);
         modelBuilder.ApplyConfiguration(new GuestSupplierOfferConfiguration());
         modelBuilder.ApplyConfiguration(new GuestSupplierOrderConfiguration());
+        modelBuilder.Entity<GuestSupplierOrderDocument>(entity =>
+        {
+            entity.HasOne<GuestSupplierOrder>().WithMany().HasForeignKey(d => d.OrderId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(d => new { d.OrderId, d.ContentHash }).IsUnique();
+        });
 
         modelBuilder.Entity<PropertyActivationCredential>().HasIndex(p => new { p.OrgId, p.ExpiresAt });
         modelBuilder.Entity<PropertyActivationCredentialAssignment>(assignment =>
