@@ -33,7 +33,7 @@ public sealed partial class FiscalDocumentService
             ct,
             (PostgresAdvisoryLocks.Scope.FiscalDocumentBooking, bookingId.ToString("N")));
 
-        if (await HasLiveDocumentAsync(bookingId, ct))
+        if (await HasLiveDocumentAsync(bookingId, ct) && !await PendingSupplements().AnyAsync(o => o.BookingId == bookingId, ct))
             return EnsureDraftOutcome.AlreadyHasDocument;
 
         await CreateDraftAsync(bookingId, userId, ct);
@@ -80,24 +80,25 @@ public sealed partial class FiscalDocumentService
         // The active stays that ended (the one definition of «active»), without a live document; with the automatic issue also the ones that only have a draft, and the ones
         // whose document of the agency's services is still a draft beside the owner's document already issued (E17/F01/US01/T02). The most recent first, so a stay that can
         // never get its document (the guest never gave its data) does not hold back the ones behind it.
+        var supplements = PendingSupplements();
         var candidates = await db.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == orgId
                         && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status)
                         && b.NoShowAt == null
                         && b.CheckOutDate < todayStart
-                        && b.CheckOutDate >= since
-                        && (!db.FiscalDocuments.Any(d => d.BookingId == b.Id
+                        && (supplements.Any(o => o.BookingId == b.Id && o.OrgId == b.OrgId)
+                            || (b.CheckOutDate >= since && !db.FiscalDocuments.Any(d => d.BookingId == b.Id
                                                          && d.Purpose == FiscalDocumentPurpose.GuestStay
                                                          && d.Status != FiscalDocumentStatus.Discarded
                                                          && d.Kind != DocumentKind.CreditNote
                                                          && d.Kind != DocumentKind.Proforma
                                                          && !d.CreditedInFull
-                                                         && (!autoIssue || d.Status == FiscalDocumentStatus.Issued))
+                                                         && (!autoIssue || d.Status == FiscalDocumentStatus.Issued)))
                             || (autoIssue && db.FiscalDocuments.Any(d => d.BookingId == b.Id
                                                                          && d.Source == FiscalDocumentSource.CasaZen
-                                                                         && d.Purpose == FiscalDocumentPurpose.GuestStay
-                                                                         && d.ForAgencyServices
+                                                                         && (d.Purpose == FiscalDocumentPurpose.GuestStay || d.Purpose == FiscalDocumentPurpose.GuestExtraSupplement)
+                                                                         && ((b.CheckOutDate >= since && d.ForAgencyServices) || d.SupplementForExtraOrderId != null)
                                                                          && d.Status == FiscalDocumentStatus.Draft
                                                                          && d.Kind != DocumentKind.CreditNote))))
             .OrderByDescending(b => b.CheckOutDate)
@@ -318,7 +319,7 @@ public sealed partial class FiscalDocumentService
         {
             // The drafts of the stays of the period (their last day) and of the properties; a correction (a credit note) is only issued when it is named.
             var selected = reach.Where(d => d.Source == FiscalDocumentSource.CasaZen
-                                            && d.Purpose == FiscalDocumentPurpose.GuestStay
+                                            && (d.Purpose == FiscalDocumentPurpose.GuestStay || d.Purpose == FiscalDocumentPurpose.GuestExtraSupplement)
                                             && d.Status == FiscalDocumentStatus.Draft
                                             && d.Kind != DocumentKind.CreditNote
                                             && !requested.Contains(d.Id));
@@ -407,14 +408,14 @@ public sealed partial class FiscalDocumentService
             .AsNoTracking()
             .Where(d => d.BookingId == bookingId
                         && d.Source == FiscalDocumentSource.CasaZen
-                        && d.Purpose == FiscalDocumentPurpose.GuestStay
+                        && (d.Purpose == FiscalDocumentPurpose.GuestStay || d.Purpose == FiscalDocumentPurpose.GuestExtraSupplement)
                         && d.Status == FiscalDocumentStatus.Draft
                         && d.Kind != DocumentKind.CreditNote)
             .OrderBy(d => d.ForAgencyServices)
             .ThenByDescending(d => d.CreatedAt)
-            .Select(d => new { d.Id, d.ForAgencyServices })
+            .Select(d => new { d.Id, d.ForAgencyServices, d.SupplementForExtraOrderId })
             .ToListAsync(ct);
-        return drafts.GroupBy(d => d.ForAgencyServices).Select(g => g.First().Id).ToList();
+        return drafts.GroupBy(d => new { d.ForAgencyServices, d.SupplementForExtraOrderId }).Select(g => g.First().Id).ToList();
     }
 
     /// <summary>

@@ -2485,6 +2485,7 @@ public class AppDbContext(
         // UI-13a: the stored search keys and their indexes (global search, docs/runbooks/global-search.md).
         SearchKeyModel.Configure(modelBuilder);
 
+        modelBuilder.Entity<GuestHostExtraOrder>().HasOne<FiscalDocument>().WithMany().HasForeignKey(x => x.SupplementToDocumentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<GuestHostExtraOrder>().HasIndex(x => new { x.OrgId, x.BookingId });
         modelBuilder.Entity<GuestHostExtraOrder>().HasIndex(x => new { x.OrgId, x.ExtraId });
         modelBuilder.Entity<GuestHostExtra>().HasIndex(x => x.OrgId);
