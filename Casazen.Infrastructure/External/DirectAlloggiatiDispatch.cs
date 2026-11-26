@@ -17,7 +17,7 @@ public sealed class DirectAlloggiatiDispatch(AppDbContext db, DirectAlloggiatiSo
     AlloggiatiTransportEnvironment environment)
 {
     // The arrival report has already passed the arrival-day scheduler; an actual arrival is required as well.
-    public async Task<List<Guid>> CandidatesAsync(CancellationToken ct)
+    public async Task<List<AlloggiatiJobTarget>> CandidatesAsync(CancellationToken ct)
     {
         if (!environment.Live) return [];
         var yesterday = clock.TodayInRome().AddDays(-1);
@@ -27,7 +27,7 @@ public sealed class DirectAlloggiatiDispatch(AppDbContext db, DirectAlloggiatiSo
                 && r.Booking.CheckInDate >= yesterday && r.Booking.CheckInDate <= today && r.Booking.NoShowAt == null
                 && r.Booking.ArrivedAt != null && r.Booking.Property.Country == "IT"
                 && db.PropertyQuesturaCredentials.Any(c => c.PropertyId == r.Booking.PropertyId && c.LastVerificationOk == true))
-            .Select(r => r.Id).ToListAsync(ct);
+            .Select(r => new AlloggiatiJobTarget(r.OrgId, r.Id)).ToListAsync(ct);
     }
 
     public async Task ProcessAsync(Guid reportId, CancellationToken ct)
@@ -57,7 +57,8 @@ public sealed class DirectAlloggiatiDispatch(AppDbContext db, DirectAlloggiatiSo
         {
             OrgId = booking.OrgId, BookingId = booking.Id, PropertyId = booking.PropertyId, AccountKey = account.AccountKey,
             CredentialVersion = account.CredentialVersion, Mode = AlloggiatiMode.Live, SnapshotHash = hash,
-            Trigger = AlloggiatiAttemptTriggers.ArrivalDayJob, GuestCount = rows.Length, ReservedAt = now, LeaseExpiresAt = now.AddMinutes(2)
+            Trigger = AlloggiatiAttemptTriggers.ArrivalDayJob, GuestCount = rows.Length, ReservedAt = now, LeaseExpiresAt = now.AddMinutes(2),
+            GuestsJson = JsonSerializer.Serialize(summary.Guests.Select(g => new { stayGuestId = g.StayGuestId, position = g.Position, outcome = "pending" }))
         };
         if (tested.Any(x => !x))
         {
@@ -75,6 +76,9 @@ public sealed class DirectAlloggiatiDispatch(AppDbContext db, DirectAlloggiatiSo
         await using var ownership = await PostgresAdvisoryLocks.TryAcquireSessionLockAsync(db,
             PostgresAdvisoryLocks.Scope.InstitutionalSenderCutover, booking.PropertyId.ToString("N"), ct);
         if (ownership == null) return;
+        var currentSummary = await reports.GetGuestSummaryAsync(booking.Id);
+        if (!currentSummary.ExportReady || !summary.Guests.Select(g => g.StayGuestId).SequenceEqual(currentSummary.Guests.Select(g => g.StayGuestId)) ||
+            !string.Equals(file.Text, AlloggiatiRecordFile.Build(currentSummary.Guests).Text, StringComparison.Ordinal)) return;
         // Claim the current report in the database before the irreversible call. A crashed worker
         // leaves an open attempt that a later worker can only reconcile, never resend.
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
@@ -132,3 +136,5 @@ public sealed class DirectAlloggiatiDispatch(AppDbContext db, DirectAlloggiatiSo
         JsonSerializer.Serialize(summary.Guests.Select((g, i) => new { stayGuestId = g.StayGuestId, position = g.Position,
             outcome = results[i] ? positive : "rejected" }));
 }
+
+public sealed record AlloggiatiJobTarget(Guid OrgId, Guid Id);

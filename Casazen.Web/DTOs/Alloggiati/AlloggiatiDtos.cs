@@ -100,6 +100,7 @@ public sealed record AlloggiatiRetryResultDto(OctorateCheckInSendState State, st
 
 public class AlloggiatiStatusDto
 {
+    public IReadOnlyList<DirectGuestOutcomeDto> DirectGuests { get; set; } = [];
     public bool DirectSubmission { get; set; }
     public string? DirectAttempt { get; set; }
     public bool CanDownloadDirectReceipt { get; set; }
@@ -458,3 +459,5 @@ public static class AlloggiatiCodeLists
         return tables.Count > 0;
     }
 }
+
+public sealed record DirectGuestOutcomeDto(int Position, string Outcome);

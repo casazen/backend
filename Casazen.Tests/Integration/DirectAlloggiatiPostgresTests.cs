@@ -52,7 +52,7 @@ public sealed class DirectAlloggiatiPostgresTests(CasazenWebApplicationFactory f
         var soap = new DirectAlloggiatiSoap(http);
         var live = new AlloggiatiTransportEnvironment(true);
         var dispatch = new DirectAlloggiatiDispatch(db, soap, reports.Object, delegation.Object, route.Object, clock, Mock.Of<IFeatureFlags>(), live);
-        Assert.Contains(report.Id, await dispatch.CandidatesAsync(default));
+        Assert.Contains(new AlloggiatiJobTarget(b.OrgId, report.Id), await dispatch.CandidatesAsync(default));
         await dispatch.ProcessAsync(report.Id, default);
         await dispatch.ProcessAsync(report.Id, default);
         Assert.Equal(1, handler.Sends);

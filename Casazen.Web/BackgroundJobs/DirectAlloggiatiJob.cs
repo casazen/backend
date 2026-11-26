@@ -1,4 +1,5 @@
 using Casazen.Infrastructure.External;
+using Casazen.Core.Multitenancy;
 using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
@@ -10,9 +11,10 @@ public sealed class DirectAlloggiatiJob(IServiceScopeFactory scopes, ILogger<Dir
     {
         using var read = scopes.CreateScope();
         var ids = await read.ServiceProvider.GetRequiredService<DirectAlloggiatiDispatch>().CandidatesAsync(ct);
-        foreach (var id in ids)
+        foreach (var (orgId, id) in ids)
         {
             using var item = scopes.CreateScope();
+            item.ServiceProvider.GetRequiredService<IBackgroundTenantScope>().EnterOrg(orgId);
             try { await item.ServiceProvider.GetRequiredService<DirectAlloggiatiDispatch>().ProcessAsync(id, ct); }
             catch (Exception error) when (!ct.IsCancellationRequested)
             {
@@ -27,9 +29,10 @@ public sealed class DirectAlloggiatiJob(IServiceScopeFactory scopes, ILogger<Dir
     {
         using var read = scopes.CreateScope();
         var ids = await read.ServiceProvider.GetRequiredService<DirectAlloggiatiReceipts>().PendingAsync(ct);
-        foreach (var id in ids)
+        foreach (var (orgId, id) in ids)
         {
             using var item = scopes.CreateScope();
+            item.ServiceProvider.GetRequiredService<IBackgroundTenantScope>().EnterOrg(orgId);
             try { await item.ServiceProvider.GetRequiredService<DirectAlloggiatiReceipts>().ArchiveAsync(id, ct); }
             catch (Exception error) when (!ct.IsCancellationRequested)
             {

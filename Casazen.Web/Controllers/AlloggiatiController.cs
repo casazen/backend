@@ -94,9 +94,17 @@ public class AlloggiatiController(
             var cutoff = await directRoute.EffectiveFromAsync(booking.OrgId, booking.PropertyId, ct);
             var attempt = await directDb.AlloggiatiSendAttempts.AsNoTracking()
                 .Where(a => a.OrgId == booking.OrgId && a.BookingId == booking.Id && a.Mode == AlloggiatiMode.Live)
-                .OrderByDescending(a => a.ReservedAt).Select(a => new { a.Status, a.ReceiptId }).FirstOrDefaultAsync(ct);
+                .OrderByDescending(a => a.ReservedAt).Select(a => new { a.Status, a.ReceiptId, a.GuestsJson }).FirstOrDefaultAsync(ct);
             dto.DirectSubmission = attempt != null || (cutoff.HasValue && DateOnly.FromDateTime(booking.CheckInDate) >= cutoff);
             dto.DirectAttempt = attempt?.Status.ToString();
+            if (attempt?.GuestsJson is { } guests)
+            {
+                using var json = System.Text.Json.JsonDocument.Parse(guests);
+                dto.DirectGuests = json.RootElement.EnumerateArray()
+                    .Where(g => g.TryGetProperty("position", out _) && g.TryGetProperty("outcome", out _))
+                    .Select(g => new DirectGuestOutcomeDto(g.GetProperty("position").GetInt32(), g.GetProperty("outcome").GetString() ?? "pending"))
+                    .Where(g => g.Outcome is "validated" or "accepted" or "rejected" or "pending").ToArray();
+            }
             dto.CanDownloadDirectReceipt = attempt?.ReceiptId != null &&
                 (await hostScopeResolver.ResolveHostScopeAsync(User, booking.OrgId, ct))?.IsOrgWide == true;
         }

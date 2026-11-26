@@ -10,7 +10,7 @@ namespace Casazen.Infrastructure.External;
 public sealed class DirectAlloggiatiReceipts(AppDbContext db, DirectAlloggiatiSoap soap, IFileStorage storage,
     AlloggiatiTransportEnvironment environment, TimeProvider clock)
 {
-    public async Task<List<Guid>> PendingAsync(CancellationToken ct)
+    public async Task<List<AlloggiatiJobTarget>> PendingAsync(CancellationToken ct)
     {
         if (!environment.Live) return [];
         var now = clock.GetUtcNow().UtcDateTime;
@@ -28,7 +28,7 @@ public sealed class DirectAlloggiatiReceipts(AppDbContext db, DirectAlloggiatiSo
         }
         return await db.AlloggiatiSendAttempts.AsNoTracking().Where(a => a.Mode == AlloggiatiMode.Live
             && (a.Status == AlloggiatiAttemptStatus.Accepted || a.Status == AlloggiatiAttemptStatus.PartiallyAccepted)
-            && a.ReceiptId == null).Select(a => a.Id).ToListAsync(ct);
+            && a.ReceiptId == null).Select(a => new AlloggiatiJobTarget(a.OrgId, a.Id)).ToListAsync(ct);
     }
 
     public async Task ArchiveAsync(Guid id, CancellationToken ct)
