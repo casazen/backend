@@ -5004,6 +5004,36 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("GuestSupplierOrders");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.GuestSupplierOrderDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(180)
+                        .HasColumnType("character varying(180)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId", "ContentHash")
+                        .IsUnique();
+
+                    b.ToTable("GuestSupplierOrderDocuments");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.GuestThread", b =>
                 {
                     b.Property<Guid>("Id")
@@ -20577,6 +20607,15 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasOne("Casazen.Core.Entities.Org", null)
                         .WithMany()
                         .HasForeignKey("SupplierOrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.GuestSupplierOrderDocument", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.GuestSupplierOrder", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

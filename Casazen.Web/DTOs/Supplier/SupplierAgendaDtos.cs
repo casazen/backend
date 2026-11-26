@@ -305,6 +305,8 @@ public class SupplierCalendarRequestDto
 /// <summary>Body of <c>GET api/supplier/calendar</c>: what the supplier's calendar shows for the days asked.</summary>
 public class SupplierCalendarDto
 {
+    public IReadOnlyList<SupplierGuestOrderAppointment> GuestOrders { get; set; } = [];
+
     public DateOnly From { get; set; }
 
     public DateOnly To { get; set; }
@@ -429,6 +431,7 @@ public static class SupplierAgendaMapper
     public static SupplierCalendarDto ToDto(SupplierCalendar calendar) =>
         new()
         {
+            GuestOrders = calendar.GuestOrders,
             From = calendar.From,
             To = calendar.To,
             TimeZone = Casazen.Core.Utilities.RomeCalendar.TimeZoneId,
