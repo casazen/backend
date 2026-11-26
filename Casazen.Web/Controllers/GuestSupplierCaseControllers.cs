@@ -4,6 +4,7 @@ using Casazen.Infrastructure.GuestPortal;
 using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
@@ -21,11 +22,13 @@ public sealed partial class GuestPortalSupplierOrdersController
         WithCaseAsync(id, order => CasePhotoResults.OpenAsync(this, files, order, GuestCaseActor.Guest, photoId, ct), ct);
 
     [HttpPut("supplier-orders/{id:guid}/case/photos/{photoId:guid}")]
+    [EnableRateLimiting(RateLimitPolicies.GuestPortalWrite)]
     [RequestSizeLimit(GuestSupplierCaseFiles.MaxBytes)]
     public Task<IActionResult> UploadCasePhoto(Guid id, Guid photoId, [FromServices] GuestSupplierCaseFiles files, CancellationToken ct) =>
         WithCaseAsync(id, order => CasePhotoResults.UploadAsync(this, files, order, GuestCaseActor.Guest, photoId, ct), ct);
 
     [HttpPost("supplier-orders/{id:guid}/case/reviews")]
+    [EnableRateLimiting(RateLimitPolicies.GuestPortalWrite)]
     public Task<IActionResult> RequestCaseReview(Guid id, CaseStatement request, [FromServices] GuestSupplierCaseFiles files, CancellationToken ct) =>
         WithCaseAsync(id, async order => await files.RequestReviewAsync(order, GuestCaseActor.Guest, request.Text, ct) is { } view ? Ok(view) : Conflict(), ct);
 
