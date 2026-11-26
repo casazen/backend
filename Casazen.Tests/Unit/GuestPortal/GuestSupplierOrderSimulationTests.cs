@@ -154,6 +154,14 @@ public class GuestSupplierOrderSimulationTests
         Assert.Equal("Disputed", View(await guest.Dispute(order.Id, new("Service did not match the offer"), ct)).State);
         Assert.Equal("Supplier evidence", View(await supplier.Transition(order.Id, new("reply", null, "Supplier evidence"), ct)).SupplierReply);
 
+        var cases = new GuestSupplierCaseFiles(world.Db, Moq.Mock.Of<Casazen.Core.Services.IFileStorage>(), world.Clock);
+        Assert.IsType<OkObjectResult>(await guest.CaseDetails(order.Id, cases, ct));
+        accessor.Value = context with { BookingId = Guid.NewGuid() };
+        Assert.IsType<NotFoundResult>(await guest.CaseDetails(order.Id, cases, ct));
+        Assert.IsType<NotFoundResult>(await guest.OpenCasePhoto(order.Id, Guid.NewGuid(), cases, ct));
+        accessor.Value = context;
+        var otherSupplier = new SupplierGuestOrdersController(world.Db, service, config, new SupplierOrg(Guid.NewGuid()));
+        Assert.IsType<NotFoundResult>(await otherSupplier.CaseDetails(order.Id, cases, ct));
         var admin = new AdminGuestSupplierOrdersController(world.Db, service, config);
         Assert.IsType<ConflictResult>(await admin.Resolve(order.Id, new(order.TotalCents + 1, "Invalid refund"), ct));
         var decision = View(await admin.Resolve(order.Id, new(6790, "Partial refund"), ct));

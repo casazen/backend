@@ -34,6 +34,8 @@ public sealed class GuestSupplierOrder
     public int SupplierPriceCents { get; set; }
     public int CommissionCents { get; set; }
     public int RefundCents { get; set; }
+    public string? CaseFileJson { get; set; }
+    public bool HumanReviewPending { get; set; }
     [MaxLength(32)] public string? RefundStatus { get; set; }
     public int RefundRequestedCents { get; set; }
     public Guid? StripeRefundAttempt { get; set; }

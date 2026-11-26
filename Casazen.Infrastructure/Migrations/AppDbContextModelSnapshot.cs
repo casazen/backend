@@ -4884,6 +4884,12 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int?>("StripeCardFeeCents")
                         .HasColumnType("integer");
 
+                    b.Property<string>("CaseFileJson")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("HumanReviewPending")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("BankDisputeStatus")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
