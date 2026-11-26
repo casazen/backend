@@ -294,7 +294,8 @@ public class MarketingConfirmationService(
     private static bool NeedsConfirmation(GuestContact contact) =>
         contact.Channel == GuestContactChannel.Email
         && contact.Origin != GuestContactOrigin.OtaForward
-        && contact.LegalBasis == GuestContactLegalBasis.Consent
+        && (contact.LegalBasis == GuestContactLegalBasis.Consent
+            || (contact.Origin == GuestContactOrigin.Imported && contact.LegalBasis == GuestContactLegalBasis.SoftOptIn))
         && contact.Confirmation != GuestContactConfirmation.Confirmed;
 
     /// <summary>

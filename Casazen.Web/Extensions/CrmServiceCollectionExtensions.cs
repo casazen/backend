@@ -32,6 +32,8 @@ public static class CrmServiceCollectionExtensions
 
         // The keyed index of the contacts and of the suppression list: HMAC-SHA256 keyed by Crm:ContactIndexKey.
         services.AddSingleton<ICrmContactIndex, CrmContactIndex>();
+        services.AddScoped<MarketingGuestImport>();
+        services.AddScoped<MarketingGuestCategoryService>();
 
         // E07/F01/US02 (NF-88, NF-89, NF-20): the matching of a guest to a CRM profile, finally registered (the profiles were never created while it
         // was not); the one writer of the contacts, with the rules of who may be written to (CrmContactRules); and the sync that keeps both in

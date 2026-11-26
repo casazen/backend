@@ -8,9 +8,23 @@ suppression list. The runbook of each feature is created by the tasks of that fe
 
 ## 1. State of the module
 
-The module (CRM profiles, segments, campaigns, automations) is unfinished: it must not reach a real send before the compliance work of NF-95 is
-done. It is closed behind the feature flag `CrmMarketing`, **off by default**. What the flag does not touch is a legal record, which is made
-whatever the flag says.
+The host marketing module extends CRM profiles with segments, approval, delivery records and campaign results. Set `Features__CrmMarketing`
+in the intended environment and check `crmMarketing` on `GET /api/public/features`. Owners and team members granted Marketing can use the module.
+Commercial signups also need the `crm` add-on. Existing partner organizations retain access.
+
+### Host marketing rollout
+
+- Keep `Features__MarketingGuestInterestAi` off until the provider and guest-data processing have been reviewed. Its public flag is
+  `marketingGuestInterestAi`. When enabled, the classifier receives counts for a fixed set of leisure topics. The host reviews the proposals.
+- Configure monthly organization allowances with `Marketing__MonthlyAiRequests` and `Marketing__MonthlyOrganizationEmails`.
+  A specific organization can override these with `Marketing__Organizations__<org-guid>__MonthlyAiRequests` and
+  `Marketing__Organizations__<org-guid>__MonthlyEmails`. An unset allowance imposes no extra organization quota. Campaigns and newsletters
+  share the per-guest cap of two emails per UTC calendar month. Hosts can reduce it in marketing settings.
+- Keep the environment's `SIGNED_LINK_SECRET` stable. Use a dedicated Resend team for test callbacks because a webhook subscription receives
+  events across its team. Configure `Email__MarketingWebhookSecret` with the signing secret issued for that endpoint. To verify an isolated test
+  deployment before connecting the provider, sign a synthetic event with a test-only key and a fresh random delivery ID. The endpoint returns
+  HTTP 204 for an authenticated event referencing an unknown delivery. Replace the synthetic key with the provider's endpoint secret when connecting it.
+  See [host campaign email settings](email.md#host-marketing-campaigns).
 
 | Behind `Features__CrmMarketing` (404 before authentication while off) | Not behind it |
 |---|---|
@@ -100,7 +114,7 @@ written to. It stores an index of the address, never the address.
 | **No log holds an address or a hash**: the logs of the service and of the endpoint carry the org and the source | `SuppressionService`, `PublicMarketingController` |
 
 Open point, for the product owner: a guest whose only consent is a per-channel one (the check-in records a `MarketingConsentRecord` and does **not**
-set the yes/no flag `Guest.MarketingConsent`, which the campaigns read) is not offered the withdrawal by the GDPR tab, and the endpoint changes nothing
+set the legacy yes/no flag `Guest.MarketingConsent`) is not offered the withdrawal by the GDPR tab, and the endpoint changes nothing
 for a consent that is not in force. The withdrawal of those consents is part of the consent tasks of the epic ([`crm-consent.md`](crm-consent.md)).
 
 ## 6. Rollback

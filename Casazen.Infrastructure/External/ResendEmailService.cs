@@ -32,13 +32,17 @@ public sealed class ResendEmailService(
         IReadOnlyDictionary<string, string> headers) =>
         SendAsync(to, subject, htmlContent, replyTo: null, headers);
 
+    public Task<EmailSendResult> SendCampaignEmailAsync(string to, string subject, string htmlContent,
+        IReadOnlyDictionary<string, string> headers, string hostName, Guid deliveryId) =>
+        SendAsync(to, subject, htmlContent, null, headers, hostName, deliveryId);
+
     private async Task<EmailSendResult> SendAsync(
         string to,
         string subject,
         string htmlContent,
         string? replyTo,
         IReadOnlyDictionary<string, string>? headers = null,
-        string? fromName = null)
+        string? fromName = null, Guid? deliveryId = null)
     {
         var settings = options.Value;
         if (!settings.IsConfigured)
@@ -51,7 +55,12 @@ public sealed class ResendEmailService(
 
         try
         {
-            var response = await resend.EmailSendAsync(BuildMessage(settings, to, subject, htmlContent, replyTo, headers, fromName));
+            var message = BuildMessage(settings, to, subject, htmlContent, replyTo, headers, fromName);
+            if (deliveryId.HasValue)
+                message.Tags = [new EmailTag { Name = "campaign_delivery", Value = deliveryId.Value.ToString("N") }];
+            var response = deliveryId is { } key
+                ? await resend.EmailSendAsync($"marketing/{key:N}", message)
+                : await resend.EmailSendAsync(message);
             if (response.Success)
             {
                 logger.LogInformation("Email sent via Resend (id={EmailId})", response.Content);

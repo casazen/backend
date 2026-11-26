@@ -29,4 +29,7 @@ public enum GuestContactOrigin
 
     /// <summary>Left by the guest on the guest page of a stay.</summary>
     GuestPage = 7,
+
+    /// <summary>Imported by the host, with a declared source and legal basis.</summary>
+    Imported = 8,
 }

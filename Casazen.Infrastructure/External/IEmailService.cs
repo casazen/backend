@@ -43,6 +43,10 @@ public interface IEmailService
             ? SendEmailAsync(to, subject, htmlContent)
             : SendEmailAsync(to, subject, htmlContent, replyTo);
 
+    Task<EmailSendResult> SendCampaignEmailAsync(string to, string subject, string htmlContent,
+        IReadOnlyDictionary<string, string> headers, string hostName, Guid deliveryId) =>
+        SendEmailWithHeadersAsync(to, subject, htmlContent, headers);
+
     /// <summary>
     /// The same email with extra headers, for the marketing campaigns: <c>List-Unsubscribe</c> and <c>List-Unsubscribe-Post</c>
     /// (RFC 2369, RFC 8058), so the mail clients offer the one-click unsubscribe (DEB-01). A sender that cannot set headers sends the

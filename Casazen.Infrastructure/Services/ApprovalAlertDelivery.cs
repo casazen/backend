@@ -481,7 +481,7 @@ public sealed class ApprovalAlertDelivery(
             item.OrgId,
             NotificationEventType.AiDraftToApprove,
             item.PropertyId,
-            RequiredPermission: new NotificationPermission(OrgRoleCatalog.ShortRent, HostPermissions.ApprovalDecide),
+            RequiredPermission: new NotificationPermission(OrgRoleCatalog.ShortRent, item.ItemType == ApprovalItemTypes.Campaign ? HostPermissions.Marketing : HostPermissions.ApprovalDecide),
             OnlyUserId: onlyUserId,
             AtUtc: atUtc);
 

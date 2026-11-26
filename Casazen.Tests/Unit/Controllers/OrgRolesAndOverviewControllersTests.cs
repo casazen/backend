@@ -106,9 +106,9 @@ public class OrgRolesAndOverviewControllersTests
         var account = owner.GetProperty("permissionsByContext").GetProperty("account");
         Assert.Equal("org_owner", account.GetProperty("roleKey").GetString());
         Assert.Equal(["org.billing.manage", "org.members.manage"], account.GetProperty("permissions").EnumerateArray().Select(p => p.GetString()));
-        // Twelve capabilities with an id, a group and a level in words.
+        // Thirteen capabilities with an id, a group and a level in words.
         var capabilities = owner.GetProperty("capabilities");
-        Assert.Equal(12, capabilities.GetArrayLength());
+        Assert.Equal(13, capabilities.GetArrayLength());
         var booking = capabilities[0];
         Assert.Equal(("booking", "short-rent", "Yes"), (booking.GetProperty("id").GetString(), booking.GetProperty("group").GetString(), booking.GetProperty("level").GetString()));
         Assert.Equal("Read", roles[3].GetProperty("capabilities")[0].GetProperty("level").GetString());

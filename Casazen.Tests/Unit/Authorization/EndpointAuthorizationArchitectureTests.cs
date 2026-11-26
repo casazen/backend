@@ -476,6 +476,8 @@ public class EndpointAuthorizationArchitectureTests
         var provider = BuildPolicyProvider();
         var used = Actions().SelectMany(a => a.Policies).Where(p => p is not null).ToHashSet();
 
+        if (used.Contains(CasazenPolicies.ApprovalQueueAccess))
+            used.UnionWith(CasazenPolicies.ApprovalQueuePolicies);
         foreach (var policy in RegisteredPolicyNames())
         {
             Assert.True(await provider.GetPolicyAsync(policy) is not null, $"CasazenPolicies.{policy} is not registered.");

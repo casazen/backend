@@ -92,6 +92,7 @@ public static class OrgCapabilityCatalog
             Full: [P(Short, "property.write")],
             ReadOnly: [P(Short, "property.read")],
             Related: []),
+        new("marketing", OrgCapabilityGroups.ShortRent, Full: [P(Short, HostPermissions.Marketing)], ReadOnly: [], Related: []),
         new("guests", OrgCapabilityGroups.ShortRent,
             Full: [P(Short, "guest.write")],
             ReadOnly: [P(Short, "guest.read")],

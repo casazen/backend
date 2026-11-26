@@ -81,6 +81,10 @@ public class GuestCrmProfile : ITenantOwned
     [MaxLength(2000)]
     public string TagsJson { get; set; } = string.Empty;
 
+    /// <summary>Host-selected trip types and interests, plus the AI proposals accepted or dismissed for this profile.</summary>
+    [ConcurrencyCheck]
+    public string MarketingCategoryOverridesJson { get; set; } = "{}";
+
     /// <summary>Date of the guest's first stay.</summary>
     public DateTime FirstStayAt { get; set; }
 

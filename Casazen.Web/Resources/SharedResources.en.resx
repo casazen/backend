@@ -9064,4 +9064,24 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="SupplierIdentityChoiceInvalid" xml:space="preserve">
     <value>Select one of the matching profiles or close the request.</value>
   </data>
+  <data name="marketing_invalid_scope" xml:space="preserve"><value>Select an audience in your organization.</value></data>
+  <data name="marketing_invalid_condition" xml:space="preserve"><value>Check the fields, operators and values in the audience rules.</value></data>
+  <data name="segment_not_found" xml:space="preserve"><value>The selected audience is unavailable.</value></data>
+  <data name="property_not_found" xml:space="preserve"><value>The selected property is unavailable.</value></data>
+  <data name="marketing_import_busy" xml:space="preserve"><value>Another import updated the same contacts. Retry with the same file.</value></data>
+  <data name="marketing_invalid_mapping" xml:space="preserve"><value>Check how the file columns are mapped.</value></data>
+  <data name="marketing_invalid_source" xml:space="preserve"><value>Enter the source documenting the legal basis for the imported contacts.</value></data>
+  <data name="marketing_invalid_basis" xml:space="preserve"><value>Select a valid legal basis for these contacts.</value></data>
+  <data name="marketing_categories_changed" xml:space="preserve"><value>The categories have changed. Reload the profile before saving.</value></data>
+  <data name="marketing_ai_unavailable" xml:space="preserve"><value>The AI service is unavailable. Try again later.</value></data>
+  <data name="marketing_ai_invalid" xml:space="preserve"><value>The AI response could not be used. Retry or edit the request.</value></data>
+  <data name="marketing_ai_quota_exhausted" xml:space="preserve"><value>Your organization has reached its monthly AI allowance.</value></data>
+  <data name="marketing_asset_not_found" xml:space="preserve"><value>The selected proposal is unavailable.</value></data>
+  <data name="marketing_brief_invalid" xml:space="preserve"><value>Check the channel and the text of the proposal.</value></data>
+  <data name="marketing_city_required" xml:space="preserve"><value>Add the property's municipality before searching for events.</value></data>
+  <data name="marketing_email_required" xml:space="preserve"><value>Select an email or newsletter proposal.</value></data>
+  <data name="marketing_event_period_invalid" xml:space="preserve"><value>Choose a valid date range of up to 180 days.</value></data>
+  <data name="marketing_search_unavailable" xml:space="preserve"><value>Event search is unavailable. Try again later.</value></data>
+  <data name="marketing_settings_invalid" xml:space="preserve"><value>Check the marketing settings and the selected properties.</value></data>
+  <data name="marketing_voice_invalid" xml:space="preserve"><value>Provide writing samples or a valid HTTPS website address.</value></data>
 </root>

@@ -26,13 +26,8 @@ public enum MarketingUnsubscribeCheck
 }
 
 /// <summary>
-/// The signed one-click unsubscribe link of the marketing e-mails (NF-05, ADR-007-R18 and R20; DEB-01): HMAC-SHA256, with the secret shared
-/// by the signed links (<c>SIGNED_LINK_SECRET</c>), of <c>emailHash + "." + expiresAt</c>, hex lowercase, valid 30 days. <c>emailHash</c> is
-/// the keyed HMAC-SHA256 index of the address (<see cref="ICrmContactIndex"/>, since E07/F06/US01/T02), the one the suppression list stores
-/// and checks: the link never carries the address. The links issued before carry the plain SHA-256 of the address; <see cref="Verify"/> does
-/// not care, because the hash is opaque to it, and the suppression list still honors that form, so they keep working for their 30 days. The
-/// org names the suppression list and, as ADR-007-R18 says, is not part of the signature. Built here for the campaigns
-/// (<see cref="Create"/>) and checked here by <c>POST api/public/marketing/unsubscribe</c> (<see cref="Verify"/>), so the two never drift.
+/// New links sign the organization, opaque address hash and delivery token without an expiry.
+/// The old timestamp format still verifies against its original signature and expiry.
 /// </summary>
 public sealed class MarketingUnsubscribeLinks(
     IConfiguration configuration,
@@ -49,27 +44,24 @@ public sealed class MarketingUnsubscribeLinks(
     /// <summary>The one-click endpoint, under <c>App:ApiBaseUrl</c>.</summary>
     public const string OneClickPath = "/api/public/marketing/unsubscribe";
 
-    /// <summary>How long a link works (ADR-007-R18).</summary>
-    public static readonly TimeSpan Validity = TimeSpan.FromDays(30);
-
     /// <summary>True when a link can be built: the secret and the public URL of the web app are configured.</summary>
     public bool IsConfigured => Secret is not null && publicSiteLinks.IsConfigured;
 
     private string? Secret => configuration[SecretVariable] is { } secret && !string.IsNullOrWhiteSpace(secret) ? secret : null;
 
-    /// <summary>The link that stops the marketing of <paramref name="orgId"/> to <paramref name="email"/>, valid for <see cref="Validity"/>.</summary>
+    /// <summary>The link that stops the marketing of <paramref name="orgId"/> to <paramref name="email"/>.</summary>
     /// <exception cref="EmailConfigurationException">The secret or the public URL of the web app is missing.</exception>
     /// <exception cref="InvalidOperationException"><c>Crm:ContactIndexKey</c> is not configured outside Development and Testing.</exception>
-    public MarketingUnsubscribeLink Create(Guid orgId, string email)
+    public MarketingUnsubscribeLink Create(Guid orgId, string email, Guid? deliveryId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         var secret = Secret ?? throw new EmailConfigurationException(
             $"{SecretVariable} is missing: the unsubscribe link of a marketing e-mail cannot be signed.");
 
         var emailHash = contactIndex.Hash(ShowcaseBookingRules.NormalizeEmail(email));
-        var expiresAt = timeProvider.GetUtcNow().UtcDateTime.Add(Validity).ToString(ExpiresAtFormat, CultureInfo.InvariantCulture);
+        var expiresAt = $"v2-{deliveryId.GetValueOrDefault():N}";
         var query = $"orgId={orgId:D}&emailHash={emailHash}&expiresAt={Uri.EscapeDataString(expiresAt)}" +
-                    $"&signature={Sign(secret, emailHash, expiresAt)}";
+                    $"&signature={Sign(secret, $"{orgId:D}.{emailHash}", expiresAt)}";
 
         var oneClick = ApiBaseUrl() is { } api ? $"{api}{OneClickPath}?{query}" : null;
         return new MarketingUnsubscribeLink(publicSiteLinks.MarketingUnsubscribe(query), oneClick);
@@ -79,29 +71,31 @@ public sealed class MarketingUnsubscribeLinks(
     /// Checks the values of a link, in the order the endpoint answered them before (DEB-01 moved the check here): the timestamp, the expiry,
     /// the secret, then the signature, compared in constant time.
     /// </summary>
-    public MarketingUnsubscribeCheck Verify(string emailHash, string expiresAt, string signature)
+    public MarketingUnsubscribeCheck Verify(Guid orgId, string emailHash, string expiresAt, string signature)
     {
         ArgumentNullException.ThrowIfNull(emailHash);
         ArgumentNullException.ThrowIfNull(expiresAt);
         ArgumentNullException.ThrowIfNull(signature);
 
-        if (!DateTime.TryParseExact(
+        bool permanent = expiresAt.StartsWith("v2-", StringComparison.Ordinal) && Guid.TryParseExact(expiresAt[3..], "N", out _);
+        DateTime expiration = default;
+        if (!permanent && !DateTime.TryParseExact(
                 expiresAt,
                 ExpiresAtFormat,
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-                out var expiration))
+                out expiration))
         {
             return MarketingUnsubscribeCheck.InvalidTimestamp;
         }
 
-        if (timeProvider.GetUtcNow().UtcDateTime > expiration)
+        if (!permanent && timeProvider.GetUtcNow().UtcDateTime > expiration)
             return MarketingUnsubscribeCheck.Expired;
 
         if (Secret is not { } secret)
             return MarketingUnsubscribeCheck.NotConfigured;
 
-        var expected = Encoding.UTF8.GetBytes(Sign(secret, emailHash, expiresAt));
+        var expected = Encoding.UTF8.GetBytes(Sign(secret, permanent ? $"{orgId:D}.{emailHash}" : emailHash, expiresAt));
         var given = Encoding.UTF8.GetBytes(signature.ToLowerInvariant());
         return CryptographicOperations.FixedTimeEquals(expected, given)
             ? MarketingUnsubscribeCheck.Valid

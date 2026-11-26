@@ -280,6 +280,10 @@ public static class ServiceCollectionExtensions
                 policy.Requirements.Add(new ContextPermissionRequirement(contextKeys, permissionKey)));
         }
 
+        var queuePermissions = CasazenPolicies.ApprovalQueuePolicies.Select(name => CasazenPolicies.ParseContextPolicy(name).PermissionKey).ToArray();
+        builder.AddPolicy(CasazenPolicies.ApprovalQueueAccess, policy => policy.Requirements.Add(
+            new ContextPermissionRequirement([OrgRoleCatalog.ShortRent], queuePermissions[0], queuePermissions[1..])));
+
         // Agency tier policies (ADR-010): Org.PlanTier == PlanTier.Agency and, since DEB-01, the agency permission of the policy
         // held by the caller's org role (OrgRoleCatalog.AgencyPermissionsOf).
         foreach (var policyName in CasazenPolicies.AgencyPolicies)
@@ -513,6 +517,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISuppressionService, SuppressionService>();
         // NF-24: Marketing campaigns and guest segmentation (ADR-014).
         services.AddScoped<IConditionEvaluator, ConditionEvaluator>();
+        services.AddHttpClient<MarketingOpenEvents>(client =>
+        {
+            client.BaseAddress = new Uri("https://tourism.api.opendatahub.com/");
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddScoped<MarketingAiQuota>();
+        services.AddScoped<MarketingStudio>();
         services.AddScoped<ICampaignService, CampaignService>();
         // NF-26: Automation routines (ADR-022).
         services.AddScoped<RoutineBookingActions>();

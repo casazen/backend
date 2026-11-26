@@ -99,6 +99,7 @@ public static class CasazenPolicies
     public const string PaymentRead = ShortRent + "payment.read";
     public const string PaymentWrite = ShortRent + "payment.write";
     public const string GuestRead = ShortRent + "guest.read";
+    public const string Marketing = ShortRent + HostPermissions.Marketing;
     public const string GuestWrite = ShortRent + "guest.write";
     public const string OtaRead = ShortRent + "ota.read";
     public const string OtaWrite = ShortRent + "ota.write";
@@ -138,6 +139,9 @@ public static class CasazenPolicies
     /// by its <c>HostScope</c>, in the service.
     /// </summary>
     public const string ApprovalDecide = ShortRent + HostPermissions.ApprovalDecide;
+
+    public const string ApprovalQueueAccess = "ApprovalQueueAccess";
+    public static IReadOnlyList<string> ApprovalQueuePolicies { get; } = [ApprovalDecide, Marketing];
 
     /// <summary>
     /// «Portale ospiti» (E50/F01/US01/T01, NF-152, guest portal plan decision A7): set up the guest portal of the org (house guide, extras, suppliers and
@@ -238,7 +242,7 @@ public static class CasazenPolicies
         SharedPropertyRead, SharedPropertyWrite,
         BookingRead, BookingWrite,
         PaymentRead, PaymentWrite,
-        GuestRead, GuestWrite,
+        GuestRead, GuestWrite, Marketing,
         OtaRead, OtaWrite,
         ServiceRequestWrite, GuestManage, AlloggiatiSubmit,
         VerificationDecision,

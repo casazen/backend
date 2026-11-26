@@ -133,6 +133,7 @@ public class ConfigurationFeatureFlagsTests
                 "GuestPortal",
                 "GuestPortalSupplierServices",
                 "GuestPortalAutoReplies",
+                "MarketingGuestInterestAi",
             },
             FeatureFlags.All);
     }

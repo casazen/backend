@@ -48,6 +48,16 @@ public class ContextAuthorizationService(
             return [];
 
         var contexts = MergeContexts(snapshot);
+        if (snapshot.OrgMember is { } member)
+        {
+            var marketing = member.Role == Core.Entities.Enums.OrgRole.Owner ||
+                member.Role == Core.Entities.Enums.OrgRole.Collaborator && member.MarketingGranted;
+            contexts = contexts.Select(c => c.ContextKey != OrgRoleCatalog.ShortRent ? c : c with
+            {
+                Permissions = marketing ? c.Permissions.Append(HostPermissions.Marketing).Distinct().ToArray()
+                    : c.Permissions.Where(p => p != HostPermissions.Marketing).ToArray(),
+            }).ToList();
+        }
         if (HostOnboardingGate.Evaluate(snapshot, legalDocuments).IsComplete)
             return contexts;
 

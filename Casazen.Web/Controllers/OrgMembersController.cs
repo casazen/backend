@@ -1,4 +1,7 @@
 using Casazen.Core.Services;
+using Casazen.Core.Entities.Enums;
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Orgs;
 using Casazen.Web.Infrastructure;
@@ -22,6 +25,35 @@ public class OrgMembersController(
     IOrgPropertyAccessService propertyAccess,
     IOrgContextResolver orgContextResolver) : ControllerBase
 {
+    public sealed record MarketingGrant(bool Enabled);
+
+    [HttpGet("{id:guid}/marketing")]
+    public Task<ActionResult<MarketingGrant>> GetMarketing(Guid id, CancellationToken ct) =>
+        MarketingAccessAsync(id, null, ct);
+
+    [HttpPut("{id:guid}/marketing")]
+    public Task<ActionResult<MarketingGrant>> SetMarketing(Guid id, MarketingGrant grant, CancellationToken ct) =>
+        MarketingAccessAsync(id, grant, ct);
+
+    private async Task<ActionResult<MarketingGrant>> MarketingAccessAsync(Guid id, MarketingGrant? grant, CancellationToken ct)
+    {
+        var caller = await this.ResolveOrgTeamCallerAsync(orgContextResolver, ct);
+        if (caller.Problem != null) return caller.Problem;
+        var db = HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+        if (!await db.OrgMembers.AnyAsync(m => m.OrgId == caller.OrgId && m.UserId == caller.UserId &&
+            m.Role == OrgRole.Owner && m.Status == OrgMemberStatus.Active, ct)) return Forbid();
+        var target = await db.OrgMembers.SingleOrDefaultAsync(m => m.Id == id && m.OrgId == caller.OrgId &&
+            m.Role == OrgRole.Collaborator && m.Status == OrgMemberStatus.Active, ct);
+        if (target == null) return NotFound();
+        if (grant != null)
+        {
+            target.MarketingGranted = grant.Enabled;
+            await db.SaveChangesAsync(ct);
+            HttpContext.RequestServices.GetRequiredService<IUserAuthorizationCache>().Invalidate(target.UserId);
+        }
+        return Ok(new MarketingGrant(target.MarketingGranted));
+    }
+
     /// <summary>
     /// The properties of the org with, for this member, whether it reaches each one, and for each property how many active
     /// people do («chi può accedere»). <c>scopeSupported</c> is false for a member who is not a collaborator (it reaches

@@ -2,6 +2,8 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.ApprovalQueue;
 using Casazen.Web.Infrastructure;
@@ -11,10 +13,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Approval queue for items requiring human decision before taking effect (NF-06), and a decision that executes (E05/F04/US01/T02, NF-68, ADR-032). Every action needs
-/// <c>approval.decide</c> (<see cref="CasazenPolicies.ApprovalDecide"/>: the owner, the administrators and the property managers; no longer the broad <c>property.read</c>
-/// and <c>property.write</c>, which a collaborator holds), and what a caller reaches follows its <see cref="HostScope"/> in SQL: an item of another org or of a property out of its
-/// reach is a 404, never a 403. The answers carry the text of messages to guests, so they are private and never cached, and no text and no reason is ever logged.
+/// Approval queue for drafts awaiting a human decision. The caller needs marketing access for campaigns or approval.decide for other items.
+/// The host scope limits both listing and deciding to the caller's organization and properties. The answers contain private guest messages.
 /// </summary>
 /// <remarks>
 /// 404 <c>approval_item_not_found</c>; 409 <c>approval_item_not_pending</c> (already rejected or expired), <c>approval_origin_action_failed</c> (the action failed, the item stays
@@ -22,13 +22,15 @@ namespace Casazen.Web.Controllers;
 /// </remarks>
 [ApiController]
 [Route("api/approval-queue")]
-[Authorize(Policy = CasazenPolicies.ApprovalDecide)]
+[Authorize(Policy = CasazenPolicies.ApprovalQueueAccess)]
 [PrivateAnswer]
 public class ApprovalQueueController(
     IApprovalQueueService approvalQueueService,
     ITenantContext tenantContext,
     IHostScopeResolver hostScopeResolver,
-    ILogger<ApprovalQueueController> logger) : ControllerBase
+    ILogger<ApprovalQueueController> logger,
+    IAuthorizationService authorization,
+    AppDbContext db) : ControllerBase
 {
     /// <summary>
     /// Get pending approval items for the caller's organization, narrowed to the properties the caller reaches (an item with no property only for a caller who reaches every one),
@@ -44,7 +46,10 @@ public class ApprovalQueueController(
         if (scope.Problem is not null)
             return scope.Problem;
 
-        var items = await approvalQueueService.GetPendingAsync(scope.Value!, cancellationToken);
+        var (other, marketing) = await PermissionsAsync(scope.Value!.OrgId, cancellationToken);
+        if (!other && !marketing) return Forbid();
+        var items = (await approvalQueueService.GetPendingAsync(scope.Value, cancellationToken))
+            .Where(item => item.ItemType == ApprovalItemTypes.Campaign ? marketing : other);
 
         return Ok(items.Select(i => ApprovalQueueItemDto.From(i)));
     }
@@ -64,6 +69,8 @@ public class ApprovalQueueController(
         var scope = await ResolveScopeAsync(cancellationToken);
         if (scope.Problem is not null)
             return scope.Problem;
+        var access = await CheckItemAsync(id, scope.Value!, cancellationToken);
+        if (access != null) return access;
 
         var userId = User.GetUserId();
         if (string.IsNullOrEmpty(userId))
@@ -90,6 +97,8 @@ public class ApprovalQueueController(
         var scope = await ResolveScopeAsync(cancellationToken);
         if (scope.Problem is not null)
             return scope.Problem;
+        var access = await CheckItemAsync(id, scope.Value!, cancellationToken);
+        if (access != null) return access;
 
         var userId = User.GetUserId();
         if (string.IsNullOrEmpty(userId))
@@ -125,6 +134,8 @@ public class ApprovalQueueController(
         var scope = await ResolveScopeAsync(cancellationToken);
         if (scope.Problem is not null)
             return scope.Problem;
+        var access = await CheckItemAsync(id, scope.Value!, cancellationToken);
+        if (access != null) return access;
 
         var userId = User.GetUserId();
         if (string.IsNullOrEmpty(userId))
@@ -136,6 +147,28 @@ public class ApprovalQueueController(
         logger.LogInformation("User {UserId} rejected approval queue item {ItemId} of type {ItemType}", userId, id, item.ItemType);
 
         return Ok(ApprovalQueueItemDto.From(item));
+    }
+
+    private async Task<(bool Other, bool Marketing)> PermissionsAsync(Guid orgId, CancellationToken ct)
+    {
+        bool other = (await authorization.AuthorizeAsync(User, CasazenPolicies.ApprovalDecide)).Succeeded;
+        bool marketing = (await authorization.AuthorizeAsync(User, CasazenPolicies.Marketing)).Succeeded;
+        if (marketing)
+        {
+            var org = await db.Orgs.AsNoTracking().SingleOrDefaultAsync(o => o.Id == orgId, ct);
+            marketing = org != null && CommercialSignup.HasCrmMarketing(org);
+        }
+        return (other, marketing);
+    }
+
+    private async Task<ActionResult?> CheckItemAsync(Guid id, HostScope scope, CancellationToken ct)
+    {
+        var (other, marketing) = await PermissionsAsync(scope.OrgId, ct);
+        if (!other && !marketing) return Forbid();
+        var type = await db.ApprovalQueueItems.Where(i => i.Id == id && i.OrgId == scope.OrgId)
+            .Select(i => i.ItemType).SingleOrDefaultAsync(ct);
+        if (type != null && !(type == ApprovalItemTypes.Campaign ? marketing : other)) return NotFound();
+        return null;
     }
 
     /// <summary>The caller's reach on the host data of its org: a problem (401 with no org, 403 with no reach) or the scope. Never widened.</summary>

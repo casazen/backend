@@ -99,6 +99,9 @@ public static class FieldCatalog
             "field.freeNights",
             new[] { "equals", "greaterThan", "lessThan", "between" }),
 
+        new FieldDefinition("tag", ConditionFieldType.Set, "field.tag", new[] { "in", "notIn" }),
+        new FieldDefinition("stage", ConditionFieldType.Enum, "field.stage", new[] { "in", "notIn" }),
+
         // Segment fields - guest history/profile
         new FieldDefinition(
             "guestOrigin",

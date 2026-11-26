@@ -45,9 +45,13 @@ public sealed class CrmProfileReadService(
         ArgumentNullException.ThrowIfNull(scope);
 
         var orgId = scope.OrgId;
-        return db.GuestCrmProfiles
-            .Where(profile => profile.OrgId == orgId && profile.MergedIntoProfileId == null)
-            .InScope(scope, db.Bookings);
+        var live = db.GuestCrmProfiles.Where(profile => profile.OrgId == orgId && profile.MergedIntoProfileId == null);
+        if (scope.IsOrgWide) return live;
+        var reachable = db.Properties.Where(p => p.OrgId == orgId).InScope(scope).Select(p => p.Id.ToString());
+        var imported = live.Where(profile => !db.Guests.Any(g => g.OrgId == orgId && g.GuestCrmProfileId == profile.Id)
+            && db.GuestContacts.Any(c => c.OrgId == orgId && c.GuestCrmProfileId == profile.Id && c.ConsentSource == GuestConsentSource.HistoricalImport)
+            && reachable.Any(propertyId => profile.PropertyIdsJson.Contains(propertyId)));
+        return live.InScope(scope, db.Bookings).Union(imported);
     }
 
     public IQueryable<GuestCrmProfile> ProfilesWhollyInScope(HostScope scope)
@@ -142,7 +146,7 @@ public sealed class CrmProfileReadService(
         var guests = await GuestNamesAsync(scope, profileIds, cancellationToken);
         var contacts = await CrmProfileContactReader.LoadAsync(db, orgId, profileIds, cancellationToken);
         var (guestId, name) = ChooseName(guests.Where(guest => guest.ProfileId == profileId), profile.PrimaryGuestId);
-        if (name.Length == 0 && scope.IsOrgWide)
+        if (name.Length == 0 && (scope.IsOrgWide || contacts.All(c => c.ConsentSource == GuestConsentSource.HistoricalImport)))
             name = LeadName(contacts);
 
         var stayRows = await BookingsInScope(scope)
@@ -192,18 +196,21 @@ public sealed class CrmProfileReadService(
             })
             .ToList();
 
+        var historical = stayRows.Count == 0 && contacts.Any(c => c.ConsentSource == GuestConsentSource.HistoricalImport) && profile.TotalStays > 0;
+        var totals = TotalsOf(happened);
+        if (historical) totals = totals with { Stays = profile.TotalStays, Spend = profile.TotalSpend };
         return new CrmProfileDetail(
             profile.Id,
             name,
             guestId,
             profile.Country,
             profile.Language,
-            happened.Count > 0 ? happened.Min(row => row.CheckInDate) : null,
-            happened.Count > 0 ? happened.Max(row => row.CheckInDate) : null,
+            happened.Count > 0 ? happened.Min(row => row.CheckInDate) : historical ? profile.FirstStayAt : null,
+            happened.Count > 0 ? happened.Max(row => row.CheckInDate) : historical ? profile.LastStayAt : null,
             CrmProfileRules.ParseTags(profile.TagsJson),
             shown,
             stayRows.Count > shown.Count,
-            TotalsOf(happened),
+            totals,
             reviews,
             ViewsOf(contacts),
             proposals.GetValueOrDefault(profileId));
@@ -498,7 +505,7 @@ public sealed class CrmProfileReadService(
 
             var contactsOfProfile = contacts[id].ToList();
             var (_, name) = ChooseName(guests[id], row.PrimaryGuestId);
-            if (name.Length == 0 && scope.IsOrgWide)
+            if (name.Length == 0 && (scope.IsOrgWide || contactsOfProfile.All(c => c.ConsentSource == GuestConsentSource.HistoricalImport)))
                 name = LeadName(contactsOfProfile);
 
             var bookingsOfProfile = bookings[id].ToList();
@@ -509,7 +516,7 @@ public sealed class CrmProfileReadService(
             decimal spend;
             DateTime? first;
             DateTime? last;
-            if (scope.IsOrgWide)
+            if (scope.IsOrgWide || (bookingsOfProfile.Count == 0 && contactsOfProfile.Any(c => c.ConsentSource == GuestConsentSource.HistoricalImport)))
             {
                 stays = row.TotalStays;
                 spend = row.TotalSpend;

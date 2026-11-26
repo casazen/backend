@@ -19,6 +19,11 @@ public sealed record CommercialSignup
     public string RentalType => RentalArea ?? (Profile == "long-rent" ? "LongTerm" : "ShortTerm");
     public static CommercialSignup? Read(string? json) => string.IsNullOrEmpty(json) ? null : JsonSerializer.Deserialize<CommercialSignup>(json);
     public string Serialize() => JsonSerializer.Serialize(this);
+
+    public static bool HasCrmMarketing(Entities.Org org) =>
+        org.CommercialSignupJson is null || (org.CommercialPaymentConfirmed
+            && org.SubscriptionStatus is Entities.Enums.SubscriptionStatus.Active or Entities.Enums.SubscriptionStatus.Trialing or Entities.Enums.SubscriptionStatus.PastDue
+            && (JsonSerializer.Deserialize<string[]>(org.CommercialPaidAddonsJson ?? "[]") ?? []).Contains("crm", StringComparer.Ordinal));
     [System.Text.Json.Serialization.JsonIgnore]
     public string Fingerprint => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Serialize())));
 
