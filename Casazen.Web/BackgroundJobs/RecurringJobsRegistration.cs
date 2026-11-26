@@ -99,6 +99,10 @@ public static class RecurringJobsRegistration
             PopupAlertDueJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        recurringJobManager.AddOrUpdate<GuestSupplierAdjustmentJob>(
+            "guest-supplier-stripe-adjustments", job => job.ExecuteAsync(CancellationToken.None),
+            "*/5 * * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<GuestSupplierStripeExpiryJob>(
             "guest-supplier-stripe-expiry", job => job.ExecuteAsync(CancellationToken.None),
             "*/5 * * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });

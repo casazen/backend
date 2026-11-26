@@ -22,7 +22,7 @@ namespace Casazen.Web.Controllers;
 [PrivateAnswer]
 public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupplierOrders orders, IConfiguration configuration,
     IHostResourceLookup resources, IAuthorizationService authorization, IOrgContextResolver orgs, IHostSupplierCatalogService catalog, ITrustedSupplierService invitations, ISupplierComuneMatcher comuneMatcher,
-    Microsoft.Extensions.Options.IOptions<Casazen.Core.Options.SupplierPaymentsOptions> paymentOptions) : ControllerBase
+    Microsoft.Extensions.Options.IOptions<Casazen.Core.Options.SupplierPaymentsOptions> paymentOptions, GuestSupplierCheckout? checkout = null) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List(Guid propertyId, CancellationToken ct)
@@ -151,7 +151,7 @@ public sealed class HostGuestSupplierOrdersController(AppDbContext db, GuestSupp
         var order = await Orders(orgId, propertyId).SingleOrDefaultAsync(x => x.Id == id && x.HostOrigin, ct);
         if (order is null)
             return NotFound();
-        return await GuestSupplierDecisions.ResolveAsync(db, orders, order, request, ct);
+        return await GuestSupplierDecisions.ResolveAsync(db, orders, order, request, ct, checkout);
     }
 
     private int MarketplaceRate => decimal.ToInt32(decimal.Round(paymentOptions.Value.RequireCommissionPercent() * 100m, 0, MidpointRounding.AwayFromZero));
@@ -279,7 +279,7 @@ public sealed class SupplierGuestOrdersController(AppDbContext db, GuestSupplier
 [FeatureGate(FeatureFlags.GuestPortal)]
 [FeatureGate(FeatureFlags.GuestPortalSupplierServices)]
 [PrivateAnswer]
-public sealed class AdminGuestSupplierOrdersController(AppDbContext db, GuestSupplierOrders orders, IConfiguration configuration) : ControllerBase
+public sealed class AdminGuestSupplierOrdersController(AppDbContext db, GuestSupplierOrders orders, IConfiguration configuration, GuestSupplierCheckout? checkout = null) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct)
@@ -288,7 +288,8 @@ public sealed class AdminGuestSupplierOrdersController(AppDbContext db, GuestSup
             return NotFound();
 
         var open = await db.GuestSupplierOrders.AsNoTracking()
-            .Where(x => !x.HostOrigin && x.State == GuestSupplierOrderState.Disputed)
+            .Where(x => (!x.HostOrigin && x.State == GuestSupplierOrderState.Disputed) ||
+                x.BankDisputeStatus == "open" || x.BankDisputeStatus == "recovery_pending")
             .OrderBy(x => x.CreatedAt).ToListAsync(ct);
         return Ok(open.Select(x => orders.View(x, true)));
     }
@@ -301,19 +302,22 @@ public sealed class AdminGuestSupplierOrdersController(AppDbContext db, GuestSup
         var order = await db.GuestSupplierOrders.SingleOrDefaultAsync(x => x.Id == id && !x.HostOrigin, ct);
         if (order is null)
             return NotFound();
-        return await GuestSupplierDecisions.ResolveAsync(db, orders, order, request, ct);
+        return await GuestSupplierDecisions.ResolveAsync(db, orders, order, request, ct, checkout);
     }
 }
 
 public sealed record GuestSupplierDecision([Range(0, int.MaxValue)] int RefundCents,
-    [Required, MaxLength(2000)] string Text);
+    [Required, MaxLength(2000)] string Text, bool Retry = false);
 
 internal static class GuestSupplierDecisions
 {
     internal static async Task<IActionResult> ResolveAsync(AppDbContext db, GuestSupplierOrders orders, GuestSupplierOrder order,
-        GuestSupplierDecision request, CancellationToken ct)
+        GuestSupplierDecision request, CancellationToken ct, GuestSupplierCheckout? checkout)
     {
-        if (order.StripeSandbox && request.RefundCents != 0 || order.State != GuestSupplierOrderState.Disputed || request.RefundCents > order.SupplierPriceCents + order.CommissionCents)
+        if (order.StripeSandbox)
+            return checkout is not null && await checkout.DecideRefundAsync(order, request.RefundCents, request.Text, request.Retry, ct)
+                ? new OkObjectResult(orders.View(order, true)) : new ConflictResult();
+        if (order.State != GuestSupplierOrderState.Disputed || request.RefundCents > order.SupplierPriceCents + order.CommissionCents)
             return new ConflictResult();
 
         order.RefundCents = request.RefundCents;
