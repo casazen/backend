@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -36,15 +37,38 @@ public sealed partial class IdentityVerificationFlowService
             return new SelfieChallenge(proof, pose.NoseToRight, pose.ExpiresAt);
         }, ct);
 
-    public Task<SelfieStepResult> SubmitChallengedSelfieAsync(GuestCheckInSession session, Stream selfie, Stream? turnedSelfie,
-        string? challengeToken, Stream? documentPhoto, Stream? documentPhotoBack, CancellationToken ct) =>
-        WithLockedPoseSessionAsync(session,
-            new SelfieStepResult(SelfieStepStatus.ChallengeRequired, IdentityVerificationGuestResults.Retry, [], 0, null),
-            () => VerifySelfieAsync(session, selfie, turnedSelfie, challengeToken, documentPhoto, documentPhotoBack, ct), ct);
+    public async Task<SelfieStepResult> SubmitChallengedSelfieAsync(GuestCheckInSession session, Stream selfie, Stream? turnedSelfie,
+        string? challengeToken, Stream? documentPhoto, Stream? documentPhotoBack, CancellationToken ct)
+    {
+        var stale = new SelfieStepResult(SelfieStepStatus.ChallengeRequired, IdentityVerificationGuestResults.Retry, [], 0, null);
+        var (decision, alreadyVerified) = await WithLockedPoseSessionAsync(session, (stale, false), async () =>
+        {
+            var wasVerified = session.BiometricOutcome == BiometricOutcome.Accept;
+            var step = await VerifySelfieAsync(session, selfie, turnedSelfie, challengeToken, documentPhoto, documentPhotoBack, ct);
+            return (step, wasVerified);
+        }, ct);
+
+        if (decision.Result != IdentityVerificationGuestResults.Ok)
+            return decision;
+
+        string? code;
+        if (alreadyVerified)
+        {
+            // The guest may have paid the tourist tax since the original acceptance. Do not run another comparison or send another e-mail.
+            code = await accessCodes.ReleaseToGuestAsync(session.BookingId, AccessCodeReleaseChannels.CheckInScreen, ct);
+        }
+        else
+        {
+            await alerts.ResolveAsync(session.OrgId, session.BookingId, ct);
+            code = await ReleaseCodeAsync(session, ct);
+        }
+        return decision with { LockCode = code, LockCodeHeld = await HoldReasonAsync(session, code, ct) };
+    }
 
     private IDataProtector PoseProtector(GuestCheckInSession session, int attempt) =>
         dataProtection.CreateProtector("Casazen.CheckIn.ActivePose.v1", session.Id.ToString("N"), session.TokenHash,
-            attempt.ToString(CultureInfo.InvariantCulture), session.BiometricConsentAt?.Ticks.ToString(CultureInfo.InvariantCulture) ?? "");
+            attempt.ToString(CultureInfo.InvariantCulture), session.BiometricConsentAt!.Value.Ticks.ToString(CultureInfo.InvariantCulture),
+            session.BiometricConsentVersion!, session.BiometricConsentTextHash!);
 
     private bool IsCurrentChallenge(GuestCheckInSession session, StoredDocumentCheck check, string? proof)
     {

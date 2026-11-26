@@ -55,6 +55,30 @@ public class IdentityTwoSidedDocumentTests
     }
 
     [Fact]
+    public async Task ChangedConsentTextRequiresNewConsentBeforeAnyPoseProcessing()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        await world.DocumentAsync(session, Pic("FACE-MRZ", 1));
+        var flow = world.Flow();
+        var oldChallenge = Assert.IsType<SelfieChallenge>(await flow.IssueSelfieChallengeAsync(session, CancellationToken.None));
+        var updated = new CheckInLegalVersion(CheckInLegalTextKinds.BiometricConsent, "TEST-biometric-v2", false, new string('b', 64));
+        world.ConsentRegistry.Setup(registry => registry.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent)).Returns(updated);
+        var state = await flow.GetStateAsync(session, CancellationToken.None);
+        Assert.Equal(IdentityVerificationSteps.Consent, state.Step);
+        Assert.False(state.ConsentRecorded);
+        Assert.Null(await flow.IssueSelfieChallengeAsync(session, CancellationToken.None));
+        Assert.Equal(SelfieStepStatus.ConsentRequired, (await SendPoseAsync(flow, session, oldChallenge)).Status);
+        Assert.Equal(0, world.Agent.Calls);
+        Assert.Equal(0, world.Pose.Calls);
+        Assert.Equal(BiometricConsentStatus.Recorded,
+            (await flow.RecordConsentAsync(session, true, updated.Version, CancellationToken.None)).Status);
+        Assert.Equal(IdentityVerificationSteps.Selfie, (await flow.GetStateAsync(session, CancellationToken.None)).Step);
+        Assert.NotNull(await flow.IssueSelfieChallengeAsync(session, CancellationToken.None));
+        Assert.Equal(SelfieStepStatus.ChallengeRequired, (await SendPoseAsync(flow, session, oldChallenge)).Status);
+    }
+
+    [Fact]
     public async Task InvalidMissingOrCrossSessionChallengeNeverReleasesTheCode()
     {
         await using var world = await World.CreateAsync();
@@ -100,6 +124,34 @@ public class IdentityTwoSidedDocumentTests
         using var neutral = new MemoryStream([1]);
         using var turned = new MemoryStream([2]);
         return await flow.SubmitChallengedSelfieAsync(session, neutral, turned, challenge.ChallengeToken, null, null, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task AlreadyVerifiedGuestCanRecoverTheCodeAfterTheTaxIsPaidWithoutAnotherComparison()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        await world.DocumentAsync(session, Pic("FACE-MRZ", 1));
+        var flow = world.Flow();
+        var challenge = Assert.IsType<SelfieChallenge>(await flow.IssueSelfieChallengeAsync(session, CancellationToken.None));
+        world.SetCodeHeld(true);
+        world.Agent.Next(Outcome(IdentityVerificationResult.Ok));
+        var accepted = await SendPoseAsync(flow, session, challenge);
+        Assert.Equal(IdentityVerificationGuestResults.Ok, accepted.Result);
+        Assert.Null(accepted.LockCode);
+        Assert.Equal("tourist_tax_due", accepted.LockCodeHeld);
+        Assert.Equal(SelfieStepStatus.ChallengeRequired, (await SendPoseAsync(flow, session, challenge)).Status);
+        using var ignoredPhoto = new MemoryStream([1]);
+        var stillHeld = await flow.SubmitSelfieAsync(session, ignoredPhoto, null, CancellationToken.None);
+        Assert.Null(stillHeld.LockCode);
+        Assert.Equal("tourist_tax_due", stillHeld.LockCodeHeld);
+        world.SetCodeHeld(false);
+        var paid = await flow.SubmitSelfieAsync(session, ignoredPhoto, null, CancellationToken.None);
+        Assert.Equal(LockCode, paid.LockCode);
+        Assert.Null(paid.LockCodeHeld);
+        Assert.Equal(1, world.Pose.Calls);
+        Assert.Equal(1, world.Agent.Calls);
+        Assert.Equal(1, session.BiometricAttempts);
     }
 
     // ─── The proofs of the brief ─────────────────────────────────────────────────────────────────────────
@@ -772,6 +824,14 @@ public class IdentityTwoSidedDocumentTests
         private readonly Mock<IEmailQueue> _queue = new();
         private readonly Mock<IAccessCodeService> _codes = new();
 
+        public void SetCodeHeld(bool held)
+        {
+            _codes.Setup(c => c.ReleaseToGuestAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(held ? null : LockCode);
+            _codes.Setup(c => c.GetHoldReasonAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(held ? "tourist_tax_due" : null);
+        }
+
         private World()
         {
             Db = new AppDbContext(_options, null, _dataProtection);
@@ -796,6 +856,7 @@ public class IdentityTwoSidedDocumentTests
         public List<string> Logs { get; } = [];
 
         public ActivePoseFlowTestVerifier Pose { get; } = new();
+        public Mock<ICheckInLegalTexts> ConsentRegistry { get; } = ActivePoseFlowTestVerifier.CreateRegistry();
 
         public static async Task<World> CreateAsync()
         {
@@ -826,7 +887,7 @@ public class IdentityTwoSidedDocumentTests
             Storage,
             _dataProtection,
             Clock,
-            new ListLogger<IdentityVerificationFlowService>(Logs), activePose: Pose);
+            new ListLogger<IdentityVerificationFlowService>(Logs), legalTexts: ConsentRegistry.Object, activePose: Pose);
 
         /// <summary>A property in another country: Switzerland without a canton CasaZen knows keeps no document, like Ticino.</summary>
         public async Task<Guid> AddPropertyAsync(string country)

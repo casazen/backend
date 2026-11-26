@@ -518,6 +518,7 @@ public class GuestVerificationFlowProofTests
         public List<string> Logs { get; } = [];
 
         public ActivePoseFlowTestVerifier Pose { get; } = new();
+        public Mock<ICheckInLegalTexts> ConsentRegistry { get; } = ActivePoseFlowTestVerifier.CreateRegistry();
 
         public static async Task<World> CreateAsync()
         {
@@ -549,7 +550,7 @@ public class GuestVerificationFlowProofTests
             Storage,
             _dataProtection,
             Clock,
-            new ListLogger<IdentityVerificationFlowService>(Logs), activePose: Pose);
+            new ListLogger<IdentityVerificationFlowService>(Logs), legalTexts: ConsentRegistry.Object, activePose: Pose);
 
         public AccessCodeService AccessCodes() => new(Db, new ListLogger<AccessCodeService>(Logs));
 

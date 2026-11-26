@@ -1,9 +1,18 @@
 using Casazen.Core.Services;
+using Moq;
 
 namespace Casazen.Tests.Unit.Services;
 
 internal sealed class ActivePoseFlowTestVerifier : IActivePoseVerificationService
 {
+    internal static Mock<ICheckInLegalTexts> CreateRegistry()
+    {
+        var legal = new Mock<ICheckInLegalTexts>();
+        legal.Setup(registry => registry.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent))
+            .Returns(new CheckInLegalVersion(CheckInLegalTextKinds.BiometricConsent, "TEST-biometric-v1", false, new string('a', 64)));
+        return legal;
+    }
+
     public bool Passed { get; set; } = true;
     public bool? Direction { get; private set; }
     public int Calls { get; private set; }

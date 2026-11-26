@@ -115,7 +115,7 @@ public sealed partial class IdentityVerificationFlowService(
             return new BiometricConsentResult(BiometricConsentStatus.Operator, State(session, context));
         }
 
-        if (context.IsMinor)
+        if (context.IsMinor || ReadCheck(session)?.Check.HolderIsMinor == true)
         {
             await DeleteStoredDocumentAsync(session, ct);
             await ToOperatorAsync(session, VerificationAlertReasons.MinorExcluded, ct);
@@ -132,8 +132,8 @@ public sealed partial class IdentityVerificationFlowService(
         }
 
         // A consent refers to the version of the text the registry serves now, never to a free string; it keeps the hash of that text with it (GDPR art. 7(1)).
-        var served = legalTexts?.FindServedVersion(CheckInLegalTextKinds.BiometricConsent, version);
-        if (legalTexts is not null && served is null)
+        var served = context.ActiveConsentText;
+        if (served is null || !string.Equals(served.Version, version, StringComparison.Ordinal))
             return new BiometricConsentResult(BiometricConsentStatus.VersionUnknown, State(session, context));
 
         // Already with the operator (a refusal, a request, a review): the person decides, the biometric path is not opened again.
@@ -145,7 +145,9 @@ public sealed partial class IdentityVerificationFlowService(
 
         session.BiometricConsentAt = now;
         session.BiometricConsentVersion = version;
-        session.BiometricConsentTextHash = served?.TextHash;
+        session.BiometricConsentTextHash = served.TextHash;
+        if (ReadCheck(session) is { Pose: not null } prior)
+            session.DocumentCheckJson = JsonSerializer.Serialize(prior with { Pose = null }, Json);
         session.BiometricConsentRefusedAt = null;
         session.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
@@ -168,7 +170,7 @@ public sealed partial class IdentityVerificationFlowService(
         try
         {
             bytes = await ImageBytes.ReadAllAsync(image, MaxImageBytes, ct);
-            var consented = context.Enabled && context.ConsentTextServed && session.BiometricConsentAt is not null;
+            var consented = context.Enabled && HasCurrentConsent(session, context);
 
             // The face of the document is looked for only after the consent, and not on the back of a card (the photo is on the front); the MRZ
             // hints give the guidance of the reading in any case.
@@ -332,7 +334,9 @@ public sealed partial class IdentityVerificationFlowService(
         var policy = context.Policy;
 
         if (session.BiometricOutcome == BiometricOutcome.Accept)
-            return Refused(SelfieStepStatus.ChallengeRequired, session, policy);
+            return turnedSelfie is null && string.IsNullOrEmpty(challengeToken)
+                ? Done(IdentityVerificationGuestResults.Ok, [], Remaining(session, policy), null)
+                : Refused(SelfieStepStatus.ChallengeRequired, session, policy);
 
         // Also a new link of a booking that is with an operator (rejected, or a hand-off still open): the session is new, the decision is not.
         if (InOperatorPath(session, context))
@@ -362,19 +366,17 @@ public sealed partial class IdentityVerificationFlowService(
             return await OperatorAsync(session, VerificationAlertReasons.LegalTextNotApproved, policy, ct);
         }
 
-        if (session.BiometricConsentAt is null)
-            return Refused(SelfieStepStatus.ConsentRequired, session, policy);
-
         var stored = ReadCheck(session);
-        if (stored is null)
-            return Refused(SelfieStepStatus.DocumentRequired, session, policy);
-
         // The document says the holder is a minor: no biometric processing (ADR-013-R9).
-        if (stored.Check.HolderIsMinor)
+        if (stored?.Check.HolderIsMinor == true)
         {
             await DeleteStoredDocumentAsync(session, ct);
             return await OperatorAsync(session, VerificationAlertReasons.MinorExcluded, policy, ct);
         }
+        if (!HasCurrentConsent(session, context))
+            return Refused(SelfieStepStatus.ConsentRequired, session, policy);
+        if (stored is null)
+            return Refused(SelfieStepStatus.DocumentRequired, session, policy);
 
         // A document of two sides that still lacks its face or its MRZ does not reach the comparison: the page asks for the missing side, and no
         // attempt is spent (the attempts are the complete document and selfie tries, E22/F01/US01/T02).
@@ -549,11 +551,8 @@ public sealed partial class IdentityVerificationFlowService(
                 await DeleteStoredDocumentAsync(session, ct);
                 await db.SaveChangesAsync(ct);
 
-                // The verification is over: the "To do" of an earlier hand-off of the booking (the operator asked for a new photo, and it passed
-                // on its own) has nothing left to wait for.
-                await alerts.ResolveAsync(session.OrgId, session.BookingId, ct);
-                var released = await ReleaseCodeAsync(session, ct);
-                return Done(IdentityVerificationGuestResults.Ok, [], Remaining(session, policy), released, await HoldReasonAsync(session, released, ct));
+                // The caller releases the code only after the verified decision is committed.
+                return Done(IdentityVerificationGuestResults.Ok, [], Remaining(session, policy), null);
 
             case IdentityVerificationResult.Review:
                 await DeleteStoredDocumentAsync(session, ct);
@@ -703,6 +702,11 @@ public sealed partial class IdentityVerificationFlowService(
         || session.BiometricOutcome == BiometricOutcome.Escalate
         || (session.BiometricAttempts >= context.Policy.MaxAttempts && session.BiometricOutcome != BiometricOutcome.Accept);
 
+    private static bool HasCurrentConsent(GuestCheckInSession session, FlowContext context) =>
+        session.BiometricConsentAt is not null && context.ActiveConsentText is { } active
+        && string.Equals(active.Version, session.BiometricConsentVersion, StringComparison.Ordinal)
+        && string.Equals(active.TextHash, session.BiometricConsentTextHash, StringComparison.Ordinal);
+
     private IdentityVerificationState State(GuestCheckInSession session, FlowContext context)
     {
         var check = ReadCheck(session);
@@ -710,6 +714,7 @@ public sealed partial class IdentityVerificationFlowService(
         var offered = context.Enabled && context.ConsentTextServed && !minor && session.BiometricConsentRefusedAt is null;
         var operatorPath = InOperatorPath(session, context);
         var passed = session.BiometricOutcome == BiometricOutcome.Accept;
+        var consented = HasCurrentConsent(session, context);
 
         // A document of one picture counts as checked as soon as it was read (the agent says what is wrong at the selfie); a document of two sides only
         // when the face and the MRZ were found across the pictures, so a reloaded page asks for the missing side instead of the selfie.
@@ -724,7 +729,7 @@ public sealed partial class IdentityVerificationFlowService(
             ? IdentityVerificationSteps.Done
             : operatorPath || !offered
                 ? IdentityVerificationSteps.Operator
-                : session.BiometricConsentAt is null
+                : !consented
                     ? IdentityVerificationSteps.Consent
                     : documentChecked ? IdentityVerificationSteps.Selfie : IdentityVerificationSteps.Document;
 
@@ -732,7 +737,7 @@ public sealed partial class IdentityVerificationFlowService(
             step,
             result,
             offered,
-            session.BiometricConsentAt is not null,
+            consented,
             session.BiometricConsentRefusedAt is not null,
             documentChecked,
             Remaining(session, context.Policy),
@@ -763,7 +768,7 @@ public sealed partial class IdentityVerificationFlowService(
             IsMinor(identity.DateOfBirth),
             await DocumentNotArchivedAsync(booking.Property, ct),
             await VerificationHandOff.IsWithOperatorAsync(db, booking.Id, ct),
-            legalTexts is null || legalTexts.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent) is not null);
+            legalTexts?.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent));
     }
 
     /// <summary>The settings of the org, or the default of ADR-013-R13 when it has none: enabled on the Agency plan only.</summary>
@@ -1170,7 +1175,10 @@ public sealed partial class IdentityVerificationFlowService(
         bool IsMinor,
         bool DocumentNotArchived,
         bool BookingWithOperator,
-        bool ConsentTextServed);
+        CheckInLegalVersion? ActiveConsentText)
+    {
+        public bool ConsentTextServed => ActiveConsentText is not null;
+    }
 }
 
 /// <summary>

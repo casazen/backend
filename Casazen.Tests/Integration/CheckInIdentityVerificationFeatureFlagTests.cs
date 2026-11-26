@@ -25,6 +25,7 @@ public class CheckInIdentityVerificationFeatureFlagTests(CasazenWebApplicationFa
     [Theory]
     [InlineData("document", "document")]
     [InlineData("selfie", "selfie")]
+    [InlineData("selfie-challenge", "unused")]
     public async Task ImageEndpoint_FlagOff_Returns404_AndTheSessionIsUntouched(string endpoint, string field)
     {
         var (token, sessionId, bookingId) = await SeedSessionAsync();
