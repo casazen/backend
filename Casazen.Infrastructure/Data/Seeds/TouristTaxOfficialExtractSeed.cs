@@ -28,9 +28,6 @@ public static class TouristTaxOfficialExtractSeed
         "https://www.comune.venezia.it/sites/comune.venezia.it/files/documenti/Tributi/ids/TARIFFE%20IDS%20-%20STRUTTURE%20con%20classificazione%20L.R.%2011_2013_valide%20dal%2001.04.2025.pdf";
     public const string BolognaUrl =
         "https://www.comune.bologna.it/myportal/C_A944/api/content/download?id=660532c5ca8004009ad9519a";
-    public const string SevesoUrl = "https://www.comune.seveso.mb.it/it/page/imposte-e-tasse-1";
-    public const string CesanoMadernoUrl =
-        "https://www.comune.cesano-maderno.mb.it/amministrazione/unita-organizzative/risorse-tributarie/";
 
     /// <summary>New rows that the frozen CO-03 / BK-03 seed never inserted (Torino, Bologna, Roma locazione breve, Venezia Gruppo 3 alta).</summary>
     public static IReadOnlyList<TouristTaxRate> NewRates() =>
