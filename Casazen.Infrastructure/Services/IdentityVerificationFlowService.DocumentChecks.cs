@@ -211,7 +211,11 @@ public sealed partial class IdentityVerificationFlowService
             if (reading.Method == DocumentReadingMethod.None)
                 return Answer(await Refuse(RejectionGuidance(assessment, mrzReading)));
 
-            var fields = await picture.ReadFieldsAsync(format, side, report, ct);
+            // The zones are the heaviest reading of the step: read them only when the coherence can use them (see ZonesAreNeeded).
+            IReadOnlyList<ZonedField> fields = [];
+            if (ZonesAreNeeded(format, side, ReadCheck(session), context))
+                fields = await picture.ReadFieldsAsync(format, side, report, ct);
+
             return new DocumentPictureStep(
                 null,
                 new DocumentPictureChecks(format, detected, shown is { } showed ? DocumentSides.CodeOf(showed) : null, PerceptualHash.ToHex(hash), fields));
@@ -219,6 +223,27 @@ public sealed partial class IdentityVerificationFlowService
     }
 
     private static DocumentPictureStep Answer(DocumentStepResult answer) => new(answer, null);
+
+    /// <summary>
+    /// Whether the fields of this picture are read by zone now: only when <see cref="CheckCoherenceAsync"/> can use them. A format of one side checks the picture against its own MRZ, so its
+    /// zones are always needed. A format of two sides needs the other side in as well, and kept (outside Ticino) to be read again with this one: the first picture of a card, and every
+    /// picture of a property that keeps no document (the two sides are never in memory together), would have their zones read to be thrown away, the heaviest reading of the step.
+    /// </summary>
+    private static bool ZonesAreNeeded(DocumentFormat format, DocumentSide side, StoredDocumentCheck? previous, FlowContext context)
+    {
+        if (format.Sides.Count == 1)
+            return true;
+
+        if (context.DocumentNotArchived)
+            return false;
+
+        return side switch
+        {
+            DocumentSide.Front => previous?.Back is not null,
+            DocumentSide.Back => previous?.Front is not null,
+            _ => false,
+        };
+    }
 
     /// <summary>
     /// The picture of the other side of the attempt as the check of a pair of sides needs it (its SHA-256, its difference hash and the side it showed), or null when the other side was

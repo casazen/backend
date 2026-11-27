@@ -477,6 +477,29 @@ public sealed class DocumentStepSelfHostedTests
         Assert.True((await world.Flow().GetStateAsync(session, Ct)).DocumentChecked);
     }
 
+    /// <summary>
+    /// The zones are the heaviest reading of the step, so they are read only when the coherence can use them: the first picture of a card has no other side to be checked against and its
+    /// zones would be thrown away; the second reads its own and, to check the two sides against each other, the ones of the picture kept of the first.
+    /// </summary>
+    [Fact]
+    public async Task DocumentStep_TheZonesOfAPictureAreReadOnlyWhenTheCoherenceCanUseThem()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        var back = Picture(DocumentSide.Back);
+        world.Mrz.Add(back, CieMrz());
+        world.Zoned.Fields[DocumentSide.Front] = FrontFields();
+
+        await world.Flow().SubmitDocumentAsync(session, new MemoryStream(Picture(DocumentSide.Front)), DocumentSide.Front, Ct);
+
+        Assert.Empty(world.Zoned.Cards);
+
+        await world.Flow().SubmitDocumentAsync(session, new MemoryStream(back), DocumentSide.Back, Ct);
+
+        Assert.Equal([DocumentSide.Back, DocumentSide.Front], world.Zoned.Cards.Select(card => card.Side));
+        Assert.NotNull(ReadCheck(await world.ReadBackAsync(session.Id)).Coherence);
+    }
+
     // ---- The canonical card ------------------------------------------------------------------------------------------------------------------------------------------------
 
     [Fact]
@@ -484,15 +507,19 @@ public sealed class DocumentStepSelfHostedTests
     {
         await using var world = await World.CreateAsync();
         var session = await world.ConsentedStayAsync();
+        var back = Picture(DocumentSide.Back);
+        world.Mrz.Add(back, CieMrz());
+        Assert.True((await world.Flow().SubmitDocumentAsync(session, new MemoryStream(back), DocumentSide.Back, Ct)).DocumentStored);
         using var upright = DocumentImageFactory.Render(Cie, DocumentSide.Front, DocumentImageFactory.WholeCard);
         using var turned = DocumentImageFactory.TurnedCounterClockwise(upright);
         var turnedPicture = TestImages.Png(turned.Width, turned.Height, turned.Rgb);
+        world.Zoned.Cards.Clear();
 
         var result = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(turnedPicture), DocumentSide.Front, Ct);
 
-        // The picture is 480 by 640, the card is not: the zones are read on the card, landscape, with its portrait where the layout says.
+        // The picture is 480 by 640, the card is not: the zones are read on the card, landscape, with its portrait where the layout says (the back kept is read again with it).
         Assert.True(result.DocumentStored);
-        var card = Assert.Single(world.Zoned.Cards);
+        var card = Assert.Single(world.Zoned.Cards, read => read.Side == DocumentSide.Front);
         Assert.Equal(DocumentSide.Front, card.Side);
         Assert.InRange(card.Width, 470, 495);
         Assert.InRange(card.Height, 295, 315);
@@ -669,8 +696,9 @@ public sealed class DocumentStepSelfHostedTests
         Assert.True(check.Back!.GeometryOk);
         Assert.Equal("it-cie-3.0", saved.IdentityFormatId);
 
-        // The two sides were never in memory together: the checks across them are unknown, never a pass.
+        // The two sides were never in memory together: the checks across them are unknown, never a pass, and no zone was read to be thrown away.
         Assert.Null(check.Coherence);
+        Assert.Empty(world.Zoned.Cards);
         Assert.True((await world.Flow().GetStateAsync(session, Ct)).DocumentChecked);
     }
 

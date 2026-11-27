@@ -60,7 +60,8 @@ public static class RateLimitPolicies
     /// <summary>
     /// The upload of a presence sequence (<c>POST api/public/checkin/{token}/presence</c>, ADR-013-R17): each call carries up to
     /// <c>IdentityVerification:Presence:MaxSequenceBytes</c> of frames and runs the models in the request, so it is the tightest of the identity limits: 6 a minute
-    /// for each client IP and token, partitioned like <see cref="GuestCheckIn"/>.
+    /// for each client IP and token, partitioned like <see cref="GuestCheckIn"/>. The picture of a document (<c>POST api/public/checkin/{token}/document</c>, E71/F01/US03/T01) takes
+    /// the same budget, whatever the flags: it runs the geometry of the card and the OCR of its zones in the request too.
     /// </summary>
     public const string GuestIdentityUpload = "GuestIdentityUpload";
 

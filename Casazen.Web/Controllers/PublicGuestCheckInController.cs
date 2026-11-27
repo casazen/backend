@@ -430,7 +430,7 @@ public partial class PublicGuestCheckInController(
     /// </summary>
     [HttpPost("{token}/document")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
-    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
+    [EnableRateLimiting(RateLimitPolicies.GuestIdentityUpload)]
     [RequestSizeLimit(MaxImageRequestBytes)]
     [RequestFormLimits(MemoryBufferThreshold = MaxImageRequestBytes, MultipartBodyLengthLimit = MaxImageRequestBytes)]
     public async Task<ActionResult<DocumentUploadResponse>> UploadDocument(
