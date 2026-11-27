@@ -36,23 +36,22 @@ public sealed class CommercialAccessMiddleware(RequestDelegate next)
         if ((hostOperation || module is not null) && context.User.Identity?.IsAuthenticated == true && tenant.OrgId is Guid orgId)
         {
             var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, context.RequestAborted);
-            if (org?.CommercialSignupJson is not null &&
-                (!org.CommercialPaymentConfirmed || org.SubscriptionStatus is not (SubscriptionStatus.Active or SubscriptionStatus.Trialing or SubscriptionStatus.PastDue)))
+            // The rule is CommercialAccessRules: the plugin of a connected site (S023) is gated by the same one.
+            switch (CommercialAccessRules.Evaluate(org, module))
             {
-                var problem = ApiProblemDetails.Create(context, 403, "onboarding_required", "OnboardingConsentsRequired");
-                context.Response.StatusCode = 403;
-                await context.Response.WriteAsJsonAsync(problem, cancellationToken: context.RequestAborted);
-                return;
-            }
-            if (org?.CommercialSignupJson is not null && module is not null)
-            {
-                var paid = System.Text.Json.JsonSerializer.Deserialize<string[]>(org.CommercialPaidAddonsJson ?? "[]") ?? [];
-                if (!paid.Contains(module, StringComparer.Ordinal))
-                {
+                case CommercialAccessDecision.OnboardingRequired:
+                    var problem = ApiProblemDetails.Create(
+                        context,
+                        403,
+                        CommercialAccessRules.OnboardingRequiredCode,
+                        CommercialAccessRules.OnboardingRequiredMessageKey);
                     context.Response.StatusCode = 403;
-                    await context.Response.WriteAsJsonAsync(new { code = "commercial_module_required", module }, context.RequestAborted);
+                    await context.Response.WriteAsJsonAsync(problem, cancellationToken: context.RequestAborted);
                     return;
-                }
+                case CommercialAccessDecision.ModuleRequired:
+                    context.Response.StatusCode = 403;
+                    await context.Response.WriteAsJsonAsync(new { code = CommercialAccessRules.ModuleRequiredCode, module }, context.RequestAborted);
+                    return;
             }
         }
         await next(context);
