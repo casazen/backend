@@ -139,7 +139,7 @@ internal sealed class DocumentEdgePoints : IDisposable
 
 /// <summary>
 /// The search of the angle of a card that is not held straight, and the copies of a picture it levels (IDENT-TILT, NF-189). Pure and managed: no new package, no native code, no file, no
-/// network, no logger, no state. <b>Method.</b> The strong edge pixels of the picture are turned by every angle within <see cref="DocumentGeometryRules.TiltSearchDegrees"/> of none, a coarse step
+/// network, no logger, no state. <b>Method.</b> The strong edge pixels of the picture are turned by every angle up to <see cref="DocumentGeometryRules.TiltSearchDegrees"/> either way, a coarse step
 /// (<see cref="DocumentGeometryRules.TiltCoarseStepDegrees"/>) at a time, and at each how sharply they pile up in rows and in columns is the score of the angle
 /// (<see cref="DocumentEdgePoints.Sharpness"/>, the edge support the inspector reads the sides of a card by, summed over the picture): the long straight lines of a card, its sides and the lines of
 /// its text, all fall in a row or a column at one angle. The best <see cref="DocumentGeometryRules.TiltCandidates"/> peaks that stand out of the scores
@@ -210,6 +210,9 @@ internal static class DocumentTilt
             scores[i] = points.Sharpness(degrees + ((i - count) * step));
 
         var best = scores.Max();
+        if (best <= 0)
+            return Math.Round(degrees, 2);
+
         double weight = 0;
         double sum = 0;
         for (var i = 0; i < scores.Length; i++)
