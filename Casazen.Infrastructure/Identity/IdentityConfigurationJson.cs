@@ -11,8 +11,11 @@ namespace Casazen.Infrastructure.Identity;
 /// strictly, and, for the policy, through the <b>canonical form</b> its pinned hash is computed on (ADR-013-R18). Local files only: nothing here reaches a network.
 /// <para>
 /// <b>Strict.</b> A file is refused, never repaired: comments, trailing commas, a repeated member, a member the record does not have, a member the record
-/// needs and the file lacks, a <c>null</c> where a value is needed and a number written as a string are all errors. A member that is spelled wrong
-/// therefore cannot go unnoticed, and what the code reads is exactly what the hash covers.
+/// needs and the file lacks, a <c>null</c> for a member of a record and a number written as a string are all errors. A member that is spelled wrong
+/// therefore cannot go unnoticed, and what the code reads is exactly what the hash covers. <b>What the reader does not refuse is a <c>null</c> INSIDE a list or a
+/// dictionary</b> (System.Text.Json does not check the items of a collection against their nullability): the validator of each loader refuses it
+/// (<c>format_layout_invalid</c> for the layout of a format, <c>policy_invalid</c> for the policy), and the registry skips a file that makes its reader or its
+/// validator throw with <c>format_json_invalid</c>, so one broken file never hides the other formats.
 /// </para>
 /// <para>
 /// <b>Canonical form</b> (in the spirit of RFC 8785): the members of every object sorted by name in ordinal order, the items of an array in their order, no

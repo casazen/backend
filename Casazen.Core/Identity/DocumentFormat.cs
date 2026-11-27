@@ -179,7 +179,7 @@ public static class DocumentFormatReasonCodes
     /// <summary>The file could not be read.</summary>
     public const string FormatUnreadable = "format_unreadable";
 
-    /// <summary>The file is not strict JSON, lacks a member, has one the format does not have, or a member has the wrong type.</summary>
+    /// <summary>The file is not strict JSON, lacks a member, has one the format does not have, or a member has the wrong type; or it made the reader or the validator throw (the file alone is skipped).</summary>
     public const string FormatJsonInvalid = "format_json_invalid";
 
     /// <summary>The id is not 1 to 40 lower case letters, digits, dots, hyphens or underscores starting with a letter or a digit.</summary>
@@ -203,7 +203,7 @@ public static class DocumentFormatReasonCodes
     /// <summary>The sides are not <c>front</c> and <c>back</c> or <c>single</c>, or the MRZ is on a side the format does not have.</summary>
     public const string FormatSidesInvalid = "format_sides_invalid";
 
-    /// <summary>The layout is incoherent: a number out of its bounds, a side without a layout or with one it should not have, the MRZ or the portrait missing or repeated, a field repeated or without a label.</summary>
+    /// <summary>The layout is incoherent: a number out of its bounds, a side without a layout (or whose layout is null) or with one it should not have, the MRZ or the portrait missing or repeated, a field that is null, repeated or without a label.</summary>
     public const string FormatLayoutInvalid = "format_layout_invalid";
 
     /// <summary>A region (the portrait, the MRZ or the zone of a field) is not inside the card: a member outside 0..1, or no width or height.</summary>

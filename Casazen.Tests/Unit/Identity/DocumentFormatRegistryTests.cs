@@ -115,6 +115,11 @@ public sealed class DocumentFormatRegistryTests : IDisposable
         Add("field-repeated", DocumentFormatReasonCodes.FormatLayoutInvalid, ("layout.sides.back.fields", $"[{Field("address", OneRegion)},{Field("address", OneRegion)}]"));
         Add("field-without-label", DocumentFormatReasonCodes.FormatLayoutInvalid, ("layout.sides.back.fields", "[{\"name\":\"address\",\"zone\":" + OneRegion + ",\"labels\":[]}]"));
         Add("field-name-upper-case", DocumentFormatReasonCodes.FormatLayoutInvalid, ("layout.sides.back.fields", $"[{Field("Address", OneRegion)}]"));
+        Add("field-label-null", DocumentFormatReasonCodes.FormatLayoutInvalid, ("layout.sides.back.fields", "[{\"name\":\"address\",\"zone\":" + OneRegion + ",\"labels\":[null]}]"));
+
+        // A null INSIDE a dictionary or a list passes the reader (System.Text.Json does not check the items of a collection): the validator refuses it, it must not throw.
+        Add("side-layout-null", DocumentFormatReasonCodes.FormatLayoutInvalid, ("layout.sides.back", "null"));
+        Add("field-null", DocumentFormatReasonCodes.FormatLayoutInvalid, ("layout.sides.back.fields", "[null]"));
         Add("portrait-outside-the-card", DocumentFormatReasonCodes.FormatRegionOutOfBounds, ("layout.sides.front.portrait.x", "0.9"));
         Add("portrait-without-width", DocumentFormatReasonCodes.FormatRegionOutOfBounds, ("layout.sides.front.portrait.w", "0"));
         Add("mrz-region-above-the-card", DocumentFormatReasonCodes.FormatRegionOutOfBounds, ("layout.sides.back.mrzRegion.y", "-0.1"));
@@ -294,6 +299,48 @@ public sealed class DocumentFormatRegistryTests : IDisposable
         Assert.DoesNotContain("COGNOME", everything, StringComparison.Ordinal);
         Assert.DoesNotContain("0.62", everything, StringComparison.Ordinal);
         Assert.DoesNotContain("1.586", everything, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("side-layout-null", "layout.sides.back", "null")]
+    [InlineData("field-null", "layout.sides.back.fields", "[null]")]
+    [InlineData("field-null-on-the-front", "layout.sides.front.fields", "[null]")]
+    public void Registry_ANullInsideAListOrADictionary_IsSkippedWithItsCode_AndTheValidCieStaysLoaded(string name, string path, string literal)
+    {
+        // The reader refuses a null member of a record but not a null inside a dictionary or a list. Such a file used to make the validator throw, and the registry
+        // lost every format with it, the valid Italian card included, with no file named: now that file alone is skipped, with its code.
+        var logger = new CapturingLogger<DocumentFormatRegistry>();
+        var broken = "zz-" + name + ".json";
+        Write("formats", CieFileName, CieText());
+        Write("formats", broken, IdentityPolicyTestFiles.Apply(CieText(), ("id", "\"it-broken-test\""), (path, literal)));
+
+        var registry = Create("formats", logger);
+
+        Assert.Equal(new DocumentFormatRejection(broken, DocumentFormatReasonCodes.FormatLayoutInvalid), Assert.Single(registry.Rejected));
+        Assert.Equal(["it-cie-3.0"], registry.All.Select(format => format.Id));
+        Assert.Equal("it-cie-3.0", registry.DetectFromMrz("I<", "ITA", "TD1")?.Id);
+        Assert.Null(registry.Get("it-broken-test"));
+        Assert.Single(logger.Lines, line => line.Contains(DocumentFormatReasonCodes.FormatLayoutInvalid, StringComparison.Ordinal) && line.Contains(broken, StringComparison.Ordinal));
+        Assert.DoesNotContain("Exception", string.Concat(logger.Lines), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReadGuarded_AFileThatMakesTheReaderThrow_IsFormatJsonInvalid_AndTheLogHasTheTypeNotTheMessage()
+    {
+        // The net under the validators: whatever else a file does to the reader, that file alone is skipped; an ordinary outcome passes through unchanged.
+        var logger = new CapturingLogger<DocumentFormatRegistry>();
+
+        var thrown = DocumentFormatRegistry.ReadGuarded(() => throw new InvalidOperationException("the file said 4321"), logger, "broken.json");
+        var ordinary = DocumentFormatRegistry.ReadGuarded(() => (null, DocumentFormatReasonCodes.FormatChecksInvalid), logger, "ordinary.json");
+
+        Assert.Null(thrown.Format);
+        Assert.Equal(DocumentFormatReasonCodes.FormatJsonInvalid, thrown.ReasonCode);
+        Assert.Null(ordinary.Format);
+        Assert.Equal(DocumentFormatReasonCodes.FormatChecksInvalid, ordinary.ReasonCode);
+        var line = Assert.Single(logger.Lines);
+        Assert.Contains("broken.json", line, StringComparison.Ordinal);
+        Assert.Contains(nameof(InvalidOperationException), line, StringComparison.Ordinal);
+        Assert.DoesNotContain("4321", line, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -29,7 +29,8 @@ public sealed record DocumentFormatRejection(string FileName, string ReasonCode)
 /// person</b>, never approved.
 /// </para>
 /// <para>
-/// <b>Fail closed.</b> Nothing here throws to a caller. A file that is not strict JSON, that is invalid (<see cref="DocumentFormatReasonCodes"/>) or whose id another
+/// <b>Fail closed.</b> Nothing here throws to a caller. A file that is not strict JSON, that is invalid (<see cref="DocumentFormatReasonCodes"/>), that makes its
+/// reader or its validator throw (<c>format_json_invalid</c>, whatever it holds: one broken file never hides the others) or whose id another
 /// file has too is skipped (every file of a duplicated id, since which one is meant cannot be told) and the others are kept; a missing folder is an empty registry.
 /// A document of a format that is not in the registry is <c>format_unsupported</c> and goes to a person. The log has the name of the skipped file and its code, and the
 /// ids of the formats loaded: nothing else, and never a value of a document (the registry never sees one: it is asked about the codes of an MRZ, not about its data).
@@ -208,6 +209,11 @@ public sealed class DocumentFormatRegistry
         var regions = new List<DocumentFormatRegion>();
         foreach (var (side, sideLayout) in layout.Sides)
         {
+            // The reader refuses a null member of a record but not a null INSIDE a dictionary or a list (System.Text.Json does not check the items of a collection
+            // against their nullability): a side whose layout is null, or a field that is null, is an invalid layout, not an exception that would hide every format.
+            if (sideLayout is null)
+                return DocumentFormatReasonCodes.FormatLayoutInvalid;
+
             // The MRZ is on one side and has its region there, and on no other.
             if ((side == format.Mrz.Side) != (sideLayout.MrzRegion is not null))
                 return DocumentFormatReasonCodes.FormatLayoutInvalid;
@@ -218,7 +224,7 @@ public sealed class DocumentFormatRegistry
             var names = new HashSet<string>(StringComparer.Ordinal);
             foreach (var field in sideLayout.Fields)
             {
-                if (!IsFieldName(field.Name) || !names.Add(field.Name)
+                if (field is null || !IsFieldName(field.Name) || !names.Add(field.Name)
                     || field.Labels.Count == 0 || field.Labels.Any(label => string.IsNullOrWhiteSpace(label) || label.Length > 80))
                 {
                     return DocumentFormatReasonCodes.FormatLayoutInvalid;
@@ -308,7 +314,7 @@ public sealed class DocumentFormatRegistry
             .OrderBy(file => file.Name, StringComparer.Ordinal);
         foreach (var (path, name) in files)
         {
-            var (format, reason) = Read(path);
+            var (format, reason) = ReadGuarded(() => Read(path), _logger, name);
             if (format is null)
                 rejected.Add(new DocumentFormatRejection(name, reason!));
             else
@@ -331,6 +337,23 @@ public sealed class DocumentFormatRegistry
 
         _logger.LogInformation("Identity formats loaded: {Count} ({Ids})", formats.Count, string.Join(',', formats.Select(format => format.Id)));
         return new Loaded(formats, rejected, formats.ToDictionary(format => format.Id, StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// The reading of ONE file, run so that whatever that file does to the reader or to the validator never reaches the others: an exception is the code
+    /// <c>format_json_invalid</c> of that file (the name of the file and the TYPE of the exception are logged, never its message) and the other formats still load.
+    /// </summary>
+    internal static (DocumentFormat? Format, string? ReasonCode) ReadGuarded(Func<(DocumentFormat? Format, string? ReasonCode)> read, ILogger logger, string fileName)
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning("An identity format file could not be checked: file={File} ({ErrorType})", fileName, ex.GetType().Name);
+            return (null, DocumentFormatReasonCodes.FormatJsonInvalid);
+        }
     }
 
     private static (DocumentFormat? Format, string? ReasonCode) Read(string path)
