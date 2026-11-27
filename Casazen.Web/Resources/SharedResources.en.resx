@@ -9098,4 +9098,11 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="Ross1000SenderCutoverInProgress" xml:space="preserve"><value>A sender change is in progress. Try again once it completes.</value></data>
   <data name="CheckInIdentityAlreadyClosed" xml:space="preserve"><value>The identity verification of this check-in is closed: no further step can be sent. You can always ask a person for help.</value></data>
   <data name="CheckInIdentityNoticeVersionUnknown" xml:space="preserve"><value>The notice of the identity verification is no longer the current one. Reload the page and read the updated text.</value></data>
+  <data name="IdentitySegmentInvalid" xml:space="preserve"><value>The segment is not valid: check the document format, the channel and the property.</value></data>
+  <data name="IdentitySegmentReasonRequired" xml:space="preserve"><value>To suspend a segment, give a reason of at most {0} characters.</value></data>
+  <data name="IdentitySegmentNotQualified" xml:space="preserve"><value>The segment is not qualified for the policy and the model weights in force: it stays in observation and a person decides.</value></data>
+  <data name="IdentitySegmentQualificationInvalid" xml:space="preserve"><value>The qualification is not valid: it needs the policy version, the SHA-256 of the policy, of the weights and of the report, and a known assurance level.</value></data>
+  <data name="IdentitySegmentQualificationMismatch" xml:space="preserve"><value>The version or the hashes given are not those of the policy and the weights in force: the segment is not qualified.</value></data>
+  <data name="IdentitySegmentPolicyProvisional" xml:space="preserve"><value>The policy in force is provisional: no segment can be qualified until a calibrated policy is published.</value></data>
+  <data name="IdentitySegmentFingerprintUnavailable" xml:space="preserve"><value>The policy or the models are not available right now: the segment cannot be qualified.</value></data>
 </root>

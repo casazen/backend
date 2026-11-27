@@ -180,8 +180,12 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
         Assert.False(seen.IsDefault);
         foreach (var action in RoutedActions(typeof(BiometricSettingsController)))
         {
-            Assert.DoesNotContain(action.Method.GetParameters(), p => p.ParameterType == typeof(Guid) || p.Name == "orgId");
-            Assert.DoesNotContain("{", action.Verb.Template ?? string.Empty);
+            // E70/F02/US01/T02: the one id a route of this controller names is the segment's (segments/{id:guid}), a segment of the caller's org; another org's is a 404
+            // (IdentitySegmentEndpointsTests). No route and no parameter names an organization.
+            Assert.DoesNotContain(action.Method.GetParameters(), p => p.Name == "orgId" || (p.ParameterType == typeof(Guid) && p.Name != "id"));
+            Assert.True(
+                action.Verb.Template is null or "segments" or "segments/{id:guid}",
+                $"{action.Method.Name} names something in its route: {action.Verb.Template}");
         }
 
         Assert.Equal("api/settings/biometrics", typeof(BiometricSettingsController).GetCustomAttribute<RouteAttribute>()!.Template);
@@ -342,7 +346,11 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
         var gates = typeof(BiometricSettingsController).GetCustomAttributes<FeatureGateAttribute>(inherit: true).Select(g => g.Flag);
 
         Assert.Equal([FeatureFlags.CheckInIdentityVerification], gates);
-        Assert.Equal(["Get", "Put"], RoutedActions(typeof(BiometricSettingsController)).Select(a => a.Method.Name).Order());
+
+        // E70/F02/US01/T02: the segments of the self-hosted verification sit next to the settings, behind the self-hosted flow too.
+        Assert.Equal(
+            ["CreateSegment", "Get", "GetSegments", "Put", "UpdateSegment"],
+            RoutedActions(typeof(BiometricSettingsController)).Select(a => a.Method.Name).Order(StringComparer.Ordinal));
     }
 
     // ─── Fixtures ────────────────────────────────────────────────────────────────────────────────────────

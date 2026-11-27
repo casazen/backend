@@ -1,3 +1,4 @@
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
@@ -18,7 +19,8 @@ namespace Casazen.Web.Controllers;
 /// organization does not pass it. That is what makes a calibration CasaZen's to declare and not the organization's: the settings of the organization
 /// (<c>api/settings/biometrics</c>) have no way to write it.</para>
 /// <para>Not behind <c>Features:CheckInIdentityVerification</c>: they are the tools that say whether the models are ready, and that mark a calibration, <b>before</b>
-/// the flag goes on.</para>
+/// the flag goes on. The qualification of a segment of the self-hosted verification (E70/F02/US01/T02) is behind both identity flags: there is no segment to qualify
+/// before the self-hosted flow is on.</para>
 /// </remarks>
 [ApiController]
 [Route("api/admin/biometrics")]
@@ -61,5 +63,75 @@ public sealed class AdminBiometricsController(
         return view is null
             ? this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NotFound")
             : Ok(BiometricSettingsDto.From(view));
+    }
+
+    /// <summary>
+    /// Records the qualification of a segment of the self-hosted identity verification of an organization (E70/F02/US01/T02, NF-194, ADR-013-R19), after the offline
+    /// qualification: <c>{ policyVersion, policyHash, weightsHash, reportSha256, requiredAssurance }</c>. The version and the two hashes must be the ones in force and the
+    /// policy calibrated, or 422 <c>identity_segment_invalid</c>: a qualification is bound to what was qualified, and a new policy or new weights make it void by
+    /// themselves. The mode does not change (the organization sets <c>automatic</c>). 404 <c>not_found</c> for a segment that is not of the organization. Only here, for the
+    /// platform administrators. Behind <see cref="FeatureFlags.CheckInIdentityVerification"/> and <see cref="FeatureFlags.CheckInIdentitySelfHosted"/>.
+    /// </summary>
+    /// <response code="200">The segment, qualified.</response>
+    [HttpPut("{orgId:guid}/segments/{segmentId:guid}/qualification")]
+    [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
+    [FeatureGate(FeatureFlags.CheckInIdentitySelfHosted)]
+    [ProducesResponseType(typeof(IdentitySegmentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<IdentitySegmentDto>> QualifySegment(
+        Guid orgId,
+        Guid segmentId,
+        [FromBody] QualifyIdentitySegmentDto body,
+        [FromServices] IIdentitySegmentService segments,
+        CancellationToken cancellationToken)
+    {
+        var staffUserId = User.GetUserId();
+        if (string.IsNullOrWhiteSpace(staffUserId))
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        var view = await segments.QualifyAsync(
+            orgId,
+            segmentId,
+            body.PolicyVersion,
+            body.PolicyHash,
+            body.WeightsHash,
+            body.ReportSha256,
+            body.RequiredAssurance,
+            staffUserId,
+            cancellationToken);
+        return view is null
+            ? this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NotFound")
+            : Ok(IdentitySegmentDto.From(view));
+    }
+
+    /// <summary>
+    /// Revokes the qualification of a segment of an organization: an automatic segment returns to observation at once (E70/F02/US01/T02). 404 <c>not_found</c> for a segment
+    /// that is not of the organization. Behind the same flags as the qualification.
+    /// </summary>
+    /// <response code="200">The segment, no longer qualified.</response>
+    [HttpDelete("{orgId:guid}/segments/{segmentId:guid}/qualification")]
+    [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
+    [FeatureGate(FeatureFlags.CheckInIdentitySelfHosted)]
+    [ProducesResponseType(typeof(IdentitySegmentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IdentitySegmentDto>> RevokeSegmentQualification(
+        Guid orgId,
+        Guid segmentId,
+        [FromServices] IIdentitySegmentService segments,
+        CancellationToken cancellationToken)
+    {
+        var staffUserId = User.GetUserId();
+        if (string.IsNullOrWhiteSpace(staffUserId))
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        var view = await segments.RevokeQualificationAsync(orgId, segmentId, staffUserId, cancellationToken);
+        return view is null
+            ? this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NotFound")
+            : Ok(IdentitySegmentDto.From(view));
     }
 }

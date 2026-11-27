@@ -103,9 +103,12 @@ public sealed class BiometricsHealthCheckTests : IDisposable
             .Where(m => m.GetCustomAttributes<HttpMethodAttribute>(inherit: true).Any())
             .ToList();
 
-        // The status (E22/F01/US01/T01) and the calibration of the thresholds of an organization (E22/F01/US01/T03): both for the platform administrators only.
-        Assert.Equal(["GetStatus", "MarkCalibrated"], routed.Select(a => a.Name).Order(StringComparer.Ordinal));
-        Assert.Equal(["GET", "PUT"], routed.Select(a => a.GetCustomAttribute<HttpMethodAttribute>()!.HttpMethods.Single()).Order(StringComparer.Ordinal));
+        // The status (E22/F01/US01/T01), the calibration of the thresholds of an organization (E22/F01/US01/T03) and the qualification of a segment of the self-hosted
+        // verification and its revocation (E70/F02/US01/T02): all for the platform administrators only.
+        Assert.Equal(
+            ["GetStatus", "MarkCalibrated", "QualifySegment", "RevokeSegmentQualification"],
+            routed.Select(a => a.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(["DELETE", "GET", "PUT", "PUT"], routed.Select(a => a.GetCustomAttribute<HttpMethodAttribute>()!.HttpMethods.Single()).Order(StringComparer.Ordinal));
         Assert.All(routed, action =>
         {
             Assert.Empty(action.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true));

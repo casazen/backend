@@ -9098,4 +9098,11 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="Ross1000SenderCutoverInProgress" xml:space="preserve"><value>È in corso un cambio di mittente. Riprova al termine.</value></data>
   <data name="CheckInIdentityAlreadyClosed" xml:space="preserve"><value>La verifica dell’identità di questo check-in è chiusa: non si possono inviare altri passaggi. Puoi sempre chiedere l’aiuto di una persona.</value></data>
   <data name="CheckInIdentityNoticeVersionUnknown" xml:space="preserve"><value>L’informativa sulla verifica dell’identità non è più quella in vigore. Ricarica la pagina e leggi il testo aggiornato.</value></data>
+  <data name="IdentitySegmentInvalid" xml:space="preserve"><value>Il segmento non è valido: controlla il formato del documento, il canale e la struttura.</value></data>
+  <data name="IdentitySegmentReasonRequired" xml:space="preserve"><value>Per sospendere un segmento indica un motivo di al massimo {0} caratteri.</value></data>
+  <data name="IdentitySegmentNotQualified" xml:space="preserve"><value>Il segmento non è qualificato per la politica e i pesi dei modelli in vigore: resta in osservazione e decide una persona.</value></data>
+  <data name="IdentitySegmentQualificationInvalid" xml:space="preserve"><value>La qualificazione non è valida: servono la versione della politica, gli SHA-256 della politica, dei pesi e del report e un livello di garanzia noto.</value></data>
+  <data name="IdentitySegmentQualificationMismatch" xml:space="preserve"><value>La versione o le impronte indicate non sono quelle della politica e dei pesi in vigore: il segmento non viene qualificato.</value></data>
+  <data name="IdentitySegmentPolicyProvisional" xml:space="preserve"><value>La politica in vigore è provvisoria: nessun segmento si può qualificare finché non viene pubblicata una politica calibrata.</value></data>
+  <data name="IdentitySegmentFingerprintUnavailable" xml:space="preserve"><value>La politica o i modelli non sono disponibili in questo momento: il segmento non si può qualificare.</value></data>
 </root>
