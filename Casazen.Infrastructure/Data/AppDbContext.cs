@@ -298,6 +298,10 @@ public class AppDbContext(
     public DbSet<BookingFlowSettings> BookingFlowSettings { get; set; } = null!;
     public DbSet<BiometricVerificationLog> BiometricVerificationLogs { get; set; } = null!;
 
+    // The self-hosted identity verification (E70/F01/US01/T02, NF-194, NF-195): the segments (property × format × channel) and the evidence kept for the reviewer.
+    public DbSet<IdentitySegmentSetting> IdentitySegmentSettings { get; set; } = null!;
+    public DbSet<IdentityReviewEvidence> IdentityReviewEvidences { get; set; } = null!;
+
     // Property access codes and release logs (NF-13, E06/F03/US01/T01)
     public DbSet<PropertyAccessCode> PropertyAccessCodes { get; set; } = null!;
     public DbSet<AccessCodeReleaseLog> AccessCodeReleaseLogs { get; set; } = null!;
@@ -2059,6 +2063,25 @@ public class AppDbContext(
         modelBuilder.Entity<BiometricVerificationLog>()
             .Property(l => l.ReasonsJson)
             .HasDefaultValueSql("'[]'::jsonb");
+
+        // E70/F01/US01/T02 (NF-194, ADR-013-R18, R19): how the self-hosted policy decided. The rows written before the columns read as the legacy path (DecisionMode
+        // Legacy, 0). The key of an attempt is unique per booking, the last line of defence of the idempotent closure (two processes, one key, one row); the rows of
+        // the legacy path have no key and the filter leaves them out. The index on the booking alone stays declared: the readers of the last row of a booking need it.
+        modelBuilder.Entity<BiometricVerificationLog>()
+            .Property(l => l.DecisionMode)
+            .HasDefaultValue(IdentityDecisionMode.Legacy);
+        modelBuilder.Entity<BiometricVerificationLog>()
+            .HasIndex(l => l.BookingId);
+        modelBuilder.Entity<BiometricVerificationLog>()
+            .HasIndex(l => new { l.BookingId, l.IdempotencyKey })
+            .IsUnique()
+            .HasFilter("\"IdempotencyKey\" IS NOT NULL")
+            .HasDatabaseName(BiometricVerificationLog.IdempotencyIndexName);
+
+        // E70/F01/US01/T02 (NF-194, NF-195): the segments and the evidence of the self-hosted verification; the tenant query filter is applied below, as to every
+        // ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new IdentitySegmentSettingConfiguration());
+        modelBuilder.ApplyConfiguration(new IdentityReviewEvidenceConfiguration());
 
         modelBuilder.ApplyConfiguration(new TerritorialRentAgreementConfiguration());
 

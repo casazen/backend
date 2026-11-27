@@ -34,5 +34,10 @@ internal sealed class GuestCheckInSessionConfiguration : IEntityTypeConfiguratio
         // E22/F01/US02/T02: the hash of the reference text of the version of the registry the guest accepted.
         entity.Property(s => s.BiometricConsentTextHash).HasMaxLength(64);
         entity.Property(s => s.DocumentCheckJson).HasColumnType("jsonb");
+
+        // E70/F01/US01/T02 (NF-188, NF-196): the guided retries of the self-hosted verification start at 0, on every row written before the column too; the counters
+        // read the sessions an org opened in a period by the time of the opening.
+        entity.Property(s => s.IdentityGuidedRetries).HasDefaultValue(0);
+        entity.HasIndex(s => new { s.OrgId, s.IdentityOpenedAt });
     }
 }

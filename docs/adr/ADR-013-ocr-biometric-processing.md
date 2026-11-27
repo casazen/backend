@@ -174,6 +174,6 @@ Per GDPR art. 7:
 
 **Consequences delta:**
 - Follow-on work: the epics E70-E74 (the session bound to one guest, the registry of the formats with the Italian electronic identity card first, the guided capture and the local reading by zones, the presence, the match on frames chosen by the server, the policy and the segments, the evidence with its time to live and its purge, the counters and the export of the pilot, the offline qualification toolkit), all behind the flags above.
-- Schema: one migration for the whole plan, `AddSelfHostedIdentityVerification` (E70/F01/US01/T02): the identity columns of `GuestCheckInSessions` and `BiometricVerificationLogs`, and the tables `IdentitySegmentSettings` and `IdentityReviewEvidence`; keys, hashes, codes and times only, never an image or a vector.
+- Schema: one migration for the whole plan, `AddSelfHostedIdentityVerification` (E70/F01/US01/T02): the identity columns of `GuestCheckInSessions` and `BiometricVerificationLogs`, and the tables `IdentitySegmentSettings` and `IdentityReviewEvidences`; keys, hashes, codes and times only, never an image or a vector.
 - Pre-launch gates (manual, NF-199): real data collected with explicit rights and the qualification by a separate QA, the pilot of 500 check-ins with a parallel human verification, the final numeric criteria, the DPIA and the legal texts, the licences of the weights, real devices, hosting with the network egress disabled.
 - Risk: a generic browser cannot prove the physical origin of the video; it is qualified before any sale (NF-192).
