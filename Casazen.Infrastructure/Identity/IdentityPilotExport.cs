@@ -5,6 +5,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.Extensions.Options;
 
@@ -28,7 +29,8 @@ namespace Casazen.Infrastructure.Identity;
 /// <c>reject</c>, <c>reason_codes</c> are the checks that did not pass as <c>check:result</c> joined by <c>|</c>, <c>review_seconds</c> is the time from the escalation of the policy to
 /// the decision of the person (a review of the policy only), and <c>policy_hash_prefix</c> the first 12 characters of the policy hash. Times are UTC, ISO 8601, to the millisecond.</para>
 /// <para><b>Safe in a spreadsheet.</b> RFC 4180: a comma, with CRLF line ends, and a cell with a comma, a quote or a line break in quotes with the quotes doubled. A cell that a
-/// spreadsheet could read as a formula (it starts with <c>=</c>, <c>+</c>, <c>-</c>, <c>@</c>, a tab or a carriage return) gets a leading apostrophe.</para>
+/// spreadsheet could read as a formula (<see cref="CsvWriter.StartsLikeAFormula"/>, the one rule of every file the host downloads: it starts with <c>=</c>, <c>+</c>, <c>-</c>,
+/// <c>@</c>, a tab or a carriage return) gets a leading apostrophe.</para>
 /// <para><b>Streaming.</b> <see cref="OpenAsync"/> does every read, so an error of the database is an error before the first byte of the answer; the lines of the file are then
 /// written one at a time (<see cref="IdentityPilotFile.Lines"/>), never as one text.</para>
 /// </remarks>
@@ -132,15 +134,17 @@ public sealed class IdentityPilotExport(AppDbContext db, TimeProvider clock, IOp
     }
 
     /// <summary>
-    /// One cell, escaped. <c>null</c> is an empty cell. A cell that starts with <c>=</c>, <c>+</c>, <c>-</c>, <c>@</c>, a tab or a carriage return gets a leading apostrophe (a
-    /// spreadsheet would evaluate it as a formula); a cell with a comma, a quote or a line break is put in quotes with the quotes doubled (RFC 4180).
+    /// One cell, escaped. <c>null</c> is an empty cell. A cell that a spreadsheet would evaluate as a formula (<see cref="CsvWriter.StartsLikeAFormula"/>, the one rule of every file
+    /// the host downloads: it starts with <c>=</c>, <c>+</c>, <c>-</c>, <c>@</c>, a tab or a carriage return) gets a leading apostrophe; a cell with a comma, a quote or a line break
+    /// is put in quotes with the quotes doubled (RFC 4180: the separator of this file is the comma, not the semicolon of <see cref="CsvWriter"/>, so the quoting is done here and only the
+    /// rule of the formulas is shared).
     /// </summary>
     public static string Cell(string? value)
     {
         if (string.IsNullOrEmpty(value))
             return string.Empty;
 
-        var cell = value[0] is '=' or '+' or '-' or '@' or '\t' or '\r' ? "'" + value : value;
+        var cell = CsvWriter.StartsLikeAFormula(value) ? "'" + value : value;
         return cell.IndexOfAny([',', '"', '\r', '\n']) >= 0
             ? "\"" + cell.Replace("\"", "\"\"", StringComparison.Ordinal) + "\""
             : cell;

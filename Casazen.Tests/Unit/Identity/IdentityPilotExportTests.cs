@@ -9,6 +9,7 @@ using Casazen.Core.Features;
 using Casazen.Core.Identity;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Identity;
 using Casazen.Tests.Unit.Services;
@@ -379,6 +380,31 @@ public sealed class IdentityPilotExportTests
     public void IdentityPilotExport_Cell_NeutralizesFormulas_AndQuotesWhatNeedsIt(string? value, string expected)
     {
         Assert.Equal(expected, IdentityPilotExport.Cell(value));
+    }
+
+    /// <summary>
+    /// The file neutralizes what the one rule of the files the host downloads says (<see cref="CsvWriter.StartsLikeAFormula"/>) and nothing else, whatever the first character is: for
+    /// each of the 256 first characters, the cell read back as a spreadsheet would is the value with a leading apostrophe when the rule says so and the value as it is otherwise (the
+    /// quoting of RFC 4180 never changes it); and the characters the rule neutralizes are the six of the contract: <c>=</c>, <c>+</c>, <c>-</c>, <c>@</c>, a tab and a carriage return.
+    /// </summary>
+    [Fact]
+    public void IdentityPilotExport_Cell_FollowsTheOneRuleOfTheFilesTheHostDownloads_ForEveryFirstCharacter()
+    {
+        var neutralized = new List<char>();
+        for (var code = 0; code < 256; code++)
+        {
+            var first = (char)code;
+            var value = first + "x1";
+            var rule = CsvWriter.StartsLikeAFormula(value);
+
+            var readBack = Assert.Single(Assert.Single(Parse(IdentityPilotExport.Cell(value) + "\r\n")));
+
+            Assert.Equal(rule ? "'" + value : value, readBack);
+            if (rule)
+                neutralized.Add(first);
+        }
+
+        Assert.Equal(new[] { '\t', '\r', '+', '-', '=', '@' }, neutralized);
     }
 
     /// <summary>
