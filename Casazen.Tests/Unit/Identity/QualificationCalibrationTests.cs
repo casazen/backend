@@ -158,8 +158,8 @@ public sealed class QualificationCalibrationTests : IDisposable
         var committedFile = Path.Combine(Committed, "identity-policy-2026.11-1.json");
         File.WriteAllText(committedFile, "THE COMMITTED POLICY");
 
-        // The output folder is the committed one, spelled in three ways: refused, and nothing is written there.
-        foreach (var spelled in new[] { Committed, Committed + Path.DirectorySeparatorChar, Path.Combine(Committed, "..", "committed") })
+        // The output folder is the committed one, spelled in three ways, or a folder inside it: refused, and nothing is written there.
+        foreach (var spelled in new[] { Committed, Committed + Path.DirectorySeparatorChar, Path.Combine(Committed, "..", "committed"), Path.Combine(Committed, "proposals") })
         {
             var refusal = Assert.Throws<QualificationRunException>(() => QualificationCalibration.Propose(Results(), _targets, IdentityTestPolicy.Shipped(), [Committed], spelled, _clock));
             Assert.Equal(QualificationRunCodes.OutputFolderInvalid, refusal.Code);
@@ -221,6 +221,39 @@ public sealed class QualificationCalibrationTests : IDisposable
 
         Assert.False(proposal.Proposed);
         Assert.Equal([QualificationCalibrationCodes.AttacksInsufficient + ":" + QualificationAttackClasses.VideoReplay], proposal.Codes);
+    }
+
+    /// <summary>
+    /// Proof (a target that cannot be measured fails): an attack that could not be judged (a case that broke, a sequence that could not be read, a validation or a liveness that was not
+    /// available) is no evidence. It is not counted among the attacks of its class, which then may be too few to show the limit of the target, and it takes no part in the thresholds.
+    /// </summary>
+    [Fact]
+    public void Propose_AnAttackThatCouldNotBeJudged_IsNoEvidence_AndIsCountedApart()
+    {
+        var results = Results(attacksPerClass: 300);
+        var broken = 0;
+        var cases = results.Cases.Select(candidate =>
+        {
+            // A hundred of the attacks of the photo class broke, each in its own way.
+            if (candidate.AttackClass != QualificationAttackClasses.PhotoPrint || broken >= 100)
+                return candidate;
+
+            broken++;
+            return broken % 3 == 0
+                ? candidate with { Error = "InvalidOperationException" }
+                : candidate with { Presence = candidate.Presence! with { ValidationUnavailable = broken % 3 == 1, IntakeError = broken % 3 == 2 ? "presence_sequence_invalid" : null } };
+        }).ToList();
+
+        var proposal = Propose(QualificationTestData.Results(QualificationSplits.Calibration, cases, results.ImpostorTrials));
+
+        // 200 attacks of the class were judged: too few to show the limit of the target, whatever the 300 would have said.
+        Assert.False(proposal.Proposed);
+        Assert.Equal([QualificationCalibrationCodes.AttacksInsufficient + ":" + QualificationAttackClasses.PhotoPrint], proposal.Codes);
+        Assert.Equal(200, proposal.Evidence.AttacksByClass[QualificationAttackClasses.PhotoPrint]);
+        Assert.Equal(100, proposal.Evidence.AttacksNotJudged[QualificationAttackClasses.PhotoPrint]);
+        Assert.Equal(300, proposal.Evidence.AttacksByClass[QualificationAttackClasses.Synthetic]);
+        Assert.False(proposal.Evidence.AttacksNotJudged.ContainsKey(QualificationAttackClasses.Synthetic));
+        Assert.Empty(PolicyFilesIn(Out));
     }
 
     [Theory]

@@ -37,6 +37,7 @@ public sealed class CandidateVersionReportTests : IDisposable
     private static QualificationMetricsBlock Passing()
     {
         return new QualificationMetricsBlock(
+            Bounded(0, 400_000),
             Bounded(0, 40_000),
             Bounded(30, 1_000),
             [
@@ -48,6 +49,12 @@ public sealed class CandidateVersionReportTests : IDisposable
                 new QualificationClassRate(QualificationAttackClasses.VideoReplay, Bounded(0, 320)),
             ],
             0.0,
+            [
+                new QualificationClassFaults(QualificationAttackClasses.PhotoPrint, 0, 400),
+                new QualificationClassFaults(QualificationAttackClasses.ScreenReplay, 0, 350),
+                new QualificationClassFaults(QualificationAttackClasses.Synthetic, 0, 300),
+                new QualificationClassFaults(QualificationAttackClasses.VideoReplay, 0, 320),
+            ],
             Bounded(10, 1_000),
             [
                 new QualificationFieldRate("birthDate", Wilson(499, 500)),
@@ -58,9 +65,15 @@ public sealed class CandidateVersionReportTests : IDisposable
             ],
             Wilson(450, 500),
             new QualificationDocumentMetrics(Bounded(2, 600), Bounded(0, 18), [new QualificationFormatDocumentRate("it-cie-3.0", 600, 2, 18, 0)]),
-            new QualificationCriticalApprovals(0, new Dictionary<string, int> { ["altered"] = 0, ["attack"] = 0, ["foreign"] = 0, ["impostor_pair"] = 0 }),
+            new QualificationCriticalApprovals(0, new Dictionary<string, int> { ["altered"] = 0, ["attack"] = 0, ["foreign"] = 0, ["impostor_pair"] = 0 }, Decided()),
             [new QualificationLatency(QualificationStages.PresenceMatch, 4000, 120.0, 310.0, 900.0)],
             []);
+    }
+
+    /// <summary>The cases of each kind of critical case the policy took a decision on, in a qualification that measures every kind.</summary>
+    private static Dictionary<string, int> Decided(int attack = 320, int impostorPair = 40, int altered = 12, int foreign = 6)
+    {
+        return new Dictionary<string, int> { ["altered"] = altered, ["attack"] = attack, ["foreign"] = foreign, ["impostor_pair"] = impostorPair };
     }
 
     private static QualificationLock Frozen(string? weightsHash = null)
@@ -120,7 +133,8 @@ public sealed class CandidateVersionReportTests : IDisposable
         Assert.Contains("40000 run of 40000 possible pairs (sample: no, limit 50000)", text, StringComparison.Ordinal);
 
         // The metrics with their intervals.
-        Assert.Contains("- False match rate (FMR) at the policy: 0/40000 = 0, upper bound 0.000075", text, StringComparison.Ordinal);
+        Assert.Contains("- False match rate (FMR) at the policy: 0/400000 = 0, upper bound 0.000007", text, StringComparison.Ordinal);
+        Assert.Contains("(the verdict; a couple is a false match when any comparison of it is): 0/40000 = 0, upper bound 0.000075", text, StringComparison.Ordinal);
         Assert.Contains("- False non-match rate (FNMR) at the policy: 30/1000 = 0.03, upper bound ", text, StringComparison.Ordinal);
         Assert.Contains("  - photo_print: 0/400 = 0, upper bound 0.007461", text, StringComparison.Ordinal);
         Assert.Contains("  - mask: 0/0 = n/a, upper bound 1", text, StringComparison.Ordinal);
@@ -143,8 +157,8 @@ public sealed class CandidateVersionReportTests : IDisposable
     {
         var metrics = Passing() with
         {
-            // Too few comparisons to show a limit of 1 in 10,000 even with no false match; an attack of a class accepted; too few of another; none of a third.
-            Fmr = Bounded(0, 20_000),
+            // Too few couples of persons to show a limit of 1 in 10,000 even with no false match; an attack of a class accepted; too few of another; none of a third.
+            FmrCouples = Bounded(0, 20_000),
             Apcer =
             [
                 new QualificationClassRate(QualificationAttackClasses.PhotoPrint, Bounded(3, 400)),
@@ -153,7 +167,7 @@ public sealed class CandidateVersionReportTests : IDisposable
             ],
             ShadowAutomation = Wilson(400, 500),
             OcrExactness = [new QualificationFieldRate("birthDate", Wilson(499, 500)), new QualificationFieldRate("givenNames", Wilson(495, 500)), new QualificationFieldRate("surname", Wilson(497, 500))],
-            CriticalFalseApprovals = new QualificationCriticalApprovals(1, new Dictionary<string, int> { ["attack"] = 1 }),
+            CriticalFalseApprovals = new QualificationCriticalApprovals(1, new Dictionary<string, int> { ["attack"] = 1 }, Decided()),
         };
 
         var report = Report(metrics);
@@ -161,7 +175,7 @@ public sealed class CandidateVersionReportTests : IDisposable
 
         Assert.False(report.AllTargetsPassed);
         Assert.False(verdicts["fmr"].Pass);
-        Assert.Contains("29956 independent comparisons", verdicts["fmr"].Note, StringComparison.Ordinal);
+        Assert.Contains("29956 independent couples of persons", verdicts["fmr"].Note, StringComparison.Ordinal);
         Assert.False(verdicts["apcer.photo_print"].Pass);
         Assert.True(verdicts["apcer.screen_replay"].Pass);
         Assert.False(verdicts["apcer.synthetic"].Pass);
@@ -185,7 +199,7 @@ public sealed class CandidateVersionReportTests : IDisposable
     [Fact]
     public void Report_TheIntervalsAreThoseOfTheConfidenceOfTheTargets_WhateverTheRunUsed()
     {
-        var runAt99 = Passing() with { Fmr = QualificationBoundedRate.Of(0, 40_000, 0.99) };
+        var runAt99 = Passing() with { Fmr = QualificationBoundedRate.Of(0, 400_000, 0.99), FmrCouples = QualificationBoundedRate.Of(0, 40_000, 0.99) };
         var targets = QualificationTargets.Parse("""{ "fmrMax": 0.0001, "confidence": 0.95, "apcerUpperMax": 0.01, "minAttacksPerClass": 300, "automationTarget": 425, "automationOf": 500, "automationWilsonLowMin": 0.8, "identifyingFieldExactnessMin": 0.98, "criticalFalseApprovalsMax": 0 }""");
 
         var report = CandidateVersionReport.Build(Results(runAt99), Frozen(), targets);
@@ -274,6 +288,83 @@ public sealed class CandidateVersionReportTests : IDisposable
         Assert.Contains("  - candidate at 0.4: 1 of 3 impostor comparisons accepted, 0 of 3 genuine comparisons rejected.", report.Markdown, StringComparison.Ordinal);
         Assert.Contains("  - the candidate rejects fewer genuine comparisons at the same limit.", report.Markdown, StringComparison.Ordinal);
         Assert.DoesNotContain("## Candidate models", Report(Passing()).Markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Proof (a target that cannot be measured fails): the criterion on critical false approvals is measured on the cases the policy took a decision on, of each kind. A kind nobody decided on makes
+    /// it «not measured» and it FAILS, however few approvals there are; the report prints the denominators.
+    /// </summary>
+    [Fact]
+    public void Report_ACriticalKindNobodyDecidedOn_IsNotMeasured_AndFails_WhateverTheApprovals()
+    {
+        var none = new Dictionary<string, int> { ["altered"] = 0, ["attack"] = 0, ["foreign"] = 0, ["impostor_pair"] = 0 };
+
+        var measured = Report(Passing());
+        var unmeasured = Report(Passing() with { CriticalFalseApprovals = new QualificationCriticalApprovals(0, none, Decided(altered: 0, foreign: 0)) });
+        var nothing = Report(Passing() with { CriticalFalseApprovals = new QualificationCriticalApprovals(0, none, none) });
+
+        var verdict = unmeasured.Verdicts.Single(entry => entry.Target == "critical_false_approvals");
+        Assert.True(measured.Verdicts.Single(entry => entry.Target == "critical_false_approvals").Pass);
+        Assert.False(verdict.Pass);
+        Assert.Equal("not measured: no case was decided for altered, foreign", verdict.Note);
+        Assert.Equal("0 approvals; attack 0/320, impostor_pair 0/40, altered 0/0, foreign 0/0", verdict.Measured);
+        Assert.False(unmeasured.AllTargetsPassed);
+        Assert.Contains("| critical_false_approvals |", unmeasured.Markdown, StringComparison.Ordinal);
+        Assert.Contains("FAIL (not measured: no case was decided for altered, foreign)", unmeasured.Markdown, StringComparison.Ordinal);
+
+        // Nothing decided at all is not a pass either: every kind is named.
+        Assert.Equal("not measured: no case was decided for attack, impostor_pair, altered, foreign", nothing.Verdicts.Single(entry => entry.Target == "critical_false_approvals").Note);
+
+        // The denominators are in the report: out of how many cases the approvals were counted.
+        Assert.Contains("- Critical false approvals: 0 (altered=0, attack=0, foreign=0, impostor_pair=0), out of the cases decided (altered=12, attack=320, foreign=6, impostor_pair=40).", measured.Markdown, StringComparison.Ordinal);
+        Assert.Contains("0 approvals; attack 0/320, impostor_pair 0/40, altered 0/12, foreign 0/6", measured.Markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>Proof (a target that cannot be measured fails): an attack that could not be judged is no rejection; the class that has one is not measured, its verdict FAILS, and the report says how many.</summary>
+    [Fact]
+    public void Report_AnAttackThatCouldNotBeJudged_FailsItsClass_AndIsShownApart()
+    {
+        var metrics = Passing() with
+        {
+            AttacksNotJudged =
+            [
+                new QualificationClassFaults(QualificationAttackClasses.PhotoPrint, 3, 403),
+                new QualificationClassFaults(QualificationAttackClasses.ScreenReplay, 0, 350),
+                new QualificationClassFaults(QualificationAttackClasses.Synthetic, 0, 300),
+                new QualificationClassFaults(QualificationAttackClasses.VideoReplay, 0, 320),
+            ],
+        };
+
+        var report = Report(metrics);
+        var verdicts = report.Verdicts.ToDictionary(verdict => verdict.Target, StringComparer.Ordinal);
+
+        Assert.False(verdicts["apcer.photo_print"].Pass);
+        Assert.Contains("3 attacks of this class could not be judged", verdicts["apcer.photo_print"].Note, StringComparison.Ordinal);
+        Assert.Contains("not judged 3", verdicts["apcer.photo_print"].Measured, StringComparison.Ordinal);
+        Assert.True(verdicts["apcer.screen_replay"].Pass);
+        Assert.False(report.AllTargetsPassed);
+        Assert.Contains("not counted as rejected above): photo_print 3 of 403.", report.Markdown, StringComparison.Ordinal);
+
+        // With none, the report says so, and the classes pass as they did.
+        var clean = Report(Passing());
+        Assert.Contains("not counted as rejected above): none.", clean.Markdown, StringComparison.Ordinal);
+        Assert.True(clean.Verdicts.Single(verdict => verdict.Target == "apcer.photo_print").Pass);
+    }
+
+    /// <summary>Proof (independence): the verdict of the false match rate is over the distinct couples of persons, not over the comparisons, which a few persons repeated across captures make as many as they like.</summary>
+    [Fact]
+    public void Report_TheFalseMatchVerdict_IsOverTheDistinctCouplesOfPersons_NotTheComparisons()
+    {
+        // A million comparisons with no false match, made of only a thousand couples of persons: the comparisons would show the limit, the couples cannot.
+        var report = Report(Passing() with { Fmr = Bounded(0, 1_000_000), FmrCouples = Bounded(0, 1_000) });
+
+        var verdict = report.Verdicts.Single(entry => entry.Target == "fmr");
+        Assert.False(verdict.Pass);
+        Assert.StartsWith("0/1000 = 0, upper bound ", verdict.Measured, StringComparison.Ordinal);
+        Assert.Contains("29956 independent couples of persons", verdict.Note, StringComparison.Ordinal);
+        Assert.Contains("over the distinct couples of persons", verdict.Criterion, StringComparison.Ordinal);
+        Assert.Contains("- False match rate (FMR) at the policy: 0/1000000 = 0, upper bound ", report.Markdown, StringComparison.Ordinal);
+        Assert.Contains("(the verdict; a couple is a false match when any comparison of it is): 0/1000 = 0, upper bound ", report.Markdown, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -210,6 +210,15 @@ public sealed class QualificationMetricsTests
         Assert.Equal(1, metrics.CriticalFalseApprovals.ByKind[QualificationCaseKinds.Attack]);
         Assert.Equal(0, metrics.CriticalFalseApprovals.ByKind["altered"]);
 
+        // The cases the policy took a decision on, by kind: the two attacks with a document and the person with the document of another one; no altered, no foreign: not measured.
+        var decided = metrics.CriticalFalseApprovals.Decided;
+        Assert.Equal((2, 1, 0, 0), (decided["attack"], decided["impostor_pair"], decided["altered"], decided["foreign"]));
+        Assert.Equal(["altered", "foreign"], metrics.CriticalFalseApprovals.NotMeasured());
+
+        // Every attack had a judgement, and a comparison that names no couple is a couple of its own.
+        Assert.All(metrics.AttacksNotJudged, entry => Assert.Equal(0, entry.NotJudged));
+        Assert.Equal((1L, 3L), (metrics.FmrCouples.Count, metrics.FmrCouples.Total));
+
         // The time of the comparison: the two cases and the two trials, by nearest rank.
         var match = metrics.Latency.Single(stage => stage.Stage == QualificationStages.PresenceMatch);
         Assert.Equal((4, 200.0, 400.0, 400.0), (match.Count, match.P50Ms, match.P95Ms, match.MaxMs));
@@ -304,6 +313,190 @@ public sealed class QualificationMetricsTests
         Assert.Equal((0L, 0L), (comparison.CandidatePoint.FalseAccepts, comparison.CandidatePoint.FalseRejects));
         Assert.True(comparison.CandidateRejectsFewer);
     }
+
+    // ───── what a run could not judge, the cases the criteria are measured on, the couples of persons ─────
+
+    [Fact]
+    public void WasJudged_ACaseThatBrokeOrWhosePresenceCouldNotBeRead_OrJudged_IsNotJudged()
+    {
+        QualificationCaseResult Attack(QualificationPresenceResult? presence, string? error = null)
+        {
+            return QualificationTestData.Case("a", QualificationCaseKinds.Attack, null, presence, null, attackClass: QualificationAttackClasses.PhotoPrint, error: error);
+        }
+
+        // Judged: refused by the validation for what the recording shows, its frames not chosen, its liveness failed or passed.
+        Assert.True(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(false, validation: false))));
+        Assert.True(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(false, validation: true, selectionFailure: "presence_quality"))));
+        Assert.True(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(false, liveness: [0.1, 0.2]))));
+        Assert.True(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(true, 0.9, 0.9))));
+
+        // Not judged: an exception, a sequence that could not be read, a validation or a liveness that was not available, no presence part at all.
+        Assert.False(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(false), error: "InvalidOperationException")));
+        Assert.False(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(false, intakeError: "presence_sequence_invalid"))));
+        Assert.False(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(false, validationUnavailable: true))));
+        Assert.False(QualificationMetrics.WasJudged(Attack(QualificationTestData.Presence(false, livenessUnavailable: true))));
+        Assert.False(QualificationMetrics.WasJudged(Attack(null)));
+    }
+
+    /// <summary>Proof (a target that cannot be measured fails): an attack that could not be judged is no rejection, so it is out of the total of its class and is counted apart.</summary>
+    [Fact]
+    public void Compute_AnAttackThatCouldNotBeJudged_IsOutOfTheTotalOfItsClass_AndCountedApart()
+    {
+        QualificationCaseResult Attack(string id, QualificationPresenceResult presence, string attackClass = QualificationAttackClasses.PhotoPrint, string? error = null)
+        {
+            return QualificationTestData.Case(id, QualificationCaseKinds.Attack, null, presence, null, attackClass: attackClass, error: error);
+        }
+
+        var cases = new List<QualificationCaseResult>
+        {
+            Attack("a1", QualificationTestData.Presence(true, 0.9, 0.9)),
+            Attack("a2", QualificationTestData.Presence(false)),
+            Attack("a3", QualificationTestData.Presence(false), error: "InvalidOperationException"),
+            Attack("a4", QualificationTestData.Presence(false, validationUnavailable: true)),
+            Attack("a5", QualificationTestData.Presence(false, intakeError: "presence_sequence_too_large")),
+            Attack("a6", QualificationTestData.Presence(false, livenessUnavailable: true), QualificationAttackClasses.ScreenReplay),
+        };
+
+        var metrics = QualificationMetrics.Compute(cases, [], QualificationTestData.Thresholds(), 0.95, QualificationTestData.Models());
+
+        // Of the six attacks two of the photo class were judged (one accepted); the other three and the one of the screen class were not.
+        var photo = metrics.Apcer.Single(entry => entry.Class == QualificationAttackClasses.PhotoPrint).Rate;
+        var screen = metrics.Apcer.Single(entry => entry.Class == QualificationAttackClasses.ScreenReplay).Rate;
+        Assert.Equal((1L, 2L), (photo.Count, photo.Total));
+        Assert.Equal((0L, 0L), (screen.Count, screen.Total));
+        Assert.Equal(0.5, metrics.ApcerMax);
+        Assert.Equal(
+            [(QualificationAttackClasses.PhotoPrint, 3L, 5L), (QualificationAttackClasses.ScreenReplay, 1L, 1L)],
+            metrics.AttacksNotJudged.Where(entry => entry.Total > 0).Select(entry => (entry.Class, entry.NotJudged, entry.Total)));
+        Assert.Equal(QualificationAttackClasses.All.Order(StringComparer.Ordinal), metrics.AttacksNotJudged.Select(entry => entry.Class));
+    }
+
+    /// <summary>Proof (data): the exactness of a field is measured on the genuine captures of the owner of the document: an attack, a person with the document of another, an altered or a foreign one show pictures a genuine capture shows already.</summary>
+    [Fact]
+    public void Compute_TheExactnessOfTheFields_IsMeasuredOnTheGenuineCapturesOfTheOwnerOnly()
+    {
+        QualificationDocumentResult Read(int exact) => QualificationTestData.Document(true, "passed", new QualificationFieldResult("surname", exact, 1));
+        var cases = new List<QualificationCaseResult>
+        {
+            QualificationTestData.Case("g1", QualificationCaseKinds.Genuine, Read(1), QualificationTestData.Presence(true, 0.9, 0.9)),
+            QualificationTestData.Case("g2", QualificationCaseKinds.Genuine, Read(0), QualificationTestData.Presence(true, 0.9, 0.9)),
+            QualificationTestData.Case("a1", QualificationCaseKinds.Attack, Read(1), QualificationTestData.Presence(false), attackClass: QualificationAttackClasses.PhotoPrint),
+            QualificationTestData.Case("i1", QualificationCaseKinds.ImpostorPair, Read(1), QualificationTestData.Presence(true, 0.3, 0.3)),
+            QualificationTestData.Case("h1", QualificationCaseKinds.Genuine, Read(1), QualificationTestData.Presence(true, 0.9, 0.9), altered: true),
+            QualificationTestData.Case("f1", QualificationCaseKinds.Genuine, Read(1), QualificationTestData.Presence(true, 0.9, 0.9), foreign: true),
+        };
+
+        var metrics = QualificationMetrics.Compute(cases, [], QualificationTestData.Thresholds(), 0.95, QualificationTestData.Models());
+
+        var surname = Assert.Single(metrics.OcrExactness);
+        Assert.Equal(("surname", 1L, 2L), (surname.Field, surname.Rate.Count, surname.Rate.Total));
+    }
+
+    /// <summary>Proof (the same name is the same name): a name read in the other spelling the MRZ may use is exact, as the coherence checker takes it; another name is not, and a number is not reconciled.</summary>
+    [Fact]
+    public void ExactnessRates_ANameInTheOtherSpellingOfTheMrz_IsExact_AndAnotherNameIsNot()
+    {
+        var rates = QualificationMetrics.ExactnessRates(
+        [
+            ("surname", "Müller", "MULLER"),
+            ("surname", "Müller", "MUELLER"),
+            ("surname", "Müller", "Müller"),
+            ("surname", "Rossi", "ROSSO"),
+            ("surname.mrz", "Jürgen", "JUERGEN"),
+            ("givenNames", "Zoë", "ZOE"),
+            ("documentNumber", "CA00000AA", "CA0OO00AA"),
+        ]);
+
+        Assert.Equal(
+            [("documentNumber", 0L, 1L), ("givenNames", 1L, 1L), ("surname", 3L, 4L), ("surname.mrz", 1L, 1L)],
+            rates.Select(rate => (rate.Name, rate.Rate.Count, rate.Rate.Total)));
+
+        // The reconciliation is of names only, and only of the same name: the number and another name are as read.
+        Assert.Equal("Müller", QualificationMetrics.SpelledAsExpected("surname", "Müller", "MULLER"));
+        Assert.Equal("ROSSO", QualificationMetrics.SpelledAsExpected("surname", "Rossi", "ROSSO"));
+        Assert.Equal("CA0OO00AA", QualificationMetrics.SpelledAsExpected("documentNumber", "CA00000AA", "CA0OO00AA"));
+        Assert.Null(QualificationMetrics.SpelledAsExpected("surname", "Müller", null));
+    }
+
+    /// <summary>Proof (a target that cannot be measured fails): the critical approvals have their DENOMINATORS, the cases of each kind the policy took a decision on.</summary>
+    [Fact]
+    public void Compute_TheCriticalApprovals_AreCountedOverTheCasesDecided_OfEachKind()
+    {
+        var cases = new List<QualificationCaseResult>
+        {
+            // Decided: two attacks (one approved), a person with the document of another, an altered document that was approved, and a foreign image that was also altered.
+            QualificationTestData.Case("a1", QualificationCaseKinds.Attack, QualificationTestData.Document(true), QualificationTestData.Presence(true, 0.9, 0.9), QualificationTestData.Decision("auto_approved", "approve"), attackClass: QualificationAttackClasses.PhotoPrint),
+            QualificationTestData.Case("a2", QualificationCaseKinds.Attack, QualificationTestData.Document(true), QualificationTestData.Presence(false), QualificationTestData.Decision("review", "review"), attackClass: QualificationAttackClasses.Synthetic),
+            QualificationTestData.Case("i1", QualificationCaseKinds.ImpostorPair, QualificationTestData.Document(true), QualificationTestData.Presence(true, 0.3, 0.3), QualificationTestData.Decision("review", "review")),
+            QualificationTestData.Case("h1", QualificationCaseKinds.Genuine, QualificationTestData.Document(true), QualificationTestData.Presence(true, 0.9, 0.9), QualificationTestData.Decision("auto_approved", "approve"), altered: true),
+            QualificationTestData.Case("f1", QualificationCaseKinds.Genuine, QualificationTestData.Document(false, "unknown"), QualificationTestData.Presence(false), QualificationTestData.Decision("review", "review"), altered: true, foreign: true),
+
+            // Not decided: an attack with no document, one that broke, and an altered document with no sequence: they are no denominator.
+            QualificationTestData.Case("a3", QualificationCaseKinds.Attack, null, QualificationTestData.Presence(false), null, attackClass: QualificationAttackClasses.VideoReplay),
+            QualificationTestData.Case("a4", QualificationCaseKinds.Attack, QualificationTestData.Document(true), QualificationTestData.Presence(false), null, attackClass: QualificationAttackClasses.ScreenReplay, error: "IOException"),
+            QualificationTestData.Case("h2", QualificationCaseKinds.Genuine, QualificationTestData.Document(true), null, null, altered: true),
+        };
+
+        var critical = QualificationMetrics.Compute(cases, [], QualificationTestData.Thresholds(), 0.95, QualificationTestData.Models()).CriticalFalseApprovals;
+
+        Assert.Equal(2, critical.Total);
+        Assert.Equal((1, 0, 1, 0), (critical.ByKind["attack"], critical.ByKind["impostor_pair"], critical.ByKind["altered"], critical.ByKind["foreign"]));
+        Assert.Equal((2, 1, 2, 1), (critical.Decided["attack"], critical.Decided["impostor_pair"], critical.Decided["altered"], critical.Decided["foreign"]));
+        Assert.Empty(critical.NotMeasured());
+
+        // With no case decided of a kind, that kind is not measured.
+        var withoutForeign = QualificationMetrics.Compute([.. cases.Where(candidate => !candidate.Foreign)], [], QualificationTestData.Thresholds(), 0.95, QualificationTestData.Models()).CriticalFalseApprovals;
+        Assert.Equal(["foreign"], withoutForeign.NotMeasured());
+        Assert.Equal(QualificationCriticalKinds.All, QualificationMetrics.Compute([], [], QualificationTestData.Thresholds(), 0.95, QualificationTestData.Models()).CriticalFalseApprovals.NotMeasured());
+    }
+
+    /// <summary>Proof (independence): the comparisons of one couple of persons are one piece of evidence, and a couple is a false match when any comparison of it is.</summary>
+    [Fact]
+    public void Compute_TheFalseMatchRate_IsAlsoCountedOverTheDistinctCouplesOfPersons()
+    {
+        var couple1 = QualificationMetrics.CoupleKey("p1", "p2");
+        var couple2 = QualificationMetrics.CoupleKey("p2", "p1");
+        var couple3 = QualificationMetrics.CoupleKey("p3", "p4");
+        var trials = new List<QualificationImpostorTrial>
+        {
+            // Five comparisons of the same couple of persons, one of them a false match (0.90 at the acceptance of 0.85).
+            new("g1", "d-2", 0.40, 0.35, 1, null, couple1),
+            new("g1b", "d-2", 0.41, 0.36, 1, null, couple1),
+            new("g1", "d-2b", 0.42, 0.37, 1, null, couple1),
+            new("g1b", "d-2b", 0.90, 0.80, 1, null, couple1),
+            new("g1c", "d-2", 0.43, 0.38, 1, null, couple1),
+
+            // The other direction of the same two persons is another couple; a third couple has two comparisons and no false match.
+            new("g2", "d-1", 0.30, 0.30, 1, null, couple2),
+            new("g3", "d-4", 0.20, 0.20, 1, null, couple3),
+            new("g3b", "d-4", 0.21, 0.21, 1, null, couple3),
+        };
+        var cases = new List<QualificationCaseResult>
+        {
+            // A person with the document of another one: its own couple, with a score under the acceptance.
+            QualificationTestData.Case("i1", QualificationCaseKinds.ImpostorPair, QualificationTestData.Document(true), QualificationTestData.Presence(true, 0.5, 0.5), couple: QualificationMetrics.CoupleKey("p5", "p6")),
+        };
+
+        var metrics = QualificationMetrics.Compute(cases, trials, QualificationTestData.Thresholds(), 0.95, QualificationTestData.Models());
+
+        // Nine comparisons, one of them a false match; four couples of persons, one of them a false match.
+        Assert.Equal((1L, 9L), (metrics.Fmr.Count, metrics.Fmr.Total));
+        Assert.Equal((1L, 4L), (metrics.FmrCouples.Count, metrics.FmrCouples.Total));
+        Assert.Equal(IdentityStatistics.ClopperPearsonUpper(1, 4), metrics.FmrCouples.UpperBound);
+    }
+
+    [Fact]
+    public void CoupleKey_IsTheSameForTheSameCouple_AnotherForTheOtherDirection_AndNamesNobody()
+    {
+        var key = QualificationMetrics.CoupleKey("person-1", "person-2");
+
+        Assert.Equal(key, QualificationMetrics.CoupleKey("person-1", "person-2"));
+        Assert.NotEqual(key, QualificationMetrics.CoupleKey("person-2", "person-1"));
+        Assert.NotEqual(key, QualificationMetrics.CoupleKey("person-1", "person-3"));
+        Assert.Equal(24, key.Length);
+        Assert.All(key, character => Assert.True(char.IsAsciiHexDigitLower(character)));
+        Assert.DoesNotContain("person", key, StringComparison.Ordinal);
+    }
 }
 
 /// <summary>Cases, results and models written in code for the tests of the qualification toolkit: ids, codes and numbers, never a picture or a value of a person.</summary>
@@ -349,19 +542,27 @@ internal static class QualificationTestData
     }
 
     public static QualificationPresenceResult Presence(
-        bool accepted, double? similarity = null, double? min = null, IReadOnlyList<double>? liveness = null, bool validation = true, string? selectionFailure = null)
+        bool accepted,
+        double? similarity = null,
+        double? min = null,
+        IReadOnlyList<double>? liveness = null,
+        bool validation = true,
+        string? selectionFailure = null,
+        bool validationUnavailable = false,
+        bool livenessUnavailable = false,
+        string? intakeError = null)
     {
         return new QualificationPresenceResult(
-            null,
+            intakeError,
             25,
             3000,
             validation,
-            false,
+            validationUnavailable,
             [],
             selectionFailure,
             [],
             [],
-            accepted ? "passed" : "failed",
+            livenessUnavailable ? "unavailable" : accepted ? "passed" : "failed",
             liveness ?? [],
             similarity is null ? "not_run" : "ok",
             similarity,
@@ -391,20 +592,23 @@ internal static class QualificationTestData
         bool foreign = false,
         double? matchMs = null,
         QualificationPairedScores? pairedMatch = null,
-        QualificationPairedScores? pairedLiveness = null)
+        QualificationPairedScores? pairedLiveness = null,
+        string? error = null,
+        string? couple = null)
     {
         var stages = new Dictionary<string, double>(StringComparer.Ordinal);
         if (matchMs is { } ms)
             stages[QualificationStages.PresenceMatch] = ms;
 
-        return new QualificationCaseResult(id, kind, attackClass, "web:desktop-chromium", document?.Format, altered, foreign, document, presence, decision, pairedMatch, pairedLiveness, stages, null);
+        return new QualificationCaseResult(id, kind, attackClass, "web:desktop-chromium", document?.Format, altered, foreign, document, presence, decision, pairedMatch, pairedLiveness, stages, error, couple);
     }
 
     public static QualificationDatasetSummary Dataset(string split = "test")
     {
         var attacks = QualificationAttackClasses.All.ToDictionary(attackClass => attackClass, attackClass => attackClass == QualificationAttackClasses.Mask ? 0 : 400, StringComparer.Ordinal);
+        var wholeCheckIns = new Dictionary<string, int> { [QualificationCriticalKinds.Attack] = 1600, [QualificationCriticalKinds.ImpostorPair] = 300, [QualificationCriticalKinds.Altered] = 12, [QualificationCriticalKinds.Foreign] = 6 };
         return new QualificationDatasetSummary(
-            [.. QualificationSplits.All.Select(name => new QualificationSplitCounts(name, 120, 2400, 1000, 300, 280, 12, 6, attacks))],
+            [.. QualificationSplits.All.Select(name => new QualificationSplitCounts(name, 120, 2400, 1000, 300, 280, 12, 6, attacks, wholeCheckIns))],
             new QualificationEvaluatedSummary(
                 2400,
                 new Dictionary<string, int> { [QualificationCaseKinds.Genuine] = 1700, [QualificationCaseKinds.Attack] = 1600 },

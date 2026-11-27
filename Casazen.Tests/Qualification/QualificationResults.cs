@@ -204,7 +204,8 @@ public sealed record QualificationPairedScores(IReadOnlyList<double> Reference, 
 /// <summary>
 /// One case of a run: a capture of the manifest, by its anonymous id. The document and presence parts are there for the parts the capture has (a part that could not run is there
 /// with its codes); the decision is there for a capture that is a whole check-in; the paired scores are there when a candidate model is loaded; <see cref="StageMs"/> is the time of
-/// each stage that ran; <see cref="Error"/> is the type of the exception that stopped the case, never its message.
+/// each stage that ran; <see cref="Error"/> is the type of the exception that stopped the case, never its message. <see cref="Couple"/> is the opaque key of the couple of persons
+/// (the person present, the owner of the document) of a case that is a person with the document of ANOTHER one (<see cref="QualificationMetrics.CoupleKey"/>); null for every other case.
 /// </summary>
 public sealed record QualificationCaseResult(
     string Id,
@@ -220,10 +221,23 @@ public sealed record QualificationCaseResult(
     QualificationPairedScores? PairedMatch,
     QualificationPairedScores? PairedLiveness,
     IReadOnlyDictionary<string, double> StageMs,
-    string? Error);
+    string? Error,
+    string? Couple = null);
 
-/// <summary>An impostor trial derived from the manifest: the sequence of one capture against the document of ANOTHER person of the split, by the ids of the two captures.</summary>
-public sealed record QualificationImpostorTrial(string SequenceCase, string DocumentCase, double Similarity, double MinSimilarity, double MatchMs, QualificationPairedScores? Paired);
+/// <summary>
+/// An impostor trial derived from the manifest: the sequence of one capture against the document of ANOTHER person of the split, by the ids of the two captures.
+/// <see cref="Couple"/> is the opaque key of the couple of persons (the person of the sequence, the owner of the document) the trial is about (<see cref="QualificationMetrics.CoupleKey"/>):
+/// the trials of one couple are not independent, so the false match rate of the verdict is counted over the distinct couples, and the key says which trials share one. Null in a result that
+/// does not say (each trial is then a couple of its own).
+/// </summary>
+public sealed record QualificationImpostorTrial(
+    string SequenceCase,
+    string DocumentCase,
+    double Similarity,
+    double MinSimilarity,
+    double MatchMs,
+    QualificationPairedScores? Paired,
+    string? Couple = null);
 
 /// <summary>
 /// The result of a run of the qualification pipeline on a split of a dataset (<c>results.json</c>): the dataset and the configuration in force (the policy, its thresholds, the
@@ -352,10 +366,13 @@ public static class QualificationRunCodes
     /// <summary>The ground-truth file of a capture is not a flat object of the fields of <c>ZonedFieldNames</c> with text values (the detail is the id of the capture).</summary>
     public const string GroundTruthInvalid = "ground_truth_invalid";
 
-    /// <summary>The output folder is a folder that must not be written to (the folder of the committed policy files).</summary>
+    /// <summary>The output folder is a folder that must not be written to: the folder of the committed policy files (the detail is <c>policy_folder</c>) or a folder of the checkout of the repository (<c>checkout</c>).</summary>
     public const string OutputFolderInvalid = "output_folder_invalid";
 
-    /// <summary>A report of the final test is already in the output folder: the final test is run once.</summary>
+    /// <summary>
+    /// The final test was started already: a report of it is in the output folder, or the marker the final test writes next to the lock before it reads the test split is there (it stays
+    /// there when a run breaks, and whatever the output folder is). The final test is run once.
+    /// </summary>
     public const string FinalAlreadyRun = "qualification_final_already_run";
 
     /// <summary>The lock file is not there or is not a lock.</summary>
@@ -369,4 +386,11 @@ public static class QualificationRunCodes
 
     /// <summary>The calibration cannot propose a policy from the evidence there is (the detail lists the codes of what is missing).</summary>
     public const string CalibrationInsufficient = "calibration_insufficient";
+
+    /// <summary>
+    /// The test split has no whole check-in (a document and a sequence) of a kind of critical case (an attack, a person with the document of another, an altered or a foreign document), so
+    /// the criterion «no false approval on a critical case» cannot be measured on it and the final test is not started: it is run once (the detail names the kinds, a code of
+    /// <see cref="QualificationCriticalKinds"/> each).
+    /// </summary>
+    public const string CriticalKindsMissing = "qualification_critical_kinds_missing";
 }

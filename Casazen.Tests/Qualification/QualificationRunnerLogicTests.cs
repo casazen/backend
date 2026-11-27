@@ -505,6 +505,14 @@ public sealed class QualificationRunnerLogicTests(QualificationLogicFixture run)
         Assert.Equal(expected, run.Results.ImpostorTrials.Select(trial => $"{trial.SequenceCase}>{trial.DocumentCase}").Order(StringComparer.Ordinal));
         Assert.All(run.Results.ImpostorTrials, trial => Assert.Equal((0.0, 0.0), (trial.Similarity, trial.MinSimilarity)));
         Assert.All(run.Results.ImpostorTrials, trial => Assert.True(trial.MatchMs >= 0));
+
+        // Each trial says which couple of persons it is about (the person of the sequence, the owner of the document), by an opaque key: four persons make twelve couples, however many captures there are,
+        // and the person with the card of another one is the couple of the trial of the same two persons.
+        Assert.All(run.Results.ImpostorTrials, trial => Assert.NotNull(trial.Couple));
+        Assert.Equal(12, run.Results.ImpostorTrials.Select(trial => trial.Couple).Distinct().Count());
+        Assert.Equal(QualificationMetrics.CoupleKey("p2", "p3"), run.Results.ImpostorTrials.Single(trial => trial.SequenceCase == "g-p2" && trial.DocumentCase == "g-p3").Couple);
+        Assert.Equal(QualificationMetrics.CoupleKey("p2", "p3"), Case("i-p2").Couple);
+        Assert.All(run.Results.Cases.Where(candidate => candidate.Id != "i-p2"), candidate => Assert.Null(candidate.Couple));
     }
 
     [Fact]
@@ -531,7 +539,12 @@ public sealed class QualificationRunnerLogicTests(QualificationLogicFixture run)
 
         // Impostors: the 15 trials and the person with the card of another; none matches. Genuine: the four with their own card, all matched.
         Assert.Equal((0L, 16L), (metrics.Fmr.Count, metrics.Fmr.Total));
+        Assert.Equal((0L, 12L), (metrics.FmrCouples.Count, metrics.FmrCouples.Total));
         Assert.Equal((0L, 4L), (metrics.Fnmr.Count, metrics.Fnmr.Total));
+
+        // Every attack of the run was judged, and the cases the policy decided on are counted by kind: the attack with a document, the person with the card of another, the altered card.
+        Assert.All(metrics.AttacksNotJudged, entry => Assert.Equal(0, entry.NotJudged));
+        Assert.Equal((1, 1, 1, 0), (metrics.CriticalFalseApprovals.Decided["attack"], metrics.CriticalFalseApprovals.Decided["impostor_pair"], metrics.CriticalFalseApprovals.Decided["altered"], metrics.CriticalFalseApprovals.Decided["foreign"]));
 
         // Persons present: the five genuine captures (the altered one included) and the impostor pair, all accepted by the presence.
         Assert.Equal((0L, 6L), (metrics.Bpcer.Count, metrics.Bpcer.Total));

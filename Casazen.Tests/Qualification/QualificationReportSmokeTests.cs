@@ -1,4 +1,5 @@
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Identity;
 using Xunit;
 
 namespace Casazen.Tests.Qualification;
@@ -49,6 +50,64 @@ public sealed class QualificationReportSmokeTests(QualificationSmokeFixture run)
 
         // Generated pictures are not faces and the dataset is two persons: no target can be shown, and the report says so for every verdict it could not make.
         Assert.False(report.AllTargetsPassed);
+
+        // The generated dataset has no person with the document of another and no altered or foreign document: the criterion on critical false approvals is not measured, and fails.
+        var critical = report.Verdicts.Single(verdict => verdict.Target == "critical_false_approvals");
+        Assert.False(critical.Pass);
+        Assert.StartsWith("not measured: no case was decided for ", critical.Note, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The preflight of the final test reads the manifest and the counts of a split without opening a capture: the final test asks it before it writes its marker, so that a manifest that is wrong
+    /// (or a split with nobody in it) does not use up the one run, and says which kinds of critical case the split cannot measure.
+    /// </summary>
+    [Fact]
+    public void QualificationSmoke_Preflight_ReadsTheManifestAndTheSplit_WithoutOpeningACapture()
+    {
+        var preflight = QualificationRunner.Preflight(run.ManifestPath, QualificationSplits.Development);
+
+        Assert.Equal(run.Results.DatasetManifestHash, preflight.ManifestHash);
+        Assert.Equal((2, 4), (preflight.Counts.Persons, preflight.Counts.Captures));
+
+        // The generated dataset has two attacks that are whole check-ins, and no person with the document of another, no altered and no foreign document.
+        Assert.Equal([QualificationCriticalKinds.ImpostorPair, QualificationCriticalKinds.Altered, QualificationCriticalKinds.Foreign], preflight.Counts.CriticalKindsMissing());
+        Assert.All(preflight.Validation.Warnings.Where(warning => warning.Split == QualificationSplits.Development), warning => Assert.Equal(QualificationManifestWarningCodes.CriticalKindMissing, warning.Code));
+
+        // A split with nobody in it, a split that does not exist and a manifest that is not there are refused before anything is read.
+        Assert.Equal(QualificationRunCodes.SplitEmpty, Assert.Throws<QualificationRunException>(() => QualificationRunner.Preflight(run.ManifestPath, QualificationSplits.Test)).Code);
+        Assert.Equal(QualificationRunCodes.SplitUnknown, Assert.Throws<QualificationRunException>(() => QualificationRunner.Preflight(run.ManifestPath, "validation")).Code);
+        Assert.Equal(QualificationRunCodes.ManifestUnreadable, Assert.Throws<QualificationRunException>(() => QualificationRunner.Preflight(Path.Combine(run.Folder, "no-such-manifest.json"), QualificationSplits.Development)).Code);
+    }
+
+    /// <summary>
+    /// Proof (data, the repository is public): the pipeline of the application names the folders of the committed policy files, and a run refuses those folders and the checkout before it reads or
+    /// creates anything (the manifest it is given is not even there).
+    /// </summary>
+    [Fact]
+    public async Task QualificationSmoke_TheOutputFolder_IsNeverThePolicyFolderNorTheCheckout_AndARunRefusesItBeforeReadingAnything()
+    {
+        var published = Path.Combine(AppContext.BaseDirectory, "IdentityPolicies");
+        var sources = Path.Combine(IdentityPolicyTestFiles.RepositoryRoot(), "Casazen.Web", "IdentityPolicies");
+
+        var folders = run.Pipeline.ProtectedPolicyFolders().Select(folder => Path.TrimEndingDirectorySeparator(folder)).ToList();
+
+        Assert.Contains(Path.TrimEndingDirectorySeparator(published), folders, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(Path.TrimEndingDirectorySeparator(sources), folders, StringComparer.OrdinalIgnoreCase);
+        var inPolicies = Path.Combine(published, "qualification-out-test");
+        var inCheckout = Path.Combine(IdentityPolicyTestFiles.RepositoryRoot(), "qualification-out-test");
+        Assert.Throws<QualificationRunException>(() => run.Pipeline.EnsureOutputAllowed(sources));
+        Assert.Throws<QualificationRunException>(() => run.Pipeline.EnsureOutputAllowed(inCheckout));
+        run.Pipeline.EnsureOutputAllowed(run.OutDirectory);
+
+        var runner = new QualificationRunner(run.Pipeline, QualificationTargets.Load());
+        foreach (var folder in new[] { inPolicies, inCheckout })
+        {
+            var refusal = await Assert.ThrowsAsync<QualificationRunException>(
+                () => runner.RunAsync(Path.Combine(run.Folder, "no-such-manifest.json"), QualificationSplits.Development, folder, CancellationToken.None));
+
+            Assert.Equal(QualificationRunCodes.OutputFolderInvalid, refusal.Code);
+            Assert.False(Directory.Exists(folder));
+        }
     }
 }
 

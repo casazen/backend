@@ -164,31 +164,21 @@ public sealed class QualificationPipeline : IAsyncDisposable
         : throw new QualificationRunException(QualificationRunCodes.PolicyNotReady, PolicySnapshot.ReasonCode);
 
     /// <summary>
-    /// The folders that hold the committed policy files, which a calibration never writes to: the folder the application reads the policy from (next to the test assembly) and, when the tests run
-    /// from a checkout, the folder of the sources (<c>Casazen.Web/IdentityPolicies</c>).
+    /// The folders that hold the committed policy files, which a qualification never writes to: the folder the application reads the policy from (next to the test assembly) and, when the tests run
+    /// from a checkout, the folder of the sources (<c>Casazen.Web/IdentityPolicies</c>). See <see cref="QualificationOutputFolder"/>.
     /// </summary>
     public IReadOnlyList<string> ProtectedPolicyFolders()
     {
-        var file = IdentityOptions.PolicyFile;
-        var path = Path.IsPathRooted(file) ? file : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, file));
-        var folders = new List<string>();
-        if (Path.GetDirectoryName(path) is { Length: > 0 } published)
-            folders.Add(published);
+        return QualificationOutputFolder.ProtectedPolicyFolders(IdentityOptions.PolicyFile, AppContext.BaseDirectory);
+    }
 
-        // The checkout the tests were built from: the folder of the solution is the first one above the test output that holds Casazen.sln.
-        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
-        {
-            if (!File.Exists(Path.Combine(directory.FullName, "Casazen.sln")))
-                continue;
-
-            var sources = Path.Combine(directory.FullName, "Casazen.Web", "IdentityPolicies");
-            if (Directory.Exists(sources))
-                folders.Add(sources);
-
-            break;
-        }
-
-        return folders;
+    /// <summary>
+    /// Refuses a folder a qualification must not write to (<see cref="QualificationRunCodes.OutputFolderInvalid"/>): a folder of the committed policy files, or a folder of the checkout the tests
+    /// were built from (the repository is public, and the results are the scores of a real dataset). Asked before anything is read or written.
+    /// </summary>
+    public void EnsureOutputAllowed(string path)
+    {
+        QualificationOutputFolder.EnsureAllowed(path, ProtectedPolicyFolders(), QualificationOutputFolder.CheckoutRoot(AppContext.BaseDirectory));
     }
 
     /// <summary>True when a candidate of the recognition model is loaded.</summary>
@@ -259,6 +249,17 @@ public sealed class QualificationPipeline : IAsyncDisposable
 
     private static ServiceProvider Build(QualificationPipelineOptions options)
     {
+        return Describe(options).BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = false });
+    }
+
+    /// <summary>
+    /// The registrations of the pipeline, not built: what the application registers for the models, the readers of the document and the self-hosted identity verification, with the published
+    /// configuration. Nothing leaves the process with real faces and documents going through it, so none of them may be an HTTP client factory, an AI provider or a job client (proved by
+    /// <c>QualificationSafetyTests</c>).
+    /// </summary>
+    internal static ServiceCollection Describe(QualificationPipelineOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
         var configuration = new ConfigurationBuilder().SetBasePath(AppContext.BaseDirectory).AddJsonFile("appsettings.json", optional: false, reloadOnChange: false);
         if (options.IncludeEnvironmentVariables)
             configuration.AddEnvironmentVariables();
@@ -300,7 +301,7 @@ public sealed class QualificationPipeline : IAsyncDisposable
         services.PostConfigure<MrzOcrOptions>(settings => settings.TimeoutSeconds = Math.Max(settings.TimeoutSeconds, WidenedOcrTimeoutSeconds));
 
         options.ConfigureServices?.Invoke(services);
-        return services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = false });
+        return services;
     }
 
     /// <summary>The flags of the run: the self-hosted verification is on (it is what is qualified); the automatic approval and the evidence are not read by anything here.</summary>
@@ -310,5 +311,85 @@ public sealed class QualificationPipeline : IAsyncDisposable
         {
             return flag is FeatureFlags.CheckInIdentityVerification or FeatureFlags.CheckInIdentitySelfHosted;
         }
+    }
+}
+
+/// <summary>
+/// Where a qualification may write (E74/F01/US02, NF-198, ADR-013-R2): the results of a run hold the scores of a dataset that is kept outside the repository (it is public), the lock and the
+/// report are what a person reviews, and a proposed policy is a NEW file that a person commits on purpose. So an output folder is never a folder of the committed policy files (the one the
+/// application reads them from, next to the test assembly, and the one of the sources) and never a folder of the checkout the tests were built from. A folder INSIDE one of them is refused too.
+/// The rules are pure (paths in, a refusal or nothing out), so that they are proved without a pipeline.
+/// </summary>
+public static class QualificationOutputFolder
+{
+    /// <summary>The detail of the refusal for a folder of the committed policy files.</summary>
+    public const string PolicyFolderDetail = "policy_folder";
+
+    /// <summary>The detail of the refusal for a folder of the checkout.</summary>
+    public const string CheckoutDetail = "checkout";
+
+    /// <summary>The checkout the tests were built from: the first folder at or above <paramref name="baseDirectory"/> that holds <c>Casazen.sln</c>; null when there is none (a copy of the test output).</summary>
+    public static string? CheckoutRoot(string baseDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
+        for (var directory = new DirectoryInfo(baseDirectory); directory is not null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Casazen.sln")))
+                return directory.FullName;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The folders that hold the committed policy files: the folder of <paramref name="policyFile"/> (the setting <c>IdentityVerification:PolicyFile</c>, relative to
+    /// <paramref name="baseDirectory"/> unless it is rooted) and, when there is a checkout above <paramref name="baseDirectory"/>, the folder of the sources (<c>Casazen.Web/IdentityPolicies</c>).
+    /// </summary>
+    public static IReadOnlyList<string> ProtectedPolicyFolders(string policyFile, string baseDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(policyFile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
+
+        var path = Path.IsPathRooted(policyFile) ? policyFile : Path.GetFullPath(Path.Combine(baseDirectory, policyFile));
+        var folders = new List<string>();
+        if (Path.GetDirectoryName(path) is { Length: > 0 } published)
+            folders.Add(published);
+
+        if (CheckoutRoot(baseDirectory) is { } root)
+        {
+            var sources = Path.Combine(root, "Casazen.Web", "IdentityPolicies");
+            if (Directory.Exists(sources))
+                folders.Add(sources);
+        }
+
+        return folders;
+    }
+
+    /// <summary>
+    /// Refuses <paramref name="path"/> when it is, or is inside, one of <paramref name="protectedFolders"/> (the detail is <see cref="PolicyFolderDetail"/>) or <paramref name="checkoutRoot"/>
+    /// (<see cref="CheckoutDetail"/>): <see cref="QualificationRunCodes.OutputFolderInvalid"/>. Nothing is created or read.
+    /// </summary>
+    public static void EnsureAllowed(string path, IReadOnlyList<string> protectedFolders, string? checkoutRoot)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(protectedFolders);
+
+        if (protectedFolders.Any(folder => IsInside(path, folder)))
+            throw new QualificationRunException(QualificationRunCodes.OutputFolderInvalid, PolicyFolderDetail);
+
+        if (checkoutRoot is not null && IsInside(path, checkoutRoot))
+            throw new QualificationRunException(QualificationRunCodes.OutputFolderInvalid, CheckoutDetail);
+    }
+
+    /// <summary>Whether <paramref name="path"/> is <paramref name="folder"/> or lies under it, as full paths (a <c>..</c> and a trailing separator change nothing; the case counts on Linux only).</summary>
+    public static bool IsInside(string path, string folder)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentException.ThrowIfNullOrWhiteSpace(folder);
+
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var candidate = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+        return string.Equals(candidate, root, comparison) || candidate.StartsWith(root + Path.DirectorySeparatorChar, comparison);
     }
 }

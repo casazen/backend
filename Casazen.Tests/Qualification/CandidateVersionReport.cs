@@ -192,32 +192,48 @@ public sealed class CandidateVersionReport
         var confidence = targets.Confidence;
         var confidenceText = Percent(confidence);
 
-        // The false match rate between different persons: the upper bound must be under the limit. With no error the bound is 1 - (1 - confidence)^(1 / n): a limit of 1 in 10,000 needs
-        // about 30,000 independent comparisons, and a smaller set cannot show it whatever it finds.
-        var fmr = metrics.Fmr;
-        var trialsNeeded = Math.Ceiling(Math.Log(1.0 - confidence) / Math.Log(1.0 - targets.FmrMax));
+        // The false match rate between different persons: the upper bound must be under the limit, over the DISTINCT couples of persons (the captures of two persons compared again and again are
+        // one piece of evidence, not as many, and a couple is a false match when any comparison of it is). With no error the bound is 1 - (1 - confidence)^(1 / n): a limit of 1 in 10,000 needs
+        // about 30,000 independent couples of persons, and a smaller set cannot show it whatever it finds.
+        var fmr = metrics.FmrCouples;
+        var couplesNeeded = Math.Ceiling(Math.Log(1.0 - confidence) / Math.Log(1.0 - targets.FmrMax));
         verdicts.Add(new QualificationTargetVerdict(
             "fmr",
-            string.Create(CultureInfo.InvariantCulture, $"false match rate between different persons: upper bound at most {Number(targets.FmrMax)} at {confidenceText} confidence"),
+            string.Create(CultureInfo.InvariantCulture, $"false match rate between different persons, over the distinct couples of persons: upper bound at most {Number(targets.FmrMax)} at {confidenceText} confidence"),
             Bounded(fmr),
             fmr.Total > 0 && fmr.UpperBound <= targets.FmrMax,
             fmr.Total == 0
                 ? "no impostor comparison was made"
                 : fmr.UpperBound > targets.FmrMax && fmr.Count == 0
-                    ? string.Create(CultureInfo.InvariantCulture, $"with no false match about {trialsNeeded:0} independent comparisons are needed to show it")
+                    ? string.Create(CultureInfo.InvariantCulture, $"with no false match about {couplesNeeded:0} independent couples of persons are needed to show it")
                     : null));
 
-        // The attacks that are accepted as a person present, per class: every class that was tried, and the classes the specification names even when none was.
-        foreach (var attackClass in QualificationAttackClasses.All.Where(candidate => CoreAttackClasses.Contains(candidate) || metrics.Apcer.Any(entry => entry.Class == candidate && entry.Rate.Total > 0)))
+        // The attacks that are accepted as a person present, per class: every class that was tried, and the classes the specification names even when none was. Only the attacks that were JUDGED
+        // are the evidence; one that could not be (a case that broke, a sequence that could not be read, a validation or a liveness that was not available) is no rejection, and a class that has
+        // one is not measured: its verdict fails.
+        bool Reported(string candidate) =>
+            CoreAttackClasses.Contains(candidate)
+            || metrics.Apcer.Any(entry => entry.Class == candidate && entry.Rate.Total > 0)
+            || metrics.AttacksNotJudged.Any(entry => entry.Class == candidate && entry.NotJudged > 0);
+
+        foreach (var attackClass in QualificationAttackClasses.All.Where(Reported))
         {
             var rate = metrics.Apcer.FirstOrDefault(entry => entry.Class == attackClass)?.Rate ?? QualificationBoundedRate.Of(0, 0, confidence);
+            var notJudged = metrics.AttacksNotJudged.FirstOrDefault(entry => entry.Class == attackClass) is { } faults ? faults.NotJudged : 0;
             var enough = rate.Total >= targets.MinAttacksPerClass;
+            var note = rate.Total == 0 && notJudged == 0 ? "no attack of this class was tried" : rate.Total > 0 && !enough ? "too few attacks of this class to show the limit" : null;
+            if (notJudged > 0)
+            {
+                note = (note is null ? string.Empty : note + "; ")
+                    + string.Create(CultureInfo.InvariantCulture, $"{notJudged} attacks of this class could not be judged (a fault, a sequence that could not be read, a validation or a liveness that was not available) and are not counted as rejected");
+            }
+
             verdicts.Add(new QualificationTargetVerdict(
                 "apcer." + attackClass,
-                string.Create(CultureInfo.InvariantCulture, $"attacks of the class accepted: upper bound at most {Number(targets.ApcerUpperMax)} at {confidenceText} confidence, from at least {targets.MinAttacksPerClass} attacks"),
-                Bounded(rate),
-                enough && rate.UpperBound <= targets.ApcerUpperMax,
-                rate.Total == 0 ? "no attack of this class was tried" : enough ? null : "too few attacks of this class to show the limit"));
+                string.Create(CultureInfo.InvariantCulture, $"attacks of the class accepted: upper bound at most {Number(targets.ApcerUpperMax)} at {confidenceText} confidence, from at least {targets.MinAttacksPerClass} attacks judged, none left without a judgement"),
+                Bounded(rate) + (notJudged > 0 ? string.Create(CultureInfo.InvariantCulture, $", not judged {notJudged}") : string.Empty),
+                enough && rate.UpperBound <= targets.ApcerUpperMax && notJudged == 0,
+                note));
         }
 
         // The shadow automation: the policy would have closed at least the target of the check-ins, and the lower Wilson bound of the rate is high enough, on at least that many check-ins.
@@ -252,14 +268,29 @@ public sealed class CandidateVersionReport
             }
         }
 
-        // A false approval of the policy on a case that must never be approved suspends the combination.
+        // A false approval of the policy on a case that must never be approved suspends the combination. The criterion is measured on the cases the policy took a decision on, of EACH kind
+        // (an attack, a person with the document of another, an altered document, a foreign image): a kind with none of them is not measured, and a target that is not measured fails (that
+        // nothing was approved of a kind nobody decided on proves nothing).
         var critical = metrics.CriticalFalseApprovals;
+        var notMeasured = critical.NotMeasured();
         verdicts.Add(new QualificationTargetVerdict(
             "critical_false_approvals",
-            string.Create(CultureInfo.InvariantCulture, $"approvals of an attack, of a person with the document of another, of an altered or a foreign document: at most {targets.CriticalFalseApprovalsMax}"),
-            critical.Total.ToString(CultureInfo.InvariantCulture),
-            critical.Total <= targets.CriticalFalseApprovalsMax));
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"approvals of an attack, of a person with the document of another, of an altered or a foreign document: at most {targets.CriticalFalseApprovalsMax}, on at least one decided case of each kind"),
+            CriticalMeasured(critical),
+            notMeasured.Count == 0 && critical.Total <= targets.CriticalFalseApprovalsMax,
+            notMeasured.Count == 0 ? null : "not measured: no case was decided for " + string.Join(", ", notMeasured)));
         return verdicts;
+    }
+
+    // «3 approvals; attack 0/300, impostor_pair 0/50, altered 3/40, foreign 0/20»: the approvals of each kind out of the cases of the kind the policy took a decision on.
+    private static string CriticalMeasured(QualificationCriticalApprovals critical)
+    {
+        var kinds = string.Join(
+            ", ",
+            QualificationCriticalKinds.All.Select(kind => string.Create(CultureInfo.InvariantCulture, $"{kind} {critical.ByKind.GetValueOrDefault(kind)}/{critical.Decided.GetValueOrDefault(kind)}")));
+        return string.Create(CultureInfo.InvariantCulture, $"{critical.Total} approvals; {kinds}");
     }
 
     private static string OcrCriterion(QualificationTargets targets)
@@ -330,13 +361,19 @@ public sealed class CandidateVersionReport
 
         Line(string.Create(invariant, $"## Metrics ({Percent(targets.Confidence)} confidence)"));
         Line();
-        Line("- False match rate (FMR) at the policy: " + Bounded(metrics.Fmr) + ".");
+        Line("- False match rate (FMR) at the policy: " + Bounded(metrics.Fmr) + " (every comparison: the comparisons of one couple of persons are not independent).");
+        Line("- False match rate over the distinct couples of persons (the verdict; a couple is a false match when any comparison of it is): " + Bounded(metrics.FmrCouples) + ".");
         Line("- False non-match rate (FNMR) at the policy: " + Bounded(metrics.Fnmr) + ".");
-        Line("- Attacks accepted as a person present (APCER), per class:");
+        Line("- Attacks accepted as a person present (APCER), per class, over the attacks that were judged:");
         foreach (var entry in metrics.Apcer)
             Line("  - " + entry.Class + ": " + Bounded(entry.Rate) + ".");
 
         Line("  - maximum: " + (metrics.ApcerMax is { } max ? Number(max) : "n/a") + ".");
+        var notJudged = metrics.AttacksNotJudged.Where(entry => entry.NotJudged > 0).ToList();
+        Line(
+            "- Attacks that could not be judged (a fault, a sequence that could not be read, a validation or a liveness that was not available; not counted as rejected above): "
+            + (notJudged.Count == 0 ? "none" : string.Join(", ", notJudged.Select(entry => string.Create(invariant, $"{entry.Class} {entry.NotJudged} of {entry.Total}"))))
+            + ".");
         Line("- Persons present not accepted (BPCER): " + Bounded(metrics.Bpcer) + ".");
         Line("- Exactness of the fields read on documents:");
         foreach (var entry in metrics.OcrExactness)
@@ -351,7 +388,10 @@ public sealed class CandidateVersionReport
                 $"  - format {format.Format}: {format.GenuineRefused} of {format.Genuine} genuine refused, {format.HostileLetThrough} of {format.Hostile} altered or foreign let through."));
         }
 
-        Line(string.Create(invariant, $"- Critical false approvals: {metrics.CriticalFalseApprovals.Total} ({Counts(metrics.CriticalFalseApprovals.ByKind)})."));
+        Line(
+            string.Create(
+                invariant,
+                $"- Critical false approvals: {metrics.CriticalFalseApprovals.Total} ({Counts(metrics.CriticalFalseApprovals.ByKind)}), out of the cases decided ({Counts(metrics.CriticalFalseApprovals.Decided)})."));
         Line("- Time of each stage (ms), median, 95th percentile (nearest rank), longest:");
         foreach (var stage in metrics.Latency)
             Line(string.Create(invariant, $"  - {stage.Stage}: {stage.Count} runs, {stage.P50Ms:0.0}, {stage.P95Ms:0.0}, {stage.MaxMs:0.0}."));

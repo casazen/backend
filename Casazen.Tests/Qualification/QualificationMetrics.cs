@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Identity;
 using Casazen.Core.Identity.Statistics;
@@ -55,9 +56,24 @@ public sealed record QualificationDocumentMetrics(QualificationBoundedRate False
 
 /// <summary>
 /// The false approvals of the policy on the cases that must never be approved (an attack, a person with the document of another, an altered or a foreign document): how many
-/// distinct cases, and how many of each kind (a case can be of two kinds, so the kinds can add up to more than the total). The target is zero.
+/// distinct cases (<see cref="Total"/>), and how many of each kind (<see cref="ByKind"/>; a case can be of two kinds, so the kinds can add up to more than the total). The target is zero.
+/// <see cref="Decided"/> is the DENOMINATOR of each kind (a code of <see cref="QualificationCriticalKinds"/>): the cases of the kind the policy took a decision on (a document and a sequence
+/// that ran to the end). A kind with none was not measured, and «no approval» of it proves nothing.
 /// </summary>
-public sealed record QualificationCriticalApprovals(int Total, IReadOnlyDictionary<string, int> ByKind);
+public sealed record QualificationCriticalApprovals(int Total, IReadOnlyDictionary<string, int> ByKind, IReadOnlyDictionary<string, int> Decided)
+{
+    /// <summary>The kinds of critical case the policy took no decision on at all: the criterion cannot be measured for them (a method, so that it is not a member of the file).</summary>
+    public IReadOnlyList<string> NotMeasured()
+    {
+        return [.. QualificationCriticalKinds.All.Where(kind => Decided.GetValueOrDefault(kind) == 0)];
+    }
+}
+
+/// <summary>
+/// The attacks of one class (<see cref="Total"/>) and how many of them the run could NOT judge (<see cref="NotJudged"/>): an exception, a sequence that could not be read, a validation or a
+/// liveness that was not available. Nothing was found out about those, so they are not counted as rejected attacks anywhere (<see cref="QualificationMetrics.WasJudged"/>).
+/// </summary>
+public sealed record QualificationClassFaults(string Class, long NotJudged, long Total);
 
 /// <summary>Where a score with a threshold stands: the negatives (impostors or attacks) that reach it, and the positives (genuine or bona fide) that do not.</summary>
 public sealed record QualificationOperatingPoint(double Threshold, long FalseAccepts, long Negatives, long FalseRejects, long Positives);
@@ -79,12 +95,17 @@ public sealed record QualificationCandidateComparison(
 /// The aggregate metrics of a run at the thresholds of the policy in force: the false match and false non-match rates of the comparison of the face (the decision score is the
 /// aggregate similarity, or 0 when a chosen frame is under its minimum), the attack and bona fide classification errors of the presence, the exactness of each field of the
 /// documents, the shadow automation rate, the document stage, the critical false approvals and the time of each stage. Every rate has its count and total.
+/// <see cref="Fmr"/> counts every comparison; <see cref="FmrCouples"/> counts the DISTINCT couples of persons (the person present and the owner of the document): a couple of persons is one
+/// piece of evidence however many captures of them were compared, and it is a false match when any of its comparisons is. The verdict of the false match rate is the second.
+/// <see cref="Apcer"/> is over the attacks that were judged; <see cref="AttacksNotJudged"/> says how many of each class were not.
 /// </summary>
 public sealed record QualificationMetricsBlock(
     QualificationBoundedRate Fmr,
+    QualificationBoundedRate FmrCouples,
     QualificationBoundedRate Fnmr,
     IReadOnlyList<QualificationClassRate> Apcer,
     double? ApcerMax,
+    IReadOnlyList<QualificationClassFaults> AttacksNotJudged,
     QualificationBoundedRate Bpcer,
     IReadOnlyList<QualificationFieldRate> OcrExactness,
     QualificationWilsonRate ShadowAutomation,
@@ -119,6 +140,7 @@ public static class QualificationMetrics
         return block with
         {
             Fmr = Bounded(block.Fmr),
+            FmrCouples = Bounded(block.FmrCouples),
             Fnmr = Bounded(block.Fnmr),
             Apcer = [.. block.Apcer.Select(entry => entry with { Rate = Bounded(entry.Rate) })],
             Bpcer = Bounded(block.Bpcer),
@@ -156,9 +178,61 @@ public static class QualificationMetrics
     }
 
     /// <summary>
+    /// The exactness of every field of the pairs (the field, the true value, the value read): through <see cref="IdentityStatistics.FieldExactness"/>, with <see cref="NormalizeField"/>, after
+    /// a name read in the other spelling the MRZ may use is taken for the true one (<see cref="SpelledAsExpected"/>). Only the names of the fields and the counts come out.
+    /// </summary>
+    public static IReadOnlyList<NamedRate> ExactnessRates(IEnumerable<(string Field, string? Expected, string? Read)> pairs)
+    {
+        ArgumentNullException.ThrowIfNull(pairs);
+        return IdentityStatistics.FieldExactness(pairs.Select(pair => (pair.Field, pair.Expected, SpelledAsExpected(pair.Field, pair.Expected, pair.Read))), NormalizeField);
+    }
+
+    /// <summary>
+    /// The value read, or the true value when the two are the same NAME spelled in the other way the MRZ may spell it: the rule of the coherence checker (a printed name must equal the one of the
+    /// MRZ with the letters of the umlauts written as the MRZ writes them, or with their diacritics only dropped), through <c>MrzCheckInConsistency.Tokens</c>, which holds it. So «Müller» read as
+    /// <c>MULLER</c> is as exact as when it is read as <c>MUELLER</c> (<see cref="NormalizeField"/> brings that one to the same form); a field that is not a name, or one that is not read, is
+    /// as it was.
+    /// </summary>
+    public static string? SpelledAsExpected(string field, string? expected, string? read)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        if (expected is null || read is null || !IsNameField(field))
+            return read;
+
+        var wanted = NameKey(expected, transliterate: false);
+        return wanted.Length > 0 && string.Equals(wanted, NameKey(read, transliterate: false), StringComparison.Ordinal) ? expected : read;
+    }
+
+    /// <summary>
+    /// The opaque key of a couple of persons, the person present and the owner of the document they present (an ordered couple, as the validator counts the distinct impostor pairs): 24 hexadecimal
+    /// characters of the SHA-256 of the two ids, so the file of the results says which comparisons are about the same two persons and not who they are. The ids of the manifest are anonymous
+    /// already; this is not a protection of a secret.
+    /// </summary>
+    public static string CoupleKey(string person, string owner)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(person);
+        ArgumentException.ThrowIfNullOrEmpty(owner);
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes("couple|" + person + "|" + owner)).AsSpan(0, 12));
+    }
+
+    /// <summary>
+    /// Whether the presence of a case was JUDGED: it ran to a verdict (the sequence read, then validated, refused for what it shows, its frames chosen, their liveness scored). A case that broke
+    /// (an exception), whose sequence could not be read, or whose validation or liveness was not available (a model that was not there, failed or ran out of time) was not: nothing was found out
+    /// about it, so it is no rejection of an attack and no evidence for the calibration. A case with no presence part is not judged either.
+    /// </summary>
+    public static bool WasJudged(QualificationCaseResult candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        return candidate.Error is null
+            && candidate.Presence is { IntakeError: null, ValidationUnavailable: false } presence
+            && !string.Equals(presence.LivenessState, QualificationDecisionCodes.LivenessUnavailable, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// A value read on a document, and a true one, brought to the form they are compared in (the rule of the coherence checker for each kind of field): names without case, diacritics,
-    /// separators, with the letters the MRZ spells with two spelled so; dates as <c>yyyy-MM-dd</c>; the number of the document and the fiscal code as letters and digits; the sex and the
-    /// nationality as letters. <paramref name="field"/> may carry the suffix of the MRZ (<see cref="MrzFieldSuffix"/>). Null stays null.
+    /// separators, with the letters the MRZ spells with two spelled so (<c>MrzCheckInConsistency.Tokens</c>, the rule of the checker; <see cref="SpelledAsExpected"/> takes the other spelling
+    /// for the same name); dates as <c>yyyy-MM-dd</c>; the number of the document and the fiscal code as letters and digits; the sex and the nationality as letters.
+    /// <paramref name="field"/> may carry the suffix of the MRZ (<see cref="MrzFieldSuffix"/>). Null stays null.
     /// </summary>
     public static string? NormalizeField(string field, string? value)
     {
@@ -172,7 +246,7 @@ public static class QualificationMetrics
             case ZonedFieldNames.Surname:
             case ZonedFieldNames.GivenNames:
             case ZonedFieldNames.BirthPlace:
-                return NameKey(value);
+                return NameKey(value, transliterate: true);
             case ZonedFieldNames.BirthDate:
             case ZonedFieldNames.IssueDate:
             case ZonedFieldNames.ExpiryDate:
@@ -207,18 +281,28 @@ public static class QualificationMetrics
         var impostorScores = ImpostorDecisionScores(cases, trials, thresholds.MinEachFrame);
         var genuineScores = GenuineDecisionScores(cases, thresholds.MinEachFrame);
         var fmr = QualificationBoundedRate.Of(IdentityStatistics.Fmr(impostorScores, thresholds.Accept), confidence);
+        var fmrCouples = QualificationBoundedRate.Of(ImpostorCouples(cases, trials, thresholds.Accept, thresholds.MinEachFrame), confidence);
         var fnmr = QualificationBoundedRate.Of(IdentityStatistics.Fnmr(genuineScores, thresholds.Accept), confidence);
 
+        // The attacks that were JUDGED are the evidence: one that broke, whose sequence could not be read or whose validation or liveness was not available is counted apart, and is no rejection.
         var attackOutcomes = new Dictionary<string, List<bool>>(StringComparer.Ordinal);
+        var attackFaults = new SortedDictionary<string, (long NotJudged, long Total)>(StringComparer.Ordinal);
         foreach (var attackClass in QualificationAttackClasses.All)
+        {
             attackOutcomes[attackClass] = [];
+            attackFaults[attackClass] = (0, 0);
+        }
 
         foreach (var attack in cases.Where(candidate => candidate.Kind == QualificationCaseKinds.Attack && candidate.AttackClass is not null && candidate.Presence is not null))
         {
             if (!attackOutcomes.TryGetValue(attack.AttackClass!, out var outcomes))
                 attackOutcomes[attack.AttackClass!] = outcomes = [];
 
-            outcomes.Add(attack.Presence!.Accepted);
+            attackFaults.TryGetValue(attack.AttackClass!, out var seen);
+            var judged = WasJudged(attack);
+            attackFaults[attack.AttackClass!] = (seen.NotJudged + (judged ? 0 : 1), seen.Total + 1);
+            if (judged)
+                outcomes.Add(attack.Presence!.Accepted);
         }
 
         var apcer = IdentityStatistics.Apcer<List<bool>>(attackOutcomes);
@@ -229,9 +313,11 @@ public static class QualificationMetrics
 
         return new QualificationMetricsBlock(
             fmr,
+            fmrCouples,
             fnmr,
             [.. apcer.ByClass.Select(entry => new QualificationClassRate(entry.Name, QualificationBoundedRate.Of(entry.Rate, confidence)))],
             apcer.Max,
+            [.. attackFaults.Select(entry => new QualificationClassFaults(entry.Key, entry.Value.NotJudged, entry.Value.Total))],
             QualificationBoundedRate.Of(IdentityStatistics.Bpcer(bonaFide), confidence),
             Exactness(cases, confidence),
             Automation(cases, confidence),
@@ -257,6 +343,34 @@ public static class QualificationMetrics
         return scores;
     }
 
+    /// <summary>
+    /// The false matches counted over DISTINCT couples of persons (the person present, the owner of the document): the comparisons of one couple (the captures of the two persons compared
+    /// again and again) are one piece of evidence, not as many, and the couple is a false match when any of its comparisons reaches <paramref name="accept"/> with every frame over
+    /// <paramref name="minEachFrame"/>. A comparison that does not say which couple it is about is a couple of its own.
+    /// </summary>
+    public static CountedRate ImpostorCouples(IReadOnlyList<QualificationCaseResult> cases, IReadOnlyList<QualificationImpostorTrial> trials, double accept, double minEachFrame)
+    {
+        ArgumentNullException.ThrowIfNull(cases);
+        ArgumentNullException.ThrowIfNull(trials);
+
+        var matched = new Dictionary<string, bool>(StringComparer.Ordinal);
+        void Add(string couple, double score)
+        {
+            matched[couple] = matched.GetValueOrDefault(couple) || score >= accept;
+        }
+
+        foreach (var impostor in cases.Where(candidate => candidate.Kind == QualificationCaseKinds.ImpostorPair))
+        {
+            if (impostor.Presence is { Similarity: { } similarity, MinSimilarity: { } min })
+                Add(impostor.Couple ?? "case:" + impostor.Id, DecisionScore(similarity, min, minEachFrame));
+        }
+
+        foreach (var trial in trials)
+            Add(trial.Couple ?? "trial:" + trial.SequenceCase + ">" + trial.DocumentCase, DecisionScore(trial.Similarity, trial.MinSimilarity, minEachFrame));
+
+        return new CountedRate(matched.Count(entry => entry.Value), matched.Count);
+    }
+
     /// <summary>The decision scores of the genuine comparisons: a real person with their own document, which is neither altered nor foreign.</summary>
     public static List<double> GenuineDecisionScores(IReadOnlyList<QualificationCaseResult> cases, double minEachFrame)
     {
@@ -278,8 +392,9 @@ public static class QualificationMetrics
 
     private static List<QualificationFieldRate> Exactness(IReadOnlyList<QualificationCaseResult> cases, double confidence)
     {
+        // Only the genuine captures of the owner of the document: an attack or a person with the document of another shows the very pictures of a genuine capture again, which would count them twice.
         var totals = new SortedDictionary<string, (long Exact, long Total)>(StringComparer.Ordinal);
-        foreach (var candidate in cases.Where(candidate => !candidate.Altered && !candidate.Foreign && candidate.Document is not null))
+        foreach (var candidate in cases.Where(candidate => IsGenuineOwn(candidate) && candidate.Document is not null))
         {
             foreach (var field in candidate.Document!.Fields)
             {
@@ -345,12 +460,25 @@ public static class QualificationMetrics
         var critical = approved.Where(candidate => candidate.Kind != QualificationCaseKinds.Genuine || candidate.Altered || candidate.Foreign).ToList();
         var byKind = new SortedDictionary<string, int>(StringComparer.Ordinal)
         {
-            [QualificationCaseKinds.Attack] = critical.Count(candidate => candidate.Kind == QualificationCaseKinds.Attack),
-            [QualificationCaseKinds.ImpostorPair] = critical.Count(candidate => candidate.Kind == QualificationCaseKinds.ImpostorPair),
-            ["altered"] = critical.Count(candidate => candidate.Altered),
-            ["foreign"] = critical.Count(candidate => candidate.Foreign),
+            [QualificationCriticalKinds.Attack] = critical.Count(candidate => candidate.Kind == QualificationCaseKinds.Attack),
+            [QualificationCriticalKinds.ImpostorPair] = critical.Count(candidate => candidate.Kind == QualificationCaseKinds.ImpostorPair),
+            [QualificationCriticalKinds.Altered] = critical.Count(candidate => candidate.Altered),
+            [QualificationCriticalKinds.Foreign] = critical.Count(candidate => candidate.Foreign),
         };
-        return new QualificationCriticalApprovals(critical.Count, new Dictionary<string, int>(byKind, StringComparer.Ordinal));
+
+        // The denominators: the cases of each kind the policy took a decision on (a case that broke or has no document or no sequence has none), approved or not.
+        var decided = cases.Where(candidate => candidate.Decision is not null).ToList();
+        var decidedByKind = new SortedDictionary<string, int>(StringComparer.Ordinal)
+        {
+            [QualificationCriticalKinds.Attack] = decided.Count(candidate => candidate.Kind == QualificationCaseKinds.Attack),
+            [QualificationCriticalKinds.ImpostorPair] = decided.Count(candidate => candidate.Kind == QualificationCaseKinds.ImpostorPair),
+            [QualificationCriticalKinds.Altered] = decided.Count(candidate => candidate.Altered),
+            [QualificationCriticalKinds.Foreign] = decided.Count(candidate => candidate.Foreign),
+        };
+        return new QualificationCriticalApprovals(
+            critical.Count,
+            new Dictionary<string, int>(byKind, StringComparer.Ordinal),
+            new Dictionary<string, int>(decidedByKind, StringComparer.Ordinal));
     }
 
     private static List<QualificationLatency> Latency(IReadOnlyList<QualificationCaseResult> cases, IReadOnlyList<QualificationImpostorTrial> trials)
@@ -467,27 +595,19 @@ public static class QualificationMetrics
     }
 
     /// <summary>
-    /// A name as the MRZ writes it, squashed: upper case, the letters the MRZ spells with two spelled so (the umlauts, the sharp s, the ring and the slashed letters), the diacritics
-    /// removed and everything that is not a letter A to Z dropped.
+    /// A name as the MRZ writes it, squashed: the tokens of <c>MrzCheckInConsistency.Tokens</c> (upper case, the diacritics removed, everything that is not a letter A to Z a separator, with
+    /// the letters the MRZ spells with two spelled so when <paramref name="transliterate"/>: the umlauts, the sharp s, the ring and the slashed letters) joined. The rule is the one of the
+    /// coherence checker and is not copied here.
     /// </summary>
-    private static string NameKey(string value)
+    private static string NameKey(string value, bool transliterate)
     {
-        var upper = value.ToUpperInvariant()
-            .Replace("Ä", "AE", StringComparison.Ordinal)
-            .Replace("Ö", "OE", StringComparison.Ordinal)
-            .Replace("Ü", "UE", StringComparison.Ordinal)
-            .Replace("ß", "SS", StringComparison.Ordinal)
-            .Replace("Å", "AA", StringComparison.Ordinal)
-            .Replace("Æ", "AE", StringComparison.Ordinal)
-            .Replace("Ø", "OE", StringComparison.Ordinal);
-        var key = new StringBuilder(upper.Length);
-        foreach (var character in upper.Normalize(NormalizationForm.FormD))
-        {
-            if (character is >= 'A' and <= 'Z')
-                key.Append(character);
-        }
+        return string.Concat(MrzCheckInConsistency.Tokens(value, transliterate));
+    }
 
-        return key.ToString();
+    private static bool IsNameField(string field)
+    {
+        var name = field.EndsWith(MrzFieldSuffix, StringComparison.Ordinal) ? field[..^MrzFieldSuffix.Length] : field;
+        return name is ZonedFieldNames.Surname or ZonedFieldNames.GivenNames or ZonedFieldNames.BirthPlace;
     }
 }
 

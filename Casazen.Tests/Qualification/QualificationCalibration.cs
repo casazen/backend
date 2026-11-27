@@ -16,12 +16,17 @@ namespace Casazen.Tests.Qualification;
 // then is the configuration frozen and the final test run. The toolkit NEVER edits a committed policy file: a qualified file is never changed, a new calibration is a new file.
 // Nothing here reads a picture or a document: the inputs are the scores and the codes of anonymous cases.
 
-/// <summary>What the proposal rests on, in numbers: the comparisons of the two kinds and the attacks of each class (and how many of them got as far as the liveness).</summary>
+/// <summary>
+/// What the proposal rests on, in numbers: the comparisons of the two kinds and the attacks of each class that were JUDGED (and how many of them got as far as the liveness). The attacks that
+/// could not be judged (a case that broke, a sequence that could not be read, a validation or a liveness that was not available) are no evidence: they are counted apart in
+/// <see cref="AttacksNotJudged"/> and take no part in the proposal.
+/// </summary>
 public sealed record QualificationCalibrationEvidence(
     long ImpostorComparisons,
     long GenuineComparisons,
     IReadOnlyDictionary<string, int> AttacksByClass,
-    IReadOnlyDictionary<string, int> AttacksReachingLiveness);
+    IReadOnlyDictionary<string, int> AttacksReachingLiveness,
+    IReadOnlyDictionary<string, int> AttacksNotJudged);
 
 /// <summary>
 /// The outcome of a calibration: either a proposal (the thresholds, the file written and its canonical hash, which members of the policy changed) or the codes of what the evidence lacks.
@@ -82,7 +87,8 @@ public static class QualificationCalibration
     /// <item><description><b>review floor</b>: the percentile of the genuine similarities that leaves <c>1 - confidence</c> of them under it (nearest rank), never above the acceptance.</description></item>
     /// <item><description><b>minimum of each frame</b>: the active one, never above the acceptance.</description></item>
     /// <item><description><b>least liveness</b>: the lowest score that lets at most as many attacks of every class through (those that were valid, had their frames chosen and judged) as the target allows,
-    /// each class with at least <c>minAttacksPerClass</c> attacks; no attack that got as far as the liveness leaves the active minimum as it is.</description></item>
+    /// each class with at least <c>minAttacksPerClass</c> attacks that were JUDGED (an attack that broke, whose sequence could not be read or whose validation or liveness was not available is no
+    /// evidence and is not counted, <see cref="QualificationMetrics.WasJudged"/>); no attack that got as far as the liveness leaves the active minimum as it is.</description></item>
     /// </list>
     /// Not enough evidence gives the codes of <see cref="QualificationCalibrationCodes"/> and no file. <b>A committed policy is never touched</b>: the file is created (never replaced) in the output
     /// folder, and an output folder that is one of <paramref name="protectedFolders"/> (where the committed policy files are) is refused with <see cref="QualificationRunCodes.OutputFolderInvalid"/>.
@@ -102,8 +108,8 @@ public static class QualificationCalibration
         ArgumentException.ThrowIfNullOrWhiteSpace(outDirectory);
         ArgumentNullException.ThrowIfNull(clock);
 
-        if (protectedFolders.Any(folder => SamePlace(folder, outDirectory)))
-            throw new QualificationRunException(QualificationRunCodes.OutputFolderInvalid, "policy_folder");
+        if (protectedFolders.Any(folder => QualificationOutputFolder.IsInside(outDirectory, folder)))
+            throw new QualificationRunException(QualificationRunCodes.OutputFolderInvalid, QualificationOutputFolder.PolicyFolderDetail);
 
         var impostor = QualificationMetrics.ImpostorDecisionScores(calibration.Cases, calibration.ImpostorTrials, active.Match.MinEachFrame);
         var genuine = calibration.Cases
@@ -112,12 +118,16 @@ public static class QualificationCalibration
             .OfType<double>()
             .Where(similarity => similarity > 0)
             .ToList();
-        var attacks = calibration.Cases.Where(candidate => candidate.Kind == QualificationCaseKinds.Attack && candidate.AttackClass is not null && candidate.Presence is not null).ToList();
+        var allAttacks = calibration.Cases.Where(candidate => candidate.Kind == QualificationCaseKinds.Attack && candidate.AttackClass is not null && candidate.Presence is not null).ToList();
+
+        // Only the attacks that were judged are evidence: one that broke, whose sequence could not be read or whose validation or liveness was not available says nothing of the model.
+        var attacks = allAttacks.Where(QualificationMetrics.WasJudged).ToList();
         var evidence = new QualificationCalibrationEvidence(
             impostor.Count,
             genuine.Count,
             CountBy(attacks, _ => true),
-            CountBy(attacks, ReachedLiveness));
+            CountBy(attacks, ReachedLiveness),
+            CountBy(allAttacks, attack => !QualificationMetrics.WasJudged(attack)));
 
         var codes = new List<string>();
         if (!string.Equals(calibration.Split, QualificationSplits.Calibration, StringComparison.Ordinal))
@@ -326,12 +336,4 @@ public static class QualificationCalibration
             && read.Presence.Liveness.MinScore == written.Presence.Liveness.MinScore;
     }
 
-    private static bool SamePlace(string left, string right)
-    {
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        return string.Equals(
-            Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)),
-            Path.TrimEndingDirectorySeparator(Path.GetFullPath(right)),
-            comparison);
-    }
 }

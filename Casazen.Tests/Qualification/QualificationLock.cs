@@ -311,27 +311,83 @@ public sealed class QualificationLockMismatchException(IReadOnlyList<string> mem
 }
 
 /// <summary>
-/// The gate of the final test (NF-198): it starts the test only when the configuration in force is the one that was frozen, the policy is calibrated and no report of a final test is in
-/// the output folder yet, and then starts it ONCE. A run that is refused is never started: nothing of the test split is read.
+/// The gate of the final test (NF-198): it starts the test only when the configuration in force is the one that was frozen, the policy is calibrated, the test split can measure every kind of
+/// critical case, no report of a final test is in the output folder and the final test was not started with this lock before, and then starts it ONCE. A run that is refused is never
+/// started: nothing of the test split is read.
+/// <para>
+/// <b>Once means once.</b> Before the run reads anything of the test split the gate writes a marker next to the lock (<see cref="MarkerPathOf"/>), with <c>FileMode.CreateNew</c>, and a marker
+/// that is there refuses the test (<see cref="QualificationRunCodes.FinalAlreadyRun"/>) whatever the output folder is, whether the report was deleted, and whether the run before it broke:
+/// a final test that is run again on the same lock after its numbers were seen is a tuning on the test split. A new qualification has a new lock and so a new marker.
+/// </para>
 /// </summary>
 public static class QualificationFinalGate
 {
+    /// <summary>What follows the path of the lock in the name of its marker.</summary>
+    public const string MarkerSuffix = ".final-started";
+
+    /// <summary>The marker of the final test of the lock at <paramref name="lockPath"/>: the file next to it that says the test was started (<c>lock.json.final-started</c>).</summary>
+    public static string MarkerPathOf(string lockPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(lockPath);
+        return Path.GetFullPath(lockPath) + MarkerSuffix;
+    }
+
     /// <summary>
     /// Verifies <paramref name="current"/> against <paramref name="frozen"/> (<see cref="QualificationLockMismatchException"/> with the names of the members that differ, a provisional
-    /// policy included), refuses an output folder that holds the report of a final test already (<see cref="QualificationRunCodes.FinalAlreadyRun"/>), and only then calls
-    /// <paramref name="run"/>, once.
+    /// policy included), refuses a test split that has none of a kind of critical case (<paramref name="criticalKindsMissing"/>,
+    /// <see cref="QualificationRunCodes.CriticalKindsMissing"/>: the criterion could not be measured and the test is made once), refuses an output folder that holds the report of a final test
+    /// already and a lock whose marker is there (<see cref="QualificationRunCodes.FinalAlreadyRun"/>), writes the marker, and only then calls <paramref name="run"/>, once.
     /// </summary>
-    public static async Task<T> RunOnceAsync<T>(QualificationLock frozen, QualificationLock current, string outDirectory, Func<Task<T>> run)
+    public static async Task<T> RunOnceAsync<T>(
+        QualificationLock frozen,
+        QualificationLock current,
+        string outDirectory,
+        string lockPath,
+        Func<Task<T>> run,
+        IReadOnlyList<string>? criticalKindsMissing = null)
     {
         ArgumentNullException.ThrowIfNull(frozen);
         ArgumentNullException.ThrowIfNull(current);
         ArgumentException.ThrowIfNullOrWhiteSpace(outDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lockPath);
         ArgumentNullException.ThrowIfNull(run);
 
         frozen.Verify(current).ThrowIfMismatch();
+        if (criticalKindsMissing is { Count: > 0 })
+            throw new QualificationRunException(QualificationRunCodes.CriticalKindsMissing, string.Join(", ", criticalKindsMissing));
+
         if (CandidateVersionReport.ExistsIn(outDirectory))
             throw new QualificationRunException(QualificationRunCodes.FinalAlreadyRun);
 
+        WriteMarker(MarkerPathOf(lockPath), frozen);
         return await run();
+    }
+
+    // The marker holds hashes and the time: nothing of a person. It is created, never replaced, and stays when the run breaks.
+    private static void WriteMarker(string path, QualificationLock frozen)
+    {
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory))
+            Directory.CreateDirectory(directory);
+
+        try
+        {
+            using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            using var writer = new StreamWriter(stream);
+            writer.Write(
+                JsonSerializer.Serialize(
+                    new
+                    {
+                        startedAt = DateTimeOffset.UtcNow,
+                        policyCanonicalHash = frozen.PolicyCanonicalHash,
+                        weightsHash = frozen.WeightsHash,
+                        datasetManifestHash = frozen.DatasetManifestHash,
+                    },
+                    QualificationResults.JsonOptions));
+        }
+        catch (IOException) when (File.Exists(path))
+        {
+            throw new QualificationRunException(QualificationRunCodes.FinalAlreadyRun);
+        }
     }
 }

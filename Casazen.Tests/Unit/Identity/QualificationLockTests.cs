@@ -20,6 +20,9 @@ public sealed class QualificationLockTests : IDisposable
         Directory.CreateDirectory(_folder);
     }
 
+    // The lock of the gate tests: next to it the final test writes its marker (the file itself is never written by a gate test).
+    private string LockPath => Path.Combine(_folder, "lock", QualificationLock.FileName);
+
     public void Dispose()
     {
         if (Directory.Exists(_folder))
@@ -141,7 +144,7 @@ public sealed class QualificationLockTests : IDisposable
         var current = frozen with { Thresholds = frozen.Thresholds with { Accept = 0.60 } };
         var started = 0;
 
-        var refusal = await Assert.ThrowsAsync<QualificationLockMismatchException>(() => QualificationFinalGate.RunOnceAsync(frozen, current, _folder, () =>
+        var refusal = await Assert.ThrowsAsync<QualificationLockMismatchException>(() => QualificationFinalGate.RunOnceAsync(frozen, current, _folder, LockPath, () =>
         {
             started++;
             return Task.FromResult(1);
@@ -164,16 +167,17 @@ public sealed class QualificationLockTests : IDisposable
             return Task.FromResult(1);
         }
 
-        var provisional = await Assert.ThrowsAsync<QualificationLockMismatchException>(() => QualificationFinalGate.RunOnceAsync(frozen, Frozen(provisional: true), _folder, Run));
-        var weights = await Assert.ThrowsAsync<QualificationLockMismatchException>(() => QualificationFinalGate.RunOnceAsync(frozen, frozen with { Weights = frozen.Weights with { FaceRecognition = new string('8', 64) } }, _folder, Run));
-        var manifest = await Assert.ThrowsAsync<QualificationLockMismatchException>(() => QualificationFinalGate.RunOnceAsync(frozen, frozen with { DatasetManifestHash = new string('6', 64) }, _folder, Run));
-        var aggregation = await Assert.ThrowsAsync<QualificationLockMismatchException>(() => QualificationFinalGate.RunOnceAsync(frozen, frozen with { Aggregation = frozen.Aggregation with { MatchRule = "min" } }, _folder, Run));
+        var provisional = await Assert.ThrowsAsync<QualificationLockMismatchException>(() => QualificationFinalGate.RunOnceAsync(frozen, Frozen(provisional: true), _folder, LockPath, Run));
+        var weights = await Assert.ThrowsAsync<QualificationLockMismatchException>(() => QualificationFinalGate.RunOnceAsync(frozen, frozen with { Weights = frozen.Weights with { FaceRecognition = new string('8', 64) } }, _folder, LockPath, Run));
+        var manifest = await Assert.ThrowsAsync<QualificationLockMismatchException>(() => QualificationFinalGate.RunOnceAsync(frozen, frozen with { DatasetManifestHash = new string('6', 64) }, _folder, LockPath, Run));
+        var aggregation = await Assert.ThrowsAsync<QualificationLockMismatchException>(() => QualificationFinalGate.RunOnceAsync(frozen, frozen with { Aggregation = frozen.Aggregation with { MatchRule = "min" } }, _folder, LockPath, Run));
 
         Assert.Equal(["policyProvisional"], provisional.Members);
         Assert.Equal(["weights.faceRecognition"], weights.Members);
         Assert.Equal(["datasetManifestHash"], manifest.Members);
         Assert.Equal(["aggregation.matchRule"], aggregation.Members);
         Assert.Equal(0, started);
+        Assert.False(File.Exists(QualificationFinalGate.MarkerPathOf(LockPath)));
     }
 
     [Fact]
@@ -187,16 +191,98 @@ public sealed class QualificationLockTests : IDisposable
             return Task.FromResult("results");
         }
 
-        var results = await QualificationFinalGate.RunOnceAsync(frozen, Frozen(), _folder, Run);
+        var results = await QualificationFinalGate.RunOnceAsync(frozen, Frozen(), _folder, LockPath, Run);
         Assert.Equal(("results", 1), (results, started));
 
         // The final test is run once: with the report of one in the folder, nothing starts again, and nothing replaces that report.
         File.WriteAllText(Path.Combine(_folder, CandidateVersionReport.MarkdownFileName), "the report of the final test");
-        var again = await Assert.ThrowsAsync<QualificationRunException>(() => QualificationFinalGate.RunOnceAsync(frozen, Frozen(), _folder, Run));
+        var again = await Assert.ThrowsAsync<QualificationRunException>(() => QualificationFinalGate.RunOnceAsync(frozen, Frozen(), _folder, LockPath, Run));
 
         Assert.Equal(QualificationRunCodes.FinalAlreadyRun, again.Code);
         Assert.Equal(1, started);
         Assert.Equal("the report of the final test", File.ReadAllText(Path.Combine(_folder, CandidateVersionReport.MarkdownFileName)));
+    }
+
+    /// <summary>
+    /// Proof (security): «once» holds whatever the output folder is and whatever is deleted. The marker is written next to the lock BEFORE the run starts (so before anything of the test split is
+    /// read), is never replaced, and a second final test with the same lock is refused in another folder, with the report deleted, or after a run that broke.
+    /// </summary>
+    [Fact]
+    public async Task QualificationFinalGate_TheMarkerIsWrittenBeforeTheRun_AndRefusesAnotherRunWhateverTheFolder()
+    {
+        var frozen = Frozen();
+        var marker = QualificationFinalGate.MarkerPathOf(LockPath);
+        var started = 0;
+        var markerWhenTheRunStarted = false;
+        Task<int> Run()
+        {
+            started++;
+            markerWhenTheRunStarted = File.Exists(marker);
+            return Task.FromResult(1);
+        }
+
+        await QualificationFinalGate.RunOnceAsync(frozen, Frozen(), Path.Combine(_folder, "out-1"), LockPath, Run);
+
+        Assert.True(markerWhenTheRunStarted);
+        Assert.Equal(Path.GetFullPath(LockPath) + QualificationFinalGate.MarkerSuffix, marker);
+        Assert.Equal(Path.GetDirectoryName(Path.GetFullPath(LockPath)), Path.GetDirectoryName(marker));
+
+        // Another output folder, the report that was never written, the same lock: refused, and nothing starts.
+        var elsewhere = await Assert.ThrowsAsync<QualificationRunException>(() => QualificationFinalGate.RunOnceAsync(frozen, Frozen(), Path.Combine(_folder, "out-2"), LockPath, Run));
+        Assert.Equal(QualificationRunCodes.FinalAlreadyRun, elsewhere.Code);
+        Assert.Equal(1, started);
+
+        // What the marker holds is hashes and the time: nothing of a person.
+        using var content = JsonDocument.Parse(File.ReadAllText(marker));
+        Assert.Equal(["datasetManifestHash", "policyCanonicalHash", "startedAt", "weightsHash"], content.RootElement.EnumerateObject().Select(member => member.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(frozen.PolicyCanonicalHash, content.RootElement.GetProperty("policyCanonicalHash").GetString());
+    }
+
+    [Fact]
+    public async Task QualificationFinalGate_ARunThatBreaks_LeavesTheMarker_SoTheTestIsNotRunAgainOnTheSameLock()
+    {
+        var frozen = Frozen();
+        var started = 0;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => QualificationFinalGate.RunOnceAsync<int>(frozen, Frozen(), _folder, LockPath, () =>
+        {
+            started++;
+            throw new InvalidOperationException("the run broke");
+        }));
+        var again = await Assert.ThrowsAsync<QualificationRunException>(() => QualificationFinalGate.RunOnceAsync(frozen, Frozen(), _folder, LockPath, () =>
+        {
+            started++;
+            return Task.FromResult(1);
+        }));
+
+        Assert.True(File.Exists(QualificationFinalGate.MarkerPathOf(LockPath)));
+        Assert.Equal(QualificationRunCodes.FinalAlreadyRun, again.Code);
+        Assert.Equal(1, started);
+    }
+
+    /// <summary>A test split that cannot measure a kind of critical case is refused before the marker is written: the final test is made once, and it must not be used up on a dataset that cannot pass.</summary>
+    [Fact]
+    public async Task QualificationFinalGate_ASplitWithoutAKindOfCriticalCase_IsRefusedBeforeTheMarker()
+    {
+        var frozen = Frozen();
+        var started = 0;
+        Task<int> Run()
+        {
+            started++;
+            return Task.FromResult(1);
+        }
+
+        var refusal = await Assert.ThrowsAsync<QualificationRunException>(
+            () => QualificationFinalGate.RunOnceAsync(frozen, Frozen(), _folder, LockPath, Run, [QualificationCriticalKinds.Altered, QualificationCriticalKinds.Foreign]));
+
+        Assert.Equal(QualificationRunCodes.CriticalKindsMissing, refusal.Code);
+        Assert.Contains("altered, foreign", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(0, started);
+        Assert.False(File.Exists(QualificationFinalGate.MarkerPathOf(LockPath)));
+
+        // With every kind there, the same lock runs.
+        await QualificationFinalGate.RunOnceAsync(frozen, Frozen(), _folder, LockPath, Run, []);
+        Assert.Equal(1, started);
     }
 
     [Fact]

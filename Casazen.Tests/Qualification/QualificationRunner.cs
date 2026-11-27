@@ -79,12 +79,13 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         if (!QualificationSplits.All.Contains(split, StringComparer.Ordinal))
             throw new QualificationRunException(QualificationRunCodes.SplitUnknown);
 
-        var fullManifest = Path.GetFullPath(manifestPath);
-        var folder = Path.GetDirectoryName(fullManifest)!;
-        var (manifest, manifestHash) = ReadManifest(fullManifest);
-        var validation = QualificationManifestValidator.Validate(manifest, folder);
-        if (!validation.IsValid)
-            throw new QualificationRunException(QualificationRunCodes.ManifestInvalid, validation.ToString());
+        // Where the results go is checked before anything of the dataset is read: not the folder of the committed policies, not a folder of the checkout (a run takes hours).
+        pipeline.EnsureOutputAllowed(outDir);
+
+        var preflight = Preflight(manifestPath, split);
+        var (manifest, manifestHash, folder, validation) = (preflight.Manifest, preflight.ManifestHash, preflight.Folder, preflight.Validation);
+        foreach (var warning in validation.Warnings.Where(candidate => string.Equals(candidate.Split, split, StringComparison.Ordinal)))
+            _options.Progress?.Invoke("warning: " + warning);
 
         var policy = pipeline.ActivePolicy;
         var plans = Plan(manifest, split, folder);
@@ -128,7 +129,7 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
                     continue;
 
                 ct.ThrowIfCancellationRequested();
-                if (await RunImpostorTrialAsync(plan.Id, document, retained, policy, ct) is { } trial)
+                if (await RunImpostorTrialAsync(plan.Id, plan.Person, document, retained, policy, ct) is { } trial)
                 {
                     trials.Add(trial);
                     if (trials.Count % 500 == 0)
@@ -182,6 +183,39 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
     private sealed record CapturePlan(QualificationCapture Capture, string Id, string Person, string Kind, IReadOnlyDictionary<string, string> Truth);
 
     private sealed record PoolDocument(string CaptureId, string Owner, string FrontPath);
+
+    /// <summary>
+    /// What a run of one split checks before it reads a picture: the manifest (read, with the canonical SHA-256 of its file), the folder its paths start from, its validation (it passed) and the
+    /// counts of the split (it has persons and captures). Nothing of the captures is opened.
+    /// </summary>
+    public sealed record QualificationPreflight(QualificationDatasetManifest Manifest, string ManifestHash, string Folder, QualificationManifestReport Validation, QualificationSplitCounts Counts);
+
+    /// <summary>
+    /// Reads the manifest and checks that a run of <paramref name="split"/> can start: the split is one of the three, the manifest passes its checks and the split has persons and captures.
+    /// Nothing of the captures is opened, so the final test can ask before it writes its marker: a manifest that is wrong must not use up the one run. Warnings (a kind of critical case the
+    /// split has no whole check-in of) are in <see cref="QualificationPreflight.Validation"/>, not errors.
+    /// </summary>
+    /// <exception cref="QualificationRunException"><see cref="QualificationRunCodes.SplitUnknown"/>, <see cref="QualificationRunCodes.ManifestUnreadable"/>, <see cref="QualificationRunCodes.ManifestInvalid"/> or <see cref="QualificationRunCodes.SplitEmpty"/>.</exception>
+    public static QualificationPreflight Preflight(string manifestPath, string split)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(manifestPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(split);
+        if (!QualificationSplits.All.Contains(split, StringComparer.Ordinal))
+            throw new QualificationRunException(QualificationRunCodes.SplitUnknown);
+
+        var fullManifest = Path.GetFullPath(manifestPath);
+        var folder = Path.GetDirectoryName(fullManifest)!;
+        var (manifest, manifestHash) = ReadManifest(fullManifest);
+        var validation = QualificationManifestValidator.Validate(manifest, folder);
+        if (!validation.IsValid)
+            throw new QualificationRunException(QualificationRunCodes.ManifestInvalid, validation.ToString());
+
+        var counts = validation.Splits.First(candidate => string.Equals(candidate.Split, split, StringComparison.Ordinal));
+        if (counts.Persons == 0 || counts.Captures == 0)
+            throw new QualificationRunException(QualificationRunCodes.SplitEmpty, split);
+
+        return new QualificationPreflight(manifest, manifestHash, folder, validation, counts);
+    }
 
     /// <summary>The manifest of a dataset and the canonical SHA-256 of its file (the same for every line ending and indentation); <see cref="QualificationRunCodes.ManifestUnreadable"/> when it cannot be read.</summary>
     internal static (QualificationDatasetManifest Manifest, string Hash) ReadManifest(string path)
@@ -349,7 +383,8 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
             presence?.PairedMatch,
             presence?.PairedLiveness,
             stages,
-            error);
+            error,
+            plan.Kind == QualificationCaseKinds.ImpostorPair && capture.Document?.OwnerPerson is { } owner ? QualificationMetrics.CoupleKey(plan.Person, owner) : null);
 
         // The sequence stays in memory only for a genuine capture whose frames were chosen: it is what the impostor trials of its person are made with.
         var keep = plan.Kind == QualificationCaseKinds.Genuine && presence is { Sequence: not null, MatchIndices.Count: > 0 };
@@ -677,7 +712,7 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
             }
         }
 
-        return [.. IdentityStatistics.FieldExactness(pairs, QualificationMetrics.NormalizeField).Select(rate => new QualificationFieldResult(rate.Name, (int)rate.Rate.Count, (int)rate.Rate.Total))];
+        return [.. QualificationMetrics.ExactnessRates(pairs).Select(rate => new QualificationFieldResult(rate.Name, (int)rate.Rate.Count, (int)rate.Rate.Total))];
     }
 
     // ───── the presence part ─────
@@ -889,7 +924,7 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
     // ───── the impostor trials derived from the sequences ─────
 
     private async Task<QualificationImpostorTrial?> RunImpostorTrialAsync(
-        string sequenceCaseId, PoolDocument document, RetainedSequence retained, IdentityDecisionPolicy policy, CancellationToken ct)
+        string sequenceCaseId, string sequencePerson, PoolDocument document, RetainedSequence retained, IdentityDecisionPolicy policy, CancellationToken ct)
     {
         byte[]? bytes = null;
         RasterImage? front = null;
@@ -916,7 +951,7 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
             var paired = pipeline.HasRecognitionCandidate
                 ? await PairedMatchAsync(sequenceCaseId + "~" + document.CaptureId, front, retained.Sequence, retained.MatchIndices, ct)
                 : null;
-            return new QualificationImpostorTrial(sequenceCaseId, document.CaptureId, match.Aggregate, match.Min, elapsed, paired);
+            return new QualificationImpostorTrial(sequenceCaseId, document.CaptureId, match.Aggregate, match.Min, elapsed, paired, QualificationMetrics.CoupleKey(sequencePerson, document.Owner));
         }
         finally
         {
