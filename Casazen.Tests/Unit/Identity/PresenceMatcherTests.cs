@@ -334,6 +334,42 @@ public class PresenceMatcherTests
         Assert.All(scene.Embedder.Issued, vector => Assert.All(vector, value => Assert.Equal(0f, value)));
     }
 
+    /// <summary>
+    /// Proof (privacy, ADR-013-R2): the copy of the document that the matcher turns upright is the picture of an identity document, and it is destroyed on every path. A document that came without its
+    /// orientation has its face only in the copy turned a quarter (80 x 120 for the 120 x 80 picture), which the application makes itself: the embedder is shown that copy for the portrait, and after
+    /// the match it has no pixel left, whether the match was made (0), the embedder failed on the portrait (1) or it failed on the second frame (3). The document itself is the caller's and is left alone.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task MatchAsync_TheRotatedCopyOfTheDocument_IsZeroedOnEveryPath(int failOnCall)
+    {
+        using var scene = Build([0.95, 0.9, 0.92], portrait: false);
+        var turned = SequenceTestFrames.Face(80, 120);
+        scene.Detector.Fallback = image => image.Width == 80 && image.Height == 120 ? [turned] : [];
+        scene.Embedder.Unknown = Portrait;
+        if (failOnCall > 0)
+        {
+            scene.Embedder.Failure = new InvalidDataException("secret text of the embedder");
+            scene.Embedder.FailOnCall = failOnCall;
+        }
+
+        var report = await Matcher(scene).MatchAsync(scene.Document, scene.Sequence, scene.Indices, Policy, CancellationToken.None);
+
+        Assert.Equal(failOnCall == 0 ? MatchState.Ok : MatchState.Unavailable, report.State);
+
+        // The first picture the embedder was shown is the portrait's: a copy the application made (not the document), with its pixels while it was in use and nothing of them now.
+        var rotated = scene.Embedder.Shown[0];
+        Assert.NotSame(scene.Document, rotated);
+        Assert.Equal((80, 120), (rotated.Width, rotated.Height));
+        Assert.Equal(80 * 120 * 3, scene.Embedder.ShownLengths[0]);
+        Assert.Empty(rotated.Rgb);
+
+        // The document is the caller's: still there.
+        Assert.Contains(scene.Document.Rgb, value => value != 0);
+    }
+
     [Fact]
     public async Task MatchAsync_TheLog_HasTheStateAndTheNumberOfFramesOnly_NeverASimilarity()
     {
@@ -508,6 +544,15 @@ public class PresenceMatcherTests
 
         public List<int> Embedded { get; } = [];
 
+        /// <summary>The pictures it was shown, in the order of the calls, those of a call that failed included.</summary>
+        public List<RasterImage> Shown { get; } = [];
+
+        /// <summary>How many bytes of pixels each picture of <see cref="Shown"/> had when it was shown (they are zeroed afterwards).</summary>
+        public List<int> ShownLengths { get; } = [];
+
+        /// <summary>The vector a picture that was not added gives: the copy of the document the application turns upright and makes itself, which no test holds.</summary>
+        public float[]? Unknown { get; set; }
+
         public int Calls { get; private set; }
 
         public Exception? Failure { get; set; }
@@ -531,10 +576,20 @@ public class PresenceMatcherTests
         public float[] Embed(RasterImage image, DetectedFace face, CancellationToken cancellationToken)
         {
             Calls++;
+            Shown.Add(image);
+            ShownLengths.Add(image.Rgb.Length);
             if (Failure is not null && (FailOnCall == 0 || Calls == FailOnCall))
                 throw Failure;
 
-            var (vector, place) = _vectors[image];
+            float[] vector;
+            int place;
+            if (_vectors.TryGetValue(image, out var known))
+                (vector, place) = known;
+            else if (Unknown is { } turned)
+                (vector, place) = (turned, DocumentPlace);
+            else
+                throw new KeyNotFoundException("The embedder double does not know this picture.");
+
             Embedded.Add(place);
             var issued = (float[])vector.Clone();
             Issued.Add(issued);
