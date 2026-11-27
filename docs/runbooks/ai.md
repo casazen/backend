@@ -19,7 +19,7 @@ Task FD-21 (defects A8-01, A8-07, A8-14, A8-15, A4-26, A8-26, A8-16 AI part; dec
 **Not an AI use case: the identity document of the check-in.** Since E70/F02/US02/T01 (NF-197, ADR-013-R21) the prefill of the guest check-in,
 `POST /api/public/checkin/{token}/read-document`, reads the photo of the document **in the process only** (`LocalCheckInDocumentReader`: the MRZ with
 its check digits, then the printed fields of the visual zone with Tesseract), whatever provider is configured here or in «Configurazione AI»: the AI
-reader (`CheckInDocumentAiReader`, cache key `checkin-document`) is removed, and no flag or setting sends the photo out again. Where a provider that
+reader of the document is removed with its prompt and its cache entry, and no flag or setting sends the photo out again. Where a provider that
 reads images was configured, the prefill is now the local one (the guest confirms the fields, as with every local reading); rollback is a revert of
 the change. The architecture tests `IdentityPathEgressArchitectureTests` (E70/F02/US02/T02) forbid AI providers, HTTP clients and the types of
 `Casazen.Infrastructure.External` in the whole identity path (every class of `Casazen.Infrastructure.Identity`, plus the flow, the pipeline and the
