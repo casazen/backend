@@ -255,22 +255,25 @@ public sealed class IdentitySessionOpeningTests
         var session = await world.StayAsync("Nora", "Galli", path == "minor" ? new DateTime(2014, 3, 3) : null);
         Assert.Equal(IdentityOpenStatus.Answered, (await world.Flow().OpenIdentityAsync(session, ServedVersion, IdentityChannels.AndroidChrome, Ct)).Status);
 
+        // E73/F01/US01/T02: with the self-hosted flow on the two-frame selfie is closed, so the review, the attempts used and the error come from the closure of the presence.
         switch (path)
         {
             case "review":
                 await world.ReadyAsync(session);
-                world.Agent.Next(IdentityVerificationResult.Review);
-                await world.SelfieAsync(session);
+                world.Collector.Next(PresenceClosureKit.LivenessFailed());
+                await world.PresenceAsync(session);
                 break;
             case "last-attempt":
+                // The attempts are used up (by the legacy path before the self-hosted flow, or a maximum lowered since): the closure hands the verification to a person.
                 await world.ReadyAsync(session);
-                world.Agent.Next(IdentityVerificationResult.NotOk, lastAttempt: true);
-                await world.SelfieAsync(session);
+                session.BiometricAttempts = 3;
+                await world.Db.SaveChangesAsync(Ct);
+                await world.PresenceAsync(session);
                 break;
             case "error":
                 await world.ReadyAsync(session);
-                world.Agent.Fail(new InvalidOperationException("model crashed"));
-                await world.SelfieAsync(session);
+                world.Collector.Fail(new InvalidOperationException("model crashed"));
+                await world.PresenceAsync(session);
                 break;
             case "consent-refused":
                 await world.Flow().RecordConsentAsync(session, false, null, IdentityChannels.AndroidChrome, Ct);
@@ -535,11 +538,24 @@ public sealed class IdentitySessionOpeningTests
         private readonly Guid _propertyId = Guid.NewGuid();
         private readonly Mock<ICheckInLegalTexts> _legalTexts = ActivePoseFlowTestVerifier.CreateRegistry();
 
+        // E73/F01/US01/T02: the closure of the presence, the real path of a review or an error with the self-hosted flow on: the committed policy pinned, the models there, a
+        // double of the pipeline and a segment in observation.
+        private readonly string _directory = Path.Combine(Path.GetTempPath(), "casazen-identity-session-" + Guid.NewGuid().ToString("N"));
+        private readonly Casazen.Infrastructure.Identity.IdentityPolicyProvider _policy;
+        private readonly Mock<IIdentitySegmentService> _segments = new();
+
         private World(string[] flags)
         {
             Db = new AppDbContext(_options, null, _dataProtection);
             Flags = new TestFeatureFlags(flags);
+            Directory.CreateDirectory(_directory);
+            _policy = PresenceClosureKit.Policy(_directory);
+            _segments
+                .Setup(segments => segments.ResolveAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(EvidenceBundles.Observation);
         }
+
+        public ScriptedEvidenceCollector Collector { get; } = new();
 
         public Guid OrgId { get; } = Guid.NewGuid();
 
@@ -608,7 +624,28 @@ public sealed class IdentitySessionOpeningTests
             new ListLogger<IdentityVerificationFlowService>(Logs),
             legalTexts: _legalTexts.Object,
             activePose: new ActivePoseFlowTestVerifier(),
-            featureFlags: Flags);
+            featureFlags: Flags,
+            identityPolicy: _policy,
+            biometricModels: new FakeBiometricModelStore(),
+            identityOptions: Microsoft.Extensions.Options.Options.Create(new Casazen.Core.Options.IdentityVerificationOptions()),
+            presenceIssuer: new Casazen.Infrastructure.Identity.PresenceChallengeIssuer(),
+            frameReader: new Casazen.Infrastructure.Identity.FrameSequenceReader(
+                Microsoft.Extensions.Options.Options.Create(new Casazen.Core.Options.IdentityVerificationOptions()),
+                Microsoft.Extensions.Options.Options.Create(new Casazen.Core.Options.BiometricModelOptions()),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<Casazen.Infrastructure.Identity.FrameSequenceReader>.Instance),
+            evidenceCollector: Collector,
+            segments: _segments.Object,
+            decisionEngine: new Casazen.Infrastructure.Identity.IdentityDecisionEngine());
+
+        /// <summary>One attempt of the presence on the real closure: a challenge when the step offers one, the frames and a new key; the pipeline answers what the test scripted.</summary>
+        public async Task<PresenceStepResult> PresenceAsync(GuestCheckInSession session)
+        {
+            var flow = Flow();
+            var challenge = await flow.IssuePresenceChallengeAsync(session, Ct);
+            var answer = await flow.SubmitPresenceSequenceAsync(session, PresenceClosureKit.Submission(PresenceClosureKit.NewKey(), challenge?.ChallengeToken), Ct);
+            Assert.Equal((PresenceStepStatus.Done, IdentityVerificationGuestResults.Operator), (answer.Status, answer.Result));
+            return answer;
+        }
 
         /// <summary>The public endpoints over the real flow, for <paramref name="session"/> and a request that carries <paramref name="userAgent"/>.</summary>
         public PublicGuestCheckInController Controller(GuestCheckInSession session, string userAgent)
@@ -711,16 +748,6 @@ public sealed class IdentitySessionOpeningTests
             Assert.True((await Flow().SubmitDocumentAsync(session, document, Ct)).DocumentStored);
         }
 
-        public async Task SelfieAsync(GuestCheckInSession session)
-        {
-            var flow = Flow();
-            var challenge = await flow.IssueSelfieChallengeAsync(session, Ct);
-            using var selfie = new MemoryStream(TestImages.Png(96, 96, seed: 5));
-            using var turned = new MemoryStream([1, 2, 3]);
-            var result = await flow.SubmitChallengedSelfieAsync(session, selfie, turned, challenge?.ChallengeToken, null, null, Ct);
-            Assert.Equal(IdentityVerificationGuestResults.Operator, result.Result);
-        }
-
         /// <summary>The session as it was saved, read by another context on the same store.</summary>
         public async Task<GuestCheckInSession> ReadBackAsync(Guid sessionId)
         {
@@ -728,7 +755,12 @@ public sealed class IdentitySessionOpeningTests
             return await other.GuestCheckInSessions.AsNoTracking().IgnoreQueryFilters().SingleAsync(s => s.Id == sessionId, Ct);
         }
 
-        public async ValueTask DisposeAsync() => await Db.DisposeAsync();
+        public async ValueTask DisposeAsync()
+        {
+            await Db.DisposeAsync();
+            if (Directory.Exists(_directory))
+                Directory.Delete(_directory, recursive: true);
+        }
     }
 
     /// <summary>The guests of the stay the world says, else the booker alone; the flow reads nothing else of the service.</summary>
