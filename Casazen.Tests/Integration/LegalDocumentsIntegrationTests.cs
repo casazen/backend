@@ -84,7 +84,6 @@ public class LegalDocumentsIntegrationTests : IClassFixture<CasazenWebApplicatio
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("degraded", await LegalCheckAsync(client));
-        // Anonymous callers see names and statuses only (FD-12): the variable to set is for platform admins.
         Assert.DoesNotContain("Legal__Controller__Name", body);
     }
 
@@ -92,7 +91,6 @@ public class LegalDocumentsIntegrationTests : IClassFixture<CasazenWebApplicatio
         _factory.WithWebHostBuilder(builder =>
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(settings)));
 
-    /// <summary>The drafts' versions and every value they need; the public site URL is the factory's own.</summary>
     private static Dictionary<string, string?> ActivatedAndComplete()
     {
         var settings = LegalTextFixtures.CompleteConfiguration();

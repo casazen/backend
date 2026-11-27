@@ -8,16 +8,10 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The pieces the proofs of the profile API of the CRM (E07/F01/US03: the read model and the merge decisions) are built from, on top of
-/// <see cref="CrmTestWorld"/>: the real services over the real keyed index, profiles and contacts written by hand, and the people of the scope.
-/// </summary>
 internal static class CrmProfileApiWorld
 {
-    /// <summary>The creator of the properties of a test org.</summary>
     public const string Owner = "auth0|titolare";
 
-    /// <summary>A collaborator «Solo alcuni».</summary>
     public const string Collaborator = "auth0|collaboratore";
 
     public static CrmProfileReadService ReadService(AppDbContext db, TimeProvider clock) =>
@@ -26,10 +20,6 @@ internal static class CrmProfileApiWorld
     public static CrmProfileMergeService MergeService(AppDbContext db, TimeProvider clock) =>
         new(db, ReadService(db, clock), CrmTestWorld.Matching(db, clock), clock, NullLogger<CrmProfileMergeService>.Instance);
 
-    /// <summary>
-    /// A profile as the sync leaves it, with the totals of the whole org written on it (stored by hand: a test says what they are when it needs
-    /// to prove that a caller who reaches only some properties never reads them).
-    /// </summary>
     public static GuestCrmProfile NewProfile(Guid orgId, Guid? primaryGuestId, int stays, decimal spend) => new()
     {
         OrgId = orgId,
@@ -45,7 +35,6 @@ internal static class CrmProfileApiWorld
         PrimaryGuestId = primaryGuestId,
     };
 
-    /// <summary>A contact of a profile, with the keyed hash left as a random text (the proofs here never search by it).</summary>
     public static GuestContact NewContact(
         Guid orgId,
         Guid profileId,
@@ -74,10 +63,6 @@ internal static class CrmProfileApiWorld
         };
     }
 
-    /// <summary>
-    /// One person of an org: a house, a guest with a stay that happened there, and the profile of the guest. Added to the context, not saved.
-    /// Returns the profile and the house.
-    /// </summary>
     public static (GuestCrmProfile Profile, Property House, Guest Guest) AddPerson(
         AppDbContext db,
         Guid orgId,
@@ -94,7 +79,6 @@ internal static class CrmProfileApiWorld
         return (profile, house, guest);
     }
 
-    /// <summary>A house of the org, added to the context.</summary>
     public static Property AddHouse(AppDbContext db, Guid orgId, string name)
     {
         var house = HostScopeScenario.NewProperty(orgId, Owner, name);

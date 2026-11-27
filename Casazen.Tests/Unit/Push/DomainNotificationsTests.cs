@@ -56,7 +56,6 @@ public sealed class DomainNotificationsTests : IDisposable
             .Callback<string, PushAudience, PushNotificationPayload>((key, audience, payload) => _pushes.Add((key, audience, payload)))
             .Returns(false);
 
-        // The agency did everything right: its TXT, its CNAME, and Vercel has the domain verified.
         _txt.Setup(t => t.LookupTxtAsync($"_casazen-challenge.{Domain}", It.IsAny<CancellationToken>())).ReturnsAsync((IReadOnlyList<string>)[Token]);
         _dns.Setup(d => d.LookupCnameAsync(Domain, It.IsAny<CancellationToken>())).ReturnsAsync((IReadOnlyList<string>)["cname.vercel-dns.com"]);
         _dns.Setup(d => d.LookupAddressesAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync((IReadOnlyList<string>)[]);
@@ -82,7 +81,6 @@ public sealed class DomainNotificationsTests : IDisposable
         Assert.Equal(PushTypes.DomainVerified, payload.Type);
         Assert.DoesNotContain(Domain, payload.Title + payload.Body, StringComparison.OrdinalIgnoreCase);
 
-        // The bell: the job the decorator queues next to the push, with what the push carried.
         var publisher = new RecordingPublisher();
         await new InAppNotificationJob(_db, _clock, publisher, NullLogger<InAppNotificationJob>.Instance)
             .CreateAsync(key, QueuedInAppNotification.From(audience, payload, Now), CancellationToken.None);
@@ -110,7 +108,6 @@ public sealed class DomainNotificationsTests : IDisposable
     {
         var (agency, _) = await SeedAsync();
 
-        // Auth0HostSync alone does nothing: the registration needs WhiteLabelHost too.
         var result = await Verification(new TestFeatureFlags(FeatureFlags.Auth0HostSync)).VerifyAsync(agency);
 
         Assert.Equal(DomainVerificationStatus.Verified, result.Status);
@@ -167,8 +164,6 @@ public sealed class DomainNotificationsTests : IDisposable
         }
     }
 
-    // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
-
     private DomainVerificationService Verification(TestFeatureFlags flags) =>
         new(
             _db,
@@ -188,10 +183,6 @@ public sealed class DomainNotificationsTests : IDisposable
                 _clock,
                 NullLogger<OwnerLoginHostSync>.Instance));
 
-    /// <summary>
-    /// Two agencies: A (the custom domain, pending) with an owner, an administrator, a collaborator and an administrator the org deactivated; B with its own
-    /// owner. Only the owner and the administrator of A may open A's domain settings.
-    /// </summary>
     private async Task<(OrgEntity Agency, OrgEntity Other)> SeedAsync()
     {
         var agency = new OrgEntity

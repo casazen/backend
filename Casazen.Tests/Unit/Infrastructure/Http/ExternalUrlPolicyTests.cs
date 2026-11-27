@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure.Http;
 
-/// <summary>FD-16 (A2-21, A4-10, A9-32): which URLs and addresses the server may fetch for a user.</summary>
 public class ExternalUrlPolicyTests
 {
     private static readonly int[] Https = [443];
@@ -14,8 +13,8 @@ public class ExternalUrlPolicyTests
     [InlineData("ftp://example.com/cal.ics")]
     [InlineData("file:///etc/passwd")]
     [InlineData("https://127.0.0.1/cal.ics")]
-    [InlineData("https://2130706433/cal.ics")] // 127.0.0.1 written as a number
-    [InlineData("https://0x7f.1/cal.ics")] // 127.0.0.1 in hex shorthand
+    [InlineData("https://2130706433/cal.ics")]
+    [InlineData("https://0x7f.1/cal.ics")]
     [InlineData("https://10.0.0.1/cal.ics")]
     [InlineData("https://172.16.5.4/cal.ics")]
     [InlineData("https://192.168.1.1/cal.ics")]
@@ -78,25 +77,25 @@ public class ExternalUrlPolicyTests
     [InlineData("10.20.30.40")]
     [InlineData("172.31.255.255")]
     [InlineData("192.168.0.1")]
-    [InlineData("169.254.169.254")] // cloud metadata
-    [InlineData("100.64.0.1")] // CGNAT
+    [InlineData("169.254.169.254")]
+    [InlineData("100.64.0.1")]
     [InlineData("100.127.255.254")]
     [InlineData("0.0.0.0")]
-    [InlineData("224.0.0.251")] // multicast
+    [InlineData("224.0.0.251")]
     [InlineData("255.255.255.255")]
     [InlineData("198.18.0.1")]
     [InlineData("192.0.2.10")]
     [InlineData("::")]
     [InlineData("::1")]
-    [InlineData("fd12::1")] // ULA (Railway private network)
+    [InlineData("fd12::1")]
     [InlineData("fc00::1")]
-    [InlineData("fe80::1")] // link-local
-    [InlineData("ff02::1")] // multicast
-    [InlineData("::ffff:10.0.0.1")] // IPv4-mapped
-    [InlineData("::ffff:8.8.8.8")] // IPv4-mapped, even of a public address
-    [InlineData("64:ff9b::a9fe:a9fe")] // NAT64 of 169.254.169.254
-    [InlineData("2002:7f00:1::1")] // 6to4 of 127.0.0.1
-    [InlineData("2001:db8::1")] // documentation
+    [InlineData("fe80::1")]
+    [InlineData("ff02::1")]
+    [InlineData("::ffff:10.0.0.1")]
+    [InlineData("::ffff:8.8.8.8")]
+    [InlineData("64:ff9b::a9fe:a9fe")]
+    [InlineData("2002:7f00:1::1")]
+    [InlineData("2001:db8::1")]
     public void IsBlockedAddress_NonPublicAddress_ReturnsTrue(string address)
     {
         Assert.True(ExternalUrlPolicy.IsBlockedAddress(IPAddress.Parse(address)));
@@ -105,11 +104,11 @@ public class ExternalUrlPolicyTests
     [Theory]
     [InlineData("8.8.8.8")]
     [InlineData("1.1.1.1")]
-    [InlineData("100.63.255.255")] // just below CGNAT
-    [InlineData("172.32.0.1")] // just above 172.16.0.0/12
+    [InlineData("100.63.255.255")]
+    [InlineData("172.32.0.1")]
     [InlineData("2606:4700:4700::1111")]
     [InlineData("2a00:1450:4002:80a::200e")]
-    [InlineData("64:ff9b::808:808")] // NAT64 of 8.8.8.8
+    [InlineData("64:ff9b::808:808")]
     public void IsBlockedAddress_PublicAddress_ReturnsFalse(string address)
     {
         Assert.False(ExternalUrlPolicy.IsBlockedAddress(IPAddress.Parse(address)));

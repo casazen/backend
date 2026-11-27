@@ -23,7 +23,6 @@ public class FiscalNumberingPostgresTests
 {
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
-    /// <summary>PROOF TEST: money and data rule. Twelve parallel issues and one rolled back: numbers 1 to 12, no gap, no duplicate.</summary>
     [PostgresFact]
     public async Task FiscalNumbering_ConcurrentIssue_NoGapsNoDuplicates_Test()
     {
@@ -31,7 +30,6 @@ public class FiscalNumberingPostgresTests
         var orgId = Guid.NewGuid();
         var issuer = await OrganizationProfileAsync(database, orgId);
 
-        // A reservation whose document is not saved: the transaction rolls back and its number is given again.
         await using (var db = Context(database))
         {
             await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
@@ -85,7 +83,6 @@ public class FiscalNumberingPostgresTests
             Assert.Equal(4, (await check.FiscalNumberSequences.SingleAsync(s => s.OrgId == orgId && s.IssuerProfileId == issuer && s.Series == "2026")).LastNumber);
         }
 
-        // The database itself: the number 4 again is refused for the owner, while the same 2026/4 of the two issuers lives side by side.
         await using var twice = Context(database);
         twice.FiscalDocuments.Add(Issued(orgId, owner, "2026", 4));
         var refused = await Assert.ThrowsAsync<DbUpdateException>(() => twice.SaveChangesAsync());
@@ -99,7 +96,6 @@ public class FiscalNumberingPostgresTests
         var orgId = Guid.NewGuid();
         var (organization, owner) = await AgencyWithOwnerProfileAsync(database, orgId, legacyInvoiceNumber: "7");
 
-        // The organization continues above the legacy agency invoice of its series; the owner's series is its own and starts from 1.
         Assert.Equal(8, await IssueAsync(database, orgId, organization, "2026"));
         Assert.Equal(1, await IssueAsync(database, orgId, owner, "2026"));
 
@@ -109,7 +105,6 @@ public class FiscalNumberingPostgresTests
         Assert.Equal(FiscalNumberingErrors.SeriesTooLong, error.Code);
     }
 
-    /// <summary>One issue as the document service does it: a READ COMMITTED transaction, the number of the issuer, the document, the commit.</summary>
     private static async Task<int> IssueAsync(PostgresTestDatabase database, Guid orgId, Guid issuerProfileId, string series)
     {
         await using var db = Context(database);
@@ -134,7 +129,6 @@ public class FiscalNumberingPostgresTests
         SdiStatus = FiscalDocumentSdiStatuses.ToSend,
     };
 
-    /// <summary>The profile of an organization (the table has no foreign key to the organizations).</summary>
     private static async Task<Guid> OrganizationProfileAsync(PostgresTestDatabase database, Guid orgId)
     {
         await using var db = Context(database);
@@ -144,7 +138,6 @@ public class FiscalNumberingPostgresTests
         return profile.Id;
     }
 
-    /// <summary>An agency with its profile, an owner with an issuer profile of its own, and, when given, a legacy agency invoice of the series 2026.</summary>
     private static async Task<(Guid Organization, Guid Owner)> AgencyWithOwnerProfileAsync(PostgresTestDatabase database, Guid orgId, string? legacyInvoiceNumber)
     {
         await using var db = Context(database);

@@ -15,12 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// UI-12a over the real pipeline: the four endpoints of the bell with the token of
-/// the user, the isolation between users and orgs, and the whole chain from a push queued by a service to the notification the
-/// user reads (decorator, job, endpoint), once. The updates (<c>read</c>, <c>read-all</c>) are single SQL statements the in-memory
-/// fallback does not run, so those tests are <c>[PostgresFact]</c>.
-/// </summary>
 public class InAppNotificationsIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private static readonly DateTime Day = new(2026, 10, 9, 8, 0, 0, DateTimeKind.Utc);
@@ -28,8 +22,6 @@ public class InAppNotificationsIntegrationTests : IClassFixture<CasazenWebApplic
     private readonly CasazenWebApplicationFactory _factory;
 
     public InAppNotificationsIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
-
-    // ─── Access ───
 
     [Fact]
     public async Task Endpoints_WithoutAToken_Are401()
@@ -41,8 +33,6 @@ public class InAppNotificationsIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsync($"/api/me/notifications/{Guid.NewGuid()}/read", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsync("/api/me/notifications/read-all", null)).StatusCode);
     }
-
-    // ─── Real time ───
 
     [Fact]
     public async Task Hub_Negotiate_WithoutAToken_Is401()
@@ -66,8 +56,6 @@ public class InAppNotificationsIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.False(string.IsNullOrEmpty(body.RootElement.GetProperty("connectionToken").GetString()));
     }
 
-    // ─── The list and the count ───
-
     [Fact]
     public async Task List_ReturnsTheCallersNotificationsNewestFirst_NothingOfOtherUsersOrOrgs_AndNoTextOrInternalField()
     {
@@ -77,7 +65,6 @@ public class InAppNotificationsIntegrationTests : IClassFixture<CasazenWebApplic
         var newest = await AddAsync(me, myOrg, Day.AddMinutes(-5), PushTypes.ServiceRequestCompleted);
         var middle = await AddAsync(me, myOrg, Day.AddMinutes(-10), PushTypes.AlloggiatiOverdue);
         await AddAsync(other, otherOrg, Day.AddMinutes(-1), PushTypes.NewBooking);
-        // A row of mine in an org I do not belong to: not mine to read.
         await AddAsync(me, otherOrg, Day.AddMinutes(-2), PushTypes.NewBooking);
         using var client = _factory.CreateAuthenticatedClient(me, "PropertyOwner");
 
@@ -98,7 +85,6 @@ public class InAppNotificationsIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal(Day.AddMinutes(-5), first.GetProperty("createdAt").GetDateTime().ToUniversalTime());
         Assert.Equal(JsonValueKind.Null, first.GetProperty("readAt").ValueKind);
         Assert.Equal(Day.AddMinutes(-20), items[2].GetProperty("readAt").GetDateTime().ToUniversalTime());
-        // The client writes the text from the type: the answer carries the id, the type, the entity and two instants, no more.
         Assert.Equal(
             ["createdAt", "entityId", "id", "readAt", "type"],
             first.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
@@ -152,7 +138,6 @@ public class InAppNotificationsIntegrationTests : IClassFixture<CasazenWebApplic
     [Fact]
     public async Task List_ASupplierOnlyAccount_ReadsTheNotificationsOfItsSupplierOrg()
     {
-        // No host org: the tenant filter would match nothing. The rows are found through the account's supplier link.
         var supplierId = $"auth0|bell-supplier-{Guid.NewGuid():N}";
         var supplierOrg = new OrgEntity
         {
@@ -190,8 +175,6 @@ public class InAppNotificationsIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal([row.Id], list.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()));
         Assert.Equal(1, count.GetProperty("count").GetInt32());
     }
-
-    // ─── Read ───
 
     [PostgresFact]
     public async Task MarkRead_MarksOnlyThatNotification_AndAnotherCallIsStillNoContent()
@@ -248,13 +231,10 @@ public class InAppNotificationsIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal(HttpStatusCode.NoContent, first.StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, again.StatusCode);
         Assert.All(await RowsAsync(me), row => Assert.NotNull(row.ReadAt));
-        // The one that was read already keeps the time it was read at.
         Assert.Equal(Day.AddMinutes(-1), (await RowsAsync(me)).Single(r => r.Id == alreadyRead.Id).ReadAt);
         Assert.Null((await RowsAsync(other)).Single().ReadAt);
         Assert.Equal(0, (await client.GetFromJsonAsync<JsonElement>("/api/me/notifications/unread-count")).GetProperty("count").GetInt32());
     }
-
-    // ─── The whole chain ───
 
     [Fact]
     public async Task APushQueuedByAService_GivesTheUserOneNotification_WhateverTheNumberOfRunsOfTheJob()
@@ -263,7 +243,6 @@ public class InAppNotificationsIntegrationTests : IClassFixture<CasazenWebApplic
         var requestId = Guid.NewGuid();
         var key = PushDeliveryKeys.ServiceRequestStatus(requestId, Casazen.Core.Entities.Enums.ServiceRequestStatus.Completato);
 
-        // What a service does (ServiceRequestNotifier, BookingNotifier, ...): ask for the push. Nothing else.
         using (var scope = _factory.Services.CreateScope())
         {
             scope.ServiceProvider.GetRequiredService<IPushNotificationService>().Enqueue(
@@ -292,13 +271,9 @@ public class InAppNotificationsIntegrationTests : IClassFixture<CasazenWebApplic
         Assert.Equal(requestId, item.GetProperty("entityId").GetGuid());
         Assert.Equal(JsonValueKind.Null, item.GetProperty("readAt").ValueKind);
         Assert.Equal(1, (await client.GetFromJsonAsync<JsonElement>("/api/me/notifications/unread-count")).GetProperty("count").GetInt32());
-        // The push text is not in the answer or in the table.
         Assert.DoesNotContain("Pulizie", list.GetRawText());
     }
 
-    // ─── Helpers ───
-
-    /// <summary>The answers about a user are private and never cached (the bell polls them).</summary>
     private static void AssertPrivateAndNeverCached(HttpResponseMessage response)
     {
         Assert.NotNull(response.Headers.CacheControl);

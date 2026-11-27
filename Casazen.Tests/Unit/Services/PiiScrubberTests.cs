@@ -10,10 +10,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class PiiScrubberTests
 {
-    // -------------------------------------------------------------------------
-    // Null / empty guard
-    // -------------------------------------------------------------------------
-
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -28,10 +24,6 @@ public class PiiScrubberTests
         const string clean = "Pulizie Roma Srl, Via Nazionale 1, Roma. Aperto dal lunedì al venerdì.";
         Assert.Equal(clean, PiiScrubber.Scrub(clean));
     }
-
-    // -------------------------------------------------------------------------
-    // Email addresses
-    // -------------------------------------------------------------------------
 
     [Theory]
     [InlineData("mario.rossi@example.com")]
@@ -54,14 +46,10 @@ public class PiiScrubberTests
         Assert.Equal(2, CountOccurrences(result, "[email]"));
     }
 
-    // -------------------------------------------------------------------------
-    // Italian fiscal codes (codice fiscale)
-    // -------------------------------------------------------------------------
-
     [Theory]
-    [InlineData("RSSMRA80A01H501Z")] // canonical uppercase CF
-    [InlineData("rssmra80a01h501z")] // lowercase
-    [InlineData("BNCGPP75D12F205R")] // another valid pattern
+    [InlineData("RSSMRA80A01H501Z")]
+    [InlineData("rssmra80a01h501z")]
+    [InlineData("BNCGPP75D12F205R")]
     public void Scrub_FiscalCode_ReplacedWithPlaceholder(string cf)
     {
         var result = PiiScrubber.Scrub($"Il codice fiscale dell'ospite è {cf}.");
@@ -77,19 +65,15 @@ public class PiiScrubberTests
         Assert.Equal(text, PiiScrubber.Scrub(text));
     }
 
-    // -------------------------------------------------------------------------
-    // Phone numbers
-    // -------------------------------------------------------------------------
-
     [Theory]
-    [InlineData("+39 06 12345678")]          // international + landline
-    [InlineData("+39 338 123 4567")]         // international + mobile
-    [InlineData("06 1234 5678")]             // landline, spaces
-    [InlineData("06-12345678")]              // landline, dash
-    [InlineData("0121 12345")]              // 4-digit area code
-    [InlineData("338 123 4567")]             // mobile, spaces
-    [InlineData("3381234567")]              // mobile, no separators
-    [InlineData("0039 02 12345678")]        // 00+CC prefix
+    [InlineData("+39 06 12345678")]
+    [InlineData("+39 338 123 4567")]
+    [InlineData("06 1234 5678")]
+    [InlineData("06-12345678")]
+    [InlineData("0121 12345")]
+    [InlineData("338 123 4567")]
+    [InlineData("3381234567")]
+    [InlineData("0039 02 12345678")]
     public void Scrub_PhoneNumber_ReplacedWithPlaceholder(string phone)
     {
         var result = PiiScrubber.Scrub($"Chiamaci al {phone} per un preventivo.");
@@ -98,19 +82,15 @@ public class PiiScrubberTests
     }
 
     [Theory]
-    [InlineData("€ 3.00")]          // price, starts with €
-    [InlineData("2026")]             // year
-    [InlineData("013075")]           // 6-digit ISTAT code
-    [InlineData("v1.2.3")]           // version string
+    [InlineData("€ 3.00")]
+    [InlineData("2026")]
+    [InlineData("013075")]
+    [InlineData("v1.2.3")]
     public void Scrub_NonPhoneNumericTokens_NotReplaced(string token)
     {
         var text = $"Riferimento: {token} nel comune.";
         Assert.Equal(text, PiiScrubber.Scrub(text));
     }
-
-    // -------------------------------------------------------------------------
-    // Integration: mixed PII in a realistic web-search snippet
-    // -------------------------------------------------------------------------
 
     [Fact]
     public void Scrub_MixedPii_AllTypesReplaced()
@@ -125,7 +105,6 @@ public class PiiScrubberTests
         Assert.Contains("[tel]", result);
         Assert.Contains("[email]", result);
         Assert.Contains("[cf]", result);
-        // Non-PII fragments must survive
         Assert.Contains("Pulizie Veloci Srl", result);
         Assert.Contains("Via Roma 10, Milano", result);
     }
@@ -141,10 +120,6 @@ public class PiiScrubberTests
         Assert.DoesNotContain("BNCGPP75D12F205R", result);
         Assert.DoesNotContain("mario@example.com", result);
     }
-
-    // -------------------------------------------------------------------------
-    // Helper
-    // -------------------------------------------------------------------------
 
     private static int CountOccurrences(string text, string pattern)
     {

@@ -34,29 +34,28 @@ public class SupplierCalendarSyncHoursRepairPostgresTests(CasazenWebApplicationF
         var duplicate = await SeedProfileAsync(email, SupplierStatus.Pending, Older);
         var keeperShared = await SeedWindowAsync(keeper, Feed("shared", Ten));
         await SeedWindowAsync(keeper, Feed("only-keeper", Ten.AddDays(1)));
-        await SeedWindowAsync(duplicate, Feed("shared", Ten));                 // the same occurrence: stays with the keeper
-        await SeedWindowAsync(duplicate, Feed("shared", Ten.AddDays(7)));      // the same event, another occurrence: moves
+        await SeedWindowAsync(duplicate, Feed("shared", Ten));
+        await SeedWindowAsync(duplicate, Feed("shared", Ten.AddDays(7)));
         await SeedWindowAsync(duplicate, Feed("only-duplicate", Ten.AddDays(2)));
-        await SeedWindowAsync(duplicate, Manual(SupplierBusyWindowKind.Block, Ten));   // set by hand, at the hour of an engagement: moves
+        await SeedWindowAsync(duplicate, Manual(SupplierBusyWindowKind.Block, Ten));
         await SeedWindowAsync(duplicate, Manual(SupplierBusyWindowKind.ExtraOpening, Ten.AddDays(3)));
 
         var dry = await FixOrphanedAsync(dryRun: true);
         Assert.Equal(HttpStatusCode.OK, dry.StatusCode);
         Assert.Equal(4, SingleMerge(await ReadAsync(dry), duplicate).GetProperty("agendaRowsMoved").GetInt32());
-        Assert.Equal(5, await WindowCountAsync(duplicate)); // a dry run changes nothing
+        Assert.Equal(5, await WindowCountAsync(duplicate));
 
         var applied = await FixOrphanedAsync(dryRun: false);
 
         Assert.Equal(HttpStatusCode.OK, applied.StatusCode);
         var merge = SingleMerge(await ReadAsync(applied), duplicate);
         Assert.Equal(keeper, merge.GetProperty("keeperOrgId").GetGuid());
-        Assert.Equal(4, merge.GetProperty("agendaRowsMoved").GetInt32()); // the copy that stayed behind is not counted as moved
+        Assert.Equal(4, merge.GetProperty("agendaRowsMoved").GetInt32());
         Assert.True(merge.GetProperty("duplicateOrgDeleted").GetBoolean());
 
         Assert.Equal(0, await WindowCountAsync(duplicate));
         var windows = await WindowsAsync(keeper);
         Assert.Equal(6, windows.Count);
-        // One row per occurrence of the engagements, and the one the keeper had before is the same row.
         Assert.Equal(keeperShared.Id, windows.Single(w => w.ExternalUid == "shared" && w.StartUtc == Ten).Id);
         Assert.Equal(2, windows.Count(w => w.ExternalUid == "shared"));
         Assert.Contains(windows, w => w.ExternalUid == "only-keeper");
@@ -81,8 +80,6 @@ public class SupplierCalendarSyncHoursRepairPostgresTests(CasazenWebApplicationF
         Assert.Equal(["a", "b"], (await WindowsAsync(keeper)).Select(w => w.ExternalUid));
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────────
-
     private static async Task<JsonElement> ReadAsync(HttpResponseMessage response) =>
         await response.Content.ReadFromJsonAsync<JsonElement>();
 
@@ -92,7 +89,6 @@ public class SupplierCalendarSyncHoursRepairPostgresTests(CasazenWebApplicationF
         return await admin.PostAsync($"/api/admin/suppliers/fix-orphaned?dryRun={(dryRun ? "true" : "false")}", null);
     }
 
-    /// <summary>Data written before the migration SupplierProfileEmailUnique: without its unique index.</summary>
     private async Task DropEmailIndexAsync()
     {
         await using var scope = factory.Services.CreateAsyncScope();

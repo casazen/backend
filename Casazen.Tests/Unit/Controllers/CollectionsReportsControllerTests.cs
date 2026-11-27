@@ -72,8 +72,6 @@ public class CollectionsReportsControllerTests
         return (problem.StatusCode, details.Extensions[ApiProblemDetails.CodeExtension] as string);
     }
 
-    // ---------------------------------------------------------------- the wiring
-
     [Fact]
     public void TheController_NeedsPaymentRead_OnTheClass_AndNothingIsAnonymous()
     {
@@ -90,8 +88,6 @@ public class CollectionsReportsControllerTests
         Assert.Equal("collections", type.GetMethod(nameof(CollectionsReportsController.Collections))!.GetCustomAttribute<HttpGetAttribute>()!.Template);
         Assert.Equal("balances-to-collect", type.GetMethod(nameof(CollectionsReportsController.BalancesToCollect))!.GetCustomAttribute<HttpGetAttribute>()!.Template);
     }
-
-    // ---------------------------------------------------------------- the collections
 
     [Fact]
     public async Task Collections_ReadsWithTheScopeOfTheCaller_AndAnswersJson()
@@ -167,8 +163,6 @@ public class CollectionsReportsControllerTests
 
         await Assert.ThrowsAsync<NotFoundException>(() => Controller().Collections(First, Last, elsewhere, null, CancellationToken.None));
     }
-
-    // ---------------------------------------------------------------- the balances
 
     private static HostBalancesToCollect NoBalances() => new(new DateOnly(2026, 10, 9), [], []);
 

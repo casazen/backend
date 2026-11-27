@@ -42,11 +42,6 @@ public class ChatAvailabilityTests : IAsyncLifetime
 
     public Task DisposeAsync() => _db.DisposeAsync().AsTask();
 
-    /// <summary>
-    /// PROOF TEST: permission rule. A caller sees the listings of the properties it reaches and no other: the whole org sees its two houses, the collaborator «Solo alcuni» only the one it
-    /// was given, the other org only its own, and a listing nobody confirmed is in none of them. What the answer holds is a status, a property and an instant: no accommodation id, no
-    /// code of the channel manager.
-    /// </summary>
     [Fact]
     public async Task ChannelStatus_OnlyUserProperties_Test()
     {
@@ -60,7 +55,6 @@ public class ChatAvailabilityTests : IAsyncLifetime
         var collaborator = await hub.GetChannelStatusAsync(_world.Scope.Restricted);
         var otherOrg = await hub.GetChannelStatusAsync(new HostScope(_world.Scope.OtherOrgId));
 
-        // Ordered by the name of the property: «Casa Bianca» (the hidden house) before «Trullo».
         Assert.Equal(
             [
                 new MessageChannelStatus(_world.Scope.Hidden.Id, "Casa Bianca", MessageChannelStatuses.Error, Checked),
@@ -73,7 +67,6 @@ public class ChatAvailabilityTests : IAsyncLifetime
         Assert.Equal([new MessageChannelStatus(_world.Scope.OtherOrgProperty.Id, "Villa Altrove", MessageChannelStatuses.Available, Checked)], otherOrg);
         Assert.Empty(await hub.GetChannelStatusAsync(new HostScope(Guid.NewGuid())));
 
-        // The answer to a client names no code of the channel manager.
         var json = JsonSerializer.Serialize(MessageChannelStatusDto.From(wholeOrg), new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.Contains("\"status\":\"waiting_permission\"", json, StringComparison.Ordinal);
         Assert.Contains("\"status\":\"error\"", json, StringComparison.Ordinal);
@@ -115,16 +108,12 @@ public class ChatAvailabilityTests : IAsyncLifetime
         Assert.Equal(MessageThreadActions.Blocked(MessageThreadActions.ChatNotLicensedReason), blocked.Actions);
         Assert.Equal("chat_not_licensed", MessageThreadActions.ChatNotLicensedReason);
 
-        // The listing reads its chat again.
         var state = await _db.OtaMessageSyncStates.SingleAsync(s => s.OctorateAccommodationId == "ACC-1");
         state.LastError = null;
         await _db.SaveChangesAsync();
         Assert.True((await hub.GetThreadAsync(_world.Scope.OrgWide, key, includeAmounts: false)).Actions.CanReply);
     }
 
-    // ---- The endpoint ---------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>The endpoint is a GET under <c>api/messages</c> with the policy of the list (booking read), no anonymous access, and an answer that is not cached.</summary>
     [Fact]
     public void ChannelStatus_IsAGetUnderApiMessages_WithTheSamePolicyAsTheList()
     {
@@ -138,7 +127,6 @@ public class ChatAvailabilityTests : IAsyncLifetime
         Assert.NotNull(type.GetCustomAttribute<PrivateAnswerAttribute>());
     }
 
-    /// <summary>The endpoint reads the scope of the caller and hands it to the hub as it is; a caller with no scope is a 403 and the hub is never asked.</summary>
     [Fact]
     public async Task ChannelStatus_UsesTheScopeOfTheCaller_AndRefusesACallerWithNone()
     {
@@ -213,8 +201,6 @@ public class ChatAvailabilityTests : IAsyncLifetime
             Assert.DoesNotContain("PropertyMemberAccesses", statements[0], StringComparison.Ordinal);
     }
 
-    // ---- The data -------------------------------------------------------------------------------------------------------------------------
-
     private static HostMessagesController Controller(Mock<IOrgContextResolver> orgs, Mock<IHostScopeResolver> scopes, Mock<IMessageHubService> hub) =>
         new(Mock.Of<IGuestMessageService>(), orgs.Object, scopes.Object, hub.Object)
         {
@@ -230,7 +216,6 @@ public class ChatAvailabilityTests : IAsyncLifetime
             },
         };
 
-    /// <summary>A mapping of a listing to a property, and the row of the copy of the conversations that says how the chat of the listing stands.</summary>
     private async Task AddListingAsync(
         Guid? propertyId,
         string accommodationId,

@@ -20,10 +20,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E03/F04/US02/T03 proofs of the operator queue: the lock code leaves only after an operator's approval (AC-NF50-4), and only a user who holds
-/// <c>verification.decision</c> and reaches the property lists, decides or counts a verification (AC-NF24-3).
-/// </summary>
 public class VerificationOperatorDecisionProofTests
 {
     private const string LockCode = "4242";
@@ -36,7 +32,6 @@ public class VerificationOperatorDecisionProofTests
         public bool FilterEnabled => true;
     }
 
-    /// <summary>Trust and data rule (AC-NF50-4): a pending or rejected verification never releases the code; an approval releases and e-mails it once.</summary>
     [Fact]
     public async Task VerificationDecision_CodeReleasedOnlyAfterPositiveOperatorDecision_Test()
     {
@@ -58,10 +53,8 @@ public class VerificationOperatorDecisionProofTests
         var service = NewService(db, queue.Object, accessCodes);
         var scope = new HostScope(world.OrgId);
 
-        // Pending: nobody decided, the gate keeps the code.
         Assert.Null(await accessCodes.ReleaseToGuestAsync(approved, AccessCodeReleaseChannels.CheckInScreen));
 
-        // A rejection is logged as the operator's decision and releases nothing, sends nothing.
         Assert.True(await service.RecordManualVerificationAsync(rejected, scope, false, "Il volto non corrisponde", Operator));
         var rejection = await db.BiometricVerificationLogs.SingleAsync(l => l.BookingId == rejected);
         Assert.Equal(VerificationMethod.Operator, rejection.Method);
@@ -72,7 +65,6 @@ public class VerificationOperatorDecisionProofTests
         Assert.Empty(emails);
         Assert.False(await db.AccessCodeReleaseLogs.AnyAsync());
 
-        // The approval is logged, releases the code once through the operator channel and e-mails it to the guest.
         Assert.True(await service.RecordManualVerificationAsync(approved, scope, true, null, Operator));
         var approval = await db.BiometricVerificationLogs.SingleAsync(l => l.BookingId == approved);
         Assert.Equal(VerificationMethod.Operator, approval.Method);
@@ -85,19 +77,13 @@ public class VerificationOperatorDecisionProofTests
         Assert.Equal(EmailTemplates.Names.GuestAccessCode, sent.Template);
         Assert.Contains(LockCode, sent.Content.HtmlBody, StringComparison.Ordinal);
 
-        // A decided verification leaves the queue: it cannot be decided twice.
         Assert.Empty(await service.GetPendingVerificationsAsync(Operator, scope));
         Assert.False(await service.RecordManualVerificationAsync(approved, scope, true, null, Operator));
     }
 
-    /// <summary>
-    /// Permission rule (AC-NF24-3): only <c>verification.decision</c> reaches the queue, and within it only the properties of the caller's scope: a
-    /// member «Solo alcuni» given one property neither lists, nor decides, nor counts the verification of another one.
-    /// </summary>
     [Fact]
     public async Task VerificationQueue_OnlyScopeAndPermission_Test()
     {
-        // Every action of the queue carries the policy of verification.decision; the collaborator and the accountant do not hold it.
         Assert.Contains(
             CasazenPolicies.VerificationDecision,
             typeof(VerificationController).GetCustomAttributes<AuthorizeAttribute>().Select(a => a.Policy));
@@ -127,7 +113,6 @@ public class VerificationOperatorDecisionProofTests
 
         var pending = Assert.Single(await service.GetPendingVerificationsAsync(member, scope));
         Assert.Equal(reachable, pending.BookingId);
-        // The technical reasons and the provisional flag of the last automatic outcome come with it (AC-NF51-5).
         Assert.Contains(pending.Reasons, r => r is { Check: VerificationReasons.Checks.Similarity, Result: VerificationReasons.Results.BetweenThresholds });
         Assert.True(pending.Provisional);
 
@@ -139,10 +124,6 @@ public class VerificationOperatorDecisionProofTests
         Assert.Equal(1, metrics.Review);
     }
 
-    /// <summary>
-    /// Data rule (the one definition of an active stay): a cancelled stay or a no-show is neither listed nor decided, and gets no code even with
-    /// an accepted verification.
-    /// </summary>
     [Fact]
     public async Task VerificationDecision_CancelledOrNoShowStay_NeitherDecidedNorGivenTheCode()
     {
@@ -177,7 +158,6 @@ public class VerificationOperatorDecisionProofTests
         new FixedTimeProvider(Now),
         accessCodes);
 
-    /// <summary>One org on an in-memory database with Data Protection (the lock code is an encrypted column).</summary>
     private sealed class World
     {
         private readonly DbContextOptions<AppDbContext> _options =
@@ -276,7 +256,6 @@ public class VerificationOperatorDecisionProofTests
             return booking.Id;
         }
 
-        /// <summary>The agent's review of the stay: similarity between the thresholds, provisional thresholds.</summary>
         public void AddAutomaticReview(Guid bookingId)
         {
             var booking = _rows.OfType<Booking>().Single(b => b.Id == bookingId);
@@ -302,7 +281,6 @@ public class VerificationOperatorDecisionProofTests
             });
         }
 
-        /// <summary>The agent's acceptance of the stay (the gate of the code is open by the log).</summary>
         public void AddAutomaticAccept(Guid bookingId)
         {
             var booking = _rows.OfType<Booking>().Single(b => b.Id == bookingId);

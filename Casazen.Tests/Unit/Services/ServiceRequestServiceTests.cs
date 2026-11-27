@@ -23,13 +23,9 @@ namespace Casazen.Tests.Unit.Services;
 
 public class ServiceRequestServiceTests
 {
-    // ─── D2 (SU-07): short-rent requests are for a stay, long-rent requests for the property ───
-
-    // SR-D3 (SR-08a): the stay is optional for the host of a short-rent property. A request for the house alone gets the default time
-    // (10:00 in Rome, for 120 minutes) and that default never falls in the past: once today's 10:00 has gone by it is tomorrow's.
     [Theory]
-    [InlineData("2026-11-03T08:30:00Z", "2026-11-03T09:00:00Z")] // 09:30 in Rome: today's 10:00 is still to come
-    [InlineData("2026-11-03T10:30:00Z", "2026-11-04T09:00:00Z")] // 11:30 in Rome: it has gone by, so tomorrow's
+    [InlineData("2026-11-03T08:30:00Z", "2026-11-03T09:00:00Z")]
+    [InlineData("2026-11-03T10:30:00Z", "2026-11-04T09:00:00Z")]
     public async Task CreateAsync_ShortRentWithoutBooking_IsForTheHouseAloneWithADefaultTimeThatIsNeverInThePast(string now, string expectedStart)
     {
         await using var db = CreateDb();
@@ -120,7 +116,6 @@ public class ServiceRequestServiceTests
     {
         await using var db = CreateDb();
         var (hostOrgId, propertyId, supplierOrgId, _) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
-        // A row that claims the property but belongs to another org is never accepted as a stay of this host.
         var foreignStay = NewBooking(Guid.NewGuid(), propertyId);
         db.Bookings.Add(foreignStay);
         await db.SaveChangesAsync();
@@ -252,8 +247,6 @@ public class ServiceRequestServiceTests
         Assert.NotNull(await service.GetByIdForHostAsync(lease.Id, scope, ServiceRequestRentalContext.LongRent));
     }
 
-    // LR-03c: a long-rent request can be made for one lease of its property, and the list of the sheet of that contract reaches only those.
-    // The link is a tenancy rule (another org's lease is never accepted), so it has its own proof.
     [Fact]
     public async Task CreateAsync_LongRentForALease_KeepsTheLinkAndTheListNarrowsToIt()
     {
@@ -500,8 +493,6 @@ public class ServiceRequestServiceTests
         Assert.Equal(ServiceRequestActorParty.Host, paid.PaidBy);
     }
 
-    // ─── SU-09: the supplier is told when the host marks a request as paid ───
-
     [Fact]
     public async Task MarkPaidAsync_FromCompletato_QueuesTheEmailAndOnePushToTheSupplier()
     {
@@ -534,7 +525,6 @@ public class ServiceRequestServiceTests
         Assert.Equal(PushTypes.ServiceRequestPaid, toSupplier.Payload.Type);
         Assert.Equal("Richiesta segnata come pagata", toSupplier.Payload.Title);
         Assert.Equal("Pulizie presso Test Property: l'host ha segnato il servizio come pagato.", toSupplier.Payload.Body);
-        // The stay is the host's: the supplier's push carries no booking and opens the request in the supplier area of the app.
         Assert.Null(toSupplier.Payload.BookingId);
         Assert.Equal(PushRoutes.SupplierRequest(created.Id), toSupplier.Payload.Route);
         Assert.Equal(created.Id, toSupplier.Payload.ServiceRequestId);
@@ -558,7 +548,6 @@ public class ServiceRequestServiceTests
 
         var paid = await service.MarkPaidAsync(created.Id, hostOrgId);
 
-        // Paying is the host's action and a suspended supplier is still owed what it completed (SU-12).
         Assert.Equal(ServiceRequestStatus.Pagato, paid.Status);
         Assert.Equal(EmailTemplates.Names.ServiceRequestPaid, Assert.Single(queue.Queued).Template);
     }
@@ -600,7 +589,6 @@ public class ServiceRequestServiceTests
 
         var paid = await service.MarkPaidAsync(created.Id, hostOrgId);
 
-        // The status is already saved: a notification failure is logged, never an error for the host (A4-20).
         Assert.Equal(ServiceRequestStatus.Pagato, paid.Status);
         Assert.Equal(ServiceRequestStatus.Pagato, (await db.ServiceRequests.SingleAsync(r => r.Id == created.Id)).Status);
     }
@@ -793,8 +781,6 @@ public class ServiceRequestServiceTests
         Assert.Equal(new[] { matched.Id, other.Id }.Order(), propertyItems.Select(r => r.Id).Order());
     }
 
-    // ─── FD-13: notifications rendered from templates, links from config, queued outside the request ───
-
     [Fact]
     public async Task CreateAsync_ValidRequest_QueuesSupplierEmailWithInboxLinkFromPublicSiteBaseUrl()
     {
@@ -812,7 +798,6 @@ public class ServiceRequestServiceTests
         Assert.Equal(EmailTemplates.Names.ServiceRequestCreated, template);
         Assert.Equal("Nuova richiesta di servizio — H501", content.Subject);
         Assert.Contains($"href=\"{EmailTestHelpers.PublicSiteBaseUrl}/app/supplier/inbox\"", content.HtmlBody);
-        // Decision D9 (SP-04): the supplier gets the comune, not the name of the property nor the host's notes.
         Assert.DoesNotContain("Test Property", content.HtmlBody);
         Assert.DoesNotContain("Turnover", content.HtmlBody);
         Assert.DoesNotContain("casazen.it", content.HtmlBody);
@@ -831,7 +816,6 @@ public class ServiceRequestServiceTests
             "cleaning", ServiceRequestUrgency.Normal,
             "<a href=\"https://phish.example\">Conferma IBAN</a><script>alert(1)</script>", false));
 
-        // Decision D9 (SP-04): the host's notes are shown to the supplier only after the take, so the email does not carry them.
         var html = Assert.Single(queue.Queued).Content.HtmlBody;
         Assert.DoesNotContain("phish.example", html);
         Assert.DoesNotContain("<script>", html);
@@ -842,7 +826,6 @@ public class ServiceRequestServiceTests
     [Fact]
     public async Task CreateAsync_ComuneWithMarkup_IsHtmlEncodedInSupplierEmail()
     {
-        // The comune is text the host typed: it is the one host-written value the supplier's email still carries.
         const string comune = "<script>alert(1)</script>";
         await using var db = CreateDb();
         var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, comune, SupplierStatus.Active, comune);
@@ -976,8 +959,6 @@ public class ServiceRequestServiceTests
             Times.Once);
     }
 
-    // ─── MO-04 (A6-08): pushes of the supplier decisions and of a new request ───
-
     [Theory]
     [InlineData(ServiceRequestStatus.PresoInCarico, "service-request-taken", "Richiesta presa in carico", "Pulizie presso Test Property: il fornitore ha preso in carico la richiesta.")]
     [InlineData(ServiceRequestStatus.Completato, "service-request-completed", "Servizio completato", "Pulizie presso Test Property: il fornitore ha completato il servizio.")]
@@ -1018,7 +999,6 @@ public class ServiceRequestServiceTests
         Assert.Equal(PushRoutes.Booking(bookingId), toHost.Payload.Route);
         Assert.Equal(bookingId, toHost.Payload.BookingId);
         Assert.Equal(created.Id, toHost.Payload.ServiceRequestId);
-        // The rejection reason is the supplier's free text: email only, never on the lock screen.
         Assert.DoesNotContain("Non disponibile", toHost.Payload.Body, StringComparison.Ordinal);
     }
 
@@ -1057,7 +1037,6 @@ public class ServiceRequestServiceTests
         Assert.Equal(PushTypes.ServiceRequestCreated, toSupplier.Payload.Type);
         Assert.Equal("Nuova richiesta di servizio", toSupplier.Payload.Title);
         Assert.Equal("Pulizie a H501: accetta o rifiuta la richiesta dalla tua area fornitore.", toSupplier.Payload.Body);
-        // The stay is the host's: the supplier's push carries no booking and opens the request in the supplier area of the app.
         Assert.Null(toSupplier.Payload.BookingId);
         Assert.Equal(PushRoutes.SupplierRequest(created.Id), toSupplier.Payload.Route);
         Assert.Equal(created.Id, toSupplier.Payload.ServiceRequestId);
@@ -1091,7 +1070,6 @@ public class ServiceRequestServiceTests
             "cleaning", ServiceRequestUrgency.Normal, null, false));
         await service.RejectAsync(created.Id, supplierOrgId, "Non disponibile");
 
-        // Nothing is sent by the service itself: only jobs are queued.
         Assert.Empty(pipeline.Expo.SendRequests);
         Assert.Equal(2, pipeline.Jobs.Count);
 
@@ -1109,7 +1087,6 @@ public class ServiceRequestServiceTests
         Assert.Equal(PushRoutes.Booking(bookingId), toHost.Data["route"]);
     }
 
-    /// <summary>The property owner (host) and a member of the supplier org, one phone each.</summary>
     private static async Task SeedDevicesAsync(AppDbContext db, Guid hostOrgId, Guid supplierOrgId)
     {
         db.Users.AddRange(
@@ -1155,7 +1132,6 @@ public class ServiceRequestServiceTests
         var property = NewProperty(hostOrg.Id, "Test Property", propertyCity);
         db.Properties.Add(property);
 
-        // The stay short-rent requests are for (D2).
         var booking = NewBooking(hostOrg.Id, property.Id);
         db.Bookings.Add(booking);
 
@@ -1186,7 +1162,6 @@ public class ServiceRequestServiceTests
         return (hostOrg.Id, property.Id, supplierOrg.Id, booking.Id);
     }
 
-    /// <summary>A signed lease of the org on the property (the fields the table needs and nothing of its people).</summary>
     private static async Task<Guid> SeedLeaseAsync(AppDbContext db, Guid orgId, Guid propertyId)
     {
         var lease = new LeaseContract

@@ -31,8 +31,6 @@ public class OrgMembershipReconcileTests
 
     private static IEnumerable<string> Codes(IEnumerable<OrgMembershipIssue> issues) => issues.Select(i => i.Code);
 
-    // ─── The owner of every host org ────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ReconcileAsync_OwnerWithoutOrgMember_GetsTheOwnerRowAndTheAccountMembership()
     {
@@ -75,7 +73,6 @@ public class OrgMembershipReconcileTests
     [Fact]
     public async Task ReconcileAsync_PlatformAdminThatSetUpItsOwnHostOrg_IsItsOwner()
     {
-        // An admin keeps the Admin role when it onboards as a host: it shows as the owner of its org by its owner membership.
         await using var db = NewDb(_database);
         var org = AddOrg(db);
         AddUser(db, "auth0|staff-host", org.Id, UserRole.Admin);
@@ -111,7 +108,6 @@ public class OrgMembershipReconcileTests
     [Fact]
     public async Task ReconcileAsync_SupplierOrg_IsNoOrgTeam()
     {
-        // A supplier org may hold several accounts (PL-05) and has no owner role of a host: nothing is created there.
         await using var db = NewDb(_database);
         var supplierOrg = AddOrg(db, OrgType.Supplier);
         AddUser(db, "auth0|supplier-1", supplierOrg.Id, UserRole.PropertyOwner);
@@ -166,7 +162,6 @@ public class OrgMembershipReconcileTests
         Assert.Equal(OrgMembershipReconcileCodes.UserWithoutMember, issue.Code);
         Assert.Equal(["auth0|manager", "auth0|nobody"], issue.UserIds);
         await using var verify = NewDb(_database);
-        // Their role in the org is not guessed: no org member for them.
         Assert.Equal(["auth0|owner"], await verify.OrgMembers.Select(m => m.UserId).ToListAsync());
     }
 
@@ -185,12 +180,9 @@ public class OrgMembershipReconcileTests
         Assert.Equal(["auth0|manager-alone"], Assert.Single(report.Issues).UserIds);
     }
 
-    // ─── The memberships follow the org roles ───────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ReconcileAsync_AdminWithAnOwnerRentalRow_IsAlignedToItsRole()
     {
-        // A member can never keep an owner's rental row (a token cannot bring it back either: the veto of the contexts).
         await using var db = NewDb(_database);
         var org = AddOrg(db);
         AddUser(db, "auth0|admin", org.Id);
@@ -213,7 +205,6 @@ public class OrgMembershipReconcileTests
     [Fact]
     public async Task ReconcileAsync_PropertyManagersOfBeforeTheAccountRole_GetTheRestrictedAccountMembership()
     {
-        // AM-02c (AM-D12): a property manager added before the role existed has the two rental rows and no account row.
         await using var db = NewDb(_database);
         var org = AddOrg(db);
         AddUser(db, "auth0|manager", org.Id);
@@ -225,7 +216,6 @@ public class OrgMembershipReconcileTests
         AddMembership(db, "auth0|manager-short", "short-rent", "property_manager");
         await db.SaveChangesAsync();
 
-        // The dry run says what a real run does, and saves nothing.
         var dryRun = await NewService(db).ReconcileAsync(dryRun: true);
         Assert.Equal(
             [OrgMembershipReconcileCodes.AccountMembershipAdded, OrgMembershipReconcileCodes.AccountMembershipAdded],
@@ -244,7 +234,6 @@ public class OrgMembershipReconcileTests
             await MembershipsOfAsync(verify, "auth0|manager"));
         Assert.Equal(["account/org_manager", "short-rent/property_manager"], await MembershipsOfAsync(verify, "auth0|manager-short"));
 
-        // A second run finds nothing to do.
         await using var again = NewDb(_database);
         var second = await NewService(again).ReconcileAsync(dryRun: false);
         Assert.Empty(second.Fixes);
@@ -253,8 +242,6 @@ public class OrgMembershipReconcileTests
     [Fact]
     public async Task ReconcileAsync_AdminMemberHoldingAnOwnerRow_IsNotASecondOwnerCandidate()
     {
-        // The org member row is what says who someone is: the stray owner's row of the administrator is drift to align in
-        // this very run, not a reason to leave the org without an owner as ambiguous (one run converges).
         await using var db = NewDb(_database);
         var org = AddOrg(db);
         AddUser(db, "auth0|owner", org.Id, UserRole.PropertyOwner);
@@ -326,7 +313,6 @@ public class OrgMembershipReconcileTests
         Assert.Equal(OrgMembershipReconcileCodes.AccountMembershipRemoved, fix.Code);
         Assert.Equal("auth0|ex-member", fix.UserId);
         await using var verify = NewDb(_database);
-        // Only the account row: the rental row of a user that is not a member is not the reconcile's to remove.
         Assert.Equal(["short-rent/staff"], await MembershipsOfAsync(verify, "auth0|ex-member"));
     }
 
@@ -366,8 +352,6 @@ public class OrgMembershipReconcileTests
         Assert.Contains(report.Issues, i => i.Code == OrgMembershipReconcileCodes.OwnerWithoutHostMembership && i.UserIds.SequenceEqual(["auth0|owner"]));
         Assert.Contains(report.Issues, i => i.Code == OrgMembershipReconcileCodes.MemberWithoutHostMembership && i.UserIds.SequenceEqual(["auth0|member"]));
         await using var verify = NewDb(_database);
-        // Its areas are unknown: no rental row is added for the member. The account row follows the role, as it does for the
-        // administrators and the accountants (AM-02c: the property manager's is the restricted one, the trusted suppliers only).
         Assert.Equal(["account/org_manager"], await MembershipsOfAsync(verify, "auth0|member"));
     }
 
@@ -406,8 +390,6 @@ public class OrgMembershipReconcileTests
         Assert.Equal(["account/org_admin", "short-rent/property_manager"], await MembershipsOfAsync(verify, "auth0|off"));
     }
 
-    // ─── Dry run, idempotence ───────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ReconcileAsync_DryRun_ReportsWhatAnAppliedRunDoesAndSavesNothing()
     {
@@ -418,7 +400,6 @@ public class OrgMembershipReconcileTests
         var dry = await NewService(db).ReconcileAsync(dryRun: true);
 
         await using var afterDry = NewDb(_database);
-        // Only the member the seed started with (an administrator): no owner was created, no account membership added.
         Assert.Equal(["auth0|team-admin"], await afterDry.OrgMembers.Select(m => m.UserId).ToListAsync());
         Assert.DoesNotContain(await afterDry.UserContextMemberships.ToListAsync(), m => m.ContextKey == "account" && m.UserId != "auth0|leftover");
         Assert.Contains(await afterDry.UserContextMemberships.ToListAsync(), m => m.UserId == "auth0|leftover" && m.ContextKey == "account");
@@ -503,7 +484,6 @@ public class OrgMembershipReconcileTests
         Assert.Equal(0, report.MembersScanned);
     }
 
-    /// <summary>An owner to create, an ambiguous org, a drifted admin and a leftover account row.</summary>
     private static void SeedMixedOrgs(AppDbContext db)
     {
         var simple = AddOrg(db);
@@ -527,8 +507,6 @@ public class OrgMembershipReconcileTests
     [Fact]
     public async Task ReconcileAsync_ConcurrentChange_IsAConflictAndNothingIsKept()
     {
-        // The Postgres run races on the unique indexes (OrgMembershipPostgresTests); here the mapping of that failure to
-        // the stable 409 is checked with a context that fails to save.
         await using var db = new ThrowingSaveDbContext(_database);
         db.Database.EnsureCreated();
         var org = AddOrg(db);

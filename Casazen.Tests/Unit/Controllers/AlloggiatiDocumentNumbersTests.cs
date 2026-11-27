@@ -58,7 +58,6 @@ public class AlloggiatiDocumentNumbersTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    /// <summary>A flat of the org: Italian, of canton Ticino or of canton Zurich (the municipality stored, as the other tests of the area do).</summary>
     private Property AddFlat(string country, string? municipality)
     {
         var property = new Property
@@ -81,7 +80,6 @@ public class AlloggiatiDocumentNumbersTests : IDisposable
         return property;
     }
 
-    /// <summary>One confirmed stay of the flat with the guests given: (type, born, number).</summary>
     private Booking AddStay(Property flat, params (StayGuestType Type, DateTime Born, string Number)[] guests)
     {
         var booker = new Guest { OrgId = _orgId, FirstName = "Hans", LastName = "Muster", Email = "hans.muster@example.com" };
@@ -116,7 +114,6 @@ public class AlloggiatiDocumentNumbersTests : IDisposable
         return booking;
     }
 
-    /// <summary>The head and a second adult with their numbers, a child with the number somebody typed, and a third adult with none: the same data in every flat of these tests.</summary>
     private Booking AddFamilyStay(Property flat) =>
         AddStay(
             flat,
@@ -169,8 +166,6 @@ public class AlloggiatiDocumentNumbersTests : IDisposable
         return Assert.IsAssignableFrom<IEnumerable<StayGuestDocumentNumberDto>>(Assert.IsType<OkObjectResult>(result.Result).Value).ToList();
     }
 
-    // ─── The stay of Ticino ───
-
     [Fact]
     public async Task DocumentNumbers_InAStayOfTicino_AreTheHeadAndTheAdultMember_NeverTheMinorNorAGuestWithNoNumber()
     {
@@ -178,7 +173,6 @@ public class AlloggiatiDocumentNumbersTests : IDisposable
 
         var numbers = await NumbersAsync(Controller(booking), booking);
 
-        // The head, as ever, and the second adult the file notifies on their own row; not the child (a number somebody typed is never read back), not the adult with no number.
         Assert.Equal([(0, HeadNumber), (1, AdultNumber)], numbers.OrderBy(n => n.Position).Select(n => (n.Position, n.DocumentNumber)).ToArray());
         Assert.DoesNotContain(numbers, n => n.DocumentNumber == MinorNumber);
         Assert.DoesNotContain(numbers, n => n.Position is 2 or 3);
@@ -218,7 +212,6 @@ public class AlloggiatiDocumentNumbersTests : IDisposable
     [Fact]
     public async Task DocumentNumbers_OfAStayWhoseGuestsAreAllMinors_AreTheSingleGuestsAsEver_NeverAMemberOfFamily()
     {
-        // The file notifies every minor of a stay with no adult: their documents are stored. A single guest has its number read as it always had; a family member of minors is never read.
         var born = new DateTime(2010, 2, 2, 0, 0, 0, DateTimeKind.Utc);
         var booking = AddStay(
             AddFlat("CH", "5192"),
@@ -229,8 +222,6 @@ public class AlloggiatiDocumentNumbersTests : IDisposable
 
         Assert.Equal([(0, "TEST-SINGLE-1")], numbers.Select(n => (n.Position, n.DocumentNumber)).ToArray());
     }
-
-    // ─── Every other stay answers what it always answered ───
 
     [Fact]
     public async Task DocumentNumbers_InAnItalianStayWithTheSameData_AreTheHeadOnly()
@@ -245,7 +236,6 @@ public class AlloggiatiDocumentNumbersTests : IDisposable
     [Fact]
     public async Task DocumentNumbers_InAStayOfAnotherCantonWithTheSameData_AreTheHeadOnly()
     {
-        // Zurich has no police file of its own in CasaZen: the check-in keeps no document of a family member there, and nothing is read of one.
         var booking = AddFamilyStay(AddFlat("CH", "261"));
 
         var numbers = await NumbersAsync(Controller(booking), booking);
@@ -256,15 +246,12 @@ public class AlloggiatiDocumentNumbersTests : IDisposable
     [Fact]
     public async Task DocumentNumbers_InASwissStayWhosePlaceIsOpen_AreTheHeadOnly_ASwissPlaceThatIsNotKnownIsNotInTicino()
     {
-        // No municipality stored, and the directory has no locality of this postal code: the one resolver cannot place the flat, so it is not a flat of Ticino and nothing is added.
         var booking = AddFamilyStay(AddFlat("CH", null));
 
         var numbers = await NumbersAsync(Controller(booking), booking);
 
         Assert.Equal([(0, HeadNumber)], numbers.Select(n => (n.Position, n.DocumentNumber)).ToArray());
     }
-
-    // ─── Permission, tenant and audit ───
 
     [Fact]
     public void TheEndpoint_IsBehindGuestRead_TheOneOfTheFullDocumentNumbers()
@@ -280,7 +267,6 @@ public class AlloggiatiDocumentNumbersTests : IDisposable
     {
         var booking = AddFamilyStay(AddFlat("CH", "5192"));
 
-        // A booking the tenant filter hides is a 404, and one that is visible to a caller of another org is a 403: no number of a stay of Ticino leaves its org.
         Assert.IsType<NotFoundResult>((await Controller(null).GetDocumentNumbers(booking.Id, null)).Result);
         Assert.IsType<ForbidResult>((await Controller(booking, callerOrg: Guid.NewGuid()).GetDocumentNumbers(booking.Id, null)).Result);
     }

@@ -11,14 +11,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E05/F04/US01/T02: what <c>AddApprovalQueueActions</c> registers (the exact list is photographed here: a registration added to it is added to this test), the registry of the
-/// actions by item type, and the validation of a submission.
-/// </summary>
 public class ApprovalQueueRegistrationTests
 {
-    // ─── The registrations ───
-
     [Fact]
     public void AddApprovalQueueActions_RegistersTheTwoActionsTheRegistryAndTheAlert_AsTheWholeListOfServices()
     {
@@ -36,8 +30,6 @@ public class ApprovalQueueRegistrationTests
             new[] { typeof(IApprovalOriginActionRegistry), typeof(ApprovalAlertDelivery), typeof(ApprovalAlertJob) },
             type => Assert.Equal(ServiceLifetime.Scoped, Assert.Single(services, d => d.ServiceType == type).Lifetime));
 
-        // Of the types of the application: the registry and the alert, the actions twice (one each), and nothing else. The queue itself (IApprovalQueueService) is
-        // registered where it has always been, in the shared registration.
         Assert.Equal(
             [
                 nameof(ApprovalAlertDelivery),
@@ -72,10 +64,6 @@ public class ApprovalQueueRegistrationTests
         Assert.Null(registry.Find("TypeALaterEpicAdds"));
     }
 
-    /// <summary>
-    /// The circle the registry is lazy for: the action of the campaigns needs the campaign service, which needs the queue to create its items, which needs the registry. Built
-    /// in any order, the container must not see a circle.
-    /// </summary>
     [Fact]
     public void TheCampaignService_TheQueueAndTheRegistry_AreNotACircleInTheContainer()
     {
@@ -117,8 +105,6 @@ public class ApprovalQueueRegistrationTests
         Assert.Throws<ArgumentException>(() => registry.Find(" "));
     }
 
-    // ─── The doubles ───
-
     private sealed class FakeAction(string itemType, string originAction) : IApprovalOriginAction
     {
         public string ItemType => itemType;
@@ -131,7 +117,6 @@ public class ApprovalQueueRegistrationTests
         public Task OnRejectedAsync(ApprovalQueueItem item, string reason, string userId, CancellationToken ct) => Task.CompletedTask;
     }
 
-    /// <summary>The shape of the real campaign service: it needs the queue.</summary>
     private sealed class CampaignThatNeedsTheQueue(IApprovalQueueService queue) : ICampaignService
     {
         public IApprovalQueueService Queue => queue;
@@ -157,7 +142,6 @@ public class ApprovalQueueRegistrationTests
             throw new NotSupportedException();
     }
 
-    /// <summary>The shape of the real queue: it needs the registry.</summary>
     private sealed class QueueThatNeedsTheRegistry(IApprovalOriginActionRegistry registry) : IApprovalQueueService
     {
         public IApprovalOriginActionRegistry Registry => registry;

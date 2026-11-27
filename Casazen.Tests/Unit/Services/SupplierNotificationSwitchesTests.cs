@@ -16,7 +16,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class SupplierNotificationSwitchesTests
 {
-    /// <summary>Monday 12 October 2026, 10:00 in Rome.</summary>
     private static readonly DateTime MondayAt10 = ServiceRequestScenario.FridayAt10.AddDays(3);
 
     [Fact]
@@ -47,7 +46,6 @@ public class SupplierNotificationSwitchesTests
         Assert.DoesNotContain(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.ServiceRequestCreated);
         Assert.DoesNotContain(s.Pushes, p => p.Payload.Type == PushTypes.ServiceRequestCreated);
 
-        // A cancellation is operational: no switch hides it.
         await s.Service.CancelAsHostAsync(request.Id, s.HostOrgId, "Non serve più");
 
         Assert.Contains(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.ServiceRequestCancelledToSupplier);
@@ -111,12 +109,10 @@ public class SupplierNotificationSwitchesTests
         Assert.Equal(PushTypes.ServicePaymentReceived, push.Payload.Type);
         Assert.Equal(PushAudience.SupplierOrg(s.SupplierOrgId), push.Audience);
         Assert.Equal(opened.Request.Id, push.Payload.ServiceRequestId);
-        // The net, before the fees of Stripe, and no word about when the money arrives.
         Assert.Contains("netti per te", push.Payload.Body);
         Assert.DoesNotContain("giorni", push.Payload.Body);
     }
 
-    /// <summary>Writes a change to the settings row of the supplier of the scenario (it has one), whatever the context tracks.</summary>
     private static async Task TurnOffAsync(ServiceRequestScenario s, Action<SupplierSettings> change)
     {
         var settings = await s.Db.SupplierSettings.SingleAsync(x => x.OrgId == s.SupplierOrgId);

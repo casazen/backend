@@ -15,7 +15,6 @@ public class GuestPortalRulesTests
 {
     private static readonly DateTime Now = new(2026, 10, 9, 10, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>Data rule (the validity of the link): a departure on 13 October opens the link until 13 November 00:00 UTC, the end of 12 November.</summary>
     [Fact]
     public void ExpiryFor_DepartureDay_IsEndOfThirtiethDayAfter()
     {
@@ -25,10 +24,8 @@ public class GuestPortalRulesTests
 
         Assert.Equal(new DateTime(2026, 11, 13, 0, 0, 0, DateTimeKind.Utc), expiry);
         Assert.Equal(DateTimeKind.Utc, expiry.Kind);
-        // The 30th day after the departure is still inside, the next one is not.
         Assert.True(new DateTime(2026, 11, 12, 23, 59, 59, DateTimeKind.Utc) < expiry);
         Assert.False(new DateTime(2026, 11, 13, 0, 0, 0, DateTimeKind.Utc) < expiry);
-        // The time of the departure does not move it.
         Assert.Equal(expiry, GuestPortalRules.ExpiryFor(departure.AddHours(10)));
     }
 
@@ -69,7 +66,6 @@ public class GuestPortalRulesTests
     {
         var noShow = Booking(BookingStatus.Confirmed, BookingSource.Airbnb, Now.AddDays(3));
         noShow.NoShowAt = Now;
-        // The departure of 8 September: its link was over at the end of 8 October.
         var ended = Booking(BookingStatus.CheckedOut, BookingSource.Direct, new DateTime(2026, 9, 8, 0, 0, 0, DateTimeKind.Utc));
         var lastDay = Booking(BookingStatus.CheckedOut, BookingSource.Direct, new DateTime(2026, 9, 9, 0, 0, 0, DateTimeKind.Utc));
 
@@ -87,10 +83,6 @@ public class GuestPortalRulesTests
         Assert.DoesNotContain(BookingStatus.Pending, GuestPortalRules.ResolvableStatuses);
     }
 
-    /// <summary>
-    /// Privacy rule (the reserved data close with the stay): a confirmed or checked-in stay that is not a no-show may be shown the reserved data once its
-    /// check-in is completed; a request, a cancelled stay, a stay already checked out and a no-show never may (the rule of the lock code).
-    /// </summary>
     [Theory]
     [InlineData(BookingStatus.Confirmed, false, true)]
     [InlineData(BookingStatus.CheckedIn, false, true)]
@@ -123,7 +115,6 @@ public class GuestPortalRulesTests
         Assert.False(GuestPortalRules.IsWellFormedToken(null));
     }
 
-    /// <summary>Privacy rule: the address of the link holds the token and nothing else, on the CasaZen domain.</summary>
     [Fact]
     public void GuestPortalAddress_IsTheTokenOnTheShortPath()
     {

@@ -39,8 +39,6 @@ public class SupplierPaymentAdminServiceTests
         return opened;
     }
 
-    // ─── The list and the detail ───
-
     [Fact]
     public async Task List_ShowsGrossCommissionNetAndWhatWasRefunded_NewestFirst_WithNamesAndNoContact()
     {
@@ -55,7 +53,7 @@ public class SupplierPaymentAdminServiceTests
         Assert.Equal(2, total);
         Assert.Equal([newer.PaymentId, older.PaymentId], items.Select(i => i.Id).ToArray());
         var item = items[0];
-        Assert.Equal("Supplier Srl", item.SupplierName); // the legal name of the profile
+        Assert.Equal("Supplier Srl", item.SupplierName);
         Assert.Equal("Casa Rossi", item.PayerName);
         Assert.Equal(s.SupplierOrgId, item.SupplierOrgId);
         Assert.Equal(s.HostOrgId, item.PayerOrgId);
@@ -65,7 +63,6 @@ public class SupplierPaymentAdminServiceTests
         Assert.Equal((1_500, 150), (item.RefundedCents, item.CommissionRefundedCents));
         Assert.Equal(newer.IntentId, item.StripePaymentIntentId);
         Assert.Equal(ServiceRequestScenario.SupplierAccountId, item.ConnectedAccountId);
-        // Nothing about people: the item has no email, phone or address.
         var members = typeof(AdminServicePaymentItem).GetProperties().Select(p => p.Name).ToList();
         Assert.DoesNotContain(members, name => name.Contains("Email", StringComparison.OrdinalIgnoreCase)
             || name.Contains("Phone", StringComparison.OrdinalIgnoreCase)
@@ -154,8 +151,6 @@ public class SupplierPaymentAdminServiceTests
         Assert.Equal(ServicePaymentErrors.NotFound, ex.Code);
     }
 
-    // ─── The commission of a supplier ───
-
     [Fact]
     public async Task Commission_ByDefault_IsThePlatformsPercentage()
     {
@@ -179,7 +174,6 @@ public class SupplierPaymentAdminServiceTests
         Assert.Equal(new SupplierCommissionSetting(s.SupplierOrgId, 10m, 0m, until, true, 0m), setting);
         var paymentBefore = await s.OnlyPaymentOfAsync(before.Id);
         var paymentDuring = await s.OnlyPaymentOfAsync(during.Id);
-        // A payment keeps the percentage it was created with: the change is never applied backwards.
         Assert.Equal((10m, 600), (paymentBefore.CommissionPercent, paymentBefore.ApplicationFeeCents));
         Assert.Equal((0m, 0), (paymentDuring.CommissionPercent, paymentDuring.ApplicationFeeCents));
         Assert.Equal(paymentDuring.AmountCents, paymentDuring.NetCents);
@@ -200,7 +194,7 @@ public class SupplierPaymentAdminServiceTests
         Assert.Equal((10m, 600), (payment.CommissionPercent, payment.ApplicationFeeCents));
         Assert.False(setting.OverrideActive);
         Assert.Equal(10m, setting.EffectivePercent);
-        Assert.Equal(0m, setting.OverridePercent); // still stored: the audit trail and the profile show what it was
+        Assert.Equal(0m, setting.OverridePercent);
     }
 
     [Fact]
@@ -336,8 +330,6 @@ public class SupplierPaymentAdminServiceTests
         Assert.Equal(local.ToUniversalTime(), setting.OverrideUntil);
     }
 
-    // ─── The monthly export ───
-
     private static async Task<OpenedPayment> PaidAtAsync(ServiceRequestScenario s, DateTime paidAtUtc)
     {
         var opened = await PaidAsync(s);
@@ -349,12 +341,11 @@ public class SupplierPaymentAdminServiceTests
     public async Task Export_TheMonthIsTheCalendarMonthInRome_NotInUtc()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        // 30 September 22:30 UTC is 1 October 00:30 in Rome; 31 October 23:30 UTC is 1 November 00:30 in Rome.
         var firstOfOctober = await PaidAtAsync(s, new DateTime(2026, 9, 30, 22, 30, 0, DateTimeKind.Utc));
         var lastOfOctober = await PaidAtAsync(s, new DateTime(2026, 10, 31, 22, 59, 0, DateTimeKind.Utc));
         var firstOfNovember = await PaidAtAsync(s, new DateTime(2026, 10, 31, 23, 30, 0, DateTimeKind.Utc));
         var lastOfSeptember = await PaidAtAsync(s, new DateTime(2026, 9, 30, 21, 30, 0, DateTimeKind.Utc));
-        s.Clock.Advance(TimeSpan.FromDays(40)); // the export is asked in November
+        s.Clock.Advance(TimeSpan.FromDays(40));
 
         var october = await Admin(s).ExportCommissionsAsync(2026, 10);
         var november = await Admin(s).ExportCommissionsAsync(2026, 11);
@@ -393,7 +384,7 @@ public class SupplierPaymentAdminServiceTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var opened = await PaidAtAsync(s, new DateTime(2026, 9, 20, 10, 0, 0, DateTimeKind.Utc));
-        await s.Payments.RefundAsync(opened.PaymentId, 1_500, null, AdminId); // 8 October
+        await s.Payments.RefundAsync(opened.PaymentId, 1_500, null, AdminId);
 
         var october = await Admin(s).ExportCommissionsAsync(2026, 10);
         var september = await Admin(s).ExportCommissionsAsync(2026, 9);
@@ -403,7 +394,6 @@ public class SupplierPaymentAdminServiceTests
         Assert.Equal(new DateOnly(2026, 10, 8), refund.Date);
         Assert.Equal(opened.PaymentId, refund.PaymentId);
         Assert.Equal((-1_500L, -150L, -1_350L, 10m), (refund.GrossCents, refund.CommissionCents, refund.NetCents, refund.CommissionPercent));
-        // The payment itself belongs to the month it was paid in.
         var payment = Assert.Single(september.Rows);
         Assert.Equal(CommissionExportRowType.Payment, payment.Type);
         Assert.Equal(6_000, payment.GrossCents);
@@ -464,7 +454,7 @@ public class SupplierPaymentAdminServiceTests
     }
 
     [Theory]
-    [InlineData(2026, 11)] // the future
+    [InlineData(2026, 11)]
     [InlineData(2027, 1)]
     [InlineData(2026, 0)]
     [InlineData(2026, 13)]

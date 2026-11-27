@@ -6,10 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>
-/// SP-BKP: the emails and pushes of the backup suppliers render in both languages with every argument in place, and the ones that go to a
-/// supplier name the comune, never the property or the host's words (decision D9: the supplier learns them with the take).
-/// </summary>
 public class ServiceRequestBackupEmailTests
 {
     private const string InboxUrl = "https://app.casazen.test/app/supplier/inbox";
@@ -51,7 +47,6 @@ public class ServiceRequestBackupEmailTests
         var english = EmailTemplates.ServiceRequestBackupInvited(
             CultureInfo.GetCultureInfo("en"), "Alfa Srl", ServiceCategories.Cleaning, "Bari", InboxUrl, Due);
 
-        // 30/10/2026 11:00 in Rome (summer time ended on the 25th: winter time, UTC+1).
         Assert.Contains("fornitore di riserva", italian.HtmlBody);
         Assert.Contains("solo se quel fornitore non accetta", italian.HtmlBody);
         Assert.Contains("30/10/2026 11:00", italian.HtmlBody);
@@ -99,7 +94,6 @@ public class ServiceRequestBackupEmailTests
             Assert.False(string.IsNullOrWhiteSpace(push.Body));
             Assert.DoesNotContain("{", push.Title + push.Body);
         });
-        // A push to a supplier carries the comune and never the property.
         Assert.All(pushes.Take(4), push => Assert.DoesNotContain(PropertyName, push.Title + push.Body));
         Assert.All(pushes.Take(4), push => Assert.Contains("Bari", push.Body));
     }

@@ -71,7 +71,6 @@ public class ItalianPortalTouristTaxTests
         Assert.Empty(ShippedItalianTouristTax().PlatformCollected);
         Assert.Equal([BookingSource.Airbnb], builder.PlatformCollectedChannelsOf(new OrgFiscalIssuerProfile { CountryCode = "CH" }));
 
-        // Every portal: the tax is billed (the host collects it at the property), the money is the portal's.
         var rule = Rule("IT", DocumentRegime.VatOrdinary);
         var channels = new[] { BookingSource.Airbnb, BookingSource.BookingCom, BookingSource.Expedia, BookingSource.Vrbo, BookingSource.OtherChannel };
         var bookings = new List<Guid>();
@@ -85,7 +84,6 @@ public class ItalianPortalTouristTaxTests
             Assert.Equal("Soggiorno di 3 notti", Assert.Single(built.Lines, l => l.LineType == FiscalLineType.Accommodation).Description);
         }
 
-        // The document of one of them: 450.00 through the portal, 12.00 to collect at the property, in the API and in the PDF.
         var service = ServiceOf(db);
         var draft = await service.CreateDraftAsync(bookings[1], "auth0|host");
         Assert.Equal(462.00m, draft.Total);
@@ -97,7 +95,6 @@ public class ItalianPortalTouristTaxTests
         Assert.Contains("una ricevuta separata e numerata", italian, StringComparison.Ordinal);
         Assert.DoesNotContain("incassata dal portale", italian, StringComparison.Ordinal);
 
-        // The line of the tax says «da pagare in struttura» (the cell is followed by the next one), never «riscossa» nor «da riscuotere»: «imposta» throughout.
         Assert.Contains("Imposta di soggiorno da pagare in struttura\n", italian, StringComparison.Ordinal);
         Assert.DoesNotContain("riscossa per conto del comune", italian, StringComparison.Ordinal);
         Assert.DoesNotContain("da riscuotere", italian, StringComparison.Ordinal);
@@ -128,7 +125,6 @@ public class ItalianPortalTouristTaxTests
         var bookingCom = await AddBookingAsync(db, property, BookingSource.BookingCom, basePrice: 450m, touristTax: 12m, companyCollect: true);
         var service = ServiceOf(db);
 
-        // The organization declares that Airbnb collects it: no tax line, 450.00 paid through the portal in full, and the document says so; Booking.com, not on the list, is «da pagare in struttura».
         profile.ConfirmPlatformCollectedTouristTaxChannels([BookingSource.Airbnb]);
         await db.SaveChangesAsync();
         var declared = await service.CreateDraftAsync(airbnb, "auth0|host");
@@ -151,14 +147,12 @@ public class ItalianPortalTouristTaxTests
         await db.SaveChangesAsync();
         Assert.Equal(new PortalCollectionSplit(450.00m, 12.00m), FiscalDocumentPortalCollection.SplitOf(await withDefault.RefreshDraftAsync(declared.Id)));
 
-        // The host saved nothing: the default of the channel applies (and is never copied into the profile).
         profile.PlatformCollectedTouristTaxChannelsJson = null;
         await db.SaveChangesAsync();
         var byDefault = await withDefault.RefreshDraftAsync(declared.Id);
         Assert.DoesNotContain(byDefault.Lines, l => l.LineType == FiscalLineType.TouristTax);
         Assert.Null((await db.OrgFiscalIssuerProfiles.AsNoTracking().SingleAsync()).PlatformCollectedTouristTaxChannelsJson);
 
-        // The record of the stay (E25) is the strongest: the collector the host declared, and the one of the calculation it confirmed, say the portal collected it though the organization's rule says «at the property».
         var declaredChannel = await AddBookingAsync(db, property, BookingSource.BookingCom, basePrice: 450m, touristTax: 12m, companyCollect: true);
         var confirmedChannel = await AddBookingAsync(db, property, BookingSource.Expedia, basePrice: 450m, touristTax: 12m, companyCollect: true);
         db.StayTouristTaxes.Add(Record(declaredChannel, confirmedAt: null, total: 0m, declared: TouristTaxCollector.Channel, collector: null));
@@ -173,30 +167,23 @@ public class ItalianPortalTouristTaxTests
             Assert.Contains("Imposta di soggiorno incassata dal portale", TextOf(await plain.PdfContentAsync(recorded.Id, "it")), StringComparison.Ordinal);
         }
 
-        // ...and the other way round: the organization says Airbnb collects it, the host declared that it collected this stay's tax itself: the record wins, the tax is billed.
         profile.ConfirmPlatformCollectedTouristTaxChannels([BookingSource.Airbnb]);
         var airbnbPaidHere = await AddBookingAsync(db, property, BookingSource.Airbnb, basePrice: 450m, touristTax: 12m, companyCollect: true);
         db.StayTouristTaxes.Add(Record(airbnbPaidHere, confirmedAt: null, total: 0m, declared: TouristTaxCollector.Host, collector: null));
         await db.SaveChangesAsync();
         Assert.Equal(new PortalCollectionSplit(450.00m, 12.00m), FiscalDocumentPortalCollection.SplitOf(await plain.CreateDraftAsync(airbnbPaidHere, "auth0|host")));
 
-        // The rule of the comune, from an official source, is as strong: a portal that collects in Roma has no line.
         db.TouristTaxChannelRules.Add(new TouristTaxChannelRule { Channel = BookingSource.Vrbo, IstatCode = IstatRoma, Collector = TouristTaxCollector.Channel, SourceUrl = "https://example.com/vrbo" });
         var vrbo = await AddBookingAsync(db, property, BookingSource.Vrbo, basePrice: 450m, touristTax: 12m, companyCollect: true);
         await db.SaveChangesAsync();
         Assert.DoesNotContain((await plain.CreateDraftAsync(vrbo, "auth0|host")).Lines, l => l.LineType == FiscalLineType.TouristTax);
 
-        // No amount known (the portal reported none, nothing confirmed): nothing is billed and nothing is said of the tax, never a figure made up.
         var noAmount = await AddBookingAsync(db, property, BookingSource.Airbnb, basePrice: 450m, touristTax: 0m, companyCollect: true);
         var quiet = await plain.CreateDraftAsync(noAmount, "auth0|host");
         Assert.Equal(450.00m, quiet.Total);
         Assert.Equal("Soggiorno di 3 notti", Assert.Single(quiet.Lines, l => l.LineType == FiscalLineType.Accommodation).Description);
     }
 
-    /// <summary>
-    /// The order of the decision, strongest first (pure): not a channel booking (the host), the rule of the comune, the host's declaration, the collector of the confirmed calculation, the organization's list,
-    /// and last the default, the host at the property; nothing is ever «unknown». A record contradicts the rule of the organization only when it says the opposite for a channel.
-    /// </summary>
     [Fact]
     public void ItalianPortalTouristTax_Decide_FollowsTheOrderOfTheDecision()
     {
@@ -204,7 +191,6 @@ public class ItalianPortalTouristTaxTests
         var channelRule = new TouristTaxChannelRule { Channel = BookingSource.Airbnb, IstatCode = IstatRoma, Collector = TouristTaxCollector.Channel, SourceUrl = "https://example.com/airbnb" };
         var hostRule = new TouristTaxChannelRule { Channel = BookingSource.Airbnb, IstatCode = IstatRoma, Collector = TouristTaxCollector.Host, SourceUrl = "https://example.com/airbnb" };
 
-        // Nothing says the portal collects it: the host, by default (every portal, the unknown ones too).
         Assert.Equal(
             new ItalianTouristTaxDecision(TouristTaxCollector.Host, ItalianTouristTaxOrigin.Default),
             ItalianPortalTouristTax.Decide(BookingSource.BookingCom, null, null, null, []));
@@ -212,7 +198,6 @@ public class ItalianPortalTouristTaxTests
             new ItalianTouristTaxDecision(TouristTaxCollector.Host, ItalianTouristTaxOrigin.NotAChannelBooking),
             ItalianPortalTouristTax.Decide(BookingSource.Direct, channelRule, TouristTaxCollector.Channel, TouristTaxCollector.Channel, [BookingSource.Direct]));
 
-        // The organization's list, then the stronger sources over it.
         Assert.Equal(
             new ItalianTouristTaxDecision(TouristTaxCollector.Channel, ItalianTouristTaxOrigin.Organization),
             ItalianPortalTouristTax.Decide(BookingSource.Airbnb, null, null, null, airbnbList));
@@ -250,7 +235,6 @@ public class ItalianPortalTouristTaxTests
         Assert.True(ItalianPortalTouristTax.Contradicts(BookingSource.Airbnb, TouristTaxCollector.Host, [], milanoAirbnb, ItalianPortalProposals.MilanoIstat));
         Assert.False(ItalianPortalTouristTax.Contradicts(BookingSource.Airbnb, TouristTaxCollector.Host, [], milanoAirbnb, "013075"));
 
-        // A record contradicts the rule of the organization only by saying the opposite, for a channel.
         Assert.True(ItalianPortalTouristTax.Contradicts(BookingSource.BookingCom, TouristTaxCollector.Channel, []));
         Assert.True(ItalianPortalTouristTax.Contradicts(BookingSource.Airbnb, TouristTaxCollector.Host, airbnbList));
         Assert.False(ItalianPortalTouristTax.Contradicts(BookingSource.Airbnb, TouristTaxCollector.Channel, airbnbList));
@@ -276,7 +260,6 @@ public class ItalianPortalTouristTaxTests
             await AddPropertyAsync(seed, IstatRoma);
             await AddPropertyAsync(seed, null);
 
-            // Another organization, with a property in Roma only: it never sees the comuni of the first.
             await AddPropertyAsync(seed, IstatRoma, orgId: OtherOrgId);
         }
 
@@ -294,7 +277,6 @@ public class ItalianPortalTouristTaxTests
         Assert.Empty(ItalianPortalProposals.For([IstatRoma, null, " ", "999999"]));
         Assert.Equal(["Milano"], ItalianPortalProposals.For([" 015146 "]).Select(p => p.Comune));
 
-        // The members as the API writes them, the names the frontend reads: the proposals and the hint next to the default of the channel.
         using (var json = JsonDocument.Parse(JsonSerializer.Serialize(BillingSetupDto.From(await service.GetAsync(OrgId), orgWide: true), new JsonSerializerOptions(JsonSerializerDefaults.Web))))
         {
             var values = json.RootElement.GetProperty("sections").EnumerateArray().Single(s => s.GetProperty("section").GetString() == "touristTax").GetProperty("values");
@@ -306,7 +288,6 @@ public class ItalianPortalTouristTaxTests
             Assert.Equal(JsonValueKind.Array, values.GetProperty("defaultPlatformCollectedTouristTaxChannels").ValueKind);
         }
 
-        // Reading proposes, never applies: nothing is saved, no portal is taken to collect the tax, the document still says «da pagare in struttura».
         Assert.Equal(false, section.Values["confirmed"]);
         Assert.Null(section.Values[BillingSetupFields.PlatformCollectedTouristTaxChannels]);
         Assert.Empty(Assert.IsAssignableFrom<IReadOnlyList<string>>(section.Values[BillingSetupService.DefaultPlatformCollectedTouristTaxChannels]));
@@ -318,34 +299,28 @@ public class ItalianPortalTouristTaxTests
         var built = await builder.BuildAsync(airbnb, Rule("IT", DocumentRegime.VatOrdinary), builder.PlatformCollectedChannelsOf(profile));
         Assert.Equal(12m, TaxOf(built));
 
-        // The organization with only Roma sees none, though another organization has properties in Milano and Firenze.
         await using (var other = NewDb(databaseName, new FixedTenant(OtherOrgId)))
         {
             Assert.Empty((await new ItalianTouristTaxSetupService(other, new FakeTimeProvider(Now)).ReadAsync(OtherOrgId, [], organizationConfirmed: false)).Proposals);
 
-            // Not even by naming the other organization: the tenant filter of the caller and the explicit predicate agree.
             Assert.Empty((await new ItalianTouristTaxSetupService(other, new FakeTimeProvider(Now)).ReadAsync(OrgId, [], organizationConfirmed: false)).Proposals);
         }
 
-        // What the organization saved stands: its list is never proposed over, and the next reads and saves keep it as it is.
         var saved = await service.PutSectionAsync(OrgId, "touristTax", new BillingSetupPayload { PlatformCollectedTouristTaxChannels = ["BookingCom"] }, null);
         Assert.Equal(["BookingCom"], Assert.IsAssignableFrom<IReadOnlyList<string>>(saved.Values[BillingSetupFields.PlatformCollectedTouristTaxChannels]));
         Assert.Empty(Assert.IsAssignableFrom<IReadOnlyList<ItalianPortalProposal>>(saved.Values[ItalianTouristTaxSetupKeys.Proposals]));
         Assert.Empty(Assert.IsAssignableFrom<IReadOnlyList<ItalianPortalProposal>>((await TouristTaxSectionAsync(service)).Values[ItalianTouristTaxSetupKeys.Proposals]));
         Assert.Equal("""["BookingCom"]""", (await StoredProfileAsync(databaseName)).PlatformCollectedTouristTaxChannelsJson);
 
-        // An empty list is an answer too («no portal collects it»): no proposal over it either, and it is kept.
         await service.PutSectionAsync(OrgId, "touristTax", new BillingSetupPayload { PlatformCollectedTouristTaxChannels = [] }, null);
         Assert.Empty(Assert.IsAssignableFrom<IReadOnlyList<ItalianPortalProposal>>((await TouristTaxSectionAsync(service)).Values[ItalianTouristTaxSetupKeys.Proposals]));
         Assert.Equal("[]", (await StoredProfileAsync(databaseName)).PlatformCollectedTouristTaxChannelsJson);
 
-        // A Swiss issuer has no proposal and no hint: the members are not there at all.
         await service.PutSectionAsync(OrgId, "issuer", new BillingSetupPayload { CountryCode = "CH" }, null);
         var swiss = await TouristTaxSectionAsync(service);
         Assert.False(swiss.Values.ContainsKey(ItalianTouristTaxSetupKeys.Proposals));
         Assert.False(swiss.Values.ContainsKey(ItalianTouristTaxSetupKeys.ChannelDataConflict));
 
-        // A caller who reaches only some of the properties may read the setup, not the members that sum up all of them.
         await service.PutSectionAsync(OrgId, "issuer", new BillingSetupPayload { CountryCode = "IT" }, null);
         var setup = await service.GetAsync(OrgId);
         var wholeOrg = Assert.Single(BillingSetupDto.From(setup, orgWide: true).Sections, s => s.Section == BillingSetupSections.TouristTax);
@@ -357,10 +332,6 @@ public class ItalianPortalTouristTaxTests
         Assert.Contains(BillingSetupService.DefaultPlatformCollectedTouristTaxChannels, partial.Values.Keys);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule. The proposals and the hint sum up all the properties of the organization: the manager of the whole organization gets them in the answer of <c>GET api/billing-setup</c>,
-    /// a collaborator who reaches only some of the properties reads the same setup without them (it may read it, and cannot change it), and both read the same default of the channel.
-    /// </summary>
     [Fact]
     public async Task ItalianSetup_OrgWideMembers_AreGivenOnlyToACallerWhoReachesTheWholeOrganization_Test()
     {
@@ -392,11 +363,6 @@ public class ItalianPortalTouristTaxTests
         Assert.Contains("confirmed", staff.Keys);
     }
 
-    /// <summary>
-    /// The data-quality hint: the record of a recent active stay of a channel (the collector the host declared, or the one of the calculation it confirmed) says the opposite of the organization's rule, a tax
-    /// recorded as collected by the portal while the rule says «at the property», or the opposite. It looks at nothing else: no record, the same answer, a direct booking, a cancelled stay, a stay that ended
-    /// more than twelve months ago and the stays of another organization make no hint; and reading it changes nothing.
-    /// </summary>
     [Fact]
     public async Task ItalianSetup_FlagsRecordsOfTheStaysThatContradictTheRuleOfTheOrganization()
     {
@@ -405,7 +371,6 @@ public class ItalianPortalTouristTaxTests
         {
             await SeedItalianOrgAsync(seed);
 
-            // The stay of another organization, whose record contradicts the rule «at the property» too: it is not this organization's.
             var otherProperty = await AddPropertyAsync(seed, IstatRoma, orgId: OtherOrgId);
             var otherStay = await AddBookingAsync(seed, otherProperty, BookingSource.BookingCom, basePrice: 450m, touristTax: 12m, companyCollect: true, orgId: OtherOrgId);
             seed.StayTouristTaxes.Add(Record(otherStay, confirmedAt: null, total: 0m, declared: TouristTaxCollector.Channel, collector: null, orgId: OtherOrgId));
@@ -418,14 +383,12 @@ public class ItalianPortalTouristTaxTests
 
         async Task<bool> Conflict() => (bool)(await TouristTaxSectionAsync(service)).Values[ItalianTouristTaxSetupKeys.ChannelDataConflict]!;
 
-        // Nothing recorded, or a record that agrees with the rule («at the property»): no hint.
         Assert.False(await Conflict());
         var agrees = await AddBookingAsync(db, property, BookingSource.BookingCom, basePrice: 450m, touristTax: 12m, companyCollect: true);
         db.StayTouristTaxes.Add(Record(agrees, confirmedAt: null, total: 0m, declared: TouristTaxCollector.Host, collector: null));
         await db.SaveChangesAsync();
         Assert.False(await Conflict());
 
-        // What does not count: a stay that ended a year and more ago, a cancelled stay, a direct booking, another organization's stay.
         var old = await AddBookingAsync(db, property, BookingSource.BookingCom, basePrice: 450m, touristTax: 12m, companyCollect: true, checkIn: new DateTime(2025, 6, 7), checkOut: new DateTime(2025, 6, 10));
         var cancelled = await AddBookingAsync(db, property, BookingSource.BookingCom, basePrice: 450m, touristTax: 12m, companyCollect: true, status: BookingStatus.Cancelled);
         var direct = await AddBookingAsync(db, property, BookingSource.Direct, basePrice: 450m, touristTax: 12m, companyCollect: false);
@@ -436,25 +399,20 @@ public class ItalianPortalTouristTaxTests
 
         var storedBefore = (await StoredProfileAsync(databaseName)).PlatformCollectedTouristTaxChannelsJson;
 
-        // A recent stay whose record says the portal collected the tax, while the rule says «at the property»: the hint.
         var recent = await AddBookingAsync(db, property, BookingSource.BookingCom, basePrice: 450m, touristTax: 12m, companyCollect: true);
         db.StayTouristTaxes.Add(Record(recent, confirmedAt: Now.UtcDateTime, total: 12m, declared: null, collector: TouristTaxCollector.Channel));
         await db.SaveChangesAsync();
         Assert.True(await Conflict());
 
-        // The organization says Booking.com collects it: the same record now agrees with it, and the declaration «the host collected» of the first stay is what contradicts.
         await service.PutSectionAsync(OrgId, "touristTax", new BillingSetupPayload { PlatformCollectedTouristTaxChannels = ["BookingCom"] }, null);
         Assert.True(await Conflict());
         db.StayTouristTaxes.Remove(await db.StayTouristTaxes.SingleAsync(t => t.BookingId == agrees));
         await db.SaveChangesAsync();
         Assert.False(await Conflict());
 
-        // Reading it never writes: the profile holds what the host saved and nothing else.
         Assert.Null(storedBefore);
         Assert.Equal("""["BookingCom"]""", (await StoredProfileAsync(databaseName)).PlatformCollectedTouristTaxChannelsJson);
 
-        // A portal the organization confirmed for the comune of the property is its rule there: the record «the portal collected it» agrees with it and is no hint (and it still is for the same
-        // portal when the organization has no rule for that comune).
         await service.PutSectionAsync(OrgId, "touristTax", new BillingSetupPayload { PlatformCollectedTouristTaxChannels = [] }, null);
         Assert.True(await Conflict());
         var setup = new ItalianTouristTaxSetupService(db, new FakeTimeProvider(Now));
@@ -486,7 +444,6 @@ public class ItalianPortalTouristTaxTests
         var profile = await db.OrgFiscalIssuerProfiles.SingleAsync();
         Assert.Equal([BookingSource.Airbnb], builder.PlatformCollectedChannelsOf(profile));
 
-        // Airbnb collects it (the Swiss default): no tax line, the plain line of the stay, «Pagata tramite il portale» for the whole document.
         var collected = await service.CreateDraftAsync(airbnb, "auth0|host");
         Assert.DoesNotContain(collected.Lines, l => l.LineType == FiscalLineType.TouristTax);
         Assert.Equal("Soggiorno di 3 notti", Assert.Single(collected.Lines, l => l.LineType == FiscalLineType.Accommodation).Description);
@@ -495,7 +452,6 @@ public class ItalianPortalTouristTaxTests
         Assert.Contains("Pagata tramite il portale", collectedText, StringComparison.Ordinal);
         AssertNothingItalian(collectedText);
 
-        // Booking.com does not: the tax is billed and to collect at the property, in the words of the Swiss layout, with no receipt of the Italian one.
         var toCollect = await service.CreateDraftAsync(bookingCom, "auth0|host");
         Assert.Equal(new PortalCollectionSplit(450.00m, 12.00m), FiscalDocumentPortalCollection.SplitOf(toCollect));
         var toCollectText = TextOf(await service.PdfContentAsync(toCollect.Id, "it"));
@@ -505,7 +461,6 @@ public class ItalianPortalTouristTaxTests
         AssertNothingItalian(toCollectText);
         Assert.Contains("Tourist tax to be collected at the property: CHF 12.00", TextOf(await service.PdfContentAsync(toCollect.Id, "en")), StringComparison.Ordinal);
 
-        // The list the Swiss issuer confirmed is the one the documents follow, the Swiss default is not.
         profile.ConfirmPlatformCollectedTouristTaxChannels([BookingSource.BookingCom]);
         await db.SaveChangesAsync();
         Assert.Equal([BookingSource.BookingCom], builder.PlatformCollectedChannelsOf(profile));
@@ -531,7 +486,6 @@ public class ItalianPortalTouristTaxTests
 
         Assert.Contains(statements, s => s.Contains("FROM \"TouristTaxChannelRules\"", StringComparison.Ordinal));
 
-        // The portals the organization confirmed for one comune are read from its profile (the line builder, and the setup): the one column, no other table.
         Assert.Contains(statements, s => s.Contains("FROM \"OrgFiscalIssuerProfiles\"", StringComparison.Ordinal) && s.Contains("\"PlatformCollectedTouristTaxChannels\"", StringComparison.Ordinal));
         Assert.Contains(statements, s => s.Contains("FROM \"StayTouristTaxes\"", StringComparison.Ordinal) && s.Contains("CASE", StringComparison.Ordinal));
         Assert.Contains(statements, s => s.Contains("DISTINCT", StringComparison.Ordinal) && s.Contains("\"ComuneIstatCode\"", StringComparison.Ordinal));
@@ -541,10 +495,6 @@ public class ItalianPortalTouristTaxTests
                  && s.Contains("\"DeclaredCollector\"", StringComparison.Ordinal));
     }
 
-    /// <summary>
-    /// The one row the probe answers the select of the stay with (the facts of an Airbnb booking in Roma), by the columns the statement asks for, in their order: what lets the line builder go on to the
-    /// queries of the tourist tax that follow it.
-    /// </summary>
     private static DataTable? StayRowOf(string sql)
     {
         var text = sql.TrimStart();
@@ -579,7 +529,6 @@ public class ItalianPortalTouristTaxTests
         return table;
     }
 
-    /// <summary>The Swiss document says nothing of what only the Italian one says.</summary>
     private static void AssertNothingItalian(string text)
     {
         Assert.DoesNotContain("incassata dal portale", text, StringComparison.Ordinal);
@@ -595,7 +544,6 @@ public class ItalianPortalTouristTaxTests
         Assert.Empty(ItalianTouristTaxOptionsValidator.Problems(new ItalianTouristTaxOptions { PlatformCollected = [BookingSource.Airbnb, BookingSource.BookingCom] }));
         Assert.Empty(ShippedItalianTouristTax().PlatformCollected);
 
-        // A channel that is not a portal stops the application, with the key in the message.
         Assert.Single(ItalianTouristTaxOptionsValidator.Problems(new ItalianTouristTaxOptions { PlatformCollected = [BookingSource.Direct] }));
         Assert.Single(ItalianTouristTaxOptionsValidator.Problems(new ItalianTouristTaxOptions { PlatformCollected = [(BookingSource)99] }));
         var failure = new ItalianTouristTaxOptionsValidator().Validate(null, new ItalianTouristTaxOptions { PlatformCollected = [BookingSource.Manual] });
@@ -626,12 +574,10 @@ public class ItalianPortalTouristTaxTests
 
         async Task<PortalCollectionSplit?> SplitOfAsync(Guid booking) => FiscalDocumentPortalCollection.SplitOf(await service.CreateDraftAsync(booking, "auth0|host"));
 
-        // Nothing confirmed: «da pagare in struttura» everywhere.
         Assert.Equal(toPay, await SplitOfAsync(airbnbMilano));
         Assert.Equal(toPay, await SplitOfAsync(airbnbComo));
         Assert.Equal(toPay, await SplitOfAsync(bookingMilano));
 
-        // The proposal for Milano, confirmed by a person: only the stays of Milano, only Airbnb.
         await setup.ConfirmComuniAsync(OrgId, [new PortalComune(BookingSource.Airbnb, ItalianPortalProposals.MilanoIstat)], "auth0|manager-a");
         var profile = await db.OrgFiscalIssuerProfiles.SingleAsync();
         Assert.False(profile.PlatformCollectedTouristTaxChannelsConfirmed);
@@ -646,7 +592,6 @@ public class ItalianPortalTouristTaxTests
         Assert.Equal(toPay, await SplitOfAsync(airbnbComo));
         Assert.Equal(toPay, await SplitOfAsync(bookingMilano));
 
-        // The list for every comune is another answer: saving it keeps the confirmation, and a confirmation never answers it.
         profile.ConfirmPlatformCollectedTouristTaxChannels([BookingSource.BookingCom]);
         await db.SaveChangesAsync();
         Assert.Equal([new PortalComune(BookingSource.Airbnb, ItalianPortalProposals.MilanoIstat)], profile.PortalTouristTaxComuni);
@@ -654,13 +599,11 @@ public class ItalianPortalTouristTaxTests
         Assert.Null(FiscalDocumentPortalCollection.SplitOf(await service.CreateDraftAsync(bookingMilano, "auth0|host")));
         Assert.Equal(toPay, await SplitOfAsync(airbnbComo));
 
-        // An empty confirmation takes every comune away (never «every comune») and leaves the list for every comune as it was, the plain array it always was.
         await setup.ConfirmComuniAsync(OrgId, [], "auth0|manager-a");
         Assert.Empty(profile.PortalTouristTaxComuni);
         Assert.Equal("""["BookingCom"]""", (await StoredProfileAsync(db)).PlatformCollectedTouristTaxChannelsJson);
         Assert.Equal(toPay, await SplitOfAsync(airbnbMilano));
 
-        // What is refused: a channel that is not a portal, a code that is not six digits, too many pairs.
         async Task<string> RefusalOfAsync(IReadOnlyList<PortalComune> comuni) =>
             (await Assert.ThrowsAsync<DomainRuleException>(() => setup.ConfirmComuniAsync(OrgId, comuni, null))).Code;
 
@@ -672,7 +615,6 @@ public class ItalianPortalTouristTaxTests
             await RefusalOfAsync([.. Enumerable.Range(0, ItalianTouristTaxSetupService.MaxConfirmedComuni + 1).Select(n => new PortalComune(BookingSource.Airbnb, n.ToString("000000", System.Globalization.CultureInfo.InvariantCulture)))]));
         Assert.Equal("""["BookingCom"]""", (await StoredProfileAsync(db)).PlatformCollectedTouristTaxChannelsJson);
 
-        // No profile yet (the issuer step was never saved): nothing to confirm on.
         await using (var empty = NewDb())
         {
             var refusal = await Assert.ThrowsAsync<DomainRuleException>(
@@ -680,7 +622,6 @@ public class ItalianPortalTouristTaxTests
             Assert.Equal(DocumentIssuerErrorCodes.ProfileIncomplete, refusal.Code);
         }
 
-        // A Swiss issuer has no comune to confirm.
         await using var swiss = NewDb();
         await SeedSwissOrgAsync(swiss);
         var swissRefusal = await Assert.ThrowsAsync<DomainRuleException>(
@@ -689,10 +630,6 @@ public class ItalianPortalTouristTaxTests
         Assert.Null((await swiss.OrgFiscalIssuerProfiles.AsNoTracking().SingleAsync()).PlatformCollectedTouristTaxChannelsJson);
     }
 
-    /// <summary>
-    /// The column that holds the tourist tax portals of an issuer stays the plain array of channel names it always was, byte for byte, until the issuer confirms a portal for one comune: then it is an
-    /// object with the list for every comune (when it was answered, an empty list included) and the confirmations apart, and each answer is changed without touching the other.
-    /// </summary>
     [Fact]
     public void PlatformCollectedColumn_KeepsThePlainArray_AndHoldsTheComuneConfirmationsApart()
     {
@@ -701,21 +638,18 @@ public class ItalianPortalTouristTaxTests
         Assert.False(profile.PlatformCollectedTouristTaxChannelsConfirmed);
         Assert.Null(profile.PlatformCollectedTouristTaxChannelsJson);
 
-        // The plain array, with or without a confirmation of nothing.
         profile.ConfirmPlatformCollectedTouristTaxChannels([BookingSource.BookingCom]);
         Assert.Equal("""["BookingCom"]""", profile.PlatformCollectedTouristTaxChannelsJson);
         profile.ConfirmPortalTouristTaxComuni([]);
         Assert.Equal("""["BookingCom"]""", profile.PlatformCollectedTouristTaxChannelsJson);
         Assert.Empty(profile.PortalTouristTaxComuni);
 
-        // A confirmation for a comune: the object, the list for every comune is the same answer.
         profile.ConfirmPortalTouristTaxComuni([milano, milano]);
         Assert.Equal("""{"channels":["BookingCom"],"comuni":[{"channel":"Airbnb","comuneIstat":"015146"}]}""", profile.PlatformCollectedTouristTaxChannelsJson);
         Assert.True(profile.PlatformCollectedTouristTaxChannelsConfirmed);
         Assert.Equal([BookingSource.BookingCom], profile.PlatformCollectedTouristTaxChannels);
         Assert.Equal([milano], profile.PortalTouristTaxComuni);
 
-        // Saving the list for every comune (an empty one included) never takes the confirmation away; leaving it unconfirmed, as the setter always did, keeps it too.
         profile.ConfirmPlatformCollectedTouristTaxChannels([]);
         Assert.Equal("""{"channels":[],"comuni":[{"channel":"Airbnb","comuneIstat":"015146"}]}""", profile.PlatformCollectedTouristTaxChannelsJson);
         Assert.True(profile.PlatformCollectedTouristTaxChannelsConfirmed);
@@ -724,7 +658,6 @@ public class ItalianPortalTouristTaxTests
         Assert.False(profile.PlatformCollectedTouristTaxChannelsConfirmed);
         Assert.Equal([milano], profile.PortalTouristTaxComuni);
 
-        // Taking the confirmation away gives the column back as it was: nothing while the list was never answered, the plain array when it was.
         profile.ConfirmPortalTouristTaxComuni([]);
         Assert.Null(profile.PlatformCollectedTouristTaxChannelsJson);
         profile.ConfirmPlatformCollectedTouristTaxChannels([]);
@@ -733,7 +666,6 @@ public class ItalianPortalTouristTaxTests
         Assert.Equal("[]", profile.PlatformCollectedTouristTaxChannelsJson);
         Assert.True(profile.PlatformCollectedTouristTaxChannelsConfirmed);
 
-        // What cannot be read says no channel and no comune (and is stored, so confirmed, as it always was); an entry that is not a portal or six digits is skipped.
         var unreadable = new OrgFiscalIssuerProfile { PlatformCollectedTouristTaxChannelsJson = "not json" };
         Assert.True(unreadable.PlatformCollectedTouristTaxChannelsConfirmed);
         Assert.Empty(unreadable.PlatformCollectedTouristTaxChannels);
@@ -772,12 +704,10 @@ public class ItalianPortalTouristTaxTests
         async Task<BillingSetupSectionDto> ReadSectionAsync(BillingSetupController controller) =>
             Assert.Single(Assert.IsType<BillingSetupDto>(Assert.IsType<OkObjectResult>((await controller.Get(CancellationToken.None)).Result).Value).Sections, s => s.Section == BillingSetupSections.TouristTax);
 
-        // Both proposals are there, nothing is confirmed.
         var before = await ReadSectionAsync(manager);
         Assert.Equal(["Milano", "Firenze"], Assert.IsAssignableFrom<IReadOnlyList<ItalianPortalProposal>>(before.Values[ItalianTouristTaxSetupKeys.Proposals]).Select(p => p.Comune));
         Assert.Empty(Assert.IsAssignableFrom<IReadOnlyList<ItalianPortalConfirmation>>(before.Values[ItalianTouristTaxSetupKeys.ConfirmedComuni]));
 
-        // The manager confirms Milano: the proposal leaves, Firenze stays, the answer carries the confirmation and never the list for every comune.
         var request = new ConfirmPortalComuniRequest { Comuni = [new PortalComuneRequest { Channel = "Airbnb", ComuneIstat = ItalianPortalProposals.MilanoIstat }] };
         var saved = Assert.IsType<BillingSetupSectionDto>(Assert.IsType<OkObjectResult>((await manager.PutPortalComuni(request, CancellationToken.None)).Result).Value);
         Assert.Equal(new ItalianPortalConfirmation(ItalianPortalProposals.MilanoIstat, "Airbnb"), Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<ItalianPortalConfirmation>>(saved.Values[ItalianTouristTaxSetupKeys.ConfirmedComuni])));
@@ -786,21 +716,18 @@ public class ItalianPortalTouristTaxTests
         Assert.Equal(false, saved.Values["confirmed"]);
         Assert.Equal("""{"comuni":[{"channel":"Airbnb","comuneIstat":"015146"}]}""", (await StoredProfileAsync(databaseName)).PlatformCollectedTouristTaxChannelsJson);
 
-        // A caller who reaches only some of the properties may not confirm, and does not read the confirmation; nothing was changed by its try.
         var refused = await staff.PutPortalComuni(new ConfirmPortalComuniRequest { Comuni = [] }, CancellationToken.None);
         Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsAssignableFrom<ObjectResult>(refused.Result).StatusCode);
         var staffSection = await ReadSectionAsync(staff);
         Assert.DoesNotContain(ItalianTouristTaxSetupKeys.ConfirmedComuni, staffSection.Values.Keys);
         Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<ItalianPortalConfirmation>>((await ReadSectionAsync(manager)).Values[ItalianTouristTaxSetupKeys.ConfirmedComuni]));
 
-        // No list is a refusal, never «every comune»; a name that is not a portal is a refusal too.
         var missing = await Assert.ThrowsAsync<DomainRuleException>(() => manager.PutPortalComuni(new ConfirmPortalComuniRequest(), CancellationToken.None));
         Assert.Equal(DocumentIssuerErrorCodes.FieldInvalid, missing.Code);
         var unknown = await Assert.ThrowsAsync<DomainRuleException>(
             () => manager.PutPortalComuni(new ConfirmPortalComuniRequest { Comuni = [new PortalComuneRequest { Channel = "Nope", ComuneIstat = ItalianPortalProposals.MilanoIstat }] }, CancellationToken.None));
         Assert.Equal(DocumentIssuerErrorCodes.FieldInvalid, unknown.Code);
 
-        // The DTO answers fail-closed when nobody says the caller reaches the whole organization.
         var closed = Assert.Single(BillingSetupDto.From(await service.GetAsync(OrgId)).Sections, s => s.Section == BillingSetupSections.TouristTax);
         foreach (var key in BillingSetupSectionDto.OrgWideValues)
             Assert.DoesNotContain(key, closed.Values.Keys);
@@ -827,17 +754,14 @@ public class ItalianPortalTouristTaxTests
 
         static string TaxLineOf(FiscalDocument draft) => Assert.Single(draft.Lines, l => l.LineType == FiscalLineType.TouristTax).Description;
 
-        // The money is the portal's and the tax is the host's: «da pagare» in the stored line, in the API and in the PDF.
         var toPay = await service.CreateDraftAsync(portalCollects, "auth0|host");
         Assert.Equal("Imposta di soggiorno da pagare in struttura", TaxLineOf(toPay));
         Assert.Equal("Imposta di soggiorno da pagare in struttura", Assert.Single(FiscalDocumentDto.From((await service.GetAsync(toPay.Id))!).Lines, l => l.LineType == "TouristTax").Description);
         Assert.Contains("Imposta di soggiorno da pagare in struttura\n", TextOf(await service.PdfContentAsync(toPay.Id, "it")), StringComparison.Ordinal);
 
-        // The host collects everything from the guest, a direct booking: the tax is collected with the rest.
         Assert.Equal("Imposta di soggiorno riscossa per conto del comune", TaxLineOf(await service.CreateDraftAsync(hostCollects, "auth0|host")));
         Assert.Equal("Imposta di soggiorno riscossa per conto del comune", TaxLineOf(await service.CreateDraftAsync(direct, "auth0|host")));
 
-        // The stay records that the guest paid it at the property: all collected, so the line says what a collected tax says, and nothing is «da pagare».
         var record = Record(portalCollects, confirmedAt: null, total: 0m, declared: null, collector: null);
         record.CollectionStatus = TouristTaxCollectionStatus.PaidAtProperty;
         db.StayTouristTaxes.Add(record);
@@ -846,7 +770,6 @@ public class ItalianPortalTouristTaxTests
         Assert.Contains("Imposta di soggiorno riscossa per conto del comune", collected, StringComparison.Ordinal);
         Assert.DoesNotContain("in struttura", collected, StringComparison.Ordinal);
 
-        // A document made before stored «riscossa» for the same tax: while it is to collect the PDF says «da pagare», as before.
         record.CollectionStatus = TouristTaxCollectionStatus.ToCollect;
         var stored = await db.FiscalDocumentLines.SingleAsync(l => l.DocumentId == toPay.Id && l.LineType == FiscalLineType.TouristTax);
         stored.Description = "Imposta di soggiorno riscossa per conto del comune";
@@ -867,14 +790,12 @@ public class ItalianPortalTouristTaxTests
         await SeedItalianOrgAsync(db);
         var property = await AddPropertyAsync(db, IstatRoma);
 
-        // The reservation reported no tax when the document was issued: no line of tourist tax, as every document issued before the default.
         var booking = await AddBookingAsync(db, property, BookingSource.Airbnb, basePrice: 450m, touristTax: 0m, companyCollect: true, checkIn: new DateTime(2026, 11, 8), checkOut: new DateTime(2026, 11, 11));
         var service = ServiceOf(db, withIssuanceFlag: true);
         var issued = await service.IssueAsync((await service.CreateDraftAsync(booking, "auth0|host")).Id, confirm: true);
         Assert.Equal(FiscalDocumentStatus.Issued, issued.Status);
         Assert.DoesNotContain((await db.FiscalDocuments.Include(d => d.Lines).SingleAsync(d => d.Id == issued.Id)).Lines, l => l.LineType == FiscalLineType.TouristTax);
 
-        // Now the default bills it: the booking carries the tax of the reservation.
         var stay = await db.Bookings.SingleAsync(b => b.Id == booking);
         stay.TouristTax = 12m;
         await db.SaveChangesAsync();
@@ -882,14 +803,12 @@ public class ItalianPortalTouristTaxTests
         Assert.True(built.TouristTaxFromDefault);
         Assert.Equal(12m, TaxOf(built));
 
-        // The daily run and the event say nothing: no «To do», no credit note, no second document.
         var run = await service.ProcessDueDocumentsAsync(OrgId, limit: 50, lookbackDays: 60);
         Assert.Equal(0, run.ChangesTold);
         await service.ApplyBookingChangeAsync(booking, BookingChange.Modified);
         Assert.Empty(await db.InternalActivities.ToListAsync());
         Assert.Equal([issued.Id], await db.FiscalDocuments.Where(d => d.BookingId == booking).Select(d => d.Id).ToListAsync());
 
-        // A real change (the price) is corrected, and the new draft carries the line of the tax.
         stay.BasePrice = 500m;
         stay.TotalPrice = 512m;
         await db.SaveChangesAsync();
@@ -898,8 +817,6 @@ public class ItalianPortalTouristTaxTests
         Assert.Contains(documents, d => d.Kind == Casazen.Core.Entities.Enums.FiscalDocumentKind.CreditNote);
         Assert.Contains(documents, d => d.Status == FiscalDocumentStatus.Draft && d.Kind != Casazen.Core.Entities.Enums.FiscalDocumentKind.CreditNote && d.Lines.Any(l => l.LineType == FiscalLineType.TouristTax));
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private static decimal? TaxOf(GuestDocumentLines lines) => lines.Lines.SingleOrDefault(l => l.LineType == FiscalLineType.TouristTax)?.GrossAmount;
 
@@ -922,7 +839,6 @@ public class ItalianPortalTouristTaxTests
             NullLogger<DocumentIssuerService>.Instance);
     }
 
-    /// <summary>The billing setup over the real issuer service, the real line builder (Swiss default Airbnb, Italian default none) and the real reader of the Italian setup.</summary>
     private static BillingSetupService SetupOf(AppDbContext db)
     {
         var time = new FakeTimeProvider(Now);
@@ -935,7 +851,6 @@ public class ItalianPortalTouristTaxTests
             italianTouristTax: new ItalianTouristTaxSetupService(db, time));
     }
 
-    /// <summary>The controller of the billing setup for a caller (its org is <see cref="OrgId"/>; the reach comes from the real scope resolver, which knows the roles of the token).</summary>
     private static BillingSetupController ControllerOf(BillingSetupService service, ClaimsPrincipal user, IItalianTouristTaxSetup? italianSetup = null)
     {
         var resolver = new Mock<IOrgContextResolver>();
@@ -986,7 +901,6 @@ public class ItalianPortalTouristTaxTests
             featureFlags: withIssuanceFlag ? new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance) : null);
     }
 
-    /// <summary>The section <c>ItalianTouristTax</c> of <c>Casazen.Web/appsettings.json</c>, bound as the application binds it.</summary>
     private static ItalianTouristTaxOptions ShippedItalianTouristTax()
     {
         var directory = new DirectoryInfo(System.AppContext.BaseDirectory);

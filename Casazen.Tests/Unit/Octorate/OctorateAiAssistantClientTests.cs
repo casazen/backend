@@ -31,7 +31,6 @@ public class OctorateAiAssistantClientTests
         {
             await h.Client.SetThreadAiAssistantAsync("585492", "9001", false, CancellationToken.None);
 
-            // A repeat is the same call, with the same value: the operation sets, it does not toggle.
             await h.Client.SetThreadAiAssistantAsync("585492", "9001", false, CancellationToken.None);
             await h.Client.SetThreadAiAssistantAsync("585492", "9001", true, CancellationToken.None);
         }
@@ -101,7 +100,6 @@ public class OctorateAiAssistantClientTests
 
             Assert.IsType(expected, error);
 
-            // A refusal that has a type of its own is the refusal of the API, not the page of a license without the chat module.
             Assert.False(error is OctorateAuthException { IsChatNotLicensed: true });
         }
 
@@ -173,7 +171,6 @@ public class OctorateAiAssistantClientTests
         public OctorateApiClient Client { get; }
     }
 
-    /// <summary>Answers each call as <see cref="Respond"/> says, and keeps what was called.</summary>
     private sealed class StubHandler : HttpMessageHandler
     {
         public Func<HttpRequestMessage, (HttpStatusCode Status, string Body)> Respond { get; set; } = _ => (HttpStatusCode.OK, "{}");

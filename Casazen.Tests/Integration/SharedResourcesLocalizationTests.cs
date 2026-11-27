@@ -9,16 +9,11 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// Guards the backend localization setup (R-07, A9-08): the resources must be found with the application's own
-/// localization configuration, every key must exist in Italian and English, and no lookup may fall back to the raw key.
-/// </summary>
 public class SharedResourcesLocalizationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private static readonly Regex[] MessageKeyPatterns =
     [
         new(@"new\s+Domain(?:Rule|Conflict)Exception\(\s*""[^""]*""\s*,\s*""(?<key>[^""]+)""", RegexOptions.Compiled),
-        // AM-02: the 403 and 410 exceptions, and a code that is a constant (OrgInvitationErrors.Expired, "InvitationExpired").
         new(@"new\s+Domain(?:Rule|Conflict|Forbidden|Gone)Exception\(\s*[A-Za-z_][A-Za-z0-9_.]*\s*,\s*""(?<key>[^""]+)""", RegexOptions.Compiled),
         new(@"new\s+Domain(?:Forbidden|Gone)Exception\(\s*""[^""]*""\s*,\s*""(?<key>[^""]+)""", RegexOptions.Compiled),
         new(@"\bGone\(\s*[A-Za-z_][A-Za-z0-9_.]*\s*,\s*""(?<key>[^""]+)""", RegexOptions.Compiled),
@@ -105,11 +100,6 @@ public class SharedResourcesLocalizationTests : IClassFixture<CasazenWebApplicat
         Assert.True(missing.Count == 0, $"Message keys missing from SharedResources.resx: {string.Join(", ", missing)}");
     }
 
-    /// <summary>
-    /// Covers AC-NF28-1, AC-NF28-2, AC-NF28-3, AC-NF28-6: Backend localization completeness audit.
-    /// Verifies that all SharedResources keys exist in both Italian (default) and English, with no missing translations.
-    /// This test provides traceability for the localization audit requirement (E14/F02/US01/T01).
-    /// </summary>
     [Fact]
     public void BackendLocalizationAudit_AllSharedResourcesKeysExistInBothLanguages()
     {

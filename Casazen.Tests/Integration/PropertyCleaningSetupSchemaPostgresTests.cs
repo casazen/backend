@@ -63,7 +63,6 @@ public class PropertyCleaningSetupSchemaPostgresTests : IAsyncLifetime
         return setup;
     }
 
-    /// <summary>The error PostgreSQL answers to a save of <paramref name="rows"/>: they are refused, and nothing is saved.</summary>
     private async Task<PostgresException> RefusedAsync(params object[] rows)
     {
         await using var db = _database!.CreateContext();
@@ -79,10 +78,6 @@ public class PropertyCleaningSetupSchemaPostgresTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    /// <summary>
-    /// Data rule: the kind of cleaner ties the columns it uses. Every row the API would refuse (a supplier with no org, with a staff member too, with no price or a price out of the bounds;
-    /// a member of the staff with no user, with a supplier, with a price out of the bounds) is refused by the check of the database too. All the cases are run and reported together.
-    /// </summary>
     [PostgresFact]
     public async Task Setup_TheKindOfCleaner_TiesTheColumnsItUses_Test()
     {
@@ -111,10 +106,6 @@ public class PropertyCleaningSetupSchemaPostgresTests : IAsyncLifetime
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 
-    /// <summary>
-    /// Data rule: the bounds are the ones of a service request and of the catalog, both ends in: a price of 1 cent and of 10,000,000, a duration of 5 and of 1,440 minutes are saved; 4 and 1,441
-    /// minutes are refused by the check of the duration. A member of the staff with no price is saved (the price is optional for staff).
-    /// </summary>
     [PostgresFact]
     public async Task Setup_ThePriceAndTheDuration_AreInsideTheBoundsOfARequest_Test()
     {
@@ -147,7 +138,6 @@ public class PropertyCleaningSetupSchemaPostgresTests : IAsyncLifetime
         }
     }
 
-    /// <summary>Data rule: a property has one setup. A second row for the same property is refused by the unique index, whoever writes it.</summary>
     [PostgresFact]
     public async Task Setup_OnePerProperty_Test()
     {

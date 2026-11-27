@@ -15,11 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E05/F03 (NF-65): <c>AddNotificationPreferences</c> registers exactly the decision point, the delivery of the message alerts, the job of what the quiet
-/// hours hold back and the handler of the messages of the channels; every line of this list is a change someone makes on purpose. The registrations resolve
-/// together with <c>GuestMessageService</c>, which depends on the delivery.
-/// </summary>
 public class NotificationPreferencesRegistrationTests
 {
     [Fact]

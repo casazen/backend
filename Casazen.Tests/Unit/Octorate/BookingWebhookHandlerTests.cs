@@ -22,8 +22,6 @@ namespace Casazen.Tests.Unit.Octorate;
 /// </summary>
 public class BookingWebhookHandlerTests
 {
-    // ─── Which handler takes which notification ──────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(OctorateWebhookEvents.ReservationCreated, true, false, false)]
     [InlineData(OctorateWebhookEvents.ReservationConfirmed, true, false, false)]
@@ -48,8 +46,6 @@ public class BookingWebhookHandlerTests
 
             await handler.HandleAsync(Notification(h, webhookType), CancellationToken.None);
 
-            // The handler of that kind of notification reads the list once (its first page; the list is read until an empty page); every
-            // other, and any notification that is not about a reservation (a chat message, a content push), reads nothing.
             h.Client.Verify(
                 c => c.GetReservationsAsync(Accommodation, It.Is<OctorateReservationQuery>(q => q.Page == 0), It.IsAny<CancellationToken>()),
                 reads ? Times.Once() : Times.Never());
@@ -77,8 +73,6 @@ public class BookingWebhookHandlerTests
         Assert.Equal("7001", (await h.ReadBookingAsync("7001")).OctorateReservationId);
     }
 
-    // ─── Once, in order ──────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task BookingWebhook_ARepeatedOrLateNotification_ChangesNothingAndCreatesNoSecondBooking_Test()
     {
@@ -88,7 +82,6 @@ public class BookingWebhookHandlerTests
         var created = Created(h, db);
         var modified = Modified(h, db);
 
-        // The same notification three times, and a "change" notification for a reservation that did not change.
         for (var i = 0; i < 3; i++)
             await created.HandleAsync(Notification(h, OctorateWebhookEvents.ReservationCreated), CancellationToken.None);
         await modified.HandleAsync(Notification(h, OctorateWebhookEvents.ReservationChange), CancellationToken.None);
@@ -98,7 +91,6 @@ public class BookingWebhookHandlerTests
         Assert.Equal(2, (await h.ReadEventsAsync()).Count);
         h.Client.Verify(c => c.GetReservationAsync(Accommodation, "7001", It.IsAny<CancellationToken>()), Times.Once);
 
-        // The newer version, then the notification of the older one arriving late: the booking keeps the newer.
         h.Serve(Res("7001") with { UpdatedAt = SecondVersion, CheckIn = "2026-11-24", CheckOut = "2026-11-27" });
         await modified.HandleAsync(Notification(h, OctorateWebhookEvents.ReservationChange), CancellationToken.None);
         h.Serve(Res("7001"));
@@ -121,14 +113,11 @@ public class BookingWebhookHandlerTests
         h.Serve(Res("7001", OctorateBookingStatus.Cancelled) with { UpdatedAt = SecondVersion });
         await Cancelled(h, db).HandleAsync(Notification(h, OctorateWebhookEvents.ReservationCancelled), CancellationToken.None);
 
-        // Only reads: the list and the single read. The cancellation arrived from Octorate and is not echoed to it.
         h.Client.Verify(c => c.CancelReservationAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         h.Client.Verify(c => c.SetCheckInStatusAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<OctorateCheckInStatus>(), It.IsAny<CancellationToken>()), Times.Never);
         h.Client.Verify(c => c.UpdatePropertyAsync(It.IsAny<string>(), It.IsAny<OctoratePropertyUpdate>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.Equal(BookingStatus.Cancelled, (await h.ReadBookingAsync("7001")).Status);
     }
-
-    // ─── Money ───────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task BookingWebhook_CancellationFee_Preserved_Test()
@@ -138,8 +127,6 @@ public class BookingWebhookHandlerTests
         await using var db = h.NewDb();
         await Created(h, db).HandleAsync(Notification(h, OctorateWebhookEvents.ReservationCreated), CancellationToken.None);
 
-        // The guest cancels after the free period: Octorate reports the reservation cancelled with what the channel kept (a fee of 35.50 paid, a
-        // commission on it of 5.25) in the payments and the breakdown of the single read.
         h.Serve(Res("7001", OctorateBookingStatus.Cancelled) with
         {
             UpdatedAt = SecondVersion,
@@ -154,7 +141,6 @@ public class BookingWebhookHandlerTests
         var booking = await h.ReadBookingAsync("7001");
         Assert.Equal(BookingStatus.Cancelled, booking.Status);
         Assert.Equal(SecondVersion, booking.CancelledAt);
-        // What Octorate reports, to the cent: the cancellation does not reset it, and CasaZen invents no refund or payment.
         Assert.Equal(35.50m, booking.OtaPaidAmount);
         Assert.Equal(5.25m, booking.OtaCommission);
         Assert.Equal(330m, booking.TotalPrice);
@@ -164,8 +150,6 @@ public class BookingWebhookHandlerTests
         Assert.Empty(await read.Payments.ToListAsync());
         Assert.Equal(1, (await h.ReadEventsAsync()).Count(e => e.EventType == DomainEventType.BookingCancelled));
     }
-
-    // ─── Privacy ─────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task BookingWebhook_PayloadNotLogged_Test()
@@ -179,7 +163,6 @@ public class BookingWebhookHandlerTests
 
         await handler.HandleAsync(notification, CancellationToken.None);
 
-        // One line: the id of the event, its type and that it was processed; nothing of the stored payload, no accommodation, no reservation id.
         var line = Assert.Single(log.Lines);
         Assert.Contains(notification.Id.ToString(), line, StringComparison.Ordinal);
         Assert.Contains(OctorateWebhookEvents.ReservationCreated, line, StringComparison.Ordinal);
@@ -188,8 +171,6 @@ public class BookingWebhookHandlerTests
         Assert.DoesNotContain(Accommodation, line, StringComparison.Ordinal);
         Assert.DoesNotContain("RES-ZZ-4711", line, StringComparison.Ordinal);
     }
-
-    // ─── What stops the handler ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task TheConnectorOff_NothingIsRead()
@@ -228,7 +209,6 @@ public class BookingWebhookHandlerTests
         await using var db = h.NewDb();
         var handler = Created(h, db);
 
-        // The mapping is org A's: an event that names it for org B finds nothing; an event whose accommodation is not the mapping's neither.
         await handler.HandleAsync(Notification(h, OctorateWebhookEvents.ReservationCreated, orgId: OrgB), CancellationToken.None);
         await handler.HandleAsync(Notification(h, OctorateWebhookEvents.ReservationCreated, accommodation: "999999"), CancellationToken.None);
         await handler.HandleAsync(Notification(h, OctorateWebhookEvents.ReservationCreated, mappingId: Guid.NewGuid()), CancellationToken.None);
@@ -268,8 +248,6 @@ public class BookingWebhookHandlerTests
             () => Created(h, db).HandleAsync(Notification(h, OctorateWebhookEvents.ReservationCreated), CancellationToken.None));
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────
-
     private static BookingCreatedHandler Created(BookingImportHarness h, AppDbContext db) =>
         new(db, h.Service(db), h.Scope(), Flags(true), Logger<BookingCreatedHandler>());
 
@@ -288,7 +266,6 @@ public class BookingWebhookHandlerTests
 
     private static ILogger<T> Logger<T>() => new RecordingLogger<T>();
 
-    /// <summary>The event the webhook controller writes for a notification, as the handler receives it (ids only, as stored).</summary>
     private static OctorateWebhookReceivedEvent Notification(
         BookingImportHarness h,
         string webhookType,
@@ -307,7 +284,6 @@ public class BookingWebhookHandlerTests
             payload);
     }
 
-    /// <summary>Keeps what is logged, formatted, to prove what a line holds.</summary>
     private sealed class RecordingLogger<T> : ILogger<T>
     {
         public List<string> Lines { get; } = [];

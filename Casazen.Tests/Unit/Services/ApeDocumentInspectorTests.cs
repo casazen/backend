@@ -185,8 +185,6 @@ public class ApeDocumentInspectorTests
     [Fact]
     public void Reading_OfAPhoto_ClassReadMostOften_DateAfterAMisreadLabel_ExpiryTenYearsAfterTheIssue()
     {
-        // As the OCR of a photographed photocopy gives it: the box of the class read three times, once wrong; "Data di emissione"
-        // read as "lata di emissions", a first date with a misread year; the dark header with "valido fino al" not read at all.
         var text = """
             ATTESTATO DI PRESTAZIONE ENERGETICA
             CLASSE ENERGETICA E 123,45

@@ -12,10 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>
-/// SE-02 (A8-02, decision D3): one public domain, <c>App:PublicSiteBaseUrl</c> (alias <c>Seo:PublicBaseUrl</c>), with no
-/// default in the committed configuration: in Production a missing value stops the startup.
-/// </summary>
 public class PublicSiteConfigurationTests
 {
     private const string PublicSite = "https://public-site.example.test";
@@ -30,7 +26,6 @@ public class PublicSiteConfigurationTests
     [Fact]
     public void Startup_ProductionWithCommittedAppsettingsAndNoVariable_FailsNamingAppPublicSiteBaseUrl()
     {
-        // The real appsettings.json: a domain committed there would silently satisfy the validation (A8-02).
         var configuration = new ConfigurationBuilder()
             .AddJsonFile(Path.Combine(FindSolutionRoot(), "Casazen.Web", "appsettings.json"), optional: false)
             .AddInMemoryCollection(EmailConfiguration)

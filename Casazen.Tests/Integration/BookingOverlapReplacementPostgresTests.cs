@@ -47,7 +47,6 @@ public class BookingOverlapReplacementPostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task BookingOverlapItem_AReplacementThatCannotBeWritten_LeavesTheOldItemOpen_AndTheNextDeliveryReplacesIt()
     {
-        // A booking of the channel manager on Oct 12-15 of a property whose stay of Oct 10-13 takes the night of Oct 12, with the item its arrival raised.
         Guid bookingId;
         await using (var db = _database!.CreateContext())
         {
@@ -66,14 +65,12 @@ public class BookingOverlapReplacementPostgresTests : IAsyncLifetime
                 },
                 Ct);
 
-            // The channel manager moves it to Oct 11-14: the stay shares two nights of it now, the item says the old ones.
             var booking = await db.Bookings.SingleAsync(b => b.Id == bookingId, Ct);
             booking.CheckInDate = HostScopeScenario.Day(2026, 10, 11);
             booking.CheckOutDate = HostScopeScenario.Day(2026, 10, 14);
             await db.SaveChangesAsync(Ct);
         }
 
-        // The first delivery: the item is closed, then the database cannot write the new one.
         await using (var db = _database.CreateContext())
         {
             var real = Activities(db);
@@ -89,14 +86,12 @@ public class BookingOverlapReplacementPostgresTests : IAsyncLifetime
                 async () => await Handler(db, failing.Object).HandleAsync(await ModifiedAsync(db, bookingId), Ct));
         }
 
-        // Nothing of the failed replacement was kept: the old item is open, as it was, and it is the only one.
         var afterTheFailure = await ItemsAsync(bookingId);
         var stillOpen = Assert.Single(afterTheFailure);
         Assert.Null(stillOpen.CompletedAt);
         Assert.Null(stillOpen.ClosedBy);
         Assert.EndsWith("dal 12/10/2026 al 13/10/2026", stillOpen.Reason, StringComparison.Ordinal);
 
-        // The delivery made again: the old item is closed by the system and the new one says the new nights.
         await using (var db = _database.CreateContext())
             await Handler(db, Activities(db)).HandleAsync(await ModifiedAsync(db, bookingId), Ct);
 
@@ -149,7 +144,6 @@ public class BookingOverlapReplacementPostgresTests : IAsyncLifetime
             Clock,
             NullLogger<BookingOverlapHandler>.Instance);
 
-    /// <summary>The event of a booking changed by the channel manager, as the services record it: the payload of <see cref="BookingEventPayload"/>.</summary>
     private async Task<DomainEvent> ModifiedAsync(AppDbContext db, Guid bookingId)
     {
         var current = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId, Ct);

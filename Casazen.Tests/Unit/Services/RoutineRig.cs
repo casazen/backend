@@ -28,13 +28,11 @@ internal sealed class RoutineRig
     public static readonly Guid OrgA = Guid.Parse("0f6c1a52-3b7e-4c11-9d2a-5e8b7c6d4a01");
     public static readonly Guid OrgB = Guid.Parse("8e2d4b19-6a5f-4f3c-b1e7-2c9a0d3e5f02");
 
-    /// <summary>The instant the engine thinks it is.</summary>
     public static readonly DateTimeOffset Now = new(2026, 11, 12, 9, 0, 0, TimeSpan.Zero);
 
     private readonly string _database = $"routine-rig-{Guid.NewGuid()}";
     private readonly List<(Job Job, IState State)> _scheduled = [];
 
-    // One key ring for the rig, so a link made by one service is read by another.
     private readonly EphemeralDataProtectionProvider _keys = TestDataProtection.Shared;
 
     public RoutineRig()
@@ -48,12 +46,10 @@ internal sealed class RoutineRig
 
     public Mock<IBackgroundJobClient> Jobs { get; }
 
-    /// <summary>The feature flags the engine reads: the module is on (<see cref="FeatureFlags.Routines"/>), every other flag off until a test turns it on.</summary>
     public TestFeatureFlags Flags { get; } = new(FeatureFlags.Routines);
 
     public IAiProvider Ai { get; set; } = SelectAllOperations();
 
-    /// <summary>The scheduled messages the engine hands <c>MessageToGuest</c> to while <see cref="FeatureFlags.ScheduledMessages"/> is on (E05/F07/US01/T03): none until a test gives one.</summary>
     public IScheduledMessageService? ScheduledMessages { get; set; }
 
     internal static IAiProvider SelectAllOperations()
@@ -69,16 +65,12 @@ internal sealed class RoutineRig
         return provider.Object;
     }
 
-    /// <summary>The automation of the cleaning at check-out the engine runs for <c>CreateCleaningRequest</c> (E24/F01/US01/T02): none until a test gives one.</summary>
     public ICleaningAutomationService? Cleaning { get; set; }
 
-    /// <summary>The jobs the engine scheduled, in order.</summary>
     public IReadOnlyList<(Job Job, IState State)> Scheduled => _scheduled;
 
-    /// <summary>The e-mails the invitation of a review handed to the queue (the action <c>RequestReview</c>, E26/F01/US01/T01), in order.</summary>
     public RecordingEmailQueue Emails { get; } = new();
 
-    /// <summary>The signed links of the invitation of a review, with the key ring of the rig: the links the services of the rig make open here.</summary>
     public ReviewLinkTokens Tokens => new(_keys);
 
     public AppDbContext NewDb() => new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options);
@@ -100,15 +92,12 @@ internal sealed class RoutineRig
             scheduledMessages: ScheduledMessages);
     }
 
-    /// <summary>The service of the invitation of the reviews (the host's button and the action of a routine) over <paramref name="db"/>, queuing into <see cref="Emails"/>.</summary>
     public HostReviewService Reviews(AppDbContext db, TimeProvider? clock = null) =>
         new(db, Tokens, Emails, EmailTestHelpers.Links(), NullLogger<HostReviewService>.Instance, clock ?? new FixedTimeProvider(Now));
 
-    /// <summary>The management of the routines (the API's service) over <paramref name="db"/>, with the flags of the rig.</summary>
     public RoutineManagementService Management(AppDbContext db) =>
         new(db, new ConditionEvaluator(NullLogger<ConditionEvaluator>.Instance), Flags, NullLogger<RoutineManagementService>.Instance);
 
-    /// <summary>Triggers the routines of <paramref name="eventType"/> for an event in its own unit of work.</summary>
     public async Task TriggerAsync(Guid orgId, RoutineEventType eventType, object payload, string? eventId = null, TimeProvider? clock = null)
     {
         await using var db = NewDb();
@@ -173,7 +162,6 @@ internal sealed class RoutineRig
         return guest;
     }
 
-    /// <summary>A booking of <paramref name="orgId"/> at a property of its own (the To do of a routine is raised on the property).</summary>
     public async Task<Booking> SeedBookingAsync(
         Guid orgId,
         BookingSource source = BookingSource.Direct,
@@ -207,7 +195,6 @@ internal sealed class RoutineRig
         return booking;
     }
 
-    /// <summary>Changes a booking as it is saved (the host cancels it, marks it as a no-show…) in a context of its own.</summary>
     public async Task ChangeBookingAsync(Guid bookingId, Action<Booking> change)
     {
         await using var db = NewDb();
@@ -216,7 +203,6 @@ internal sealed class RoutineRig
         await db.SaveChangesAsync();
     }
 
-    /// <summary>A verification of the identity of a booking: what the access code gate reads.</summary>
     public async Task SeedVerificationAsync(Guid orgId, Booking booking, BiometricOutcome outcome, DateTime createdAt)
     {
         await using var db = NewDb();
@@ -259,14 +245,11 @@ internal sealed class RoutineRig
         await db.SaveChangesAsync();
     }
 
-    /// <summary>The actions of a routine as the editor writes them: <c>[{ "type": "Wait", "config": { "hours": 1 } }]</c>.</summary>
     public static string Actions(params (string Type, string? ConfigJson)[] actions) =>
         "[" + string.Join(",", actions.Select(a => $"{{\"type\":\"{a.Type}\"" + (a.ConfigJson is null ? string.Empty : $",\"config\":{a.ConfigJson}") + "}")) + "]";
 
-    /// <summary>The results of an execution, as the log of a routine reads them.</summary>
     public static RoutineExecutionResult ResultOf(RoutineExecution execution) => RoutineExecutionResult.Parse(execution.ResultJson);
 
-    /// <summary>The id of the booking a payload names, in the shape the bus gives it.</summary>
     public static object PayloadOf(Booking booking) => new { BookingId = booking.Id, PropertyId = booking.PropertyId };
 
     public static JsonElement Json(string json) => JsonDocument.Parse(json).RootElement.Clone();

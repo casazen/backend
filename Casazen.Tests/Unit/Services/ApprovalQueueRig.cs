@@ -28,10 +28,8 @@ internal sealed class ApprovalQueueRig : IDisposable
     public const string Manager = "auth0|manager";
     public const string Collaborator = "auth0|collaborator";
 
-    /// <summary>12:00 in Rome (November: UTC+1), outside the quiet hours.</summary>
     public static readonly DateTime Noon = new(2026, 11, 10, 11, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>23:00 in Rome, inside the quiet hours that end at 08:00 (07:00 UTC).</summary>
     public static readonly DateTime Night = new(2026, 11, 10, 22, 0, 0, DateTimeKind.Utc);
 
     public static readonly DateTime MorningDue = new(2026, 11, 11, 7, 0, 0, DateTimeKind.Utc);
@@ -57,25 +55,18 @@ internal sealed class ApprovalQueueRig : IDisposable
 
     public Mock<ICampaignService> Campaigns { get; } = new();
 
-    /// <summary>The module of the campaigns is on (<c>Features:CrmMarketing</c>); a test switches it off with <c>Flags.Set</c>.</summary>
     public TestFeatureFlags Flags { get; } = new(Casazen.Core.Features.FeatureFlags.CrmMarketing);
 
-    /// <summary>What the Hangfire client was asked to create.</summary>
     public List<(Job Job, IState State)> Created { get; } = [];
 
-    /// <summary>Every call of <see cref="IMessageReplyService.ReplyAsync"/>, with what it was given.</summary>
     public List<SentMessage> Sent { get; } = [];
 
-    /// <summary>The keys of the sends that reached the guest: a second send with one of them is a replay.</summary>
     private readonly HashSet<string> _delivered = [];
 
-    /// <summary>The keys the fake channel refuses (a typed refusal: the message is not sent, and the same key replays the refusal).</summary>
     private readonly HashSet<string> _refused = [];
 
-    /// <summary>The keys that were refused once: a send with one of them is a replay of the refusal.</summary>
     private readonly HashSet<string> _refusedBefore = [];
 
-    /// <summary>The users who hold <c>approval.decide</c> (the owner and the manager).</summary>
     public HashSet<string> Deciders { get; } = [Owner, Manager];
 
     public Guid OrgId { get; private set; }
@@ -112,7 +103,6 @@ internal sealed class ApprovalQueueRig : IDisposable
 
     public void Dispose() => Db.Dispose();
 
-    /// <summary>The next send with this key is refused by the channel (a typed refusal, state Error); the one after it with the same key replays the refusal.</summary>
     public void RefuseKey(string idempotencyKey) => _refused.Add(idempotencyKey);
 
     private MessageReplyResult Reply(
@@ -126,7 +116,6 @@ internal sealed class ApprovalQueueRig : IDisposable
     {
         Sent.Add(new SentMessage(scope, key, text, idempotencyKey, userId, origin, ruleCode));
 
-        // The rule of the real service: a key found again is the same message, whatever its state.
         if (idempotencyKey is not null && _refusedBefore.Contains(idempotencyKey))
             return new MessageReplyResult(MessageContactChannel.Ota, key, null, OtaMessageDeliveryState.Error, true, null);
 
@@ -140,7 +129,6 @@ internal sealed class ApprovalQueueRig : IDisposable
         return new MessageReplyResult(MessageContactChannel.Ota, key, null, OtaMessageDeliveryState.Sent, replayed, null);
     }
 
-    /// <summary>The org with its people and two properties: A (in charge: the collaborator, who is granted it) and B (in charge: the manager).</summary>
     public async Task SeedAsync()
     {
         var org = OrgTeamTestData.AddOrg(Db);
@@ -174,15 +162,9 @@ internal sealed class ApprovalQueueRig : IDisposable
         NightlyRate = 100m,
     };
 
-    // ─── The scopes ───
-
-    /// <summary>The whole org: the owner, the administrators, the property managers.</summary>
     public HostScope OrgWide => new(OrgId);
 
-    /// <summary>A collaborator «Solo alcuni» granted the property A.</summary>
     public HostScope OnlyA => new(OrgId, GrantedToUserId: Collaborator);
-
-    // ─── The services ───
 
     public NotificationPreferenceService Preferences() =>
         new(Db, Permissions.Object, Clock, NullLogger<NotificationPreferenceService>.Instance);
@@ -201,7 +183,6 @@ internal sealed class ApprovalQueueRig : IDisposable
             EmailTestHelpers.Links(),
             NullLogger<ApprovalAlertDelivery>.Instance);
 
-    /// <summary>The registry of the actions of the queue: the draft of a message and the campaign.</summary>
     public ApprovalOriginActionRegistry Registry() =>
         new(() =>
         [
@@ -212,11 +193,8 @@ internal sealed class ApprovalQueueRig : IDisposable
     public ApprovalQueueService Service(IApprovalOriginActionRegistry? registry = null) =>
         new(Db, Clock, registry ?? Registry(), Activities(), Alerts(), NullLogger<ApprovalQueueService>.Instance);
 
-    // ─── Items ───
-
     public static string OtaKey(Guid? id = null) => $"ota:{(id ?? Guid.NewGuid()):D}";
 
-    /// <summary>A draft of a message of the assistant, on a property, with its score and situation.</summary>
     public Task<ApprovalQueueItem> SubmitDraftAsync(
         ApprovalQueueService service,
         Property? property = null,
@@ -234,7 +212,6 @@ internal sealed class ApprovalQueueRig : IDisposable
             situationCode: Situation,
             threadKey: threadKey ?? OtaKey());
 
-    /// <summary>The jobs of Hangfire of a type, with the arguments they were created with.</summary>
     public List<(T Args, DateTime EnqueueAt)> Scheduled<T>(Type jobType)
         where T : class =>
         Created
@@ -242,14 +219,12 @@ internal sealed class ApprovalQueueRig : IDisposable
             .Select(c => (c.Job.Args.OfType<T>().First(), c.State is ScheduledState scheduled ? scheduled.EnqueueAt : default))
             .ToList();
 
-    /// <summary>What the user chose for the alert of an item waiting for approval.</summary>
     public async Task ChooseAsync(string userId, NotificationChannels channels) =>
         await Preferences().SaveAsync(
             userId,
             new NotificationPreferencesUpdate(null, [new NotificationEventUpdate(NotificationEventType.AiDraftToApprove, channels)]),
             CancellationToken.None);
 
-    /// <summary>One call of <see cref="IMessageReplyService.ReplyAsync"/>.</summary>
     public sealed record SentMessage(
         HostScope Scope,
         MessageThreadKey Key,

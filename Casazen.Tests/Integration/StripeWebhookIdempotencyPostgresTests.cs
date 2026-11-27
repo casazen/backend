@@ -116,7 +116,6 @@ public class StripeWebhookIdempotencyPostgresTests : IAsyncLifetime
         await Assert.ThrowsAsync<TimeoutException>(() => first);
         await second;
 
-        // The failed claim was rolled back: the waiting duplicate claimed the event and processed it.
         Assert.Equal(1, secondRepository.Lookups);
         await AssertDirectBookingPaidAsync(seed, stripeEvent.Id);
     }
@@ -169,7 +168,6 @@ public class StripeWebhookIdempotencyPostgresTests : IAsyncLifetime
 
         await using (var check = NewContext())
         {
-            // A1-09: the org update and the claim are rolled back together.
             var stored = await check.Orgs.SingleAsync(o => o.Id == org.Id);
             Assert.Equal(SubscriptionStatus.Active, stored.SubscriptionStatus);
             Assert.Null(stored.PastDueSince);
@@ -195,7 +193,6 @@ public class StripeWebhookIdempotencyPostgresTests : IAsyncLifetime
 
         await HandleAsync(StripeTestEvents.Subscription(
             "customer.subscription.created", subscriptionId, "incomplete", org.Id, org.StripeCustomerId!, ScalePrice));
-        // The first payment fails: not a renewal, no past-due grace.
         await HandleAsync(StripeTestEvents.Invoice(
             "invoice.payment_failed", subscriptionId, org.StripeCustomerId!, "subscription_create"));
 
@@ -226,7 +223,6 @@ public class StripeWebhookIdempotencyPostgresTests : IAsyncLifetime
         var org = await SeedOrgAsync(SubscriptionStatus.None, PlanTier.Starter, withSubscription: false);
         var subscriptionId = $"sub_test_{Guid.NewGuid():N}";
 
-        // Hangfire ran the "updated → active" job before the "created → incomplete" one.
         await HandleAsync(StripeTestEvents.Subscription(
             "customer.subscription.updated", subscriptionId, "active", org.Id, org.StripeCustomerId!, ScalePrice));
         await HandleAsync(StripeTestEvents.Subscription(
@@ -283,7 +279,6 @@ public class StripeWebhookIdempotencyPostgresTests : IAsyncLifetime
         var firstRepository = new InstrumentedPaymentRepository(new PaymentRepository(firstDb)) { Gate = releaseFirst.Task };
         var secondRepository = new InstrumentedPaymentRepository(new PaymentRepository(secondDb));
 
-        // Worker 1 has claimed the event (uncommitted) and is still processing it when worker 2 starts.
         var first = Task.Run(() => CreateHandler(firstDb, firstRepository).HandleEventAsync(stripeEvent, source));
         await firstRepository.Entered.Task.WaitAsync(TimeSpan.FromSeconds(30));
         var second = Task.Run(() => CreateHandler(secondDb, secondRepository).HandleEventAsync(stripeEvent, source));
@@ -326,7 +321,6 @@ public class StripeWebhookIdempotencyPostgresTests : IAsyncLifetime
         Assert.Equal(WebhookSource.Connected, claim.Source);
     }
 
-    /// <summary>Waits until a session of this database blocks on the uncommitted claim of another transaction.</summary>
     private async Task WaitForClaimWaiterAsync()
     {
         await using var connection = new NpgsqlConnection(_database!.ConnectionString);
@@ -472,10 +466,6 @@ public class StripeWebhookIdempotencyPostgresTests : IAsyncLifetime
 
     private sealed record DirectBookingSeed(Guid BookingId, Guid PaymentId, string PaymentIntentId);
 
-    /// <summary>
-    /// Counts the business lookups of a worker (the first repository call of every payment_intent handler) and can
-    /// hold the worker inside its transaction or make it fail there.
-    /// </summary>
     private sealed class InstrumentedPaymentRepository(IPaymentRepository inner) : IPaymentRepository
     {
         private int _lookups;

@@ -18,8 +18,6 @@ namespace Casazen.Tests.Integration;
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
 {
-    // ─── Overview ───
-
     [Fact]
     public async Task Overview_ByDefaultIsTheCurrentMonth_WithBothPeriodsAndTheFieldsOfTheContract()
     {
@@ -46,7 +44,6 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
             }
         }
 
-        // Nothing answered yet: no rate and no average, never zero; what is still to collect exists only for the current period.
         Assert.Equal(JsonValueKind.Null, body.GetProperty("current").GetProperty("acceptanceRate").ValueKind);
         Assert.Equal(JsonValueKind.Null, body.GetProperty("current").GetProperty("averageResponseMinutes").ValueKind);
         Assert.Equal(0, body.GetProperty("current").GetProperty("toCollectCents").GetInt64());
@@ -126,7 +123,6 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         Assert.Equal(0.5, mine.GetProperty("acceptanceRate").GetDouble());
         Assert.Equal(1, mine.GetProperty("completedJobs").GetInt32());
         Assert.NotEqual(JsonValueKind.Null, mine.GetProperty("averageResponseMinutes").ValueKind);
-        // Completed with the price of the service and not paid yet: still to collect, as declared (no payment is asked for inside CasaZen).
         Assert.Equal(1, mine.GetProperty("toCollectJobs").GetInt32());
         Assert.Equal(6000, mine.GetProperty("toCollectCents").GetInt64());
         Assert.Equal(4, theirs.GetProperty("received").GetInt32());
@@ -147,8 +143,6 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
             Assert.Equal(HttpStatusCode.Forbidden, (await host.GetAsync(url)).StatusCode);
         }
     }
-
-    // ─── Counts and the two new tabs ───
 
     [Fact]
     public async Task Counts_AreTheNumbersOfTheTabs_AndTheLateOnesOfThePayments()
@@ -175,7 +169,6 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         Assert.Equal(1, counts.GetProperty("toCollect").GetInt32());
         Assert.Equal(1, counts.GetProperty("archive").GetInt32());
         Assert.Equal(0, counts.GetProperty("paymentsLate").GetInt32());
-        // A chip and its list agree.
         Assert.Equal(counts.GetProperty("toAnswer").GetInt32(), (await TabAsync(supplier, "da-rispondere")).GetProperty("total").GetInt32());
         Assert.Equal(counts.GetProperty("awaitingCustomer").GetInt32(), (await TabAsync(supplier, "in-attesa")).GetProperty("total").GetInt32());
         Assert.Equal(counts.GetProperty("scheduled").GetInt32(), (await TabAsync(supplier, "programmate")).GetProperty("total").GetInt32());
@@ -252,8 +245,6 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         Assert.Contains("in-attesa", detail);
     }
 
-    // ─── Source and text ───
-
     [Fact]
     public async Task Source_FiltersByOrigin_AndAnotherValueIsRefused()
     {
@@ -280,7 +271,6 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         var id = await factory.CreateRequestAsync(world);
         using var supplier = factory.Supplier(world);
         await supplier.PostAsync($"/api/service-requests/{id}/take", content: null);
-        // The supplier works in H501, the comune of the request when it is made; the property is later known by its real name.
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -342,8 +332,6 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         Assert.Empty(Ids(await QueryAsync(supplier, "q=pulizia&status=all")));
     }
 
-    // ─── Phase and payment of every item ───
-
     [Fact]
     public async Task Items_CarryThePhase_AndTheDetailTheSame()
     {
@@ -354,7 +342,7 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         var list = await supplier.GetFromJsonAsync<JsonElement>("/api/supplier/inbox");
         var item = list.GetProperty("items")[0];
         Assert.Equal("to_answer", item.GetProperty("phase").GetString());
-        Assert.Equal("Richiesto", item.GetProperty("status").GetString()); // the status is unchanged
+        Assert.Equal("Richiesto", item.GetProperty("status").GetString());
         Assert.Equal(JsonValueKind.Null, item.GetProperty("payment").ValueKind);
 
         await supplier.PostAsync($"/api/service-requests/{id}/take", content: null);
@@ -418,8 +406,6 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         Assert.Equal(HttpStatusCode.NotFound, detail.StatusCode);
     }
 
-    // ─── Today and the next days ───
-
     [Fact]
     public async Task Today_ByDefaultIsOneDay_AndDaysIsReturnedWithItsLastDate()
     {
@@ -446,7 +432,6 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         var take = await supplier.PostAsync($"/api/service-requests/{id}/take", content: null);
         Assert.Equal(HttpStatusCode.OK, take.StatusCode);
 
-        // The job is two days from now whatever day the test runs on (the working days of the supplier are not what is tested here).
         var inTwoDays = RomeCalendar.TodayInRomeAsDateOnly(TimeProvider.System).AddDays(2);
         await using (var scope = factory.Services.CreateAsyncScope())
         {
@@ -492,8 +477,6 @@ public class SupplierReadModelsIntegrationTests(CasazenWebApplicationFactory fac
         Assert.NotEqual(it.GetProperty("detail").GetString(), en.GetProperty("detail").GetString());
         Assert.Contains("7", it.GetProperty("detail").GetString()!);
     }
-
-    // ─── helpers ───
 
     private static async Task<JsonElement> TabAsync(HttpClient supplier, string tab) =>
         await supplier.GetFromJsonAsync<JsonElement>($"/api/supplier/inbox?tab={tab}&pageSize=100");

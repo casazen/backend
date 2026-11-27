@@ -14,11 +14,6 @@ using Moq;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// LR-12: the guided draft of a lease on the EF InMemory database, with a clock the test moves and the collaborators of the service
-/// (the calculator of the canone concordato, the APE check, the contract template, the storage) as mocks. "Today" in Rome is 9 October
-/// 2026. The org has a property with its cadastral data and an energy certificate, so the first step has nothing missing.
-/// </summary>
 internal sealed class LeaseDraftHarness : IDisposable
 {
     public static readonly DateTimeOffset Now = new(2026, 10, 9, 8, 0, 0, TimeSpan.Zero);
@@ -31,11 +26,9 @@ internal sealed class LeaseDraftHarness : IDisposable
 
     private readonly Microsoft.AspNetCore.DataProtection.IDataProtectionProvider? _dataProtection;
 
-    /// <param name="dataProtection">Encrypts the columns of EncryptedColumns, as the application does; none by default, like every other unit test.</param>
     public LeaseDraftHarness(Microsoft.AspNetCore.DataProtection.IDataProtectionProvider? dataProtection = null)
     {
         _options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).Options;
-        // No Data Protection provider by default, like every other unit test (see PropertyModeHarness): EF keeps one model per provider.
         _dataProtection = dataProtection;
         Db = new AppDbContext(_options, tenantContext: null, _dataProtection);
         Clock = new FakeTimeProvider(Now);
@@ -57,7 +50,6 @@ internal sealed class LeaseDraftHarness : IDisposable
 
     public Mock<IFileStorage> Storage { get; } = new();
 
-    /// <summary>What the service and the deletion logged, with the structured values: the tests read it to prove no personal data is in it.</summary>
     public CapturingLogger<LeaseDraftService> ServiceLog { get; } = new();
 
     public CapturingLogger<LeaseDraftDeleter> DeleterLog { get; } = new();
@@ -68,7 +60,6 @@ internal sealed class LeaseDraftHarness : IDisposable
 
     public Guid PropertyId { get; private set; }
 
-    /// <summary>A service on another context over the same database, as a second request, a second tab or a second device would have.</summary>
     public LeaseDraftService NewService(AppDbContext? db = null)
     {
         db ??= new AppDbContext(_options, tenantContext: null, _dataProtection);
@@ -84,21 +75,16 @@ internal sealed class LeaseDraftHarness : IDisposable
 
     public AppDbContext SecondContext() => new(_options, tenantContext: null, _dataProtection);
 
-    /// <summary>A context over the same database whose writes go through <paramref name="interceptor"/>: a way to make one fail.</summary>
     public AppDbContext ContextWith(Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor interceptor) =>
         new(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).AddInterceptors(interceptor).Options,
             tenantContext: null,
             _dataProtection);
 
-    /// <summary>A context without encryption over the same database: it reads what the table holds, the payloads.</summary>
     public AppDbContext PlainContext() => new(_options);
 
     public void Dispose() => Db.Dispose();
 
-    // ---- seed ----------------------------------------------------------------------------------------------------
-
-    /// <summary>The org, and a property with its cadastral data and an APE: nothing is missing at step 1.</summary>
     public async Task<LeaseDraftHarness> SeedAsync()
     {
         var org = new OrgEntity { Id = Guid.NewGuid(), Name = "Org", Slug = $"org-{Guid.NewGuid():N}", ContactEmail = "host@org.test", FiscalCode = "RSSMRA80A01H501U" };
@@ -132,7 +118,6 @@ internal sealed class LeaseDraftHarness : IDisposable
         Db.Properties.Add(property);
         if (withApe)
         {
-            // With the code and the class the contract prints (LR-APE): the review asks for them.
             Db.PropertyDocuments.Add(new PropertyDocument
             {
                 PropertyId = property.Id,
@@ -155,7 +140,6 @@ internal sealed class LeaseDraftHarness : IDisposable
 
     public const string SeededApeEnergyClass = "C";
 
-    /// <summary>The code and the class of the APE of the property of the org as they are saved (<c>null</c>: the reading did not leave them).</summary>
     public async Task SetApeIdentificationAsync(string? code, string? energyClass)
     {
         await using var db = SecondContext();
@@ -165,18 +149,14 @@ internal sealed class LeaseDraftHarness : IDisposable
         await db.SaveChangesAsync();
     }
 
-    // ---- shortcuts -----------------------------------------------------------------------------------------------
-
     public static JsonElement Json(string json) => JsonDocument.Parse(json).RootElement.Clone();
 
     public Task<LeaseDraftSaved> SaveAsync(Guid leaseId, int version, int step, string json) =>
         Service.SaveAsync(leaseId, version, step, Json(json));
 
-    /// <summary>A draft with only the property, as the wizard creates it.</summary>
     public async Task<LeaseDraftCreated> CreateAsync(LeaseOrigin origin = LeaseOrigin.Created) =>
         await Service.CreateAsync(PropertyId, origin);
 
-    /// <summary>The lease as the database has it now, with its parties and events, read on a context of its own.</summary>
     public async Task<LeaseContract> LoadAsync(Guid leaseId)
     {
         await using var db = SecondContext();
@@ -186,7 +166,6 @@ internal sealed class LeaseDraftHarness : IDisposable
             .SingleAsync(l => l.Id == leaseId);
     }
 
-    /// <summary>Saves every data step with valid values (one landlord, one tenant, a canone libero from 1 November 2026) and returns the new version.</summary>
     public async Task<(LeaseDraftCreated Created, int Version)> CompleteAsync(string tenantFiscalCode = "VRDGLI85B02F205A")
     {
         var created = await CreateAsync();
@@ -202,7 +181,6 @@ internal sealed class LeaseDraftHarness : IDisposable
         return (created, version);
     }
 
-    /// <summary>The range the calculator gives for a concordato: available, with the given monthly bounds.</summary>
     public void SetupConcordatoRange(decimal minMonthly, decimal maxMonthly, bool indicative = false) =>
         Eligibility
             .Setup(e => e.CalculateAsync(It.IsAny<Guid>(), It.IsAny<RentBandCharacteristics>(), It.IsAny<LeaseTerm>(), It.IsAny<CancellationToken>()))
@@ -227,7 +205,6 @@ internal sealed class LeaseDraftHarness : IDisposable
                 Indicative = indicative,
             });
 
-    /// <summary>The calculator has no range: the reason it gives.</summary>
     public void SetupConcordatoUnavailable(string reasonCode = CanoneConcordatoReasonCodes.DataUnavailable) =>
         Eligibility
             .Setup(e => e.CalculateAsync(It.IsAny<Guid>(), It.IsAny<RentBandCharacteristics>(), It.IsAny<LeaseTerm>(), It.IsAny<CancellationToken>()))

@@ -74,8 +74,6 @@ public class SuppliersControllerRegisterTests
         auth0.Verify(a => a.AssignRoleAsync(It.IsAny<string>(), It.IsAny<UserRole>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    // ─── Claim (SU-02) ──────────────────────────────────────────────────────
-
     [Fact]
     public async Task Claim_WithoutTokenAndVerifiedClaim_PassesVerifiedEmailWithoutCallingAuth0()
     {

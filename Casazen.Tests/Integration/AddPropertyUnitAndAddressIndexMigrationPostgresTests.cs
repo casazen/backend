@@ -49,18 +49,15 @@ public class AddPropertyUnitAndAddressIndexMigrationPostgresTests : IAsyncLifeti
         await InsertAsync(db, org, "Via Roma 1", "Milano", "20100", unit: null);
         await InsertAsync(db, org, "Via Altra 7", "Torino", "10100", unit: null, id: distinct);
 
-        // Same org, same address (case and spaces aside) and no unit: refused by the database.
         var duplicate = await Assert.ThrowsAsync<PostgresException>(() => InsertAsync(db, org, "  VIA   ROMA 1 ", "milano", "20100", unit: null));
         Assert.Equal(PostgresErrorCodes.UniqueViolation, duplicate.SqlState);
         Assert.Equal("UIX_Properties_OrgId_AddressKey", duplicate.ConstraintName);
 
-        // Another apartment of the same building, another org, and the address of an inactive property: fine.
         await InsertAsync(db, org, "Via Roma 1", "Milano", "20100", unit: "int. 2");
         await InsertAsync(db, otherOrg, "Via Roma 1", "Milano", "20100", unit: "int. 2");
         await InsertAsync(db, org, "Via Inactive 9", "Milano", "20100", unit: null, isActive: false);
         await InsertAsync(db, org, "Via Inactive 9", "Milano", "20100", unit: null, isActive: false);
 
-        // A deleted property (PC-05) frees its address.
         await db.Database.ExecuteSqlAsync($"""UPDATE "Properties" SET "IsDeleted" = true, "DeletedAt" = now() WHERE "Id" = {distinct}""");
         await InsertAsync(db, org, "Via Altra 7", "Torino", "10100", unit: null);
     }
@@ -77,7 +74,6 @@ public class AddPropertyUnitAndAddressIndexMigrationPostgresTests : IAsyncLifeti
             IsActive = true,
         });
 
-    /// <summary>Insert on the current schema (the columns of the first <c>Properties</c> table plus the unit).</summary>
     private static Task InsertAsync(
         AppDbContext db, Guid orgId, string address, string city, string postalCode, string? unit, bool isActive = true, Guid? id = null)
     {

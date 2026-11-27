@@ -114,7 +114,6 @@ public class ListingPublishProofTests
     [InlineData(true)]
     public async Task ListingPublish_PropertyOutsideReach_Refused_Test(bool anotherOrg)
     {
-        // A property of another org is not even visible to the caller (the tenant filter); one of its own org that it does not reach is refused by the reach.
         var propertyId = await SeedPropertyAsync(OrgA);
         _scope
             .Setup(s => s.CanReachPropertyAsync("auth0|only-some", It.IsAny<IReadOnlySet<string>>(), OrgA, It.IsAny<Guid?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
@@ -148,8 +147,6 @@ public class ListingPublishProofTests
     [Fact]
     public async Task PublishAsync_AChannelChangedOutsideCasaZen_IsRefusedUntilThePersonChoosesToOverwrite()
     {
-        // NF-27: nothing is overwritten silently. A publication refused for an unresolved change is the only outcome until the person keeps CasaZen's
-        // version (overwrite); the other channel is not put in sending by a publication that was refused.
         var propertyId = await SeedPropertyAsync(OrgA);
         await using (var seed = NewDb())
         {
@@ -186,8 +183,6 @@ public class ListingPublishProofTests
     [Fact]
     public async Task PublishAsync_AChangeFlaggedOnAnotherChannel_RefusesTheWholePublication_BecauseTheContentIsShared()
     {
-        // NF-27: a publication writes the groups of the content for every channel of the property. Publishing only to a channel that has no flag (a new
-        // one, say) would write over the change flagged on another channel with no choice made, so the flag of any channel of the property counts.
         var propertyId = await SeedPropertyAsync(OrgA);
         await using (var seed = NewDb())
         {
@@ -309,8 +304,6 @@ public class ListingPublishProofTests
     [Fact]
     public async Task RunAsync_AnAcceptedPush_MovesTheBaselineOfTheOtherChannels_SoCasaZensOwnChangeIsNeverFoundOutside()
     {
-        // The content is shared by the channels: what a push writes is what the other pushed channels have on Octorate too. Their baseline follows it
-        // (a change CasaZen made is not «outside»), except a channel already flagged, whose change is still the person's to decide.
         var propertyId = await SeedPropertyAsync(OrgA, photoCount: 4);
         var old = new ListingChannelBaseline(
             new Dictionary<string, string> { [ListingContentGroups.Property] = "p0", [ListingContentGroups.Descriptions] = "d0", [ListingContentGroups.Rooms] = "r0" },
@@ -350,8 +343,6 @@ public class ListingPublishProofTests
     [InlineData(ChannelPublishStatus.ToFix)]
     public async Task RunAsync_APublicationQueuedWhileAnEarlierRunWasGoingOn_StillPushesItsChannels(ChannelPublishStatus found)
     {
-        // The earlier run ended after the new request put the rows in Sending and wrote the state it ends with over it: the run queued by the request
-        // finds the rows Accepted, Published or ToFix and has to publish all the same, or what the host changed meanwhile would never be pushed.
         var propertyId = await SeedPropertyAsync(OrgA, photoCount: 4);
         var earlier = new ListingChannelBaseline(
             new Dictionary<string, string> { [ListingContentGroups.Property] = "p0", [ListingContentGroups.Descriptions] = "d0", [ListingContentGroups.Rooms] = "r0" },
@@ -411,7 +402,6 @@ public class ListingPublishProofTests
     private AppDbContext NewDb(ITenantContext? tenant = null) =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options, tenant ?? NullTenantContext.Instance);
 
-    /// <summary>The client of Octorate as a push of Booking.com and Vrbo finds it: connected, the photos taken, the content read back, the push taking <paramref name="processId"/>.</summary>
     private void SetUpClient(string processId)
     {
         _client
@@ -427,7 +417,6 @@ public class ListingPublishProofTests
         _client.Setup(c => c.GetContentRoomsAsync(Accommodation, Product, It.IsAny<CancellationToken>())).ReturnsAsync(new List<OctorateContentRoom>());
     }
 
-    /// <summary>A channel row of an earlier push: accepted by the channel manager three days ago, once.</summary>
     private async Task SeedPushedRowAsync(Guid propertyId, string channel, ChannelPublishStatus status, ListingChannelBaseline baseline, bool flagged = false)
     {
         await using var db = NewDb();
@@ -454,7 +443,6 @@ public class ListingPublishProofTests
         await db.SaveChangesAsync();
     }
 
-    /// <summary>A property with its Italian texts and, by default, the English ones, photos in its own folder, and a confirmed mapping with a room.</summary>
     private async Task<Guid> SeedPropertyAsync(
         Guid orgId,
         bool englishTexts = true,

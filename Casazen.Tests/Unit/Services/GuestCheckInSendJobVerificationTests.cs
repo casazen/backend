@@ -13,11 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E03/F04/US02 trust proof (review fix): the daily job that sends the check-in link, and the one that reminds the data still missing, send nothing to
-/// a stay whose identity verification is with an operator (rejected by one, or a hand-off still open): a new link is a new session, and the
-/// guest would start the verification again, against the decision of a person. A plain stay still gets its link.
-/// </summary>
 public class GuestCheckInSendJobVerificationTests
 {
     private static readonly DateTimeOffset Today = new(2026, 11, 10, 8, 0, 0, TimeSpan.Zero);
@@ -43,7 +38,6 @@ public class GuestCheckInSendJobVerificationTests
         };
         db.Properties.Add(property);
 
-        // A rejection of an operator; the link of the stay expired. A hand-off still open, on a link that is still usable. A plain stay whose link expired.
         var rejected = AddStay(db, org.Id, property.Id, GuestCheckInSessionStatus.Scaduto);
         db.BiometricVerificationLogs.Add(new BiometricVerificationLog
         {
@@ -83,7 +77,6 @@ public class GuestCheckInSendJobVerificationTests
         checkIn.Verify(s => s.IssueLinkAsync(plain, org.Id), Times.AtLeastOnce);
     }
 
-    /// <summary>A confirmed stay arriving tomorrow whose guest got a link on the 8th (in the given state), with the data still to complete.</summary>
     private static Guid AddStay(AppDbContext db, Guid orgId, Guid propertyId, GuestCheckInSessionStatus status, DateTime? operatorRequestedAt = null)
     {
         var guest = new Guest

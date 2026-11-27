@@ -13,10 +13,6 @@ using Moq;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// Builds the <see cref="CheckoutPaymentSettlementService"/> of a <c>StripeWebhookHandler</c> made by hand in tests, on
-/// the same context and payment repository as the handler (BK-04).
-/// </summary>
 internal static class TestCheckoutPaymentSettlement
 {
     private static readonly IConfiguration EmptyConfiguration = new ConfigurationBuilder().AddInMemoryCollection().Build();
@@ -51,10 +47,6 @@ internal static class TestCheckoutPaymentSettlement
     }
 }
 
-/// <summary>
-/// Builds the <see cref="DeferredChargeService"/> of a <c>StripeWebhookHandler</c> made by hand in tests, on the same
-/// context as the handler (BK-08).
-/// </summary>
 internal static class TestDeferredCharges
 {
     public const string PublicSiteBaseUrl = "https://casazen-app.test";

@@ -53,8 +53,8 @@ public class HeldChargeVerificationTests
     [Theory]
     [InlineData(5_999, 5_999)]
     [InlineData(6_001, 6_001)]
-    [InlineData(6_000, 5_000)] // blocked for less than the price
-    [InlineData(6_000, 0)] // nothing left to charge
+    [InlineData(6_000, 5_000)]
+    [InlineData(6_000, 0)]
     public void ABlock_ForAnotherAmountThanThePrice_NeedsAReview(long amount, long capturable) =>
         Assert.Equal(["amount"], ForBlock(Block(amount: amount, capturable: capturable)));
 
@@ -111,8 +111,6 @@ public class HeldChargeVerificationTests
         Assert.Equal("review:account+amount+currency+fee+intent", ServiceChargeVerification.ReviewCode(mismatches));
     }
 
-    // ─── The transfer to the supplier ───
-
     [Fact]
     public void ATransferOfTheMeantAmountToTheSupplier_IsAccepted() =>
         Assert.Empty(ForTransfer(5_400, Supplier, 5_400, Supplier));
@@ -120,7 +118,7 @@ public class HeldChargeVerificationTests
     [Theory]
     [InlineData(5_399L)]
     [InlineData(5_401L)]
-    [InlineData(6_000L)] // the whole price: the commission would go to the supplier
+    [InlineData(6_000L)]
     public void ATransferOfAnotherAmount_NeedsAReview(long observed) =>
         Assert.Equal(["amount"], ForTransfer(5_400, Supplier, observed, Supplier));
 

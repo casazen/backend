@@ -64,8 +64,6 @@ public sealed class ReviewEvidenceAccessTests
     [Fact]
     public async Task ReviewEvidenceAccess_OtherPropertyManager_Gets404()
     {
-        // Proof (permission, AC1): a property manager «Solo alcuni» who reaches P1 only gets nothing of a booking of P2, the list or a picture (the same answer as for nothing at
-        // all), and no line is written; the evidence of the booking of P1 it reaches is served (the positive control).
         await using var world = await AccessWorld.CreateAsync();
         var picture = world.EvidenceOfP2[0];
 
@@ -80,7 +78,6 @@ public sealed class ReviewEvidenceAccessTests
     [Fact]
     public async Task ReviewEvidenceAccess_OtherOrg_Gets404()
     {
-        // Proof (permission, AC1): the owner of another organization gets nothing of a booking of this one, nor through a booking of its own named with an evidence of this org.
         await using var world = await AccessWorld.CreateAsync();
         var picture = world.EvidenceOfP2[0];
 
@@ -107,7 +104,6 @@ public sealed class ReviewEvidenceAccessTests
         Assert.Null(await world.Store().ReadAsync(world.OwnerScope, world.BookingOfP2, deleted.Id, AccessWorld.Owner, Ct));
         Assert.DoesNotContain((await world.Store().ListAsync(world.OwnerScope, world.BookingOfP2, Ct))!, item => item.Id == deleted.Id);
 
-        // Past its expiry (48 hours by default) nothing is served, even before the purge deletes it; the booking is still reachable: its list is empty.
         world.Clock.Advance(TimeSpan.FromHours(48));
         Assert.Null(await world.Store().ReadAsync(world.OwnerScope, world.BookingOfP2, world.EvidenceOfP2[0].Id, AccessWorld.Owner, Ct));
         Assert.Empty((await world.Store().ListAsync(world.OwnerScope, world.BookingOfP2, Ct))!);
@@ -117,7 +113,6 @@ public sealed class ReviewEvidenceAccessTests
     [Fact]
     public async Task ReviewEvidenceAccess_Read_WritesAuditEntry()
     {
-        // Proof (privacy, AC2): every picture served writes one line of the activity log of the org: the reader, the booking, the kind of the picture, and nothing of the picture.
         await using var world = await AccessWorld.CreateAsync();
         var crop = world.EvidenceOfP2.Single(row => row.Kind == IdentityEvidenceKind.DocumentPortrait);
         var frame = world.EvidenceOfP2.First(row => row.Kind == IdentityEvidenceKind.Frame);
@@ -158,7 +153,6 @@ public sealed class ReviewEvidenceAccessTests
     [Fact]
     public async Task ReviewEvidenceAccess_Controller_ServesThePictureNeverCached_AndAnswersTheSame404()
     {
-        // AC3: the picture is sent with no-store, private, no-cache, nosniff and inline, as its content type; every case where it is not served is 404 identity_evidence_not_found.
         await using var world = await AccessWorld.CreateAsync();
         var frame = world.EvidenceOfP2.First(row => row.Kind == IdentityEvidenceKind.Frame);
         var (controller, response) = world.Controller(AccessWorld.Owner, world.OwnerScope);
@@ -218,8 +212,6 @@ public sealed class ReviewEvidenceAccessTests
     [Fact]
     public async Task ReviewEvidenceAccess_DecisionDeletesEvidence()
     {
-        // Proof (data, AC4): the decision of an operator, an approval or a rejection, deletes the evidence of the booking: the objects leave the bucket and the rows stay as the
-        // trace, marked deleted with the reason decided. The evidence of another booking stays.
         await using var world = await AccessWorld.CreateAsync();
         await world.HandOffAsync(world.BookingOfP2);
         await world.HandOffAsync(world.BookingOfP1);
@@ -279,10 +271,6 @@ public sealed class ReviewEvidenceAccessTests
             .ToDictionary(e => (string)e.Attribute("name")!, e => (string?)e.Element("value") ?? string.Empty, StringComparer.Ordinal);
     }
 
-    /// <summary>
-    /// One org with two properties of its owner (P1 and P2), a booking on each, a property manager «Solo alcuni» who reaches P1 only, another org with its booking; the evidence
-    /// of the booking of P2 (a crop and three frames) and of the booking of P1 (one frame), kept by the store as the closure keeps it.
-    /// </summary>
     private sealed class AccessWorld : IAsyncDisposable
     {
         public const string Owner = "auth0|owner-e73";
@@ -412,7 +400,6 @@ public sealed class ReviewEvidenceAccessTests
             return (controller, body);
         }
 
-        /// <summary>The verification of the booking waits for an operator: its session was reviewed and handed over.</summary>
         public async Task HandOffAsync(Guid bookingId)
         {
             Db.GuestCheckInSessions.Add(new GuestCheckInSession

@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>
-/// The people a contract names go into the draft: a contract with two co-tenants gives a draft with two tenants, also when one of them is
-/// already there from an earlier reading. A role in which somebody else was typed keeps what was typed, and the person is only told about the others.
-/// </summary>
 public class LeaseDraftContractFillPartiesTests
 {
     private const string LandlordCode = "RSSMRA80A01H501U";
@@ -33,7 +29,6 @@ public class LeaseDraftContractFillPartiesTests
 
         var fill = LeaseDraftContractFill.Merge(typed, Reading(), LeaseOrigin.Imported, Guid.NewGuid);
 
-        // It may be the wrong contract: nobody is added to the person who was typed, and each person the contract names is a conflict.
         Assert.Equal([TypedTenantCode], fill.Values.Tenants.Select(t => t.FiscalCode));
         Assert.Equal(2, fill.Fields.Count(f => f is { Field: "party", State: FieldReadingState.Conflict }));
     }
@@ -50,7 +45,6 @@ public class LeaseDraftContractFillPartiesTests
         Assert.DoesNotContain(fill.Fields, f => f is { Field: "party", State: FieldReadingState.Conflict });
     }
 
-    /// <summary>A contract with a landlord and two tenants, each with a fiscal code, a name and a residence.</summary>
     private static LeaseContractReading Reading() =>
         new()
         {

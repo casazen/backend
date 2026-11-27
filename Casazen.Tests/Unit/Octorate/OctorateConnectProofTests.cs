@@ -45,7 +45,6 @@ public class OctorateConnectProofTests
         Assert.Equal(expected, OctorateEnvironments.ExpectedApiEnvironment(connection, allowProduction));
     }
 
-    // One provider for the whole class: EF keeps one model per provider.
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     private static readonly Guid OrgA = Guid.Parse("2b9e6f1c-4d3a-4c7e-9a51-6e0f3d2c1b01");
@@ -64,14 +63,12 @@ public class OctorateConnectProofTests
 
         var state = await states.CreateAsync(OrgA, UserA, Redirect, CancellationToken.None);
 
-        // Only the hash of the state is stored, with its expiry and its environment.
         var row = Assert.Single(await db.OctorateOAuthStates.AsNoTracking().ToListAsync());
         Assert.Equal(OctorateOAuthStateService.HashOf(state), row.StateHash);
         Assert.NotEqual(state, row.StateHash);
         Assert.Equal(OctorateEnvironment.Test, row.Environment);
         Assert.Equal(clock.GetUtcNow().UtcDateTime.AddMinutes(OctorateOptions.DefaultStateLifetimeMinutes), row.ExpiresAt);
 
-        // Another org, another user, another redirect address, a made-up state: the same refusal every time.
         var refusals = new[]
         {
             await Assert.ThrowsAsync<OctorateOAuthStateInvalidException>(() => states.ConsumeAsync(state, OrgB, UserA, Redirect, CancellationToken.None)),
@@ -85,12 +82,10 @@ public class OctorateConnectProofTests
             Assert.Equal(StatusCodes.Status400BadRequest, refusal.ResponseStatusCode);
         });
 
-        // Its own org, user and redirect address: once.
         Assert.Equal(OctorateEnvironment.Test, await states.ConsumeAsync(state, OrgA, UserA, Redirect, CancellationToken.None));
         await Assert.ThrowsAsync<OctorateOAuthStateInvalidException>(() => states.ConsumeAsync(state, OrgA, UserA, Redirect, CancellationToken.None));
         Assert.Empty(await db.OctorateOAuthStates.AsNoTracking().ToListAsync());
 
-        // Past its lifetime a state is refused even to its owner.
         var late = await states.CreateAsync(OrgA, UserA, Redirect, CancellationToken.None);
         clock.Advance(TimeSpan.FromMinutes(OctorateOptions.DefaultStateLifetimeMinutes) + TimeSpan.FromSeconds(1));
         await Assert.ThrowsAsync<OctorateOAuthStateInvalidException>(() => states.ConsumeAsync(late, OrgA, UserA, Redirect, CancellationToken.None));
@@ -153,7 +148,6 @@ public class OctorateConnectProofTests
             },
         };
 
-        // The consent: the state travels only inside the consent address, as OAuth requires.
         var start = Assert.IsType<OctorateConnectStartResponse>(Assert.IsType<OkObjectResult>((await controller.Start(CancellationToken.None)).Result).Value);
         var state = QueryHelpers.ParseQuery(new Uri(start.AuthorizationUrl).Query)["state"].ToString();
         Assert.False(string.IsNullOrEmpty(state));
@@ -172,14 +166,12 @@ public class OctorateConnectProofTests
         var shown = Assert.IsType<OctorateConnectionResponse>(status);
         Assert.Equal((180, 60, false), (shown.QuotaLimit, shown.QuotaRemaining, shown.QuotaWarning));
 
-        // Nothing the endpoints answered carries a token, the code or the state.
         foreach (var answer in new[] { JsonSerializer.Serialize(complete, complete.GetType()), JsonSerializer.Serialize(status, status.GetType()) })
         {
             foreach (var secret in new[] { accessToken, refreshToken, code, state })
                 Assert.DoesNotContain(secret, answer, StringComparison.Ordinal);
         }
 
-        // Nothing written to the log carries them either: not the messages, not their values, not an exception.
         Assert.NotEmpty(logs.Lines);
         Assert.Contains(logs.Lines, line => line.Contains("OctorateTokenAccessed", StringComparison.Ordinal));
         foreach (var line in logs.Lines)
@@ -214,7 +206,6 @@ public class OctorateConnectProofTests
         return host.Object;
     }
 
-    /// <summary>Octorate as the consent sees it: the code exchange, the configuration of the sandbox, two accommodations.</summary>
     private sealed class OctorateStub(string accessToken, string refreshToken, string code) : HttpMessageHandler
     {
         public bool ExchangedTheCode { get; private set; }
@@ -263,7 +254,6 @@ public class OctorateConnectProofTests
         public bool FilterEnabled => true;
     }
 
-    /// <summary>Every log line written: the message, every structured value and the exception, as text.</summary>
     private sealed class CapturingLoggerProvider : ILoggerProvider
     {
         private readonly List<string> _lines = [];

@@ -9,14 +9,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.GuestPortal;
 
-/// <summary>
-/// E50/F01/US01/T02 (NF-153, AC-NF153-2, decision A4): the registries of the guest portal. A class that implements a registry interface takes effect with
-/// no edit to an existing file; the words of the sections and of their states are the fixed vocabulary; the keys of the sections are unique. No exact
-/// list of the sections is photographed here: the later epics add theirs.
-/// </summary>
 public class GuestPortalRegistryTests
 {
-    /// <summary>The assemblies Program.cs scans.</summary>
     private static readonly Assembly[] Production =
     [
         typeof(PortalContext).Assembly,
@@ -24,7 +18,6 @@ public class GuestPortalRegistryTests
         typeof(GuestPortalControllerBase).Assembly,
     ];
 
-    /// <summary>A section only this assembly knows, with a key of its own: nothing central names it.</summary>
     [Fact]
     public async Task TestAssemblySection_AppearsWithoutCentralEdit()
     {
@@ -37,7 +30,6 @@ public class GuestPortalRegistryTests
         Assert.Contains(sections, s => s is TestOnlySection);
         Assert.Contains(sections, s => s is StayPortalSection);
 
-        // And the overview shows it, in its order, with its state and badge.
         using var world = new GuestPortalTestWorld();
         var overview = await world.OverviewService(sections: sections).GetAsync(await world.ContextAsync());
 
@@ -55,11 +47,6 @@ public class GuestPortalRegistryTests
             Enum.GetValues<GuestPortalSectionState>().Select(GuestPortalSectionStates.WireName));
     }
 
-    /// <summary>
-    /// The sections, steps and policies of the application: every section has a key of the vocabulary, no key twice; the stay section, the welcome step
-    /// and the default policy are there; scanning twice registers nothing twice. The keys are read without building the sections (their key is a
-    /// constant), so a section with dependencies of its own needs no change here.
-    /// </summary>
     [Fact]
     public void ProductionRegistries_UniqueKeysOfTheVocabulary_AndTheDefaults()
     {
@@ -99,7 +86,6 @@ public class GuestPortalRegistryTests
         services.Where(d => d.ServiceType == typeof(TRegistry)).Select(d => d.ImplementationType!).ToList();
 }
 
-/// <summary>A section of the test assembly: found by the scan of the registries like the ones of the epics.</summary>
 public sealed class TestOnlySection : IGuestPortalSection
 {
     public const string TestKey = "test-only";

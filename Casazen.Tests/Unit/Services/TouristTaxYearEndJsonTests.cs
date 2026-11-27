@@ -31,11 +31,6 @@ using FiscalDocumentKind = Casazen.Core.Entities.Enums.FiscalDocumentKind;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// FIX/BE-YEAREND-JSON (E18/F01/US02/T03): the three year-end reads of the tourist tax answer a JSON when it is asked by name (<c>format=json</c>), by the same road as the files: the same policy, the same refusal of a
-/// scope that does not reach the whole org, the same decision on <c>guest.read</c>. The controller is built with the real service over an in-memory database, as the tests of the files do; the JSON is what the
-/// API serializes (camel case, enums as names). Everything is invented (TEST properties, @example.com).
-/// </summary>
 public sealed class TouristTaxYearEndJsonTests
 {
     private static readonly DateTimeOffset Now = new(2026, 12, 31, 10, 0, 0, TimeSpan.Zero);
@@ -67,7 +62,6 @@ public sealed class TouristTaxYearEndJsonTests
         SeedOrg(db, orgId);
         var loft = SeedProperty(db, orgId, "Loft Milano", "Milano");
 
-        // A minor and a guest exempt for a health reason, two residents, and a guest whose reason was erased with the data.
         var health = SeedStay(db, loft, Day(2026, 3, 2), nights: 3, touristTax: 20m);
         SeedRecord(db, orgId, health, (TouristTaxExemptionKind.Age, TouristTaxExemptionReason.MinorAgeCode), (TouristTaxExemptionKind.Host, TouristTaxExemptionReason.HealthCareCode));
         var residents = SeedStay(db, loft, Day(2026, 5, 10), nights: 1, touristTax: 0m);
@@ -76,14 +70,12 @@ public sealed class TouristTaxYearEndJsonTests
         SeedRecord(db, orgId, erased, (TouristTaxExemptionKind.Host, null));
         await db.SaveChangesAsync();
 
-        // Without guest.read: the age and «restricted», with the counts of the reasons it folds (3 stays, 4 guests, 7 nights of guests), and no reason anywhere in the text.
         var hidden = await DeclarationJsonAsync(db, orgId, holdsGuestRead: false);
         List<(string Reason, int Stays, int Guests, int GuestNights)> restricted = [(TouristTaxExemptionReason.MinorAgeCode, 1, 1, 3), (TouristTaxExemptionKinds.Restricted, 3, 4, 7)];
         Assert.Equal(restricted, ExemptionsOf(hidden));
         foreach (var code in ReasonCodes)
             Assert.DoesNotContain(code, hidden, StringComparison.Ordinal);
 
-        // With guest.read the same data names every reason: the contrast is the rule, not an empty answer.
         var shown = await DeclarationJsonAsync(db, orgId, holdsGuestRead: true);
         List<(string Reason, int Stays, int Guests, int GuestNights)> named =
         [
@@ -97,11 +89,6 @@ public sealed class TouristTaxYearEndJsonTests
             Assert.Contains($"\"{code}\"", shown, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// Permission: the JSON needs a scope that reaches the whole org, as the files do (a declaration of some of the properties would be false, and the payments belong to the org): a caller that reaches only some
-    /// of the properties (the ones it was given, or the ones it created) is refused with 403 <c>tourist_tax_year_end_needs_whole_org</c> on the three reads, in JSON and in CSV, before anything is read (even a year the
-    /// reports do not support is the refusal of the scope), while the whole org reads the three of them.
-    /// </summary>
     [Fact]
     public async Task YearEndJson_NeedsTheWholeOrganization_Test()
     {
@@ -174,7 +161,6 @@ public sealed class TouristTaxYearEndJsonTests
         Assert.Equal("2027-01-05", root.GetProperty("dueDate").GetString());
         Assert.Equal(2, root.GetProperty("cantonUnknownCount").GetInt32());
 
-        // The properties by name: the one in Ticino and the two whose canton is not known, flagged; the house of Zürich and the one of another org are not in the count.
         var properties = root.GetProperty("properties").EnumerateArray().ToList();
         Assert.Equal(["Casa Lugano", "Villa Comune Ignoto", "Villa Senza Comune"], properties.Select(p => p.GetProperty("propertyName").GetString()));
         Assert.Equal([false, true, true], properties.Select(p => p.GetProperty("cantonUnknown").GetBoolean()));
@@ -183,12 +169,10 @@ public sealed class TouristTaxYearEndJsonTests
         Assert.Equal((1, 4, 1, 4), (Int(properties[1], "stays"), Int(properties[1], "nights"), Int(properties[1], "staysWithoutDocument"), Int(properties[1], "nightsWithoutDocument")));
         Assert.Equal((1, 2, 1, 2), (Int(properties[2], "stays"), Int(properties[2], "nights"), Int(properties[2], "staysWithoutDocument"), Int(properties[2], "nightsWithoutDocument")));
 
-        // The amount is a number in the currency the record carries, not a string.
         Assert.Equal(JsonValueKind.Number, properties[0].GetProperty("touristTax").ValueKind);
         Assert.Equal(12.5m, properties[0].GetProperty("touristTax").GetDecimal());
         Assert.Equal("CHF", properties[0].GetProperty("currency").GetString());
 
-        // An org whose properties are all known says 0, and has none of the first org's.
         var other = CreateController(db, new HostScope(otherOrgId), holdsGuestRead: false);
         var otherAnswer = Assert.IsType<OkObjectResult>(await other.GetYearEndTicinoCount(2026, "json", CancellationToken.None));
         var otherCount = Assert.IsType<TicinoYearlyCountDto>(otherAnswer.Value);
@@ -196,10 +180,6 @@ public sealed class TouristTaxYearEndJsonTests
         Assert.Equal(["Casa Locarno"], otherCount.Properties.Select(p => p.PropertyName));
     }
 
-    /// <summary>
-    /// The format has to be named, as it always was, and the files are the files: none, a blank one or another word is the 400 <c>report_invalid_format</c> of the files; <c>json</c> in any case is the data; a year
-    /// the reports do not support and an account cut by anything but month or quarter are the same 400 as for the files; and <c>csv</c> is the very file the exporter makes of the same data.
-    /// </summary>
     [Fact]
     public async Task YearEndJson_IsAskedByName_AndTheFilesAreStillTheFiles_Test()
     {
@@ -237,12 +217,10 @@ public sealed class TouristTaxYearEndJsonTests
         var controller = CreateController(db, new HostScope(orgId), holdsGuestRead);
         var answer = Assert.IsType<OkObjectResult>(await controller.GetYearEndDeclaration(2026, "json", CancellationToken.None));
 
-        // Money and, for a caller that holds guest.read, the reasons of the exemptions: never kept by a cache, like the files.
         Assert.Equal("no-store", controller.Response.Headers.CacheControl.ToString());
         return JsonSerializer.Serialize(Assert.IsType<TouristTaxDeclarationDto>(answer.Value), Json);
     }
 
-    /// <summary>The exemptions of the only comune of a declaration, as the JSON says them.</summary>
     private static List<(string Reason, int Stays, int Guests, int GuestNights)> ExemptionsOf(string json)
     {
         using var document = JsonDocument.Parse(json);
@@ -259,7 +237,6 @@ public sealed class TouristTaxYearEndJsonTests
         Assert.Equal(code, Assert.IsType<ProblemDetails>(problem.Value).Extensions[ApiProblemDetails.CodeExtension]);
     }
 
-    /// <summary>The three reads of the year-end in a format, for a controller.</summary>
     private static Func<Task<IActionResult>>[] Reads(TouristTaxSummaryController controller, int year, string? format)
     {
         return
@@ -358,7 +335,6 @@ public sealed class TouristTaxYearEndJsonTests
         return booking;
     }
 
-    /// <summary>What a stay stores of its tourist tax once the host confirmed it: the guests with the kind of their exemption and its reason.</summary>
     private static void SeedRecord(AppDbContext db, Guid orgId, Booking booking, params (TouristTaxExemptionKind Kind, string? Code)[] guests)
     {
         var nights = booking.CheckOutDate.Date.Subtract(booking.CheckInDate.Date).Days;
@@ -378,7 +354,6 @@ public sealed class TouristTaxYearEndJsonTests
         });
     }
 
-    /// <summary>An issued document of a stay (a guest document) with a tourist tax line of <paramref name="tax"/> when it is above zero, and a line of the stay.</summary>
     private static void SeedDocument(AppDbContext db, Guid orgId, Property property, Booking booking, FiscalDocumentKind kind, string currency, decimal tax)
     {
         var lines = new List<FiscalDocumentLine> { new() { OrgId = orgId, LineNumber = 1, LineType = FiscalLineType.Accommodation, Description = "TEST soggiorno", Quantity = 1m, UnitPrice = 100m, TotalPrice = 100m } };

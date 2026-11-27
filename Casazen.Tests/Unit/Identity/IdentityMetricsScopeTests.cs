@@ -20,10 +20,6 @@ public sealed class IdentityMetricsScopeTests
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
 
-    /// <summary>
-    /// On each of the three properties (one the collaborator was given, one it was not, one of another org): a review the policy would have approved and a person rejected (a
-    /// would-be false approval, timed 1800 s), an automatic approval, and a step still open. Three steps and two timed presences each.
-    /// </summary>
     private static async Task<IdentityMetricsWorld> SeededAsync()
     {
         var world = new IdentityMetricsWorld();
@@ -58,17 +54,11 @@ public sealed class IdentityMetricsScopeTests
         Assert.Equal(metrics.Opened, metrics.Outcomes.Total);
         Assert.Equal((properties, properties, properties), (metrics.Outcomes.AutoApproved, metrics.Outcomes.Review, metrics.Outcomes.InProgress));
         Assert.Equal(new IdentityShadowVsHuman(0, properties, 0, 0), metrics.ShadowVsHuman);
-        // Two timed presences each (800 and 1200 ms): the median is the lower, the 95th percentile the higher, and the count is of the properties in scope only.
         Assert.Equal(new IdentityPercentiles(800, 1200, 2 * properties), metrics.LatencyMs);
         Assert.Equal(new IdentityPercentiles(1800, 1800, properties), metrics.ReviewSeconds);
         Assert.Equal(3 * properties, metrics.Coverage.Sum(cell => cell.Opened));
     }
 
-    /// <summary>
-    /// Proof (data, permission): another org and a property outside the reach are never counted. The whole org of the caller counts its two properties and nothing of the other org;
-    /// a collaborator «Solo alcuni» counts the property it was given only; an account in no org team counts the properties it created only; the other org counts its own property
-    /// only. The same with the tenant filter of the context on and off, so the isolation does not lean on the filter.
-    /// </summary>
     [Fact]
     public async Task IdentityMetricsScope_OtherOrgAndUnreachableProperty_NotCounted()
     {
@@ -81,19 +71,13 @@ public sealed class IdentityMetricsScopeTests
             AssertOnlyTheStepsOf(await MetricsAsync(world, world.OwnedByTheOwnerOfTheHiddenProperty, tenant), properties: 1);
         }
 
-        // The other org sees its own property, and the same org-wide scope of the first org (a tenant filter that is not the scope's org) sees nothing of it.
         AssertOnlyTheStepsOf(await MetricsAsync(world, new HostScope(world.OtherOrgId), world.OtherOrgId), properties: 1);
         Assert.Equal(0, (await MetricsAsync(world, new HostScope(world.OtherOrgId), world.OrgId)).Opened);
 
-        // A collaborator who was given nothing, and a scope of a user who owns nothing, count nothing: never «no declaration = in scope».
         Assert.Equal(0, (await MetricsAsync(world, new HostScope(world.OrgId, GrantedToUserId: "auth0|nessuna-proprieta"))).Opened);
         Assert.Equal(0, (await MetricsAsync(world, new HostScope(world.OrgId, OwnerId: "auth0|non-ha-creato-nulla"))).Opened);
     }
 
-    /// <summary>
-    /// A row or a session that names another org on a stay of the scope is data of nobody's: a session of another org planted on a stay of this one is not counted by either org,
-    /// and a row of another org written on a stay of this one is neither paired, nor timed, nor counted as a decision of the policy.
-    /// </summary>
     [Fact]
     public async Task IdentityMetricsScope_ARowOrASessionOfAnotherOrgOnAStayOfTheScope_IsNeverCounted()
     {
@@ -102,7 +86,6 @@ public sealed class IdentityMetricsScopeTests
         world.AddSession(stay, IdentityMetricsWorld.At(10), IdentityMetricsWorld.At(10, 10, 5), IdentityOutcomeCodes.Review);
         world.AddDecision(stay, IdentityMetricsWorld.At(10, 10, 5), BiometricOutcome.Escalate, BiometricOutcome.Accept);
 
-        // An operator row and a decision row of the other org on this stay; and a session of the other org on a second stay of this org.
         world.AddOperator(stay, IdentityMetricsWorld.At(10, 10, 35), BiometricOutcome.Reject, orgId: world.OtherOrgId);
         var other = world.AddStay(world.GrantedPropertyId);
         world.AddSession(other, IdentityMetricsWorld.At(11), IdentityMetricsWorld.At(11, 10, 5), IdentityOutcomeCodes.AutoApproved, orgId: world.OtherOrgId);
@@ -120,7 +103,6 @@ public sealed class IdentityMetricsScopeTests
         Assert.Equal(0, theOtherOrg.LatencyMs.N);
     }
 
-    /// <summary>The scope is the one rule of the whole API: the same sessions as the ones the existing queue and metrics of the operators reach (<c>InScope</c> on the bookings).</summary>
     [Fact]
     public async Task IdentityMetricsScope_IsTheScopeOfTheQueueOfTheOperators()
     {

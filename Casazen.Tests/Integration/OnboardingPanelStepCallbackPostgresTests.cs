@@ -35,10 +35,6 @@ public class OnboardingPanelStepCallbackPostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    /// <summary>
-    /// Trust rule: eight requests that present the same state at the same moment, each with a context of its own, verify the step once. The claim is
-    /// one conditional update: the others find the state consumed and get the same 422 as any state that is not valid.
-    /// </summary>
     [PostgresFact]
     public async Task Callback_TheSameStatePresentedTogether_PassesOnce_Test()
     {
@@ -67,10 +63,6 @@ public class OnboardingPanelStepCallbackPostgresTests : IAsyncLifetime
         Assert.NotNull(stored.CallbackConsumedAt);
     }
 
-    /// <summary>
-    /// Trust rule: a request that read the row before a new hand-over replaced the nonce cannot burn the new state with the old one. The claim names
-    /// the hash it was presented with, so it finds nothing to update, and the new state is still good.
-    /// </summary>
     [PostgresFact]
     public async Task Callback_TheClaimOfAReplacedState_IsRefused_AndTheNewStateIsStillGood_Test()
     {
@@ -83,7 +75,6 @@ public class OnboardingPanelStepCallbackPostgresTests : IAsyncLifetime
         var oldState = StateOf(first);
         var staleRow = await reading.OnboardingPanelSteps.SingleAsync(s => s.Id == first.Step.Id);
 
-        // A new hand-over (the host opens the panel again) replaces the nonce while the request above is between its check and its claim.
         string newState;
         await using (var other = _database.CreateContext())
             newState = StateOf(await NewService(other, panel).StartAsync(scope, world.OwnerId, StartRequest(world), Ct));
@@ -100,7 +91,6 @@ public class OnboardingPanelStepCallbackPostgresTests : IAsyncLifetime
         Assert.Equal(PanelStepStatus.Verified, done.Status);
     }
 
-    /// <summary>Trust rule: a state that ran out between the check in memory and the claim cannot claim the row either.</summary>
     [PostgresFact]
     public async Task Callback_TheClaimOfAnExpiredState_IsRefused_Test()
     {
@@ -127,9 +117,6 @@ public class OnboardingPanelStepCallbackPostgresTests : IAsyncLifetime
         Assert.Null((await check.OnboardingPanelSteps.AsNoTracking().SingleAsync(s => s.Id == started.Step.Id)).CallbackConsumedAt);
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>One request: its own context, released with the others, presenting the state. The refusal, or <c>null</c> when it passed.</summary>
     private async Task<DomainRuleException?> PresentAsync(HostScope scope, Guid stepId, string state, CallbackPanel panel, Task gate)
     {
         await using var db = _database!.CreateContext();
@@ -164,7 +151,6 @@ public class OnboardingPanelStepCallbackPostgresTests : IAsyncLifetime
     private static string StateOf(PanelStepStart started) =>
         QueryHelpers.ParseQuery(new Uri(Assert.IsType<string>(started.CallbackUrl)).Query)["state"].ToString();
 
-    /// <summary>An org with its owner and one house.</summary>
     private async Task<World> SeedAsync()
     {
         var kit = new OrgInvitationTestKit(() => _database!.CreateContext());
@@ -179,7 +165,6 @@ public class OnboardingPanelStepCallbackPostgresTests : IAsyncLifetime
 
     private sealed record World(Guid OrgId, string OwnerId, Guid PropertyId);
 
-    /// <summary>A panel that sends the person back (so the step is a <c>redirectCallback</c>) and whose check always finds the step done.</summary>
     private sealed class CallbackPanel : IPanelStepVerifier
     {
         private int _calls;

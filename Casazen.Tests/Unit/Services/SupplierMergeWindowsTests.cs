@@ -58,7 +58,6 @@ public class SupplierMergeWindowsTests
     [Fact]
     public async Task TheWindowsSetByHand_AlwaysMove_EvenAtTheHoursOfAWindowOfTheKeeper()
     {
-        // No UID, so they are outside the unique index: two blocks at the same hour are fine, and neither is dropped.
         var block = Manual(Duplicate, SupplierBusyWindowKind.Block, Nine);
         await SeedAsync(Manual(Keeper, SupplierBusyWindowKind.Block, Nine), block, Feed(Keeper, "x", Nine));
 

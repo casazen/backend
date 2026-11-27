@@ -13,22 +13,13 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E13/F01/US02/T03 (NF-118): the two items the owner ledger adds to the billing setup, for an agency only: the commission rules of the channels saved once
-/// (<c>channel_commissions_unconfirmed</c>) and the owners without an active mandate (<c>owners_without_mandate</c>, with their count).
-/// </summary>
 public class OwnerBillingSetupContributorsTests
 {
     private static readonly Guid AgencyId = Guid.NewGuid();
     private static readonly Guid OtherAgencyId = Guid.NewGuid();
 
-    /// <summary>Today in Rome for every test: 14 November 2026.</summary>
     private static readonly DateTimeOffset Now = new(2026, 11, 14, 10, 0, 0, TimeSpan.Zero);
 
-    /// <summary>
-    /// Data: the count is the owners with an ownership not ended and no mandate in force today; an owner with a mandate in force, with only ended ownerships, or
-    /// anonymized is not counted, a mandate that ended is no mandate, a share that no mandate covers makes its owner count, and another agency's owners never do.
-    /// </summary>
     [Fact]
     public async Task BillingSetupMandates_CountsOwnersWithoutActiveMandate_Test()
     {
@@ -46,17 +37,14 @@ public class OwnerBillingSetupContributorsTests
 
         var item = Assert.Single(await world.Mandates.EvaluateAsync(AgencyId, CancellationToken.None));
 
-        // without + lapsed: two owners, counted once each however many ownerships they hold.
         Assert.Equal((OwnerBillingSetupItemKeys.OwnersWithoutMandate, BillingSetupSections.Mandates, BillingSetupReasons.Required, (int?)2), (item.Key, item.Section, item.Reason, item.Count));
 
-        // A mandate from today on covers the owner that had none; the lapsed one is renewed too: nothing is missing any more.
         world.Mandate(AgencyId, without, new DateOnly(2026, 11, 14), null);
         world.Mandate(AgencyId, lapsed, new DateOnly(2026, 7, 1), null);
         await world.Db.SaveChangesAsync();
         Assert.Empty(await world.Mandates.EvaluateAsync(AgencyId, CancellationToken.None));
     }
 
-    /// <summary>Data: a mandate of the owner covers every ownership of it; one of a single ownership (the shape of before E13) covers that one only, so the other share still has none.</summary>
     [Fact]
     public async Task BillingSetupMandates_AShareNoMandateCovers_CountsItsOwner_Test()
     {
@@ -70,13 +58,11 @@ public class OwnerBillingSetupContributorsTests
         var item = Assert.Single(await world.Mandates.EvaluateAsync(AgencyId, CancellationToken.None));
         Assert.Equal(1, item.Count);
 
-        // The owner's own mandate covers the second share too.
         world.Mandate(AgencyId, owner, new DateOnly(2025, 1, 1), null);
         await world.Db.SaveChangesAsync();
         Assert.Empty(await world.Mandates.EvaluateAsync(AgencyId, CancellationToken.None));
     }
 
-    /// <summary>Data: the step is missing until the agency saved its commission rules once; the defaults alone, and the rules of another agency, do not count.</summary>
     [Fact]
     public async Task BillingSetupChannels_MissingUntilTheAgencySavedItsRules_Test()
     {
@@ -94,7 +80,6 @@ public class OwnerBillingSetupContributorsTests
         Assert.Empty(await world.Channels.EvaluateAsync(AgencyId, CancellationToken.None));
     }
 
-    /// <summary>Data: an organization that is not an agency gets no item from either contributor, whatever its owners and rules say.</summary>
     [Theory]
     [InlineData(PlanTier.Starter)]
     [InlineData(PlanTier.Pro)]
@@ -179,7 +164,6 @@ public class OwnerBillingSetupContributorsTests
             return new World(db);
         }
 
-        /// <summary>An owner of the org and, from <paramref name="ownershipStart"/>, the whole of a property of its own (none without a start).</summary>
         public async Task<Guid> OwnerAsync(Guid orgId, DateOnly? ownershipStart, DateOnly? ownershipEnd = null, bool anonymized = false)
         {
             var owner = new PropertyOwner

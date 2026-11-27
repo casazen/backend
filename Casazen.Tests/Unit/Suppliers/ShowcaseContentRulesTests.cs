@@ -28,14 +28,11 @@ public class ShowcaseContentRulesTests
     private static IReadOnlyList<string> FieldsOf(DomainRuleException exception) =>
         Assert.IsAssignableFrom<IReadOnlyList<string>>(exception.Extensions["fields"]);
 
-    // ─── The color ───────────────────────────────────────────────────────────────
-
     [Fact]
     public void Color_WhiteTextReadsAtFourPointFiveOrMore_IsKeptInUpperCase()
     {
         Assert.Equal("#0B5FA5", Apply("""{"color":"#0b5fa5"}""").Color);
 
-        // 4.54:1 is the darkest-but-one gray that passes; 4.48:1 is the lightest that does not.
         Assert.Equal("#767676", Apply("""{"color":"#767676"}""").Color);
         Assert.True(ShowcaseColor.IsReadableWithWhite("#767676"));
         Assert.False(ShowcaseColor.IsReadableWithWhite("#777777"));
@@ -61,8 +58,6 @@ public class ShowcaseContentRulesTests
     {
         Assert.Equal(new[] { "color" }, FieldsOf(Refused($$"""{"color":"{{color}}"}""")));
     }
-
-    // ─── Lengths and text ────────────────────────────────────────────────────────
 
     [Fact]
     public void Texts_AtTheLimitAreKept_OneMoreIsRefusedWithThePathOfTheField()
@@ -96,8 +91,6 @@ public class ShowcaseContentRulesTests
         Assert.Equal("Pronti in 1 ora", Apply($$"""{"tagline":"  Pronti   in\n\n 1 ora{{zeroWidthSpace}} "}""").Tagline);
     }
 
-    // ─── Services and images ─────────────────────────────────────────────────────
-
     [Fact]
     public void ServiceOrder_OnlyActiveServicesOfTheSupplier_EachOnce()
     {
@@ -105,7 +98,6 @@ public class ShowcaseContentRulesTests
 
         Assert.Equal(new[] { "pulizia", "bucato" }, Apply("""{"serviceOrder":["pulizia","bucato"]}""", context: context).ServiceOrder);
 
-        // A draft service (not active), and a repeated one.
         var refused = Refused("""{"serviceOrder":["pulizia","bozza","pulizia"]}""", context: context);
         Assert.Equal(new[] { "serviceOrder[1]", "serviceOrder[2]" }, FieldsOf(refused));
     }
@@ -139,8 +131,6 @@ public class ShowcaseContentRulesTests
         Assert.Equal(new[] { "gallery[0].photoUrl" }, FieldsOf(refused));
     }
 
-    // ─── What a save does to the draft ───────────────────────────────────────────
-
     [Fact]
     public void Save_IsAMergePatch_ObjectsMergeListsReplaceNullClears()
     {
@@ -161,8 +151,6 @@ public class ShowcaseContentRulesTests
         Assert.Equal(new[] { "phone" }, FieldsOf(Refused("""{"phone":"3331234567"}""")));
         Assert.Equal(new[] { "cover.whatsapp" }, FieldsOf(Refused("""{"cover":{"whatsapp":"1"}}""")));
     }
-
-    // ─── Draft and publication ───────────────────────────────────────────────────
 
     [Fact]
     public void Draft_MayBeIncomplete_APublicationDropsEmptyRowsAndRefusesHalfFilledOnes()

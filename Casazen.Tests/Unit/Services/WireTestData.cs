@@ -19,53 +19,39 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 internal static class WireTestData
 {
-    /// <summary>A valid Swiss IBAN (a normal account, institution 00762).</summary>
     public const string SwissIban = "CH9300762011623852957";
 
-    /// <summary>Another valid Swiss IBAN.</summary>
     public const string OtherSwissIban = "CH5604835012345678009";
 
-    /// <summary>A valid Liechtenstein IBAN: a domestic payment of the Swiss system.</summary>
     public const string LiechtensteinIban = "LI21088100002324013AA";
 
-    /// <summary>A valid QR-IBAN (institution 31999): the account of a QR-bill, never the creditor account of a normal transfer.</summary>
     public const string QrIban = "CH4431999123000889012";
 
-    /// <summary>A valid Italian IBAN.</summary>
     public const string ItalianIban = "IT60X0542811101000000123456";
 
-    /// <summary>Another valid Italian IBAN.</summary>
     public const string OtherItalianIban = "IT41W8000000292100645211151";
 
-    /// <summary>An Italian IBAN of 26 characters (Italy has 27) whose check digits are right: the checksum alone cannot tell, the length of the country does.</summary>
     public const string WrongLengthItalianIban = "IT90X054281110100000012345";
 
-    /// <summary>The IBAN of the agency, on its issuer profile: a valid Swiss IBAN.</summary>
     public const string DebitIban = "CH4308307000289537312";
 
-    /// <summary>A Swiss IBAN whose check digits do not match.</summary>
     public const string BadIban = "CH9300762011623852958";
 
-    /// <summary>A valid IBAN outside the SEPA area (Saudi Arabia): the creditor account of no SEPA credit transfer.</summary>
     public const string NonSepaIban = "SA0380000000608010167519";
 
-    /// <summary>The address of the owners of Como (a street, its number, the postal code, the town and the country), where the EUR payouts go.</summary>
     public static readonly (string Street, string Civic, string PostalCode, string City, string Country) ComoAddress = ("Via Volta", "8", "22100", "Como", "IT");
 
     /// <summary>The address of the owners of Lugano, where the CHF payouts go (the one an owner has unless it is said otherwise).</summary>
     public static readonly (string Street, string Civic, string PostalCode, string City, string Country) LuganoAddress = ("Via Cantonale", "12", "6900", "Lugano", "CH");
 
-    /// <summary>Everything that identifies a person or an account in these tests.</summary>
     public static readonly string[] Secrets =
     [
         SwissIban, OtherSwissIban, LiechtensteinIban, QrIban, ItalianIban, OtherItalianIban, WrongLengthItalianIban, DebitIban, BadIban, NonSepaIban,
         "Mario", "Rossi", "Luigi", "Bianchi", "Giulia", "Verdi", "Quokka Immobiliare", "Via Nassa", "Via Cantonale", "Via Volta",
     ];
 
-    /// <summary>The instant of the tests: 14 November 2026, 10:00 UTC (11:00 in Rome).</summary>
     public static readonly DateTimeOffset Now = new(2026, 11, 14, 10, 0, 0, TimeSpan.Zero);
 
-    /// <summary>The execution date the tests ask the bank for: two days after <see cref="Now"/>.</summary>
     public static readonly DateOnly ExecutionDate = new(2026, 11, 16);
 
     public static FakeTimeProvider Clock()
@@ -78,22 +64,16 @@ internal static class WireTestData
         return new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"Wire_{Guid.NewGuid()}").Options;
     }
 
-    /// <summary>A context of <paramref name="orgId"/> with the encrypted columns on (<paramref name="provider"/>, or an ephemeral one).</summary>
     public static AppDbContext NewDb(Guid orgId, bool filterEnabled = true, DbContextOptions<AppDbContext>? options = null, IDataProtectionProvider? provider = null)
     {
         return new AppDbContext(options ?? NewOptions(), new WireTestTenant(orgId, filterEnabled), provider ?? TestDataProtection.Shared);
     }
 
-    /// <summary>
-    /// The service of the tests: a schema of its own that accepts any content (these tests are about the rules of the service, the proofs about the file validate against
-    /// the official schemas of the build), and the clock of <see cref="Now"/>.
-    /// </summary>
     public static WireTransferService NewService(AppDbContext db, ILogger<WireTransferService>? logger = null, Func<string, System.Xml.Schema.XmlSchemaSet>? schemas = null)
     {
         return new WireTransferService(db, logger ?? NullLogger<WireTransferService>.Instance, schemas ?? (_ => Pain001TestSchemas.Accepting()), Clock());
     }
 
-    /// <summary>The issuer profile of the agency: a Swiss company with its address and the IBAN that pays.</summary>
     public static async Task AddIssuerAsync(AppDbContext db, Guid orgId, string? iban = DebitIban, string? legalName = "Quokka Immobiliare SA", string? street = "Via Nassa")
     {
         db.OrgFiscalIssuerProfiles.Add(new OrgFiscalIssuerProfile
@@ -196,10 +176,6 @@ internal static class WireTestData
         return payout.Id;
     }
 
-    /// <summary>
-    /// Two owners with a payout each: 1200.00 and 1574.50, in CHF to owners of Lugano with a Swiss IBAN (the default), in EUR to owners of Como with an Italian IBAN.
-    /// Returns the payout ids.
-    /// </summary>
     public static async Task<List<Guid>> AddTwoPayoutsAsync(AppDbContext db, Guid orgId, string currency = "CHF")
     {
         var eur = currency == "EUR";
@@ -219,7 +195,6 @@ internal static class WireTestData
     }
 }
 
-/// <summary>A tenant context of the tests: the org the context is of, and whether the global filter is on.</summary>
 internal sealed class WireTestTenant(Guid orgId, bool filterEnabled = true) : ITenantContext
 {
     public Guid? OrgId => orgId;

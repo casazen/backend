@@ -77,8 +77,6 @@ public class SupplierPaymentWebhookHandlerTests
         };
     }
 
-    // ─── The payment of a service: before the generic case ───
-
     [Fact]
     public async Task ServiceCharge_OnTheConnectEndpoint_IsRecordedAsPaid_AndNeverReachesTheBookingSettlement()
     {
@@ -92,7 +90,6 @@ public class SupplierPaymentWebhookHandlerTests
         Assert.Equal(ServicePaymentStatus.Paid, (await s.ReloadAsync(opened.PaymentId)).Status);
         Assert.Equal(ServiceRequestStatus.Pagato, (await s.ReadAsync(opened.Request.Id)).Status);
         Assert.True(await s.Db.ProcessedStripeEvents.AnyAsync(e => e.EventId == "evt_sc_1"));
-        // The generic handler never saw it: no booking payment was touched or refunded, and the receipt follows the commit.
         Assert.Empty(await s.Db.Payments.ToListAsync());
         Assert.Empty(await s.Db.PaymentRefunds.ToListAsync());
         Assert.Single(s.EmailsOf(EmailTemplates.Names.ServicePaymentReceived));
@@ -259,8 +256,6 @@ public class SupplierPaymentWebhookHandlerTests
         }
     }
 
-    // ─── Refunds and disputes: the service payments' own, or the booking payments' as before ───
-
     [Fact]
     public async Task ChargeRefunded_OfAServicePayment_IsRecordedByTheServicePayments_AndNotByTheBookingRefunds()
     {
@@ -390,8 +385,6 @@ public class SupplierPaymentWebhookHandlerTests
         },
     };
 
-    // ─── account.updated: the supplier that becomes ready ───
-
     private static Event AccountUpdated(string eventId, string accountId, bool charges, bool payouts) => new()
     {
         Id = eventId,
@@ -440,7 +433,7 @@ public class SupplierPaymentWebhookHandlerTests
     }
 
     [Theory]
-    [InlineData(true, false)] // charges, not payouts yet
+    [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(false, false)]
     public async Task AccountUpdated_ASupplierThatIsNotFullyReady_QueuesNothing(bool charges, bool payouts)
@@ -465,7 +458,6 @@ public class SupplierPaymentWebhookHandlerTests
         await Handler(s, RealConnect(s)).HandleEventAsync(AccountUpdated("evt_t3", ServiceRequestScenario.SupplierAccountId, false, false), WebhookSource.Connected);
         await Handler(s, RealConnect(s)).HandleEventAsync(AccountUpdated("evt_t4", ServiceRequestScenario.SupplierAccountId, true, true), WebhookSource.Connected);
 
-        // Becoming ready (first time) and becoming ready again after Stripe disabled it: two transitions, two jobs.
         Assert.Equal([s.SupplierOrgId, s.SupplierOrgId], s.JobScheduler.Scheduled);
     }
 

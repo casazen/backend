@@ -16,7 +16,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class SupplierDayBeforeReminderTests
 {
-    /// <summary>Monday 12 October 2026, 10:00 in Rome (summer time): its reminder is due on Sunday 11 at 18:00 in Rome, 16:00 UTC.</summary>
     private static readonly DateTime MondayAt10 = ServiceRequestScenario.FridayAt10.AddDays(3);
 
     private static readonly DateTimeOffset SundayAt16 = new(2026, 10, 11, 16, 0, 0, TimeSpan.Zero);
@@ -45,7 +44,6 @@ public class SupplierDayBeforeReminderTests
         Assert.Contains("12/10/2026 10:00", email.Content.HtmlBody);
         Assert.Contains(ServiceRequestScenario.Comune, email.Content.HtmlBody);
         Assert.Contains($"/app/supplier/inbox/{request.Id}", email.Content.HtmlBody);
-        // The address, the name of the property and the notes of the host are in the console after the take, not in a queued message (decision D9).
         Assert.DoesNotContain(ServiceRequestScenario.PropertyAddress, email.Content.HtmlBody);
         Assert.DoesNotContain(ServiceRequestScenario.PropertyName, email.Content.HtmlBody);
         Assert.DoesNotContain(ServiceRequestScenario.HostNotes, email.Content.HtmlBody);
@@ -62,7 +60,6 @@ public class SupplierDayBeforeReminderTests
     public async Task SendDue_FollowsTheClockOfRome_AfterTheEndOfSummerTime()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        // Monday 26 October 2026 at 10:00 in Rome is winter time (09:00 UTC); the reminder is due on Sunday 25 at 18:00 in Rome, 17:00 UTC.
         var request = await s.TakenAsync(MondayAt10.AddDays(14).AddHours(1));
         var dueAt = new DateTimeOffset(2026, 10, 25, 17, 0, 0, TimeSpan.Zero);
         s.Clock.SetUtcNow(dueAt - TimeSpan.FromMinutes(1));
@@ -90,7 +87,6 @@ public class SupplierDayBeforeReminderTests
         s.ForgetNotifications();
 
         var run = await Reminders(s).SendDueAsync();
-        // The supplier changes its mind that night: the reminder of this job is not sent late.
         settings = await s.Db.SupplierSettings.SingleAsync(x => x.OrgId == s.SupplierOrgId);
         settings.NotifyDayBeforeReminder = true;
         await s.Db.SaveChangesAsync();
@@ -151,16 +147,12 @@ public class SupplierDayBeforeReminderTests
 
         var run = await Reminders(s).SendDueAsync();
 
-        // Any context of the request is reminded to its supplier; a request still waiting for the answer has nothing to remind.
         Assert.Equal(1, run.SupplierSent);
         Assert.Single(s.Emails.Snapshot());
         Assert.NotNull((await s.ReadAsync(longRent.Id)).SupplierReminderSentAt);
         Assert.Null((await s.ReadAsync(notTaken.Id)).SupplierReminderSentAt);
     }
 
-    // ─── helpers ───
-
-    /// <summary>The job as the product runs it: the customers' pass and, under the same lock, the supplier's.</summary>
     private static ServiceRequestReminderService Reminders(ServiceRequestScenario s) =>
         new(
             s.Db,

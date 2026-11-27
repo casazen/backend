@@ -41,15 +41,14 @@ public class ICalHoursServerTimeZoneTests
                 ("rome", "2026-10-10T08:00", 1.0),
                 ("floating", "2026-10-10T13:00", 1.0),
                 ("utc", "2026-10-10T18:00", 1.0),
-                ("daily", "2026-10-24T07:00", 1.0),   // 09:00 summer time
-                ("autumn", "2026-10-25T00:30", 2.0),  // the first pass of the repeated hour, two real hours long
-                ("daily", "2026-10-25T08:00", 1.0),   // 09:00 winter time, the same day
+                ("daily", "2026-10-24T07:00", 1.0),
+                ("autumn", "2026-10-25T00:30", 2.0),
+                ("daily", "2026-10-25T08:00", 1.0),
                 ("daily", "2026-10-26T08:00", 1.0),
             ],
             windows);
     }
 
-    /// <summary>Sets the process time zone through <c>TZ</c> and restores it on dispose.</summary>
     private sealed class ServerTimeZone : IDisposable
     {
         private readonly string? _previous = Environment.GetEnvironmentVariable("TZ");

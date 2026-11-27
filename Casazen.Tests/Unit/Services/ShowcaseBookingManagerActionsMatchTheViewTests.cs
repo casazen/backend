@@ -62,7 +62,6 @@ public class ShowcaseBookingManagerActionsMatchTheViewTests
         Task Attempt() => action switch
         {
             "cancel" => s.Kit.Manager.CancelAsync(credentials, null),
-            // A week later, at the same hour: a free slot in every state (the clock may have moved by a day).
             "reschedule" => s.Kit.Manager.RescheduleAsync(credentials, ServiceRequestScenario.FridayAt10.AddDays(7)),
             "accept" => s.Kit.Manager.AcceptProposalAsync(credentials),
             _ => s.Kit.Manager.RejectProposalAsync(credentials),
@@ -74,7 +73,6 @@ public class ShowcaseBookingManagerActionsMatchTheViewTests
         }
         else
         {
-            // Refused by the rules (422), by the state machine or as not found: never an action half done.
             await Assert.ThrowsAnyAsync<Exception>(Attempt);
             var stored = await s.ReadAsync(request.Id);
             Assert.NotEqual(ServiceRequestActorParty.Customer, stored.CancelledBy);
@@ -169,10 +167,6 @@ public class ShowcaseBookingManagerActionsMatchTheViewTests
     }
 }
 
-/// <summary>
-/// SP-11: what the customer's actions leave behind once the change is committed. A failure to write a notification, or a customer who
-/// closes the tab, never takes back what was saved, and the instants written are at the precision the database keeps.
-/// </summary>
 public class ShowcaseBookingManagerAfterTheCommitTests
 {
     [Fact]
@@ -209,7 +203,6 @@ public class ShowcaseBookingManagerAfterTheCommitTests
         var (request, _) = await s.BookedForManagementAsync();
         s.ForgetNotifications();
         using var aborted = new CancellationTokenSource();
-        // The customer closes the tab the moment the cancellation is saved: the token of the request is cancelled before the notifications.
         interceptor.AfterSave = aborted.Cancel;
 
         await s.Service.CancelAsCustomerAsync(request.Id, s.SupplierOrgId, null, aborted.Token);

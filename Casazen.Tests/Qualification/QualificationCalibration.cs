@@ -16,11 +16,6 @@ namespace Casazen.Tests.Qualification;
 // then is the configuration frozen and the final test run. The toolkit NEVER edits a committed policy file: a qualified file is never changed, a new calibration is a new file.
 // Nothing here reads a picture or a document: the inputs are the scores and the codes of anonymous cases.
 
-/// <summary>
-/// What the proposal rests on, in numbers: the comparisons of the two kinds and the attacks of each class that were JUDGED (and how many of them got as far as the liveness). The attacks that
-/// could not be judged (a case that broke, a sequence that could not be read, a validation or a liveness that was not available) are no evidence: they are counted apart in
-/// <see cref="AttacksNotJudged"/> and take no part in the proposal.
-/// </summary>
 public sealed record QualificationCalibrationEvidence(
     long ImpostorComparisons,
     long GenuineComparisons,
@@ -28,10 +23,6 @@ public sealed record QualificationCalibrationEvidence(
     IReadOnlyDictionary<string, int> AttacksReachingLiveness,
     IReadOnlyDictionary<string, int> AttacksNotJudged);
 
-/// <summary>
-/// The outcome of a calibration: either a proposal (the thresholds, the file written and its canonical hash, which members of the policy changed) or the codes of what the evidence lacks.
-/// A proposal is never an approval: a person reviews the file.
-/// </summary>
 public sealed record QualificationCalibrationProposal(
     bool Proposed,
     IReadOnlyList<string> Codes,
@@ -42,35 +33,25 @@ public sealed record QualificationCalibrationProposal(
     IReadOnlyList<string> ChangedMembers,
     QualificationCalibrationEvidence Evidence);
 
-/// <summary>The codes of a calibration that cannot propose a policy (never renamed or reused; a new one goes at the end).</summary>
 public static class QualificationCalibrationCodes
 {
-    /// <summary>The results are not those of the calibration split: nothing is calibrated on the development split (it is for looking) or on the test split (it is for the final test).</summary>
     public const string WrongSplit = "calibration_wrong_split";
 
-    /// <summary>Too few impostor comparisons to show the false match rate of the target: even with no false match its upper bound would be above it.</summary>
     public const string ImpostorTrialsInsufficient = "calibration_impostor_trials_insufficient";
 
-    /// <summary>The acceptance that reaches the target would be above 1: some impostor scores as high as it can be.</summary>
     public const string AcceptUnreachable = "calibration_accept_unreachable";
 
-    /// <summary>No genuine comparison with a similarity: the floor of the review cannot be told.</summary>
     public const string GenuineTrialsMissing = "calibration_genuine_trials_missing";
 
-    /// <summary>Too few attacks of a class (the code is followed by <c>:</c> and the class) to show the limit of the target for it, or none of a class the specification names.</summary>
     public const string AttacksInsufficient = "calibration_attacks_insufficient";
 
-    /// <summary>The least liveness that reaches the target would be above 1: some attacks score as high as it can be.</summary>
     public const string LivenessUnreachable = "calibration_liveness_unreachable";
 
-    /// <summary>The thresholds that were found do not make a valid policy (the policy file is not written).</summary>
     public const string PolicyInvalid = "calibration_policy_invalid";
 }
 
-/// <summary>The calibration of the thresholds of the policy from the results of the calibration split (see the comments at the top of the file).</summary>
 public static class QualificationCalibration
 {
-    /// <summary>The name of the summary of the proposal in the output folder (written whether or not a policy could be proposed).</summary>
     public const string ProposalFileName = "calibration-proposal.json";
 
     private static readonly Regex VersionPattern = new(@"^identity-policy-(?<month>\d{4}\.\d{2})-(?<number>\d+)(\.json)?$", RegexOptions.CultureInvariant);
@@ -120,7 +101,6 @@ public static class QualificationCalibration
             .ToList();
         var allAttacks = calibration.Cases.Where(candidate => candidate.Kind == QualificationCaseKinds.Attack && candidate.AttackClass is not null && candidate.Presence is not null).ToList();
 
-        // Only the attacks that were judged are evidence: one that broke, whose sequence could not be read or whose validation or liveness was not available says nothing of the model.
         var attacks = allAttacks.Where(QualificationMetrics.WasJudged).ToList();
         var evidence = new QualificationCalibrationEvidence(
             impostor.Count,
@@ -139,7 +119,6 @@ public static class QualificationCalibration
         if (codes.Count > 0 || accept is null || floor is null || liveness is null)
             return Finish(outDirectory, new QualificationCalibrationProposal(false, codes, null, null, null, null, [], evidence));
 
-        // The structure of a policy is not a calibration: the thresholds go into a copy of the active policy, which has to be valid as a whole.
         var minEachFrame = Math.Min(active.Match.MinEachFrame, accept.Value);
         var month = clock.TodayInRomeAsDateOnly().ToString("yyyy.MM", CultureInfo.InvariantCulture);
         var version = NextVersion(month, active.Version, protectedFolders.Append(outDirectory));
@@ -160,7 +139,6 @@ public static class QualificationCalibration
             JsonSerializer.Serialize(stream, proposed, PolicyJson);
         }
 
-        // The file has to be one the application reads: its canonical hash is what a person pins, and a provider pinned to it must find a valid, calibrated policy.
         var hash = IdentityPolicyProvider.CanonicalSha256(File.ReadAllBytes(path));
         var options = Options.Create(new IdentityVerificationOptions { PolicyFile = path, PolicySha256 = hash ?? string.Empty });
         var snapshot = new IdentityPolicyProvider(options, NullLogger<IdentityPolicyProvider>.Instance, outDirectory).Snapshot;
@@ -180,16 +158,11 @@ public static class QualificationCalibration
             new QualificationCalibrationProposal(true, [], version, Path.GetFileName(path), hash, QualificationThresholds.From(proposed), changed, evidence));
     }
 
-    /// <summary>
-    /// The largest number of errors <paramref name="n"/> independent trials may show with the upper bound of the rate still at most <paramref name="upperMax"/>: -1 when even no error does
-    /// not (too few trials). The upper bound grows with the errors, so the largest number is found by halving.
-    /// </summary>
     public static long MaxErrorsAllowed(long n, double upperMax, double confidence)
     {
         if (n <= 0 || IdentityStatistics.ClopperPearsonUpper(0, n, confidence) > upperMax)
             return -1;
 
-        // With every trial wrong the bound is 1, above any limit: the answer is below n.
         long low = 0;
         var high = n - 1;
         while (low < high)
@@ -204,8 +177,6 @@ public static class QualificationCalibration
         return low;
     }
 
-    // ───── the thresholds ─────
-
     private static double? Accept(List<double> impostor, QualificationTargets targets, IdentityDecisionPolicy active, List<string> codes)
     {
         var allowed = MaxErrorsAllowed(impostor.Count, targets.FmrMax, targets.Confidence);
@@ -215,8 +186,6 @@ public static class QualificationCalibration
             return null;
         }
 
-        // The first impostor that must be kept out is the one after the number the target allows, from the highest score down: the threshold is just above its score. With no score above 0 the
-        // impostors are kept out by the minimum of each frame already, and the acceptance of the active policy stays as it is.
         var descending = impostor.OrderByDescending(score => score).ToList();
         var first = descending[(int)allowed];
         if (first <= 0)
@@ -260,7 +229,6 @@ public static class QualificationCalibration
                 continue;
             }
 
-            // An attack that was not valid, or whose frames could not be chosen, never reached the liveness: it is kept out whatever the minimum is.
             var scores = ofClass.Where(ReachedLiveness).Select(attack => attack.Presence!.LivenessScores.Min()).OrderByDescending(score => score).ToList();
             if (scores.Count > allowed)
                 constraint = Math.Max(constraint ?? 0.0, Math.BitIncrement(scores[(int)allowed]));
@@ -292,9 +260,6 @@ public static class QualificationCalibration
         return new Dictionary<string, int>(counts, StringComparer.Ordinal);
     }
 
-    // ───── the file ─────
-
-    /// <summary>The version of the next policy: <c>identity-policy-&lt;month&gt;-&lt;n&gt;</c> with <c>n</c> above every number of that month in the names of the files of <paramref name="folders"/> and in <paramref name="activeVersion"/>.</summary>
     private static string NextVersion(string month, string activeVersion, IEnumerable<string> folders)
     {
         var names = new List<string> { activeVersion };
@@ -325,7 +290,6 @@ public static class QualificationCalibration
             changed.Add(member);
     }
 
-    /// <summary>Whether the policy the application read from the file is the one that was written: the version and every threshold of the calibration (a policy holds lists, which a record compares by reference).</summary>
     private static bool SameThresholds(IdentityDecisionPolicy read, IdentityDecisionPolicy written)
     {
         return read.Version == written.Version

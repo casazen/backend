@@ -14,12 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// LR-01, B1: <see cref="RentBillingService.SendReminderAsync"/> on EF InMemory, without the web host: the interval is
-/// configurable, the time recorded is the one the database keeps, what is logged names no one, the note is checked again at the
-/// service. The cases of the whole request (authorization, JSON, the payment link and its public page) are
-/// <c>LongRentRentReminderIntegrationTests</c>; the two reminders at the same moment are <c>LongRentAggregatesPostgresTests</c>.
-/// </summary>
 public class RentReminderServiceTests
 {
     private const string TenantEmail = "giulia.verdi@tenants.example";
@@ -171,7 +165,6 @@ public class RentReminderServiceTests
         Assert.DoesNotContain("Verdi", logged, StringComparison.Ordinal);
         Assert.DoesNotContain(SecretNote, logged, StringComparison.Ordinal);
         Assert.DoesNotContain("Casa Rossi", logged, StringComparison.Ordinal);
-        // Nor the link, nor the token behind it.
         Assert.DoesNotContain("/rent/pay/", logged, StringComparison.Ordinal);
         Assert.DoesNotContain("token", logged, StringComparison.OrdinalIgnoreCase);
     }

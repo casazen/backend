@@ -20,9 +20,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// Tests for ConcordatoFacileController status endpoint (ADR-008).
-/// </summary>
 public class ConcordatoFacileControllerTests
 {
     private readonly Mock<IConcordatoFacileCheckoutService> _mockCheckoutService = new();
@@ -38,14 +35,9 @@ public class ConcordatoFacileControllerTests
     private static readonly Guid TestOrgId = Guid.NewGuid();
     private const string TestUserId = "auth0|test_user";
 
-    /// <summary>
-    /// Proves ADR-008-R11: GetStatus requires LeaseRead permission.
-    /// A user without LeaseRead permission is forbidden from accessing practice status.
-    /// </summary>
     [Fact]
     public async Task GetStatus_UnauthorizedUser_Returns403()
     {
-        // Arrange
         var controller = CreateController();
         SetUser(controller, TestUserId);
 
@@ -53,7 +45,6 @@ public class ConcordatoFacileControllerTests
             .Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(TestOrgId);
 
-        // Mock authorization service to deny LeaseRead
         _mockAuthorizationService
             .Setup(a => a.AuthorizeAsync(
                 It.IsAny<ClaimsPrincipal>(),
@@ -61,27 +52,17 @@ public class ConcordatoFacileControllerTests
                 CasazenPolicies.LeaseRead))
             .ReturnsAsync(AuthorizationResult.Failed());
 
-        // Act
-        // The [Authorize(Policy = CasazenPolicies.LeaseRead)] attribute on GetStatus
-        // is enforced by ASP.NET Core middleware. This test verifies the policy is configured.
-        // In production, the middleware checks before the action executes.
         var authorizeAttributes = typeof(ConcordatoFacileController)
             .GetMethod(nameof(ConcordatoFacileController.GetStatus))!
             .GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true);
 
-        // Assert
         var authorizeAttr = Assert.Single(authorizeAttributes.Cast<AuthorizeAttribute>());
         Assert.Equal(CasazenPolicies.LeaseRead, authorizeAttr.Policy);
     }
 
-    /// <summary>
-    /// Proves tenant isolation (NF-06 AC-NF06-2): PracticeLookup returns 404 when the practice's lease
-    /// belongs to a different org, preventing cross-tenant data leakage.
-    /// </summary>
     [Fact]
     public async Task PracticeLookup_OtherOrgLease_Returns404()
     {
-        // Arrange
         var db = CreateInMemoryDbContext();
         var controller = CreateController(db);
         SetUser(controller, TestUserId);
@@ -91,7 +72,6 @@ public class ConcordatoFacileControllerTests
         var leaseId = Guid.NewGuid();
         var practiceId = "P-1234567890ABCDEF";
 
-        // Create a property and lease belonging to a DIFFERENT org
         var property = new Property
         {
             Id = Guid.NewGuid(),
@@ -106,7 +86,7 @@ public class ConcordatoFacileControllerTests
         var lease = new LeaseContract
         {
             Id = leaseId,
-            OrgId = otherOrgId, // Different org!
+            OrgId = otherOrgId,
             PropertyId = property.Id,
             Status = LeaseStatus.Signed,
             FiscalRegime = FiscalRegime.CanoneConcordato,
@@ -117,7 +97,6 @@ public class ConcordatoFacileControllerTests
         db.LeaseContracts.Add(lease);
         await db.SaveChangesAsync();
 
-        // ConcordatoFacile (through the 15-minute cache of the status service) says the practice belongs to that lease
         _mockStatusCacheService
             .Setup(c => c.GetPracticeAsync(practiceId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PracticeDto
@@ -128,23 +107,16 @@ public class ConcordatoFacileControllerTests
                 StatusChangedAt = DateTime.UtcNow
             });
 
-        // Mock org resolver to return the user's org (different from lease's org)
         _mockOrgContextResolver
             .Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(userOrgId);
 
-        // Act
         var result = await controller.LookupPractice(practiceId, CancellationToken.None);
 
-        // Assert
-        // Should return 404 to not reveal existence of the practice/lease to other org
         var objectResult = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
     }
 
-    // ---- CF-DONE: the lease follows its practice -------------------------------------------------------------------
-
-    /// <summary>The sync of a lease that is not the org's (or does not exist) is the same 404, and nothing is done.</summary>
     [Fact]
     public async Task Sync_ALeaseOfAnotherOrgOrNone_Returns404_AndDoesNothing()
     {
@@ -160,7 +132,6 @@ public class ConcordatoFacileControllerTests
         completion.VerifyNoOtherCalls();
     }
 
-    /// <summary>It records a signature and a registration: whoever may not do the two by hand may not make the app do them.</summary>
     [Theory]
     [InlineData("lease.sign")]
     [InlineData("lease.register")]
@@ -179,7 +150,6 @@ public class ConcordatoFacileControllerTests
         completion.VerifyNoOtherCalls();
     }
 
-    /// <summary>With both rights the service runs for the lease of the caller's org and its outcome is the answer, never cached.</summary>
     [Fact]
     public async Task Sync_WithBothRights_RunsTheService_AndSaysWhereTheLeaseStands()
     {
@@ -227,7 +197,6 @@ public class ConcordatoFacileControllerTests
         return lookup;
     }
 
-    /// <summary>The resource-based checks all pass except the one of <paramref name="deniedPermission"/> (none denied: <c>null</c>).</summary>
     private void AllowEveryOperationExcept(string? deniedPermission)
     {
         _mockAuthorizationService
@@ -246,7 +215,6 @@ public class ConcordatoFacileControllerTests
 
     private ConcordatoFacileController CreateController(AppDbContext? db = null)
     {
-        // Create an in-memory database if not provided
         var dbContext = db ?? CreateInMemoryDbContext();
 
         return new ConcordatoFacileController(

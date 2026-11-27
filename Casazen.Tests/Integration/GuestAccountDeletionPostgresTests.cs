@@ -45,7 +45,6 @@ public class GuestAccountDeletionPostgresTests(GuestAccountDeletionPostgresTests
         Assert.False(await db.Users.AnyAsync(u => u.Id == userId));
         Assert.False(await db.DeviceRegistrations.IgnoreQueryFilters().AnyAsync(d => d.UserId == userId));
         Assert.False(await db.InAppNotifications.IgnoreQueryFilters().AnyAsync(n => n.UserId == userId));
-        // The hosts' books are not the account's: the booking, its payment and its guest record are as they were.
         var booking = await db.Bookings.IgnoreQueryFilters().Include(b => b.Guest).Include(b => b.Payments).SingleAsync(b => b.Id == bookingId);
         Assert.Equal(guestId, booking.GuestId);
         Assert.Equal(email, booking.Guest.Email);
@@ -54,7 +53,6 @@ public class GuestAccountDeletionPostgresTests(GuestAccountDeletionPostgresTests
         Assert.Equal(362m, Assert.Single(booking.Payments).Amount);
         Assert.Equal(orgId, booking.OrgId);
 
-        // The token already issued still verifies, the account is gone: 401, and Auth0 is not asked again.
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.DeleteAsync(AccountPath)).StatusCode);
         factory.Auth0.Verify(a => a.DeleteUserAsync(userId, It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -83,10 +81,6 @@ public class GuestAccountDeletionPostgresTests(GuestAccountDeletionPostgresTests
         Assert.True(await db.InAppNotifications.IgnoreQueryFilters().AnyAsync(n => n.UserId == userId));
     }
 
-    /// <summary>
-    /// A guest-only account (no role, no org), a push device and a notification of it, and a booking of the public checkout made with its
-    /// address on a site of a host.
-    /// </summary>
     private async Task<(Guid OrgId, Guid BookingId, Guid GuestId)> SeedAsync(string userId, string email)
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -184,7 +178,6 @@ public class GuestAccountDeletionPostgresTests(GuestAccountDeletionPostgresTests
         return (org.Id, booking.Id, guest.Id);
     }
 
-    /// <summary>The integration host with Auth0 mocked: the deletion is its only call. The repository is the real one.</summary>
     public sealed class AuthFactory : CasazenWebApplicationFactory
     {
         public Mock<IAuth0ManagementService> Auth0 { get; } = new();

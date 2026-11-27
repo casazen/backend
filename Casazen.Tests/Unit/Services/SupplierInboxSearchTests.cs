@@ -15,8 +15,6 @@ public class SupplierInboxSearchTests
 {
     private const string HostCity = "Lecce";
 
-    // ─── Service name, category, comune ───
-
     [Theory]
     [InlineData("pulizia")]
     [InlineData("PULIZIA")]
@@ -31,7 +29,6 @@ public class SupplierInboxSearchTests
 
         var found = await SearchAsync(s, text);
 
-        // The cleaning of the host and the booking of the showcase are for the same service of the catalog.
         Assert.Equal(new[] { world.Cleaning, world.Showcase }.Order(), found.Order());
     }
 
@@ -60,10 +57,10 @@ public class SupplierInboxSearchTests
     }
 
     [Theory]
-    [InlineData("electrician")] // the English label: not the code ("electrical")
+    [InlineData("electrician")]
     [InlineData("ELECTRICIAN")]
-    [InlineData("elettricista")] // the Italian label
-    [InlineData("electrical")] // the code
+    [InlineData("elettricista")]
+    [InlineData("electrical")]
     public async Task Text_FindsTheCategoryByItsLabelInItalianOrEnglish_EvenWhenTheLabelIsNotTheCode(string text)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
@@ -120,19 +117,16 @@ public class SupplierInboxSearchTests
         Assert.Empty(await SearchAsync(s, "elicottero"));
     }
 
-    // ─── What it never searches ───
-
     [Theory]
-    [InlineData("Riservata")] // the name of the property
-    [InlineData("Segretissima")] // the street address
-    [InlineData("citofono")] // the host's notes
-    [InlineData("Piano 3")] // the floor of a showcase customer
-    [InlineData("cassetta")] // the access notes of a showcase customer
+    [InlineData("Riservata")]
+    [InlineData("Segretissima")]
+    [InlineData("citofono")]
+    [InlineData("Piano 3")]
+    [InlineData("cassetta")]
     public async Task Text_NeverFindsWhatTheTakeDisclosesNorWhatIsDisclosedAfterIt(string text)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await SeedAsync(s);
-        // A taken job: the property, the notes and the address are shown for it (and for the showcase booking, once taken).
         await s.SeedAsync(ServiceRequestStatus.PresoInCarico, r => r.TakenAt = r.CreatedAt);
         await s.Service.TakeAsync((await s.ShowcaseRequestsAsync()).Single().Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
 
@@ -140,7 +134,7 @@ public class SupplierInboxSearchTests
     }
 
     [Theory]
-    [InlineData("rossi")] // the host org ("Casa Rossi") and the private customer ("Mario Rossi")
+    [InlineData("rossi")]
     [InlineData("mario")]
     [InlineData("example.com")]
     [InlineData("3331234567")]
@@ -175,8 +169,6 @@ public class SupplierInboxSearchTests
         Assert.Single(await SearchAsync(s, "segreta", supplierOrgId: other));
     }
 
-    // ─── The booking code ───
-
     [Fact]
     public async Task BookingCode_AWholeCodeFindsTheRequest_AnyCaseWithOrWithoutTheDash()
     {
@@ -200,10 +192,8 @@ public class SupplierInboxSearchTests
     public async Task BookingCode_APartOfTheCode_FindsNothing_SoTheCodeCannotBeFoundOutCharacterByCharacter(int length)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        // A code made of digits and letters no word of the service, the category or the comune contains.
         var whole = (await s.SeedAsync(ServiceRequestStatus.Richiesto, r => r.PublicCode = "7Z9Q2X4W8V")).Id;
 
-        // Two characters is the shortest search. A part of the code is no code: it is read as a text, and matches nothing.
         Assert.Empty(await SearchAsync(s, "7Z9Q2X4W8V"[..length]));
         Assert.Equal(new[] { whole }, await SearchAsync(s, "7Z9Q2-X4W8V"));
     }
@@ -222,7 +212,6 @@ public class SupplierInboxSearchTests
     [Fact]
     public async Task BookingCode_ACodeIsNotReadFromTheViewsTheConsoleReceives()
     {
-        // The supplier can search by a whole code the customer gives it, but never reads a code out of the console.
         using var s = await ServiceRequestScenario.CreateAsync();
         var world = await SeedAsync(s);
 
@@ -233,8 +222,6 @@ public class SupplierInboxSearchTests
         Assert.DoesNotContain(world.ShowcaseCode, text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(BookingCodes.Format(world.ShowcaseCode), text, StringComparison.OrdinalIgnoreCase);
     }
-
-    // ─── With the rest of the query ───
 
     [Fact]
     public async Task Text_IsCombinedWithTheOtherFilters()
@@ -283,14 +270,8 @@ public class SupplierInboxSearchTests
         Assert.Single(items);
     }
 
-    // ─── helpers ───
-
     private sealed record World(Guid Cleaning, Guid Plumbing, Guid Gardening, Guid Showcase, string ShowcaseCode);
 
-    /// <summary>
-    /// Three new requests of a host in Lecce (a cleaning with the name of the catalog, a plumbing with another, a gardening with none)
-    /// and one from the showcase of the supplier, in Monza; every request is for the property "Casa Riservata", host "Casa Rossi".
-    /// </summary>
     private static async Task<World> SeedAsync(ServiceRequestScenario s)
     {
         var property = await s.Db.Properties.IgnoreQueryFilters().SingleAsync(p => p.Id == s.PropertyId);

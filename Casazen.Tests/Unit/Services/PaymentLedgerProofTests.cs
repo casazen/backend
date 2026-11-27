@@ -153,10 +153,6 @@ public class PaymentLedgerProofTests
         Assert.Equal(PaymentLedgerKind.Card, Assert.Single(result.Lines, l => l.PaymentId == card.Id).Kind);
     }
 
-    /// <summary>
-    /// The state of the document a line belongs to is read by the same predicate as the document API and the export (E12/F01/US01/T01): the document of a portal that collected keeps the state it
-    /// was made with (paid through the portal: CasaZen sees none of its payments), and the one of a stay the host collects from reads what the channel manager reports paid.
-    /// </summary>
     [Fact]
     public async Task PaymentLedger_DocumentState_PortalKeepsItsStoredPaid_AndAHostCollectedStayReadsTheChannelManagersFigure()
     {

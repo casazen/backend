@@ -39,7 +39,6 @@ public class ShowcaseBookingEncryptionTests
         Assert.Equal("Casazen.ServiceCustomer", EncryptedColumns.ServiceCustomerPurpose);
         Assert.Equal("Casazen.ServiceRequest.Location", EncryptedColumns.ServiceRequestLocationPurpose);
         Assert.NotEqual(EncryptedColumns.ServiceCustomerPurpose, EncryptedColumns.ServiceRequestLocationPurpose);
-        // The purposes of the guests of the hosts are not reused: a key for one data set opens nothing of the other.
         Assert.DoesNotContain(EncryptedColumns.GuestDocumentPurpose, new[] { EncryptedColumns.ServiceCustomerPurpose, EncryptedColumns.ServiceRequestLocationPurpose });
     }
 
@@ -61,7 +60,6 @@ public class ShowcaseBookingEncryptionTests
             Assert.DoesNotContain("Segretissima", stored, StringComparison.Ordinal);
             Assert.Equal("Mario Rossi, Via Segretissima 7", provider.CreateProtector(purpose).Unprotect(stored));
             Assert.Equal("Mario Rossi, Via Segretissima 7", converter.ConvertFromProvider(stored));
-            // Only the purpose of the column opens it.
             var other = purpose == EncryptedColumns.ServiceCustomerPurpose
                 ? EncryptedColumns.ServiceRequestLocationPurpose
                 : EncryptedColumns.ServiceCustomerPurpose;

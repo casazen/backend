@@ -109,7 +109,6 @@ public class ComuneImuNotificationServiceTests
     {
         var (sut, events) = CreateSut(lease: null);
 
-        // Who may export is decided by the controller (TN-3); a lease outside the caller's org is not found.
         var result = await sut.ExportAsync(Guid.NewGuid());
 
         Assert.Null(result);
@@ -131,7 +130,6 @@ public class ComuneImuNotificationServiceTests
 
     private static void AssertNotReadyProblem(IActionResult result)
     {
-        // A ProblemDetails with a stable code; the Italian text of the exception is never sent as is.
         var problem = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status409Conflict, problem.StatusCode);
         Assert.Equal("imu_notification_not_ready", Assert.IsType<ProblemDetails>(problem.Value).Extensions["code"]);
@@ -375,10 +373,6 @@ public class ComuneImuNotificationServiceTests
         imu.Verify(s => s.GetStatusAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    /// <summary>
-    /// S5 (AM-03): the communication to the Comune is the landlord's, so it is marked sent by the holder of the org (its owner
-    /// or an administrator), not by whoever created the property: the property was created by someone else here.
-    /// </summary>
     [Fact]
     public async Task MarkSentAsync_TheHolderOfTheOrgWhoDidNotCreateTheProperty_MarksItSent()
     {
@@ -429,10 +423,6 @@ public class ComuneImuNotificationServiceTests
             events);
     }
 
-    /// <summary>
-    /// The holder of the org: the creator of the property for an account in no org team (the rule of before the team), plus
-    /// the people named in <paramref name="holders"/> (the org's owner or administrators).
-    /// </summary>
     private static IOrgHolderService OrgHolder(params string[] holders)
     {
         var holder = new Mock<IOrgHolderService>();
@@ -443,7 +433,6 @@ public class ComuneImuNotificationServiceTests
         return holder.Object;
     }
 
-    /// <summary>Reference-data rows a real migration would seed for the two verified pilot comuni (LT-13, A7-22).</summary>
     private static ComuneImuChannel? BuildChannel(string city) => city switch
     {
         "Seveso" => new ComuneImuChannel
@@ -471,10 +460,6 @@ public class ComuneImuNotificationServiceTests
         _ => null,
     };
 
-    /// <summary>
-    /// Controller whose lease lookup returns <paramref name="lease"/> (null = not in the caller's org) and whose
-    /// TN-3 resource check answers <paramref name="authorized"/>. MarkSent still goes to the service with the owner.
-    /// </summary>
     private static LeasesController CreateController(
         IComuneImuNotificationService imu,
         LeaseContract? lease = null,

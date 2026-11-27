@@ -64,7 +64,6 @@ public class GuestDocumentLineBuilderTests
         Assert.Equal(462.00m, draft.Total);
         Assert.Equal("CHF", draft.Currency);
 
-        // The amount of the booking wins when it has one; no canton rule, no municipality, no guests: no line of its own.
         var own = await AddBookingAsync(db, property, BookingSource.Direct, basePrice: 450m, cleaningFee: 50m, touristTax: 5m, guests: 2);
         Assert.Equal(5m, Assert.Single((await BuilderOf(db, ShippedSwissTouristTax()).BuildAsync(own, rule, [])).Lines, l => l.LineType == FiscalLineType.TouristTax).GrossAmount);
         Assert.DoesNotContain(
@@ -76,7 +75,6 @@ public class GuestDocumentLineBuilderTests
             (await BuilderOf(db, ShippedSwissTouristTax()).BuildAsync(unknownCanton, rule, [])).Lines,
             l => l.LineType == FiscalLineType.TouristTax);
 
-        // A night before the first day of the rule is not taxed: the stay of 2024-12-30 to 2025-01-02 pays the nights of 2025-01-01 only.
         var overNewYear = await AddBookingAsync(
             db, property, BookingSource.Direct, basePrice: 300m, cleaningFee: 0m, touristTax: 0m, guests: 2, checkIn: new DateTime(2024, 12, 30), checkOut: new DateTime(2025, 1, 2));
         var taxOverNewYear = Assert.Single((await BuilderOf(db, ShippedSwissTouristTax()).BuildAsync(overNewYear, rule, [])).Lines, l => l.LineType == FiscalLineType.TouristTax);
@@ -93,7 +91,6 @@ public class GuestDocumentLineBuilderTests
     [Fact]
     public async Task TouristTaxLine_NotAddedWhenPortalCollects_Test()
     {
-        // Switzerland: the list of the profile decides.
         await using (var swiss = NewDb())
         {
             await SeedSwissOrgAsync(swiss, [BookingSource.Airbnb]);
@@ -113,7 +110,6 @@ public class GuestDocumentLineBuilderTests
             Assert.Equal(12m, TaxOf(await builder.BuildAsync(direct, rule, profile.PlatformCollectedTouristTaxChannels)));
         }
 
-        // Italy: the channel rule of the comune, then the host's declaration.
         await using var italy = NewDb();
         await SeedItalianOrgAsync(italy);
         var roma = await AddPropertyAsync(italy, swiss: false);
@@ -163,17 +159,14 @@ public class GuestDocumentLineBuilderTests
         var rule = Rule("IT", DocumentRegime.VatOrdinary);
         var builder = BuilderOf(db, new SwissTouristTaxOptions());
 
-        // Airbnb: the host price is 400.00, the guest paid 466.00 with the fee of the portal.
         var portal = await AddBookingAsync(db, property, BookingSource.Airbnb, basePrice: 400m, cleaningFee: 0m, touristTax: 0m, guests: 2, totalPrice: 466m);
         var fromPortal = await builder.BuildAsync(portal, rule, []);
         var stay = Assert.Single(fromPortal.Lines);
         Assert.Equal((FiscalLineType.Accommodation, 400m), (stay.LineType, stay.GrossAmount));
 
-        // The document: 400.00, never 466.00.
         var draft = await ServiceOf(db, new SwissTouristTaxOptions()).CreateDraftAsync(portal, "auth0|host");
         Assert.Equal(400m, draft.Total);
 
-        // A booking made in CasaZen: the price of 450.00 includes the cleaning of 50.00: 400.00 + 50.00, never 450.00 + 50.00.
         var direct = await AddBookingAsync(db, property, BookingSource.Direct, basePrice: 450m, cleaningFee: 50m, touristTax: 0m, guests: 2, totalPrice: 450m);
         var fromCasaZen = await builder.BuildAsync(direct, rule, []);
         Assert.Equal(
@@ -181,16 +174,11 @@ public class GuestDocumentLineBuilderTests
             fromCasaZen.Lines.Select(l => (l.LineType, l.GrossAmount)).ToArray());
         Assert.Equal(450m, fromCasaZen.Lines.Sum(l => l.GrossAmount));
 
-        // Bad data never bills more than the price: a cleaning above the price is the whole price.
         Assert.Equal((0m, 100m), GuestDocumentLineBuilder.SplitOf(100m, 150m));
         Assert.Equal((100m, 0m), GuestDocumentLineBuilder.SplitOf(100m, 0m));
         Assert.Equal((0m, 0m), GuestDocumentLineBuilder.SplitOf(-5m, 20m));
     }
 
-    /// <summary>
-    /// Who collected the money, and the state of the payment: paid through the portal for a booking whose portal collects (the reservation says, else the portal catalog, else the
-    /// configured default), outside CasaZen and «to collect» for a booking the host collects, CasaZen for a booking paid through it (Stripe) with the state read from the payments.
-    /// </summary>
     [Fact]
     public async Task PaymentChannel_FollowsWhoCollects_AndTheStateFollowsTheChannel()
     {
@@ -229,7 +217,6 @@ public class GuestDocumentLineBuilderTests
         Assert.Equal(FiscalPaymentChannel.Outside, await Channel(agencySite));
         Assert.Equal(FiscalPaymentChannel.CasaZen, await Channel(paidInCasaZen));
 
-        // The document: paid through the portal (stored, and kept when it is read), to collect for the host's own, the current state for CasaZen's.
         var portalDraft = await service.CreateDraftAsync(byDefault, null);
         Assert.Equal((FiscalPaymentChannel.Portal, FiscalDocumentPaymentState.Paid), (portalDraft.PaymentChannel, portalDraft.PaymentState));
         Assert.Equal(FiscalDocumentPaymentState.Paid, (await service.GetAsync(portalDraft.Id))!.PaymentState);
@@ -241,10 +228,6 @@ public class GuestDocumentLineBuilderTests
         Assert.Equal((FiscalPaymentChannel.CasaZen, FiscalDocumentPaymentState.Paid), (casaZenDraft.PaymentChannel, casaZenDraft.PaymentState));
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule. A stay of a portal the host collects from has no payment of CasaZen (nobody can record one on it): the state of its document is read from what the channel
-    /// manager says the guest paid, «to collect» before that reaches the total and while the channel manager says nothing, «paid» once it does, and it follows the figure when it changes.
-    /// </summary>
     [Fact]
     public async Task PortalStayTheHostCollectsFrom_StateFollowsWhatTheChannelManagerSaysWasPaid()
     {
@@ -267,16 +250,11 @@ public class GuestDocumentLineBuilderTests
         Assert.Equal(FiscalDocumentPaymentState.ToCollect, part.PaymentState);
         Assert.Equal(FiscalDocumentPaymentState.ToCollect, nothing.PaymentState);
 
-        // The state is the one of the moment it is read: the channel manager reports the rest.
         await ChangeBookingAsync(db, paidInPart, b => b.OtaPaidAmount = 400m);
         Assert.Equal(FiscalDocumentPaymentState.Paid, (await service.GetAsync(part.Id))!.PaymentState);
         Assert.Equal(FiscalDocumentPaymentState.ToCollect, (await service.GetAsync(nothing.Id))!.PaymentState);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. One predicate reads the payment state of a document for the list, the export and the ledger: the document of a portal that collected keeps the state it was
-    /// made with (paid through the portal: CasaZen sees none of its payments), and the one of a stay the host collects from reads the figure of the channel manager, in the export too.
-    /// </summary>
     [Fact]
     public async Task PaymentState_PortalKeepsItsStoredPaidInTheExport_AndAHostCollectedStayReadsTheChannelManagersFigure()
     {
@@ -316,7 +294,6 @@ public class GuestDocumentLineBuilderTests
         var issued = await service.IssueAsync((await service.CreateDraftAsync(booking, null)).Id, confirm: true);
         var before = Snapshot(await db.FiscalDocuments.AsNoTracking().Include(d => d.Lines).SingleAsync(d => d.Id == issued.Id));
 
-        // The host changes the dates and the price after the issue; the correction cannot be prepared now (the issuer's profile misses an item): the host is told, the document is not touched.
         var profileOfTheIssuer = await db.OrgFiscalIssuerProfiles.SingleAsync();
         profileOfTheIssuer.LegalName = null;
         await db.SaveChangesAsync();
@@ -339,7 +316,6 @@ public class GuestDocumentLineBuilderTests
         Assert.Equal(property, todo.PropertyId);
         Assert.Single(await db.FiscalDocuments.AsNoTracking().Where(d => d.BookingId == booking).ToListAsync());
 
-        // A draft follows the booking: made again from the new price; the draft of a cancelled booking with nothing collected is discarded.
         var open = await AddBookingAsync(db, property, BookingSource.Manual, basePrice: 350m, cleaningFee: 50m, touristTax: 0m, guests: 2);
         var draft = await service.CreateDraftAsync(open, null);
         Assert.Equal(350m, draft.Total);
@@ -426,7 +402,6 @@ public class GuestDocumentLineBuilderTests
         var builder = BuilderOf(db, ShippedSwissTouristTax());
         var profile = await db.OrgFiscalIssuerProfiles.SingleAsync();
 
-        // Nothing confirmed: the default applies (Airbnb collects it, Booking.com does not) and the draft of the service follows it; the profile is left as it was.
         Assert.False(profile.PlatformCollectedTouristTaxChannelsConfirmed);
         Assert.Equal([BookingSource.Airbnb], builder.PlatformCollectedChannelsOf(profile));
         var draft = await ServiceOf(db, ShippedSwissTouristTax()).CreateDraftAsync(airbnb, "auth0|host");
@@ -434,24 +409,19 @@ public class GuestDocumentLineBuilderTests
         Assert.False((await db.OrgFiscalIssuerProfiles.AsNoTracking().SingleAsync()).PlatformCollectedTouristTaxChannelsConfirmed);
         Assert.Equal(12m, TaxOf(await builder.BuildAsync(bookingCom, rule, builder.PlatformCollectedChannelsOf(profile))));
 
-        // Confirmed that no portal collects it: the default is gone and the guest of Airbnb is billed it too.
         profile.ConfirmPlatformCollectedTouristTaxChannels([]);
         Assert.Empty(builder.PlatformCollectedChannelsOf(profile));
         Assert.Equal(12m, TaxOf(await builder.BuildAsync(airbnb, rule, builder.PlatformCollectedChannelsOf(profile))));
 
-        // Confirmed another list: only that one.
         profile.ConfirmPlatformCollectedTouristTaxChannels([BookingSource.BookingCom]);
         Assert.Equal([BookingSource.BookingCom], builder.PlatformCollectedChannelsOf(profile));
         Assert.Null(TaxOf(await builder.BuildAsync(bookingCom, rule, builder.PlatformCollectedChannelsOf(profile))));
         Assert.Equal(12m, TaxOf(await builder.BuildAsync(airbnb, rule, builder.PlatformCollectedChannelsOf(profile))));
 
-        // An Italian issuer never has the Swiss default, confirmed or not; the shipped default is not shared between callers.
         Assert.Empty(builder.PlatformCollectedChannelsOf(new OrgFiscalIssuerProfile { CountryCode = "IT" }));
         Assert.Equal([BookingSource.Airbnb], builder.PlatformCollectedChannelsOf(new OrgFiscalIssuerProfile { CountryCode = "ch" }));
         Assert.Empty(BuilderOf(db, new SwissTouristTaxOptions()).PlatformCollectedChannelsOf(new OrgFiscalIssuerProfile { CountryCode = "CH" }));
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private static decimal? TaxOf(GuestDocumentLines lines) =>
         lines.Lines.SingleOrDefault(l => l.LineType == FiscalLineType.TouristTax)?.GrossAmount;
@@ -494,7 +464,6 @@ public class GuestDocumentLineBuilderTests
             new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, time));
     }
 
-    /// <summary>The section <c>SwissTouristTax</c> of <c>Casazen.Web/appsettings.json</c>, bound as the application binds it.</summary>
     private static SwissTouristTaxOptions ShippedSwissTouristTax()
     {
         var directory = new DirectoryInfo(System.AppContext.BaseDirectory);

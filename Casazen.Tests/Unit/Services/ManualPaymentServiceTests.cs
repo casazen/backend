@@ -11,10 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Money recorded by the host (SR-06b): the receipt is born Completed, never goes past what the booking still has to collect,
-/// and the same key sent twice writes one payment.
-/// </summary>
 public class ManualPaymentServiceTests
 {
     [Fact]
@@ -30,7 +26,6 @@ public class ManualPaymentServiceTests
             Source = BookingSource.Manual,
             TotalPrice = 100m,
         };
-        // The row a "pay at the property" booking (or the old form) left Pending: only the host can collect it.
         var waiting = new Payment
         {
             BookingId = booking.Id,

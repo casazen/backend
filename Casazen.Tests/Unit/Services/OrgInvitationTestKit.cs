@@ -42,7 +42,6 @@ internal sealed class OrgInvitationTestKit
 
     public Dictionary<string, string?> Settings { get; } = [];
 
-    /// <summary>When false the queue refuses every email (provider not configured, queue down).</summary>
     public bool QueueAccepts { get; set; } = true;
 
     public bool SeedAsAgency { get; set; } = true;
@@ -51,10 +50,6 @@ internal sealed class OrgInvitationTestKit
 
     private readonly Func<AppDbContext>? _contextFactory;
 
-    /// <param name="contextFactory">
-    /// A new context on the database the tests use; omitted, the kit works on its own EF InMemory database. The PostgreSQL
-    /// tests pass a factory over a migrated database and get the same services and the same data helpers.
-    /// </param>
     public OrgInvitationTestKit(Func<AppDbContext>? contextFactory = null)
     {
         _contextFactory = contextFactory;
@@ -134,9 +129,6 @@ internal sealed class OrgInvitationTestKit
         NullLogger<OrgInvitationMaintenanceService>.Instance,
         Clock);
 
-    // ─── The activity log (AM-02b) ──────────────────────────────────────────────────────────────────────
-
-    /// <summary>The activity log writer on <paramref name="db"/>: the service that saves with that context saves its lines too.</summary>
     public ActivityLog Activity(AppDbContext db) => new(db, Clock);
 
     public OrgPropertyAccessService PropertyAccess(AppDbContext db) =>
@@ -160,7 +152,6 @@ internal sealed class OrgInvitationTestKit
         NullLogger<OrgAccessRequestService>.Instance,
         Clock);
 
-    /// <summary>The lines of the activity log of an org, oldest first, as stored.</summary>
     public async Task<List<OrgActivityEntry>> ReadActivityAsync(Guid orgId)
     {
         await using var db = NewDb();
@@ -170,13 +161,6 @@ internal sealed class OrgInvitationTestKit
             .ToListAsync();
     }
 
-    // ─── Data ───────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// An owner as the onboarding leaves it: its org (named "Casa Rossi"), the account with the owner role, the rental
-    /// membership, the org member row and the account membership, and the consents of the org. Pro with an active
-    /// subscription by default (10 seats).
-    /// </summary>
     public async Task<(OrgEntity Org, User Owner)> SeedOwnerOrgAsync(
         string ownerId = "auth0|owner",
         PlanTier tier = PlanTier.Pro,
@@ -198,11 +182,6 @@ internal sealed class OrgInvitationTestKit
         return (org, await SeedOwnerOfOrgAsync(org.Id, ownerId, rentalType));
     }
 
-    /// <summary>
-    /// The owner of an org that already exists, as the onboarding leaves it: the account with the owner role, the rental
-    /// membership, the org member row, the account membership and the consents of the org. For the migration tests, whose org was
-    /// written with SQL at the schema before the migration (<c>LegacyOrgRows</c>) and gets its people after it.
-    /// </summary>
     public async Task<User> SeedOwnerOfOrgAsync(Guid orgId, string ownerId = "auth0|owner", RentalType rentalType = RentalType.ShortTerm)
     {
         await using var db = NewDb();
@@ -223,7 +202,6 @@ internal sealed class OrgInvitationTestKit
         return owner;
     }
 
-    /// <summary>A person with no org yet who just signed up (no role, not onboarded), with the given email.</summary>
     public async Task<User> SeedNewUserAsync(string userId, string email)
     {
         await using var db = NewDb();
@@ -235,10 +213,6 @@ internal sealed class OrgInvitationTestKit
         return user;
     }
 
-    /// <summary>
-    /// A person who signed up and onboarded on its own, as the product does: an auto-created org that is still empty and
-    /// unbilled (Starter, nothing in it), the owner role, the rental membership and the consents of that org.
-    /// </summary>
     public async Task<(OrgEntity Org, User User)> SeedPersonWithEmptyOrgAsync(string userId, string email)
     {
         await using var db = NewDb();
@@ -262,7 +236,6 @@ internal sealed class OrgInvitationTestKit
         return (org, user);
     }
 
-    /// <summary>A member added through the real service, with its account (name and email) and consents.</summary>
     public async Task<(User User, OrgMember Member)> SeedMemberAsync(
         Guid orgId,
         string userId,
@@ -286,7 +259,6 @@ internal sealed class OrgInvitationTestKit
         return (user, member);
     }
 
-    /// <summary>A pending invitation written directly (the service's own rows are produced by <see cref="OrgInvitationService"/>).</summary>
     public async Task<(OrgInvitation Invitation, string Token)> SeedInvitationAsync(
         Guid orgId,
         string email,
@@ -323,7 +295,6 @@ internal sealed class OrgInvitationTestKit
         return (invitation, token);
     }
 
-    /// <summary>A property of the org written directly (AM-02c: the tests of the areas, the invitation properties and the overview).</summary>
     public async Task<Guid> SeedPropertyAsync(
         Guid orgId,
         string name,
@@ -343,7 +314,6 @@ internal sealed class OrgInvitationTestKit
         return property.Id;
     }
 
-    /// <summary>The properties given to a person (the rows of «Solo alcuni»), sorted.</summary>
     public async Task<List<Guid>> ReadGrantsAsync(string userId)
     {
         await using var db = NewDb();
@@ -354,7 +324,6 @@ internal sealed class OrgInvitationTestKit
             .ToListAsync();
     }
 
-    /// <summary>The properties an invitation carries, sorted.</summary>
     public async Task<List<Guid>> ReadInvitationPropertiesAsync(Guid invitationId)
     {
         await using var db = NewDb();
@@ -370,8 +339,6 @@ internal sealed class OrgInvitationTestKit
         foreach (var type in new[] { ConsentType.Tos, ConsentType.Privacy, ConsentType.Dpa, ConsentType.SubprocessorsAck })
             db.ConsentRecords.Add(new ConsentRecord { UserId = userId, OrgId = orgId, Type = type, Version = ConsentVersion });
     }
-
-    // ─── Reading back ───────────────────────────────────────────────────────────────────────────────────
 
     public async Task<OrgInvitation> ReadInvitationAsync(Guid id)
     {
@@ -397,7 +364,6 @@ internal sealed class OrgInvitationTestKit
         return await MembershipsOfAsync(db, userId);
     }
 
-    /// <summary>The secret token inside the link of a queued email: what the person opens.</summary>
     public static string TokenInEmail((string? To, EmailContent Content, string Template) email)
     {
         var match = Regex.Match(email.Content.HtmlBody, "/invite/accept\\?token=([0-9a-f]{64})");
@@ -405,7 +371,6 @@ internal sealed class OrgInvitationTestKit
         return match.Groups[1].Value;
     }
 
-    /// <summary>Everything an <see cref="IEmailQueue"/> refuses (provider not configured, queue down).</summary>
     private sealed class RefusingEmailQueue : IEmailQueue
     {
         public bool Enqueue(string? to, EmailContent content, string template) => false;

@@ -33,14 +33,6 @@ public sealed class GuestDocumentPurgeTests
 
     private static DateOnly DayOf(int offsetFromToday) => Today.AddDays(offsetFromToday);
 
-    // ─── Only a stay with a receipt ─────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// PROOF TEST: privacy rule. Only the stay covered by an archived receipt (its flat, its arrival day) loses its documents: the photos of its verification, the rows
-    /// the verification already marked deleted and the legacy scan of its booker. A stay of another flat of the day, another day of the same flat, a cancelled stay and a
-    /// stay only entrusted to the channel manager keep everything. One line of the send log for the stay that lost something, none for the others, nothing on a second
-    /// run, and not a name, a document number or a storage key in any log line.
-    /// </summary>
     [Fact]
     public async Task Purge_OnlyCoveredStays_Test()
     {
@@ -72,7 +64,6 @@ public sealed class GuestDocumentPurgeTests
             Assert.All(kept.AllKeys, key => Assert.True(storage.Has(key), "A stay without a receipt keeps its documents."));
         }
 
-        // The log of the send: one line for the stay that lost something, with the date, by CasaZen, with no person and no reference.
         var line = Assert.Single(await read.ComplianceSendLogEntries.AsNoTracking().ToListAsync());
         Assert.Equal(
             (covered.Stay.Id, world.Granted.Id, world.Org.Id, ComplianceSendKind.DocumentsDeleted, ComplianceSender.CasaZen, world.Clock.GetUtcNow().UtcDateTime),
@@ -80,14 +71,12 @@ public sealed class GuestDocumentPurgeTests
         Assert.Null(line.Reference);
         Assert.Null(line.ByUserId);
 
-        // A second run finds nothing: nothing is deleted again, no second line.
         var deletedBefore = storage.Deleted.Count;
         var again = await NewService(world, world.Db(), storage).PurgeAsync(null, CancellationToken.None);
         Assert.Equal(new GuestDocumentPurgeResult(true, 0, 0, 0), again);
         Assert.Equal(deletedBefore, storage.Deleted.Count);
         Assert.Single(await read.ComplianceSendLogEntries.AsNoTracking().ToListAsync());
 
-        // Nothing personal is logged: counts and ids, never the name of the guest, the number of the document or a key of the storage.
         var logged = string.Join('\n', purgeLog.Messages.Concat(eraserLog.Messages));
         Assert.NotEmpty(purgeLog.Messages);
         Assert.DoesNotContain("Verdi", logged, StringComparison.Ordinal);
@@ -97,10 +86,6 @@ public sealed class GuestDocumentPurgeTests
         Assert.All(covered.AllKeys, key => Assert.DoesNotContain(key, logged, StringComparison.Ordinal));
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. The document data of the guests of the stay (number, type, dates, place of issue, names) are the legal record of the communication and
-    /// stay exactly as they were: the purge deletes the photos and the scan, never a field of a <c>StayGuest</c>, of the booker, or of the booking.
-    /// </summary>
     [Fact]
     public async Task Purge_KeepsStayGuestLegalData_Test()
     {
@@ -122,10 +107,6 @@ public sealed class GuestDocumentPurgeTests
         Assert.Null((await read.Guests.AsNoTracking().SingleAsync(g => g.Id == covered.Stay.GuestId)).DocumentScanUrl);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. With <c>Features:PurgeDocumentsAfterReceipt</c> off a run reads nothing and deletes nothing, even for a stay that has its receipt and its
-    /// documents; the same data are deleted the moment it is on, so the flag is the one thing that decides. The jobs only run the service.
-    /// </summary>
     [Fact]
     public async Task Purge_FlagOff_DeletesNothing_Test()
     {
@@ -151,7 +132,6 @@ public sealed class GuestDocumentPurgeTests
             Assert.Empty(await read.ComplianceSendLogEntries.AsNoTracking().ToListAsync());
         }
 
-        // The jobs only run the service: the daily one for every org, the one queued by an upload for the org it names.
         var service = new Mock<IGuestDocumentPurgeService>();
         service.Setup(s => s.PurgeAsync(It.IsAny<Guid?>(), It.IsAny<CancellationToken>())).ReturnsAsync(GuestDocumentPurgeResult.Off);
         var job = new GuestDocumentPurgeJob(service.Object);
@@ -165,10 +145,6 @@ public sealed class GuestDocumentPurgeTests
         Assert.Empty(await enabled.DocumentImages.AsNoTracking().ToListAsync());
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule. A run for one organization touches only that organization's stays, and a receipt of another organization never covers a stay (not even
-    /// one filed, by mistake, under this organization's flat); the daily run, for every organization, deletes the others' own documents too.
-    /// </summary>
     [Fact]
     public async Task Purge_OtherOrganizationUntouched_Test()
     {
@@ -211,7 +187,6 @@ public sealed class GuestDocumentPurgeTests
             Assert.Equal(world.Org.Id, Assert.Single(await read.ComplianceSendLogEntries.AsNoTracking().ToListAsync()).OrgId);
         }
 
-        // The daily run is over every organization: the other one's own receipt covers its own stay.
         await using (var db = world.Db())
             Assert.Equal(new GuestDocumentPurgeResult(true, 1, 1, 1), await NewService(world, db, storage).PurgeAsync(null, CancellationToken.None));
 
@@ -220,12 +195,6 @@ public sealed class GuestDocumentPurgeTests
         Assert.Equal(1, await after.DocumentImages.AsNoTracking().CountAsync(i => i.BookingId == notCovered.Stay.Id));
     }
 
-    // ─── The rest of the rule ───────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// PROOF TEST: privacy rule. The legacy scan belongs to the guest, not to one stay: while the guest has another stay that owes the communication and has no receipt
-    /// yet, the scan stays (the photos of the covered stay still go); once that stay is covered too, the scan goes with its photos.
-    /// </summary>
     [Fact]
     public async Task Purge_AScanWaitsForTheOtherStaysOfTheGuest_Test()
     {
@@ -245,7 +214,6 @@ public sealed class GuestDocumentPurgeTests
             Assert.Equal(1, await read.DocumentImages.AsNoTracking().CountAsync(i => i.BookingId == second.Id));
         }
 
-        // The second stay is covered now: its photo goes, and the first stay (whose photos went already) takes the scan, which nothing waits for any more.
         await AddReceiptAsync(world, world.Org.Id, world.Hidden.Id, DayOf(-1));
         await using (var db = world.Db())
             Assert.Equal(new GuestDocumentPurgeResult(true, 2, 1, 1), await NewService(world, db, storage).PurgeAsync(null, CancellationToken.None));
@@ -256,11 +224,6 @@ public sealed class GuestDocumentPurgeTests
         Assert.Empty(await after.DocumentImages.AsNoTracking().ToListAsync());
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule. «Covered» is the verdict of the traffic light, not only a receipt on the flat and the day: a stay whose communication failed (an error, a
-    /// rejection, a guest the channel manager could not take) or was only partly accepted is red whatever receipt exists, so it is not covered and keeps its photos and its scan,
-    /// one by one for each of the four states; the stays of the same flat and day with nothing wrong are purged, and once the failure is mended the next run deletes the rest.
-    /// </summary>
     [Fact]
     public async Task Purge_AStayWhoseCommunicationFailedOrWasPartlyAccepted_IsNotCovered_AndKeepsItsDocuments_Test()
     {
@@ -300,7 +263,6 @@ public sealed class GuestDocumentPurgeTests
                 (await read.ComplianceSendLogEntries.AsNoTracking().ToListAsync()).Select(l => l.BookingId!.Value).Order());
         }
 
-        // The communication of the stay in error is mended (declared sent): the traffic light reads it green with the receipt, and the next run deletes its documents.
         await using (var edit = world.Db())
         {
             (await edit.AlloggiatiWebReports.SingleAsync(r => r.BookingId == error.Stay.Id)).Status = AlloggiatiWebStatus.InviatoManualmente;
@@ -316,11 +278,6 @@ public sealed class GuestDocumentPurgeTests
             Assert.Equal(1, await after.DocumentImages.AsNoTracking().CountAsync(i => i.BookingId == stillKept.Stay.Id));
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule. Only what really left the storage is counted and written as a deletion: a scan whose object another guest record still points to (the
-    /// snapshot of the same guest another stay was made with) loses the reference of the covered stay, which is saved, but it is neither counted nor written in the send log
-    /// and its object stays; when the last record that points to it is cleared the object is deleted, counted and written.
-    /// </summary>
     [Fact]
     public async Task Purge_AScanStillPointedToByAnotherRecord_LosesItsReference_ButIsNeitherCountedNorLogged_Test()
     {
@@ -330,7 +287,6 @@ public sealed class GuestDocumentPurgeTests
         var other = await AddStayOfASnapshotOfTheGuestAsync(world, first.Stay, world.Hidden, -1);
         await AddReceiptAsync(world, world.Org.Id, world.Granted.Id, DayOf(-3));
 
-        // The first stay is covered: its record is cleared and saved, the object is the snapshot's too and stays; nothing is counted or written.
         await using (var db = world.Db())
             Assert.Equal(new GuestDocumentPurgeResult(true, 0, 0, 0), await NewService(world, db, storage).PurgeAsync(null, CancellationToken.None));
 
@@ -344,7 +300,6 @@ public sealed class GuestDocumentPurgeTests
         Assert.True(storage.Has(first.ScanKey!));
         Assert.Empty(storage.Deleted);
 
-        // The other stay is covered too: the last reference goes and the object with it, counted and written for that stay.
         await AddReceiptAsync(world, world.Org.Id, world.Hidden.Id, DayOf(-1));
         await using (var db = world.Db())
             Assert.Equal(new GuestDocumentPurgeResult(true, 1, 0, 1), await NewService(world, db, storage).PurgeAsync(null, CancellationToken.None));
@@ -417,27 +372,21 @@ public sealed class GuestDocumentPurgeTests
                 It.IsAny<IState>()),
             Times.Once);
 
-        // Another kind of proof proves no stay of the day: nothing is queued.
         await UploadAsync(service, world, ManualProofKind.IstatProof);
         jobs.Verify(j => j.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Once);
 
-        // With the flag off nothing is queued.
         var off = NewArchiveService(world, db, storage, jobs.Object, purgeOn: false);
         await UploadAsync(off, world, ManualProofKind.AlloggiatiReceipt);
         jobs.Verify(j => j.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Once);
 
-        // A queue that is down: the proof is stored and the upload answers.
         var broken = new Mock<IBackgroundJobClient>();
         broken.Setup(j => j.Create(It.IsAny<Job>(), It.IsAny<IState>())).Throws(new InvalidOperationException("The queue is down."));
         var entry = await UploadAsync(NewArchiveService(world, db, storage, broken.Object, purgeOn: true), world, ManualProofKind.AlloggiatiReceipt);
         Assert.Contains(await db.ManualComplianceProofs.AsNoTracking().Select(p => p.Id).ToListAsync(), id => id == entry.Id);
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────────
-
     private const string LegalDocumentNumber = "XA1234567";
 
-    /// <summary>A stay with its booker and documents: the keys of the photos, the key of the scan and all of them.</summary>
     private sealed record Seeded(Booking Stay, string[] ImageKeys, string? ScanKey)
     {
         public IEnumerable<string> AllKeys => ScanKey is null ? ImageKeys : [.. ImageKeys, ScanKey];
@@ -489,11 +438,6 @@ public sealed class GuestDocumentPurgeTests
             CancellationToken.None);
     }
 
-    /// <summary>
-    /// A stay of <paramref name="property"/> with two registered guests that carry the legal document data, a booker with a legacy scan when asked, and
-    /// <paramref name="images"/> photos of a verification (the first <paramref name="alreadyMarkedDeleted"/> of them already deleted from the bucket and marked by the
-    /// verification, as the real flow leaves them).
-    /// </summary>
     private static async Task<Seeded> AddStayWithDocumentsAsync(
         World world,
         RecordingStorage storage,
@@ -551,7 +495,6 @@ public sealed class GuestDocumentPurgeTests
         return new Seeded(stay, [.. keys], scanKey);
     }
 
-    /// <summary>A second stay of the booker of <paramref name="first"/> (the same guest, with its scan) in <paramref name="property"/>, with a photo of a verification.</summary>
     private static async Task<Booking> AddSecondStayOfTheSameGuestAsync(World world, RecordingStorage storage, Booking first, Property property, int checkInOffset)
     {
         await using var db = world.Db();
@@ -577,10 +520,6 @@ public sealed class GuestDocumentPurgeTests
         return stay;
     }
 
-    /// <summary>
-    /// A stay in <paramref name="property"/> of ANOTHER guest record that is a snapshot of the booker of <paramref name="first"/> (what a check-in makes when the guest is shared by
-    /// two stays): the copy carries the same reference to the scan, so the object is pointed to by two records.
-    /// </summary>
     private static async Task<Booking> AddStayOfASnapshotOfTheGuestAsync(World world, Booking first, Property property, int checkInOffset)
     {
         await using var db = world.Db();
@@ -647,7 +586,6 @@ public sealed class GuestDocumentPurgeTests
         DateTime CheckInDate,
         decimal TotalPrice);
 
-    /// <summary>What the guests of a stay and its booking hold, apart from the documents the purge deletes.</summary>
     private static async Task<LegalRecord> LegalRecordAsync(World world, Booking stay)
     {
         await using var db = world.Db();
@@ -671,7 +609,6 @@ public sealed class GuestDocumentPurgeTests
         return new LegalRecord(guests, booker.FirstName, booker.Email, booking.Status, booking.CheckInDate, booking.TotalPrice);
     }
 
-    /// <summary>A logger that keeps every line it is given (and the exception text), to prove what is not in it.</summary>
     private sealed class CapturingLogger<T> : ILogger<T>
     {
         public List<string> Messages { get; } = [];
@@ -689,7 +626,6 @@ public sealed class GuestDocumentPurgeTests
         }
     }
 
-    /// <summary>A private bucket that remembers what was put, opened and deleted, and can refuse to delete some keys.</summary>
     private sealed class RecordingStorage : IFileStorage
     {
         private readonly Dictionary<string, byte[]> _files = [];

@@ -12,11 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Decision D3 residues closed by SE-03: the booking-site link of the domain settings and of the activation status and
-/// the supplier check-in QR are built on <c>App:PublicSiteBaseUrl</c> (no <c>casazen.app</c> fallback), the org
-/// subdomains only on <c>PublicHost:BaseDomain</c> (no <c>casazen.it</c> default).
-/// </summary>
 public class PublicUrlConfigurationTests
 {
     private const string PublicSite = "https://public-site.example.test";

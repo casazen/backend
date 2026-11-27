@@ -9,11 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// CO-16 (A5-29, A9-30): the anonymous legacy portal <c>/api/checkin/{token}</c> is removed. It returned every personal
-/// data field of the guest and accepted anonymous document uploads with a token stored in clear on the booking. Its
-/// routes answer 404 and change nothing; the guest check-in goes through <c>/api/public/checkin/{token}</c> only.
-/// </summary>
 public class LegacyCheckInPortalRemovedIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private static readonly byte[] PngBytes = Convert.FromBase64String(
@@ -75,7 +70,6 @@ public class LegacyCheckInPortalRemovedIntegrationTests : IClassFixture<CasazenW
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var booking = await db.Bookings.IgnoreQueryFilters().SingleAsync(b => b.Id == bookingId);
-        // The host's own service (its clock and options): the session is valid for the API that reads it.
         var service = scope.ServiceProvider.GetRequiredService<IGuestCheckInService>();
         return await service.CreateSessionAsync(bookingId, booking.OrgId);
     }

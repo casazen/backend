@@ -88,12 +88,8 @@ public class HostScopeListsTests : IAsyncLifetime
     [Fact]
     public async Task Scenario_EveryForeignKeyOfTheSeededData_PointsToARowOfTheStore()
     {
-        // The same data is seeded on PostgreSQL by HostScopePostgresTests, which enforces the foreign keys this provider does
-        // not: a dangling reference here would only show up in CI.
         await HostScopeScenario.AssertReferentialIntegrityAsync(_db);
     }
-
-    // --- the entity-level extension, for the types the points above do not all reach -------------------
 
     [Fact]
     public void InScope_TheOrgWideScopeAddsNothing()

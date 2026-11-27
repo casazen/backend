@@ -22,7 +22,6 @@ public class ServiceDisputeArchitectureTests
 
     private static readonly Regex PenaltiesType = new(@"\bISupplierDisputePenalties\b", RegexOptions.Compiled);
 
-    /// <summary>The files that may name the payer's operations (they stop the money), each with the reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> MayNamePayerOperations = new Dictionary<string, string>
     {
         ["Casazen.Core/Services/IServiceDisputeService.cs"] = "Declares what the dispute service does.",
@@ -120,7 +119,6 @@ public class ServiceDisputeArchitectureTests
     {
         var controller = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "Casazen.Web", "Controllers", "HostServiceRequestDisputesController.cs"));
 
-        // The request must be the caller's own (another org's, and a showcase one, are not found) and the caller must be allowed on its property.
         Assert.Contains("GetByIdForHostAsync", controller, StringComparison.Ordinal);
         Assert.Contains("IsAuthorizedAsync(User, resource, WriteOperation)", controller, StringComparison.Ordinal);
         Assert.Contains("[Authorize(Policy = CasazenPolicies.ServiceRequestWrite)]", controller, StringComparison.Ordinal);
@@ -183,7 +181,6 @@ public class ServiceDisputeArchitectureTests
     {
         var code = CodeWithoutComments(File.ReadAllText(Path.Combine(FindRepositoryRoot(), relative.Replace('/', Path.DirectorySeparatorChar))));
 
-        // The only money it moves is a refund row it reserves (ReserveHeld) and the refund machinery sends (SubmitRefundAsync).
         Assert.DoesNotContain("Platform.", code, StringComparison.Ordinal);
         Assert.DoesNotContain("gateway.", code, StringComparison.Ordinal);
         Assert.DoesNotContain("Stripe.", code, StringComparison.Ordinal);
@@ -197,7 +194,6 @@ public class ServiceDisputeArchitectureTests
         var code = CodeWithoutComments(File.ReadAllText(
             Path.Combine(FindRepositoryRoot(), "Casazen.Infrastructure", "Services", "SupplierPaymentService.DisputesAdmin.cs")));
 
-        // The commission is never given back by a dispute: the refund is reserved with the rule of the supplier's part only.
         Assert.Contains("keepCommission: true", code, StringComparison.Ordinal);
         Assert.Contains("ReserveHeld(", code, StringComparison.Ordinal);
 
@@ -237,7 +233,6 @@ public class ServiceDisputeArchitectureTests
             foreach (Match statement in logStatement.Matches(code))
             {
                 statements++;
-                // The message template is text; what is passed after it is what gets written.
                 if (words.IsMatch(StripStrings(statement.Groups["args"].Value)))
                     offenders.Add($"{relative}: {Regex.Replace(statement.Value, @"\s+", " ")}");
             }
@@ -247,12 +242,8 @@ public class ServiceDisputeArchitectureTests
         Assert.True(offenders.Count == 0, "A log statement names what a party wrote: " + string.Join(" | ", offenders));
     }
 
-    // ─── helpers ───
-
-    /// <summary>The source without the string literals: the words of a message are not what is passed to it.</summary>
     private static string StripStrings(string code) => Regex.Replace(code, "\"(?:[^\"\\\\]|\\\\.)*\"", "\"\"");
 
-    /// <summary>The source without the lines that are only a comment (documentation names things without using them).</summary>
     private static string CodeWithoutComments(string text) =>
         string.Join('\n', text.Split('\n').Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
 

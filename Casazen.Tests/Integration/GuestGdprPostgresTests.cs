@@ -34,7 +34,6 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
     private const string OwnerRole = "PropertyOwner";
     private const string DocumentNumber = "CA12345XY";
 
-    /// <summary>Properties of <see cref="Guest"/> that are not personal data of the guest, with the reason.</summary>
     private static readonly Dictionary<string, string> GuestNonPersonal = new()
     {
         [nameof(Guest.Id)] = "pseudonymous key, kept for the bookings",
@@ -59,7 +58,6 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
         [nameof(Guest.UpdatedAt)] = "processing metadata",
     };
 
-    /// <summary>Properties of <see cref="StayGuest"/> that are not personal data of the guest.</summary>
     private static readonly HashSet<string> StayGuestNonPersonal =
     [
         nameof(StayGuest.Id), nameof(StayGuest.BookingId), nameof(StayGuest.Booking), nameof(StayGuest.OrgId),
@@ -90,7 +88,6 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
             Assert.True(guest.ErasureRequested);
             Assert.Equal(clock.GetUtcNow().UtcDateTime, guest.DataAnonymizedDate);
 
-            // CO-12 rule: the booker's own row and every companion of the stay, family and group members alike.
             var stayGuests = await db.StayGuests.IgnoreQueryFilters().AsNoTracking().Where(s => s.BookingId == seeded.BookingId).ToListAsync();
             Assert.Equal(3, stayGuests.Count);
             Assert.All(stayGuests, AssertNoPersonalData);
@@ -409,12 +406,10 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
             FiscalData = new RetentionPeriodOptions { Years = 2, Source = "test: fiscal" },
         };
 
-        // Day 30 after the check-out: still inside every period.
         await RunRetentionAsync(storage, retention, checkOut.AddDays(30));
         var guest = await LoadGuestAsync(seeded.GuestId);
         Assert.Equal(seeded.ScanKey, guest.DocumentScanUrl);
 
-        // Day 31: the scan goes, nothing else; a second run the same day changes nothing.
         await RunRetentionAsync(storage, retention, checkOut.AddDays(31));
         await RunRetentionAsync(storage, retention, checkOut.AddDays(31));
         guest = await LoadGuestAsync(seeded.GuestId);
@@ -431,7 +426,6 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
         await using (var scope = NewScope(out var db))
             Assert.All(await db.StayGuests.IgnoreQueryFilters().AsNoTracking().Where(s => s.BookingId == seeded.BookingId).ToListAsync(), AssertNoPersonalData);
 
-        // 18 months after the consent: it expires, with a record of the version it ends.
         await RunRetentionAsync(storage, retention, new DateTime(2028, 7, 6, 0, 0, 0, DateTimeKind.Utc));
         guest = await LoadGuestAsync(seeded.GuestId);
         Assert.False(guest.MarketingConsent);
@@ -442,7 +436,6 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
             Assert.Equal((GuestConsentPurpose.Marketing, "marketing-2026-09", GuestConsentSource.RetentionPolicy), (expiry.Purpose, expiry.Version, expiry.Source));
         }
 
-        // Two years and a day: guest cards are not anonymized automatically (PO 2026-10-08).
         await RunRetentionAsync(storage, retention, checkOut.AddYears(2).AddDays(1));
         await RunRetentionAsync(storage, retention, checkOut.AddYears(2).AddDays(2));
         guest = await LoadGuestAsync(seeded.GuestId);
@@ -608,10 +601,6 @@ public class GuestGdprPostgresTests : IClassFixture<CasazenWebApplicationFactory
         DocumentIssuePlaceName = "Firenze",
     };
 
-    /// <summary>
-    /// A booker with every personal field, its document scan in the private storage, a past stay of three guests (the
-    /// booker as head of family and two family members), a check-in link, special requests and two consent events.
-    /// </summary>
     private async Task<SeededStay> SeedStayAsync(
         DateTime checkOut,
         string? owner = null,

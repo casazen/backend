@@ -9,10 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.BackgroundJobs;
 
-/// <summary>
-/// E07/F07/US01: the background work of the owner portal operations runs only while the agency owner portal is on (<c>Features:AgencyTier</c>): off, it is
-/// not scheduled and the schedule of an earlier deploy is removed; on, every five minutes (UTC), never twice at once.
-/// </summary>
 public class OwnerPortalOperationsJobRegistrationTests
 {
     [Fact]

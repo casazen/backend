@@ -18,20 +18,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E07/F04/US01/T04 (NF-90, CRM-03, AC-NF90-2): the proofs of the marketing choices on the guest page. A guest reads and changes only the choices
-/// of their own booking, with the same 404 as everywhere in the guest area; an opt-out on the page is final. On EF InMemory, the real session
-/// lookup, the real contact service over the real keyed index, the real confirmation service and the real suppression list.
-/// </summary>
 public class GuestPagePreferencesProofTests
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
 
-    /// <summary>
-    /// Permission rule: the guest of one booking can neither read nor change the choices of another guest's booking of the same site, nor of a
-    /// booking that does not exist. It is the same 404 for the read, the change and the resend, and nothing is written for either: no contact, no
-    /// history, no e-mail.
-    /// </summary>
     [Fact]
     public async Task GuestPagePreferences_BookingOfAnotherGuest_Is404_Test()
     {
@@ -41,13 +31,11 @@ public class GuestPagePreferencesProofTests
         var theirs = await world.AddBookingAsync(org, house, "bruno@example.com");
         var ticket = world.TicketOf(org, "anna@example.com");
 
-        // Her own booking answers: nothing ticked, her address masked.
         var own = await world.Service.GetAsync(ticket, BookingCodes.Format(mine.BookingCode), Ct);
         Assert.Equal(GuestMarketingStates.None, own.Email.State);
         Assert.Equal("a***@e***.com", own.Email.MaskedAddress);
         Assert.Equal(GuestMarketingStates.None, own.WhatsApp.State);
 
-        // His booking and a code that does not exist: one answer, for the read, the change and the resend.
         foreach (var code in new[] { theirs.BookingCode, BookingCodes.New() })
         {
             var formatted = BookingCodes.Format(code);
@@ -98,7 +86,6 @@ public class GuestPagePreferencesProofTests
             await world.Db.GuestConsentRecords.AsNoTracking().ToListAsync(Ct),
             record => record.Action == GuestConsentAction.Withdrawn && record.Source == GuestConsentSource.GuestPage);
 
-        // On again: the consent is stored, nothing is lifted, nothing is sent.
         var again = await world.Service.SetAsync(ticket, code, World.Enable(), "203.0.113.9", Ct);
 
         Assert.Equal(GuestMarketingStates.Withdrawn, again.Email.State);
@@ -111,11 +98,6 @@ public class GuestPagePreferencesProofTests
         Assert.Single(await world.Db.SuppressionListEntries.AsNoTracking().ToListAsync(Ct));
     }
 
-    /// <summary>
-    /// Privacy rule: a session proves the booking, not the ownership of another address, so a booking with a real address consents with that
-    /// address only. An address typed next to it is ignored: the contact is the one of the booking, the confirmation e-mail goes to it and to
-    /// nobody else, and the answer shows it masked.
-    /// </summary>
     [Fact]
     public async Task GuestPagePreferences_ABookingWithARealAddress_ConsentsWithThatAddressOnly_Test()
     {
@@ -133,10 +115,6 @@ public class GuestPagePreferencesProofTests
         Assert.Equal("anna@example.com", Assert.Single(world.Queue.Snapshot()).To);
     }
 
-    /// <summary>
-    /// Privacy rule: when the booking has no real address (a relay of an online travel agency) the guest types one. Without it, or with another
-    /// relay address, the change is refused (422) and nothing is stored; with a plain address the consent and its confirmation e-mail are for it.
-    /// </summary>
     [Fact]
     public async Task GuestPagePreferences_ABookingWithARelayAddress_NeedsAPlainAddressTyped_Test()
     {
@@ -163,7 +141,6 @@ public class GuestPagePreferencesProofTests
         Assert.Equal("vera@example.com", Assert.Single(world.Queue.Snapshot()).To);
     }
 
-    /// <summary>The world of the proofs: a store, a clock, the real session lookup, the contact and confirmation services, the service under test.</summary>
     private sealed class World : IDisposable
     {
         public const string Version = "consent-v1";
@@ -218,15 +195,12 @@ public class GuestPagePreferencesProofTests
 
         public GuestMarketingPreferencesService Service { get; }
 
-        /// <summary>The guest turns e-mail on, with the text in force; <paramref name="address"/> is the address the guest typed, if any.</summary>
         public static GuestMarketingChange Enable(string? address = null) =>
             new(new GuestMarketingEmailChange(true, address), null, Version, "it");
 
-        /// <summary>The guest turns e-mail off.</summary>
         public static GuestMarketingChange Disable() =>
             new(new GuestMarketingEmailChange(false, null), null, null, "it");
 
-        /// <summary>What the session of the guest with this address proves, on the site of the org.</summary>
         public GuestSessionTicket TicketOf(OrgEntity org, string email) =>
             new(org.Id, GuestSessionTicket.HashEmail(email), Clock.GetUtcNow().UtcDateTime.AddHours(1));
 
@@ -262,7 +236,6 @@ public class GuestPagePreferencesProofTests
             return (org, house);
         }
 
-        /// <summary>A direct booking of the site, confirmed, whose guest has this address.</summary>
         public async Task<Booking> AddBookingAsync(OrgEntity org, Property house, string email)
         {
             var guest = new Guest

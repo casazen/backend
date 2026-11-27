@@ -14,10 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.BackgroundJobs;
 
-/// <summary>
-/// PC-15 (A2-34): the nightly job recomputes the seasonal suggestions when due by Rome calendar dates. Each simulated
-/// night uses a fresh context, like a Hangfire run.
-/// </summary>
 public sealed class DynamicPricingJobTests : IDisposable
 {
     private readonly string _databaseName = $"pc15-job-{Guid.NewGuid():N}";
@@ -33,7 +29,6 @@ public sealed class DynamicPricingJobTests : IDisposable
     private AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).Options);
 
-    /// <summary>Runs the job once at <paramref name="instant"/> and returns the config afterwards.</summary>
     private async Task<PricingAdapterConfig> RunJobAtAsync(DateTimeOffset instant, Guid configId)
     {
         await using var db = NewDb();
@@ -46,7 +41,6 @@ public sealed class DynamicPricingJobTests : IDisposable
         return await db.PricingAdapterConfigs.AsNoTracking().SingleAsync(c => c.Id == configId);
     }
 
-    /// <summary>02:00Z every night, a few minutes early or late (Hangfire queue, worker restarts).</summary>
     private static DateTimeOffset NightlyRun(DateOnly day, int jitterSeconds) =>
         new DateTimeOffset(day.ToDateTime(new TimeOnly(2, 0)), TimeSpan.Zero).AddSeconds(jitterSeconds);
 

@@ -16,11 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E73/F01/US03/T01 (NF-196): <c>GET api/Verification/metrics</c> adds <c>identity</c> only with <c>CheckInIdentityVerification</c> and <c>CheckInIdentitySelfHosted</c> both on, for
-/// the same org, reach and period as the figures it already had; with either off the answer is exactly the one it was (the member is not there at all and nothing is read); the
-/// period rule is the one of the export; and the members of <c>identity</c> are the cross-repository contract, in camel case, and nothing else.
-/// </summary>
 public sealed class IdentityMetricsEndpointTests
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -41,7 +36,6 @@ public sealed class IdentityMetricsEndpointTests
 
     private static string[] Members(JsonElement element) => element.EnumerateObject().Select(member => member.Name).ToArray();
 
-    /// <summary>AC6: with either flag off the answer is exactly the previous one: the same nine members, no <c>identity</c>, not even a null, and the service of the counters is never asked.</summary>
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
@@ -66,10 +60,6 @@ public sealed class IdentityMetricsEndpointTests
         Assert.Equal((7, 3, 2, 4, 1, 5, 0.4), (dto.Ok, dto.Review, dto.NotOk, dto.OperatorApproved, dto.OperatorRejected, dto.OperatorDecisions, dto.OperatorShare));
     }
 
-    /// <summary>
-    /// AC1..AC5 of the endpoint: with both flags on the answer has the figures it always had and <c>identity</c>, asked of the counters for the SAME scope and the SAME period (the days
-    /// in Europe/Rome, the end excluded); nothing else of the previous answer changes.
-    /// </summary>
     [Fact]
     public async Task GetMetrics_WithBothFlagsOn_AddsTheCountersOfTheSameScopeAndPeriod()
     {
@@ -93,7 +83,6 @@ public sealed class IdentityMetricsEndpointTests
         Assert.Equal(PreviousMembers.Append("identity").Order(), Members(json.RootElement).Order());
     }
 
-    /// <summary>The cross-repository contract: every member of <c>identity</c>, at every level, in camel case, and nothing else; the values are the ones of the counters, unrounded.</summary>
     [Fact]
     public void IdentityMetricsDto_IsTheContractWithTheFrontend()
     {
@@ -113,7 +102,6 @@ public sealed class IdentityMetricsEndpointTests
         foreach (var rate in new[] { "automationRate", "shadowApprovalRate" })
             Assert.Equal(new[] { "value", "wilsonLow", "wilsonHigh", "n" }.Order(), Members(identity.GetProperty(rate)).Order());
 
-        // The rate is the fraction, not a percentage and not rounded (the page formats it); the interval is the one of the statistics.
         Assert.Equal(0.85, identity.GetProperty("automationRate").GetProperty("value").GetDouble());
         Assert.Equal(0.8160389193683016, identity.GetProperty("automationRate").GetProperty("wilsonLow").GetDouble(), 9);
         Assert.Equal(500, identity.GetProperty("automationRate").GetProperty("n").GetInt32());
@@ -136,7 +124,6 @@ public sealed class IdentityMetricsEndpointTests
         Assert.Equal(0.9, cell.GetProperty("rate").GetDouble());
     }
 
-    /// <summary>Nothing measured is not a rate of 0: the value is null (written, not left out) with the interval (0, 1) of the statistics, and the percentiles are null.</summary>
     [Fact]
     public void IdentityMetricsDto_NothingMeasured_IsNullAndNotZero()
     {
@@ -160,7 +147,6 @@ public sealed class IdentityMetricsEndpointTests
         Assert.Equal(0, json.RootElement.GetProperty("coverage").GetArrayLength());
     }
 
-    /// <summary>The period of the counters is the period of the metrics: the last 30 days by default, 366 days at most, and a period that ends before it starts is the same 400.</summary>
     [Theory]
     [InlineData(null, null, true)]
     [InlineData("2025-11-27", "2026-11-27", true)]
@@ -194,7 +180,6 @@ public sealed class IdentityMetricsEndpointTests
         harness.Identity.VerifyNoOtherCalls();
     }
 
-    /// <summary>A caller with no reach (no org, an inactive account, a member of another org) is 401 and nothing is read: the scope is never widened to the whole org.</summary>
     [Fact]
     public async Task GetMetrics_WithoutAScope_Is401_AndNothingIsRead()
     {
@@ -207,7 +192,6 @@ public sealed class IdentityMetricsEndpointTests
         harness.Identity.VerifyNoOtherCalls();
     }
 
-    /// <summary>The action keeps its route and its policy: the operators of the queue (the owner, the administrators and the property managers), no one else, anonymous never.</summary>
     [Fact]
     public void GetMetrics_KeepsItsRoute_AndTheOperatorPolicy()
     {
@@ -217,7 +201,6 @@ public sealed class IdentityMetricsEndpointTests
         Assert.Equal([CasazenPolicies.VerificationDecision], typeof(VerificationController).GetCustomAttributes<AuthorizeAttribute>(inherit: true).Select(attribute => attribute.Policy));
         Assert.Empty(method.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true));
         Assert.DoesNotContain(method.GetCustomAttributes<AuthorizeAttribute>(inherit: true), attribute => attribute.Policy != CasazenPolicies.VerificationDecision);
-        // The existing figures are not behind the flags: only the identity member is.
         Assert.Empty(method.GetCustomAttributes<FeatureGateAttribute>(inherit: true));
     }
 }

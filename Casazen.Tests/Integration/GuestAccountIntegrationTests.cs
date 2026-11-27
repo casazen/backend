@@ -33,8 +33,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
     private const string BookingsPath = "/api/guest/bookings";
     private const string AccountPath = "/api/guest/account";
 
-    // ─── GET /api/users/me ──────────────────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -59,8 +57,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
 
         Assert.False(me.GetProperty("emailVerified").GetBoolean());
     }
-
-    // ─── Who may call ───────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("GET", "/api/guest/bookings")]
@@ -99,7 +95,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
             var body = await answer.Content.ReadAsStringAsync();
             var problem = JsonDocument.Parse(body).RootElement;
             Assert.Equal("guest_email_not_verified", problem.GetProperty("code").GetString());
-            // Localized, and it tells nothing about the bookings behind it.
             Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("detail").GetString()));
             Assert.DoesNotContain(site.PropertyName, body, StringComparison.Ordinal);
             Assert.DoesNotContain(stay.FormattedCode, body, StringComparison.Ordinal);
@@ -121,8 +116,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
         Assert.Equal("guest_email_not_verified", en.GetProperty("code").GetString());
     }
 
-    // ─── The list ───────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task List_VerifiedAccount_OwnBookingsOfTwoSites_ByCheckIn_WithTheFieldsOfTheContract()
     {
@@ -132,7 +125,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
         var later = await SeedStayAsync(siteA, email, checkInInDays: 25);
         var sooner = await SeedStayAsync(siteB, email, checkInInDays: 4, nights: 2);
         var someoneElse = await SeedStayAsync(siteA, NewEmail(), checkInInDays: 5);
-        // The caller is also the owner of a host org of their own: their guest bookings are listed all the same.
         var userId = NewUserId();
         await factory.SeedOrgForOwnerAsync(userId);
         using var client = factory.CreateAuthenticatedClient(userId, roles: "PropertyOwner", email: email.ToUpperInvariant(), emailVerified: true);
@@ -203,7 +195,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
         Assert.Equal([old.BookingId], secondOfTwo.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()));
         Assert.Equal((2, 1, 2), (secondOfTwo.GetProperty("page").GetInt32(), secondOfTwo.GetProperty("pageSize").GetInt32(), secondOfTwo.GetProperty("total").GetInt32()));
         Assert.Equal(50, capped.GetProperty("pageSize").GetInt32());
-        // No scope: the upcoming ones.
         Assert.Equal([ahead.BookingId], defaults.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()));
         Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
         Assert.Equal("validation_error", JsonDocument.Parse(await bad.Content.ReadAsStringAsync()).RootElement.GetProperty("code").GetString());
@@ -219,8 +210,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
         Assert.Equal(0, page.GetProperty("items").GetArrayLength());
         Assert.Equal(0, page.GetProperty("total").GetInt32());
     }
-
-    // ─── One booking, and the one 404 ───────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Detail_OwnBooking_IsTheBodyOfTheAnonymousLookupPlusTheIdAndTheSlug()
@@ -240,7 +229,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
         Assert.Equal(HttpStatusCode.OK, lookup.StatusCode);
         var detailBody = await detail.Content.ReadFromJsonAsync<JsonElement>();
         var lookupBody = await lookup.Content.ReadFromJsonAsync<JsonElement>();
-        // Every field of the anonymous body, with the same value (the same projection), and two more.
         foreach (var field in lookupBody.EnumerateObject())
             Assert.True(JsonEquals(field.Value, detailBody.GetProperty(field.Name)), $"{field.Name} differs");
         Assert.Equal(
@@ -299,9 +287,7 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
             }
         }
 
-        // Identical answers (the trace id aside): nothing tells which bookings exist.
         Assert.Single(bodies.Distinct(StringComparer.Ordinal));
-        // The message speaks of the account's bookings, not of a code and an email.
         Assert.Contains("tra le tue", bodies[0], StringComparison.Ordinal);
     }
 
@@ -345,8 +331,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
         Assert.Equal(HttpStatusCode.NotFound, session.StatusCode);
     }
 
-    // ─── Nothing private leaves ─────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task NothingPrivateLeaves_ListDetailAndSession_EvenWithEveryPrivateFieldFilled()
     {
@@ -371,7 +355,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
                 booking.CheckoutTokenHash = "marker-checkout-token-hash";
                 booking.GuestCancelTokenHash = "marker-cancel-token-hash";
                 booking.GuestEmailVerificationTokenHash = "marker-verification-hash";
-                // The column holds "HH:mm" or "late" (5 characters at most): no room for a marker, so the property name is asserted below.
                 booking.ExpectedArrivalTime = "late";
             },
             guestShape: guest =>
@@ -403,7 +386,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
             await db.SaveChangesAsync();
         }
 
-        // Another guest of the same site, with a booking and a house of their own, whom the caller must never see.
         var otherSite = await SeedSiteAsync("Casa Altrui MARKER");
         await SeedStayAsync(
             otherSite,
@@ -423,18 +405,13 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
         Assert.Contains(privateStay.FormattedCode, bodies[0], StringComparison.Ordinal);
         foreach (var body in bodies)
         {
-            // Every marker planted above, the payment intent included, and the other guest's.
             Assert.DoesNotContain("marker", body, StringComparison.OrdinalIgnoreCase);
-            // The declared arrival time is not in any of these bodies either (its value is too short for a marker).
             Assert.DoesNotContain("expectedArrivalTime", body, StringComparison.OrdinalIgnoreCase);
-            // Nor the identifiers that are not the account's to hold: the guest record, the org, and the account's own address.
             Assert.DoesNotContain(privateStay.GuestId.ToString(), body, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain(site.OrgId.ToString(), body, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain(email, body, StringComparison.OrdinalIgnoreCase);
         }
     }
-
-    // ─── The session ────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Session_TheTokenOpensTheGuestAreaOfThatBookingAndOfNoOther()
@@ -462,37 +439,30 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
         Assert.InRange(session.GetProperty("expiresAt").GetDateTime(), DateTime.UtcNow.AddMinutes(100), DateTime.UtcNow.AddHours(24));
         Assert.DoesNotContain(email, token, StringComparison.OrdinalIgnoreCase);
 
-        // The cancellation preview of the guest area (DB-08a), with the token and no code or email typed.
         var preview = await GetWithGuestTokenAsync($"/api/public/guest/bookings/{session.GetProperty("bookingCode").GetString()}/cancellation", token);
         Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
         var previewBody = await preview.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(previewBody.GetProperty("cancellable").GetBoolean());
         Assert.Equal(site.PropertyName, previewBody.GetProperty("stay").GetProperty("propertyName").GetString());
 
-        // The booking itself, as the guest area shows it, and the other bookings of that site and that email (the token is the guest's).
         var area = await GetWithGuestTokenAsync($"/api/public/guest/bookings/{own.FormattedCode}", token);
         var areaOfSecond = await GetWithGuestTokenAsync($"/api/public/guest/bookings/{second.FormattedCode}", token);
         Assert.Equal(HttpStatusCode.OK, area.StatusCode);
         Assert.Equal(HttpStatusCode.OK, areaOfSecond.StatusCode);
         Assert.Equal(own.FormattedCode, (await area.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("bookingCode").GetString());
 
-        // The token is tied to the site: the same code on another site (same email) is that site's booking, which this token cannot read
-        // (the guest area finds the booking by the org of the session).
         Assert.Equal(own.Code, sameCodeOtherSite.Code);
         var sameCode = await GetWithGuestTokenAsync($"/api/public/guest/bookings/{sameCodeOtherSite.FormattedCode}", token);
         Assert.Equal(HttpStatusCode.OK, sameCode.StatusCode);
         Assert.Equal(site.PropertyName, (await sameCode.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("propertyName").GetString());
         Assert.NotEqual(otherSite.PropertyName, site.PropertyName);
 
-        // Another guest of the site: the same 404 as everywhere in the guest area.
         var someoneElsesAnswer = await GetWithGuestTokenAsync($"/api/public/guest/bookings/{someoneElses.FormattedCode}", token);
         Assert.Equal(HttpStatusCode.NotFound, someoneElsesAnswer.StatusCode);
         Assert.Equal(
             GuestBookingLookupErrorCodes.NotFound,
             (await someoneElsesAnswer.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
     }
-
-    // ─── DELETE /api/guest/account ──────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Delete_GuestAccount_204_Auth0FirstThenTheRow_BookingsAndGuestsUntouched_AndASecondCallIs401()
@@ -515,7 +485,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
         Assert.True(rowWasThereWhenAuth0WasCalled, "Auth0 is called while the CasaZen account is still there");
         factory.Auth0.Verify(a => a.DeleteUserAsync(userId, It.IsAny<CancellationToken>()), Times.Once);
         Assert.False(UserExists(userId));
-        // The hosts' books are not the account's: the booking and its guest record are exactly as they were.
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -527,7 +496,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
             Assert.Equal(362m, Assert.Single(booking.Payments).Amount);
         }
 
-        // The access token already issued still verifies, but the account is gone: 401, and Auth0 is not asked again.
         var second = await client.DeleteAsync(AccountPath);
         Assert.Equal(HttpStatusCode.Unauthorized, second.StatusCode);
         factory.Auth0.Verify(a => a.DeleteUserAsync(userId, It.IsAny<CancellationToken>()), Times.Once);
@@ -595,8 +563,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
             factory.Auth0.Verify(a => a.DeleteUserAsync(userId, It.IsAny<CancellationToken>()), Times.Never);
         }
     }
-
-    // ─── Harness ────────────────────────────────────────────────────────────────────────────────────────
 
     private static string NewUserId() => $"auth0|guest-{Guid.NewGuid():N}";
 
@@ -693,7 +659,6 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
         return new SiteSeed(org.Id, org.Slug, displayName, property.Id, property.Slug!, property.Name);
     }
 
-    /// <summary>A paid booking of the public checkout: 3 nights, 300 lodging + 50 cleaning + 12 tourist tax = 362.</summary>
     private async Task<StaySeed> SeedStayAsync(
         SiteSeed site,
         string guestEmail,

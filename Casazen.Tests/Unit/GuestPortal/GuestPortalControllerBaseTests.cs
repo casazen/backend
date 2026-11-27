@@ -21,18 +21,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.GuestPortal;
 
-/// <summary>
-/// E50/F01/US01/T02 (NF-152, NF-153, AC-NF153-2): a controller of the portal derives from <see cref="GuestPortalControllerBase"/> and inherits, with no
-/// attribute of its own, the flag, the anonymity, the rate limit, the private answers, the token filter and the route of the token; no endpoint of the
-/// portal reads a booking id from the client.
-/// </summary>
 public class GuestPortalControllerBaseTests
 {
-    /// <summary>
-    /// Permission and privacy rules: a controller written by a later epic (here one of the tests) and the overview get the gate of
-    /// <c>Features:GuestPortal</c>, the limiter <c>GuestPortal</c> (per IP and token hash), <c>no-store</c>, the token filter after it and the route
-    /// <c>api/public/guest-portal/{token}</c>, and ask for no sign-in.
-    /// </summary>
     [Fact]
     public void DerivedController_InheritsGateLimiterFilter()
     {
@@ -52,7 +42,6 @@ public class GuestPortalControllerBaseTests
             Assert.Contains(attributes, a => a is ApiControllerAttribute);
         }
 
-        // The two policies of the portal: per client IP and a hash of the token, 120 and 30 a minute.
         var read = Assert.Single(RateLimitingServiceCollectionExtensions.Policies, p => p.Name == RateLimitPolicies.GuestPortal);
         var write = Assert.Single(RateLimitingServiceCollectionExtensions.Policies, p => p.Name == RateLimitPolicies.GuestPortalWrite);
         Assert.Equal((120, TimeSpan.FromMinutes(1), true, false), (read.DefaultPermitLimit, read.DefaultWindow, read.PartitionByToken, read.PartitionByUser));
@@ -60,10 +49,6 @@ public class GuestPortalControllerBaseTests
         Assert.Equal(GuestPortalTokenFilter.TokenRouteValue, read.TokenRouteValue);
     }
 
-    /// <summary>
-    /// Permission rule (AC-NF153-3 of the analysis, decision A3): every action of every controller of the portal takes the stay from the token only. No
-    /// parameter and no route value names a booking.
-    /// </summary>
     [Fact]
     public void PortalActions_NeverReadABookingIdFromTheClient()
     {
@@ -105,10 +90,8 @@ public class GuestPortalControllerBaseTests
         Assert.Equal(TimeSpan.FromMinutes(1), limiter.Window);
         var filter = new GuestPortalIpRateLimitFilter(limiter, NullLogger<GuestPortalIpRateLimitFilter>.Instance);
 
-        // The answer is localized from the resources of the product, so the requests need the localizer.
         var services = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider();
 
-        // 600 requests, each with a token of its own (the policy per token never meets one twice), all get through.
         for (var request = 1; request <= 600; request++)
             Assert.True((await RunAsync("203.0.113.7", $"Token_{request:D4}_00000000000000000000")).ActionRan);
 
@@ -142,7 +125,6 @@ public class GuestPortalControllerBaseTests
     }
 }
 
-/// <summary>What a later epic writes: a controller of the portal with one action and no attribute of its own. Not public: MVC never serves it.</summary>
 internal sealed class SampleGuestPortalController : GuestPortalControllerBase
 {
     [HttpGet("sample")]

@@ -40,8 +40,6 @@ public class GuestRegisterServiceTests
     private static readonly DateOnly Day = new(2026, 11, 19);
     private static readonly FixedTimeProvider Clock = new(new DateTimeOffset(2026, 11, 20, 9, 0, 0, TimeSpan.Zero));
 
-    // ─── Which guests ───
-
     [Fact]
     public async Task Register_ListsEveryGuestOfTheStaysThatArrived_ByArrivalAndStay_AndTheInfoCountsTheSameLines()
     {
@@ -59,7 +57,6 @@ public class GuestRegisterServiceTests
         var info = await service.GetInfoAsync(property.Id, Day.AddDays(-1), Day);
         var register = await service.GenerateAsync(property.Id, Day.AddDays(-1), Day, new GuestRegisterRequest(Anna, "it"));
 
-        // Four guests: the stay of the day before first, then the family in the order of its check-in; the adults and the minor alike.
         var lines = Lines(register.Content);
         Assert.Equal(["Bianchi", "Verdi", "Verdi", "Verdi"], lines.Skip(1).Where(l => l.Length > 0).Select(l => l.Split(';')[2]));
         Assert.Equal(["Elena", "Marco", "Luca", "Sara"], lines.Skip(1).Where(l => l.Length > 0).Select(l => l.Split(';')[3]));
@@ -73,8 +70,6 @@ public class GuestRegisterServiceTests
     [Fact]
     public async Task GuestRegister_ExcludesCancelledAndNoShow_Test()
     {
-        // PROOF TEST (data): a register of people who did not stay would be false. A cancelled booking, a request or hold that was never confirmed and a no-show are not listed; a
-        // confirmed, a checked-in and a checked-out stay are (the one definition of a stay that owes a police communication, AlloggiatiStatusRules).
         await using var db = NewDb();
         var property = await SeedPropertyAsync(db);
         foreach (var (name, status, noShow) in new (string, BookingStatus, bool)[]
@@ -129,7 +124,6 @@ public class GuestRegisterServiceTests
         await db.SaveChangesAsync();
         var service = NewService(db);
 
-        // «Prima» arrived on 31 March and leaves on 5 April, inside the period, but it did not arrive in it.
         var register = await service.GenerateAsync(property.Id, first, last, new GuestRegisterRequest(Anna, "it"));
 
         var lines = Lines(register.Content).Skip(1).Where(l => l.Length > 0).ToList();
@@ -184,8 +178,6 @@ public class GuestRegisterServiceTests
         Assert.Equal(("register", 0, register.FileHash), (row.Format, row.RowCount, row.Sha256));
     }
 
-    // ─── The language of the words ───
-
     [Theory]
     [InlineData("it", "Arrivo;Partenza;Cognome;Nome;Data di nascita;Nazionalità;")]
     [InlineData(null, "Arrivo;Partenza;Cognome;Nome;Data di nascita;Nazionalità;")]
@@ -204,8 +196,6 @@ public class GuestRegisterServiceTests
         Assert.StartsWith(header, Lines(register.Content)[0], StringComparison.Ordinal);
     }
 
-    // ─── The period ───
-
     [Fact]
     public async Task Register_AYearIsTheMostAPeriodMayBe_ADayMoreIsRefused_AndSoIsAnEndBeforeTheStart_AndNothingIsAudited()
     {
@@ -215,7 +205,6 @@ public class GuestRegisterServiceTests
         var service = NewService(db);
         var from = new DateOnly(2028, 1, 1);
 
-        // 2028 is a leap year: 366 days, both ends counted, is allowed.
         var year = await service.GenerateAsync(property.Id, from, new DateOnly(2028, 12, 31), new GuestRegisterRequest(Anna, "it"));
         var info = await service.GetInfoAsync(property.Id, from, new DateOnly(2028, 12, 31));
         var tooLong = await Assert.ThrowsAsync<DomainRuleException>(
@@ -228,11 +217,8 @@ public class GuestRegisterServiceTests
         Assert.Equal(["swiss_period_too_long", "swiss_period_too_long", "swiss_period_invalid", "swiss_period_invalid"], new[] { tooLong.Code, tooLongInfo.Code, inverted.Code, invertedInfo.Code });
         Assert.Equal([366], tooLong.MessageArgs.Select(a => (int)a));
 
-        // Only the register that was made left a row.
         Assert.Single(await db.SwissNotificationFileEvents.AsNoTracking().ToListAsync());
     }
-
-    // ─── Which properties, which regime ───
 
     [Fact]
     public async Task Register_IsMadeForAnyCanton_TicinoIncluded_AndTheRetentionHintIsTheOneOfTheRegime_AbsentWhenTheSourcesDoNotSayIt()
@@ -249,8 +235,6 @@ public class GuestRegisterServiceTests
         var nowhere = await service.GetInfoAsync(unknown.Id, Day, Day);
         var file = await service.GenerateAsync(zurich.Id, Day, Day, new GuestRegisterRequest(Anna));
 
-        // Ticino: five years, from the verified entry; Zurich: the only number the research has is how long a police system keeps the data, not the host's, so there is none;
-        // a Swiss property whose municipality is not known has the register too, with no canton and no number.
         Assert.Equal(("CH-TI", (int?)5), (inTicino.RegimeCode, inTicino.RetentionYears));
         Assert.Equal(("CH-ZH", (int?)null), (inZurich.RegimeCode, inZurich.RetentionYears));
         Assert.Equal(("CH-UNKNOWN", (int?)null), (nowhere.RegimeCode, nowhere.RetentionYears));
@@ -295,7 +279,6 @@ public class GuestRegisterServiceTests
             AddGuest(setup, AddStay(setup, mine, BookingStatus.CheckedIn, Day), 0, "Mio", "Ospite", StayGuestType.SingleGuest, new DateTime(1980, 1, 1, 0, 0, 0, DateTimeKind.Utc));
             AddGuest(setup, AddStay(setup, theirs, BookingStatus.CheckedIn, Day), 0, "Loro", "Ospite", StayGuestType.SingleGuest, new DateTime(1980, 1, 1, 0, 0, 0, DateTimeKind.Utc));
 
-            // A stay of the other org that carries the id of my property.
             var foreign = AddStay(setup, theirs, BookingStatus.CheckedIn, Day);
             foreign.PropertyId = mine.Id;
             AddGuest(setup, foreign, 0, "Intruso", "Ospite", StayGuestType.SingleGuest, new DateTime(1980, 1, 1, 0, 0, 0, DateTimeKind.Utc));
@@ -322,13 +305,10 @@ public class GuestRegisterServiceTests
             Assert.DoesNotContain("Intruso", text, StringComparison.Ordinal);
         }
 
-        // The two registers that were made are audited under the org of the property; the refused ones left nothing.
         var events = await asSystem.SwissNotificationFileEvents.AsNoTracking().ToListAsync();
         Assert.Equal(2, events.Count);
         Assert.All(events, e => Assert.Equal((mine.OrgId, mine.Id), (e.OrgId, e.PropertyId)));
     }
-
-    // ─── The audit ───
 
     [Fact]
     public async Task GuestRegister_Audit_NoPersonalData_Test()
@@ -378,8 +358,6 @@ public class GuestRegisterServiceTests
         foreach (var value in personal)
             Assert.DoesNotContain(value, dump, StringComparison.OrdinalIgnoreCase);
 
-        // What it does hold: the org and the property, the first day of the period (the way of the other formats: the day the file starts at), the format, the lines, the hash of the
-        // bytes of the file (the file is never stored, so the hash is how it is recognized later), the person who asked and the instant.
         Assert.Equal((property.OrgId, property.Id, Day.AddDays(-3)), (row.OrgId, row.PropertyId, row.ArrivalDay));
         Assert.Equal(("register", 1, Anna), (row.Format, row.RowCount, row.CreatedByUserId));
         Assert.Equal(Convert.ToHexString(SHA256.HashData(register.Content)).ToLowerInvariant(), row.Sha256);
@@ -405,7 +383,6 @@ public class GuestRegisterServiceTests
         var second = await service.GenerateAsync(property.Id, Day, Day.AddDays(2), new GuestRegisterRequest("auth0|bruno", "it"));
         var third = await service.GenerateAsync(property.Id, Day, Day);
 
-        // Three files, three rows: each one with its own lines and its own hash (the same content, the same hash); the first day of the period is the day of the row.
         var rows = (await db.SwissNotificationFileEvents.AsNoTracking().ToListAsync()).OrderBy(e => e.RowCount).ThenBy(e => e.CreatedByUserId).ToList();
         Assert.Equal(3, rows.Count);
         Assert.All(rows, e => Assert.Equal(("register", Day), (e.Format, e.ArrivalDay)));
@@ -417,7 +394,6 @@ public class GuestRegisterServiceTests
         Assert.Contains(rows, e => e.CreatedByUserId == "auth0|bruno");
         Assert.Equal(2, rows.Count(e => e.CreatedByUserId == Anna || e.CreatedByUserId is null));
 
-        // The day of a notification counts the CSV and the XML of the portal only: a register is not one.
         Assert.DoesNotContain(SwissNotificationFileFormats.Register, SwissNotificationFileFormats.PoliceFile);
     }
 
@@ -429,7 +405,6 @@ public class GuestRegisterServiceTests
         await db.SaveChangesAsync();
         var service = NewService(db);
 
-        // An unknown property and two periods that are refused: each one answers an error, none leaves a row.
         await Assert.ThrowsAsync<NotFoundException>(() => service.GenerateAsync(Guid.NewGuid(), Day, Day));
         await Assert.ThrowsAsync<DomainRuleException>(() => service.GenerateAsync(property.Id, Day, Day.AddDays(-1)));
         await Assert.ThrowsAsync<DomainRuleException>(() => service.GenerateAsync(property.Id, Day, Day.AddDays(366)));
@@ -437,13 +412,9 @@ public class GuestRegisterServiceTests
         Assert.Empty(await db.SwissNotificationFileEvents.AsNoTracking().ToListAsync());
     }
 
-    // ─── The endpoint over the real service: what it answers and what it logs ───
-
     [Fact]
     public async Task Endpoint_AnswersTheFileWithItsHeaders_AndLogsNoPersonalData()
     {
-        // The whole way, with the real service on the data: the file with its name, its type and the retention hint of the regime in X-Retention-Years, never cached; the info with its three
-        // numbers; and nothing of the guests in what the endpoint or the service writes in the log (ids, dates, counts and the regime only).
         await using var db = NewDb();
         var property = await SeedPropertyAsync(db);
         var stay = AddStay(db, property, BookingStatus.CheckedIn, Day, guests: 1, plate: "TI4455667");
@@ -472,8 +443,6 @@ public class GuestRegisterServiceTests
             Assert.DoesNotContain(value, output, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(property.Id.ToString(), output, StringComparison.Ordinal);
     }
-
-    // ─── Helpers ───
 
     private sealed class FixedTenantContext(Guid orgId) : ITenantContext
     {
@@ -514,7 +483,6 @@ public class GuestRegisterServiceTests
         return property;
     }
 
-    /// <summary>A stay that arrives on <paramref name="arrival"/>, with its booker (Zxy Booker), and leaves <paramref name="nights"/> later.</summary>
     private static Booking AddStay(AppDbContext db, Property property, BookingStatus status, DateOnly arrival, int guests = 1, int nights = 2, string? plate = null)
     {
         var booker = new Guest { OrgId = property.OrgId, FirstName = "Booker", LastName = "Person" };

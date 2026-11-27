@@ -10,7 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>PC-11 (A2-20): how an iCal import URL is stored (encrypted) and shown (masked).</summary>
 public class ICalFeedUrlProtectionTests
 {
     private const string Url = "https://www.airbnb.it/calendar/ical/4815162342.ics?s=0a1b2c3d4e5f60718293a4b5c6d7e8f9";
@@ -51,7 +50,6 @@ public class ICalFeedUrlProtectionTests
         Assert.Equal(Url, converter.ConvertFromProvider(stored));
     }
 
-    // A URL saved in clear before PC-11 stays readable until the startup step encrypts it.
     [Theory]
     [InlineData(Url)]
     [InlineData("HTTP://legacy.example.com/cal.ics")]
@@ -63,17 +61,11 @@ public class ICalFeedUrlProtectionTests
         Assert.ThrowsAny<System.Security.Cryptography.CryptographicException>(
             () => NewConverter().ConvertFromProvider("tampered-value"));
 
-    // The limit noted by FD-20: EF cached one model per context type, so every context encrypted with the provider of
-    // the first one. The model is now cached per provider: each context uses its own, the same provider shares one.
     [Fact]
     public void Model_ContextsWithDifferentProviders_EachEncryptsWithItsOwnProvider()
     {
         var first = new EphemeralDataProtectionProvider();
         var second = new EphemeralDataProtectionProvider();
-        // QA-INFRA-01: the model cache of EF is one per process and holds about forty models, a provider each; once it is full
-        // a new model is not cached at all, and "the same provider shares one" then depends on how many providers the tests
-        // that ran before had created, i.e. on the order and the speed of the whole run. The contexts of this test get a
-        // cache of their own, which nobody else fills.
         using var modelCache = new MemoryCache(new MemoryCacheOptions());
         using var firstContext = NewContext(first, modelCache);
         using var secondContext = NewContext(second, modelCache);

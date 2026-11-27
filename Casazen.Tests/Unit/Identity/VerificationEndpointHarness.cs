@@ -15,10 +15,6 @@ using Moq;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// The operator controller the tests of the counters and of the export call, with the doubles of what it takes (the queue, the org, the reach of the caller, the flags and a
-/// log that keeps every line), and the way to run the result of an action to the end into a body. The caller is the operator <see cref="Operator"/> of the org of the scope.
-/// </summary>
 internal sealed class VerificationEndpointHarness
 {
     public const string Operator = "auth0|operatore";
@@ -60,12 +56,10 @@ internal sealed class VerificationEndpointHarness
 
     public CapturingLogger<VerificationController> Log { get; } = new();
 
-    /// <summary>The clock of the controller: the 27th of November 2026, noon UTC (the 27th in Rome too).</summary>
     public FakeTimeProvider Clock { get; } = new(IdentityMetricsWorld.Now);
 
     public VerificationController Controller { get; }
 
-    /// <summary>Runs <paramref name="result"/> into a body, as the pipeline would: the response it wrote and the bytes of its body.</summary>
     public static async Task<(HttpResponse Response, byte[] Body)> ExecuteAsync(IActionResult result)
     {
         var context = new DefaultHttpContext();

@@ -9,7 +9,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>A host with a stay and a supplier with one service and its working hours, written to the database for the SP-04 tests.</summary>
 internal sealed record ServiceRequestWorld(
     string HostUserId,
     Guid HostOrgId,
@@ -31,11 +30,6 @@ internal static class ServiceRequestWorlds
     public const string PropertyAddress = "Via Riservata";
     public const string HostNotes = "Citofono rotto, telefonare";
 
-    /// <summary>
-    /// A host with a property in <paramref name="propertyCity"/> and a stay, and a supplier (supplier-only account) active in
-    /// H501 with a published service of 60 euro per job lasting two hours, working Monday to Friday 08-13 and 14-18 and
-    /// Saturday 08-14 with no notice (when <paramref name="withHours"/>).
-    /// </summary>
     public static async Task<ServiceRequestWorld> SeedAsync(
         CasazenWebApplicationFactory factory,
         bool withHours = true,
@@ -115,10 +109,6 @@ internal static class ServiceRequestWorlds
         return new ServiceRequestWorld(hostUserId, hostOrg.Id, property.Id, booking.Id, supplierUserId, supplierOrgId, listing.Id);
     }
 
-    /// <summary>
-    /// A start the supplier works at: the first <paramref name="day"/> that is at least <paramref name="minDaysAhead"/> days away,
-    /// at <paramref name="hour"/> o'clock in Rome, as a UTC instant. Always inside the 35 days horizon of the seeded supplier.
-    /// </summary>
     public static DateTime Slot(int hour = 10, DayOfWeek day = DayOfWeek.Wednesday, int minDaysAhead = 3)
     {
         var date = TimeProvider.System.TodayInRomeAsDateOnly().AddDays(minDaysAhead);
@@ -135,7 +125,6 @@ internal static class ServiceRequestWorlds
     public static HttpClient Supplier(this CasazenWebApplicationFactory factory, ServiceRequestWorld world) =>
         factory.CreateAuthenticatedClient(world.SupplierUserId, "Supplier");
 
-    /// <summary>The host's request for the world's supplier, as the API creates it; returns the id of the new request.</summary>
     public static async Task<Guid> CreateRequestAsync(
         this CasazenWebApplicationFactory factory,
         ServiceRequestWorld world,
@@ -160,7 +149,6 @@ internal static class ServiceRequestWorlds
         return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
     }
 
-    /// <summary>The request as the database holds it.</summary>
     public static async Task<ServiceRequest> LoadRequestAsync(this CasazenWebApplicationFactory factory, Guid id)
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -168,7 +156,6 @@ internal static class ServiceRequestWorlds
         return await db.ServiceRequests.IgnoreQueryFilters().AsNoTracking().SingleAsync(r => r.Id == id);
     }
 
-    /// <summary>Writes a change straight to a request (a state the API reaches slowly, or a deadline in the past).</summary>
     public static async Task ChangeRequestAsync(this CasazenWebApplicationFactory factory, Guid id, Action<ServiceRequest> change)
     {
         await using var scope = factory.Services.CreateAsyncScope();

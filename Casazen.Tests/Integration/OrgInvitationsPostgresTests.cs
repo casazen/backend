@@ -41,8 +41,6 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    // ─── The last seat ──────────────────────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task CreateAsync_SixInvitationsForTheLastSeat_CreateExactlyOne()
     {
@@ -106,13 +104,10 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
             () => AcceptAsync(token, "auth0|bea", "bea@example.com"),
             () => CreateInvitationAsync(Invite(org.Id, "carlo@example.com")));
 
-        // The pending invitation already held the second seat: the acceptance takes it over, and nobody else gets one.
         Assert.True(outcomes[0].Succeeded, outcomes[0].Code);
         Assert.True(outcomes[1].Succeeded, outcomes[1].Code);
         Assert.Equal((2, 1), await SeatsAsync(org.Id));
     }
-
-    // ─── Acceptance under concurrency ───────────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task AcceptAsync_TheSameTokenFiveTimesAtOnce_AddsOneMemberAndRecordsTheConsentsOnce()
@@ -149,7 +144,6 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
             () => AcceptAsync(tokenA, "auth0|anna", "anna@example.com"),
             () => AcceptAsync(tokenB, "auth0|anna", "anna@example.com"));
 
-        // One org gets her; for the other she is a person who already has one, and its invitation stays open.
         Assert.Single(outcomes, o => o.Succeeded);
         Assert.Equal(OrgInvitationErrors.UserHasOrganization, Assert.Single(outcomes, o => !o.Succeeded).Code);
 
@@ -161,7 +155,6 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
         Assert.Equal(OrgInvitationStatus.Accepted, (await _kit.ReadInvitationAsync(winner.Id)).Status);
         Assert.Equal(OrgInvitationStatus.Pending, (await _kit.ReadInvitationAsync(loser.Id)).Status);
 
-        // Nothing of the org that lost: no consent, and the memberships are the winner's alone.
         var consents = await verify.ConsentRecords.IgnoreQueryFilters().Where(c => c.UserId == "auth0|anna").ToListAsync();
         Assert.Equal(4, consents.Count);
         Assert.All(consents, c => Assert.Equal(member.OrgId, c.OrgId));
@@ -252,7 +245,6 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
                 """DELETE FROM "Roles" WHERE "ContextKey" = 'short-rent' AND "RoleKey" = 'staff'""");
         }
 
-        // The leaving is saved first and the new role is looked up after it: the failure must undo the leaving too.
         await Assert.ThrowsAsync<InvalidOperationException>(() => AcceptAsync(token, "auth0|anna", "anna@example.com"));
 
         await using var verify = _kit.NewDb();
@@ -265,8 +257,6 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
         Assert.Equal(OrgInvitationStatus.Pending, (await _kit.ReadInvitationAsync(invitation.Id)).Status);
         Assert.Empty(await verify.ConsentRecords.IgnoreQueryFilters().Where(c => c.UserId == "auth0|anna" && c.OrgId == target.Id).ToListAsync());
     }
-
-    // ─── Reading what the database stores ───────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task LookupAsync_ReadsThePreviewFromTheDatabase_AndEveryOtherLinkIsTheSameNull()
@@ -308,8 +298,6 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
         Assert.NotNull(await _kit.Invitations(read).LookupAsync(OrgInvitationTestKit.TokenInEmail(email)));
     }
 
-    // ─── Maintenance ────────────────────────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task Maintenance_OneRun_RemindsWithANewLink_ExpiresAndPurgesAfterTheRetention_AndTheSecondRunDoesNothing()
     {
@@ -341,7 +329,6 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
             Assert.Contains(recent.Id, left);
         }
 
-        // The reminder carries a new link; the one of the first email no longer works.
         var emails = _kit.Emails.Snapshot();
         var reminderMail = Assert.Single(emails, e => e.Template == EmailTemplates.Names.OrgInvitationReminder);
         Assert.Equal("due@example.com", reminderMail.To);
@@ -353,7 +340,6 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
 
         Assert.Single(emails, e => e.Template == EmailTemplates.Names.OrgInvitationExpired);
 
-        // Nothing is done twice.
         OrgInvitationMaintenanceResult second;
         await using (var db = _kit.NewDb())
             second = await _kit.Maintenance(db).RunAsync();
@@ -400,7 +386,6 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
 
         var results = await Task.WhenAll(RunMaintenanceAsync(), RunMaintenanceAsync());
 
-        // Whether the second run was skipped or found nothing left, together they did the work once.
         Assert.Equal(4, results.Sum(r => r.Expired));
         Assert.Equal(4, _kit.Emails.Snapshot().Count(e => e.Template == EmailTemplates.Names.OrgInvitationExpired));
         await using var verify = _kit.NewDb();
@@ -412,8 +397,6 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
         await using var db = _kit.NewDb();
         return await _kit.Maintenance(db).RunAsync();
     }
-
-    // ─── Tenants ────────────────────────────────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task TenantFilter_OrgInvitations_AreScopedToTheCallersOrgAndFailClosed()
@@ -465,8 +448,6 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
         return await _kit.Invitations(db).ListAsync(orgId);
     }
 
-    // ─── Shared ─────────────────────────────────────────────────────────────────────────────────────────
-
     private static CreateOrgInvitation Invite(Guid orgId, string email, OrgRole role = OrgRole.Collaborator) =>
         new(orgId, OwnerId, email, "Persona di Prova", role, ["short-rent"]);
 
@@ -495,7 +476,6 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
         return (usage.ActiveMembers, usage.PendingInvitations);
     }
 
-    /// <summary>The result of one request that raced the others: it worked, or a rule of the domain refused it (anything else fails the test).</summary>
     private sealed record Outcome(bool Succeeded, string? Code);
 
     private static async Task<Outcome> OutcomeOfAsync(Func<Task> action)
@@ -511,7 +491,6 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
         }
     }
 
-    /// <summary>Starts every action at the same moment (a shared gate) and waits for all of them.</summary>
     private static async Task<Outcome[]> InParallelAsync(params Func<Task>[] actions)
     {
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

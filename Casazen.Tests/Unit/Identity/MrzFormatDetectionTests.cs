@@ -57,7 +57,6 @@ public sealed class MrzFormatDetectionTests
     [Fact]
     public void RealParser_Td2AndTd3OfTheItalianState_AreNoFormat_AndSayTheirType()
     {
-        // The only registered format is a card of three lines: a residence permit or a passport of Italy is read as such and is not it.
         var td2 = MrzExtractionService.ParseTd2Mrz("I<ITA" + MrzSpecimens.Td2Line1[5..], MrzSpecimens.Td2Line2, Today);
         var td3 = MrzExtractionService.ParseTd3Mrz("P<ITA" + MrzSpecimens.Td3Line1[5..], MrzSpecimens.Td3Line2, Today);
 
@@ -86,7 +85,6 @@ public sealed class MrzFormatDetectionTests
         Assert.Equal("it-cie-3.0", Registry.DetectFromMrz(result.DocumentCode, result.IssuingState, result.MrzType)?.Id);
     }
 
-    /// <summary>The TD1 specimen of ICAO with the given document code and issuing state: neither is covered by a check digit, so the digits of the specimen still hold.</summary>
     private static Casazen.Core.Services.MrzExtractionResult? ParseTd1(string documentCode, string state) =>
         MrzExtractionService.ParseTd1Mrz(documentCode + state + MrzSpecimens.Td1Line1[5..], MrzSpecimens.Td1Line2, MrzSpecimens.Td1Line3, Today);
 }

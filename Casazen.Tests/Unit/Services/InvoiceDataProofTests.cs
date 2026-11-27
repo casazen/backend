@@ -53,14 +53,12 @@ public class InvoiceDataProofTests
 
         var service = new Mock<IInvoiceDataService>(MockBehavior.Strict);
         var lookup = new Mock<IHostResourceLookup>();
-        // The tenant filter hides another org's booking: the lookup answers nothing, exactly as for a booking that does not exist.
         lookup.Setup(l => l.ForBookingAsync(bookingOfOrgB, It.IsAny<CancellationToken>())).ReturnsAsync((HostResource?)null);
         lookup.Setup(l => l.ForBookingAsync(bookingOfColleague, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new HostResource(OrgA, Colleague, PropertyOfColleague));
         lookup.Setup(l => l.ForBookingAsync(bookingOfOwner, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new HostResource(OrgA, Owner, PropertyOfOrgA));
 
-        // An account in no org team with no org-wide role: it reaches only the properties it created.
         var controller = Controller(service, lookup, HostAuthorizationTestHarness.User("auth0|staff-a", "Staff"));
         var request = new SaveInvoiceDataRequest { Name = "Anna Verdi", FiscalCode = FiscalCode };
 
@@ -70,7 +68,6 @@ public class InvoiceDataProofTests
         Assert.IsType<ForbidResult>((await controller.Put(bookingOfColleague, request, CancellationToken.None)).Result);
         service.VerifyNoOtherCalls();
 
-        // The same caller as the owner of the booking it reaches: the service is asked, and the host's save is the source Host, by its user.
         var saved = new InvoiceDataView(
             bookingOfOwner, false, null, InvoiceRecipientKind.Guest, "Anna Verdi", FiscalCode, null, null, null, null, null, null, "IT", null, null,
             InvoiceDataSource.Host, DateTime.UtcNow);
@@ -90,7 +87,6 @@ public class InvoiceDataProofTests
                 bookingOfOwner, It.IsAny<SaveInvoiceDataCommand>(), InvoiceDataSource.Host, Owner, true, It.IsAny<CancellationToken>()),
             Times.Once);
 
-        // The service, under the tenant filter of a caller of org A: the booking of org B has no data to read and none can be written.
         var databaseName = $"invoice-data-tenant-{Guid.NewGuid()}";
         var foreignBooking = await SeedBookingAsync(databaseName, OrgB);
         await using var asOrgA = NewDb(databaseName, new FixedTenantContext(OrgA));
@@ -123,7 +119,6 @@ public class InvoiceDataProofTests
             return await sut.SaveAsync(bookingId, command, source, source == InvoiceDataSource.Host ? Owner : null);
         }
 
-        // The host types the recipient.
         var host = await SaveAs(
             InvoiceDataSource.Host,
             new SaveInvoiceDataCommand
@@ -136,7 +131,6 @@ public class InvoiceDataProofTests
             });
         Assert.Equal(InvoiceDataSource.Host, host.Source);
 
-        // The guest at the check-in: what the host wrote stays (and an empty text does not clear it); only the empty fields are filled.
         var checkIn = await SaveAs(
             InvoiceDataSource.CheckIn,
             new SaveInvoiceDataCommand
@@ -158,7 +152,6 @@ public class InvoiceDataProofTests
         Assert.Equal("mario.rossi@pec.example.com", checkIn.Pec);
         Assert.Equal(InvoiceDataSource.Host, checkIn.Source);
 
-        // The import: it fills the last empty field and touches nothing else.
         var imported = await SaveAs(
             InvoiceDataSource.Octorate,
             new SaveInvoiceDataCommand
@@ -174,7 +167,6 @@ public class InvoiceDataProofTests
         Assert.Equal("ZZZ9999", imported.SdiRecipientCode);
         Assert.Equal(InvoiceDataSource.Host, imported.Source);
 
-        // An import that has nothing to fill writes nothing: no new event, the row is as it was.
         await using (var db = NewDb(databaseName, tenant))
         {
             var before = await db.OutboxEvents.AsNoTracking().CountAsync();
@@ -183,13 +175,11 @@ public class InvoiceDataProofTests
             Assert.Equal(before, await db.OutboxEvents.AsNoTracking().CountAsync());
         }
 
-        // The host corrects the name afterwards: its word replaces the stored one and nothing outranks it.
         clock.Advance(TimeSpan.FromMinutes(5));
         var corrected = await SaveAs(InvoiceDataSource.Host, new SaveInvoiceDataCommand { Name = "Mario Rossi Junior" });
         Assert.Equal("Mario Rossi Junior", corrected.Name);
         Assert.Equal(InvoiceDataSource.Host, corrected.Source);
 
-        // The other way round: what the import wrote first is overwritten by the host, and then the row is the host's.
         var secondBooking = await SeedBookingAsync(databaseName, OrgA);
         await using (var db = NewDb(databaseName, tenant))
         {
@@ -205,7 +195,6 @@ public class InvoiceDataProofTests
             Assert.Equal(InvoiceDataSource.Host, overwritten.Source);
         }
 
-        // One event for each save that wrote something, about the booking, with the source and nothing personal.
         await using var read = NewDb(databaseName, tenant);
         var events = await read.OutboxEvents.AsNoTracking().Where(e => e.EntityId == bookingId).ToListAsync();
         Assert.Equal(4, events.Count);

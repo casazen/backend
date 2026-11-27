@@ -72,14 +72,12 @@ public class SelfBillingServiceTests
         Assert.Equal((250.00m, 55.00m, 305.00m, (decimal?)22m), (bookingDraft.TaxableBase, bookingDraft.VatAmount, bookingDraft.Total, bookingDraft.VatRatePercent));
         Assert.Equal((60.00m, 13.20m, 73.20m), (airbnbDraft.TaxableBase, airbnbDraft.VatAmount, airbnbDraft.Total));
 
-        // The taxable amounts are the channel fees of the month of the company's listings on the two configured portals, read back from the ledger.
         var ledger = await rig.Db.OwnerLedgerEntries.AsNoTracking()
             .Where(e => e.EntryType == OwnerLedgerEntryType.ChannelFee && e.PeriodMonth == 10 && e.PropertyOwnerId == rig.Company)
             .ToListAsync();
         var configured = ledger.Where(e => e.SourceId != rig.ExpediaStay).ToList();
         Assert.Equal(-configured.Sum(e => e.OriginalAmount), bookingDraft.TaxableBase + airbnbDraft.TaxableBase);
 
-        // The cedente is the legal entity of the portal, the issuer the profile of the company, the period the month, the version the one of the settings.
         Assert.Equal(("Booking.com B.V.", "NL805734958B01", "NL", "EUR"), (bookingDraft.RecipientName, bookingDraft.RecipientVatNumber, bookingDraft.RecipientCountryCode, bookingDraft.Currency));
         Assert.Equal((rig.CompanyProfile, 2026, 10, "td17-2026.11-1"), (bookingDraft.IssuerProfileId!.Value, bookingDraft.PeriodYear!.Value, bookingDraft.PeriodMonth!.Value, bookingDraft.RuleVersion));
         Assert.Equal(("SRL1234", "societa@pec.example.com"), (bookingDraft.RecipientSdiCode, bookingDraft.RecipientPec));
@@ -89,7 +87,6 @@ public class SelfBillingServiceTests
         Assert.Equal(2, await rig.Db.FiscalDocuments.AsNoTracking().CountAsync(d => d.Purpose == FiscalDocumentPurpose.SelfBilling));
         Assert.Equal(bookingDraft.Id, again.Drafts.Single(d => d.PortalName == "Booking.com B.V.").DocumentId);
 
-        // The VAT rate is the one of the settings.
         var twenty = SelfBillingRig.Shipped();
         twenty.VatRatePercent = 20m;
         var changed = await rig.ServiceWith(twenty).CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, null);
@@ -136,24 +133,17 @@ public class SelfBillingServiceTests
         Assert.Equal(2, await rig.Db.FiscalDocuments.AsNoTracking().CountAsync(d => d.Purpose == FiscalDocumentPurpose.SelfBilling));
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule (FIX/BE-V2-NO-RECHARGE). The agency that holds the account and does not recharge the commissions bears them, and the owner ledger writes them as lines for
-    /// information only: its TD17 integrates them all the same (the self-billed invoice does not depend on the recharge), and the monthly run still finds the organization. A stay posted before
-    /// the rule and again under it (its channel fee reversed, the commission posted as the agency's) is integrated once, to the cent.
-    /// </summary>
     [Fact]
     public async Task Td17_TheCommissionTheAgencyBears_IsIntegratedOnce_Test()
     {
         await using var rig = await SelfBillingRig.CreateAsync();
         await rig.HoldAsync(rig.Mountain, BookingSource.BookingCom, PortalAccountHolder.Agency);
 
-        // A stay posted under the rule: only the commission the agency bears.
         var borne = rig.Fee(rig.Company, rig.Mountain, await rig.StayAsync(rig.Mountain, BookingSource.BookingCom, new DateTime(2026, 10, 7)), 30.00m);
         borne.EntryType = OwnerLedgerEntryType.ChannelFeeBorneByAgency;
         await rig.AddAsync(borne);
         Assert.Contains(rig.OrgId, await rig.Service.OrgsWithCommissionsAsync(2026, 10));
 
-        // A stay posted before the rule and again under it.
         var stay = await rig.StayAsync(rig.Mountain, BookingSource.BookingCom, new DateTime(2026, 10, 9));
         var charged = rig.Fee(rig.Company, rig.Mountain, stay, 45.00m);
         await rig.AddAsync(charged);
@@ -170,7 +160,6 @@ public class SelfBillingServiceTests
         Assert.Empty(generation.NotDue);
     }
 
-    /// <summary>PROOF TEST: data rule (⚖ I10). A Swiss agency that holds the account has no TD17: the commissions are left out as «holder not Italian», nothing is drafted.</summary>
     [Fact]
     public async Task Td17_SwissAgencyHoldingTheAccountHasNone_Test()
     {
@@ -231,7 +220,6 @@ public class SelfBillingServiceTests
         Assert.Empty(xml.Descendants("DatiFattureCollegate"));
         Assert.Empty(XsdValidator.Validate(issued.FatturaPaXml!, new FatturaPaSchemaProvider().GetSchemas()));
 
-        // The same holder's next TD17 is the next number of its series; the agency's own TD17 starts its own counter at 1.
         var second = (await rig.Service.IssueAsync(rig.OrgId, airbnb.DocumentId, confirm: true, null)).Document;
         Assert.Equal("TD17-2026/2", second.Number);
         var agencys = (await rig.Service.IssueAsync(rig.OrgId, agency.DocumentId, confirm: true, null)).Document;
@@ -274,7 +262,6 @@ public class SelfBillingServiceTests
         var kept = Assert.Single(after.Drafts);
         Assert.Equal((0, 0, 1, SelfBillingResults.AlreadyIssued, true, 110.00m), (after.Created, after.Updated, after.AlreadyIssued, kept.Result, kept.ChangedSinceIssue, (await rig.DocumentAsync(id)).TaxableBase));
 
-        // A draft nothing supports any more is dropped: the Airbnb commission of another month is reversed before the draft is made again.
         var stay = await rig.StayAsync(rig.Lake, BookingSource.Airbnb, new DateTime(2026, 10, 15));
         var airbnbFee = rig.Fee(rig.Company, rig.Lake, stay, 40.00m);
         await rig.AddAsync(airbnbFee);
@@ -301,21 +288,18 @@ public class SelfBillingServiceTests
         var noShow = await rig.StayAsync(rig.Lake, BookingSource.BookingCom, new DateTime(2026, 10, 14));
         await rig.AddAsync(rig.Fee(rig.Company, rig.Lake, kept, 100.00m), rig.Fee(rig.Company, rig.Lake, cancelled, 40.00m), rig.Fee(rig.Company, rig.Lake, noShow, 25.00m));
 
-        // Made while the three stays are active: 165.00.
         var first = await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, null);
         var drafted = Assert.Single(first.Drafts);
         Assert.Equal(165.00m, drafted.TaxableBase);
         Assert.Empty(first.NotDue);
         var id = drafted.DocumentId;
 
-        // The cancellation and the no-show come after the posting: the lines are alive in the ledger, the draft is no longer what the plan gives, and the issue refuses it.
         await rig.ChangeStayAsync(cancelled, status: BookingStatus.Cancelled);
         await rig.ChangeStayAsync(noShow, noShowAt: new DateTime(2026, 10, 15, 0, 0, 0, DateTimeKind.Utc));
         var outdated = await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.IssueAsync(rig.OrgId, id, confirm: true, null));
         Assert.Equal(FiscalDocumentErrors.DraftOutdated, outdated.Code);
         Assert.Empty(await rig.Db.FiscalNumberSequences.AsNoTracking().ToListAsync());
 
-        // Made again, the draft is what the active stay gives and the two others are left out with their commission and the reason.
         var again = await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, null);
         var updated = Assert.Single(again.Drafts);
         Assert.Equal((id, 100.00m), (updated.DocumentId, updated.TaxableBase));
@@ -325,11 +309,6 @@ public class SelfBillingServiceTests
         Assert.Equal((100.00m, 22.00m), (issued.TaxableBase, issued.VatAmount));
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule. The part of the amount that comes from a rule of the agency or the default of the channel, not from the figure of the portal, is an estimate: the detail of the draft
-    /// says how much (the figure the issue asks to accept), the issue without the acceptance is 422 and numbers nothing, with it the TD17 is issued; a draft made of the figures of the portal has
-    /// no estimate and is issued as before.
-    /// </summary>
     [Fact]
     public async Task Td17_AnEstimatedAmountNeedsAnExplicitAcceptance_Test()
     {
@@ -344,18 +323,15 @@ public class SelfBillingServiceTests
         Assert.Equal((130.00m, 30.00m), (booking.TaxableBase, booking.EstimatedAmount));
         Assert.Equal(0m, airbnb.EstimatedAmount);
 
-        // The detail says the same figure, recomputed from the plan as the issue does.
         Assert.Equal(30.00m, (await rig.Service.GetAsync(rig.OrgId, booking.DocumentId)).EstimatedAmount);
         Assert.Equal(0m, (await rig.Service.GetAsync(rig.OrgId, airbnb.DocumentId)).EstimatedAmount);
 
-        // Without the acceptance nothing is issued and no number is consumed; the refusal carries the figure.
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Service.IssueAsync(rig.OrgId, booking.DocumentId, confirm: true, null));
         Assert.Equal(SelfBillingErrors.EstimateNotConfirmed, refused.Code);
         Assert.Equal(30.00m, refused.Extensions!["estimatedAmount"]);
         Assert.Empty(await rig.Db.FiscalNumberSequences.AsNoTracking().ToListAsync());
         Assert.Equal(FiscalDocumentStatus.Draft, (await rig.DocumentAsync(booking.DocumentId)).Status);
 
-        // The draft of the portal's own figures is issued without it; the estimated one with it, and an issued document estimates nothing.
         Assert.Equal(FiscalDocumentStatus.Issued, (await rig.Service.IssueAsync(rig.OrgId, airbnb.DocumentId, confirm: true, null)).Document.Status);
         var issued = await rig.Service.IssueAsync(rig.OrgId, booking.DocumentId, confirm: true, null, acceptEstimate: true);
         Assert.Equal((FiscalDocumentStatus.Issued, "TD17-2026/2", 0m), (issued.Document.Status, issued.Row.Number, issued.EstimatedAmount));
@@ -373,7 +349,6 @@ public class SelfBillingServiceTests
         await using var rig = await SelfBillingRig.CreateAsync();
         await rig.StandardMonthAsync();
 
-        // The clock is at 12 November 2026: November and the months after it are not over, nothing is made.
         foreach (var (year, month) in new[] { (2026, 11), (2026, 12), (2027, 1) })
         {
             var refused = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, year, month, null));
@@ -382,7 +357,6 @@ public class SelfBillingServiceTests
 
         Assert.Empty(await rig.Db.FiscalDocuments.AsNoTracking().ToListAsync());
 
-        // A month that is over is made, and the answer says whether the ledger holds lines for it: October does, August has none.
         var october = await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, null);
         Assert.True(october.LedgerPosted);
         Assert.Equal(2, october.Created);
@@ -390,7 +364,6 @@ public class SelfBillingServiceTests
         Assert.False(august.LedgerPosted);
         Assert.Empty(august.Drafts);
 
-        // The month is over the day after its last day (Europe/Rome): on 31 October the draft of October is not issued, the day after it is.
         var id = october.Drafts.First().DocumentId;
         rig.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 31, 12, 0, 0, TimeSpan.Zero));
         var early = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Service.IssueAsync(rig.OrgId, id, confirm: true, null));
@@ -400,10 +373,6 @@ public class SelfBillingServiceTests
         Assert.Equal(FiscalDocumentStatus.Issued, (await rig.Service.IssueAsync(rig.OrgId, id, confirm: true, null)).Document.Status);
     }
 
-    /// <summary>
-    /// The generic readers of the fiscal documents (the list, the detail, the export of the list) say what a TD17 is: the document carries its purpose (its recipient fields hold the foreign
-    /// supplier, not a customer, so a reader cannot take it for an invoice to the portal) and the file names its kind «Autofattura TD17», in Italian and in English.
-    /// </summary>
     [Fact]
     public async Task Td17_TheGenericListsSayWhatItIs_Test()
     {
@@ -425,10 +394,6 @@ public class SelfBillingServiceTests
         Assert.Equal(("TD17-2026/1", "Autofattura TD17", "Self-billed invoice TD17"), ((string?)italian[1], (string?)italian[0], (string?)english[0]));
     }
 
-    /// <summary>
-    /// PROOF TEST: permission (tenant) rule. A TD17 of another organization, or a document that is not a TD17, is not found (404): nothing is read, issued or discarded; the list of
-    /// another organization is empty; and the endpoints of the guest documents refuse to make again, issue, discard or credit a TD17 (422 <c>document_self_billing</c>).
-    /// </summary>
     [Fact]
     public async Task Td17_OtherOrganizationAndOtherDocuments404_AndGuestEndpointsRefuse_Test()
     {
@@ -445,13 +410,11 @@ public class SelfBillingServiceTests
         Assert.Empty((await rig.Service.CreateDraftsForPeriodAsync(otherOrg, 2026, 10, null)).Drafts);
         Assert.All(await rig.Db.FiscalDocuments.AsNoTracking().ToListAsync(), d => Assert.Equal(FiscalDocumentStatus.Draft, d.Status));
 
-        // A guest document of the same org is not a TD17.
         var guestDocument = new FiscalDocument { OrgId = rig.OrgId, Purpose = FiscalDocumentPurpose.GuestStay, Status = FiscalDocumentStatus.Draft, Currency = "EUR" };
         await rig.AddAsync(guestDocument);
         Assert.Equal(FiscalDocumentErrors.NotFound, (await Assert.ThrowsAsync<NotFoundException>(() => rig.Service.GetAsync(rig.OrgId, guestDocument.Id))).Code);
         Assert.Equal(FiscalDocumentErrors.NotFound, (await Assert.ThrowsAsync<NotFoundException>(() => rig.Service.DiscardDraftAsync(rig.OrgId, guestDocument.Id))).Code);
 
-        // The guest endpoints never change a TD17, issued or not.
         var issued = (await rig.Service.IssueAsync(rig.OrgId, id, confirm: true, null)).Document;
         var other = generation.Drafts.Last().DocumentId;
         var refusals = new[]
@@ -465,11 +428,6 @@ public class SelfBillingServiceTests
         Assert.Equal(FiscalDocumentStatus.Draft, (await rig.DocumentAsync(other)).Status);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule (the recurring rule of the portata). The TD17 span the properties of a holder: a caller whose reach is restricted to some properties is refused
-    /// (403) on EVERY action, reads included, before the service is asked anything; a caller who reaches the whole org is served; every action needs <c>agency.invoice.manage</c> and
-    /// <c>Features:FiscalDocumentIssuance</c>.
-    /// </summary>
     [Fact]
     public async Task Td17_Controller_RefusesCallersWithoutTheWholeOrg_AndIsBehindThePolicyAndTheFlag_Test()
     {
@@ -586,10 +544,6 @@ public class SelfBillingServiceTests
         Assert.NotEmpty(await rig.Documents.GetPdfAsync(id, DocumentLanguages.English));
     }
 
-    /// <summary>
-    /// For a property of several co-owners the owner who signs is the one whose mandate is in force, else the largest share, then the oldest ownership, then the smallest id: the rule of
-    /// the document plan, shared by the TD17 of a portal account held by the owner.
-    /// </summary>
     [Fact]
     public void SignatoryOf_PicksTheMandateThenTheLargestShare()
     {
@@ -711,7 +665,6 @@ internal sealed class SelfBillingRig : IAsyncDisposable
 
     public Guid ExpediaStay { get; private set; }
 
-    /// <summary>The settings shipped in <c>appsettings.json</c>, bound as the application binds them (a copy a test can change).</summary>
     public static SelfBillingOptions Shipped()
     {
         var directory = new DirectoryInfo(System.AppContext.BaseDirectory);
@@ -858,7 +811,6 @@ internal sealed class SelfBillingRig : IAsyncDisposable
         Db.ChangeTracker.Clear();
     }
 
-    /// <summary>A stay of <paramref name="source"/> that checked out on <paramref name="checkOut"/>.</summary>
     public async Task<Guid> StayAsync(Guid property, BookingSource source, DateTime checkOut)
     {
         var booking = new Booking
@@ -880,7 +832,6 @@ internal sealed class SelfBillingRig : IAsyncDisposable
         return booking.Id;
     }
 
-    /// <summary>The state of a stay after the ledger was posted: cancelled (<paramref name="status"/>), or marked no-show (<paramref name="noShowAt"/>).</summary>
     public async Task ChangeStayAsync(Guid stay, BookingStatus? status = null, DateTime? noShowAt = null)
     {
         var booking = await Db.Bookings.SingleAsync(b => b.Id == stay);
@@ -890,7 +841,6 @@ internal sealed class SelfBillingRig : IAsyncDisposable
         Db.ChangeTracker.Clear();
     }
 
-    /// <summary>The channel fee line of an owner for a stay: <paramref name="commission"/> is what the portal kept (the ledger line is its negative).</summary>
     public OwnerLedgerEntry Fee(Guid owner, Guid property, Guid stay, decimal commission, string currency = "EUR", int year = 2026, int month = 10, string ruleVersion = "payload") => new()
     {
         OrgId = OrgId,
@@ -914,7 +864,6 @@ internal sealed class SelfBillingRig : IAsyncDisposable
         PostedAt = Now.UtcDateTime.AddDays(-5),
     };
 
-    /// <summary>The reversal of a line: the same facts with the opposite amounts, in the same month.</summary>
     public OwnerLedgerEntry Reversal(OwnerLedgerEntry original) => new()
     {
         OrgId = original.OrgId,
@@ -939,14 +888,9 @@ internal sealed class SelfBillingRig : IAsyncDisposable
         PostedAt = Now.UtcDateTime.AddDays(-4),
     };
 
-    /// <summary>Who holds the account of a listing on a portal, written as the settings write it.</summary>
     public Task HoldAsync(Guid property, BookingSource channel, PortalAccountHolder holder) =>
         AddAsync(new PropertyChannelAccountHolder { OrgId = OrgId, PropertyId = property, Channel = channel.ToString(), Holder = holder, UpdatedAt = Now.UtcDateTime });
 
-    /// <summary>
-    /// October 2026 of the company: Booking.com on the lake house (120.00, and 80.50 reversed and replaced by 90.00), on the mountain house (40.00) and in September (999.00, not in
-    /// the month); Airbnb on the lake house (60.00); Expedia (25.00, a portal with no entity); and a Booking.com commission of the private owner (77.00).
-    /// </summary>
     public async Task StandardMonthAsync()
     {
         await AddAsync(Fee(Company, Lake, await StayAsync(Lake, BookingSource.BookingCom, new DateTime(2026, 10, 18)), 120.00m));

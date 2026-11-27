@@ -20,7 +20,6 @@ public sealed class HostContactFactory : CasazenWebApplicationFactory
 {
     private readonly RecordingEmailQueue _emails = new();
 
-    /// <summary>What the host queued so far: recipient, content and template name.</summary>
     public IReadOnlyList<(string? To, EmailContent Content, string Template)> SentEmails() => _emails.Snapshot();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -39,11 +38,6 @@ public sealed class HostContactFactory : CasazenWebApplicationFactory
     }
 }
 
-/// <summary>
-/// DB-03b over HTTP: «Scrivi a {host}» of the public booking site. The answer is the same 202 whatever the org publishes or has (so it
-/// tells a stranger nothing about the org), the email that goes to the host carries the visitor's address as its reply-to and the text of
-/// the visitor encoded, and one address cannot write to one org more than three times a day.
-/// </summary>
 public class HostContactIntegrationTests(HostContactFactory factory) : IClassFixture<HostContactFactory>
 {
     private const string MessageText = "Ciao <b>host</b>, c'è posto a Ferragosto?\nGrazie!";
@@ -51,7 +45,6 @@ public class HostContactIntegrationTests(HostContactFactory factory) : IClassFix
     [Fact]
     public async Task Contact_IsAnsweredTheSameForEveryOrg_AndOnlyAMessageTheHostCanAnswerIsSent()
     {
-        // An org that keeps its contact email private, one that publishes it, one that has none, and a bot that fills the honeypot.
         var keepsPrivate = await SeedOrgAsync("private-host@example.com", publishesContact: false);
         var publishes = await SeedOrgAsync("public-host@example.com", publishesContact: true);
         var noEmail = await SeedOrgAsync(string.Empty, publishesContact: false);
@@ -62,14 +55,12 @@ public class HostContactIntegrationTests(HostContactFactory factory) : IClassFix
         var third = await PostAsync(client, noEmail, Body("visitor-three@example.com"));
         var bot = await PostAsync(client, publishes, Body("visitor-four@example.com", website: "https://spam.example"));
 
-        // The same answer, with nothing in it, for all four.
         foreach (var response in new[] { first, second, third, bot })
         {
             Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
             Assert.Equal(string.Empty, await response.Content.ReadAsStringAsync());
         }
 
-        // Only the two messages that have a mailbox to go to were sent, each to its own org, answered to the visitor.
         var sent = factory.SentEmails()
             .Where(e => e.Template == EmailTemplates.Names.HostContactMessage
                 && e.Content.ReplyTo is "visitor-one@example.com" or "visitor-two@example.com" or "visitor-three@example.com" or "visitor-four@example.com")
@@ -81,7 +72,6 @@ public class HostContactIntegrationTests(HostContactFactory factory) : IClassFix
             ["visitor-one@example.com", "visitor-two@example.com"],
             sent.Select(e => e.Content.ReplyTo).OrderBy(reply => reply));
 
-        // The text arrives encoded (no markup of a stranger in the host's mailbox), line breaks kept, and the subject names nobody.
         var body = sent[0].Content.HtmlBody;
         Assert.Contains("Ciao &lt;b&gt;host&lt;/b&gt;", body);
         Assert.DoesNotContain("<b>host</b>", body);
@@ -104,7 +94,6 @@ public class HostContactIntegrationTests(HostContactFactory factory) : IClassFix
         Assert.Equal(HttpStatusCode.TooManyRequests, refused.StatusCode);
         Assert.Equal("rate_limited", JsonDocument.Parse(await refused.Content.ReadAsStringAsync()).RootElement.GetProperty("code").GetString());
         Assert.True(refused.Headers.Contains("Retry-After"));
-        // The limit is for this address at this org: another address, and the same address at another org, can still write.
         Assert.Equal(HttpStatusCode.Accepted, (await PostAsync(client, org, Body("quiet@example.com"))).StatusCode);
         Assert.Equal(HttpStatusCode.Accepted, (await PostAsync(client, otherOrg, Body("chatty@example.com"))).StatusCode);
     }

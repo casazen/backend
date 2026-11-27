@@ -9,12 +9,6 @@ using Microsoft.AspNetCore.Mvc.Routing;
 
 namespace Casazen.Tests.Unit.Authorization;
 
-/// <summary>
-/// One routed action of the API protected by the org policy <see cref="CasazenPolicies.OrgBillingAdmin"/> (AM-00): the
-/// HTTP verb, the route template with the controller's prefix, the body type it consumes, whether an
-/// <c>[AllowAnonymous]</c> overrides the policy, and the feature flags it is behind (<c>[FeatureGate]</c> of the class
-/// and of the method): with one of them off the action answers 404 before the authorization runs.
-/// </summary>
 internal sealed partial record OrgBillingAdminAction(
     Type Controller,
     MethodInfo Method,
@@ -27,7 +21,6 @@ internal sealed partial record OrgBillingAdminAction(
 {
     public string Key => $"{Controller.Name}.{Method.Name}";
 
-    /// <summary>The route with every parameter replaced by a value of its constraint type (<c>orgId</c> by the given org).</summary>
     public string ResolveRoute(Guid orgId) =>
         "/" + RouteParameter().Replace(RouteTemplate, match =>
         {
@@ -48,11 +41,6 @@ internal sealed partial record OrgBillingAdminAction(
     private static partial Regex RouteParameter();
 }
 
-/// <summary>
-/// Every action of the API whose class or method carries <c>[Authorize(Policy = OrgBillingAdmin)]</c>, found by
-/// reflection like <see cref="EndpointAuthorizationArchitectureTests"/> does: a new endpoint under the policy is picked up
-/// by the tests on the policy without anyone listing it (AM-00).
-/// </summary>
 internal static class OrgBillingAdminActions
 {
     public static IReadOnlyList<OrgBillingAdminAction> All { get; } = Discover();

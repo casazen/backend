@@ -11,11 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// AM-03: what the writes of the org people do with the properties a member reaches. Only the collaborator can be limited
-/// ("Solo alcuni"); the grants end with the role that made them possible (another role, removal), and stay through a
-/// deactivation. The real services over EF InMemory.
-/// </summary>
 public class OrgMembershipPropertyScopeTests
 {
     private const string OwnerId = "auth0|owner";
@@ -51,8 +46,6 @@ public class OrgMembershipPropertyScopeTests
 
     private async Task<PropertyScope> ScopeOfAsync(string userId) => (await _kit.ReadMemberAsync(userId))!.PropertyScope;
 
-    // --- Adding a member ------------------------------------------------------------------------------
-
     [Theory]
     [InlineData(OrgRole.Admin)]
     [InlineData(OrgRole.PropertyManager)]
@@ -85,8 +78,6 @@ public class OrgMembershipPropertyScopeTests
         Assert.Empty(await GrantsAsync("auth0|anna"));
     }
 
-    // --- Changing the role -----------------------------------------------------------------------------
-
     [Theory]
     [InlineData(OrgRole.PropertyManager)]
     [InlineData(OrgRole.Accountant)]
@@ -104,14 +95,11 @@ public class OrgMembershipPropertyScopeTests
         Assert.Empty(await GrantsAsync("auth0|anna"));
         _kit.Cache.Verify(c => c.Invalidate("auth0|anna"), Times.AtLeastOnce);
 
-        // Made a collaborator again, the person reaches every property: the old grants do not come back to life.
         await using (var db = _kit.NewDb())
             await _kit.Membership(db).ChangeRoleAsync("auth0|anna", OrgRole.Collaborator);
         Assert.Equal(PropertyScope.All, await ScopeOfAsync("auth0|anna"));
         Assert.Empty(await GrantsAsync("auth0|anna"));
     }
-
-    // --- Removing, deactivating ------------------------------------------------------------------------
 
     [Fact]
     public async Task RemoveAsync_ALimitedCollaborator_LeavesNoGrantBehind()
@@ -142,8 +130,6 @@ public class OrgMembershipPropertyScopeTests
         Assert.Equal([a], await GrantsAsync("auth0|anna"));
         Assert.Equal(PropertyScope.Selected, await ScopeOfAsync("auth0|anna"));
     }
-
-    // --- Inviting --------------------------------------------------------------------------------------
 
     private static CreateOrgInvitation Invitation(Guid orgId, OrgRole role, PropertyScope scope) =>
         new(orgId, OwnerId, "anna.leone@example.com", "Anna Leone", role, ["short-rent"], scope);
@@ -183,7 +169,6 @@ public class OrgMembershipPropertyScopeTests
     [InlineData(OrgRole.Admin)]
     public async Task InvitationAcceptAsync_ALegacyInvitationWithSoloAlcuniForAnotherRole_MakesAMemberWhoReachesTheWholeOrg(OrgRole role)
     {
-        // An invitation sent before the rule existed: the person must not be stuck on it, and reaches everything as the role does.
         var (org, _) = await _kit.SeedOwnerOrgAsync();
         await _kit.SeedNewUserAsync("auth0|anna", "anna.leone@example.com");
         var (invitation, token) = await _kit.SeedInvitationAsync(org.Id, "anna.leone@example.com", role);

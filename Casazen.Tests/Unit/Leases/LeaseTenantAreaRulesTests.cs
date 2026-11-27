@@ -7,8 +7,6 @@ namespace Casazen.Tests.Unit.Leases;
 
 public sealed class LeaseTenantAreaRulesTests
 {
-    // Every status is on one side or the other. A status added to LeaseStatus fails EveryStatusIsDecided until somebody decides
-    // whether the tenant may read a lease in that status: the new value is never shown or hidden by default.
     private static readonly LeaseStatus[] Hidden = [LeaseStatus.Draft];
 
     private static readonly LeaseStatus[] Shown =
@@ -34,7 +32,6 @@ public sealed class LeaseTenantAreaRulesTests
     public void VisibleToTenant_KeepsEveryOtherStatus() =>
         Assert.Equal(Shown, Kept(Shown));
 
-    // The rule is an expression, so the area applies it in the query itself and a draft never leaves the database.
     private static List<LeaseStatus> Kept(IEnumerable<LeaseStatus> statuses) =>
         statuses.Select(status => new LeaseContract { Status = status })
             .AsQueryable()

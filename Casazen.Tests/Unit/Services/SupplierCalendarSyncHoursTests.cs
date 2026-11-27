@@ -28,15 +28,12 @@ public class SupplierCalendarSyncHoursTests
     private const string UrlA = "https://feeds.example.com/a.ics";
     private const string UrlB = "https://feeds.example.com/b.ics";
 
-    // Thursday 8 October 2026, 12:00 in Rome (summer time): the import window is 8 September 2026 to 8 April 2028.
     private static readonly DateTimeOffset Instant = new(2026, 10, 8, 10, 0, 0, TimeSpan.Zero);
 
     private readonly string _databaseName = Guid.NewGuid().ToString();
     private readonly FakeTimeProvider _clock = new(Instant);
     private readonly ScriptedFeed _feedA = new();
     private readonly ScriptedFeed _feedB = new();
-
-    // ─── The hours of an event, not its day ──────────────────────────────────────
 
     [Fact]
     public async Task Sync_AnEventByTheHour_BecomesAnExternalWindowOfThoseHours_AndClosesNoDay()
@@ -54,7 +51,7 @@ public class SupplierCalendarSyncHoursTests
         Assert.Equal(Utc("2026-10-10T08:00:00Z"), window.StartUtc);
         Assert.Equal(Utc("2026-10-10T09:00:00Z"), window.EndUtc);
         Assert.Equal("Dentista", window.Label);
-        Assert.Empty(await DaysAsync(OrgA)); // before SP-05 this closed the whole day
+        Assert.Empty(await DaysAsync(OrgA));
         var profile = await ProfileAsync(OrgA);
         Assert.Equal(SupplierCalendarSyncStatus.Success, profile.CalendarSyncStatus);
         Assert.Null(profile.CalendarSyncError);
@@ -95,18 +92,18 @@ public class SupplierCalendarSyncHoursTests
     {
         await SeedSupplierAsync(OrgA, UrlA);
         _feedA.Body = Feed(
-            Timed("autumn", "20261025T023000", "20261025T033000"),   // the hour that happens twice: the first pass, 00:30Z
-            Timed("after", "20261025T100000", "20261025T110000"),    // winter time again: 09:00Z
-            Timed("gap", "20270328T023000", "20270328T043000"));     // 28 March 2027, the hour that does not exist: 01:30Z
+            Timed("autumn", "20261025T023000", "20261025T033000"),
+            Timed("after", "20261025T100000", "20261025T110000"),
+            Timed("gap", "20270328T023000", "20270328T043000"));
 
         await SyncAsync(OrgA, _feedA);
 
         var windows = (await WindowsAsync(OrgA)).ToDictionary(w => w.ExternalUid!);
         Assert.Equal(Utc("2026-10-25T00:30:00Z"), windows["autumn"].StartUtc);
-        Assert.Equal(Utc("2026-10-25T02:30:00Z"), windows["autumn"].EndUtc); // two real hours, not one
+        Assert.Equal(Utc("2026-10-25T02:30:00Z"), windows["autumn"].EndUtc);
         Assert.Equal(Utc("2026-10-25T09:00:00Z"), windows["after"].StartUtc);
         Assert.Equal(Utc("2027-03-28T01:30:00Z"), windows["gap"].StartUtc);
-        Assert.Equal(Utc("2027-03-28T02:30:00Z"), windows["gap"].EndUtc);    // 04:30 summer time, one real hour later
+        Assert.Equal(Utc("2027-03-28T02:30:00Z"), windows["gap"].EndUtc);
     }
 
     [Fact]
@@ -142,8 +139,6 @@ public class SupplierCalendarSyncHoursTests
         Assert.Equal(SupplierCalendarSyncStatus.Success, (await ProfileAsync(OrgA)).CalendarSyncStatus);
     }
 
-    // ─── Replacing and removing ──────────────────────────────────────────────────
-
     [Fact]
     public async Task Sync_AChangedFeed_UpdatesTheWindowThatStays_RemovesTheOneThatLeft_AndAddsTheNewOne()
     {
@@ -155,13 +150,13 @@ public class SupplierCalendarSyncHoursTests
         var before = (await WindowsAsync(OrgA)).ToDictionary(w => w.ExternalUid!);
 
         _feedA.Body = Feed(
-            Timed("stays", "20261010T100000", "20261010T113000", "Riunione lunga"), // longer, renamed
+            Timed("stays", "20261010T100000", "20261010T113000", "Riunione lunga"),
             Timed("arrives", "20261011T080000", "20261011T090000"));
         await SyncAsync(OrgA, _feedA);
 
         var after = (await WindowsAsync(OrgA)).ToDictionary(w => w.ExternalUid!);
         Assert.Equal(["arrives", "stays"], after.Keys.Order());
-        Assert.Equal(before["stays"].Id, after["stays"].Id); // the same row, updated in place
+        Assert.Equal(before["stays"].Id, after["stays"].Id);
         Assert.Equal(Utc("2026-10-10T09:30:00Z"), after["stays"].EndUtc);
         Assert.Equal("Riunione lunga", after["stays"].Label);
         Assert.Equal(Utc("2026-10-11T06:00:00Z"), after["arrives"].StartUtc);
@@ -193,7 +188,7 @@ public class SupplierCalendarSyncHoursTests
         _feedA.Body = Feed();
         await SyncAsync(OrgA, _feedA);
 
-        Assert.Equal([block.Id, opening.Id], (await WindowsAsync(OrgA)).Select(w => w.Id)); // by start: the block, then the opening
+        Assert.Equal([block.Id, opening.Id], (await WindowsAsync(OrgA)).Select(w => w.Id));
     }
 
     [Fact]
@@ -228,7 +223,7 @@ public class SupplierCalendarSyncHoursTests
         await SyncAsync(OrgB, _feedB);
         var ofB = (await WindowsAsync(OrgB)).Single();
 
-        _feedA.Body = Feed(); // A's calendar empties
+        _feedA.Body = Feed();
         await SyncAsync(OrgA, _feedA);
 
         Assert.Empty(await WindowsAsync(OrgA));
@@ -261,8 +256,6 @@ public class SupplierCalendarSyncHoursTests
         Assert.Equal(days, await DaysAsync(OrgA));
     }
 
-    // ─── What it leaves alone ────────────────────────────────────────────────────
-
     [Fact]
     public async Task Sync_AFeedWithAnUnreadableEvent_KeepsTheWindowsOfTheFeed_ButStillAddsAndUpdatesTheReadableOnes()
     {
@@ -277,13 +270,13 @@ public class SupplierCalendarSyncHoursTests
         await SyncAsync(OrgA, _feedA);
 
         var windows = (await WindowsAsync(OrgA)).ToDictionary(w => w.ExternalUid!);
-        Assert.Equal(["also-old", "new", "old"], windows.Keys.Order());      // "old" is not proof that the commitment is gone
-        Assert.Equal(Utc("2026-10-11T10:00:00Z"), windows["also-old"].EndUtc); // a readable event is updated all the same
+        Assert.Equal(["also-old", "new", "old"], windows.Keys.Order());
+        Assert.Equal(Utc("2026-10-11T10:00:00Z"), windows["also-old"].EndUtc);
         Assert.Equal(SupplierCalendarSyncStatus.Success, (await ProfileAsync(OrgA)).CalendarSyncStatus);
 
         _feedA.Body = Feed(Timed("new", "20261012T100000", "20261012T110000"));
         await SyncAsync(OrgA, _feedA);
-        Assert.Equal(["new"], (await WindowsAsync(OrgA)).Select(w => w.ExternalUid)); // a clean run frees what is gone
+        Assert.Equal(["new"], (await WindowsAsync(OrgA)).Select(w => w.ExternalUid));
     }
 
     [Fact]
@@ -342,8 +335,6 @@ public class SupplierCalendarSyncHoursTests
         Assert.Equal(block.Id, Assert.Single(await WindowsAsync(OrgA)).Id);
     }
 
-    // ─── The planner reads the result ────────────────────────────────────────────
-
     [Fact]
     public async Task Planner_AnEventFrom10To11_OccupiesThatHourOnly_NotTheDay()
     {
@@ -354,7 +345,6 @@ public class SupplierCalendarSyncHoursTests
 
         var plan = (await PlanAsync(OrgA, new DateOnly(2026, 10, 10), new DateOnly(2026, 10, 10)))[0];
 
-        // Saturday 08:00-14:00 in hourly slots: the 10:00 one is taken, the others are free.
         Assert.Null(plan.Closure);
         Assert.Equal(["06:00", "07:00", "09:00", "10:00", "11:00"], plan.Slots.Select(s => s.StartUtc.ToString("HH:mm", CultureInfo.InvariantCulture)));
         Assert.DoesNotContain(plan.Slots, s => s.StartUtc == Utc("2026-10-10T08:00:00Z"));
@@ -370,7 +360,6 @@ public class SupplierCalendarSyncHoursTests
 
         var plan = (await PlanAsync(OrgA, new DateOnly(2026, 10, 10), new DateOnly(2026, 10, 10)))[0];
 
-        // 09:00-10:00 and 11:00-12:00 touch the 30 minutes kept free around the event; 08:00, 12:00 and 13:00 are free.
         Assert.Null(plan.Closure);
         Assert.Equal(["06:00", "10:00", "11:00"], plan.Slots.Select(s => s.StartUtc.ToString("HH:mm", CultureInfo.InvariantCulture)));
     }
@@ -404,11 +393,8 @@ public class SupplierCalendarSyncHoursTests
         Assert.Equal(6, plan.Slots.Count);
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────────
-
     private async Task SyncAsync(Guid orgId, ScriptedFeed feed)
     {
-        // A new context per run, like the scope of a Hangfire job.
         await using var db = CreateDb();
         var service = new CalendarSyncService(
             db,
@@ -426,7 +412,6 @@ public class SupplierCalendarSyncHoursTests
         return await agenda.PlanAsync(orgId, from, to, new SupplierSlotQuery(60));
     }
 
-    /// <summary>Saturday 08:00-14:00 (the other days are of no use here), no notice, an hourly step.</summary>
     private async Task SeedWeekAsync(Guid orgId, int bufferMinutes)
     {
         await using var db = CreateDb();
@@ -508,14 +493,12 @@ public class SupplierCalendarSyncHoursTests
     private static string AllDay(string uid, string start, string end) =>
         $"BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART;VALUE=DATE:{start}\r\nDTEND;VALUE=DATE:{end}\r\nEND:VEVENT\r\n";
 
-    /// <summary>A feed whose body the test changes between runs; it can also fail.</summary>
     private sealed class ScriptedFeed : ISafeExternalHttpClient
     {
         public string? Body { get; set; }
 
         public ExternalFetchFailure? Failure { get; set; }
 
-        /// <summary>Runs while the feed is "downloading" (the supplier replaces the URL meanwhile).</summary>
         public Action? OnDownload { get; set; }
 
         public bool TryValidateUrl(string? url, [NotNullWhen(true)] out Uri? uri) =>

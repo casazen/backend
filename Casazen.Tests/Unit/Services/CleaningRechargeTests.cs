@@ -29,7 +29,6 @@ public class CleaningRechargeTests
 
     private static DateTime Day(int month, int day) => new(2026, month, day, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>The instant a cleaning was completed: 9:00 UTC, the same Europe/Rome day.</summary>
     private static DateTime At(int month, int day) => new(2026, month, day, 9, 0, 0, DateTimeKind.Utc);
 
     private static List<OwnerLedgerEntry> CleaningLines(IEnumerable<OwnerLedgerEntry> lines) =>
@@ -81,19 +80,16 @@ public class CleaningRechargeTests
             requests.Select(e => (e.SourceId!.Value, e.Amount, e.RecognitionDate)));
         Assert.Equal((OwnerLedgerCleaningRecharges.ReferenceOf(linked), "Pulizia del 20/10/2026"), (requests[0].SourceReference, requests[0].Description));
 
-        // The flat fee of the stay is not posted for the owner on the actual cost: never both. The owner on the flat rate keeps it, and gets no cleaning request.
         Assert.DoesNotContain(lines, e => e.SourceType == OwnerLedgerSourceType.MandateFlatFee && e.PropertyOwnerId == owner);
         var flat = Assert.Single(lines, e => e.SourceType == OwnerLedgerSourceType.MandateFlatFee && e.PropertyOwnerId == other);
         Assert.Equal((otherStay, -40m), (flat.SourceId!.Value, flat.Amount));
         Assert.DoesNotContain(requests, e => e.PropertyOwnerId == other);
 
-        // Posting again changes nothing.
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         var again = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
         Assert.Equal((0, 0), (again.Posted, again.Reversed));
         Assert.Equal(2, CleaningLines(await world.LiveAsync()).Count);
 
-        // The price of a request changes after it was posted: the old line is reversed and one new line stands for the request.
         await world.ChangeRequestAsync(linked, r => r.FinalAmountCents = 9000);
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         var changed = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
@@ -104,10 +100,6 @@ public class CleaningRechargeTests
         Assert.DoesNotContain(await world.LiveAsync(), e => e.SourceType == OwnerLedgerSourceType.MandateFlatFee && e.PropertyOwnerId == owner);
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule. A cancelled or refused request is never a cost, so it posts nothing; a request posted and cancelled afterwards is no longer read, so its line is
-    /// reversed and the owner owes nothing for it.
-    /// </summary>
     [Fact]
     public async Task CleaningRecharge_CancelledRequestPostsNothing_Test()
     {
@@ -176,10 +168,6 @@ public class CleaningRechargeTests
         Assert.DoesNotContain(november, e => e.SourceId == first);
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule. A staff cleaning with a rate costs the rate; one with none costs the flat rate of the mandate, in the settlement currency of the owner; one with no price
-    /// at all is never a charge of zero: the statement is held back (<c>source_amount_missing</c>) until it has one; one the agency does not recharge is nobody's charge.
-    /// </summary>
     [Fact]
     public async Task CleaningRecharge_StaffCleaningWithoutPriceCostsTheMandateFlatRate_Test()
     {
@@ -196,7 +184,6 @@ public class CleaningRechargeTests
         Assert.DoesNotContain(result.Issues, i => i.Blocking);
         Assert.Equal([(priced, -25.50m), (unpriced, -40m)], CleaningLines(await world.LiveAsync()).Select(e => (e.SourceId!.Value, e.Amount)));
 
-        // Without a flat rate in the mandate the cleaning has no price at all: no charge of zero, the statement of the owner waits.
         var bare = await world.OwnerAsync();
         var bareProperty = await world.PropertyAsync(bare, "TEST Casa Monte");
         await world.MandateAsync(bare, CleaningRechargeMode.ActualCost, null);
@@ -242,7 +229,6 @@ public class CleaningRechargeTests
         Assert.False(string.IsNullOrWhiteSpace(todo.Reason));
         Assert.Null(todo.CompletedAt);
 
-        // The same month posted again finds the same item.
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
         Assert.Single(await world.TodosAsync());
@@ -254,7 +240,6 @@ public class CleaningRechargeTests
         var closedByAPerson = Assert.Single(await world.TodosAsync());
         Assert.Equal("auth0|admin", closedByAPerson.ClosedBy);
 
-        // A cleaning with no amount at all: no charge of zero, the statement waits, and its request has an item.
         var bare = await world.OwnerAsync();
         var bareProperty = await world.PropertyAsync(bare, "TEST Casa Monte");
         await world.MandateAsync(bare, CleaningRechargeMode.ActualCost, null);
@@ -287,10 +272,6 @@ public class CleaningRechargeTests
         Assert.Equal("auth0|admin", todos.Single(t => t.EntityId == request).ClosedBy);
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule. The owner invoice shows one recharge line for each cleaning request, with its reference (and the supplier's invoice when the model links one), in
-    /// place of the flat fee of the stay; a request changed after it was posted is one line, the net of its reversal and its new line.
-    /// </summary>
     [Fact]
     public async Task CleaningRecharge_InvoiceShowsOneRechargeLinePerRequestWithItsReference_Test()
     {
@@ -325,10 +306,6 @@ public class CleaningRechargeTests
         Assert.Equal(200m, draft.Lines.Single(l => l.LineType == FiscalLineType.Commission).TotalPrice);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. The mode is a field of the mandate: the flat rate when the version does not say, <c>ActualCost</c> when it does (also through the standard mandate), an
-    /// undefined value is refused with 422 <c>owner_mandate_invalid</c>, and a mandate written before the field (none stored) reads as the flat rate.
-    /// </summary>
     [Fact]
     public async Task CleaningRecharge_MandateModeDefaultsToFlatRateAndRefusesAnUndefinedValue_Test()
     {
@@ -359,10 +336,8 @@ public class CleaningRechargeTests
         Assert.Equal("cleaningRechargeMode", refused.Extensions["field"]);
         Assert.Equal(2, await world.Db.OwnerMandates.CountAsync());
 
-        // A mandate written before the field stores none: it reads as the flat rate.
         Assert.Equal(CleaningRechargeMode.FlatRate, OwnerMandateRules.CleaningRechargeModeOf(new OwnerMandate { CleaningRechargeMode = null }));
 
-        // The standard mandate carries the mode to every owner it creates a version for.
         var another = await world.OwnerAsync();
         await world.PropertyAsync(another, "TEST Casa Monte");
         var template = await world.Mandates.ApplyTemplateAsync(
@@ -404,27 +379,22 @@ public class CleaningRechargeTests
         Assert.DoesNotContain(result.Issues, i => i.Blocking);
         var lines = await world.LiveAsync();
 
-        // The request: only the owner on the actual cost has a line of it, its 60% of 85.01 (51.006, rounded to 51.01); the owner on the flat rate has none.
         var cleaned = Assert.Single(CleaningLines(lines));
         Assert.Equal((actual, request, 60m), (cleaned.PropertyOwnerId, cleaned.SourceId!.Value, cleaned.SharePercent));
         Assert.Equal((-85.01m, -51.01m, -51.01m), (cleaned.SourceAmount, cleaned.OriginalAmount, cleaned.Amount));
 
-        // The flat fee of the stay: only the owner on the flat rate has it, its 40% of 40.00; the owner on the actual cost has none (its mandate has the same flat rate, never posted).
         var fee = Assert.Single(lines, e => e.SourceType == OwnerLedgerSourceType.MandateFlatFee);
         Assert.Equal((flat, stay, OwnerLedgerFlatFees.Cleaning, 40m), (fee.PropertyOwnerId, fee.SourceId!.Value, fee.SourceReference, fee.SharePercent));
         Assert.Equal(-16.00m, fee.Amount);
 
-        // Each owner is charged its share of the cleaning once, by one way only.
         decimal ChargedTo(Guid owner) => lines.Where(e => e.PropertyOwnerId == owner && e.EntryType == OwnerLedgerEntryType.OwnerCharge).Sum(e => e.Amount);
         Assert.Equal((-51.01m, -16.00m), (ChargedTo(actual), ChargedTo(flat)));
 
-        // Posting again changes nothing.
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         var again = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
         Assert.Equal((0, 0), (again.Posted, again.Reversed));
         Assert.Equal(lines.Select(e => e.Id).Order(), (await world.LiveAsync()).Select(e => e.Id).Order());
 
-        // The price of the request changes: only the line of the owner on the actual cost is reversed and replaced (60% of 90.00); the flat fee of the other stays the same line.
         await world.ChangeRequestAsync(request, r => r.FinalAmountCents = 9000);
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         var changed = await world.Service.PostPeriodAsync(OrgId, 2026, 10, null);
@@ -438,7 +408,6 @@ public class CleaningRechargeTests
     private static CompletedCleaning Cleaning(Guid property, Guid? stay, Guid request, long cents, CleaningAmountVat vat) =>
         new(property, stay, new DateOnly(2026, 10, 20), cents, "CHF", vat, CleaningKind.Supplier, true, CleaningSourceKind.ServiceRequest, request, null);
 
-    /// <summary>A cost source that returns what the test says, as the contract defines it (the days included, the properties asked for, an empty list is nothing).</summary>
     private sealed class StubCostSource : ICleaningCostSource
     {
         private readonly List<CompletedCleaning> cleanings = [];
@@ -458,10 +427,6 @@ public class CleaningRechargeTests
         }
     }
 
-    /// <summary>
-    /// A Swiss agency with its owners, properties, stays, cleaning requests and staff cleanings, the owner accounting (with the real cost source of the cleanings, or the one the test
-    /// gives) and the mandates over one in-memory database.
-    /// </summary>
     private sealed class World
     {
         private World(AppDbContext db, ICleaningCostSource? costs)
@@ -512,7 +477,6 @@ public class CleaningRechargeTests
                 TestDataProtection.Shared),
             costs));
 
-        /// <summary>A Swiss owner paid in francs, with a complete profile from January and the approved Swiss rule set (created once).</summary>
         public async Task<Guid> OwnerAsync()
         {
             var owner = new PropertyOwner { OrgId = OrgId, FirstName = "TEST", LastName = "Proprietario", Email = $"{Guid.NewGuid():N}@example.com" };
@@ -552,7 +516,6 @@ public class CleaningRechargeTests
             return owner.Id;
         }
 
-        /// <summary>A Ticino property in francs owned from January by the owner alone.</summary>
         public async Task<Guid> PropertyAsync(Guid owner, string name)
         {
             var property = new Property { OrgId = OrgId, OwnerId = "auth0|agency", Name = name, Address = "Via 1", City = "Lugano", Currency = "CHF" };
@@ -569,7 +532,6 @@ public class CleaningRechargeTests
             return property.Id;
         }
 
-        /// <summary>A Ticino property in francs owned from January by two owners, each in the share given.</summary>
         public async Task<Guid> CoOwnedPropertyAsync(string name, (Guid Owner, decimal Share) first, (Guid Owner, decimal Share) second)
         {
             var property = new Property { OrgId = OrgId, OwnerId = "auth0|agency", Name = name, Address = "Via 1", City = "Lugano", Currency = "CHF" };
@@ -590,7 +552,6 @@ public class CleaningRechargeTests
             return property.Id;
         }
 
-        /// <summary>A mandate version of the owner from the day, through the API's service: no commission, the cleaning flat rate and the mode as given.</summary>
         public Task<OwnerMandate> MandateAsync(Guid owner, CleaningRechargeMode mode, decimal? cleaningFlatRate, DateOnly? from = null) =>
             Mandates.CreateVersionAsync(
                 OrgWide,
@@ -604,7 +565,6 @@ public class CleaningRechargeTests
                 },
                 null);
 
-        /// <summary>A confirmed stay of the property, priced by hand: its gross is an amount, so it posts its revenue on the check-out and tells nothing.</summary>
         public async Task<Guid> StayAsync(Guid property, DateTime checkIn, DateTime checkOut)
         {
             var guest = new Guest { OrgId = OrgId, FirstName = "Test", LastName = "Guest", Email = $"{Guid.NewGuid():N}@example.com" };
@@ -627,7 +587,6 @@ public class CleaningRechargeTests
             return booking.Id;
         }
 
-        /// <summary>A request of category cleaning for the property, written straight to the table as the cost source reads it.</summary>
         public async Task<Guid> RequestAsync(Guid property, ServiceRequestStatus status, DateTime? completedAt, Action<ServiceRequest>? change = null)
         {
             var request = new ServiceRequest
@@ -657,7 +616,6 @@ public class CleaningRechargeTests
             Db.ChangeTracker.Clear();
         }
 
-        /// <summary>A cleaning by the agency's staff, completed, with or without a rate.</summary>
         public async Task<Guid> StaffAsync(Guid property, DateTime completedAt, decimal? rate, bool recharge)
         {
             var activity = new InternalActivity
@@ -678,11 +636,9 @@ public class CleaningRechargeTests
             return activity.Id;
         }
 
-        /// <summary>The «Da fare» rows (the closed ones too), oldest first.</summary>
         public async Task<List<InternalActivity>> TodosAsync() =>
             await Db.InternalActivities.AsNoTracking().Where(a => a.Action != null).OrderBy(a => a.CreatedAt).ToListAsync();
 
-        /// <summary>The lines that count: neither reversals nor reversed.</summary>
         public async Task<List<OwnerLedgerEntry>> LiveAsync()
         {
             var lines = await Db.OwnerLedgerEntries.AsNoTracking().ToListAsync();

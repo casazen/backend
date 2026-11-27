@@ -61,7 +61,6 @@ public class ComplianceStateEntitiesModelTests
         Assert.True(entity.FindProperty(nameof(ComplianceSendLogEntry.BookingId))!.IsNullable);
         Assert.True(entity.FindProperty(nameof(ComplianceSendLogEntry.ByUserId))!.IsNullable);
 
-        // The reference is a receipt or confirmation id, never a name: the columns of the row say it.
         Assert.Equal(
             [
                 nameof(ComplianceSendLogEntry.BookingId), nameof(ComplianceSendLogEntry.ByUserId), nameof(ComplianceSendLogEntry.Id),

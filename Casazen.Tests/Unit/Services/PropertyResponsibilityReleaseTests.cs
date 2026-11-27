@@ -28,7 +28,6 @@ public class PropertyResponsibilityReleaseTests
 
     private sealed record World(Guid OrgId, Guid AnnaMemberId, Guid A, Guid B);
 
-    /// <summary>An org with its owner, the collaborator Anna (every property, as a new member is) and two properties.</summary>
     private async Task<World> SeedAsync()
     {
         var (org, _) = await _kit.SeedOwnerOrgAsync();
@@ -58,8 +57,6 @@ public class PropertyResponsibilityReleaseTests
         await using var db = _kit.NewDb();
         return (await db.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == propertyId)).ResponsibleUserId;
     }
-
-    // --- The owner takes properties away ---------------------------------------------------------------
 
     [Fact]
     public async Task SetAsync_TakingAPropertyAway_ReleasesTheResponsibilityForThatPropertyOnly()
@@ -95,7 +92,6 @@ public class PropertyResponsibilityReleaseTests
     [Fact]
     public async Task SetAsync_FromEveryPropertyToSome_ReleasesTheOnesLeftOut()
     {
-        // A new collaborator reaches every property, so it can be put in charge of any; narrowing it then takes some away.
         var world = await SeedAsync();
         await PutInChargeAsync(world, world.A, Anna);
         await PutInChargeAsync(world, world.B, Anna);
@@ -141,7 +137,6 @@ public class PropertyResponsibilityReleaseTests
 
         await SetAsync(world, PropertyScope.Selected);
 
-        // Anna lost B; the manager, who reaches everything, is still in charge of A.
         Assert.Equal("auth0|manager", await ResponsibleAsync(world.A));
         Assert.Null(await ResponsibleAsync(world.B));
     }
@@ -169,7 +164,6 @@ public class PropertyResponsibilityReleaseTests
     [Fact]
     public async Task SetAsync_ASoftDeletedProperty_AlsoLosesItsPersonInCharge()
     {
-        // A deleted property can be restored: it must not come back with a person who has lost it in the meantime.
         var world = await SeedAsync();
         await SetAsync(world, PropertyScope.Selected, world.A, world.B);
         await PutInChargeAsync(world, world.A, Anna);
@@ -197,8 +191,6 @@ public class PropertyResponsibilityReleaseTests
 
         Assert.Equal(Anna, await ResponsibleAsync(world.A));
     }
-
-    // --- The activity log says it (AM-02b) -------------------------------------------------------------
 
     private async Task<List<Dictionary<string, string>>> AccessLinesAsync(Guid orgId) =>
         (await _kit.ReadActivityAsync(orgId))
@@ -242,7 +234,6 @@ public class PropertyResponsibilityReleaseTests
     {
         var world = await SeedAsync();
         await SetAsync(world, PropertyScope.Selected, world.A);
-        // A name that should not be there (a write that raced with an older build, a row changed by hand).
         await using (var db = _kit.NewDb())
         {
             (await db.Properties.SingleAsync(p => p.Id == world.B)).ResponsibleUserId = Anna;
@@ -258,8 +249,6 @@ public class PropertyResponsibilityReleaseTests
             new Dictionary<string, string> { ["scope"] = "Selected", ["granted"] = "0", ["revoked"] = "0", ["released"] = "1" },
             last);
     }
-
-    // --- The person leaves, changes role or is suspended -----------------------------------------------
 
     [Fact]
     public async Task RemoveAsync_ReleasesEveryResponsibilityOfTheMember_AndNoOneElses()
@@ -285,7 +274,6 @@ public class PropertyResponsibilityReleaseTests
         await using (var db = _kit.NewDb())
             await _kit.Membership(db).RemoveAsync(Anna);
 
-        // Back in the same org as a collaborator with every property: the name was not waiting for it.
         await using (var db = _kit.NewDb())
             await _kit.Membership(db).AddMemberAsync(Anna, world.OrgId, OrgRole.Collaborator, ["short-rent"], OwnerId);
 
@@ -302,7 +290,6 @@ public class PropertyResponsibilityReleaseTests
         await using (var db = _kit.NewDb())
             await _kit.Membership(db).ChangeRoleAsync(Anna, OrgRole.PropertyManager);
 
-        // The grants are gone (the manager reaches everything) and so is nothing else: the manager is still in charge of A.
         Assert.Equal(Anna, await ResponsibleAsync(world.A));
     }
 
@@ -321,8 +308,6 @@ public class PropertyResponsibilityReleaseTests
             await _kit.Membership(db).ReactivateAsync(Anna);
         Assert.Equal(Anna, await ResponsibleAsync(world.A));
     }
-
-    // --- The appointment that follows ------------------------------------------------------------------
 
     [Fact]
     public async Task SetResponsibleAsync_AfterTheAccessWasTaken_IsRefusedUntilTheAccessIsGivenBack()

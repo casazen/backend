@@ -16,10 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Linking a bank is optional. The id stored is the Financial Connections account id. A due stays unpaid until Stripe
-/// confirms, and the offline declaration still marks it paid when no debit is in flight.
-/// </summary>
 public class BankLinkServiceTests : IDisposable
 {
     private const string Token = "rent-link-token";

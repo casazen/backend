@@ -59,7 +59,6 @@ public class OctoratePropertyCreatorTests
             .Callback(() => _order.Add("save-token"))
             .Returns(Task.CompletedTask);
 
-        // The next step fails: the token must already be stored.
         _mappings
             .Setup(m => m.RefreshAsync(OrgId, It.IsAny<CancellationToken>()))
             .Callback(() => _order.Add("refresh-mapping"))
@@ -96,8 +95,6 @@ public class OctoratePropertyCreatorTests
             await db.SaveChangesAsync();
         }
 
-        // The real rule of the mapping, not a stub: the property may already exist on Octorate and has to be confirmed or rejected first. The org has
-        // the connection, so its listings are read again first (they show nothing new here).
         _client.Setup(c => c.GetPropertiesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<OctorateProperty>());
         await using var rules = NewDb();
         var creator = Creator(mappings: MappingService(rules));
@@ -170,7 +167,6 @@ public class OctoratePropertyCreatorTests
     [InlineData(null)]
     public async Task OctoratePropertyCreator_ExistingInventory_NeverCreated_Test(OctorateInventoryScenario? scenario)
     {
-        // No confirmed mapping, no unconfirmed row: the absence of a mapping is not proof that the inventory is new.
         var propertyId = await SeedAsync(scenario);
         _mappings.Setup(m => m.IsWriteBlockedAsync(propertyId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
@@ -215,7 +211,6 @@ public class OctoratePropertyCreatorTests
     [Fact]
     public async Task CreateAsync_NeverLogsThePayloadTheTokenOrTheAlternativeAddress()
     {
-        // AC4 (ADR-023-R13): the contact, the address and the token of the creation are personal data or secrets, whatever the level of the log.
         var propertyId = await SeedAsync(OctorateInventoryScenario.NewInventory);
         _mappings.Setup(m => m.IsWriteBlockedAsync(propertyId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
         _client
@@ -336,7 +331,6 @@ public class OctoratePropertyCreatorTests
     private AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options, NullTenantContext.Instance);
 
-    /// <summary>The connection of the org to Octorate in this environment (the host of the tests is a staging one).</summary>
     private async Task SeedConnectionAsync()
     {
         await using var db = NewDb();
@@ -344,7 +338,6 @@ public class OctoratePropertyCreatorTests
         await db.SaveChangesAsync();
     }
 
-    /// <summary>An org with a contact, the person who publishes, and a property with all the data Octorate asks for, declared as <paramref name="scenario"/>.</summary>
     private async Task<Guid> SeedAsync(
         OctorateInventoryScenario? scenario,
         decimal latitude = 45.4642m,

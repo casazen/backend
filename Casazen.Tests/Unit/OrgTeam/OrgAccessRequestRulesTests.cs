@@ -3,7 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.OrgTeam;
 
-/// <summary>AM-02b: what a member can ask access to, and what its note becomes on the way to the email of the administrators.</summary>
 public class OrgAccessRequestRulesTests
 {
     [Fact]
@@ -61,14 +60,14 @@ public class OrgAccessRequestRulesTests
     }
 
     [Theory]
-    [InlineData(0x200B)] // zero width space
-    [InlineData(0x200E)] // left-to-right mark
-    [InlineData(0x202E)] // right-to-left override: reverses what follows in a mail client
-    [InlineData(0x202C)] // pop directional formatting
-    [InlineData(0x2066)] // left-to-right isolate
-    [InlineData(0x2028)] // line separator
-    [InlineData(0x00A0)] // no-break space
-    [InlineData(0xE000)] // private use
+    [InlineData(0x200B)]
+    [InlineData(0x200E)]
+    [InlineData(0x202E)]
+    [InlineData(0x202C)]
+    [InlineData(0x2066)]
+    [InlineData(0x2028)]
+    [InlineData(0x00A0)]
+    [InlineData(0xE000)]
     public void NormalizeNote_AnInvisibleOrDirectionalCharacter_BecomesAPlainSpace(int codePoint)
     {
         var note = "uno" + char.ConvertFromUtf32(codePoint) + "due";

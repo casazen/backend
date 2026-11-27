@@ -7,10 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E01/F04/US01/T01: the pure parts of the routine engine. How a condition is read and met (ADR-014), how the actions and the result of an execution
-/// are read and written, how long a Wait lasts, how a payload is read.
-/// </summary>
 public class RoutineRulesTests
 {
     private static readonly Guid Property = Guid.Parse("3c1d5f52-9f0e-4b8a-8d65-2c4e1f0b9a11");
@@ -28,8 +24,6 @@ public class RoutineRulesTests
 
     private static object Json(string json) => JsonDocument.Parse(json).RootElement.Clone();
 
-    // ─── The facts of a booking ──────────────────────────────────────────────────
-
     [Fact]
     public void Facts_OfBooking_AreTheFieldsTheRoutinesRead()
     {
@@ -46,14 +40,9 @@ public class RoutineRulesTests
         Assert.False(facts.TryGet("paymentStatus", out _));
         Assert.False(RoutineConditionFacts.None.TryGet(RoutineConditions.Channel, out _));
 
-        // A booking of a channel (the Airbnb one of Facts) is saved when it is imported: the day the guest booked is not known.
         Assert.False(facts.TryGet(RoutineConditions.BookingLeadTime, out _));
     }
 
-    /// <summary>
-    /// The lead time is the day the guest booked, known for the bookings CasaZen takes itself (the booking site, the host) and not for those of a channel,
-    /// which are saved when they are imported: a rule on it is met by the first and never by the second, whatever the operator.
-    /// </summary>
     [Theory]
     [InlineData(BookingSource.Direct, true)]
     [InlineData(BookingSource.Manual, true)]
@@ -80,12 +69,10 @@ public class RoutineRulesTests
         Assert.Equal(known, RoutineConditions.Satisfies(Rule("bookingLeadTime", "between", new[] { 0, 30 }), facts));
         Assert.False(RoutineConditions.Satisfies(Rule("bookingLeadTime", "lessThan", 3), facts));
 
-        // The other facts of the booking do not depend on where it comes from.
         Assert.True(facts.TryGet(RoutineConditions.StayDuration, out var nights));
         Assert.Equal(3d, nights);
     }
 
-    /// <summary>The day a booking was made is the Rome day: 23:30 UTC on the 9th is half past midnight on the 10th in Rome.</summary>
     [Fact]
     public void Facts_BookingLeadTime_CountsFromTheRomeDayOfTheBooking_AndNeverGoesBelowZero()
     {
@@ -109,8 +96,6 @@ public class RoutineRulesTests
         Assert.True(afterTheArrival.TryGet(RoutineConditions.BookingLeadTime, out var none));
         Assert.Equal(0d, none);
     }
-
-    // ─── Reading a condition ─────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(null)]
@@ -190,7 +175,6 @@ public class RoutineRulesTests
         Assert.False(RoutineConditions.Parse(json).Valid);
     }
 
-    /// <summary>The kind of value each operator of a field the routines read takes: what is refused is what <see cref="RoutineConditions.Satisfies"/> could never meet.</summary>
     [Theory]
     [InlineData("channel", "equals", "\"airbnb\"", true)]
     [InlineData("channel", "equals", "\"Booking.com\"", false)]
@@ -235,7 +219,6 @@ public class RoutineRulesTests
         Assert.All(errors, error => Assert.Contains(fieldId, error, StringComparison.Ordinal));
     }
 
-    /// <summary>What is not the business of this check (no value, a field the routines do not read, an operator the field does not take) is left to the generic validator.</summary>
     [Fact]
     public void ValueErrors_LeaveToTheGenericValidator_WhatIsNotAboutTheKindOfValue()
     {
@@ -263,8 +246,6 @@ public class RoutineRulesTests
     {
         Assert.False(RoutineConditions.Satisfies(Rule("channel", op, Json(valueJson)), Facts()));
     }
-
-    // ─── Meeting a rule ──────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("equals", "airbnb", true)]
@@ -346,8 +327,6 @@ public class RoutineRulesTests
         Assert.False(RoutineConditions.Satisfies(Rule("paymentStatus", "equals", "paid"), Facts()));
     }
 
-    // ─── Actions ─────────────────────────────────────────────────────────────────
-
     [Fact]
     public void TryParseList_TheShapeOfTheEditor()
     {
@@ -400,7 +379,6 @@ public class RoutineRulesTests
         Assert.False(config.TryGetInt("missing", out _));
     }
 
-    /// <summary>The marker of a campaign is read closed: present and not false is on.</summary>
     [Theory]
     [InlineData("""{"isCampaign":true}""", true)]
     [InlineData("""{"IsCampaign":"yes"}""", true)]
@@ -440,8 +418,6 @@ public class RoutineRulesTests
         Assert.Equal(expected, delay);
     }
 
-    // ─── The result of an execution ──────────────────────────────────────────────
-
     [Fact]
     public void Result_RoundTripsThroughItsJson()
     {
@@ -479,7 +455,6 @@ public class RoutineRulesTests
         Assert.Null(parsed.Code);
     }
 
-    /// <summary>The saved payload is the engine's state for the resume: the log the host reads never shows it.</summary>
     [Fact]
     public void WithoutPayload_LeavesTheSavedPayloadOut_AndKeepsTheRest()
     {
@@ -497,8 +472,6 @@ public class RoutineRulesTests
         Assert.Equal(1, parsed.NextActionIndex);
         Assert.Equal("{\"actions\":[],\"nextActionIndex\":0}", RoutineExecutionResult.WithoutPayload("not json"));
     }
-
-    // ─── The payload ─────────────────────────────────────────────────────────────
 
     [Fact]
     public void Payload_RoundTripsThroughItsJson_NamesInAnyCase()

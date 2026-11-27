@@ -61,8 +61,6 @@ public class StripeSupplierPaymentGatewayTests
 
     private StripeSupplierPaymentGateway Gateway() => new(NullLogger<StripeSupplierPaymentGateway>.Instance, _client.Object);
 
-    // ─── Create ──────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task CreateAsync_DirectCharge_IsCreatedOnTheSupplierAccountWithTheFeeTheMetadataAndTheKey()
     {
@@ -80,12 +78,10 @@ public class StripeSupplierPaymentGatewayTests
         // The charge is on the supplier's account: the header Stripe-Account, the idempotency key of the payment and attempt.
         Assert.Equal(Account, request.RequestOptions!.StripeAccount);
         Assert.Equal("service-charge:abc:1", request.RequestOptions.IdempotencyKey);
-        // Routed by the webhook of SP-15b on metadata.kind, with the ids that find the payment.
         Assert.Equal("service-charge", options.Metadata["kind"]);
         Assert.Equal("p1", options.Metadata["serviceRequestPaymentId"]);
         Assert.Equal("r1", options.Metadata["serviceRequestId"]);
         Assert.Equal("s1", options.Metadata["supplierOrgId"]);
-        // A direct charge: no transfer, no destination, no on-behalf-of.
         Assert.Null(options.TransferData);
         Assert.Null(options.OnBehalfOf);
     }
@@ -106,17 +102,16 @@ public class StripeSupplierPaymentGatewayTests
     }
 
     [Theory]
-    [InlineData(null)] // none to send
-    [InlineData(0L)] // an explicit zero is never sent (A3-40)
+    [InlineData(null)]
+    [InlineData(0L)]
     [InlineData(-5L)]
-    [InlineData(6_000L)] // not strictly below the amount: Stripe would refuse it
+    [InlineData(6_000L)]
     [InlineData(9_999L)]
     public async Task CreateAsync_WithoutARealFee_LeavesApplicationFeeAmountUnset(long? fee)
     {
         await Gateway().CreateAsync(Request(fee: fee));
 
         var options = Assert.IsType<PaymentIntentCreateOptions>(Assert.Single(_requests).Options);
-        // Null, not 0: the parameter is omitted from the request.
         Assert.Null(options.ApplicationFeeAmount);
     }
 
@@ -139,7 +134,6 @@ public class StripeSupplierPaymentGatewayTests
 
         var options = Assert.IsType<PaymentIntentCreateOptions>(Assert.Single(_requests).Options);
         Assert.Equal("service-charge", options.Metadata["kind"]);
-        // The caller's dictionary was not modified.
         Assert.Equal("direct-booking", metadata["kind"]);
     }
 
@@ -159,11 +153,8 @@ public class StripeSupplierPaymentGatewayTests
                 HttpMethod.Post, "/v1/payment_intents", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new StripeException(HttpStatusCode.BadRequest, new StripeError { Type = "invalid_request_error", Code = "amount_too_small" }, "too small"));
 
-        // The API turns it into 503 payment_provider_error (ErrorHandlingMiddleware); the gateway does not hide it.
         await Assert.ThrowsAsync<StripeException>(() => Gateway().CreateAsync(Request()));
     }
-
-    // ─── Get and cancel ──────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetAsync_ReadsThePaymentIntentFromTheSupplierAccount()

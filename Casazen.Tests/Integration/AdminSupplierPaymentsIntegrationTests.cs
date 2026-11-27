@@ -29,8 +29,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
 
     private HttpClient Admin() => factory.CreateAuthenticatedClient($"auth0|sp15b-admin-{Guid.NewGuid():N}", roles: "Admin");
 
-    // ─── Who may call ───
-
     public static TheoryData<string, string> Endpoints => new()
     {
         { "GET", "/api/admin/supplier-payments" },
@@ -71,8 +69,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
 
     private static HttpContent? Body(string method) =>
         method is "POST" or "PUT" ? JsonContent.Create(new { reason = "x", percent = 5 }) : null;
-
-    // ─── The list ───
 
     [Fact]
     public async Task List_ShowsThePaymentWithItsMoney_AndNoPersonalDataOfThePayerOrTheSupplier()
@@ -123,7 +119,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
 
         Assert.Equal(0, refunded.GetProperty("totalCount").GetInt32());
         Assert.Equal(1, paidOnes.GetProperty("totalCount").GetInt32());
-        // A status that is not one leaves the filter off, it does not fail and does not filter by nothing.
         Assert.Equal(1, unknown.GetProperty("totalCount").GetInt32());
         Assert.Equal(1, numeric.GetProperty("totalCount").GetInt32());
     }
@@ -143,8 +138,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
         Assert.InRange(page.GetProperty("pageSize").GetInt32(), 1, 100);
     }
 
-    // ─── The detail and the refund ───
-
     private static string RefundUrl(Guid paymentId) => $"/api/admin/service-payments/{paymentId}/refund";
 
     [Fact]
@@ -163,7 +156,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
         Assert.Equal(1, refund.GetProperty("sequence").GetInt32());
         Assert.Equal("Admin", refund.GetProperty("origin").GetString());
         Assert.Equal("Servizio non completato", refund.GetProperty("reason").GetString());
-        // 10 % of 15 euro: the commission goes back with the refund, in proportion.
         Assert.Equal(150, refund.GetProperty("commissionRefundedCents").GetInt32());
         Assert.StartsWith("re_", refund.GetProperty("stripeRefundId").GetString(), StringComparison.Ordinal);
 
@@ -194,7 +186,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
         var body = await Json(rest);
         Assert.Equal(5_000, body.GetProperty("amountCents").GetInt32());
         Assert.Equal(2, body.GetProperty("sequence").GetInt32());
-        // 600 in all, 100 went back with the first refund: the rest brings the commission to the total.
         Assert.Equal(500, body.GetProperty("commissionRefundedCents").GetInt32());
         Assert.Equal(ServicePaymentStatus.Refunded, (await PaymentAsync(paid.PaymentId)).Status);
 
@@ -317,8 +308,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
         Assert.DoesNotContain(factory.Gateway.RefundRequests, r => r.PaymentIntentId == paid.IntentId);
     }
 
-    // ─── The commission of a supplier ───
-
     private static string CommissionUrl(Guid orgId) => $"/api/admin/suppliers/{orgId}/commission";
 
     [Fact]
@@ -354,7 +343,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
         Assert.Equal(5m, body.GetProperty("effectivePercent").GetDecimal());
         Assert.Equal(10m, body.GetProperty("platformPercent").GetDecimal());
 
-        // A payment created afterwards is charged the override, and keeps it.
         var requested = await RequestedAsync(world);
         var payment = await PaymentAsync(requested.PaymentId);
         Assert.Equal(5m, payment.CommissionPercent);
@@ -419,7 +407,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
         Assert.Equal(HttpStatusCode.UnprocessableEntity, untilInThePast.StatusCode);
         Assert.Equal("supplier_commission_until_invalid", (await Json(untilInThePast)).GetProperty("code").GetString());
         Assert.Equal(HttpStatusCode.UnprocessableEntity, untilWithoutPercent.StatusCode);
-        // Nothing was saved by the three calls.
         var current = await Json(await admin.GetAsync(CommissionUrl(world.SupplierOrgId)));
         Assert.Equal(JsonValueKind.Null, current.GetProperty("overridePercent").ValueKind);
     }
@@ -436,8 +423,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
         Assert.Equal(HttpStatusCode.NotFound, put.StatusCode);
         Assert.Equal("supplier_not_found", (await Json(get)).GetProperty("code").GetString());
     }
-
-    // ─── The export of the month ───
 
     [Fact]
     public async Task Export_IsACsvWithAByteOrderMark_WithOneLineForEachPaymentAndRefundOfTheMonth()
@@ -465,7 +450,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
         Assert.Equal(CommissionExportCsv.Columns.Count, paymentLine.Length);
         Assert.Equal(new[] { "6000", "10", "600", string.Empty, "5400" }, paymentLine[10..]);
         Assert.Equal(paid.World.SupplierOrgId.ToString("D"), paymentLine[4]);
-        // The refund: negative amounts, the part of the commission that went back with it.
         var refundLine = Assert.Single(lines, l => l.StartsWith("refund,", StringComparison.Ordinal) && l.Contains(paid.PaymentId.ToString("D"), StringComparison.Ordinal)).Split(",");
         Assert.Equal(new[] { "-1500", "10", "-150", string.Empty, "-1350" }, refundLine[10..]);
     }
@@ -521,8 +505,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
         Assert.Equal(string.Join(",", CommissionExportCsv.Columns) + "\r\n", Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3));
     }
 
-    // ─── Helpers ───
-
     private sealed record RequestedPayment(ServiceRequestWorld World, Guid RequestId, Guid PaymentId);
 
     private sealed record PaidPayment(ServiceRequestWorld World, Guid RequestId, Guid PaymentId, string IntentId);
@@ -540,7 +522,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
         return world;
     }
 
-    /// <summary>A payment asked for: the request was taken and completed inside CasaZen (60 euro) and the link was emailed to the host.</summary>
     private async Task<RequestedPayment> RequestedAsync(ServiceRequestWorld? existing = null)
     {
         var world = existing ?? await ReadyWorldAsync();
@@ -554,7 +535,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
         return new RequestedPayment(world, id, payment.Id);
     }
 
-    /// <summary>A payment paid: the payer opened the session, the PaymentIntent succeeded and the webhook was applied.</summary>
     private async Task<PaidPayment> PaidAsync()
     {
         var requested = await RequestedAsync();
@@ -605,7 +585,6 @@ public class AdminSupplierPaymentsIntegrationTests(ServicePaymentsFactory factor
         await db.SaveChangesAsync();
     }
 
-    /// <summary>The answer describes money and names suppliers: it is private and never stored.</summary>
     private static void AssertNeverCached(HttpResponseMessage response)
     {
         Assert.True(response.Headers.CacheControl?.NoStore, "Cache-Control must say no-store");

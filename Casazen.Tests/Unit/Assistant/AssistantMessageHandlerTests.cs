@@ -18,10 +18,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>
-/// E05/F05/US02/T01 (NF-67): a message of a guest, of a channel or of a direct booking, sends the assistant to work in a job of its own, only behind the flag and the switch of the
-/// organization, once; and the job runs only behind the flag, under the org of the event.
-/// </summary>
 public sealed class AssistantMessageHandlerTests : IDisposable
 {
     private readonly Casazen.Infrastructure.Data.AppDbContext _db = AssistantTestKit.NewDb();
@@ -56,7 +52,6 @@ public sealed class AssistantMessageHandlerTests : IDisposable
     {
         var message = Received(GuestMessageReceivedPayload.OtaSource, MessageThreadKey.ForOta(Guid.NewGuid()));
 
-        // The organization never switched its assistant on: its messages are not looked at, and no row is written for them.
         await Handler().HandleAsync(message.Event, CancellationToken.None);
 
         await SwitchOnAsync();

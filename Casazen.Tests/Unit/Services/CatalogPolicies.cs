@@ -35,7 +35,6 @@ internal static class CatalogPolicies
         int partialRefundHours,
         decimal partialRefundPercent) => new()
         {
-            // Unique per instance (UIX_CancellationPolicies_Slug), at most 49 characters (the column holds 50).
             Slug = $"{slug}-{Guid.NewGuid():N}",
             Name = name,
             Description = $"Test copy of the catalog policy {name}.",

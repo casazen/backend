@@ -6,10 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Contracts;
 
-/// <summary>
-/// E29/F02/US01/T02 (NF-129, acceptance criterion 4): the request that creates a property accepts the «Numero identificativo LEAR / NO-LEAR» of the Ticino police portal with the
-/// same validation and normalisation as the update, so the structure number is entered when the property is made and not only when the file turns out to lack it.
-/// </summary>
 public class CreatePropertyRequestTicinoTests
 {
     private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web)
@@ -33,7 +29,6 @@ public class CreatePropertyRequestTicinoTests
         return results;
     }
 
-    /// <summary>Creating a property with a structure number stores it normalised: spaces gone, uppercase; blank is none; left out is none.</summary>
     [Theory]
     [InlineData(" nl-12345678 ", "NL-12345678")]
     [InlineData("xna9999", "XNA9999")]
@@ -60,7 +55,6 @@ public class CreatePropertyRequestTicinoTests
         Assert.Null(request.ToProperty("auth0|owner").TicinoStructureId);
     }
 
-    /// <summary>The same decision as the update: a value that is not 3 to 20 letters and digits with single hyphens is refused with the message key of the update.</summary>
     [Theory]
     [InlineData("not valid!")]
     [InlineData("NL--123")]
@@ -79,7 +73,6 @@ public class CreatePropertyRequestTicinoTests
         Assert.Equal(updated.Select(r => r.ErrorMessage), created.Select(r => r.ErrorMessage));
     }
 
-    /// <summary>A value too long for the column is refused as well, before it can be cut.</summary>
     [Fact]
     public void Validation_ANumberOver40Characters_IsRefused()
     {

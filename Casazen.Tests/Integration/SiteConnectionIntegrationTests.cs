@@ -68,7 +68,6 @@ public class SiteConnectionIntegrationTests(CasazenWebApplicationFactory flagsOf
         Assert.Equal(HttpStatusCode.Unauthorized, (await DisconnectAsync(credential)).StatusCode);
         Assert.Empty((await admin.GetFromJsonAsync<JsonElement>($"/api/orgs/{orgId}/site-connections")).EnumerateArray());
 
-        // AC 5: the database holds the hashes only.
         using var scope = flagsOn.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var codes = await db.SiteConnectionCodes.IgnoreQueryFilters().AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync();
@@ -142,7 +141,6 @@ public class SiteConnectionIntegrationTests(CasazenWebApplicationFactory flagsOf
         Assert.Equal(HttpStatusCode.Unauthorized, (await plugin.GetAsync($"/api/orgs/{orgId}/site-connections")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await plugin.GetAsync($"/api/orgs/{orgId}/domain")).StatusCode);
 
-        // Neither call touched the connection: the credential still opens the plugin's API.
         Assert.Equal(HttpStatusCode.NoContent, (await DisconnectAsync(credential)).StatusCode);
     }
 
@@ -156,7 +154,6 @@ public class SiteConnectionIntegrationTests(CasazenWebApplicationFactory flagsOf
         var (credentialB, connectionB) = await ConnectAsync(adminB, orgB, site);
         using var adminOfB = flagsOn.CreateAuthenticatedClient(adminB, "PropertyOwner");
 
-        // B's administrator neither lists nor revokes A's connection: by A's id (403) or by its own (404 site_connection_not_found).
         Assert.Equal(HttpStatusCode.Forbidden, (await adminOfB.GetAsync($"/api/orgs/{orgA}/site-connections")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await adminOfB.DeleteAsync($"/api/orgs/{orgA}/site-connections/{connectionA}")).StatusCode);
         var notFound = await adminOfB.DeleteAsync($"/api/orgs/{orgB}/site-connections/{connectionA}");
@@ -165,7 +162,6 @@ public class SiteConnectionIntegrationTests(CasazenWebApplicationFactory flagsOf
             SiteConnectionErrorCodes.NotFound,
             JsonDocument.Parse(await notFound.Content.ReadAsStringAsync()).RootElement.GetProperty("code").GetString());
 
-        // A's credential disconnects A only, whatever org the request names: B's connection of the same address stays listed and working.
         Assert.Equal(HttpStatusCode.NoContent, (await DisconnectAsync(credentialA, $"?orgId={orgB}")).StatusCode);
         var listedForB = await adminOfB.GetFromJsonAsync<JsonElement>($"/api/orgs/{orgB}/site-connections");
         Assert.Equal(connectionB, Assert.Single(listedForB.EnumerateArray()).GetProperty("id").GetGuid());
@@ -269,8 +265,6 @@ public class SiteConnectionIntegrationTests(CasazenWebApplicationFactory flagsOf
         Assert.Equal(0, await db.SiteConnectionCodes.IgnoreQueryFilters().CountAsync(c => c.OrgId == org.Id));
     }
 
-    // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
-
     private static async Task<(Guid OrgId, string AdminId)> SeedAgencyAsync(CasazenWebApplicationFactory factory)
     {
         var adminId = $"auth0|site-connect-{Guid.NewGuid():N}";
@@ -350,7 +344,6 @@ public class SiteConnectionIntegrationTests(CasazenWebApplicationFactory flagsOf
         return $"198.19.{n / 250}.{(n % 250) + 1}";
     }
 
-    /// <summary>The integration host with <c>SiteEmbed</c> on and client addresses from <see cref="TestPeerIpStartupFilter"/>; the limits of production.</summary>
     public sealed class ConnectFactory : CasazenWebApplicationFactory
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)

@@ -46,7 +46,6 @@ public class ConcordatoFacileCheckoutServiceTests
                 Respond(method, path, options));
     }
 
-    /// <summary>Stripe: a POST opens a new session, a GET reads one the test has set up or answers resource_missing.</summary>
     private Task<Session> Respond(HttpMethod method, string path, Stripe.BaseOptions? options)
     {
         _requests.Add((method, path, options));
@@ -68,8 +67,6 @@ public class ConcordatoFacileCheckoutServiceTests
                 new Stripe.StripeError { Type = "invalid_request_error", Code = "resource_missing" },
                 "No such checkout.session"));
     }
-
-    // ─── The PaymentIntent carries the metadata the webhook reads ────────────────
 
     /// <summary>
     /// Stripe does not copy the metadata of a Checkout Session onto its PaymentIntent, and the webhook finds the purchase from the
@@ -94,15 +91,12 @@ public class ConcordatoFacileCheckoutServiceTests
         Assert.Equal(OrgId.ToString(), intentMetadata["orgId"]);
         Assert.Equal(UserId, intentMetadata["userId"]);
         Assert.False(intentMetadata.ContainsKey("kind"));
-        // The session keeps its own copy.
         Assert.Equal(LeaseId.ToString(), options.Metadata["leaseId"]);
         Assert.Equal(OrgId.ToString(), options.Metadata["orgId"]);
         Assert.False(options.Metadata.ContainsKey("kind"));
 
-        // One payment, with the price of the configuration.
         Assert.Equal("payment", options.Mode);
         Assert.Equal(PriceId, Assert.Single(options.LineItems).Price);
-        // CF-END: the person comes back to the page of the guided route, whose address names nobody (not the old one that named the supplier).
         Assert.Equal($"https://app.casazen.it/app/long-rent/leases/{LeaseId}/guided-contract?checkout=success", options.SuccessUrl);
         Assert.Equal($"https://app.casazen.it/app/long-rent/leases/{LeaseId}/guided-contract?checkout=cancelled", options.CancelUrl);
         var purchase = await Db().ConcordatoFacilePurchases.SingleAsync();
@@ -110,8 +104,6 @@ public class ConcordatoFacileCheckoutServiceTests
         Assert.Equal(NewSessionId, purchase.StripeCheckoutSessionId);
         Assert.Equal(11_900, purchase.AmountCents);
     }
-
-    // ─── No second payment ───────────────────────────────────────────────────────
 
     [Fact]
     public async Task CreateCheckout_LeaseAlreadyPaid_Is409_AndStripeIsNotCalled()
@@ -149,10 +141,6 @@ public class ConcordatoFacileCheckoutServiceTests
         Assert.Empty(_requests);
     }
 
-    /// <summary>
-    /// The customer paid and the webhook has not arrived (or never will): the purchase is completed from the paid session, no new
-    /// session is opened, and the answer is the 409 of an access already bought.
-    /// </summary>
     [Fact]
     public async Task CreateCheckout_SessionPaidAndWebhookMissing_CompletesThePurchase_AndOpensNoNewSession()
     {
@@ -178,7 +166,6 @@ public class ConcordatoFacileCheckoutServiceTests
         Assert.Equal("pi_paid", purchase.StripePaymentIntentId);
     }
 
-    /// <summary>A payment still in flight (delayed payment method) is not a reason to open a second session either.</summary>
     [Fact]
     public async Task CreateCheckout_SessionCompleteButNotPaidYet_OpensNoNewSession_AndLeavesThePurchasePending()
     {
@@ -209,7 +196,6 @@ public class ConcordatoFacileCheckoutServiceTests
         Assert.Single(await Db().ConcordatoFacilePurchases.ToListAsync());
     }
 
-    /// <summary>An expired session, or one Stripe no longer knows, closes its purchase: a lease is left with one pending row, not two.</summary>
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -231,8 +217,6 @@ public class ConcordatoFacileCheckoutServiceTests
         Assert.Equal(ConcordatoFacilePurchaseStatus.Pending, Assert.Single(purchases, p => p.StripeCheckoutSessionId == NewSessionId).Status);
     }
 
-    // ─── Only a lease of the caller's org ────────────────────────────────────────
-
     [Fact]
     public async Task CreateCheckout_LeaseOfAnotherOrgOrMissing_Is404_AndStripeIsNotCalled()
     {
@@ -247,8 +231,6 @@ public class ConcordatoFacileCheckoutServiceTests
         Assert.Empty(await Db().ConcordatoFacilePurchases.ToListAsync());
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────────
-
     private ConcordatoFacileCheckoutService Service() => new(
         Db(),
         Options.Create(new ConcordatoFacileOptions
@@ -260,7 +242,6 @@ public class ConcordatoFacileCheckoutServiceTests
         NullLogger<ConcordatoFacileCheckoutService>.Instance,
         _client.Object);
 
-    /// <summary>A context over the store of this test: the service, the seeds and the assertions each use their own.</summary>
     private AppDbContext Db() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).Options);
 

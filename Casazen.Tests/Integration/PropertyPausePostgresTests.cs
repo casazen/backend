@@ -106,7 +106,6 @@ public class PropertyPausePostgresTests : IClassFixture<CasazenWebApplicationFac
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        // Test assertion outside any request: no tenant context, read the row as stored.
         return await db.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == propertyId);
     }
 

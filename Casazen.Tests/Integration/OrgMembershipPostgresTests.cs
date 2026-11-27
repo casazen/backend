@@ -44,8 +44,6 @@ public class OrgMembershipPostgresTests : IAsyncLifetime
     private static OrgMembershipService NewService(AppDbContext db, Mock<IUserAuthorizationCache>? cache = null) =>
         new(db, (cache ?? new Mock<IUserAuthorizationCache>()).Object, NullLogger<OrgMembershipService>.Instance, new FixedTimeProvider(Now));
 
-    // ─── Keys and filters ───────────────────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task UniqueIndex_TheSameUserInTwoOrgs_IsRejectedByTheDatabase()
     {
@@ -114,7 +112,6 @@ public class OrgMembershipPostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task CallerTenantQuery_FilterOnAndNoTenantYet_ReadsTheMembersStatus()
     {
-        // The request tenant resolves with the filter on and no org yet: the status of the member must still be read.
         var (orgA, orgB, _) = await SeedTwoOrgsAndAUserAsync();
         var active = await SeedUserAsync(orgA);
         var deactivated = await SeedUserAsync(orgA);
@@ -232,8 +229,6 @@ public class OrgMembershipPostgresTests : IAsyncLifetime
         cache.Verify(c => c.Invalidate(person), Times.Once);
     }
 
-    // ─── Reconcile ──────────────────────────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task ReconcileAsync_TwoRunsAtOnce_CreateEachOwnerOnceWithoutError()
     {
@@ -292,8 +287,6 @@ public class OrgMembershipPostgresTests : IAsyncLifetime
         await using var after = NewContext();
         Assert.Equal([owner], await after.OrgMembers.IgnoreQueryFilters().Select(m => m.UserId).ToListAsync());
     }
-
-    // ─── Data ───────────────────────────────────────────────────────────────────────────────────────────
 
     private async Task<(Guid OrgA, Guid OrgB, string User)> SeedTwoOrgsAndAUserAsync()
     {

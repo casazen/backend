@@ -5,12 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// E07/F06/US01/T01 (NF-95, AC-NF95-8, Q1-29): the unfinished marketing module is behind <c>Features:CrmMarketing</c>, off by default. Off,
-/// every endpoint of the CRM and of the campaigns answers 404 like a route that does not exist, before authentication, so nothing of it can be
-/// reached; the flag is exposed to the frontend by <c>GET /api/public/features</c>. The public consent, confirmation and unsubscribe endpoints are
-/// <b>not</b> behind it: a link already sent keeps working whatever the flag says.
-/// </summary>
 public class CrmMarketingFeatureFlagTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
 {
     /// <summary>

@@ -30,22 +30,13 @@ using World = Casazen.Tests.Unit.Services.ComplianceStatusServiceTests.World;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The archive of the proofs, the log of what was sent and the coverage report (E03/F02/US03/T01, NF-47, NF-52, CHK-08, CHK-12). One proof for
-/// each rule that costs if it fails: what a caller may see and download (data and permission), what the report counts as evidence (data), what an
-/// upload accepts (data) and who may upload a tax proof (permission). The services run on the real context and the real rules of the traffic
-/// light; the storage is an in-memory double that refuses to give a public address.
-/// </summary>
 public sealed class ComplianceArchiveProofTests
 {
     private static readonly byte[] PdfBytes = Encoding.ASCII.GetBytes("%PDF-1.4 TEST PROOF");
 
-    /// <summary>The arrival day of the stays of the tests: 3 days before the clock of the world (2026-11-06).</summary>
     private static readonly DateOnly ArrivalDay = new(2026, 11, 3);
 
     private static DateOnly DayOf(int offsetFromToday) => new DateOnly(2026, 11, 6).AddDays(offsetFromToday);
-
-    // ─── The reach of the caller ────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// PROOF TEST: data and permission rule. A proof of another org, or of a property outside the caller's reach (a collaborator «Solo alcuni»), is
@@ -71,7 +62,6 @@ public sealed class ComplianceArchiveProofTests
         await db.SaveChangesAsync();
         var service = NewService(world, db, storage);
 
-        // The list: the collaborator sees the proof of its property; the whole org sees both of its own, and never the other org's.
         var restricted = await service.ListAsync(world.Restricted, new ComplianceArchiveQuery(), CancellationToken.None);
         Assert.Equal([granted.Id], restricted.Items.Select(i => i.Id));
         Assert.Equal(1, restricted.TotalCount);
@@ -79,13 +69,11 @@ public sealed class ComplianceArchiveProofTests
         Assert.Equal(new[] { granted.Id, hidden.Id }.Order(), orgWide.Items.Select(i => i.Id).Order());
         Assert.DoesNotContain(orgWide.Items, i => i.Id == foreign.Id || i.PropertyId == world.Foreign.Id);
 
-        // Asking for a property outside the reach is a 404, not an empty list that says it exists.
         await Assert.ThrowsAsync<NotFoundException>(
             () => service.ListAsync(world.Restricted, new ComplianceArchiveQuery(PropertyId: world.Hidden.Id), CancellationToken.None));
         await Assert.ThrowsAsync<NotFoundException>(
             () => service.ListAsync(world.OrgWide, new ComplianceArchiveQuery(PropertyId: world.Foreign.Id), CancellationToken.None));
 
-        // The download: the proof of the property it reaches answers a signed address; the others, the same 404 as an id that never existed.
         var download = await service.OpenDownloadAsync(world.Restricted, granted.Id, moneyProofs: true, CancellationToken.None);
         Assert.Null(download.Content);
         Assert.StartsWith("https://storage.example/private/compliance-proofs/", download.SignedUrl!.AbsoluteUri, StringComparison.Ordinal);
@@ -97,7 +85,6 @@ public sealed class ComplianceArchiveProofTests
             Assert.Equal(ComplianceArchiveErrorCodes.ProofNotFound, refused.Code);
         }
 
-        // The stay: its proofs and its log for the reach that has it; the hidden stay and the other org's are a 404.
         var stay = await service.GetBookingComplianceAsync(world.Restricted, grantedStay.Id, CancellationToken.None);
         Assert.Equal([granted.Id], stay.Proofs.Select(p => p.Id));
         var line = Assert.Single(stay.SendLog);
@@ -108,7 +95,6 @@ public sealed class ComplianceArchiveProofTests
             Assert.Equal(ComplianceArchiveErrorCodes.BookingNotFound, refused.Code);
         }
 
-        // The export of the period holds only what the caller reaches, and opens no other file.
         storage.Opened.Clear();
         await using (var export = await service.ExportAsync(world.Restricted, new ComplianceArchiveExportQuery(ArrivalDay, ArrivalDay), CancellationToken.None))
         {
@@ -120,14 +106,12 @@ public sealed class ComplianceArchiveProofTests
             Assert.DoesNotContain("Casa Bianca", index, StringComparison.Ordinal);
             Assert.DoesNotContain("Villa Altrove", index, StringComparison.Ordinal);
 
-            // And so does the coverage of the pack: the stay of the property the caller reaches, never the others.
             var coverage = ReadEntry(zip, ComplianceArchiveDocuments.CoverageFileName);
             Assert.Contains("Trullo", coverage, StringComparison.Ordinal);
             Assert.DoesNotContain("Casa Bianca", coverage, StringComparison.Ordinal);
             Assert.DoesNotContain("Villa Altrove", coverage, StringComparison.Ordinal);
         }
 
-        // An upload to a property outside the reach stores nothing.
         await Assert.ThrowsAsync<NotFoundException>(async () =>
         {
             await using var content = new MemoryStream(PdfBytes);
@@ -186,18 +170,14 @@ public sealed class ComplianceArchiveProofTests
         Assert.Null(NameOn(byNameless));
         Assert.Null(NameOn(byChannelManager));
 
-        // Nothing else of the person goes out with the name: the line carries the sender and the day, no id of the person and no e-mail.
         var json = JsonSerializer.Serialize(log);
         Assert.DoesNotContain(member.Id, json, StringComparison.Ordinal);
         Assert.DoesNotContain(member.Email, json, StringComparison.Ordinal);
         Assert.DoesNotContain("Altrove", json, StringComparison.Ordinal);
 
-        // The same through the answer of the endpoint.
         var dto = ComplianceBookingComplianceDto.From(await service.GetBookingComplianceAsync(world.OrgWide, stay.Id, CancellationToken.None));
         Assert.Equal(["Giulia Bianchi"], dto.SendLog.Where(line => line.SentBy is not null).Select(line => line.SentBy));
     }
-
-    // ─── Records of money ───────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// PROOF TEST: money and permission rule (AM-03). The receipt of a tourist tax declaration or payment is a record of money: for a caller who may
@@ -216,14 +196,12 @@ public sealed class ComplianceArchiveProofTests
         var payment = await AddProofAsync(world, world.Org.Id, world.Granted.Id, ManualProofKind.TouristTaxPayment, new DateOnly(2026, 10, 1), storage);
         var hiddenPayment = await AddProofAsync(world, world.Org.Id, world.Hidden.Id, ManualProofKind.TouristTaxPayment, new DateOnly(2026, 10, 1), storage);
 
-        // A tax receipt that carries the arrival day of a stay (it is filed under the first day of a month, so a stay arriving on it meets it).
         var (stay, _) = await world.AddStayAsync(world.Granted, checkInOffset: -3);
         var onArrivalDay = await AddProofAsync(world, world.Org.Id, world.Granted.Id, ManualProofKind.TouristTaxPayment, ArrivalDay, storage);
         await using var db = world.Db();
         var service = NewService(world, db, storage);
         var period = new DateOnly(2026, 10, 1);
 
-        // The list and its total: without money only the kinds that are not money, whatever kind is asked, for the collaborator's reach as for the org's.
         foreach (var scope in new[] { world.OrgWide, world.Restricted })
         {
             var withoutMoney = await service.ListAsync(scope, new ComplianceArchiveQuery(), CancellationToken.None);
@@ -251,11 +229,9 @@ public sealed class ComplianceArchiveProofTests
             ComplianceArchiveRules.MoneyKinds.Order(),
             orgWithMoney.Items.Select(i => i.Kind).Where(ComplianceArchiveRules.IsMoneyKind).Distinct().Order());
 
-        // The same cut by the kinds the enum has: what is not a record of money is listed, what is, is not (a kind added later is decided by the rule).
         var seenWithout = orgWithoutMoney.Items.Select(i => i.Kind).Distinct().Order().ToList();
         Assert.Equal(Enum.GetValues<ManualProofKind>().Where(k => !ComplianceArchiveRules.IsMoneyKind(k)).Order(), seenWithout);
 
-        // The download: a record of money is the 404 of a proof that does not exist (same code), nothing is signed and no file is opened; with money it is signed.
         var unknown = await Assert.ThrowsAsync<NotFoundException>(
             () => service.OpenDownloadAsync(world.OrgWide, Guid.NewGuid(), moneyProofs: false, CancellationToken.None));
         foreach (var record in new[] { declaration, payment, onArrivalDay })
@@ -276,10 +252,8 @@ public sealed class ComplianceArchiveProofTests
 
         Assert.Equal([declaration.FileKey, payment.FileKey], storage.Signed);
 
-        // A receipt that is not money downloads without it.
         Assert.NotNull((await service.OpenDownloadAsync(world.Restricted, alloggiati.Id, moneyProofs: false, CancellationToken.None)).SignedUrl);
 
-        // The ZIP, its index and its count: the files of the money kinds are neither opened nor counted nor named.
         storage.Opened.Clear();
         await using (var plain = await service.ExportAsync(world.OrgWide, new ComplianceArchiveExportQuery(period, new DateOnly(2026, 11, 30)), CancellationToken.None))
         {
@@ -306,8 +280,6 @@ public sealed class ComplianceArchiveProofTests
             Assert.Equal(3, index.Count(line => line.StartsWith("Ricevuta del pagamento dell'imposta di soggiorno", StringComparison.Ordinal)));
         }
 
-        // The limit counts what the caller may take: the two proofs that are not money fit a limit of two, and with money the same period has six
-        // and the whole export is refused.
         world.Options.Archive.ExportMaxFiles = 2;
         await using (var fits = await NewService(world, db, storage).ExportAsync(
                          world.OrgWide, new ComplianceArchiveExportQuery(period, new DateOnly(2026, 11, 30)), CancellationToken.None))
@@ -326,8 +298,6 @@ public sealed class ComplianceArchiveProofTests
         Assert.DoesNotContain(ofStay.Proofs, p => p.Id == onArrivalDay.Id);
     }
 
-    // ─── The report ─────────────────────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// PROOF TEST: data rule. A stay whose guests were entrusted to Octorate and for which CasaZen holds no proof is «external verification required»
     /// (source Octorate, handoff topic, nothing inferred) and is not evidence: the report is incomplete however many handoffs the host made. A stay
@@ -342,20 +312,17 @@ public sealed class ComplianceArchiveProofTests
         world.Senders[world.Granted.Id] = ComplianceSenderType.ChannelManager;
         var storage = new MemoryStorage();
 
-        // Granted: a stay entrusted to the channel manager today (Octorate holds the outcome), one with nothing, a no-show.
         var (entrusted, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0, nights: 3, guests: 2);
         await world.EntrustAsync(entrusted, positions: [0, 1]);
         var (nothing, _) = await world.AddStayAsync(world.Granted, checkInOffset: -4, nights: 2);
         var (noShow, _) = await world.AddStayAsync(world.Granted, checkInOffset: -5, nights: 2, noShow: true);
 
-        // Hidden: a stay with the receipt uploaded for its arrival day, and one from 120 days ago (past the 90 days of the cockpit) with its receipt too.
         var (proven, _) = await world.AddStayAsync(world.Hidden, checkInOffset: -2);
         await AddProofAsync(world, world.Org.Id, world.Hidden.Id, ManualProofKind.AlloggiatiReceipt, DayOf(-2), storage);
         var (old, _) = await world.AddStayAsync(world.Hidden, checkInOffset: -120);
         await AddProofAsync(world, world.Org.Id, world.Hidden.Id, ManualProofKind.AlloggiatiReceipt, DayOf(-120), storage);
         var (hiddenNoShow, _) = await world.AddStayAsync(world.Hidden, checkInOffset: -6, noShow: true);
 
-        // The host starts the handoff and comes back: a line of the activity log, and not a proof.
         await using var db = world.Db();
         db.OrgActivityEntries.Add(new OrgActivityEntry
         {
@@ -393,19 +360,16 @@ public sealed class ComplianceArchiveProofTests
             Assert.Equal((ComplianceEvidenceClass.NotApplicable, ComplianceReportReasons.NoShow), (row.EvidenceClass, row.Reason));
         }
 
-        // Incomplete, and counted: one proof of Octorate does not exist, and the handoff changed nothing.
         Assert.False(report.Complete);
         Assert.Equal(new ComplianceCoverageCounts(2, 1, 1, 2), report.Counts);
         Assert.Equal(ComplianceItemKind.Alloggiati, Assert.Single(report.Rows.Select(r => r.Kind).Distinct()));
 
-        // The cockpit stops at its lookback; the report reaches beyond it. No guest is named: the rows are codes and days.
         var cockpit = await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None);
         Assert.DoesNotContain(cockpit.Items, i => i.BookingId == old.Id);
         var json = JsonSerializer.Serialize(report);
         Assert.DoesNotContain("Verdi", json, StringComparison.Ordinal);
         Assert.DoesNotContain("Anna", json, StringComparison.Ordinal);
 
-        // Without the Octorate-only stay the report of the other property is complete: the no-show owes nothing, the rest is proven.
         var hiddenReport = await service.GetCoverageReportAsync(world.OrgWide, query with { PropertyId = world.Hidden.Id }, CancellationToken.None);
         Assert.True(hiddenReport.Complete);
         Assert.Equal(new ComplianceCoverageCounts(2, 0, 0, 1), hiddenReport.Counts);
@@ -419,7 +383,6 @@ public sealed class ComplianceArchiveProofTests
         Assert.DoesNotContain("Verdi", csvText, StringComparison.Ordinal);
         Assert.Equal("text/csv", csv.ContentType);
 
-        // The ZIP of the proofs carries the same coverage with the traffic light on: the row held only by Octorate says to check it there, and is no file.
         await using (var pack = await service.ExportAsync(world.OrgWide, new ComplianceArchiveExportQuery(query.From, query.To), CancellationToken.None))
         {
             using var zip = new ZipArchive(pack.Content, ZipArchiveMode.Read);
@@ -469,10 +432,8 @@ public sealed class ComplianceArchiveProofTests
         Assert.Contains(report.Items, i => i.BookingId == old.Id);
         Assert.All(report.Items, i => Assert.Contains(i.Kind, new[] { ComplianceItemKind.Alloggiati, ComplianceItemKind.Istat, ComplianceItemKind.TouristTax }));
 
-        // The month of the old stay (2026-07-29) lies wholly inside the window and is over: its tourist tax is looked at.
         Assert.Contains(report.Items, i => i.Kind == ComplianceItemKind.TouristTax && i.Period == "2026-07");
 
-        // Only the property asked for.
         var onlyGranted = await world.StatusService(db).EvaluateAsync(world.OrgWide, window with { PropertyId = world.Granted.Id }, CancellationToken.None);
         Assert.All(onlyGranted.Items, i => Assert.Equal(world.Granted.Id, i.PropertyId));
 
@@ -490,7 +451,6 @@ public sealed class ComplianceArchiveProofTests
         Assert.Contains(afterReport.Items, i => i.BookingId == old.Id);
         Assert.DoesNotContain(afterReport.Items, i => i.PropertyId == world.Foreign.Id);
 
-        // The closed months wholly inside the window: a month cut by it is not looked at, and the month in progress is not over.
         Assert.Equal(
             [new DateOnly(2026, 8, 1), new DateOnly(2026, 9, 1), new DateOnly(2026, 10, 1)],
             ComplianceStatusService.ClosedMonthsWithin(new DateOnly(2026, 11, 6), new DateOnly(2026, 7, 29), new DateOnly(2026, 11, 6)));
@@ -514,7 +474,6 @@ public sealed class ComplianceArchiveProofTests
         var world = await World.SeedAsync();
         var now = world.Clock.GetUtcNow().UtcDateTime;
 
-        // The property sends through the channel manager, as the host chose (a stored choice), and has a stay entrusted to Octorate today.
         await using (var seed = world.Db())
         {
             seed.PropertyComplianceSenders.Add(new PropertyComplianceSender
@@ -533,7 +492,6 @@ public sealed class ComplianceArchiveProofTests
         var (entrusted, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0, nights: 3, guests: 2);
         await world.EntrustAsync(entrusted, positions: [0, 1]);
 
-        // And the property is deleted afterwards.
         await using (var edit = world.Db())
         {
             (await edit.Properties.SingleAsync(p => p.Id == world.Granted.Id)).IsDeleted = true;
@@ -543,7 +501,6 @@ public sealed class ComplianceArchiveProofTests
         await using var db = world.Db();
         var store = new PropertySenderStore(db, Mock.Of<IActivityLog>(), Mock.Of<Microsoft.Extensions.Hosting.IHostEnvironment>(), world.Clock);
 
-        // The store: the normal read has forgotten the deleted property, the read of the history has not.
         Assert.Empty(await store.GetManyAsync([world.Granted.Id], CancellationToken.None));
         var history = await store.GetManyForHistoryAsync([world.Granted.Id], CancellationToken.None);
         Assert.Equal(ComplianceSenderType.ChannelManager, history[world.Granted.Id].AlloggiatiSender);
@@ -561,14 +518,6 @@ public sealed class ComplianceArchiveProofTests
         Assert.Equal(new ComplianceCoverageCounts(0, 1, 0, 0), report.Counts);
     }
 
-    // ─── Uploads and exports ────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// PROOF TEST: data rule. An upload is judged on its content, not on its name or the type the client declared: a PDF is stored in the private
-    /// bucket under a key the server made and listed next to the others; something that only wears the name of a PDF is refused (415) with nothing
-    /// stored; a file over the limit is refused as a whole (413); an empty one (422); a day in the future or a kind that does not exist (422). A proof
-    /// about a month is filed under the first day of its month, the day the traffic light looks it up by.
-    /// </summary>
     [Fact]
     public async Task ComplianceArchive_UploadIsJudgedOnItsContent_AndListedWithTheDownloadedReceipts_Test()
     {
@@ -579,7 +528,6 @@ public sealed class ComplianceArchiveProofTests
         var service = NewService(world, db, storage);
         UploadComplianceProofRequest Request(ManualProofKind kind, DateOnly day) => new(world.Granted.Id, kind, day, world.Owner.Id);
 
-        // A PDF about a month, uploaded with any day of it.
         await using (var pdf = new MemoryStream(PdfBytes))
         {
             var entry = await service.UploadProofAsync(world.OrgWide, Request(ManualProofKind.TouristTaxPayment, new DateOnly(2026, 10, 17)), pdf, CancellationToken.None);
@@ -598,14 +546,12 @@ public sealed class ComplianceArchiveProofTests
         Assert.Equal([(StorageBucket.Private, stored.FileKey)], storage.Puts.Select(key => (storage.LastBucket, key)));
         Assert.Equal(stored.Id, Assert.Single((await service.ListAsync(world.OrgWide, new ComplianceArchiveQuery(Kind: ManualProofKind.TouristTaxPayment, MoneyProofs: true), CancellationToken.None)).Items).Id);
 
-        // A day-kind keeps its day; the traffic light finds it by property, kind and day.
         await using (var receipt = new MemoryStream(PdfBytes))
         {
             var entry = await service.UploadProofAsync(world.OrgWide, Request(ManualProofKind.AlloggiatiReceipt, DayOf(-2)), receipt, CancellationToken.None);
             Assert.Equal((DayOf(-2), (string?)null), (entry.Day, entry.Period));
         }
 
-        // Refused: nothing more is stored.
         var puts = storage.Puts.Count;
         var exe = Encoding.ASCII.GetBytes("MZ\u0090 this is an executable named ricevuta.pdf");
         await using (var fake = new MemoryStream(exe))
@@ -649,11 +595,6 @@ public sealed class ComplianceArchiveProofTests
         Assert.Equal(3, await db.ManualComplianceProofs.CountAsync());
     }
 
-    /// <summary>
-    /// The export of the period is a ZIP with every proof and an <c>index.csv</c> (kind, property, day or month, source, received, kept until),
-    /// built on request: nothing is stored. The dates are written with real values (a date format with a time on a date would throw), a proof
-    /// whose file is gone stays in the index and says so, and an export beyond the limit is refused whole.
-    /// </summary>
     [Fact]
     public async Task ComplianceArchive_ExportIsAZipWithTheIndex_NeverStored_Test()
     {
@@ -688,7 +629,6 @@ public sealed class ComplianceArchiveProofTests
 
         Assert.Empty(storage.Puts);
 
-        // With the traffic light on the pack also carries the coverage of the period, and nothing else changes.
         await using (var withCoverage = await NewService(world, db, storage).ExportAsync(
                          world.OrgWide, new ComplianceArchiveExportQuery(new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 30), MoneyProofs: true), CancellationToken.None))
         {
@@ -697,14 +637,11 @@ public sealed class ComplianceArchiveProofTests
             Assert.StartsWith("Obbligo;Immobile;Soggiorno;Arrivo;Periodo;Esito;Origine;", ReadEntry(zip, ComplianceArchiveDocuments.CoverageFileName).TrimStart((char)0xFEFF), StringComparison.Ordinal);
         }
 
-        // Beyond the limit: refused whole, before a file is read.
         world.Options.Archive.ExportMaxFiles = 2;
         var refused = await Assert.ThrowsAsync<DomainRuleException>(
             () => NewService(world, db, storage).ExportAsync(world.OrgWide, new ComplianceArchiveExportQuery(new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 30), MoneyProofs: true), CancellationToken.None));
         Assert.Equal(ComplianceArchiveErrorCodes.ExportTooLarge, refused.Code);
     }
-
-    // ─── Who may upload a tax proof ─────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// PROOF TEST: permission rule. The archive is read with <c>booking.read</c>; the upload asks <c>alloggiati.submit</c>, and the receipt of a tax
@@ -787,7 +724,6 @@ public sealed class ComplianceArchiveProofTests
             CancellationToken.None);
         Assert.Equal(StatusCodes.Status201Created, Assert.IsType<ObjectResult>(created).StatusCode);
 
-        // With payment.write the receipt of a payment goes through to the service.
         authorization
             .Setup(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), CasazenPolicies.PaymentWrite))
             .ReturnsAsync(AuthorizationResult.Success());
@@ -801,8 +737,6 @@ public sealed class ComplianceArchiveProofTests
             CancellationToken.None);
         Assert.Equal(StatusCodes.Status201Created, Assert.IsType<ObjectResult>(paid).StatusCode);
     }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────────
 
     private static IEnumerable<string?> PoliciesOf(MemberInfo member) =>
         member.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Select(a => a.Policy);
@@ -873,7 +807,6 @@ public sealed class ComplianceArchiveProofTests
         return reader.ReadToEnd();
     }
 
-    /// <summary>An in-memory private bucket. It refuses to give a public address: a proof must never have one.</summary>
     private sealed class MemoryStorage : IFileStorage
     {
         private readonly Dictionary<string, byte[]> _files = [];
@@ -884,7 +817,6 @@ public sealed class ComplianceArchiveProofTests
 
         public List<string> Opened { get; } = [];
 
-        /// <summary>The keys a signed address was made for.</summary>
         public List<string> Signed { get; } = [];
 
         public StorageBucket LastBucket { get; private set; }

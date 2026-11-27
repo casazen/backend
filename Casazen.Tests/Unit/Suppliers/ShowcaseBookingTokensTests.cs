@@ -3,10 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-10: the token of the link that checks the customer's e-mail (256 random bits, only its SHA-256 stored, compared in constant
-/// time) and the comparison of the customer's address after it was decrypted.
-/// </summary>
 public class ShowcaseBookingTokensTests
 {
     [Fact]

@@ -19,7 +19,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class AlloggiatiWebServiceTests
 {
-    // 10 Oct 2026 is in summer time (CEST, UTC+2); 10 Dec 2026 in winter time (CET, UTC+1).
     private static readonly DateTime CheckIn = Utc(2026, 10, 10);
     private static readonly DateTime CheckOut = Utc(2026, 10, 13);
     private static readonly DateTime RomeMidnightOfCheckIn = Utc(2026, 10, 9, 22);
@@ -46,8 +45,8 @@ public class AlloggiatiWebServiceTests
     }
 
     [Theory]
-    [InlineData(2026, 10, 9, 21, 59, AlloggiatiProcessOutcome.NotYetDue)] // 23:59 in Rome on 9 Oct (CEST)
-    [InlineData(2026, 10, 9, 22, 0, AlloggiatiProcessOutcome.MarkedForManualSubmission)] // 00:00 in Rome on 10 Oct
+    [InlineData(2026, 10, 9, 21, 59, AlloggiatiProcessOutcome.NotYetDue)]
+    [InlineData(2026, 10, 9, 22, 0, AlloggiatiProcessOutcome.MarkedForManualSubmission)]
     public async Task ProcessScheduledReport_AroundRomeMidnight_UsesTheArrivalDayInEuropeRome(
         int year, int month, int day, int hour, int minute, AlloggiatiProcessOutcome expected)
     {
@@ -129,8 +128,8 @@ public class AlloggiatiWebServiceTests
     }
 
     [Theory]
-    [InlineData(2026, 10, 10, 2026, 10, 9, 22)] // CEST: 00:00 in Rome = 22:00 UTC of the day before
-    [InlineData(2026, 12, 10, 2026, 12, 9, 23)] // CET: 00:00 in Rome = 23:00 UTC of the day before
+    [InlineData(2026, 10, 10, 2026, 10, 9, 22)]
+    [InlineData(2026, 12, 10, 2026, 12, 9, 23)]
     public async Task ReserveReport_GuestSubmitsDaysBefore_SchedulesAtRomeMidnightOfArrivalDay(
         int checkInYear, int checkInMonth, int checkInDay, int runYear, int runMonth, int runDay, int runHour)
     {
@@ -148,7 +147,7 @@ public class AlloggiatiWebServiceTests
         var report = await db.AlloggiatiWebReports.SingleAsync();
         Assert.Equal(AlloggiatiWebStatus.DaInviare, report.Status);
         Assert.Equal(report.Id, reservation.ReportId);
-        Assert.Equal(booking.OrgId, report.OrgId); // TN-2: the report belongs to its booking's org
+        Assert.Equal(booking.OrgId, report.OrgId);
         Assert.Null(report.ReportedAt);
     }
 
@@ -302,13 +301,13 @@ public class AlloggiatiWebServiceTests
     public async Task GetStatus_ArrivedAtRecorded_DeadlineIs24HoursFromTheRealArrival()
     {
         await using var db = CreateDb();
-        var arrivedAt = Utc(2026, 10, 10, 21); // 23:00 in Rome
+        var arrivedAt = Utc(2026, 10, 10, 21);
         var booking = await SeedBookingAsync(db, arrivedAt: arrivedAt);
 
         var status = await CreateService(db, Utc(2026, 10, 11, 1)).GetStatusAsync(booking.Id);
 
         Assert.Equal(arrivedAt.AddHours(24), status.DeadlineAt);
-        Assert.False(status.IsOverdue); // 03:00 in Rome the next day: still in time (A5-37)
+        Assert.False(status.IsOverdue);
     }
 
     [Theory]
@@ -370,8 +369,6 @@ public class AlloggiatiWebServiceTests
     [InlineData(AlloggiatiWebStatus.Errore)]
     public async Task GetStatus_NoShowPastTheLegalTerm_IsNotDueNeverToSendManuallyNorOverdue(AlloggiatiWebStatus? stored)
     {
-        // NF-45: the guests never came. Whatever the report says (none, waiting, already marked "to send manually" by the job before the host
-        // marked the no-show, or failed), the status and the guest summary read "not due", and a stay past its term is not overdue.
         await using var db = CreateDb();
         var booking = await SeedBookingAsync(db);
         if (stored is { } status)
@@ -393,7 +390,6 @@ public class AlloggiatiWebServiceTests
     [Fact]
     public async Task GetStatus_NoShowWhoseCommunicationWasDeclaredSent_StillReadsSent()
     {
-        // A communication sent or declared sent is never hidden by the no-show mark.
         await using var db = CreateDb();
         var booking = await SeedBookingAsync(db);
         await AddReportAsync(db, booking, AlloggiatiWebStatus.InviatoManualmente, reportedAt: CheckIn);
@@ -484,11 +480,6 @@ public class AlloggiatiWebServiceTests
         Assert.Equal(AlloggiatiWebService.AlreadySentCode, ex.Code);
     }
 
-    /// <summary>
-    /// NF-47, AC-NF47-2 (E03/F02/US03/T01): the host's declaration that it sent the communication on the portal writes one line of the log of what
-    /// was sent, in the same save as the declaration: sender «Manual», the day it declared, the person, no reference (CasaZen holds no receipt) and no
-    /// guest. A declaration that is refused, or that finds the communication already sent, writes none.
-    /// </summary>
     [Fact]
     public async Task MarkSentManually_WritesOneLineOfTheSendLog_ARefusedDeclarationWritesNone()
     {
@@ -548,7 +539,6 @@ public class AlloggiatiWebServiceTests
         Assert.Equal("Milano", row.DocumentIssuePlace);
         Assert.Empty(row.MissingFields);
         Assert.Null(row.CompositionIssue);
-        // No official table imported: every code is to complete, the data is complete but cannot be exported.
         Assert.Equal(
             new[] { "type", "birthComune", "birthCountry", "citizenship", "documentType", "documentIssuePlace" },
             row.CodesToComplete);
@@ -572,7 +562,6 @@ public class AlloggiatiWebServiceTests
         Assert.Equal(
             new[] { "gender", "dateOfBirth", "bornInItaly", "citizenship", "documentType", "documentNumber", "documentIssuePlace" },
             row.MissingFields);
-        // A head of family needs the lines of the family members.
         Assert.Equal("head_without_members", row.CompositionIssue);
         Assert.False(summary.DataComplete);
         Assert.False(summary.ExportReady);
@@ -617,15 +606,12 @@ public class AlloggiatiWebServiceTests
     [Fact]
     public async Task GuestProgressFrom_CompleteGuestAndCompanionsDeclared_CountsOneCompleteOfThreeDeclared()
     {
-        // Arrange: MO-08, the counts of the app booking detail ("1 ospite completo su 3").
         await using var db = CreateDb();
         var booking = await SeedBookingAsync(db, numberOfGuests: 3);
         var summary = await CreateService(db, CheckIn.AddDays(-1)).GetGuestSummaryAsync(booking.Id);
 
-        // Act
         var progress = AlloggiatiGuestProgressDto.From(summary);
 
-        // Assert: the two companions are declared but not registered yet.
         Assert.Equal(booking.Id, progress.BookingId);
         Assert.Equal(3, progress.DeclaredGuests);
         Assert.Equal(1, progress.RegisteredGuests);
@@ -652,7 +638,6 @@ public class AlloggiatiWebServiceTests
     [Fact]
     public async Task GuestProgressFrom_HeadOfFamilyWithoutMembers_IsNotCountedComplete()
     {
-        // Arrange: every field of the line is there, but a head of family needs the lines of the family members.
         await using var db = CreateDb();
         var booking = await SeedBookingAsync(db, numberOfGuests: 2);
         var line = await db.StayGuests.SingleAsync(g => g.BookingId == booking.Id);
@@ -660,10 +645,8 @@ public class AlloggiatiWebServiceTests
         await db.SaveChangesAsync();
         var summary = await CreateService(db, CheckIn.AddDays(-1)).GetGuestSummaryAsync(booking.Id);
 
-        // Act
         var progress = AlloggiatiGuestProgressDto.From(summary);
 
-        // Assert
         Assert.Empty(Assert.Single(summary.Guests).MissingFields);
         Assert.Equal(1, progress.RegisteredGuests);
         Assert.Equal(0, progress.CompleteGuests);
@@ -695,7 +678,6 @@ public class AlloggiatiWebServiceTests
     [Fact]
     public async Task BuildRecordFile_CompleteStayWithImportedCodes_ReturnsTheLineAndChangesNothing()
     {
-        // Arrange: CO-13. Synthetic code tables (codes starting with 9, 91-95 for the kinds): not official codes.
         await using var db = CreateDb();
         var booking = await SeedBookingAsync(db);
         await SeedSyntheticCodeTablesAsync(db);
@@ -703,10 +685,8 @@ public class AlloggiatiWebServiceTests
         guestLine.DocumentTypeCode = "TSTID";
         await db.SaveChangesAsync();
 
-        // Act
         var file = await CreateService(db, CheckIn.AddDays(-1)).BuildRecordFileAsync(booking.Id);
 
-        // Assert: 168 characters at the official positions, a file name without personal data, nothing stored or sent.
         var text = Encoding.UTF8.GetString(file.Content);
         Assert.Equal(1, file.LineCount);
         Assert.Equal(CheckIn, file.ArrivalDate);
@@ -733,7 +713,6 @@ public class AlloggiatiWebServiceTests
 
         await service.BuildRecordFileAsync(booking.Id);
 
-        // Downloading the file is not sending it: the status stays "to send manually", never sent, no receipt.
         var report = await db.AlloggiatiWebReports.SingleAsync();
         Assert.Equal(AlloggiatiWebStatus.DaInviareManualmente, report.Status);
         Assert.Null(report.ReportedAt);
@@ -922,7 +901,6 @@ public class AlloggiatiWebServiceTests
         db.Bookings.Add(booking);
         if (completeGuest)
         {
-            // CO-12: the stay's guest line, as registered by the guest portal.
             db.StayGuests.Add(new StayGuest
             {
                 BookingId = booking.Id,

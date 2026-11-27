@@ -88,7 +88,6 @@ public class HostBookingEditPostgresTests : IClassFixture<CasazenWebApplicationF
             .Setup(s => s.CreateRefundAsync(It.IsAny<StripeRefundCreateRequest>(), It.IsAny<CancellationToken>()))
             .Returns((StripeRefundCreateRequest request, CancellationToken _) =>
             {
-                // Stripe answers the same refund to the same key.
                 if (made.TryGetValue(request.IdempotencyKey, out var same))
                     return Task.FromResult(same);
 
@@ -116,7 +115,6 @@ public class HostBookingEditPostgresTests : IClassFixture<CasazenWebApplicationF
             Assert.Equal(BookingErrorCodes.SettlementFailed, refused.Code);
         }
 
-        // Stripe made the first refund; the database knows nothing of it and the booking is as it was.
         Assert.Single(made);
         var unchanged = await LoadBookingAsync(seeded.BookingId);
         Assert.Equal((before.TotalPrice, before.NumberOfGuests, before.UpdatedAt), (unchanged.TotalPrice, unchanged.NumberOfGuests, unchanged.UpdatedAt));
@@ -153,7 +151,6 @@ public class HostBookingEditPostgresTests : IClassFixture<CasazenWebApplicationF
     private static HostBookingUpdate Edit(SeededEdit seeded, int guests) =>
         new(seeded.BookingId, seeded.CheckIn, seeded.CheckOut, guests, 0, null, "Arriviamo tardi", null, "auth0|edit-host", CanMoveMoney: true);
 
-    /// <summary>The service over the real database of the scope, the price worked out as <paramref name="total"/> whatever the stay.</summary>
     private HostBookingService Service(AppDbContext db, decimal total)
     {
         var pricing = new Mock<IBookingService>();
@@ -195,7 +192,6 @@ public class HostBookingEditPostgresTests : IClassFixture<CasazenWebApplicationF
 
     private sealed record SeededEdit(Guid BookingId, IReadOnlyList<Guid> PaymentIds, DateTime CheckIn, DateTime CheckOut);
 
-    /// <summary>A confirmed booking of the booking site, 2 guests, paid online with the payments given (PaymentIntent, amount, days ago), in an org with its Connect account.</summary>
     private async Task<SeededEdit> SeedAsync(params (string IntentId, decimal Amount, int DaysAgo)[] payments)
     {
         var account = $"acct_edit_{Guid.NewGuid():N}";

@@ -2,7 +2,6 @@ using Casazen.Core.Features;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>A feature flag reader the test switches on and off (<see cref="IFeatureFlags"/> reads configuration in the application).</summary>
 internal sealed class TestFeatureFlags : IFeatureFlags
 {
     private readonly HashSet<string> _enabled = new(StringComparer.Ordinal);

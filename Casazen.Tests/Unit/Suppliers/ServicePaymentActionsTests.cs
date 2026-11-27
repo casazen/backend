@@ -4,16 +4,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-04e: the rules that tell whether the supplier may ask for the payment of a request, and whether it may record it as received
-/// outside CasaZen, one rule at a time: a set of facts where both are allowed, and each fact turned the wrong way. That these are the
-/// rules of the two endpoints is proved with the real services in <c>SupplierPaymentSummaryTests</c>.
-/// </summary>
 public class ServicePaymentActionsTests
 {
     private static readonly DateTime Now = new(2026, 10, 16, 10, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>A completed request paid inside CasaZen, asked 2 days ago, the supplier ready and able to act: everything allowed.</summary>
     private static ServicePaymentActionFacts Allowed() => new(
         ServiceRequestStatus.Completato,
         ServiceRequestPaymentMode.Online,
@@ -33,8 +27,6 @@ public class ServicePaymentActionsTests
         Assert.True(ServicePaymentActions.CanRequest(Allowed(), Now));
         Assert.True(ServicePaymentActions.CanRecordOffline(Allowed()));
     }
-
-    // ─── Ask for the payment ───
 
     [Fact]
     public void CanRequest_FlagOff_IsFalse_ButOfflineStaysPossible()
@@ -145,8 +137,6 @@ public class ServicePaymentActionsTests
         Assert.True(ServicePaymentActions.CanRequest(Allowed() with { PaymentLastSentAt = null }, Now));
     }
 
-    // ─── Record it as paid outside CasaZen ───
-
     [Fact]
     public void CanRecordOffline_ASupplierThatMayNotAct_IsFalse()
     {
@@ -188,8 +178,6 @@ public class ServicePaymentActionsTests
     [Fact]
     public void CanRecordOffline_DoesNotDependOnTheFlagTheModeTheAccountTheAddressNorTheConfirmation()
     {
-        // What the supplier needs when online payments are not available: a request paid by hand, a supplier with no Stripe account,
-        // a host with no address, an amount nobody confirmed.
         var facts = Allowed() with
         {
             OnlinePaymentsEnabled = false,

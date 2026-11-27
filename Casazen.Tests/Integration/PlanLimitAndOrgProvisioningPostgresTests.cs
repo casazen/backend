@@ -38,7 +38,7 @@ public class PlanLimitAndOrgProvisioningPostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task CreatePropertyWithinLimitAsync_SecondCreateStartsWhileFirstInserts_WaitsAndIsRefused()
     {
-        var orgId = await SeedOrgWithPropertiesAsync(properties: 2); // Starter: one slot left
+        var orgId = await SeedOrgWithPropertiesAsync(properties: 2);
         var firstInsideSlot = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         await using var firstDb = NewContext();
@@ -46,7 +46,6 @@ public class PlanLimitAndOrgProvisioningPostgresTests : IAsyncLifetime
         var first = NewEntitlementService(firstDb).CreatePropertyWithinLimitAsync(orgId, async () =>
         {
             firstInsideSlot.SetResult();
-            // Leave the second request all the time it needs to count while this one has not inserted yet.
             await Task.Delay(TimeSpan.FromMilliseconds(500));
             return await InsertPropertyAsync(firstDb, orgId, "Via Primo 1");
         });
@@ -98,7 +97,6 @@ public class PlanLimitAndOrgProvisioningPostgresTests : IAsyncLifetime
             await using var check = NewContext();
             var user = await check.Users.SingleAsync(u => u.Id == userId);
             Assert.Equal(orgs[0].Id, user.OrgId);
-            // The slug is neutral (A1-23): the org is found by the contact email unique to this test.
             Assert.Equal(1, await check.Orgs.CountAsync(o => o.ContactEmail == email));
         }
         finally
@@ -114,7 +112,6 @@ public class PlanLimitAndOrgProvisioningPostgresTests : IAsyncLifetime
         var userId = await SeedUserAsync();
         var email = $"first.{Guid.NewGuid():N}@example.com";
 
-        // Request A loads the user (no org yet); request B provisions the org in the meantime.
         await using var requestA = NewContext();
         var repositoryA = new UserRepository(requestA);
         var userA = await repositoryA.GetBySubAsync(userId);
@@ -134,7 +131,6 @@ public class PlanLimitAndOrgProvisioningPostgresTests : IAsyncLifetime
         var stored = await check.Users.SingleAsync(u => u.Id == userId);
         Assert.Equal(orgB.Id, stored.OrgId);
         Assert.Equal("Aggiornato", stored.FirstName);
-        // The slug is neutral (A1-23): the org is found by the contact email unique to this test.
         Assert.Equal(1, await check.Orgs.CountAsync(o => o.ContactEmail == email));
     }
 

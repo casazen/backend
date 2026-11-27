@@ -15,15 +15,9 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// A free-looking event of the supplier's feed (<c>TRANSP:TRANSPARENT</c>, every all-day event of Google Calendar) keeps its days or
-/// hours occupied until the supplier answers; the answer is remembered per event (one per series). Today is 13 Oct 2026.
-/// </summary>
 public class SupplierFreeEventSyncTests
 {
     private static readonly TimeProvider Clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 13, 10, 0, 0, TimeSpan.Zero));
-
-    // ─── What stays occupied ─────────────────────────────────────────────────
 
     [Fact]
     public async Task SyncIcalFeedAsync_UnansweredAllDayFreeEvent_ClosesTheDayAndAsksTheSupplier()
@@ -131,7 +125,7 @@ public class SupplierFreeEventSyncTests
         await sync.SyncIcalFeedAsync(orgId);
         Assert.Empty(await ClosedDaysAsync(db));
 
-        feed.Content = Feed(FreeDay("g1", "20261022", "20261023")); // same UID, another date
+        feed.Content = Feed(FreeDay("g1", "20261022", "20261023"));
         await sync.SyncIcalFeedAsync(orgId);
 
         var row = await db.SupplierFreeCalendarEvents.AsNoTracking().SingleAsync();
@@ -179,7 +173,6 @@ public class SupplierFreeEventSyncTests
         await sync.SyncIcalFeedAsync(orgId);
         await DecideAsync(db, orgId, "Available");
 
-        // The free event is missing from this download and a busy event cannot be read: nothing is removed at this run.
         feed.Content = Feed("BEGIN:VEVENT\r\nUID:broken\r\nDTSTART;VALUE=DATE:20261030\r\nDTEND;VALUE=DATE:20261029\r\nEND:VEVENT\r\n");
         await sync.SyncIcalFeedAsync(orgId);
 
@@ -237,8 +230,6 @@ public class SupplierFreeEventSyncTests
         Assert.Equal([new DateOnly(2026, 10, 30)], await ClosedDaysAsync(db));
     }
 
-    // ─── Unlinking ───────────────────────────────────────────────────────────
-
     [Fact]
     public async Task UpdateCalendarSyncAsync_Unlinked_DeletesTheRows()
     {
@@ -291,8 +282,6 @@ public class SupplierFreeEventSyncTests
 
         Assert.Equal(other, (await db.SupplierFreeCalendarEvents.SingleAsync()).OrgId);
     }
-
-    // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private const string FeedUrl = "https://feeds.example.com/cal.ics";
 

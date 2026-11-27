@@ -21,8 +21,6 @@ public class OpenAccessTests
 
     private static (string Key, string? Value) Tier(string? value) => ("Entitlement:OpenAccess:Tier", value);
 
-    // ─── Read ────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void Read_NothingConfigured_IsOff()
     {
@@ -42,7 +40,7 @@ public class OpenAccessTests
         var setting = OpenAccess.Read(Config(Enabled(enabled), Tier("Pro")));
 
         Assert.False(setting.Enabled);
-        Assert.Equal(PlanTier.Starter, setting.Apply(PlanTier.Starter)); // off: nobody is raised
+        Assert.Equal(PlanTier.Starter, setting.Apply(PlanTier.Starter));
     }
 
     [Fact]
@@ -118,7 +116,6 @@ public class OpenAccessTests
     {
         var setting = OpenAccess.Read(Config(Enabled("true"), Tier(tier)));
 
-        // A typo never opens the access (not even to the default tier).
         Assert.False(setting.Enabled);
         Assert.Equal(PlanTier.Starter, setting.Apply(PlanTier.Starter));
     }
@@ -129,8 +126,6 @@ public class OpenAccessTests
         Assert.Throws<ArgumentNullException>(() => OpenAccess.Read(null!));
         Assert.Throws<ArgumentNullException>(() => OpenAccess.GetErrors(null!));
     }
-
-    // ─── GetErrors (the startup check) ───────────────────────────────────────────
 
     [Fact]
     public void GetErrors_NothingConfigured_IsEmpty()
@@ -200,7 +195,6 @@ public class OpenAccessTests
     [Fact]
     public void GetErrors_TierNotValidWhileTheSwitchIsOff_IsStillRefused()
     {
-        // A wrong value found at the next deploy is better than one found the day the switch is turned on.
         var errors = OpenAccess.GetErrors(Config(Enabled("false"), Tier("Enterprise")));
 
         Assert.Single(errors);
@@ -225,17 +219,15 @@ public class OpenAccessTests
         Assert.Equal("Entitlement__OpenAccess__Tier", OpenAccess.TierVariable);
     }
 
-    // ─── Apply: at least the configured tier, never lower than the paid one ────────
-
     [Theory]
     [InlineData(PlanTier.Starter, PlanTier.Scale, PlanTier.Scale)]
     [InlineData(PlanTier.Pro, PlanTier.Scale, PlanTier.Scale)]
     [InlineData(PlanTier.Scale, PlanTier.Scale, PlanTier.Scale)]
     [InlineData(PlanTier.Starter, PlanTier.Pro, PlanTier.Pro)]
     [InlineData(PlanTier.Pro, PlanTier.Pro, PlanTier.Pro)]
-    [InlineData(PlanTier.Scale, PlanTier.Pro, PlanTier.Scale)] // a paid Scale is never lowered to Pro
+    [InlineData(PlanTier.Scale, PlanTier.Pro, PlanTier.Scale)]
     [InlineData(PlanTier.Starter, PlanTier.Starter, PlanTier.Starter)]
-    [InlineData(PlanTier.Pro, PlanTier.Starter, PlanTier.Pro)] // a paid Pro is never lowered to Starter
+    [InlineData(PlanTier.Pro, PlanTier.Starter, PlanTier.Pro)]
     [InlineData(PlanTier.Scale, PlanTier.Starter, PlanTier.Scale)]
     public void Apply_SwitchOn_IsTheHigherOfThePaidAndTheOpenAccessTier(PlanTier paid, PlanTier openAccess, PlanTier expected)
     {

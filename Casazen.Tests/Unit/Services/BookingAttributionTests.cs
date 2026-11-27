@@ -23,8 +23,6 @@ public class BookingAttributionTests
 {
     private const string Code = "K7Q2M9X4TB";
 
-    // ─── Privacy: what is kept ───────────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// PROOF TEST: privacy rule. A stray, careless or hostile link carries an e-mail address, the address of a page, a phone number and a referrer with
     /// credentials, a port, a path, a query and a fragment: nothing of it that is personal reaches the booking. The values that are not tokens are dropped
@@ -44,12 +42,10 @@ public class BookingAttributionTests
         Assert.Null(dirty.Campaign);
         Assert.Equal("www.agenzia.it", dirty.ReferrerHost);
 
-        // A phone number written with separators and an Italian fiscal code are personal data as well: nothing of them is kept, in whichever field they come.
         var identifiers = BookingAttribution.Sanitize(new BookingAttributionInput("333-123-4567", "333.123.4567", "RSSMRA80A01H501U", null));
         Assert.True(identifiers.IsEmpty);
         Assert.True(BookingAttribution.Sanitize(new BookingAttributionInput("333_123_4567", "rssmra-80a01-h501u", "0039-333-1234567", null)).IsEmpty);
 
-        // Whatever is kept is a token or a host: no character that an address, a query or a person's contact needs.
         var stored = BookingAttribution.Sanitize(new BookingAttributionInput(
             "Agency-Site", " LINK ", "Estate_2026.v2", "WWW.Agenzia.IT/case?utm=mario@example.com"));
         Assert.Equal(new BookingAttributionValues("agency-site", "link", "estate_2026.v2", "www.agenzia.it"), stored);
@@ -59,7 +55,6 @@ public class BookingAttributionTests
         // What is sanitized stays so: the rule is idempotent.
         Assert.Equal(stored, BookingAttribution.Sanitize(new BookingAttributionInput(stored.Source, stored.Medium, stored.Campaign, stored.ReferrerHost)));
 
-        // Nothing sent is nothing kept.
         Assert.True(BookingAttribution.Sanitize(null).IsEmpty);
         Assert.True(BookingAttribution.Sanitize(new BookingAttributionInput(null, " ", string.Empty, null)).IsEmpty);
     }
@@ -139,17 +134,9 @@ public class BookingAttributionTests
         Assert.Equal((40, 40, 80, 255), (BookingAttribution.MaxSourceLength, BookingAttribution.MaxMediumLength, BookingAttribution.MaxCampaignLength, BookingAttribution.MaxReferrerHostLength));
     }
 
-    // ─── Data: the four origins ──────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// PROOF TEST: data rule. The origin the host reads is worked out from the source and the attribution of the booking, by one rule, and it is one of the four:
-    /// a portal for every channel (whatever the attribution says), the site of the agency for a booking of the booking site that came from a link of the agency or
-    /// from the booking engine of the agency, CasaZen's own site for any other booking of the booking site, the host for what the host entered.
-    /// </summary>
     [Fact]
     public void BookingOrigin_FourOrigins_Test()
     {
-        // The table is written out, not derived from the rule: a source that is added to the enum is a decision to take here.
         var expected = new Dictionary<BookingSource, BookingOrigin>
         {
             [BookingSource.Airbnb] = BookingOrigin.Portal,
@@ -164,7 +151,6 @@ public class BookingAttributionTests
         };
         Assert.Equal(Enum.GetValues<BookingSource>().Where(s => s != BookingSource.Direct).Order(), expected.Keys.Order());
 
-        // A source that is not the booking site is its own origin whatever the attribution says: a link of the agency does not turn a portal into the agency.
         foreach (var (source, origin) in expected)
         {
             Assert.Equal(origin, BookingOrigins.Of(source, null));
@@ -180,13 +166,11 @@ public class BookingAttributionTests
         Assert.Equal(BookingOrigin.CasaZenSite, BookingOrigins.Of(BookingSource.Direct, "newsletter"));
         Assert.Equal(BookingOrigin.CasaZenSite, BookingOrigins.Of(BookingSource.Direct, "agency"));
 
-        // The four origins are all there, and the source is not touched by any of this.
         Assert.Equal(
             Enum.GetValues<BookingOrigin>().Order(),
             Enum.GetValues<BookingSource>().SelectMany(s => new[] { BookingOrigins.Of(s, null), BookingOrigins.Of(s, "agency-site") }).Distinct().Order());
         Assert.Equal(4, Enum.GetValues<BookingOrigin>().Length);
 
-        // The channel of a portal is the name of its source; no other origin has one.
         Assert.Equal("Airbnb", BookingOrigins.PortalOf(StayOf(BookingSource.Airbnb)));
         Assert.Equal("OtherChannel", BookingOrigins.PortalOf(StayOf(BookingSource.OtherChannel, label: "Holidu")));
         Assert.Null(BookingOrigins.PortalOf(StayOf(BookingSource.Direct, BookingAttribution.AgencySiteSource)));
@@ -194,10 +178,6 @@ public class BookingAttributionTests
         Assert.Null(BookingOrigins.PortalOf(StayOf(BookingSource.Manual)));
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. The filter of the list is the same rule as the badge: for every source and attribution the predicate keeps a booking exactly when
-    /// its origin is one of those asked for, every booking is in one filter only, none asked for is no booking, and all four ask for every booking.
-    /// </summary>
     [Fact]
     public void BookingOrigin_TheListFilterIsTheSameRuleAsTheBadge_Test()
     {
@@ -263,26 +243,17 @@ public class BookingAttributionTests
 
         foreach (var (stay, origin, channel) in stays)
         {
-            // The list item, the detail and the plain answer are one answer for this: the words are those of the base.
             var item = BookingMapper.ToListItem(stay, null, now);
             var detail = BookingMapper.Fill(new BookingDetailDto(), stay, now);
             var plain = BookingMapper.ToResponse(stay, now);
             Assert.All(new BookingResponseDto[] { item, detail, plain }, answer => Assert.Equal((origin, channel), (answer.Origin, answer.OriginChannel)));
 
-            // The invoicing plan reasons per channel: the source is what it was, and the booking engine of the agency is still direct.
             Assert.Equal(stay.Source.ToString(), plain.Source);
         }
 
-        // The name of a portal that has no source of its own is the label the booking has always had.
         Assert.Equal("Holidu", BookingMapper.ToResponse(other, now).ChannelLabel);
     }
 
-    // ─── Data: the import ────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// PROOF TEST: data rule. A reservation of the booking engine of the agency (channel 270) stays direct and is attributed to the booking engine, so its origin
-    /// is the site of the agency; a reservation of a portal gets no attribution and is a portal.
-    /// </summary>
     [Fact]
     public async Task BookingImport_AReservationOfTheBookingEngine_StaysDirectAndIsAttributedToIt_Test()
     {
@@ -307,11 +278,6 @@ public class BookingAttributionTests
         Assert.Equal(BookingOrigin.Portal, BookingOrigins.Of(airbnb));
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. The reservation CasaZen pushed itself to the channel of the booking engine is the booking CasaZen already has: its echo is linked by
-    /// reference and its attribution stays as it was (none: CasaZen's own site; the link of the agency it was made from: the site of the agency), and a newer
-    /// version of it, read once the push has its row of the mirror, changes nothing either.
-    /// </summary>
     [Fact]
     public async Task BookingImport_TheReservationCasaZenPushed_IsNeverReattributed_Test()
     {
@@ -325,13 +291,11 @@ public class BookingAttributionTests
 
         var first = await h.Service(db).ImportAllAsync(h.PropertyId, CancellationToken.None);
 
-        // The echoes are linked, not imported: no booking is made and nothing is attributed.
         Assert.Equal((0, 0), (first.Created, first.Updated));
         Assert.Equal(2, await ReadAllAsync(h));
         Assert.Equal((BookingSource.Direct, (string?)null, "9201"), await ReadAsync(h, ownCasaZen));
         Assert.Equal((BookingSource.Direct, (string?)"agency-site", "9202"), await ReadAsync(h, ownAgencyLink));
 
-        // The push saved its ids and its rows of the mirror (only the push makes them); a newer version of each is read: the attribution stays as it was.
         await MirrorAsync(h, ownCasaZen);
         await MirrorAsync(h, ownAgencyLink);
         h.Serve(
@@ -344,10 +308,6 @@ public class BookingAttributionTests
         Assert.Equal((BookingSource.Direct, (string?)"agency-site", "9202"), await ReadAsync(h, ownAgencyLink));
     }
 
-    /// <summary>
-    /// A booking the import made before the attribution existed (direct, a reservation on Octorate, no row of the mirror) gets the attribution of the booking engine
-    /// with the next version of its reservation; a booking that has an attribution already keeps it, and the change alone announces nothing.
-    /// </summary>
     [Fact]
     public async Task BookingImport_ABookingTheImportMadeBeforeTheAttribution_GetsItWithTheNextVersion_AndAnAttributedOneKeepsItsOwn()
     {
@@ -375,7 +335,6 @@ public class BookingAttributionTests
         var imported = await h.SeedBookingAsync(
             "9303", source: BookingSource.Direct, status: BookingStatus.Confirmed, total: 330m, updatedAt: FirstVersion.AddDays(-1), octorateUpdatedAt: FirstVersion);
 
-        // The booking is the one the reservation says: the dates, the guests and the amounts are the same, so only the attribution is new.
         await using (var seed = h.NewDb())
         {
             var row = await seed.Bookings.SingleAsync(b => b.Id == imported);
@@ -412,10 +371,6 @@ public class BookingAttributionTests
         Assert.Equal((BookingSource.Manual, (string?)null), await SourceAndAttributionAsync(h, manual));
     }
 
-    /// <summary>
-    /// A reservation of the booking engine that is attributed to it keeps its attribution when CasaZen cancels it: the cancellation makes a row of the mirror for a
-    /// reservation CasaZen did not make (OctorateBookingCancelHandler), and neither that row nor the next version read takes the attribution away or changes it.
-    /// </summary>
     [Fact]
     public async Task BookingImport_AnAttributedBooking_KeepsItsAttribution_WhenTheCancellationMakesItsRowOfTheMirror()
     {
@@ -434,8 +389,6 @@ public class BookingAttributionTests
         Assert.Equal(BookingOrigin.AgencySite, BookingOrigins.Of(source, attribution));
     }
 
-    // ─── What the tests share ────────────────────────────────────────────────────────────────────────────
-
     private static Booking StayOf(BookingSource source, string? attribution = null, string? label = null) => new()
     {
         Id = Guid.NewGuid(),
@@ -452,7 +405,6 @@ public class BookingAttributionTests
         TotalPrice = 300m,
     };
 
-    /// <summary>A booking CasaZen made on its booking site (direct, confirmed), with the code that was sent as <c>refer</c> and no Octorate id yet.</summary>
     private static async Task<Guid> SeedDirectBookingAsync(BookingImportHarness h, string code, string? attribution)
     {
         await using var db = h.NewDb();
@@ -468,7 +420,6 @@ public class BookingAttributionTests
         return booking.Id;
     }
 
-    /// <summary>The row of the mirror the push of CasaZen makes for a booking (the import never does), or the cancellation of CasaZen for a reservation it did not make.</summary>
     private static async Task MirrorAsync(BookingImportHarness h, Guid bookingId, OctorateSyncOperation operation = OctorateSyncOperation.Create)
     {
         await using var db = h.NewDb();

@@ -11,10 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Messages;
 
-/// <summary>
-/// E05/F05/US02/T01: after an answer to a conversation of a channel that went out, written or approved by a person, the reply service tells the observers of the replies (the assistant
-/// closes the «To do» of its escalated messages); an answer the channel refused, and one with no person behind it, tell nobody, and an observer that fails never fails the answer.
-/// </summary>
 public sealed class MessageReplyObserversTests : IAsyncLifetime
 {
     private readonly AppDbContext _db = HostScopeScenario.NewInMemoryDb();

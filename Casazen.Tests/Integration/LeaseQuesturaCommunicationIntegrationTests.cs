@@ -28,7 +28,6 @@ namespace Casazen.Tests.Integration;
 public class LeaseQuesturaCommunicationIntegrationTests
     : IClassFixture<LeaseQuesturaCommunicationIntegrationTests.QuesturaFactory>
 {
-    /// <summary>24/9/2026 10:00 UTC. The test leases start on 23/9: delivery by default, the 48 hours end on 25/9.</summary>
     private static readonly DateTimeOffset Now = new(2026, 9, 24, 10, 0, 0, TimeSpan.Zero);
 
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
@@ -70,13 +69,11 @@ public class LeaseQuesturaCommunicationIntegrationTests
 
         await RunReminderJobAsync();
 
-        // The reminder was sent and recorded (delivery 23/9, 48 hours to 25/9)...
         Assert.Contains(
             await ReminderPayloadsAsync(leaseId),
             // One per landlord since LT-14: {threshold}:{deadline}:{partyId}.
             p => p != null && p.StartsWith($"{RliDeadlineReminderJob.QuesturaThresholds.Delivery}:2026-09-25:", StringComparison.Ordinal));
         Assert.Contains(_factory.Email.Sent, e => e.Subject.Contains("Questura", StringComparison.Ordinal));
-        // ...but it is not the communication: the item stays to do.
         var checklist = await GetChecklistAsync(client, leaseId);
         var item = ChecklistItem(checklist, RliChecklistKeys.QuesturaExtraEu);
         Assert.False(item.GetProperty("done").GetBoolean());
@@ -106,7 +103,6 @@ public class LeaseQuesturaCommunicationIntegrationTests
         Assert.True(questura.GetProperty("hasReceipt").GetBoolean());
         var lease = await GetLeaseAsync(client, leaseId);
         Assert.Contains(EventTypes(lease), e => e == nameof(LeaseEventType.QuesturaCommunicationMarkedDone));
-        // The storage key and the declaring user stay on the server.
         var body = await response.Content.ReadAsStringAsync();
         Assert.DoesNotContain("questura/", body, StringComparison.Ordinal);
         Assert.DoesNotContain(owner, body, StringComparison.Ordinal);
@@ -225,7 +221,6 @@ public class LeaseQuesturaCommunicationIntegrationTests
         using var ownerClient = LandlordClient(owner);
         var leaseId = await DriveToSignedAsync(ownerClient, property.Id, tenantCitizenship: "US");
         (await MarkDoneAsync(ownerClient, leaseId, "2026-09-24", ReceiptPdf)).EnsureSuccessStatusCode();
-        // The second lease of the same property takes the four years that follow the first: two leases cannot cover the same days (LR-OVERLAP).
         var otherLeaseId = await DriveToSignedAsync(
             ownerClient, property.Id, tenantCitizenship: "US", startDate: "2030-09-23T00:00:00Z", endDate: "2034-09-22T00:00:00Z");
 
@@ -244,7 +239,6 @@ public class LeaseQuesturaCommunicationIntegrationTests
         Assert.False(questura.GetProperty("deliveryDateDeclared").GetBoolean());
         Assert.Empty(StoredQuesturaReceiptsOf(otherLeaseId));
 
-        // Without lease.register (no long-term role) the declaration is forbidden, anonymous is unauthorized.
         using var noLeaseRole = _factory.CreateAuthenticatedClient(owner, "PropertyOwner");
         Assert.Equal(HttpStatusCode.Forbidden, (await MarkDoneAsync(noLeaseRole, otherLeaseId, "2026-09-24")).StatusCode);
         using var anonymous = _factory.CreateClient();
@@ -350,7 +344,6 @@ public class LeaseQuesturaCommunicationIntegrationTests
 
     private static string UniqueOwner(string suffix) => $"auth0|lt07-{suffix}-{Guid.NewGuid():N}";
 
-    /// <summary>Lease flow factory with a clock the tests control and an email provider that records what it sends.</summary>
     public sealed class QuesturaFactory : LeaseFlowWebApplicationFactory
     {
         public FakeTimeProvider Clock { get; } = new(Now);

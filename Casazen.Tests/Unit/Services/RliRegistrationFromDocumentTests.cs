@@ -103,7 +103,6 @@ public sealed class RliRegistrationFromDocumentTests
         Assert.Equal(RegistrationChannel.Manual, registration.Channel);
         Assert.Equal("24101234567890123-000001", registration.RegistrationCode);
         Assert.NotNull(registration.ReceiptStoragePath);
-        // Two files, one owner each: deleting the document never takes the receipt of the registration away, nor the other way round.
         Assert.StartsWith($"leases/{world.OrgId}/{world.LeaseId}/registration/", registration.ReceiptStoragePath);
         Assert.NotEqual(document.StorageKey, registration.ReceiptStoragePath);
         world.Storage.Verify(
@@ -113,7 +112,7 @@ public sealed class RliRegistrationFromDocumentTests
             s => s.PutAsync(It.IsAny<StorageBucket>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Once);
         Assert.Equal(LeaseStatus.Registered, (await world.Db.LeaseContracts.AsNoTracking().SingleAsync(l => l.Id == world.LeaseId)).Status);
-        Assert.Equal(document.StorageKey, (await world.Db.LeaseDocuments.AsNoTracking().SingleAsync(d => d.Id == document.Id)).StorageKey); // the document keeps its file
+        Assert.Equal(document.StorageKey, (await world.Db.LeaseDocuments.AsNoTracking().SingleAsync(d => d.Id == document.Id)).StorageKey);
     }
 
     [Fact]
@@ -125,8 +124,6 @@ public sealed class RliRegistrationFromDocumentTests
         var contract = Document(world, world.LeaseId, LeaseDocumentKind.Contract);
         await world.Db.SaveChangesAsync();
 
-        // DATA RULE PROOF (tenancy): neither the receipt of another lease, nor a document that names another org, nor a document of
-        // another kind, nor an id that is nothing can be the receipt of this registration: all the same «not there», and no file is read.
         foreach (var id in new[] { ofAnotherOrg.Id, ofAnotherLease.Id, contract.Id, Guid.NewGuid() })
         {
             var refused = await Assert.ThrowsAsync<NotFoundException>(

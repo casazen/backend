@@ -34,8 +34,6 @@ public class SupplierShowcasePublicationTests
     private readonly List<SupplierServiceListing> _services = [];
     private bool _paymentsFlagOn = true;
 
-    // ─── Publication ─────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Publish_EverythingIsReady_PutsTheShowcaseOnline_AndOpensTheBookings()
     {
@@ -108,8 +106,6 @@ public class SupplierShowcasePublicationTests
         Assert.Equal(new[] { "pulizia" }, view.Published!.ServiceOrder);
     }
 
-    // ─── Undo, pause, resume ─────────────────────────────────────────────────────
-
     [Fact]
     public async Task Undo_TheFirstPublication_PutsTheShowcaseBackToADraft_AndTheBookingsClose()
     {
@@ -139,12 +135,10 @@ public class SupplierShowcasePublicationTests
 
         var undone = await Build().Service.UndoPublishAsync(OrgA);
 
-        // "Uno" is published again; the draft stays "Due", so there are changes to publish.
         Assert.Equal("Uno", undone.Published!.Tagline);
         Assert.Equal("Due", undone.Draft.Tagline);
         Assert.Equal(ShowcaseContentState.ChangesReady, undone.State);
 
-        // Publish again and let the time pass: the undo is gone.
         await Build().Service.PublishAsync(OrgA, null);
         _clock.Advance(ShowcaseContentLimits.UndoWindow + TimeSpan.FromSeconds(1));
         var late = await Assert.ThrowsAsync<DomainConflictException>(() => Build().Service.UndoPublishAsync(OrgA));
@@ -194,8 +188,6 @@ public class SupplierShowcasePublicationTests
         Assert.True(await SwitchAsync());
     }
 
-    // ─── The account of the supplier (account.updated) ───────────────────────────
-
     [Fact]
     public async Task AccountStopsBeingReady_TheBookingsCloseAndOpenAgain_WithTheWebhook()
     {
@@ -225,19 +217,15 @@ public class SupplierShowcasePublicationTests
         Assert.False(await SwitchAsync());
     }
 
-    // ─── What the public reads ───────────────────────────────────────────────────
-
     [Fact]
     public async Task Public_ReadsTheLastPublication_NeverTheDraft_AndNothingOfAnotherSupplier()
     {
         await SeedAsync(accountReady: true);
         var service = Build().Service;
 
-        // A draft is not public.
         await service.SaveDraftAsync(OrgA, 0, Patch("""{"tagline":"Bozza"}"""));
         Assert.Null(await Build().Service.GetPublishedAsync(OrgA));
 
-        // Published, then the supplier writes a new draft: the public still reads what was published.
         await Build().Service.PublishAsync(OrgA, null);
         await Build().Service.SaveDraftAsync(OrgA, 0, Patch("""{"tagline":"Nuova bozza"}"""));
 
@@ -246,12 +234,9 @@ public class SupplierShowcasePublicationTests
         Assert.False(published.Paused);
         Assert.Null(await Build().Service.GetPublishedAsync(Guid.NewGuid()));
 
-        // The paused showcase is still published, and says so.
         await Build().Service.PauseAsync(OrgA);
         Assert.True((await Build().Service.GetPublishedAsync(OrgA))!.Paused);
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private static JsonObject Patch(string json) => (JsonObject)JsonNode.Parse(json)!;
 
@@ -270,7 +255,6 @@ public class SupplierShowcasePublicationTests
             PriceFromCents = 4500,
         });
 
-    /// <summary>A service on its own context (the real agenda on it), as every request gets its own.</summary>
     private (SupplierShowcaseContentService Service, AppDbContext Db) Build()
     {
         var db = CreateDb();

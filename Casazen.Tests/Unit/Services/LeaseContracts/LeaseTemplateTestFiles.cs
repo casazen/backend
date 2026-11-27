@@ -10,10 +10,6 @@ using Moq;
 
 namespace Casazen.Tests.Unit.Services.LeaseContracts;
 
-/// <summary>
-/// Template files written in a temporary folder for the LT-03 tests. Their texts are placeholders for tests, not
-/// contract clauses.
-/// </summary>
 internal sealed class LeaseTemplateTestFiles : IDisposable
 {
     public const string ApprovedVersion = "test-v1";
@@ -60,11 +56,6 @@ internal sealed class LeaseTemplateTestFiles : IDisposable
             NullLogger<LeaseContractTemplateCatalog>.Instance);
     }
 
-    /// <summary>
-    /// A template with every required section of <paramref name="regime"/> and its required placeholders.
-    /// <paramref name="texts"/> replaces the text of a section (empty string = section without text);
-    /// <paramref name="omit"/> leaves sections out.
-    /// </summary>
     public static string CompleteTemplate(
         FiscalRegime regime,
         IReadOnlyDictionary<string, string>? texts = null,
@@ -97,7 +88,6 @@ internal sealed class LeaseTemplateTestFiles : IDisposable
         }
         catch (IOException)
         {
-            // Temporary folder: a leftover is harmless.
         }
     }
 }

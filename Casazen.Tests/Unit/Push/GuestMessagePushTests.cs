@@ -5,7 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Push;
 
-/// <summary>The push about a message of the guest: its type, key, route and the lock-screen text (property only).</summary>
 public class GuestMessagePushTests
 {
     [Fact]

@@ -12,15 +12,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// A4-30 / A9-31: per-request and short-lived per-user caching of authorization data, and
-/// A1-02 / A1-29: DB context memberships kept aligned with role changes.
-/// </summary>
 public class UserAuthorizationCacheTests
 {
     private const string UserId = "auth0|cache-user";
 
-    /// <summary>Current legal document versions: the defaults, no configuration.</summary>
     private static readonly LegalDocumentService Legal = new(new ConfigurationBuilder().Build(), NullLogger<LegalDocumentService>.Instance);
 
     [Fact]
@@ -149,7 +144,6 @@ public class UserAuthorizationCacheTests
     public async Task HasPermissionAsync_RevokedLegacyMembership_NoLongerGrantsAccess()
     {
         await using var db = await CreateSeededDbAsync();
-        // Legacy seed (pre-June): short-rent membership for every PropertyOwner row.
         db.UserContextMemberships.Add(new UserContextMembership { UserId = UserId, ContextKey = "short-rent", RoleId = 1 });
         // An onboarded host (PL-02): otherwise no host context is granted at all.
         var org = new OrgEntity { Name = "Cache org", Slug = $"cache-{Guid.NewGuid():N}" };
@@ -179,7 +173,6 @@ public class UserAuthorizationCacheTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         var db = new AppDbContext(options);
-        // Applies the HasData seed: contexts short-rent/long-rent/admin and roles 1..3 with permissions.
         await db.Database.EnsureCreatedAsync();
         db.Users.Add(new User
         {

@@ -51,13 +51,13 @@ public class PropertyServiceCinTests
         Assert.Equal(4, result.TotalCount);
         Assert.Equal(1, result.Summary.Valid);
         Assert.Equal(1, result.Summary.Missing);
-        Assert.Equal(2, result.Summary.Invalid); // "BAD" and a migrated old-format CIN
+        Assert.Equal(2, result.Summary.Invalid);
         Assert.True(result.Summary.HasNonCompliant);
     }
 
     [Theory]
     [InlineData("2026-03-11T09:00:00Z", CinDeadlinePhase.Upcoming, 10)]
-    [InlineData("2026-03-20T23:30:00Z", CinDeadlinePhase.DueToday, 0)] // 23:30 UTC on the 20th is 00:30 of the 21st in Rome
+    [InlineData("2026-03-20T23:30:00Z", CinDeadlinePhase.DueToday, 0)]
     [InlineData("2026-10-07T09:00:00Z", CinDeadlinePhase.Passed, -200)]
     public async Task GetCinComplianceAsync_ConfiguredDeadline_ReportsPhaseAndSignedDays(
         string utcNow, CinDeadlinePhase phase, int days)
@@ -87,7 +87,7 @@ public class PropertyServiceCinTests
 
     [Theory]
     [InlineData("INVALID")]
-    [InlineData("IT-12345-1234567890")] // old invented format
+    [InlineData("IT-12345-1234567890")]
     public async Task UpdatePropertyCinAsync_NotOfficialFormat_ThrowsInvalidCinFormat(string cin)
     {
         var propertyId = Guid.NewGuid();

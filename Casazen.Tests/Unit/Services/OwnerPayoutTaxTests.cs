@@ -28,14 +28,11 @@ public class OwnerPayoutTaxTests
         var world = await PayoutWorld.CreateAsync();
         var italian = await world.OwnerAsync("IT", "EUR", ItalianRule("1", 21m));
 
-        // A Booking.com stay the portal collected and pays to the owner, who holds the account (V1, the default): the agency neither collected nor intervened.
         var version = await world.ApprovedVersionAsync(italian, 1000m, BookingSource.BookingCom);
 
-        // No statement operation decided anything: the post, the version, its approval and publication made no evidence.
         await world.Accounting.PublishVersionAsync(OrgId, version, null);
         Assert.Empty(await world.Db.TaxObligationEvidence.ToListAsync());
 
-        // An explicit not-applicable decision, no amount, no tax code, the gross paid whole; the facts say why.
         var result = await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(italian, version, "k-direct"), null);
         Assert.Equal((0m, 800m), (result.Payout.WithholdingAmount, result.Payout.NetAmount));
         var decision = Assert.Single(result.Evidence);
@@ -63,21 +60,18 @@ public class OwnerPayoutTaxTests
         var owner = await world.OwnerAsync("IT", "EUR", ItalianRule("1", 21m), validTo: new DateOnly(2026, 10, 31));
         var version = await world.ApprovedVersionAsync(owner, 999.95m);
 
-        // From November the owner follows version 2 of the rule (26%): the payout of the October statement, paid on 5 November, follows it.
         var next = await world.Fiscal.CreatePolicyAsync(OrgId, Policy("IT", "2", ItalianRule("2", 26m), new DateOnly(2026, 11, 1), null), null);
         await world.Fiscal.ApprovePolicyAsync(OrgId, next.Id, "TEST Commercialista", null);
         await world.Fiscal.SaveProfileAsync(OrgId, owner, Profile("IT", "EUR", next.Id, new DateOnly(2026, 11, 1)), null);
 
         var result = await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(owner, version, "k-applicable"), "auth0|finance");
 
-        // The base is the gross of the stay the ledger holds, the rate and rounding those of the rule in force on the payment day.
         var decision = Assert.Single(result.Evidence);
         Assert.Equal(TaxDecision.Applicable, decision.Decision);
         Assert.Equal((999.95m, 26m, "half_up", 259.99m, "1919"), (decision.GrossBase!.Value, decision.RatePercent!.Value, decision.Rounding, decision.Amount!.Value, decision.TaxCode));
         Assert.Equal(("2", 2026, 11, version), (decision.RuleVersion, decision.PeriodYear, decision.PeriodMonth, decision.OwnerStatementVersionId));
         Assert.Equal((259.99m, 540.01m), (result.Payout.WithholdingAmount, result.Payout.NetAmount));
 
-        // The payout settles the owed gross in the owner ledger of November: the net paid and the withholding kept.
         var lines = await world.Db.OwnerLedgerEntries.AsNoTracking().Where(e => e.SourceType == OwnerLedgerSourceType.OwnerPayout).ToListAsync();
         Assert.Equal(-800m, lines.Sum(e => e.Amount));
         Assert.Equal(-259.99m, lines.Single(e => e.EntryType == OwnerLedgerEntryType.Withholding).Amount);
@@ -105,11 +99,9 @@ public class OwnerPayoutTaxTests
         Assert.Single(await world.Db.TaxObligationEvidence.ToListAsync());
         Assert.Equal(2, await world.Db.OwnerLedgerEntries.CountAsync(e => e.SourceType == OwnerLedgerSourceType.OwnerPayout));
 
-        // The same key for other facts is refused, not a second payout.
         var reused = await Assert.ThrowsAsync<DomainConflictException>(() => world.Payouts.ConfirmPayoutAsync(OrgId, command with { GrossAmount = 700m }, null));
         Assert.Equal(OwnerPayoutErrors.PayoutKeyReused, reused.Code);
 
-        // A reversal keeps the decision and adds its opposite: the obligations net to zero, and a second reversal is refused.
         var reversed = await world.Payouts.ReversePayoutAsync(OrgId, first.Payout.Id, "TEST bonifico respinto", null);
         Assert.Equal(OwnerPayoutStatus.Reversed, reversed.Payout.Status);
         Assert.Equal(2, reversed.Evidence.Count);
@@ -133,7 +125,6 @@ public class OwnerPayoutTaxTests
         Assert.Null(f24.HandoffReference);
         Assert.Null(f24.ReceiptReference);
 
-        // Generated is never submitted: no jump, a handoff for the submission, a receipt for the acceptance.
         var jump = await Assert.ThrowsAsync<DomainConflictException>(
             () => world.Payouts.SetF24FilingStateAsync(OrgId, f24.Id, new TaxFilingCommand { State = TaxFilingState.Submitted, HandoffReference = "x" }, null));
         Assert.Equal(OwnerPayoutErrors.FilingTransitionInvalid, jump.Code);
@@ -201,8 +192,6 @@ public class OwnerPayoutTaxTests
         Assert.Equal(OwnerPayoutErrors.NoObligations, (await Assert.ThrowsAsync<DomainRuleException>(() => world.Withholding.GenerateF24Async(OrgId, 11, 2026))).Code);
         Assert.Empty(await world.Db.F24Records.ToListAsync());
 
-        // The withholding is declared in euro and kept from a payout in francs at the agency's rate of the payout day (⚖ R6): without a rate of that day (the one of
-        // 10 October is older than the week before the payout of 5 November) it is never guessed.
         var franc = await world.OwnerAsync("IT", "CHF", ItalianRule("1", 21m));
         world.Db.OwnerFxRates.Add(new OwnerFxRate
         {
@@ -220,10 +209,6 @@ public class OwnerPayoutTaxTests
         Assert.Empty(await world.Db.OwnerPayouts.Where(p => p.Currency == "CHF").ToListAsync());
     }
 
-    /// <summary>
-    /// A transfer is recorded once: a month an owner settled with a confirmed payout is settled by it, so the wire of the same statements is neither posted nor
-    /// counted by the close (the payout is the record that carries the tax decision), and nothing is debited twice.
-    /// </summary>
     [Fact]
     public async Task OwnerPayout_SettlesTheMonthAndItsWireIsNeitherPostedNorCountedTwice_Test()
     {
@@ -232,12 +217,10 @@ public class OwnerPayoutTaxTests
         var version = await world.ApprovedVersionAsync(owner, 1000m);
         var property = (await world.Db.Properties.SingleAsync()).Id;
 
-        // The October statement was paid by a wire marked paid on 3 November: the ledger of November holds its line.
         await world.PaidWireAsync(owner, property, 1000m);
         await world.Accounting.PostPeriodAsync(OrgId, 2026, 11, null);
         Assert.Equal(-1000m, await world.Db.OwnerLedgerEntries.Where(e => e.SourceType == OwnerLedgerSourceType.WireBatch).SumAsync(e => e.Amount));
 
-        // The payout recorded for the same money settles the month: the wire line is reversed, and the account is debited once (the net and the withholding).
         await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(owner, version, "k-wire", 1000m), null);
         world.Clock.Advance(TimeSpan.FromMinutes(1));
         var posted = await world.Accounting.PostPeriodAsync(OrgId, 2026, 11, null);
@@ -246,12 +229,10 @@ public class OwnerPayoutTaxTests
         Assert.Equal(-1000m, november.Sum(e => e.Amount));
         Assert.Equal(0m, november.Where(e => e.SourceType == OwnerLedgerSourceType.WireBatch).Sum(e => e.Amount));
 
-        // The close counts the payout once: due 1000, paid 1000.
         var closed = await world.Accounting.CloseAsync(OrgId, owner, 2026, 10, new OwnerCloseCommand(), mayWaive: false, null);
         Assert.Equal((1000m, 1000m, 0m), (closed.DueAmount!.Value, closed.PaidAmount!.Value, closed.Difference!.Value));
     }
 
-    /// <summary>A reversal never posts into a closed month: the payout stays confirmed and nothing is written.</summary>
     [Fact]
     public async Task OwnerPayout_ReversalIsRefusedWhenTheMonthItWouldPostIntoIsClosed_Test()
     {
@@ -260,7 +241,6 @@ public class OwnerPayoutTaxTests
         var version = await world.ApprovedVersionAsync(owner, 1000m);
         var payout = await world.Payouts.ConfirmPayoutAsync(OrgId, Payout(owner, version, "k-closed"), null);
 
-        // The month of the payment (5 November) and the month of today (12 November) are the same, and it is closed.
         var now = world.Clock.GetUtcNow().UtcDateTime;
         world.Db.OwnerClosePeriods.Add(new OwnerClosePeriod
         {
@@ -321,7 +301,6 @@ public class OwnerPayoutTaxTests
         AccountingPolicyId = policy,
     };
 
-    /// <summary>A payout of 800 (of a balance of 1000) of the October version, paid on 5 November: the facts are the ledger's.</summary>
     private static OwnerPayoutCommand Payout(Guid owner, Guid version, string key, decimal gross = 800m) => new()
     {
         IdempotencyKey = key,
@@ -367,7 +346,6 @@ public class OwnerPayoutTaxTests
             new PayoutTenant(),
             TestDataProtection.Shared)));
 
-        /// <summary>An owner with its approved rule set (its own version per jurisdiction) and a complete profile from January.</summary>
         public async Task<Guid> OwnerAsync(string jurisdiction, string currency, OwnerAccountingRuleParameters parameters, DateOnly? validTo = null)
         {
             var owner = new PropertyOwner { OrgId = OrgId, FirstName = "TEST", LastName = jurisdiction, Email = $"{Guid.NewGuid():N}@example.com" };
@@ -384,7 +362,6 @@ public class OwnerPayoutTaxTests
             return owner.Id;
         }
 
-        /// <summary>A legacy statement of October for the owner paid by a wire batch marked paid on 3 November.</summary>
         public async Task PaidWireAsync(Guid owner, Guid property, decimal amount)
         {
             var statement = new OwnerStatement
@@ -414,10 +391,6 @@ public class OwnerPayoutTaxTests
             await Db.SaveChangesAsync();
         }
 
-        /// <summary>
-        /// The approved October version of an owner with one property of its own (in Italy) and one stay of 2 nights: paid by a payment the agency recorded, or, for a
-        /// portal <paramref name="channel"/>, collected by the portal and posted from the booking (the owner holds the account).
-        /// </summary>
         public async Task<Guid> ApprovedVersionAsync(Guid owner, decimal paid, BookingSource channel = BookingSource.Manual)
         {
             var portal = FiscalCopy.IsOtaBookingSource(channel);
@@ -463,7 +436,6 @@ public class OwnerPayoutTaxTests
                 });
             }
 
-            // A stay of an owner without a mandate holds its version back (E13/F01/US01/T02): the owner has one, of zero (the commission is not the point).
             if (!await Db.OwnerMandates.AnyAsync(m => m.PropertyOwnerId == owner))
                 Db.OwnerMandates.Add(new OwnerMandate { OrgId = OrgId, PropertyOwnerId = owner, CommissionPercent = 0m, ValidFrom = new DateOnly(2026, 1, 1) });
             await Db.SaveChangesAsync();

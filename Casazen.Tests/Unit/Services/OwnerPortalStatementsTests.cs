@@ -20,17 +20,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E13/F01/US02/T02 (NF-111, NF-115): the statements and the invoices of the property manager in the owner portal, with their amounts, lines and PDF; only the owner of
-/// the claim, <c>accounting.read</c> for a delegated contact, nothing of a guest, nothing with <c>Features:AgencyTier</c> off, and the e-mail that tells the owner a
-/// statement was published (no amount in it).
-/// </summary>
 public class OwnerPortalStatementsTests
 {
-    /// <summary>
-    /// Privacy: the owner sees the published statements of its own owner profile and nothing else (not another owner's, not a draft, not a guest), the ones a later
-    /// version replaced marked as such; the statement of another owner and its PDF are the same 404 as one that does not exist, and so are the invoices.
-    /// </summary>
     [Fact]
     public async Task OwnerPortal_StatementsOnlyOfTheClaimOwner_Test()
     {
@@ -44,7 +35,6 @@ public class OwnerPortalStatementsTests
         var first = mine[1];
         Assert.Equal((true, (Guid?)world.SecondVersionId), (first.Superseded, first.SupersededByStatementId));
 
-        // Another owner's statement, a draft, and a statement that does not exist: one 404.
         foreach (var id in new[] { world.OtherOwnerVersionId, world.DraftVersionId, Guid.NewGuid() })
         {
             var detail = await Assert.ThrowsAsync<NotFoundException>(() => world.Portal.GetOwnerStatementAsync(world.OwnerUserA, id));
@@ -52,22 +42,18 @@ public class OwnerPortalStatementsTests
             Assert.Equal((OwnerAccountingErrors.VersionNotFound, OwnerAccountingErrors.VersionNotFound), (detail.Code, pdf.Code));
         }
 
-        // A person with no ownership in force and no delegation has nothing to see: an empty list, not an error.
         Assert.Empty(await world.Portal.GetOwnerStatementsAsync(Guid.NewGuid()));
         Assert.Empty(await world.Portal.GetOwnerInvoicesAsync(Guid.NewGuid()));
 
-        // The other owner sees its own and none of ours.
         Assert.Equal([world.OtherOwnerVersionId], (await world.Portal.GetOwnerStatementsAsync(world.OwnerUserB)).Select(s => s.StatementId));
         await Assert.ThrowsAsync<NotFoundException>(() => world.Portal.GetOwnerStatementAsync(world.OwnerUserB, world.SecondVersionId));
 
-        // A guest is nowhere: not in the list, not in the lines, not in the JSON the portal answers.
         var answer = JsonSerializer.Serialize(OwnerPortalStatementDetailDto.From(await world.Portal.GetOwnerStatementAsync(world.OwnerUserA, world.SecondVersionId)))
             + JsonSerializer.Serialize(mine.Select(OwnerPortalStatementDto.From));
         Assert.DoesNotContain("Ospite", answer, StringComparison.Ordinal);
         Assert.DoesNotContain("Riservato", answer, StringComparison.Ordinal);
         Assert.DoesNotContain("ospite.riservato@example.com", answer, StringComparison.Ordinal);
 
-        // The invoices: the issued ones made out to the owner, not a draft, not another owner's, not a document of a guest.
         var invoices = await world.Portal.GetOwnerInvoicesAsync(world.OwnerUserA);
         var invoice = Assert.Single(invoices);
         Assert.Equal((world.InvoiceId, "PM2026/1", new DateOnly(2026, 11, 12), 250m, "CHF", FiscalDocumentKind.Invoice), (invoice.InvoiceId, invoice.Number, invoice.IssueDate, invoice.Total, invoice.Currency, invoice.Kind));
@@ -84,10 +70,6 @@ public class OwnerPortalStatementsTests
         Assert.Equal("application/pdf", file.ContentType);
     }
 
-    /// <summary>
-    /// Permission: a delegated contact the owner did not give <c>accounting.read</c> is refused (403) on the statements, their lines and PDF, and the invoices and their
-    /// PDF; with the permission it reads what the owner reads; a withdrawn contact gets nothing.
-    /// </summary>
     [Fact]
     public async Task OwnerPortal_ContactWithoutAccountingRead403_Test()
     {
@@ -106,18 +88,15 @@ public class OwnerPortalStatementsTests
             Assert.Equal(OwnerPortalErrors.PermissionMissing, refusal.Code);
         }
 
-        // With the permission the contact reads the statements and the invoices of the owner that gave it.
         Assert.Equal([world.SecondVersionId, world.FirstVersionId], (await world.Portal.GetOwnerStatementsAsync(world.ContactWithAccounting)).Select(s => s.StatementId));
         Assert.Equal(world.SecondVersionId, (await world.Portal.GetOwnerStatementAsync(world.ContactWithAccounting, world.SecondVersionId)).Statement.StatementId);
         Assert.Equal(world.InvoiceId, Assert.Single(await world.Portal.GetOwnerInvoicesAsync(world.ContactWithAccounting)).InvoiceId);
 
-        // The delegation does not reach another owner of the same agency, and a withdrawn contact has nothing.
         await Assert.ThrowsAsync<NotFoundException>(() => world.Portal.GetOwnerStatementAsync(world.ContactWithAccounting, world.OtherOwnerVersionId));
         Assert.Empty(await world.Portal.GetOwnerStatementsAsync(world.RevokedContact));
         Assert.Empty(await world.Portal.GetOwnerInvoicesAsync(world.RevokedContact));
     }
 
-    /// <summary>With <c>Features:AgencyTier</c> off nothing changes: the lists stay empty, whoever asks, and a statement or an invoice is not there.</summary>
     [Fact]
     public async Task OwnerPortal_FlagOffStaysEmpty_Test()
     {
@@ -126,7 +105,6 @@ public class OwnerPortalStatementsTests
         Assert.Empty(await world.Portal.GetOwnerStatementsAsync(world.OwnerUserA));
         Assert.Empty(await world.Portal.GetOwnerInvoicesAsync(world.OwnerUserA));
 
-        // Not a 403 for a contact without the permission either: the flag decides first, as before the accounting existed.
         Assert.Empty(await world.Portal.GetOwnerStatementsAsync(world.ContactWithoutAccounting));
         Assert.Empty(await world.Portal.GetOwnerInvoicesAsync(world.ContactWithoutAccounting));
         await Assert.ThrowsAsync<NotFoundException>(() => world.Portal.GetOwnerStatementAsync(world.OwnerUserA, world.SecondVersionId));
@@ -134,10 +112,6 @@ public class OwnerPortalStatementsTests
         await Assert.ThrowsAsync<NotFoundException>(() => world.Portal.OpenOwnerInvoicePdfAsync(world.OwnerUserA, world.InvoiceId));
     }
 
-    /// <summary>
-    /// The totals of the list are the ones the version stores (the withholding being what its closing balance leaves over), the detail has the lines grouped as in the
-    /// PDF, and the PDF the owner downloads is the stored file; a statement with no stored file is a 404 of its own.
-    /// </summary>
     [Fact]
     public async Task OwnerPortal_TotalsLinesAndPdfAreThoseOfTheVersion_Test()
     {
@@ -159,7 +133,6 @@ public class OwnerPortalStatementsTests
         Assert.Equal(100m, stays.Total);
         Assert.Equal(-10m, detail.Sections.Single(s => s.Section == "commission").Total);
 
-        // The PDF is exactly what was stored at the publication.
         var stored = await world.Db.OwnerDocumentVersions.AsNoTracking().SingleAsync(v => v.OwnerDocumentId == world.SecondVersionId);
         var bytes = await ReadAsync(world.Storage, stored.StorageKey);
         var download = await world.Portal.OpenOwnerStatementPdfAsync(world.OwnerUserA, world.SecondVersionId);
@@ -173,21 +146,15 @@ public class OwnerPortalStatementsTests
 
         Assert.Equal(world.SecondVersionId, (await world.Db.OwnerDocumentDownloads.AsNoTracking().SingleAsync()).OwnerDocumentId);
 
-        // A published version with no stored file (published before the files existed) has no PDF to hand out.
         var missing = await Assert.ThrowsAsync<NotFoundException>(() => world.Portal.OpenOwnerStatementPdfAsync(world.OwnerUserA, world.FirstVersionId));
         Assert.Equal(OwnerStatementFileErrors.PdfNotAvailable, missing.Code);
     }
 
-    /// <summary>
-    /// Data: for the owner a statement is replaced only when its replacement is published. The agency marks the published version as superseded as soon as it generates a
-    /// correction; until that one is published, the statement the owner was given is still the valid one, not «replaced» by something the owner cannot see.
-    /// </summary>
     [Fact]
     public async Task OwnerPortal_StatementIsSupersededOnlyOnceItsReplacementIsPublished_Test()
     {
         var world = await World.CreateAsync();
 
-        // A correction of the month was generated: the published version is superseded in the ledger, by a version that is still a draft.
         await world.SupersedeAsync(world.SecondVersionId, world.DraftVersionId);
         var asked = (await world.Portal.GetOwnerStatementsAsync(world.OwnerUserA)).Single(s => s.StatementId == world.SecondVersionId);
         Assert.Equal((false, (Guid?)null), (asked.Superseded, asked.SupersededByStatementId));
@@ -195,16 +162,11 @@ public class OwnerPortalStatementsTests
         Assert.Equal((false, (Guid?)null), (detail.Statement.Superseded, detail.Statement.SupersededByStatementId));
         Assert.DoesNotContain(await world.Portal.GetOwnerStatementsAsync(world.OwnerUserA), s => s.StatementId == world.DraftVersionId);
 
-        // The correction is published: now the first statement is superseded, by it.
         await world.PublishAsync(world.DraftVersionId);
         var replaced = (await world.Portal.GetOwnerStatementsAsync(world.OwnerUserA)).Single(s => s.StatementId == world.SecondVersionId);
         Assert.Equal((true, (Guid?)world.DraftVersionId), (replaced.Superseded, replaced.SupersededByStatementId));
     }
 
-    /// <summary>
-    /// The e-mail of the publication goes to the people of the portal who read the statements of the owner (the owner, a contact with <c>accounting.read</c>), says who
-    /// published and links to the page «Contabilità»: no amount, no period, no line, in the language of the agency.
-    /// </summary>
     [Fact]
     public async Task OwnerPortal_PublicationEmailHasNoAmountsAndGoesToWhoReadsTheStatements_Test()
     {
@@ -222,17 +184,14 @@ public class OwnerPortalStatementsTests
         foreach (var secret in new[] { "100,00", "100.00", "90,00", "90.00", "10,00", "10.00", "10/2026" })
             Assert.DoesNotContain(secret, content.HtmlBody + content.Subject, StringComparison.Ordinal);
 
-        // An English agency has an English e-mail.
         var english = await World.CreateAsync(language: "en");
         await english.Documents.TellOwnerPublishedAsync(english.SecondVersion);
         Assert.All(english.Queue.Sent, sent => Assert.Equal("New statement from TEST Agenzia", sent.Content.Subject));
 
-        // Nobody in the portal, nobody told.
         var empty = await World.CreateAsync(withOwners: false);
         await empty.Documents.TellOwnerPublishedAsync(empty.SecondVersion);
         Assert.Empty(empty.Queue.Sent);
 
-        // With Features:AgencyTier off the portal shows nothing: nobody is told, and that is not a failure to raise a To do about.
         var off = await World.CreateAsync(agencyTier: false);
         await off.Documents.TellOwnerPublishedAsync(off.SecondVersion);
         Assert.Empty(off.Queue.Sent);
@@ -369,7 +328,6 @@ public class OwnerPortalStatementsTests
                 Db.OwnerPortalContacts.Add(Contact(RevokedContact, OwnerPortalPermission.AccountingRead, OwnerPortalContactStatus.Revoked));
             }
 
-            // A stay with revenue and a commission, for the lines: the guest of the booking is a name that must never reach the portal.
             var guest = new Guest { OrgId = _orgId, FirstName = "Ospite", LastName = "Riservato", Email = "ospite.riservato@example.com", PhoneNumber = "+41790000000" };
             Db.Guests.Add(guest);
             Db.Bookings.Add(new Booking
@@ -402,7 +360,6 @@ public class OwnerPortalStatementsTests
             Db.FiscalDocuments.Add(Invoice(GuestDocumentId, _ownerA, "2026/9", FiscalDocumentStatus.Issued, FiscalDocumentPurpose.GuestStay, null));
             await Db.SaveChangesAsync();
 
-            // The PDF of the second version is stored at its publication; the first was published before the files existed.
             await Documents.StorePublishedPdfAsync(SecondVersionForStore(), lines, "auth0|publisher");
             await Db.SaveChangesAsync();
             Db.ChangeTracker.Clear();
@@ -410,7 +367,6 @@ public class OwnerPortalStatementsTests
 
         private OwnerStatementVersion SecondVersionForStore() => Db.OwnerStatementVersions.AsNoTracking().Single(v => v.Id == SecondVersionId);
 
-        /// <summary>The ledger marks a version as superseded by a later one (what generating a correction does to the previous version).</summary>
         public async Task SupersedeAsync(Guid versionId, Guid byVersionId)
         {
             var version = await Db.OwnerStatementVersions.SingleAsync(v => v.Id == versionId);

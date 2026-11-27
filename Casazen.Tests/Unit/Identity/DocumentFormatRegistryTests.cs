@@ -16,17 +16,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E70/F01/US02/T02 (NF-189, NF-191, D1): the registry of the formats of the identity documents. The Italian electronic identity card ships as a file and loads with
-/// two sides, a TD1 MRZ on the back and the web channel at <c>consistency</c>; a second format written as a JSON file is found without any change of code; an invalid
-/// file is skipped with a code and the valid ones still load; a channel the format does not admit has no assurance (a person decides); nothing a document says is
-/// ever logged.
-/// </summary>
 public sealed class DocumentFormatRegistryTests : IDisposable
 {
     private const string CieFileName = "it-cie-3.0.json";
 
-    /// <summary>A passport as a format file: the proof that a format is configuration, not code (D1).</summary>
     private const string PassportText = """
         {
           "id": "it-passport-test",
@@ -124,7 +117,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
         Add("field-name-upper-case", DocumentFormatReasonCodes.FormatLayoutInvalid, ("layout.sides.back.fields", $"[{Field("Address", OneRegion)}]"));
         Add("field-label-null", DocumentFormatReasonCodes.FormatLayoutInvalid, ("layout.sides.back.fields", "[{\"name\":\"address\",\"zone\":" + OneRegion + ",\"labels\":[null]}]"));
 
-        // A null INSIDE a dictionary or a list passes the reader (System.Text.Json does not check the items of a collection): the validator refuses it, it must not throw.
         Add("side-layout-null", DocumentFormatReasonCodes.FormatLayoutInvalid, ("layout.sides.back", "null"));
         Add("field-null", DocumentFormatReasonCodes.FormatLayoutInvalid, ("layout.sides.back.fields", "[null]"));
         Add("portrait-outside-the-card", DocumentFormatReasonCodes.FormatRegionOutOfBounds, ("layout.sides.front.portrait.x", "0.9"));
@@ -145,7 +137,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     [Fact]
     public void Registry_TheCieFileShippedWithTheApi_LoadsWithTwoSidesTd1MrzOnTheBackAndWebConsistency()
     {
-        // The production defaults: the folder IdentityFormats of the application, here the build output of the web project.
         var registry = new DocumentFormatRegistry(Options.Create(new IdentityVerificationOptions()), new CapturingLogger<DocumentFormatRegistry>(), AppContext.BaseDirectory);
 
         var cie = registry.Get("it-cie-3.0");
@@ -183,12 +174,10 @@ public sealed class DocumentFormatRegistryTests : IDisposable
             ["birthDate", "birthPlace", "documentNumber", "expiryDate", "givenNames", "issueDate", "nationality", "sex", "surname"],
             front.Fields.Select(field => field.Name).Order());
 
-        // The labels as they are printed, in Italian and in English.
         Assert.Contains("COGNOME / SURNAME", front.Fields.Single(field => field.Name == "surname").Labels);
         Assert.Contains("NOME / NAME", front.Fields.Single(field => field.Name == "givenNames").Labels);
         Assert.Contains("SCADENZA / EXPIRY", front.Fields.Single(field => field.Name == "expiryDate").Labels);
 
-        // The identifying fields of the policy are fields of the card.
         var policy = JsonPolicy();
         Assert.All(policy.Document.IdentifyingFields, name => Assert.Contains(cie.Layout.Sides.Values.SelectMany(side => side.Fields), field => field.Name == name));
     }
@@ -196,7 +185,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     [Fact]
     public void DocumentFormatRegistry_NewFormatFile_IsDetectedWithoutCode()
     {
-        // Data rule D1: a new format or country is a new file, never a change of code. The two registries differ by one file in a folder.
         Write("without", CieFileName, CieText());
         Write("with", CieFileName, CieText());
         Write("with", "it-passport-test.json", PassportText);
@@ -212,7 +200,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
         Assert.Equal("consistency", registryWith.AssuranceFor("it-passport-test", "web:desktop-chromium"));
         Assert.Equal(["it-cie-3.0", "it-passport-test"], registryWith.All.Select(format => format.Id));
 
-        // The card is still the card.
         Assert.Equal("it-cie-3.0", registryWith.DetectFromMrz("I<", "ITA", "TD1")?.Id);
     }
 
@@ -258,7 +245,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     [Fact]
     public void DetectFromMrz_TheMrzSpecimenOfTheIcaoTestsWithTheStateOfTheCard_IsTheCie()
     {
-        // The first line of the TD1 specimen of MrzExtractionServiceTests: a document code "I<" for an identity card, the state UTO of ICAO.
         var firstLine = MrzSpecimens.Td1Line1;
         var documentCode = firstLine[..2];
         var specimenState = firstLine[2..5];
@@ -279,8 +265,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     [InlineData("A<", "ResidencePermit", false)]
     public void DetectFromMrz_AgreesWithTheMrzReader_OnWhatIsAnIdCardAndWhatIsAResidencePermit(string documentCode, string readerType, bool isTheCie)
     {
-        // The reader of the MRZ and the registry must not disagree: a code that MrzExtractionService reads as a residence permit (IR, and A...) is never the Italian
-        // electronic identity card, whatever prefix of the file it starts with; it has no format, the flow says format_unsupported and a person decides.
         var result = MrzExtractionService.ParseTd1Mrz(documentCode + MrzSpecimens.Td1Line1[2..], MrzSpecimens.Td1Line2, MrzSpecimens.Td1Line3, new DateOnly(2026, 11, 5));
 
         Assert.NotNull(result);
@@ -291,7 +275,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     [Fact]
     public void DetectFromMrz_ACodeAFormatExcludes_IsNotOfThatFormat_ByConfigurationOnly()
     {
-        // The exclusion is data, like the format: a format claims P and excludes PD; another format claims PD itself. An empty list excludes nothing.
         Write("alone", "a.json", Passport(("id", "\"it-a\""), ("documentCodes", "[\"P\"]"), ("excludedDocumentCodes", "[\"PD\"]")));
         Write("both", "a.json", Passport(("id", "\"it-a\""), ("documentCodes", "[\"P\"]"), ("excludedDocumentCodes", "[\"PD\"]")));
         Write("both", "b.json", Passport(("id", "\"it-b\""), ("documentCodes", "[\"PD\"]")));
@@ -322,11 +305,9 @@ public sealed class DocumentFormatRegistryTests : IDisposable
 
         Assert.Equal("it-b", registry.DetectFromMrz("PD", "ITA", "TD3")?.Id);
 
-        // Two formats with the prefix P (a and c) cannot be told apart: nobody is guessed.
         Assert.Null(registry.DetectFromMrz("P<", "ITA", "TD3"));
         Assert.Null(registry.DetectFromMrz("PA", "ITA", "TD3"));
 
-        // The MRZ spells the state of Germany "D<<": the filler does not matter.
         Assert.Equal("it-d", registry.DetectFromMrz("PX", "D<<", "TD3")?.Id);
     }
 
@@ -346,7 +327,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
         Assert.NotNull(registry.DetectFromMrz("P<", "ITA", "TD3"));
         Assert.Null(registry.Get("it-cie-3.0"));
 
-        // The log has the file and the code, and nothing a file says: not a number, not a label, not a path.
         var line = Assert.Single(logger.Lines, entry => entry.Contains(reasonCode, StringComparison.Ordinal));
         Assert.Contains(fileName, line, StringComparison.Ordinal);
         var everything = string.Concat(logger.Lines);
@@ -362,8 +342,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     [InlineData("field-null-on-the-front", "layout.sides.front.fields", "[null]")]
     public void Registry_ANullInsideAListOrADictionary_IsSkippedWithItsCode_AndTheValidCieStaysLoaded(string name, string path, string literal)
     {
-        // The reader refuses a null member of a record but not a null inside a dictionary or a list. Such a file used to make the validator throw, and the registry
-        // lost every format with it, the valid Italian card included, with no file named: now that file alone is skipped, with its code.
         var logger = new CapturingLogger<DocumentFormatRegistry>();
         var broken = "zz-" + name + ".json";
         Write("formats", CieFileName, CieText());
@@ -382,7 +360,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     [Fact]
     public void ReadGuarded_AFileThatMakesTheReaderThrow_IsFormatJsonInvalid_AndTheLogHasTheTypeNotTheMessage()
     {
-        // The net under the validators: whatever else a file does to the reader, that file alone is skipped; an ordinary outcome passes through unchanged.
         var logger = new CapturingLogger<DocumentFormatRegistry>();
 
         var thrown = DocumentFormatRegistry.ReadGuarded(() => throw new InvalidOperationException("the file said 4321"), logger, "broken.json");
@@ -401,7 +378,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     [Fact]
     public void Registry_AFileThatCannotBeRead_IsSkippedAsUnreadable_AndTheOthersStillLoad()
     {
-        // Another process holds the file open: the read fails with an I/O error; that format is not used, the others are.
         var logger = new CapturingLogger<DocumentFormatRegistry>();
         Write("formats", "it-passport-test.json", PassportText);
         Write("formats", CieFileName, CieText());
@@ -418,7 +394,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     [Fact]
     public void Registry_TwoFilesOfOneId_AreBothSkipped_AndTheOtherFormatsLoad()
     {
-        // Which of the two is meant cannot be told, and the first by name must not shadow the second: neither is used.
         Write("formats", CieFileName, CieText());
         Write("formats", "it-passport-test.json", PassportText);
         Write("formats", "zz-it-passport-test-copy.json", PassportText.Replace("Passaporto italiano (prova)", "Passaporto italiano (copia)", StringComparison.Ordinal));
@@ -495,14 +470,12 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     {
         var registry = ShippedRegistry();
 
-        // Every browser channel of the plan, and the kind alone.
         foreach (var channel in IdentityChannels.All)
             Assert.Equal(IdentityAssuranceLevels.Consistency, registry.AssuranceFor("it-cie-3.0", channel));
 
         Assert.Equal(IdentityAssuranceLevels.Consistency, registry.AssuranceFor("it-cie-3.0", "web"));
         Assert.Equal(IdentityAssuranceLevels.Consistency, registry.AssuranceFor(" it-cie-3.0 ", " WEB:Other "));
 
-        // A channel the format does not admit has no level: that combination is always reviewed by a person.
         Assert.Null(registry.AssuranceFor("it-cie-3.0", "chip:nfc"));
         Assert.Null(registry.AssuranceFor("it-cie-3.0", "app"));
         Assert.Null(registry.AssuranceFor("it-cie-3.0", ""));
@@ -539,7 +512,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     [Fact]
     public void Registry_NeverLogsAValueOfADocument_BecauseItNeverSeesOne()
     {
-        // Privacy: the registry is asked about the codes of an MRZ, never about its data; whatever it is asked, nothing of it reaches the log.
         var logger = new CapturingLogger<DocumentFormatRegistry>();
         Write("formats", CieFileName, CieText());
         Write("formats", "broken.json", "{");
@@ -562,7 +534,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     {
         var project = System.Xml.Linq.XDocument.Load(Path.Combine(IdentityPolicyTestFiles.RepositoryRoot(), "Casazen.Web", "Casazen.Web.csproj"));
 
-        // The JSON is a Content item in the Web SDK and a None item elsewhere: both are listed.
         foreach (var kind in new[] { "Content", "None" })
         {
             var item = Assert.Single(project.Descendants(kind), element => (string?)element.Attribute("Update") == @"IdentityFormats\**\*.json");
@@ -592,7 +563,6 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     [Fact]
     public void FormatRecords_HoldNoNumberOfTheirOwn_NoDefaultAndNoConstant()
     {
-        // AC5: no layout number is written in C#. A default (but null, the absent region) or a constant would decide in the place of the file.
         Type[] formatTypes =
         [
             typeof(DocumentFormat),

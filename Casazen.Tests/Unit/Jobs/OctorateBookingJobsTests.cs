@@ -52,8 +52,6 @@ public class OctorateBookingJobsTests
         h.Client.VerifyNoOtherCalls();
     }
 
-    // ─── The daily import and the reconciliation ─────────────────────────────────────────────────────────
-
     [Fact]
     public async Task TheFirstRunReadsTheWholeHistory_TheNextOnesStartTwoDaysBeforeTheLastCompleteRead()
     {
@@ -66,8 +64,6 @@ public class OctorateBookingJobsTests
         h.Clock.Advance(TimeSpan.FromHours(6));
         await job.ExecuteAsync(CancellationToken.None);
 
-        // Never read completely: three years back. Read completely at 2026-11-06 08:00Z: the next run starts two days before it (4 November).
-        // (The first page of each run: the list is read until an empty page, so each run asks for a second page as well.)
         h.Client.Verify(
             c => c.GetReservationsAsync(
                 Accommodation,
@@ -98,16 +94,13 @@ public class OctorateBookingJobsTests
         h.Serve(Res("7001", OctorateBookingStatus.Cancelled) with { UpdatedAt = SecondVersion });
         await using var db = h.NewDb();
 
-        // Three minutes after the person's change: protected.
         await Sync(h, db).ExecuteAsync(CancellationToken.None);
         Assert.Equal(BookingStatus.Confirmed, (await h.ReadBookingAsync("7001")).Status);
 
-        // Ten minutes later it is not any more: the reservation cancelled on Octorate is applied.
         h.Clock.Advance(TimeSpan.FromMinutes(10));
         await Sync(h, db).ExecuteAsync(CancellationToken.None);
         Assert.Equal(BookingStatus.Cancelled, (await h.ReadBookingAsync("7001")).Status);
 
-        // The daily import has no such window.
         var other = new Octorate.BookingImportHarness();
         await other.SeedBookingAsync(
             "7001", source: BookingSource.Airbnb, status: BookingStatus.Confirmed, total: 100m, updatedAt: Now.UtcDateTime.AddMinutes(-3), octorateUpdatedAt: FirstVersion.AddDays(-1));
@@ -151,14 +144,12 @@ public class OctorateBookingJobsTests
         h.Serve(Res("7001"));
         await using var db = h.NewDb();
 
-        // "111111" is read first (by accommodation id): its list fails. The other property is read all the same.
         h.Client
             .Setup(c => c.GetReservationsAsync("111111", It.IsAny<OctorateReservationQuery>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OctorateServerException(500));
         await Sync(h, db).ExecuteAsync(CancellationToken.None);
         Assert.Equal(["7001"], await db.Bookings.Select(b => b.OctorateReservationId!).ToListAsync());
 
-        // The same org, but now Octorate refuses its connection: the rest of the org is left for the next run.
         var refused = new Octorate.BookingImportHarness();
         await refused.AddListingAsync("111111", "222222");
         refused.Serve(Res("7001"));
@@ -171,8 +162,6 @@ public class OctorateBookingJobsTests
             c => c.GetReservationsAsync(Accommodation, It.IsAny<OctorateReservationQuery>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.Empty(await refusedDb.Bookings.ToListAsync());
     }
-
-    // ─── The arrival and the departure ───────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(DomainEventType.CheckInCompleted, BookingStatus.CheckedIn)]
@@ -239,7 +228,6 @@ public class OctorateBookingJobsTests
         await new OctorateBookingStatePushJob(sync.Object, scope, NullLogger<OctorateBookingStatePushJob>.Instance)
             .PushAsync(OrgA, bookingId, status, CancellationToken.None);
 
-        // The client takes no org: the job opened the scope of the booking's org for the call, and closed it after.
         Assert.Equal(OrgA, seenOrg);
         sync.Verify(s => s.SetStayStateAsync(bookingId, expected, It.IsAny<CancellationToken>()), Times.Once);
         Assert.Throws<InvalidOperationException>(() => scope.OrgId);
@@ -255,8 +243,6 @@ public class OctorateBookingJobsTests
 
         sync.VerifyNoOtherCalls();
     }
-
-    // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────
 
     private static OctorateBookingSyncJob Sync(Octorate.BookingImportHarness h, AppDbContext db) =>
         new(db, h.Service(db), h.Scope(), StagingHost(), NullLogger<OctorateBookingSyncJob>.Instance);

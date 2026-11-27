@@ -57,12 +57,10 @@ public class SwissGuestDataGdprTests
         await using (var db = CrmTestWorld.Open(store))
             export = await Service(db).ExportGuestDataAsync(orgId, guestId, new HostScope(orgId), false, "auth0|host", Ct);
 
-        // The stays come oldest first: the one with no plate, then the one with it.
         Assert.Equal(2, export.Bookings.Count);
         Assert.Null(export.Bookings[0].VehiclePlate);
         Assert.Equal("TI123456", export.Bookings[1].VehiclePlate);
 
-        // The two guests of the stay with their home; the guest of the other stay is not in the file.
         Assert.Equal(2, export.StayGuests.Count);
         Assert.Equal(("Via Nassa 15", "6900", "Lugano"), HomeOf(export.StayGuests[0]));
         Assert.Equal(("Via Nassa 15", "6900", "Lugano"), HomeOf(export.StayGuests[1]));
@@ -107,12 +105,10 @@ public class SwissGuestDataGdprTests
         Assert.Equal(2, cleared.Count);
         Assert.All(cleared, row => Assert.Equal(((string?)null, (string?)null, (string?)null), HomeOf(row)));
 
-        // The stay of another guest keeps its plate and its home.
         Assert.Equal("MI999999", (await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == othersStay.Id, Ct)).VehiclePlate);
         var kept = await db.StayGuests.AsNoTracking().SingleAsync(s => s.BookingId == othersStay.Id, Ct);
         Assert.Equal(("Rue du Rhone 1", "1204", "Geneve"), HomeOf(kept));
 
-        // The export of the erased guest gives none of them either: what the export lists is what the erasure clears.
         var export = await Service(db).ExportGuestDataAsync(orgId, erased.Id, new HostScope(orgId), false, "auth0|host", Ct);
         Assert.All(export.Bookings, booking => Assert.Null(booking.VehiclePlate));
         Assert.All(export.StayGuests, row => Assert.Equal(((string?)null, (string?)null, (string?)null), HomeOf(row)));
@@ -123,7 +119,6 @@ public class SwissGuestDataGdprTests
 
     private static (string?, string?, string?) HomeOf(StayGuest row) => (row.ResidenceStreet, row.ResidencePostalCode, row.ResidenceCityName);
 
-    /// <summary>A guest of a stay with the home the check-in recorded (added to nothing, not saved).</summary>
     private static StayGuest GuestOf(Booking stay, int position, Guid? guestId, string firstName, string street, string postalCode, string city) => new()
     {
         BookingId = stay.Id,
@@ -137,7 +132,6 @@ public class SwissGuestDataGdprTests
         ResidenceCityName = city,
     };
 
-    /// <summary>A confirmed stay at the property with a plate and nothing else the erasure would clear.</summary>
     private static Booking StayOf(Guest guest, Guid propertyId, string plate) => new()
     {
         OrgId = guest.OrgId,
@@ -155,7 +149,6 @@ public class SwissGuestDataGdprTests
 
     private static GdprService Service(AppDbContext db)
     {
-        // No stay is open: the erasure is not refused (art. 17.3.b).
         var repository = new Mock<IGuestRepository>();
         repository
             .Setup(r => r.GetUsageAsync(It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))

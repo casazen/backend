@@ -28,8 +28,6 @@ namespace Casazen.Tests.Integration;
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class ShowcaseBookingUpkeepPostgresTests(PublicBookingFactory factory) : IClassFixture<PublicBookingFactory>
 {
-    // ─── The upkeep every five minutes ───
-
     [PostgresFact]
     public async Task Expiry_DeletesTheHoldsThatLapsed_AndCancelsTheRequestsNobodyAnswered()
     {
@@ -37,7 +35,6 @@ public class ShowcaseBookingUpkeepPostgresTests(PublicBookingFactory factory) : 
         var unchecked_ = PublicBookingTestData.NewEmail();
         var answered = PublicBookingTestData.NewEmail();
         using var client = factory.CreateClient();
-        // A booking nobody checks, and a request nobody answers.
         var created = await client.PostAsJsonAsync(
             $"/api/public/suppliers/{supplier.Slug}/bookings", PublicBookingTestData.Body(supplier.Service, PublicBookingTestData.TuesdayAt9, unchecked_));
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
@@ -57,7 +54,6 @@ public class ShowcaseBookingUpkeepPostgresTests(PublicBookingFactory factory) : 
         Assert.Equal(ServiceRequestActorParty.System, stored.CancelledBy);
         Assert.Equal(ServiceRequestCancellationReasons.NoResponse, stored.CancellationReason);
         Assert.Null(stored.ResponseDueAt);
-        // The customer whose request lapsed is told; the one who never checked the address hears nothing more.
         Assert.Single(factory.EmailsTo(answered), e => e.Template == EmailTemplates.Names.SupplierBookingExpired);
         Assert.DoesNotContain(factory.EmailsTo(unchecked_), e => e.Template == EmailTemplates.Names.SupplierBookingExpired);
     }
@@ -107,7 +103,6 @@ public class ShowcaseBookingUpkeepPostgresTests(PublicBookingFactory factory) : 
                 Assert.Equal(1, await CountHoldsAsync(supplier.OrgId));
             }
 
-            // The lock is released with the handle: the next run takes it and does the work.
             var run = await RunExpiryAsync();
             Assert.False(run.Skipped);
             Assert.True(run.HoldsDeleted >= 1);
@@ -115,20 +110,16 @@ public class ShowcaseBookingUpkeepPostgresTests(PublicBookingFactory factory) : 
         }
     }
 
-    // ─── The reminders of the day before ───
-
     [PostgresFact]
     public async Task Reminders_FromEighteenTheDayBefore_QueueOneEmailToTheCustomer_Once()
     {
         var supplier = await PublicBookingTestData.SeedAsync(factory);
         var email = PublicBookingTestData.NewEmail();
         using var client = factory.CreateClient();
-        // The work is on Tuesday 13 October at 09:00 in Rome; the host clock is Monday 12 October at 08:45 in Rome.
         var requestId = await BookAsync(client, supplier, PublicBookingTestData.TuesdayAt9, email);
         using (var asSupplier = supplier.Client(factory))
             Assert.Equal(HttpStatusCode.OK, (await asSupplier.PostAsync($"/api/service-requests/{requestId}/take", content: null)).StatusCode);
 
-        // 17:59 in Rome: not yet.
         using (factory.MoveClock(TimeSpan.FromHours(9) + TimeSpan.FromMinutes(14)))
         {
             await RunRemindersAsync();
@@ -136,7 +127,6 @@ public class ShowcaseBookingUpkeepPostgresTests(PublicBookingFactory factory) : 
             Assert.Null((await LoadRequestAsync(requestId)).ReminderSentAt);
         }
 
-        // 18:00 in Rome: the reminder, once.
         ServiceRequestReminderRun first;
         using (factory.MoveClock(TimeSpan.FromHours(9) + TimeSpan.FromMinutes(15)))
         {
@@ -166,8 +156,6 @@ public class ShowcaseBookingUpkeepPostgresTests(PublicBookingFactory factory) : 
         Assert.Equal(0, skipped.Sent);
     }
 
-    // ─── The retention, off by default ───
-
     [PostgresFact]
     public async Task Retention_WithoutAPeriodAndItsSource_AnonymizesNothing()
     {
@@ -188,8 +176,6 @@ public class ShowcaseBookingUpkeepPostgresTests(PublicBookingFactory factory) : 
         Assert.Null(customer.AnonymizedAt);
         Assert.Equal(PublicBookingTestData.FullName, customer.FullName);
     }
-
-    // ─── helpers ───
 
     private async Task<Guid> BookAsync(HttpClient client, BookableSupplier supplier, DateTime start, string email)
     {
@@ -239,7 +225,6 @@ public class ShowcaseBookingUpkeepPostgresTests(PublicBookingFactory factory) : 
     }
 }
 
-/// <summary>The showcase host with the retention of the customers configured: two years, with a source.</summary>
 public sealed class PublicBookingRetentionFactory : PublicBookingFactory
 {
     protected override IEnumerable<KeyValuePair<string, string?>> ExtraSettings() =>
@@ -305,8 +290,6 @@ public class ShowcaseBookingRetentionPostgresTests(PublicBookingRetentionFactory
         Assert.Equal(PublicBookingTestData.Address, openRequest.LocationAddress);
     }
 
-    // ─── helpers ───
-
     private async Task<Guid> BookAsync(HttpClient client, BookableSupplier supplier, DateTime start, string email)
     {
         var created = await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/bookings", PublicBookingTestData.Body(supplier.Service, start, email));
@@ -316,7 +299,6 @@ public class ShowcaseBookingRetentionPostgresTests(PublicBookingRetentionFactory
         var confirmed = await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/bookings/{holdId}/confirm-email", new { token });
         Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
 
-        // The request that has just been created: the oldest one of the supplier that nobody has an id for yet.
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var hold = await db.ShowcaseBookingHolds.AsNoTracking().SingleAsync(h => h.Id == holdId);
@@ -353,7 +335,6 @@ public class ShowcaseBookingTenancyPostgresTests(PublicBookingFactory factory) :
         var confirmed = await client.PostAsJsonAsync($"/api/public/suppliers/{dual.Slug}/bookings/{holdId}/confirm-email", new { token });
         Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
 
-        // The same org also asks another supplier for a job on one of its own properties.
         var hostRequestId = await SeedHostRequestAsync(dual.OrgId, other.OrgId);
         await using var scope = factory.Services.CreateAsyncScope();
         var service = scope.ServiceProvider.GetRequiredService<IServiceRequestService>();
@@ -375,13 +356,11 @@ public class ShowcaseBookingTenancyPostgresTests(PublicBookingFactory factory) :
         Assert.Null(await service.GetByIdForHostAsync(showcaseId, scopeOfTheOrg, ServiceRequestRentalContext.ShortRent));
         Assert.Null(await service.GetByIdForHostAsync(showcaseId, scopeOfTheOrg, ServiceRequestRentalContext.Showcase));
 
-        // The actions of the host answer 404 for the showcase request, whatever the org.
         await Assert.ThrowsAsync<NotFoundException>(() => service.CancelAsHostAsync(showcaseId, dual.OrgId, "Prova"));
         await Assert.ThrowsAsync<NotFoundException>(() => service.MarkPaidAsync(showcaseId, dual.OrgId));
         await Assert.ThrowsAsync<NotFoundException>(() => service.RemindAsync(showcaseId, dual.OrgId));
         Assert.Equal(ServiceRequestStatus.Richiesto, (await service.GetByIdForSupplierAsync(showcaseId, dual.OrgId))!.Status);
 
-        // The inbox of the supplier shows the showcase request and not the one it made as a host.
         var inbox = await dual.InboxAsync(factory);
         Assert.Equal(showcaseId, Assert.Single(inbox.GetProperty("items").EnumerateArray()).GetProperty("id").GetGuid());
     }
@@ -402,7 +381,6 @@ public class ShowcaseBookingTenancyPostgresTests(PublicBookingFactory factory) :
 
         var links = factory.EmailsTo(email).Select(PublicBookingTestData.LinkOf).ToList();
         Assert.Equal(2, links.Count);
-        // A link belongs to the supplier of the booking: the other supplier's page answers the same 404 as a wrong token.
         foreach (var (holdId, token) in links)
         {
             var crossed = await client.PostAsJsonAsync($"/api/public/suppliers/{theirs.Slug}/bookings/{holdId}/confirm-email", new { token });
@@ -422,9 +400,6 @@ public class ShowcaseBookingTenancyPostgresTests(PublicBookingFactory factory) :
         Assert.Equal(1, (await theirs.InboxAsync(factory)).GetProperty("total").GetInt32());
     }
 
-    // ─── helpers ───
-
-    /// <summary>A property of <paramref name="hostOrgId"/> and a short-rent request on it for <paramref name="supplierOrgId"/>; returns the request.</summary>
     private async Task<Guid> SeedHostRequestAsync(Guid hostOrgId, Guid supplierOrgId)
     {
         await using var scope = factory.Services.CreateAsyncScope();

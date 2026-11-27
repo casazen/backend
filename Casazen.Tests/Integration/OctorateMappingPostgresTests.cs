@@ -50,7 +50,6 @@ public class OctorateMappingPostgresTests
                 Status = OctorateConnectionStatus.Connected,
             });
             seed.OctorateListingMappings.Add(Mapping(orgId, connectionId, "1001", propertyId, OctorateMappingStatus.Confirmed));
-            // A proposal of the same property for another listing is allowed: only the confirmed rows are unique.
             seed.OctorateListingMappings.Add(Mapping(orgId, connectionId, "1002", propertyId, OctorateMappingStatus.Proposed));
             await seed.SaveChangesAsync();
         }
@@ -61,7 +60,6 @@ public class OctorateMappingPostgresTests
             AssertRefusedByTheConfirmedIndex(await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync()));
         }
 
-        // Confirming the proposal of the other listing is refused the same way.
         await using (var db = database.CreateContext())
         {
             var proposal = await db.OctorateListingMappings.SingleAsync(m => m.OctorateAccommodationId == "1002");

@@ -32,7 +32,7 @@ public class PublicGuestBookingCancellationIntegrationTests : IClassFixture<Casa
     [Fact]
     public async Task Cancel_PaidBookingWithTouristTaxInThePartialWindow_Returns200AndRefundsHalfOfTheBasePriceAndTheTax()
     {
-        var seed = await SeedAsync(daysToCheckIn: 10); // Contenuta: 50% from 14 to 7 days before check-in
+        var seed = await SeedAsync(daysToCheckIn: 10);
         using var guest = _factory.CreateClient();
 
         var response = await guest.PostAsync(CancelUrl(seed), null);
@@ -41,7 +41,7 @@ public class PublicGuestBookingCancellationIntegrationTests : IClassFixture<Casa
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(seed.BookingId, body.GetProperty("bookingId").GetGuid());
         Assert.Equal("Cancelled", body.GetProperty("status").GetString());
-        Assert.Equal(220m, body.GetProperty("refundAmount").GetDecimal()); // 50% of the 400, and the 20 of tax
+        Assert.Equal(220m, body.GetProperty("refundAmount").GetDecimal());
         var request = Assert.Single(Stripe.RefundRequests, r => r.PaymentIntentId == seed.PaymentIntentId);
         Assert.Equal(Account, request.ConnectedAccountId);
         Assert.Equal(22_000, request.AmountCents);
@@ -50,7 +50,7 @@ public class PublicGuestBookingCancellationIntegrationTests : IClassFixture<Casa
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var booking = await db.Bookings.IgnoreQueryFilters().SingleAsync(b => b.Id == seed.BookingId);
         Assert.Equal(BookingStatus.Cancelled, booking.Status);
-        Assert.Equal(GuestCancellationTokens.HashToken(seed.Token), booking.GuestCancelTokenHash); // recognised again, but spent
+        Assert.Equal(GuestCancellationTokens.HashToken(seed.Token), booking.GuestCancelTokenHash);
         Assert.True(booking.GuestCancelTokenExpiresAt <= DateTime.UtcNow);
         var refund = await db.PaymentRefunds.IgnoreQueryFilters().SingleAsync(r => r.PaymentId == seed.PaymentId);
         Assert.Equal(220m, refund.Amount);
@@ -67,14 +67,14 @@ public class PublicGuestBookingCancellationIntegrationTests : IClassFixture<Casa
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(420m, body.GetProperty("refundAmount").GetDecimal()); // paid 420: the base price and the 20 of tourist tax
+        Assert.Equal(420m, body.GetProperty("refundAmount").GetDecimal());
         Assert.Equal(42_000, Assert.Single(Stripe.RefundRequests, r => r.PaymentIntentId == seed.PaymentIntentId).AmountCents);
     }
 
     [Fact]
     public async Task Cancel_AfterTheRefundWindows_Returns200AndRefundsOnlyTheTouristTax()
     {
-        var seed = await SeedAsync(daysToCheckIn: 3); // Contenuta: 0% of the stay within 7 days; the tax is not due on a cancelled stay
+        var seed = await SeedAsync(daysToCheckIn: 3);
         using var guest = _factory.CreateClient();
 
         var response = await guest.PostAsync(CancelUrl(seed), null);
@@ -122,7 +122,6 @@ public class PublicGuestBookingCancellationIntegrationTests : IClassFixture<Casa
             Assert.Equal(BookingStatus.Pending, booking.Status);
             Assert.Equal(GuestCancellationTokens.HashToken(seed.Token), booking.GuestCancelTokenHash);
 
-            // The webhook records the payment.
             var payment = await db.Payments.IgnoreQueryFilters().SingleAsync(p => p.Id == seed.PaymentId);
             payment.Status = PaymentStatus.Completed;
             await db.SaveChangesAsync();
@@ -205,10 +204,6 @@ public class PublicGuestBookingCancellationIntegrationTests : IClassFixture<Casa
 
     private sealed record Seed(Guid OrgId, Guid BookingId, Guid PaymentId, string PaymentIntentId, string Token);
 
-    /// <summary>
-    /// A booking of 400 (lodging and cleaning) + 20 of tourist tax, paid 420 through Stripe, under the policy "Contenuta"
-    /// (100% from 14 days before check-in, 50% from 7 days, 0% after) with a cancel link the host has sent.
-    /// </summary>
     private async Task<Seed> SeedAsync(
         int daysToCheckIn,
         PaymentStatus paymentStatus = PaymentStatus.Completed,

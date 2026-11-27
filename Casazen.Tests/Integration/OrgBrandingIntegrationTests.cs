@@ -12,11 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// <c>/api/orgs/me/branding</c> (BK-12, A3-17): the org's billing/settings administrator edits logo, hero, primary
-/// color, tagline and theme, and the anonymous public endpoints (<c>/api/public/orgs/{slug}</c>,
-/// <c>/api/public/resolve-host</c>) serve them.
-/// </summary>
 public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private readonly CasazenWebApplicationFactory _factory;
@@ -226,7 +221,7 @@ public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFa
         var slug = await SetSlugAsync(org.Id, $"villa-host-{Guid.NewGuid():N}"[..27]);
         using var anonymous = _factory.CreateClient();
         var host = $"/api/public/resolve-host?host={slug}.casazen.it";
-        var before = await anonymous.GetFromJsonAsync<JsonElement>(host); // cached from here on
+        var before = await anonymous.GetFromJsonAsync<JsonElement>(host);
         Assert.Equal(JsonValueKind.Null, before.GetProperty("branding").GetProperty("tagline").ValueKind);
 
         using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
@@ -237,8 +232,6 @@ public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFa
         Assert.Equal("Nel cuore della città", after.GetProperty("branding").GetProperty("tagline").GetString());
         Assert.Equal("citta", after.GetProperty("branding").GetProperty("publicThemeId").GetString());
     }
-
-    // ─── Public profile of the booking site (DB-03) ─────────────────────────────────────────────────
 
     [Fact]
     public async Task UpdateBranding_PublicProfile_IsPublishedOnThePublicOrgWithTheNormalizedPhone()
@@ -267,14 +260,12 @@ public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFa
         Assert.Equal("Trulli, case sul mare e dimore barocche.", publicOrg.GetProperty("subtitle").GetString());
         Assert.Equal("Giulia Rinaldi", publicOrg.GetProperty("hostName").GetString());
         Assert.Equal("+393331234567", publicOrg.GetProperty("publicPhone").GetString());
-        // The branding that was already there is untouched.
         Assert.Equal("Case con l'anima", publicOrg.GetProperty("tagline").GetString());
     }
 
     [Fact]
     public async Task UpdateBranding_BodyWithoutTheProfile_KeepsTheProfile()
     {
-        // The appearance form of today sends color, theme and tagline only; it must never erase what the profile holds.
         var ownerId = $"auth0|branding-keep-{Guid.NewGuid():N}";
         await _factory.SeedOrgForOwnerAsync(ownerId);
         using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
@@ -326,7 +317,6 @@ public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFa
         await _factory.SeedOrgForOwnerAsync(ownerId);
         using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
         await client.PutAsJsonAsync("/api/orgs/me/branding", new { hostName = "Giulia", publicPhone = "0832123456" });
-        // One character stands for "too long" in the rows above: the real overflow is built here.
         var sent = field switch
         {
             "hostName" => new string('h', 101),
@@ -389,7 +379,6 @@ public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFa
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var org = await db.Orgs.SingleAsync(o => o.Id == orgId);
         org.Slug = slug;
-        // The slug is also the label of the org's subdomain: only an org that chose the subdomain mode is served on it (BK-16).
         org.PublicHostMode = PublicHostMode.CasazenSubdomain;
         org.Subdomain = slug;
         await db.SaveChangesAsync();

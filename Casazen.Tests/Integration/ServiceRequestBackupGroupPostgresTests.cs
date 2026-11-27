@@ -16,7 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>The default integration factory with the flag <c>SupplierRequestBackups</c> on (it is off by default).</summary>
 public sealed class BackupGroupsEnabledFactory : CasazenWebApplicationFactory
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -56,7 +55,6 @@ public class ServiceRequestBackupGroupPostgresTests(BackupGroupsEnabledFactory f
         Assert.Equal(ServiceRequestGroupPhase.PrimaryWindow, group.Phase);
         Assert.All(members, m => Assert.Equal(group.PrimaryDueAt, m.ResponseDueAt));
 
-        // The host sees the request it made, and the group inside it: never a backup as a request of its own.
         using (var host = factory.Host(world.Base))
         {
             var list = await host.GetFromJsonAsync<JsonElement>($"/api/service-requests?propertyId={world.Base.PropertyId}", JsonOptions);
@@ -70,7 +68,6 @@ public class ServiceRequestBackupGroupPostgresTests(BackupGroupsEnabledFactory f
             Assert.Equal(1, list.GetProperty("total").GetInt32());
         }
 
-        // A backup sees its request as a backup: the comune, the time and the price, never the property or the host's notes (decision D9).
         var requestA = members.Single(m => m.SupplierOrgId == world.BackupA.OrgId);
         using (var backup = factory.CreateAuthenticatedClient(world.BackupA.UserId, "Supplier"))
         {
@@ -84,7 +81,6 @@ public class ServiceRequestBackupGroupPostgresTests(BackupGroupsEnabledFactory f
             Assert.Equal(SupplierBackupRoles.Backup, shown.GetProperty("role").GetString());
             Assert.Equal(SupplierBackupStates.Waiting, shown.GetProperty("state").GetString());
 
-            // Within the primary's hour a backup can only say it would take the job.
             var early = await backup.PostAsJsonAsync($"/api/service-requests/{requestA.Id}/take", new { });
             await AssertProblemAsync(early, HttpStatusCode.UnprocessableEntity, ServiceRequestGroupErrorCodes.BackupWaitsForPrimary);
         }
@@ -131,7 +127,6 @@ public class ServiceRequestBackupGroupPostgresTests(BackupGroupsEnabledFactory f
             var take = await b.PostAsJsonAsync($"/api/service-requests/{requestB.Id}/take", new { });
             await AssertProblemAsync(take, HttpStatusCode.Conflict, ServiceRequestGroupErrorCodes.BackupRaceClosed);
 
-            // Saying it again is not an error and changes nothing.
             await AcceptAsBackupAsync(a, requestA.Id);
         }
 
@@ -144,11 +139,9 @@ public class ServiceRequestBackupGroupPostgresTests(BackupGroupsEnabledFactory f
         Assert.Equal(ServiceRequestActorParty.System, raced.CancelledBy);
         Assert.Equal(ServiceRequestCancellationReasons.BackupRaceClosed, raced.CancellationReason);
 
-        // Within the primary's hour the job leaves the group as it is.
         await RunJobAsync();
         Assert.Equal(ServiceRequestGroupPhase.PrimaryWindow, (await LoadGroupAsync(groupId)).Phase);
 
-        // The hour passes and the chosen supplier has not answered.
         await ChangeGroupAsync(groupId, g => g.PrimaryDueAt = DateTime.UtcNow.AddMinutes(-2));
         var run = await RunJobAsync();
         Assert.False(run.Skipped);
@@ -171,7 +164,6 @@ public class ServiceRequestBackupGroupPostgresTests(BackupGroupsEnabledFactory f
         Assert.Equal(ServiceRequestStatus.Annullato, other.Status);
         Assert.Equal(ServiceRequestCancellationReasons.BackupRaceClosed, other.CancellationReason);
 
-        // The host follows the backup that took the job, and the group tells how it came to it.
         using (var host = factory.Host(world.Base))
         {
             var list = await host.GetFromJsonAsync<JsonElement>($"/api/service-requests?propertyId={world.Base.PropertyId}", JsonOptions);
@@ -232,7 +224,6 @@ public class ServiceRequestBackupGroupPostgresTests(BackupGroupsEnabledFactory f
         var requestA = members.Single(m => m.SupplierOrgId == world.BackupA.OrgId);
         var requestB = members.Single(m => m.SupplierOrgId == world.BackupB.OrgId);
 
-        // Nobody accepted in the hour: the job opens the second window, where the first to take the job has it.
         await ChangeGroupAsync(groupId, g => g.PrimaryDueAt = DateTime.UtcNow.AddMinutes(-2));
         var run = await RunJobAsync();
         Assert.True(run.BackupWindowsOpened >= 1, $"Windows opened {run.BackupWindowsOpened}, failed {run.Failed}, conflicts {run.Conflicts}");
@@ -246,7 +237,6 @@ public class ServiceRequestBackupGroupPostgresTests(BackupGroupsEnabledFactory f
             a.PostAsJsonAsync($"/api/service-requests/{requestA.Id}/take", new { }),
             b.PostAsJsonAsync($"/api/service-requests/{requestB.Id}/take", new { }));
 
-        // The group's lock serializes the takes; the loser finds the job gone (409 state changed, or 422 when its own request was closed first).
         Assert.DoesNotContain(responses, r => (int)r.StatusCode >= 500);
         var won = Assert.Single(responses, r => r.StatusCode == HttpStatusCode.OK);
         Assert.Single(responses, r => r.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.UnprocessableEntity);
@@ -302,19 +292,11 @@ public class ServiceRequestBackupGroupPostgresTests(BackupGroupsEnabledFactory f
             Assert.Equal(0, skipped.Examined);
         }
 
-        // The lock is released with the handle: the next run takes it.
         Assert.False((await RunJobAsync()).Skipped);
     }
 
-    // ─── helpers ───
-
     private sealed record BackupWorld(ServiceRequestWorld Base, (string UserId, Guid OrgId) BackupA, (string UserId, Guid OrgId) BackupB);
 
-    /// <summary>
-    /// A host with a property in a comune of its own, the supplier it chooses, and two more suppliers that cover that comune and the
-    /// cleaning category: the backups the rule picks. The comune is written as a name that is not in the official list, so the suppliers are
-    /// matched by it and by nothing else, and no supplier of another test is ever one of these backups.
-    /// </summary>
     private async Task<BackupWorld> SeedAsync()
     {
         var comune = $"Borgo{Guid.NewGuid():N}";
@@ -350,7 +332,6 @@ public class ServiceRequestBackupGroupPostgresTests(BackupGroupsEnabledFactory f
         return await db.ServiceRequestGroups.AsNoTracking().SingleAsync(g => g.Id == groupId);
     }
 
-    /// <summary>Writes a change straight to a group (a deadline in the past: the state the API reaches in an hour).</summary>
     private async Task ChangeGroupAsync(Guid groupId, Action<ServiceRequestGroup> change)
     {
         await using var scope = factory.Services.CreateAsyncScope();

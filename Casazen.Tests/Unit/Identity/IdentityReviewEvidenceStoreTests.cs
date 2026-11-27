@@ -29,14 +29,11 @@ public sealed class IdentityReviewEvidenceStoreTests
     private static readonly DateTimeOffset Now = new(2026, 11, 27, 9, 0, 0, TimeSpan.Zero);
     private static readonly CancellationToken Ct = CancellationToken.None;
 
-    /// <summary>The portrait the detector finds on every picture it is shown: a box well inside the document of the tests.</summary>
     private static readonly DetectedFace Portrait = new(60, 20, 40, 50, 0.99f, new float[10], 0.08);
 
     [Fact]
     public async Task IdentityReviewEvidenceStore_StoresOnlyCiphertextOfCropAndChosenFrames()
     {
-        // Proof (privacy, AC1, AC3): one crop and at most MaxFrames frames, only ciphertext in the bucket; decrypted, the crop is a valid PNG of the box of the portrait with its
-        // margin, and each frame is the JPEG received without any APPn or COM segment (nor what followed its end); no embedding, no score, no row of anything else.
         await using var world = new EvidenceWorld();
         var (document, documentPixels) = Document(200, 120, seed: 7);
         using var sequence = Sequence(4, withMetadata: true);
@@ -64,7 +61,6 @@ public sealed class IdentityReviewEvidenceStoreTests
             Assert.Equal(Convert.ToHexString(SHA256.HashData(stored)), row.Sha256);
         }
 
-        // The crop: the portrait box with a quarter of its size around it, cut from the document as it is, as a PNG.
         var cropRow = rows.Single(row => row.Kind == IdentityEvidenceKind.DocumentPortrait);
         Assert.Equal(IdentityReviewEvidenceStore.PngContentType, cropRow.ContentType);
         var crop = world.Decrypt(cropRow);
@@ -76,7 +72,6 @@ public sealed class IdentityReviewEvidenceStoreTests
             Assert.Equal(expected.Rgb, decoded.Rgb);
         }
 
-        // The frames: the first three the server chose, in its order, as the JPEG received without its metadata and without what followed its end.
         var frameRows = rows.Where(row => row.Kind == IdentityEvidenceKind.Frame).OrderBy(row => row.CreatedAt).ThenBy(row => row.Id).ToList();
         var frames = frameRows.Select(row => (row, bytes: world.Decrypt(row))).ToList();
         Assert.All(frames, frame =>
@@ -94,7 +89,6 @@ public sealed class IdentityReviewEvidenceStoreTests
         Assert.All(frames, frame => Assert.Contains(chosen, expected => expected.SequenceEqual(frame.bytes)));
         Assert.Equal(3, frames.Select(frame => Convert.ToHexString(frame.bytes)).Distinct().Count());
 
-        // Nothing else: the row has no column for a picture, a vector or a score, and the store has no way to make a vector.
         Assert.DoesNotContain(typeof(IdentityReviewEvidence).GetProperties(), property => property.PropertyType == typeof(byte[]) || property.PropertyType == typeof(float[]));
         Assert.DoesNotContain(
             typeof(IdentityReviewEvidenceStore).GetConstructors().SelectMany(constructor => constructor.GetParameters()),
@@ -104,7 +98,6 @@ public sealed class IdentityReviewEvidenceStoreTests
     [Fact]
     public async Task IdentityReviewEvidenceStore_TicinoProperty_StoresNothing()
     {
-        // Proof (privacy, AC2, ADR-013-R6): a property that keeps no document keeps no evidence at all: no object, no row, and the picture is not even looked at.
         await using var world = new EvidenceWorld();
         var (document, _) = Document(200, 120, seed: 7);
         using var sequence = Sequence(4, withMetadata: false);
@@ -144,7 +137,6 @@ public sealed class IdentityReviewEvidenceStoreTests
         var (document, _) = Document(400, 240, seed: 9);
         world.Detector.Fallback = _ => [new DetectedFace(100, 40, 120, 150, 0.99f, new float[10], 0.2)];
 
-        // Frame 0 is larger than MaxSide; frame 1 fits but its EXIF says it must be turned: both are kept as a PNG of the decoded (upright) frame.
         var large = TestJpeg.Noise(96, 72, seed: 3);
         var turned = WithSegments(TestJpeg.Noise(40, 30, seed: 4), App1(ExifOrientationSix()));
         using var sequence = new FrameSequence(
@@ -178,7 +170,6 @@ public sealed class IdentityReviewEvidenceStoreTests
         Assert.Equal(1, await world.Store().SaveForReviewAsync(world.Input(document, sequence, chosen: [0, 1, 2]), Ct));
         Assert.Equal(IdentityEvidenceKind.DocumentPortrait, Assert.Single(await world.RowsAsync(), row => row.DeletedAt == null).Kind);
 
-        // A document with no portrait the detector can find keeps no crop: never the whole document.
         world.Limits.Evidence.MaxFrames = 3;
         world.Detector.Fallback = null;
         Assert.Equal(3, await world.Store().SaveForReviewAsync(world.Input(document, sequence, chosen: [0, 1, 2]), Ct));
@@ -212,8 +203,6 @@ public sealed class IdentityReviewEvidenceStoreTests
     [Fact]
     public async Task IdentityReviewEvidenceStore_AStorageFailure_KeepsNoRowAndNoObject_AndLogsTheTypeOnly()
     {
-        // AC4: the evidence is optional. A storage that fails after some objects were written leaves no row and no object (they are deleted), the store does not throw, and the
-        // log says the type of the error, never its text.
         await using var world = new EvidenceWorld();
         world.Storage.FailPutAfter = 2;
         world.Storage.Failure = new InvalidOperationException("bucket down while writing the face of Anna Bianchi");
@@ -235,8 +224,6 @@ public sealed class IdentityReviewEvidenceStoreTests
     [Fact]
     public async Task IdentityReviewEvidenceStore_ThePicturesInClear_AreZeroedOnceEncrypted()
     {
-        // Proof (privacy, ADR-013-R2): every picture the store encrypted (the crop it made, the frames it stripped) is zeroed before it returns; the frames and the document of
-        // the request are the caller's.
         await using var world = new EvidenceWorld();
         var (document, _) = Document(200, 120, seed: 7);
         using var sequence = Sequence(4, withMetadata: true);
@@ -263,24 +250,19 @@ public sealed class IdentityReviewEvidenceStoreTests
         using var after = RasterImage.Decode(stripped, 1_000_000);
         Assert.Equal(before.Rgb, after.Rgb);
 
-        // Not a JPEG, cut short, a segment that runs past the end: not stripped (the caller keeps something else).
         Assert.False(JpegMetadata.TryStrip(PngSignature, out _));
         Assert.False(JpegMetadata.TryStrip(dressed.AsSpan(0, dressed.Length / 2), out _));
         Assert.False(JpegMetadata.TryStrip([0xFF, 0xD8, 0xFF, 0xE1, 0x7F, 0xFF, 0x00], out _));
     }
 
-    // ─── The pieces ────────────────────────────────────────────────────────────────────────────────────
-
     private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
 
-    /// <summary>A document front of noise (as a PNG) and its pixels decoded.</summary>
     internal static (byte[] Png, RasterImage Pixels) Document(int width, int height, int seed)
     {
         var png = TestImages.Png(width, height, seed);
         return (png, RasterImage.Decode(png, 1_000_000));
     }
 
-    /// <summary><paramref name="count"/> frames of noise, 32 x 24, one every 125 ms; with <paramref name="withMetadata"/> each JPEG carries an EXIF, a comment and a trailer.</summary>
     internal static FrameSequence Sequence(int count, bool withMetadata)
     {
         var frames = new List<SequenceFrame>(count);
@@ -305,7 +287,6 @@ public sealed class IdentityReviewEvidenceStoreTests
         return stripped;
     }
 
-    /// <summary>The JPEG with the segments put right after its start of image.</summary>
     internal static byte[] WithSegments(byte[] jpeg, params byte[][] segments) => [0xFF, 0xD8, .. segments.SelectMany(segment => segment), .. jpeg.AsSpan(2).ToArray()];
 
     internal static byte[] App(byte marker, byte[] payload) => [0xFF, marker, (byte)((payload.Length + 2) >> 8), (byte)(payload.Length + 2), .. payload];
@@ -314,7 +295,6 @@ public sealed class IdentityReviewEvidenceStoreTests
 
     internal static byte[] Comment(string text) => App(0xFE, Encoding.ASCII.GetBytes(text));
 
-    /// <summary>An EXIF block whose orientation says «turn a quarter clockwise» (6).</summary>
     private static byte[] ExifOrientationSix() =>
     [
         .. Encoding.ASCII.GetBytes("Exif\0\0"),
@@ -328,7 +308,6 @@ public sealed class IdentityReviewEvidenceStoreTests
 
     private static bool Contains(byte[] bytes, byte[] part) => bytes.AsSpan().IndexOf(part) >= 0;
 
-    /// <summary>An org, a booking, a session and a log row of the tests; the store on a database in memory, a bucket in memory and the flags of the evidence on.</summary>
     internal sealed class EvidenceWorld : IAsyncDisposable
     {
         private readonly DbContextOptions<AppDbContext> _options =
@@ -381,7 +360,6 @@ public sealed class IdentityReviewEvidenceStoreTests
         public ReviewEvidenceInput Input(byte[]? document, FrameSequence? sequence, IReadOnlyList<int>? chosen, bool keepsNoDocument = false) =>
             new(OrgId, BookingId, SessionId, GuestId, LogId, keepsNoDocument, document, sequence, chosen);
 
-        /// <summary>A second context on the same database, to read what was saved.</summary>
         public AppDbContext NewContext() => new(_options);
 
         public async Task<List<IdentityReviewEvidence>> RowsAsync(Func<IdentityReviewEvidence, bool>? where = null)
@@ -391,7 +369,6 @@ public sealed class IdentityReviewEvidenceStoreTests
             return where is null ? rows : rows.Where(where).ToList();
         }
 
-        /// <summary>The picture in clear of a row, decrypted as the store reads it (its purpose and its id as sub-purpose).</summary>
         public byte[] Decrypt(IdentityReviewEvidence row) =>
             DataProtection.Inner.CreateProtector(IdentityReviewEvidenceStore.ContentPurpose, row.Id.ToString("N")).Unprotect(Storage.Objects[row.StorageKey]);
 
@@ -399,20 +376,16 @@ public sealed class IdentityReviewEvidenceStoreTests
     }
 }
 
-/// <summary>A private bucket in memory that can fail a write after some succeeded, or every deletion.</summary>
 internal sealed class FailingMemoryStorage : IFileStorage
 {
     private int _puts;
 
     public Dictionary<string, byte[]> Objects { get; } = new(StringComparer.Ordinal);
 
-    /// <summary>The keys in the order of the operations: <c>put:key</c> and <c>delete:key</c>.</summary>
     public List<string> Operations { get; } = [];
 
-    /// <summary>The writes that succeed before <see cref="Failure"/> is thrown; null: they all succeed.</summary>
     public int? FailPutAfter { get; set; }
 
-    /// <summary>Thrown by every deletion while set.</summary>
     public Exception? FailDeletes { get; set; }
 
     public Exception Failure { get; set; } = new IOException("The storage is down.");
@@ -466,7 +439,6 @@ internal sealed class FailingMemoryStorage : IFileStorage
         Task.FromResult<Uri?>(null);
 }
 
-/// <summary>Data Protection that keeps a reference to every array it was given to protect, to prove the caller zeroes them afterwards.</summary>
 internal sealed class RecordingDataProtection(IDataProtectionProvider inner) : IDataProtectionProvider
 {
     public IDataProtectionProvider Inner { get; } = inner;

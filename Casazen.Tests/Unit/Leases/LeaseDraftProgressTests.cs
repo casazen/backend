@@ -7,16 +7,9 @@ using static Casazen.Tests.Unit.Leases.LeaseDraftTestData;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>
-/// LR-12: the eight steps of the wizard as the server sees them. Every data step in each state it can be in — complete, incomplete,
-/// wrong — with the code of what is missing, the rule that a step is done only when the landlord has been there, the steps that follow
-/// the facts (review, signature, registration) and the imported contract.
-/// </summary>
 public class LeaseDraftProgressTests
 {
     private static LeaseDraftFlow Compute(LeaseDraftProgressInput input) => LeaseDraftProgress.Compute(input);
-
-    // ---- a complete draft ----------------------------------------------------------------------------------------
 
     [Fact]
     public void ACompleteDraft_HasTheFiveDataStepsDone_AndTheReviewToDo_TheRestLocked()
@@ -37,14 +30,12 @@ public class LeaseDraftProgressTests
     [Fact]
     public void AStepIsDoneOnlyWhenNothingIsMissingAndTheLandlordHasBeenThere()
     {
-        // Everything is typed, but the landlord reached step 3 only: steps 4 and 5 have nothing missing and are still to do.
         var flow = Compute(Input(wizardMaxStep: 3));
 
         Assert.Equal([LeaseStepState.Done, LeaseStepState.Done, LeaseStepState.Done, LeaseStepState.Todo, LeaseStepState.Todo],
             Enumerable.Range(1, 5).Select(n => flow[n].State));
         Assert.Empty(flow[4].Needs);
         Assert.Empty(flow[5].Needs);
-        // The review waits for the data, not for the visit: nothing is missing in the first five steps.
         Assert.Equal(LeaseStepState.Todo, flow[6].State);
     }
 
@@ -66,8 +57,6 @@ public class LeaseDraftProgressTests
         Assert.False(flow.DataComplete);
     }
 
-    // ---- step 1 · the property -----------------------------------------------------------------------------------
-
     [Fact]
     public void Step1_NoApeAndNoCadastralData_AreNeedsOfTheProperty_NotOfTheValues()
     {
@@ -76,7 +65,6 @@ public class LeaseDraftProgressTests
         Assert.Equal([LeaseNeedCodes.ApeMissing, LeaseNeedCodes.CadastralMissing], NeedCodes(flow, 1));
         Assert.Equal(LeaseStepState.Todo, flow[1].State);
         Assert.Equal(LeaseStepState.Locked, flow[6].State);
-        // The values are all there: the draft is complete as far as the typed state goes, the property has to be fixed.
         Assert.True(flow.DataComplete);
     }
 
@@ -90,8 +78,6 @@ public class LeaseDraftProgressTests
         Assert.Equal([LeaseNeedCodes.PropertyMissing], NeedCodes(none, 1));
         Assert.False(gone.DataComplete);
     }
-
-    // ---- step 2 · the parties ------------------------------------------------------------------------------------
 
     [Fact]
     public void Step2_AnIncompleteEntry_IsNamedWithItsPositionAndTheFieldsThatAreWrong()
@@ -152,8 +138,6 @@ public class LeaseDraftProgressTests
 
         Assert.Empty(Compute(Input(values))[2].Needs);
     }
-
-    // ---- step 3 · type, regime, rent, deposit --------------------------------------------------------------------
 
     private static readonly Dictionary<string, (Func<LeaseDraftValues, LeaseDraftValues> Change, string[] Expected)> Step3Cases = new()
     {
@@ -255,11 +239,8 @@ public class LeaseDraftProgressTests
         var values = Complete() with { ContractType = "Concordato", Concordato = new LeaseDraftConcordato { Sqm = 70 } };
 
         Assert.Empty(Compute(Input(values, concordato: new LeaseDraftConcordatoOutcome { MinMonthly = 400m, MaxMonthly = 1000m }))[3].Needs);
-        // The characteristics of a draft that went back to the libero are not asked about.
         Assert.Empty(Compute(Input(Complete() with { Concordato = new LeaseDraftConcordato { Sqm = 0 } }))[3].Needs);
     }
-
-    // ---- step 4 · the start --------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData(null, LeaseNeedCodes.StartMissing)]
@@ -281,8 +262,6 @@ public class LeaseDraftProgressTests
         Assert.Empty(Compute(Input(Complete() with { StartDate = "2020-01-01" }))[4].Needs);
     }
 
-    // ---- step 5 · model and attachments --------------------------------------------------------------------------
-
     [Fact]
     public void Step5_NothingIsRequired_ADocumentsDateInTheFuture_IsWrong()
     {
@@ -297,8 +276,6 @@ public class LeaseDraftProgressTests
         Assert.False(flow.DataComplete);
         Assert.Empty(Compute(Input(Complete() with { Tenants = [Tenant() with { DocumentsVerifiedOn = "2026-10-09" }] }))[5].Needs);
     }
-
-    // ---- steps 6 to 8 --------------------------------------------------------------------------------------------
 
     [Fact]
     public void Step6_ConfirmedReview_IsDone_AndOpensTheSignature()
@@ -345,7 +322,6 @@ public class LeaseDraftProgressTests
     [Fact]
     public void ALeaseThatLeftTheWizard_HasAllItsDataStepsDone_WhateverTheWizardMaxStepSays()
     {
-        // A lease that exists from before the guided draft, signed: its data steps are done without anybody having visited them.
         var flow = Compute(Input(wizardMaxStep: 0, status: LeaseStatus.Signed));
 
         Assert.All(Enumerable.Range(1, 6), n => Assert.Equal(LeaseStepState.Done, flow[n].State));
@@ -367,9 +343,6 @@ public class LeaseDraftProgressTests
         }
     }
 
-    // ---- a transitory contract made in CasaZen (TR) --------------------------------------------------------------
-
-    /// <summary>A transitory contract of 6 months from 1 November 2026, with who has its need, the need and its documentation: nothing is missing.</summary>
     private static LeaseDraftValues ATransitory(string? end = "2027-04-30", string? documentation = "Lettera di assunzione") => Complete() with
     {
         ContractType = "Transitorio",
@@ -380,13 +353,13 @@ public class LeaseDraftProgressTests
     };
 
     [Theory]
-    [InlineData("2026-11-30", null)] // a month, 30 days: the shortest a transitory contract can be
+    [InlineData("2026-11-30", null)]
     [InlineData("2027-04-30", null)]
-    [InlineData("2028-04-30", null)] // 18 months: the longest
+    [InlineData("2028-04-30", null)]
     [InlineData("2028-05-01", LeaseNeedCodes.TermOutOfRange)]
-    [InlineData("2026-11-29", LeaseNeedCodes.TermOutOfRange)] // less than a month
-    [InlineData("2026-11-01", LeaseNeedCodes.TermOutOfRange)] // ends the day it starts
-    [InlineData("2026-10-15", LeaseNeedCodes.TermOutOfRange)] // ends before it starts
+    [InlineData("2026-11-29", LeaseNeedCodes.TermOutOfRange)]
+    [InlineData("2026-11-01", LeaseNeedCodes.TermOutOfRange)]
+    [InlineData("2026-10-15", LeaseNeedCodes.TermOutOfRange)]
     [InlineData(null, LeaseNeedCodes.EndMissing)]
     [InlineData("  ", LeaseNeedCodes.EndMissing)]
     [InlineData("next spring", LeaseNeedCodes.EndInvalid)]
@@ -400,8 +373,8 @@ public class LeaseDraftProgressTests
     }
 
     [Theory]
-    [InlineData("2026-11-30", null, null)] // 30 days: nothing to prove
-    [InlineData("2026-12-01", null, LeaseNeedCodes.TransitoryDocumentationMissing)] // 31 days
+    [InlineData("2026-11-30", null, null)]
+    [InlineData("2026-12-01", null, LeaseNeedCodes.TransitoryDocumentationMissing)]
     [InlineData("2026-12-01", "  ", LeaseNeedCodes.TransitoryDocumentationMissing)]
     [InlineData("2026-12-01", "Lettera di assunzione", null)]
     [InlineData("2027-04-30", null, LeaseNeedCodes.TransitoryDocumentationMissing)]
@@ -439,14 +412,11 @@ public class LeaseDraftProgressTests
 
         Assert.All(Enumerable.Range(1, 5), n => Assert.Empty(flow[n].Needs));
         Assert.True(flow.DataComplete);
-        // The libero never asks for it, and a contract already signed prints nothing of its own: neither its need nor its documentation.
         Assert.Empty(Compute(Input(Complete()))[3].Needs);
         var signed = Compute(Input(ATransitory() with { TransitoryParty = null, TransitoryNeed = null, TransitoryDocumentation = null }, origin: LeaseOrigin.Imported));
         Assert.Empty(signed[3].Needs);
         Assert.Empty(signed[4].Needs);
     }
-
-    // ---- an imported contract ------------------------------------------------------------------------------------
 
     [Fact]
     public void AnImportedContract_HasNoModelStepAndNoReview_AndTheSignedContractIsStep7()
@@ -491,8 +461,6 @@ public class LeaseDraftProgressTests
         Assert.Equal(LeaseStepState.Todo, signed[8].State);
         Assert.Equal(LeaseStepState.Done, registered[8].State);
     }
-
-    // ---- the codes ------------------------------------------------------------------------------------------------
 
     [Fact]
     public void TheCodesOfTheNeeds_AreStableSnakeCase_AndTheListHasNoDuplicates()

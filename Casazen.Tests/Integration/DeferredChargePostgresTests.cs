@@ -81,7 +81,7 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
         var seeded = await SeedDeferredBookingAsync("requires_action");
 
         await RunJobAsync(day: 0);
-        await RunJobAsync(day: 0); // same day again: no second attempt, no second email
+        await RunJobAsync(day: 0);
 
         var paymentIntentId = Assert.Single(_stripe.CreationsOf(seeded.CustomerId)).PaymentIntentId;
         var booking = await LoadBookingAsync(seeded.BookingId);
@@ -101,7 +101,6 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
         var token = Regex.Match(guestEmail.Content.HtmlBody, $@"/booking/{seeded.BookingId:D}\?token=([A-Za-z0-9_-]+)").Groups[1].Value;
         Assert.NotEmpty(token);
 
-        // The link of the email opens the outcome page: payment to complete, same PaymentIntent, until the cancellation.
         using var guest = _factory.CreateClient();
         var outcome = await guest.PostAsJsonAsync($"/api/public/bookings/{seeded.BookingId}/outcome", new { token });
         Assert.Equal(HttpStatusCode.OK, outcome.StatusCode);
@@ -114,7 +113,6 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
         Assert.Equal(HttpStatusCode.OK, session.StatusCode);
         Assert.Equal($"{paymentIntentId}_secret_test", (await session.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("clientSecret").GetString());
 
-        // The token of the checkout (the guest's browser) was replaced by the one of the email.
         var old = await guest.PostAsJsonAsync($"/api/public/bookings/{seeded.BookingId}/outcome", new { token = seeded.CheckoutToken });
         Assert.Equal(HttpStatusCode.NotFound, old.StatusCode);
     }
@@ -133,7 +131,7 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
 
         var succeeded = DeferredChargeEvent("payment_intent.succeeded", paymentIntentId, seeded, seeded.Account);
         await HandleWebhookAsync(succeeded, WebhookSource.Connected);
-        await HandleWebhookAsync(succeeded, WebhookSource.Connected); // duplicate delivery
+        await HandleWebhookAsync(succeeded, WebhookSource.Connected);
 
         var booking = await LoadBookingAsync(seeded.BookingId);
         var payment = Assert.Single(booking.Payments);
@@ -141,7 +139,6 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
         Assert.NotNull(payment.ProcessedAt);
         Assert.Equal(BookingStatus.Confirmed, booking.Status);
 
-        // Collected: the next days never charge it again.
         await RunJobAsync(day: 1);
         Assert.Single(_stripe.CreationsOf(seeded.CustomerId));
         Assert.Empty(_stripe.ConfirmationsOf(paymentIntentId));
@@ -163,7 +160,7 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
         Assert.Equal(DeferredCharges.ProvisionalMaxAttempts, beforeCancellation.DeferredChargeAttempts);
         Assert.Equal(PaymentStatus.Failed, Assert.Single(beforeCancellation.Payments).Status);
         Assert.Contains(seeded.CheckIn.ToString("yyyy-MM-dd"), await BookedDatesAsync(seeded));
-        Assert.Equal(2, EmailsOf(seeded).Count); // one failure notice, not one per attempt
+        Assert.Equal(2, EmailsOf(seeded).Count);
 
         await RunJobAsync(DeferredCharges.ProvisionalCancelAfterDays);
         await RunJobAsync(DeferredCharges.ProvisionalCancelAfterDays + 1);
@@ -196,7 +193,6 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
         await RunJobAsync(day: 0);
         var paymentIntentId = Assert.Single(_stripe.CreationsOf(seeded.CustomerId)).PaymentIntentId;
 
-        // The guest confirmed the PaymentIntent on-session and the webhook has not arrived (yet).
         _stripe.SetStatus(paymentIntentId, "succeeded");
         await RunJobAsync(DeferredCharges.ProvisionalCancelAfterDays);
 
@@ -240,7 +236,6 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
         await RunJobAsync(day: 0);
         var paymentIntentId = Assert.Single(_stripe.CreationsOf(seeded.CustomerId)).PaymentIntentId;
 
-        // A SEPA debit that fails days later: the guest and the host are told once.
         await HandleWebhookAsync(DeferredChargeEvent("payment_intent.payment_failed", paymentIntentId, seeded, seeded.Account), source);
 
         var failed = await LoadBookingAsync(seeded.BookingId);
@@ -249,7 +244,6 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
         Assert.Single(EmailsOf(seeded), e => e.Template == EmailTemplates.Names.GuestDeferredChargeFailed);
         Assert.Single(EmailsOf(seeded), e => e.Template == EmailTemplates.Names.HostDeferredChargeFailed);
 
-        // The guest pays from the link.
         await HandleWebhookAsync(DeferredChargeEvent("payment_intent.succeeded", paymentIntentId, seeded, seeded.Account), source);
 
         var paid = await LoadBookingAsync(seeded.BookingId);
@@ -303,7 +297,6 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
         },
     };
 
-    /// <summary>One run of the job at 08:00 in Rome of <see cref="Day0"/> + <paramref name="day"/>, in its own DI scope.</summary>
     private async Task RunJobAsync(int day)
     {
         await using var scope = _factory.Services.CreateAsyncScope();
@@ -359,10 +352,6 @@ public class DeferredChargePostgresTests : IClassFixture<CasazenWebApplicationFa
         DateTime CheckIn,
         DateTime CheckOut);
 
-    /// <summary>
-    /// A confirmed "Paga alla scadenza" booking of a Connect-ready host whose deadline is <see cref="Day0"/>, as the checkout
-    /// and the <c>setup_intent.succeeded</c> webhook leave it, and the Stripe outcomes of its successive charge attempts.
-    /// </summary>
     private async Task<SeededBooking> SeedDeferredBookingAsync(params string[] outcomes)
     {
         var hostId = $"auth0|bk08-host-{Guid.NewGuid():N}";
@@ -471,7 +460,6 @@ internal sealed class ScriptedDeferredChargeStripe : IStripeService
     public void Register(string customerId, IEnumerable<string> outcomes) =>
         _outcomes[customerId] = new ConcurrentQueue<string>(outcomes);
 
-    /// <summary>The creation for <paramref name="customerId"/> signals <paramref name="entered"/> and waits for <paramref name="release"/>.</summary>
     public void HoldCreation(string customerId, TaskCompletionSource entered, TaskCompletionSource release) =>
         _held[customerId] = (entered, release);
 

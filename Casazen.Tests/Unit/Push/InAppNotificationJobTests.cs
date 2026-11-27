@@ -22,8 +22,6 @@ public class InAppNotificationJobTests : IDisposable
 
     public void Dispose() => _kit.Dispose();
 
-    // ─── Who is told ───
-
     [Fact]
     public async Task CreateAsync_BookingHosts_WritesOneRowForTheMemberInChargeAndOneForTheOwner_WithNoDevice()
     {
@@ -35,7 +33,6 @@ public class InAppNotificationJobTests : IDisposable
             Queued(PushAudience.BookingHosts(world.BookingId), PushTypes.NewBooking, entityId: bookingId),
             CancellationToken.None);
 
-        // The manager is in charge, the owner is an administrator; not the bystander (neither), not the supplier.
         var rows = await _kit.RowsAsync();
         Assert.Equal([World.ManagerId, World.OwnerId], rows.Select(r => r.UserId));
         Assert.All(rows, row =>
@@ -75,8 +72,6 @@ public class InAppNotificationJobTests : IDisposable
             Queued(PushAudience.SupplierOrg(world.SupplierOrgId), PushTypes.ServiceRequestCreated, Guid.NewGuid()),
             CancellationToken.None);
 
-        // The member of the supplier org and the person who is a host of another org and the supplier too; not the inactive
-        // member, not the hosts of the host org. The rows belong to the supplier org, not to the host org of the dual-role user.
         var rows = await _kit.RowsAsync();
         Assert.Equal([World.SupplierHostTooId, World.SupplierMemberId], rows.Select(r => r.UserId));
         Assert.All(rows, row => Assert.Equal(world.SupplierOrgId, row.OrgId));
@@ -113,7 +108,6 @@ public class InAppNotificationJobTests : IDisposable
     [Fact]
     public async Task CreateAsync_ACollaboratorInChargeWhoDoesNotReachTheProperty_IsNotTold_UntilItIsGivenTheProperty()
     {
-        // AM-03b: the person in charge is told only while they can open the property; the push and the bell share the rule.
         var world = await _kit.SeedWorldAsync();
         var member = await _kit.Db.OrgMembers.SingleAsync(m => m.UserId == World.ManagerId);
         member.Role = OrgRole.Collaborator;
@@ -140,8 +134,6 @@ public class InAppNotificationJobTests : IDisposable
     [Fact]
     public async Task CreateAsync_PlatformStaff_TellsTheAdministratorsByRoleAndByMembership_EachInItsOwnOrg_AndTheirBellShowsIt()
     {
-        // «Fallo per me» (14/11/2026): the staff is the user role Admin or a membership of the administration context. Each row carries the
-        // staff member's own org (its host org, else its supplier org), the one its bell reads; never the org of the host who asked.
         var world = await _kit.SeedWorldAsync();
         _kit.Db.Users.AddRange(
             NewUser("auth0|staff-by-role", world.OtherHostOrgId, UserRole.Admin),
@@ -164,7 +156,6 @@ public class InAppNotificationJobTests : IDisposable
             rows.Select(r => (r.UserId, r.OrgId)));
         Assert.All(rows, row => Assert.Equal((PushTypes.AssistRequested, (Guid?)requestId), (row.Type, row.EntityId)));
 
-        // The bell of each one lists it: the row is under the org its bell reads.
         var bell = new Casazen.Infrastructure.Services.InAppNotificationService(
             _kit.Db, _kit.Clock, Microsoft.Extensions.Logging.Abstractions.NullLogger<Casazen.Infrastructure.Services.InAppNotificationService>.Instance);
         foreach (var staff in new[] { "auth0|staff-by-role", "auth0|staff-by-membership" })
@@ -203,10 +194,7 @@ public class InAppNotificationJobTests : IDisposable
     [Fact]
     public async Task CreateAsync_EveryKindOfAudienceOfThePush_HasARuleHere()
     {
-        // The tripwire: a new PushAudienceKind is resolved into devices by PushDeliveryJob; without a case in this job its
-        // notifications would silently never be written. Add the rule to InAppNotificationJob and the audience below.
         var world = await _kit.SeedWorldAsync();
-        // E03/F04/US02/T03: the manager decides the identity verifications (its short-rent role holds verification.decision).
         _kit.Db.RolePermissions.Add(new RolePermission { RoleId = 7, PermissionKey = HostPermissions.VerificationDecision });
         _kit.Db.UserContextMemberships.Add(new UserContextMembership
         {
@@ -215,7 +203,6 @@ public class InAppNotificationJobTests : IDisposable
             RoleId = 7,
         });
         await _kit.Db.SaveChangesAsync();
-        // The platform staff: an administrator of CasaZen, in an org of its own.
         _kit.Db.Users.Add(NewUser("auth0|staff", world.OtherHostOrgId, UserRole.Admin));
         await _kit.Db.SaveChangesAsync();
         var audiences = new Dictionary<PushAudienceKind, PushAudience>
@@ -225,12 +212,9 @@ public class InAppNotificationJobTests : IDisposable
             [PushAudienceKind.SupplierOrg] = PushAudience.SupplierOrg(world.SupplierOrgId),
             [PushAudienceKind.VerificationOperators] = PushAudience.VerificationOperators(world.BookingId),
             [PushAudienceKind.PlatformStaff] = PushAudience.PlatformStaff(Guid.NewGuid()),
-            // E40/F01/US02/T01: the administrators of the org (its owner), told about the org's own domain.
             [PushAudienceKind.OrgAdmins] = PushAudience.OrgAdmins(world.OrgId),
         };
 
-        // NF-65: a push to one user is the push channel of that user's choice. The counter of the bell is another channel, which the caller
-        // delivers when the user chose it, with its own key: the decorator queues no notification for it (InAppNotificationPushDecoratorTests).
         var withoutNotificationByDesign = new HashSet<PushAudienceKind> { PushAudienceKind.User };
 
         foreach (var kind in Enum.GetValues<PushAudienceKind>().Where(k => !withoutNotificationByDesign.Contains(k)))
@@ -240,8 +224,6 @@ public class InAppNotificationJobTests : IDisposable
             Assert.NotEmpty(await _kit.Db.InAppNotifications.Where(n => n.DeliveryKey == $"key:{kind}").ToListAsync());
         }
     }
-
-    // ─── Once per event and user ───
 
     [Fact]
     public async Task CreateAsync_TheSameEventTwice_GivesEachUserOneRow()
@@ -268,7 +250,6 @@ public class InAppNotificationJobTests : IDisposable
 
         var rows = await _kit.RowsAsync();
         Assert.Equal(2, rows.Count);
-        // The owner's earlier row is untouched (its own time), the manager's is the new one.
         Assert.Equal(Now.AddMinutes(-5), rows.Single(r => r.UserId == World.OwnerId).CreatedAt);
         Assert.Equal(Now, rows.Single(r => r.UserId == World.ManagerId).CreatedAt);
     }
@@ -302,13 +283,11 @@ public class InAppNotificationJobTests : IDisposable
         Assert.Equal(4, await _kit.Db.InAppNotifications.CountAsync());
     }
 
-    // ─── The row ───
-
     [Fact]
     public async Task CreateAsync_TheTimeOfTheRow_IsTheTimeOfTheEvent_NotTheTimeOfTheRun()
     {
         var world = await _kit.SeedWorldAsync();
-        var eventTime = Now.AddHours(-3).AddTicks(7); // 100 ns finer than a microsecond: PostgreSQL would cut it
+        var eventTime = Now.AddHours(-3).AddTicks(7);
         _kit.Clock.SetUtcNow(new DateTimeOffset(Now.AddHours(2)));
 
         await _kit.Job().CreateAsync(
@@ -345,9 +324,6 @@ public class InAppNotificationJobTests : IDisposable
     [Fact]
     public void Row_HasNoFreeText_OnlyTheKindOfEventAndIds()
     {
-        // The tripwire of "niente nomi di ospiti né testi liberi": a new column of this entity is a decision of the product
-        // owner and of the privacy notice, not a convenience. Strings are the user id (an account), the type (a value of
-        // PushTypes) and the key of the event (ids).
         var columns = typeof(InAppNotification).GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Select(p => p.Name)
             .Order(StringComparer.Ordinal)
@@ -357,8 +333,6 @@ public class InAppNotificationJobTests : IDisposable
             ["CreatedAt", "DeliveryKey", "EntityId", "Id", "OrgId", "ReadAt", "Type", "UserId"],
             columns);
     }
-
-    // ─── Hangfire ───
 
     [Fact]
     public void CreateAsync_IsRetriedFiveTimesAndNeverRunsTwiceAtOnceForTheSameKey()
@@ -372,7 +346,6 @@ public class InAppNotificationJobTests : IDisposable
 
         var concurrency = method.GetCustomAttribute<DisableConcurrentExecutionAttribute>();
         Assert.NotNull(concurrency);
-        // The first argument is the delivery key: one run per event at a time, other events in parallel.
         Assert.Equal("deliveryKey", method.GetParameters()[0].Name);
         Assert.Contains("{0}", concurrency.Resource);
     }

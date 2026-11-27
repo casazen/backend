@@ -26,12 +26,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// E29/F02/US01/T01 (NF-125): the card of a property and the host's setting. The authorization is the production one (the resource handler and the scope
-/// resolver over the caller's snapshot): another organization's property is not found, a collaborator «Solo alcuni» is served on the property it was given and
-/// refused on another of the same org, a role that may read but not write cannot change the setting, and nothing is read or stored for a refused call. The
-/// whole controller is behind <c>Features:GuestRegistrationRegimes</c>.
-/// </summary>
 public class PropertyGuestRegistrationControllerTests
 {
     private const string Member = "auth0|member";
@@ -43,7 +37,6 @@ public class PropertyGuestRegistrationControllerTests
     private readonly Mock<IGuestRegistrationRegimeResolver> _regimes = new();
     private readonly Mock<IGuestNotificationOverrideService> _overrides = new();
 
-    /// <summary>Proof (permission): another organization's property is not found, for the read and for the setting; nothing is resolved or stored for it.</summary>
     [Fact]
     public async Task GuestRegistration_OtherOrganizationCannotRead_Test()
     {
@@ -59,7 +52,6 @@ public class PropertyGuestRegistrationControllerTests
         _overrides.Verify(
             o => o.SetAsync(OtherOrgProperty, It.IsAny<GuestNotificationOverride?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The own property is served: the 404 above comes from the tenant, not from the wiring.
         var own = await controller.Get(GivenProperty, CancellationToken.None);
         var card = Assert.IsType<GuestRegistrationDto>(Assert.IsType<OkObjectResult>(own.Result).Value);
         Assert.Equal("CH-TI", card.Regime!.Code);
@@ -67,7 +59,6 @@ public class PropertyGuestRegistrationControllerTests
         Assert.Equal(["ticino_structure_id_missing"], card.IdentifierMissing);
     }
 
-    /// <summary>A collaborator «Solo alcuni» is served on the property it was given and refused (403) on another property of the same org, for the read and the setting.</summary>
     [Fact]
     public async Task Endpoint_ACallerWhoseScopeDoesNotReachTheProperty_IsRefusedAndNothingIsReadNorStored()
     {
@@ -87,7 +78,6 @@ public class PropertyGuestRegistrationControllerTests
             o => o.SetAsync(OtherProperty, It.IsAny<GuestNotificationOverride?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    /// <summary>Changing the setting is the permission to write the property (the one of the sender and of the other settings): a role that only reads is refused.</summary>
     [Fact]
     public async Task Put_ARoleThatCannotWriteTheProperty_IsRefused_AndNothingIsStored()
     {
@@ -116,7 +106,6 @@ public class PropertyGuestRegistrationControllerTests
         _regimes.Verify(r => r.ResolveAsync(GivenProperty, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    /// <summary>A null is the way to follow the regime again; a body without the member is a 400, never the same thing by omission.</summary>
     [Fact]
     public async Task Put_NullFollowsTheRegimeAgain_AndABodyWithoutTheMemberIsA400()
     {
@@ -147,7 +136,6 @@ public class PropertyGuestRegistrationControllerTests
         Assert.Equal(StatusCodes.Status422UnprocessableEntity, Assert.IsAssignableFrom<ObjectResult>(answer.Result).StatusCode);
     }
 
-    /// <summary>The card carries the fields the frontend reads, with the sentences of the language of the request and no supplier.</summary>
     [Fact]
     public async Task Get_AnswersTheContractOfTheCard()
     {
@@ -165,7 +153,6 @@ public class PropertyGuestRegistrationControllerTests
             (regime.Certainty, regime.CasaZenSupport, regime.PortalUrl, regime.RetentionYears, regime.RetainDocumentImages));
         Assert.NotEmpty(regime.Sources);
         Assert.Equal(new DateOnly(2026, 11, 20), regime.VerifiedOn);
-        // The localizer of the test answers the key itself: the sentence is read through it, never written in the code.
         Assert.Equal("GuestRegime_CH_TI_Summary", regime.Summary);
         Assert.Null(regime.DeadlineNote);
         Assert.Equal((GuestNotificationOverride?)null, card.Override);
@@ -173,7 +160,6 @@ public class PropertyGuestRegistrationControllerTests
         Assert.Equal("TI", card.Place.CantonCode);
     }
 
-    /// <summary>Off, both actions answer 404 before authentication: the controller is behind the flag, and asks for the permissions of the other settings of a property.</summary>
     [Fact]
     public void TheController_IsBehindTheFlag_AndAsksTheSamePermissionsAsTheOtherPropertySettings()
     {
@@ -205,7 +191,6 @@ public class PropertyGuestRegistrationControllerTests
 
     private static UpdateGuestRegistrationRequest Request(GuestNotificationOverride? value) => new() { Override = value };
 
-    /// <summary>A caller of the org that reaches every property of it.</summary>
     private static UserAuthorizationSnapshot Everything() => new(
         Exists: true,
         IsActive: true,
@@ -214,7 +199,6 @@ public class PropertyGuestRegistrationControllerTests
         Memberships: [],
         OrgMember: new OrgMemberSnapshot(OrgId, OrgRole.Admin, OrgMemberStatus.Active, PropertyScope.All, new HashSet<Guid>()));
 
-    /// <summary>A collaborator «Solo alcuni» of the org, given one property only.</summary>
     private static UserAuthorizationSnapshot GivenPropertyOnly() => new(
         Exists: true,
         IsActive: true,
@@ -225,7 +209,6 @@ public class PropertyGuestRegistrationControllerTests
 
     private PropertyGuestRegistrationController NewController(UserAuthorizationSnapshot snapshot, Func<string, string, bool>? hasPermission = null)
     {
-        // A property of the other org is not visible at all (the tenant filter of the lookup); the others are rows of the caller's org.
         var resources = new Mock<IHostResourceLookup>();
         resources
             .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))

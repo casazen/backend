@@ -8,7 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>SP-03: the codes, the texts (Italian and English) and the exceptions of the supplier's agenda.</summary>
 public class SupplierAgendaSupportTests
 {
     [Fact]
@@ -32,7 +31,6 @@ public class SupplierAgendaSupportTests
     {
         Assert.Equal(SupplierAgendaErrors.MessageKeys.Count, SupplierAgendaErrors.MessageKeys.Distinct().Count());
         Assert.Equal(10, SupplierAgendaErrors.MessageKeys.Count);
-        // The four of the task: hours, time off, block, rules; the settings of the console (SP-16a); the urgent settings (SP-04c).
         Assert.Contains("SupplierHoursInvalid", SupplierAgendaErrors.MessageKeys);
         Assert.Contains("SupplierTimeOffInvalid", SupplierAgendaErrors.MessageKeys);
         Assert.Contains("SupplierBlockInvalid", SupplierAgendaErrors.MessageKeys);
@@ -112,7 +110,6 @@ public class SupplierAgendaSupportTests
     [Fact]
     public void Limits_AreTheOnesOfTheSpec()
     {
-        // gap/05 §4.1: up to 3 bands a day. The notice of the agenda has the bound of the notice of a service of the catalog.
         Assert.Equal(3, SupplierAgendaLimits.MaxBandsPerDay);
         Assert.Equal(1440, SupplierAgendaLimits.MinutesPerDay);
         Assert.Equal(SupplierServiceCatalogLimits.MaxMinNoticeHours, SupplierAgendaLimits.MaxNoticeHours);

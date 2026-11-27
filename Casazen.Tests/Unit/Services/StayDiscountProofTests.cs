@@ -4,13 +4,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Proof of the length-of-stay discount (NF-35, ADR-028-R3, R4, E02/F03/US01/T05): the price of a stay with a discount is right to the cent in
-/// the lodging, in the lines of the quote and in the total, and the cleaning fee and the tourist tax are never reduced (money rule).
-/// </summary>
 public class StayDiscountProofTests
 {
-    // A Monday: 2026-10-12 is a Monday, 2026-10-16 a Friday, 2026-10-17 a Saturday, 2026-10-18 a Sunday.
     private static readonly DateOnly Monday = new(2026, 10, 12);
 
     private static DateOnly Day(int offsetFromMonday) => Monday.AddDays(offsetFromMonday);
@@ -18,14 +13,9 @@ public class StayDiscountProofTests
     private static readonly IReadOnlyList<StayDiscountTier> WeekAndFortnight =
         [new StayDiscountTier(2, 5m), new StayDiscountTier(7, 10m), new StayDiscountTier(14, 15m)];
 
-    /// <summary>
-    /// Money rule: the tier with the most nights the stay reaches takes its percentage off the lodging only, rounded to the cent half away
-    /// from zero; the lines of the quote add up to the total; the cleaning fee and the tourist tax stay what they were.
-    /// </summary>
     [Fact]
     public void StayPricing_LengthOfStayDiscount_CorrectToTheCent_Test()
     {
-        // 9 nights reach the tier of 7 (10 %), not the one of 14 nor the one of 2: 9 x 150 = 1350, less 135.00, plus 50 cleaning and 36 tax.
         var week = Quote(Day(0), nights: 9, rate: 150m, cleaning: 50m, surcharge: 0m, tax: Tax(36m), WeekAndFortnight);
 
         Assert.Equal(new StayDiscount(7, 10m, 135m), week.Lodging.Discount);
@@ -45,7 +35,6 @@ public class StayDiscountProofTests
         Assert.Equal(130100, lines[^1].AmountCents);
         AssertLinesAddUp(lines);
 
-        // The very nights of a tier reach it, one night less does not: 14 nights take 15 %, 13 take the 10 % of the week.
         Assert.Equal(15m, StayPricing.DiscountFor(14, 2100m, WeekAndFortnight)!.PercentOff);
         Assert.Equal(10m, StayPricing.DiscountFor(13, 1950m, WeekAndFortnight)!.PercentOff);
         Assert.Null(StayPricing.DiscountFor(1, 150m, WeekAndFortnight));
@@ -53,7 +42,6 @@ public class StayDiscountProofTests
         Assert.Null(StayPricing.DiscountFor(9, 1350m, null));
         Assert.Null(StayPricing.DiscountFor(9, 1350m, []));
 
-        // To the cent, half away from zero: 5 x 10.01 = 50.05, 10 % is 5.005, which is 5.01 (not 5.00); 7 x 99.99 = 699.93, 12.5 % is 87.49125, 87.49.
         var half = Quote(Day(0), nights: 5, rate: 10.01m, cleaning: 0m, surcharge: 0m, tax: Tax(0m), [new StayDiscountTier(5, 10m)]);
         Assert.Equal(5.01m, half.Lodging.Discount!.Amount);
         Assert.Equal(45.04m, half.Lodging.NetTotal);
@@ -63,7 +51,6 @@ public class StayDiscountProofTests
         AssertLinesAddUp(StayPricing.Lines(half));
         AssertLinesAddUp(StayPricing.Lines(odd));
 
-        // With a weekend surcharge the discount is off the whole lodging (1 night at 100 and 2 weekend nights at 115 = 330), never off the cleaning.
         var weekend = Quote(Day(4), nights: 3, rate: 100m, cleaning: 40m, surcharge: 15m, tax: Tax(10m), [new StayDiscountTier(3, 10m)]);
         Assert.Equal(330m, weekend.Lodging.Total);
         Assert.Equal(33m, weekend.Lodging.Discount!.Amount);
@@ -77,7 +64,6 @@ public class StayDiscountProofTests
         Assert.Equal(34700, weekendLines[^1].AmountCents);
         AssertLinesAddUp(weekendLines);
 
-        // No tier reached, no discount: the price is what it always was, and there is no line for it.
         var none = Quote(Day(0), nights: 6, rate: 150m, cleaning: 50m, surcharge: 0m, tax: Tax(36m), [new StayDiscountTier(7, 10m)]);
         Assert.Null(none.Lodging.Discount);
         Assert.Equal(none.Lodging.Total, none.Lodging.NetTotal);

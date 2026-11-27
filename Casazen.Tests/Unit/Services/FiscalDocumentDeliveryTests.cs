@@ -38,10 +38,6 @@ using DocumentKind = Casazen.Core.Entities.Enums.FiscalDocumentKind;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E12/F01/US02/T01 (NF-83, ADR-022): the document of a stay sent to the guest by e-mail with a signed link of 30 days (by the host, or by itself when the issuer asks), a portal's relay address
-/// accepted and a placeholder refused, and the two public reads the link opens, which answer every link that does not open with the same 404 and never log the token.
-/// </summary>
 public class FiscalDocumentDeliveryTests
 {
     /// <summary>
@@ -56,8 +52,6 @@ public class FiscalDocumentDeliveryTests
     private const string BaseUrl = "https://casazen-app.test";
 
     private static readonly byte[] Pdf = "%PDF-1.4 TEST"u8.ToArray();
-
-    // ---------------------------------------------------------------- the proofs
 
     /// <summary>
     /// PROOF TEST: privacy rule (the public endpoints). A link that does not open gets the same answer whatever is wrong with it: no token, an empty one, garbage, a token changed by a character, a token
@@ -109,7 +103,6 @@ public class FiscalDocumentDeliveryTests
                 var problem = Assert.IsType<ProblemDetails>(Assert.IsType<ObjectResult>(answer).Value);
                 answers.Add((problem.Status, problem.Extensions["code"], problem.Title, problem.Detail));
 
-                // No word of the document: not its number, not its issuer, not the guest.
                 var written = JsonSerializer.Serialize(problem);
                 Assert.DoesNotContain("2026/1", written);
                 Assert.DoesNotContain("TEST Casa Vacanze", written);
@@ -122,7 +115,6 @@ public class FiscalDocumentDeliveryTests
         Assert.Empty(kit.Entered);
         kit.Documents.Verify(d => d.GetPdfAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The token that opens its own document: the summary and the PDF.
         var own = new PublicFiscalDocumentLinkRequest { Token = token };
         var summary = Assert.IsType<PublicFiscalDocumentSummaryDto>(Assert.IsType<OkObjectResult>(await controller.Summary(seeded.DocumentId, own)).Value);
         Assert.Equal((seeded.DocumentId, "Receipt", "2026/12", new DateOnly(2026, 11, 19), 400m, "EUR"), (summary.Id, summary.Kind, summary.Number, summary.IssueDate, summary.Total, summary.Currency));
@@ -132,10 +124,6 @@ public class FiscalDocumentDeliveryTests
         Assert.Equal([OrgId], kit.Entered);
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule. The token of the link is never written to a log, whatever happens to it: the e-mail that carries it, the reads that open, the ones that do not, the consumer of the issue,
-    /// and the source of every file that touches it has no log statement that names it. The logs still say what happened (the ids), and never the address or the name of the guest.
-    /// </summary>
     [Fact]
     public async Task PublicDocumentLink_TokenNeverLogged_Test()
     {
@@ -143,14 +131,12 @@ public class FiscalDocumentDeliveryTests
         var seeded = await SeedAsync(kit, guest => (guest.Email, guest.FirstName) = ("secret.guest@ospiti-test.it", "Segreta"));
         var handlerLog = new CapturingLogger<FiscalDocumentEmailHandler>();
 
-        // The e-mail carries the token: the send, and the consumer of the issue that sends it by itself, log without it.
         await kit.Service.SendToGuestAsync(seeded.DocumentId);
         var token = TokenOf(Assert.Single(kit.Sent).Content);
         await new FiscalDocumentEmailHandler(kit.Service, new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance), handlerLog)
             .HandleAsync(new DomainEvent(Guid.NewGuid(), OrgId, DomainEventType.FiscalDocumentIssued, seeded.DocumentId, Now.UtcDateTime, "{}"), CancellationToken.None);
         Assert.Equal(2, kit.Sent.Count);
 
-        // The reads that open, and the ones that do not (a token changed by a character, a token of another document).
         var controller = PublicController(kit.Service);
         var other = await SeedAsync(kit);
         foreach (var text in new[] { token, Changed(token), kit.Tokens.Create(other.DocumentId, DateTimeOffset.UtcNow.AddDays(1)) })
@@ -166,7 +152,6 @@ public class FiscalDocumentDeliveryTests
         foreach (var secret in new[] { token, Changed(token), token[..24], token[^24..], "secret.guest@ospiti-test.it", "Segreta" })
             Assert.DoesNotContain(secret, logged);
 
-        // The same rule in the source: no log statement of these files names a token.
         string[] touchingTheToken =
         [
             "Casazen.Infrastructure/Services/FiscalDocumentDeliveryService.cs",
@@ -188,8 +173,6 @@ public class FiscalDocumentDeliveryTests
         Assert.Empty(offending);
     }
 
-    // ---------------------------------------------------------------- the e-mail
-
     [Fact]
     public async Task SendToGuest_QueuesTheEmailWithTheSignedLink_OfThirtyDays_InTheLanguageOfTheGuest()
     {
@@ -200,14 +183,12 @@ public class FiscalDocumentDeliveryTests
         var result = await kit.Service.SendToGuestAsync(italian.DocumentId);
         await kit.Service.SendToGuestAsync(english.DocumentId);
 
-        // The result: the link stops opening 30 days after the e-mail was queued, and nothing but ids and that instant.
         Assert.Equal((italian.DocumentId, Now.UtcDateTime.AddDays(30)), (result.DocumentId, result.LinkExpiresAt));
         var (first, second) = (kit.Sent[0], kit.Sent[1]);
         Assert.Equal(("abc123@guest.booking.com", EmailTemplates.Names.FiscalDocumentDelivery), (first.To, first.Template));
         Assert.Equal("Ricevuta n. 2026/12 di TEST Casa Vacanze Srl", first.Content.Subject);
         Assert.Equal("Receipt no. 2026/13 from TEST Casa Vacanze Srl", second.Content.Subject);
 
-        // Italian: the greeting, the issuer, the kind, the number, the day of the issue and the last day of the link (thirty days after Now, in Rome time; the exact words of a date are proved with fixed days below).
         Assert.Contains("Ciao Giulia,", first.Content.HtmlBody);
         Assert.Contains("<strong>TEST Casa Vacanze Srl</strong> ti ha inviato il documento <strong>Ricevuta n. 2026/12</strong> del 19/11/2026.", first.Content.HtmlBody);
         Assert.Contains($"Il link è valido fino al {ValidUntilInRome(Now)}.", first.Content.HtmlBody);
@@ -215,7 +196,6 @@ public class FiscalDocumentDeliveryTests
         Assert.Contains("Hello Hans,", second.Content.HtmlBody);
         Assert.Contains("<html lang=\"en\">", second.Content.HtmlBody);
 
-        // The link opens the document it was made for, and only that one; it holds the id and the token, nothing else. Now is the real minute, so the token is read against the real clock on any day the test runs.
         var url = LinkOf(first.Content);
         var token = TokenOf(first.Content);
         Assert.StartsWith($"{BaseUrl}/documents/view/{italian.DocumentId:D}?token=", url);
@@ -225,7 +205,6 @@ public class FiscalDocumentDeliveryTests
         Assert.Equal("Casazen.FiscalDocument.Link", FiscalDocumentLinkRules.TokenPurpose);
         Assert.Equal(TimeSpan.FromDays(30), FiscalDocumentLinkRules.Lifetime);
 
-        // Nothing of the money, the address of the guest, a portal or a supplier is in the words.
         foreach (var content in new[] { first.Content, second.Content })
         {
             Assert.DoesNotContain("400,00", content.HtmlBody);
@@ -307,13 +286,11 @@ public class FiscalDocumentDeliveryTests
         {
             var seeded = await SeedAsync(kit, guest => guest.Email = address);
 
-            // The host's send is the answer for a guest with no address, never a «queued»; the automatic send is an answer too, never a failure.
             var refused = await Assert.ThrowsAsync<DomainRuleException>(() => kit.Service.SendToGuestAsync(seeded.DocumentId));
             Assert.Equal(FiscalDocumentDeliveryErrors.RecipientEmailInvalid, refused.Code);
             Assert.Equal(FiscalDocumentSendOutcome.NoAddress, await kit.Service.SendAutomaticallyAsync(seeded.DocumentId));
         }
 
-        // A guest of the demo (a row of the showcase seed) is never e-mailed, whatever its address says.
         var demo = await SeedAsync(kit, guest => guest.Email = "ospite.demo@guest.booking.com");
         var demoGuestId = (await kit.Db.Bookings.AsNoTracking().SingleAsync(b => b.Id == demo.BookingId)).GuestId;
         kit.Db.TestDataMarkers.Add(new TestDataMarker { OrgId = OrgId, EntityType = TestDataEntities.Guest, EntityId = demoGuestId, Origin = TestDataOrigins.Showcase, TemplateKey = "ospite-demo" });
@@ -325,7 +302,6 @@ public class FiscalDocumentDeliveryTests
         Assert.Empty(kit.Sent);
         Assert.DoesNotContain("ospite", kit.Log.AllOutput, StringComparison.OrdinalIgnoreCase);
 
-        // What only looks like a reserved domain is an address like any other, and so is a guest of the same organization that is not of the demo.
         string[] ordinary = ["ospite@guest.booking.com", "ospite@myexample.com", "ospite@example.com.it", "ospite@example.co.uk", "ospite@mail.contest", "ospite@mail.tester.it"];
         foreach (var address in ordinary)
         {
@@ -389,21 +365,17 @@ public class FiscalDocumentDeliveryTests
         Assert.Equal("fiscal_document_not_found", missing.Code);
         Assert.Empty(kit.Sent);
 
-        // A queue that says no: not a success, and no «sent» anywhere.
         await using var refusing = NewKit(queueAccepts: false);
         var refused = await SeedAsync(refusing);
         var notSent = await Assert.ThrowsAsync<DomainRuleException>(() => refusing.Service.SendToGuestAsync(refused.DocumentId));
         Assert.Equal("document_email_not_sent", notSent.Code);
 
-        // No public address of the web app: no link can be written, and nothing is queued.
         await using var unlinked = NewKit(linksConfigured: false);
         var withoutLink = await SeedAsync(unlinked);
         var noLink = await Assert.ThrowsAsync<DomainRuleException>(() => unlinked.Service.SendToGuestAsync(withoutLink.DocumentId));
         Assert.Equal("document_email_not_sent", noLink.Code);
         Assert.Empty(unlinked.Sent);
     }
-
-    // ---------------------------------------------------------------- the automatic send
 
     [Fact]
     public async Task SendAutomatically_OnlyWhenTheIssuerAsks_AndNoAddressOrNoGuestDocumentIsAnAnswerNotAFailure()
@@ -420,13 +392,11 @@ public class FiscalDocumentDeliveryTests
         Assert.Equal(FiscalDocumentSendOutcome.NotSendable, await asking.Service.SendAutomaticallyAsync(draft.DocumentId));
         Assert.Single(asking.Sent);
 
-        // The profile says no: nothing goes, whatever the document.
         await using var notAsking = NewKit(emailGuestDocuments: false);
         var waiting = await SeedAsync(notAsking);
         Assert.Equal(FiscalDocumentSendOutcome.NotAsked, await notAsking.Service.SendAutomaticallyAsync(waiting.DocumentId));
         Assert.Empty(notAsking.Sent);
 
-        // An environment that cannot send at all (no e-mail provider, or no public address of the web app) is an answer: there is nothing to try again.
         await using var noProvider = NewKit(emailConfigured: false);
         await using var noLinks = NewKit(linksConfigured: false);
         foreach (var kit in new[] { noProvider, noLinks })
@@ -436,17 +406,12 @@ public class FiscalDocumentDeliveryTests
             Assert.Empty(kit.Sent);
         }
 
-        // A queue that refuses while it could send is a failure of the send, not an answer: it is thrown, for the outbox to try again.
         await using var refusing = NewKit(emailGuestDocuments: true, queueAccepts: false);
         var refused = await SeedAsync(refusing);
         var notSent = await Assert.ThrowsAsync<DomainRuleException>(() => refusing.Service.SendAutomaticallyAsync(refused.DocumentId));
         Assert.Equal("document_email_not_sent", notSent.Code);
     }
 
-    /// <summary>
-    /// E17/F01/US01/T01: the owners who issue the documents of their stays have their issuer profiles in the same table as the organization's. «E-mail to the guest» is
-    /// the choice of the organization itself, never the one of an owner's profile saved before it.
-    /// </summary>
     [Fact]
     public async Task SendAutomatically_ReadsTheChoiceOfTheOrganization_NeverTheProfileOfAnOwner()
     {
@@ -490,12 +455,10 @@ public class FiscalDocumentDeliveryTests
         Assert.Equal(FiscalDocumentSendOutcome.AlreadyQueued, await kit.Service.SendAutomaticallyAsync(issued.DocumentId));
         Assert.Single(kit.Sent);
 
-        // Another document is another e-mail, and the memory of the automatic send never holds back the host's own («send again»).
         Assert.Equal(FiscalDocumentSendOutcome.Queued, await kit.Service.SendAutomaticallyAsync(other.DocumentId));
         await kit.Service.SendToGuestAsync(issued.DocumentId);
         Assert.Equal(3, kit.Sent.Count);
 
-        // A guest with no address, an issuer that did not ask and a queue that refused are not remembered: every delivery of the event asks the queue, or the rules, again.
         var noAddress = await SeedAsync(kit, guest => guest.Email = string.Empty);
         Assert.Equal(FiscalDocumentSendOutcome.NoAddress, await kit.Service.SendAutomaticallyAsync(noAddress.DocumentId));
         Assert.Equal(FiscalDocumentSendOutcome.NoAddress, await kit.Service.SendAutomaticallyAsync(noAddress.DocumentId));
@@ -522,7 +485,6 @@ public class FiscalDocumentDeliveryTests
         var id = Guid.NewGuid();
         delivery.Setup(d => d.SendAutomaticallyAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(FiscalDocumentSendOutcome.Queued);
 
-        // Only the two events of an issue, and only for an entity.
         foreach (var type in new[] { DomainEventType.FiscalDocumentIssued, DomainEventType.FiscalDocumentCreditNoteIssued })
             await handler.HandleAsync(Event(type, id), CancellationToken.None);
         foreach (var type in new[] { DomainEventType.CheckOutCompleted, DomainEventType.BookingModified, DomainEventType.PaymentRefunded })
@@ -531,13 +493,11 @@ public class FiscalDocumentDeliveryTests
         delivery.Verify(d => d.SendAutomaticallyAsync(id, It.IsAny<CancellationToken>()), Times.Exactly(2));
         delivery.VerifyNoOtherCalls();
 
-        // Nothing while the issuance is off.
         flags.Set(FeatureFlags.FiscalDocumentIssuance, false);
         await handler.HandleAsync(Event(DomainEventType.FiscalDocumentIssued, id), CancellationToken.None);
         delivery.VerifyNoOtherCalls();
         flags.Set(FeatureFlags.FiscalDocumentIssuance, true);
 
-        // Every answer of the service, an answer of the rules and a document that is gone are logged and not delivered again.
         foreach (var outcome in Enum.GetValues<FiscalDocumentSendOutcome>())
         {
             delivery.Setup(d => d.SendAutomaticallyAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(outcome);
@@ -549,7 +509,6 @@ public class FiscalDocumentDeliveryTests
         delivery.Setup(d => d.SendAutomaticallyAsync(id, It.IsAny<CancellationToken>())).ThrowsAsync(new NotFoundException("gone"));
         await handler.HandleAsync(Event(DomainEventType.FiscalDocumentIssued, id), CancellationToken.None);
 
-        // A queue that refused while it could send, and any other failure, are thrown again for the outbox (nothing was queued, so nothing is sent twice), with the code or the type of the error only.
         delivery.Setup(d => d.SendAutomaticallyAsync(id, It.IsAny<CancellationToken>())).ThrowsAsync(new DomainRuleException("document_email_not_sent", "FiscalDocumentEmailNotSent"));
         await Assert.ThrowsAsync<DomainRuleException>(() => handler.HandleAsync(Event(DomainEventType.FiscalDocumentIssued, id), CancellationToken.None));
         delivery.Setup(d => d.SendAutomaticallyAsync(id, It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("the database said guest@example.com"));
@@ -561,8 +520,6 @@ public class FiscalDocumentDeliveryTests
         Assert.Contains(nameof(InvalidOperationException), log.AllOutput);
         Assert.DoesNotContain("guest@example.com", log.AllOutput);
     }
-
-    // ---------------------------------------------------------------- the pieces
 
     [Theory]
     [InlineData("it-IT")]
@@ -588,7 +545,6 @@ public class FiscalDocumentDeliveryTests
         Assert.Contains($"<html lang=\"{culture[..2]}\">", content.HtmlBody);
         Assert.Contains("?token=abc_DEF-123", content.HtmlBody);
 
-        // A guest with no first name is greeted without a gap.
         var nameless = EmailTemplates.FiscalDocumentDelivery(CultureInfo.GetCultureInfo(culture), " ", "TEST Srl", DocumentKind.Receipt, "2026/1", new DateTime(2026, 11, 19), BaseUrl, Now.UtcDateTime);
         Assert.DoesNotContain(" ,", nameless.HtmlBody);
     }
@@ -635,12 +591,9 @@ public class FiscalDocumentDeliveryTests
         Assert.False(tokens.TryRead(new string('A', 1025), out _));
         Assert.False(tokens.TryRead(tokens.Create(Guid.Empty, DateTimeOffset.UtcNow.AddDays(1)), out _));
 
-        // The link is a few hundred characters of letters, digits, dash and underscore: nothing that needs escaping in an address.
         Assert.Matches("^[A-Za-z0-9_-]+$", token);
         Assert.InRange(token.Length, 40, 400);
     }
-
-    // ---------------------------------------------------------------- the endpoints and the limit
 
     [Fact]
     public async Task SendEmail_IsForWhoMayWriteThePaymentsOfTheBooking_AndNotFoundForTheOthers()
@@ -656,7 +609,6 @@ public class FiscalDocumentDeliveryTests
         var delivery = new Mock<IFiscalDocumentDeliveryService>();
         delivery.Setup(d => d.SendToGuestAsync(documentId, It.IsAny<CancellationToken>())).ReturnsAsync(new FiscalDocumentDeliveryResult(documentId, expires));
 
-        // Somebody who may not write the payments of the booking: the same 404 as a document that is not there, and nothing is sent.
         var denied = await FiscalController(documents.Object, resources.Object, allowed: false).SendEmail(documentId, delivery.Object);
         Assert.Equal(StatusCodes.Status404NotFound, (denied.Result as IStatusCodeActionResult)?.StatusCode);
         var missing = await FiscalController(documents.Object, resources.Object, allowed: true).SendEmail(Guid.NewGuid(), delivery.Object);
@@ -667,7 +619,6 @@ public class FiscalDocumentDeliveryTests
         var body = Assert.IsType<FiscalDocumentEmailQueuedDto>(Assert.IsType<OkObjectResult>(sent.Result).Value);
         Assert.Equal((documentId, true, expires), (body.DocumentId, body.Queued, body.LinkExpiresAt));
 
-        // The action is behind the permission to write the payments and the flag of the issuance, and nothing else is in its answer.
         var action = typeof(FiscalDocumentsController).GetMethod(nameof(FiscalDocumentsController.SendEmail))!;
         Assert.Equal(CasazenPolicies.PaymentWrite, action.GetCustomAttribute<AuthorizeAttribute>()?.Policy);
         Assert.Equal(FeatureFlags.FiscalDocumentIssuance, action.GetCustomAttribute<FeatureGateAttribute>()?.Flag);
@@ -688,19 +639,14 @@ public class FiscalDocumentDeliveryTests
         Assert.Equal(["{id:guid}", "{id:guid}/pdf"], actions.Select(a => a.GetCustomAttributes<HttpPostAttribute>().Single().Template).ToList());
         foreach (var action in actions)
         {
-            // The token is in the body: no parameter of the query or of the route is called after it, and the body is small.
             Assert.DoesNotContain(action.GetParameters(), p => p.GetCustomAttribute<FromQueryAttribute>() is not null || p.Name!.Contains("token", StringComparison.OrdinalIgnoreCase));
             Assert.NotNull(action.GetCustomAttribute<RequestSizeLimitAttribute>());
         }
 
-        // The policy of the limit: per client IP (not by person, not by token), 20 a minute, set by its own variable like the others.
         var policy = Assert.Single(RateLimitingServiceCollectionExtensions.Policies, p => p.Name == RateLimitPolicies.PublicFiscalDocumentDownload);
         Assert.Equal((20, TimeSpan.FromMinutes(1), false, false), (policy.DefaultPermitLimit, policy.DefaultWindow, policy.PartitionByToken, policy.PartitionByUser));
     }
 
-    // ---------------------------------------------------------------- helpers
-
-    /// <summary>The instant to the minute, in UTC.</summary>
     private static DateTimeOffset AtTheMinute(DateTimeOffset instant) => new(instant.Year, instant.Month, instant.Day, instant.Hour, instant.Minute, 0, TimeSpan.Zero);
 
     /// <summary>
@@ -716,14 +662,12 @@ public class FiscalDocumentDeliveryTests
     private static DomainEvent Event(DomainEventType type, Guid entityId) =>
         new(Guid.NewGuid(), OrgId, type, entityId, Now.UtcDateTime, "{}");
 
-    /// <summary>The token with one character of its middle changed: the same length, never a token of ours.</summary>
     private static string Changed(string token)
     {
         var middle = token.Length / 2;
         return token[..middle] + (token[middle] == 'A' ? 'B' : 'A') + token[(middle + 1)..];
     }
 
-    /// <summary>The link of the e-mail: the address of its button, as the reader's client sees it.</summary>
     private static string LinkOf(EmailContent content)
     {
         var match = Regex.Match(content.HtmlBody, "<a href=\"(?<url>[^\"]+)\" style=");
@@ -731,7 +675,6 @@ public class FiscalDocumentDeliveryTests
         return System.Net.WebUtility.HtmlDecode(match.Groups["url"].Value);
     }
 
-    /// <summary>The token of the link of the e-mail: what follows <c>?token=</c>.</summary>
     private static string TokenOf(EmailContent content)
     {
         var url = LinkOf(content);
@@ -807,7 +750,6 @@ public class FiscalDocumentDeliveryTests
 
     private static int _sequence;
 
-    /// <summary>An issued receipt of 400 EUR of a booking whose guest is «Test Guest»; <paramref name="guest"/> and <paramref name="document"/> change what a test needs different.</summary>
     private static async Task<Seeded> SeedAsync(Kit kit, Action<Guest>? guest = null, Action<FiscalDocument>? document = null)
     {
         var sequence = Interlocked.Increment(ref _sequence);
@@ -870,7 +812,6 @@ public class FiscalDocumentDeliveryTests
         public void EnterOrg(Guid orgId) => entered.Add(orgId);
     }
 
-    /// <summary>The service under test with a real in-memory database, a queue that keeps what it is given, the key ring of a test, and the document service of the PDF behind a mock.</summary>
     private sealed class Kit : IAsyncDisposable
     {
         private readonly ServiceProvider _provider;
@@ -915,7 +856,6 @@ public class FiscalDocumentDeliveryTests
 
         public FiscalDocumentLinkTokens Tokens { get; }
 
-        /// <summary>The memory of the process: what the automatic send remembers of the documents it queued.</summary>
         public MemoryCache Memory { get; }
 
         public CapturingLogger<FiscalDocumentDeliveryService> Log { get; }
@@ -926,7 +866,6 @@ public class FiscalDocumentDeliveryTests
 
         public FiscalDocumentDeliveryService Service { get; }
 
-        /// <summary>What the queue was asked to queue, in order: an e-mail that a refusing queue says no to is here too (it got the ask).</summary>
         public List<SentEmail> Sent { get; } = [];
 
         public List<Guid> Entered { get; } = [];

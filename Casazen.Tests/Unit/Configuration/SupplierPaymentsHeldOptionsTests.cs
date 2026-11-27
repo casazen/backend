@@ -30,7 +30,6 @@ public class SupplierPaymentsHeldOptionsTests
         // What a host pays goes through CasaZen unless an environment switches it off (SP-15c-b, the way back to the direct charge).
         Assert.True(options.HeldForHosts);
 
-        // The block is treated as usable for far less than the 4 days 18 hours (114 hours) of the shortest card block.
         Assert.True(options.AuthorizationValidity < TimeSpan.FromHours(114));
         Assert.True(SupplierPaymentsOptions.MaxAuthorizationValidityHours < 114);
         Assert.Equal(TimeSpan.FromMinutes(60), options.ReleaseAfter);
@@ -54,8 +53,8 @@ public class SupplierPaymentsHeldOptionsTests
     [InlineData(0)]
     [InlineData(-1)]
     [InlineData(97)]
-    [InlineData(114)] // exactly what a card keeps: no margin at all
-    [InlineData(168)] // the seven days of most cards
+    [InlineData(114)]
+    [InlineData(168)]
     public void AuthorizationValidityHours_OutsideTheRange_IsRefusedAtStartup(int hours)
     {
         var options = Valid();
@@ -92,7 +91,7 @@ public class SupplierPaymentsHeldOptionsTests
     [Theory]
     [InlineData(0, 7)]
     [InlineData(366, 7)]
-    [InlineData(60, 61)] // warns later than the maximum
+    [InlineData(60, 61)]
     [InlineData(60, -1)]
     public void MaxHoldDaysAndItsWarning_MustBeConsistent(int maxHoldDays, int warningDays)
     {
@@ -106,7 +105,7 @@ public class SupplierPaymentsHeldOptionsTests
     [Theory]
     [InlineData(0, 720, 5)]
     [InlineData(1_441, 10_080, 5)]
-    [InlineData(15, 10, 5)] // the longest wait below the first
+    [InlineData(15, 10, 5)]
     [InlineData(15, 10_081, 5)]
     [InlineData(15, 720, 0)]
     [InlineData(15, 720, 101)]

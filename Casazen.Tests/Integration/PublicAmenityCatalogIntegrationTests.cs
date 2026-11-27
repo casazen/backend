@@ -6,10 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// DB-11a: the booking site names, groups and draws every amenity from one reference list served to everybody. A new
-/// <see cref="PropertyAmenity"/> without an entry would reach the property page as a raw code, so this fails until it has one.
-/// </summary>
 public class PublicAmenityCatalogIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private readonly CasazenWebApplicationFactory _factory;

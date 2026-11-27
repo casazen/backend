@@ -21,7 +21,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class ServicePaymentDisputeTenancyTests
 {
-    /// <summary>The files that may read or write the table, each with the reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> AllowedFiles = new Dictionary<string, string>
     {
         ["Casazen.Infrastructure/Data/AppDbContext.cs"] = "Declares the DbSet and the model.",
@@ -31,7 +30,6 @@ public class ServicePaymentDisputeTenancyTests
         ["Casazen.Infrastructure/Services/SupplierPaymentService.DisputesNotices.cs"] = "The e-mails after a commit: the dispute is read by its id.",
     };
 
-    // The statements allowed after "db.ServicePaymentDisputes" (whitespace removed): an insert, or a predicate on the dispute id, on its payment, or on its request.
     private static readonly string[] AllowedContinuations =
     [
         ".Add(",
@@ -43,18 +41,14 @@ public class ServicePaymentDisputeTenancyTests
         ".AsNoTracking().Where(d=>d.ServiceRequestId==",
     ];
 
-    // The files that work over many disputes by design, with the extra statements they may use: the job filters by state and time, the admin's queue is
-    // a read-only projection. Every dispute they change is still handled by id, under the payment lock.
     private static readonly IReadOnlyDictionary<string, string[]> ExtraContinuations = new Dictionary<string, string[]>
     {
         ["Casazen.Infrastructure/Services/SupplierPaymentService.DisputesJobs.cs"] = [".AsNoTracking().Where(d=>d.Status=="],
         ["Casazen.Infrastructure/Services/SupplierPaymentService.DisputesAdmin.cs"] = [".AsNoTracking()"],
     };
 
-    // Any way to reach the table from code: the DbSet through whatever the context variable is called, or Set<T>().
     private static readonly Regex AnyTableUse = new(@"\.ServicePaymentDisputes\b|Set<ServicePaymentDispute>\(", RegexOptions.Compiled);
 
-    // The statements of the allowed files: they call the context "db".
     private static readonly Regex DbSetUse = new(@"db\.ServicePaymentDisputes(?<rest>[\s\S]{0,90})", RegexOptions.Compiled);
 
     [Fact]
@@ -70,10 +64,8 @@ public class ServicePaymentDisputeTenancyTests
         var entity = db.Model.FindEntityType(typeof(ServicePaymentDispute));
         Assert.NotNull(entity);
 
-        // A host-org filter would hide the dispute from the supplier who must reply and from the admin who decides.
         Assert.Null(entity.FindDeclaredQueryFilter(AppDbContext.TenantQueryFilter));
 
-        // Nothing under a dispute is deleted by the database: a payment, a request or a supplier with a dispute cannot be removed.
         var foreignKeys = entity.GetForeignKeys().ToList();
         Assert.Equal(3, foreignKeys.Count);
         Assert.All(foreignKeys, foreignKey => Assert.Equal(DeleteBehavior.Restrict, foreignKey.DeleteBehavior));
@@ -92,7 +84,6 @@ public class ServicePaymentDisputeTenancyTests
         Assert.True(index.IsUnique);
         Assert.Equal(new[] { nameof(ServicePaymentDispute.ServiceRequestPaymentId) }, index.Properties.Select(p => p.Name));
 
-        // Open means awaiting the supplier or awaiting the decision: a decided or withdrawn dispute does not stop another one from being opened.
         Assert.Equal(
             $"\"Status\" IN ({(int)ServiceDisputeStatus.AwaitingSupplier}, {(int)ServiceDisputeStatus.AwaitingDecision})",
             index.GetFilter());
@@ -110,7 +101,6 @@ public class ServicePaymentDisputeTenancyTests
         Assert.Equal(typeof(int?), entity.FindProperty(nameof(ServicePaymentDispute.RefundTargetCents))!.ClrType);
         Assert.Equal("ServicePaymentDisputes", entity.GetTableName());
 
-        // The column says what it holds: the three texts live in the columns whose names end in Encrypted.
         Assert.Equal("CustomerTextEncrypted", entity.FindProperty(nameof(ServicePaymentDispute.CustomerText))!.GetColumnName());
         Assert.Equal("SupplierReplyEncrypted", entity.FindProperty(nameof(ServicePaymentDispute.SupplierReply))!.GetColumnName());
         Assert.Equal("AdminNoteEncrypted", entity.FindProperty(nameof(ServicePaymentDispute.AdminNote))!.GetColumnName());
@@ -133,7 +123,6 @@ public class ServicePaymentDisputeTenancyTests
             EncryptedColumns.All.Where(c => c.EntityType == typeof(ServicePaymentDispute)),
             column => Assert.Equal("Casazen.ServicePaymentDispute", column.Purpose));
 
-        // With Data Protection the model gives each of them its converter: what is written is never the clear text.
         using var encrypted = new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
             tenantContext: null,
@@ -145,7 +134,6 @@ public class ServicePaymentDisputeTenancyTests
     public void Model_DatabaseChecksMirrorTheRules()
     {
         using var db = NewNpgsqlContext();
-        // The check constraints are design-time metadata: not in the read-optimized runtime model.
         var model = db.GetService<IDesignTimeModel>().Model;
 
         var checks = model.FindEntityType(typeof(ServicePaymentDispute))!.GetCheckConstraints().ToDictionary(c => c.Name!, c => c.Sql);
@@ -153,11 +141,9 @@ public class ServicePaymentDisputeTenancyTests
             new[] { "CK_ServicePaymentDisputes_Refund", "CK_ServicePaymentDisputes_Resolved", "CK_ServicePaymentDisputes_Status" },
             checks.Keys.Order().ToArray());
 
-        // A dispute that is over says when; an open one does not.
         Assert.Contains("\"ResolvedAt\" IS NOT NULL", checks["CK_ServicePaymentDisputes_Resolved"], StringComparison.Ordinal);
         Assert.Contains("\"ResolvedAt\" IS NULL", checks["CK_ServicePaymentDisputes_Resolved"], StringComparison.Ordinal);
 
-        // The money of a decision exists only for the customer, and the total to reach is never below what was decided.
         Assert.Contains($"\"Status\" = {(int)ServiceDisputeStatus.ResolvedForCustomer}", checks["CK_ServicePaymentDisputes_Refund"], StringComparison.Ordinal);
         Assert.Contains("\"RefundTargetCents\" >= \"DecidedRefundCents\"", checks["CK_ServicePaymentDisputes_Refund"], StringComparison.Ordinal);
     }

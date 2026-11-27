@@ -36,7 +36,7 @@ public class CommissionExportCsvTests
         var csv = CommissionExportCsv.Write(new CommissionExport(2026, 10, null, [Row(), Row(CommissionExportRowType.Refund, gross: -1_500, commission: -150, net: -1_350)]));
 
         var lines = Lines(csv);
-        Assert.Equal(4, lines.Length); // header, two rows, the empty piece after the last CRLF
+        Assert.Equal(4, lines.Length);
         Assert.Equal(string.Empty, lines[^1]);
         Assert.Equal(string.Join(',', CommissionExportCsv.Columns), lines[0]);
         Assert.Equal(15, CommissionExportCsv.Columns.Count);

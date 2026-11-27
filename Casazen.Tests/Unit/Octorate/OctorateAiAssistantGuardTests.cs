@@ -26,10 +26,6 @@ public class OctorateAiAssistantGuardTests
 {
     private const string OctorateThread = "9001";
 
-    /// <summary>
-    /// PROOF TEST: data rule (AC-NF67-6, AC1). A thread whose assistant of Octorate reads on is switched off with ONE call for the organization of the
-    /// event, the copy says off afterwards, and the same event delivered again (at-least-once) costs no second call.
-    /// </summary>
     [Fact]
     public async Task OctorateAssistantOn_IsSwitchedOff_OnOneCallForTheOrgOfTheEvent_AndTheCopySaysOff_Test()
     {
@@ -68,7 +64,6 @@ public class OctorateAiAssistantGuardTests
         Assert.False((await h.ReadAsync(db => db.OtaMessageThreads.SingleAsync())).AiAssistantOn);
     }
 
-    /// <summary>AC2: a thread that is off costs no call, whether the pass read it off or the copy already holds it off.</summary>
     [Theory]
     [InlineData(false, true)]
     [InlineData(true, false)]
@@ -86,12 +81,6 @@ public class OctorateAiAssistantGuardTests
         Assert.Equal(copyHolds, (await h.ReadAsync(db => db.OtaMessageThreads.SingleAsync())).AiAssistantOn);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (AC-NF67-6, AC3, AC4). Over the real sync and the real consumer, pass after pass: a person who switches the assistant on
-    /// again is switched off again at the next pass (the key of the event of a thread whose assistant is on has the ten minutes of the pass in it, so
-    /// the first event does not take it for ever), a call that failed is repeated at the next pass, the pass of the same ten minutes is one event, and a
-    /// pass that reads it off calls nothing.
-    /// </summary>
     [Fact]
     public async Task ThePassesOfTheCopy_FindAPersonWhoSwitchedTheAssistantOnAgain_AndRepeatACallThatFailed_Test()
     {
@@ -125,7 +114,6 @@ public class OctorateAiAssistantGuardTests
                 await service.SyncThreadAsync(MessageSyncHarness.OrgA, MessageSyncHarness.Accommodation, OctorateThread, null, CancellationToken.None);
             }
 
-            // What the dispatcher does: every event that was not delivered yet, in its order, to the handler, on a context of its own.
             List<OutboxEvent> rows;
             await using (var read = h.NewDb())
             {
@@ -144,27 +132,23 @@ public class OctorateAiAssistantGuardTests
         Task<int> EventsAsync() => h.ReadAsync(db => db.OutboxEvents.CountAsync(e => e.EventType == DomainEventType.OtaThreadSynced));
         Task<bool?> CopyAsync() => h.ReadAsync(async db => (await db.OtaMessageThreads.SingleAsync()).AiAssistantOn);
 
-        // 08:00, the first pass reads the assistant on: one event, one call, the copy says off.
         await PassAsync();
         Assert.Equal(1, await EventsAsync());
         Assert.Single(calls);
         Assert.False(await CopyAsync());
 
-        // 08:03, the webhook of the same ten minutes reads it on again (Octorate had not applied the call yet): the same event, so nothing is delivered.
         clock.Advance(TimeSpan.FromMinutes(3));
         await PassAsync();
         Assert.Equal(1, await EventsAsync());
         Assert.Single(calls);
         Assert.True(await CopyAsync());
 
-        // 08:10, the next pass reads it on again, a person switched it on after the call: a new event, a second call, the copy says off.
         clock.Advance(TimeSpan.FromMinutes(7));
         await PassAsync();
         Assert.Equal(2, await EventsAsync());
         Assert.Equal(2, calls.Count);
         Assert.False(await CopyAsync());
 
-        // 08:20, Octorate holds it off: the event of an assistant that is off, and no call.
         clock.Advance(TimeSpan.FromMinutes(10));
         remote = false;
         await PassAsync();
@@ -183,7 +167,6 @@ public class OctorateAiAssistantGuardTests
         Assert.True(await CopyAsync());
         Assert.Single(log.Entries, e => e.Level == LogLevel.Warning && Equals(e.Values["Code"], "octorate_rate_limited"));
 
-        // 08:40, the next pass reads it on still: the call is repeated at the next pass, and now Octorate accepts it.
         clock.Advance(TimeSpan.FromMinutes(10));
         h.Client.Setup(c => c.SetThreadAiAssistantAsync(MessageSyncHarness.Accommodation, OctorateThread, false, It.IsAny<CancellationToken>()))
             .Callback<string, string, bool, CancellationToken>((accommodation, thread, enabled, _) => calls.Add((accommodation, thread, enabled, scope.OrgId)))
@@ -193,7 +176,6 @@ public class OctorateAiAssistantGuardTests
         Assert.Equal(3, calls.Count);
         Assert.False(await CopyAsync());
 
-        // Ids and codes only: the thread of the sync carries the name of a guest, and no line of the guard has it.
         Assert.DoesNotContain("Giulietta", log.AllOutput, StringComparison.Ordinal);
         Assert.DoesNotContain("Verdi", log.AllOutput, StringComparison.Ordinal);
     }
@@ -228,7 +210,6 @@ public class OctorateAiAssistantGuardTests
         var thread = await SeedThreadAsync(h, ai: true, propertyId: h.PropertyId);
         var log = new CapturingLogger<OctorateAiAssistantGuard>();
 
-        // Not an exception: the dispatcher marks the event delivered, and the sync and the other handlers are not affected.
         await DeliverAsync(h, scope, log, Synced(thread, ai: true));
 
         Assert.True((await h.ReadAsync(db => db.OtaMessageThreads.SingleAsync())).AiAssistantOn);
@@ -261,10 +242,6 @@ public class OctorateAiAssistantGuardTests
         Assert.True((await h.ReadAsync(db => db.OtaMessageThreads.SingleAsync())).AiAssistantOn);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule (OCT-04). Nothing is written to the channel manager for a thread CasaZen does not manage: one with no property (its listing
-    /// has no confirmed mapping) and one whose property sits in a mapping nobody decided. The flag the copy holds stays what Octorate reported.
-    /// </summary>
     [Fact]
     public async Task AThreadOfAListingNobodyConfirmed_IsNeverWrittenTo_Test()
     {
@@ -283,7 +260,6 @@ public class OctorateAiAssistantGuardTests
         Assert.Empty(calls);
         Assert.All(await h.ReadAsync(db => db.OtaMessageThreads.ToListAsync()), row => Assert.True(row.AiAssistantOn));
 
-        // The mapping is decided: the same event now switches it off.
         h.Mappings.Setup(m => m.IsWriteBlockedAsync(h.PropertyId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
         await DeliverAsync(h, scope, new CapturingLogger<OctorateAiAssistantGuard>(), Synced(undecided, ai: true));
 
@@ -312,7 +288,6 @@ public class OctorateAiAssistantGuardTests
         var log = new CapturingLogger<OctorateAiAssistantGuard>();
         var synced = Synced(thread, ai: true);
 
-        // Down to the reserve: no call, the event rises (the dispatcher keeps it for its next run), the copy keeps what Octorate said, the line has ids and the code.
         var raised = await Assert.ThrowsAsync<OctorateRateLimitException>(() => DeliverAsync(h, scope, log, synced, limiter: limiter));
 
         Assert.Equal(OctorateAiAssistantGuard.RateLimitedCode, raised.Code);
@@ -323,7 +298,6 @@ public class OctorateAiAssistantGuardTests
         Assert.Equal(thread.Id, line.Values["ThreadId"]);
         Assert.Equal(MessageSyncHarness.OrgA, line.Values["OrgId"]);
 
-        // The next run of the dispatcher, the calls of the org are back: the same event makes the call, and the copy says off.
         clock.Advance(TimeSpan.FromMinutes(1));
         await DeliverAsync(h, scope, log, synced, limiter: limiter);
 
@@ -365,7 +339,6 @@ public class OctorateAiAssistantGuardTests
         Assert.DoesNotContain("Giulietta", log.AllOutput, StringComparison.Ordinal);
         Assert.DoesNotContain("Verdi", log.AllOutput, StringComparison.Ordinal);
 
-        // The dispatcher delivers the same event again; Octorate answers now: one call, the copy says off.
         var calls = RecordCalls(h, scope);
         await DeliverAsync(h, scope, log, synced);
 
@@ -419,18 +392,15 @@ public class OctorateAiAssistantGuardTests
                 .ToListAsync();
         }
 
-        // 08:00, the first pass reads no flag: one event; Octorate fails the call, the guard says so and the event rises (the dispatcher keeps it).
         var first = Assert.Single(await PassAsync());
         var raised = await Assert.ThrowsAsync<OctorateServerException>(() => DeliverAsync(h, scope, log, DomainEventTypeMap.Create(first), clock));
         Assert.Equal("octorate_unavailable", raised.Code);
         Assert.Null((await h.ReadAsync(db => db.OtaMessageThreads.SingleAsync())).AiAssistantOn);
 
-        // 08:10, the next pass reads no flag again: the key has no window, so it is the same event and the pass tells the guard nothing more.
         clock.Advance(TimeSpan.FromMinutes(10));
         var second = Assert.Single(await PassAsync());
         Assert.Equal(first.Id, second.Id);
 
-        // The dispatcher delivers the event again, Octorate answers: one call, the copy says off.
         var calls = RecordCalls(h, scope);
         await DeliverAsync(h, scope, log, DomainEventTypeMap.Create(first), clock);
 
@@ -438,10 +408,6 @@ public class OctorateAiAssistantGuardTests
         Assert.False((await h.ReadAsync(db => db.OtaMessageThreads.SingleAsync())).AiAssistantOn);
     }
 
-    /// <summary>
-    /// PROOF TEST: tenant rule (ADR-022-R6). An event of one organization that names the thread of another changes nothing and calls nothing: the handler
-    /// reads the thread in the org of the event, and the call is made for that org.
-    /// </summary>
     [Fact]
     public async Task AnEventOfAnotherOrg_NeverReachesTheThreadOfThisOne_Test()
     {
@@ -466,17 +432,14 @@ public class OctorateAiAssistantGuardTests
         var log = new CapturingLogger<OctorateAiAssistantGuard>();
         var synced = Synced(thread, ai: true);
 
-        // Another kind of event, and an event that names nothing.
         await DeliverAsync(h, scope, log, synced with { Type = DomainEventType.GuestMessageReceived });
         await DeliverAsync(h, scope, log, synced with { EntityId = Guid.Empty });
         Assert.Empty(log.Entries);
 
-        // A payload that is not the one of the pass: said, and nothing is called.
         foreach (var payload in new[] { "not json", "[]", "null", "42" })
             await DeliverAsync(h, scope, log, synced with { PayloadJson = payload });
         Assert.Equal(4, log.Entries.Count(e => e.Level == LogLevel.Warning && Equals(e.Values["Code"], OctorateAiAssistantGuard.PayloadUnreadableCode)));
 
-        // The connector off.
         h.Flags.Setup(f => f.IsEnabled(FeatureFlags.OctorateConnector)).Returns(false);
         await DeliverAsync(h, scope, log, synced);
 
@@ -502,8 +465,6 @@ public class OctorateAiAssistantGuardTests
         Assert.Empty(calls);
     }
 
-    // ---- The rig ----------------------------------------------------------------------------------------------------------------------------
-
     private static async Task DeliverAsync(
         MessageSyncHarness h,
         OctorateOrgScope scope,
@@ -512,13 +473,11 @@ public class OctorateAiAssistantGuardTests
         TimeProvider? clock = null,
         OctorateRateLimiter? limiter = null)
     {
-        // One context for each delivery, as the event bus gives each handler its scope.
         await using var db = h.NewDb();
         var guard = new OctorateAiAssistantGuard(db, h.Client.Object, scope, h.Mappings.Object, h.Flags.Object, limiter ?? h.Limiter, clock ?? h.Clock, log);
         await guard.HandleAsync(domainEvent, CancellationToken.None);
     }
 
-    /// <summary>Sets the call of the client up: what it was asked (and for which org, read from the scope at the moment of the call) goes to the list.</summary>
     private static List<(string Accommodation, string Thread, bool Enabled, Guid? Org)> RecordCalls(MessageSyncHarness h, OctorateOrgScope scope)
     {
         var calls = new List<(string Accommodation, string Thread, bool Enabled, Guid? Org)>();
@@ -529,7 +488,6 @@ public class OctorateAiAssistantGuardTests
         return calls;
     }
 
-    /// <summary>A thread of Octorate as the copy holds it: the property its confirmed listing gives (or none), the flag of Octorate's assistant the pass read.</summary>
     private static async Task<OtaMessageThread> SeedThreadAsync(MessageSyncHarness h, bool? ai, Guid? propertyId, string octorateThreadId = OctorateThread, DateTime? lastMessageAt = null)
     {
         var thread = new OtaMessageThread
@@ -552,7 +510,6 @@ public class OctorateAiAssistantGuardTests
         return thread;
     }
 
-    /// <summary>The event the sync records for a thread it read: the thread, and what the pass read of the assistant.</summary>
     private static DomainEvent Synced(OtaMessageThread thread, bool? ai, Guid? org = null) => new(
         Guid.NewGuid(),
         org ?? thread.OrgId,

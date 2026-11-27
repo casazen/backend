@@ -46,7 +46,6 @@ public class OrgInvitationAcceptanceTests
         OnboardingConsentsInput? consents = null) =>
         new(token, userId, email, verified, platformAdmin, consents ?? OrgInvitationTestKit.Consents(), "203.0.113.7");
 
-    /// <summary>An org with its owner, an invitation for Anna and Anna herself with no org.</summary>
     private async Task<(Guid OrgId, OrgInvitation Invitation, string Token)> OrgWithInvitationForNewUserAsync(
         OrgRole role = OrgRole.Collaborator,
         string[]? areas = null,
@@ -66,7 +65,6 @@ public class OrgInvitationAcceptanceTests
         return (org.Id, invitation, token);
     }
 
-    /// <summary>Nothing of the acceptance was written: the invitation is as it was and Anna is no member of the org.</summary>
     private async Task AssertNothingWrittenAsync(OrgInvitation invitation, Guid orgId, string userId = AnnaId)
     {
         var stored = await _kit.ReadInvitationAsync(invitation.Id);
@@ -78,8 +76,6 @@ public class OrgInvitationAcceptanceTests
         await using var db = _kit.NewDb();
         Assert.False(await db.ConsentRecords.IgnoreQueryFilters().AnyAsync(c => c.UserId == userId && c.OrgId == orgId));
     }
-
-    // ─── A person with no org ───────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task AcceptAsync_PersonWithoutOrg_BecomesMemberOfTheOrgWithTheInvitedRole()
@@ -124,7 +120,6 @@ public class OrgInvitationAcceptanceTests
             Assert.Equal(OrgInvitationTestKit.ConsentVersion, c.Version);
             Assert.Equal("203.0.113.7", c.IpAddress);
         });
-        // The people of an org have no Auth0 role: their rights are their memberships.
         _kit.Auth0.Verify(a => a.AssignRolesAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
         _kit.Auth0.Verify(a => a.RemoveRolesAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -172,8 +167,6 @@ public class OrgInvitationAcceptanceTests
 
         Assert.NotNull(await _kit.ReadMemberAsync(AnnaId));
     }
-
-    // ─── Acceptance twice ───────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task AcceptAsync_TheSamePersonTwice_FindsItDoneAndWritesNothingMore()
@@ -229,8 +222,6 @@ public class OrgInvitationAcceptanceTests
         Assert.Equal(OrgInvitationErrors.Used, error.Code);
     }
 
-    // ─── The link ───────────────────────────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData("")]
     [InlineData("not-a-token")]
@@ -264,7 +255,6 @@ public class OrgInvitationAcceptanceTests
         await using (var db = _kit.NewDb())
             created = await _kit.Invitations(db).CreateAsync(new CreateOrgInvitation(org.Id, "auth0|owner", AnnaEmail, "Anna Leone", OrgRole.Collaborator, ["short-rent"]));
         var firstToken = OrgInvitationTestKit.TokenInEmail(Assert.Single(_kit.Emails.Snapshot()));
-        // «Reinvia» waits an hour after the last email (AM-D15).
         _kit.Clock.Advance(TimeSpan.FromMinutes(OrgInvitationRules.DefaultResendMinutes));
         await using (var db = _kit.NewDb())
             await _kit.Invitations(db).ResendAsync(org.Id, created.Invitation.Id, "auth0|owner");
@@ -293,7 +283,6 @@ public class OrgInvitationAcceptanceTests
     public async Task AcceptAsync_ExpiredWhileWaitingForTheLocks_IsExpiredAndWritesNothing()
     {
         var (orgId, invitation, token) = await OrgWithInvitationForNewUserAsync();
-        // The service reads the clock once before the locks and once under them. The second read is past the expiry.
         var clock = new JumpOnLaterReadClock(_kit.Now, TimeSpan.FromDays(8), jumpFromRead: 2);
 
         await using var db = _kit.NewDb();
@@ -375,8 +364,6 @@ public class OrgInvitationAcceptanceTests
         Assert.Equal(OrgInvitationErrors.Invalid, error.Code);
         await AssertNothingWrittenAsync(invitation, orgId);
     }
-
-    // ─── The account ────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task AcceptAsync_AnotherEmail_IsForbiddenAndWritesNothing()
@@ -473,15 +460,12 @@ public class OrgInvitationAcceptanceTests
 
         await Assert.ThrowsAsync<DomainForbiddenException>(() => AcceptAsync(token));
 
-        // Not even an empty org of the staff account is touched.
         var member = await _kit.ReadMemberAsync(AnnaId);
         Assert.Equal(staffOrg.Id, member!.OrgId);
         await using var verify = _kit.NewDb();
         Assert.True((await verify.Orgs.AsNoTracking().SingleAsync(o => o.Id == staffOrg.Id)).IsActive);
         Assert.Equal(OrgInvitationStatus.Pending, (await _kit.ReadInvitationAsync(invitation.Id)).Status);
     }
-
-    // ─── The consents ───────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task AcceptAsync_ConsentsOfAnOldVersion_AreRefusedBeforeAnythingIsWritten()
@@ -528,7 +512,6 @@ public class OrgInvitationAcceptanceTests
         Assert.True(accepted.LeftEmptyOrg);
         Assert.Equal(targetId, accepted.OrgId);
 
-        // The empty org is deactivated, not deleted; what was recorded for it (the consents) stays.
         await using var db = _kit.NewDb();
         var old = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == oldOrgId);
         Assert.False(old.IsActive);
@@ -536,7 +519,6 @@ public class OrgInvitationAcceptanceTests
         Assert.Equal(4, await db.ConsentRecords.IgnoreQueryFilters().CountAsync(c => c.UserId == AnnaId && c.OrgId == targetId));
         Assert.Empty(await db.OrgMembers.IgnoreQueryFilters().Where(m => m.OrgId == oldOrgId).ToListAsync());
 
-        // The person is a member of the new org only, with the memberships of its role and none of the old owner's.
         var member = await _kit.ReadMemberAsync(AnnaId);
         Assert.Equal((targetId, OrgRole.Collaborator), (member!.OrgId, member.Role));
         Assert.Equal(["short-rent/staff"], await _kit.MembershipsAsync(AnnaId));
@@ -612,7 +594,6 @@ public class OrgInvitationAcceptanceTests
         Assert.Equal(target.Id, (await _kit.ReadMemberAsync(AnnaId))!.OrgId);
     }
 
-    /// <summary>What makes the org of the person "in use": each of these makes the acceptance a 409 and changes nothing.</summary>
     public static TheoryData<string> OrgInUse => new()
     {
         "property",
@@ -717,7 +698,6 @@ public class OrgInvitationAcceptanceTests
     [Fact]
     public async Task AcceptAsync_WhatTheOnboardingLeavesBehind_DoesNotMakeAnOrgUsed()
     {
-        // Consents, the signup attribution and a previous slug are what an untouched org holds.
         var (targetId, _, token, oldOrgId) = await InvitationForPersonWithEmptyOrgAsync();
         await using (var db = _kit.NewDb())
         {
@@ -748,8 +728,6 @@ public class OrgInvitationAcceptanceTests
         Assert.True(accepted.LeftEmptyOrg);
         Assert.Equal(targetId, accepted.OrgId);
     }
-
-    // ─── A member of another org, or already of this one ───────────────────────────────────────────────
 
     [Theory]
     [InlineData(OrgRole.Admin)]
@@ -785,7 +763,6 @@ public class OrgInvitationAcceptanceTests
 
         var error = await Assert.ThrowsAsync<DomainConflictException>(() => AcceptAsync(token));
 
-        // SeedOwnerOrgAsync gives the org a Pro subscription: paid, so it stays where it is.
         Assert.Equal(OrgInvitationErrors.UserHasOrganization, error.Code);
         await AssertNothingWrittenAsync(invitation, target.Id);
         Assert.Equal(elsewhere.Id, (await _kit.ReadMemberAsync(AnnaId))!.OrgId);
@@ -834,8 +811,6 @@ public class OrgInvitationAcceptanceTests
         await AssertNothingWrittenAsync(invitation, orgId);
     }
 
-    // ─── Legacy links ───────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task AcceptAsync_AccountLinkedToItsSupplierOrgAsOrgId_JoinsAndKeepsTheSupplierLink()
     {
@@ -861,8 +836,6 @@ public class OrgInvitationAcceptanceTests
         Assert.True((await verify.Orgs.AsNoTracking().SingleAsync(o => o.Id == supplierOrgId)).IsActive);
     }
 
-    // ─── Seats ──────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task AcceptAsync_ChangesNothingInTheSeatCount_ThePendingInvitationAlreadyHeldItsSeat()
     {
@@ -877,7 +850,6 @@ public class OrgInvitationAcceptanceTests
 
         await AcceptAsync(token);
 
-        // The owner and Anna now: the pending invitation became the member that takes the same seat.
         await using var after = _kit.NewDb();
         var usage = await _kit.Seats(after).GetUsageAsync(org.Id);
         Assert.Equal((2, 2, 0), (usage.Used, usage.ActiveMembers, usage.PendingInvitations));
@@ -902,8 +874,6 @@ public class OrgInvitationAcceptanceTests
         Assert.True(usage.CanInvite);
     }
 
-    // ─── The tenant of the request ──────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task AcceptAsync_WithTheTenantFilterOnForAnotherOrg_StillReadsAndWritesTheInvitationsOrg()
     {
@@ -926,10 +896,6 @@ public class OrgInvitationAcceptanceTests
         public bool FilterEnabled { get; } = filterEnabled;
     }
 
-    /// <summary>
-    /// The first reads return <paramref name="start"/>; from <paramref name="jumpFromRead"/> on, the clock is
-    /// <paramref name="jumpBy"/> later. The acceptance reads it once before the locks and once under them.
-    /// </summary>
     private sealed class JumpOnLaterReadClock(DateTime start, TimeSpan jumpBy, int jumpFromRead) : TimeProvider
     {
         private int _reads;
@@ -942,10 +908,6 @@ public class OrgInvitationAcceptanceTests
         }
     }
 
-    /// <summary>
-    /// A resend, copy link or reminder that commits while the acceptance waits for the seats lock: the org being left
-    /// is still empty, and the invitation's token has been replaced.
-    /// </summary>
     private sealed class RotateTokenWhenTheOldOrgIsChecked(OrgInvitationTestKit kit, Guid invitationId) : IOrgEmptinessChecker
     {
         public async Task<OrgEmptiness> CheckAsync(Guid orgId, string userId, CancellationToken cancellationToken = default)

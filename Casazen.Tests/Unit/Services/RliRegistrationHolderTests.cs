@@ -82,7 +82,6 @@ public class RliRegistrationHolderTests
         var f = await SeedAsync(propertyCreatorId: ManagerId);
         await using var _ = f.Db;
 
-        // The gate is passed: the next rule of the filing is the one that answers (there is no signed contract to send).
         var error = await Assert.ThrowsAsync<DomainRuleException>(
             () => NewService(f.Db).SubmitToProviderAsync(f.LeaseId, OwnerId, Delega));
 

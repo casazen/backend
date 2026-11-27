@@ -22,11 +22,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The plan of the activation (E10/F01/US01/T03, NF-104, NF-10): the proofs of its privacy and permission rules, and the rules of the states,
-/// the path and the deferral, on EF InMemory and the world of <see cref="HostScopeScenario"/> (an org with a property given to the collaborator
-/// «Solo alcuni», one not given, and another org).
-/// </summary>
 public class OnboardingPlanServiceTests : IAsyncLifetime
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -39,11 +34,6 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _db.DisposeAsync();
 
-    /// <summary>
-    /// Proof (privacy, ADR-026-R3): the "To do" a deferral and an exit raise holds codes and ids only: the type, the action, the entity
-    /// <c>OnboardingPart</c> with the id of the stored part, a reason code and a deadline. No property, no booking, no person it is for, no
-    /// note, no creator, and nothing of the user, the org or its properties in any text column.
-    /// </summary>
     [Fact]
     public async Task OnboardingTodo_CarriesNoPersonalData_Test()
     {
@@ -89,16 +79,10 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
                 Assert.DoesNotContain(personal, json, StringComparison.OrdinalIgnoreCase);
         }
 
-        // Tomorrow at 09:00 in Rome (07:00 UTC on 10 October, summer time), the default reminder of both.
         Assert.Equal(new DateTime(2026, 10, 10, 7, 0, 0, DateTimeKind.Utc), deferred.RemindAt);
         Assert.Equal(deferred.RemindAt, left.RemindAt);
     }
 
-    /// <summary>
-    /// Proof (permission): defer, exit and resume are under the org policy <see cref="CasazenPolicies.OrgBillingAdmin"/> and nothing else
-    /// opens them: no <c>[AllowAnonymous]</c>, and the real registered policy refuses a collaborator of the org (a DB membership, no Staff
-    /// claim) and a property manager, while the owner passes (the positive control).
-    /// </summary>
     [Fact]
     public async Task OnboardingPlan_Mutations_RequireOrgAdmin_Test()
     {
@@ -139,10 +123,6 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
         Assert.True(asOwner.HasSucceeded, "The owner of the org does not pass the policy of defer, exit and resume.");
     }
 
-    /// <summary>
-    /// The reads count only what the caller reaches (AM-03): the collaborator «Solo alcuni» counts its one property, the owner the two of the
-    /// org, and the property of the other org is never counted.
-    /// </summary>
     [Fact]
     public async Task GetPlan_CountsOnlyThePropertiesTheScopeReaches()
     {
@@ -159,11 +139,6 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
         await Assert.ThrowsAsync<ArgumentException>(() => service.GetPlanAsync(_world.OtherOrgId, _world.OrgWide, Ct));
     }
 
-    /// <summary>
-    /// Proof (permission, data): every part counts, and the open «Do it for me» requests show, only what the scope reaches (AM-03). The collaborator
-    /// «Solo alcuni» counts its one property; an account that reaches what it created counts both houses but no org-level group and no org-level
-    /// request; the owner (the whole org) counts everything; nothing of the other org shows.
-    /// </summary>
     [Fact]
     public async Task GetPlan_EveryPart_AndTheAssistRequests_ReachOnlyWhatTheScopeReaches()
     {
@@ -191,28 +166,21 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
             return (part.Done, part.Total);
         }
 
-        // One assignment for each property reached; the group with no property is an org-level decision, counted by the whole org only.
         Assert.Equal((1, 1), Count(restricted, OnboardingPartKey.OctorateConnection));
         Assert.Equal((2, 2), Count(owned, OnboardingPartKey.OctorateConnection));
         Assert.Equal((3, 3), Count(orgWide, OnboardingPartKey.OctorateConnection));
 
-        // The compliance and the activation count the properties reached (none is ready here: nothing to complete is hidden by the reach).
         foreach (var key in new[] { OnboardingPartKey.Compliance, OnboardingPartKey.Activation })
         {
             Assert.Equal([1, 2, 2], new[] { restricted, owned, orgWide }.Select(plan => Count(plan, key).Total));
             Assert.All(new[] { restricted, owned, orgWide }, plan => Assert.Equal(0, Count(plan, key).Done));
         }
 
-        // The requests: the one about a property not reached is not shown, the one about the whole org only to a caller who reaches the whole org.
         Assert.Equal(["listings"], AssistedParts(restricted));
         Assert.Equal(["channels", "listings"], AssistedParts(owned));
         Assert.Equal(["channels", "compliance", "listings"], AssistedParts(orgWide));
     }
 
-    /// <summary>
-    /// A part that is done, or that nobody provides, has nothing to put off or to keep open: defer and exit refuse it (422) and write neither the
-    /// intent nor a "To do" that nothing would ever close.
-    /// </summary>
     [Fact]
     public async Task DeferAndExit_APartThatIsDoneOrNotAvailable_Are422AndWriteNothing()
     {
@@ -231,10 +199,6 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
         Assert.Empty(await _db.InternalActivities.AsNoTracking().ToListAsync());
     }
 
-    /// <summary>
-    /// «Later» (AC-NF10-2): the next step is the first visible one the host did not put off. A step set aside stays visible, with its state, but is
-    /// not proposed again at once; with nothing but put-off steps left there is no next step.
-    /// </summary>
     [Fact]
     public void PathOf_NextSkipsTheStepsTheHostPutOff_WhichStayVisible()
     {
@@ -251,7 +215,6 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
         states[OnboardingPartKey.Compliance] = OnboardingPartStates.Done;
         Assert.Null(OnboardingPlanService.PathOf(states).Next);
 
-        // A step made of parts that are only done or that nobody provides has nothing left to do: it is done, and that mix is no exception.
         states[OnboardingPartKey.Properties] = OnboardingPartStates.NotAvailable;
         var connect = Assert.Single(OnboardingPlanService.PathOf(states).Steps, step => step.Code == "connectChannels");
         Assert.Equal((OnboardingPartStates.Done, false), (connect.State, connect.Visible));
@@ -268,26 +231,20 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
 
         Assert.Equal(OnboardingPartCatalog.Parts.Select(p => p.Code), plan.Parts.Select(p => p.Code));
         Assert.Equal(12, plan.Parts.Count);
-        // The part «Guest registration» (E29/F02/US01/T02) stands before the activation; with no evaluator it is never presumed done, as every part.
         Assert.Equal(
             ("guestRegistration", OnboardingPartStates.NotAvailable, OnboardingPartReasons.NotProvided),
             (Part(OnboardingPartKey.GuestRegistration).Code, Part(OnboardingPartKey.GuestRegistration).State, Part(OnboardingPartKey.GuestRegistration).Reason));
         Assert.Equal(OnboardingNeedCodes.All, plan.Needs);
-        // No evaluator: never presumed done.
         Assert.Equal((OnboardingPartStates.NotAvailable, OnboardingPartReasons.NotProvided), (Part(OnboardingPartKey.MessagesAi).State, Part(OnboardingPartKey.MessagesAi).Reason));
-        // Counted done from the stored facts (both properties have a nightly price): done wins over everything but «not available».
         Assert.Equal(OnboardingPartStates.Done, Part(OnboardingPartKey.PricesRules).State);
-        // Not done and stored deferred: deferred, even though the part it requires is not done.
         Assert.Equal(OnboardingPartStates.Deferred, Part(OnboardingPartKey.Listings).State);
         Assert.NotNull(Part(OnboardingPartKey.Listings).RemindAt);
-        // Not done, not deferred, and the part it requires is not done: blocked.
         Assert.Equal((OnboardingPartStates.Blocked, OnboardingPartReasons.RequiredPartNotDone), (Part(OnboardingPartKey.Channels).State, Part(OnboardingPartKey.Channels).Reason));
         Assert.Equal(["properties"], Part(OnboardingPartKey.Channels).Requires);
         Assert.False(Part(OnboardingPartKey.Channels).Deferrable);
         Assert.True(Part(OnboardingPartKey.Listings).Deferrable);
         Assert.False(plan.Activated);
 
-        // The path: the first visible step is the next one; a step whose parts are all done is not visible.
         Assert.Equal(6, plan.Path.Steps.Count);
         Assert.Equal("connectChannels", plan.Path.Next);
         var prices = Assert.Single(plan.Path.Steps, s => s.Code == "pricesCalendar");
@@ -348,7 +305,6 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
         return new OnboardingPlanService(_db, evaluators, activities, _clock, NullLogger<OnboardingPlanService>.Instance);
     }
 
-    /// <summary>The plan with the real evaluators of the connection, the compliance and the activation (the flow status of T02 underneath).</summary>
     private OnboardingPlanService ScopedService()
     {
         var environment = new Mock<IHostEnvironment>();
@@ -402,7 +358,6 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
     private static ClaimsPrincipal Principal(params string[] jwtRoles) =>
         OrgBillingAdminAuthorizationHandlerTests.Context(jwtRoles.Select(role => new Claim(ClaimTypes.Role, role))).User;
 
-    /// <summary>The confirmed mapping of the properties named, and no other.</summary>
     private sealed class StubMappingReader(IReadOnlyCollection<Guid> confirmed) : IPropertyMappingReader
     {
         public bool IsProvided => true;
@@ -417,7 +372,6 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
         }
     }
 
-    /// <summary>An evaluator that always answers the same facts.</summary>
     private sealed class ConstantEvaluator(OnboardingPartKey part, PartFacts facts) : IOnboardingPartEvaluator
     {
         public OnboardingPartKey Part { get; } = part;

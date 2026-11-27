@@ -6,10 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// AM-02: the email of the signed-in account and whether it is verified, the two facts an invitation is bound to. The
-/// token first, Auth0 for what the token lacks, and a verified flag from Auth0 only for the very same email.
-/// </summary>
 public class AccountEmailResolverTests
 {
     private const string Sub = "auth0|anna";

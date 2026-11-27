@@ -16,10 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// SP-14 with <c>Features:SupplierOnlinePayments</c> off (the default): the supplier's payments routes answer 404 like a route
-/// that does not exist, before authentication, and nothing reaches Stripe.
-/// </summary>
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class SupplierPaymentsFlagOffTests : IClassFixture<CasazenWebApplicationFactory>
 {
@@ -78,7 +74,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
 {
     private const string Base = "/api/supplier/payments";
 
-    /// <summary><c>App:PublicSiteBaseUrl</c> of <see cref="CasazenWebApplicationFactory"/>.</summary>
     private const string PublicSite = "https://casazen-app.vercel.app";
 
     private readonly SupplierFlagsEnabledFactory _factory;
@@ -90,8 +85,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         _stripe = (FakeStripeConnectGateway)factory.Services.GetRequiredService<IStripeConnectGateway>();
         _stripe.Reset();
     }
-
-    // ─── Who may call it ─────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("GET", "account")]
@@ -142,8 +135,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         Assert.False(await scope.ServiceProvider.GetRequiredService<AppDbContext>().Users.AnyAsync(u => u.Id == userId));
     }
 
-    // ─── The state ───────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetAccount_ANewSupplier_HasNoAccount_AndNothingReachesStripe()
     {
@@ -161,9 +152,7 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         Assert.Equal(0, body.GetProperty("requirementsDue").GetArrayLength());
         Assert.False(body.GetProperty("canReceivePayments").GetBoolean());
         Assert.False(body.GetProperty("verified").GetBoolean());
-        // Active profile, but no payments and no VAT number yet.
         Assert.Equal(["payments_not_enabled", "vat_number_missing"], Strings(body.GetProperty("verificationMissing")));
-        // The Stripe account id and anything bank-related are not part of the answer.
         Assert.Equal(
             ["canReceivePayments", "chargesEnabled", "detailsSubmitted", "hasAccount", "payoutsEnabled", "requirementsDue", "verificationMissing", "verified"],
             body.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
@@ -180,7 +169,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
 
         var cached = await ReadAsync(await client.GetAsync($"{Base}/account"));
 
-        // Without refresh: what the webhooks stored, no call to Stripe.
         Assert.True(cached.GetProperty("hasAccount").GetBoolean());
         Assert.False(cached.GetProperty("canReceivePayments").GetBoolean());
         Assert.Equal(0, _stripe.GetAccountCallCount);
@@ -196,7 +184,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         Assert.True(stored.ConnectChargesEnabled);
         Assert.True(stored.ConnectPayoutsEnabled);
 
-        // The refresh was saved: the next plain read has it, still without Stripe.
         var later = await ReadAsync(await client.GetAsync($"{Base}/account"));
         Assert.True(later.GetProperty("canReceivePayments").GetBoolean());
         Assert.Equal(1, _stripe.GetAccountCallCount);
@@ -209,7 +196,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         await LinkAccountAsync(orgId, "acct_sp14_caps", chargesEnabled: false, payoutsEnabled: false);
         using var client = SupplierClient(userId);
 
-        // Stripe reports charges but no payouts yet, with two requirements.
         _stripe.NextSnapshot = new ConnectAccountSnapshot(
             "acct_sp14_caps", true, false, true, ["external_account", "individual.verification.document"]);
         var chargesOnly = await ReadAsync(await client.GetAsync($"{Base}/account?refresh=true"));
@@ -218,13 +204,11 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         Assert.False(chargesOnly.GetProperty("canReceivePayments").GetBoolean());
         Assert.Equal(["external_account", "individual.verification.document"], Strings(chargesOnly.GetProperty("requirementsDue")));
 
-        // Then payouts too, nothing left to do.
         _stripe.NextSnapshot = new ConnectAccountSnapshot("acct_sp14_caps", true, true, true, []);
         var both = await ReadAsync(await client.GetAsync($"{Base}/account?refresh=true"));
         Assert.True(both.GetProperty("canReceivePayments").GetBoolean());
         Assert.Equal(0, both.GetProperty("requirementsDue").GetArrayLength());
 
-        // And back to disabled (Stripe can disable an account again).
         _stripe.NextSnapshot = new ConnectAccountSnapshot("acct_sp14_caps", false, false, true, ["external_account"]);
         var disabled = await ReadAsync(await client.GetAsync($"{Base}/account?refresh=true"));
         Assert.False(disabled.GetProperty("canReceivePayments").GetBoolean());
@@ -250,7 +234,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         var suspended = await ReadAsync(await client.GetAsync($"{Base}/account"));
         Assert.False(suspended.GetProperty("verified").GetBoolean());
         Assert.Equal(["profile_not_active"], Strings(suspended.GetProperty("verificationMissing")));
-        // The status is only read: the profile is exactly as the test left it.
         Assert.Equal(SupplierStatus.Suspended, (await GetProfileAsync(orgId)).Status);
     }
 
@@ -284,14 +267,11 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         Assert.True(stored.ConnectPayoutsEnabled);
     }
 
-    // ─── The account and the onboarding link ─────────────────────────────────────
-
     [Fact]
     public async Task OnboardingLink_BuildsReturnAndRefreshUrlsOnTheSupplierSettingsPage_IgnoringClientUrls()
     {
         var (userId, orgId) = await SupplierCatalogTestData.SeedSupplierAsync(_factory);
         using var client = SupplierClient(userId);
-        // URLs sent by a client (old web app, forged request) are ignored: Stripe only comes back to the supplier console.
         var payload = JsonSerializer.Serialize(new
         {
             returnUrl = "https://evil.example.com/phish?return=1",
@@ -308,7 +288,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
             (await ReadAsync(response)).GetProperty("url").GetString());
         Assert.Equal($"{PublicSite}/app/supplier/settings?stripe_return=1", _stripe.LastReturnUrl);
         Assert.Equal($"{PublicSite}/app/supplier/settings?stripe_refresh=1", _stripe.LastRefreshUrl);
-        // A single-use credential: never cached.
         Assert.True(response.Headers.CacheControl?.NoStore);
         Assert.True(response.Headers.CacheControl?.Private);
     }
@@ -338,7 +317,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         Assert.Equal(1, _stripe.CreateAccountCallCount);
         Assert.Equal(2, _stripe.OnboardingLinkCallCount);
-        // Same key as the host's onboarding: connect-account:{orgId}.
         Assert.Equal(new[] { $"connect-account:{orgId:N}" }, _stripe.IdempotencyKeys);
         Assert.Equal(
             (await ReadAsync(first)).GetProperty("url").GetString(),
@@ -413,7 +391,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
     public async Task OnboardingLink_PublicSiteNotConfigured_Returns503BeforeAnyStripeCall()
     {
         var (userId, orgId) = await SupplierCatalogTestData.SeedSupplierAsync(_factory);
-        // Possible only in Development/Testing: elsewhere the startup fails without App:PublicSiteBaseUrl.
         await using var unconfigured = _factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
             config.AddInMemoryCollection(new Dictionary<string, string?> { ["App:PublicSiteBaseUrl"] = "" })));
         var stripe = (FakeStripeConnectGateway)unconfigured.Services.GetRequiredService<IStripeConnectGateway>();
@@ -426,12 +403,9 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         Assert.Equal("connect_return_url_not_configured", (await ReadAsync(response)).GetProperty("code").GetString());
-        // No account is created for a link that could not send the supplier back.
         Assert.Equal(0, stripe.CreateAccountCallCount + stripe.OnboardingLinkCallCount);
         Assert.Null((await GetOrgAsync(orgId)).StripeConnectedAccountId);
     }
-
-    // ─── The dashboard link ──────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("it", "non è ancora pronto")]
@@ -451,7 +425,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         var problem = await ReadAsync(response);
         Assert.Equal("supplier_payments_not_ready", problem.GetProperty("code").GetString());
         Assert.Contains(expectedText, problem.GetProperty("detail").GetString());
-        // No account is created to open its dashboard, and Stripe is not called.
         Assert.Equal(0, _stripe.CreateAccountCallCount + _stripe.LoginLinkCallCount + _stripe.GetAccountCallCount);
         Assert.Null((await GetOrgAsync(orgId)).StripeConnectedAccountId);
     }
@@ -509,11 +482,8 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
 
         Assert.Equal(expectedStatus, response.StatusCode);
         Assert.Equal(expectedCode, (await ReadAsync(response)).GetProperty("code").GetString());
-        // A dashboard link never unlinks the account; the onboarding link is what replaces a gone one.
         Assert.Equal(account, (await GetOrgAsync(orgId)).StripeConnectedAccountId);
     }
-
-    // ─── Isolation and the host's flow ───────────────────────────────────────────
 
     [Fact]
     public async Task TwoSuppliers_EachHasItsOwnAccount_AndNeverTheOthers()
@@ -526,7 +496,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         await a.PostAsync($"{Base}/onboarding-link", null);
         var aAccount = (await GetOrgAsync(aOrg)).StripeConnectedAccountId;
 
-        // B has nothing: its state is empty and its dashboard link is not A's account.
         var bState = await ReadAsync(await b.GetAsync($"{Base}/account"));
         Assert.False(bState.GetProperty("hasAccount").GetBoolean());
         var bDashboard = await b.PostAsync($"{Base}/dashboard-link", null);
@@ -548,7 +517,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
     [Fact]
     public async Task ADualRoleAccount_UsesItsSupplierOrgHere_AndItsHostOrgOnTheHostRoutes_WithTheirOwnReturnPages()
     {
-        // A host that is also a supplier: User.OrgId is the host org, User.SupplierOrgId the supplier org.
         var ownerId = $"auth0|sp14-dual-{Guid.NewGuid():N}";
         var hostOrg = await _factory.SeedOrgForOwnerAsync(ownerId);
         Guid supplierOrgId;
@@ -591,7 +559,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         Assert.False(string.IsNullOrWhiteSpace(supplierAccount));
         Assert.Null((await GetOrgAsync(hostOrg.Id)).StripeConnectedAccountId);
 
-        // The host's own routes are unchanged: they create the host org's account, with the host's return pages.
         var hostLink = await client.PostAsync("/api/connect/onboarding-link", null);
         Assert.Equal(HttpStatusCode.OK, hostLink.StatusCode);
         Assert.Equal($"{PublicSite}/app/short-rent/settings/payments?stripe_return=1", _stripe.LastReturnUrl);
@@ -609,21 +576,17 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         var (userId, _) = await SupplierCatalogTestData.SeedSupplierAsync(_factory);
         using var supplier = SupplierClient(userId);
 
-        // The supplier role is not enough for the host's onboarding (OrgBillingAdmin), and the host has nothing of the supplier's.
         var response = await supplier.PostAsync("/api/connect/onboarding-link", null);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal(0, _stripe.CreateAccountCallCount);
     }
 
-    // ─── PostgreSQL ──────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task OnboardingLink_TwoParallelRequests_CreateOneAccount()
     {
         Assert.True(_factory.UsesPostgreSql);
         var (userId, orgId) = await SupplierCatalogTestData.SeedSupplierAsync(_factory);
-        // Keeps the first creation in flight long enough for the second request to arrive before its commit.
         _stripe.CreateDelay = TimeSpan.FromMilliseconds(400);
         using var first = SupplierClient(userId);
         using var second = SupplierClient(userId);
@@ -637,7 +600,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         foreach (var response in responses)
             urls.Add((await ReadAsync(response)).GetProperty("url").GetString());
 
-        // The advisory lock OrgConnectAccount serialized them: one account, and both links are for it.
         Assert.Equal(1, _stripe.CreateAccountCallCount);
         Assert.Equal(new[] { $"connect-account:{orgId:N}" }, _stripe.IdempotencyKeys);
         Assert.Single(urls.Distinct());
@@ -661,8 +623,6 @@ public class SupplierPaymentsIntegrationTests : IClassFixture<SupplierFlagsEnabl
         Assert.Equal(1, _stripe.CreateAccountCallCount);
         Assert.NotNull((await GetOrgAsync(orgId)).StripeConnectedAccountId);
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private HttpClient SupplierClient(string userId) => _factory.CreateAuthenticatedClient(userId, roles: "Supplier");
 

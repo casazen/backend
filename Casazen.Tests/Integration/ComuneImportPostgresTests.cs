@@ -46,10 +46,8 @@ public class ComuneImportPostgresTests : IAsyncLifetime
         Assert.Equal(7896, comuni.Select(c => c.CadastralCode).Distinct().Count());
         Assert.All(comuni, c => Assert.NotNull(c.RegionCode));
         Assert.Equal(20, comuni.Select(c => c.RegionIstatCode).Distinct().Count());
-        // 107 sigle: Sud Sardegna replaced the four suppressed Sardinian provinces of the older 110.
         Assert.Equal(107, comuni.Select(c => c.ProvinceCode).Distinct().Count());
 
-        // The import is on record, with the source the product owner supplied.
         var import = await db.ComuneImports.AsNoTracking().SingleAsync();
         Assert.Equal((ComuneImportOrigin.StartupSeed, "comuni-istat.csv", new DateOnly(2026, 2, 21), 7896, 7896, "system"), (import.Origin, import.SourceFileName, import.ReferenceDate, import.RowCount, import.InsertedCount, import.ImportedBy));
         Assert.Contains("ISTAT", import.SourceVersion);
@@ -69,7 +67,6 @@ public class ComuneImportPostgresTests : IAsyncLifetime
         db.ChangeTracker.Clear();
         Assert.Single(await db.ComuneImports.ToListAsync());
 
-        // An admin imported a later list (here: the sample dated later): the older seed file never replaces it.
         var directory = new ComuneDirectory(db);
         await using (var stream = ComuneTestData.OpenSample())
         {
@@ -107,18 +104,17 @@ public class ComuneImportPostgresTests : IAsyncLifetime
 
         var resolved = await directory.ResolveAsync(["F205", "D612", "H501", "L219", "D969", "Torino", "Genova", "Varenna", "Bellagio", "Menaggio"]);
 
-        Assert.Equal("015146", resolved["F205"].IstatCode); // Milano, not Firenze
-        Assert.Equal("048017", resolved["D612"].IstatCode); // Firenze
+        Assert.Equal("015146", resolved["F205"].IstatCode);
+        Assert.Equal("048017", resolved["D612"].IstatCode);
         Assert.Equal("058091", resolved["H501"].IstatCode);
-        Assert.Equal("001272", resolved["L219"].IstatCode); // Torino
-        Assert.Equal("010025", resolved["D969"].IstatCode); // Genova
+        Assert.Equal("001272", resolved["L219"].IstatCode);
+        Assert.Equal("010025", resolved["D969"].IstatCode);
         Assert.Equal("001272", resolved["Torino"].IstatCode);
         Assert.Equal("010025", resolved["Genova"].IstatCode);
         Assert.Equal(("097084", "LC", "LOM"), (resolved["Varenna"].IstatCode, resolved["Varenna"].ProvinceCode, resolved["Varenna"].RegionCode));
         Assert.Equal("013250", resolved["Bellagio"].IstatCode);
         Assert.Equal("013145", resolved["Menaggio"].IstatCode);
 
-        // Every pilot comune of the SEO pages is in the list under its own name and province.
         Assert.Equal(SeoPilotComuni.All.Count, (await directory.FindByNamesAndProvincesAsync(SeoPilotComuni.All)).Count);
     }
 
@@ -141,7 +137,6 @@ public class ComuneImportPostgresTests : IAsyncLifetime
         await ComuneTestData.ImportSampleAsync(db);
         var importId = (await db.ComuneImports.AsNoTracking().SingleAsync()).Id;
 
-        // Two active comuni with one cadastral code: refused by the filtered unique index.
         db.Comuni.Add(Comune("999001", "H501", active: true, importId));
         var violation = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         Assert.Equal(PostgresErrorCodes.UniqueViolation, ((PostgresException)violation.InnerException!).SqlState);
@@ -175,7 +170,6 @@ public class ComuneImportPostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task Import_TwoAtOnce_AreSerializedAndTheSecondChangesNothing()
     {
-        // Two instances starting together (or an admin and a starting instance): one writes, the other finds it done.
         var tasks = Enumerable.Range(0, 2).Select(async _ =>
         {
             await using var db = MigratedContext();
@@ -239,6 +233,5 @@ public class ComuneImportPostgresTests : IAsyncLifetime
         typeof(ComuneImportService).Assembly.GetManifestResourceStream(ComuneImportService.SeedResourceName)
         ?? throw new InvalidOperationException("The seed file is not part of the build.");
 
-    /// <summary>A new context on the database, which is already at the latest migration (a copy of the migrated template).</summary>
     private AppDbContext MigratedContext() => _database!.CreateContext();
 }

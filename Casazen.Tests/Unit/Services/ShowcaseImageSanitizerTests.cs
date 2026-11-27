@@ -13,8 +13,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class ShowcaseImageSanitizerTests
 {
-    // ─── JPEG ────────────────────────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(6)]
     [InlineData(3)]
@@ -36,7 +34,6 @@ public class ShowcaseImageSanitizerTests
     {
         var cleaned = ShowcaseImageSanitizer.Clean(PhoneJpeg(orientation: 6), "image/jpeg")!;
 
-        // The frame is 32 wide and 16 high; with orientation 6 the browser draws it 16 by 32.
         using var stream = new MemoryStream(cleaned);
         var size = await ImageSizeReader.ReadAsync(stream);
         Assert.Equal((16, 32), size);
@@ -49,7 +46,6 @@ public class ShowcaseImageSanitizerTests
 
         Assert.Equal(CleanedPhoneJpeg(orientation: 1), cleaned);
 
-        // No APP1 segment: the marker FF E1 is nowhere.
         Assert.True(cleaned!.AsSpan().IndexOf(new byte[] { 0xFF, 0xE1 }) < 0);
     }
 
@@ -58,7 +54,6 @@ public class ShowcaseImageSanitizerTests
     {
         var cleaned = ShowcaseImageSanitizer.Clean(Concat(Soi, JfifWithThumbnail(), Dqt(), Sof0(), SosHeader(), ScanData(), Eoi), "image/jpeg")!;
 
-        // The header is 18 bytes with the marker, the thumbnail size is 0 by 0 and its three bytes of color are gone.
         Assert.Equal(new byte[] { 0xFF, 0xE0, 0x00, 0x10 }, cleaned[2..6]);
         Assert.Equal(new byte[] { 0x00, 0x00 }, cleaned[18..20]);
         Assert.DoesNotContain((byte)0xAA, cleaned);
@@ -104,8 +99,6 @@ public class ShowcaseImageSanitizerTests
         Assert.Null(ShowcaseImageSanitizer.Clean(Concat(Soi, Ascii("<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>")), "image/jpeg"));
     }
 
-    // ─── PNG ─────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void Png_APhoneFile_LosesItsTextItsExifItsTimeAndWhatFollowsTheEnd()
     {
@@ -123,13 +116,10 @@ public class ShowcaseImageSanitizerTests
     {
         var idat = PngChunk("IDAT", 0x78, 0x9C, 0x63, 0x00);
 
-        // Cut short: no IEND.
         Assert.Null(ShowcaseImageSanitizer.Clean(Concat(PngSignature, PngHeader(32, 16), idat), "image/png"));
 
-        // No picture data.
         Assert.Null(ShowcaseImageSanitizer.Clean(Concat(PngSignature, PngHeader(32, 16), PngChunk("IEND")), "image/png"));
 
-        // The header is not the first chunk.
         Assert.Null(ShowcaseImageSanitizer.Clean(Concat(PngSignature, PngChunk("tEXt", Ascii("a\0b")), PngHeader(32, 16), idat, PngChunk("IEND")), "image/png"));
     }
 
@@ -140,8 +130,6 @@ public class ShowcaseImageSanitizerTests
 
         Assert.Null(ShowcaseImageSanitizer.Clean(broken, "image/png"));
     }
-
-    // ─── WebP ────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void WebP_APhoneFile_LosesItsExifItsXmpAndTheirFlags_AndWhatFollowsTheContainer()
@@ -165,11 +153,9 @@ public class ShowcaseImageSanitizerTests
     [Fact]
     public void WebP_AnAnimation_OrAFileWithNoPicture_IsRefused()
     {
-        // The flag of the animation, and the chunks of one.
         Assert.Null(ShowcaseImageSanitizer.Clean(Riff(RiffChunk("VP8X", Vp8xPayload(FlagAnimation)), RiffChunk("VP8L", Vp8lPayload())), "image/webp"));
         Assert.Null(ShowcaseImageSanitizer.Clean(Riff(RiffChunk("VP8X", Vp8xPayload(0)), RiffChunk("ANIM", [0, 0, 0, 0, 0, 0]), RiffChunk("ANMF", Vp8lPayload())), "image/webp"));
 
-        // A container with no picture, or with two.
         Assert.Null(ShowcaseImageSanitizer.Clean(Riff(RiffChunk("EXIF", Ascii(GpsText))), "image/webp"));
         Assert.Null(ShowcaseImageSanitizer.Clean(Riff(RiffChunk("VP8L", Vp8lPayload()), RiffChunk("VP8L", Vp8lPayload())), "image/webp"));
     }

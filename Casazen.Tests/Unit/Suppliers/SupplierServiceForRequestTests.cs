@@ -5,11 +5,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>SP-04: a service of the catalog as a service request needs it (name, category, duration, rules of the slot, price in advance).</summary>
 public class SupplierServiceForRequestTests
 {
-    // ─── The record ───
-
     [Theory]
     [InlineData(SupplierServiceListingStatus.Active, true)]
     [InlineData(SupplierServiceListingStatus.Draft, false)]
@@ -21,8 +18,8 @@ public class SupplierServiceForRequestTests
 
     [Theory]
     [InlineData(6000, SupplierServicePriceUnit.PerJob, false, 6000)]
-    [InlineData(6000, SupplierServicePriceUnit.PerJob, true, null)] // on quote: the supplier gives the price
-    [InlineData(6000, SupplierServicePriceUnit.PerHour, false, null)] // the hours are not known
+    [InlineData(6000, SupplierServicePriceUnit.PerJob, true, null)]
+    [InlineData(6000, SupplierServicePriceUnit.PerHour, false, null)]
     [InlineData(6000, SupplierServicePriceUnit.PerSet, false, null)]
     [InlineData(6000, SupplierServicePriceUnit.PerSquareMeter, false, null)]
     [InlineData(0, SupplierServicePriceUnit.PerJob, false, null)]
@@ -49,8 +46,6 @@ public class SupplierServiceForRequestTests
     {
         Assert.Null(Service(duration: duration).ToSlotQuery());
     }
-
-    // ─── The lookup in the catalog ───
 
     [Fact]
     public async Task FindForRequestAsync_APublishedService_ReturnsWhatTheRequestNeeds()

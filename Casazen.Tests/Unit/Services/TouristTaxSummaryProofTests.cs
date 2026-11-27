@@ -21,11 +21,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// NF-100, E07/F03/US04/T02: the tourist tax owed, paid and receipted per comune. One proof for each rule that costs if it fails: the money
-/// (owed, paid and balance to the cent), the permission (who may record or delete a payment) and the data (the comune of a payment is one of
-/// the org's).
-/// </summary>
 public sealed class TouristTaxSummaryProofTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 25, 10, 0, 0, TimeSpan.Zero);
@@ -47,19 +42,16 @@ public sealed class TouristTaxSummaryProofTests
         var bilocale = SeedProperty(db, orgId, "Bilocale Milano", "  milano ");
         var roma = SeedProperty(db, orgId, "Casa Roma", "Roma");
 
-        // Milano: 57.35 + 9.55 recorded, and one stay with no amount. Roma: 72.10. A Milano stay in April is outside the period.
         SeedStay(db, loft, Day(2026, 3, 2), nights: 3, touristTax: 57.35m);
         SeedStay(db, bilocale, Day(2026, 3, 20), nights: 2, touristTax: 9.55m);
         SeedStay(db, loft, Day(2026, 3, 28), nights: 1, touristTax: 0m);
         SeedStay(db, roma, Day(2026, 2, 10), nights: 4, touristTax: 72.10m);
         SeedStay(db, loft, Day(2026, 4, 6), nights: 2, touristTax: 40m);
 
-        // Milano is paid in two instalments of the whole quarter (40.01 + 26.89 = 66.90). Two more payments are not inside the quarter.
         SeedPayment(db, orgId, "Milano", FirstQuarter.From, FirstQuarter.To, 40.01m, new DateOnly(2026, 4, 10));
         SeedPayment(db, orgId, "milano", FirstQuarter.From, FirstQuarter.To, 26.89m, new DateOnly(2026, 4, 20));
         SeedPayment(db, orgId, "Milano", new DateOnly(2026, 4, 1), new DateOnly(2026, 6, 30), 40m, new DateOnly(2026, 7, 10));
         SeedPayment(db, orgId, "Milano", new DateOnly(2026, 3, 1), new DateOnly(2026, 4, 30), 5m, new DateOnly(2026, 5, 10));
-        // Roma is paid ten cents too much, and Como (no stays) was paid something.
         SeedPayment(db, orgId, "Roma", FirstQuarter.From, FirstQuarter.To, 72.20m, new DateOnly(2026, 4, 12));
         SeedPayment(db, orgId, "Como", FirstQuarter.From, FirstQuarter.To, 5m, new DateOnly(2026, 4, 12));
         await db.SaveChangesAsync();
@@ -90,11 +82,6 @@ public sealed class TouristTaxSummaryProofTests
         Assert.Equal(new TouristTaxSummaryTotals(4, 10, 8, 139.00m, 1, 144.10m, -5.10m), summary.Total);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule. Recording and deleting a payment ask <c>payment.write</c> on top of the <c>payment.read</c> of the class,
-    /// and the roles that hold <c>payment.write</c> in the short-rent area are the owner, the administrators and the property managers: not
-    /// the accountant (who reads) and not the collaborator. The reads do not ask for it.
-    /// </summary>
     [Fact]
     public void TouristTaxRemittance_RecordRequiresPaymentWrite_Test()
     {
@@ -106,7 +93,6 @@ public sealed class TouristTaxSummaryProofTests
         foreach (var read in new[] { nameof(TouristTaxSummaryController.GetSummary), nameof(TouristTaxSummaryController.GetReceipt) })
             Assert.DoesNotContain(CasazenPolicies.PaymentWrite, PoliciesOf(controller.GetMethod(read)!));
 
-        // What each role holds, as seeded (what the migrations leave in the database).
         using var db = OrgTeamTestData.NewDb();
         var held = db.RolePermissions.Include(rp => rp.Role)
             .Where(rp => rp.Role.ContextKey == OrgRoleCatalog.ShortRent)
@@ -123,11 +109,6 @@ public sealed class TouristTaxSummaryProofTests
         Assert.DoesNotContain(OrgRole.Collaborator, holders);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. A payment is recorded for a comune of the properties of the caller's org: the comune of another org's
-    /// property, or one that is nowhere, is refused and nothing is stored; the comune of the org is accepted however it is typed (case,
-    /// spaces), and the row is the org's.
-    /// </summary>
     [Fact]
     public async Task TouristTaxRemittance_ComuneMustBelongToTheOrg_Test()
     {
@@ -158,13 +139,6 @@ public sealed class TouristTaxSummaryProofTests
         Assert.Equal(25.50m, stored.PaidAmount);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission and data rule. A payment belongs to the org, not to a property. A caller whose scope reaches only some of the
-    /// properties sees what is owed on those properties and nothing about the payments (no paid, balance, status or list; the summary says so,
-    /// the CSV too), and it can neither record a payment, nor delete one, nor open its receipt: 403, and nothing is stored or deleted. The
-    /// payments of Milano cover the stays of two properties, so against the one the caller reaches they would show an overpayment that is false.
-    /// The caller that reaches the whole org sees and does everything, as before.
-    /// </summary>
     [Fact]
     public async Task TouristTaxSummary_ScopeLimitedToSomeProperties_SeesOnlyWhatIsOwedAndTouchesNoPayment_Test()
     {
@@ -178,7 +152,6 @@ public sealed class TouristTaxSummaryProofTests
         SeedStay(db, sibling, Day(2026, 3, 20), nights: 2, touristTax: 30m);
         SeedStay(db, roma, Day(2026, 2, 10), nights: 4, touristTax: 72.10m);
 
-        // The org paid Milano for both of its properties (20 + 30) and Roma.
         var payment = SeedPayment(db, orgId, "Milano", FirstQuarter.From, FirstQuarter.To, 50m, new DateOnly(2026, 4, 10));
         SeedPayment(db, orgId, "Roma", FirstQuarter.From, FirstQuarter.To, 72.10m, new DateOnly(2026, 4, 12));
         await db.SaveChangesAsync();
@@ -187,7 +160,6 @@ public sealed class TouristTaxSummaryProofTests
 
         var summary = await sut.GetSummaryAsync(limited, FirstQuarter);
 
-        // Only Milano, and only what its property owes: the 50.00 paid by the org, and the overpayment of 30.00 it would give, are not shown.
         Assert.True(summary.PaymentsHidden);
         var milano = Assert.Single(summary.Comuni);
         Assert.Equal(("Milano", 1, 3, 20.00m), (milano.Comune, milano.Stays, milano.Nights, milano.Owed));
@@ -204,7 +176,6 @@ public sealed class TouristTaxSummaryProofTests
         Assert.Contains("Milano;1;3;2;20,00;0;\r\n", file);
         Assert.DoesNotContain("Versamenti registrati", file);
 
-        // Recording, deleting and opening a receipt are refused before anything is read, stored or deleted.
         foreach (var attempt in new Func<Task>[]
         {
             () => sut.RecordRemittanceAsync(limited, NewRequest("Milano"), receipt: null),
@@ -218,18 +189,12 @@ public sealed class TouristTaxSummaryProofTests
 
         Assert.Equal(2, await db.TouristTaxRemittances.CountAsync());
 
-        // The caller that reaches the whole org sees both properties of Milano, the payments and the balance.
         var whole = await sut.GetSummaryAsync(new HostScope(orgId), FirstQuarter);
         Assert.False(whole.PaymentsHidden);
         Assert.Equal(["Milano", "Roma"], whole.Comuni.Select(c => c.Comune));
         Assert.Equal((50.00m, 50.00m, TouristTaxSummaryStatus.Paid), (whole.Comuni[0].Owed, whole.Comuni[0].Paid, whole.Comuni[0].Status));
     }
 
-    /// <summary>
-    /// PROOF TEST: money and data rule. Only the properties in Italy count (the rule of the tourist tax rates): a house in Switzerland
-    /// (CHF-MONEY) is not added to the row of an Italian comune of the same name, has no row of its own with an owed amount of zero, and its
-    /// comune cannot be paid in euros; an Italian comune of the same name still can, and a country written in lower case is Italy.
-    /// </summary>
     [Fact]
     public async Task TouristTaxSummary_AHouseAbroad_IsNeitherCountedNorPayable_Test()
     {
@@ -241,7 +206,6 @@ public sealed class TouristTaxSummaryProofTests
         var chaletComo = SeedProperty(db, orgId, "Chalet Como", "Como", country: "CH");
         var lugano = SeedProperty(db, orgId, "Chalet Lugano", "Lugano", country: "CH");
 
-        // The engine records no tax for a house in Switzerland, so its stays come out with an amount of zero.
         SeedStay(db, como, Day(2026, 2, 5), nights: 2, touristTax: 12m);
         SeedStay(db, varese, Day(2026, 2, 20), nights: 3, touristTax: 9m);
         SeedStay(db, chaletComo, Day(2026, 2, 12), nights: 4, touristTax: 0m);
@@ -252,13 +216,11 @@ public sealed class TouristTaxSummaryProofTests
 
         var summary = await sut.GetSummaryAsync(scope, FirstQuarter);
 
-        // Como has its own stay only (not the Swiss one, which would add a stay, four nights and a stay with no amount) and there is no Lugano.
         Assert.Equal(["Como", "Varese"], summary.Comuni.Select(c => c.Comune));
         var comoRow = summary.Comuni[0];
         Assert.Equal((1, 2, 12.00m, 0), (comoRow.Stays, comoRow.Nights, comoRow.Owed, comoRow.StaysWithoutAmount));
         Assert.Equal(new TouristTaxSummaryTotals(2, 5, 4, 21.00m, 0, 0m, 21.00m), summary.Total);
 
-        // A comune where the org has only a house in Switzerland cannot be paid; Como, where it also has an Italian house, can.
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => sut.RecordRemittanceAsync(scope, NewRequest("Lugano"), receipt: null));
         Assert.Equal(TouristTaxErrorCodes.ComuneUnknown, refused.Code);
         Assert.Empty(await db.TouristTaxRemittances.ToListAsync());
@@ -267,10 +229,6 @@ public sealed class TouristTaxSummaryProofTests
         Assert.Equal("Como", line.Comune);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. A receipt of at most 10 MB is stored and one byte more is refused as a whole: 422, nothing in the bucket and
-    /// nothing in the table. The size is counted on what is read, not on what the client says.
-    /// </summary>
     [Fact]
     public async Task TouristTaxReceipt_OneByteOverTenMegabytes_IsRefusedAndNothingIsStored_Test()
     {
@@ -297,7 +255,6 @@ public sealed class TouristTaxSummaryProofTests
             s => s.PutAsync(It.IsAny<StorageBucket>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
 
-        // The same PDF cut at exactly 10 MB is the largest accepted.
         await using var atTheLimit = new MemoryStream(content, 0, (int)TouristTaxRemittanceLimits.MaxReceiptBytes);
         var line = await sut.RecordRemittanceAsync(scope, NewRequest("Milano"), atTheLimit);
 
@@ -312,10 +269,6 @@ public sealed class TouristTaxSummaryProofTests
             Times.Once);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (tenant isolation). The payment of another org, deleted or opened by the caller of org A, is a 404 (the answer
-    /// for a payment that does not exist) and is left as it was.
-    /// </summary>
     [Fact]
     public async Task TouristTaxRemittance_OfAnotherOrg_IsNotFoundAndLeftAlone_Test()
     {

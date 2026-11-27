@@ -25,11 +25,6 @@ public class CrmWelcomeIntegrationTests : IClassFixture<ConsentCollectionFactory
 
     public CrmWelcomeIntegrationTests(ConsentCollectionFactory factory) => _factory = factory;
 
-    /// <summary>
-    /// Privacy rule: a new address, a known one that already confirmed and one that opted out all get the same answer, byte for byte, so the page
-    /// tells nothing about who is a customer; the new one is stored and mailed once, the known one is not mailed again, and the one that opted out
-    /// stays suppressed (its consent is stored, nothing is sent): the page does not bring anybody back.
-    /// </summary>
     [Fact]
     public async Task WelcomeConsent_SameAnswerForKnownOrSuppressedAddress_Test()
     {
@@ -49,7 +44,6 @@ public class CrmWelcomeIntegrationTests : IClassFixture<ConsentCollectionFactory
             bodies.Add(await response.Content.ReadAsStringAsync());
         }
 
-        // The same answer for the three, and it says nothing but that.
         Assert.Single(bodies.Distinct());
         Assert.True(JsonDocument.Parse(bodies[0]).RootElement.GetProperty("confirmationSent").GetBoolean());
 
@@ -58,7 +52,6 @@ public class CrmWelcomeIntegrationTests : IClassFixture<ConsentCollectionFactory
         var contacts = await db.GuestContacts.IgnoreQueryFilters().AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync();
         Assert.Equal(3, contacts.Count);
 
-        // The new address: a consent contact of the welcome page, on a lead profile of the property, with its double opt-in e-mail.
         var freshContact = Assert.Single(contacts, c => c.Value == fresh);
         Assert.Equal(GuestContactLegalBasis.Consent, freshContact.LegalBasis);
         Assert.Equal(GuestContactOrigin.WelcomePage, freshContact.Origin);
@@ -70,7 +63,6 @@ public class CrmWelcomeIntegrationTests : IClassFixture<ConsentCollectionFactory
         var profile = await db.GuestCrmProfiles.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == freshContact.GuestCrmProfileId);
         Assert.Contains(propertyId.ToString(), profile.PropertyIdsJson, StringComparison.OrdinalIgnoreCase);
 
-        // The known address stays confirmed and gets no new message; the one that opted out stays suppressed and gets none.
         var knownContact = Assert.Single(contacts, c => c.Value == known);
         Assert.Equal((GuestContactConfirmation.Confirmed, 0), (knownContact.Confirmation, knownContact.ConfirmationSentCount));
         var optedOutContact = Assert.Single(contacts, c => c.Value == optedOut);
@@ -84,10 +76,6 @@ public class CrmWelcomeIntegrationTests : IClassFixture<ConsentCollectionFactory
         Assert.Equal(fresh, Assert.Single(mails).To);
     }
 
-    /// <summary>
-    /// Privacy rule: no consent is recorded from a guest who did not declare to be of age, whether the member says <c>false</c> or is missing;
-    /// the other conditions have their own codes; nothing is stored and nothing is mailed.
-    /// </summary>
     [Fact]
     public async Task WelcomeConsent_AdultNotConfirmed_IsRefused_Test()
     {
@@ -106,7 +94,6 @@ public class CrmWelcomeIntegrationTests : IClassFixture<ConsentCollectionFactory
         await AssertProblemAsync(declaredNo, HttpStatusCode.UnprocessableEntity, "welcome_adult_required");
         await AssertProblemAsync(memberMissing, HttpStatusCode.UnprocessableEntity, "welcome_adult_required");
 
-        // The other conditions: a box, a valid address, the current text.
         await AssertProblemAsync(
             await client.PostAsync(path, Json(new { email = address, adultConfirmed = true, consentVersion = ConsentCollectionFactory.MarketingVersion })),
             HttpStatusCode.UnprocessableEntity,
@@ -154,7 +141,6 @@ public class CrmWelcomeIntegrationTests : IClassFixture<ConsentCollectionFactory
         Assert.NotEqual(oldToken, newToken);
         Assert.Equal(32, newToken.Length);
 
-        // The old code is the same 404 as one that never existed, on the page and on the consent.
         var neverExisted = await client.GetAsync("/api/public/welcome/this-code-never-existed-0000000000");
         var oldPage = await client.GetAsync($"/api/public/welcome/{oldToken}");
         await AssertProblemAsync(oldPage, HttpStatusCode.NotFound, "welcome_link_invalid");
@@ -177,8 +163,6 @@ public class CrmWelcomeIntegrationTests : IClassFixture<ConsentCollectionFactory
         Assert.Equal(newToken, Assert.Single(rows, l => l.RevokedAt == null).Token);
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
-
     private static StringContent Json(object body) =>
         new(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
 
@@ -200,7 +184,6 @@ public class CrmWelcomeIntegrationTests : IClassFixture<ConsentCollectionFactory
         Assert.False(string.IsNullOrWhiteSpace(json.RootElement.GetProperty("detail").GetString()));
     }
 
-    /// <summary>An address that confirmed its consent, and one that opted out through the suppression list, both of this org.</summary>
     private async Task SeedKnownAndOptedOutAsync(Guid orgId, string known, string optedOut)
     {
         using var scope = _factory.Services.CreateScope();

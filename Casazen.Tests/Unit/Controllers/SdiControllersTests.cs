@@ -39,8 +39,6 @@ public class SdiControllersTests
     private static readonly string Secret = new('s', 40);
     private const string Body = """{"Endpoint":"/v1/update","Method":"POST","ResourceId":9,"Success":true}""";
 
-    // ---------------------------------------------------------------- the webhook
-
     /// <summary>
     /// PROOF TEST: permission rule. A call with a wrong secret (or none) is refused with 401 before anything is read or recorded: the provider is not asked, no document is looked for, and neither the
     /// secret nor the body reaches the log. A missing or short secret, or no provider, is 500: never an accepted call.
@@ -69,7 +67,6 @@ public class SdiControllersTests
             Assert.DoesNotContain("ResourceId", line, StringComparison.Ordinal);
         });
 
-        // No usable secret configured (empty, too short) or no provider: nothing is accepted, whatever the call says.
         foreach (var configured in new[] { string.Empty, new string('s', 31) })
         {
             var notConfigured = Webhook(provider.Object, sdi.Object, secret: configured);
@@ -137,8 +134,6 @@ public class SdiControllersTests
         Assert.Equal("api/webhooks/sdi/{secret}", type.GetCustomAttribute<RouteAttribute>()!.Template);
     }
 
-    // ---------------------------------------------------------------- the endpoints of a document
-
     [Fact]
     public void SdiEndpoints_TheChangesAreBehindBothFlagsAndPaymentWrite_TheStateIsARead()
     {
@@ -182,7 +177,6 @@ public class SdiControllersTests
         sdi.VerifyNoOtherCalls();
         corrections.VerifyNoOtherCalls();
 
-        // An unknown document is the same answer.
         var missing = Documents(documents.Object, sdi.Object, corrections.Object, resources.Object, allowed: true);
         Assert.Equal(StatusCodes.Status404NotFound, Assert.IsType<ObjectResult>((await missing.Submit(Guid.NewGuid())).Result).StatusCode);
         sdi.VerifyNoOtherCalls();
@@ -225,10 +219,6 @@ public class SdiControllersTests
         Assert.Equal((replacement.Id, documentId, "2026/1"), (draft.Id, draft.ReplacesDocumentId, draft.Number));
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule (the scope of the caller). The issuers of the channel are read through the scope the caller has (a collaborator «Solo alcuni» gets the restricted one, never the
-    /// whole org's), and a caller with no scope (deactivated, another org) is refused before anything is read.
-    /// </summary>
     [Fact]
     public async Task SdiIssuers_AreReadThroughTheScopeOfTheCaller_AndACallerWithNoScopeIsRefused()
     {
@@ -249,7 +239,6 @@ public class SdiControllersTests
         Assert.Equal([(issuerId, "pending")], dto.Issuers.Select(i => (i.IssuerProfileId, i.State)).ToList());
         sdi.Verify(s => s.IssuerRegistrationsAsync(restricted, It.IsAny<CancellationToken>()), Times.Once);
 
-        // No scope at all: refused, and the service is never asked.
         var untouched = new Mock<IFiscalDocumentSdiService>();
         var nobody = Documents(Mock.Of<IFiscalDocumentService>(), untouched.Object, Mock.Of<IFiscalDocumentCorrectionService>(), Mock.Of<IHostResourceLookup>(), allowed: true, Mock.Of<IHostScopeResolver>());
         Assert.IsType<UnauthorizedResult>((await nobody.Issuers()).Result);
@@ -265,12 +254,10 @@ public class SdiControllersTests
     [Fact]
     public async Task OwnerInvoiceSdi_PropertyManagerCannotSubmitOrDeclareAnOwnerInvoice_Test()
     {
-        // The roles: the property manager of the short-rent area writes payments, but holds no agency permission.
         var propertyManager = OrgRoleCatalog.SeededRoles.Single(r => r.ContextKey == OrgRoleCatalog.ShortRent && r.RoleKey == OrgRoleCatalog.PropertyManagerRoleKey);
         Assert.Contains("payment.write", propertyManager.Permissions);
         Assert.DoesNotContain(AgencyPermissions.StatementManage, OrgRoleCatalog.AgencyPermissionsOf(OrgRole.PropertyManager));
 
-        // The generic endpoints, for a caller who reaches the whole org with payment.write: an owner invoice is 422, and nothing is asked of the services.
         var documentId = Guid.NewGuid();
         var documents = new Mock<IFiscalDocumentService>();
         documents.Setup(d => d.GetAsync(documentId, It.IsAny<CancellationToken>()))
@@ -307,7 +294,6 @@ public class SdiControllersTests
                 method.GetCustomAttributes<FeatureGateAttribute>().Select(a => a.Flag).Order().ToArray());
         }
 
-        // A caller restricted to some properties is refused on every action before anything is read.
         foreach (var restricted in new[] { new HostScope(OrgId, GrantedToUserId: "auth0|collaborator"), new HostScope(OrgId, OwnerId: "auth0|collaborator") })
         {
             var untouchedDocuments = new Mock<IFiscalDocumentService>(MockBehavior.Strict);
@@ -320,7 +306,6 @@ public class SdiControllersTests
             untouched.VerifyNoOtherCalls();
         }
 
-        // The whole org is served, for an owner invoice of its org; a guest document is not found there.
         sdi.Setup(s => s.SubmitAsync(documentId, It.IsAny<CancellationToken>())).ReturnsAsync(new SdiSubmitResult(SdiSubmitOutcome.NotConfigured, FiscalDocumentSdiStatuses.ToSend));
         sdi.Setup(s => s.GetStateAsync(documentId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FiscalDocumentSdiState(documentId, FiscalDocumentSdiStatuses.ToSend, null, null, null, false, true, true, false));
@@ -334,8 +319,6 @@ public class SdiControllersTests
         sdi.Verify(s => s.SubmitAsync(guestId, It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    // ---------------------------------------------------------------- the reason in plain words
-
     [Fact]
     public void Dto_ARejectedDocumentAlwaysSaysWhy_AStillToSendOneOnlyWhenTheChannelRefused()
     {
@@ -347,7 +330,6 @@ public class SdiControllersTests
         var english = FiscalDocumentSdiDto.From(new FiscalDocumentSdiState(id, "rejected", "00417", null, null, true, false, false, true), texts, "en");
         Assert.Contains("VAT number", english.Reason, StringComparison.Ordinal);
 
-        // A code nobody knows is the generic words with the raw code; a rejection without a code says so.
         Assert.Contains("99999", FiscalDocumentSdiDto.From(new FiscalDocumentSdiState(id, "rejected", "99999", null, null, true, false, false, true), texts, "it").Reason, StringComparison.Ordinal);
         Assert.False(string.IsNullOrWhiteSpace(FiscalDocumentSdiDto.From(new FiscalDocumentSdiState(id, "rejected", null, null, null, true, false, false, true), texts, "it").Reason));
 
@@ -355,8 +337,6 @@ public class SdiControllersTests
         Assert.Contains("canale di invio", FiscalDocumentSdiDto.From(new FiscalDocumentSdiState(id, "to_send", SdiSubmissionErrors.ProviderError, null, null, true, true, true, false), texts, "it").Reason, StringComparison.Ordinal);
         Assert.Null(FiscalDocumentSdiDto.From(new FiscalDocumentSdiState(id, "delivered", null, null, null, true, false, false, false), texts, "it").Reason);
     }
-
-    // ---------------------------------------------------------------- the job
 
     [Fact]
     public async Task Job_DoesNothingWithoutTheFlagsOrTheProvider_AndWritesOnlyWithTheKeyAndTheFlags()
@@ -366,7 +346,6 @@ public class SdiControllersTests
         var entered = new List<Guid>();
         await using var services = JobServices(sdi.Object, provider.Object, entered);
 
-        // The flags off (either of them), or no provider: nothing is asked and nothing is written.
         foreach (var flags in new[] { new TestFlags(), new TestFlags(FeatureFlags.FiscalDocumentIssuance), new TestFlags(FeatureFlags.SdiSubmission) })
             await Job(services, flags).ExecuteAsync(CancellationToken.None);
         await using (var unconfigured = JobServices(sdi.Object, new Mock<ISdiEInvoiceProvider>().Object, entered))
@@ -399,7 +378,6 @@ public class SdiControllersTests
 
         var failed = await Assert.ThrowsAsync<SdiStatusPollException>(() => Job(services, new TestFlags(FeatureFlags.FiscalDocumentIssuance, FeatureFlags.SdiSubmission)).ExecuteAsync(CancellationToken.None));
 
-        // The run goes on after the document it could not read, records the others, and is a failed run.
         Assert.Contains("1 of 5", failed.Message, StringComparison.Ordinal);
         Assert.Equal([delivered.OrgId, rejected.OrgId, waiting.OrgId, broken.OrgId, last.OrgId], entered);
         sdi.Verify(s => s.RecordOutcomeAsync(delivered.DocumentId, new SdiOutcome(SdiOutcomeKind.Delivered), It.IsAny<CancellationToken>()), Times.Once);
@@ -469,8 +447,6 @@ public class SdiControllersTests
         Assert.IsType<CreatedAtActionResult>((await controller.Correct(guest)).Result);
         corrections.Verify(c => c.StartCorrectionAsync(guest, "auth0|collaborator", It.IsAny<CancellationToken>()), Times.Once);
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private static Mock<ISdiEInvoiceProvider> ConfiguredProvider()
     {
@@ -560,7 +536,6 @@ public class SdiControllersTests
         };
     }
 
-    /// <summary>The scope resolver of a caller whose scope is <paramref name="scope"/>.</summary>
     private static IHostScopeResolver ScopeOf(HostScope scope)
     {
         var resolver = new Mock<IHostScopeResolver>();

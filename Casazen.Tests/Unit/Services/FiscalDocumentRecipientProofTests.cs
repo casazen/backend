@@ -28,15 +28,10 @@ public class FiscalDocumentRecipientProofTests
 {
     private const string GuestName = "Marta Bianchi";
 
-    /// <summary>What the guest of the seeded bookings gave beyond the name: none of it may reach a document.</summary>
     private static readonly string[] GuestPrivateData = ["marta.bianchi.privata@example.org", "+41790001122", "Via Privata 7", "Zurigo", "Liechtenstein", "Liechtensteinese"];
 
     private static readonly DateTimeOffset Now = new(2026, 11, 20, 10, 0, 0, TimeSpan.Zero);
 
-    /// <summary>
-    /// PROOF TEST: privacy rule. A Swiss booking of a portal has no invoice data: it gets a draft and an issued CHF document made out to the guest of the booking, and the recipient
-    /// snapshot holds the name and nothing else of the guest (no address, e-mail, phone, fiscal code or nationality: not in the stored columns, not on the PDF).
-    /// </summary>
     [Fact]
     public async Task Document_SwissBookingWithoutInvoiceData_UsesGuestNameOnly_Test()
     {
@@ -50,22 +45,16 @@ public class FiscalDocumentRecipientProofTests
         var issued = await service.IssueAsync(draft.Id, confirm: true);
         Assert.Equal((FiscalDocumentStatus.Issued, "CHF", "ch-vat-2024.1", "2026/1"), (issued.Status, issued.Currency, issued.RuleVersion, issued.Number));
 
-        // The columns as the database holds them: the name, that the recipient is a private person, and nothing else.
         var stored = await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == issued.Id);
         Assert.Equal((InvoiceRecipientKind.Guest, GuestName), (stored.RecipientKind, stored.RecipientName));
         Assert.All(RestOfTheRecipient(stored), value => Assert.Null(value));
 
-        // The PDF shows the name, and nothing else the guest gave.
         var text = TextOf(await service.PdfContentAsync(issued.Id, "it"));
         Assert.Contains(GuestName, text, StringComparison.Ordinal);
         foreach (var secret in GuestPrivateData)
             Assert.DoesNotContain(secret, text, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. The Italian invoice did not loosen: a booking of an issuer whose rule is an invoice, with no invoice data (or a row with no name that holds no «yes» to
-    /// the invoice), is refused with the same code and the same field as before, whatever name the guest has; nothing is made.
-    /// </summary>
     [Fact]
     public async Task Document_ItalianInvoiceWithoutInvoiceData_StillRefused_Test()
     {
@@ -76,12 +65,10 @@ public class FiscalDocumentRecipientProofTests
         Assert.Equal(FiscalDocumentErrors.InvoiceDataMissing, none.Code);
         Assert.Equal(new[] { InvoiceDataFields.Name }, Assert.IsAssignableFrom<IReadOnlyList<string>>(none.Extensions["fields"]));
 
-        // A row with no name and no request for an invoice is the same refusal; the fields it names are those of the checks of an invoice (the name first, then the address).
         var noName = await Assert.ThrowsAsync<DomainRuleException>(() => Service(db, id => Row(id, name: null, requested: false)).CreateDraftAsync(booking, null));
         Assert.Equal(FiscalDocumentErrors.InvoiceDataMissing, noName.Code);
         Assert.Contains(InvoiceDataFields.Name, Assert.IsAssignableFrom<IReadOnlyList<string>>(noName.Extensions["fields"]));
 
-        // A name alone is still not an invoice: the checks of an invoice are the ones they were.
         var nameOnly = await Assert.ThrowsAsync<DomainRuleException>(() => Service(db, id => Row(id, name: "TEST Cliente", requested: true)).CreateDraftAsync(booking, null));
         Assert.Equal(FiscalDocumentErrors.InvoiceDataMissing, nameOnly.Code);
         Assert.Contains(InvoiceDataFields.AddressStreet, Assert.IsAssignableFrom<IReadOnlyList<string>>(nameOnly.Extensions["fields"]));
@@ -89,10 +76,6 @@ public class FiscalDocumentRecipientProofTests
         Assert.Empty(await db.FiscalDocuments.ToListAsync());
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule. A guest who was erased (anonymized: its name is the placeholder of the erasure), who asked to be erased or who was deleted never gets a document made
-    /// out to a name that is no longer theirs: the refusal is the one of a booking with no invoice data, and nothing is made.
-    /// </summary>
     [Theory]
     [InlineData(true, false, false, "ANONYMIZED", "ANONYMIZED")]
     [InlineData(false, true, false, "Marta", "Bianchi")]
@@ -135,10 +118,6 @@ public class FiscalDocumentRecipientProofTests
         Assert.All(RestOfTheRecipient(draft), value => Assert.Null(value));
     }
 
-    /// <summary>
-    /// The invoice data of the booking wins over the name of the guest (the row with a name is the recipient, with its address, as it always was), and a guest who asked for an invoice
-    /// without giving any data is waited for: the document is not made out to the guest's name behind its back.
-    /// </summary>
     [Fact]
     public async Task Document_InvoiceDataOfTheBooking_WinsOverTheGuestName_AndARequestedInvoiceWaitsForIt_Test()
     {
@@ -157,10 +136,6 @@ public class FiscalDocumentRecipientProofTests
         Assert.DoesNotContain(GuestName, text, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. A draft made out to the guest by name (the booking had no invoice data) is no longer the document once the booking has invoice data with a name: the issue is
-    /// refused (409 <c>document_draft_outdated</c>, nothing numbered, the draft stays a draft), and the draft made again takes the invoice data and is issued with it.
-    /// </summary>
     [Fact]
     public async Task Document_DraftMadeWithTheGuestName_IsOutdatedOnceTheBookingHasInvoiceData_Test()
     {
@@ -185,10 +160,6 @@ public class FiscalDocumentRecipientProofTests
         Assert.Equal((FiscalDocumentStatus.Issued, "TEST Studio Rossi", "Bahnhofstrasse 1"), (issued.Status, issued.RecipientName, issued.RecipientAddressStreet));
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule. A guest who was erased (anonymized), who asked to be erased or who was deleted after the draft was made out to their name: the issue is refused (409
-    /// <c>document_draft_outdated</c>, nothing numbered) and the draft made again is the refusal of a booking with no invoice data: no document goes out to a name that is no longer theirs.
-    /// </summary>
     [Theory]
     [InlineData(true, false, false)]
     [InlineData(false, true, false)]
@@ -221,7 +192,6 @@ public class FiscalDocumentRecipientProofTests
         Assert.Equal(FiscalDocumentErrors.InvoiceDataMissing, refused.Code);
     }
 
-    /// <summary>The recipient columns beyond the name and the kind of recipient: every one is empty on a document made out to the guest by name.</summary>
     private static string?[] RestOfTheRecipient(FiscalDocument document)
     {
         return new[]
@@ -239,11 +209,9 @@ public class FiscalDocumentRecipientProofTests
         };
     }
 
-    /// <summary>The invoice data of a booking as the host or the check-in gave it: a private person, in Switzerland.</summary>
     private static InvoiceDataView Row(Guid bookingId, string? name, bool requested, string? street = null, string? city = null) =>
         new(bookingId, requested, requested ? Now.UtcDateTime : null, InvoiceRecipientKind.Guest, name, null, null, street, null, null, city, null, "CH", null, null, InvoiceDataSource.Host, Now.UtcDateTime);
 
-    /// <summary>Every text of a PDF content: headings, paragraphs and the cells of the tables, one per line.</summary>
     private static string TextOf(Casazen.Core.Documents.PdfDocumentContent content) =>
         string.Join('\n', new[] { content.Title }.Concat(content.Blocks.SelectMany(TextsOf)));
 
@@ -255,7 +223,6 @@ public class FiscalDocumentRecipientProofTests
         _ => Array.Empty<string>(),
     };
 
-    /// <summary>The service over <paramref name="db"/>; <paramref name="invoiceData"/> gives the invoice data of a booking (none by default: the booking of a portal).</summary>
     private static FiscalDocumentService Service(AppDbContext db, Func<Guid, InvoiceDataView?>? invoiceData = null)
     {
         var rules = TaxRuleCatalogs.Resolver();
@@ -302,7 +269,6 @@ public class FiscalDocumentRecipientProofTests
         return await SeedBookingAsync(db, orgId, "CHF", shapeGuest);
     }
 
-    /// <summary>An issuer in Italy under <paramref name="regime"/> (an invoice, or the receipt of a private person), and a booking of a portal (EUR, no invoice data of its own).</summary>
     private static async Task<Guid> SeedItalianAsync(AppDbContext db, DocumentRegime regime)
     {
         var orgId = Guid.NewGuid();

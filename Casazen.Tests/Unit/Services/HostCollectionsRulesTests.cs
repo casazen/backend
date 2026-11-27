@@ -18,8 +18,6 @@ public class HostCollectionsRulesTests
     private static HostCollectedPayment Collected(DateTime at, decimal amount, PaymentMethod method = PaymentMethod.CreditCard, BookingSource source = BookingSource.Direct, decimal refunded = 0m) =>
         new(at, amount, refunded, method, source);
 
-    // ---------------------------------------------------------------- the buckets
-
     [Theory]
     [InlineData(1, HostCollectionsBucketUnit.Day)]
     [InlineData(31, HostCollectionsBucketUnit.Day)]
@@ -56,7 +54,6 @@ public class HostCollectionsRulesTests
     [Fact]
     public void Summarize_PutsEachPaymentOnItsRomeDay_NotOnTheUtcOne()
     {
-        // 22:30 UTC on 8 October is 00:30 on the 9th in Rome (summer time); on 28 March (winter time, the change is the 29th) 22:30 UTC is still the 28th and 23:30 UTC is the 29th.
         var october = HostCollectionsRules.Summarize(
             Period(new DateOnly(2026, 10, 8), new DateOnly(2026, 10, 10)),
             [Collected(new DateTime(2026, 10, 8, 22, 30, 0, DateTimeKind.Utc), 100m), Collected(new DateTime(2026, 10, 8, 21, 30, 0, DateTimeKind.Utc), 7m)]);
@@ -95,8 +92,6 @@ public class HostCollectionsRulesTests
         Assert.All(nothing.ByChannel, row => Assert.Null(row.Share));
         Assert.All(some.ByMethod, row => Assert.Equal(0.3333m, row.Share));
     }
-
-    // ---------------------------------------------------------------- credits and balances
 
     [Fact]
     public void CreditStatus_IsCreditedFromTheDayItArrives_AndExpectedBefore()
@@ -188,15 +183,12 @@ public class HostCollectionsRulesTests
             sums.Add(payment);
         var figures = sums.Figures();
 
-        // The sums say what the list says, and each cut adds up to the total.
         Assert.Equal(HostCollectionsRules.Summarize(period, payments).Total, figures.Total);
         Assert.Equal(new HostDashboardCollected(230.50m, 3), figures.Total);
         Assert.Equal(new[] { 100m, 130.50m, 0m }, figures.ByDate.Select(b => b.Amount));
         Assert.Equal(new[] { (PaymentMethod.CreditCard, 170m, 2), (PaymentMethod.CashOnArrival, 60.50m, 1) }, figures.ByMethod.Select(m => (m.Method, m.Amount, m.PaymentCount)));
         Assert.Equal(figures.Total.Amount, figures.ByChannel.Sum(c => c.Amount));
     }
-
-    // ---------------------------------------------------------------- one definition, however it is asked
 
     private static Booking BookingOf(BookingSource source, string? reservation) => new() { Source = source, OctorateReservationId = reservation };
 
@@ -227,7 +219,6 @@ public class HostCollectionsRulesTests
         var channelManagers = HostCollectionsRules.HoldsChannelManagerMoney(mirrors).Compile()(booking);
         var casazens = HostCollectionsRules.HoldsCasaZenMoney(mirrors).Compile()(booking);
 
-        // The expression is BookingAmountSourceRules.HoldsChannelManagerMoney, and CasaZen's money is what is neither a channel's nor the channel manager's.
         Assert.Equal(BookingAmountSourceRules.HoldsChannelManagerMoney(booking, pushed), channelManagers);
         Assert.Equal(!FiscalCopy.IsOtaBookingSource(source) && !BookingAmountSourceRules.HoldsChannelManagerMoney(booking, pushed), casazens);
         Assert.False(channelManagers && casazens);
@@ -273,8 +264,6 @@ public class HostCollectionsRulesTests
 
         Assert.Equal(PaymentCashRules.Collected(amount, refunded), PaymentCashRules.CollectedAmount().Compile()(payment));
     }
-
-    // ---------------------------------------------------------------- the files
 
     private static string[] Lines(byte[] file) =>
         Encoding.UTF8.GetString(file).TrimStart('\uFEFF').Split("\r\n").SkipLast(1).ToArray();
@@ -344,7 +333,6 @@ public class HostCollectionsRulesTests
                 "Saldi da incassare, al 09/10/2026",
                 "Codice prenotazione;Immobile;Canale;Check-in;Check-out;Valuta;Totale;Incassato;Da incassare;Scaduto;Importi indicati da",
                 "ABCDE-12345;Trullo;Sito di prenotazione;12/10/2026;15/10/2026;EUR;500,00;260,00;240,00;No;CasaZen",
-                // The name of a property that a spreadsheet would run as a formula is written as text.
                 "FGHJK-67890;'=Casa Bianca;Booking.com;01/10/2026;04/10/2026;EUR;;;45,00;Sì;Channel manager",
                 "Totale;;;;;EUR;;;285,00;;",
             },

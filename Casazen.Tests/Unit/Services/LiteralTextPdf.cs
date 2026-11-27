@@ -2,10 +2,6 @@ using System.Text;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Minimal uncompressed PDF whose text is written as literal strings, as many third-party generators do: input for
-/// the tests of the APE upload inspector. CasaZen's own PDFs come from <c>IPdfDocumentRenderer</c> (LT-09).
-/// </summary>
 internal static class LiteralTextPdf
 {
     public static byte[] Build(string title, string body)

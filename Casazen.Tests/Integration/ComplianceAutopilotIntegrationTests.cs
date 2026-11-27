@@ -32,7 +32,6 @@ public class ComplianceAutopilotIntegrationTests : IClassFixture<CasazenWebAppli
 
     public ComplianceAutopilotIntegrationTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
-    /// <summary>Fixed clock (FD-06): 11:00 in Rome on 2 November 2026.</summary>
     private static readonly FixedTimeProvider Clock = new(new DateTimeOffset(2026, 11, 2, 10, 0, 0, TimeSpan.Zero));
 
     private static readonly DateTime Today = new(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc);
@@ -61,7 +60,6 @@ public class ComplianceAutopilotIntegrationTests : IClassFixture<CasazenWebAppli
         var hostId = $"auth0|autopilot-{Guid.NewGuid():N}";
         var property = await _factory.SeedPropertyAsync(hostId);
 
-        // casazen/backend#978: the departures are the host's here (by default CasaZen registers the departure itself and the cockpit lists none to close).
         using (var seed = _factory.Services.CreateScope())
         {
             var seedDb = seed.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -82,7 +80,6 @@ public class ComplianceAutopilotIntegrationTests : IClassFixture<CasazenWebAppli
         Assert.Equal($"Departure:{over:N}", closing.GetProperty("key").GetString());
         var leftToTheHost = Item(plan, "Departure", today);
         Assert.Equal(("Host", "departure_today"), (leftToTheHost.GetProperty("status").GetString(), leftToTheHost.GetProperty("reason").GetString()));
-        // The stay that ended still lacks guest fields: it is not a guest-data alert the home can open.
         Assert.DoesNotContain(
             plan.GetProperty("items").EnumerateArray(),
             i => i.GetProperty("topic").GetString() == "GuestData" && i.GetProperty("bookingId").GetGuid() == over);
@@ -139,7 +136,6 @@ public class ComplianceAutopilotIntegrationTests : IClassFixture<CasazenWebAppli
             c => c.Create(It.Is<Job>(job => job.Type == typeof(GuestCheckInLinkEmailJob)), It.IsAny<IState>()),
             Times.Once);
 
-        // The same minute again: the guest was asked, nothing goes out twice.
         var second = await (await host.PostAsync("/api/compliance/autopilot/run", null)).Content.ReadFromJsonAsync<JsonElement>();
         Assert.Empty(second.GetProperty("outcomes").EnumerateArray());
         using var again = _factory.Services.CreateScope();
@@ -165,8 +161,6 @@ public class ComplianceAutopilotIntegrationTests : IClassFixture<CasazenWebAppli
         using var scope = _factory.Services.CreateScope();
         Assert.Equal(BookingStatus.CheckedIn, (await scope.ServiceProvider.GetRequiredService<AppDbContext>().Bookings.AsNoTracking().SingleAsync(b => b.Id == stay)).Status);
     }
-
-    // ─── Helpers ─────────────────────────────────────────────────────────────────
 
     private WebApplicationFactory<Program> WithClock(bool emailConfigured = false) => _factory.WithWebHostBuilder(builder =>
     {
@@ -200,7 +194,6 @@ public class ComplianceAutopilotIntegrationTests : IClassFixture<CasazenWebAppli
         plan.GetProperty("items").EnumerateArray()
             .Single(i => i.GetProperty("topic").GetString() == topic && i.GetProperty("bookingId").GetGuid() == bookingId);
 
-    /// <summary>A stay with incomplete guest data (no stay guests), inserted directly like the other cockpit tests.</summary>
     private async Task<Guid> SeedStayAsync(
         Property property,
         BookingStatus status,

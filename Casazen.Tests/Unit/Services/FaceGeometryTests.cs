@@ -3,10 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E03/F04/US01/T01: the arithmetic around the models, proved without the models: the decoding of the detector outputs, the merging of boxes, the
-/// alignment on the landmarks, the score of the liveness classes, the vectors and the pictures.
-/// </summary>
 public class FaceGeometryTests
 {
     private static readonly float[] TemplateLandmarks =
@@ -18,7 +14,6 @@ public class FaceGeometryTests
         70.7299f, 92.2041f,
     ];
 
-    /// <summary>The twelve outputs of YuNet for an input of 64 x 64: strides 8, 16 and 32 give 64, 16 and 4 cells.</summary>
     private static float[][] EmptyOutputs() =>
     [
         new float[64], new float[16], new float[4],
@@ -30,7 +25,6 @@ public class FaceGeometryTests
     [Fact]
     public void YuNet_DecodesTheBoxScoreAndLandmarksOfACell()
     {
-        // Stride 16, row 1, column 2: the centre is ((2 + 0.5) * 16, (1 + 0.5) * 16) = (40, 24), the size exp(ln 2) * 16 = 32.
         var outputs = EmptyOutputs();
         const int cell = (1 * 4) + 2;
         outputs[1][cell] = 0.9f;
@@ -99,7 +93,6 @@ public class FaceGeometryTests
 
         var faces = YuNetDecoder.ToPicture([inside, atTheEdge, tooSmall], scale: 0.5, imageWidth: 200, imageHeight: 100);
 
-        // Scale 0.5: the box is twice as large in the picture. The second one is cut at the right and bottom edge. The third is dropped.
         Assert.Equal(2, faces.Count);
         Assert.Equal(48f, faces[0].X, 0.01f);
         Assert.Equal(16f, faces[0].Y, 0.01f);
@@ -122,7 +115,6 @@ public class FaceGeometryTests
     [Fact]
     public void YuNet_InputIsBlueGreenRedAndBlackWhereThePictureDoesNotReach()
     {
-        // A 2 x 1 picture: pixel 0 is (10, 20, 30), pixel 1 is (40, 50, 60); the input is 4 x 2.
         using var image = new RasterImage(2, 1, [10, 20, 30, 40, 50, 60]);
 
         var tensor = YuNetDecoder.BuildInput(image, 4, 2);
@@ -147,7 +139,6 @@ public class FaceGeometryTests
     [Fact]
     public void Alignment_ScaledAndShiftedLandmarks_AreBroughtBack()
     {
-        // The face is twice as large and 10 pixels right, 20 down: the transform halves it and moves it back.
         var landmarks = TemplateLandmarks.Select((v, i) => (v * 2f) + (i % 2 == 0 ? 10f : 20f)).ToArray();
 
         Assert.True(FaceAlignment.TryEstimate(landmarks, 112, out var a, out var b, out var tx, out var ty));
@@ -189,7 +180,6 @@ public class FaceGeometryTests
     [Fact]
     public void Alignment_FaceAtTheTemplate_IsCopiedPixelForPixel()
     {
-        // A 112 x 112 picture whose red is the column, green the row and blue 77: with the landmarks at the template nothing moves.
         var rgb = new byte[112 * 112 * 3];
         for (var y = 0; y < 112; y++)
         {
@@ -292,7 +282,6 @@ public class FaceGeometryTests
     [Fact]
     public void Picture_Orientation_TurnsThePixelsAsExifSays()
     {
-        // 3 x 2: red is 0 1 2 / 10 11 12.
         byte[] rgb = [0, 0, 0, 1, 0, 0, 2, 0, 0, 10, 0, 0, 11, 0, 0, 12, 0, 0];
         using var image = new RasterImage(3, 2, rgb);
 

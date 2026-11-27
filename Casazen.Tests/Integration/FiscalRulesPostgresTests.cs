@@ -28,7 +28,6 @@ public class FiscalRulesPostgresTests : IClassFixture<CasazenWebApplicationFacto
     [PostgresFact]
     public async Task AssignRegime_PropertyManagerWithThreeOwnersOneApartmentEach_NoPartitaIvaAndCedolare21ForEach()
     {
-        // One org (a property manager's) with the apartments of three different owners: the caller is the org's host.
         var manager = $"auth0|co18-pm-{Guid.NewGuid():N}";
         using var client = _factory.CreateAuthenticatedClient(manager, "PropertyOwner");
         var properties = new List<Property>();
@@ -131,8 +130,6 @@ public class FiscalRulesPostgresTests : IClassFixture<CasazenWebApplicationFacto
     [PostgresFact]
     public async Task CreatePayment_OtaStay_IsRefusedBecauseThePortalCollects()
     {
-        // SR-06b: a receipt is recorded by hand only on a stay the host collects; the withholding rules of an OTA stay stay
-        // covered by FiscalRegimeServiceTests (ApplyWithholding_*).
         var host = $"auth0|co18-pay-{Guid.NewGuid():N}";
         using var client = _factory.CreateAuthenticatedClient(host, "PropertyOwner");
         var property = await _factory.SeedPropertyAsync(host);

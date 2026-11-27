@@ -7,10 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// Proof of the tables of the content of a property on the channels (NF-27, NF-32, NF-38, E02/F03/US01/T01): what an organization has
-/// written there is not visible to another one (permission rule, TN-2).
-/// </summary>
 public class ListingChannelStateProofTests
 {
     private sealed class FixedTenantContext(Guid orgId) : ITenantContext
@@ -20,10 +16,6 @@ public class ListingChannelStateProofTests
         public bool FilterEnabled => true;
     }
 
-    /// <summary>
-    /// Permission rule: the state of a property on a channel (and the sending of its photos) written by organization A is not read by
-    /// organization B, whether B asks for every row or for the very property of A, and A still reads its own.
-    /// </summary>
     [Fact]
     public async Task ListingChannelState_TenantIsolation_Test()
     {

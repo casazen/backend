@@ -50,7 +50,7 @@ public class SupplierPaymentsOptionsTests
     [InlineData(50.01)]
     [InlineData(51)]
     [InlineData(100)]
-    [InlineData(10.123)] // more than two decimals: the percentage is stored with two
+    [InlineData(10.123)]
     public void Commission_OutsideTheRangeOrWithTooManyDecimals_IsRefused(double percent)
     {
         var options = Valid((decimal)percent);
@@ -116,7 +116,6 @@ public class SupplierPaymentsOptionsTests
     [Fact]
     public void CommittedAppsettings_BindAndValidate_WithTheProvisionalTenPercent()
     {
-        // The provisional hypothesis of the product owner (decision D3) lives only here, in configuration.
         var configuration = new ConfigurationBuilder()
             .AddJsonFile(Path.Combine(SolutionRoot(), "Casazen.Web", "appsettings.json"), optional: false)
             .Build();
@@ -134,7 +133,6 @@ public class SupplierPaymentsOptionsTests
     [Fact]
     public void ARailwayVariable_OverridesTheCommittedCommission()
     {
-        // Env var SupplierPayments__CommissionPercent=0 (a free period for the whole platform) wins over appsettings.json.
         var configuration = new ConfigurationBuilder()
             .AddJsonFile(Path.Combine(SolutionRoot(), "Casazen.Web", "appsettings.json"), optional: false)
             .AddInMemoryCollection(new Dictionary<string, string?> { ["SupplierPayments:CommissionPercent"] = "0" })

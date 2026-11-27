@@ -48,7 +48,6 @@ public class ShowcaseBookingConcurrencyPostgresTests(PublicBookingFactory factor
             Assert.Equal("supplier_slot_unavailable", (await lost.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
 
         Assert.Equal(1, await CountHoldsAsync(supplier.OrgId));
-        // Only the winner is written to: one verification e-mail in all.
         Assert.Equal(1, emails.Sum(email => factory.EmailsTo(email).Count));
     }
 
@@ -56,7 +55,6 @@ public class ShowcaseBookingConcurrencyPostgresTests(PublicBookingFactory factor
     public async Task OverlappingSlots_ManyCustomersAtTheSameMoment_OneHoldsTheMorning()
     {
         var supplier = await PublicBookingTestData.SeedAsync(factory);
-        // 09:00, 10:00 and 11:00 in Rome: a two hours job at any of them overlaps the others or breaks the 30 minutes between jobs.
         var starts = new[] { 0, 1, 2 }.Select(hour => PublicBookingTestData.TuesdayAt9.AddHours(hour)).ToArray();
         var emails = starts.SelectMany(_ => new[] { PublicBookingTestData.NewEmail(), PublicBookingTestData.NewEmail() }).ToArray();
         using var client = factory.CreateClient();
@@ -76,7 +74,6 @@ public class ShowcaseBookingConcurrencyPostgresTests(PublicBookingFactory factor
     {
         var supplier = await PublicBookingTestData.SeedAsync(factory);
         using var client = factory.CreateClient();
-        // The morning and the afternoon of one day, and another day: no overlap, no buffer between them, three jobs in two days.
         var starts = new[] { PublicBookingTestData.TuesdayAt9, PublicBookingTestData.TuesdayAt9.AddHours(5), PublicBookingTestData.TuesdayAt9.AddDays(1) };
 
         var responses = await InParallelAsync(
@@ -94,7 +91,6 @@ public class ShowcaseBookingConcurrencyPostgresTests(PublicBookingFactory factor
         var supplier = await PublicBookingTestData.SeedAsync(factory);
         var email = PublicBookingTestData.NewEmail();
         using var client = factory.CreateClient();
-        // Six different slots of six working days (Tuesday to Friday, Monday and Tuesday after), all free: one address.
         var starts = new[] { 0, 1, 2, 3, 6, 7 }.Select(day => PublicBookingTestData.TuesdayAt9.AddDays(day)).ToArray();
 
         var responses = await InParallelAsync(
@@ -164,9 +160,6 @@ public class ShowcaseBookingConcurrencyPostgresTests(PublicBookingFactory factor
         Assert.Equal(1, await CountCustomersAsync(supplier.OrgId));
     }
 
-    // ─── helpers ───
-
-    /// <summary>Runs every call at the same moment (they all wait at the gate), and returns the answers in order.</summary>
     private static async Task<HttpResponseMessage[]> InParallelAsync(IEnumerable<Func<Task<HttpResponseMessage>>> calls)
     {
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -212,7 +205,6 @@ public class ShowcaseBookingUpkeepRacePostgresTests(PublicBookingFactory factory
         var requestId = await BookAsync(client, supplier, PublicBookingTestData.TuesdayAt9, email);
 
         using var moved = factory.MoveClock(TimeSpan.FromMinutes(181));
-        // The upkeep and the take read the request as unanswered and are held before saving until both got there.
         await using var app = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
             SaveRendezvous.HoldParallelSaves(services, parties: 2)));
         await using var scope = app.Services.CreateAsyncScope();
@@ -231,14 +223,12 @@ public class ShowcaseBookingUpkeepRacePostgresTests(PublicBookingFactory factory
         var stored = await LoadRequestAsync(requestId);
         if (take.StatusCode == HttpStatusCode.OK)
         {
-            // The supplier answered first: the upkeep counted a conflict and left the take as it is.
             Assert.Equal(ServiceRequestStatus.PresoInCarico, stored.Status);
             Assert.True(run.Conflicts >= 1, $"Conflicts {run.Conflicts}");
             Assert.DoesNotContain(factory.EmailsTo(email), e => e.Template == Casazen.Infrastructure.Email.Templates.EmailTemplates.Names.SupplierBookingExpired);
         }
         else
         {
-            // The upkeep cancelled first: the take got 409 and nothing of it was saved.
             Assert.Equal(HttpStatusCode.Conflict, take.StatusCode);
             Assert.Equal(ServiceRequestStatus.Annullato, stored.Status);
             Assert.Null(stored.TakenAt);
@@ -277,11 +267,6 @@ public class ShowcaseBookingUpkeepRacePostgresTests(PublicBookingFactory factory
     }
 }
 
-/// <summary>
-/// The default integration host (real clock) with the flag <c>SupplierShowcaseBooking</c> on. The booking answers 500 — and gives
-/// the slot back — when its verification e-mail cannot be queued, and the default host has no e-mail provider configured, so the
-/// queue is one that accepts everything (as the other hosts of the booking have).
-/// </summary>
 public sealed class ShowcaseRealClockFactory : CasazenWebApplicationFactory
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -339,15 +324,12 @@ public class ShowcaseBookingAndHostRequestPostgresTests(ShowcaseRealClockFactory
         Assert.Equal("supplier_slot_unavailable", (await lost.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
     }
 
-    // ─── helpers ───
-
     private static async Task<HttpResponseMessage> Gated(Func<Task<HttpResponseMessage>> call)
     {
         await Task.Yield();
         return await call();
     }
 
-    /// <summary>Gives the supplier of the world a showcase slug, the comune the customers write and online bookings; returns its slug and service.</summary>
     private async Task<BookableSupplier> MakeBookableAsync(ServiceRequestWorld world)
     {
         var slug = $"vetrina-{Guid.NewGuid():N}"[..24];

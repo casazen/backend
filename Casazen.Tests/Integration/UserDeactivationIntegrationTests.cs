@@ -94,7 +94,6 @@ public class UserDeactivationIntegrationTests(UserDeactivationIntegrationTests.D
         Assert.False(stored.IsActive);
         Assert.Equal(["PropertyOwner", "Supplier"], stored.SuspendedAuth0Roles!.Order());
 
-        // The token still carries its roles: the API refuses it anyway, from the very next request.
         await AssertProblemAsync(await target.GetAsync("/api/users/me"), HttpStatusCode.Forbidden, AccountInactive);
         await AssertProblemAsync(await target.GetAsync("/api/properties"), HttpStatusCode.Forbidden, AccountInactive);
     }
@@ -127,7 +126,6 @@ public class UserDeactivationIntegrationTests(UserDeactivationIntegrationTests.D
             a => a.RemoveRolesAsync(targetId, It.IsAny<IReadOnlyCollection<UserRole>>(), It.IsAny<CancellationToken>()),
             Times.Never);
 
-        // Enforcement does not depend on Auth0.
         using var target = factory.CreateAuthenticatedClient(targetId, roles: "PropertyOwner");
         await AssertProblemAsync(await target.GetAsync("/api/properties"), HttpStatusCode.Forbidden, AccountInactive);
     }
@@ -152,7 +150,6 @@ public class UserDeactivationIntegrationTests(UserDeactivationIntegrationTests.D
         var lastAdminId = NewUserId("last-admin");
         await SeedUserAsync(lastAdminId, UserRole.Admin);
         await DeactivateOtherAdminsAsync(lastAdminId);
-        // The caller is an admin through its token only (role assigned in the Auth0 dashboard, not in the DB).
         using var caller = factory.CreateAuthenticatedClient(NewUserId("token-admin"), roles: "Admin");
 
         var response = await caller.DeleteAsync($"/api/users/{Uri.EscapeDataString(lastAdminId)}");
@@ -218,7 +215,6 @@ public class UserDeactivationIntegrationTests(UserDeactivationIntegrationTests.D
         Assert.Equal(
             ["LongTermLandlord", "Supplier"],
             body.GetProperty("rolesRestored").EnumerateArray().Select(e => e.GetString()!).Order());
-        // Inverse order of the deactivation: roles back first, then unblock.
         Assert.Equal(["block", $"assign:{UserRole.LongTermLandlord},{UserRole.Supplier}", "unblock"], calls);
 
         var stored = await LoadUserAsync(targetId);
@@ -316,7 +312,6 @@ public class UserDeactivationIntegrationTests(UserDeactivationIntegrationTests.D
         await db.SaveChangesAsync();
     }
 
-    /// <summary>Leaves <paramref name="keep"/> as the only active DB admins of this test database.</summary>
     private async Task DeactivateOtherAdminsAsync(params string[] keep)
     {
         using var scope = factory.Services.CreateScope();

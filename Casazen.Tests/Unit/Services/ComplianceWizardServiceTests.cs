@@ -87,7 +87,6 @@ public class ComplianceWizardServiceTests
             featureFlags: flags.Object);
     }
 
-    /// <summary>The real evaluation of the blockers (CO-06): the wizard has no copy of its own.</summary>
     private static PropertyComplianceStatusService CreateStatusService(
         AppDbContext db,
         IConfiguration configuration,
@@ -102,7 +101,6 @@ public class ComplianceWizardServiceTests
             NullLogger<PropertyComplianceStatusService>.Instance,
             timeProvider);
 
-    // 2026-09-24 00:30 in Rome is still 2026-09-23 in UTC: "today" must be the Rome date.
     private static readonly TimeProvider RomeJustAfterMidnight =
         new FixedTimeProvider(new DateTimeOffset(2026, 9, 23, 22, 30, 0, TimeSpan.Zero));
 
@@ -168,7 +166,6 @@ public class ComplianceWizardServiceTests
     public async Task Activation_PublishedTouristTaxPage_ReturnsPublicPageSlug()
     {
         await using var db = CreateDb(nameof(Activation_PublishedTouristTaxPage_ReturnsPublicPageSlug));
-        // The page of a comune is found through the official list (SU-04): by name for a property without a chosen comune.
         await ComuneTestData.ImportSampleAsync(db);
         var property = await SeedPropertyAsync(db, city: "Como");
         db.SeoContentPages.Add(new SeoContentPage
@@ -530,7 +527,6 @@ public class ComplianceWizardServiceTests
         });
 
         var noReport = Stay("NoReport", today);
-        // A no-show (NF-45) owes no communication: neither "to send manually" nor a failure, whatever its report says.
         var noShow = Stay("NoShow", today);
         noShow.NoShowAt = clock.GetUtcNow().UtcDateTime;
         var noShowRejected = Stay("NoShowRejected", today);
@@ -598,7 +594,6 @@ public class ComplianceWizardServiceTests
         {
             Stay(lugano, $"Lugano{index}");
             var swiss = Stay(ascona, $"Ascona{index}");
-            // Even a stale Italian failure on a foreign property must not create an Italian obligation.
             if (index == 0)
                 Report(swiss, AlloggiatiWebStatus.Rifiutato);
         }
@@ -622,14 +617,11 @@ public class ComplianceWizardServiceTests
     [Fact]
     public async Task Summary_ANoShowStay_IsInNoSectionOfTheCockpit()
     {
-        // NF-45: the guests never came, so nothing is due: no guest data to complete, no departure to close, no communication to send.
         await using var db = CreateDb(nameof(Summary_ANoShowStay_IsInNoSectionOfTheCockpit));
         var property = await SeedPropertyAsync(db, complianceStatus: PropertyComplianceStatus.Active);
         var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
         var guest = new Guest { FirstName = "Anna", LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
         db.Guests.Add(guest);
-        // Both are confirmed, arrived on the 22nd and leave today (Rome 24/09), with no guest data and no report: the one not marked is in
-        // three sections of the cockpit; the no-show is in none.
         var expected = BuildBooking(property, guest, todayInRome, BookingStatus.Confirmed);
         var noShow = BuildBooking(property, guest, todayInRome, BookingStatus.Confirmed);
         noShow.NoShowAt = todayInRome.AddHours(-30);
@@ -688,7 +680,6 @@ public class ComplianceWizardServiceTests
 
         // Still in the house, document fields missing: the Alloggiati screen is where the host completes them.
         var current = BuildBooking(property, currentGuest, todayInRome, BookingStatus.CheckedIn);
-        // Left weeks ago with the same gap: that screen can no longer be completed.
         var ended = BuildBooking(property, endedGuest, todayInRome.AddDays(-40), BookingStatus.CheckedIn);
         var blank = BuildBooking(property, unnamed, todayInRome, BookingStatus.CheckedIn);
         db.Bookings.AddRange(current, ended, blank);
@@ -798,8 +789,6 @@ public class ComplianceWizardServiceTests
         AssertTarget(Assert.Single(summary.AlloggiatiManualRequired.Items), ComplianceCockpitAction.SendAlloggiati, bookingId: departing.Id);
         AssertTarget(Assert.Single(summary.AlloggiatiFailures.Items), ComplianceCockpitAction.ResolveAlloggiatiFailure, bookingId: rejected.Id);
         AssertTarget(Assert.Single(summary.TurnoversPending.Items), ComplianceCockpitAction.ConfirmPropertyReady, bookingId: turnover.Id);
-        // Every action the clients must route from these six sections is produced by one of them (the eight of CHK-12 come from the sections
-        // of the compliance status: ComplianceWizardStatusTests).
         Assert.Equal(
             new[]
             {
@@ -847,7 +836,6 @@ public class ComplianceWizardServiceTests
         var pending = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Pending);
         var active = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Active);
         var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
-        // Arrived 22/09 (midnight in Rome is 21/09 22:00 UTC), leaves today; the arrival was registered at 10:00 UTC of 22/09.
         var departing = AddStay(active, "Partenza", todayInRome, BookingStatus.CheckedIn);
         departing.ArrivedAt = new DateTime(2026, 9, 22, 10, 0, 0, DateTimeKind.Utc);
         var rejected = AddStay(active, "Rifiutata", todayInRome.AddDays(1), BookingStatus.CheckedIn);
@@ -871,15 +859,10 @@ public class ComplianceWizardServiceTests
 
         var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(org.Id));
 
-        // 24 hours from the arrival that was registered.
         Assert.Equal(new DateTime(2026, 9, 23, 10, 0, 0, DateTimeKind.Utc), Assert.Single(summary.AlloggiatiManualRequired.Items).DueAt);
-        // 24 hours from the start of the arrival day (23/09 in Rome) when no arrival was registered.
         Assert.Equal(new DateTime(2026, 9, 23, 22, 0, 0, DateTimeKind.Utc), Assert.Single(summary.AlloggiatiFailures.Items).DueAt);
-        // The guest data are due when the guest arrives: the start of the day of the check-in.
         Assert.Equal(new DateTime(2026, 9, 21, 22, 0, 0, DateTimeKind.Utc), summary.GuestCheckInsIncomplete.Items.Single(i => i.Id == departing.Id).DueAt);
-        // The departure is due on the day the guest leaves.
         Assert.Equal(new DateTime(2026, 9, 23, 22, 0, 0, DateTimeKind.Utc), Assert.Single(summary.CheckoutsDue.Items).DueAt);
-        // No date fixes the activation of a property, nor the readiness after a departure.
         Assert.All(summary.PropertiesPending.Items, i => Assert.Null(i.DueAt));
         Assert.Null(Assert.Single(summary.TurnoversPending.Items).DueAt);
 
@@ -954,7 +937,6 @@ public class ComplianceWizardServiceTests
         var restricted = await service.GetSummaryAsync(new HostScope(org.Id, GrantedToUserId: "auth0|collab"));
         var orgWide = await service.GetSummaryAsync(new HostScope(org.Id));
 
-        // Only the properties it was given, in every section the cockpit has; the counts follow the items.
         Assert.Equal([grantedPending.Id], restricted.PropertiesPending.Items.Select(i => i.Id));
         Assert.Equal(1, restricted.PropertiesPending.Count);
         Assert.Equal([departing[granted.Id].Id], restricted.CheckoutsDue.Items.Select(i => i.Id));
@@ -964,7 +946,6 @@ public class ComplianceWizardServiceTests
         Assert.DoesNotContain(departing[hidden.Id].Id, restricted.GuestCheckInsIncomplete.Items.Select(i => i.Id));
         Assert.Contains(departing[granted.Id].Id, restricted.AlloggiatiManualRequired.Items.Select(i => i.Id));
 
-        // The whole org sees both properties.
         Assert.Equal(new[] { grantedPending.Id, hiddenPending.Id }.Order(), orgWide.PropertiesPending.Items.Select(i => i.Id).Order());
         Assert.Equal(2, orgWide.CheckoutsDue.Count);
         Assert.Equal(2, orgWide.AlloggiatiFailures.Count);
@@ -1006,7 +987,6 @@ public class ComplianceWizardServiceTests
         await using var db = CreateDb(nameof(StartCheckoutWizard_ConfirmedBookingWithoutArrival_Returns409UntilTheHostRegistersTheArrival));
         var property = await SeedFullyCompliantPropertyAsync(db);
         property.ComplianceStatus = PropertyComplianceStatus.Active;
-        // Rome 24/09 00:30: the departure day of the stay has started.
         var checkout = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
         var guest = new Guest
         {
@@ -1038,7 +1018,6 @@ public class ComplianceWizardServiceTests
             new[] { "stay-summary", "alloggiati", "cleaning", "tourist-tax", "property-ready" },
             started.Steps.Select(s => s.Id));
         Assert.Equal(CheckoutWizardStep.StaySummary, started.CurrentStep);
-        // Nothing declared: the property is not assumed ready (A5-24), it stays a turnover of the cockpit.
         Assert.False(completed.PropertyReady);
         Assert.Equal(BookingStatus.CheckedOut, completed.Booking.Status);
     }
@@ -1122,7 +1101,6 @@ public class ComplianceWizardServiceTests
         Assert.Equal(1, await db.StayCheckouts.CountAsync());
         Assert.Contains(reopened.Steps, s => s.Id == "cleaning" && s.Status == "complete");
         Assert.Contains(reopened.Steps, s => s.Id == "property-ready" && s.Status == "pending");
-        // Progress only: nothing was closed.
         Assert.Equal(BookingStatus.CheckedIn, reopened.Booking.Status);
         Assert.Null(reopened.Checkout.CompletedAt);
     }
@@ -1231,13 +1209,10 @@ public class ComplianceWizardServiceTests
 
         var notReady = Stay(property, today, BookingStatus.CheckedOut, declaredReady: false);
         Stay(property, today.AddDays(-3), BookingStatus.CheckedOut, declaredReady: true);
-        // Not ready, but a later stay of the same property has arrived: it was ready for it.
         Stay(otherProperty, today.AddDays(-5), BookingStatus.CheckedOut, declaredReady: false);
         var laterStay = Stay(otherProperty, today.AddDays(1), BookingStatus.CheckedIn, declaredReady: null);
         laterStay.CheckInDate = today.AddDays(-2);
-        // Checked out before CO-17: no record, not listed.
         Stay(property, today.AddDays(-10), BookingStatus.CheckedOut, declaredReady: null);
-        // Wizard still open: not a turnover yet.
         Stay(property, today, BookingStatus.CheckedIn, declaredReady: false, completed: false);
         await db.SaveChangesAsync();
 
@@ -1273,7 +1248,6 @@ public class ComplianceWizardServiceTests
     {
         await using var db = CreateDb(nameof(Summary_CheckoutsDue_TodaysDeparturesInRomeConfirmedOrCheckedInAndOpenStays));
         var property = await SeedPropertyAsync(db);
-        // 2026-09-23 22:30 UTC is already 24/09 in Rome.
         var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
 
         Booking Stay(DateTime checkout, BookingStatus status)

@@ -45,23 +45,19 @@ public class AccessCodeScopeProofTests
         await db.SaveChangesAsync();
         var service = new AccessCodeService(db, NullLogger<AccessCodeService>.Instance);
 
-        // An org-wide caller (the owner, the administrators, the property managers) reads both, once verified.
         var orgWide = new HostScope(orgId);
         Assert.Equal(LockCodeA, await service.GetAccessCodeAsync(verifiedA, "auth0|admin", orgWide));
         Assert.Equal(LockCodeB, await service.GetAccessCodeAsync(verifiedB, "auth0|admin", orgWide));
 
-        // A collaborator «Solo alcuni» given the property A: its code, not the code of B (it is as absent as a booking that does not exist).
         var someProperties = new HostScope(orgId, GrantedToUserId: Member);
         Assert.Equal(LockCodeA, await service.GetAccessCodeAsync(verifiedA, Member, someProperties));
         Assert.Null(await service.GetAccessCodeAsync(verifiedB, Member, someProperties));
         Assert.Null(await service.GetAccessCodeAsync(Guid.NewGuid(), Member, someProperties));
 
-        // The account that owns A alone (the rule of before the team).
         var legacyOwner = new HostScope(orgId, OwnerId: "auth0|owner-a");
         Assert.Equal(LockCodeA, await service.GetAccessCodeAsync(verifiedA, "auth0|owner-a", legacyOwner));
         Assert.Null(await service.GetAccessCodeAsync(verifiedB, "auth0|owner-a", legacyOwner));
 
-        // Inside the scope the verification gate still decides; another org's caller reaches nothing.
         Assert.Null(await service.GetAccessCodeAsync(unverifiedA, Member, someProperties));
         var anotherOrg = new HostScope(Guid.NewGuid());
         Assert.Null(await service.GetAccessCodeAsync(verifiedA, "auth0|stranger", anotherOrg));

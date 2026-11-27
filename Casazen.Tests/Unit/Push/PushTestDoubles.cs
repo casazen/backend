@@ -10,7 +10,6 @@ using Moq;
 
 namespace Casazen.Tests.Unit.Push;
 
-/// <summary>Mock of the Expo push API: records every request and answers as configured (default: every ticket ok).</summary>
 public sealed class FakeExpoPushClient : IExpoPushClient
 {
     private readonly ConcurrentQueue<IReadOnlyList<ExpoPushMessage>> _sendRequests = new();
@@ -18,30 +17,23 @@ public sealed class FakeExpoPushClient : IExpoPushClient
     private readonly ConcurrentQueue<Func<IReadOnlyList<ExpoPushMessage>, ExpoSendResult>> _nextSendAnswers = new();
     private int _ticketNumber;
 
-    /// <summary>Send requests received, in order: one list of messages per HTTP call.</summary>
     public IReadOnlyList<IReadOnlyList<ExpoPushMessage>> SendRequests => _sendRequests.ToList();
 
-    /// <summary>Every message received, all calls together.</summary>
     public IReadOnlyList<ExpoPushMessage> Messages => _sendRequests.SelectMany(r => r).ToList();
 
     public IReadOnlyList<IReadOnlyList<string>> ReceiptRequests => _receiptRequests.ToList();
 
-    /// <summary>Tokens whose ticket is an error with this code (e.g. <c>DeviceNotRegistered</c>).</summary>
     public Dictionary<string, string> TicketErrors { get; } = new(StringComparer.Ordinal);
 
-    /// <summary>Receipts answered by <see cref="GetReceiptsAsync"/>; a ticket id missing here has no receipt yet.</summary>
     public Dictionary<string, ExpoPushReceipt> Receipts { get; } = new(StringComparer.Ordinal);
 
-    /// <summary>When set, <see cref="GetReceiptsAsync"/> fails with this error.</summary>
     public string? ReceiptsError { get; set; }
 
-    /// <summary>When set, a send waits for it: a call made inside an HTTP request would block that request.</summary>
     public Task? SendGate { get; set; }
 
     /// <summary>Answers the next send request with <paramref name="answer"/> instead of ok tickets.</summary>
     public void AnswerNextSend(Func<IReadOnlyList<ExpoPushMessage>, ExpoSendResult> answer) => _nextSendAnswers.Enqueue(answer);
 
-    /// <summary>Answers the next send request with a whole-request failure.</summary>
     public void FailNextSend(ExpoSendOutcome outcome, string error = "Http503") =>
         AnswerNextSend(_ => ExpoSendResult.Failure(outcome, error));
 
@@ -76,7 +68,6 @@ public sealed class FakeExpoPushClient : IExpoPushClient
     }
 }
 
-/// <summary>Records the pushes queued by the services (key, audience, payload).</summary>
 public sealed class RecordingPushQueue : IPushNotificationService
 {
     private readonly ConcurrentQueue<QueuedPushRecord> _queued = new();
@@ -124,7 +115,6 @@ public sealed class PushPipeline
     public PushDeliveryJob CreateJob(AppDbContext db) =>
         new(db, Expo, TimeProvider, NullLogger<PushDeliveryJob>.Instance);
 
-    /// <summary>Runs every queued job once, in order.</summary>
     public async Task RunQueuedJobsAsync(AppDbContext db)
     {
         foreach (var job in Jobs)

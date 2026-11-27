@@ -17,7 +17,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>The default integration factory with the flag <c>SupplierRequestAutoCancel</c> on (it is off by default).</summary>
 public sealed class AutoCancelEnabledFactory : CasazenWebApplicationFactory
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -53,7 +52,6 @@ public class ServiceRequestAutoCancelPostgresTests(AutoCancelEnabledFactory fact
         Assert.NotNull(stored.CancelledAt);
         Assert.Null(stored.ResponseDueAt);
 
-        // One push for the host and one for the supplier, queued for the Hangfire worker.
         var key = PushDeliveryKeys.ServiceRequestStatus(id, ServiceRequestStatus.Annullato);
         Assert.Equal(2, QueuedPushJobs().Count(job => (string)job.Args[0] == key));
     }
@@ -73,7 +71,6 @@ public class ServiceRequestAutoCancelPostgresTests(AutoCancelEnabledFactory fact
             Assert.Equal(HttpStatusCode.OK, proposal.StatusCode);
         }
 
-        // Past the deadline of every one of them; only the one nobody answered is cancelled.
         var past = DateTime.UtcNow.AddMinutes(-5);
         await factory.ChangeRequestAsync(taken, r => r.ResponseDueAt = past);
         await factory.ChangeRequestAsync(withProposal, r => r.ResponseDueAt = past);
@@ -124,7 +121,6 @@ public class ServiceRequestAutoCancelPostgresTests(AutoCancelEnabledFactory fact
             Assert.Equal(ServiceRequestStatus.Richiesto, (await factory.LoadRequestAsync(id)).Status);
         }
 
-        // The lock is released with the handle: the next run takes it and does the work.
         var run = await RunAsync();
         Assert.False(run.Skipped);
         Assert.True(run.Cancelled >= 1);
@@ -137,7 +133,6 @@ public class ServiceRequestAutoCancelPostgresTests(AutoCancelEnabledFactory fact
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var id = await factory.CreateRequestAsync(world);
         await factory.ChangeRequestAsync(id, r => r.ResponseDueAt = DateTime.UtcNow.AddMinutes(-1));
-        // The run and the take read the request as unanswered and are held before saving until both got there.
         await using var app = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
             SaveRendezvous.HoldParallelSaves(services, parties: 2)));
 
@@ -156,22 +151,18 @@ public class ServiceRequestAutoCancelPostgresTests(AutoCancelEnabledFactory fact
         var stored = await factory.LoadRequestAsync(id);
         if (take.StatusCode == HttpStatusCode.OK)
         {
-            // The supplier answered first: the run counted a conflict and left the take as it is.
             Assert.Equal(ServiceRequestStatus.PresoInCarico, stored.Status);
             Assert.NotNull(stored.TakenAt);
             Assert.True(run.Conflicts >= 1, $"Conflicts {run.Conflicts}");
         }
         else
         {
-            // The run cancelled first: the take got 409 and nothing of it was saved.
             Assert.Equal(HttpStatusCode.Conflict, take.StatusCode);
             Assert.Equal(ServiceRequestStatus.Annullato, stored.Status);
             Assert.Null(stored.TakenAt);
             Assert.True(run.Cancelled >= 1, $"Cancelled {run.Cancelled}");
         }
     }
-
-    // ─── helpers ───
 
     private async Task<ServiceRequestAutoCancelRun> RunAsync()
     {

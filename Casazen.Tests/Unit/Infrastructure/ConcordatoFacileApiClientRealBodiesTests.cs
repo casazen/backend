@@ -45,7 +45,6 @@ public class ConcordatoFacileApiClientRealBodiesTests
         }
     }
 
-    /// <summary>The practice that CF received without a link to a contract (<c>leaseId</c> null), and one that is linked.</summary>
     [Theory]
     [MemberData(nameof(Practices))]
     public async Task GetPractice_RealBody_IsReadFieldForField(string file)
@@ -61,10 +60,6 @@ public class ConcordatoFacileApiClientRealBodiesTests
         Assert.Equal<Guid?>(leaseId is null ? null : Guid.Parse(leaseId), practice.LeaseId);
     }
 
-    /// <summary>
-    /// The saved answers (the practices of the contracts and the single ones) keep covering every status and every close reason of §5 of
-    /// the specification: <c>Received</c> is only in the practice that CF received without a contract.
-    /// </summary>
     [Fact]
     public void RealBodies_CoverEveryStatusAndEveryCloseReasonOfTheSpecification()
     {
@@ -82,7 +77,7 @@ public class ConcordatoFacileApiClientRealBodiesTests
     private static void AssertReadFieldForField(JsonNode expected, PracticeDto actual)
     {
         Assert.Equal((string)expected["practiceId"]!, actual.PracticeId);
-        Assert.Equal((string)expected["status"]!, actual.Status.ToString()); // a status that the client does not know would be Unknown
+        Assert.Equal((string)expected["status"]!, actual.Status.ToString());
         Assert.Equal(Utc((string)expected["statusChangedAt"]!), actual.StatusChangedAt);
         Assert.Equal(DateTimeKind.Utc, actual.StatusChangedAt.Kind);
         var submittedAt = (string?)expected["submittedAt"];

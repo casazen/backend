@@ -118,7 +118,6 @@ public class ChildEntityTenantIsolationIntegrationTests : IClassFixture<OtaPartn
                 .Where(x => x.Id == s.SessionA)
                 .ExecuteUpdateAsync(u => u.SetProperty(x => x.Status, GuestCheckInSessionStatus.Scaduto)));
 
-            // B keeps seeing its own child rows.
             Assert.NotNull(await dbB.PropertyDocuments.FindAsync(s.DocumentB));
         }
 
@@ -257,7 +256,6 @@ public class ChildEntityTenantIsolationIntegrationTests : IClassFixture<OtaPartn
         UploadedBy = property.OwnerId,
     };
 
-    // Without a tenant context the filter is off, like in a background job (no HTTP request in the scope).
     private static AppDbContext NewDb(IServiceScope scope, ITenantContext? tenant = null) =>
         new(
             scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDbContext>>(),

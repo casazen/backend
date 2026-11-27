@@ -49,7 +49,6 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
             numberOfGuests = 3,
             numberOfChildren = 0,
             specialRequests = "Culla in camera",
-            // Mass-assignment attempt (A2-07): none of these may reach the booking.
             status = "Cancelled",
             source = "Airbnb",
             basePrice = 1m,
@@ -68,7 +67,6 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
         Assert.Equal(BookingSource.Manual, stored.Source);
         Assert.Equal(before.GuestId, stored.GuestId);
         Assert.Equal(before.OrgId, stored.OrgId);
-        // Priced again by the server: 5 nights x 100 + 50 cleaning; no tourist tax rate for Rome in CasaZen.
         Assert.Equal(550m, stored.BasePrice);
         Assert.Equal(50m, stored.CleaningFee);
         Assert.Equal(550m, stored.TotalPrice);
@@ -153,7 +151,6 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
         Assert.Equal("booking_stay_locked", await ProblemCodeAsync(extendStay, HttpStatusCode.UnprocessableEntity));
         Assert.Equal("booking_not_editable", await ProblemCodeAsync(editCancelled, HttpStatusCode.UnprocessableEntity));
         Assert.Equal("booking_checkin_in_past", await ProblemCodeAsync(moveToPast, HttpStatusCode.UnprocessableEntity));
-        // The dates of a stay already started are never validated again: the notes can still change (A2-08).
         Assert.Equal(HttpStatusCode.OK, notesDuringStay.StatusCode);
         Assert.Equal("Chiave al vicino", (await LoadAsync(checkedIn)).SpecialRequests);
         Assert.Equal(today.AddDays(20), (await LoadAsync(future)).CheckInDate);
@@ -283,7 +280,6 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
     [PostgresFact]
     public async Task CreateManualBooking_MinorsWithAges_QuoteAsksTheAgesAndTheTaxExemptsTheChild()
     {
-        // Firenze (rates migrated by RS-7): 6,00 per person per night, under-12s exempt.
         var (hostId, property) = await SeedHostPropertyAsync(city: "Firenze");
         using var host = _factory.CreateAuthenticatedClient(hostId, HostRole);
         var checkIn = TimeProvider.System.TodayInRome().AddDays(60);
@@ -314,7 +310,6 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
             (await createWithoutAges.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var stored = await LoadAsync((await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid());
-        // 2 adults x 6,00 x 3 nights; the 8-year-old is exempt.
         Assert.Equal(36.00m, stored.TouristTax);
         Assert.Equal(350m + 36.00m, stored.TotalPrice);
         Assert.Equal(2, stored.NumberOfAdults);
@@ -383,7 +378,6 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
         return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
     }
 
-    /// <summary>A host with its org and an active property (100 per night, 50 cleaning, 4 guests).</summary>
     private async Task<(string HostId, Property Property)> SeedHostPropertyAsync(string? city = null, string? connectAccount = null)
     {
         var hostId = $"auth0|pc07-{Guid.NewGuid():N}";
@@ -443,7 +437,6 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
 
     private sealed record PaidSeed(Guid BookingId, string PaymentIntentId, string GuestEmail);
 
-    /// <summary>A confirmed booking of the booking site, paid on Stripe on the host's connected account.</summary>
     private async Task<PaidSeed> SeedPaidBookingAsync(Property property, decimal amount)
     {
         using var scope = _factory.Services.CreateScope();
@@ -493,7 +486,6 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
         return await db.Bookings.IgnoreQueryFilters().AsNoTracking().SingleAsync(b => b.Id == bookingId);
     }
 
-    /// <summary>The default integration factory with a recording email queue.</summary>
     public sealed class LifecycleFactory : CasazenWebApplicationFactory
     {
         internal RecordingEmailQueue Emails { get; } = new();

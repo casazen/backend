@@ -25,15 +25,9 @@ namespace Casazen.Tests.Integration;
 /// </summary>
 public class PublicReviewPostgresTests
 {
-    // The stay ended on 11 November 2026 and the services think it is the 12th in Rome, the first day to review.
     private static readonly DateTime CheckOut = new(2026, 11, 11, 0, 0, 0, DateTimeKind.Utc);
     private static readonly DateTimeOffset Now = new(2026, 11, 12, 9, 0, 0, TimeSpan.Zero);
 
-    /// <summary>
-    /// Data rule: two submissions of the same link at the same moment make one review and one event. Both read "no review yet" and add their review and their event; each is held when it is
-    /// about to write, until both are there, so the unique index on the booking refuses the one that writes second (23505). The refused one answers 409
-    /// <c>review_already_submitted</c> and leaves neither its review nor its event in its unit of work; the database keeps one review and the one <c>ReviewReceived</c> of that review.
-    /// </summary>
     [PostgresFact]
     public async Task Submit_TheSameLinkTwiceAtTheSameMoment_LeavesOneReviewAndOneEvent_Test()
     {
@@ -60,7 +54,6 @@ public class PublicReviewPostgresTests
         var refused = Assert.Single(outcomes, o => o.Refused is not null).Refused!;
         Assert.Equal("review_already_submitted", refused.Code);
 
-        // The refused submission leaves nothing behind in its unit of work: neither its review nor its event.
         var loser = outcomes[0].Refused is not null ? one : other;
         Assert.DoesNotContain(loser.ChangeTracker.Entries(), e => e.State == EntityState.Added);
 
@@ -72,7 +65,6 @@ public class PublicReviewPostgresTests
         Assert.Equal(ReviewReceivedPayload.DedupKeyOf(review.Id), recorded.DedupKey);
     }
 
-    /// <summary>The submission of the link on a context of its own, as one request of the guest: the review that was published, or the 409 it was refused with.</summary>
     private static async Task<(PublicReview? Review, DomainConflictException? Refused)> SubmitAsync(
         AppDbContext db,
         IDataProtectionProvider keys,
@@ -98,7 +90,6 @@ public class PublicReviewPostgresTests
         }
     }
 
-    /// <summary>A stay of the booking site that ended the day before the services' today, with its guest, in an org the scenario of the hosts seeds.</summary>
     private static async Task<(Guid OrgId, Guid BookingId)> SeedDirectStayAsync(PostgresTestDatabase database)
     {
         await using var db = database.CreateContext();
@@ -123,10 +114,6 @@ public class PublicReviewPostgresTests
         return (world.OrgId, booking.Id);
     }
 
-    /// <summary>
-    /// Holds each context about to write a new review until <paramref name="parties"/> of them are there, so the submissions that run at once have all read "no review yet" before any of
-    /// them writes.
-    /// </summary>
     private sealed class ReviewRendezvous(int parties) : SaveChangesInterceptor
     {
         private readonly TaskCompletionSource _allArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);

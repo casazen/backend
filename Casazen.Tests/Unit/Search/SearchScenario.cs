@@ -51,19 +51,14 @@ internal sealed record SearchWorld(
     Guid SuspendedOrgId,
     Guid IdleOrgId)
 {
-    /// <summary>The scope of the collaborator «Solo alcuni»: the first property only.</summary>
     public HostScope Collaborator => new(OrgId, GrantedToUserId: CollaboratorId);
 
-    /// <summary>The owner, the administrators, the managers: the whole org.</summary>
     public HostScope OrgWide => new(OrgId);
 
-    /// <summary>An account in no team that created every property of the org: the old rule.</summary>
     public HostScope OwnedByOwner => new(OrgId, OwnerId: OwnerId);
 
-    /// <summary>The scope of the second org.</summary>
     public HostScope OtherOrg => new(OtherOrgId);
 
-    /// <summary>What an owner who holds every permission may search.</summary>
     public Casazen.Core.Search.HostSearchAccess Everything(HostScope? scope = null) =>
         new(scope ?? OrgWide, true, true, true, true, true);
 }
@@ -72,10 +67,6 @@ internal static class SearchScenario
 {
     public static AppDbContext NewInMemoryDb() => HostScopeScenario.NewInMemoryDb();
 
-    /// <summary>
-    /// Writes the world with its own org, owner and collaborator. <paramref name="computeKeys"/> writes the search keys too
-    /// (in-memory; PostgreSQL computes them).
-    /// </summary>
     public static async Task<SearchWorld> SeedAsync(AppDbContext db, bool computeKeys)
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
@@ -100,11 +91,6 @@ internal static class SearchScenario
         return await SeedDataAsync(db, org.Id, owner.Id, collaborator.Id, computeKeys);
     }
 
-    /// <summary>
-    /// Writes the data of the world into an org that already exists with its owner and its collaborator (the HTTP tests build them
-    /// through the real services): the properties, the guests, the stays, the leases, the interventions, the suppliers, the other org,
-    /// and the grant of the first property to the collaborator. The caller sets the scope of the collaborator member to «Solo alcuni».
-    /// </summary>
     public static async Task<SearchWorld> SeedDataAsync(
         AppDbContext db, Guid orgId, string ownerId, string collaboratorId, bool computeKeys)
     {
@@ -119,7 +105,6 @@ internal static class SearchScenario
         db.Users.Add(otherOwner);
         await db.SaveChangesAsync();
 
-        // The suppliers: three active, one suspended. «Idle» was never asked anything by the host.
         db.SupplierProfiles.AddRange(
             Supplier(cleaners.Id, "Pulizie Splendore S.r.l.", "[\"cleaning\",\"laundry\"]", SupplierStatus.Active, $"pulizie-{suffix}"),
             Supplier(plumbers.Id, "Idraulica Rossi S.r.l.", "[\"plumbing\"]", SupplierStatus.Active, $"idraulica-{suffix}"),
@@ -139,7 +124,6 @@ internal static class SearchScenario
         await db.SaveChangesAsync();
         db.PropertyMemberAccesses.Add(new PropertyMemberAccess { OrgId = orgId, UserId = collaboratorId, PropertyId = trullo.Id });
 
-        // The guests. Jose has accents; the two Rossi share a surname; one guest was anonymized, one deleted, one has no stay.
         var jose = new Guest
         {
             OrgId = orgId,
@@ -174,7 +158,6 @@ internal static class SearchScenario
         db.Guests.AddRange(jose, maria, mario, anonymous, noStay, erased, foreignMaria);
         await db.SaveChangesAsync();
 
-        // Stays. The codes are in the alphabet of BookingCodes (no I, L, O, U).
         var stayJose = Stay(trullo, jose, "7K3M9PQ2XV", 2026, 10, 10);
         var stayMaria = Stay(casaBella, maria, "A1B2C3D4E5", 2026, 10, 12);
         var stayMarioTrullo = Stay(trullo, mario, "ZXCV12345K", 2026, 10, 14);
@@ -184,7 +167,6 @@ internal static class SearchScenario
         db.Bookings.AddRange(stayJose, stayMaria, stayMarioTrullo, stayMarioBella, stayAnonymous, stayForeign);
         await db.SaveChangesAsync();
 
-        // Leases: the Verdi (two tenants) at the long-term property, one tenant at the trullo; the landlord is a party too.
         var leaseVerdi = Lease(orgId, loft.Id, 1);
         var leaseNeri = Lease(orgId, trullo.Id, 2);
         var leaseForeign = Lease(otherOrg.Id, foreign.Id, 3);
@@ -199,12 +181,10 @@ internal static class SearchScenario
             Party(leaseNeri, PartyRole.Tenant, 0, "Luca", "Neri"),
             Party(leaseForeign, PartyRole.Tenant, 0, "Giulia", "Verdi"));
 
-        // Interventions asked of the suppliers by the host (short stay, long term) and by the other org.
         var cleaning = Request(orgId, trullo.Id, stayJose.Id, cleaners.Id, ServiceRequestRentalContext.ShortRent, "cleaning", "Pulizia finale");
         var plumbing = Request(orgId, casaBella.Id, stayMaria.Id, plumbers.Id, ServiceRequestRentalContext.ShortRent, "plumbing", null);
         var boiler = Request(orgId, loft.Id, null, plumbers.Id, ServiceRequestRentalContext.LongRent, "maintenance", "Riparazione caldaia");
         var foreignRequest = Request(otherOrg.Id, foreign.Id, stayForeign.Id, cleaners.Id, ServiceRequestRentalContext.ShortRent, "cleaning", "Pulizia finale");
-        // The suspended supplier was asked something too, but it is not active.
         var suspendedRequest = Request(orgId, casaBella.Id, stayMaria.Id, suspended.Id, ServiceRequestRentalContext.ShortRent, "plumbing", "Sblocco scarico");
         db.ServiceRequests.AddRange(cleaning, plumbing, boiler, foreignRequest, suspendedRequest);
         await db.SaveChangesAsync();

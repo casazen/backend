@@ -5,14 +5,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// ADR-024-R2 (privacy): the fields that name a person never stay in the plain half of a wizard draft, at any depth of what the person
-/// typed, and the two halves put together give back exactly what was typed (NF-03: never lose data).
-/// </summary>
 public class WizardDraftPiiTests
 {
-    // A booking with the booker's data at the top, a guest list with personal fields in some elements, an object that is personal as a
-    // whole (address), a null personal field and a field spelled with another case (GuestEmail).
     private const string Typed = """
         {
           "step": "ospiti",
@@ -55,13 +49,11 @@ public class WizardDraftPiiTests
 
         var split = WizardDraftPii.Split(typed.RootElement);
 
-        // Neither the values nor the names of the personal fields (whatever their case) are in the plain half.
         foreach (var secret in Secrets)
             Assert.DoesNotContain(secret, split.PlainJson, StringComparison.OrdinalIgnoreCase);
         foreach (var name in WizardDraftPiiFields.PII_FIELD_NAMES)
             Assert.DoesNotContain($"\"{name}\"", split.PlainJson, StringComparison.OrdinalIgnoreCase);
 
-        // What is not personal stays, in the same shape: the list keeps its three elements.
         using var plain = JsonDocument.Parse(split.PlainJson);
         var guests = plain.RootElement.GetProperty("guests");
         Assert.Equal(3, guests.GetArrayLength());
@@ -70,7 +62,6 @@ public class WizardDraftPiiTests
         Assert.Equal("Villa del Lago (demo)", plain.RootElement.GetProperty("propertyName").GetString());
         Assert.Equal(180.50m, plain.RootElement.GetProperty("price").GetProperty("nightly").GetDecimal());
 
-        // The personal half holds them all, under the path that leads to them (a null placeholder for the guest with none).
         Assert.NotNull(split.PersonalJson);
         using var personal = JsonDocument.Parse(split.PersonalJson!);
         Assert.Equal("Mario Rossi", personal.RootElement.GetProperty("guestName").GetString());
@@ -117,13 +108,10 @@ public class WizardDraftPiiTests
     [Fact]
     public void Split_EveryPersonalFieldName_SecretsAndIdentifiersIncluded_NeverStaysInThePlainHalf_WhateverTheCaseAndTheDepth()
     {
-        // The list is exactly this one.
         Assert.Equal(
             PersonalFieldNames.Select(n => n.ToLowerInvariant()).Order(StringComparer.Ordinal),
             WizardDraftPiiFields.PII_FIELD_NAMES.Select(n => n.ToLowerInvariant()).Order(StringComparer.Ordinal));
 
-        // Every name three times, each with a value of its own: as the code spells it at the top, in capitals inside an object (the account of
-        // the ComplianceSender wizard, say) and in lower case inside the element of a list (the guests of a check-in).
         var secrets = new List<string>();
         var account = new JsonObject { ["label"] = "Alloggiati Web" };
         var guest = new JsonObject { ["room"] = 1 };
@@ -146,7 +134,6 @@ public class WizardDraftPiiTests
         using var document = JsonDocument.Parse(typed.ToJsonString());
         var split = WizardDraftPii.Split(document.RootElement);
 
-        // No value and no name (whatever its case) stays in the plain half; every value is in the personal one.
         Assert.NotNull(split.PersonalJson);
         foreach (var secret in secrets)
         {
@@ -157,7 +144,6 @@ public class WizardDraftPiiTests
         foreach (var name in PersonalFieldNames)
             Assert.DoesNotContain($"\"{name}\"", split.PlainJson, StringComparison.OrdinalIgnoreCase);
 
-        // What is not personal stays in its shape, and the two halves put together give back exactly what was typed.
         using var plain = JsonDocument.Parse(split.PlainJson);
         Assert.Equal("credenziali", plain.RootElement.GetProperty("step").GetString());
         Assert.Equal("Alloggiati Web", plain.RootElement.GetProperty("account").GetProperty("label").GetString());
@@ -166,7 +152,6 @@ public class WizardDraftPiiTests
         Assert.Equal(Canonical(document.RootElement), Canonical(merged.RootElement));
     }
 
-    /// <summary>The same JSON whatever the order of the properties: objects sorted by name, strings and numbers as they are.</summary>
     private static string Canonical(JsonElement element) => element.ValueKind switch
     {
         JsonValueKind.Object => "{" + string.Join(

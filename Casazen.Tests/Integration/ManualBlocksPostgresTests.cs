@@ -29,7 +29,6 @@ public class ManualBlocksPostgresTests : IClassFixture<ManualBlocksPostgresTests
 {
     private const string HostRole = "PropertyOwner";
 
-    // "Today" for the host: 2 October of next year at 10:00 in Rome (FD-06, fixed clock).
     private static readonly DateTime Today = PublicAvailabilityPostgresTests.NextYear(10, 2);
     private static readonly DateTimeOffset Now = new(Today.AddHours(8), TimeSpan.Zero);
 
@@ -64,11 +63,9 @@ public class ManualBlocksPostgresTests : IClassFixture<ManualBlocksPostgresTests
             Assert.Equal(CalendarBlockReason.Owner, row.ManualReason);
         });
 
-        // Booking site (BK-05): the three nights are taken, the departure day is free.
         var booked = await BookedDatesAsync(property.Id, Today, Today.AddDays(15));
         Assert.Equal(new[] { 0, 1, 2 }.Select(d => from.AddDays(d).ToString("yyyy-MM-dd")).ToList(), booked);
 
-        // Export to the OTAs (PC-12): an all-day event, neutral SUMMARY, never the reason or the note.
         var ics = await ExportAsync(host, property.Id);
         Assert.Contains($"UID:block-{blockId}", ics);
         Assert.Contains($"DTSTART;VALUE=DATE:{from:yyyyMMdd}", ics);
@@ -76,7 +73,6 @@ public class ManualBlocksPostgresTests : IClassFixture<ManualBlocksPostgresTests
         Assert.DoesNotContain("Ferie", ics);
         Assert.DoesNotContain("Owner", ics);
 
-        // Host calendar: a block entered by hand, with its reason and note.
         var calendar = await host.GetFromJsonAsync<JsonElement>(
             $"/api/bookings/calendar?propertyId={property.Id}&startDate={from:yyyy-MM-dd}&endDate={from.AddDays(1):yyyy-MM-dd}");
         var item = calendar.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("id").GetGuid() == blockId);
@@ -86,7 +82,6 @@ public class ManualBlocksPostgresTests : IClassFixture<ManualBlocksPostgresTests
         Assert.Equal("Ferie in famiglia", item.GetProperty("summary").GetString());
         Assert.Equal(JsonValueKind.Null, item.GetProperty("channel").ValueKind);
 
-        // List of the manual blocks (read policy).
         var list = await host.GetFromJsonAsync<JsonElement>($"/api/properties/{property.Id}/blocks");
         Assert.Equal(blockId, list.EnumerateArray().Single().GetProperty("id").GetGuid());
     }
@@ -122,7 +117,6 @@ public class ManualBlocksPostgresTests : IClassFixture<ManualBlocksPostgresTests
             HttpStatusCode.Conflict,
             "calendar_block_overlaps_booking");
 
-        // Same-day turnover: the check-out day of the booking is free for a block.
         Assert.Equal(
             HttpStatusCode.Created,
             (await CreateAsync(host, property.Id, Today.AddDays(6), Today.AddDays(8), "Maintenance")).StatusCode);
@@ -140,14 +134,12 @@ public class ManualBlocksPostgresTests : IClassFixture<ManualBlocksPostgresTests
         using var host = Host(property);
         await CreatedAsync(host, property.Id, Today.AddDays(4), Today.AddDays(6), "Owner");
 
-        // The final check of the repository (under the property lock) reads the blocks too, not only the callers' pre-check.
         await using var scope = _factory.Services.CreateAsyncScope();
         var repository = scope.ServiceProvider.GetRequiredService<IBookingRepository>();
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => repository.AddAsync(NewBooking(property, Today.AddDays(5), Today.AddDays(7), BookingSource.Manual)));
         Assert.Contains("Property not available", error.Message);
 
-        // The nights around the block stay bookable.
         await repository.AddAsync(NewBooking(property, Today.AddDays(6), Today.AddDays(8), BookingSource.Manual));
     }
 
@@ -228,7 +220,6 @@ public class ManualBlocksPostgresTests : IClassFixture<ManualBlocksPostgresTests
         var longNote = await CreateAsync(host, property.Id, Today, Today.AddDays(1), "Other", new string('x', 201));
         Assert.Equal(HttpStatusCode.BadRequest, longNote.StatusCode);
 
-        // Today (Europe/Rome) is a valid first night.
         Assert.Equal(HttpStatusCode.Created, (await CreateAsync(host, property.Id, Today, Today.AddDays(1), "Other")).StatusCode);
     }
 
@@ -260,9 +251,7 @@ public class ManualBlocksPostgresTests : IClassFixture<ManualBlocksPostgresTests
             "calendar_block_not_manual");
         await WithDbAsync(async db => Assert.True(await db.CalendarBlocks.AnyAsync(b => b.Id == importedId)));
 
-        // A night already closed by a channel may be closed by hand too: it stays closed if the channel frees it.
         Assert.Equal(HttpStatusCode.Created, (await CreateAsync(host, property.Id, Today.AddDays(2), Today.AddDays(4), "Owner")).StatusCode);
-        // An imported block is not in the list of the manual blocks.
         var list = await host.GetFromJsonAsync<JsonElement>($"/api/properties/{property.Id}/blocks");
         Assert.DoesNotContain(list.EnumerateArray(), b => b.GetProperty("id").GetGuid() == importedId);
     }
@@ -284,12 +273,10 @@ public class ManualBlocksPostgresTests : IClassFixture<ManualBlocksPostgresTests
         Assert.Equal(
             HttpStatusCode.NotFound,
             (await intruder.DeleteAsync($"/api/properties/{property.Id}/blocks/{blockId}")).StatusCode);
-        // A block id of another property of the caller's org is not found either.
         Assert.Equal(
             HttpStatusCode.NotFound,
             (await intruder.DeleteAsync($"/api/properties/{other.Id}/blocks/{blockId}")).StatusCode);
 
-        // A long-term landlord has no short-rent property permission: 403 on the same property.
         using var landlord = _factory.CreateAuthenticatedClient(property.OwnerId, "LongTermLandlord");
         Assert.Equal(
             HttpStatusCode.Forbidden,
@@ -375,7 +362,6 @@ public class ManualBlocksPostgresTests : IClassFixture<ManualBlocksPostgresTests
         await action(scope.ServiceProvider.GetRequiredService<AppDbContext>());
     }
 
-    /// <summary>The integration host with a fixed clock (<see cref="Now"/>).</summary>
     public sealed class Factory : CasazenWebApplicationFactory
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)

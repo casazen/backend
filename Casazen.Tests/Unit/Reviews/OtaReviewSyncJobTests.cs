@@ -71,7 +71,6 @@ public class OtaReviewSyncJobTests
         var orgId = h.Granted.OrgId;
         var propertyId = h.Granted.PropertyId;
 
-        // Not eligible: another channel, a stay that was cancelled, no reservation on the channel manager, a stay that is not over, a stay whose window of sixty days is over.
         await h.AddStayAsync(orgId, propertyId, OtaReviewHarness.GrantedAccommodation, "HMBOOKING1", BookingSource.BookingCom);
         await h.AddStayAsync(orgId, propertyId, OtaReviewHarness.GrantedAccommodation, "HMCANCELED", status: BookingStatus.Cancelled);
         await h.AddStayAsync(orgId, propertyId, OtaReviewHarness.GrantedAccommodation, string.Empty);
@@ -80,7 +79,6 @@ public class OtaReviewSyncJobTests
 
         await RunAsync(h);
 
-        // The org that is not connected has no token to read with: its stay is left alone.
         ReadTimes(h, h.Granted, Times.Once());
         ReadTimes(h, h.Hidden, Times.Once());
         ReadsInAll(h, Times.Exactly(2));
@@ -135,7 +133,6 @@ public class OtaReviewSyncJobTests
         ReadTimes(h, recent, Times.Once());
         ReadsInAll(h, Times.Once());
 
-        // The next run reads the two that were never read; the one read a moment ago is not due.
         await RunAsync(h, cap: 5);
         ReadTimes(h, h.Granted, Times.Once());
         ReadTimes(h, h.Hidden, Times.Once());
@@ -169,7 +166,6 @@ public class OtaReviewSyncJobTests
 
         await RunAsync(h);
 
-        // The last calls of an org are the host's who replies and the chat's: the job never takes them.
         ReadTimes(h, h.Granted, Times.Never());
         ReadTimes(h, h.Hidden, Times.Never());
         ReadTimes(h, h.Other, Times.Once());
@@ -190,7 +186,6 @@ public class OtaReviewSyncJobTests
 
         await RunAsync(h);
 
-        // Whatever happened to the stays of org A (stopped by the limit, or failed on its own), the stay of org B is read and stored.
         ReadTimes(h, h.Other, Times.Once());
         var rows = await h.ReadAsync(db => db.OtaReviews.ToListAsync());
         Assert.Contains(rows, r => r.BookingId == h.Other.BookingId);
@@ -212,7 +207,6 @@ public class OtaReviewSyncJobTests
         var refused = await h.ReviewOfAsync(h.Granted);
         Assert.Equal(OtaReviewErrorCodes.ReviewNotAvailable, refused.LastSyncError);
 
-        // Seven hours later the booking that was read is due again, and the refused one is not (it waits a day).
         h.Clock.Advance(TimeSpan.FromHours(7));
         await RunAsync(h);
         ReadTimes(h, h.Granted, Times.Once());
@@ -223,10 +217,6 @@ public class OtaReviewSyncJobTests
         ReadTimes(h, h.Granted, Times.Exactly(2));
     }
 
-    /// <summary>
-    /// An action nobody confirmed (a reply whose call had no answer) is read again whatever the age of the stay: the window of sixty days is lifted for it, also after a read that failed, and the
-    /// read ends it (an error the host can act on after an hour); a stay of the same age with nothing waiting stays out.
-    /// </summary>
     [Fact]
     public async Task Job_AnActionNobodyConfirmedOnAStayOlderThanTheWindow_IsReadAgain_AndEndsAsAnErrorTheHostCanActOn()
     {
@@ -236,7 +226,6 @@ public class OtaReviewSyncJobTests
         h.ChannelHasNothing(h.Hidden);
         var orgId = h.Granted.OrgId;
 
-        // Two stays that ended forty days ago, each with the review of the guest out; the host replied to one, and the call to the channel manager had no answer.
         var waiting = await h.AddStayAsync(orgId, h.Granted.PropertyId, OtaReviewHarness.GrantedAccommodation, "HMOLD00001", endedDaysAgo: 40);
         var quiet = await h.AddStayAsync(orgId, h.Granted.PropertyId, OtaReviewHarness.GrantedAccommodation, "HMOLD00002", endedDaysAgo: 40);
         h.ChannelHasReview(waiting);
@@ -250,7 +239,6 @@ public class OtaReviewSyncJobTests
             await rig.Service.ReplyAsync(review.Id, "Grazie di cuore!", "reply-key-0001", "auth0|titolare");
         Assert.Equal(OtaReviewActionState.ManualVerify, (await h.ReviewOfAsync(waiting)).HostReplyState);
 
-        // Thirty days later both stays are seventy days old, past the window: the one that waits for nothing is not read, the unconfirmed one is, and a read that fails does not end the wait.
         h.Clock.Advance(TimeSpan.FromDays(30));
         h.Client.Invocations.Clear();
         h.Client
@@ -276,8 +264,6 @@ public class OtaReviewSyncJobTests
         Assert.Equal(OtaReviewErrorCodes.ReplyNotDelivered, ended.HostReplyError);
         Assert.Null(ended.NextPollAt);
     }
-
-    // ─── The schedule and the registrations ───
 
     private static IFeatureFlags Flags(bool octorateConnector)
     {

@@ -21,10 +21,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
 {
     private LongRentWorld _world = null!;
 
-    /// <summary>
-    /// The property the drafts of these tests are written on: owner A's, ready, and with no lease. P1 of the world has four, which cover
-    /// the days of the drafts here, and two leases of one property cannot cover the same days (LR-OVERLAP).
-    /// </summary>
     private Guid _draftProperty;
 
     public async Task InitializeAsync()
@@ -45,7 +41,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         return await action(scope.ServiceProvider.GetRequiredService<AppDbContext>());
     }
 
-    /// <summary>Another property of the world's org, long-term and ready (its APE and its cadastral data), owned by <paramref name="ownerId"/>.</summary>
     private async Task<Guid> AddPropertyAsync(string ownerId)
     {
         var id = await WithDbAsync(async db =>
@@ -74,8 +69,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
 
     private Task<LeaseContract> LoadAsync(Guid id) =>
         WithDbAsync(db => db.LeaseContracts.IgnoreQueryFilters().AsNoTracking().Include(l => l.Parties).Include(l => l.Events).SingleAsync(l => l.Id == id));
-
-    // ---- access --------------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task TheHost_EncryptsTheDraftAndTheResidence_TheWayItDoesInProduction()
@@ -119,7 +112,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     [Fact]
     public async Task EveryEndpoint_ARoleWithoutTheLeasePermissions_Is403()
     {
-        // A short-term host has no long-rent context: the policy refuses before the row is looked at.
         var shortHostId = $"auth0|lr12-short-{Guid.NewGuid():N}";
         await factory.SeedOrgForOwnerAsync(shortHostId);
         using var shortHost = factory.CreateAuthenticatedClient(shortHostId, "PropertyOwner");
@@ -141,8 +133,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
             Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         }
     }
-
-    // ---- create --------------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Create_WithOnlyTheProperty_Is201_WithTheVersionTheFlowAndALocation()
@@ -214,7 +204,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         using var colleague = _world.ColleagueClient(factory);
         using var manager = _world.ManagerClient(factory);
 
-        // The colleague owns P3 only: P1 is another property of the org (403, not 404: it exists for them).
         Assert.Equal(
             HttpStatusCode.Forbidden,
             (await colleague.PostAsync("/api/leases/drafts", Body($$"""{"propertyId":"{{_draftProperty}}"}"""))).StatusCode);
@@ -235,8 +224,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         var warn = Assert.Single(review.GetProperty("checks").EnumerateArray(), c => c.GetProperty("code").GetString() == "property_short_mode");
         Assert.Equal("Warn", warn.GetProperty("severity").GetString());
     }
-
-    // ---- save and resume -----------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Save_IncompleteAndWrongValues_Are200_NeverA4xx_AndTheFlowSaysWhatIsMissing()
@@ -272,7 +259,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         var s3 = await PatchAsync(client, id, s2.GetProperty("version").GetInt32(), 3, """{"contractType":"Libero","taxRegime":"x","monthlyRent":12.5,"securityDeposit":500}""");
         var s4 = await PatchAsync(client, id, s3.GetProperty("version").GetInt32(), 4, """{"startDate":"1 novembre"}""");
 
-        // Another browser: a new client, the same user.
         using var other = Owner();
         var response = await other.GetAsync($"/api/leases/{id}/draft");
 
@@ -312,7 +298,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         Assert.Equal(new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc), lease.StartDate);
         Assert.Equal(new DateTime(2030, 10, 31, 0, 0, 0, DateTimeKind.Utc), lease.EndDate);
         Assert.Equal(2, lease.Parties.Count);
-        // It is in the list as every draft has always been, with the tenant's name, in preparation.
         var list = await JsonAsync(await client.GetAsync("/api/leases?view=InPreparation"));
         var row = Assert.Single(list.EnumerateArray(), r => r.GetProperty("id").GetGuid() == id);
         Assert.Equal("Draft", row.GetProperty("status").GetString());
@@ -349,7 +334,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         var (id, version) = await CreateAsync(client, _draftProperty);
         var first = await PatchAsync(client, id, version, 3, """{"monthlyRent":900}""");
 
-        // The second tab still has the version it opened with.
         using var secondTab = Owner();
         await ExpectProblemAsync(
             await secondTab.PatchAsync($"/api/leases/{id}/draft", SaveBody(version, 3, """{"monthlyRent":1000}""")),
@@ -446,7 +430,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
             await colleague.PatchAsync($"/api/leases/{id}/draft", SaveBody(version, 1, PropertyValues(stranger.Id))),
             HttpStatusCode.NotFound,
             "property_not_found");
-        // P1 belongs to the owner of the org, the colleague is not org-wide.
         Assert.Equal(
             HttpStatusCode.Forbidden,
             (await colleague.PatchAsync($"/api/leases/{id}/draft", SaveBody(version, 1, PropertyValues(_draftProperty)))).StatusCode);
@@ -457,8 +440,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
             HttpStatusCode.OK);
         Assert.Equal(mine, (await LoadAsync(id)).PropertyId);
     }
-
-    // ---- scope: a member limited to some properties --------------------------------------------------------------
 
     [Fact]
     public async Task ADraftOfAnotherProperty_IsInvisibleToAMemberWhoCannotHandleIt_EveryEndpointSays403_AndAnotherOrgSays404()
@@ -495,12 +476,9 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
             await ExpectProblemAsync(response, HttpStatusCode.NotFound, "lease_not_found");
         }
 
-        // Nothing changed.
         var lease = await LoadAsync(id);
         Assert.Equal((version, 900m), (lease.DraftVersion, lease.MonthlyRent));
     }
-
-    // ---- not a draft ---------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task ALeaseThatIsNotADraft_Get404_Patch409_Delete409_EverythingElseSaysNotADraft()
@@ -533,21 +511,17 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         var created = await ExpectAsync(response, HttpStatusCode.Created);
         var id = created.GetProperty("id").GetGuid();
 
-        // The response of the complete creation is the masked detail, with the new fields at the end.
         Assert.Equal("Created", created.GetProperty("origin").GetString());
         Assert.Equal(5, created.GetProperty("wizardMaxStep").GetInt32());
 
         var draft = await JsonAsync(await owner.GetAsync($"/api/leases/{id}/draft"));
 
         var flow = draft.GetProperty("flow");
-        // The residence was never asked by that form: the parties are incomplete for the wizard, which asks for it.
         Assert.Equal(["landlord_incomplete", "tenant_incomplete"], NeedCodes(flow, 2));
         Assert.Equal(["Done", "Todo", "Done", "Done", "Done"], Enumerable.Range(1, 5).Select(n => StateOf(flow, n)));
         Assert.Equal(950m, draft.GetProperty("values").GetProperty("monthlyRent").GetDecimal());
         Assert.Equal("2026-12-01", draft.GetProperty("values").GetProperty("startDate").GetString());
     }
-
-    // ---- the review ----------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Review_WithBlocks_CannotBeConfirmed_422_AndTheCompleteOneCan_ThenAChangeWithdrawsIt()
@@ -566,7 +540,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         Assert.NotEqual(JsonValueKind.Null, confirmed.GetProperty("reviewConfirmedAt").ValueKind);
         Assert.Equal("Done", StateOf(confirmed.GetProperty("flow"), 6));
 
-        // A value of the first five steps changes: the confirmation is withdrawn.
         var saved = await PatchAsync(client, id, version + 1, 3, """{"monthlyRent":950}""");
         Assert.Equal("Todo", StateOf(saved.GetProperty("flow"), 6));
         var lease = await LoadAsync(id);
@@ -594,8 +567,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         Assert.Equal(JsonValueKind.Null, reopened.GetProperty("reviewConfirmedAt").ValueKind);
     }
 
-    // ---- downloaded for signature --------------------------------------------------------------------------------
-
     [Fact]
     public async Task Sent_WithATemplateNotApproved_Is422_AndTheStateDoesNotChange()
     {
@@ -604,7 +575,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         await ExpectProblemAsync(await client.PostAsync($"/api/leases/{id}/sent", Body("{}")), HttpStatusCode.UnprocessableEntity, "lease_review_not_confirmed");
         var confirmed = await ExpectAsync(await client.PostAsync($"/api/leases/{id}/review/confirm", Body("{}")), HttpStatusCode.OK);
 
-        // The real gate of the real template service, which is not approved (the models are drafts, LR-D28).
         await ExpectProblemAsync(await client.PostAsync($"/api/leases/{id}/sent", Body("{}")), HttpStatusCode.UnprocessableEntity, "contract_template_not_approved");
 
         var lease = await LoadAsync(id);
@@ -613,11 +583,8 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         Assert.NotNull(lease.ReviewConfirmedAt);
         Assert.Equal(LeaseStatus.Draft, lease.Status);
         Assert.DoesNotContain(lease.Events, e => e.EventType == LeaseEventType.SentForSignature);
-        // The same gate answers the download of the contract itself.
         await ExpectProblemAsync(await client.GetAsync($"/api/leases/{id}/contract.pdf"), HttpStatusCode.UnprocessableEntity, "contract_template_not_approved");
     }
-
-    // ---- deletion ------------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Delete_ADraft_Is204_AndItIsGone_WithItsPartiesAndEvents()
@@ -645,7 +612,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         var (id, _) = await CreateAsync(client, property.Id);
         var day = new DateTime(2026, 10, 9).AddDays(20).ToString("yyyy-MM-dd");
 
-        // With the draft there, PM-02 refuses the way back to short stays: the draft "must be deleted".
         await ExpectProblemAsync(
             await client.PostAsync($"/api/properties/{property.Id}/mode/change", Body($$"""{"to":"Short","effectiveDate":"{{day}}"}""")),
             HttpStatusCode.Conflict,
@@ -656,8 +622,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         var scheduled = await client.PostAsync($"/api/properties/{property.Id}/mode/change", Body($$"""{"to":"Short","effectiveDate":"{{day}}"}"""));
         Assert.Equal(HttpStatusCode.Created, scheduled.StatusCode);
     }
-
-    // ---- the masked detail ---------------------------------------------------------------------------------------
 
     [Fact]
     public async Task TheMaskedDetail_GainsTheNewFieldsAtTheEnd_AndNeverShowsTheResidenceTheFiscalCodeOrTheEmail()
@@ -682,7 +646,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         foreach (var secret in new[] { "via Argiro 7", "via Sparano 1", "VRDGLI85B02F205A", "RSSMRA80A01H501U", "mario@example.com" })
             Assert.DoesNotContain(secret, text, StringComparison.Ordinal);
         Assert.False(tenant.TryGetProperty("residence", out _));
-        // Nothing that was there changed.
         foreach (var name in new[] { "id", "propertyId", "property", "status", "fiscalRegime", "contractType", "taxRegime", "startDate", "endDate", "monthlyRent", "securityDeposit",
                      "concordatoAssessment", "stipulaDate", "registrationDeadline", "hasSignedPdf", "hasExtraEUTenant", "parties", "registration", "events", "createdAt", "updatedAt" })
         {
@@ -690,12 +653,9 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         }
     }
 
-    // ---- the data of the landlord and the rules ------------------------------------------------------------------
-
     [Fact]
     public async Task LandlordDefaults_AreTheLandlordOfTheLastLeaseTheCallerReaches_NotMasked()
     {
-        // An org of its own: the landlord offered is the one of the only lease it has, whatever the clock of the other tests says.
         var ownerId = $"auth0|lr12-defaults-{Guid.NewGuid():N}";
         var property = await factory.SeedPropertyAsync(ownerId);
         await factory.MakeReadyAsync(property.Id);
@@ -720,7 +680,6 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
 
         var theirs = await ExpectAsync(await colleague.GetAsync("/api/long-rent/landlord-defaults"), HttpStatusCode.OK);
 
-        // The colleague reaches P3 only: the landlord of its lease (no residence on record) is the most they can be offered.
         Assert.NotEqual("Bari, via Sparano 1", theirs.GetProperty("residence").GetString());
         Assert.NotEqual("mario@example.com", theirs.GetProperty("contactEmail").GetString());
     }
@@ -757,12 +716,10 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     }
 }
 
-/// <summary>LR-12 with the contract templates approved: the download for signature can be marked and taken back.</summary>
 public class LeaseDraftSentIntegrationTests(LeaseDraftApprovedTemplatesFactory factory) : IClassFixture<LeaseDraftApprovedTemplatesFactory>, IAsyncLifetime
 {
     private LongRentWorld _world = null!;
 
-    /// <summary>The property the drafts are written on: owner A's, ready, with no lease (two leases of one property cannot cover the same days, LR-OVERLAP).</summary>
     private Guid _draftProperty;
 
     public async Task InitializeAsync()
@@ -793,7 +750,6 @@ public class LeaseDraftSentIntegrationTests(LeaseDraftApprovedTemplatesFactory f
         Assert.Equal("Draft", detail.GetProperty("status").GetString());
         Assert.NotEqual(JsonValueKind.Null, detail.GetProperty("sentForSignatureAt").ValueKind);
 
-        // Marking again changes nothing; taking it back leaves the confirmation as it was.
         var again = await ExpectAsync(await client.PostAsync($"/api/leases/{id}/sent", Body("{}")), HttpStatusCode.OK);
         Assert.Equal(sent.GetProperty("version").GetInt32(), again.GetProperty("version").GetInt32());
         var revoked = await ExpectAsync(await client.DeleteAsync($"/api/leases/{id}/sent"), HttpStatusCode.OK);
@@ -811,7 +767,6 @@ public class LeaseDraftSentIntegrationTests(LeaseDraftApprovedTemplatesFactory f
         await ExpectAsync(await client.PostAsync($"/api/leases/{id}/review/confirm", Body("{}")), HttpStatusCode.OK);
         var sent = await ExpectAsync(await client.PostAsync($"/api/leases/{id}/sent", Body("{}")), HttpStatusCode.OK);
 
-        // The copy handed out for signature is of a contract the review no longer stands behind.
         var saved = await PatchAsync(client, id, sent.GetProperty("version").GetInt32(), 3, """{"monthlyRent":950}""");
 
         Assert.Equal("Todo", StateOf(saved.GetProperty("flow"), 6));

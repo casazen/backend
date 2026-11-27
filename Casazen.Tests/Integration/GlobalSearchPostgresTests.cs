@@ -32,7 +32,6 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
 {
     private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
 
-    /// <summary>Guests added to each of the two orgs by the volume test: a realistic host has thousands, not millions.</summary>
     private const int GuestsPerOrg = 10_000;
 
     private static readonly string[] FirstNames =
@@ -62,15 +61,12 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    // --- The questions of the unit tests, on the real SQL ---------------------------------------------------
-
     [PostgresFact]
     public async Task Cases_EveryQuestionIsAnsweredAsOnTheInMemoryProvider()
     {
         await using var db = _database!.CreateContext();
         var world = await SearchScenario.SeedAsync(db, computeKeys: false);
 
-        // Every case is run and the differences are reported together, so one run of CI tells everything that is wrong.
         var failures = new List<string>();
         foreach (var searchCase in SearchCases.All)
         {
@@ -88,15 +84,12 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 
-    // --- The generated key ----------------------------------------------------------------------------------
-
     [PostgresFact]
     public async Task Keys_TheDatabaseComputesTheWordsOfTheFolding_ForEveryRowOfTheFiveTables()
     {
         await using var db = _database!.CreateContext();
         var world = await SearchScenario.SeedAsync(db, computeKeys: false);
 
-        // Texts that are hard for the folding, with the words they must give written by hand.
         db.Guests.AddRange(SearchFoldingSamples.Guests.Select(sample => new Guest
         {
             OrgId = world.OrgId,
@@ -115,7 +108,6 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        // Every row of the five tables: the key of the database against the folding of the text it is made of.
         var failures = new List<string>();
         var rows = new Dictionary<string, int>();
 
@@ -139,7 +131,6 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
                      .Select(s => new { Row = s, Key = EF.Property<string>(s, SearchKeyModel.KeyProperty) }).ToListAsync())
             Compare(failures, rows, "SupplierProfiles", row.Row.OrgId, SearchKeysForTests.SupplierProfileText(row.Row), row.Key);
 
-        // The hard texts against the words written by hand (neither side is compared with itself).
         var guestKeys = await db.Guests.AsNoTracking().IgnoreQueryFilters()
             .Where(g => g.OrgId == world.OrgId)
             .Select(g => new { g.Email, Key = EF.Property<string>(g, SearchKeyModel.KeyProperty) })
@@ -164,7 +155,6 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
 
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
 
-        // A test that looks at no row proves nothing: every table had rows.
         foreach (var (_, table, _, _) in SearchKeyModel.Keys)
             Assert.True(rows.GetValueOrDefault(table) > 0, $"No row of {table} was checked");
     }
@@ -184,7 +174,6 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
         var world = await SearchScenario.SeedAsync(db, computeKeys: false);
         var guestId = world.Jose.Id;
 
-        // GENERATED ALWAYS ... STORED: the database refuses every value but the default (428C9, generated_always).
         var error = await Assert.ThrowsAnyAsync<PostgresException>(() =>
             db.Database.ExecuteSqlAsync($"""UPDATE "Guests" SET "SearchKey" = 'zzz' WHERE "Id" = {guestId}"""));
 
@@ -198,7 +187,6 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
         var world = await SearchScenario.SeedAsync(db, computeKeys: false);
         var service = new GlobalSearchService(db, NullLogger<GlobalSearchService>.Instance);
 
-        // The application renames a guest and a property: the database recomputes the keys.
         var mario = await db.Guests.SingleAsync(g => g.Id == world.MarioRossi.Id);
         mario.LastName = "Bianchi-\u00D6stlund";
         mario.Email = "mario.ostlund@example.com";
@@ -215,8 +203,6 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
         Assert.Equal(new[] { world.Trullo.Id }, Ids(await SearchAsync(service, world, "masseria"), SearchTypes.Property));
         Assert.Empty(Ids(await SearchAsync(service, world, "trullo"), SearchTypes.Property));
 
-        // The erasure of the guest (GuestDataEraser): the names and the e-mail address become the placeholders, the key follows, and
-        // the person is found no more, neither as a guest nor through the stays.
         var guest = await db.Guests.SingleAsync(g => g.Id == world.MarioRossi.Id);
         guest.FirstName = GuestDataEraser.AnonymizedName;
         guest.LastName = GuestDataEraser.AnonymizedName;
@@ -248,8 +234,6 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
     private static Guid[] Ids(GlobalSearchResult result, string type) =>
         result.Groups.Where(g => g.Type == type).SelectMany(g => g.Items).Select(i => i.Id).ToArray();
 
-    // --- The plans ------------------------------------------------------------------------------------------
-
     [PostgresFact]
     public async Task Plans_TheQueriesUseTheIndexesOfTheMigration()
     {
@@ -258,8 +242,6 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
 
         var failures = new List<string>();
 
-        // The expression of the query is the one of the index of its table. With the sequential scan off the planner has only the
-        // index to answer with, and it can use it only if the two expressions are the same.
         foreach (var (_, table, _, indexName) in SearchKeyModel.Keys)
         {
             var plan = await ExplainAsync($$"""
@@ -271,7 +253,6 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
                 failures.Add($"{table}: the full-text query does not use {indexName}. Plan: {Describe(plan)}");
         }
 
-        // The beginning of a booking code is a range of its own index (in a collation that is not C the default index cannot do it).
         var bookingPlan = await ExplainAsync("""SELECT 1 FROM "Bookings" WHERE "BookingCode" LIKE '7K3M%'""", "SET enable_seqscan = off");
         var collation = await ScalarAsync("SELECT datcollate FROM pg_database WHERE datname = current_database()");
         if (bookingPlan.Any(node => node.NodeType == "Seq Scan"))
@@ -293,8 +274,6 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
             ANALYZE "Guests"
             """);
 
-        // The query of the guests of an org, for a person's name (a few rows among thousands): the planner takes the full-text index
-        // and never reads the table. It chooses by itself, as it does for the application: nothing is switched off here.
         var tsQuery = SearchText.Parse("muller jose").ToTsQuery();
         var plan = await ExplainAsync($$"""
             SELECT g."Id" FROM "Guests" AS g
@@ -306,7 +285,6 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
         Assert.True(!plan.Any(node => node.NodeType == "Seq Scan" && node.Relation == "Guests"), "Sequential scan of Guests. Plan: " + Describe(plan));
         Assert.True(plan.Any(node => node.Index == "IX_Guests_SearchKey_Fts"), "IX_Guests_SearchKey_Fts not used. Plan: " + Describe(plan));
 
-        // What the application answers on that volume: the one person, and a common surname cut to the limit with "more" set.
         var service = new GlobalSearchService(db, NullLogger<GlobalSearchService>.Instance);
         Assert.Equal(new[] { world.Jose.Id }, Ids(await SearchAsync(service, world, "muller jose"), SearchTypes.Guest));
 
@@ -315,13 +293,11 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
         Assert.Equal(5, guests.Items.Count);
         Assert.True(guests.HasMore);
 
-        // Whatever the volume, only the guests of the org of the caller.
         var found = guests.Items.Select(i => i.Id).ToList();
         var orgs = await db.Guests.AsNoTracking().IgnoreQueryFilters().Where(g => found.Contains(g.Id)).Select(g => g.OrgId).Distinct().ToListAsync();
         Assert.Equal(new[] { world.OrgId }, orgs);
     }
 
-    /// <summary>Adds guests with ordinary Italian names and an e-mail address of their own, in chunks (one save for all would hold them in memory).</summary>
     private static async Task AddGuestsAsync(AppDbContext db, Guid orgId, int count)
     {
         db.ChangeTracker.AutoDetectChangesEnabled = false;
@@ -350,11 +326,8 @@ public class GlobalSearchPostgresTests : IAsyncLifetime
         }
     }
 
-    // --- The server -----------------------------------------------------------------------------------------
-
     private sealed record PlanNode(string NodeType, string? Relation, string? Index);
 
-    /// <summary>The nodes of the plan the server chooses for <paramref name="sql"/>, with the settings applied to the session first.</summary>
     private async Task<List<PlanNode>> ExplainAsync(string sql, params string[] settings)
     {
         await using var connection = new NpgsqlConnection(_database!.ConnectionString);

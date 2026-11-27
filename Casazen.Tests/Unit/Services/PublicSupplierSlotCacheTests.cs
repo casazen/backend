@@ -51,7 +51,7 @@ public class PublicSupplierSlotCacheTests
 
         _clock.Advance(TimeSpan.FromMilliseconds(1));
         Assert.False(cache.TryGet("a", out _));
-        Assert.Equal(0, cache.Count); // the expired entry is dropped when it is met
+        Assert.Equal(0, cache.Count);
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public class PublicSupplierSlotCacheTests
         var newer = Plan();
 
         cache.Set("a", newer);
-        _clock.Advance(TimeSpan.FromSeconds(20)); // 40 s after the first, 20 after the second
+        _clock.Advance(TimeSpan.FromSeconds(20));
 
         Assert.True(cache.TryGet("a", out var found));
         Assert.Same(newer, found);
@@ -122,7 +122,7 @@ public class PublicSupplierSlotCacheTests
         cache.Set("a", Plan());
         _clock.Advance(TimeSpan.FromSeconds(10));
         cache.Set("b", Plan());
-        _clock.Advance(TimeSpan.FromSeconds(21)); // a is 31 s old, b 21 s
+        _clock.Advance(TimeSpan.FromSeconds(21));
 
         cache.Set("c", Plan());
 

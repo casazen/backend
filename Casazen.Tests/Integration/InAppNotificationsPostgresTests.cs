@@ -55,14 +55,12 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
     private InAppNotificationJob Job(AppDbContext db) =>
         new(db, _clock, new NoOpInAppNotificationPublisher(), NullLogger<InAppNotificationJob>.Instance);
 
-    /// <summary>One run of the job on a context of its own, the way a Hangfire worker takes it.</summary>
     private async Task RunJobAsync(string deliveryKey, QueuedInAppNotification queued)
     {
         await using var db = NewDb();
         await Job(db).CreateAsync(deliveryKey, queued, CancellationToken.None);
     }
 
-    /// <summary>One call of the service on a context of its own, the way a request takes it.</summary>
     private async Task<T> CallAsync<T>(Func<InAppNotificationService, Task<T>> call)
     {
         await using var db = NewDb();
@@ -87,19 +85,12 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
         return await command.ExecuteNonQueryAsync();
     }
 
-    // ─── Seeding ───
-
-    /// <summary>An org with an owner, the owner's user row and member row (the way the onboarding leaves them).</summary>
     private async Task<(Guid OrgId, string UserId)> SeedHostAsync(string ownerId)
     {
         var (org, owner) = await _kit.SeedOwnerOrgAsync(ownerId);
         return (org.Id, owner.Id);
     }
 
-    /// <summary>
-    /// A supplier org with these accounts, each linked by <c>SupplierOrgId</c>; <c>OrgIdIsTheSupplierOrg</c> says whether its
-    /// <c>OrgId</c> is the supplier org too (the legacy supplier-only account) or empty (the supplier-only account today).
-    /// </summary>
     private async Task<Guid> SeedSupplierOrgAsync(params (string UserId, bool Active, bool OrgIdIsTheSupplierOrg)[] users)
     {
         await using var db = NewDb();
@@ -174,8 +165,6 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
         OccurredAt = Now,
     };
 
-    // ─── The table ───
-
     [PostgresFact]
     public async Task Table_HasItsIndexesItsTimestampColumnsAndTheTwoCascadingKeys()
     {
@@ -196,7 +185,6 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
 
         Assert.Equal("YES", await TextAsync("SELECT is_nullable FROM information_schema.columns WHERE table_name = 'InAppNotifications' AND column_name = 'ReadAt'"));
         Assert.Equal("YES", await TextAsync("SELECT is_nullable FROM information_schema.columns WHERE table_name = 'InAppNotifications' AND column_name = 'EntityId'"));
-        // The rows go with the org and with the account (erasure): both keys cascade.
         Assert.Equal("c", await TextAsync("SELECT confdeltype FROM pg_constraint WHERE conname = 'FK_InAppNotifications_Orgs_OrgId'"));
         Assert.Equal("c", await TextAsync("SELECT confdeltype FROM pg_constraint WHERE conname = 'FK_InAppNotifications_Users_UserId'"));
     }
@@ -241,14 +229,11 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
         }
     }
 
-    // ─── The job on real SQL ───
-
     [PostgresFact]
     public async Task Job_TheInstantOfTheEvent_IsStoredAndReadBackExactly_ToTheMicrosecond()
     {
         var supplierOrgId = await SeedSupplierOrgAsync(("auth0|sara", true, true));
         var queued = Queued(PushAudienceKind.SupplierOrg, supplierOrgId, PushTypes.ServiceRequestCreated, Guid.NewGuid());
-        // 100 ns finer than PostgreSQL keeps: the job cuts it, so the row reads back equal to what it wrote.
         queued.OccurredAt = Now.AddTicks(7);
 
         await RunJobAsync("service-request:t:created", queued);
@@ -286,8 +271,6 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
 
         await RunJobAsync("service-request:s:created", Queued(PushAudienceKind.SupplierOrg, supplierOrgId, PushTypes.ServiceRequestCreated));
 
-        // The member of the supplier org and the host who is a supplier too; not the inactive member. The rows belong to the
-        // supplier org, not to the host org of the dual-role user.
         var rows = await RowsAsync();
         Assert.Equal(["auth0|host-and-supplier", "auth0|sara"], rows.Select(r => r.UserId).Order(StringComparer.Ordinal));
         Assert.All(rows, row => Assert.Equal(supplierOrgId, row.OrgId));
@@ -301,8 +284,6 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
             ("auth0|u1", true, true), ("auth0|u2", true, true), ("auth0|u3", true, true), ("auth0|u4", true, true));
         var queued = Queued(PushAudienceKind.SupplierOrg, supplierOrgId, PushTypes.ServiceRequestCreated, Guid.NewGuid());
 
-        // Every run reads "nobody told yet" before any of them writes: for each user the first INSERT wins and the others get 23505
-        // and go on with the next user. None of them fails or deadlocks.
         const int runs = 4;
         var rendezvous = new InsertRendezvous(runs);
         var options = new DbContextOptionsBuilder<AppDbContext>(_database!.CreateOptions()).AddInterceptors(rendezvous).Options;
@@ -314,7 +295,6 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
 
         await Task.WhenAll(tasks);
 
-        // Every run reached its first INSERT before any wrote; the saves of the users that follow are counted too.
         Assert.True(rendezvous.Arrived >= runs);
         var rows = await RowsAsync();
         Assert.Equal(["auth0|u1", "auth0|u2", "auth0|u3", "auth0|u4"], rows.Select(r => r.UserId).Order(StringComparer.Ordinal));
@@ -334,8 +314,6 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
         Assert.Equal(Now.AddMinutes(-1), rows.Single(r => r.UserId == "auth0|u1").CreatedAt);
         Assert.Equal(Now, rows.Single(r => r.UserId == "auth0|u2").CreatedAt);
     }
-
-    // ─── Mark as read and the retention on real SQL ───
 
     [PostgresFact]
     public async Task MarkRead_SetsTheInstantOnceAndOnlyOnTheCallersOwnRow()
@@ -384,7 +362,7 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
             Row(anna, orgId, Now.AddMinutes(-7)),
             Row(anna, orgId, Now.AddMinutes(-6)),
             readEarlier,
-            Row(anna, otherOrgId, Now.AddMinutes(-5)), // an org the user does not belong to: not visible, not touched
+            Row(anna, otherOrgId, Now.AddMinutes(-5)),
             Row(bruno, otherOrgId, Now.AddMinutes(-4)));
 
         var marked = await CallAsync(s => s.MarkAllReadAsync(anna));
@@ -424,8 +402,6 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
             (await RowsAsync()).Select(r => r.Id));
     }
 
-    // ─── Whose rows, on real SQL ───
-
     [PostgresFact]
     public async Task List_AHostUserOnARequestContext_ReadsItsOwnRowsOfItsOrgAndNoOneElses()
     {
@@ -434,14 +410,12 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
         var mine = Row(anna, orgA, Now.AddMinutes(-2));
         await AddAsync(mine, Row(bruno, orgB, Now.AddMinutes(-1)), Row(anna, orgB, Now.AddMinutes(-3)));
 
-        // The request's context: authenticated, the tenant is the host org of the caller.
         await using var asAnna = new AppDbContext(_database!.CreateOptions(), new FixedTenantContext(orgA, filterEnabled: true));
         var page = await Service(asAnna).ListAsync(anna, false, 1, 20);
 
         Assert.Equal([mine.Id], page.Items.Select(i => i.Id));
         Assert.Equal(1, page.TotalCount);
         Assert.Equal(1, await Service(asAnna).CountUnreadAsync(anna));
-        // The tenant filter of the context agrees with the service: Anna's context shows her only the rows of org A, none of Bruno's.
         Assert.Equal(
             [mine.Id],
             await asAnna.InAppNotifications.AsNoTracking().Where(n => n.UserId == anna).Select(n => n.Id).ToListAsync());
@@ -455,7 +429,6 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
         var row = Row("auth0|sara", supplierOrgId, Now.AddMinutes(-1));
         await AddAsync(row);
 
-        // No host org: the tenant of its requests is null and every tenant-filtered table is empty for it.
         await using var asSara = new AppDbContext(_database!.CreateOptions(), new FixedTenantContext(null, filterEnabled: true));
         Assert.Empty(await asSara.InAppNotifications.ToListAsync());
 
@@ -466,8 +439,6 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
         Assert.Equal(0, await Service(asSara).CountUnreadAsync("auth0|sara"));
     }
 
-    // ─── Erasure ───
-
     [PostgresFact]
     public async Task DeletingTheUser_TakesItsNotificationsWithIt_NoOneElses()
     {
@@ -475,7 +446,6 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
         var (otherOrgId, bruno) = await SeedHostAsync("auth0|bruno");
         await AddAsync(Row(anna, orgId, Now), Row(anna, orgId, Now.AddMinutes(-1)), Row(bruno, otherOrgId, Now));
 
-        // An account is deleted straight from the database (nothing in the code does it yet): every key to Users cascades.
         Assert.Equal(1, await ExecuteAsync($"DELETE FROM \"Users\" WHERE \"Id\" = '{anna}'"));
 
         Assert.Empty(await RowsAsync(anna));
@@ -485,8 +455,6 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task DeletingTheOrg_TakesItsNotificationsWithIt_TheOnesOfOtherOrgsStay()
     {
-        // An org with people cannot be deleted at all (its users and members reference it with a restricting key): the cascade is
-        // proved on an org nobody belongs to, which still has rows of a user of another org (a supplier org, say).
         var (orgId, anna) = await SeedHostAsync("auth0|anna");
         Guid emptyOrg;
         await using (var db = NewDb())
@@ -502,8 +470,6 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
         var left = await RowsAsync(anna);
         Assert.Equal(orgId, Assert.Single(left).OrgId);
     }
-
-    // ─── Helpers ───
 
     /// <summary>
     /// Holds the first save that adds an in-app notification of every run until <c>parties</c> saves have arrived, so that all

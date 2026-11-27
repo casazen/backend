@@ -13,7 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>AM-02: the entitlement of the org also says how many people the plan allows and how many it has.</summary>
 public class OrgsControllerEntitlementSeatsTests
 {
     private static readonly Guid OrgId = Guid.Parse("7a3c1d52-9f0e-4b8a-8d65-2c4e1f0b9a11");

@@ -8,7 +8,6 @@ using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
-// OrgEntity is a global alias defined in Casazen.Tests.csproj: OrgEntity = global::Casazen.Core.Entities.Org
 
 namespace Casazen.Tests.Integration;
 
@@ -22,7 +21,6 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
     private const string VatNumber = "IT01234567890";
     private const string StripeAccount = "acct_1PrivateConnectAccount";
 
-    // "recommended" (SP-REL) is only whether this supplier is the best-ranked one of the list: the score behind it is never sent.
     private static readonly string[] PickerFields =
     [
         "orgId", "legalName", "phone", "email", "categories", "comuni", "bio", "photoUrls",
@@ -60,7 +58,6 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
         var raw = await response.Content.ReadAsStringAsync();
         var items = JsonDocument.Parse(raw).RootElement.GetProperty("items").EnumerateArray().ToList();
 
-        // Only the Active suppliers of the comune.
         var listed = items.Select(item => item.GetProperty("orgId").GetGuid()).Order().ToList();
         Assert.Equal(new[] { verified.OrgId, withoutVat.OrgId }.Order().ToList(), listed);
         Assert.DoesNotContain(pending.OrgId, listed);
@@ -76,8 +73,6 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
                 Assert.Equal(ServiceFields.Order(), service.EnumerateObject().Select(p => p.Name).Order());
         }
 
-        // What the host does get: the badge as a boolean, the published services only (the first three: it has four), the lowest
-        // "from" price of all of them.
         var withVatItem = items.Single(item => item.GetProperty("orgId").GetGuid() == verified.OrgId);
         Assert.True(withVatItem.GetProperty("verified").GetBoolean());
         Assert.Equal(verified.Slug, withVatItem.GetProperty("showcaseSlug").GetString());
@@ -91,8 +86,6 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
         Assert.False(withoutVatItem.GetProperty("verified").GetBoolean());
         Assert.Equal(JsonValueKind.Null, withoutVatItem.GetProperty("medianResponseMinutes").ValueKind);
 
-        // The search (MKT) looks at the name of every published service, even the ones beyond the three listed, and at the name of
-        // the category in Italian and in English, whatever the case and the accents; a draft or a deleted service is not searchable.
         Assert.Equal(new[] { verified.OrgId }, await SearchAsync(client, comune, "vetri"));
         Assert.Equal(new[] { verified.OrgId }, await SearchAsync(client, comune, "SANIFICAZIONE"));
         Assert.Equal(new[] { verified.OrgId, withoutVat.OrgId }.Order(), await SearchAsync(client, comune, "pulizìe"));
@@ -202,7 +195,6 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
         await factory.SeedOrgForOwnerAsync();
         using var client = factory.CreateAuthenticatedClient(roles: "PropertyOwner");
 
-        // The page of one supplier lists every published service (the list of the marketplace carries three), under the same fields.
         var response = await client.GetAsync($"/api/suppliers/{active.OrgId}?comune={comune}");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var raw = await response.Content.ReadAsStringAsync();
@@ -215,7 +207,6 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
         Assert.All(services, service => Assert.Equal(ServiceFields.Order(), service.EnumerateObject().Select(p => p.Name).Order()));
         Assert.True(item.GetProperty("verified").GetBoolean());
 
-        // Never reachable by id alone: not active, not working in that comune, no target at all, a property that is not the host's.
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/suppliers/{pending.OrgId}?comune={comune}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/suppliers/{elsewhere.OrgId}?comune={comune}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/suppliers/{Guid.NewGuid()}?comune={comune}")).StatusCode);
@@ -233,13 +224,11 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
         await factory.SeedOrgForOwnerAsync();
         using var client = factory.CreateAuthenticatedClient(roles: "PropertyOwner");
 
-        // With the same history for everybody, the list is by name and nobody is "the" recommended one.
         var byName = await ListAsync(client, comune, "name");
         var neutral = await ListAsync(client, comune, null);
         Assert.Equal(byName.Select(s => s.OrgId), neutral.Select(s => s.OrgId));
         Assert.DoesNotContain(neutral, s => s.Recommended);
 
-        // The supplier that comes last by name answers in time and does its jobs: from now on it leads the default list.
         var best = byName[^1].OrgId;
         await SeedReliabilityAsync(best, SupplierReliabilityEventKind.RepliedInTime, 3);
         await SeedReliabilityAsync(best, SupplierReliabilityEventKind.JobCompletedClean, 3);
@@ -262,7 +251,6 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
         var response = await client.GetAsync($"/api/suppliers?comune={comune}" + (sort is null ? string.Empty : $"&sort={sort}"));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var raw = await response.Content.ReadAsStringAsync();
-        // The ranking is an order and one boolean: no score, no points, no history in the answer.
         Assert.DoesNotContain("score", raw, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("points", raw, StringComparison.OrdinalIgnoreCase);
         var items = JsonDocument.Parse(raw).RootElement.GetProperty("items");

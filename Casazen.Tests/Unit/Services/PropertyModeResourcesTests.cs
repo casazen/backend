@@ -8,10 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// PM-02: every message of the scheduled change of rental mode is a key of <c>SharedResources</c>, with a real text in both
-/// languages, and the messages that carry a day show it in the language of the request.
-/// </summary>
 public class PropertyModeResourcesTests
 {
     private static readonly string[] ValidationKeys = ["PropertyModeTargetRequired", "PropertyModeDateRequired"];
@@ -27,7 +23,6 @@ public class PropertyModeResourcesTests
     {
         var keys = ErrorMessageKeys().ToList();
 
-        // The four keys the task names, plus the rest of the cases of the rules.
         Assert.Contains("PropertyModeBlockedByLease", keys);
         Assert.Contains("PropertyModeBlockedByBookings", keys);
         Assert.Contains("PropertyModeDateTooEarly", keys);

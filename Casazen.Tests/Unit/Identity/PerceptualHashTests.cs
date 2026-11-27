@@ -10,17 +10,11 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E71/F01/US01/T02 (NF-189): the difference hash of a picture. It is the same for the same picture whoever asks, close for the same card photographed again (a little shifted,
-/// a little brighter) and far for the front and the back of the generated card, against the distance of the policy file, not a number of the test. The pictures are built in
-/// code (<see cref="DocumentImageFactory"/>).
-/// </summary>
 public class PerceptualHashTests
 {
     private static readonly DocumentFormat Cie = new DocumentFormatRegistry(
         Options.Create(new IdentityVerificationOptions()), NullLogger<DocumentFormatRegistry>.Instance, AppContext.BaseDirectory).Get("it-cie-3.0")!;
 
-    /// <summary>The distance the committed policy file calls the same side photographed twice.</summary>
     private static int PolicyDistance()
     {
         Assert.True(IdentityConfigurationJson.TryCanonicalize(Encoding.UTF8.GetBytes(IdentityPolicyTestFiles.ShippedText()), out var canonical));
@@ -65,7 +59,6 @@ public class PerceptualHashTests
     [Fact]
     public void DHash64_TheFirstPairOfTheTopRow_IsTheMostSignificantBit()
     {
-        // Only the two cells of the first pair differ: the left one is brighter, so the bit is set and it is the first of the 64.
         var rgb = new byte[90 * 80 * 3];
         for (var y = 0; y < 80; y++)
         {
@@ -96,9 +89,6 @@ public class PerceptualHashTests
     [Fact]
     public void DHash64_TheSameCardPhotographedAgainAHairShiftedAndBrighter_IsCloserThanThePolicyDistance()
     {
-        // A pixel of 640 in each direction and twelve levels of light. The hash is the plain difference hash: cells of the card whose brightness is nearly the same flip with
-        // a larger shift (on the generated card, all text, 3 pixels flip 7 or 8 of the 64 bits), so what a real second photo costs in bits is for the qualification to
-        // measure and for the policy file to allow; this test only holds the property that a hair of difference is a few bits.
         using var first = Card(DocumentSide.Front);
         using var shifted = Card(DocumentSide.Front, new DocumentImageFactory.Placement(81, 71, 480, 303));
         using var again = DocumentImageFactory.Brightened(shifted, 12);
@@ -142,8 +132,6 @@ public class PerceptualHashTests
     [InlineData(DocumentSide.Back, 160, 120, 4)]
     public void DHash64_ThePictureAtAnotherSize_FlipsTheMeasuredBitsAndStaysWithinThePolicyDistance(DocumentSide side, int width, int height, int measuredBits)
     {
-        // Phones send what their camera makes: the hash must not depend much on the resolution of the photo. It is close, not the same: the bits flipped are measured here
-        // (the back has a dense MRZ band, where near-equal cells flip) and written in the documentation of PerceptualHash.
         using var original = Card(side);
         using var resized = original.Resized(width, height);
 
@@ -164,8 +152,6 @@ public class PerceptualHashTests
     [InlineData(DocumentSide.Back, 8, 14)]
     public void DHash64_TheCardShiftedByAFewPixels_FlipsTheMeasuredBits(DocumentSide side, int shift, int measuredBits)
     {
-        // The measured cost of a second shot of the same side, shifted in both directions: with the provisional distance of the policy (6) the front shifted by 2 pixels and the
-        // back shifted by 3 are already out of reach of the hash, so the SHA-256 stays the sure sign of the same file until the qualification measures real photos (E74).
         using var first = Card(side);
         using var shifted = Card(side, new DocumentImageFactory.Placement(80 + shift, 70 + shift, 480, 303));
 
@@ -248,7 +234,6 @@ public class PerceptualHashTests
         Assert.Equal(0UL, hash);
     }
 
-    /// <summary>A picture whose luminance changes by the same step from one column to the next, towards the right.</summary>
     private static RasterImage GradientToTheRight(bool brighter)
     {
         const int width = 180;

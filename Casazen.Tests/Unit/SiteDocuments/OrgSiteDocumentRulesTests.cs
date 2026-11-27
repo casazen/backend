@@ -4,14 +4,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.SiteDocuments;
 
-/// <summary>
-/// <see cref="OrgSiteDocumentRules"/> (BK-14, A3-21): what an operator may publish as privacy notice or terms, and how the
-/// text becomes HTML. The text is never trusted: no raw HTML, links only http/https/mailto, everything encoded.
-/// </summary>
 public class OrgSiteDocumentRulesTests
 {
-    // ── Kind ────────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData("privacy", OrgSiteDocumentKind.Privacy)]
     [InlineData(" Terms ", OrgSiteDocumentKind.Terms)]
@@ -35,8 +29,6 @@ public class OrgSiteDocumentRulesTests
         Assert.True(OrgSiteDocumentRules.TryParseKind(OrgSiteDocumentRules.RouteName(kind), out var parsed));
         return parsed;
     }
-
-    // ── NormalizeContent ────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(null)]
@@ -123,8 +115,6 @@ public class OrgSiteDocumentRulesTests
     public void NormalizeContent_LinkWithAnAllowedTarget_IsKept(string content) =>
         Assert.Equal(content, OrgSiteDocumentRules.NormalizeContent(content));
 
-    // ── NormalizeExternalUrl ────────────────────────────────────────────────────
-
     [Theory]
     [InlineData("https://example.test/privacy", "https://example.test/privacy")]
     [InlineData("  https://Example.TEST/Privacy?lang=it#parte-2 ", "https://example.test/Privacy?lang=it#parte-2")]
@@ -172,8 +162,6 @@ public class OrgSiteDocumentRulesTests
 
         Assert.Equal(OrgSiteDocumentRules.UrlInvalidCode, ex.Code);
     }
-
-    // ── ToHtml ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public void ToHtml_ParagraphsAndLineBreaks_BecomeParagraphsAndBr()
@@ -234,7 +222,6 @@ public class OrgSiteDocumentRulesTests
     [Fact]
     public void ToHtml_HtmlThatBypassedValidation_IsEncodedNeverEmitted()
     {
-        // NormalizeContent refuses this input; ToHtml must still be safe on its own.
         var html = OrgSiteDocumentRules.ToHtml("<script>alert('x')</script> & \"quote\" <img src=x onerror=alert(1)>");
 
         Assert.DoesNotContain("<script", html, StringComparison.OrdinalIgnoreCase);

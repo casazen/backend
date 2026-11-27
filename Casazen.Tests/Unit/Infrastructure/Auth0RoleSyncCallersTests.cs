@@ -19,10 +19,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// Callers of the Auth0 role sync: no per-request Management API calls (A4-01), outcome propagated
-/// to the client (A1-02), backend authorization independent from JWT roles (A1-02).
-/// </summary>
 public class Auth0RoleSyncCallersTests
 {
     [Fact]
@@ -54,7 +50,6 @@ public class Auth0RoleSyncCallersTests
 
         Assert.Equal(orgId, first);
         Assert.Equal(orgId, second);
-        // Strict mock: any Auth0 call (role assignment or profile lookup) would throw.
         auth0.VerifyNoOtherCalls();
         cache.Verify(c => c.Invalidate(It.IsAny<string>()), Times.Never);
     }
@@ -195,7 +190,6 @@ public class Auth0RoleSyncCallersTests
     [Fact]
     public async Task OrgBillingAdmin_NoJwtRoleAndOnlyLongRentMembership_Succeeds()
     {
-        // PL-16 (A1-36): a landlord with only long-term leases administers the plan and billing of its org.
         const string sub = "auth0|billing-ltr";
         var handler = CreateBillingHandler(sub, LongRentLandlordSnapshot());
         var context = BillingContext(sub);

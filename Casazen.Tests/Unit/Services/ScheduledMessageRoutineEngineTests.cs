@@ -7,10 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E05/F07/US01/T03 (ADR-022): the switch of the routine engine for the action <c>MessageToGuest</c>. With <c>Features:ScheduledMessages</c> on the action goes through the plan (one row for the booking, the routine and
-/// the action, the one dispatcher that sends); with it off it does what it did before and the plan is never asked: one switch and one send for each state of the flag, never two sends for one action.
-/// </summary>
 public class ScheduledMessageRoutineEngineTests
 {
     private static readonly Guid OrgA = RoutineRig.OrgA;

@@ -14,10 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SE-02 (A8-02, decision D3): canonical URLs, sitemap and hub use only the configured public domain of the web app
-/// (<c>App:PublicSiteBaseUrl</c>), never a domain written in code, and list only the pages worth indexing.
-/// </summary>
 public class SeoPublicDomainTests
 {
     private const string PublicSite = "https://public-site.example.test";
@@ -62,7 +58,6 @@ public class SeoPublicDomainTests
 
         var xml = await CreateService(PublicSite).BuildComplianceSitemapXmlAsync();
 
-        // Nothing to index: not even the hub, which would be an empty page.
         Assert.Empty(Locations(xml));
     }
 
@@ -109,7 +104,6 @@ public class SeoPublicDomainTests
         SeoPageType pageType,
         string utmContent)
     {
-        // SE-03 (A8-03): the CTA opens /signup of the web app on the public domain, carrying the comune of the page.
         var page = SetupPublicPage(pageType);
 
         var dto = await GetPublicPageAsync(CreateService(PublicSite + "/"), page.PageType);

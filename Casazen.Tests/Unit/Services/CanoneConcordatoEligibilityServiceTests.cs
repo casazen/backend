@@ -39,10 +39,8 @@ public class CanoneConcordatoEligibilityServiceTests
         Assert.True(result.Available);
         Assert.Equal(2, result.SubFascia);
         Assert.Equal("Unica", result.Zone);
-        // RS-8 (A7-11, #6): the parties may choose a lower sub-fascia, so the minimum is the sub-fascia 1 minimum (20 €/mq).
         Assert.Equal(1300.00m, result.CanoneMinAnnuo);
         Assert.Equal(5525.00m, result.CanoneMaxAnnuo);
-        // Monthly bounds rounded inwards: twelve months never exceed the annual maximum.
         Assert.Equal(108.34m, result.CanoneMinMensile);
         Assert.Equal(460.41m, result.CanoneMaxMensile);
         Assert.True(result.ImuAppliesTheoretical);
@@ -50,7 +48,6 @@ public class CanoneConcordatoEligibilityServiceTests
         Assert.False(result.AtaApplies);
         Assert.Contains("informativa", result.Disclaimer, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(DataCompleteness.Partial, result.DataCompleteness);
-        // A7-23: Partial data make the range indicative, with the source and the verification date.
         Assert.True(result.Indicative);
         Assert.Contains(CanoneConcordatoWarningCodes.PartialData, result.Warnings);
         Assert.Equal(CanoneConcordatoMbSeed.SourceUrl, result.SourceUrl);
@@ -79,13 +76,11 @@ public class CanoneConcordatoEligibilityServiceTests
     }
 
     [Theory]
-    // A7-10: the integer bands of the agreement left decimals without a band; the bands are contiguous half-open
-    // intervals looked up on the usable square metres rounded to the whole metre.
-    [InlineData(50.5, 50, 74, 4721.75)]   // (50,74]: 85 €/mq × min(50,5 × 1,10; 60) = 85 × 55,55
-    [InlineData(74.5, 74, 99, 5289.50)]   // (74,99]: 71 €/mq × 74,5
-    [InlineData(99.5, 99, null, 6169.00)] // (99,∞): 62 €/mq × 99,5
-    [InlineData(50, 0, 50, 4550.00)]      // (0,50]: 91 €/mq × 50, no +10% at exactly 50 mq
-    [InlineData(100, 99, null, 6200.00)]  // 100 mq is "Oltre 100"
+    [InlineData(50.5, 50, 74, 4721.75)]
+    [InlineData(74.5, 74, 99, 5289.50)]
+    [InlineData(99.5, 99, null, 6169.00)]
+    [InlineData(50, 0, 50, 4550.00)]
+    [InlineData(100, 99, null, 6200.00)]
     public async Task Calculate_DecimalAndBoundarySurfaces_FallInTheRightBand(
         decimal sqm, int expectedBandMin, int? expectedBandMax, decimal expectedMax)
     {
@@ -104,12 +99,11 @@ public class CanoneConcordatoEligibilityServiceTests
     }
 
     [Theory]
-    // RS-8 examples (Seveso, sub-fascia 2, 3 years): surface uplifts capped, reduction floored (A7-11).
-    [InlineData(35, 700.00, 3640.00)]   // 91 × min(35 × 1,20; 40) = 91 × 40
-    [InlineData(58, 1160.00, 5100.00)]  // 85 × min(58 × 1,10; 60) = 85 × 60
-    [InlineData(130, 2400.00, 7440.00)] // 62 × max(130 × 0,80; 120) = 62 × 120; minimum 20 × 120
-    [InlineData(30, 600.00, 3276.00)]   // 91 × 30 × 1,20 = 91 × 36, under the cap
-    [InlineData(160, 2560.00, 7936.00)] // 62 × 160 × 0,80 = 62 × 128, above the floor
+    [InlineData(35, 700.00, 3640.00)]
+    [InlineData(58, 1160.00, 5100.00)]
+    [InlineData(130, 2400.00, 7440.00)]
+    [InlineData(30, 600.00, 3276.00)]
+    [InlineData(160, 2560.00, 7936.00)]
     public async Task Calculate_SurfaceCoefficients_ApplyCapsAndFloors(decimal sqm, decimal expectedMin, decimal expectedMax)
     {
         await using var db = CreateDb();
@@ -126,7 +120,6 @@ public class CanoneConcordatoEligibilityServiceTests
     }
 
     [Theory]
-    // Term from the dates: 4, 5, 6 years raise minimum and maximum by 3, 5, 6 %; none above 6 years.
     [InlineData("2030-08-31", 4, 1339.00, 5690.75, false)]
     [InlineData("2031-08-31", 5, 1365.00, 5801.25, false)]
     [InlineData("2032-08-31", 6, 1378.00, 5856.50, false)]
@@ -181,7 +174,6 @@ public class CanoneConcordatoEligibilityServiceTests
         var result = await sut.CalculateAsync(
             property.Id, Characteristics(65, 2, 3, 0, 0) with { IsFurnished = true, AirConditioning = true }, ThreeYears);
 
-        // 85 × 65 × (1 + 15% + 5%): the optional uplifts raise the maximum, the minimum keeps the mandatory ones only.
         Assert.Equal(6630.00m, result!.CanoneMaxAnnuo);
         Assert.Equal(1300.00m, result.CanoneMinAnnuo);
     }
@@ -202,7 +194,6 @@ public class CanoneConcordatoEligibilityServiceTests
             property.Id, Characteristics(65, 2, 3, 0, 0) with { IsFurnished = true, AirConditioning = true },
             Term("2026-09-01", "2030-08-31"));
 
-        // 85 × 65 × 1,15 × 1,05 × 1,03 instead of × (1 + 15% + 5% + 3%).
         Assert.Equal(6871.58m, result!.CanoneMaxAnnuo);
     }
 
@@ -226,14 +217,13 @@ public class CanoneConcordatoEligibilityServiceTests
             },
             ThreeYears);
 
-        // 60 + 10 × 50% + 10 × 30% + 4 × 25% + 10 × 10% = 70 mq utili, band (50,74], 85 €/mq.
         Assert.Equal(70m, result!.UsableSqm);
         Assert.Equal(5950.00m, result.CanoneMaxAnnuo);
     }
 
     [Theory]
-    [InlineData(3, 1)] // stoves with fewer than 4 B-elements: sub-fascia 1
-    [InlineData(4, 2)] // stoves with at least 4 B-elements: the stove rule does not apply
+    [InlineData(3, 1)]
+    [InlineData(4, 2)]
     public async Task Calculate_StoveHeating_PutsTheUnitInSubFascia1UnlessFourTypeB(int typeB, int expectedSubFascia)
     {
         await using var db = CreateDb();
@@ -249,7 +239,6 @@ public class CanoneConcordatoEligibilityServiceTests
     }
 
     [Theory]
-    // Sub-fascia 3: 3 C-elements and at least 2 of D1, D2, D4, D6, D7, D9; the maximum of sub-fascia 3 needs 4 D.
     [InlineData(5, 1, 2, false)]
     [InlineData(2, 2, 3, true)]
     [InlineData(4, 2, 3, false)]
@@ -429,7 +418,6 @@ public class CanoneConcordatoEligibilityServiceTests
     [Fact]
     public async Task Calculate_SevesoWithAnySheet_UsesTheSingleZone()
     {
-        // Seveso is one zone over the whole comune: every cadastral sheet is in it.
         await using var db = CreateDb();
         var property = SeedProperty(db, "Seveso");
         SeedReference(db);
@@ -594,7 +582,6 @@ public class CanoneConcordatoEligibilityServiceTests
         await db.SaveChangesAsync();
         var sut = CreateSut(db);
 
-        // Who may see the property is decided by the controller (TN-3); the service only needs it to exist.
         var result = await sut.CalculateAsync(Guid.NewGuid(), Characteristics(65, 2, 3, 0, 0), ThreeYears);
 
         Assert.Null(result);
@@ -634,7 +621,6 @@ public class CanoneConcordatoEligibilityServiceTests
             .Where(a => a.DataCompleteness == DataCompleteness.Missing)
             .ToList();
 
-        // RS-8 (#1): the agreement covers 55 comuni, Misinto included.
         Assert.Equal(53, missing.Count);
         Assert.All(missing, a => Assert.Empty(a.Bands));
         Assert.Equal(55, CanoneConcordatoMbSeed.ProvinceComuni.Length);
@@ -771,7 +757,6 @@ public class CanoneConcordatoEligibilityServiceTests
         Assert.True(body.AttestationRequired);
         Assert.Equal(CanoneConcordatoCopy.Disclaimer, body.Disclaimer);
         Assert.True(body.Indicative);
-        // A7-12: the term comes from the dates of the query (1/9/2026-31/8/2030 = 4 years).
         Assert.Equal(new LeaseTerm(48, 0), usedTerm);
     }
 
@@ -853,10 +838,6 @@ public class CanoneConcordatoEligibilityServiceTests
         };
     }
 
-    /// <summary>
-    /// Fixed "today" for every test, after the MB agreement's formal 18-month expiry (2025-11-01): the reality today
-    /// (RS-8, agreement not replaced), so <c>agreement_expired</c> is expected on the pilot comuni's warnings.
-    /// </summary>
     private static readonly DateTimeOffset Today = new(2026, 9, 25, 10, 0, 0, TimeSpan.Zero);
 
     private static ICanoneConcordatoEligibilityService CreateSut(AppDbContext db, TimeProvider? clock = null) =>

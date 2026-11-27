@@ -36,7 +36,6 @@ public class FiscalTaxRuleCatalogTests
     private static readonly DateTimeOffset Now = new(2026, 11, 20, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateOnly StayEnd = new(2026, 11, 18);
 
-    /// <summary>The catalog shipped in <c>appsettings.json</c> starts, and holds the ⚖ defaults of the analysis of 2026-11-14 (F1, C2, I1-I5).</summary>
     [Fact]
     public void TaxRuleCatalog_ShippedDefaults_AreValid_AndHoldTheDecidedRates()
     {
@@ -45,7 +44,6 @@ public class FiscalTaxRuleCatalogTests
         Assert.Equal(5, shipped.TaxRules.Count);
         var resolver = TaxRuleCatalogs.Resolver(shipped);
 
-        // CH registered (F1, C2): stay 3.8, cleaning with the stay 3.8 or as a service 8.1, services 8.1, tourist tax and advanced expenses outside.
         var swiss = resolver.Resolve("CH", DocumentRegime.SwissVatRegistered, StayVatTreatment.Standard, CleaningFeeTreatment.FollowsStay, StayEnd);
         Assert.Equal((RuleKind.Invoice, "ch-vat-2024.1", true), (swiss.DocumentKind, swiss.Version, swiss.IsSwiss));
         Assert.Equal(new FiscalLineRate(3.8m, null), swiss.RateOf(FiscalLineType.Accommodation));
@@ -60,12 +58,10 @@ public class FiscalTaxRuleCatalogTests
         var cleaningAsService = resolver.Resolve("CH", DocumentRegime.SwissVatRegistered, StayVatTreatment.Standard, CleaningFeeTreatment.Service, StayEnd);
         Assert.Equal(new FiscalLineRate(8.1m, null), cleaningAsService.RateOf(FiscalLineType.Cleaning));
 
-        // CH not registered: a receipt without VAT.
         var notRegistered = resolver.Resolve("CH", DocumentRegime.SwissNotRegistered, StayVatTreatment.Standard, CleaningFeeTreatment.FollowsStay, StayEnd);
         Assert.Equal(RuleKind.Receipt, notRegistered.DocumentKind);
         Assert.All(notRegistered.Rates.Values, rate => Assert.Equal(new FiscalLineRate(0m, null), rate));
 
-        // No rule for an Italian regime in Switzerland, nor before the first day of a rule.
         Assert.Null(resolver.TryResolve("CH", DocumentRegime.VatOrdinary, StayVatTreatment.Standard, CleaningFeeTreatment.FollowsStay, StayEnd));
         Assert.Null(resolver.TryResolve("IT", DocumentRegime.VatOrdinary, StayVatTreatment.Standard, CleaningFeeTreatment.FollowsStay, new DateOnly(2025, 12, 31)));
         var refused = Assert.Throws<DomainRuleException>(
@@ -135,17 +131,12 @@ public class FiscalTaxRuleCatalogTests
             Assert.Equal(regime == DocumentRegime.SwissNotRegistered ? 0m : 18.30m, issued.VatAmount);
             xml.Verify(x => x.Build(It.IsAny<FatturaPaInput>()), Times.Never);
 
-            // Its PDF is the Swiss one (E11/F01/US01/T03), from the snapshot of the issuer kept at the issue.
             var pdf = await service.PdfContentAsync(issued.Id, "it");
             Assert.Equal(regime == DocumentRegime.SwissNotRegistered ? "Ricevuta n. 2026/1" : "Fattura n. 2026/1", pdf.Title);
             Assert.Equal("it-CH", pdf.Language);
         }
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule. The rule is chosen by the date of the stay: with a new version of the Swiss rates from 2028-01-01, a stay that ends on
-    /// 2027-12-31 keeps the old rate (3.8%) and its version, one that ends on 2028-01-01 takes the new one (4.0%).
-    /// </summary>
     [Fact]
     public void TaxRule_ChosenByStayDate_Test()
     {
@@ -203,11 +194,6 @@ public class FiscalTaxRuleCatalogTests
         Assert.Equal(1040m, older.Total);
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule. A catalog that would issue an Italian 0% line without its nature code never starts: the validator names the rule set and the
-    /// line type, and the options of the container throw at their first use (the startup, with ValidateOnStart). Overlapping versions and a missing rate stop
-    /// it too.
-    /// </summary>
     [Fact]
     public void TaxRuleCatalog_ItalianZeroLineWithoutNatureStopsStartup_Test()
     {
@@ -217,7 +203,6 @@ public class FiscalTaxRuleCatalogTests
         Assert.Contains("it-ordinary-test.1", problem, StringComparison.Ordinal);
         Assert.Contains("TouristTax has no nature code", problem, StringComparison.Ordinal);
 
-        // The same set read from the configuration: the container refuses the options (the startup fails).
         var settings = new Dictionary<string, string?>
         {
             ["FiscalDocuments:TaxRules:0:Jurisdiction"] = "IT",
@@ -240,7 +225,6 @@ public class FiscalTaxRuleCatalogTests
         var startup = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<FiscalTaxRulesOptions>>().Value);
         Assert.Contains("TouristTax has no nature code", startup.Message, StringComparison.Ordinal);
 
-        // Two versions of one country and regime that overlap, and a line type without a rate.
         var first = ItalianOrdinarySet("it-ordinary-a", new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31));
         var second = ItalianOrdinarySet("it-ordinary-b", new DateOnly(2026, 6, 1), null);
         second.Rates.Remove(FiscalLineType.Other);
@@ -248,7 +232,6 @@ public class FiscalTaxRuleCatalogTests
         Assert.Contains(problems, p => p.Contains("overlap", StringComparison.Ordinal));
         Assert.Contains(problems, p => p.Contains("the line type Other has no rate", StringComparison.Ordinal));
 
-        // An empty catalog starts: nothing is issued (document_rule_not_configured).
         Assert.Empty(FiscalTaxRulesOptionsValidator.Problems(new FiscalTaxRulesOptions()));
     }
 
@@ -283,7 +266,6 @@ public class FiscalTaxRuleCatalogTests
         Assert.Equal(new FiscalLineRate(0m, "N2.2"), privatePerson.RateOf(FiscalLineType.Accommodation));
         Assert.Equal(new FiscalLineRate(0m, "N2.2"), flatRate.RateOf(FiscalLineType.Accommodation));
 
-        // Every Italian 0% carries a nature, in every rule set and with every treatment.
         foreach (var rule in new[] { ordinary, exempt, service, privatePerson, flatRate })
             Assert.All(rule.Rates.Values.Where(rate => rate.Percent == 0m), rate => Assert.False(string.IsNullOrWhiteSpace(rate.NatureCode)));
 
@@ -297,10 +279,6 @@ public class FiscalTaxRuleCatalogTests
         }
     }
 
-    /// <summary>
-    /// A Swiss document and an Italian receipt need only the name of the recipient (no address, never an Italian fiscal code); an Italian invoice still
-    /// needs its identification and address. The document stores the version of its rule.
-    /// </summary>
     [Fact]
     public async Task SwissDocumentsAndItalianReceipts_NeedOnlyTheRecipientName_AndStoreTheRuleVersion()
     {
@@ -425,7 +403,6 @@ public class FiscalTaxRuleCatalogTests
             NullLogger<FiscalDocumentService>.Instance);
     }
 
-    /// <summary>The invoice data of each seeded booking (the mock of the invoice data reads it).</summary>
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, InvoiceDataView> Recipients = new();
 
     private static InvoiceDataView NameOnly(Guid bookingId, string name, string country) =>
@@ -435,10 +412,6 @@ public class FiscalTaxRuleCatalogTests
         new(bookingId, true, Now.UtcDateTime, InvoiceRecipientKind.Company, "TEST Cliente Srl", null, "IT09876543217", "Via del Cliente", "5",
             "00100", "Roma", "RM", "IT", "ABC1234", null, InvoiceDataSource.Host, Now.UtcDateTime);
 
-    /// <summary>
-    /// An org with a Swiss profile of <paramref name="regime"/>, a property in CHF and a stay of a portal with a guest known by name only (from 2026-11-14 to
-    /// 2026-11-18, or the days given).
-    /// </summary>
     private static async Task<Guid> SeedSwissAsync(AppDbContext db, DocumentRegime regime, decimal basePrice, DateTime? checkIn = null, DateTime? checkOut = null)
     {
         var orgId = Guid.NewGuid();
@@ -462,7 +435,6 @@ public class FiscalTaxRuleCatalogTests
         return booking;
     }
 
-    /// <summary>An org with an Italian profile of <paramref name="regime"/>, a property in EUR and a stay whose recipient is known by name only, or in full.</summary>
     private static async Task<Guid> SeedItalianAsync(
         AppDbContext db,
         DocumentRegime regime,
@@ -541,12 +513,10 @@ public class FiscalTaxRuleCatalogTests
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"TaxRules_{Guid.NewGuid()}").Options, new CatalogTenant(), TestDataProtection.Shared);
 }
 
-/// <summary>The catalog of the tax rules for the tests: the one shipped in <c>appsettings.json</c>, or one built by a test.</summary>
 internal static class TaxRuleCatalogs
 {
     private static FiscalTaxRulesOptions? _shipped;
 
-    /// <summary>The catalog <c>FiscalDocuments:TaxRules</c> of <c>Casazen.Web/appsettings.json</c>, bound as the application binds it.</summary>
     public static FiscalTaxRulesOptions Shipped()
     {
         if (_shipped is not null)
@@ -562,7 +532,6 @@ internal static class TaxRuleCatalogs
         return _shipped = options;
     }
 
-    /// <summary>A resolver over <paramref name="options"/>, the shipped catalog by default.</summary>
     public static IFiscalTaxRuleResolver Resolver(FiscalTaxRulesOptions? options = null) => new FiscalTaxRuleResolver(Options.Create(options ?? Shipped()));
 }
 

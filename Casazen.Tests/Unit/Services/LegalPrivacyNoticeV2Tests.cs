@@ -30,9 +30,7 @@ public class LegalPrivacyNoticeV2Tests
         var v2 = ReadRaw(V2, language);
 
         Assert.Contains("ConcordatoFacile", v2);
-        // The version the hosts accepted is not edited (the runbook, the header of the file): it does not know the recipient.
         Assert.DoesNotContain("ConcordatoFacile", ReadRaw(LegalTextFixtures.DraftVersion, language));
-        // The default framing (R24): an independent controller, not a subprocessor, so it is not in the DPA.
         Assert.DoesNotContain(
             "ConcordatoFacile",
             File.ReadAllText(Path.Combine(LegalTextFixtures.ShippedRoot(), "dpa", $"{LegalTextFixtures.DraftVersion}.{language}.html")));
@@ -87,7 +85,6 @@ public class LegalPrivacyNoticeV2Tests
                 Assert.Equal(Enumerable.Range(1, minor.Count), minor);
             }
 
-            // As the other drafts: no provider of the dynamic list is named, and no statute is cited that was not verified.
             foreach (var provider in new[] { "Supabase", "Auth0", "Resend", "Expo", "Railway", "Vercel", "DeepSeek", "SendGrid" })
                 Assert.DoesNotMatch($@"\b{provider}\b", raw);
             foreach (Match act in Regex.Matches(raw, @"(?:D\.Lgs\.|Legislative Decree|Regolamento \(UE\)|Regulation \(EU\))\s*(?<ref>\d+/\d+)"))
@@ -133,11 +130,6 @@ public class LegalPrivacyNoticeV2Tests
         }
     }
 
-    /// <summary>
-    /// The effect on the hosts, the one the product owner accepted ("a new recipient is the purpose"): from the day the privacy version is
-    /// set to <c>2026-10-v2</c> on an environment, a host who accepted the notice of the version before must accept this one, and nothing
-    /// else changes for it (the Terms and the DPA stay at their versions); once accepted it is not asked again.
-    /// </summary>
     [Fact]
     public void V2_WhenActivated_HostsMustAcceptThePrivacyAgain_AndOnlyThePrivacy()
     {

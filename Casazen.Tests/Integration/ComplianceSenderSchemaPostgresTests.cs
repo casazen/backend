@@ -24,7 +24,6 @@ public class ComplianceSenderSchemaPostgresTests
         await using var database = PostgresTestDatabase.CreateMigrated("sender");
         var seed = await SeedAsync(database);
 
-        // Two different senders for one property: the check constraint refuses the row.
         await using (var db = database.CreateContext())
         {
             db.PropertyComplianceSenders.Add(Sender(seed, ComplianceSenderType.ChannelManager, ComplianceSenderType.CasaZen));
@@ -34,14 +33,12 @@ public class ComplianceSenderSchemaPostgresTests
             Assert.Equal(PropertyComplianceSender.IstatFollowsAlloggiatiConstraintName, postgres.ConstraintName);
         }
 
-        // The same sender for both: stored.
         await using (var db = database.CreateContext())
         {
             db.PropertyComplianceSenders.Add(Sender(seed, ComplianceSenderType.CasaZen, ComplianceSenderType.CasaZen));
             await db.SaveChangesAsync();
         }
 
-        // A second row for the same property, even a coherent one: the unique index refuses it.
         await using (var db = database.CreateContext())
         {
             db.PropertyComplianceSenders.Add(Sender(seed, ComplianceSenderType.Manual, ComplianceSenderType.Manual));
@@ -51,7 +48,6 @@ public class ComplianceSenderSchemaPostgresTests
             Assert.Equal(PropertyComplianceSender.PropertyIndexName, postgres.ConstraintName);
         }
 
-        // An update that would split the pair of the stored row is refused as well.
         await using (var db = database.CreateContext())
         {
             var stored = await db.PropertyComplianceSenders.SingleAsync(s => s.PropertyId == seed.PropertyId);
@@ -73,7 +69,6 @@ public class ComplianceSenderSchemaPostgresTests
         await using var database = PostgresTestDatabase.CreateMigrated("attempt");
         var seed = await SeedAsync(database);
 
-        // The first open attempt of the booking is reserved.
         var first = Attempt(seed, AlloggiatiAttemptStatus.Reserved);
         await using (var db = database.CreateContext())
         {
@@ -81,7 +76,6 @@ public class ComplianceSenderSchemaPostgresTests
             await db.SaveChangesAsync();
         }
 
-        // While it is open, a second open attempt is refused, whatever its open status: no double transmission.
         foreach (var open in new[] { AlloggiatiAttemptStatus.Reserved, AlloggiatiAttemptStatus.Sending, AlloggiatiAttemptStatus.ToVerify })
         {
             await using var db = database.CreateContext();
@@ -92,14 +86,12 @@ public class ComplianceSenderSchemaPostgresTests
             Assert.Equal(AlloggiatiSendAttempt.OpenPerBookingIndexName, postgres.ConstraintName);
         }
 
-        // A closed attempt next to the open one is allowed: the audit keeps every attempt.
         await using (var db = database.CreateContext())
         {
             db.AlloggiatiSendAttempts.Add(Attempt(seed, AlloggiatiAttemptStatus.TestRejected));
             await db.SaveChangesAsync();
         }
 
-        // Once the first is closed, the next attempt of the booking can be reserved.
         await using (var db = database.CreateContext())
         {
             var stored = await db.AlloggiatiSendAttempts.SingleAsync(a => a.Id == first.Id);
@@ -125,7 +117,6 @@ public class ComplianceSenderSchemaPostgresTests
 
     private sealed record Seed(Guid OrgId, Guid PropertyId, Guid BookingId);
 
-    /// <summary>An org with one property and one booking of it: the rows the sender and the attempts belong to.</summary>
     private static async Task<Seed> SeedAsync(PostgresTestDatabase database)
     {
         await using var db = database.CreateContext();

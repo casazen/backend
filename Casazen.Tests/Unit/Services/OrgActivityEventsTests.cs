@@ -41,8 +41,6 @@ public class OrgActivityEventsTests
     private static AcceptOrgInvitation Accept(string token, string userId = AnnaId, string email = AnnaEmail) =>
         new(token, userId, email, true, false, OrgInvitationTestKit.Consents(), "203.0.113.7");
 
-    // ─── Invitations ────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Invite_WritesTheLine_WithTheInviterTheInvitationAndTheRole()
     {
@@ -60,7 +58,6 @@ public class OrgActivityEventsTests
     [Fact]
     public async Task Invite_ARefusedInvitation_WritesNoLine()
     {
-        // Starter: two seats, the owner has one. The first invitation takes the other; the second finds none.
         var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Starter, status: SubscriptionStatus.None);
         await InviteAsync(org.Id);
 
@@ -140,8 +137,6 @@ public class OrgActivityEventsTests
         Assert.Equal([OrgActivityType.MemberInvited], (await LinesAsync(org.Id)).Select(l => l.Type));
     }
 
-    // ─── People ─────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ChangeRole_WritesTheRoleBeforeAndAfter_ForTheMemberByItsAccount()
     {
@@ -179,7 +174,6 @@ public class OrgActivityEventsTests
 
         await using (var db = _kit.NewDb())
         {
-            // The owner is never changed; an administrator does not make another administrator.
             await Assert.ThrowsAsync<DomainConflictException>(() => _kit.Team(db).ChangeRoleAsync(org.Id, ownerRow.Id, OrgRole.Admin, AnnaId));
         }
 
@@ -246,8 +240,6 @@ public class OrgActivityEventsTests
     [Fact]
     public async Task Reactivate_WithNoSeatLeft_WritesNoLine()
     {
-        // Starter, two seats: the owner and Anna. Anna is deactivated, a new person is invited into the free seat, and Anna's
-        // return finds none.
         var (org, _) = await _kit.SeedOwnerOrgAsync(tier: PlanTier.Starter, status: SubscriptionStatus.None);
         var (_, anna) = await _kit.SeedMemberAsync(org.Id, AnnaId, OrgRole.Collaborator, status: OrgMemberStatus.Deactivated);
         await InviteAsync(org.Id, "bruno@example.com");
@@ -262,8 +254,6 @@ public class OrgActivityEventsTests
         Assert.Contains(OrgActivityType.MemberInvited, types);
         Assert.Contains(OrgActivityType.MemberReactivated, types);
     }
-
-    // ─── The properties given to a member (AM-03: who gave what to whom) ────────────────────────────────
 
     private async Task<(Guid OrgId, OrgMember Member, List<Guid> Properties)> OrgWithACollaboratorAndPropertiesAsync()
     {
@@ -363,8 +353,6 @@ public class OrgActivityEventsTests
         Assert.Empty(await LinesAsync(orgId));
     }
 
-    // ─── Plan and organization ──────────────────────────────────────────────────────────────────────────
-
     private OrgService Orgs(AppDbContext db) => new(db, _kit.Activity(db));
 
     [Fact]
@@ -394,7 +382,6 @@ public class OrgActivityEventsTests
     {
         var (org, _) = await _kit.SeedOwnerOrgAsync();
 
-        // The same name and slug with another contact email: nothing for the log.
         await using (var db = _kit.NewDb())
         {
             var stored = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == org.Id);
@@ -403,7 +390,6 @@ public class OrgActivityEventsTests
 
         Assert.Empty(await LinesAsync(org.Id));
 
-        // Only the name: one line.
         await using (var db = _kit.NewDb())
         {
             var stored = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == org.Id);
@@ -418,7 +404,6 @@ public class OrgActivityEventsTests
     {
         var (org, _) = await _kit.SeedOwnerOrgAsync();
 
-        // The legal name, the registered office, the phone and the language together (AM-08b-b): one line, and none of them in it.
         await using (var db = _kit.NewDb())
         {
             var stored = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == org.Id);
@@ -443,7 +428,6 @@ public class OrgActivityEventsTests
         foreach (var value in new[] { "Segret", "Bari", "3331234567" })
             Assert.DoesNotContain(value, everything, StringComparison.OrdinalIgnoreCase);
 
-        // The same values again, or fields that are not sent: nothing for the log.
         await using (var db = _kit.NewDb())
         {
             var stored = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == org.Id);
@@ -520,13 +504,10 @@ public class OrgActivityEventsTests
         Assert.Null(line.ActorUserId);
         Assert.Equal(new Dictionary<string, string> { ["fromTier"] = "Pro", ["toTier"] = "Starter", ["source"] = "subscription" }, Details(line));
 
-        // Run again: the plan is already Starter, nothing more to say.
         await using (var db = _kit.NewDb())
             await new EntitlementService(db, new ConfigurationBuilder().Build(), _kit.Activity(db)).SyncFromSubscriptionAsync(org.Id);
         Assert.Single(await LinesAsync(org.Id));
     }
-
-    // ─── Nothing personal, whatever the journey ─────────────────────────────────────────────────────────
 
     [Fact]
     public async Task EveryLineOfARichJourney_HoldsNoNameNoEmailNoSlug_OnlyIdsAndCodes()
@@ -551,7 +532,6 @@ public class OrgActivityEventsTests
         var lines = await LinesAsync(org.Id);
         Assert.True(lines.Count >= 7, $"The journey wrote only {lines.Count} lines.");
 
-        // Every column of every line, as a reader of the table would see it.
         var everything = string.Join('\n', lines.Select(l => JsonSerializer.Serialize(l)));
         foreach (var personal in new[]
                  {
@@ -562,7 +542,6 @@ public class OrgActivityEventsTests
             Assert.DoesNotContain(personal, everything, StringComparison.OrdinalIgnoreCase);
         }
 
-        // And the shape: ids that are opaque, details that are short codes of the type's own keys.
         foreach (var line in lines)
         {
             Assert.DoesNotContain('@', line.SubjectId);

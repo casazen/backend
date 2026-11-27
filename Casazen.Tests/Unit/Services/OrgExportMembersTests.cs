@@ -48,7 +48,6 @@ public class OrgExportMembersTests
         Assert.Equal("All", members[0].GetProperty("PropertyScope").GetString());
         Assert.NotEqual(JsonValueKind.Null, members[2].GetProperty("DeactivatedAt").ValueKind);
 
-        // Ids, roles and dates only.
         Assert.DoesNotContain("example.com", json);
         Assert.DoesNotContain("Giulia", json);
         Assert.DoesNotContain("Rinaldi", json);

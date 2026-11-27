@@ -15,7 +15,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class ComplianceLightRulesTests
 {
-    // 2026-11-06 11:00 in Rome.
     private static readonly DateTime Now = new(2026, 11, 6, 10, 0, 0, DateTimeKind.Utc);
     private static readonly DateOnly Today = new(2026, 11, 6);
     private static readonly ComplianceProof Receipt = new("manual-proof:1", ComplianceEvidenceSources.ManualUpload, Now.AddHours(-3));
@@ -43,12 +42,9 @@ public class ComplianceLightRulesTests
             Proof = proof,
         };
 
-    // ─── The proof: green only with one ─────────────────────────────────────────────────────────────────
-
     [Fact]
     public void ComplianceStatus_NeverGreenWithoutArchivedProof_Test()
     {
-        // The verdict is built by the rules alone: no public constructor and no public way to make one, and a proof needs a reference.
         var constructors = typeof(ComplianceVerdict).GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         Assert.NotEmpty(constructors);
         Assert.All(constructors, c => Assert.False(c.IsPublic));
@@ -79,7 +75,6 @@ public class ComplianceLightRulesTests
             verdicts.Add(verdict);
         }
 
-        // Identity: a verification that is not proven, whatever the clock says.
         var identityFacts =
             from operatorNeeded in new[] { false, true }
             from hoursToArrival in new double[] { -5, 3, 23, 25, 200 }
@@ -101,7 +96,6 @@ public class ComplianceLightRulesTests
             select new IstatFacts { Sender = sender, Today = Today, PeriodStart = periodStart, DeadlineDay = deadlineDay };
         verdicts.AddRange(istatFacts.Select(ComplianceLightRules.Istat).OfType<ComplianceVerdict>());
 
-        // The tax: never both receipts at once (that is a closed case with a proof, covered by the next test), one or none.
         var taxFacts =
             from periodStart in periodStarts
             from declaration in new ComplianceProof?[] { null, Receipt }
@@ -139,7 +133,6 @@ public class ComplianceLightRulesTests
     [Fact]
     public void Green_AlwaysCarriesItsProof_AndAFailureIsNeverHiddenByOne()
     {
-        // With a proof the communication is green and says which proof, whoever sends it...
         foreach (var sender in Enum.GetValues<ComplianceSenderType>())
         {
             var green = ComplianceLightRules.Alloggiati(Alloggiati(sender, proof: Receipt));
@@ -152,7 +145,6 @@ public class ComplianceLightRulesTests
             Assert.Equal(ComplianceCockpitAction.UploadAlloggiatiReceipt, green.Action);
         }
 
-        // ...but a communication that failed or was only partly acquired is red even with a receipt of the day: the receipt covers other stays.
         foreach (var status in new[] { AlloggiatiWebStatus.Errore, AlloggiatiWebStatus.Rifiutato, AlloggiatiWebStatus.PartiallyAccepted })
         {
             var red = ComplianceLightRules.Alloggiati(Alloggiati(status: status, proof: Receipt));
@@ -174,8 +166,6 @@ public class ComplianceLightRulesTests
         Assert.Equal((ComplianceLight.Green, ComplianceReasonCodes.IdentityVerified), (identity.Light, identity.Reason));
     }
 
-    // ─── Alloggiati Web ─────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void Alloggiati_SentOrDeclared_IsYellowTheDayOfTheSend_AndRedFromTheDayAfter()
     {
@@ -188,8 +178,6 @@ public class ComplianceLightRulesTests
             Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.ReceiptMissing), (yesterday.Verdict.Light, yesterday.Verdict.Reason));
         }
 
-        // It is the day in Rome that counts, not the UTC one: 23:30 UTC on the 5th is half past midnight of the 6th in Rome (the day of the
-        // send is today, yellow), and 22:30 UTC on the 5th is half past eleven of the 5th (yesterday, red).
         var afterMidnightInRome = ComplianceLightRules.Alloggiati(Alloggiati(status: AlloggiatiWebStatus.InviatoManualmente, communicatedAt: new DateTime(2026, 11, 5, 23, 30, 0, DateTimeKind.Utc)));
         Assert.Equal(ComplianceLight.Yellow, afterMidnightInRome.Verdict.Light);
         var beforeMidnightInRome = ComplianceLightRules.Alloggiati(Alloggiati(status: AlloggiatiWebStatus.InviatoManualmente, communicatedAt: new DateTime(2026, 11, 5, 22, 30, 0, DateTimeKind.Utc)));
@@ -203,7 +191,6 @@ public class ComplianceLightRulesTests
 
         Assert.Equal(ComplianceCockpitAction.UploadAlloggiatiReceipt, within.Action);
         Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.EntrustedToChannelManager), (within.Verdict.Light, within.Verdict.Reason));
-        // The outcome is Octorate's: the client can offer the handoff, and nothing here says it succeeded.
         Assert.Equal(ComplianceEvidenceClass.ExternalVerificationRequired, within.Verdict.EvidenceClass);
         Assert.Equal(OctorateHandoffTopic.Alloggiati, within.Verdict.HandoffTopic);
         Assert.Null(within.Verdict.ProofReference);
@@ -212,7 +199,6 @@ public class ComplianceLightRulesTests
         Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.ReceiptMissing), (late.Verdict.Light, late.Verdict.Reason));
         Assert.Equal(OctorateHandoffTopic.Alloggiati, late.Verdict.HandoffTopic);
 
-        // Entrusted to a sender that is not the channel manager means nothing: the host sends it.
         var manual = ComplianceLightRules.Alloggiati(Alloggiati(ComplianceSenderType.Manual, entrusted: true));
         Assert.Equal((ComplianceCockpitAction.SendAlloggiati, ComplianceLight.Red), (manual.Action, manual.Verdict.Light));
     }
@@ -220,24 +206,20 @@ public class ComplianceLightRulesTests
     [Fact]
     public void Alloggiati_WhatTheChannelManagerDoesNotSend_IsRedWithTheActionToSendByHand()
     {
-        // Over 30 nights: the channel manager does not send it, entrusted or not.
         foreach (var entrusted in new[] { false, true })
         {
             var longStay = ComplianceLightRules.Alloggiati(Alloggiati(ComplianceSenderType.ChannelManager, nights: 31, entrusted: entrusted));
             Assert.Equal((ComplianceCockpitAction.SendAlloggiatiManually, ComplianceReasonCodes.OverThirtyNightsNotSent), (longStay.Action, longStay.Verdict.Reason));
         }
 
-        // A connection Octorate says is not active: the stay is sent by hand.
         var inactive = ComplianceLightRules.Alloggiati(Alloggiati(ComplianceSenderType.ChannelManager, entrusted: true, connection: ConnectionHealthState.Inactive));
         Assert.Equal((ComplianceCockpitAction.SendAlloggiatiManually, ComplianceLight.Red, ComplianceReasonCodes.ConnectionInactive), (inactive.Action, inactive.Verdict.Light, inactive.Verdict.Reason));
 
-        // A short stay (6-hour term) whose guests were not entrusted is at risk; once they are, the channel manager has it.
         var shortStay = ComplianceLightRules.Alloggiati(Alloggiati(ComplianceSenderType.ChannelManager, nights: 1));
         Assert.Equal((ComplianceCockpitAction.SendAlloggiatiManually, ComplianceReasonCodes.ShortStayAtRisk), (shortStay.Action, shortStay.Verdict.Reason));
         var entrustedShort = ComplianceLightRules.Alloggiati(Alloggiati(ComplianceSenderType.ChannelManager, nights: 1, entrusted: true));
         Assert.Equal(ComplianceLight.Yellow, entrustedShort.Verdict.Light);
 
-        // A connection nobody can read is not a reason to send by hand: the guests are entrusted, the light stays yellow.
         var unknown = ComplianceLightRules.Alloggiati(Alloggiati(ComplianceSenderType.ChannelManager, entrusted: true, connection: ConnectionHealthState.Unknown));
         Assert.Equal(ComplianceLight.Yellow, unknown.Verdict.Light);
     }
@@ -257,14 +239,11 @@ public class ComplianceLightRulesTests
         var partial = ComplianceLightRules.Alloggiati(Alloggiati(status: AlloggiatiWebStatus.PartiallyAccepted));
         Assert.Equal(ComplianceReasonCodes.AlloggiatiIncomplete, partial.Verdict.Reason);
 
-        // An outcome nobody knows (timeout, connection lost) is for the host to check, never a success and never sent again by itself.
         var toVerify = ComplianceLightRules.Alloggiati(Alloggiati(status: AlloggiatiWebStatus.ToVerify));
         Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.ExternalVerificationRequired), (toVerify.Verdict.Light, toVerify.Verdict.Reason));
         var sending = ComplianceLightRules.Alloggiati(Alloggiati(status: AlloggiatiWebStatus.Sending));
         Assert.Equal(ComplianceLight.Yellow, sending.Verdict.Light);
     }
-
-    // ─── Identity ───────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Identity_YellowWhileTheSelfieIsAwaited_RedCloseToTheArrivalOrWhenAnOperatorMustDecide()
@@ -281,16 +260,12 @@ public class ComplianceLightRulesTests
         Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.SelfieAwaited), (ComplianceLightRules.Identity(Facts(72)).Light, ComplianceLightRules.Identity(Facts(72)).Reason));
         Assert.Equal(ComplianceLight.Yellow, ComplianceLightRules.Identity(Facts(24.5)).Light);
 
-        // The arrival is within the hours of IdentityRedHoursBeforeArrival (the boundary included), or it has come.
         Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.IdentityMissing), (ComplianceLightRules.Identity(Facts(24)).Light, ComplianceLightRules.Identity(Facts(24)).Reason));
         Assert.Equal(ComplianceLight.Red, ComplianceLightRules.Identity(Facts(-2)).Light);
 
-        // An operator has to decide: red whatever the clock says.
         var operatorVerdict = ComplianceLightRules.Identity(Facts(200, operatorNeeded: true));
         Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.OperatorDecisionRequired), (operatorVerdict.Light, operatorVerdict.Reason));
     }
-
-    // ─── Connection, credentials, periods, rate, CIN ────────────────────────────────────────────────────
 
     [Fact]
     public void Connection_RedWhenInactive_YellowWhenUnknown_AndNeverAnItemWhenActiveOrDeclared()
@@ -300,11 +275,9 @@ public class ComplianceLightRulesTests
             (ComplianceLightRules.Connection(new ConnectionFacts { State = ConnectionHealthState.Inactive })!.Light, ComplianceLightRules.Connection(new ConnectionFacts { State = ConnectionHealthState.Inactive })!.Reason));
         Assert.Equal(ComplianceLight.Yellow, ComplianceLightRules.Connection(new ConnectionFacts { State = ConnectionHealthState.Unknown })!.Light);
 
-        // Active proves no communication (so it is never green); the host's declaration settles the question of the connection; manual has none.
         Assert.Null(ComplianceLightRules.Connection(new ConnectionFacts { State = ConnectionHealthState.Active }));
         Assert.Null(ComplianceLightRules.Connection(new ConnectionFacts { State = ConnectionHealthState.Unknown, DeclaredByHost = true }));
         Assert.Null(ComplianceLightRules.Connection(new ConnectionFacts { State = ConnectionHealthState.Manual }));
-        // An inactive connection is red whatever the host said.
         Assert.Equal(ComplianceLight.Red, ComplianceLightRules.Connection(new ConnectionFacts { State = ConnectionHealthState.Inactive, DeclaredByHost = true })!.Light);
 
         Assert.Equal(ComplianceReasonCodes.CredentialsRefused, ComplianceLightRules.Credentials(new CredentialsFacts { LastVerificationOk = false })!.Reason);
@@ -318,12 +291,10 @@ public class ComplianceLightRulesTests
         IstatFacts Facts(int? deadlineDay, ComplianceSenderType sender = ComplianceSenderType.Manual, DateOnly? today = null, ComplianceProof? proof = null) =>
             new() { Sender = sender, Today = today ?? Today, PeriodStart = new DateOnly(2026, 10, 1), DeadlineDay = deadlineDay, Proof = proof };
 
-        // No deadline for the region: nothing is said, and nothing is guessed (a proof does not change that: there is no obligation to show).
         Assert.Null(ComplianceLightRules.Istat(Facts(null)));
         Assert.Null(ComplianceLightRules.Istat(Facts(0)));
         Assert.Null(ComplianceLightRules.Istat(Facts(32)));
 
-        // The deadline is day 10 of the next month: 2026-11-10. Open until then, red after it.
         var open = ComplianceLightRules.Istat(Facts(10))!;
         Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.PeriodOpen, ComplianceEvidenceClass.Missing), (open.Light, open.Reason, open.EvidenceClass));
         Assert.Equal(ComplianceLight.Yellow, ComplianceLightRules.Istat(Facts(10, today: new DateOnly(2026, 11, 10)))!.Light);
@@ -331,13 +302,11 @@ public class ComplianceLightRulesTests
             (ComplianceLight.Red, ComplianceReasonCodes.DeadlineOverdue),
             (ComplianceLightRules.Istat(Facts(10, today: new DateOnly(2026, 11, 11)))!.Light, ComplianceLightRules.Istat(Facts(10, today: new DateOnly(2026, 11, 11)))!.Reason));
 
-        // Octorate sends it: the outcome is in the Cassetto, so the light is yellow with the topic; the missed deadline is still red.
         var channelManager = ComplianceLightRules.Istat(Facts(10, ComplianceSenderType.ChannelManager))!;
         Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.ExternalVerificationRequired, OctorateHandoffTopic.Istat), (channelManager.Light, channelManager.Reason, channelManager.HandoffTopic));
         Assert.Equal(ComplianceEvidenceClass.ExternalVerificationRequired, channelManager.EvidenceClass);
         Assert.Equal(ComplianceLight.Red, ComplianceLightRules.Istat(Facts(10, ComplianceSenderType.ChannelManager, new DateOnly(2026, 12, 1)))!.Light);
 
-        // A day that the next month does not have is its last day (February).
         Assert.Equal(new DateOnly(2027, 2, 28), ComplianceLightRules.IstatDeadline(new DateOnly(2027, 1, 1), 31));
         Assert.Equal("2026-10", ComplianceLightRules.PeriodKey(new DateOnly(2026, 10, 1)));
     }
@@ -349,7 +318,6 @@ public class ComplianceLightRulesTests
         var declaration = new ComplianceProof("manual-proof:d", ComplianceEvidenceSources.ManualUpload);
         var payment = new ComplianceProof("manual-proof:p", ComplianceEvidenceSources.ManualUpload);
 
-        // October is closed on 2026-11-01; the month in progress is not a period yet.
         Assert.Null(ComplianceLightRules.TouristTaxPeriod(new TaxPeriodFacts { Today = new DateOnly(2026, 10, 31), PeriodStart = october }));
         Assert.Null(ComplianceLightRules.TouristTaxPeriod(new TaxPeriodFacts { Today = Today, PeriodStart = new DateOnly(2026, 11, 1) }));
 
@@ -363,7 +331,6 @@ public class ComplianceLightRulesTests
             ComplianceLight.Green,
             ComplianceLightRules.TouristTaxPeriod(new TaxPeriodFacts { Today = Today, PeriodStart = october, Declaration = declaration, Payment = payment })!.Light);
 
-        // A rate that is not known is red (never a presumed zero); one that is known is no item.
         Assert.Equal(ComplianceReasonCodes.MunicipalityRateMissing, ComplianceLightRules.MunicipalityRate(false)!.Reason);
         Assert.Null(ComplianceLightRules.MunicipalityRate(true));
     }
@@ -384,8 +351,6 @@ public class ComplianceLightRulesTests
         Assert.Equal(reason == ComplianceReasonCodes.CinValid ? ComplianceLight.Green : ComplianceLight.Red, verdict.Light);
     }
 
-    // ─── The vocabulary ─────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void ReasonCodes_AreStableSnakeCase_AndEveryCodeTheRulesGiveIsInTheList()
     {
@@ -393,7 +358,6 @@ public class ComplianceLightRulesTests
         Assert.Equal(codes.Count, codes.Distinct(StringComparer.Ordinal).Count());
         Assert.All(codes, code => Assert.Matches("^[a-z]+(_[a-z]+)*$", code));
 
-        // The list is the constants of the class: a code added to one and not to the other fails here.
         var constants = typeof(ComplianceReasonCodes)
             .GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(f => f is { IsLiteral: true } && f.FieldType == typeof(string))
@@ -401,7 +365,6 @@ public class ComplianceLightRulesTests
             .Order(StringComparer.Ordinal);
         Assert.Equal(constants, codes.Order(StringComparer.Ordinal));
 
-        // The names the clients were told in the brief.
         Assert.Contains("receipt_archived", codes);
         Assert.Contains("awaiting_receipt", codes);
         Assert.Contains("entrusted_to_channel_manager", codes);
@@ -409,7 +372,6 @@ public class ComplianceLightRulesTests
         Assert.Contains("evidence_missing", codes);
         Assert.Contains("deadline_overdue", codes);
 
-        // Every verdict the rules can give, for the cockpit actions that exist today, uses a listed code.
         foreach (var action in Enum.GetValues<ComplianceCockpitAction>())
             Assert.Contains(ComplianceLightRules.OpenAction(action).Reason, codes);
         Assert.Matches(new Regex("^[a-z_]+$"), ComplianceReasonCodes.ActionRequired);
@@ -418,7 +380,6 @@ public class ComplianceLightRulesTests
     [Fact]
     public void TheEightNewActions_AreAppendedToTheCockpitEnum_WithoutMovingTheExistingOnes()
     {
-        // The JSON is by name and the clients keep their own table: the first six keep their numbers, the eight new ones follow.
         Assert.Equal(
             [
                 "ActivateProperty", "CompleteGuestCheckIn", "CheckOut", "SendAlloggiati", "ResolveAlloggiatiFailure", "ConfirmPropertyReady",
@@ -430,19 +391,14 @@ public class ComplianceLightRulesTests
         Assert.Equal(5, (int)ComplianceCockpitAction.ConfirmPropertyReady);
         Assert.Equal(6, (int)ComplianceCockpitAction.VerifyIdentity);
 
-        // Property and booking: the target of each new action.
         string[] propertyActions = ["ActivateProperty", "ActivateOctorateSend", "UploadIstatProof", "EnterMunicipalityTaxRate", "DeclareTouristTax", "RenewPoliceCredentials", "NotifyTicinoPolice", "NotifyGuestsAuthority"];
         foreach (var action in Enum.GetValues<ComplianceCockpitAction>())
             Assert.Equal(propertyActions.Contains(action.ToString()), ComplianceSummaryItem.TargetsProperty(action));
     }
 
-    // ─── An Octorate handoff is never evidence ──────────────────────────────────────────────────────────
-
     [Fact]
     public void ComplianceStatus_OctorateHandoffNeverChangesTheLight_Test()
     {
-        // No fact the rules read can carry a handoff, a return from one, an attestation or a declaration of an outcome: there is nothing for
-        // starting or coming back from the external verification to change.
         string[] outcomeLike = ["handoff", "return", "attest", "declared", "confirm", "outcome", "verified", "passed"];
         foreach (var type in new[] { typeof(AlloggiatiFacts), typeof(IdentityFacts), typeof(IstatFacts), typeof(TaxPeriodFacts), typeof(CredentialsFacts) })
         {

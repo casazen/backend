@@ -3,10 +3,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The day rules of a test that is not about them (E08/F05/US01): no night of any property has a rule, so nothing is refused and no price changes.
-/// <c>BookingService</c>, <c>PublicCalendarService</c> and <c>PublicSiteSearchService</c> need one: they read the rules of the nights they judge.
-/// </summary>
 internal sealed class NoDayRules : IPropertyDayRuleService
 {
     public static NoDayRules Instance { get; } = new();

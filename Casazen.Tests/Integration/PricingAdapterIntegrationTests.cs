@@ -222,8 +222,6 @@ public class PricingAdapterIntegrationTests : IClassFixture<CasazenWebApplicatio
     [Fact]
     public async Task CrossOrgUser_OnAllEndpoints_ReturnsNotFound()
     {
-        // The EF tenant filter scopes property reads to the caller's org: a host of another org cannot see the
-        // property, so every property-scoped endpoint returns 404 (never 403, which would leak its existence).
         var property = await _factory.SeedPropertyAsync(ownerId: TestAuthHandler.DefaultUserId);
         var otherHost = $"auth0|other-host-{Guid.NewGuid():N}";
         await _factory.SeedOrgForOwnerAsync(otherHost);

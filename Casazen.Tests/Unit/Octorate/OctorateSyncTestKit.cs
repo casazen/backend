@@ -16,10 +16,6 @@ using Moq;
 
 namespace Casazen.Tests.Unit.Octorate;
 
-/// <summary>
-/// A property of org A mirrored on Octorate (a connected account, a confirmed mapping with its room) and the push of its bookings
-/// (E08/F01/US01/T03, T04), over an in-memory database, a strict client of Octorate the test sets up and a fixed clock.
-/// </summary>
 internal sealed class OctorateSyncHarness
 {
     public const string Accommodation = "585492";
@@ -29,7 +25,6 @@ internal sealed class OctorateSyncHarness
     public static readonly Guid OrgA = Guid.Parse("4f1e2d3c-6b5a-4978-8a1b-2c3d4e5f6a71");
     public static readonly Guid OrgB = Guid.Parse("9a8b7c6d-5e4f-4a3b-9c2d-1e0f2a3b4c72");
 
-    /// <summary>2026-11-06 09:00 in Rome: the stays below are in December.</summary>
     public static readonly DateTimeOffset Now = new(2026, 11, 6, 8, 0, 0, TimeSpan.Zero);
 
     private readonly string _database = $"octorate-sync-{Guid.NewGuid():N}";
@@ -82,7 +77,6 @@ internal sealed class OctorateSyncHarness
     public AppDbContext NewDb(ITenantContext? tenant = null) =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options, tenant ?? NullTenantContext.Instance);
 
-    /// <summary>The push in one scope of the event bus: the database, the org scope and the recorder of <paramref name="tenant"/>.</summary>
     public BookingOctorateSyncService Service(AppDbContext db, ITenantContext tenant) =>
         new(
             db,
@@ -123,7 +117,6 @@ internal sealed class OctorateSyncHarness
             NullLogger<OctorateBookingTargets>.Instance);
     }
 
-    /// <summary>A confirmed booking of 10 to 13 December 2026, entered by the host, of 300 without the tax.</summary>
     public async Task<Guid> SeedBookingAsync(
         Guid? orgId = null,
         Guid? propertyId = null,

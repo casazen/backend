@@ -50,7 +50,6 @@ public class FiscalDocumentBookingChangeTests
         var service = ServiceOf(db);
         var handler = HandlerOf(service);
 
-        // Refunded 100.00 of 362.00: the guest pays 262.00.
         var refunded = await AddBookingAsync(db, property);
         var original = await IssueAsync(service, refunded);
         var before = Snapshot(await ReloadAsync(db, original.Id));
@@ -69,12 +68,10 @@ public class FiscalDocumentBookingChangeTests
         var todo = Assert.Single(await TodosAsync(db));
         Assert.Equal((FiscalDocumentTodos.CreditNoteToIssueReason, note.Id), (todo.Reason, todo.EntityId));
 
-        // Issued, the draft takes the next number of the series of the document, and the document keeps standing (it is credited in part).
         var issued = await service.IssueAsync(note.Id, confirm: true);
         Assert.Equal(("2026/2", FiscalDocumentStatus.Issued, DocumentKind.CreditNote, original.Series), (issued.Number, issued.Status, issued.Kind, issued.Series));
         Assert.False((await ReloadAsync(db, original.Id)).CreditedInFull);
 
-        // A penalty that equals the document: the guest pays all of it, the document stays and nothing is corrected.
         var penalty = await AddBookingAsync(db, property);
         await IssueAsync(service, penalty);
         await AddPaymentAsync(db, penalty, 362m);
@@ -82,7 +79,6 @@ public class FiscalDocumentBookingChangeTests
         await handler.HandleAsync(BookingEvent(DomainEventType.BookingCancelled, penalty), CancellationToken.None);
         Assert.Empty(await db.FiscalDocuments.AsNoTracking().Where(d => d.Kind == DocumentKind.CreditNote && d.BookingId == penalty).ToListAsync());
 
-        // A part of the document paid (a deposit of 100.00 kept): credited for the difference, 262.00.
         var deposit = await AddBookingAsync(db, property);
         await IssueAsync(service, deposit);
         await AddPaymentAsync(db, deposit, 100m);
@@ -90,7 +86,6 @@ public class FiscalDocumentBookingChangeTests
         await handler.HandleAsync(BookingEvent(DomainEventType.BookingCancelled, deposit), CancellationToken.None);
         Assert.Equal(262.00m, Assert.Single(await db.FiscalDocuments.AsNoTracking().Where(d => d.Kind == DocumentKind.CreditNote && d.BookingId == deposit).ToListAsync()).Total);
 
-        // Nothing paid: a full credit note, the lines and amounts of the document as stored.
         var unpaid = await AddBookingAsync(db, property);
         var unpaidDocument = await IssueAsync(service, unpaid);
         await CancelAsync(db, unpaid);
@@ -103,11 +98,6 @@ public class FiscalDocumentBookingChangeTests
             full.Lines.OrderBy(l => l.LineNumber).Select(l => (l.LineType, l.TotalPrice, l.VatAmount)).ToArray());
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule. A date change of an issued booking is a full credit note of the document (its amounts as stored) and a new draft with the new lines; the document is not touched.
-    /// The draft is made beside the credit note, but cannot be issued before it (409), and issued after it: consecutive numbers of one series. With the automatic issue of the profile the credit
-    /// note and then the new document are issued at once. A change that bills nothing different (notes, a guest more at the same price) corrects nothing.
-    /// </summary>
     [Fact]
     public async Task BookingDateChange_FullCreditAndNewDraft_Test()
     {
@@ -120,11 +110,9 @@ public class FiscalDocumentBookingChangeTests
         var original = await IssueAsync(service, booking);
         var before = Snapshot(await ReloadAsync(db, original.Id));
 
-        // Nothing billed changes: nothing is corrected.
         await ChangeBookingAsync(db, booking, b => b.SpecialRequests = "TEST nota");
         Assert.Equal(BookingChangeOutcome.None, await service.ApplyBookingChangeAsync(booking, BookingChange.Modified));
 
-        // The host moves the check-out by two nights.
         await ChangeBookingAsync(db, booking, b => { b.CheckOutDate = b.CheckOutDate.AddDays(2); b.BasePrice = 550m; b.TouristTax = 20m; b.TotalPrice = 570m; });
         await handler.HandleAsync(BookingEvent(DomainEventType.BookingModified, booking), CancellationToken.None);
 
@@ -144,7 +132,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.Equal(before, Snapshot(stored));
         Assert.Equal((FiscalDocumentTodos.CreditNoteToIssueReason, note.Id), ((await TodosAsync(db)).Single().Reason, (await TodosAsync(db)).Single().EntityId));
 
-        // The new document waits for the credit note: it cannot be issued before it.
         var refused = await Assert.ThrowsAsync<DomainConflictException>(() => service.IssueAsync(draft.Id, confirm: true));
         Assert.Equal(FiscalDocumentErrors.AlreadyIssued, refused.Code);
         var creditNote = await service.IssueAsync(note.Id, confirm: true);
@@ -152,7 +139,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.Equal(("2026/2", "2026/3"), (creditNote.Number, replacement.Number));
         Assert.True((await ReloadAsync(db, original.Id)).CreditedInFull);
 
-        // With the automatic issue: the credit note and the new document are issued at once, and the same event again changes nothing.
         await using var auto = NewDb();
         await SeedOrgAsync(auto, autoIssue: true);
         var autoProperty = await AddPropertyAsync(auto);
@@ -173,10 +159,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.Empty(await TodosAsync(auto));
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. A change delivered twice (the same event, or the two events of one change: the refund and the cancellation) is one correction: one credit note, one new draft, one «To do».
-    /// The state is read as it is when the event is handled, so the order of the events does not matter; the amounts credited (issued or still drafts) are never credited again.
-    /// </summary>
     [Fact]
     public async Task BookingChangeEvent_ProcessedTwice_OneCorrection_Test()
     {
@@ -186,7 +168,6 @@ public class FiscalDocumentBookingChangeTests
         var service = ServiceOf(db);
         var handler = HandlerOf(service);
 
-        // A date change, the same event twice.
         var moved = await AddBookingAsync(db, property);
         await IssueAsync(service, moved);
         await ChangeBookingAsync(db, moved, b => { b.CheckOutDate = b.CheckOutDate.AddDays(1); b.BasePrice = 450m; b.TotalPrice = 462m; });
@@ -198,7 +179,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.Equal(2, documents.Count(d => d.Kind == DocumentKind.Invoice));
         Assert.Single(await TodosAsync(db));
 
-        // A cancellation with a refund: the refund and the cancellation arrive in either order and twice; one credit note of what is refunded, never more.
         var cancelled = await AddBookingAsync(db, property);
         await IssueAsync(service, cancelled);
         var payment = await AddPaymentAsync(db, cancelled, 362m, refunded: 362m);
@@ -218,7 +198,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.Equal(362.00m, Assert.Single(notes).Total);
         Assert.Equal(2, (await TodosAsync(db)).Count);
 
-        // Even with the credit note issued and the document credited in full: nothing more.
         await service.IssueAsync(notes[0].Id, confirm: true);
         await handler.HandleAsync(BookingEvent(DomainEventType.BookingCancelled, cancelled), CancellationToken.None);
         Assert.Equal(1, await db.FiscalDocuments.CountAsync(d => d.Kind == DocumentKind.CreditNote && d.BookingId == cancelled));
@@ -286,11 +265,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.Equal(FiscalDocumentTodos.BookingChangedReason, todo.Reason);
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule (⚖ I12). A stay of a portal the host collects from has no payment of CasaZen: what the guest paid is what the channel manager reports. A deposit of 100.00 of the
-    /// 350.00 credits the difference, a document paid in full is kept, and while the channel manager says nothing nobody knows what was paid, so there is no credit note of the whole
-    /// document by guessing: the host is told and decides.
-    /// </summary>
     [Fact]
     public async Task PortalStayTheHostCollectsFrom_IsCreditedByWhatTheChannelManagerSaysWasPaid_AndNeverByGuessing()
     {
@@ -324,10 +298,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.Equal(FiscalDocumentTodos.BookingChangedReason, Assert.Single(await TodosAsync(db), t => t.EntityId == silentDocument.Id).Reason);
     }
 
-    /// <summary>
-    /// A cancelled booking whose refund is still under way cannot be credited yet: the event is delivered again (never consumed with no effect), and the refund that succeeds is the event that
-    /// prepares the credit note. A refund of a booking that is still on is its own price: no correction. A draft of a booking that bills nothing any more, with nothing collected, is discarded.
-    /// </summary>
     [Fact]
     public async Task CancelledBookingWithARefundUnderWay_WaitsForTheRefund_AndADraftIsDiscarded_AndARefundOfAnActiveBookingIsNothing()
     {
@@ -342,7 +312,6 @@ public class FiscalDocumentBookingChangeTests
         db.PaymentRefunds.Add(new PaymentRefund { PaymentId = payment, OrgId = OrgId, Amount = 362m, Status = PaymentRefundStatus.Pending, Origin = PaymentRefundOrigin.Host, IdempotencyKey = "TEST-1" });
         await db.SaveChangesAsync();
 
-        // A refund of a booking that is still on: nothing.
         await handler.HandleAsync(RefundEvent(payment, booking, 100m), CancellationToken.None);
         Assert.Equal(1, await db.FiscalDocuments.CountAsync());
 
@@ -350,7 +319,6 @@ public class FiscalDocumentBookingChangeTests
         await Assert.ThrowsAsync<FiscalDocumentChangePendingException>(() => handler.HandleAsync(BookingEvent(DomainEventType.BookingCancelled, booking), CancellationToken.None));
         Assert.Equal(1, await db.FiscalDocuments.CountAsync());
 
-        // The refund succeeds: the payment says so and PaymentRefunded prepares the credit note, of what was refunded.
         var refund = await db.PaymentRefunds.SingleAsync();
         refund.Status = PaymentRefundStatus.Succeeded;
         var paid = await db.Payments.SingleAsync();
@@ -360,7 +328,6 @@ public class FiscalDocumentBookingChangeTests
         await handler.HandleAsync(RefundEvent(payment, booking, 362m), CancellationToken.None);
         Assert.Equal(362.00m, Assert.Single(await db.FiscalDocuments.AsNoTracking().Where(d => d.Kind == DocumentKind.CreditNote).ToListAsync()).Total);
 
-        // A draft that was never issued: discarded when the booking is cancelled with nothing collected.
         var draftOnly = await AddBookingAsync(db, property);
         var draft = await service.CreateDraftAsync(draftOnly, null);
         await CancelAsync(db, draftOnly);
@@ -368,10 +335,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.Equal(FiscalDocumentStatus.Discarded, (await ReloadAsync(db, draft.Id)).Status);
     }
 
-    /// <summary>
-    /// Credit notes respect the cap: the draft of a credit note is checked again when it is issued, under the lock of the series, so a credit note issued meanwhile (by hand) leaves the draft
-    /// refused (422 <c>credit_amount_exceeds</c>), never more credited than the document. The draft of a credit note is not made again from the booking, and can be discarded.
-    /// </summary>
     [Fact]
     public async Task CreditNoteDraft_IsCappedAgainWhenIssued_AndIsNotMadeAgainFromTheBooking()
     {
@@ -386,7 +349,6 @@ public class FiscalDocumentBookingChangeTests
         var note = await db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Kind == DocumentKind.CreditNote);
         Assert.Equal(362.00m, note.Total);
 
-        // The draft stays as it is whatever the booking says; the host credits 100.00 by hand meanwhile.
         Assert.Equal(note.Total, (await service.RefreshDraftAsync(note.Id)).Total);
         await service.CreateCreditNoteAsync(original.Id, 100m, "TEST", confirm: true, null);
 
@@ -398,10 +360,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.Equal(FiscalDocumentStatus.Discarded, (await ReloadAsync(db, note.Id)).Status);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (FIX/RES-DOCS). The «To do» «Controlla ed emetti la nota di credito» that a correction leaves for the host closes by itself, once and by the system, when the host issues the credit note
-    /// (the item that said a credit note may be needed on the document it credits closes with it) or discards it, in the organization of the document: an item of another organization that names the same id stays open.
-    /// </summary>
     [Fact]
     public async Task CreditNoteIssued_ClosesTheToDo_Test()
     {
@@ -412,8 +370,6 @@ public class FiscalDocumentBookingChangeTests
         var handler = HandlerOf(service);
         var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, new FakeTimeProvider(Now));
 
-        // A booking cancelled with nothing paid: the correction prepares the credit note, and the host is told to check and issue it. The document itself already had the item that says a credit note may be needed,
-        // and an item of another organization names the same id (it is none of this organization's business).
         var cancelled = await AddBookingAsync(db, property);
         var original = await IssueAsync(service, cancelled);
         await CancelAsync(db, cancelled);
@@ -425,7 +381,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.Equal(3, (await TodosAsync(db)).Count(t => t.CompletedAt is null));
         Assert.Contains(await TodosAsync(db), t => t.EntityId == note.Id && t.Reason == FiscalDocumentTodos.CreditNoteToIssueReason);
 
-        // The host issues the credit note: the item that waited for it and the one that said it may be needed are closed, by the system. The item of the other organization is not touched.
         await service.IssueAsync(note.Id, confirm: true);
         var afterIssue = await TodosAsync(db);
         var ours = afterIssue.Where(t => t.OrgId == OrgId).ToList();
@@ -433,7 +388,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.All(ours, t => Assert.Equal((true, InternalActivity.ClosedBySystem), (t.CompletedAt is not null, t.ClosedBy)));
         Assert.Null(Assert.Single(afterIssue, t => t.OrgId == otherOrg).CompletedAt);
 
-        // A credit note the host discards instead: its item closes with the discard, and the draft is not issued.
         var second = await AddBookingAsync(db, property);
         await IssueAsync(service, second);
         await CancelAsync(db, second);
@@ -449,10 +403,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.Equal((true, InternalActivity.ClosedBySystem), (closed.CompletedAt is not null, closed.ClosedBy));
     }
 
-    /// <summary>
-    /// The «To do» that tells the host a booking changed closes when the booking goes back as it was: the issued document bills what the booking bills again (the correction of the event finds nothing to credit), or the
-    /// draft is made again from its booking. A booking that is still not as it was keeps its item, and a second delivery of the event does not raise a second one.
-    /// </summary>
     [Fact]
     public async Task BookingBackAsItWas_ClosesTheChangedBookingToDo_AndABookingThatStaysChangedKeepsIt()
     {
@@ -461,7 +411,6 @@ public class FiscalDocumentBookingChangeTests
         var property = await AddPropertyAsync(db);
         var service = ServiceOf(db);
 
-        // A portal collected the money and the stay is cancelled: nobody knows what it kept, so no credit note is made and the host is told the booking changed.
         var reinstated = await AddBookingAsync(db, property, BookingSource.Airbnb, companyCollect: true);
         var reinstatedDocument = await IssueAsync(service, reinstated);
         var stays = await AddBookingAsync(db, property, BookingSource.Airbnb, companyCollect: true);
@@ -475,7 +424,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.All(await TodosAsync(db), t => Assert.Equal((FiscalDocumentTodos.BookingChangedReason, (DateTime?)null), (t.Reason, t.CompletedAt)));
         Assert.Equal(2, (await TodosAsync(db)).Count);
 
-        // One goes back as it was (the same stay, on again): its item closes. The other stays cancelled, and the event delivered again keeps its one item.
         await ChangeBookingAsync(db, reinstated, b => { b.Status = BookingStatus.CheckedOut; b.CancelledAt = null; });
         await service.ApplyBookingChangeAsync(reinstated, BookingChange.Modified);
         await service.ApplyBookingChangeAsync(stays, BookingChange.Cancelled);
@@ -516,7 +464,6 @@ public class FiscalDocumentBookingChangeTests
         var handler = HandlerOf(service);
         var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, new FakeTimeProvider(Now));
 
-        // A draft, 362.00 collected, the booking cancelled: the draft is kept for the host, who is told the booking changed. An item of another organization names the same id.
         var booking = await AddBookingAsync(db, property);
         var draft = await service.CreateDraftAsync(booking, null);
         var payment = await AddPaymentAsync(db, booking, 362m);
@@ -528,7 +475,6 @@ public class FiscalDocumentBookingChangeTests
         var raised = Assert.Single(await TodosAsync(db), t => t.OrgId == OrgId);
         Assert.Equal((draft.Id, FiscalDocumentTodos.BookingChangedReason, (DateTime?)null), (raised.EntityId!.Value, raised.Reason, raised.CompletedAt));
 
-        // The refund brings what was collected back to nothing: the correction discards the draft by itself, and its item is done.
         var paid = await db.Payments.SingleAsync();
         paid.RefundedAmount = 362m;
         paid.Status = PaymentStatus.Refunded;
@@ -541,7 +487,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.Equal((true, InternalActivity.ClosedBySystem), (closed.CompletedAt is not null, closed.ClosedBy));
         Assert.Null(Assert.Single(items, t => t.OrgId == otherOrg).CompletedAt);
 
-        // The event delivered again finds no document to follow: nothing changes and no item is raised.
         await handler.HandleAsync(RefundEvent(payment, booking, 362m), CancellationToken.None);
         Assert.Equal(2, (await TodosAsync(db)).Count);
     }
@@ -566,14 +511,12 @@ public class FiscalDocumentBookingChangeTests
             documents.Verify(d => d.ApplyBookingChangeAsync(bookingId, change, It.IsAny<CancellationToken>()), Times.Once);
         }
 
-        // The refund names its booking in the payload; a payload that names none is ignored.
         var payment = Guid.NewGuid();
         await handler.HandleAsync(RefundEvent(payment, bookingId, 10m), CancellationToken.None);
         documents.Verify(d => d.ApplyBookingChangeAsync(bookingId, BookingChange.Refunded, It.IsAny<CancellationToken>()), Times.Once);
         await handler.HandleAsync(new DomainEvent(Guid.NewGuid(), OrgId, DomainEventType.PaymentRefunded, payment, Now.UtcDateTime, "not json"), CancellationToken.None);
         await handler.HandleAsync(new DomainEvent(Guid.NewGuid(), OrgId, DomainEventType.PaymentRefunded, payment, Now.UtcDateTime, "{}"), CancellationToken.None);
 
-        // Every other event, an empty entity and the issuance off: nothing more.
         foreach (var type in Enum.GetValues<DomainEventType>().Where(t => FiscalDocumentBookingChangeHandler.ChangeOf(t) is null))
             await handler.HandleAsync(BookingEvent(type, bookingId), CancellationToken.None);
         await handler.HandleAsync(BookingEvent(DomainEventType.BookingModified, Guid.Empty), CancellationToken.None);
@@ -581,7 +524,6 @@ public class FiscalDocumentBookingChangeTests
             .HandleAsync(BookingEvent(DomainEventType.BookingCancelled, bookingId), CancellationToken.None);
         documents.Verify(d => d.ApplyBookingChangeAsync(It.IsAny<Guid>(), It.IsAny<BookingChange>(), It.IsAny<CancellationToken>()), Times.Exactly(4));
 
-        // A refusal of the rules is an answer; a refund under way and any other failure are thrown again, so the outbox delivers the event again.
         documents.Setup(d => d.ApplyBookingChangeAsync(It.IsAny<Guid>(), It.IsAny<BookingChange>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new DomainRuleException(FiscalDocumentErrors.ProfileIncomplete, "IssuerProfileIncomplete"));
         await handler.HandleAsync(BookingEvent(DomainEventType.BookingCancelled, bookingId), CancellationToken.None);
@@ -593,10 +535,6 @@ public class FiscalDocumentBookingChangeTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => handler.HandleAsync(BookingEvent(DomainEventType.BookingCancelled, bookingId), CancellationToken.None));
     }
 
-    /// <summary>
-    /// The refund of a payment records <c>PaymentRefunded</c> once for each amount refunded in all (a refund seen again records nothing, a bigger total records one more), and the mark of a
-    /// no-show has its own key: the two events the fiscal documents follow besides the booking changes.
-    /// </summary>
     [Fact]
     public async Task RefundRecordsPaymentRefundedOncePerAmount_AndTheNoShowHasItsKey()
     {
@@ -640,10 +578,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.Equal(63, (int)DomainEventType.PaymentRefunded);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. The host marking a stay as a no-show records <c>BookingNoShowMarked</c> in the unit of work of the mark, once for the booking (the mark seen again records
-    /// nothing), with ids and dates only: the only event that tells the fiscal documents of the stay about the no-show.
-    /// </summary>
     [Fact]
     public async Task MarkNoShow_RecordsBookingNoShowMarkedOncePerBooking_WithIdsAndDatesOnly()
     {
@@ -672,8 +606,6 @@ public class FiscalDocumentBookingChangeTests
         Assert.DoesNotContain("Guest", recorded.PayloadJson, StringComparison.Ordinal);
     }
 
-    // ---------------------------------------------------------------- helpers
-
     private static FiscalDocumentBookingChangeHandler HandlerOf(FiscalDocumentService service) =>
         new(service, new TestFeatureFlags(FeatureFlags.FiscalDocumentIssuance), NullLogger<FiscalDocumentBookingChangeHandler>.Instance);
 
@@ -698,7 +630,6 @@ public class FiscalDocumentBookingChangeTests
     private static async Task<List<InternalActivity>> TodosAsync(AppDbContext db) =>
         await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync();
 
-    /// <summary>The «To do» that asks the host to look at a document, as a correction raises it (the property of a booking, or none for an item of an organization).</summary>
     private static CreateTodoRequest ReviewTodo(Guid documentId, Guid? propertyId, Guid orgId, string reason) => new()
     {
         Type = ActivityType.FiscalDocument,

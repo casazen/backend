@@ -31,7 +31,6 @@ public class AddRentRegisterAndRemindersMigrationPostgresTests : IAsyncLifetime
 
         var indexes = await IndexDefinitionsAsync(db);
         var register = Assert.Single(indexes, i => i.Name == "IX_RentLedgerEntries_OrgId_DueDate");
-        // The org and then the due date, in that order: the month of an org is one range of the index, already in due date order.
         Assert.Contains("(\"OrgId\", \"DueDate\")", register.Definition, StringComparison.Ordinal);
         Assert.DoesNotContain("UNIQUE", register.Definition, StringComparison.Ordinal);
         Assert.Contains(indexes, i => i.Name == "IX_RentLedgerEntries_OrgId");

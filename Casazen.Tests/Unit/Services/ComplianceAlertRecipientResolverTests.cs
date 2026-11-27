@@ -38,11 +38,6 @@ public class ComplianceAlertRecipientResolverTests : IDisposable
                 new FakeTimeProvider(new DateTimeOffset(2026, 11, 6, 11, 0, 0, TimeSpan.Zero)),
                 NullLogger<NotificationPreferenceService>.Instance));
 
-    /// <summary>
-    /// A host org with its contact address and a team: an owner, an administrator, a manager, and three collaborators «Solo alcuni» (one given the property A,
-    /// one given nothing, one given the property A too). The property A is in charge of the first, B of the one given nothing (a stale name), C of the third,
-    /// which was not given it.
-    /// </summary>
     private async Task<World> SeedAsync()
     {
         var org = OrgTeamTestData.AddOrg(_db);
@@ -89,16 +84,12 @@ public class ComplianceAlertRecipientResolverTests : IDisposable
         var world = await SeedAsync();
         var resolver = Resolver();
 
-        // The property A: the collaborator in charge of it is given it, so it hears; the one only given A without being in charge does not (it is not the
-        // audience of the property); the administrators always do.
         var a = await resolver.ForPropertyAsync(world.OrgId, world.PropertyA, CancellationToken.None);
         Assert.Equal([Admin, CollaboratorGranted, Owner], a.UserIds.Order(StringComparer.Ordinal).ToArray());
 
-        // The property B: its person in charge lost the access (a stale name): only the administrators, never the collaborator or the other ones.
         var b = await resolver.ForPropertyAsync(world.OrgId, world.PropertyB, CancellationToken.None);
         Assert.Equal([Admin, Owner], b.UserIds.Order(StringComparer.Ordinal).ToArray());
 
-        // The property C: its person in charge was given another property, not this one.
         var c = await resolver.ForPropertyAsync(world.OrgId, world.PropertyC, CancellationToken.None);
         Assert.Equal([Admin, Owner], c.UserIds.Order(StringComparer.Ordinal).ToArray());
         Assert.DoesNotContain(CollaboratorOther, c.UserIds);

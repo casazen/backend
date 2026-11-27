@@ -25,10 +25,6 @@ internal sealed class RecordingEmailQueue : IEmailQueue
 {
     public List<(string? To, EmailContent Content, string Template)> Queued { get; } = [];
 
-    /// <summary>
-    /// When set, nothing is queued and <see cref="Enqueue"/> answers <c>false</c>, like a queue that cannot take the e-mail, as the
-    /// real one does when the email provider is not configured (SP-15a: a payment link that could not be sent is taken back).
-    /// </summary>
     public bool Refuse { get; set; }
 
     public bool Enqueue(string? to, EmailContent content, string template)
@@ -41,7 +37,6 @@ internal sealed class RecordingEmailQueue : IEmailQueue
         return true;
     }
 
-    /// <summary>A copy of what was queued so far.</summary>
     public IReadOnlyList<(string? To, EmailContent Content, string Template)> Snapshot()
     {
         lock (Queued)

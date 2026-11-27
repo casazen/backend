@@ -16,10 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Push;
 
-/// <summary>
-/// UI-12a: every push also queues an in-app notification, without the callers of <see cref="IPushNotificationService"/>
-/// changing. The real wiring (<c>AddCasazenPush</c>) is proved here too.
-/// </summary>
 public class InAppNotificationPushDecoratorTests
 {
     private static readonly DateTime Now = new(2026, 10, 9, 12, 0, 0, DateTimeKind.Utc);
@@ -64,7 +60,6 @@ public class InAppNotificationPushDecoratorTests
     [Fact]
     public void Enqueue_AUserAudience_ForwardsThePushAndQueuesNoNotification()
     {
-        // NF-65: the counter of the bell is a channel the user may have switched off; whoever pushes to one user writes its notification itself.
         var rig = new Rig();
         var payload = Payload(type: PushTypes.OtaMessage, bookingId: null);
         var audience = PushAudience.User(Guid.NewGuid(), "auth0|host");
@@ -104,7 +99,6 @@ public class InAppNotificationPushDecoratorTests
     [InlineData(false)]
     public void Enqueue_TheNotificationDoesNotDependOnThePushBeingQueued(bool pushAnswer)
     {
-        // A push refused for its route, or a queue that failed, leaves the bell alone; and the answer stays the push's.
         var rig = new Rig(pushAnswer);
 
         var answer = rig.Decorator.Enqueue("booking:x:new", PushAudience.BookingHosts(BookingId), Payload(bookingId: BookingId));
@@ -214,7 +208,6 @@ public class InAppNotificationPushDecoratorTests
     [Fact]
     public void Enqueue_EveryTypeOfPushIsAType_NoneIsTooLongForTheColumn()
     {
-        // The types are written as they are: one that did not fit would be silently skipped by the decorator.
         var types = typeof(PushTypes).GetFields()
             .Where(f => f is { IsLiteral: true, FieldType.Name: nameof(String) })
             .Select(f => (string)f.GetRawConstantValue()!)
@@ -223,8 +216,6 @@ public class InAppNotificationPushDecoratorTests
         Assert.NotEmpty(types);
         Assert.All(types, type => Assert.InRange(type.Length, 1, Casazen.Core.Entities.InAppNotification.TypeMaxLength));
     }
-
-    // ─── The wiring of the application ───
 
     private static ServiceProvider Wire(out ConcurrentQueue<Job> jobs)
     {
@@ -255,7 +246,6 @@ public class InAppNotificationPushDecoratorTests
 
         Assert.IsType<InAppNotificationPushDecorator>(push);
         Assert.True(queued);
-        // One job for the phones, one for the bell: the callers asked for one thing and did not change.
         Assert.Equal(
             [typeof(PushDeliveryJob), typeof(InAppNotificationJob)],
             jobs.Select(j => j.Type));
@@ -265,7 +255,6 @@ public class InAppNotificationPushDecoratorTests
     [Fact]
     public void AddCasazenPush_ThePlatformStaff_GetsTheBellAboutTheRequest_AndNoPushOnAPhone()
     {
-        // «Fallo per me» (14/11/2026): the app has no screen of the staff, so no job for the phones; the bell is queued, about the request.
         using var provider = Wire(out var jobs);
         using var scope = provider.CreateScope();
         var push = scope.ServiceProvider.GetRequiredService<IPushNotificationService>();
@@ -290,7 +279,6 @@ public class InAppNotificationPushDecoratorTests
     [InlineData(PushTypes.OwnerLoginFailed)]
     public void AddCasazenPush_TheAdministratorsOfAnOrg_GetTheBellAboutTheOrg_AndNoPushOnAPhone(string type)
     {
-        // The domain of an org (E40/F01/US02/T01): the app has no screen of it, so no job for the phones; the bell is queued, about the org, whatever the text and the route of the payload.
         using var provider = Wire(out var jobs);
         using var scope = provider.CreateScope();
         var push = scope.ServiceProvider.GetRequiredService<IPushNotificationService>();
@@ -321,7 +309,6 @@ public class InAppNotificationPushDecoratorTests
         var notifications = Assert.Single(services, d => d.ServiceType == typeof(IInAppNotificationService));
         Assert.Equal(typeof(InAppNotificationService), notifications.ImplementationType);
         Assert.Equal(ServiceLifetime.Scoped, notifications.Lifetime);
-        // The one registration of IPushNotificationService is the decorated queue, never the bare queue.
         var push = Assert.Single(services, d => d.ServiceType == typeof(IPushNotificationService));
         Assert.Null(push.ImplementationType);
         Assert.NotNull(push.ImplementationFactory);

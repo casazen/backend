@@ -13,20 +13,13 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E05/F04/US01 (NF-68, NF-06, ADR-032-R3): what happens to the "To do" of an item that expires, and the privacy of the text of an item at rest (encrypted with the purpose of the
-/// words of the conversations, never in clear in the database).
-/// </summary>
 public class ApprovalExpirationAndPrivacyTests : IDisposable
 {
-    // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     private readonly ApprovalQueueRig _rig = new();
 
     public void Dispose() => _rig.Dispose();
-
-    // ─── Expiry ───
 
     [Fact]
     public async Task Expiry_ExpiresTheItemsPastTheirTime_AndClosesTheirTodo_OthersStayAsTheyAre()
@@ -90,8 +83,6 @@ public class ApprovalExpirationAndPrivacyTests : IDisposable
         Assert.NotNull((await _rig.Db.InternalActivities.AsNoTracking().SingleAsync(a => a.EntityId == item.Id)).CompletedAt);
     }
 
-    // ─── Privacy at rest (ADR-032-R3) ───
-
     /// <summary>
     /// Privacy rule: the text of an item (a message to a guest, which may name the guest or hold an IBAN) and the host's edit of it are stored encrypted, with the purpose of the words of
     /// the conversations; what the column holds is a Data Protection payload with none of the words, and only the converter of that purpose reads it back. The reason of a rejection is
@@ -133,7 +124,6 @@ public class ApprovalExpirationAndPrivacyTests : IDisposable
         Assert.True(EncryptedColumns.IsConfigured(db));
     }
 
-    /// <summary>The rows of before the text was encrypted are read as they are (and rewritten at startup): a clear value is not a payload.</summary>
     [Fact]
     public void ApprovalQueueItem_ATextWrittenInClearBeforeTheEncryption_IsReadAsItIs()
     {
@@ -148,10 +138,6 @@ public class ApprovalExpirationAndPrivacyTests : IDisposable
         Assert.Equal("Oggetto\n\n<p>Testo</p>", converter.ConvertFromProvider("Oggetto\n\n<p>Testo</p>"));
     }
 
-    /// <summary>
-    /// A "To do" that leads to an item that is not in the queue is worse than none: the daily job closes the open "To do" of the items that were decided (the close of a decision was lost) or
-    /// expired by the erasure of a guest, and leaves the one of an item that still waits; a second run finds nothing.
-    /// </summary>
     [Fact]
     public async Task Expiry_ClosesTheTodoOfAnItemAlreadyDecided_WhoseCloseWasLost_AndLeavesTheOneOfAnItemThatWaits()
     {
@@ -165,7 +151,6 @@ public class ApprovalExpirationAndPrivacyTests : IDisposable
         await service.ApproveAsync(_rig.OrgWide, approved.Id, ApprovalQueueRig.Owner);
         (await _rig.Db.ApprovalQueueItems.SingleAsync(i => i.Id == erased.Id)).Status = ApprovalStatus.Expired;
 
-        // The decisions were saved and the close of their "To do" was lost: they are open again.
         foreach (var activity in await _rig.Db.InternalActivities.Where(a => a.EntityId != waiting.Id).ToListAsync())
         {
             activity.CompletedAt = null;
@@ -187,14 +172,11 @@ public class ApprovalExpirationAndPrivacyTests : IDisposable
 
         Assert.Null(todos[waiting.Id].CompletedAt);
 
-        // A second run finds nothing to close.
         var closedAt = todos[rejected.Id].CompletedAt;
         _rig.Clock.Advance(TimeSpan.FromHours(1));
         await new ApprovalExpirationJob(_rig.Db, _rig.Clock, NullLogger<ApprovalExpirationJob>.Instance, _rig.Activities()).ProcessExpirationsAsync();
         Assert.Equal(closedAt, (await _rig.Db.InternalActivities.AsNoTracking().SingleAsync(a => a.EntityId == rejected.Id)).CompletedAt);
     }
-
-    // ─── The hook of the type at expiry ───
 
     /// <summary>
     /// An item that expires releases what it held back through the rejection hook of its type, before its status changes (a campaign goes back to a draft; a message needs nothing). A hook
@@ -228,12 +210,6 @@ public class ApprovalExpirationAndPrivacyTests : IDisposable
         _rig.Campaigns.VerifyNoOtherCalls();
     }
 
-    // ─── Retention of the words (gdpr.md § 14) ───
-
-    /// <summary>
-    /// Privacy rule (the words of a message to a guest do not stay for ever): 30 days after an item was decided or expired the daily job empties its text, the host's edit of it and the reason
-    /// of a rejection; what the decision was (status, author, time, action) stays; an item still pending, and one decided recently, are not touched; a second run finds nothing to do.
-    /// </summary>
     [Fact]
     public async Task Retention_EmptiesTheWordsOfTheItemsDecidedOrExpiredLongAgo_AndOnlyThose_Test()
     {
@@ -252,7 +228,6 @@ public class ApprovalExpirationAndPrivacyTests : IDisposable
             return await _rig.Db.ApprovalQueueItems.AsNoTracking().ToDictionaryAsync(i => i.Id);
         }
 
-        // Day 8: the third item expired (its time limit was day 7); nothing is old enough to lose its words.
         _rig.Clock.Advance(TimeSpan.FromDays(8));
         var early = await RunTheJobAsync();
         Assert.Equal(ApprovalStatus.Expired, early[expired.Id].Status);
@@ -260,7 +235,6 @@ public class ApprovalExpirationAndPrivacyTests : IDisposable
         Assert.Equal("Gentile Zefirino, la aspettiamo", early[approved.Id].EditedContentText);
         Assert.Equal("Non parlare con Zefirino cosi", early[rejected.Id].RejectionReason);
 
-        // Day 31: the approved and the rejected item were decided on day 0, more than 30 days ago: their words go, the decision stays. The expired one (time limit day 7) is not old enough yet.
         _rig.Clock.Advance(TimeSpan.FromDays(23));
         var late = await RunTheJobAsync();
         Assert.Equal((string.Empty, (string?)null, (string?)null), (late[approved.Id].ContentText, late[approved.Id].EditedContentText, late[approved.Id].RejectionReason));
@@ -270,7 +244,6 @@ public class ApprovalExpirationAndPrivacyTests : IDisposable
         Assert.Equal((ApprovalStatus.Rejected, ApprovalQueueRig.Manager), (late[rejected.Id].Status, late[rejected.Id].ApprovedByUserId));
         Assert.Equal("Una bozza che nessuno decide", late[expired.Id].ContentText);
 
-        // Day 38: the expired one is old enough; an item that waits and one decided just now keep their words.
         _rig.Clock.Advance(TimeSpan.FromDays(7));
         var waiting = await _rig.SubmitDraftAsync(service, _rig.PropertyA, text: "Una bozza che aspetta");
         var recent = await _rig.SubmitDraftAsync(service, _rig.PropertyA, text: "Una bozza appena approvata");
@@ -280,7 +253,6 @@ public class ApprovalExpirationAndPrivacyTests : IDisposable
         Assert.Equal((ApprovalStatus.Pending, "Una bozza che aspetta"), (last[waiting.Id].Status, last[waiting.Id].ContentText));
         Assert.Equal((ApprovalStatus.Approved, "Una bozza appena approvata"), (last[recent.Id].Status, last[recent.Id].ContentText));
 
-        // A second run finds nothing to do.
         var again = await RunTheJobAsync();
         Assert.Equal(last.Values.Select(i => (i.Id, i.Status, i.ContentText)).Order(), again.Values.Select(i => (i.Id, i.Status, i.ContentText)).Order());
     }

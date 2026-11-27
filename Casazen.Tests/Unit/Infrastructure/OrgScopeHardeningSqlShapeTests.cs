@@ -22,12 +22,9 @@ public class OrgScopeHardeningSqlShapeTests
     private const string Collaborator = "auth0|collaboratore";
     private const string Holder = "auth0|titolare";
 
-    /// <summary>The statement without the header of parameters that <c>ToQueryString</c> prints above it.</summary>
     private static string Body(string sql) => sql[sql.IndexOf("SELECT", StringComparison.Ordinal)..];
 
     private static int Count(string text, string part) => text.Split(part, StringSplitOptions.None).Length - 1;
-
-    // --- Who is told ---------------------------------------------------------------------------------
 
     [Fact]
     public void UsersToTell_IsOneStatement_TheGrantIsReadInsideIt_AndEveryValueIsAParameter()
@@ -37,11 +34,9 @@ public class OrgScopeHardeningSqlShapeTests
         var sql = HostNotificationAudience.UsersToTell(db, OrgId, PropertyId, Collaborator, Holder).ToQueryString();
         var body = Body(sql);
 
-        // The grant of the person on this property is a subquery of the statement, not a list read beforehand.
         Assert.Equal(1, Count(body, "\"PropertyMemberAccesses\""));
         Assert.Contains("EXISTS (", body, StringComparison.Ordinal);
         Assert.DoesNotContain(" IN (@", body, StringComparison.Ordinal);
-        // The people and the property are parameters, never text inside the statement.
         Assert.DoesNotContain(Collaborator, body, StringComparison.Ordinal);
         Assert.DoesNotContain(Holder, body, StringComparison.Ordinal);
         Assert.DoesNotContain(PropertyId.ToString(), body, StringComparison.Ordinal);
@@ -53,7 +48,6 @@ public class OrgScopeHardeningSqlShapeTests
     {
         using var db = NpgsqlTranslationProbe.NewContext();
 
-        // As PushDeliveryJob (the devices of the audience) and BookingNotifier (their addresses) use it.
         var devices = db.DeviceRegistrations
             .AsNoTracking()
             .Join(
@@ -70,8 +64,6 @@ public class OrgScopeHardeningSqlShapeTests
         Assert.Contains("\"PropertyMemberAccesses\"", devices, StringComparison.Ordinal);
         Assert.Contains("\"Email\"", emails, StringComparison.Ordinal);
     }
-
-    // --- The export of the org -----------------------------------------------------------------------
 
     [Fact]
     public void Export_TheHoldersScope_AddsNothingToThePlainQueries()
@@ -133,8 +125,6 @@ public class OrgScopeHardeningSqlShapeTests
         {
             var (years, taxpayers) = GdprService.OrgPropertySections(db, OrgId, scope);
 
-            // The soft-delete filter is lifted in the sections of every scope (the properties of a closed year still name their
-            // fiscal record): no predicate on the flag in either statement (the column is only in the select list).
             foreach (var sql in new[] { years.ToQueryString(), taxpayers.ToQueryString() })
             {
                 Assert.DoesNotMatch(new Regex("NOT \\(\\w+\\.\"IsDeleted\"\\)"), sql);
@@ -142,8 +132,6 @@ public class OrgScopeHardeningSqlShapeTests
             }
         }
     }
-
-    // --- The generic save of a property ---------------------------------------------------------------
 
     [Fact]
     public async Task UpdateAsync_TheGenericSave_NeverWritesTheColumnOfThePersonInCharge()
@@ -162,18 +150,14 @@ public class OrgScopeHardeningSqlShapeTests
             City = "Roma",
         };
 
-        // No server: the UPDATE is built by Npgsql and caught before it is sent (the empty answer makes the save fail afterwards).
         await Assert.ThrowsAnyAsync<DbUpdateException>(() => new PropertyRepository(db).UpdateAsync(property));
 
         var update = Assert.Single(statements, sql => sql.StartsWith("UPDATE \"Properties\"", StringComparison.Ordinal));
         Assert.Contains("\"Description\" =", update, StringComparison.Ordinal);
         Assert.DoesNotContain("\"ResponsibleUserId\"", update, StringComparison.Ordinal);
-        // The same two columns the earlier tasks keep out of the generic save.
         Assert.DoesNotContain("\"RentalMode\"", update, StringComparison.Ordinal);
         Assert.DoesNotContain("\"PhotoUrls\"", update, StringComparison.Ordinal);
     }
-
-    // --- The release of a responsibility -------------------------------------------------------------
 
     [Fact]
     public async Task ReleaseAsync_IsTranslatedByNpgsql_WithAndWithoutThePropertiesToKeep()
@@ -186,7 +170,6 @@ public class OrgScopeHardeningSqlShapeTests
         await NpgsqlTranslationProbe.AssertTranslatesAsync(
             () => PropertyResponsibility.ReleaseAsync(db, OrgId, Collaborator, [], DateTime.UtcNow, CancellationToken.None));
 
-        // One read each, of the properties of the org the person is in charge of; the keep list is a parameter.
         Assert.Equal(2, statements.Count);
         Assert.All(statements, sql =>
         {

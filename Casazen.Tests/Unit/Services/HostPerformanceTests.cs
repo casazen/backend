@@ -57,9 +57,6 @@ public class HostPerformanceTests
         Property CasaBianca,
         Property Paused);
 
-    // Trullo: A 10 to 13 October, direct, 300 (3 nights); C 30 October to 3 November, Airbnb, 400 for 4 nights (2 of them in October: 200);
-    // D cancelled, nothing. Casa Bianca: B 8 to 11 October, manual, 300. The paused villa still has its money: E 5 to 8 October, 150. Another
-    // org's stay is nobody's here. With the year before: Trullo has a direct stay of 14 to 17 October 2025, 270 for 3 nights.
     private static async Task<Seeded> SeedAsync(bool withPreviousYear)
     {
         var db = HostScopeScenario.NewInMemoryDb();
@@ -95,16 +92,12 @@ public class HostPerformanceTests
         await world.Service.GetPerformanceAsync(
             world.Scope, new HostPerformanceQuery(October, OctoberEnd, GroupBy: groupBy, CompareYear: compare, PropertyIds: only));
 
-    // ---------------------------------------------------------------- proof: the total is the Home's
-
     [Fact]
     public async Task HostPerformance_TotalsMatchTheHome_Test()
     {
         var world = await SeedAsync(withPreviousYear: false);
         var home = await world.Service.GetKpisAsync(world.Scope, new HostDashboardQuery(HostDashboardPeriodKind.Month, October));
 
-        // By hand: revenue 300 + 200 (the two October nights of the stay that ends in November) + 300 + 150 (the paused villa) = 950 on
-        // 3 + 2 + 3 + 3 = 11 nights; 8 nights taken (5 at the Trullo, 3 at Casa Bianca) of 2 properties x 31 nights = 62.
         Assert.Equal(950m, home.Revenue);
         Assert.Equal(new HostDashboardOccupancy(8, 62, 0), home.Occupancy);
 
@@ -126,8 +119,6 @@ public class HostPerformanceTests
             Assert.Null(report.Total.PreviousYear);
         }
 
-        // Per property: each row is what the Home gives when it is asked for that property; the paused villa keeps its money and has no
-        // nights, so it has an ADR and no occupancy and no RevPAR (null, never 0).
         var byProperty = await ReportAsync(world, HostPerformanceGroupBy.Property);
         Assert.Equal(new[] { "Casa Bianca", "Trullo", "Villa in pausa" }, byProperty.Rows.Select(r => r.Label).ToArray());
         foreach (var row in byProperty.Rows.Where(r => r.PropertyId != world.Paused.Id))
@@ -145,7 +136,6 @@ public class HostPerformanceTests
         Assert.Null(pausedRow.OccupancyRate);
         Assert.Null(pausedRow.RevPar);
 
-        // Per channel: the same stays, so the revenue adds up to the Home's; a channel has no nights, so no occupancy and no RevPAR.
         var byChannel = await ReportAsync(world, HostPerformanceGroupBy.Channel);
         Assert.Equal(new[] { "Direct", "Manual", "Airbnb", "BookingCom" }, byChannel.Rows.Select(r => r.Key).ToArray());
         Assert.Equal(home.Revenue, byChannel.Rows.Sum(r => r.Figures.Revenue));
@@ -158,12 +148,9 @@ public class HostPerformanceTests
         });
     }
 
-    // ---------------------------------------------------------------- proof: the year before is the same calendar days
-
     [Fact]
     public async Task HostPerformance_PreviousYearUsesTheSameCalendarDays_Test()
     {
-        // The rule: the same days one year earlier; 29 February becomes 28 February, so the year before is one day shorter.
         Assert.Equal((new DateOnly(2025, 10, 1), new DateOnly(2025, 10, 31)), HostReportRules.PreviousYear(October, OctoberEnd));
         Assert.Equal(
             (new DateOnly(2027, 2, 1), new DateOnly(2027, 2, 28)),
@@ -174,7 +161,6 @@ public class HostPerformanceTests
         Assert.Equal(29, HostReportRules.PeriodOf(new DateOnly(2028, 2, 1), new DateOnly(2028, 2, 29)).Nights);
         Assert.Equal(28, HostReportRules.PreviousYearPeriodOf(new DateOnly(2028, 2, 1), new DateOnly(2028, 2, 29)).Nights);
 
-        // The read: the days of the report one year earlier, and for those days the numbers the Home gives.
         var world = await SeedAsync(withPreviousYear: true);
         var report = await ReportAsync(world, HostPerformanceGroupBy.None, compare: true);
         var home = await world.Service.GetKpisAsync(
@@ -190,7 +176,6 @@ public class HostPerformanceTests
         Assert.Equal(home.Occupancy.AvailableNights, before.AvailableNights);
         Assert.Equal(3, before.OccupiedNights);
 
-        // The leap year: February and March 2028 against February and March 2027 (59 days, not 60).
         var leap = await world.Service.GetPerformanceAsync(
             world.Scope, new HostPerformanceQuery(new DateOnly(2028, 2, 1), new DateOnly(2028, 3, 31), CompareYear: true));
         Assert.Equal(60, leap.Period.Nights);
@@ -198,7 +183,6 @@ public class HostPerformanceTests
         Assert.Equal(Day(2027, 4, 1), leap.PreviousYearPeriod.To);
         Assert.Equal(59, leap.PreviousYearPeriod.Nights);
 
-        // And what the server says changed is worked out from those numbers: 950 against 270, 8 of 62 nights against 3 of 62.
         var row = PerformanceRowDto.From(await ReportRowAsync(world), 950m);
         Assert.Equal(251.9m, row.RevenueDeltaPercent);
         Assert.Equal(8.1m, row.OccupancyDeltaPoints);
@@ -210,8 +194,6 @@ public class HostPerformanceTests
     private static async Task<HostPerformanceRow> ReportRowAsync(Seeded world) =>
         (await ReportAsync(world, HostPerformanceGroupBy.None, compare: true)).Total;
 
-    // ---------------------------------------------------------------- proof: a property the caller does not reach is a 404
-
     [Fact]
     public async Task HostPerformance_PropertyOutsideScope_NotFound_Test()
     {
@@ -219,7 +201,6 @@ public class HostPerformanceTests
         var world = await HostScopeScenario.SeedAsync(db);
         var service = new HostDashboardService(db, new ConfigurationBuilder().Build(), Clock);
 
-        // The collaborator «Solo alcuni» was given one property: the other one of the org and another org's are the same 404.
         foreach (var hidden in new[] { world.Hidden.Id, world.OtherOrgProperty.Id, Guid.NewGuid() })
         {
             await Assert.ThrowsAsync<NotFoundException>(() =>
@@ -228,21 +209,17 @@ public class HostPerformanceTests
                 service.GetTrendAsync(world.Restricted, new HostTrendQuery(October, OctoberEnd, hidden)));
         }
 
-        // Another org's property is not reached by the whole org either; the one the collaborator was given is.
         await Assert.ThrowsAsync<NotFoundException>(() =>
             service.GetPerformanceAsync(world.OrgWide, new HostPerformanceQuery(October, OctoberEnd, world.OtherOrgProperty.Id)));
         var granted = await service.GetPerformanceAsync(
             world.Restricted, new HostPerformanceQuery(October, OctoberEnd, world.Granted.Id, HostPerformanceGroupBy.Property));
         Assert.Equal(world.Granted.Id, Assert.Single(granted.Rows).PropertyId);
 
-        // Without a property the collaborator sees only what it was given: the hidden property is not in the rows nor in the total.
         var all = await service.GetPerformanceAsync(
             world.Restricted, new HostPerformanceQuery(October, OctoberEnd, GroupBy: HostPerformanceGroupBy.Property));
         Assert.Equal(world.Granted.Id, Assert.Single(all.Rows).PropertyId);
         Assert.Equal(granted.Total.Figures.Revenue, all.Total.Figures.Revenue);
     }
-
-    // ---------------------------------------------------------------- the other rules
 
     [Fact]
     public void HostPerformance_AdrAndRevPar_AreNullNeverZero_WhenTheirDenominatorIsZero()
@@ -252,7 +229,6 @@ public class HostPerformanceTests
         Assert.Null(nothing.RevPar);
         Assert.Null(nothing.OccupancyRate);
 
-        // Revenue without a night available (a paused property) has an ADR and no RevPAR; a channel never has the nights of a property.
         var withoutNights = new HostPerformanceFigures(0, 0, 0, 150m, 1, 3);
         Assert.Equal(50m, withoutNights.Adr);
         Assert.Null(withoutNights.RevPar);
@@ -261,7 +237,6 @@ public class HostPerformanceTests
         Assert.Null(channel.RevPar);
         Assert.Null(channel.OccupancyRate);
 
-        // 310 over 6 nights is 51.666..., over 31 available nights 10.
         var figures = new HostPerformanceFigures(5, 31, 0, 310m, 2, 6);
         Assert.Equal(51.67m, figures.Adr);
         Assert.Equal(10m, figures.RevPar);
@@ -291,7 +266,6 @@ public class HostPerformanceTests
     {
         var world = await SeedAsync(withPreviousYear: true);
 
-        // A house created in June 2026 with a stay in October: a year ago it was not there.
         var newcomer = NewHouse(world.OrgId, "Casa Nuova", Day(2026, 6, 1));
         world.Db.Properties.Add(newcomer);
         world.Db.Bookings.Add(Stay(newcomer, world.GuestId, BookingStatus.Confirmed, BookingSource.Direct, Day(2026, 10, 20), Day(2026, 10, 22), 200m));
@@ -302,14 +276,12 @@ public class HostPerformanceTests
 
         Assert.Null(report.Rows.Single(r => r.PropertyId == newcomer.Id).PreviousYear);
         Assert.Equal(200m, report.Rows.Single(r => r.PropertyId == newcomer.Id).Figures.Revenue);
-        // A house that was there has its year before, with the stay of 2025; Casa Bianca has none, but it existed and had its 31 nights.
         Assert.Equal(270m, report.Rows.Single(r => r.PropertyId == world.Trullo.Id).PreviousYear!.Revenue);
         var quiet = report.Rows.Single(r => r.PropertyId == world.CasaBianca.Id).PreviousYear!;
         Assert.Equal(0, quiet.StayCount);
         Assert.Equal(31, quiet.AvailableNights);
         Assert.NotNull(report.Total.PreviousYear);
 
-        // A channel with no stay a year ago has nothing to compare with.
         var channels = await ReportAsync(world, HostPerformanceGroupBy.Channel, compare: true);
         Assert.Null(channels.Rows.Single(r => r.Key == nameof(BookingSource.Airbnb)).PreviousYear);
         Assert.Equal(270m, channels.Rows.Single(r => r.Key == nameof(BookingSource.Direct)).PreviousYear!.Revenue);
@@ -322,24 +294,19 @@ public class HostPerformanceTests
         var home = await world.Service.GetKpisAsync(
             world.Scope, new HostDashboardQuery(HostDashboardPeriodKind.Month, October, world.Trullo.Id));
 
-        // Only the Trullo: what the Home gives for it. Another org's property in the set adds nothing.
         var narrowed = await ReportAsync(world, HostPerformanceGroupBy.Property, only: [world.Trullo.Id, Guid.NewGuid()]);
         Assert.Equal(world.Trullo.Id, Assert.Single(narrowed.Rows).PropertyId);
         Assert.Equal(home.Revenue, narrowed.Total.Figures.Revenue);
         Assert.Equal(home.Occupancy.AvailableNights, narrowed.Total.Figures.AvailableNights);
 
-        // An empty set is nothing, not everything.
         var empty = await ReportAsync(world, HostPerformanceGroupBy.Property, only: []);
         Assert.Empty(empty.Rows);
         Assert.Equal(0m, empty.Total.Figures.Revenue);
         Assert.Equal(0, empty.Total.Figures.AvailableNights);
 
-        // A property outside the set is a 404 even when the scope reaches it.
         await Assert.ThrowsAsync<NotFoundException>(() => world.Service.GetPerformanceAsync(
             world.Scope, new HostPerformanceQuery(October, OctoberEnd, world.CasaBianca.Id, PropertyIds: [world.Trullo.Id])));
     }
-
-    // ---------------------------------------------------------------- the trend
 
     [Fact]
     public async Task HostTrend_BucketsAddUpToThePeriod_AndTheYearBeforeIsCoveredOnce()
@@ -347,7 +314,6 @@ public class HostPerformanceTests
         var world = await SeedAsync(withPreviousYear: true);
         var trend = await world.Service.GetTrendAsync(world.Scope, new HostTrendQuery(October, OctoberEnd, CompareYear: true));
 
-        // The weeks of the Home's chart, cut at the edges: Thursday 1 to Sunday 4, three whole weeks, Monday 26 to Saturday 31.
         Assert.Equal(HostOverviewSeriesUnit.Week, trend.Unit);
         Assert.Equal(5, trend.Buckets.Count);
         Assert.Equal(trend.Period.From, trend.Buckets[0].From);
@@ -358,11 +324,9 @@ public class HostPerformanceTests
             Assert.Equal(trend.Buckets[index - 1].PreviousYearTo, trend.Buckets[index].PreviousYearFrom);
         }
 
-        // The year before: its period, covered exactly by its buckets.
         Assert.Equal(trend.PreviousYearPeriod!.From, trend.Buckets[0].PreviousYearFrom);
         Assert.Equal(trend.PreviousYearPeriod.To, trend.Buckets[^1].PreviousYearTo);
 
-        // One line for the whole scope, and the cuts add up to the period: same stays, same nights.
         var total = Assert.Single(trend.Series);
         Assert.Equal(HostPerformanceRules.TotalKey, total.Key);
         Assert.Equal(new[] { 0m, 650m, 100m, 0m, 200m }, total.Points.Select(p => p.Figures.Revenue).ToArray());
@@ -374,7 +338,6 @@ public class HostPerformanceTests
         Assert.Equal(3, total.PreviousYear.Sum(p => p!.Figures.OccupiedNights));
         Assert.Equal(62, total.PreviousYear.Sum(p => p!.Figures.AvailableNights));
 
-        // One line for each property, the one with most revenue first, and each line adds up to the row of the report.
         var byProperty = await world.Service.GetTrendAsync(
             world.Scope, new HostTrendQuery(October, OctoberEnd, GroupBy: HostPerformanceGroupBy.Property));
         var report = await ReportAsync(world, HostPerformanceGroupBy.Property);
@@ -383,7 +346,6 @@ public class HostPerformanceTests
             Assert.Equal(report.Rows.Single(r => r.PropertyId == line.PropertyId).Figures.Revenue, line.Points.Sum(p => p.Figures.Revenue)));
         Assert.Empty(byProperty.Series[0].PreviousYear);
 
-        // Months when asked, and by the rule of the period when not: weeks up to 92 days, months beyond.
         var monthly = await world.Service.GetTrendAsync(
             world.Scope, new HostTrendQuery(October, OctoberEnd, Bucket: HostTrendBucketUnit.Month));
         Assert.Equal("2026-10", Assert.Single(monthly.Buckets).Label);
@@ -397,7 +359,6 @@ public class HostPerformanceTests
     [Fact]
     public void HostTrend_PreviousYearBuckets_CoverTheYearBeforeOnce_EvenWithALeapDay()
     {
-        // Three buckets of February and March 2028: the 22nd to the 28th, the 29th alone, the 1st to the 5th of March.
         var buckets = new List<(DateTime From, DateTime To)>
         {
             (Day(2028, 2, 22), Day(2028, 2, 29)),
@@ -407,7 +368,6 @@ public class HostPerformanceTests
 
         var moved = HostReportRules.PreviousYearBuckets(buckets);
 
-        // 28 February 2027 answers to both the 28th and the 29th: it stays with the 28th, and the 29th has no day of its own.
         Assert.Equal((Day(2027, 2, 22), Day(2027, 3, 1)), moved[0]);
         Assert.Equal((Day(2027, 3, 1), Day(2027, 3, 1)), moved[1]);
         Assert.Equal((Day(2027, 3, 1), Day(2027, 3, 6)), moved[2]);
@@ -437,7 +397,6 @@ public class HostPerformanceTests
         var trend = await service.GetTrendAsync(
             new HostScope(orgId), new HostTrendQuery(October, OctoberEnd, GroupBy: HostPerformanceGroupBy.Property));
 
-        // 27 houses: the 24 with most revenue (Casa 27 down to Casa 04) and one line for the three left (Casa 03, 02 and 01: 300 + 200 + 100).
         Assert.Equal(HostPerformanceRules.MaxTrendSeries, trend.Series.Count);
         Assert.Equal("Casa 27", trend.Series[0].Label);
         Assert.Equal("Casa 04", trend.Series[^2].Label);
@@ -446,11 +405,8 @@ public class HostPerformanceTests
         Assert.Null(other.PropertyId);
         Assert.Equal(600m, other.Points.Sum(p => p.Figures.Revenue));
         Assert.Equal(3, other.Points.Sum(p => p.Figures.OccupiedNights));
-        // Nothing is dropped: all the lines together are the revenue of the whole scope.
         Assert.Equal(37800m, trend.Series.Sum(s => s.Points.Sum(p => p.Figures.Revenue)));
     }
-
-    // ---------------------------------------------------------------- the files
 
     [Fact]
     public async Task HostReportDocuments_PerformanceCsv_CarriesTheTitleWithItsBase_AndTheYearBeforeOnlyWhenCompared()
@@ -475,12 +431,10 @@ public class HostPerformanceTests
         Assert.Contains("Ricavo anno precedente (€)", compared[1], StringComparison.Ordinal);
         Assert.Contains("Variazione ricavo (%)", compared[1], StringComparison.Ordinal);
 
-        // A channel has no nights: the cells are empty, and the title says channels.
         var channels = Lines(HostReportDocuments.Csv(await ReportAsync(world, HostPerformanceGroupBy.Channel), HostPerformanceGroupBy.Channel));
         Assert.StartsWith("Prestazioni per canale, per competenza, dal 01/10/2026 al 31/10/2026", channels[0]);
         Assert.StartsWith("Canale;", channels[1]);
 
-        // The trend: the title, a row for each bucket of the line, the year before only when compared.
         var trend = Lines(HostReportDocuments.Csv(
             await world.Service.GetTrendAsync(world.Scope, new HostTrendQuery(October, OctoberEnd)), HostPerformanceGroupBy.None));
         Assert.Equal("Andamento, per competenza, dal 01/10/2026 al 31/10/2026", trend[0]);

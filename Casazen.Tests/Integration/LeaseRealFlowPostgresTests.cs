@@ -29,7 +29,6 @@ public class LeaseRealFlowPostgresTests(LeaseFlowWebApplicationFactory factory) 
         var property = await factory.SeedPropertyAsync(owner);
         using var client = factory.CreateAuthenticatedClient(owner, "LongTermLandlord");
 
-        // 1. Lease with two landlords and two tenants; fiscal codes are validated and stored normalized (LT-14).
         var create = await client.PostAsJsonAsync("/api/leases", new
         {
             propertyId = property.Id,
@@ -49,11 +48,9 @@ public class LeaseRealFlowPostgresTests(LeaseFlowWebApplicationFactory factory) 
         var leaseId = (await ReadJson(create)).GetProperty("id").GetGuid();
         Assert.Equal("Draft", (await GetAsync(client, $"/api/leases/{leaseId}")).GetProperty("status").GetString());
 
-        // No installments for a lease nobody signed.
         var early = await client.PutAsJsonAsync($"/api/leases/{leaseId}/rent/schedule", new { cadence = "Monthly" });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, early.StatusCode);
 
-        // 2. The contract to sign is the approved template with all four parties, not a draft.
         var contract = await client.GetAsync($"/api/leases/{leaseId}/contract.pdf");
         Assert.Equal(HttpStatusCode.OK, contract.StatusCode);
         var contractText = PdfTestReader.Text(await contract.Content.ReadAsByteArrayAsync());
@@ -61,7 +58,6 @@ public class LeaseRealFlowPostgresTests(LeaseFlowWebApplicationFactory factory) 
         foreach (var name in new[] { "Rossi", "Bianchi", "Verdi", "Srl" })
             Assert.Contains(name, contractText, StringComparison.Ordinal);
 
-        // 3. Manual signature: a file that is not a PDF is refused and the lease stays Draft; the real one signs it.
         var notPdf = await LeaseSigningTestClient.UploadSignedContractAsync(client, leaseId, content: Encoding.ASCII.GetBytes("non sono un pdf"));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, notPdf.StatusCode);
         Assert.Equal("Draft", (await GetAsync(client, $"/api/leases/{leaseId}")).GetProperty("status").GetString());
@@ -71,7 +67,6 @@ public class LeaseRealFlowPostgresTests(LeaseFlowWebApplicationFactory factory) 
         Assert.Equal(new DateTime(2026, 9, 19), signed.GetProperty("registrationDeadline").GetDateTime().Date);
         Assert.Equal(0, factory.ESignProvider.Calls);
 
-        // 4. Manual RLI: nothing is confirmed until the landlord declares the number and uploads the receipt.
         Assert.Equal(0, factory.RegistrationProvider.CallsFor(leaseId));
         var withoutReceipt = await client.GetAsync($"/api/leases/{leaseId}/registration/receipt");
         Assert.NotEqual(HttpStatusCode.OK, withoutReceipt.StatusCode);
@@ -90,7 +85,6 @@ public class LeaseRealFlowPostgresTests(LeaseFlowWebApplicationFactory factory) 
         Assert.Equal(ReceiptPdf, await receipt.Content.ReadAsByteArrayAsync());
         Assert.Equal(0, factory.RegistrationProvider.CallsFor(leaseId));
 
-        // 5. Rent: installments from the lease; the offline payment is what the landlord declares, nothing else is paid.
         var ledger = await ReadJson(await client.PutAsJsonAsync($"/api/leases/{leaseId}/rent/schedule", new { cadence = "Monthly", billingDayOfMonth = 5 }));
         var installments = ledger.GetProperty("installments").EnumerateArray().ToList();
         Assert.Equal(48, installments.Count);
@@ -103,7 +97,6 @@ public class LeaseRealFlowPostgresTests(LeaseFlowWebApplicationFactory factory) 
         Assert.Equal("Paid", after[0].GetProperty("status").GetString());
         Assert.All(after.Skip(1), i => Assert.Equal("Scheduled", i.GetProperty("status").GetString()));
 
-        // Another host sees none of it.
         var stranger = $"auth0|lt15-stranger-{Guid.NewGuid():N}";
         await factory.SeedOrgForOwnerAsync(stranger);
         using var strangerClient = factory.CreateAuthenticatedClient(stranger, "LongTermLandlord");

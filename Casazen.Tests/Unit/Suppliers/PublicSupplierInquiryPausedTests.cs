@@ -16,10 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-10b-a x SP-13a: a showcase the supplier paused takes no new request on measure (422 <c>supplier_booking_offline</c>, the answer of
-/// its slots and its estimate) and nothing is stored or sent; a showcase that is not paused takes it as always.
-/// </summary>
 public class PublicSupplierInquiryPausedTests
 {
     [Fact]
@@ -47,7 +43,6 @@ public class PublicSupplierInquiryPausedTests
         inquiries.Verify(
             i => i.CreateAsync(It.IsAny<SupplierProfile>(), It.IsAny<ShowcaseInquiryInput>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // Not paused: the request is taken as always.
         showcase.Setup(s => s.IsPausedAsync(supplier, It.IsAny<CancellationToken>())).ReturnsAsync(false);
         var created = await controller.Create("fornitore", new CreatePublicSupplierInquiryRequest(), CancellationToken.None);
         Assert.Equal(StatusCodes.Status201Created, Assert.IsType<ObjectResult>(created.Result).StatusCode);

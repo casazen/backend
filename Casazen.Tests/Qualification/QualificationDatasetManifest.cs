@@ -9,28 +9,23 @@ namespace Casazen.Tests.Qualification;
 // a document number, an image or a ground-truth value (those stay in the files it points at, which only the runner reads); nothing here prints or logs
 // anything but ids, codes and counts. Codes and constants are never renamed or reused: a new one goes at the end of its list.
 
-/// <summary>The three groups the PERSONS of a dataset are split into: a person belongs to exactly one of them (the spec: separate by person).</summary>
 public static class QualificationSplits
 {
     public const string Development = "development";
     public const string Calibration = "calibration";
     public const string Test = "test";
 
-    /// <summary>Every code, in this order.</summary>
     public static IReadOnlyList<string> All { get; } = [Development, Calibration, Test];
 }
 
-/// <summary>What a capture is: a real person present (genuine, with their own document or somebody else's) or a presentation attack.</summary>
 public static class QualificationCaptureKinds
 {
     public const string Genuine = "genuine";
     public const string Attack = "attack";
 
-    /// <summary>Every code, in this order.</summary>
     public static IReadOnlyList<string> All { get; } = [Genuine, Attack];
 }
 
-/// <summary>The classes of presentation attack the presence is validated against (the spec: photo, screen, pre-recorded video, synthetic input).</summary>
 public static class QualificationAttackClasses
 {
     public const string PhotoPrint = "photo_print";
@@ -40,7 +35,6 @@ public static class QualificationAttackClasses
     public const string Mask = "mask";
     public const string Other = "other";
 
-    /// <summary>Every code, in this order.</summary>
     public static IReadOnlyList<string> All { get; } = [PhotoPrint, ScreenReplay, VideoReplay, Synthetic, Mask, Other];
 }
 
@@ -55,7 +49,6 @@ public static class QualificationAttackClasses
 /// <param name="TrainingUse">Whether the data may train a model: false, always.</param>
 public sealed record QualificationRights(string? Purpose, string? ConsentReference, string? CollectedBy, bool? TrainingUse);
 
-/// <summary>A person of the dataset (an anonymous id) and the one group they belong to (<see cref="QualificationSplits"/>).</summary>
 public sealed record QualificationPerson(string? Id, string? Split);
 
 /// <summary>The document shown in a capture, by relative path. Impostor pairs are derived from <see cref="OwnerPerson"/> against the person of the capture.</summary>
@@ -68,13 +61,8 @@ public sealed record QualificationPerson(string? Id, string? Split);
 /// <param name="GroundTruthFile">The file with the true value of every field: read by the runner ONLY, never printed.</param>
 public sealed record QualificationDocument(string? Format, string? Front, string? Back, string? OwnerPerson, bool Altered, bool Foreign, string? GroundTruthFile);
 
-/// <summary>The frame sequence of a presence capture: a folder of frames, the file of their timestamps and the challenge that was asked (<c>PresenceActions</c>).</summary>
 public sealed record QualificationSequence(string? Dir, string? TimestampsFile, IReadOnlyList<string>? Challenge);
 
-/// <summary>
-/// One capture: a person (<see cref="Person"/>), in a collection session, on a device and a channel (<c>IdentityChannels</c>), genuine or an attack of a class
-/// (<see cref="QualificationAttackClasses"/>), with the document and/or the frame sequence that was captured (at least one of the two).
-/// </summary>
 public sealed record QualificationCapture(
     string? Id,
     string? Person,
@@ -109,7 +97,6 @@ public sealed record QualificationDatasetManifest(
         WriteIndented = true,
     };
 
-    /// <summary>Reads a manifest from its JSON text. A text that is not a manifest throws <see cref="QualificationManifestFormatException"/>.</summary>
     public static QualificationDatasetManifest Parse(string json)
     {
         ArgumentNullException.ThrowIfNull(json);
@@ -120,13 +107,10 @@ public sealed record QualificationDatasetManifest(
         }
         catch (JsonException exception)
         {
-            // Only the place is kept, and the exception writes it without a word the author typed: the message of the parser may quote the text, and its path holds
-            // the name of a member it does not know. The parser counts lines from 0.
             throw new QualificationManifestFormatException(exception.Path, exception.LineNumber + 1);
         }
     }
 
-    /// <summary>Reads the manifest file at <paramref name="path"/>; the folder of the file is the folder its relative paths start from.</summary>
     public static QualificationDatasetManifest Load(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -134,25 +118,16 @@ public sealed record QualificationDatasetManifest(
         return Parse(File.ReadAllText(path));
     }
 
-    /// <summary>The JSON text of the manifest, as <see cref="Parse"/> reads it.</summary>
     public string ToJson()
     {
         return JsonSerializer.Serialize(this, Json);
     }
 }
 
-/// <summary>
-/// A manifest that is not JSON, not a manifest, or has a member this reader does not know. It names only the place and never the content, nor a name the author
-/// typed: the path is made of the members the manifest knows (written as the model writes them) and of indexes, any other name is written <c>?</c>, and the line
-/// counts from 1.
-/// </summary>
 public sealed class QualificationManifestFormatException : Exception
 {
-    // The members of the manifest as the JSON writes them: the only names a place may carry.
     private static readonly IReadOnlyDictionary<string, string> KnownMembers = QualificationJsonPlace.MemberNames(typeof(QualificationDatasetManifest), typeof(QualificationRights), typeof(QualificationPerson), typeof(QualificationCapture), typeof(QualificationDocument), typeof(QualificationSequence));
 
-    /// <param name="jsonPath">The path the parser reported, in whatever form: only its known members and its indexes are kept (see <see cref="JsonPath"/>).</param>
-    /// <param name="line">The line of the failure, counted from 1, when the parser knows it.</param>
     public QualificationManifestFormatException(string? jsonPath, long? line)
         : base("The qualification manifest cannot be read (" + QualificationJsonPlace.Describe(QualificationJsonPlace.SafePath(jsonPath, KnownMembers), line) + ").")
     {
@@ -160,9 +135,7 @@ public sealed class QualificationManifestFormatException : Exception
         Line = line;
     }
 
-    /// <summary>The place of the failure as a path, such as <c>$.captures[3].document</c>: known members and indexes only, <c>?</c> for any other name.</summary>
     public string JsonPath { get; }
 
-    /// <summary>The line of the text, counted from 1, when the parser knows it.</summary>
     public long? Line { get; }
 }

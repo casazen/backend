@@ -79,7 +79,6 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
         Assert.Equal((1500, 1000, Now.AddSeconds(90), 8, 60, 720), (issued.StepMs, issued.LeadInMs, issued.ExpiresAt, issued.TargetFps, issued.MaxFrames, issued.MaxFrameSide));
         Assert.False(string.IsNullOrWhiteSpace(issued.ChallengeToken));
 
-        // What is stored is the id, the moves, the times and the attempt: codes and times only, next to what the document step wrote (which is untouched).
         using var stored = JsonDocument.Parse(session.DocumentCheckJson!);
         var presence = stored.RootElement.GetProperty("presence");
         Assert.Equal(["attempt", "expiresAt", "id", "issuedAt", "steps"], presence.EnumerateObject().Select(member => member.Name).Order());
@@ -90,7 +89,6 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
         foreach (var member in original.RootElement.EnumerateObject().Where(entry => entry.Name != "presence"))
             Assert.Equal(member.Value.GetRawText(), stored.RootElement.GetProperty(member.Name).GetRawText());
 
-        // The same row, read again from the database, holds it: it was saved, not only set.
         var reloaded = await world.Db.GuestCheckInSessions.AsNoTracking().SingleAsync(s => s.Id == session.Id);
         Assert.Equal(session.DocumentCheckJson, reloaded.DocumentCheckJson);
     }
@@ -116,8 +114,6 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
     [InlineData(300, 1_920, 30_000, 60)]
     public async Task IssuePresenceChallenge_ALimitOnTheEdgeOfItsRange_StillIssuesTheChallenge(int frames, int side, int timeoutMs, int announcedFrames)
     {
-        // The range of each limit is the one of IdentityVerificationOptions.Validate: its edges are valid, and the numbers announced to the page are still the smaller of the
-        // policy and the options (60 frames in the policy).
         await using var world = await World.CreateAsync(_directory);
         world.Limits.Presence.MaxFrames = frames;
         world.Limits.Presence.MaxFrameSide = side;
@@ -143,7 +139,6 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
     [InlineData("SequenceTimeoutMs", 30_001)]
     public async Task IssuePresenceChallenge_ALimitOfTheSectionOutOfItsRange_AnswersNothing_StoresNothing_AndTheLogNamesTheSettingNeverTheValue(string setting, int value)
     {
-        // An invalid section is not available for its readers (IdentityVerificationOptions.Validate): no challenge, nothing stored, the page offers the assisted path.
         await using var world = await World.CreateAsync(_directory);
         var session = await world.ReadyStayAsync();
         typeof(IdentityPresenceOptions).GetProperty(setting)!.SetValue(world.Limits.Presence, value);
@@ -288,7 +283,6 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
     [Fact]
     public async Task PresenceChallengeToken_OtherSessionOrAttempt_IsRejected()
     {
-        // Security (NF-192, ADR-013-R17): the proof of a challenge is not a bearer token for another session or for another attempt.
         await using var world = await World.CreateAsync(_directory);
         var left = await world.ReadyStayAsync();
         var right = await world.ReadyStayAsync();
@@ -299,13 +293,11 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
         Assert.False(flow.TryValidatePresenceToken(right, leftProof, out var withoutChallenge));
         Assert.Equal(PresenceTokenStatus.Required, withoutChallenge);
 
-        // The other session has a challenge of its own now: the proof of the first still does not open it, and the two do not swap.
         var rightProof = (await flow.IssuePresenceChallengeAsync(right, CancellationToken.None))!.ChallengeToken;
         Assert.False(flow.TryValidatePresenceToken(right, leftProof, out _));
         Assert.False(flow.TryValidatePresenceToken(left, rightProof, out _));
         Assert.True(flow.TryValidatePresenceToken(right, rightProof, out _));
 
-        // An attempt is spent: the stored challenge is of the attempt before, so its proof is not valid any more, and the one issued for the next attempt is.
         left.BiometricAttempts = 1;
         await world.Db.SaveChangesAsync();
         Assert.False(flow.TryValidatePresenceToken(left, leftProof, out var pastAttempt));
@@ -324,8 +316,6 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
     [InlineData("challenge", false)]
     public async Task PresenceChallengeToken_IsBoundToTheSessionTheLinkTheAttemptTheConsentAndTheChallenge(string altered, bool accepted)
     {
-        // The proof is a Data Protection payload of the purpose "Casazen.CheckIn.Presence.v1" with five sub-purposes. Rebuilt here from the specification, it is accepted;
-        // with any one of the five changed, it is not.
         await using var world = await World.CreateAsync(_directory);
         var session = await world.ReadyStayAsync();
         var flow = world.Flow();
@@ -378,7 +368,6 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
             Assert.Equal(PresenceTokenStatus.Required, status);
         }
 
-        // Another proof of the expired challenge is issued by asking again.
         var renewed = await flow.IssuePresenceChallengeAsync(session, CancellationToken.None);
         Assert.NotNull(renewed);
         Assert.True(flow.TryValidatePresenceToken(session, renewed.ChallengeToken, out _));
@@ -432,7 +421,6 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
         Assert.True(cache.NoStore);
         Assert.Equal(ResponseCacheLocation.None, cache.Location);
 
-        // Anonymous like its neighbours (the token of the link is the proof), and no authorization of its own.
         Assert.NotNull(typeof(PublicGuestCheckInController).GetCustomAttribute<AllowAnonymousAttribute>());
         Assert.Empty(method.GetCustomAttributes<AuthorizeAttribute>());
     }
@@ -530,7 +518,6 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
         Assert.Equal(("proof", 1500, 1000, Now.AddSeconds(90), 8, 60, 720), (challenge.ChallengeToken, challenge.StepMs, challenge.LeadInMs, challenge.ExpiresAt, challenge.TargetFps, challenge.MaxFrames, challenge.MaxFrameSide));
         Assert.Equal(issue.Steps, challenge.Steps);
 
-        // The cross-repository contract: these eight members, in camel case, and nothing else.
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(challenge, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         Assert.Equal(
             new[] { "challengeToken", "steps", "stepMs", "leadInMs", "expiresAt", "targetFps", "maxFrames", "maxFrameSide" }.Order(),
@@ -578,7 +565,6 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
         return Assert.IsType<ProblemDetails>(objectResult.Value);
     }
 
-    /// <summary>The checks of a document that was read in one picture (complete), or of two sides with nothing on either (not complete).</summary>
     private static StoredDocumentCheck DocumentCheckOf(bool twoSided = false) =>
         new(new DocumentCheck(true, true, false, true, true, null, null, false), "5F1A", Now.UtcDateTime, TwoSided: twoSided);
 
@@ -607,7 +593,6 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
         };
     }
 
-    /// <summary>One org on the Agency plan (the biometric verification on by default), a property in Italy, the flow and its doubles, the real policy file and the flags on.</summary>
     private sealed class World : IAsyncDisposable
     {
         private readonly Guid _orgId = Guid.NewGuid();
@@ -698,10 +683,6 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
                 presenceIssuer: new PresenceChallengeIssuer());
         }
 
-        /// <summary>
-        /// A confirmed stay of an adult booker with an open link whose guest opened the identity step, gave the biometric consent to the text the registry serves and has
-        /// the document read (a complete one, in one picture): loaded as the public endpoint loads it.
-        /// </summary>
         public async Task<GuestCheckInSession> ReadyStayAsync()
         {
             var guest = new Guest

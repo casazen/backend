@@ -30,17 +30,14 @@ public class PropertyICalSyncPostgresTests : IClassFixture<PropertyICalSyncPostg
     public async Task SyncAllFeedsAsync_FeedsFailingOnSaveOrDownload_DoNotStopTheOtherFeeds()
     {
         var run = Guid.NewGuid().ToString("N");
-        // Feeds run least recently synced first: the two failing feeds go before the good ones.
         var clash = await SeedFeedAsync($"https://clash-{run}.example.com/cal.ics", lastImportAt: null);
         var broken = await SeedFeedAsync($"https://broken-{run}.example.com/cal.ics", lastImportAt: DateTime.UtcNow.AddDays(-2));
         var messy = await SeedFeedAsync($"https://messy-{run}.example.com/cal.ics", lastImportAt: DateTime.UtcNow.AddDays(-1));
         var plain = await SeedFeedAsync($"https://plain-{run}.example.com/cal.ics", lastImportAt: DateTime.UtcNow.AddHours(-1));
 
-        // A block of another source already holds the UID in the feed: the insert violates the unique index (23505).
         await SeedBlockAsync(clash, "clash-uid", CalendarBlockSource.Manual);
         _factory.Feeds[clash.Url] = () => Feed(Event("clash-uid", "20261010", "20261012"));
         _factory.Feeds[broken.Url] = () => throw new InvalidOperationException("unexpected client failure");
-        // Before PC-10 each of these broke the save: SUMMARY over varchar(500), the same UID twice.
         _factory.Feeds[messy.Url] = () => Feed(
             Event("messy-uid", "20261010", "20261012", summary: new string('s', 2000)),
             Event("messy-uid", "20261010", "20261012", summary: new string('s', 2000)),
@@ -107,7 +104,6 @@ public class PropertyICalSyncPostgresTests : IClassFixture<PropertyICalSyncPostg
         var bothDownloading = new Barrier(2);
         _factory.Feeds[feed.Url] = () =>
         {
-            // Both runs hold the downloaded feed before either writes.
             bothDownloading.SignalAndWait(TimeSpan.FromSeconds(30));
             return Feed(events);
         };
@@ -118,7 +114,7 @@ public class PropertyICalSyncPostgresTests : IClassFixture<PropertyICalSyncPostg
         }
         finally
         {
-            _factory.Feeds.TryRemove(feed.Url, out _); // later batch runs of the class must not wait on the barrier
+            _factory.Feeds.TryRemove(feed.Url, out _);
         }
 
         await using var scope = _factory.Services.CreateAsyncScope();
@@ -185,7 +181,6 @@ public class PropertyICalSyncPostgresTests : IClassFixture<PropertyICalSyncPostg
 
     private sealed record SeededFeed(Guid FeedId, Guid PropertyId, Guid OrgId, string Url);
 
-    /// <summary>The integration host with the download client replaced by <see cref="Feeds"/> (URL → body).</summary>
     public sealed class Factory : CasazenWebApplicationFactory
     {
         public ConcurrentDictionary<string, Func<string>> Feeds { get; } = new(StringComparer.Ordinal);
@@ -206,7 +201,6 @@ public class PropertyICalSyncPostgresTests : IClassFixture<PropertyICalSyncPostg
         public bool TryValidateUrl(string? url, [NotNullWhen(true)] out Uri? uri) =>
             ExternalUrlPolicy.TryParse(url, [443], out uri);
 
-        // Unknown URLs (feeds seeded by other tests of the class) answer like an unreachable host.
         public Task<string> GetStringAsync(string url, CancellationToken cancellationToken = default) =>
             feeds.TryGetValue(url, out var body)
                 ? Task.Run(body, cancellationToken)

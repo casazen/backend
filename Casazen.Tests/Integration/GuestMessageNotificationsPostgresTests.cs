@@ -62,8 +62,6 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    // ─── The push ───
-
     [PostgresFact]
     public async Task SendAsGuest_NewMessage_QueuesOnePushToTheHostWhoReachesTheBooking_WithoutNameOrText()
     {
@@ -114,7 +112,6 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         _email.Verify(e => e.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()), Times.Once);
         _email.Verify(e => e.Enqueue(world.HostEmail, It.IsAny<EmailContent>(), EmailTemplates.Names.GuestMessageToHost), Times.Once);
 
-        // The window is over ten minutes after the first email: the next message queues the next email.
         _clock.Advance(TimeSpan.FromMinutes(10));
         await SendAsGuestAsync(world, "tre", "key-00000010");
         _email.Verify(e => e.Enqueue(world.HostEmail, It.IsAny<EmailContent>(), It.IsAny<string>()), Times.Exactly(2));
@@ -144,7 +141,6 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
 
         await SendAsGuestAsync(world, "uno", "key-00000012");
 
-        // The person named in charge does not reach the property (it was not given): only the administrators hear about it.
         var call = Assert.Single(_push.Invocations);
         Assert.Equal(PushAudience.User(world.OrgId, HostUser), call.Arguments[1]);
         await using var db = NewDb();
@@ -156,7 +152,7 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
     {
         var world = await SeedAsync();
         await ChooseEmailAsync(HostUser);
-        _clock.SetUtcNow(new DateTimeOffset(2026, 10, 9, 21, 30, 0, TimeSpan.Zero)); // 23:30 in Rome (summer time)
+        _clock.SetUtcNow(new DateTimeOffset(2026, 10, 9, 21, 30, 0, TimeSpan.Zero));
 
         await SendAsGuestAsync(world, "notte", "key-00000013");
 
@@ -191,8 +187,6 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         var alert = Assert.IsType<HostMessageAlert>(job.Args[0]);
         Assert.Equal((HostMessageSource.Direct, sent.Message.Id), (alert.Source, alert.MessageId));
     }
-
-    // ─── Reading clears the notifications ───
 
     [PostgresFact]
     public async Task MarkRead_ClearsTheCallersUnreadGuestMessageNotificationsOfTheBooking_AndPublishesOnce()
@@ -255,8 +249,6 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         await using (var db = NewDb())
             await Service(db).ReplyAsHostAsync(world.BookingId, "ciao", "key-00000007", HostUser);
 
-        // Answering is reading: both the row of the test and the one the alert wrote are read, and the reply tells the sessions once (a second
-        // reply, with nothing left unread, would tell nobody: see MarkRead_NothingUnreadToClear_PublishesNothing).
         Assert.NotNull((await ReloadAsync(mine)).ReadAt);
         await using (var check = NewDb())
         {
@@ -269,10 +261,6 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         _publisher.VerifyNoOtherCalls();
     }
 
-    /// <summary>
-    /// PROOF TEST (E05/F07/US01): a message nobody wrote (the one a routine planned) answers nobody. The question of the guest stays unread and the thread still waits for its answer, the origin is stored on
-    /// the message, and a person who answers afterwards does what a person always does (the guest's messages are read, the thread is answered).
-    /// </summary>
     [PostgresFact]
     public async Task ReplyAsAutomation_AnswersNobody_TheQuestionOfTheGuestStaysUnreadAndWaiting_UntilAPersonAnswers()
     {
@@ -326,8 +314,6 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         Assert.Equal(0, view.UnreadCount);
     }
 
-    // ─── Unread per booking ───
-
     [PostgresFact]
     public async Task ListUnreadForHost_OpenThreadsWithUnreadMessages_GiveCountersOnly_AndReadingEmptiesThem()
     {
@@ -369,8 +355,6 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         Assert.Empty(await service.ListUnreadForHostAsync(new HostScope(world.OrgId, GrantedToUserId: "auth0|nobody")));
         Assert.Single(await service.ListUnreadForHostAsync(new HostScope(world.OrgId)));
     }
-
-    // ─── The assistant (E05/F05/US02/T01) ───
 
     [PostgresFact]
     public async Task SendAsGuest_RecordsTheEventOfTheMessageForTheAssistant_InTheSameSave_AndAReplayRecordsNoSecond()
@@ -477,8 +461,6 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         observer.Verify(o => o.OnHostReplyAsync(world.OrgId, MessageThreadKey.ForDirect(world.BookingId), It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    // ─── Helpers ───
-
     private sealed record World(Guid OrgId, Guid BookingId, Guid PropertyId, string HostEmail);
 
     private AppDbContext NewDb() => _database!.CreateContext();
@@ -518,7 +500,6 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         OrgTeamTestData.AddUser(db, OtherUser, org.Id, UserRole.PropertyOwner);
         if (collaboratorInChargeWithoutAccess)
         {
-            // The host is the owner of the org; the other person is a collaborator "Solo alcuni" with no property, named in charge of this one.
             OrgTeamTestData.AddMember(db, HostUser, org.Id, OrgRole.Owner);
             OrgTeamTestData.AddMember(db, OtherUser, org.Id, OrgRole.Collaborator).PropertyScope = PropertyScope.Selected;
         }
@@ -545,7 +526,6 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         return new World(org.Id, booking, property.Id, host.Email);
     }
 
-    /// <summary>The user chooses the email next to the defaults of a new guest message (a push and the counter).</summary>
     private async Task ChooseEmailAsync(string userId)
     {
         await using var db = NewDb();
@@ -592,10 +572,8 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         return await Service(db).SendAsGuestAsync(booking, text, key);
     }
 
-    /// <summary>A message in a thread that is closed by now: written when the clock was inside the stay, then the clock moved on.</summary>
     private async Task SendClosedThreadMessageAsync(World closed)
     {
-        // The service refuses to take a message on a closed thread, so the row is written directly, as an older message would be.
         await using var db = NewDb();
         var thread = new GuestThread
         {

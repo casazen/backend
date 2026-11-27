@@ -43,16 +43,13 @@ public class AccessCodeTouristTaxHoldProofTests
         touristTax.Setup(t => t.IsAccessCodeHeldBackAsync(bookingId, It.IsAny<CancellationToken>())).ReturnsAsync(() => held);
         var service = new AccessCodeService(db, NullLogger<AccessCodeService>.Instance, touristTax.Object);
 
-        // Held back: no channel gets the code around the gate, the reason is the one the guest page reads, and nothing is logged as released.
         foreach (var channel in AccessCodeReleaseChannels.All)
             Assert.Null(await service.ReleaseToGuestAsync(bookingId, channel));
         Assert.Equal(AccessCodeHoldReasons.TouristTaxDue, await service.GetHoldReasonAsync(bookingId));
         Assert.Empty(await db.Set<AccessCodeReleaseLog>().AsNoTracking().ToListAsync());
 
-        // The host's own read (with its scope and the verification gate) is the host's: it is not held back.
         Assert.Equal(LockCode, await service.GetAccessCodeAsync(bookingId, "auth0|host", new HostScope(orgId)));
 
-        // Paid (or not asked for): the code is released at the next ask, once logged, and no reason is given any more.
         held = false;
         Assert.Null(await service.GetHoldReasonAsync(bookingId));
         Assert.Equal(LockCode, await service.ReleaseToGuestAsync(bookingId, AccessCodeReleaseChannels.CheckInScreen));
@@ -83,7 +80,6 @@ public class AccessCodeTouristTaxHoldProofTests
         Assert.Equal(LockCode, await service.ReleaseToGuestAsync(bookingId, AccessCodeReleaseChannels.Email));
     }
 
-    /// <summary>A confirmed stay to come on a property with a lock code, whose verification passed.</summary>
     private static Guid Seed(AppDbContext db, Guid orgId)
     {
         var property = new Property

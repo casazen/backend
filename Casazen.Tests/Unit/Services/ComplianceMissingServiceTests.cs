@@ -64,8 +64,6 @@ public class ComplianceMissingServiceTests
     private static ComplianceSummaryItem StayItem(ComplianceCockpitAction action, Booking booking) =>
         ComplianceSummaryItem.ForBooking(action, booking.Id, "Anna Verdi");
 
-    // --- A property to activate -------------------------------------------------------------------------
-
     private static async Task<Property> SeedPropertyAsync(
         AppDbContext db, string name, bool compliant = false, string? cinCode = null)
     {
@@ -103,9 +101,7 @@ public class ComplianceMissingServiceTests
 
         var missing = Assert.Single(described.PropertiesPending.Items).Missing;
         Assert.Contains(new ComplianceMissing("activation_cin_missing", "cin"), missing);
-        // The documents and the safety checklist are reminders (PO decision 2026-11-01): they do not keep the property from the activation.
         Assert.DoesNotContain(missing, m => m.Field is "documents" or "safety");
-        // The base data are complete: nothing about that step.
         Assert.DoesNotContain(missing, m => m.Field == "base-data");
         Assert.All(missing, m => Assert.False(string.IsNullOrWhiteSpace(m.Code)));
     }
@@ -123,10 +119,6 @@ public class ComplianceMissingServiceTests
             Assert.Single(described.PropertiesPending.Items).Missing);
     }
 
-    /// <summary>
-    /// E29/F02/US01/T02 (NF-129): a Swiss property that is not active lists in the <c>Missing</c> of its item what its guest registration lacks, the code of the blocker with the
-    /// step as the field, in the section that already exists (no new cockpit action); one with everything set has only the confirmation of the activation left.
-    /// </summary>
     [Fact]
     public async Task Property_ASwissOneListsWhatItsGuestRegistrationLacks_InTheSectionThatExists()
     {
@@ -175,8 +167,6 @@ public class ComplianceMissingServiceTests
         Assert.All(items.Skip(IComplianceMissingService.MaxDetailedProperties), item =>
             Assert.Equal([new ComplianceMissing(ComplianceMissingCodes.ActivationIncomplete)], item.Missing));
     }
-
-    // --- The guests of a stay ---------------------------------------------------------------------------
 
     private static async Task<Booking> SeedStayAsync(AppDbContext db, params StayGuest[] guests)
     {
@@ -258,7 +248,6 @@ public class ComplianceMissingServiceTests
         var described = await Service(db).DescribeAsync(
             Summary(checkIns: Section(StayItem(ComplianceCockpitAction.CompleteGuestCheckIn, booking))));
 
-        // The data of the one guest are complete: the order of the guests is what the record does not accept.
         Assert.Equal(
             [new ComplianceMissing(ComplianceMissingCodes.GuestCompositionInvalid, "guests")],
             Assert.Single(described.GuestCheckInsIncomplete.Items).Missing);
@@ -279,8 +268,6 @@ public class ComplianceMissingServiceTests
             item => Assert.Equal([new ComplianceMissing(ComplianceMissingCodes.GuestDataIncomplete)], item.Missing));
     }
 
-    // --- The other sections -----------------------------------------------------------------------------
-
     [Fact]
     public async Task OtherSections_HaveTheSingleThingLeft_AndTheCockpitIsNotChanged()
     {
@@ -300,7 +287,6 @@ public class ComplianceMissingServiceTests
         Assert.Equal(
             [new ComplianceMissing(ComplianceMissingCodes.PropertyReadyNotConfirmed, "propertyReady")],
             described.TurnoversPending.Items.Single().Missing);
-        // The counts (a section lists its latest items only) and the items themselves are as they were.
         Assert.Equal(25, described.AlloggiatiManualRequired.Count);
         Assert.Equal(summary.CheckoutsDue.Items.Select(i => (i.Id, i.Label, i.Action)), described.CheckoutsDue.Items.Select(i => (i.Id, i.Label, i.Action)));
     }
@@ -336,7 +322,6 @@ public class ComplianceMissingServiceTests
             }
         }
 
-        // The scenario has one stay to complete and one turnover per property: the collaborator's cockpit is the half of the owner's.
         var all = await service.DescribeAsync(await cockpit.GetSummaryAsync(world.OrgWide));
         var granted = await service.DescribeAsync(await cockpit.GetSummaryAsync(world.Restricted));
         Assert.Equal(2, all.TurnoversPending.Count);

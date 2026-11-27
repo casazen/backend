@@ -15,17 +15,14 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>The specimen holder, the shipped format and policy and a TD1 MRZ with its own check digits, for the tests of the reading and of the coherence of a document (E71/F01/US02).</summary>
 internal static class IdentityTestDocuments
 {
-    /// <summary>The day of the stay of the tests.</summary>
     public static readonly DateOnly Today = new(2026, 11, 27);
 
     public const string Surname = "ROSSI";
     public const string GivenNames = "MARIA GIUSEPPINA";
     public const string DocumentNumber = "CA12345AA";
 
-    /// <summary>The fiscal code of the specimen holder, with the check character computed (a code that does not check is never read).</summary>
     public static string FiscalCode { get; } = WithCheckCharacter("RSSMGS85C52H501");
 
     private static string WithCheckCharacter(string first15) => first15 + ItalianFiscalCode.CheckCharacter(first15);
@@ -43,11 +40,6 @@ internal static class IdentityTestDocuments
         return IdentityConfigurationJson.ReadStrict<IdentityDecisionPolicy>(canonical)!;
     }
 
-    /// <summary>
-    /// The reading of the MRZ of a card of three lines of 30 characters, built with its own check digits and read by the parser of the application (so what the checker
-    /// sees is what a reading gives): the name field is cut at 30 characters as a line is. Dates are YYMMDD. <paramref name="birthDigit"/> writes a wrong check digit.
-    /// <paramref name="nationality"/> is the code as the line writes it, filled with the filler to three characters (<c>D</c> for a German card).
-    /// </summary>
     public static MrzExtractionResult Mrz(
         string surname = Surname,
         string givenNames = GivenNames,
@@ -87,7 +79,6 @@ internal sealed class ZonedFieldTestCard : IDisposable
 
     public RasterImage Image { get; }
 
-    /// <summary>The tag of the zone of every field of the layout, by field name (two fields that share a zone share the tag).</summary>
     public IReadOnlyDictionary<string, byte> Tags { get; }
 
     public static ZonedFieldTestCard Of(DocumentFormat format, DocumentSide side, int width = Width, int height = Height)
@@ -114,7 +105,6 @@ internal sealed class ZonedFieldTestCard : IDisposable
         return new ZonedFieldTestCard(new RasterImage(width, height, rgb), tags);
     }
 
-    /// <summary>What the fake reader says for each zone: the text of every field named, by the tag of its zone.</summary>
     public Dictionary<byte, string> Script(params (string Field, string Text)[] texts) => texts.ToDictionary(text => Tags[text.Field], text => text.Text);
 
     public void Dispose() => Image.Dispose();
@@ -133,18 +123,12 @@ internal sealed class ZonedFieldTestCard : IDisposable
     }
 }
 
-/// <summary>
-/// A page reader that answers from a script by the tag of the zone it is handed, keeps what it was asked (the zone, the way of reading, the size of the crop) and the
-/// pixel arrays it was handed (to prove they are zeroed afterwards), and can wait, fail or cancel on purpose.
-/// </summary>
 internal sealed class ZoneScriptedPageReader(Func<byte, string, CancellationToken, Task<string?>> answer) : IPageTextReader
 {
     public List<(byte Tag, string Mode, int Width, int Height)> Calls { get; } = [];
 
-    /// <summary>The pixel arrays of every crop it was handed.</summary>
     public List<byte[]> Handed { get; } = [];
 
-    /// <summary>A reader that answers the text of the page way for a tag, and the one of the layout way when the page way has none.</summary>
     public static ZoneScriptedPageReader Answering(IReadOnlyDictionary<byte, string> page, IReadOnlyDictionary<byte, string>? layout = null) =>
         new((tag, mode, _) => Task.FromResult(mode == "page" ? page.GetValueOrDefault(tag) : layout?.GetValueOrDefault(tag)));
 
@@ -162,15 +146,12 @@ internal sealed class ZoneScriptedPageReader(Func<byte, string, CancellationToke
     }
 }
 
-/// <summary>An MRZ reader that answers a reading (or fails), and keeps the picture it was handed: a copy of its bytes and the stream itself.</summary>
 internal sealed class ScriptedMrzReader(MrzReading? reading = null, Exception? failure = null) : IMrzExtractionService
 {
     public int Calls { get; private set; }
 
-    /// <summary>A copy of the picture as it was handed.</summary>
     public byte[]? Picture { get; private set; }
 
-    /// <summary>The stream it was handed, to prove its bytes are zeroed once the reading is over.</summary>
     public MemoryStream? Handed { get; private set; }
 
     public async Task<MrzExtractionResult?> ExtractAsync(Stream imageStream, CancellationToken cancellationToken = default) =>
@@ -190,12 +171,6 @@ internal sealed class ScriptedMrzReader(MrzReading? reading = null, Exception? f
     }
 }
 
-/// <summary>
-/// E71/F01/US02/T01 (NF-190): the fields of a side of the card are read zone by zone, each value bound to the zone it was read from, with the label rule of the document
-/// reader (a value without its label is not returned); on the side the MRZ is on the fields of the MRZ are added with the confidence of the MRZ reading; the limits hold
-/// (time, cancellation, an unreadable zone) and every picture is zeroed. Doubles stand for the OCR and for the MRZ reader: what is proved is the binding, the rule and the
-/// limits, not Tesseract.
-/// </summary>
 public class ZonedFieldReaderTests
 {
     private static readonly DocumentFormat Cie = IdentityTestDocuments.Cie();
@@ -246,7 +221,6 @@ public class ZonedFieldReaderTests
             ],
             fields.Select(field => (field.Name, field.Value)));
 
-        // Each value says the zone it was read from (the name of the field zone of the format), the side, the source and the local confidence of the visual zone.
         Assert.All(fields, field =>
         {
             Assert.Equal(field.Name, field.ZoneId);
@@ -255,7 +229,6 @@ public class ZonedFieldReaderTests
             Assert.Equal(DocumentOcrService.FallbackConfidence, field.Confidence);
         });
 
-        // The MRZ of the Italian card is on the back: nothing is asked of the MRZ reader on the front.
         Assert.Equal(0, mrz.Calls);
     }
 
@@ -301,7 +274,6 @@ public class ZonedFieldReaderTests
             Assert.Equal(MrzExtractionService.CertainConfidence, field.Confidence);
         });
 
-        // The printed fiscal code of the back is read from its own zone, with the local confidence.
         var fiscal = Assert.Single(fields, field => field.Source == ZonedFieldSources.Viz);
         Assert.Equal((ZonedFieldNames.FiscalCode, IdentityTestDocuments.FiscalCode, ZonedFieldNames.FiscalCode, DocumentSide.Back), (fiscal.Name, fiscal.Value, fiscal.ZoneId, fiscal.Side));
         Assert.Equal(DocumentOcrService.FallbackConfidence, fiscal.Confidence);
@@ -328,11 +300,8 @@ public class ZonedFieldReaderTests
     {
         using var card = ZonedFieldTestCard.Of(Cie, DocumentSide.Front);
         var pages = ZoneScriptedPageReader.Answering(card.Script(
-            // No label at all: the name is there but nothing says it is a surname.
             (ZonedFieldNames.Surname, "ROSSI"),
-            // The label of another field in the zone of the given names: the surname is not read from it.
             (ZonedFieldNames.GivenNames, "COGNOME / SURNAME\nBIANCHI"),
-            // A label with no value after it.
             (ZonedFieldNames.Sex, "SESSO / SEX"),
             (ZonedFieldNames.ExpiryDate, "SCADENZA / EXPIRY\n12.03.2032")));
 
@@ -344,7 +313,6 @@ public class ZonedFieldReaderTests
     [Fact]
     public async Task ReadAsync_APlainTextThatCouldBeAValueOfAnotherFieldZone_IsNotMovedToThatField()
     {
-        // The surname zone shows the label and the value of the given names (a crop that is off by one line): that zone gives no surname and no given names.
         using var card = ZonedFieldTestCard.Of(Cie, DocumentSide.Front);
         var pages = ZoneScriptedPageReader.Answering(card.Script((ZonedFieldNames.Surname, "NOME / NAME\nMARIA GIUSEPPINA")));
 
@@ -402,7 +370,6 @@ public class ZonedFieldReaderTests
     [Fact]
     public async Task ReadAsync_TheAddressZone_IsNotRead()
     {
-        // The address of the back is a zone of the layout and not a field of the verification: no picture of it is cut and no OCR is run on it.
         using var card = ZonedFieldTestCard.Of(Cie, DocumentSide.Back);
         Assert.Contains("address", card.Tags.Keys);
         var pages = ZoneScriptedPageReader.Answering(card.Script(("address", "INDIRIZZO DI RESIDENZA / RESIDENCE ADDRESS\nVIA ROMA 1 00100 ROMA (RM)")));
@@ -435,7 +402,6 @@ public class ZonedFieldReaderTests
 
         await Reader(pages).ReadAsync(card.Image, Cie, DocumentSide.Front);
 
-        // The zone of the surname is 0.61 by 0.1 of the card (610 by 63 pixels here); the margin is a few pixels on each side, never a different zone.
         var crop = Assert.Single(pages.Calls, call => call.Tag == card.Tags[ZonedFieldNames.Surname]);
         Assert.InRange(crop.Width, 610, 610 + 24);
         Assert.InRange(crop.Height, 63, 63 + 24);
@@ -448,7 +414,6 @@ public class ZonedFieldReaderTests
         var script = card.Script(FrontTexts);
         var pages = new ZoneScriptedPageReader(async (tag, _, token) =>
         {
-            // The third zone never answers: only the limit of the reading ends the wait.
             if (tag == card.Tags[ZonedFieldNames.GivenNames])
                 await Task.Delay(Timeout.Infinite, token);
 
@@ -534,7 +499,6 @@ public class ZonedFieldReaderTests
 
         using var decoded = RasterImage.Decode(mrz.Picture!, 25_000_000);
         Assert.Equal((600, 378), (decoded.Width, decoded.Height));
-        // The picture of the caller is left as it was: it belongs to the caller.
         Assert.Equal((ZonedFieldTestCard.Width, ZonedFieldTestCard.Height), (card.Image.Width, card.Image.Height));
         Assert.Contains(card.Image.Rgb, value => value != 0);
     }
@@ -579,7 +543,6 @@ public class ZonedFieldReaderTests
         Assert.Equal("mrz", ZonedFieldZones.Mrz);
         Assert.Equal(ZonedFieldNames.All.Count, ZonedFieldNames.All.Distinct().Count());
 
-        // The names of the layout of the shipped format that the verification reads are all names of the plan: nothing of the vocabulary is spelled twice.
         var layoutNames = Cie.Layout.Sides.Values.SelectMany(side => side.Fields).Select(field => field.Name).Where(name => name != "address");
         Assert.All(layoutNames, name => Assert.Contains(name, ZonedFieldNames.All));
     }
@@ -598,7 +561,6 @@ public class ZonedFieldReaderTests
     [Fact]
     public void Reader_NeverTouchesTheDisk()
     {
-        // ADR-013-R2, R6: the crops and the picture handed to the MRZ reader live in memory; no file API is called by the classes that hold them.
         string[] banned =
         [
             "GetTempPath", "GetTempFileName", "File.Write", "File.Create", "File.Open", "File.Copy", "File.Move", "FileStream", "StreamWriter", "Directory.Create",

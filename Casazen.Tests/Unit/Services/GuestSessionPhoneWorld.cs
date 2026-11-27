@@ -37,7 +37,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 internal sealed class GuestSessionPhoneWorld : IDisposable
 {
-    /// <summary>The phone of the guest as the checkout stores it: at most 20 characters, a valid <c>[Phone]</c>.</summary>
     public const string Phone = "+39 347 555 7364";
 
     public const string RightDigits = "7364";
@@ -67,7 +66,6 @@ internal sealed class GuestSessionPhoneWorld : IDisposable
         Lockout = new GuestPhoneLookupLockout(Options.Create(new GuestPhoneLookupLockoutOptions()), Clock);
         Filter = new GuestPhoneLookupLockoutFilter(Lockout, Flags, FilterLogs);
 
-        // The answers are localized from the resources of the product: the request needs the localizer.
         _requestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider();
     }
 
@@ -91,18 +89,14 @@ internal sealed class GuestSessionPhoneWorld : IDisposable
 
     public CapturingLogger<ErrorHandlingMiddleware> ErrorLogs { get; } = new();
 
-    /// <summary>Everything the three log sinks received: rendered messages, structured values and exceptions.</summary>
     public string AllLogs => string.Join(Environment.NewLine, LookupLogs.AllOutput, FilterLogs.AllOutput, ErrorLogs.AllOutput);
 
-    /// <summary>The body of the phone proof, as the binder leaves it when the e-mail is left out.</summary>
     public static GuestSessionRequest PhoneBody(OrgEntity org, string bookingCode, string digits) =>
         new() { OrgSlug = org.Slug, BookingCode = bookingCode, PhoneLast4 = digits };
 
-    /// <summary>The body of the e-mail proof.</summary>
     public static GuestSessionRequest EmailBody(OrgEntity org, string bookingCode, string email) =>
         new() { OrgSlug = org.Slug, BookingCode = bookingCode, Email = email };
 
-    /// <summary>A code of the right form that is not <paramref name="code"/>: each character moved by one in the alphabet of the codes.</summary>
     public static string OtherCode(string code) =>
         string.Concat(code.Select(c => BookingCodes.Alphabet[(BookingCodes.Alphabet.IndexOf(c) + 1) % BookingCodes.Alphabet.Length]));
 
@@ -209,7 +203,6 @@ internal sealed class GuestSessionPhoneWorld : IDisposable
                         }
                         catch (Exception exception)
                         {
-                            // As MVC does: the filters see the exception of the action, then it goes on to the error middleware.
                             executed.ExceptionDispatchInfo = ExceptionDispatchInfo.Capture(exception);
                         }
 
@@ -240,7 +233,6 @@ internal sealed class GuestSessionPhoneWorld : IDisposable
         Db.Dispose();
     }
 
-    /// <summary>What MVC writes for the object results of the action: the 200 of the session and the 429 of the lock.</summary>
     private static Task WriteAsync(HttpContext http, IActionResult result)
     {
         var answer = Assert.IsAssignableFrom<ObjectResult>(result);
@@ -250,9 +242,7 @@ internal sealed class GuestSessionPhoneWorld : IDisposable
     }
 }
 
-/// <summary>What the client of the guest session reads: status, headers (<c>name: value</c>, sorted) and body; and whether the lookup ran at all.</summary>
 internal sealed record SessionAnswer(int Status, IReadOnlyList<string> Headers, string Body, bool ActionRan)
 {
-    /// <summary>Status, headers and body together: two answers the client cannot tell apart have the same.</summary>
     public string Fingerprint => $"{Status}\n{string.Join("\n", Headers)}\n{Body}";
 }

@@ -29,12 +29,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// E08 (NF-15, ADR-016): the Swiss compliance endpoints hold guest data and declare a legal communication done, so a caller
-/// whose scope does not reach the property cannot use them. The authorization is the production one (the resource handler and the
-/// scope resolver over the caller's snapshot): a collaborator «Solo alcuni» given one property is served on it and refused (403)
-/// on another property of the same org, and nothing is generated or stored for the refused one.
-/// </summary>
 public class SwissComplianceControllerTests
 {
     private const string Member = "auth0|member";
@@ -85,13 +79,10 @@ public class SwissComplianceControllerTests
             .ReturnsAsync(new TicinoDeclaration(GivenProperty, Night, new DateTime(2026, 10, 26, 9, 0, 0, DateTimeKind.Utc), "Anna Test", null, true));
         SetUpRegister();
 
-        // A collaborator «Solo alcuni» of the org, given GivenProperty only; every permission of its role is held.
         var controller = NewController(GivenPropertyOnly());
 
-        // The property it was given is served: the denial below comes from the scope, not from the wiring.
         Assert.IsNotType<ForbidResult>(await CallAsync(controller, endpoint, GivenProperty));
 
-        // Another property of the same org, created by somebody else, is not reached: 403 and nobody is called for it.
         var refused = await CallAsync(controller, endpoint, OtherProperty);
 
         Assert.IsType<ForbidResult>(refused);
@@ -180,7 +171,6 @@ public class SwissComplianceControllerTests
     [Fact]
     public async Task Generate_PassesTheConfirmationAndTheCaller_AndTheGroupSheetPassesTheCaller_Test()
     {
-        // The guard against duplicates lives in the service, which never reads the caller: the controller says who asks and whether they confirmed the regeneration.
         TicinoFileRequest? generated = null;
         TicinoFileRequest? sheetRequest = null;
         _ticino
@@ -252,7 +242,6 @@ public class SwissComplianceControllerTests
     [InlineData("GroupSheet")]
     public async Task UploadReceipt_ADocumentKeptFiveYearsWithADateAlreadyPastThat_IsRefusedWith400_AndNothingIsRecorded_Test(string type)
     {
-        // The daily retention job deletes such a document (file and row) the night it is recorded: a mistyped date must never destroy a legal proof in silence.
         var controller = NewController(GivenPropertyOnly());
         var form = ReceiptForm();
         form.Type = type;
@@ -274,7 +263,6 @@ public class SwissComplianceControllerTests
     [Fact]
     public async Task UploadReceipt_AnOtrReportOfAnyDate_AndAYoungDocumentOfAKeptType_AreRecorded_Test()
     {
-        // An OTR report is never deleted by the retention, so its date is never refused; a document of a kept type dated today is far from its time.
         _receipts
             .Setup(s => s.RecordAsync(
                 GivenProperty, It.IsAny<SwissComplianceFileType>(), It.IsAny<DateTime>(), "REF-1", It.IsAny<Stream>(),
@@ -304,8 +292,6 @@ public class SwissComplianceControllerTests
                 "receipt.pdf", "application/pdf", It.IsAny<CancellationToken>()),
             Times.Once);
     }
-
-    // ─── The guest register (E31/F01/US01/T01, NF-130) ───
 
     [Fact]
     public async Task GuestRegister_OtherOrganizationForbidden_Test()
@@ -347,8 +333,6 @@ public class SwissComplianceControllerTests
     [Fact]
     public void GuestRegister_AsksTheGuestPermission_IsBehindTheFlag_AndTheFlagGatesNothingElseOfTheController_Test()
     {
-        // The register holds guest data, so it asks guest.read on top of the booking.read of the class (as the other two files that list the guests); both actions answer 404 before
-        // authentication while Features:GuestRegistrationRegimes is off; and the flag gates nothing else here: Ticino and the OTR report work with it off.
         var type = typeof(SwissComplianceController);
         string[] registerActions = [nameof(SwissComplianceController.DownloadGuestRegister), nameof(SwissComplianceController.GetGuestRegisterInfo)];
 
@@ -409,7 +393,6 @@ public class SwissComplianceControllerTests
     [InlineData("2028-01-01", "2029-01-01", "swiss_period_too_long")]
     public async Task GuestRegister_AnInvalidPeriodOrOneOverTheMaximum_Is400_AndNothingIsGenerated_Test(string from, string to, string code)
     {
-        // The maximum is 366 days, both ends counted (the OTR report has the same rule and the same codes): one day more is refused before anybody is asked.
         var controller = NewController(GivenPropertyOnly());
         var query = new GuestRegisterQuery { From = DateOnly.Parse(from), To = DateOnly.Parse(to) };
 
@@ -490,7 +473,6 @@ public class SwissComplianceControllerTests
         Assert.Equal(("registro-ospiti-ch-2026-10-25-2026-11-24.csv", "text/csv; charset=utf-8"), (served.FileDownloadName, served.ContentType));
         Assert.Equal(new GuestRegisterRequest(Member, DocumentLanguages.Current), asked);
 
-        // The sources of a regime that give no number: the header is absent, not zero and not empty.
         _register
             .Setup(s => s.GenerateAsync(GivenProperty, Night, Night.AddDays(7), It.IsAny<GuestRegisterRequest?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RegisterDocument(retentionYears: null));
@@ -504,7 +486,6 @@ public class SwissComplianceControllerTests
     [Fact]
     public void GuestRegister_TheInfoKeepsTheNamesOfTheBrief_AndHoldsNoGuest()
     {
-        // The screen (E31/F02/US02/T01) reads rowCount, retentionYears and regimeCode before it downloads: the names are the contract.
         var web = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var property = Guid.NewGuid();
 

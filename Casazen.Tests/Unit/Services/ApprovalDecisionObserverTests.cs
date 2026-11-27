@@ -7,10 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E05/F05/US02/T01: the approval queue tells every <see cref="IApprovalDecisionObserver"/> (the lessons and the trust measure of the assistant) after each approval, rejection and edit, once
-/// it is saved, with the kind of decision and who decided; an observer that fails never undoes the decision nor keeps the others from being told.
-/// </summary>
 public sealed class ApprovalDecisionObserverTests : IDisposable
 {
     private readonly ApprovalQueueRig _rig = new();
@@ -32,7 +28,6 @@ public sealed class ApprovalDecisionObserverTests : IDisposable
         await service.ApproveAsync(_rig.OrgWide, approved.Id, ApprovalQueueRig.Owner);
         await service.RejectAsync(_rig.OrgWide, rejected.Id, ApprovalQueueRig.Owner, "Non va bene");
 
-        // A second approval of an item already approved tells nobody again.
         Assert.Equal(
             [
                 (approved.Id, ApprovalDecisionKind.Edited, ApprovalStatus.Pending, ApprovalQueueRig.Owner),
@@ -42,7 +37,6 @@ public sealed class ApprovalDecisionObserverTests : IDisposable
             recording.Seen);
         Assert.Equal(["Sent"], recording.ActionStates);
 
-        // The decisions stand, whatever the failing observer did.
         Assert.Equal(ApprovalStatus.Approved, (await _rig.Db.ApprovalQueueItems.AsNoTracking().SingleAsync(i => i.Id == approved.Id)).Status);
         Assert.Equal(ApprovalStatus.Rejected, (await _rig.Db.ApprovalQueueItems.AsNoTracking().SingleAsync(i => i.Id == rejected.Id)).Status);
     }

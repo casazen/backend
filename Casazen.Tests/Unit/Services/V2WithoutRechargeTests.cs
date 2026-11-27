@@ -51,7 +51,6 @@ public class V2WithoutRechargeTests
 
         var month = await world.CloseOctoberAsync();
 
-        // The ledger: no channel fee the owner is charged, the commission as a line of its own (the key of the line names its type), and the balance of the owner without it.
         var ledger = await world.LedgerAsync();
         Assert.DoesNotContain(ledger, e => e.EntryType == OwnerLedgerEntryType.ChannelFee);
         var borne = Assert.Single(ledger, e => e.EntryType == OwnerLedgerEntryType.ChannelFeeBorneByAgency);
@@ -60,21 +59,17 @@ public class V2WithoutRechargeTests
             (borne.Amount, borne.SourceId, borne.RuleVersion, borne.IdempotencyKey));
         Assert.Equal(266.23m, ledger.Where(e => OwnerLedgerBalance.Counts(e.EntryType)).Sum(e => e.Amount));
 
-        // The ledger as the screens of the agency read it: the line says it is for information only, so a client leaves it out of the totals without knowing its type.
         Assert.True(OwnerLedgerEntryDto.From(borne).Informational);
         Assert.All(ledger.Where(e => e.Id != borne.Id), e => Assert.False(OwnerLedgerEntryDto.From(e).Informational));
 
-        // The version: nothing taken for the commission of the portal.
         var version = month.Version;
         Assert.Equal(
             (450.00m, 0m, -103.77m, -80.00m, 0m, 266.23m),
             (version.Revenue, version.ChannelFees, version.Commission, version.Charges, version.OpeningBalance, version.ClosingBalance));
 
-        // The invoice of the property manager: the commission of the agency and the cleaning, no recharge of the commission of the portal.
         Assert.Equal(new[] { (FiscalLineType.Commission, 90.00m, 8.1m, 7.29m), (FiscalLineType.Recharge, 80.00m, 8.1m, 6.48m) }, LinesOf(month.Invoice));
         Assert.Equal((170.00m, 13.77m), (month.Invoice.TaxableBase, month.Invoice.VatAmount));
 
-        // The statement: the commission is a line for information only, under its own words, the amount the agency bears and nothing taken from the net.
         var content = await world.Statements.GetContentAsync(world.OrgId, version.Id, "it");
         var line = Assert.Single(content.Of(OwnerStatementSection.ChannelFees));
         Assert.Equal((true, true, false, -67.50m), (line.Informational, line.AgencyHoldsPortalAccountWithoutRecharge, line.AgencyHoldsPortalAccount, line.Amount));
@@ -87,7 +82,6 @@ public class V2WithoutRechargeTests
         Assert.DoesNotContain("Trattenuta dal portale", text, StringComparison.Ordinal);
         Assert.DoesNotContain("riaddebitate dal gestore", text, StringComparison.Ordinal);
 
-        // The owner portal: the flag of the commission the agency bears, the line for information only, and the total of the part without it.
         var part = OwnerPortalStatementSectionDto.From(OwnerStatementSection.ChannelFees, content.Of(OwnerStatementSection.ChannelFees));
         var portalLine = Assert.Single(part.Lines);
         Assert.Equal(
@@ -103,7 +97,6 @@ public class V2WithoutRechargeTests
     [Fact]
     public async Task V1AndV2WithRecharge_AreUnchanged_Test()
     {
-        // V1: the account of the owner.
         await using var v1 = await World.CreateAsync();
         var ownerAccount = await v1.CloseOctoberAsync();
         AssertChargedChannelFee(v1, Assert.Single(await v1.LedgerAsync(), e => OwnerLedgerBalance.IsChannelFee(e.EntryType)));
@@ -116,7 +109,6 @@ public class V2WithoutRechargeTests
         Assert.Contains("Trattenuta dal portale (fattura del portale a tuo nome)", TextOf(OwnerStatementLayout.Pdf(v1Statement, Texts)), StringComparison.Ordinal);
         Assert.Equal((false, false, false, false), PortalFlagsOf(v1Line));
 
-        // V2 with the recharge: the same channel fee, recharged on the invoice of the property manager.
         await using var v2 = await World.CreateAsync();
         await v2.AgencyHoldsTheBookingAccountAsync();
         var recharged = await v2.CloseOctoberAsync();
@@ -151,14 +143,12 @@ public class V2WithoutRechargeTests
         await world.AgencyHoldsTheBookingAccountAsync();
         await world.WaiveTheRechargeAsync();
 
-        // October, closed and published before the change: the posting of then read no holder of an account (every listing as V1) and charged the commission to the owner.
         var before = await world.CloseOctoberAsync(beforeTheRule: true);
         Assert.Equal((-67.50m, 198.73m), (before.Version.ChannelFees, before.Version.ClosingBalance));
         var published = await world.PublishAsync(before.Version);
         var pdf = (await world.Statements.GetPdfAsync(world.OrgId, published.Id)).Content;
         var charged = Assert.Single(await world.LedgerAsync(), e => e.EntryType == OwnerLedgerEntryType.ChannelFee);
 
-        // The month posted under the new rule: the channel fee is reversed, the commission posted as the agency's, and the new version takes nothing of it from the owner.
         var posting = await world.Accounting.PostPeriodAsync(world.OrgId, 2026, 10, AgencyUser);
         Assert.Equal((1, 1, 0), (posting.Posted, posting.Reversed, posting.Issues.Count(i => i.Blocking)));
         world.Clock.Advance(TimeSpan.FromMinutes(1));
@@ -166,7 +156,6 @@ public class V2WithoutRechargeTests
         world.Db.ChangeTracker.Clear();
         Assert.Equal((0m, 266.23m), (after.ChannelFees, after.ClosingBalance));
 
-        // The published version: superseded by the new one, and nothing of what was published changed.
         var stored = await world.Db.OwnerStatementVersions.AsNoTracking().SingleAsync(v => v.Id == published.Id);
         Assert.Equal(OwnerStatementVersionStatus.Superseded, stored.Status);
         Assert.Equal(
@@ -174,7 +163,6 @@ public class V2WithoutRechargeTests
             (stored.PublishedSha256, stored.PublishedSnapshot, stored.EntriesSha256, stored.ChannelFees, stored.ClosingBalance, stored.PublishedAt));
         Assert.Equal(pdf, (await world.Statements.GetPdfAsync(world.OrgId, published.Id)).Content);
 
-        // Its lines still give its totals (no 409), and the commission charged then is told as what it was: never as a commission the owner was not charged.
         var content = await world.Statements.GetContentAsync(world.OrgId, published.Id, "it");
         Assert.Equal(OwnerStatementTotals.Of(stored), content.Totals);
         var line = Assert.Single(content.Of(OwnerStatementSection.ChannelFees));
@@ -184,29 +172,20 @@ public class V2WithoutRechargeTests
         Assert.DoesNotContain("non addebitata al proprietario", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Trattenuta dal portale", text, StringComparison.Ordinal);
 
-        // The owner portal tells it the same way: a commission charged on an account of the agency, never the account of the owner (V1) and never one the agency bears.
         Assert.Equal((false, false, true, false), PortalFlagsOf(line));
 
-        // The ledger is append-only: the line charged then is still there, reversed once, and the commission is now the agency's.
         var ledger = await world.LedgerAsync();
         Assert.Equal(-67.50m, Assert.Single(ledger, e => e.Id == charged.Id).Amount);
         Assert.Equal(67.50m, Assert.Single(ledger, e => e.ReversesEntryId == charged.Id).Amount);
         Assert.Equal(-67.50m, Assert.Single(ledger, e => e.EntryType == OwnerLedgerEntryType.ChannelFeeBorneByAgency).Amount);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission and data rule. Turning the recharge off while the agency holds a portal account is a waiver of the reimbursement the law gives the agency: without the explicit
-    /// acknowledgement (left out or false) the save is refused with 422 <c>recharge_waiver_not_acknowledged</c> and nothing is written; with it the setting is saved and the activity log of the
-    /// organization records, in the same save, who acknowledged it and when. A save that keeps a waiver in place asks nothing and records nothing more; turning it off again after turning it on
-    /// is a new waiver. An organization with no account of the agency waives nothing by turning the recharge off, and making the agency the default holder then starts the waiver: asked too.
-    /// </summary>
     [Fact]
     public async Task RechargeWaiver_NeedsTheAcknowledgement_AndRecordsWhoAndWhen_Test()
     {
         await using var world = await World.CreateAsync();
         await world.AgencyHoldsTheBookingAccountAsync();
 
-        // Without the acknowledgement the save is refused, with its code and its message, and nothing is written: the recharge stays on, no line in the activity log.
         foreach (var acknowledged in new bool?[] { null, false })
         {
             var refused = await Assert.ThrowsAsync<DomainRuleException>(() => world.Setup.SaveAsync(
@@ -222,7 +201,6 @@ public class V2WithoutRechargeTests
         Assert.NotEqual("RechargeWaiverNotAcknowledged", Texts.Get("RechargeWaiverNotAcknowledged", "it"));
         Assert.NotEqual(Texts.Get("RechargeWaiverNotAcknowledged", "it"), Texts.Get("RechargeWaiverNotAcknowledged", "en"));
 
-        // With it: saved, and the activity log says who acknowledged the waiver and when.
         world.Clock.Advance(TimeSpan.FromMinutes(7));
         var when = world.Clock.GetUtcNow().UtcDateTime;
         var saved = await world.Setup.SaveAsync(
@@ -234,19 +212,16 @@ public class V2WithoutRechargeTests
             (world.OrgId, OrgActivityType.OrgSettingsChanged, Admin, world.OrgId.ToString(), when, "{\"part\":\"portalCommissionRechargeWaiver\"}"),
             (line.OrgId, line.Type, line.ActorUserId, line.SubjectId, line.When, line.DetailsJson));
 
-        // The waiver in place: a save that keeps it asks nothing and records nothing more.
         await world.Setup.SaveAsync(world.OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = false }, Admin);
         world.Db.ChangeTracker.Clear();
         Assert.Single(await world.Db.OrgActivityEntries.AsNoTracking().ToListAsync());
 
-        // Turning the recharge back on asks nothing; turning it off again is a new waiver.
         await world.Setup.SaveAsync(world.OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = true }, Admin);
         world.Db.ChangeTracker.Clear();
         await Assert.ThrowsAsync<DomainRuleException>(() => world.Setup.SaveAsync(world.OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = false }, Admin));
         world.Db.ChangeTracker.Clear();
         Assert.True((await world.Setup.GetAsync(world.OrgId)).RechargePortalCommissions);
 
-        // No account of the agency: turning the recharge off waives nothing; making the agency the default holder then starts the waiver, and is refused without the acknowledgement.
         await using var owners = await World.CreateAsync();
         Assert.False((await owners.Setup.SaveAsync(owners.OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = false }, Admin)).RechargePortalCommissions);
         owners.Db.ChangeTracker.Clear();
@@ -258,23 +233,15 @@ public class V2WithoutRechargeTests
         Assert.Equal(PortalAccountHolder.Owner, (await owners.Setup.GetAsync(owners.OrgId)).PortalAccountHolder);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission and data rule. The bulk write of the holders of the listings (<c>PUT api/billing-setup/channel-account-holders</c>) starts the waiver too when, with the
-    /// recharge off, it gives the agency its first account: the same effect as making the agency the default holder, so the same acknowledgement. Without it
-    /// (<c>?acknowledgeRechargeWaiver=true</c> left out) the write is refused with 422 <c>recharge_waiver_not_acknowledged</c> and nothing is written; with it the holder is saved and the
-    /// activity log records, in the same save, who acknowledged it and when. A write while the waiver is in place asks nothing and records nothing more.
-    /// </summary>
     [Fact]
     public async Task RechargeWaiver_TheBulkWriteOfTheHolders_NeedsTheAcknowledgementToo_Test()
     {
         await using var world = await World.CreateAsync();
 
-        // The recharge off while every account is the owner's: nothing is waived yet.
         await world.Setup.SaveAsync(world.OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = false }, Admin);
         world.Db.ChangeTracker.Clear();
         Assert.Empty(await world.Db.OrgActivityEntries.AsNoTracking().ToListAsync());
 
-        // The first listing of the agency without the acknowledgement: refused, with its code and its message, and nothing written.
         ChannelAccountHolderCommand[] agencyListing = [new() { PropertyId = world.PropertyId, Channel = BookingSource.BookingCom, Holder = PortalAccountHolder.Agency }];
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => world.Setup.SaveAccountHoldersAsync(world.OrgId, agencyListing, Admin));
         Assert.Equal((PortalAccountErrors.RechargeWaiverNotAcknowledged, "RechargeWaiverNotAcknowledged"), (refused.Code, refused.MessageKey));
@@ -282,7 +249,6 @@ public class V2WithoutRechargeTests
         Assert.Empty(await world.Setup.ListAccountHoldersAsync(world.OrgId));
         Assert.Empty(await world.Db.OrgActivityEntries.AsNoTracking().ToListAsync());
 
-        // With it: the holder saved, and the activity log says who acknowledged the waiver and when.
         world.Clock.Advance(TimeSpan.FromMinutes(3));
         var when = world.Clock.GetUtcNow().UtcDateTime;
         var saved = await world.Setup.SaveAccountHoldersAsync(world.OrgId, agencyListing, Admin, acknowledgeRechargeWaiver: true);
@@ -293,7 +259,6 @@ public class V2WithoutRechargeTests
             (world.OrgId, OrgActivityType.OrgSettingsChanged, Admin, when, "{\"part\":\"portalCommissionRechargeWaiver\"}"),
             (line.OrgId, line.Type, line.ActorUserId, line.When, line.DetailsJson));
 
-        // The waiver in place: a write of the holders asks nothing and records nothing more.
         await world.Setup.SaveAccountHoldersAsync(world.OrgId, agencyListing, Admin);
         world.Db.ChangeTracker.Clear();
         Assert.Single(await world.Db.OrgActivityEntries.AsNoTracking().ToListAsync());
@@ -319,14 +284,12 @@ public class V2WithoutRechargeTests
 
         await world.WaiveTheRechargeAsync();
 
-        // Nothing published changes: the version, its file, its hash, its totals (193.26) and its stored PDF.
         var stored = await world.Db.OwnerStatementVersions.AsNoTracking().SingleAsync(v => v.Id == published.Id);
         Assert.Equal(
             (OwnerStatementVersionStatus.Published, published.PublishedSha256, published.PublishedSnapshot, published.EntriesSha256, -67.50m, 193.26m),
             (stored.Status, stored.PublishedSha256, stored.PublishedSnapshot, stored.EntriesSha256, stored.ChannelFees, stored.ClosingBalance));
         Assert.Equal(pdf, (await world.Statements.GetPdfAsync(world.OrgId, published.Id)).Content);
 
-        // Read again: the same totals, and the commission is still the channel fee the owner was charged.
         var after = await world.Statements.GetContentAsync(world.OrgId, published.Id, "it");
         Assert.Equal(before.Totals, after.Totals);
         var line = Assert.Single(after.Of(OwnerStatementSection.ChannelFees));
@@ -334,12 +297,10 @@ public class V2WithoutRechargeTests
             (OwnerLedgerEntryType.ChannelFee, -67.50m, false, false),
             (line.Type, line.Amount, line.Informational, line.AgencyHoldsPortalAccountWithoutRecharge));
 
-        // The known limit: its label follows the setting of today, the account of the agency without the recharge (not «riaddebitate dal gestore» any more), never V1.
         Assert.Equal((false, true), (line.AgencyHoldsPortalAccount, line.AgencyAccountChargedWithoutRecharge));
         Assert.Equal((false, false, true, false), PortalFlagsOf(line));
     }
 
-    /// <summary>The flags of a line as the owner portal reads them: recharged by the agency, borne by the agency, charged on an account of the agency, for information only.</summary>
     private static (bool Recharged, bool Borne, bool ChargedOnAgencyAccount, bool Informational) PortalFlagsOf(OwnerStatementLine line)
     {
         var dto = OwnerPortalStatementLineDto.From(line);
@@ -349,7 +310,6 @@ public class V2WithoutRechargeTests
     private static (FiscalLineType Type, decimal Net, decimal Rate, decimal Vat)[] LinesOf(FiscalDocument document) =>
         [.. document.Lines.OrderBy(l => l.LineNumber).Select(l => (l.LineType, l.TotalPrice, l.VatRatePercent, l.VatAmount ?? 0m))];
 
-    /// <summary>Every text of the blocks of a PDF content, one line each.</summary>
     private static string TextOf(PdfDocumentContent content) => string.Join(
         '\n',
         content.Blocks.SelectMany(block => block switch
@@ -436,7 +396,6 @@ public class V2WithoutRechargeTests
             return world;
         }
 
-        /// <summary>The agency holds the Booking.com account of the flat (V2), written in bulk as the billing setup writes it.</summary>
         public async Task AgencyHoldsTheBookingAccountAsync()
         {
             await Setup.SaveAccountHoldersAsync(
@@ -446,7 +405,6 @@ public class V2WithoutRechargeTests
             Db.ChangeTracker.Clear();
         }
 
-        /// <summary>The organization turns the recharge of the commissions off, acknowledging the waiver.</summary>
         public async Task WaiveTheRechargeAsync()
         {
             await Setup.SaveAsync(OrgId, new PortalAccountSettingsCommand { RechargePortalCommissions = false, AcknowledgeRechargeWaiver = true }, AgencyUser);
@@ -477,7 +435,6 @@ public class V2WithoutRechargeTests
             return new MonthEnd(version, invoice);
         }
 
-        /// <summary>The version approved and published (its PDF stored with it).</summary>
         public async Task<OwnerStatementVersion> PublishAsync(OwnerStatementVersion version)
         {
             await Accounting.ApproveVersionAsync(OrgId, version.Id, AgencyUser);
@@ -487,7 +444,6 @@ public class V2WithoutRechargeTests
             return published;
         }
 
-        /// <summary>The lines of the owner ledger of October, reversals included.</summary>
         public Task<List<OwnerLedgerEntry>> LedgerAsync() =>
             Db.OwnerLedgerEntries.AsNoTracking().Where(e => e.PeriodYear == 2026 && e.PeriodMonth == 10).ToListAsync();
 

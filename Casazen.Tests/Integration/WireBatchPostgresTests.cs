@@ -102,7 +102,6 @@ public class WireBatchPostgresTests
         }
     }
 
-    /// <summary>The org the rows belong to: the tables hold its id as a foreign key, which PostgreSQL enforces.</summary>
     private static async Task AddOrgAsync(PostgresTestDatabase database, IDataProtectionProvider provider, Guid orgId)
     {
         await using var db = new AppDbContext(database.CreateOptions(), tenantContext: null, provider);

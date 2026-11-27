@@ -37,13 +37,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
 
     public Task DisposeAsync() => _db.DisposeAsync().AsTask();
 
-    // ---- The proofs of the brief -------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// PROOF TEST: data rule (OCT-10, AC-NF122-1). The link of a portal stay with no address goes in the reservation thread of the booking ONCE, as an automatic message with
-    /// no user: a second delivery of the same link does nothing, and even a delivery whose record lost the outcome (the process stopped after the send) finds the message that
-    /// exists and sends nothing again.
-    /// </summary>
     [Fact]
     public async Task LinkDelivery_SentOnceIdempotent_Test()
     {
@@ -70,7 +63,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
             c => c.SendChatMessageAsync("ACC-1", stay.Thread!.OctorateThreadId, It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Once);
 
-        // The process stopped after the send and before the record was saved: the record says the link waits, the message is there. The next pass finds it.
         var lost = await _db.CheckInLinkDeliveries.SingleAsync();
         lost.State = CheckInLinkDeliveryState.WaitingThread;
         lost.SentAt = null;
@@ -89,10 +81,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
             Times.Once);
     }
 
-    /// <summary>
-    /// PROOF TEST (E40/F01/US01/T03, NF-142): the chat message of an org whose verified domain serves its guest area, with «use my domain for links» on,
-    /// carries the link on the agency's domain with the same token; without that the link is the CasaZen one (the test above).
-    /// </summary>
     [Fact]
     public async Task LinkDelivery_OrgOnItsOwnDomain_TheChatCarriesTheAgencyLink_Test()
     {
@@ -167,7 +155,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
             rig.Push.Object,
             stayLinks: stayLinks);
 
-        // The portal on: the check-in link and the stay link of the booking, in the one message.
         var on = await service.DeliverAsync(withPortal.Booking.Id, withPortal.Link);
 
         Assert.Equal(CheckInLinkDeliveryState.Sent, on.State);
@@ -176,7 +163,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Contains($"https://public.test/checkin/{withPortal.Token}", message.Text, StringComparison.Ordinal);
         Assert.EndsWith($"https://public.test/s/{link.Token}", message.Text, StringComparison.Ordinal);
 
-        // The portal off: the text of today, and no link is made.
         rig.Messages.Flags.Set(FeatureFlags.GuestPortal, false);
         var off = await service.DeliverAsync(withoutPortal.Booking.Id, withoutPortal.Link);
 
@@ -186,7 +172,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.DoesNotContain("/s/", plain.Text, StringComparison.Ordinal);
         Assert.Empty(await _db.GuestPortalLinks.AsNoTracking().Where(l => l.BookingId == withoutPortal.Booking.Id).ToListAsync());
 
-        // The chat flag of the link still decides: with it off, nothing is sent and no stay link is made, whatever the portal says.
         rig.Messages.Flags.Set(FeatureFlags.GuestPortal, true);
         rig.Messages.Flags.Set(FeatureFlags.PortalChatCheckInLink, false);
         var gated = await service.DeliverAsync(chatOff.Booking.Id, chatOff.Link);
@@ -196,11 +181,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Empty(await _db.GuestPortalLinks.AsNoTracking().Where(l => l.BookingId == chatOff.Booking.Id).ToListAsync());
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (AC-NF122-2). While the chat of the listing is not in its license (the copy of the conversations said so) nothing is sent and no call is made: the
-    /// row says <c>WaitingChatPermission</c> with the code, the host has ONE «To do» («Copia link»), and when the listing reads its chat again the next pass sends the link, once,
-    /// and closes the «To do».
-    /// </summary>
     [Fact]
     public async Task LinkDelivery_ChatNotLicensed_Waits_Test()
     {
@@ -221,12 +201,10 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Null(todo.CompletedAt);
         Assert.Equal(stay.Token, (await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync()).LinkToken);
 
-        // Nothing changed: the listing still says the chat is not licensed, so no pass tries again.
         _clock.Advance(TimeSpan.FromHours(3));
         Assert.Equal(0, await rig.Service.RetryWaitingAsync(IssueNothing));
         rig.Messages.NothingWasSent();
 
-        // The listing reads its chat again: the link goes, and the «To do» is closed by the system.
         await SetSyncStateAsync(null, _clock.GetUtcNow().UtcDateTime);
         Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
 
@@ -241,10 +219,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
             Times.Once);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission and data rule. The link is returned only when the caller can already copy one, and only while the delivery waits or failed and the link can still be
-    /// opened; it is in nothing else, and a booking of another org has no delivery to read.
-    /// </summary>
     [Fact]
     public async Task LinkDelivery_LinkOnlyForTheCallerWhoCanCopyIt_AndNeverAcrossOrgs_Test()
     {
@@ -263,7 +237,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Equal(stay.Link.ExpiresAt, shown.ExpiresAt);
         Assert.Null(foreign);
 
-        // An expired link and an ended row give no link, whoever asks.
         _clock.Advance(TimeSpan.FromDays(8));
         Assert.Null((await rig.Service.GetAsync(orgId, stay.Booking.Id, includeLink: true))!.Link);
         await rig.Service.EndAsync(orgId, stay.Booking.Id, CheckInLinkEndReasons.HostLink);
@@ -273,12 +246,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Null((await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync()).LinkToken);
     }
 
-    // ---- The rules that cost trust if they are wrong -----------------------------------------------------------------------------------
-
-    /// <summary>
-    /// PROOF TEST: data rule (decision O10). The message is an automatic one, never a person's: it answers nobody, so a question of the guest still waits in «Da rispondere», its
-    /// messages stay unread, and the hub shows the message as <c>Automation</c>.
-    /// </summary>
     [Fact]
     public async Task LinkDelivery_AutomaticMessage_IsNeverAPersonsAndAnswersNobody_Test()
     {
@@ -302,10 +269,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Equal(OtaMessageDirection.Outbound, view.Messages[^1].Direction);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (OCT-10, OCT-13). A send whose outcome nobody knows is never sent again: the row is <c>Failed</c> with <c>manual_verify</c>, the hosts are told once
-    /// (the bell and the live update), and no pass sends the link a second time.
-    /// </summary>
     [Fact]
     public async Task LinkDelivery_UnknownOutcome_IsNeverSentAgain_AndTheHostIsTold_Test()
     {
@@ -333,11 +296,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Single(await _db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.CheckInLinkToSend)).ToListAsync());
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (the review of S010, fix 2). A message the channel manager has only created, or holds for the authorization of the channel, is not delivered: the row is
-    /// <c>Sending</c>, keeps its token and the «To do» it already has, and nothing is sent again; when the channel manager sends it, the next pass delivers the link (the token is cleared
-    /// and the «To do» closed by the system).
-    /// </summary>
     [Theory]
     [InlineData(OtaMessageDeliveryState.Created)]
     [InlineData(OtaMessageDeliveryState.WaitingAuthorization)]
@@ -355,7 +313,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
 
         Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
 
-        // Handed to the channel manager, not sent: the link is not delivered. The row is open with its token, the «To do» the host already had is still open, nobody is told.
         var sending = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync();
         Assert.Equal((CheckInLinkChannel.PortalChat, CheckInLinkDeliveryState.Sending), (sending.Channel, sending.State));
         Assert.Equal(stay.Token, sending.LinkToken);
@@ -365,12 +322,10 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Null(Assert.Single(await _db.InternalActivities.AsNoTracking().ToListAsync()).CompletedAt);
         Assert.Empty(rig.Pushes);
 
-        // Still on its way an hour later: the message is read again, nothing changes and nothing is sent again.
         _clock.Advance(TimeSpan.FromHours(1));
         Assert.Equal(0, await rig.Service.RetryWaitingAsync(IssueNothing));
         Assert.Equal(CheckInLinkDeliveryState.Sending, (await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync()).State);
 
-        // The channel manager sends it (the copy of the conversation stores the state it reached): the link is delivered, the token is cleared, the «To do» is closed by the system.
         await SetMessageStateAsync(sending.OtaMessageId!.Value, OtaMessageDeliveryState.Sent);
         Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
 
@@ -386,10 +341,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
             Times.Once);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (the review of S010, fix 2). A message the channel manager accepted and then reports as failed is a link that did not reach the guest: the row fails with the code
-    /// of a message that ended in error, the host gets ONE «To do» and the notice, the link is still there to copy («Copia link»), and the message is never sent again.
-    /// </summary>
     [Fact]
     public async Task LinkDelivery_AMessageThatEndsInError_FailsTheRow_TheHostIsToldAndCanStillCopyTheLink_Test()
     {
@@ -401,7 +352,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
 
         var sending = await rig.Service.DeliverAsync(stay.Booking.Id, stay.Link);
 
-        // On its way: nothing for the host to do yet.
         Assert.Equal(CheckInLinkDeliveryState.Sending, sending.State);
         Assert.Empty(await _db.InternalActivities.AsNoTracking().ToListAsync());
         var messageId = (await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync()).OtaMessageId!.Value;
@@ -419,7 +369,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         var view = await rig.Service.GetAsync(_world.Scope.OrgId, stay.Booking.Id, includeLink: true);
         Assert.Equal($"https://public.test/checkin/{stay.Token}", view!.Link);
 
-        // Never sent again, however long it waits.
         _clock.Advance(TimeSpan.FromDays(1));
         Assert.Equal(0, await rig.Service.RetryWaitingAsync(IssueNothing));
         rig.Messages.Client.Verify(
@@ -427,10 +376,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
             Times.Once);
     }
 
-    /// <summary>
-    /// A refusal of the channel manager that nothing was sent behind (the chat is not licensed, the send was refused) spends the key of that message and no more: the next attempt
-    /// for the same link uses the next key and sends, once, when the listing reads its chat again.
-    /// </summary>
     [Fact]
     public async Task LinkDelivery_ARefusedSend_LetsTheNextAttemptUseTheNextKey_Test()
     {
@@ -451,8 +396,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         var refused = await _db.OtaMessages.AsNoTracking().SingleAsync(m => m.Origin == MessageOrigin.Automation);
         Assert.Equal(OtaMessageDeliveryState.Error, refused.DeliveryState);
 
-        // The listing reads fine and the copy moves its state at every pass, but the SEND was refused: that proves nothing, so the send is not tried again within the day (not one refused
-        // message an hour in the thread of the guest).
         for (var hour = 1; hour <= 23; hour++)
         {
             _clock.Advance(TimeSpan.FromHours(1));
@@ -462,7 +405,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
 
         Assert.Equal(1, calls);
 
-        // A day after the refusal it is tried again, and the second key is used.
         _clock.Advance(TimeSpan.FromHours(1));
         await SetSyncStateAsync(null, _clock.GetUtcNow().UtcDateTime);
         Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
@@ -488,7 +430,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Equal((CheckInLinkDeliveryState.Failed, "octorate_rate_limited", 1), (first.State, first.LastErrorCode, first.Attempts));
         Assert.Empty(rig.Pushes);
 
-        // Within the hour: left alone. Then one attempt an hour.
         Assert.Equal(0, await rig.Service.RetryWaitingAsync(IssueNothing));
         _clock.Advance(TimeSpan.FromHours(1));
         Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
@@ -500,7 +441,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Equal(CheckInLinkDeliveryRules.MaxAttempts, last.Attempts);
         Assert.Single(rig.Pushes);
 
-        // The attempts are used: nothing more is tried.
         _clock.Advance(TimeSpan.FromHours(5));
         Assert.Equal(0, await rig.Service.RetryWaitingAsync(IssueNothing));
         Assert.Single(rig.Pushes);
@@ -520,7 +460,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
             .Setup(c => c.SendChatMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OctorateRateLimitException(429));
 
-        // It waits for the conversation, then for the permission of the chat: two waits, no failed attempt.
         var first = await rig.Service.DeliverAsync(stay.Booking.Id, stay.Link);
         Assert.Equal((CheckInLinkDeliveryState.WaitingThread, 0), (first.State, first.Attempts));
         _db.OtaMessageThreads.Add(NewThread(stay.Booking, "T-WAITS"));
@@ -530,7 +469,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         var waiting = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync();
         Assert.Equal((CheckInLinkDeliveryState.WaitingChatPermission, 0), (waiting.State, waiting.Attempts));
 
-        // The chat comes back and the channel manager answers with a limit: three attempts, an hour apart, and only after the third the host is told.
         _clock.Advance(TimeSpan.FromHours(1));
         await SetSyncStateAsync(null, _clock.GetUtcNow().UtcDateTime);
         Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
@@ -581,10 +519,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Equal(waiting - 1, await _db.CheckInLinkDeliveries.CountAsync(d => d.State == CheckInLinkDeliveryState.WaitingThread));
     }
 
-    /// <summary>
-    /// The query that chooses the rows of the hourly pass (due or over, in the statement itself, with the reservation of the channel manager, the session, the sync state and the messages
-    /// it looks at) is turned into SQL by the PostgreSQL provider: the in-memory provider accepts what Npgsql cannot translate (see <c>NpgsqlTranslationProbe</c>).
-    /// </summary>
     [Fact]
     public async Task RetryPass_TheQueryThatChoosesTheRows_TranslatesToSqlOnPostgres_Test()
     {
@@ -612,7 +546,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Contains("ORDER BY", sql, StringComparison.Ordinal);
     }
 
-    /// <summary>With both flags off the service writes the row and nothing else: no call, no «To do», no notice, no token, and the caller does what it always did.</summary>
     [Fact]
     public async Task LinkDelivery_BothFlagsOff_OnlyRecordsWhyTheLinkGoesNowhere_Test()
     {
@@ -654,7 +587,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Equal((CheckInLinkChannel.PortalChat, CheckInLinkDeliveryState.WaitingThread), (waiting.Channel, waiting.State));
         Assert.Equal("no_conversation", waiting.LastErrorCode);
 
-        // The conversation of the booking arrives with the next read of the threads.
         _db.OtaMessageThreads.Add(NewThread(withoutThread.Booking, "T-LATE"));
         await _db.SaveChangesAsync();
         Assert.Equal(1, await rig.Service.RetryWaitingAsync(IssueNothing));
@@ -663,9 +595,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         rig.Contacts.Verify(c => c.ReadForCheckInLinkAsync(It.IsAny<Guid>(), withoutThread.Booking.Id, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    // ---- The contact of the guest (T02) -------------------------------------------------------------------------------------------------
-
-    /// <summary>With the chat off and the static IP addresses registered, the e-mail read once for this link goes by e-mail: the row is <c>Sent</c> by <c>Email</c>.</summary>
     [Fact]
     public async Task LinkDelivery_ContactReadGivesTheAddress_TheLinkGoesByEmail_Test()
     {
@@ -684,10 +613,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Null((await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync()).LinkToken);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (T02). A refused read (the static IP addresses are not registered) is a state, not a «no contact»: the row waits in <c>WaitingStaticIps</c> and the read
-    /// is repeated at most once a day (no storm against a channel manager that says no); a read that was answered, even with no address, is never repeated for the booking.
-    /// </summary>
     [Fact]
     public async Task LinkDelivery_ContactRefused_WaitsForTheStaticIps_AndIsAskedAgainOnlyAfterADay_Test()
     {
@@ -709,7 +634,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Equal((CheckInLinkChannel.Manual, CheckInLinkDeliveryState.WaitingContact), (noAddress.Channel, noAddress.State));
         Assert.Equal(2, (await _db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.CheckInLinkToSend)).ToListAsync()).Count);
 
-        // Within the day: nothing asked again, for either. After the day: only the refused one.
         _clock.Advance(TimeSpan.FromHours(23));
         Assert.Equal(0, await rig.Service.RetryWaitingAsync(IssueNothing));
         _clock.Advance(TimeSpan.FromHours(2));
@@ -719,7 +643,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         rig.Contacts.Verify(c => c.ReadForCheckInLinkAsync(It.IsAny<Guid>(), answered.Booking.Id, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    /// <summary>A row made while the flags were off holds no token and nobody has its link: when a flag is turned on, the pass issues a new link for it and delivers that one.</summary>
     [Fact]
     public async Task LinkDelivery_ARowMadeWithTheFlagsOff_IsServedWithANewLinkWhenAFlagIsTurnedOn_Test()
     {
@@ -730,7 +653,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         AcceptEveryMessage(rig.Messages);
         _clock.Advance(TimeSpan.FromHours(2));
 
-        // What IGuestCheckInService.IssueLinkAsync does: the open link of the booking expires, a new session is made.
         var issued = new IssuedCheckInLink(Guid.NewGuid(), "new-" + Guid.NewGuid().ToString("N"), _clock.GetUtcNow().UtcDateTime.AddDays(7));
         var issuedFor = new List<Guid>();
         var tried = await rig.Service.RetryWaitingAsync(async (bookingId, orgId) =>
@@ -759,9 +681,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.DoesNotContain(stay.Token, message.Text, StringComparison.Ordinal);
     }
 
-    // ---- The end of a row ----------------------------------------------------------------------------------------------------------------
-
-    /// <summary>The guest completes the check-in, or the booking is cancelled: the row ends, its token is cleared and the «To do» is closed (here and by the hourly pass).</summary>
     [Fact]
     public async Task LinkDelivery_ACompletedCheckInOrACancelledBooking_EndsTheRowAndClosesTheTodo_Test()
     {
@@ -772,11 +691,9 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         await rig.Service.DeliverAsync(cancelled.Booking.Id, cancelled.Link);
         Assert.Equal(2, await _db.InternalActivities.CountAsync(a => a.CompletedAt == null));
 
-        // The guest completes the form: the check-in service tells the delivery.
         await rig.Service.EndAsync(_world.Scope.OrgId, completed.Booking.Id, CheckInLinkEndReasons.CheckInCompleted);
         await rig.Service.EndAsync(_world.Scope.OrgId, completed.Booking.Id, CheckInLinkEndReasons.CheckInCompleted);
 
-        // The booking is cancelled: the pass ends the row and closes the «To do» (the event handler closes it too).
         var booking = await _db.Bookings.SingleAsync(b => b.Id == cancelled.Booking.Id);
         booking.Status = BookingStatus.Cancelled;
         await _db.SaveChangesAsync();
@@ -795,12 +712,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         rig.Messages.NothingWasSent();
     }
 
-    // ---- The send job and the reminder ---------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// A link the delivery service took over needs no e-mail from the daily job (it would only record a failed e-mail), a stay with no way to the guest goes on as it always did,
-    /// and the reminder leaves a stay whose link is in the chat alone: a new link would replace the one the guest already has.
-    /// </summary>
     [Fact]
     public async Task SendJob_HandsAStayWithNoAddressToTheService_AndTheReminderLeavesItsLinkAlone_Test()
     {
@@ -809,7 +720,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         var rig = new Rig(_db, _world, _clock, FeatureFlags.PortalChatCheckInLink);
         AcceptEveryMessage(rig.Messages);
 
-        // What IGuestCheckInService.IssueLinkAsync does: a new session for the booking, with its token.
         var issued = new Dictionary<Guid, List<IssuedCheckInLink>>();
         var checkIn = new Mock<IGuestCheckInService>();
         checkIn
@@ -857,7 +767,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
 
         await job.ExecuteAsync();
 
-        // The portal stay: its link is in the chat and no e-mail was asked for; the manual one goes on as before (the failed e-mail is what the host sees).
         var chatLink = Assert.Single(issued[chat.Booking.Id]);
         var manualLink = Assert.Single(issued[manual.Booking.Id]);
         Assert.Equal(CheckInLinkDeliveryState.Sent, (await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == chat.Booking.Id)).State);
@@ -865,7 +774,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         emails.Verify(e => e.QueueAsync(manualLink.SessionId, manualLink.Token, It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal((CheckInLinkChannel.Manual, CheckInLinkDeliveryState.WaitingContact), await RowOfAsync(manual.Booking.Id));
 
-        // The reminder: the link of the chat is not replaced; the other stay, which the service did not take over, is reminded as it always was.
         foreach (var session in await _db.GuestCheckInSessions.ToListAsync())
             session.CreatedAt = session.CreatedAt.AddDays(-2);
         await _db.SaveChangesAsync();
@@ -875,11 +783,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Equal(2, issued[manual.Booking.Id].Count);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (the review of S010, fix 7). The reminder before arrival does not replace the link a row holds for the host: with only the contact of the guest on and no address
-    /// at the channel, the row waits for the host (<c>Manual</c>, <c>WaitingContact</c>, its token and a «To do» «Copia link»), and the reminder, which would issue a new link and leave the
-    /// host with nothing to copy, leaves the stay alone.
-    /// </summary>
     [Fact]
     public async Task SendJob_TheReminderLeavesAlone_ARowThatHoldsTheLinkForTheHost_Test()
     {
@@ -935,13 +838,11 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
 
         await job.ExecuteAsync();
 
-        // The first stage issued the link; nobody can be reached, so the row holds it for the host, with the «To do».
         var first = Assert.Single(issued[waiting.Booking.Id]);
         var row = await _db.CheckInLinkDeliveries.AsNoTracking().SingleAsync(d => d.BookingId == waiting.Booking.Id);
         Assert.Equal((CheckInLinkChannel.Manual, CheckInLinkDeliveryState.WaitingContact, first.Token), (row.Channel, row.State, row.LinkToken));
         Assert.Single(await _db.InternalActivities.AsNoTracking().Where(a => a.ActivityType == nameof(ActivityType.CheckInLinkToSend) && a.EntityId == waiting.Booking.Id).ToListAsync());
 
-        // The day after: the reminder leaves the link the host copies from its «To do» where it is.
         foreach (var session in await _db.GuestCheckInSessions.ToListAsync())
             session.CreatedAt = session.CreatedAt.AddDays(-2);
         await _db.SaveChangesAsync();
@@ -952,9 +853,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.Equal($"https://public.test/checkin/{first.Token}", view!.Link);
     }
 
-    // ---- Small facts -------------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>The codes the hourly pass calls transient are the ones the exceptions carry, and the key of a message is a short string of letters, digits and a dash.</summary>
     [Fact]
     public void TheCodesAndTheKeys_AreTheOnesTheCodeUses()
     {
@@ -974,8 +872,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         Assert.NotNull(GuestMessageRules.NormalizeIdempotencyKey(key + "-12"));
     }
 
-    // ---- The data every test runs on ----------------------------------------------------------------------------------------------------
-
     private static readonly Func<Guid, Guid, Task<IssuedCheckInLink>> IssueNothing =
         (_, _) => throw new InvalidOperationException("No new link is expected here.");
 
@@ -985,7 +881,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         return (row.Channel, row.State);
     }
 
-    /// <summary>The copy of the conversation stores the state the channel manager reached for a message CasaZen wrote.</summary>
     private async Task SetMessageStateAsync(Guid messageId, OtaMessageDeliveryState state)
     {
         var message = await _db.OtaMessages.SingleAsync(m => m.Id == messageId);
@@ -999,7 +894,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         var state = await _db.OtaMessageSyncStates.SingleOrDefaultAsync(s => s.OrgId == _world.Scope.OrgId && s.OctorateAccommodationId == "ACC-1");
         if (state is null)
         {
-            // The copy of the conversations names the property of the listing in its state at every pass (the query of the hourly pass reads it).
             state = new OtaMessageSyncState
             {
                 OrgId = _world.Scope.OrgId,
@@ -1031,7 +925,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         UpdatedAt = _clock.GetUtcNow().UtcDateTime.AddHours(-1),
     };
 
-    /// <summary>The channel manager takes every message and gives each its own id (two messages with one id would be one message of the copy).</summary>
     private static void AcceptEveryMessage(MessageReplyRig messages)
     {
         var next = 90000;
@@ -1118,7 +1011,6 @@ public class CheckInLinkDeliveryTests : IAsyncLifetime
         public IssuedCheckInLink Link => new(Session.Id, Token, Session.ExpiresAt);
     }
 
-    /// <summary>The service over the data of <see cref="MessageHubTestKit"/>, with the real reply service and «To do» list and every other neighbour a test can steer or watch.</summary>
     private sealed class Rig
     {
         public Rig(AppDbContext db, MessageHubWorld world, TimeProvider clock, params string[] flags)

@@ -143,7 +143,6 @@ public sealed class TenantAreaControllerTests
         var draft = Lease("Via Roma", TenantEmail, LeaseStatus.Draft);
         db.Add(draft);
         await db.SaveChangesAsync();
-        // Strict mocks: a call to maintenance, storage or SEPA fails the test, so a draft is stopped before it reaches them.
         var maintenance = new Mock<ILeaseMaintenanceService>(MockBehavior.Strict);
         var storage = new Mock<IFileStorage>(MockBehavior.Strict);
         var sepa = new Mock<ITenantRentSepaService>(MockBehavior.Strict).Object;

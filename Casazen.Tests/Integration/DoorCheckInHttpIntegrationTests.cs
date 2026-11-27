@@ -18,10 +18,6 @@ using PlanTierEnum = Casazen.Core.Entities.Enums.PlanTier;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// The web host with the identity verification of the check-in open (<c>Features:CheckInIdentityVerification</c>), the legal texts read from the folder the API ships (the host of the tests runs in the
-/// <c>Testing</c> environment, which serves the drafts) and the limits of the door out of the way of a test that is not about them.
-/// </summary>
 public class CheckInIdentityFactory : CasazenWebApplicationFactory
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -92,30 +88,24 @@ public class DoorCheckInHttpIntegrationTests(CheckInIdentityFactory factory) : I
         var secondUrl = (await rotated.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("url").GetString()!;
         Assert.NotEqual(firstUrl, secondUrl);
 
-        // The printed code of the old token answers like a code that never existed: the one 404 of the door.
         await OrgTeamHttp.AssertProblemAsync(
             await anonymous.PostAsJsonAsync($"/api/public/checkin/door/{firstToken}", new { bookingCode = "ABCDE12345", arrivalDate = "2026-11-20" }),
             HttpStatusCode.NotFound,
             "door_checkin_not_found");
 
-        // A property of another org does not exist for the owner: the same 404 for both calls.
         await OrgTeamHttp.AssertProblemAsync(await owner.GetAsync(DoorQr(casaOfAnotherOrg.Id)), HttpStatusCode.NotFound, "property_not_found");
         await OrgTeamHttp.AssertProblemAsync(await owner.PostAsync(DoorQr(casaOfAnotherOrg.Id, "/rotate"), null), HttpStatusCode.NotFound, "property_not_found");
 
-        // The collaborator «Solo alcuni» may not write properties: 403 on the property it was given and on the one it was not.
         Assert.Equal(HttpStatusCode.Forbidden, (await collaborator.GetAsync(DoorQr(casaA.Id))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await collaborator.GetAsync(DoorQr(casaB.Id))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await collaborator.PostAsync(DoorQr(casaB.Id, "/rotate"), null)).StatusCode);
 
-        // The account with no team reaches the property it created and no other.
         Assert.Equal(HttpStatusCode.OK, (await legacy.GetAsync(DoorQr(casaOfLegacy.Id))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await legacy.GetAsync(DoorQr(casaB.Id))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await legacy.PostAsync(DoorQr(casaB.Id, "/rotate"), null)).StatusCode);
 
-        // Without a token the answer is 401.
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(DoorQr(casaB.Id))).StatusCode);
 
-        // Nothing was written for the refused calls: the code of Casa B is the one the owner replaced, the others have none.
         using var verify = factory.Services.CreateScope();
         var read = verify.ServiceProvider.GetRequiredService<AppDbContext>();
         var tokens = await read.Properties.IgnoreQueryFilters().Where(p => p.Id == casaA.Id || p.Id == casaB.Id || p.Id == casaOfAnotherOrg.Id)
@@ -125,10 +115,6 @@ public class DoorCheckInHttpIntegrationTests(CheckInIdentityFactory factory) : I
         Assert.Null(tokens[casaOfAnotherOrg.Id]);
     }
 
-    /// <summary>
-    /// Data rule: many first requests for the code of a property at once, each with its own connection, end with one token that all of them answer (the conditional update of the first token and the
-    /// unique index), and the same code cannot be put on a second property.
-    /// </summary>
     [PostgresFact]
     public async Task DoorToken_ManyFirstRequestsAtOnce_MakeOneToken_AndNoTwoPropertiesShareOne_Test()
     {
@@ -159,10 +145,6 @@ public class DoorCheckInHttpIntegrationTests(CheckInIdentityFactory factory) : I
         await Assert.ThrowsAsync<DbUpdateException>(() => read.SaveChangesAsync());
     }
 
-    /// <summary>
-    /// Privacy rule: the guest page reads the legal texts of the registry with the version the consent must carry (a draft, flagged, outside production); a consent for any other string, an older
-    /// version or the same version in another case is the 422 <c>biometric_consent_version_unknown</c> and records nothing; the served version is recorded with the hash of its text.
-    /// </summary>
     [PostgresFact]
     public async Task LegalTexts_ServeTheVersionTheConsentMustCarry_AndAnyOtherIsTheUnknownVersion422_Test()
     {
@@ -196,7 +178,6 @@ public class DoorCheckInHttpIntegrationTests(CheckInIdentityFactory factory) : I
         Assert.Equal(64, recorded.BiometricConsentTextHash!.Length);
     }
 
-    /// <summary>The flag off: the door, the QR of the host and the legal texts answer like a route that does not exist, before the authentication and the body.</summary>
     [Fact]
     public async Task DoorAndLegalTexts_FlagOff_AnswerLikeARouteThatDoesNotExist_Test()
     {
@@ -215,7 +196,6 @@ public class DoorCheckInHttpIntegrationTests(CheckInIdentityFactory factory) : I
 
     private static string DoorQr(Guid propertyId, string suffix = "") => $"/api/properties/{propertyId}/door-qr{suffix}";
 
-    /// <summary>A stay of an org on the Agency plan (the face check is on by default for it) with an open check-in link: the token and the id of its session.</summary>
     private async Task<(string Token, Guid SessionId)> SeedSessionAsync()
     {
         var seed = await factory.SeedConfirmedBookingWithTokenAsync();
@@ -238,7 +218,6 @@ public class DoorCheckInHttpIntegrationTests(CheckInIdentityFactory factory) : I
         return await db.GuestCheckInSessions.IgnoreQueryFilters().AsNoTracking().SingleAsync(s => s.Id == sessionId);
     }
 
-    /// <summary>A host account of the org with no team row (an account from before the team): it reaches the properties it created.</summary>
     private async Task<string> AddAccountWithoutTeamAsync(Guid orgId)
     {
         var userId = $"auth0|door-host-{Guid.NewGuid():N}";

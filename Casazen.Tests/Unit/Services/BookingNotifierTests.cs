@@ -11,7 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>BK-10 (A3-11): the booking confirmation emails, to the guest and to the host, rendered from the booking.</summary>
 public class BookingNotifierTests : IDisposable
 {
     private readonly AppDbContext _db = new(new DbContextOptionsBuilder<AppDbContext>()
@@ -35,7 +34,6 @@ public class BookingNotifierTests : IDisposable
         Assert.Equal(("guest@example.com", EmailTemplates.Names.GuestBookingConfirmed), (emails[0].To, emails[0].Template));
         Assert.Equal(("host@example.com", EmailTemplates.Names.HostBookingConfirmed), (emails[1].To, emails[1].Template));
         Assert.Contains("Pagamento ricevuto: <strong>362,00 €</strong>.", emails[0].Content.HtmlBody);
-        // BK-11: the readable booking code, in the text and in the link to "Le mie prenotazioni"; never the booking id.
         var code = Casazen.Core.Services.BookingCodes.Format((await _db.Bookings.SingleAsync(b => b.Id == bookingId)).BookingCode);
         Assert.Contains($"Codice prenotazione: <strong>{code}</strong>", emails[0].Content.HtmlBody);
         Assert.Contains($"href=\"https://casazen-app.test/book/villa-org/my-bookings?code={code}\"", emails[0].Content.HtmlBody);
@@ -53,7 +51,6 @@ public class BookingNotifierTests : IDisposable
 
         await Notifier().BookingConfirmedAsync(bookingId, kind);
 
-        // MO-04 (A6-08): next to the host email, through the extension point of BK-10.
         var push = Assert.Single(_pushes.Queued);
         Assert.Equal(PushDeliveryKeys.NewBooking(bookingId), push.DeliveryKey);
         Assert.Equal(PushAudience.BookingHosts(bookingId), push.Audience);
@@ -62,7 +59,6 @@ public class BookingNotifierTests : IDisposable
         Assert.Equal("Villa Rosa: dal 05/10/2026 al 08/10/2026, ospiti: 2.", push.Payload.Body);
         Assert.Equal(PushRoutes.Booking(bookingId), push.Payload.Route);
         Assert.Equal(bookingId, push.Payload.BookingId);
-        // No guest name on the lock screen.
         Assert.DoesNotContain("Anna", push.Payload.Body, StringComparison.Ordinal);
         Assert.DoesNotContain("Verdi", push.Payload.Body, StringComparison.Ordinal);
     }
@@ -77,7 +73,6 @@ public class BookingNotifierTests : IDisposable
         var email = Assert.Single(_emails.Snapshot());
         Assert.Equal(EmailTemplates.Names.GuestBookingConfirmed, email.Template);
         Assert.Contains("direttamente in struttura", email.Content.HtmlBody);
-        // The host confirmed it: no "new booking" push either.
         Assert.Empty(_pushes.Queued);
     }
 

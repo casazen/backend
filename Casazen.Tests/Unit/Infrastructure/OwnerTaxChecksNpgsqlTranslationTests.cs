@@ -45,10 +45,6 @@ public class OwnerTaxChecksNpgsqlTranslationTests
         Clock,
         NullLogger<OwnerTaxChecks>.Instance);
 
-    /// <summary>
-    /// What the probe answers with one row so the code goes on: the owner (id, kind, regime, declared units), the ownerships of the owner on a property of its own (with and without
-    /// the join to the property), the booking of a company, and a «true» for the existence of an owner.
-    /// </summary>
     private static DataTable? Rows(string sql)
     {
         var text = sql.TrimStart();
@@ -86,7 +82,6 @@ public class OwnerTaxChecksNpgsqlTranslationTests
         if (Regex.IsMatch(text, @"^SELECT\s+\w+\.""PropertyOwnerId"",\s*\w+\.""PropertyId"",\s*\w+\.""OwnershipStart"",\s*\w+\.""OwnershipEnd""", Ci)
             || Regex.IsMatch(text, @"^SELECT\s+\w+\.""PropertyId"",\s*\w+\.""PropertyOwnerId"",\s*\w+\.""OwnershipStart"",\s*\w+\.""OwnershipEnd""", Ci))
         {
-            // The units read the owner first, the stay reads the property first: the columns follow the order of the select.
             var ownerFirst = Regex.IsMatch(text, @"^SELECT\s+\w+\.""PropertyOwnerId""", Ci);
             var periods = new DataTable();
             periods.Columns.Add(ownerFirst ? "PropertyOwnerId" : "PropertyId", typeof(Guid));
@@ -128,7 +123,6 @@ public class OwnerTaxChecksNpgsqlTranslationTests
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => checks.GetUnitsCheckAsync(ScopeOf(scopeKind), OwnerId));
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => checks.DeclareExternalUnitsAsync(ScopeOf(scopeKind), OwnerId, 1, "auth0|admin"));
 
-        // The probe swallows what is not a translation failure, so say that it went as far as the queries of the owners and of the ownerships.
         Assert.Contains(statements, s => s.Contains("FROM \"PropertyOwners\"", StringComparison.Ordinal));
         Assert.Contains(statements, s => s.Contains("FROM \"PropertyOwnerships\"", StringComparison.Ordinal) && s.Contains("\"Properties\"", StringComparison.Ordinal));
     }
@@ -148,7 +142,6 @@ public class OwnerTaxChecksNpgsqlTranslationTests
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => checks.TreatmentOfStaysAsync(OrgId, OwnerId, [BookingId], Today));
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => checks.RaiseCompanyTenantDecisionAsync(OrgId, BookingId));
 
-        // As far as the stay, the invoice data of its company, the owners of its property and the decisions of the booking.
         Assert.Contains(statements, s => s.Contains("FROM \"Bookings\"", StringComparison.Ordinal));
         Assert.Contains(statements, s => s.Contains("FROM \"BookingInvoiceData\"", StringComparison.Ordinal));
         Assert.Contains(statements, s => s.Contains("FROM \"PropertyOwnerships\"", StringComparison.Ordinal));

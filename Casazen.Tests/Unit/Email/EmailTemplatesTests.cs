@@ -10,7 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>FD-13 (A4-08, A5-33): localized IT/EN templates where every dynamic value is HTML-encoded.</summary>
 public class EmailTemplatesTests
 {
     private const string Payload = "<a href=\"https://phish.example\">Paga qui</a>";
@@ -69,7 +68,6 @@ public class EmailTemplatesTests
     [Fact]
     public void ServiceRequestCreated_Italian_NamesTheComuneTheTimeAndTheAmountButNeverThePropertyNorTheNotes()
     {
-        // Decision D9 (SP-04): before the take the supplier knows the comune, not the name of the property nor the host's notes.
         var content = EmailTemplates.ServiceRequestCreated(
             EmailTemplates.DefaultCulture,
             "Pulizie Srl",
@@ -183,7 +181,6 @@ public class EmailTemplatesTests
         var english = EmailTemplates.SupplierInvite(
             CultureInfo.GetCultureInfo("en"), "fornitore@example.com", "Roma (H501)", null, Link, expiresAt);
 
-        // 23:30 UTC on 1 December is 00:30 of 2 December in Rome (CET, UTC+1).
         Assert.Contains("<strong>02/12/2026 00:30</strong> (ora italiana)", italian.HtmlBody);
         Assert.Contains("(Italian time)", english.HtmlBody);
     }
@@ -212,7 +209,6 @@ public class EmailTemplatesTests
 
         Assert.Equal("Complete the check-in for your stay — Villa Rosa", content.Subject);
         Assert.Contains("starts on <strong>5 October 2026</strong>", content.HtmlBody);
-        // CO-09: the configurable validity is shown as the end of the link, in Italian time.
         Assert.Contains("The link is valid until", content.HtmlBody);
         Assert.DoesNotContain("7 days", content.HtmlBody);
     }
@@ -397,7 +393,6 @@ public class EmailTemplatesTests
         Assert.DoesNotContain("@", content.HtmlBody);
     }
 
-    /// <summary>E23/F02/US01/T01: the check-in is open, so the confirmation carries the link as a button, with the usual fallback link and its validity.</summary>
     [Fact]
     public void GuestBookingConfirmed_CheckInOpen_CarriesTheLinkAsAButtonWithTheUsualFallbackAndItsValidity()
     {
@@ -424,7 +419,6 @@ public class EmailTemplatesTests
         Assert.Contains("The link is valid until 16 October 2026, 11:00.", english.HtmlBody);
     }
 
-    /// <summary>E23/F02/US01/T01: the check-in is not open yet, so the confirmation says the day the link arrives (formatted like the other dates) and where to request it, with no link.</summary>
     [Fact]
     public void GuestBookingConfirmed_CheckInOnADay_SaysTheDayLikeTheOtherDatesAndWhereToRequestTheLink()
     {
@@ -446,7 +440,6 @@ public class EmailTemplatesTests
         Assert.DoesNotContain("Il link è valido", italian.HtmlBody);
     }
 
-    /// <summary>E23/F02/US01/T01: when no day can be promised the confirmation only says where the link can be requested.</summary>
     [Fact]
     public void GuestBookingConfirmed_CheckInRequestOnly_NamesNoDay()
     {
@@ -458,7 +451,6 @@ public class EmailTemplatesTests
         Assert.DoesNotContain("/checkin/", italian.HtmlBody);
     }
 
-    /// <summary>E23/F02/US01/T01: a check-in that is not needed or already done (no notice) is not mentioned, in either language.</summary>
     [Theory]
     [MemberData(nameof(Cultures))]
     public void GuestBookingConfirmed_NoCheckInNotice_SaysNothingAboutTheCheckIn(string culture)
@@ -525,7 +517,6 @@ public class EmailTemplatesTests
     [Fact]
     public void RliDeadlineReminder_ContractNotSignedYet_ExplainsDeadlineFromStartDate()
     {
-        // LT-04: a lease not signed yet whose start date has passed counts its deadline from the start date.
         var italian = EmailTemplates.RliDeadlineReminder(EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn, 7, contractNotSignedYet: true);
         var english = EmailTemplates.RliDeadlineOverdue(CultureInfo.GetCultureInfo("en"), "Villa Rosa", CheckIn, contractNotSignedYet: true);
         var signed = EmailTemplates.RliDeadlineReminder(EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn, 7);
@@ -538,7 +529,6 @@ public class EmailTemplatesTests
     [Fact]
     public void QuesturaCommunicationReminder_EnglishAndItalian_DeliveryDeadlineAndHowToMarkDone()
     {
-        // LT-07 (A7-08): 48 hours from the delivery (5/10) end at the latest on 7/10.
         var italian = EmailTemplates.QuesturaCommunicationReminder(
             EmailTemplates.DefaultCulture, "Villa Rosa", CheckIn, CheckIn.AddDays(2), deliveryDateDeclared: false);
         var english = EmailTemplates.QuesturaCommunicationReminder(
@@ -648,8 +638,6 @@ public class EmailTemplatesTests
         ServiceRequestStatus status,
         ServiceRequestActorParty? cancelledBy)
     {
-        // SP-04 (D4): an unknown status sends nothing; before, it threw and was logged as an error. A request the host
-        // cancelled is not told back to the host.
         Assert.Null(EmailTemplates.ServiceRequestStatusChanged(
             EmailTemplates.DefaultCulture, status, "cleaning", "Villa", cancelledBy: cancelledBy));
         Assert.Null(EmailTemplates.ServiceRequestStatusPush(
@@ -717,7 +705,6 @@ public class EmailTemplatesTests
         Assert.Contains("Motivo:</strong><br />Ospiti partiti prima", byHost.HtmlBody);
         Assert.Equal("Richiesta scaduta — Roma", expired.Subject);
         Assert.Contains("non hai risposto entro il termine", expired.HtmlBody);
-        // The code of the automatic cancellation is not a sentence: it is never printed.
         Assert.DoesNotContain("NoResponse", expired.HtmlBody);
     }
 
@@ -736,7 +723,6 @@ public class EmailTemplatesTests
 
         Assert.Contains("punteggio di affidabilità", lost.HtmlBody);
         Assert.Contains("reliability score", lostInEnglish.HtmlBody);
-        // A supplier that was excused, and one whose request the host cancelled, are told nothing about points.
         Assert.DoesNotContain("punteggio", excused.HtmlBody);
         Assert.DoesNotContain("punteggio", byHost.HtmlBody);
         Assert.Equal(excused.Subject, lost.Subject);
@@ -773,8 +759,6 @@ public class EmailTemplatesTests
     [Fact]
     public void ServiceRequestTexts_ToTheSupplier_NeverNameThePropertyBecauseTheyOnlyGetTheComune()
     {
-        // Every email and push that can reach the supplier before the take takes the comune and has no parameter for the
-        // property name: this guards the signatures against a regression of decision D9.
         var parameterNames = new[]
         {
             typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestCreated)),
@@ -785,7 +769,6 @@ public class EmailTemplatesTests
             typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestCancelledToSupplierPush)),
             typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestReminderPush)),
             typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestProposalAnsweredPush)),
-            // SP-16d: the reminder of the day before has the service, the time and the comune, and nothing of the property.
             typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestDayBefore)),
             typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestDayBeforePush)),
         }.SelectMany(method => method!.GetParameters().Select(parameter => parameter.Name)).ToList();
@@ -842,8 +825,6 @@ public class EmailTemplatesTests
     [Fact]
     public void GuestAccessCode_ItalianAndEnglish_ShowTheHtmlEncodedCodeInTheSameLayoutBlock()
     {
-        // The code has no words, so it is a block of the layout and not a text of the resources: the resources test above refuses a text that
-        // is the same in Italian and English. The markup is the same in both languages and the value is encoded like every other one.
         const string block = "<p><strong style=\"font-size:22px;letter-spacing:2px;\">7391</strong></p>";
         var italian = EmailTemplates.GuestAccessCode(EmailTemplates.DefaultCulture, "Anna", "Villa Rosa", CheckIn, "7391");
         var english = EmailTemplates.GuestAccessCode(CultureInfo.GetCultureInfo("en"), "Anna", "Villa Rosa", CheckIn, "7391");
@@ -1011,7 +992,6 @@ public class EmailTemplatesTests
             culture, value, Summary(value), kind, 1262m, CheckIn.AddDays(-7), new BookingHostContact(value, value), Link, checkIn);
     }
 
-    /// <summary>Villa Rosa, 3 nights for 2 guests: 1,200 lodging + 50 cleaning + 12 tourist tax = 1,262.</summary>
     private static BookingEmailSummary Summary(string propertyName = "Villa Rosa", string code = "b7d3c1f0-0000-4000-8000-000000000001") =>
         new(code, propertyName, CheckIn, CheckIn.AddDays(3), 2, 1200m, 50m, 12m, 1262m);
 }

@@ -12,14 +12,12 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class ShowcaseBookingManagementArchitectureTests
 {
-    /// <summary>The names of the actions of the customer (<c>IShowcaseRequestCustomerActions</c>).</summary>
     private static readonly Regex CustomerActionCall = new(
         @"\b(Cancel|Reschedule|AcceptProposal|RejectProposal|AcceptQuote|RejectQuote|AcceptOffer|DeclineOffer|ReadThread|PostMessage)AsCustomerAsync\b",
         RegexOptions.Compiled);
 
     private static readonly Regex CustomerActionsType = new(@"\bIShowcaseRequestCustomerActions\b", RegexOptions.Compiled);
 
-    /// <summary>The files that may name the actions, each with the reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> MayNameTheActions = new Dictionary<string, string>
     {
         ["Casazen.Core/Services/IShowcaseBookingManager.cs"] = "Declares the interface of the actions, next to the manager's.",
@@ -53,7 +51,6 @@ public class ShowcaseBookingManagementArchitectureTests
 
     private static readonly Regex ConfirmOkName = new(@"\bConfirmOkAsync\b", RegexOptions.Compiled);
 
-    /// <summary>The files that may name the money CasaZen holds (SP-15c-a), each with the reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> MayNameTheFunds = new Dictionary<string, string>
     {
         ["Casazen.Core/Services/ISupplierFundsService.cs"] = "Declares the interface.",
@@ -65,7 +62,6 @@ public class ShowcaseBookingManagementArchitectureTests
         ["Casazen.Web/Extensions/SupplierRequestsServiceCollectionExtensions.cs"] = "Registers it.",
     };
 
-    /// <summary>The files that may name the payer's «all fine» (it releases the money to the supplier at once), each with the reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> MayNameConfirmOk = new Dictionary<string, string>
     {
         ["Casazen.Core/Services/ISupplierFundsService.cs"] = "Declares what the funds service does.",
@@ -121,7 +117,6 @@ public class ShowcaseBookingManagementArchitectureTests
     [Fact]
     public void NothingTheCustomerTyped_IsWrittenToALog()
     {
-        // The statements that log, in the files that handle what the customer typed.
         var files = new[]
         {
             "Casazen.Infrastructure/Services/ShowcaseBookingManager.cs",
@@ -145,7 +140,6 @@ public class ShowcaseBookingManagementArchitectureTests
             foreach (Match statement in logStatement.Matches(code))
             {
                 statements++;
-                // The message template is text; what is passed after it is what gets written.
                 var args = statement.Groups["args"].Value;
                 if (typed.IsMatch(StripStrings(args)))
                     offenders.Add($"{relative}: {Regex.Replace(statement.Value, @"\s+", " ")}");
@@ -156,12 +150,8 @@ public class ShowcaseBookingManagementArchitectureTests
         Assert.True(offenders.Count == 0, "A log statement names what a customer typed: " + string.Join(" | ", offenders));
     }
 
-    // ─── helpers ───
-
-    /// <summary>The source without the string literals: the words of a message are not what is passed to it.</summary>
     private static string StripStrings(string code) => Regex.Replace(code, "\"(?:[^\"\\\\]|\\\\.)*\"", "\"\"");
 
-    /// <summary>The source without the lines that are only a comment (documentation names things without using them).</summary>
     private static string CodeWithoutComments(string text) =>
         string.Join('\n', text.Split('\n').Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
 

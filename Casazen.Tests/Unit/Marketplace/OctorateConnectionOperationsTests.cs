@@ -44,7 +44,6 @@ public class OctorateConnectionOperationsTests
         Assert.DoesNotContain("username", request.Uri.Query, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("password", request.Uri.Query, StringComparison.OrdinalIgnoreCase);
 
-        // The connection of another accommodation and the item with no id are left out.
         Assert.Equal(["7001", "7002"], listed.Select(c => c.ConnectionId));
 
         var enabled = listed[0];
@@ -53,7 +52,6 @@ public class OctorateConnectionOperationsTests
         Assert.Equal(new DateTime(2026, 11, 5, 10, 0, 0, DateTimeKind.Utc), enabled.LastUpdate);
         Assert.Equal("Property not accepted yet", enabled.LastError);
 
-        // A bare moment is a moment and never an error; a connection that is waiting is not an access given.
         var waiting = listed[1];
         Assert.Equal((false, false, false), (waiting.IsConnected, waiting.PanelAccessDone, waiting.LastError is not null));
         Assert.Equal(new DateTime(2026, 11, 4, 9, 30, 0, DateTimeKind.Utc), waiting.LastUpdate);
@@ -117,14 +115,12 @@ public class OctorateConnectionOperationsTests
         Assert.Equal("user", root.GetProperty("username").GetString());
         Assert.Equal("p w", root.GetProperty("password").GetString());
 
-        // D6: nothing is pulled from the channel and nothing is pushed to it before the rooms are mapped; no content is published.
         Assert.False(root.GetProperty("updateCalendar").GetBoolean());
         Assert.False(root.GetProperty("pullReservations").GetBoolean());
         Assert.True(root.GetProperty("pullMappedOnly").GetBoolean());
         Assert.False(root.GetProperty("content").GetBoolean());
         Assert.Equal(("7001", "142"), (created.ConnectionId, created.PortalCode));
 
-        // What the portal did not ask for is not sent at all.
         var bare = new OctorateConnectionClientHarness();
         bare.Answer(HttpStatusCode.OK, """{ "id": 7002, "channelId": 274, "status": "WAITING" }""");
         using (bare.Scope.Use(OrgA))
@@ -153,7 +149,6 @@ public class OctorateConnectionOperationsTests
         using var body = JsonDocument.Parse(h.Requests[0].Body);
         Assert.Equal(["updateCalendar", "pullReservations"], body.RootElement.EnumerateObject().Select(p => p.Name));
 
-        // A connection Octorate does not know is the typed 404.
         h.Answer(HttpStatusCode.NotFound, "{}");
         using (h.Scope.Use(OrgA))
             await Assert.ThrowsAsync<OctorateNotFoundException>(() => h.Client.DeleteConnectionAsync(Acc, "7001", CancellationToken.None));
@@ -186,7 +181,6 @@ public class OctorateConnectionOperationsTests
         var h = new OctorateConnectionClientHarness();
         using (h.Scope.Use(OrgA))
         {
-            // The wrapper of the specification names the action: a wrapper that names another one, a bare object and an error with HTTP 200 are unknown results.
             h.Answer(HttpStatusCode.OK, """{ "additionalInfo": { "actionPerformed": "MARK_CONNECTED" }, "data": [ { "productId": 1, "externalId": 2 } ] }""");
             var listed = await h.Client.RunConnectionActionAsync(Acc, "7001", OctorateConnectionAction.MarkConnected, CancellationToken.None);
             Assert.Equal([new OctorateRoomMapping("1", "2")], listed);
@@ -262,7 +256,6 @@ public class OctorateConnectionOperationsTests
                 h.Requests.Select(r => r.Uri.ToString()));
             Assert.All(h.Requests, r => Assert.Equal(HttpMethod.Post, r.Method));
 
-            // An empty list is never «all»; a bad id in the second mapping stops the first from being sent.
             var sent = h.Requests.Count;
             await Assert.ThrowsAsync<ArgumentException>(() => h.Client.SaveConnectionMappingAsync(Acc, "7001", [], CancellationToken.None));
             await Assert.ThrowsAsync<ArgumentException>(
@@ -307,7 +300,6 @@ public class OctorateConnectionOperationsTests
             }
         }
 
-        // The messages of the partner failure exist in both languages and say something different.
         var partner = new OctoratePartnerFailureException();
         Assert.Equal(("octorate_partner_failed", "OctoratePartnerFailed", 550), (partner.Code, partner.MessageKey, partner.OctorateStatusCode));
     }

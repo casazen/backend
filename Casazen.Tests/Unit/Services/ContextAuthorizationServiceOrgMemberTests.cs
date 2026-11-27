@@ -15,21 +15,11 @@ using static Casazen.Tests.Unit.Services.OrgTeamTestData;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// AM-01 on the context authorization: the <c>account</c> context, the veto of the token for whoever belongs to an org
-/// (a former owner of a context keeps nothing of it with an old token), the immediate silence of a deactivated member
-/// and the property manager that is no longer mapped to the owner's contexts. The same rule as the open PR #455 ("host
-/// context memberships authoritative"), limited to org members.
-/// </summary>
 public class ContextAuthorizationServiceOrgMemberTests
 {
-    // ─── The veto ───────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetUserContextsAsync_FormerOwnerOfLongRent_WithAnOldToken_DoesNotKeepLongRent()
     {
-        // The owner switched to short-term only: its long-rent membership is gone, but its token still says
-        // LongTermLandlord. As an org member, the host contexts come from the DB only.
         await using var db = NewDb();
         var (org, user) = await SeedHostAsync(db, "auth0|former", UserRole.PropertyOwner);
         AddMembership(db, user.Id, "short-rent", "property_owner");
@@ -48,7 +38,6 @@ public class ContextAuthorizationServiceOrgMemberTests
     [Fact]
     public async Task GetUserContextsAsync_SameUserThatIsInNoOrgTeam_StillGetsTheTokenContexts()
     {
-        // Nothing changes for whoever has no org member row: the token completes the DB memberships as before.
         await using var db = NewDb();
         var (_, user) = await SeedHostAsync(db, "auth0|legacy", UserRole.PropertyOwner);
         AddMembership(db, user.Id, "short-rent", "property_owner");
@@ -63,7 +52,6 @@ public class ContextAuthorizationServiceOrgMemberTests
     [Fact]
     public async Task HasPermissionAsync_CollaboratorWithAnOwnerToken_HasOnlyTheCollaboratorPermissions()
     {
-        // The ex-owner who joined another org as a collaborator: the token says PropertyOwner, the DB says staff.
         await using var db = NewDb();
         var (org, user) = await SeedHostAsync(db, "auth0|ex-owner", UserRole.None);
         AddMembership(db, user.Id, "short-rent", "staff");
@@ -99,7 +87,6 @@ public class ContextAuthorizationServiceOrgMemberTests
     [Fact]
     public async Task GetUserContextsAsync_OrgMemberWithOneHostMembership_TheTokenAddsNoOtherHostContext()
     {
-        // From the first host row on the DB is the whole truth about the host contexts, whatever the token says.
         await using var db = NewDb();
         var (org, user) = await SeedHostAsync(db, "auth0|one-row", UserRole.PropertyOwner);
         AddMembership(db, user.Id, "account", "org_owner");
@@ -117,7 +104,6 @@ public class ContextAuthorizationServiceOrgMemberTests
     [Fact]
     public async Task GetUserContextsAsync_Veto_DoesNotRemoveStaffOrSupplierContextsOfAMember()
     {
-        // admin and supplier are not host contexts: the staff and the supplier link are no org matter.
         await using var db = NewDb();
         var (org, user) = await SeedHostAsync(db, "auth0|dual", UserRole.PropertyOwner);
         AddMembership(db, user.Id, "short-rent", "property_owner");
@@ -129,8 +115,6 @@ public class ContextAuthorizationServiceOrgMemberTests
 
         Assert.Equal(["admin", "short-rent", "supplier"], contexts.Select(c => c.ContextKey));
     }
-
-    // ─── Deactivated member ─────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetUserContextsAsync_DeactivatedMember_ReachesNothing()
@@ -165,13 +149,9 @@ public class ContextAuthorizationServiceOrgMemberTests
         Assert.Equal(["short-rent"], contexts.Select(c => c.ContextKey));
     }
 
-    // ─── Property manager is not the owner ──────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetUserContextsAsync_PropertyManagerWithNoTokenRoleAndNoMembership_IsNotMappedToTheOwnerContexts()
     {
-        // The DB role fallback used to turn a PropertyManager into a PropertyOwner when the token carried no role (the
-        // Auth0 role sync had failed): the manager became the owner. It gets nothing, like any user with no role.
         await using var db = NewDb();
         var (_, user) = await SeedHostAsync(db, "auth0|manager", UserRole.PropertyManager);
         await db.SaveChangesAsync();
@@ -200,8 +180,6 @@ public class ContextAuthorizationServiceOrgMemberTests
         Assert.False(await service.HasPermissionAsync(user.Id, "account", "org.members.manage"));
         Assert.False(await service.HasPermissionAsync(user.Id, "short-rent", "org.billing.manage"));
     }
-
-    // ─── The account context ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetUserContextsAsync_OwnerWithTheAccountMembership_ListsAccountWithAllOrgPermissions()
@@ -246,7 +224,6 @@ public class ContextAuthorizationServiceOrgMemberTests
     [Fact]
     public async Task GetUserContextsAsync_AccountContext_WaitsForTheOnboardingLikeTheOtherHostContexts()
     {
-        // The account is a host context: no onboarding and consents, no account.
         await using var db = NewDb();
         var org = AddOrg(db);
         var user = AddUser(db, "auth0|early", org.Id, UserRole.None);
@@ -263,7 +240,6 @@ public class ContextAuthorizationServiceOrgMemberTests
     [Fact]
     public async Task GetUserContextsAsync_PlatformAdmin_IsUnchanged()
     {
-        // The staff console keeps its key, its role and its permissions: no account context for the staff.
         await using var db = NewDb();
         var (_, user) = await SeedHostAsync(db, "auth0|staff", UserRole.Admin);
         AddMembership(db, user.Id, "admin", "platform_admin");
@@ -282,7 +258,6 @@ public class ContextAuthorizationServiceOrgMemberTests
     [Fact]
     public async Task GetUserContextsAsync_NoTokenRoleEverGrantsTheAccountContext()
     {
-        // A token cannot bring the account context: it exists only as the projection of an org member.
         await using var db = NewDb();
         var (_, user) = await SeedHostAsync(db, "auth0|token-only", UserRole.PropertyOwner);
         await db.SaveChangesAsync();
@@ -302,8 +277,6 @@ public class ContextAuthorizationServiceOrgMemberTests
     [InlineData("unknown", "/app/choose-context")]
     public void GetDefaultRoute_EveryContext_HasItsHome(string contextKey, string expected) =>
         Assert.Equal(expected, ContextAuthorizationService.GetDefaultRoute(contextKey));
-
-    // ─── Snapshot ───────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Snapshot_LoadsTheOrgMemberOfTheUser_AndNoneForAUserOutsideAnOrgTeam()

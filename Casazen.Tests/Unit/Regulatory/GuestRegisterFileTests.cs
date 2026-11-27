@@ -9,11 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Regulatory;
 
-/// <summary>
-/// E31/F01/US01/T01 (NF-130, decision D12b): the guest register of a Swiss property as a clean table. The content is exact: UTF-8 with its byte order mark, <c>;</c>, one header line, no
-/// comment line, CRLF after every line, an empty signature column, the dates as <c>dd.MM.yyyy</c>, the nationality and the country as alpha-3 codes, the accents as they are, and a text a
-/// spreadsheet would run as a formula written as text. The words are the resource keys of the two languages, but «no», which reads the same in both and is a constant of the code.
-/// </summary>
 public class GuestRegisterFileTests
 {
     private static readonly DateOnly Arrival = new(2026, 11, 19);
@@ -25,8 +20,6 @@ public class GuestRegisterFileTests
 
     private const string EnglishHeader =
         "Arrival;Departure;Last name;First name;Date of birth;Nationality;Document type;Document number;Street;Postal code;City;Country;Vehicle plate;Booking code;Minor;Signature";
-
-    // ─── The words: both languages, no key left in the file ───
 
     [Fact]
     public void Header_IsTheSixteenColumnsOfTheBrief_InItalianAndInEnglish_AndTheSignatureIsTheLastOne()
@@ -45,7 +38,6 @@ public class GuestRegisterFileTests
     [InlineData("en")]
     public void EveryWordOfTheFile_ExistsInTheLanguage_AndIsNeverTheKeyItself(string language)
     {
-        // A missing key shows as the key in the downloaded file (the document texts never throw): the resource files must hold all of them, in both languages.
         Assert.Equal(GuestRegisterFile.AllKeys.Count, GuestRegisterFile.AllKeys.Distinct(StringComparer.Ordinal).Count());
         foreach (var key in GuestRegisterFile.AllKeys)
         {
@@ -56,7 +48,6 @@ public class GuestRegisterFileTests
             Assert.DoesNotContain(";", word, StringComparison.Ordinal);
         }
 
-        // The errors of the endpoints are in both languages too.
         foreach (var key in new[] { "GuestRegisterNotAvailable", "GuestRegisterFormatInvalid" })
             Assert.NotEqual(key, Texts.Get(key, language));
     }
@@ -64,8 +55,6 @@ public class GuestRegisterFileTests
     [Fact]
     public void EveryResourceKeyOfTheFile_HasAnotherTextInEnglish_TheWordNoIsAConstantOfTheCode()
     {
-        // The localization test of the resource files (SharedResourcesLocalizationTests, run by the CI) refuses a key whose English text is the Italian one. «No» reads the same in both
-        // languages, so it is a constant of the code (GuestRegisterFile.NoWord) and no resource file holds it; every other word of the file differs between the two languages.
         string[] keys = [.. GuestRegisterFile.AllKeys, "GuestRegisterNotAvailable", "GuestRegisterFormatInvalid"];
 
         var same = keys.Where(key => Texts.Get(key, "it") == Texts.Get(key, "en")).ToList();
@@ -75,8 +64,6 @@ public class GuestRegisterFileTests
         Assert.Equal("GuestRegisterNo", Texts.Get("GuestRegisterNo", "it"));
         Assert.Equal("GuestRegisterNo", Texts.Get("GuestRegisterNo", "en"));
     }
-
-    // ─── The content ───
 
     [Fact]
     public void Write_AFamilyStay_IsExactlyTheTable_Bom_Crlf_DatesAsSwissDays_AndAnEmptySignature()
@@ -93,7 +80,6 @@ public class GuestRegisterFileTests
 
         var bytes = GuestRegisterFile.Write(GuestRegisterFile.RowsOf(stay), Words("it"));
 
-        // The byte order mark, then UTF-8: a spreadsheet set to Italian reads the accents.
         Assert.True(bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble));
         Assert.Equal(
             [
@@ -104,12 +90,10 @@ public class GuestRegisterFileTests
             ],
             Lines(bytes));
 
-        // The signature column is the last one and is empty on every line; no comment, title or note line: the header and one line for each guest.
         Assert.All(Lines(bytes).Skip(1).Take(2), line => Assert.EndsWith(";", line, StringComparison.Ordinal));
         Assert.Equal(2, Lines(bytes).Count(line => line.Length > 0) - 1);
         Assert.DoesNotContain(Lines(bytes), line => line.StartsWith('#') || line.StartsWith("//", StringComparison.Ordinal));
 
-        // The same table in English: only the words change, never the codes or the dates.
         var english = Lines(GuestRegisterFile.Write(GuestRegisterFile.RowsOf(stay), Words("en")));
         Assert.Equal(EnglishHeader, english[0]);
         Assert.Equal("19.11.2026;21.11.2026;Müller;Anna;04.01.1984;CHE;Passport;X1234567;Bahnhofstrasse 5;8001;Zürich;CHE;TI 123456;ABCDE-12345;No;", english[1]);
@@ -129,7 +113,6 @@ public class GuestRegisterFileTests
     [Fact]
     public void Write_UmlautsAccentsAndOtherLetters_ArePreservedAsTyped_NothingIsTransliterated()
     {
-        // The register is for every canton, and the guests come from everywhere: a UTF-8 file keeps what the check-in kept (the Ticino portal file has its own character set, this one does not).
         var stay = Stay(
             Adult(0, "Zoë", "Müller", StayGuestType.SingleGuest),
             Adult(1, "Élodie", "Dupré-Gérard", StayGuestType.FamilyMember),
@@ -151,8 +134,6 @@ public class GuestRegisterFileTests
     [Fact]
     public void Write_ANameASpreadsheetWouldRunAsAFormula_IsWrittenAsText_AndACellWithASemicolonIsQuoted()
     {
-        // The names are typed by the guests and the file is opened in a spreadsheet (SR-10): a text that starts with = + - @ is written with a leading apostrophe and never
-        // calculated, and a cell with a semicolon or a quote is quoted, never changed.
         var stay = Stay(
             Adult(0, "=1+1", "@SUM(A1:A9)", StayGuestType.SingleGuest),
             Adult(1, "+390212345", "-Rossi", StayGuestType.FamilyMember),
@@ -168,7 +149,6 @@ public class GuestRegisterFileTests
     [Fact]
     public void Rows_AGuestWhoseDataAreIncomplete_IsStillALine_TheEmptyCellsStayEmpty_NothingIsGuessed()
     {
-        // The register lists every guest of the stay: a missing date of birth, an unknown nationality or document, a home the check-in did not ask are empty cells, never a line left out.
         var stay = Stay(
             Adult(0, "Anna", "Müller", StayGuestType.SingleGuest) with
             {
@@ -235,7 +215,6 @@ public class GuestRegisterFileTests
     [Fact]
     public void Rows_ABookerWithoutCheckInRows_IsOneLine_WithTheDataOfTheBooker()
     {
-        // The Ticino file reads the stay this way (the booker stands in for a check-in that has no guest yet): the register does too, from the same reading.
         var booking = new Booking
         {
             Id = Guid.NewGuid(),
@@ -282,14 +261,11 @@ public class GuestRegisterFileTests
         Assert.DoesNotContain(Lines(GuestRegisterFile.Write(rows, Words("it"))), line => line.Contains('\t', StringComparison.Ordinal));
     }
 
-    // ─── The period and the name of the file ───
-
     [Fact]
     public void Period_AYearBothEndsCountedIsAllowed_ADayMoreIsTooLong_AndAnEndBeforeTheStartIsInvalid()
     {
         var from = new DateOnly(2028, 1, 1);
 
-        // 2028 is a leap year: 366 days, both ends counted.
         Assert.Null(GuestRegisterFile.PeriodErrorOf(from, from));
         Assert.Null(GuestRegisterFile.PeriodErrorOf(from, new DateOnly(2028, 12, 31)));
         Assert.Equal(366, new DateOnly(2028, 12, 31).DayNumber - from.DayNumber + 1);
@@ -309,7 +285,6 @@ public class GuestRegisterFileTests
             {
                 CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(culture);
 
-                // Formatted from real values under each culture: a day format with a time specifier would throw here, and a culture with another calendar would write other digits.
                 Assert.Equal("registro-ospiti-ch-2026-01-01-2026-03-31.csv", GuestRegisterFile.FileName(new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 31)));
                 var line = Lines(GuestRegisterFile.Write(GuestRegisterFile.RowsOf(Stay(Adult(0, "Anna", "Müller", StayGuestType.SingleGuest))), Words("it")))[1];
                 Assert.StartsWith("19.11.2026;21.11.2026;Müller;Anna;04.01.1984;", line, StringComparison.Ordinal);
@@ -331,8 +306,6 @@ public class GuestRegisterFileTests
         Assert.Equal("csv_too_many_rows", refused.Code);
     }
 
-    // ─── Helpers ───
-
     private static Func<string, string> Words(string language) => key => Texts.Get(key, language);
 
     /// <summary>The lines of a file, without its byte order mark; the last one is empty because every line, the last too, ends with CRLF.</summary>
@@ -345,7 +318,6 @@ public class GuestRegisterFileTests
     private static TicinoStayFacts Stay(params TicinoGuestFacts[] guests) =>
         new(Guid.NewGuid(), "Booker", Arrival, Departure, guests.Length, guests, "ABCDE-12345", "TI 123456");
 
-    /// <summary>A Swiss guest with a passport and a home in Zurich, born on 4 January 1984.</summary>
     private static TicinoGuestFacts Adult(int position, string first, string last, StayGuestType type) => new(
         position,
         type,

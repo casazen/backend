@@ -14,12 +14,9 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Notifications;
 
-/// <summary>The real-time channel of the notifications: who may connect, who is told what, and that a failure never escapes.</summary>
 public class NotificationsHubTests
 {
     private const string UserId = "auth0|anna";
-
-    // ─── The hub ───
 
     [Fact]
     public void Hub_RequiresASignedInUser_AtTheDocumentedPath()
@@ -66,8 +63,6 @@ public class NotificationsHubTests
         groups.VerifyNoOtherCalls();
     }
 
-    // ─── The token in the query ───
-
     [Theory]
     [InlineData("/hubs/notifications", "?access_token=abc", true, "abc")]
     [InlineData("/HUBS/notifications", "?access_token=abc", true, "abc")]
@@ -86,8 +81,6 @@ public class NotificationsHubTests
         Assert.Equal(expected, read);
         Assert.Equal(token, value);
     }
-
-    // ─── The publisher ───
 
     [Fact]
     public async Task PublishAsync_SendsTheCountTypeAndEntityToTheGroupOfTheUser()

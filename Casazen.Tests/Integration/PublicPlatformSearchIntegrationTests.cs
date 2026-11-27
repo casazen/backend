@@ -12,12 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// The public search across all the booking sites over HTTP (<c>GET api/public/stays</c>): money (the total of a card is the total of the
-/// quote of that house for the same stay, to the cent), who can be seen (a house the host hid, the house of an org that is not active and
-/// the house of an org that cannot take a booking are nowhere; the houses of two sites appear together, each with its own site) and
-/// privacy (the position is the rounded one, no address).
-/// </summary>
 public class PublicPlatformSearchIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private const string ConsentVersion = "2026-06-direct-checkout-v1";
@@ -42,7 +36,6 @@ public class PublicPlatformSearchIntegrationTests : IClassFixture<CasazenWebAppl
         var inactive = await SeedOrgAsync("Host fermo", active: false, canTakeBookings: true);
         var noPayments = await SeedOrgAsync("Host senza conto", active: true, canTakeBookings: false);
 
-        // The position the host typed is exact; the public one is rounded.
         var a = await SeedHouseAsync(orgA.Id, "Casa A", city, p =>
         {
             p.Latitude = 45.64123m;
@@ -61,32 +54,27 @@ public class PublicPlatformSearchIntegrationTests : IClassFixture<CasazenWebAppl
 
         var result = await GetStaysAsync(client, $"where={city}&checkin={Day(friday)}&checkout={Day(monday)}&adults=2");
 
-        // Two free houses of two different sites; the one that is taken is counted and not listed; the other three are not there at all.
         var items = result.GetProperty("items").EnumerateArray().ToList();
         Assert.Equal(new[] { a, b }.Order(), items.Select(i => i.GetProperty("id").GetGuid()).Order());
         Assert.Equal(3, result.GetProperty("totalCount").GetInt32());
         Assert.Equal(2, result.GetProperty("availableCount").GetInt32());
         Assert.All(items, i => Assert.True(i.GetProperty("availability").GetProperty("available").GetBoolean()));
 
-        // Each house comes with its own site and host.
         var cardA = items.First(i => i.GetProperty("id").GetGuid() == a);
         var cardB = items.First(i => i.GetProperty("id").GetGuid() == b);
         Assert.Equal(orgA.Slug, cardA.GetProperty("orgSlug").GetString());
         Assert.Equal("Host A", cardA.GetProperty("hostName").GetString());
         Assert.Equal(orgB.Slug, cardB.GetProperty("orgSlug").GetString());
 
-        // The total of the card is the total of the quote of that house for the same stay, to the cent.
         foreach (var (card, id) in new[] { (cardA, a), (cardB, b) })
         {
             var quote = await ReadAsync(await PostQuoteAsync(client, id, friday, monday, adults: 2));
             Assert.Equal(CentsOf(quote.GetProperty("totalPrice").GetDecimal()), card.GetProperty("price").GetProperty("totalCents").GetInt64());
         }
 
-        // Privacy: the position is the rounded one (about a kilometre), never the exact one.
         Assert.Equal(45.64m, cardA.GetProperty("latitude").GetDecimal());
         Assert.Equal(9.13m, cardA.GetProperty("longitude").GetDecimal());
 
-        // The facets describe the place for the controls.
         var facets = result.GetProperty("facets");
         Assert.Equal(4, facets.GetProperty("maxGuests").GetInt32());
         Assert.Equal(CentsOf(150m), facets.GetProperty("minNightCents").GetInt64());
@@ -108,7 +96,6 @@ public class PublicPlatformSearchIntegrationTests : IClassFixture<CasazenWebAppl
         });
         using var client = _factory.CreateClient();
 
-        // «svizzera» and the name of the comune find it; the card says CHF (the property's own currency) and CH, never euros.
         foreach (var where in new[] { "svizzera", "Switzerland", city })
         {
             var result = await GetStaysAsync(client, $"where={where}&checkin={Day(friday)}&checkout={Day(monday)}&adults=2");
@@ -118,7 +105,6 @@ public class PublicPlatformSearchIntegrationTests : IClassFixture<CasazenWebAppl
             Assert.All(result.GetProperty("items").EnumerateArray(), i => Assert.Equal("CH", i.GetProperty("country").GetString()));
         }
 
-        // The sliders of a place where every house is Swiss are written in francs.
         var facets = (await GetStaysAsync(client, $"where={city}")).GetProperty("facets");
         Assert.Equal("CHF", facets.GetProperty("currency").GetString());
     }
@@ -173,7 +159,6 @@ public class PublicPlatformSearchIntegrationTests : IClassFixture<CasazenWebAppl
         paymentOption = "Immediate",
     };
 
-    /// <summary>The first Friday that is at least <paramref name="minDaysAhead"/> days from today in Rome (midnight UTC of its date).</summary>
     private static DateTime NextFriday(int minDaysAhead)
     {
         var day = TimeProvider.System.TodayInRome().AddDays(minDaysAhead);

@@ -8,12 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
 
-/// <summary>
-/// TN-3: the resource handler grants an operation on a host row only for the caller's org, with the context
-/// permission, and on property-bound rows only to the people who reach that property: the org role of a member (AM-03: every
-/// property, or the ones a collaborator «Solo alcuni» was given), or, for an account in no org team, its creator or an
-/// org-wide token role.
-/// </summary>
 public class HostResourceAuthorizationHandlerTests
 {
     private const string OwnerId = "auth0|owner";
@@ -165,8 +159,6 @@ public class HostResourceAuthorizationHandlerTests
         Assert.True((await HostAuthorizationTestHarness.ScopeResolver().ResolveHostScopeAsync(user, OrgId))!.IsOrgWide);
     }
 
-    // ─── AM-03: the reach comes from the org membership, not from the token ────────────────────────────
-
     private static readonly Guid GrantedPropertyId = Guid.NewGuid();
     private static readonly Guid OtherPropertyId = Guid.NewGuid();
 
@@ -248,7 +240,6 @@ public class HostResourceAuthorizationHandlerTests
     {
         var authorization = AuthorizationFor(Member(OrgRole.Collaborator, PropertyScope.Selected, granted: GrantedPropertyId));
 
-        // Bound to a property by its owner only: the id that decides is missing, so the row is not granted.
         var result = await authorization.AuthorizeAsync(
             HostAuthorizationTestHarness.User("auth0|collab"), new HostResource(OrgId, OwnerId), BookingOperations.Read);
 
@@ -282,7 +273,6 @@ public class HostResourceAuthorizationHandlerTests
     [Fact]
     public async Task Authorize_CollaboratorWithALeftoverOrgWideRoleInTheToken_IsStillLimitedByItsMembership()
     {
-        // The row decides: a role left in the token (an old PropertyManager, a PropertyOwner) never widens a collaborator.
         var authorization = AuthorizationFor(Member(OrgRole.Collaborator, PropertyScope.Selected, granted: GrantedPropertyId));
 
         var result = await authorization.AuthorizeAsync(
@@ -327,7 +317,6 @@ public class HostResourceAuthorizationHandlerTests
     [Fact]
     public async Task Authorize_SharedPropertyOperation_WithLongRentPermissionOnly_Succeeds()
     {
-        // A long-term landlord holds property.* in long-rent only (A7-06, LT-05).
         var authorization = HostAuthorizationTestHarness.Create(OrgId, (context, _) => context == "long-rent");
         var user = HostAuthorizationTestHarness.User(OwnerId);
         var property = new HostResource(OrgId, OwnerId);
@@ -363,7 +352,6 @@ public class HostResourceAuthorizationHandlerTests
     [Fact]
     public void HostOperationRequirement_IsNotTheContextPolicyRequirement()
     {
-        // A context-policy handler must never see a resource operation: it would grant on the permission alone.
         Assert.False(typeof(Casazen.Web.Infrastructure.ContextPermissionRequirement)
             .IsAssignableFrom(typeof(HostOperationRequirement)));
         Assert.IsAssignableFrom<IAuthorizationRequirement>(PropertyOperations.Read);

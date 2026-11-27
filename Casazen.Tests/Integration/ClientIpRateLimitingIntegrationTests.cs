@@ -15,10 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// Client IP behind a trusted proxy and per-IP rate limiting (FD-10, #273: A1-12, A3-12, A3-30, A3-41, A5-10, A8-22,
-/// A9-10). The proxy network is 10.0.0.0/8 with two trusted hops, every policy allows one request per window.
-/// </summary>
 public class ClientIpRateLimitingIntegrationTests : IClassFixture<ClientIpRateLimitingIntegrationTests.TrustedProxyFactory>
 {
     private const string TrustedProxy = "10.0.0.5";
@@ -28,7 +24,6 @@ public class ClientIpRateLimitingIntegrationTests : IClassFixture<ClientIpRateLi
 
     public ClientIpRateLimitingIntegrationTests(TrustedProxyFactory factory) => _factory = factory;
 
-    /// <summary>One anonymous endpoint per rate limiting policy (and every endpoint that got a new limiter).</summary>
     public static TheoryData<int, string, string, string?> LimitedEndpoints => new()
     {
         { 1, "GET", "/api/public/orgs/missing-org-fd10", null },
@@ -112,7 +107,6 @@ public class ClientIpRateLimitingIntegrationTests : IClassFixture<ClientIpRateLi
         var first = await SendAsync(client, "GET", ResolveHostPath, null, directClient, forwardedFor: "203.0.113.150");
         Assert.NotEqual(HttpStatusCode.TooManyRequests, first.StatusCode);
 
-        // A new forged value does not open a new bucket: the client is still the TCP peer.
         var forged = await SendAsync(client, "GET", ResolveHostPath, null, directClient, forwardedFor: "203.0.113.151");
         await AssertRateLimitedAsync(forged);
     }
@@ -125,7 +119,6 @@ public class ClientIpRateLimitingIntegrationTests : IClassFixture<ClientIpRateLi
         var first = await SendAsync(client, "GET", ResolveHostPath, null, TrustedProxy, forwardedFor: "1.1.1.1, 203.0.113.160");
         Assert.NotEqual(HttpStatusCode.TooManyRequests, first.StatusCode);
 
-        // Same real client, different forged first value (and a second trusted proxy hop): same bucket.
         var forged = await SendAsync(
             client, "GET", ResolveHostPath, null, TrustedProxy, forwardedFor: "2.2.2.2, 203.0.113.160, 10.1.2.3");
         await AssertRateLimitedAsync(forged);
@@ -237,7 +230,6 @@ public class ClientIpRateLimitingIntegrationTests : IClassFixture<ClientIpRateLi
         return request;
     }
 
-    /// <summary>Proxy network 10.0.0.0/8 (up to two hops), one request per window on every policy.</summary>
     public sealed class TrustedProxyFactory : CasazenWebApplicationFactory
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)

@@ -21,7 +21,6 @@ public class PropertySiteMediaIntegrationTests : IClassFixture<CasazenWebApplica
 {
     private const string HostRole = "PropertyOwner";
 
-    // A real PNG of 1 x 1 pixel.
     private static readonly byte[] PngBytes = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
 
@@ -49,13 +48,11 @@ public class PropertySiteMediaIntegrationTests : IClassFixture<CasazenWebApplica
         var raw = await saved.Content.ReadAsStringAsync();
         var list = JsonDocument.Parse(raw).RootElement.EnumerateArray().ToList();
 
-        // 14,230 m is told to the half kilometre, 30 m is not told closer than 200 m, 1,130 m to the quarter kilometre; the side is one of eight points.
         Assert.Equal([14_000, 200, 1_250], list.Select(p => p.GetProperty("distanceMeters").GetInt32()));
         Assert.Equal(["NE", "S", "N"], list.Select(p => p.GetProperty("direction").GetString()));
         Assert.DoesNotContain("latitude", raw, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("longitude", raw, StringComparison.OrdinalIgnoreCase);
 
-        // A name with no Italian part, and more than twelve: refused, the stored list stays as it was.
         var noItalian = await host.PutAsJsonAsync(url, new { pois = new[] { new { kind = "Shop", name = new { en = "Shop" }, mode = "Car", minutes = 5, direction = "E", distanceMeters = 3_000 } } });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, noItalian.StatusCode);
         Assert.Equal("property_site_profile_italian_required", (await noItalian.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
@@ -66,7 +63,6 @@ public class PropertySiteMediaIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.Equal("property_poi_limit_reached", (await tooMany.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
         Assert.Equal(3, (await host.GetFromJsonAsync<JsonElement>(url)).GetArrayLength());
 
-        // The public page: the same points, with no position of any kind.
         using var anonymous = _factory.CreateClient();
         var page = await anonymous.GetFromJsonAsync<JsonElement>($"/api/public/orgs/{org.Slug}/properties/{property.Id}");
         var pois = page.GetProperty("profile").GetProperty("pois").EnumerateArray().ToList();
@@ -74,7 +70,6 @@ public class PropertySiteMediaIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.Equal(14_000, pois[0].GetProperty("distanceMeters").GetInt32());
         Assert.Equal(["kind", "name", "mode", "minutes", "direction", "distanceMeters"], pois[0].EnumerateObject().Select(f => f.Name));
 
-        // The list replaces the stored one; an empty list removes every point.
         Assert.Equal(HttpStatusCode.OK, (await host.PutAsJsonAsync(url, new { pois = Array.Empty<object>() })).StatusCode);
         Assert.Equal(0, (await host.GetFromJsonAsync<JsonElement>(url)).GetArrayLength());
     }
@@ -86,7 +81,6 @@ public class PropertySiteMediaIntegrationTests : IClassFixture<CasazenWebApplica
         using var host = _factory.CreateAuthenticatedClient(hostId, HostRole);
         var url = $"/api/properties/{property.Id}/site-profile/floor-plans";
 
-        // A text file named like an image is refused on its content; nothing is stored.
         using (var fake = Form(System.Text.Encoding.UTF8.GetBytes("not an image"), "image/png", "piano.png", "Piano terra"))
         {
             var refused = await host.PostAsync(url, fake);
@@ -94,7 +88,6 @@ public class PropertySiteMediaIntegrationTests : IClassFixture<CasazenWebApplica
             Assert.Equal("property_floor_plan_invalid_type", (await refused.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
         }
 
-        // No Italian name: refused too.
         using (var unnamed = Form(PngBytes, "image/png", "piano.png", nameIt: null))
         {
             var refused = await host.PostAsync(url, unnamed);
@@ -104,7 +97,6 @@ public class PropertySiteMediaIntegrationTests : IClassFixture<CasazenWebApplica
 
         Assert.Equal(0, (await host.GetFromJsonAsync<JsonElement>(url)).GetArrayLength());
 
-        // Two real levels, the upper one first: the page lists the lowest floor first and each with the size read from its file.
         using (var upper = Form(PngBytes, "image/png", "primo.png", "Primo piano", level: 1, areaSqm: 45))
             Assert.Equal(HttpStatusCode.OK, (await host.PostAsync(url, upper)).StatusCode);
         using (var ground = Form(PngBytes, "image/png", "terra.png", "Piano terra", level: 0))
@@ -121,7 +113,6 @@ public class PropertySiteMediaIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.Contains("/floorplans/", plans[0].GetProperty("imageUrl").GetString(), StringComparison.Ordinal);
         Assert.Equal(45, plans[1].GetProperty("areaSqm").GetInt32());
 
-        // Deleting a level removes it.
         var id = plans[1].GetProperty("id").GetGuid();
         Assert.Equal(HttpStatusCode.NoContent, (await host.DeleteAsync($"{url}/{id}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await host.DeleteAsync($"{url}/{id}")).StatusCode);

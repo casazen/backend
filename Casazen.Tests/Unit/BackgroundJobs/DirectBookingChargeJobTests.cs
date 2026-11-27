@@ -30,7 +30,6 @@ public class DirectBookingChargeJobTests
     private const string Account = "acct_deferred_host";
     private const string OrgAccount = "acct_org_current";
 
-    // 2026-10-01 07:00 UTC: 09:00 in Rome, the same calendar day.
     private static readonly DateTimeOffset Day0 = new(2026, 10, 1, 7, 0, 0, TimeSpan.Zero);
 
     private readonly Mock<IStripeService> _stripe = new();
@@ -78,7 +77,6 @@ public class DirectBookingChargeJobTests
     [Fact]
     public async Task ExecuteAsync_HouseInSwissFrancs_ChargesTheSavedCardInFrancsNotInEuros()
     {
-        // CHF-MONEY: the stay was priced, and the card saved, for francs; the charge at the deadline is in the currency of the property.
         await using var context = CreateContext();
         var booking = await SeedChargeableBookingAsync(context, currency: StayCurrency.SwissFranc);
         SetupCharge("succeeded", "pi_deadline_chf");
@@ -202,7 +200,6 @@ public class DirectBookingChargeJobTests
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(),
             It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Exactly(DeferredCharges.ProvisionalMaxAttempts));
-        // Each attempt looked for a PaymentIntent whose answer was lost before creating one.
         _stripe.Verify(s => s.ListCustomerPaymentIntentsAsync("cus_123", Account, It.IsAny<CancellationToken>()),
             Times.Exactly(DeferredCharges.ProvisionalMaxAttempts));
         var stored = await context.Bookings.Include(b => b.Payments).SingleAsync(b => b.Id == booking.Id);
@@ -284,11 +281,9 @@ public class DirectBookingChargeJobTests
         var booking = await SeedChargeableBookingAsync(context, deadline: new DateTime(2026, 10, 2, 0, 0, 0, DateTimeKind.Utc));
         SetupCharge("succeeded", "pi_rome_day");
 
-        // 21:30 UTC on 1 October is 23:30 in Rome: the deadline (2 October) has not come yet.
         await RunJobAsync(context, new DateTimeOffset(2026, 10, 1, 21, 30, 0, TimeSpan.Zero));
         Assert.Equal(PaymentStatus.Pending, (await context.Payments.SingleAsync(p => p.BookingId == booking.Id)).Status);
 
-        // 22:30 UTC is 00:30 of 2 October in Rome.
         await RunJobAsync(context, new DateTimeOffset(2026, 10, 1, 22, 30, 0, TimeSpan.Zero));
         Assert.Equal(PaymentStatus.Completed, (await context.Payments.SingleAsync(p => p.BookingId == booking.Id)).Status);
     }
@@ -297,7 +292,6 @@ public class DirectBookingChargeJobTests
     public async Task ExecuteAsync_CancellationDayMissedUntilTheCheckInDay_NeverCancelsTheStay()
     {
         await using var context = CreateContext();
-        // Failure on 1 October, cancellation day 4 October, check-in 6 October; no run between 2 and 5 October.
         var booking = await SeedChargeableBookingAsync(context, checkIn: new DateTime(2026, 10, 6, 0, 0, 0, DateTimeKind.Utc));
         SetupCharge("requires_payment_method", "pi_missed_1");
         await RunJobAsync(context, Day0);
@@ -333,12 +327,10 @@ public class DirectBookingChargeJobTests
         var host = Assert.Single(emails, e => e.Template == EmailTemplates.Names.HostDeferredChargeFailed);
         Assert.Equal("host@example.com", host.To);
 
-        // The link opens the outcome page with a new checkout token whose hash is stored on the booking.
         var match = System.Text.RegularExpressions.Regex.Match(
             guest.Content.HtmlBody, $"href=\"https://casazen-app\\.test/book/[^/]+/booking/{booking.Id:D}\\?token=([A-Za-z0-9_-]+)\"");
         Assert.True(match.Success, guest.Content.HtmlBody);
         Assert.True(CheckoutOutcomes.TokenMatches(booking.CheckoutTokenHash, match.Groups[1].Value));
-        // Check-in on 31 October, first failure on 1 October: cancelled on 4 October, so the guest pays by 3 October.
         Assert.Contains("entro il <strong>03/10/2026</strong>", guest.Content.HtmlBody);
         Assert.Contains("il <strong>04/10/2026</strong>", host.Content.HtmlBody);
     }
@@ -451,7 +443,6 @@ public class DirectBookingChargeJobTests
             Method = Casazen.Core.Entities.PaymentMethod.CreditCard,
             TransactionId = transactionId,
             StripePaymentIntentId = collected ? transactionId : null,
-            // The account the SetupIntent saved the card on, which differs from the org's current one.
             StripeAccountId = Account,
             Description = paymentDescription,
             ProcessedAt = collected ? DateTime.UtcNow : null,

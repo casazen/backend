@@ -33,7 +33,6 @@ public class GuestBookingCancellationPostgresTests : IAsyncLifetime
 
     private static readonly DateTime CheckIn = new(2026, 11, 10, 0, 0, 0, DateTimeKind.Utc);
 
-    // 50 hours before the check-in day starts: under "Intermedia" the guest gets 50% of the base price.
     private static readonly DateTimeOffset Now = new(RomeCalendar.StartOfDayUtc(CheckIn).AddHours(-50), TimeSpan.Zero);
 
     private readonly Mock<IStripeService> _stripe = new();
@@ -72,7 +71,6 @@ public class GuestBookingCancellationPostgresTests : IAsyncLifetime
             result = await GuestService(request).CancelByGuestLinkAsync(seed.BookingId, seed.Token);
         }
 
-        // Paid 420 = 400 base + 20 tax: the policy gives back 50% of the 400, and the 20 of tax goes back in full.
         Assert.Equal(220m, result.RefundAmount);
         Assert.Equal(BookingStatus.Cancelled, result.Booking.Status);
         var sent = Assert.Single(_refundRequests);
@@ -84,7 +82,7 @@ public class GuestBookingCancellationPostgresTests : IAsyncLifetime
         var booking = await db.Bookings.SingleAsync(b => b.Id == seed.BookingId);
         Assert.Equal(BookingStatus.Cancelled, booking.Status);
         Assert.Equal(GuestCancellationTokens.HashToken(seed.Token), booking.GuestCancelTokenHash);
-        Assert.Equal(Now.UtcDateTime, booking.GuestCancelTokenExpiresAt); // spent by the cancellation, in its transaction
+        Assert.Equal(Now.UtcDateTime, booking.GuestCancelTokenExpiresAt);
         var refund = await db.PaymentRefunds.SingleAsync();
         Assert.Equal(220m, refund.Amount);
         Assert.Equal(PaymentRefundOrigin.BookingCancellation, refund.Origin);
@@ -177,10 +175,6 @@ public class GuestBookingCancellationPostgresTests : IAsyncLifetime
 
     private sealed record Seed(Guid BookingId, Guid PaymentId, string PaymentIntentId, string Token);
 
-    /// <summary>
-    /// A booking of 400 (lodging and cleaning) + 20 of tourist tax, 420 paid through Stripe, under "Intermedia", with the
-    /// cancel link the host sent.
-    /// </summary>
     private async Task<Seed> SeedAsync(PaymentStatus paymentStatus, BookingStatus bookingStatus)
     {
         var org = new OrgEntity

@@ -271,10 +271,6 @@ public class LegalDocumentSubprocessorsTests
             NullLogger<LegalDocumentService>.Instance);
 }
 
-/// <summary>
-/// PL-14 (A1-06): the texts are the files provided by the product owner (D14); while one is missing the document is not
-/// available and nothing is invented.
-/// </summary>
 public sealed class LegalDocumentTextTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"legal-docs-{Guid.NewGuid():N}");

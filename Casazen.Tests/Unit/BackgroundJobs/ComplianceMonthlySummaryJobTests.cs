@@ -9,10 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.BackgroundJobs;
 
-/// <summary>
-/// E03/F02/US02/T02 (NF-52, CHK-12 point 6): the job of the monthly compliance summary only runs the service, on the first of every month at 07:00 Europe/Rome, never
-/// overlapping another run, whatever the flags say (the service reads the flag of the module).
-/// </summary>
 public class ComplianceMonthlySummaryJobTests
 {
     [Fact]

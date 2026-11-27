@@ -46,7 +46,6 @@ public class ServicePaymentJobsRegistrationTests
         Assert.Equal("service-payment-reminders", ServicePaymentRemindersJob.RecurringJobId);
         Assert.Contains(ServicePaymentSyncJob.RecurringJobId, scheduled.Keys);
         Assert.Contains(ServicePaymentRemindersJob.RecurringJobId, scheduled.Keys);
-        // They are never removed from the schedule: with the flag off they still follow the payments and the refunds in flight.
         manager.Verify(m => m.RemoveIfExists(ServicePaymentSyncJob.RecurringJobId), Times.Never);
         manager.Verify(m => m.RemoveIfExists(ServicePaymentRemindersJob.RecurringJobId), Times.Never);
     }
@@ -94,7 +93,6 @@ public class ServicePaymentJobsRegistrationTests
         var concurrency = ConcurrencyAttribute(method);
         Assert.NotNull(concurrency);
         Assert.InRange(concurrency.TimeoutSec, 1, (int)HangfireStorageSettings.DefaultDistributedLockTimeout.TotalSeconds);
-        // A failed run is tried again a few times: the payer is only ever emailed once, whatever the number of runs.
         var retry = method.GetCustomAttribute<AutomaticRetryAttribute>();
         Assert.NotNull(retry);
         Assert.Equal(3, retry.Attempts);
@@ -154,7 +152,6 @@ public class ServicePaymentJobsRegistrationTests
         Assert.Equal(typeof(SendPendingPaymentRequestsJob), job.Type);
         Assert.Equal(nameof(SendPendingPaymentRequestsJob.ExecuteAsync), job.Method.Name);
         Assert.Equal(supplier, job.Args[0]);
-        // Right away, not scheduled for later.
         Assert.IsType<EnqueuedState>(state);
     }
 

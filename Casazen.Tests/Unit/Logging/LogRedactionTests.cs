@@ -12,7 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Logging;
 
-/// <summary>FD-17 (A9-36): email addresses never reach the logs in clear, only as <c>m***@domain</c>.</summary>
 public class LogRedactionTests
 {
     private const string Email = "mario.rossi@example.it";

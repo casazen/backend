@@ -8,12 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// MKT (SR-09c): «Le mie app» lists the suppliers the host already asked for a job, derived from its short-rent requests. The rule that
-/// matters is the perimeter: only the requests of the caller's org and, for a collaborator «Solo alcuni», only those of the properties it
-/// was given; nothing of the other rental contexts; and nothing about a supplier but its name and the counts (no contact).
-/// On EF InMemory, on the data every scope test runs on (<see cref="HostScopeScenario"/>).
-/// </summary>
 public class HostSupplierUsageReaderTests : IAsyncLifetime
 {
     private readonly AppDbContext _db = HostScopeScenario.NewInMemoryDb();
@@ -28,7 +22,6 @@ public class HostSupplierUsageReaderTests : IAsyncLifetime
     [Fact]
     public async Task ListAsync_TheWholeOrg_CountsItsOwnRequestsAndOnlyThose()
     {
-        // Each of the three properties (two of the org, one of the other org) has one open request to the same supplier.
         var supplier = Assert.Single(await Reader().ListAsync(_world.OrgWide));
 
         Assert.Equal(_world.SupplierOrgId, supplier.SupplierOrgId);
@@ -37,7 +30,6 @@ public class HostSupplierUsageReaderTests : IAsyncLifetime
         Assert.Equal("cleaning", supplier.LastCategory);
         Assert.Equal("Fornitore", supplier.SupplierName);
 
-        // The other org sees its own request alone.
         var other = Assert.Single(await Reader().ListAsync(new HostScope(_world.OtherOrgId)));
         Assert.Equal(1, other.RequestsCount);
     }
@@ -48,7 +40,6 @@ public class HostSupplierUsageReaderTests : IAsyncLifetime
         var supplier = Assert.Single(await Reader().ListAsync(_world.Restricted));
         Assert.Equal(1, supplier.RequestsCount);
 
-        // A supplier asked only through a property the collaborator does not reach is not there at all.
         var other = HostScopeScenario.NewOrg("Altro fornitore", $"altro-forn-{Guid.NewGuid():N}"[..20], OrgType.Supplier);
         _db.Orgs.Add(other);
         _db.ServiceRequests.Add(Request(_world.Hidden.Id, other.Id));
@@ -62,7 +53,6 @@ public class HostSupplierUsageReaderTests : IAsyncLifetime
     [Fact]
     public async Task ListAsync_OnlyShortRentRequests_AndTheOpenOnesAreThoseNotOver()
     {
-        // A request of the long-rent context is not one of Affitti brevi, and a paid one counts but is not open.
         var longRentOnly = HostScopeScenario.NewOrg("Solo lungo", $"solo-lungo-{Guid.NewGuid():N}"[..20], OrgType.Supplier);
         _db.Orgs.Add(longRentOnly);
         _db.ServiceRequests.Add(Request(_world.Granted.Id, longRentOnly.Id, rentalContext: ServiceRequestRentalContext.LongRent));
@@ -75,7 +65,6 @@ public class HostSupplierUsageReaderTests : IAsyncLifetime
         var used = Assert.Single(suppliers);
         Assert.Equal(3, used.RequestsCount);
         Assert.Equal(2, used.OpenCount);
-        // The latest request is the paid one: its category is the one told.
         Assert.Equal("plumbing", used.LastCategory);
     }
 

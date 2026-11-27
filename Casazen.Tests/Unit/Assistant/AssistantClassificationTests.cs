@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>E05/F05/US02/T01: the strict reading of the answer of the classifier. Anything unreadable or out of range is <c>Other</c> with a match of 0, never an exception.</summary>
 public sealed class AssistantClassificationTests
 {
     [Fact]
@@ -45,7 +44,6 @@ public sealed class AssistantClassificationTests
     [Fact]
     public void Parse_AnUnknownSituation_KeepsTheUrgencyAndTheCategoriesItCouldRead()
     {
-        // An emergency the classifier could not name is still urgent and about safety: the pipeline raises its «To do» and alerts.
         var classification = AssistantClassification.Parse("{\"situation\":\"flood\",\"situationMatch\":0.9,\"urgency\":\"urgent\",\"sensitiveCategories\":[\"safety\"]}");
 
         Assert.Equal((AssistantSituation.Other, 0m), (classification.Situation, classification.SituationMatch));
@@ -66,7 +64,6 @@ public sealed class AssistantClassificationTests
     [Fact]
     public void Parse_TheObjectAfterAReasoning_IsTheAnswer_AndAReasoningIsNeverReadAsOne()
     {
-        // #936: a model that thinks aloud writes its reasoning, braces and first tries of the answer included, before the object.
         var classification = AssistantClassification.Parse(
             "<think>Maybe {\"situation\":\"wifi\",\"situationMatch\":0.4}? No: the car.</think>\n{\"situation\":\"parking\",\"situationMatch\":0.9,\"urgency\":\"normal\"} {\"note\":\"done\"}");
         var cutReasoning = AssistantClassification.Parse("<think>The guest asks about {\"situation\":\"parking\",\"situationMatch\":0.9}");

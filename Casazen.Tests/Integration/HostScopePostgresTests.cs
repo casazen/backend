@@ -45,12 +45,9 @@ public class HostScopePostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    // --- The lists --------------------------------------------------------------------------------------
-
     [PostgresFact]
     public async Task Lists_EveryPoint_TheCollaboratorSeesOnlyItsPropertiesOnPostgreSql()
     {
-        // All the points are run and reported together, so one run of CI tells everything that is wrong.
         var failures = new List<string>();
         foreach (var (name, run) in HostScopePoints.All)
         {
@@ -78,7 +75,6 @@ public class HostScopePostgresTests : IAsyncLifetime
         var restricted = await service.GetSummaryAsync(_world.Restricted);
         var orgWide = await service.GetSummaryAsync(_world.OrgWide);
 
-        // The scenario has one stay to complete per property: the collaborator sees the one of its property.
         var restrictedIds = restricted.GuestCheckInsIncomplete.Items.Select(i => i.Id).ToHashSet();
         var orgWideIds = orgWide.GuestCheckInsIncomplete.Items.Select(i => i.Id).ToHashSet();
         Assert.True(restrictedIds.IsSubsetOf(orgWideIds));
@@ -90,9 +86,6 @@ public class HostScopePostgresTests : IAsyncLifetime
         Assert.Empty(restricted.TurnoversPending.Items.Select(i => i.Id).Intersect(bookingsOfHidden));
     }
 
-    // --- One command, whatever the number of properties ------------------------------------------------
-
-    /// <summary>Counts the commands a context sends to the server.</summary>
     private sealed class CommandCounter : DbCommandInterceptor
     {
         private int _count;
@@ -117,7 +110,6 @@ public class HostScopePostgresTests : IAsyncLifetime
     private AppDbContext NewCountingContext(CommandCounter counter) => new(
         new DbContextOptionsBuilder<AppDbContext>(_database!.CreateOptions()).AddInterceptors(counter).Options);
 
-    /// <summary>The commands each list sends for the collaborator, by name.</summary>
     private async Task<Dictionary<string, int>> CommandsPerListAsync()
     {
         var calls = new Dictionary<string, Func<AppDbContext, Task>>
@@ -148,11 +140,9 @@ public class HostScopePostgresTests : IAsyncLifetime
     {
         var before = await CommandsPerListAsync();
         Assert.All(before, entry => Assert.True(entry.Value > 0, $"{entry.Key}: no command counted"));
-        // The plain lists are a few statements at most: the reach is part of the query (an EXISTS), not a list of ids or a query per row.
         foreach (var plain in new[] { "bookings", "payments", "leases", "properties", "cin-summary" })
             Assert.True(before[plain] <= 3, $"{plain}: {before[plain]} commands");
 
-        // Thirty more properties, all of them reached by the collaborator, each with its stays, payments and feeds.
         await using (var db = _database!.CreateContext())
         {
             for (var i = 0; i < 30; i++)
@@ -175,8 +165,6 @@ public class HostScopePostgresTests : IAsyncLifetime
 
         Assert.Equal(before, after);
     }
-
-    // --- The schema of the grants ----------------------------------------------------------------------
 
     [PostgresFact]
     public async Task Schema_ThePairPersonAndPropertyIsUnique_TheDatabaseRefusesAGrantTwice()
@@ -208,7 +196,6 @@ public class HostScopePostgresTests : IAsyncLifetime
         await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM \"Properties\" WHERE \"Id\" = {property.Id}");
 
         Assert.Equal(0, await db.PropertyMemberAccesses.IgnoreQueryFilters().CountAsync(a => a.PropertyId == property.Id));
-        // The collaborator keeps the grant of the property that still exists.
         Assert.Equal(1, await db.PropertyMemberAccesses.IgnoreQueryFilters().CountAsync(a => a.UserId == _world.CollaboratorId));
 
         db.ChangeTracker.Clear();
@@ -236,8 +223,6 @@ public class HostScopePostgresTests : IAsyncLifetime
         Assert.Null((await db.Properties.SingleAsync(p => p.Id == _world.Granted.Id)).ResponsibleUserId);
     }
 
-    // --- Two writers, one member -----------------------------------------------------------------------
-
     [PostgresFact]
     public async Task SetAsync_SixRequestsForTheSameMemberAtOnce_LeaveOneOfTheSetsWholeAndFailNone()
     {
@@ -257,7 +242,6 @@ public class HostScopePostgresTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
 
-        // Overlapping sets of two properties each: every pair of neighbours shares one.
         var sets = Enumerable.Range(0, 6).Select(i => new[] { properties[i], properties[(i + 1) % 6] }).ToList();
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var running = sets.Select(async set =>
@@ -278,8 +262,6 @@ public class HostScopePostgresTests : IAsyncLifetime
         Assert.Equal(2, granted.Distinct().Count());
         Assert.Contains(sets, set => set.Order().SequenceEqual(granted.Order()));
     }
-
-    // --- The authorization snapshot --------------------------------------------------------------------
 
     [PostgresFact]
     public async Task Snapshot_CarriesTheGrantsOfTheCollaborator_AndSeesAChangeOnceTheWriterInvalidatesIt()
@@ -323,13 +305,11 @@ public class HostScopePostgresTests : IAsyncLifetime
 
         Assert.Equal(PropertyScope.All, everything.OrgMember!.PropertyScope);
         Assert.Null(everything.OrgMember.GrantedPropertyIds);
-        // The cache of this process keeps the old copy until the writer invalidates it (60 s for the other instances).
         Assert.Equal(PropertyScope.All, stale.OrgMember!.PropertyScope);
         Assert.Equal(PropertyScope.Selected, restricted.OrgMember!.PropertyScope);
         Assert.True(restricted.OrgMember.GrantedPropertyIds!.SetEquals([first, second]));
         Assert.True(narrowed.OrgMember!.GrantedPropertyIds!.SetEquals([second]));
 
-        // The decision on the snapshot: the collaborator reaches the property it was given and not the other.
         var scope = HostScopeResolver.Decide(narrowed, "auth0|anna", new HashSet<string>(), org.Id)!;
         Assert.True(HostScopeResolver.Reaches(narrowed, scope, second, "auth0|owner"));
         Assert.False(HostScopeResolver.Reaches(narrowed, scope, first, "auth0|owner"));

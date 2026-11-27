@@ -11,20 +11,12 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E07/F06/US01/T01 (NF-95): the keyed index of the CRM (HMAC-SHA256 keyed by <c>Crm:ContactIndexKey</c>, the pattern of
-/// <c>ServiceCustomerIndex</c>) and the startup validation of the <c>Crm</c> options.
-/// </summary>
 public class CrmContactIndexTests
 {
     private const string Key = CrmTestIndex.Key;
 
     private static IHostEnvironment Environment(string name) => Mock.Of<IHostEnvironment>(host => host.EnvironmentName == name);
 
-    /// <summary>
-    /// Proof test (privacy rule, AC-NF95-3): the index is keyed, not the plain SHA-256 of the value, so a copy of the database cannot be used
-    /// to recompute it from an address alone: another key gives another value, the same key always gives the same one, in 64 lowercase hex.
-    /// </summary>
     [Fact]
     public void CrmContactIndex_Hash_IsKeyedNotPlainSha256_Test()
     {
@@ -66,8 +58,6 @@ public class CrmContactIndexTests
         Assert.Contains("Crm__ContactIndexKey", failure.Message);
         Assert.True(CrmTestIndex.Create(Key).IsConfigured);
     }
-
-    // ─── Startup validation ──────────────────────────────────────────────────────
 
     private static CrmOptionsValidator Validator(bool flagOn, string environment)
     {

@@ -88,7 +88,6 @@ public class SupplierSelfServeAnyComuneIntegrationTests(SupplierSelfServeAnyComu
             comuneCode,
         });
 
-    /// <summary>Default settings: no <c>Suppliers:PilotComuni</c>, <c>Suppliers:AnyComune</c> not set (open).</summary>
     public class AnyComuneFactory : CasazenWebApplicationFactory
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)

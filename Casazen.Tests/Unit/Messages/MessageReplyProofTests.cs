@@ -50,8 +50,6 @@ public class MessageReplyProofTests : IAsyncLifetime
     private Task<int> RowsWithKeyAsync(string key = Key) =>
         _db.OtaMessages.AsNoTracking().CountAsync(m => m.IdempotencyKey == key);
 
-    // ---- The proofs of the brief --------------------------------------------------------------------------------------------------------
-
     /// <summary>
     /// PROOF TEST: data rule (OCT-10, AC-NF63-6). Two sends with the same <c>Idempotency-Key</c> reach Octorate once: the second answers the first message,
     /// <c>Replayed</c>, with the state it reached, and writes nothing. A guest never gets the same words twice because a person clicked twice.
@@ -76,7 +74,6 @@ public class MessageReplyProofTests : IAsyncLifetime
             Times.Once);
         Assert.Equal(1, await RowsWithKeyAsync());
 
-        // The same key with other words is still the first message: nothing else leaves.
         var other = await ReplyAsync(rig, _world.GrantedReservation, text: "Altre parole");
         Assert.True(other.Replayed);
         Assert.Equal("Benvenuti, vi aspettiamo", other.Message!.Text);
@@ -114,7 +111,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Equal(OtaMessageDeliveryState.ManualVerify, row.DeliveryState);
         Assert.Null(row.OctorateMessageId);
 
-        // The conversation does not count as answered: nothing is known to have arrived.
         var thread = await _db.OtaMessageThreads.AsNoTracking().SingleAsync(t => t.Id == _world.GrantedReservation.Id);
         Assert.Equal(OtaMessageDirection.Outbound, thread.LastMessageDirection);
         Assert.Equal(_world.GrantedReservation.LastMessageDirection, thread.LastMessageDirection);
@@ -141,7 +137,6 @@ public class MessageReplyProofTests : IAsyncLifetime
             .ReturnsAsync(new OctorateGuestContactInfo(MessageReplyScenario.GuestEmail, MessageReplyScenario.GuestPhone));
         var web = new JsonSerializerOptions(JsonSerializerDefaults.Web);
 
-        // The options say that an address and a number exist, and not what they are.
         var options = await rig.Service.ChooseChannelAsync(_world.Scope.OrgWide, booking.Id);
         var optionsJson = JsonSerializer.Serialize(MessageContactOptionsDto.From(options), web);
         Assert.Equal(MessageContactChannel.Email, options.Channel);
@@ -158,7 +153,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Equal(EmailTemplatesNames.HostGuestMessage, mail.Template);
         Assert.Contains("Buongiorno, vi aspettiamo il 20 ottobre", mail.Content.HtmlBody, StringComparison.Ordinal);
 
-        // Everything a client, a log or a table could hold: not a trace of the address or the number.
         var everything = new[]
         {
             optionsJson,
@@ -177,10 +171,8 @@ public class MessageReplyProofTests : IAsyncLifetime
             Assert.DoesNotContain("1234 5678", text, StringComparison.Ordinal);
         }
 
-        // The address is the destination of the e-mail and nothing else; the text of the host is not in the log.
         Assert.DoesNotContain("Buongiorno", rig.Log.AllOutput, StringComparison.Ordinal);
 
-        // One line of the activity log: the booking, the person, the purpose.
         var line = await _db.OrgActivityEntries.AsNoTracking().SingleAsync();
         Assert.Equal(OrgActivityType.ContactInfoRead, line.Type);
         Assert.Equal(OrgActivitySubjectType.Booking, line.SubjectType);
@@ -189,8 +181,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Equal(_world.Scope.OrgId, line.OrgId);
         Assert.Equal("{\"purpose\":\"message_to_guest\"}", line.DetailsJson);
     }
-
-    // ---- The conversation must be one the caller reaches, and one that may be written to ------------------------------------------------
 
     /// <summary>
     /// PROOF TEST: permission rule. A collaborator limited to some houses writes to the conversations of the houses it was given and to no other: the
@@ -220,15 +210,10 @@ public class MessageReplyProofTests : IAsyncLifetime
             Times.Never);
         Assert.Equal(0, await RowsWithKeyAsync());
 
-        // The conversation of a house it was given is open to it.
         var granted = await ReplyAsync(rig, _world.GrantedReservation, scope: collaborator);
         Assert.Equal(OtaMessageDeliveryState.Sent, granted.State);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (OCT-04). A conversation with no property, or whose property sits in a row of the mapping nobody decided, is not written to:
-    /// 409 <c>mapping_not_confirmed</c>, nothing is sent and no row is written. Even whoever reaches every property is refused for the unassigned one.
-    /// </summary>
     [Fact]
     public async Task OtaReply_UnmappedOrUndecidedListing_IsRefused_AndNothingIsSent_Test()
     {
@@ -246,9 +231,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Equal(0, await RowsWithKeyAsync());
     }
 
-    /// <summary>
-    /// The connector is the switch of the whole module: with it off nothing leaves and no row is written, however the thread was copied before.
-    /// </summary>
     [Fact]
     public async Task OtaReply_ConnectorOff_SendsNothing()
     {
@@ -263,10 +245,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Equal(0, await RowsWithKeyAsync());
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (OCT-11). On an Airbnb conversation that is still a request, a text with a link, an e-mail address or a phone number is refused
-    /// with 422 <c>channel_rule_violation</c> and nothing is stored or sent; a plain text goes; and the same words are fine on a conversation about a booking.
-    /// </summary>
     [Theory]
     [InlineData("Scrivimi a anna@example.com")]
     [InlineData("Chiamami al +39 333 1234567")]
@@ -286,7 +264,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         var plain = await ReplyAsync(rig, _world.GrantedRequest, "Sì, la casa è libera ad agosto");
         Assert.Equal(OtaMessageDeliveryState.Sent, plain.State);
 
-        // A conversation about a booking (Booking.com here) takes the same words.
         var booking = await ReplyAsync(rig, _world.GrantedReservation, text, key: "key-other-12");
         Assert.Equal(OtaMessageDeliveryState.Sent, booking.State);
     }
@@ -332,8 +309,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Equal("idempotency_key_invalid", error.Code);
         rig.NothingWasSent();
     }
-
-    // ---- What a send does to the conversation ---------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task OtaReply_AMessageThatWent_MarksTheConversationAnsweredAndItsGuestMessagesRead()
@@ -387,7 +362,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         rig.NothingWasSent();
     }
 
-    /// <summary>A refusal that has a type (a refused token, a chat module not in the license) is the state Error with its code, stored, and replayed with the key.</summary>
     [Fact]
     public async Task OtaReply_ATypedRefusal_IsTheStateError_WithItsCode()
     {
@@ -407,15 +381,10 @@ public class MessageReplyProofTests : IAsyncLifetime
             c => c.SendChatMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Once);
 
-        // A message that did not go does not answer the guest.
         var thread = await _db.OtaMessageThreads.AsNoTracking().SingleAsync(t => t.Id == _world.GrantedReservation.Id);
         Assert.Equal(_world.GrantedReservation.LastMessageDirection, thread.LastMessageDirection);
     }
 
-    /// <summary>
-    /// A 429 (or the empty bucket of the org) means nothing happened: the row goes away, the error reaches the caller, and the same key can be sent when the
-    /// limit is over.
-    /// </summary>
     [Fact]
     public async Task OtaReply_RateLimited_LeavesNoRow_AndTheSameKeyCanBeSentAgain()
     {
@@ -460,7 +429,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Equal(1, await RowsWithKeyAsync());
     }
 
-    /// <summary>The caller left while the message was on its way: just as unknown as a timeout. The row says so and the cancellation goes on.</summary>
     [Fact]
     public async Task OtaReply_TheCallerLeaves_TheMessageIsLeftToVerify()
     {
@@ -481,10 +449,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Equal(OtaMessageDeliveryState.ManualVerify, row.DeliveryState);
     }
 
-    /// <summary>
-    /// If the copy of the conversation read the thread between the call and the save of the outcome, it stored the message once already, as a message of the
-    /// host side: that is the same message, and the one that knows who wrote it (the key, the person) is the one that stays.
-    /// </summary>
     [Fact]
     public async Task OtaReply_TheCopyAlreadyStoredTheMessage_LeavesOneRow()
     {
@@ -517,10 +481,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Equal(Key, kept.IdempotencyKey);
     }
 
-    /// <summary>
-    /// A row written and never sent (the process stopped between the two) is found by a second send with the same key after the window: it may or may not
-    /// have left, so it is turned into a message to verify, never shown as sent, and nothing is sent by this call.
-    /// </summary>
     [Fact]
     public async Task OtaReply_ARowThatWasWrittenAndNeverSent_BecomesAMessageToVerify()
     {
@@ -549,7 +509,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Equal(OtaMessageDeliveryState.ManualVerify, (await _db.OtaMessages.AsNoTracking().SingleAsync(m => m.IdempotencyKey == Key)).DeliveryState);
     }
 
-    /// <summary>A row written a moment ago, with the call to Octorate still running, is not touched by a second send: it is only replayed as it is.</summary>
     [Fact]
     public async Task OtaReply_ARowThatIsStillBeingSent_IsReplayedAsItIs()
     {
@@ -576,9 +535,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         rig.NothingWasSent();
     }
 
-    // ---- A conversation with the guest of a direct booking ---------------------------------------------------------------------------------
-
-    /// <summary>A reply to a direct conversation goes through the existing service, unchanged, and writes nothing in the conversations of the channels.</summary>
     [Fact]
     public async Task DirectReply_GoesThroughTheDirectService_Unchanged()
     {
@@ -602,10 +558,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Equal(0, await RowsWithKeyAsync());
     }
 
-    /// <summary>
-    /// A message nobody wrote (the one a routine planned) answers nobody on a direct conversation either, as it does on the channels: it goes through the door of the automatic messages of the direct service, which
-    /// leaves the guest's messages unread and the thread waiting for its answer, and it is told as automatic.
-    /// </summary>
     [Fact]
     public async Task DirectReply_OfAnAutomaticMessage_GoesThroughTheAutomaticDoor_NeverThatOfAPersonWhoAnswers()
     {
@@ -627,8 +579,6 @@ public class MessageReplyProofTests : IAsyncLifetime
             g => g.ReplyAsHostAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
-
-    // ---- Through which channel a guest is reached --------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task ChooseChannel_ABookingOfAChannel_ChoosesItsConversation_UnlessItsListingIsUndecided()
@@ -665,7 +615,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.True(open.EmailAvailable);
         Assert.False(open.PhoneAvailable);
 
-        // Past the seventh day after the check-out the conversation is closed, and so is the way to it.
         var guest = await MessageReplyScenario.AddGuestAsync(_db, _world.Scope.OrgId, "Carla", "Neri");
         var old = await MessageReplyScenario.AddBookingAsync(
             _db, _world, _world.Scope.Granted.Id, guest, BookingSource.Direct, null, checkOut: HostScopeScenario.Day(2026, 9, 1));
@@ -691,7 +640,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         rig.Client.VerifyNoOtherCalls();
     }
 
-    /// <summary>A collaborator limited to some houses asks about the guest of a stay it does not reach: a 404, and nothing is asked of the channel manager.</summary>
     [Fact]
     public async Task ChooseChannel_Collaborator_CannotAskAboutAStayOfAnotherHouse()
     {
@@ -705,8 +653,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         rig.Client.VerifyNoOtherCalls();
         Assert.Empty(rig.Emails.Sent);
     }
-
-    // ---- The first message to a guest who has no conversation ---------------------------------------------------------------------------------
 
     private async Task<(MessageReplyRig Rig, Booking Booking)> EmailRigAsync(bool emailAvailable = true)
     {
@@ -740,7 +686,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Empty(await _db.OrgActivityEntries.AsNoTracking().ToListAsync());
     }
 
-    /// <summary>The stay in the e-mail is the stay in Rome: a booking that starts at midnight in Rome is stored as the instant before it in UTC.</summary>
     [Fact]
     public async Task StartConversation_EmailPath_NamesTheStayWithItsDaysInRome()
     {
@@ -791,7 +736,6 @@ public class MessageReplyProofTests : IAsyncLifetime
 
         Assert.Equal("contact_info_unavailable", error.Code);
         Assert.Empty(rig.Emails.Sent);
-        // The read happened: Octorate recorded it, and so did CasaZen.
         Assert.Equal(OrgActivityType.ContactInfoRead, Assert.Single(await _db.OrgActivityEntries.AsNoTracking().ToListAsync()).Type);
     }
 
@@ -814,11 +758,6 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Single(await _db.OrgActivityEntries.AsNoTracking().ToListAsync());
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (OCT-10). A double click is two requests AT ONCE, not one after the other: they meet in the gate of the key, the second waits for the
-    /// first and answers «replayed», so the guest gets ONE e-mail, the contact of the booking is read ONCE and the activity log has ONE line. The two services
-    /// have each its own context of the same database, as two requests of one process do, and share the memory and the queue.
-    /// </summary>
     [Fact]
     public async Task StartConversation_EmailPath_TwoRequestsAtOnceWithOneKey_QueueOneEmail_Test()
     {
@@ -830,7 +769,6 @@ public class MessageReplyProofTests : IAsyncLifetime
             {
                 Interlocked.Increment(ref reads);
 
-                // The window in which the second request used to pass the check of the key.
                 await Task.Delay(300);
                 return new OctorateGuestContactInfo(MessageReplyScenario.GuestEmail, null);
             });
@@ -1007,7 +945,6 @@ public class MessageReplyProofTests : IAsyncLifetime
     }
 }
 
-/// <summary>The template names the reply tests look for, so a test reads the name and not a string of the production code.</summary>
 internal static class EmailTemplatesNames
 {
     public const string HostGuestMessage = Casazen.Infrastructure.Email.Templates.EmailTemplates.Names.HostGuestMessage;

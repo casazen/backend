@@ -24,10 +24,8 @@ namespace Casazen.Tests.Unit.Authorization;
 /// </summary>
 public class EndpointAuthorizationArchitectureTests
 {
-    /// <summary>Actions that only require a signed-in user, each with its reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> AuthenticatedOnly = new Dictionary<string, string>
     {
-        // The caller's own identity, profile and onboarding: every user has them, whatever the context.
         ["AuthController.GetProfile"] = "Profile of the caller, read from the token.",
         ["AuthController.Logout"] = "Ends the caller's own session.",
         ["MeController.GetContexts"] = "Lists the contexts the caller may enter (how the client picks host, landlord or supplier UI).",
@@ -64,12 +62,10 @@ public class EndpointAuthorizationArchitectureTests
         ["LeaseMaintenanceRequestsController.List"] = "The tenant reads their requests and the decision, and so does anyone with lease.read on the property. The tenant has no lease.read, so the class cannot require it. The service decides: the tenant party or lease.read, in the caller's org (another org is 404).",
         ["LeaseMaintenanceRequestsController.GetPhoto"] = "The tenant or anyone with lease.read opens a private photo of a maintenance request. The file is not public. The service decides the same way as List, and another org or a missing photo is 404.",
 
-        // The caller's own work in progress: the drafts of the wizards (ADR-024).
         ["WizardDraftsController.Get"] = "ADR-024: the caller's own draft of a wizard, in every context (host, landlord, supplier), so no single context permission fits: by the token's sub and the caller's org (IWizardDraftService); the draft of another person or another org is a 404, never a 403.",
         ["WizardDraftsController.Save"] = "ADR-024: the caller saves its own draft, by the token's sub and the caller's org (same reason as Get); a version behind the server's is a 409 with the server's draft, and the body is bounded.",
         ["WizardDraftsController.Delete"] = "ADR-024: the caller discards its own draft, by the token's sub and the caller's org (same reason as Get); never the draft of another person.",
 
-        // Catalogs without tenant data.
         ["CommercialCatalogController.Get"] = "Commercial add-on catalog from configuration, available before organization creation (#896).",
         ["BillingController.GetPlans"] = "Public plan catalog from configuration; every billing change is RequireOrgBillingAdmin.",
         ["TouristTaxRatesController.GetAll"] = "Platform reference data (tourist tax rates per comune), not tenant data; writes are AdminOnly.",
@@ -78,7 +74,6 @@ public class EndpointAuthorizationArchitectureTests
         ["ServiceCategoriesController.GetAll"] = "Fixed catalog of service category codes (SU-03) used by suppliers, hosts and admins alike; no tenant data.",
         ["IndexNowController.NotifyUrls"] = "NF-25: internal endpoint called by the platform when org or property content changes (published, updated, activated) to notify search engines via IndexNow protocol; queues URLs for background submission, no tenant data returned.",
 
-        // Endpoints shared by two roles: the action evaluates the policy of the branch it takes.
         ["ServiceRequestsController.List"] = "Host list (PropertyRead + HostScope) or supplier inbox with view=supplier (RequireSupplier), each checked with IAuthorizationService inside the action.",
         ["ServiceRequestsController.GetById"] = "Supplier branch (RequireSupplier + linked supplier org) or host branch (PropertyRead + HostScope), each checked with IAuthorizationService inside the action.",
         ["ServiceRequestsController.Cancel"] = "SP-04: the supplier it was sent to cancels before the work starts (RequireSupplier + linked supplier org), or the host up to the work in progress (PropertyWrite + HostResource); each branch is checked with IAuthorizationService inside the action.",
@@ -86,11 +81,6 @@ public class EndpointAuthorizationArchitectureTests
         ["ConcordatoFacileController.CreateCheckout"] = "NF-03: programmatic OR-authorization (RequirePropertyWrite OR RequireOrgBillingWrite) checked with IAuthorizationService inside the action: the attribute would be AND-only, but a host needs only property write and an org admin only billing write.",
     };
 
-    /// <summary>
-    /// Policies registered before the first action that asks for them, each with its reason: the task that seeds a permission creates its policy once,
-    /// and the endpoints of the later tasks of the same plan use it. Still registered (the test checks it); an entry is harmless once an action uses
-    /// the policy.
-    /// </summary>
     private static readonly IReadOnlyDictionary<string, string> RegisteredAheadOfTheirEndpoints = new Dictionary<string, string>
     {
         [CasazenPolicies.GuestPortalManage] = "E50/F01/US01/T01 (NF-152, guest portal plan decision A7) creates the «Portale ospiti» permission once, with its seed, its token fallback and its policy, for the set-up endpoints of the guest portal epics (E51-E59: house guide, extras, suppliers and percentages, automatic replies, wizard); the endpoints of the stay link of a booking ask for booking.read and booking.write.",
@@ -110,20 +100,12 @@ public class EndpointAuthorizationArchitectureTests
         ["PublicSupplierController.Quote"] = "The price estimate of a published service: computed from the supplier's own price list, nothing stored, nothing personal (SP-09, behind SupplierShowcaseBooking).",
     };
 
-    /// <summary>
-    /// The anonymous endpoints of the booking from the supplier showcase (SP-10), each with the reason it is public: the customer
-    /// has no account, and the first call only holds a slot until the customer's e-mail is checked.
-    /// </summary>
     private static readonly IReadOnlyDictionary<string, string> PublicSupplierBooking = new Dictionary<string, string>
     {
         ["PublicSupplierBookingController.Create"] = "A customer without an account holds a slot of an active supplier and leaves the data of the request; nothing reaches the supplier until the e-mail is checked (SP-10, behind SupplierShowcaseBooking, rate limited per IP and per address).",
         ["PublicSupplierBookingController.ConfirmEmail"] = "The customer follows the link of the verification e-mail: the token in the body is the secret, and only then the request exists (SP-10, behind SupplierShowcaseBooking, rate limited).",
     };
 
-    /// <summary>
-    /// The anonymous endpoints of the request on measure from the supplier showcase (SP-10b), each with the reason it is public: the
-    /// customer has no account, and the first call only keeps what it wrote until the customer's e-mail is checked.
-    /// </summary>
     private static readonly IReadOnlyDictionary<string, string> PublicSupplierInquiry = new Dictionary<string, string>
     {
         ["PublicSupplierInquiryController.Create"] = "A customer without an account asks an active supplier for something on measure and leaves the data of the request and its words; nothing reaches the supplier until the e-mail is checked (SP-10b, behind SupplierShowcaseBooking, rate limited per IP and per address).",
@@ -135,10 +117,6 @@ public class EndpointAuthorizationArchitectureTests
             .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .Where(m => !m.IsSpecialName && m.GetCustomAttributes(inherit: true).OfType<IActionHttpMethodProvider>().Any());
 
-    /// <summary>
-    /// The anonymous endpoints of the customer's own area of a booking made from the supplier showcase (SP-11), each with the reason it
-    /// is public: the customer has no account, and proves it is the one who booked with the code of the booking and its e-mail address.
-    /// </summary>
     private static readonly IReadOnlyDictionary<string, string> PublicSupplierBookingManagement = new Dictionary<string, string>
     {
         ["PublicSupplierBookingManagementController.Lookup"] = "A customer without an account finds its booking again with the code and the e-mail address of the booking: one 404 for everything that does not identify it (SP-11, behind SupplierShowcaseBooking, rate limited per IP and per address).",
@@ -191,7 +169,6 @@ public class EndpointAuthorizationArchitectureTests
             var gates = action.GetCustomAttributes<FeatureGateAttribute>(inherit: true).Select(g => g.Flag).ToList();
             Assert.Equal(new[] { FeatureFlags.SupplierShowcaseBooking }, gates);
 
-            // The policy of "Le mie prenotazioni" per IP, and the limit per address and supplier next to it, on every endpoint.
             Assert.Equal(RateLimitPolicies.PublicGuestBookingLookup, RateLimitPolicyOf(action));
             Assert.Contains(RateLimitPolicyOf(action)!, registered);
             Assert.Single(action.GetCustomAttributes<SupplierBookingManageRateLimitAttribute>());
@@ -215,7 +192,6 @@ public class EndpointAuthorizationArchitectureTests
             var verbs = action.GetCustomAttributes<HttpMethodAttribute>().ToList();
             var template = Assert.Single(verbs).Template ?? string.Empty;
 
-            // POST only (a GET would put the credentials where logs and caches read them), and no route parameter at all.
             Assert.Equal(new[] { "POST" }, Assert.Single(verbs).HttpMethods);
             Assert.DoesNotContain("{", template);
             Assert.DoesNotContain(action.GetParameters(), p => p.GetCustomAttributes<FromQueryAttribute>().Any() || p.GetCustomAttributes<FromRouteAttribute>().Any());
@@ -240,7 +216,6 @@ public class EndpointAuthorizationArchitectureTests
     [Fact]
     public void PublicSupplierBookingManagement_TheFlagMakesThemAnswerLikeARouteThatDoesNotExist_BeforeAuthenticationAndBinding()
     {
-        // The flag is read by the middleware that runs before authentication and model binding: every action carries the attribute.
         Assert.All(
             PublicBookingManagementActions(),
             action => Assert.NotEmpty(action.GetCustomAttributes<FeatureGateAttribute>(inherit: true)));
@@ -288,7 +263,6 @@ public class EndpointAuthorizationArchitectureTests
         var confirm = typeof(PublicSupplierBookingController).GetMethod(nameof(PublicSupplierBookingController.ConfirmEmail))!;
 
         Assert.Equal(RateLimitPolicies.PublicSupplierBookingCreate, RateLimitPolicyOf(create));
-        // The second limit, per e-mail address and supplier, runs next to the one per IP.
         Assert.Single(create.GetCustomAttributes<SupplierBookingEmailRateLimitAttribute>());
         Assert.Equal(RateLimitPolicies.PublicBookingLookup, RateLimitPolicyOf(confirm));
         Assert.Empty(confirm.GetCustomAttributes<SupplierBookingEmailRateLimitAttribute>());
@@ -324,7 +298,6 @@ public class EndpointAuthorizationArchitectureTests
         Assert.Equal(PublicSupplierInquiry.Count, PublicInquiryActions().Count());
         foreach (var action in PublicInquiryActions())
         {
-            // The flag is read by the middleware that runs before authentication and model binding: every action carries the attribute.
             var gates = action.GetCustomAttributes<FeatureGateAttribute>(inherit: true).Select(g => g.Flag).ToList();
             Assert.Equal(new[] { FeatureFlags.SupplierShowcaseBooking }, gates);
 
@@ -347,7 +320,6 @@ public class EndpointAuthorizationArchitectureTests
         var confirm = typeof(PublicSupplierInquiryController).GetMethod(nameof(PublicSupplierInquiryController.ConfirmEmail))!;
 
         Assert.Equal(RateLimitPolicies.PublicSupplierBookingCreate, RateLimitPolicyOf(create));
-        // The second limit, per e-mail address and supplier, runs next to the one per IP (and is the booking's own).
         Assert.Single(create.GetCustomAttributes<SupplierBookingEmailRateLimitAttribute>());
         Assert.Equal(RateLimitPolicies.PublicBookingLookup, RateLimitPolicyOf(confirm));
         Assert.Empty(confirm.GetCustomAttributes<SupplierBookingEmailRateLimitAttribute>());
@@ -406,7 +378,6 @@ public class EndpointAuthorizationArchitectureTests
                 Assert.Equal(new[] { FeatureFlags.SupplierShowcaseBooking }, gates);
         }
 
-        // Nothing at the class level either: the flag gates the new endpoints one by one, and the page keeps answering.
         Assert.Empty(typeof(PublicSupplierController).GetCustomAttributes<FeatureGateAttribute>(inherit: true));
     }
 
@@ -494,26 +465,21 @@ public class EndpointAuthorizationArchitectureTests
     {
         var provider = BuildPolicyProvider();
 
-        // PropertyOwner was RequireAuthenticatedUser() under a misleading name; LongTermLandlord and
-        // PropertyManagerOrAdmin were JWT-role policies outside the context model (TN-3, A9 section 1).
         foreach (var legacy in new[] { "PropertyOwner", "PropertyManagerOrAdmin", "LongTermLandlord" })
             Assert.Null(await provider.GetPolicyAsync(legacy));
     }
 
     private const string RolesPrefix = "roles:";
 
-    /// <summary>The routed actions declared by the public supplier controller.</summary>
     private static IEnumerable<MethodInfo> PublicSupplierActions() =>
         typeof(PublicSupplierController)
             .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .Where(m => !m.IsSpecialName && m.GetCustomAttributes(inherit: true).OfType<IActionHttpMethodProvider>().Any());
 
-    /// <summary>The rate limit of an action: its own attribute, else the controller's.</summary>
     private static string? RateLimitPolicyOf(MethodInfo action) =>
         (action.GetCustomAttribute<EnableRateLimitingAttribute>()
          ?? action.DeclaringType!.GetCustomAttribute<EnableRateLimitingAttribute>())?.PolicyName;
 
-    /// <summary>The limit a <see cref="RequestSizeLimitAttribute"/> sets, as the endpoint metadata says it.</summary>
     private static long? GetBytes(RequestSizeLimitAttribute attribute) => ((IRequestSizeLimitMetadata)attribute).MaxRequestBodySize;
 
     private static bool IsAuthenticatedOnly(string? policy) =>
@@ -535,10 +501,6 @@ public class EndpointAuthorizationArchitectureTests
 
     private sealed record ActionInfo(string Key, bool IsAnonymous, IReadOnlyList<string?> Policies);
 
-    /// <summary>
-    /// Every routed action of the API. A bare <c>[Authorize]</c> counts as a <c>null</c> policy (default policy =
-    /// authenticated user); <c>[Authorize(Roles = ...)]</c> counts as a role requirement.
-    /// </summary>
     private static IEnumerable<ActionInfo> Actions()
     {
         var controllers = typeof(PaymentsController).Assembly.GetTypes()

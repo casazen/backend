@@ -42,10 +42,6 @@ public class OwnerIssuerProfileTests
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
     private static readonly DateTimeOffset Now = new(2026, 11, 20, 10, 0, 0, TimeSpan.Zero);
 
-    /// <summary>
-    /// The shortest value searched for inside a Data Protection payload. A payload is random text, so a short value turns up in it by chance (the building number "12" in about one payload in a hundred); from this
-    /// many characters on the chance is below one in a trillion.
-    /// </summary>
     private const int MinLengthSearchedInPayload = 8;
 
     /// <summary>
@@ -84,8 +80,6 @@ public class OwnerIssuerProfileTests
             Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, payload, StringComparison.Ordinal);
             Assert.NotEqual(value, payload);
 
-            // The payload is random text, so a short value (the building number, the postal code, the town) turns up in it by chance: only a value too long to be met by chance is searched for in it.
-            // A short one is proved by what holds every time: what is stored is a payload and not the value, and the converter of the column gives the value back.
             if (value!.Length >= MinLengthSearchedInPayload)
                 Assert.DoesNotContain(value, payload, StringComparison.Ordinal);
 
@@ -96,7 +90,6 @@ public class OwnerIssuerProfileTests
         Assert.Contains(EncryptedColumns.All, c => c.EntityType == typeof(OrgFiscalIssuerProfile) && c.Property == nameof(OrgFiscalIssuerProfile.VatNumber));
         Assert.Equal(("TEST Mario Rossi", "RSSMRA80A01H501U", "Via del Sole"), (stored.LegalName, stored.FiscalCode, stored.AddressStreet));
 
-        // A reader who may not change the profile gets the identifiers masked: never the whole fiscal code or street.
         var masked = OwnerIssuerProfileDto.From(saved, full: false);
         Assert.True(masked.Masked);
         Assert.Equal("••••••••••••501U", masked.FiscalCode);
@@ -125,7 +118,6 @@ public class OwnerIssuerProfileTests
             profiles.VerifyNoOtherCalls();
         }
 
-        // The reads of a partial scope stay in its reach.
         var world = World.Create();
         var inside = await world.OwnerAsync("IT", propertyOwner: "auth0|solo-alcuni");
         var shared = await world.OwnerAsync("IT", propertyOwner: "auth0|solo-alcuni");
@@ -139,7 +131,6 @@ public class OwnerIssuerProfileTests
         await Assert.ThrowsAsync<NotFoundException>(() => world.Service.GetAsync(partial, shared));
         await Assert.ThrowsAsync<NotFoundException>(() => world.Service.GetAsync(new HostScope(Guid.NewGuid()), inside));
 
-        // The whole organization with the permission saves and reads in full.
         var wholeOrg = Controller(world.Service, OrgWide, financialManage: true);
         var savedByOrg = await wholeOrg.Save(shared, new SaveOwnerIssuerProfileRequest
         {
@@ -209,16 +200,11 @@ public class OwnerIssuerProfileTests
         var off = await Assert.ThrowsAsync<DomainRuleException>(() => world.Service.SaveAsync(OrgId, owner, PrivateOwner(), null));
         Assert.Equal(DocumentIssuerErrorCodes.IssuanceNotAvailable, off.Code);
 
-        // One profile for the owner, whatever was saved, and an owner of another org (or anonymized) is not found.
         Assert.Equal(1, await world.Db.OrgFiscalIssuerProfiles.CountAsync(p => p.PropertyOwnerId == owner));
         world.Flags.Set(FeatureFlags.FiscalDocumentIssuance, true);
         await Assert.ThrowsAsync<NotFoundException>(() => world.Service.SaveAsync(Guid.NewGuid(), owner, PrivateOwner(), null));
     }
 
-    /// <summary>
-    /// Data: an owner's profile in the org never stands for the profile of the organization: the setting of the issuer, the readers of the documents and the demo all
-    /// read the organization's own (<see cref="OrgFiscalIssuerProfileQueries.OfOrganization"/>), even when the owner's was saved first.
-    /// </summary>
     [Fact]
     public async Task OwnerProfile_IsNeverTakenForTheProfileOfTheOrganization()
     {
@@ -249,15 +235,10 @@ public class OwnerIssuerProfileTests
         Assert.Equal(2, await world.Db.OrgFiscalIssuerProfiles.CountAsync());
         Assert.Equal("TEST Agenzia Srl", (await world.Db.OrgFiscalIssuerProfiles.OfOrganization(OrgId).SingleAsync()).LegalName);
 
-        // The accountant package and the agency summary (E15) fall back on the issuer of the organization, never on the owner's saved first.
         var fallback = await AccountantPackageFacts.CurrentIssuerAsync(world.Db, OrgId, CancellationToken.None);
         Assert.Equal(("TEST Agenzia Srl", "01234567897"), (fallback.DisplayName, fallback.VatNumber));
     }
 
-    /// <summary>
-    /// The billing setup (section «Italia»): the owners with an ownership of an Italian property that has not ended and no profile that can issue are counted
-    /// (<c>owner_issuer_missing</c>); a complete profile, a Swiss property, an ended ownership and an anonymized owner are not; nothing is missing without them.
-    /// </summary>
     [Fact]
     public async Task OwnerIssuerSetup_CountsTheItalianOwnersWithoutAProfileThatCanIssue()
     {
@@ -276,7 +257,6 @@ public class OwnerIssuerProfileTests
         (await world.Db.PropertyOwners.SingleAsync(o => o.Id == anonymized)).AnonymizedAt = Now.UtcDateTime;
         await world.Db.SaveChangesAsync();
 
-        // A complete Swiss profile (made for ⚖ C1) does not issue the stays of an Italian property: that owner is missing too.
         var swissProfile = await world.OwnerAsync("IT");
         var swiss = await world.Service.SaveAsync(
             OrgId,
@@ -337,7 +317,6 @@ public class OwnerIssuerProfileTests
         };
     }
 
-    /// <summary>An agency over one in-memory database, with encryption, the shipped tax rules, the issuance on and a clock on 20 November 2026.</summary>
     private sealed class World
     {
         private World(AppDbContext db)
@@ -358,7 +337,6 @@ public class OwnerIssuerProfileTests
             new IssuerTenant(),
             Provider));
 
-        /// <summary>An owner of the org with the whole of a property in <paramref name="country"/> from 2025 (until <paramref name="end"/> when given).</summary>
         public async Task<Guid> OwnerAsync(string country, DateOnly? end = null, string propertyOwner = "auth0|agenzia")
         {
             var owner = new PropertyOwner { OrgId = OrgId, FirstName = "TEST", LastName = "Proprietario", Email = $"{Guid.NewGuid():N}@example.com" };
@@ -368,7 +346,6 @@ public class OwnerIssuerProfileTests
             return owner.Id;
         }
 
-        /// <summary>A property of <paramref name="propertyOwner"/> in <paramref name="country"/>, held in full by the owner.</summary>
         public async Task PeriodAsync(Guid owner, string country, DateOnly? end = null, string propertyOwner = "auth0|agenzia")
         {
             var property = new Property { OrgId = OrgId, OwnerId = propertyOwner, Name = "TEST Casa", Address = "Via 1", City = "Como", Country = country };

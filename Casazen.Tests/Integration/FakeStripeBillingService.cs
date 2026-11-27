@@ -6,17 +6,12 @@ using Microsoft.Extensions.Configuration;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// In-memory Stripe for the platform billing: customers, Checkout Sessions (open / expired) and subscriptions per
-/// customer. Thread-safe, shared by the tests of one factory: each test works on its own org and customer.
-/// </summary>
 public sealed class FakeStripeBillingService(IConfiguration configuration) : IStripeBillingService
 {
     private readonly ConcurrentDictionary<string, FakeSession> _sessions = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, string>> _subscriptionsByCustomer = new();
     private int _customersCreated;
 
-    /// <summary>Stripe customers created (not returned from the org).</summary>
     public int CustomersCreated => _customersCreated;
 
     public Task<string> EnsureCustomerAsync(OrgEntity org, CancellationToken cancellationToken = default)
@@ -81,14 +76,12 @@ public sealed class FakeStripeBillingService(IConfiguration configuration) : ISt
     private readonly ConcurrentDictionary<string, StripeTaxRateSummary> _taxRates = new();
     private readonly ConcurrentDictionary<string, IReadOnlyList<StripeCustomerTaxId>> _taxIdsByCustomer = new();
 
-    /// <summary>Tax rate Stripe Tax would have created (PL-13 tests).</summary>
     public FakeStripeBillingService WithTaxRate(StripeTaxRateSummary rate)
     {
         _taxRates[rate.Id] = rate;
         return this;
     }
 
-    /// <summary>Tax ids of a customer, with their VIES verification status (PL-13 tests).</summary>
     public FakeStripeBillingService WithCustomerTaxIds(string customerId, params StripeCustomerTaxId[] taxIds)
     {
         _taxIdsByCustomer[customerId] = taxIds;
@@ -117,17 +110,12 @@ public sealed class FakeStripeBillingService(IConfiguration configuration) : ISt
 
     public static string CustomerIdFor(Guid orgId) => $"cus_test_{orgId:N}";
 
-    /// <summary>Checkout Sessions ever created for the customer, whatever their status.</summary>
     public IReadOnlyList<(string Id, string Status, PlanTier PlanTier)> SessionsOf(string customerId) =>
         _sessions.Values
             .Where(s => s.CustomerId == customerId)
             .Select(s => (s.Id, s.Status, s.PlanTier))
             .ToList();
 
-    /// <summary>
-    /// Completes an open session as the customer would in Stripe Checkout: the session becomes <c>complete</c> and
-    /// the customer gets a subscription with <paramref name="subscriptionStatus"/>. Returns the subscription id.
-    /// </summary>
     public string CompleteSession(string sessionId, string subscriptionStatus = "active")
     {
         var session = _sessions[sessionId];
@@ -138,7 +126,6 @@ public sealed class FakeStripeBillingService(IConfiguration configuration) : ISt
         return AddSubscription(session.CustomerId, subscriptionStatus);
     }
 
-    /// <summary>Adds a subscription to the customer on the Stripe side (the webhook has not run).</summary>
     public string AddSubscription(string customerId, string status)
     {
         var subscriptionId = $"sub_test_{Guid.NewGuid():N}";
@@ -146,7 +133,6 @@ public sealed class FakeStripeBillingService(IConfiguration configuration) : ISt
         return subscriptionId;
     }
 
-    /// <summary>Live subscriptions of the customer: every status but <c>canceled</c> and <c>incomplete_expired</c>.</summary>
     public int LiveSubscriptionCount(string customerId) =>
         _subscriptionsByCustomer.TryGetValue(customerId, out var byId)
             ? byId.Values.Count(BillingSubscriptionPolicy.BlocksNewCheckout)

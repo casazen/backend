@@ -12,10 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The end-to-end check of a custom domain (BK-17, A3-25): ownership TXT, DNS towards Vercel, the domain on the Vercel
-/// project. The DNS lookups and the Vercel API are doubles: nothing here touches the network.
-/// </summary>
 public class DomainVerificationServiceTests
 {
     private const string Domain = "www.example.it";
@@ -40,14 +36,11 @@ public class DomainVerificationServiceTests
     public DomainVerificationServiceTests()
     {
         _vercel.SetupGet(v => v.IsConfigured).Returns(true);
-        // By default the host did everything right and Vercel has the domain verified.
         GivenTxt(Token);
         GivenCname("cname.vercel-dns.com");
         _dns.Setup(d => d.LookupAddressesAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
         GivenVercelHasDomain(verified: true);
     }
-
-    // ─── Verified: only when everything is in place ────────────────────────────────────────────────
 
     [Fact]
     public async Task VerifyAsync_TxtCnameAndVercelAllRight_SetsVerifiedAndInvalidatesTheHostCache()
@@ -71,7 +64,6 @@ public class DomainVerificationServiceTests
     [Fact]
     public async Task VerifyAsync_OnlyTheTxtIsRight_IsNotVerified()
     {
-        // The old behavior: a TXT alone made the domain "Verified" while Vercel answered 404 (A3-25).
         await using var db = CreateDb();
         var org = await SeedOrgAsync(db);
         GivenCname();
@@ -129,8 +121,6 @@ public class DomainVerificationServiceTests
 
         Assert.Equal(DomainIssues.OwnershipTxtMissing, result.Detail);
     }
-
-    // ─── DNS towards Vercel ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task VerifyAsync_CnameUnderAnAcceptedSuffix_Points()
@@ -195,8 +185,6 @@ public class DomainVerificationServiceTests
     {
         Assert.Equal(expected, DomainVerificationService.IsVercelTarget(target, _options));
     }
-
-    // ─── The Vercel project ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task VerifyAsync_VercelNotConfigured_IsPendingNotVerifiedAndMakesNoCall()
@@ -355,8 +343,6 @@ public class DomainVerificationServiceTests
         Assert.Null(saved.DomainVercelTxtValue);
     }
 
-    // ─── Another org, and a verified domain that stops being right ─────────────────────────────────
-
     [Fact]
     public async Task VerifyAsync_AnotherOrgHasTheDomainVerified_IsFailedDomainTaken()
     {
@@ -379,7 +365,7 @@ public class DomainVerificationServiceTests
         var org = await SeedOrgAsync(db, status: DomainVerificationStatus.Verified);
         org.DomainVerifiedAt = _clock.GetUtcNow().UtcDateTime.AddDays(-3);
         await db.SaveChangesAsync();
-        GivenTxt(); // The host deleted the ownership record.
+        GivenTxt();
         var service = CreateService(db);
 
         var first = await service.VerifyAsync(org);
@@ -395,7 +381,6 @@ public class DomainVerificationServiceTests
         var saved = await db.Orgs.SingleAsync(o => o.Id == org.Id);
         Assert.Equal(DomainVerificationStatus.Failed, saved.DomainVerificationStatus);
         Assert.Null(saved.DomainVerifiedAt);
-        // The host is no longer served: the cached answers of the host are dropped.
         _resolver.Verify(r => r.InvalidateCacheForHost(Domain), Times.Once);
     }
 
@@ -445,8 +430,6 @@ public class DomainVerificationServiceTests
         Assert.Equal(DomainVerificationStatus.Verified, result.Status);
         Assert.Null(org.DomainStatusDetail);
     }
-
-    // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
 
     private void GivenTxt(params string[] values) =>
         _txt.Setup(t => t.LookupTxtAsync(TxtHost, It.IsAny<CancellationToken>()))

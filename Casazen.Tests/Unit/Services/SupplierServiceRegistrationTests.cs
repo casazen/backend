@@ -76,7 +76,6 @@ public class SupplierServiceRegistrationTests
     [Fact]
     public async Task GetActiveByComune_ActiveSupplierWithEmptyCategories_DoesNotMatchRequestedCategory()
     {
-        // A4-05: "no categories" used to pass every category filter. A supplier is found only for what it declared.
         await using var db = CreateDbContext();
         await ComuneTestData.ImportSampleAsync(db);
         var service = CreateService(db);

@@ -36,7 +36,6 @@ public class ShowcaseBookingRepairPostgresTests(CasazenWebApplicationFactory fac
         var duplicate = await SeedProfileAsync(email, SupplierStatus.Pending, Older);
         await SeedShowcaseAsync(duplicate, "uno@example.com", "due@example.com");
 
-        // The dry run reports the move and changes nothing.
         var dry = await FixOrphanedAsync(dryRun: true);
         Assert.Equal(HttpStatusCode.OK, dry.StatusCode);
         Assert.Equal(2 + 2, SingleMerge(await ReadAsync(dry), duplicate).GetProperty("showcaseRowsMoved").GetInt32());
@@ -51,8 +50,6 @@ public class ShowcaseBookingRepairPostgresTests(CasazenWebApplicationFactory fac
         Assert.Equal(4, merge.GetProperty("showcaseRowsMoved").GetInt32());
         Assert.True(merge.GetProperty("duplicateOrgDeleted").GetBoolean());
 
-        // Nothing is lost with the duplicate profile (the cascade would have taken what stayed): every customer and request is the
-        // keeper's, the holds of the duplicate are gone, and each request still points at a customer of the keeper.
         Assert.False(await ProfileExistsAsync(duplicate));
         Assert.Equal((0, 0, 0), await CountsAsync(duplicate));
         Assert.Equal((2, 2, 0), await CountsAsync(keeper));
@@ -75,23 +72,20 @@ public class ShowcaseBookingRepairPostgresTests(CasazenWebApplicationFactory fac
         var email = $"sp10-{Guid.NewGuid():N}@test.com";
         var keeper = await SeedProfileAsync(email, SupplierStatus.Active, Newer);
         var duplicate = await SeedProfileAsync(email, SupplierStatus.Pending, Older);
-        // The same person booked both: "uno@example.com" is a customer of each. "due@example.com" is only the duplicate's.
         var keepersCustomer = (await SeedShowcaseAsync(keeper, "uno@example.com")).Customers.Single();
         await SeedShowcaseAsync(duplicate, "uno@example.com", "due@example.com");
 
         var applied = await FixOrphanedAsync(dryRun: false);
 
         Assert.Equal(HttpStatusCode.OK, applied.StatusCode);
-        // Moved: its 2 requests, the customer only it has, and the one that was merged (its row is gone).
         Assert.Equal(4, SingleMerge(await ReadAsync(applied), duplicate).GetProperty("showcaseRowsMoved").GetInt32());
-        Assert.Equal((2, 3, 1), await CountsAsync(keeper)); // its own hold stays, the duplicate's was dropped
+        Assert.Equal((2, 3, 1), await CountsAsync(keeper));
         Assert.Equal((0, 0, 0), await CountsAsync(duplicate));
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var customers = await db.ServiceCustomers.AsNoTracking().Where(c => c.OrgId == keeper).ToListAsync();
         Assert.Equal(2, customers.Count);
         var requests = await db.ServiceRequests.IgnoreQueryFilters().AsNoTracking().Where(r => r.OrgId == keeper).ToListAsync();
-        // The same address is one customer: two of the three requests are its.
         Assert.Equal(2, requests.Count(r => r.CustomerId == keepersCustomer.Id));
         Assert.All(requests, request => Assert.Contains(customers, customer => customer.Id == request.CustomerId));
     }
@@ -111,11 +105,8 @@ public class ShowcaseBookingRepairPostgresTests(CasazenWebApplicationFactory fac
         var merge = SingleMerge(await ReadAsync(applied), duplicate);
         Assert.Equal(0, merge.GetProperty("showcaseRowsMoved").GetInt32());
         Assert.True(merge.GetProperty("duplicateOrgDeleted").GetBoolean());
-        // The keeper's own showcase is untouched.
         Assert.Equal((1, 1, 1), await CountsAsync(keeper));
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private static async Task<JsonElement> ReadAsync(HttpResponseMessage response) =>
         await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -131,7 +122,6 @@ public class ShowcaseBookingRepairPostgresTests(CasazenWebApplicationFactory fac
         return await admin.PostAsync($"/api/admin/suppliers/fix-orphaned?dryRun={(dryRun ? "true" : "false")}", null);
     }
 
-    /// <summary>Data written before the migration SupplierProfileEmailUnique: without its unique index.</summary>
     private async Task DropEmailIndexAsync()
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -145,7 +135,6 @@ public class ShowcaseBookingRepairPostgresTests(CasazenWebApplicationFactory fac
         return await scope.ServiceProvider.GetRequiredService<AppDbContext>().SupplierProfiles.AnyAsync(sp => sp.OrgId == orgId);
     }
 
-    /// <summary>The customers, the showcase requests (their <c>OrgId</c>) and the holds of a supplier org.</summary>
     private async Task<(int Customers, int Requests, int Holds)> CountsAsync(Guid orgId)
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -189,7 +178,6 @@ public class ShowcaseBookingRepairPostgresTests(CasazenWebApplicationFactory fac
 
     private sealed record ShowcaseSeed(IReadOnlyList<ServiceCustomer> Customers, IReadOnlyList<ServiceRequest> Requests);
 
-    /// <summary>A customer per address, a showcase request for each, and one hold, of <paramref name="orgId"/> (encrypted as in production).</summary>
     private async Task<ShowcaseSeed> SeedShowcaseAsync(Guid orgId, params string[] addresses)
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -197,7 +185,6 @@ public class ShowcaseBookingRepairPostgresTests(CasazenWebApplicationFactory fac
         var customers = addresses.Select(address => new ServiceCustomer
         {
             OrgId = orgId,
-            // Any 64 hexadecimal characters stand for the HMAC of the address; the same address gives the same text.
             EmailHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(address))).ToLowerInvariant(),
             FullName = "Mario Rossi",
             Email = address,

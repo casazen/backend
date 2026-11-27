@@ -128,7 +128,6 @@ public class CheckoutPaymentReconciliationPostgresTests : IClassFixture<CasazenW
         Assert.Equal(BookingStatus.Pending, (await LoadBookingAsync(hold.BookingId)).Status);
     }
 
-    /// <summary>Reconciliation and then expiry, as the recurring job runs them. The tests share a database: each one checks only its own hold.</summary>
     private async Task RunJobAsync()
     {
         await using var scope = _factory.Services.CreateAsyncScope();
@@ -152,7 +151,6 @@ public class CheckoutPaymentReconciliationPostgresTests : IClassFixture<CasazenW
 
     private sealed record SeededHold(Guid BookingId, string PaymentIntentId);
 
-    /// <summary>A hold older than the TTL whose payment the expiry job saw in flight (<c>Processing</c>) <paramref name="paymentMinutesAgo"/> ago.</summary>
     private async Task<SeededHold> SeedStuckHoldAsync(int paymentMinutesAgo)
     {
         var account = $"acct_recon_{Guid.NewGuid():N}";

@@ -52,7 +52,6 @@ public class SiteApiIntegrationTests(
         Assert.True(account.GetProperty("embedEnabled").GetBoolean());
         Assert.Equal(org.Id, account.GetProperty("domain").GetProperty("orgId").GetGuid());
 
-        // Served on its own verified domain: its origin, the kind customDomain, and the embedEnabled that resolve-host gives for that host.
         var domain = $"served-{Guid.NewGuid():N}.example.it";
         await OrgDomainSurfacesIntegrationTests.SetVerifiedDomainAsync(flagsOn, org.Id, domain);
         var served = await plugin.GetFromJsonAsync<JsonElement>("/api/site/v1/account");
@@ -62,7 +61,6 @@ public class SiteApiIntegrationTests(
         var resolved = await publicClient.GetFromJsonAsync<JsonElement>($"/api/public/resolve-host?host={domain}");
         Assert.Equal(resolved.GetProperty("embedEnabled").GetBoolean(), served.GetProperty("embedEnabled").GetBoolean());
 
-        // domain: the object GET api/orgs/{orgId}/domain gives the console, member by member.
         using var admin = flagsOn.CreateAuthenticatedClient(adminId, "PropertyOwner");
         var console = await admin.GetFromJsonAsync<JsonElement>($"/api/orgs/{org.Id}/domain");
         Assert.Equal(console.GetRawText(), served.GetProperty("domain").GetRawText());
@@ -93,7 +91,6 @@ public class SiteApiIntegrationTests(
 
         await AssertProblemAsync(await plugin.PutAsJsonAsync("/api/site/v1/domain", new { customDomain = "not a domain" }), HttpStatusCode.BadRequest, "org_domain_invalid");
         await AssertProblemAsync(await plugin.PutAsJsonAsync("/api/site/v1/domain", new { customDomain = takenDomain }), HttpStatusCode.Conflict, "org_domain_in_use");
-        // `{}` is a client that dropped its empty values, not «go back to CasaZen».
         await AssertProblemAsync(await plugin.PutAsJsonAsync("/api/site/v1/domain", new { }), HttpStatusCode.BadRequest, "org_domain_invalid");
         Assert.Equal(domain, (await OrgDomainSurfacesIntegrationTests.ReadOrgAsync(flagsOn, org.Id)).CustomDomain);
 
@@ -130,7 +127,6 @@ public class SiteApiIntegrationTests(
         using var plugin = PluginClient(flagsOn, await ConnectAsync(flagsOn, org.Id));
         using var otherPlugin = PluginClient(flagsOn, await ConnectAsync(flagsOn, other.Id));
 
-        // Without a domain: 400 and no check. Every call counts against the budget of its credential.
         for (var i = 0; i < 20; i++)
             await AssertProblemAsync(await plugin.PostAsync("/api/site/v1/domain/verify", content: null), HttpStatusCode.BadRequest, "org_domain_not_configured");
 
@@ -139,7 +135,6 @@ public class SiteApiIntegrationTests(
         Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
         Assert.Equal("rate_limited", (await limited.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
         Assert.True(limited.Headers.CacheControl?.NoStore);
-        // Another credential has its own budget, and the other endpoints of the limited one are not touched by it.
         await AssertProblemAsync(await otherPlugin.PostAsync("/api/site/v1/domain/verify", content: null), HttpStatusCode.BadRequest, "org_domain_not_configured");
         Assert.Equal(HttpStatusCode.OK, (await plugin.GetAsync("/api/site/v1/account")).StatusCode);
     }
@@ -195,7 +190,6 @@ public class SiteApiIntegrationTests(
         var stored = await OrgDomainSurfacesIntegrationTests.ReadOrgAsync(flagsOn, org.Id);
         Assert.Equal((true, false, true), (stored.GuestAreaOnOwnDomain, stored.OwnerPortalOnOwnDomain, stored.UseOwnDomainForLinks));
 
-        // The three choices are required, as in the console.
         Assert.Equal(HttpStatusCode.BadRequest, (await plugin.PutAsJsonAsync("/api/site/v1/domain/surfaces", new { guestAreaOnOwnDomain = true })).StatusCode);
         using var withoutDomain = PluginClient(flagsOn, await ConnectAsync(flagsOn, noDomain.Id));
         await AssertProblemAsync(await withoutDomain.PutAsJsonAsync("/api/site/v1/domain/surfaces", AllOn), HttpStatusCode.BadRequest, "org_domain_not_configured");
@@ -217,7 +211,6 @@ public class SiteApiIntegrationTests(
         Assert.Equal(HttpStatusCode.NotFound, surfaces.StatusCode);
         var account = await plugin.GetAsync("/api/site/v1/account");
         Assert.Equal(HttpStatusCode.OK, account.StatusCode);
-        // Without WhiteLabelHost the domain has no surfaces block, as in the console.
         Assert.Equal(JsonValueKind.Null, (await account.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("domain").GetProperty("surfaces").ValueKind);
         Assert.False((await OrgDomainSurfacesIntegrationTests.ReadOrgAsync(embedOnly, org.Id)).GuestAreaOnOwnDomain);
     }
@@ -239,7 +232,6 @@ public class SiteApiIntegrationTests(
         Assert.Equal(orgA.Id, account.GetProperty("org").GetProperty("id").GetGuid());
         Assert.DoesNotContain(domainB, account.GetRawText(), StringComparison.Ordinal);
 
-        // The org is the credential's: the address, the query and the body may name B, nothing of B moves.
         var domainA = $"orga-{Guid.NewGuid():N}.example.it";
         var changed = await pluginA.PutAsJsonAsync(
             $"/api/site/v1/domain?orgId={orgB.Id}",
@@ -258,11 +250,9 @@ public class SiteApiIntegrationTests(
         Assert.Equal(HttpStatusCode.OK, verify.StatusCode);
         Assert.Equal(domainA, (await verify.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("verify").GetProperty("customDomain").GetString());
 
-        // The domain of B is B's: A cannot take it.
         await AssertProblemAsync(await pluginA.PutAsJsonAsync("/api/site/v1/domain", new { customDomain = domainB }), HttpStatusCode.Conflict, "org_domain_in_use");
 
         Assert.Equal(beforeB, await StateAsync(flagsOn, orgB.Id));
-        // B's own credential still reads B, and so does its administrator in the console.
         var accountB = await pluginB.GetFromJsonAsync<JsonElement>("/api/site/v1/account");
         Assert.Equal(orgB.Id, accountB.GetProperty("org").GetProperty("id").GetGuid());
         Assert.Equal(domainB, accountB.GetProperty("domain").GetProperty("customDomain").GetString());
@@ -278,14 +268,11 @@ public class SiteApiIntegrationTests(
         using var person = flagsOn.CreateAuthenticatedClient(adminId, "PropertyOwner");
         using var anonymous = flagsOn.CreateClient();
 
-        // A sign-in of a person is no credential of a site, and nobody without one gets in.
         await AssertUnauthorizedOnEveryEndpointAsync(person);
         await AssertUnauthorizedOnEveryEndpointAsync(anonymous);
         Assert.Equal(HttpStatusCode.OK, (await plugin.GetAsync("/api/site/v1/account")).StatusCode);
-        // And a credential of a site is no sign-in of a person.
         Assert.Equal(HttpStatusCode.Unauthorized, (await plugin.GetAsync($"/api/orgs/{org.Id}/domain")).StatusCode);
 
-        // Revoked (here by the plugin itself): the same credential is 401 everywhere, at once.
         Assert.Equal(HttpStatusCode.NoContent, (await plugin.DeleteAsync("/api/site/v1/connection")).StatusCode);
         await AssertUnauthorizedOnEveryEndpointAsync(plugin);
     }
@@ -321,14 +308,12 @@ public class SiteApiIntegrationTests(
         });
         using var plugin = PluginClient(flagsOn, await ConnectAsync(flagsOn, org.Id));
 
-        // An agency of a commercial sign-up without the add-on direct-booking gets what the console's OrgDomain endpoints give.
         HttpResponseMessage[] refused =
         [
             await plugin.GetAsync("/api/site/v1/account"),
             await plugin.PutAsJsonAsync("/api/site/v1/domain", new { customDomain = $"prenota-{Guid.NewGuid():N}.example.it" }),
             await plugin.PostAsync("/api/site/v1/domain/verify", content: null),
             await plugin.PutAsJsonAsync("/api/site/v1/domain/surfaces", AllOn),
-            // It answers before the body is read: the same 403 for a body that is no JSON.
             await plugin.PutAsync("/api/site/v1/domain", new StringContent("not json", Encoding.UTF8, "application/json")),
         ];
         foreach (var answer in refused)
@@ -341,7 +326,6 @@ public class SiteApiIntegrationTests(
 
         Assert.Null((await OrgDomainSurfacesIntegrationTests.ReadOrgAsync(flagsOn, org.Id)).CustomDomain);
 
-        // With the module every operation passes.
         await OrgDomainSurfacesIntegrationTests.UpdateOrgAsync(flagsOn, org.Id, o => o.CommercialPaidAddonsJson = "[\"direct-booking\"]");
         Assert.Equal(HttpStatusCode.OK, (await plugin.GetAsync("/api/site/v1/account")).StatusCode);
 
@@ -351,9 +335,6 @@ public class SiteApiIntegrationTests(
         Assert.Equal(HttpStatusCode.NoContent, (await plugin.DeleteAsync("/api/site/v1/connection")).StatusCode);
     }
 
-    // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>An agency with a billing administrator and a plan (Pro by default: the custom domain is a Pro feature).</summary>
     private static async Task<(OrgEntity Org, string AdminId)> SeedAgencyAsync(CasazenWebApplicationFactory factory, PlanTier tier = PlanTier.Pro)
     {
         var adminId = $"auth0|site-api-{Guid.NewGuid():N}";
@@ -390,7 +371,6 @@ public class SiteApiIntegrationTests(
         return client;
     }
 
-    /// <summary>The same host (the same database) with a check of the domain that finds nothing: no DNS, no Vercel.</summary>
     private static WebApplicationFactory<Program> WithPendingVerification(CasazenWebApplicationFactory factory) =>
         factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
@@ -443,7 +423,6 @@ public class SiteApiIntegrationTests(
         Assert.All(answers, answer => Assert.Equal(HttpStatusCode.Unauthorized, answer.StatusCode));
     }
 
-    /// <summary>The check of the domain with nothing to find: the records are not there yet.</summary>
     private sealed class PendingVerification : IDomainVerificationService
     {
         public Task<DomainVerificationResult> VerifyAsync(OrgEntity org, CancellationToken cancellationToken = default) =>

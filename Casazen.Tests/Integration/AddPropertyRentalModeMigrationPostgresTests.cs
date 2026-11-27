@@ -48,13 +48,11 @@ public class AddPropertyRentalModeMigrationPostgresTests : IAsyncLifetime
             .ToListAsync();
         Assert.Contains("IX_Properties_OrgId_RentalMode", indexes);
 
-        // The column default is 0 = Short: an old writer that does not know the column still creates short-stay properties.
         var late = Guid.NewGuid();
         await InsertPropertyAsync(db, late, org, "Scritta dal vecchio codice", maxGuests: 0, nightlyRate: 0);
         Assert.Equal(RentalMode.Short, await ModeAsync(late));
     }
 
-    /// <summary>A property with the columns of the first <c>Properties</c> table only (<see cref="LegacyPropertyRows"/>).</summary>
     private static Task InsertPropertyAsync(AppDbContext db, Guid id, Guid orgId, string name, int maxGuests, decimal nightlyRate) =>
         LegacyPropertyRows.InsertAsync(db, new Property
         {

@@ -9,10 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>
-/// E05/F05/US01/T03 (NF-66, NF-67, AC-NF66-3, AC-NF67-3, PO-08): what the assistant does in each situation, for the organization and as the exceptions of a property: the default of the
-/// catalog, the row of the organization over it, the row of the property over both, the start of the trust period, the templates, and the version of the instructions.
-/// </summary>
 public class AssistantSituationServiceTests
 {
     private const string User = "auth0|admin";
@@ -23,8 +19,6 @@ public class AssistantSituationServiceTests
     private static async Task<int> VersionAsync(AppDbContext db) => (await AssistantTestKit.Rules(db).GetAsync(Org)).InstructionVersion;
 
     private static EffectiveSituation Of(IEnumerable<EffectiveSituation> list, AssistantSituation situation) => list.Single(s => s.Situation == situation);
-
-    // ─── the default ───
 
     [Fact]
     public async Task ListEffectiveAsync_NothingConfigured_GivesThe15SituationsOfTheCatalogInDraft_TheEmergencyInEscalate()
@@ -48,7 +42,6 @@ public class AssistantSituationServiceTests
         Assert.Equal(AssistantMode.Escalate, Of(list, AssistantSituation.Emergency).Mode);
         Assert.All(list.Where(s => s.Situation != AssistantSituation.Emergency), s => Assert.Equal(AssistantMode.Draft, s.Mode));
 
-        // A read writes nothing: no row, no rules row, no version.
         Assert.Empty(await db.AssistantSituationSettings.AsNoTracking().ToListAsync());
         Assert.Empty(await db.OrgAssistantRules.AsNoTracking().ToListAsync());
     }
@@ -94,18 +87,14 @@ public class AssistantSituationServiceTests
 
         Assert.All(await service.ListEffectiveAsync(Org, property.Id), s => Assert.False(AssistantModeRules.TrustPeriodElapsed(s.ModeSince, farLater, fortnight)));
 
-        // The first save gives the situation a start: 13 days in is not the fortnight, 14 are.
         await service.SaveAsync(Org, null, AssistantSituation.Parking, AssistantMode.Draft, null, null, User);
         var saved = await service.ResolveAsync(Org, property.Id, AssistantSituation.Parking);
         Assert.Equal(AssistantTestKit.Now.UtcDateTime, saved.ModeSince);
         Assert.False(AssistantModeRules.TrustPeriodElapsed(saved.ModeSince, AssistantTestKit.Now.UtcDateTime.AddDays(13), fortnight));
         Assert.True(AssistantModeRules.TrustPeriodElapsed(saved.ModeSince, AssistantTestKit.Now.UtcDateTime.AddDays(14), fortnight));
 
-        // The others stay unknown: a saved row gives no start to the other situations.
         Assert.Null((await service.ResolveAsync(Org, property.Id, AssistantSituation.WiFi)).ModeSince);
     }
-
-    // ─── the organization's row ───
 
     [Fact]
     public async Task SaveAsync_ForTheOrganization_StartsTheTrustPeriodNow_AndGrowsTheVersion()
@@ -185,8 +174,6 @@ public class AssistantSituationServiceTests
         Assert.Equal(KnowledgeTopic.Contacts, rows.Single(r => r.Situation == AssistantSituation.WiFi).ResponseSource);
     }
 
-    // ─── the exceptions of a property, and the inheritance ───
-
     [Fact]
     public async Task APropertyFollowsTheOrganization_UntilItHasAnExceptionOfItsOwn_AndGoesBackWhenItIsRemoved()
     {
@@ -196,10 +183,8 @@ public class AssistantSituationServiceTests
         var service = AssistantTestKit.Situations(db);
         await service.SaveAsync(Org, null, AssistantSituation.Parking, AssistantMode.Automatic, "Parcheggio gratuito.", null, User);
 
-        // Everyone follows the organization.
         Assert.Equal(AssistantSettingOrigin.Organization, Of(await service.ListEffectiveAsync(Org, withException.Id), AssistantSituation.Parking).Origin);
 
-        // The exception of one property is a whole row: it does not take the template of the organization's.
         await service.SaveAsync(Org, withException.Id, AssistantSituation.Parking, AssistantMode.Draft, null, KnowledgeTopic.Directions, User);
         var own = Of(await service.ListEffectiveAsync(Org, withException.Id), AssistantSituation.Parking);
         Assert.Equal(AssistantMode.Draft, own.Mode);
@@ -207,18 +192,15 @@ public class AssistantSituationServiceTests
         Assert.False(own.HasTemplate);
         Assert.Equal(KnowledgeTopic.Directions, own.Source);
 
-        // The other property and the organization itself are as they were.
         var other = Of(await service.ListEffectiveAsync(Org, following.Id), AssistantSituation.Parking);
         Assert.Equal(AssistantMode.Automatic, other.Mode);
         Assert.Equal(AssistantSettingOrigin.Organization, other.Origin);
         Assert.Equal("Parcheggio gratuito.", other.Template);
         Assert.Equal(AssistantMode.Automatic, Of(await service.ListEffectiveAsync(Org, null), AssistantSituation.Parking).Mode);
 
-        // The exception of the property is only for the property: the pipeline reads it for that property and the organization's for the other.
         Assert.Equal(AssistantMode.Draft, (await service.ResolveAsync(Org, withException.Id, AssistantSituation.Parking)).Mode);
         Assert.Equal(AssistantMode.Automatic, (await service.ResolveAsync(Org, following.Id, AssistantSituation.Parking)).Mode);
 
-        // Removing the exception restores the organization's value.
         await service.DeleteExceptionAsync(Org, withException.Id, AssistantSituation.Parking);
         var restored = Of(await service.ListEffectiveAsync(Org, withException.Id), AssistantSituation.Parking);
         Assert.Equal(AssistantMode.Automatic, restored.Mode);
@@ -259,8 +241,6 @@ public class AssistantSituationServiceTests
         Assert.Equal(version + 1, await VersionAsync(db));
     }
 
-    // ─── the templates ───
-
     [Fact]
     public async Task SaveAsync_ATemplateWithAnUnknownVariable_IsRefusedWithTheNameOfTheVariable_AndNothingIsSaved()
     {
@@ -297,7 +277,6 @@ public class AssistantSituationServiceTests
 
         var saved = await AssistantTestKit.Situations(db).SaveAsync(Org, null, AssistantSituation.CheckInTime, AssistantMode.Draft, template, null, User);
 
-        // The text is stored with its variables: they are filled in when a message is written, never when the template is saved.
         Assert.Equal(template, saved.Template);
         Assert.Equal(template, (await db.AssistantSituationSettings.AsNoTracking().SingleAsync()).ResponseTemplate);
     }
@@ -329,8 +308,6 @@ public class AssistantSituationServiceTests
         Assert.Null(cleared.Template);
         Assert.Null((await db.AssistantSituationSettings.AsNoTracking().SingleAsync()).ResponseTemplate);
     }
-
-    // ─── what is refused ───
 
     [Fact]
     public async Task SaveAsync_ASituationThatIsNoneOfThe15_IsNotFound_ASourceThatIsNoTopicIsRefused_AndNothingIsWritten()
@@ -379,13 +356,11 @@ public class AssistantSituationServiceTests
         await service.SaveAsync(OtherOrg, null, AssistantSituation.Parking, AssistantMode.Automatic, "Posto riservato a B.", null, User);
         await service.SaveAsync(OtherOrg, ofB.Id, AssistantSituation.Pets, AssistantMode.Escalate, null, null, User);
 
-        // Organization A sees the defaults, and resolves the defaults, for the property of B too.
         var listed = await service.ListEffectiveAsync(Org, null);
         Assert.All(listed, s => Assert.Equal(AssistantSettingOrigin.Default, s.Origin));
         Assert.Equal(new ResolvedSituation(AssistantMode.Draft, null, KnowledgeTopic.Parking, null), await service.ResolveAsync(Org, null, AssistantSituation.Parking));
         Assert.Equal(new ResolvedSituation(AssistantMode.Draft, null, KnowledgeTopic.Pets, null), await service.ResolveAsync(Org, ofB.Id, AssistantSituation.Pets));
 
-        // And a save of A's creates a row of A's, leaving B's alone.
         await service.SaveAsync(Org, null, AssistantSituation.Parking, AssistantMode.Escalate, null, null, User);
         Assert.Equal(AssistantMode.Automatic, (await service.ResolveAsync(OtherOrg, null, AssistantSituation.Parking)).Mode);
         Assert.Equal("Posto riservato a B.", (await service.ResolveAsync(OtherOrg, null, AssistantSituation.Parking)).Template);

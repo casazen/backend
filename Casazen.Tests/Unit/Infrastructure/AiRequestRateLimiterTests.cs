@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>FD-21 (A8-01): the endpoints that call an AI provider are limited per user and per organization.</summary>
 public class AiRequestRateLimiterTests
 {
     [Fact]

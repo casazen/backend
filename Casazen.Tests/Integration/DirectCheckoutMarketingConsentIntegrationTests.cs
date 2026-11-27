@@ -14,7 +14,6 @@ using PlanTierEnum = Casazen.Core.Entities.Enums.PlanTier;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>The default integration factory with a versioned text for the optional "send me offers" consent (CO-15).</summary>
 public sealed class MarketingConsentConfiguredFactory : CasazenWebApplicationFactory
 {
     public const string Version = "marketing-2026-10-test";
@@ -27,11 +26,6 @@ public sealed class MarketingConsentConfiguredFactory : CasazenWebApplicationFac
     }
 }
 
-/// <summary>
-/// DB-03: the optional "send me offers" box of the checkout. Recorded on the guest of the booking and in the append-only
-/// register of the privacy history (CO-15) with the version of the text, only when the text has a version; the checkout
-/// without the box is the one of today.
-/// </summary>
 public class DirectCheckoutMarketingConsentIntegrationTests : IClassFixture<MarketingConsentConfiguredFactory>
 {
     private const string ConsentVersion = "2026-06-direct-checkout-v1";
@@ -133,8 +127,6 @@ public class DirectCheckoutMarketingConsentIntegrationTests : IClassFixture<Mark
         Assert.Equal(1, await db.Guests.IgnoreQueryFilters().CountAsync(g => g.OrgId == property.OrgId));
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
-
     private static object Payload(Guid propertyId, bool? marketingConsent, string paymentOption = "Immediate")
     {
         var checkIn = TimeProvider.System.TodayInRome().AddDays(40);
@@ -215,10 +207,6 @@ public class DirectCheckoutMarketingConsentIntegrationTests : IClassFixture<Mark
     }
 }
 
-/// <summary>
-/// DB-03 on the default factory (no versioned text for the marketing consent, as in every environment today): the box is
-/// not offered and a checkout that ticks it is refused with a stable code, without leaving anything behind.
-/// </summary>
 public class DirectCheckoutMarketingConsentWithoutVersionIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private const string ConsentVersion = "2026-06-direct-checkout-v1";
@@ -271,7 +259,6 @@ public class DirectCheckoutMarketingConsentWithoutVersionIntegrationTests : ICla
     {
         var property = await SeedPropertyAsync();
         using var client = _factory.CreateClient();
-        // The member is in the body, with a value that is not "yes": no 400 for a null, no 422 for the missing text.
         var body = JsonSerializer.Serialize(Payload(property.Id, marketingConsent: null));
         body = body.TrimEnd('}') + $",\"marketingConsent\":{json}}}";
 

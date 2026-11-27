@@ -9,10 +9,6 @@ using static Casazen.Core.Suppliers.ServiceRequestGroupRules;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-BKP: the rules of the backup suppliers that decide who may take the job and when. Pure: the clock and the rows are arguments. The
-/// service and the job that apply them are tested in <c>ServiceRequestBackupGroupTests</c>.
-/// </summary>
 public class ServiceRequestGroupRulesTests
 {
     private static readonly DateTime Start = new(2026, 10, 30, 10, 0, 0, DateTimeKind.Utc);
@@ -127,7 +123,6 @@ public class ServiceRequestGroupRulesTests
         var primary = Primary(status, cancelledBy: cancelledBy);
         var backup = Backup(Start.AddMinutes(2));
 
-        // Even before the group's own row says so: a take in that instant must not give the job twice.
         var verdict = CanTake(ServiceRequestGroupPhase.PrimaryWindow, PrimaryDue, PrimaryDue.AddMinutes(5), backup, primary, [backup]);
 
         Assert.Equal(TakeVerdict.GroupClosed, verdict);
@@ -186,7 +181,6 @@ public class ServiceRequestGroupRulesTests
     public void IsVisibleToHost_OnlyTheRequestTheHostFollowsIsListed(ServiceRequestGroupRole role, bool expected)
     {
         Assert.Equal(expected, IsVisibleToHost(role));
-        // The compiled form and the expression the queries use say the same thing.
         var request = new Casazen.Core.Entities.ServiceRequest { GroupRole = role };
         Assert.Equal(expected, VisibleToHost.Compile()(request));
     }
@@ -211,7 +205,6 @@ public class ServiceRequestGroupRulesTests
         };
 
         Assert.Equal(expected, HoldsSupplierTime.Compile()(request));
-        // The clients of a supplier still leave the backup that accepted out: it is a possible job, not a client yet.
         Assert.Equal(role != ServiceRequestGroupRole.Backup, NotWaitingBackup.Compile()(request));
     }
 

@@ -16,14 +16,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E07/F07/US01/T01 (NF-111): the privacy-safe owner calendar and the governed owner stays. The three proof tests of the brief are the privacy rule of the
-/// calendar (AC-NF111-1), the data rule of the rules and of the approval before any block (AC-NF111-2, AC 3) and the permission rule between owners
-/// (ADR-011-R2). EF InMemory, the real calendar blocks over the real recorder of the calendar changes, the channel manager mocked.
-/// </summary>
 public class OwnerStayFlowTests
 {
-    // 9 October 2026, 10:00 UTC: the 9th in Rome.
     private static readonly DateTimeOffset Now = new(2026, 10, 9, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateOnly Today = new(2026, 10, 9);
     private const string Agent = "auth0|agenzia";
@@ -45,7 +39,6 @@ public class OwnerStayFlowTests
         foreach (var secret in new[] { "Mario", "Rossi", "mario.rossi@example.com", "+39 333 1234567", w.BookingId.ToString(), "Famiglia Bianchi", "Airbnb" })
             Assert.DoesNotContain(secret, json, StringComparison.OrdinalIgnoreCase);
 
-        // Dates and a neutral kind only: the shape of a range has no field a guest could sit in.
         Assert.Equal(
             ["End", "Kind", "Start", "StayId", "StayState"],
             typeof(OwnerCalendarRange).GetProperties().Select(p => p.Name).Order());
@@ -53,24 +46,16 @@ public class OwnerStayFlowTests
         Assert.Contains(new OwnerCalendarRange(Today.AddDays(20), Today.AddDays(22), OwnerCalendarKinds.Blocked), calendar.Ranges);
         Assert.Equal(new OwnerCalendarRange(Today, Today.AddDays(5), OwnerCalendarKinds.Available), calendar.Ranges[0]);
 
-        // Another owner gets what a missing property gets.
         var accessB = await w.AccessAsync(w.UserB);
         var other = await Assert.ThrowsAsync<NotFoundException>(() => service.GetCalendarAsync(accessB, w.PropertyA, null, null));
         Assert.Equal(OwnerPortalErrors.PropertyNotFound, other.Code);
 
-        // An ownership that began ten days ago: the days before are not the owner's and are not shown.
         await w.MoveStartOfOwnershipAsync(w.UserA, Today.AddDays(-10));
         var cut = await service.GetCalendarAsync(await w.AccessAsync(w.UserA), w.PropertyA, Today.AddDays(-30), Today.AddDays(30));
         Assert.Equal(Today.AddDays(-10), cut.From);
         Assert.DoesNotContain(cut.Ranges, r => r.Start < Today.AddDays(-10));
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (AC-NF111-2, AC 3). A request that breaks the rule of the property (the shortest stay, the notice, the blocked dates, the
-    /// nights of the year) or takes a night of a guest is refused and stores nothing; one that obeys it blocks nothing until the agency approves; the
-    /// approval creates ONE block with the id of the stay (a second approval finds it), and the stay reads «confirmed» only once the channel manager
-    /// accepted the block. No guest booking is ever made, a host cannot delete the block by hand, and the cancellation gives back that block and no other.
-    /// </summary>
     [Fact]
     public async Task OwnerStay_RulesAndApprovalGateAvailabilityBlock_Test()
     {
@@ -96,7 +81,6 @@ public class OwnerStayFlowTests
         Assert.Equal((OwnerStayStates.Requested, 8), (stay.State, stay.Nights));
         Assert.False(await w.Db.CalendarBlocks.AnyAsync(b => b.ManualReason == CalendarBlockReason.Owner));
 
-        // 8 nights held this year: 3 more would pass the 10 of the rule.
         Assert.Equal(OwnerStayErrors.AllowanceExceeded, await RefusedCode(Today.AddDays(25), Today.AddDays(28)));
 
         var approved = await service.ApproveAsync(w.OrgId, stay.Id, Agent);
@@ -104,20 +88,16 @@ public class OwnerStayFlowTests
         var block = await w.Db.CalendarBlocks.AsNoTracking().SingleAsync(b => b.ManualReason == CalendarBlockReason.Owner);
         Assert.Equal((stay.Id, Today.AddDays(10), Today.AddDays(18)), (block.Id, DateOnly.FromDateTime(block.StartUtc), DateOnly.FromDateTime(block.EndUtc)));
 
-        // A second approval finds it done: still one block.
         Assert.Equal(OwnerStayStates.ApprovedSyncing, (await service.ApproveAsync(w.OrgId, stay.Id, Agent)).Stay.State);
         Assert.Equal(1, await w.Db.CalendarBlocks.CountAsync(b => b.ManualReason == CalendarBlockReason.Owner));
 
-        // Confirmed only once the channel manager accepted the block.
         await w.SetProcessAsync(approved.Stay.Id, CalendarChangeState.Sent);
         Assert.Equal(OwnerStayStates.Confirmed, (await service.ListForOwnerAsync(access)).Single(s => s.Id == stay.Id).State);
 
-        // Not a guest booking, and the block goes away only with the stay.
         Assert.Equal(bookings, await w.Db.Bookings.CountAsync());
         var byHand = await Assert.ThrowsAsync<DomainRuleException>(() => w.Blocks().DeleteAsync(block.Id));
         Assert.Equal(ManualBlockErrorCodes.HeldByOwnerStay, byHand.Code);
 
-        // The cancellation gives back the block of the stay and nothing else.
         var maintenance = await w.Blocks().CreateAsync(new ManualBlockRequest(
             w.PropertyA, Today.AddDays(50).ToDateTime(TimeOnly.MinValue), Today.AddDays(52).ToDateTime(TimeOnly.MinValue), CalendarBlockReason.Maintenance));
         var cancelled = await service.CancelByAgencyAsync(w.OrgId, stay.Id, Agent);
@@ -127,7 +107,6 @@ public class OwnerStayFlowTests
         var again = await service.CancelByAgencyAsync(w.OrgId, stay.Id, Agent);
         Assert.Equal((OwnerStayStates.Cancelled, 0), (again.Stay.State, await w.Db.CalendarBlocks.CountAsync(b => b.ManualReason == CalendarBlockReason.Owner)));
 
-        // Every step is a line of the activity log, codes only.
         var lines = await w.Db.OrgActivityEntries.AsNoTracking().Where(e => e.SubjectId == stay.Id.ToString()).Select(e => e.DetailsJson).ToListAsync();
         foreach (var status in new[] { "requested", "approved", "cancelled", "released" })
             Assert.Contains(lines, line => line.Contains($"\"status\":\"{status}\"", StringComparison.Ordinal));
@@ -154,7 +133,6 @@ public class OwnerStayFlowTests
         Assert.Equal(OwnerStayErrors.NotFound, (await Assert.ThrowsAsync<NotFoundException>(() => service.ApproveAsync(w.OtherOrgId, stayOfA.Id, Agent))).Code);
         Assert.Equal(OwnerStayStatus.Requested, (await w.Db.OwnerStayRequests.AsNoTracking().SingleAsync(s => s.Id == stayOfA.Id)).Status);
 
-        // The ownership of A ends: the next call has nothing, the stay is kept.
         await w.EndOwnershipAsync(w.UserA);
         var after = await w.AccessAsync(w.UserA);
         Assert.Empty(after.Grants);
@@ -173,7 +151,6 @@ public class OwnerStayFlowTests
         Assert.Equal(OwnerStayStates.Requested, stay.State);
         Assert.False(await w.Db.CalendarBlocks.AnyAsync(b => b.Id == stay.Id));
 
-        // The background work approves it and blocks the dates; the channel manager refuses the block: «sync_failed», a «To do» of the agency.
         await service.ProcessAsync(stay.Id);
         Assert.True(await w.Db.CalendarBlocks.AnyAsync(b => b.Id == stay.Id));
         await w.SetProcessAsync(stay.Id, CalendarChangeState.Failed, "octorate_unavailable");
@@ -183,7 +160,6 @@ public class OwnerStayFlowTests
         Assert.Equal((OwnerStayStates.SyncFailed, "octorate_unavailable"), (failed.Stay.State, failed.Stay.SyncErrorCode));
         Assert.True(await w.Db.InternalActivities.AnyAsync(a => a.EntityId == stay.Id && a.ActivityType == nameof(ActivityType.OwnerStaySyncFailed) && a.CompletedAt == null));
 
-        // Accepted at the next attempt: confirmed, the «To do» closed.
         await w.SetProcessAsync(stay.Id, CalendarChangeState.Sent);
         await service.ReconcileAsync();
         Assert.Equal(OwnerStayStates.Confirmed, (await service.ListForAgencyAsync(w.OrgId, null, null)).Single().Stay.State);
@@ -202,13 +178,11 @@ public class OwnerStayFlowTests
         await w.SetProcessAsync(stay.Id, CalendarChangeState.Failed, "octorate_unavailable");
         Assert.Equal(1, (await service.ReconcileAsync()).TodosRaised);
 
-        // The dates pass with the block still refused: nothing is left to fix, the «To do» is closed and not raised again.
         await w.MoveStayAsync(stay.Id, Today.AddDays(-5), Today.AddDays(-2));
         var over = await service.ReconcileAsync();
         Assert.Equal((0, 1), (over.TodosRaised, over.TodosClosed));
         Assert.False(await w.Db.InternalActivities.AnyAsync(a => a.EntityId == stay.Id && a.CompletedAt == null));
 
-        // The property is deleted with a request waiting: the request is left as it is and the run does not fail.
         var waiting = await service.RequestAsync(access, new OwnerStayRequestCommand(w.PropertyA, Today.AddDays(40), Today.AddDays(42)));
         await w.DeletePropertyAsync(w.PropertyA);
         Assert.Equal(new OwnerStayReconcileResult(0, 0, 0, 0, 0), await service.ReconcileAsync());
@@ -238,7 +212,6 @@ public class OwnerStayFlowTests
         await service.ProcessAsync(stay.Id);
         await w.SetProcessAsync(stay.Id, CalendarChangeState.Failed, "octorate_unavailable");
 
-        // The state turns «failed» and is saved; the «To do» cannot be created: the run ends in error, it does not pass in silence.
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.ReconcileAsync());
         Assert.Equal(OwnerStaySyncState.Failed, (await w.Db.OwnerStayRequests.AsNoTracking().SingleAsync(s => s.Id == stay.Id)).SyncState);
         Assert.False(await w.Db.InternalActivities.AnyAsync(a => a.EntityId == stay.Id));
@@ -248,7 +221,6 @@ public class OwnerStayFlowTests
         Assert.Equal((0, 1), (next.SyncChanges, next.TodosRaised));
         Assert.True(await w.Db.InternalActivities.AnyAsync(a => a.EntityId == stay.Id && a.ActivityType == nameof(ActivityType.OwnerStaySyncFailed) && a.CompletedAt == null));
 
-        // Once: not while it is open, and not again after a person closed it by hand.
         Assert.Equal(0, (await service.ReconcileAsync()).TodosRaised);
         var item = await w.Db.InternalActivities.SingleAsync(a => a.EntityId == stay.Id);
         item.Status = InternalActivity.StatusCompleted;
@@ -258,10 +230,6 @@ public class OwnerStayFlowTests
         Assert.Equal(1, await w.Db.InternalActivities.CountAsync(a => a.EntityId == stay.Id));
     }
 
-    /// <summary>
-    /// The newest 500 stays of the list of an owner are chosen among the stays it may see: another owner profile of the agency with 501 later stays on the same
-    /// property does not push the owner's own out of the list, and does not see it either.
-    /// </summary>
     [Fact]
     public async Task OwnerStay_TheListOfAnOwner_IsNotFilledByTheStaysOfAnotherOwnerProfileOfTheSameProperty()
     {
@@ -291,7 +259,6 @@ public class OwnerStayFlowTests
         var listed = await service.ListForOwnerAsync(await w.AccessAsync(w.UserA));
         Assert.Equal([mine.Id], listed.Select(s => s.Id));
 
-        // The other owner profile holds property B, not A: the stays it has on A are not on its list.
         Assert.Empty(await service.ListForOwnerAsync(await w.AccessAsync(w.UserB)));
     }
 
@@ -309,7 +276,6 @@ public class OwnerStayFlowTests
         var stay = await service.RequestAsync(await w.AccessAsync(w.UserA), new OwnerStayRequestCommand(w.PropertyA, Today.AddDays(10), Today.AddDays(12)));
         await service.ApproveAsync(w.OrgId, stay.Id, Agent);
 
-        // Nothing failed: nothing is sent, the stay answers as it is.
         var untouched = await service.RetrySyncAsync(w.OrgId, stay.Id, Agent);
         Assert.Equal(OwnerStayStates.ApprovedSyncing, untouched.Stay.State);
         runner.Verify(r => r.RetryAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -331,10 +297,6 @@ public class OwnerStayFlowTests
         Assert.Equal(1, lines.Count(line => line.Contains("\"status\":\"syncRetried\"", StringComparison.Ordinal)));
     }
 
-    /// <summary>
-    /// PROOF TEST: the owner withdraws a stay that was approved. It is cancelled at once (and cannot read «confirmed» any more), its block is given back by the
-    /// background work and only that block (another block of the property stays), a second withdrawal answers the same, and nothing is given back twice.
-    /// </summary>
     [Fact]
     public async Task OwnerStay_TheOwnerWithdrawsAnApprovedStay_ItsOwnBlockIsGivenBackInTheBackground_AndNoOther()
     {
@@ -346,7 +308,6 @@ public class OwnerStayFlowTests
         var maintenance = await w.Blocks().CreateAsync(new ManualBlockRequest(
             w.PropertyA, Today.AddDays(50).ToDateTime(TimeOnly.MinValue), Today.AddDays(52).ToDateTime(TimeOnly.MinValue), CalendarBlockReason.Maintenance));
 
-        // At once: cancelled. The block stays where it is until the background work gives it back (the calendar needs the org of the property).
         var withdrawn = await service.CancelByOwnerAsync(access, stay.Id);
         Assert.Equal(OwnerStayStates.Cancelled, withdrawn.State);
         Assert.True(await w.Db.CalendarBlocks.AnyAsync(b => b.Id == stay.Id));
@@ -355,7 +316,6 @@ public class OwnerStayFlowTests
         Assert.False(await w.Db.CalendarBlocks.AnyAsync(b => b.Id == stay.Id));
         Assert.True(await w.Db.CalendarBlocks.AnyAsync(b => b.Id == maintenance.Id));
 
-        // A second withdrawal answers the same; a second run of the background work gives nothing back.
         var again = await service.CancelByOwnerAsync(access, stay.Id);
         Assert.Equal(OwnerStayStates.Cancelled, again.State);
         await service.ProcessAsync(stay.Id);
@@ -379,7 +339,6 @@ public class OwnerStayFlowTests
         Assert.Equal(OwnerStaySyncState.Failed, OwnerStayRules.SyncOf(true, CalendarChangeState.PartiallySent));
     }
 
-    /// <summary>One agency with two properties, each of one owner with its portal account, a guest stay and a block on the first; and another agency.</summary>
     private sealed class World
     {
         private readonly string _name = $"owner-stays-{Guid.NewGuid():N}";
@@ -407,7 +366,6 @@ public class OwnerStayFlowTests
 
         public Guid PropertyB { get; private set; }
 
-        /// <summary>The owner profiles of the agency (<c>PropertyOwner.Id</c>) of the two portal accounts.</summary>
         public Guid OwnerA { get; private set; }
 
         public Guid OwnerB { get; private set; }
@@ -436,8 +394,6 @@ public class OwnerStayFlowTests
 
         public InternalActivityService Activities() => new(Db, NullLogger<InternalActivityService>.Instance, _clock);
 
-        /// <param name="activities">The «To do» service; the real one by default.</param>
-        /// <param name="runner">What sends a calendar change again; a mock that does nothing by default.</param>
         public OwnerStayService Service(IInternalActivityService? activities = null, ICalendarChangeRunner? runner = null) =>
             new(
                 Db,
@@ -449,7 +405,6 @@ public class OwnerStayFlowTests
                 NullLogger<OwnerStayService>.Instance,
                 Mock.Of<IBackgroundJobClient>());
 
-        /// <summary>The calendar change of the block of a stay reaches <paramref name="state"/> (what the push of the channel manager writes).</summary>
         public async Task SetProcessAsync(Guid stayId, CalendarChangeState state, string? errorCode = null)
         {
             await using var db = NewDb();
@@ -529,7 +484,6 @@ public class OwnerStayFlowTests
                 });
             }
 
-            // A guest with every kind of personal data, staying from the 14th to the 17th, and a block of a channel with a note.
             var guest = new Guest { OrgId = org.Id, FirstName = "Mario", LastName = "Rossi", Email = "mario.rossi@example.com", PhoneNumber = "+39 333 1234567" };
             db.Guests.Add(guest);
             var booking = new Booking

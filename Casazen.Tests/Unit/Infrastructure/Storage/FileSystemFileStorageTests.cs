@@ -6,7 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure.Storage;
 
-/// <summary>FD-07: the Development/Testing provider keeps buckets apart and never escapes its root.</summary>
 public class FileSystemFileStorageTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "casazen-fs-storage", Guid.NewGuid().ToString("N"));
@@ -58,10 +57,6 @@ public class FileSystemFileStorageTests : IDisposable
         Assert.False(File.Exists(Path.Combine(Path.GetTempPath(), "outside.pdf")));
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule (E20/F02/US01/T02, NF-121). The provider that really deletes writes the key of a guest's document (<c>guest-documents/{org}/{guest}/…</c>, the
-    /// ids of the org and of the guest) in no line of its log, at no level: it says that an object of the guests' documents was deleted; the key of another object is logged as before.
-    /// </summary>
     [Fact]
     public async Task DeleteAsync_TheKeyOfAGuestDocument_IsNeverWrittenInTheLog_Test()
     {

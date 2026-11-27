@@ -27,7 +27,6 @@ public class ShowcaseReplyDeadlineTests
 
     private static readonly TimeSpan Hour = TimeSpan.FromHours(1);
 
-    /// <summary>The upkeep job of SP-10 with its second pass (the reminders), over the reliability of the kit: what the real job does every five minutes.</summary>
     private static ServiceRequestExpiryService Job(ServiceRequestScenario s) =>
         new(
             s.Db,
@@ -61,8 +60,6 @@ public class ShowcaseReplyDeadlineTests
                 ServiceRequestScenario.FridayAt10.AddHours(2),
                 null));
 
-    // ─── The reminders ───
-
     [Fact]
     public async Task Reminders_AtHalfOfTheHourAndTenMinutesBeforeTheDeadline_OnceEach_ToTheSupplierOnly()
     {
@@ -70,14 +67,12 @@ public class ShowcaseReplyDeadlineTests
         var supplier = await s.EnableBookingAsync();
         var request = await s.InquiredAsync(supplier);
 
-        // Twenty-nine minutes in: too early.
         s.Clock.Advance(TimeSpan.FromMinutes(29));
         var early = await Job(s).RunAsync();
         Assert.Equal(0, early.RemindersSent);
         Assert.Empty(s.Emails.Snapshot());
         Assert.Empty(s.Pushes);
 
-        // Half of the hour: the first reminder, by e-mail and push, to the supplier.
         s.Clock.Advance(TimeSpan.FromMinutes(1));
         var half = await Job(s).RunAsync();
         Assert.Equal(1, half.RemindersSent);
@@ -88,13 +83,11 @@ public class ShowcaseReplyDeadlineTests
         Assert.Equal(PushTypes.ServiceRequestReplyReminder, halfPush.Payload.Type);
         Assert.Equal(PushDeliveryKeys.ServiceRequestReplyReminder(request.Id, "half"), halfPush.DeliveryKey);
         Assert.Equal(PushAudience.SupplierOrg(s.SupplierOrgId), halfPush.Audience);
-        // Like every push to a supplier org about a request: the tap opens the request in the supplier area of the app.
         Assert.Equal(PushRoutes.SupplierRequest(request.Id), halfPush.Payload.Route);
         var afterHalf = await s.ReadAsync(request.Id);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, afterHalf.ReplyReminderHalfSentAt);
         Assert.Null(afterHalf.ReplyReminderLastSentAt);
 
-        // The same window again, as many runs as there are: nothing more.
         s.ForgetNotifications();
         s.Clock.Advance(TimeSpan.FromMinutes(5));
         await Job(s).RunAsync();
@@ -102,7 +95,6 @@ public class ShowcaseReplyDeadlineTests
         Assert.Empty(s.Emails.Snapshot());
         Assert.Empty(s.Pushes);
 
-        // Ten minutes before the deadline: the last call, once.
         s.Clock.Advance(TimeSpan.FromMinutes(15));
         var last = await Job(s).RunAsync();
         var again = await Job(s).RunAsync();
@@ -113,7 +105,6 @@ public class ShowcaseReplyDeadlineTests
         Assert.Contains("Ultimi minuti", lastMail.Content.Subject);
         Assert.Equal(PushDeliveryKeys.ServiceRequestReplyReminder(request.Id, "last"), Assert.Single(s.Pushes).DeliveryKey);
 
-        // The request is still waiting, and the customer was told nothing.
         var saved = await s.ReadAsync(request.Id);
         Assert.Equal(ServiceRequestStatus.Richiesto, saved.Status);
         Assert.NotNull(saved.ReplyReminderLastSentAt);
@@ -134,7 +125,6 @@ public class ShowcaseReplyDeadlineTests
         var html = mail.Content.HtmlBody;
         Assert.Contains(ShowcaseScenario.City, html);
         Assert.Contains("Mario R.", html);
-        // Eleven in London, thirteen in Rome: the deadline in Italian time.
         Assert.Contains("13:00", html);
         Assert.Contains("si chiude da sola", html);
         foreach (var secret in new[] { InquiryScenario.Words, ShowcaseScenario.CustomerName, ShowcaseScenario.CustomerEmail, ShowcaseScenario.CustomerPhone })
@@ -156,7 +146,6 @@ public class ShowcaseReplyDeadlineTests
         await s.Service.PostMessageAsSupplierAsync(request.Id, s.SupplierOrgId, "Buongiorno, posso passare domani mattina.");
         s.ForgetNotifications();
 
-        // Past the half, past the last call, past the hour it had: nothing to remind of and nothing to close.
         s.Clock.Advance(TimeSpan.FromMinutes(15));
         var middle = await Job(s).RunAsync();
         s.Clock.Advance(TimeSpan.FromMinutes(40));
@@ -184,7 +173,6 @@ public class ShowcaseReplyDeadlineTests
         s.Clock.Advance(TimeSpan.FromMinutes(35));
         s.ForgetNotifications();
 
-        // The save of the reminder finds the request changed by someone else (xmin): the winner's change stays and nobody is reminded.
         interceptor.Failure = new DbUpdateConcurrencyException("the supplier answered at the same moment");
         var raced = await Job(s).RunAsync();
         interceptor.Failure = null;
@@ -194,7 +182,6 @@ public class ShowcaseReplyDeadlineTests
         Assert.Empty(s.Pushes);
         Assert.Null((await s.ReadAsync(request.Id)).ReplyReminderHalfSentAt);
 
-        // Nothing was marked, so a supplier that did not answer after all is still reminded, once.
         var next = await Job(s).RunAsync();
         Assert.Equal(1, next.RemindersSent);
         Assert.Single(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.SupplierInquiryReplyReminder);
@@ -255,8 +242,6 @@ public class ShowcaseReplyDeadlineTests
         Assert.Empty(s.Pushes);
     }
 
-    // ─── The silence ───
-
     [Fact]
     public async Task ARequestNobodyAnswered_Closes_TheSilenceIsWrittenAsNoReplyInTime_AndNobodyIsRemindedOfADeadlineThatPassed()
     {
@@ -275,16 +260,13 @@ public class ShowcaseReplyDeadlineTests
         Assert.Equal(ServiceRequestCancellationReasons.NoResponse, saved.CancellationReason);
         Assert.Null(saved.ResponseDueAt);
 
-        // The event of the ranking: the supplier did not answer in the hour. Not as a backup, linked to the request.
         var silence = Assert.Single(await s.ReliabilityEventsAsync());
         Assert.Equal((SupplierReliabilityEventKind.NoReplyInTime, request.Id, false), (silence.Kind, silence.RequestId, silence.AsBackup));
 
-        // The supplier is told, with the comune and not the customer, and that it costs points (the points are real: SP-REL).
         var toSupplier = Assert.Single(s.Emails.Snapshot(), e => e.To == SupplierEmail);
         Assert.Equal(EmailTemplates.Names.ServiceRequestCancelledToSupplier, toSupplier.Template);
         Assert.Contains("punteggio di affidabilità", toSupplier.Content.HtmlBody);
         Assert.DoesNotContain(ShowcaseScenario.CustomerName, toSupplier.Content.HtmlBody);
-        // The customer is told the truth: the supplier did not answer in time, and nothing was paid.
         var toCustomer = Assert.Single(s.Emails.Snapshot(), e => e.To == ShowcaseScenario.CustomerEmail);
         Assert.Equal(EmailTemplates.Names.SupplierInquiryExpired, toCustomer.Template);
         Assert.DoesNotContain("richiamat", toCustomer.Content.HtmlBody);
@@ -318,7 +300,6 @@ public class ShowcaseReplyDeadlineTests
         await SendAnOfferAsync(s, request.Id);
         s.ForgetNotifications();
 
-        // The supplier answered with an offer; the customer had a day and let it pass.
         s.Clock.Advance(TimeSpan.FromHours(25));
         var run = await Job(s).RunAsync();
 
@@ -345,8 +326,6 @@ public class ShowcaseReplyDeadlineTests
         Assert.Empty(await s.ReliabilityEventsAsync());
     }
 
-    // ─── The alternatives ───
-
     [Fact]
     public async Task TheCustomerOfALapsedRequest_IsToldWithTheOtherSuppliers_AsTheShowcaseSaysThem()
     {
@@ -371,7 +350,6 @@ public class ShowcaseReplyDeadlineTests
         Assert.Contains("a intervento", html);
         Assert.DoesNotContain("Per ora non abbiamo", html);
 
-        // Looked for with the comune and the category of the request, never the supplier that did not answer.
         var saved = await s.ReadAsync(request.Id);
         var query = Assert.Single(alternatives.Queries);
         Assert.Equal((s.SupplierOrgId, saved.Category, saved.LocationComuneIstat, ShowcaseScenario.City), (query.ExcludedSupplierOrgId, query.Category, query.ComuneIstat, query.City));
@@ -427,7 +405,6 @@ public class ShowcaseReplyDeadlineTests
         Assert.Equal(1, run.RequestsCancelled);
         Assert.Equal(ServiceRequestStatus.Annullato, (await s.ReadAsync(request.Id)).Status);
         var html = Assert.Single(s.Emails.Snapshot(), e => e.To == ShowcaseScenario.CustomerEmail).Content.HtmlBody;
-        // Nothing is said about alternatives that were not looked for (decision D24: no sentence that may not be true).
         Assert.DoesNotContain("Questi fornitori", html);
         Assert.DoesNotContain("Per ora non abbiamo", html);
     }
@@ -488,9 +465,9 @@ public class ShowcaseReplyDeadlineTests
     }
 
     [Theory]
-    [InlineData("vetrina-test", "AAAAA-BBBBB", ShowcaseScenario.CustomerEmail)] // a code that is nobody's
-    [InlineData("altro-fornitore", null, ShowcaseScenario.CustomerEmail)] // another supplier's slug
-    [InlineData("vetrina-test", null, "chi.sono@example.com")] // not the address of the request
+    [InlineData("vetrina-test", "AAAAA-BBBBB", ShowcaseScenario.CustomerEmail)]
+    [InlineData("altro-fornitore", null, ShowcaseScenario.CustomerEmail)]
+    [InlineData("vetrina-test", null, "chi.sono@example.com")]
     [InlineData(null, null, null)]
     public async Task TheirOwnCall_AnythingThatDoesNotIdentifyARequest_IsTheSameNotFound(string? slug, string? code, string? email)
     {
@@ -500,7 +477,6 @@ public class ShowcaseReplyDeadlineTests
         var request = await s.InquiredAsync(supplier);
         s.Clock.Advance(Hour + TimeSpan.FromMinutes(1));
         await Job(s).RunAsync();
-        // The job itself looked for the alternatives once, to tell the customer when it closed the request: only what the call adds counts.
         var queriesOfTheJob = alternatives.Queries.Count;
 
         var credentials = new ShowcaseBookingCredentials(slug, code ?? ShowcaseManageScenario.CredentialsOf(request.PublicCode!).Code, email);
@@ -509,8 +485,6 @@ public class ShowcaseReplyDeadlineTests
         Assert.Equal(ShowcaseBookingManagementErrors.NotFound, error.Code);
         Assert.Equal(queriesOfTheJob, alternatives.Queries.Count);
     }
-
-    // ─── The mail ───
 
     [Fact]
     public void TheMailOfALapsedRequest_InEnglish_ListsTheSuppliersWithTheirLinks_AndEncodesTheirNames()

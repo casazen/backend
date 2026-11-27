@@ -29,8 +29,6 @@ namespace Casazen.Tests.Integration;
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory) : IClassFixture<PublicBookingFactory>
 {
-    // ─── The customer and the supplier at the same moment ────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task Cancel_AndTheSupplierTaking_AtTheSameMoment_OneWins_AndOnlyTheWinnerIsTold()
     {
@@ -54,7 +52,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         var stored = await LoadRequestAsync(booked.RequestId);
         if (cancel.StatusCode == HttpStatusCode.OK)
         {
-            // The customer was first: the supplier's take got 409 and nothing of it was saved or told.
             Assert.Equal(ServiceRequestStatus.Annullato, stored.Status);
             Assert.Equal(ServiceRequestActorParty.Customer, stored.CancelledBy);
             Assert.Null(stored.TakenAt);
@@ -64,7 +61,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         }
         else
         {
-            // The supplier was first: the cancellation got 409, the booking is taken, and the customer was told it was.
             Assert.Equal(ServiceRequestStatus.PresoInCarico, stored.Status);
             Assert.Null(stored.CancelledBy);
             Assert.Single(factory.EmailsTo(booked.Email).Skip(customerMails), e => e.Template == EmailTemplates.Names.SupplierBookingAccepted);
@@ -94,7 +90,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         Assert.Equal(
             cancel.StatusCode == HttpStatusCode.OK ? ServiceRequestStatus.Annullato : ServiceRequestStatus.Rifiutato,
             stored.Status);
-        // The slot of a request that is closed either way is free again.
         var next = await setup.PostAsJsonAsync(
             $"/api/public/suppliers/{supplier.Slug}/bookings",
             PublicBookingTestData.Body(supplier.Service, PublicBookingTestData.TuesdayAt9, PublicBookingTestData.NewEmail()));
@@ -109,7 +104,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         var booked = await Http.BookAsync(factory, setup, supplier, PublicBookingTestData.TuesdayAt9);
         var newStart = PublicBookingTestData.TuesdayAt9.AddDays(1);
 
-        // Both sides take the supplier calendar lock; SaveRendezvous under that lock deadlocks (500/500).
         using var customer = factory.CreateClient();
         using var asSupplier = AppClient(factory, supplier);
         var responses = await InParallelAsync([
@@ -132,7 +126,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         if (!moved)
             Assert.DoesNotContain(factory.EmailsTo(supplier.ContactEmail), e => e.Template == EmailTemplates.Names.SupplierBookingRescheduledByCustomer);
 
-        // Whichever time the request ended up with, the other one is free: a new customer can book it.
         var freed = moved ? PublicBookingTestData.TuesdayAt9 : newStart;
         var next = await setup.PostAsJsonAsync(
             $"/api/public/suppliers/{supplier.Slug}/bookings",
@@ -165,8 +158,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         Assert.Null(stored.ProposedStartUtc);
     }
 
-    // ─── The customers of one supplier at the same moment ────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task Reschedule_TwoRequestsToTheSameSlot_AtTheSameMoment_OneGetsItAndTheOtherIs409()
     {
@@ -188,7 +179,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         Assert.Equal("supplier_slot_unavailable", (await lost.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
         var starts = new[] { (await LoadRequestAsync(first.RequestId)).ScheduledStartUtc, (await LoadRequestAsync(second.RequestId)).ScheduledStartUtc };
         Assert.Equal(1, starts.Count(start => start == target));
-        // The loser stays where it was, and what the winner left is free.
         Assert.Contains(starts[0], new DateTime?[] { PublicBookingTestData.TuesdayAt9, target });
         Assert.Contains(starts[1], new DateTime?[] { PublicBookingTestData.TuesdayAt9.AddDays(1), target });
     }
@@ -208,8 +198,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
             () => Http.PostAsync(client, "reschedule", booked.Access(new { startUtc = two })),
         ]);
 
-        // The lock puts them one after the other: both can succeed (the second moves what the first moved), or the second can find
-        // the request changed under it (409); neither can be a 500.
         Assert.DoesNotContain(responses, r => (int)r.StatusCode >= 500);
         Assert.All(responses, r => Assert.True(r.StatusCode is HttpStatusCode.OK or HttpStatusCode.Conflict, $"{(int)r.StatusCode}"));
         Assert.Contains(responses, r => r.StatusCode == HttpStatusCode.OK);
@@ -217,7 +205,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         Assert.Contains(stored.ScheduledStartUtc, new DateTime?[] { one, two });
         Assert.Equal(ServiceRequestStatus.Richiesto, stored.Status);
 
-        // Only the slot it ended in is held: the old one and the other target are free.
         foreach (var free in new[] { PublicBookingTestData.TuesdayAt9, one, two }.Where(start => start != stored.ScheduledStartUtc))
         {
             var next = await client.PostAsJsonAsync(
@@ -257,7 +244,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         }
         else
         {
-            // The other customer was first: the proposal stays, and the customer can still turn it down or cancel.
             Assert.Equal(HttpStatusCode.Conflict, accept.StatusCode);
             Assert.Equal("supplier_slot_unavailable", (await accept.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
             Assert.Equal(HttpStatusCode.Created, other.StatusCode);
@@ -299,13 +285,10 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
             () => Http.PostAsync(client, "cancel", booked.Access(new { reason = "Cambio programma" })),
         ]);
 
-        // The lock puts them one after the other: the second finds it cancelled by the customer and answers the same booking.
         Assert.All(responses, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
         Assert.Single(factory.EmailsTo(booked.Email).Skip(mailsBefore), e => e.Template == EmailTemplates.Names.SupplierBookingCancellationReceipt);
         Assert.Equal(1, factory.EmailsTo(supplier.ContactEmail).Count(e => e.Template == EmailTemplates.Names.SupplierBookingCancelledByCustomer));
     }
-
-    // ─── Isolation, encryption and time ──────────────────────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task TwoSuppliers_TheSameAddressBooksBoth_EachFindsItsOwnBookingOnly_AndCancellingOneLeavesTheOther()
@@ -317,7 +300,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         var atMine = await Http.BookAsync(factory, client, mine, PublicBookingTestData.TuesdayAt9, email: email);
         var atTheirs = await Http.BookAsync(factory, client, theirs, PublicBookingTestData.TuesdayAt9, email: email);
 
-        // The code of one with the slug of the other is nothing, even with the right address.
         var crossed = await Http.PostAsync(client, "lookup", new { slug = theirs.Slug, code = atMine.Code, email });
         var crossedCancel = await Http.PostAsync(client, "cancel", new { slug = mine.Slug, code = atTheirs.Code, email });
         Assert.Equal(HttpStatusCode.NotFound, crossed.StatusCode);
@@ -332,7 +314,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         Assert.Equal("Richiesto", theirsView.GetProperty("status").GetString());
         Assert.Equal(theirs.Slug, theirsView.GetProperty("supplier").GetProperty("slug").GetString());
         Assert.Equal(ServiceRequestStatus.Richiesto, (await LoadRequestAsync(atTheirs.RequestId)).Status);
-        // Two customers, one per supplier: the data belongs to the supplier it was given to.
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Equal(1, await db.ServiceCustomers.CountAsync(c => c.OrgId == mine.OrgId));
@@ -363,16 +344,11 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         Assert.Equal(HttpStatusCode.NotFound, wrong.StatusCode);
     }
 
-    // ─── helpers ───
-
     /// <summary>The host of the test with every save of a service request held until two of them have arrived: the race made deterministic.</summary>
     private WebApplicationFactory<Program> HoldingTwoSaves() =>
-        // The customer's cancel and reschedule and the supplier's take all hold the calendar lock of the supplier, so they run
-        // one after the other: the first save goes on after a short wait and the lock decides who wins.
         factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
             SaveRendezvous.HoldParallelSaves(services, parties: 2, timeout: SaveRendezvous.SerializedTimeout, proceedOnTimeout: true)));
 
-    /// <summary>One of the two answers is 200, the other 409, and none is a server error.</summary>
     private static void AssertOneWinsOneConflicts(HttpResponseMessage first, HttpResponseMessage second)
     {
         Assert.DoesNotContain(new[] { first, second }, r => (int)r.StatusCode >= 500);
@@ -380,10 +356,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         Assert.Equal(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }, statuses);
     }
 
-    /// <summary>
-    /// One of the two answers is 200; the other is a client conflict (409) or a ruled-out transition (422) when the
-    /// calendar lock serialized the loser after the winner already moved the request. Never a server error.
-    /// </summary>
     private static void AssertOneWinsOneLoses(HttpResponseMessage first, HttpResponseMessage second)
     {
         Assert.DoesNotContain(new[] { first, second }, r => (int)r.StatusCode >= 500);
@@ -391,7 +363,6 @@ public class ShowcaseBookingManagementPostgresTests(PublicBookingFactory factory
         Assert.Single(new[] { first, second }, r => r.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.UnprocessableEntity);
     }
 
-    /// <summary>Runs every call at the same moment (they all wait at the gate), and returns the answers in order.</summary>
     private static async Task<HttpResponseMessage[]> InParallelAsync(IReadOnlyList<Func<Task<HttpResponseMessage>>> calls)
     {
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -457,7 +428,6 @@ public class ShowcaseBookingManagementUpkeepRacePostgresTests(PublicBookingFacto
         var mails = factory.EmailsTo(booked.Email).Skip(customerMails).ToList();
         if (cancel.StatusCode == HttpStatusCode.OK)
         {
-            // The customer was first: the upkeep counted a conflict and left the cancellation as it is.
             Assert.Equal(ServiceRequestStatus.Annullato, stored.Status);
             Assert.Equal(ServiceRequestActorParty.Customer, stored.CancelledBy);
             Assert.True(run.Conflicts >= 1, $"Conflicts {run.Conflicts}");
@@ -466,7 +436,6 @@ public class ShowcaseBookingManagementUpkeepRacePostgresTests(PublicBookingFacto
         }
         else
         {
-            // The upkeep was first: the cancellation got 409 and nothing of it was saved or told.
             Assert.Equal(HttpStatusCode.Conflict, cancel.StatusCode);
             Assert.Equal(ServiceRequestStatus.Annullato, stored.Status);
             Assert.Equal(ServiceRequestActorParty.System, stored.CancelledBy);

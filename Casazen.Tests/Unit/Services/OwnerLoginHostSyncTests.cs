@@ -53,7 +53,6 @@ public sealed class OwnerLoginHostSyncTests : IDisposable
 
         Assert.Equal(expected, await StoredStateAsync(org.Id));
         _registrar.Verify(r => r.RegisterAsync(Domain, It.IsAny<CancellationToken>()), Times.Once);
-        // The answer of resolve-host carries ownerLoginReady: the cached one is dropped.
         _resolver.Verify(r => r.InvalidateCacheForHost(Domain), Times.AtLeastOnce);
     }
 
@@ -126,7 +125,6 @@ public sealed class OwnerLoginHostSyncTests : IDisposable
     [Fact]
     public async Task Retry_WithoutThePlanOfTheDomain_IsRefused_AndAuth0IsNotAsked()
     {
-        // The owner sign-in follows the plan of the domain (the effective tier, as the surfaces do): an org that does not pay for a custom domain puts nothing in the shared tenant.
         var org = await SeedAsync(OwnerLoginHostState.Failed);
 
         var result = await DomainService(Sync(FeatureFlags.WhiteLabelHost, FeatureFlags.Auth0HostSync), canUseCustomDomain: false).RetryOwnerLoginAsync(org.Id);
@@ -142,8 +140,6 @@ public sealed class OwnerLoginHostSyncTests : IDisposable
     [InlineData(DomainVerificationStatus.Failed)]
     public async Task Retry_WithoutAVerifiedDomain_IsNotVerified_WhateverThePlan_AndAuth0IsNotAsked(DomainVerificationStatus domainStatus)
     {
-        // The domain is asked for before the plan, as VerifyDomainAsync asks for a configured domain first: the owner of an org with nothing to register gets a 409, never a 403
-        // (OrgBillingAdminMembershipAccessTests: a POST with no body is not refused to the owner of the org).
         var org = await SeedAsync(OwnerLoginHostState.Failed, domainStatus);
 
         var result = await DomainService(Sync(FeatureFlags.WhiteLabelHost, FeatureFlags.Auth0HostSync), canUseCustomDomain: false).RetryOwnerLoginAsync(org.Id);
@@ -165,8 +161,6 @@ public sealed class OwnerLoginHostSyncTests : IDisposable
         var options = RateLimitingServiceCollectionExtensions.ResolveOptions(policy, new ConfigurationBuilder().Build());
         Assert.Equal((5, TimeSpan.FromMinutes(10), 0), (options.PermitLimit, options.Window, options.QueueLimit));
     }
-
-    // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
 
     private void GivenTheRegistrarAnswers(Auth0HostRegistrationResult result) =>
         _registrar.Setup(r => r.RegisterAsync(Domain, It.IsAny<CancellationToken>())).ReturnsAsync(result);

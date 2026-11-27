@@ -234,7 +234,6 @@ public class CinDeadlineAlertsPostgresTests : IClassFixture<CasazenWebApplicatio
     private AlertHarness NewHarness(DateOnly romeDay, string? exposureDeadline = "2027-03-01") =>
         new(_factory, new FakeTimeProvider(At(romeDay)), new CinOptions { ExposureDeadline = exposureDeadline });
 
-    /// <summary>08:00 UTC of <paramref name="day"/>: the time of the recurring job, the same calendar day in Rome.</summary>
     private static DateTimeOffset At(DateOnly day) => new(day.ToDateTime(new TimeOnly(8, 0)), TimeSpan.Zero);
 
     private async Task<SeededHost> SeedHostAsync(string label)

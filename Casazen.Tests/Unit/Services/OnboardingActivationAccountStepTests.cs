@@ -12,12 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The "Account e consensi" step of the activation checklist and the host onboarding gate answer the same question. The
-/// gate is what sends a user to /onboarding and what the wizard reads (via /users/me) to choose between a plain update
-/// and the consents step: if the checklist computed the rule on its own, a step shown as "todo" could be one the wizard
-/// considers finished, and the host would loop between the dashboard and the wizard forever.
-/// </summary>
 public class OnboardingActivationAccountStepTests : IDisposable
 {
     private const string UserId = "auth0|host-1";
@@ -38,14 +32,11 @@ public class OnboardingActivationAccountStepTests : IDisposable
     public async Task GetActivationStatusAsync_UserWithOrg_AccountStepFollowsTheGate(
         bool gateOnboardingCompleted, bool gateConsentsAccepted, bool expectedDone)
     {
-        // Arrange: the user row alone says "onboarded, with an org"; only the gate decides.
         SeedUserWithOrg(onboardingCompletedAt: DateTime.UtcNow);
         GateReturns(gateOnboardingCompleted, gateConsentsAccepted);
 
-        // Act
         var status = await NewService().GetActivationStatusAsync(UserId, CancellationToken.None);
 
-        // Assert
         var account = AccountStep(status);
         Assert.Equal(expectedDone ? ActivationStepStates.Done : ActivationStepStates.Todo, account.State);
         Assert.Equal(gateConsentsAccepted, status.ConsentsAccepted);
@@ -54,7 +45,6 @@ public class OnboardingActivationAccountStepTests : IDisposable
     [Fact]
     public async Task GetActivationStatusAsync_UserRowCompletedButGateIncomplete_AccountStepIsTodo()
     {
-        // The documents changed after the host accepted them: the gate asks for the consents again, the checklist must too.
         SeedUserWithOrg(onboardingCompletedAt: DateTime.UtcNow.AddMonths(-3));
         GateReturns(onboardingCompleted: true, consentsAccepted: false);
 

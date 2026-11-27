@@ -2,12 +2,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Tests.Unit.Logging;
 
-/// <summary>Fake log sink: keeps every rendered message and its structured values, as a real provider would get them.</summary>
 internal sealed class CapturingLogger<T> : ILogger<T>
 {
     public List<CapturedLogEntry> Entries { get; } = [];
 
-    /// <summary>Everything a log provider could write: rendered messages, structured values and exceptions.</summary>
     public string AllOutput => string.Join(
         Environment.NewLine,
         Entries.Select(e => $"{e.Message} | {string.Join(", ", e.Values.Select(v => $"{v.Key}={v.Value}"))} | {e.Exception}"));

@@ -18,10 +18,8 @@ public class OwnerFileScannerTests
     private static OwnerFileVerdict Scan(string text) => Scan(Encoding.Latin1.GetBytes(text));
 
     [Theory]
-    // Encrypted: a reader opens it without a password, and everything the scan would read is ciphertext.
     [InlineData("%PDF-1.7\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R /Encrypt 5 0 R >>\n%%EOF")]
     [InlineData("%PDF-1.7\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R /Enc#72ypt 5 0 R >>\n%%EOF")]
-    // An object stream written as text (hex, base 85, LZW, run length) hides the names the scan looks for: refused, with the long and the short names.
     [InlineData("%PDF-1.5\n1 0 obj << /Type /ObjStm /Filter [/ASCIIHexDecode /FlateDecode] >>\nstream\n789c4b2c2e48>\nendstream\nendobj\n%%EOF")]
     [InlineData("%PDF-1.5\n1 0 obj << /Type /ObjStm /Filter [/ASCII85Decode /FlateDecode] >>\nstream\n<~GatU4~>\nendstream\nendobj\n%%EOF")]
     [InlineData("%PDF-1.5\n1 0 obj << /Type /ObjStm /Filter /LZWDecode >>\nstream\n\u0080\u000b\u0060\nendstream\nendobj\n%%EOF")]
@@ -39,7 +37,6 @@ public class OwnerFileScannerTests
     [Fact]
     public void Pdf_WithTheFiltersOfAScan_IsAccepted_AsBefore()
     {
-        // A scanned page: a JPEG image (DCTDecode) and a content stream written with FlateDecode, no name the scan refuses.
         var pdf = Encoding.Latin1.GetBytes("%PDF-1.4\n1 0 obj << /Type /XObject /Subtype /Image /Filter /DCTDecode /Length 6 >>\nstream\n")
             .Concat(new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0, 0 })
             .Concat(Encoding.Latin1.GetBytes("\nendstream\nendobj\n2 0 obj << /Filter /FlateDecode >>\nstream\n"))
@@ -55,8 +52,6 @@ public class OwnerFileScannerTests
     [Fact]
     public void Pdf_AStreamIsReadFromWhereItStarts_AnEndstreamInsideItsDataDoesNotCutItShort()
     {
-        // The zlib data of the object stream starts with a stored block that holds the word «endstream», and goes on with a compressed block that holds a script
-        // (no name in clear anywhere in the file). Cut at the first «endstream» the data would not inflate and the script would never be read.
         var data = ZlibStoredThenCompressed("endstream\nstream\n", "2 0 obj << /S /JavaScript /JS (x) >> endobj");
         var pdf = Encoding.Latin1.GetBytes("%PDF-1.5\n1 0 obj << /Type /ObjStm /Filter /FlateDecode >>\nstream\n")
             .Concat(data)
@@ -71,8 +66,6 @@ public class OwnerFileScannerTests
     [Fact]
     public void Pdf_WithMoreStreamsThanTheScanReads_IsRefused_WhetherOrNotAnEndstreamFollows()
     {
-        // Thousands of «stream» and not one «endstream», then a megabyte: the scan counts every stream wherever it starts, and does not search the megabyte for the
-        // end of each (that search was one for each stream, a cost of streams times bytes).
         var many = string.Concat(Enumerable.Repeat("stream\n", 6000));
         var pdf = Encoding.Latin1.GetBytes("%PDF-1.4\n" + many).Concat(new byte[1024 * 1024]).ToArray();
 
@@ -97,9 +90,7 @@ public class OwnerFileScannerTests
         var name = OwnerFileRules.SafeFileName(sent, extension, 200);
 
         Assert.Equal(expected, name);
-        // Safe once, safe again: the controller makes the stored name safe a second time.
         Assert.Equal(expected, OwnerFileRules.SafeFileName(name, extension, 200));
-        // One dot, the one of the extension of the type.
         Assert.Single(name, '.');
     }
 
@@ -129,10 +120,6 @@ public class OwnerFileScannerTests
         return target.ToArray();
     }
 
-    /// <summary>
-    /// One zlib stream made by hand: a stored block that holds <paramref name="stored"/> as it is (so its bytes can say «endstream»), then the compressed block of
-    /// <paramref name="compressed"/> (so its words are not in clear anywhere in the file), then the Adler-32 of everything.
-    /// </summary>
     private static byte[] ZlibStoredThenCompressed(string stored, string compressed)
     {
         var storedBytes = Encoding.Latin1.GetBytes(stored);

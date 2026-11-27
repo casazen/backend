@@ -21,7 +21,7 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class HostHeldPaymentTests
 {
-    private const int Total = ServiceRequestScenario.ServicePriceCents; // 6_000: the commission of 10 % is 600, the net 5_400
+    private const int Total = ServiceRequestScenario.ServicePriceCents;
     private const int Commission = 600;
     private const int Net = 5_400;
     private const string Admin = "auth0|admin-test";
@@ -35,7 +35,6 @@ public class HostHeldPaymentTests
         return (request, Assert.Single(await s.PaymentsOfAsync(request.Id)));
     }
 
-    /// <summary>The host opens the payment session, pays with a card, and Stripe tells the webhook: the money is held.</summary>
     private static async Task<ServiceRequestPayment> PaidAsync(ServiceRequestScenario s, ServiceRequestPayment payment)
     {
         await s.Payments.CreateHostSessionAsync(payment.ServiceRequestId, s.HostOrgId);
@@ -67,8 +66,6 @@ public class HostHeldPaymentTests
             NullLogger<SupplierPaymentAdminService>.Instance,
             s.Clock);
 
-    // ─── The payment is created for the platform ───
-
     [Fact]
     public async Task Completion_CreatesTheHostsPaymentForThePlatform_WithTheCommissionAsThePartNotTransferred()
     {
@@ -83,10 +80,9 @@ public class HostHeldPaymentTests
         Assert.Equal(ServiceCharges.TransferGroup(request.Id), payment.TransferGroup);
         Assert.Null(payment.ConnectedAccountId);
         Assert.Equal(Total, payment.AmountCents);
-        Assert.Equal(Commission, payment.ApplicationFeeCents); // snapshotted; never sent to Stripe as a fee
+        Assert.Equal(Commission, payment.ApplicationFeeCents);
         Assert.Equal(Net, payment.NetCents);
 
-        // The link goes to the host as in SP-15b.
         Assert.Contains(s.Emails.Snapshot(), e => e.Template == Casazen.Infrastructure.Email.Templates.EmailTemplates.Names.ServicePaymentRequest);
     }
 
@@ -101,8 +97,6 @@ public class HostHeldPaymentTests
         Assert.Null(payment.TransferGroup);
     }
 
-    // ─── The host pays: a PaymentIntent on the platform, charged at once, with no fee ───
-
     [Fact]
     public async Task HostSession_CreatesAPaymentIntentOnThePlatform_ChargedAtOnce_AndReusesItWhileItIsPayable()
     {
@@ -112,11 +106,11 @@ public class HostHeldPaymentTests
         var session = await s.Payments.CreateHostSessionAsync(request.Id, s.HostOrgId);
         var again = await s.Payments.CreateHostSessionAsync(request.Id, s.HostOrgId);
 
-        Assert.Null(session.StripeAccountId); // Stripe.js is loaded with the publishable key alone
+        Assert.Null(session.StripeAccountId);
         Assert.False(string.IsNullOrEmpty(session.ClientSecret));
         Assert.Equal(Total, session.AmountCents);
-        var created = Assert.Single(s.Kit.PlatformGateway.Created); // the second session reused the first PaymentIntent
-        Assert.False(created.ManualCapture); // the work is done: charged when the host pays
+        var created = Assert.Single(s.Kit.PlatformGateway.Created);
+        Assert.False(created.ManualCapture);
         Assert.Equal(Total, created.AmountCents);
         Assert.Equal(ServiceCharges.TransferGroup(request.Id), created.TransferGroup);
         Assert.Equal(payment.Id.ToString(), created.Metadata[ServiceCharges.PaymentMetadataKey]);
@@ -139,7 +133,7 @@ public class HostHeldPaymentTests
     {
         using var s = await StartAsync();
         var (request, _) = await CompletedAsync(s);
-        await s.ConnectSupplierAsync(ready: false); // the supplier's account lost its payouts
+        await s.ConnectSupplierAsync(ready: false);
 
         var refusal = await Assert.ThrowsAsync<DomainConflictException>(async () => await s.Payments.CreateHostSessionAsync(request.Id, s.HostOrgId));
 
@@ -162,11 +156,9 @@ public class HostHeldPaymentTests
         Assert.Equal(ServicePaymentStatus.Failed, failed.Status);
         Assert.Equal("card_declined", failed.FailureCode);
 
-        await s.Payments.CreateHostSessionAsync(request.Id, s.HostOrgId); // the payer tries another card on the same PaymentIntent
+        await s.Payments.CreateHostSessionAsync(request.Id, s.HostOrgId);
         Assert.Single(s.Kit.PlatformGateway.Created);
     }
-
-    // ─── The charge: the money is held, the supplier is due the window after it ───
 
     [Fact]
     public async Task TheCharge_MakesTheMoneyHeld_AndTheSupplierIsDueTheWindowAfterIt()
@@ -178,10 +170,10 @@ public class HostHeldPaymentTests
 
         Assert.Equal(ServicePaymentStatus.Held, held.Status);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, held.CapturedAt);
-        Assert.Equal(s.Clock.GetUtcNow().UtcDateTime.AddMinutes(60), held.ReleaseAt); // R3: the charge plus the window
+        Assert.Equal(s.Clock.GetUtcNow().UtcDateTime.AddMinutes(60), held.ReleaseAt);
         Assert.Equal(ServicePaymentChannel.Stripe, held.PaidVia);
         Assert.NotNull(held.StripeChargeId);
-        Assert.Equal(ServiceRequestStatus.Completato, (await s.ReadAsync(request.Id)).Status); // paid to the supplier only at the release
+        Assert.Equal(ServiceRequestStatus.Completato, (await s.ReadAsync(request.Id)).Status);
         Assert.Empty(s.Kit.PlatformGateway.Transfers);
     }
 
@@ -192,7 +184,7 @@ public class HostHeldPaymentTests
         var (request, payment) = await CompletedAsync(s);
         await s.Payments.CreateHostSessionAsync(request.Id, s.HostOrgId);
         var intentId = Assert.Single(await s.PaymentsOfAsync(request.Id)).StripePaymentIntentId!;
-        s.Kit.PlatformGateway.SetStatus(intentId, "succeeded"); // the host paid; the webhook never arrived
+        s.Kit.PlatformGateway.SetStatus(intentId, "succeeded");
         s.Clock.Advance(TimeSpan.FromMinutes(11));
 
         var run = await s.Payments.SynchronizeAsync();
@@ -203,8 +195,6 @@ public class HostHeldPaymentTests
         Assert.Equal(ServicePaymentStatus.Held, held.Status);
         Assert.NotNull(held.ReleaseAt);
     }
-
-    // ─── The supplier is paid once, the net ───
 
     [Fact]
     public async Task TheJob_PaysTheSupplierTheNet_OnceTheWindowHasPassed_AndTheRequestBecomesPaid()
@@ -221,7 +211,7 @@ public class HostHeldPaymentTests
         Assert.Equal(0, early.Released);
         Assert.Equal(1, due.Released);
         Assert.Equal(0, again.Released);
-        var transfer = Assert.Single(s.Kit.PlatformGateway.Transfers); // one transfer, whatever the runs
+        var transfer = Assert.Single(s.Kit.PlatformGateway.Transfers);
         Assert.Equal(Net, transfer.AmountCents);
         Assert.Equal(ServiceRequestScenario.SupplierAccountId, transfer.DestinationAccountId);
         Assert.Equal(ServicePaymentStatus.Released, Assert.Single(await s.PaymentsOfAsync(request.Id)).Status);
@@ -236,7 +226,7 @@ public class HostHeldPaymentTests
         await PaidAsync(s, payment);
 
         var confirmed = await s.Service.ConfirmOkAsHostAsync(request.Id, s.HostOrgId);
-        var again = await s.Service.ConfirmOkAsHostAsync(request.Id, s.HostOrgId); // a double click
+        var again = await s.Service.ConfirmOkAsHostAsync(request.Id, s.HostOrgId);
 
         Assert.Equal(ServiceRequestStatus.Pagato, confirmed.Status);
         Assert.Equal(ServiceRequestStatus.Pagato, again.Status);
@@ -268,8 +258,6 @@ public class HostHeldPaymentTests
         Assert.Empty(s.Kit.PlatformGateway.Transfers);
     }
 
-    // ─── The supplier declares the payment received outside CasaZen ───
-
     [Fact]
     public async Task TheSuppliersOfflineDeclaration_WithdrawsThePaymentIntentOfThePlatform_SoTheHostCannotPayTwice()
     {
@@ -296,11 +284,9 @@ public class HostHeldPaymentTests
         var refusal = await Assert.ThrowsAsync<DomainConflictException>(async () =>
             await s.Service.RecordOfflinePaymentAsync(request.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, "Contanti"));
 
-        Assert.Equal("service_payment_held", refusal.Code); // CasaZen holds the money: it reaches the supplier by the release
+        Assert.Equal("service_payment_held", refusal.Code);
         Assert.Equal(ServicePaymentStatus.Held, Assert.Single(await s.PaymentsOfAsync(request.Id)).Status);
     }
-
-    // ─── The admin's refund: R4 keeps the commission, R5 gives everything back, neither touches released money ───
 
     [Fact]
     public async Task AdminRefund_WhenTheSupplierWasAtFault_GivesBackTheNetOnly_AndNothingIsLeftToRelease()
@@ -313,13 +299,13 @@ public class HostHeldPaymentTests
         s.Clock.Advance(TimeSpan.FromMinutes(61));
         var run = await s.Payments.RunFundsAsync();
 
-        Assert.Equal(Net, refund.AmountCents); // the price minus the commission: CasaZen keeps its commission
+        Assert.Equal(Net, refund.AmountCents);
         Assert.Equal(ServicePaymentRefundStatus.Succeeded, refund.Status);
         var stored = Assert.Single(await s.PaymentsOfAsync(request.Id));
         Assert.Equal(ServicePaymentStatus.PartiallyRefunded, stored.Status);
         Assert.Equal(Net, stored.RefundedCents);
         Assert.Equal(0, run.Released);
-        Assert.Empty(s.Kit.PlatformGateway.Transfers); // the supplier gets nothing
+        Assert.Empty(s.Kit.PlatformGateway.Transfers);
     }
 
     [Fact]
@@ -376,8 +362,6 @@ public class HostHeldPaymentTests
         Assert.Equal("service_payment_refund_amount_invalid", refusal.Code);
     }
 
-    // ─── The export lists the commission CasaZen retained ───
-
     [Fact]
     public async Task Export_ListsTheCommissionRetained_TheDayTheSupplierIsPaid()
     {
@@ -410,9 +394,9 @@ public class HostHeldPaymentTests
 
         var row = Assert.Single(export.Rows);
         Assert.Equal(CommissionExportRowType.Retained, row.Type);
-        Assert.Equal(Commission, row.GrossCents); // what stayed with CasaZen of the payer's money
+        Assert.Equal(Commission, row.GrossCents);
         Assert.Equal(Commission, row.CommissionCents);
-        Assert.Equal(0, row.NetCents); // the supplier got nothing
+        Assert.Equal(0, row.NetCents);
     }
 
     [Fact]

@@ -72,12 +72,10 @@ public class ServiceCustomerPrivacyServiceTests
         Assert.Equal(ServiceCustomerPrivacyService.AnonymizedEmailHash(customer.Id), customer.EmailHash);
         Assert.NotEqual(before.EmailHash, customer.EmailHash);
         Assert.Equal(now, customer.AnonymizedAt);
-        // What proves the consent stays: the version of the notice and when it was accepted; and the language.
         Assert.Equal(before.PrivacyNoticeVersion, customer.PrivacyNoticeVersion);
         Assert.Equal(before.PrivacyAcceptedAt, customer.PrivacyAcceptedAt);
         Assert.Equal(before.Locale, customer.Locale);
 
-        // The place of the work: the street, the floor and the notes go; the comune and the postal code stay.
         var place = await s.ReadAsync(request.Id);
         Assert.Null(place.LocationAddress);
         Assert.Null(place.LocationFloor);
@@ -131,14 +129,11 @@ public class ServiceCustomerPrivacyServiceTests
         await s.EnableBookingAsync();
         await CompletedAsync(s);
         s.Clock.Advance(TimeSpan.FromDays(365 * 2));
-        // A second request, over a year and a half later than the first, completed too.
         var second = await CompletedAsync(s, ServiceRequestScenario.FridayAt10.AddDays(365 * 2 + 3));
         s.Clock.Advance(TimeSpan.FromDays(40));
 
         var run = await Service(s, TwoYears).ApplyRetentionAsync();
 
-        // The first request's period has ended, the second's has not: the customer is the same, so it is kept; the place of the
-        // first request goes, the one of the second stays.
         Assert.Equal(new ServiceCustomerRetentionRun(true, 0, 1), run);
         Assert.Null(Assert.Single(await s.CustomersAsync()).AnonymizedAt);
         Assert.Equal(ShowcaseScenario.Address, (await s.ReadAsync(second.Id)).LocationAddress);
@@ -176,8 +171,6 @@ public class ServiceCustomerPrivacyServiceTests
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnableBookingAsync();
         var idle = await AddCustomerAsync(s, "inattivo@example.com");
-        // A customer who had been idle and books again: its e-mail is checked after the nightly list was read, so the request is
-        // open by the time the change is made (under the supplier's lock) and the customer must not be anonymized under it.
         var (request, _) = await s.BookedAsync();
         var returning = request.CustomerId!.Value;
         var ids = new[] { idle, returning };
@@ -186,7 +179,6 @@ public class ServiceCustomerPrivacyServiceTests
 
         Assert.Equal([idle], due);
 
-        // Once its request is over (a completed one is not open), the customer is due again at the next run.
         await s.Service.TakeAsync(request.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
         await s.Service.StartAsync(request.Id, s.SupplierOrgId);
         await s.Service.CompleteAsync(request.Id, s.SupplierOrgId);
@@ -255,13 +247,11 @@ public class ServiceCustomerPrivacyServiceTests
         var mine = await CompletedAsync(s);
         var (theirs, _) = await s.BookedAsync(await s.InputAsync(service: other.ServiceSlug), other.Profile);
         var host = await s.TakenAsync();
-        // The other supplier took its request: it is open (PresoInCarico) for as long as the supplier does not complete it.
         await s.Service.TakeAsync(theirs.Id, other.OrgId, "auth0|someone-else");
         s.Clock.Advance(TimeSpan.FromDays((365 * 2) + 10));
 
         var run = await Service(s, TwoYears).ApplyRetentionAsync();
 
-        // The open request of the other supplier keeps its customer; the first supplier's customer goes.
         Assert.Equal(1, run.Customers);
         Assert.NotNull(Assert.Single(await s.CustomersAsync()).AnonymizedAt);
         Assert.Null(Assert.Single(await s.CustomersAsync(other.OrgId)).AnonymizedAt);
@@ -333,14 +323,10 @@ public class ServiceCustomerPrivacyServiceTests
         Assert.Equal("2026-11-v1", customer.PrivacyNoticeVersion);
         Assert.Equal(created, customer.PrivacyAcceptedAt);
         Assert.Equal("en", customer.Locale);
-        // Anonymizing twice does not move the date.
         ServiceCustomerPrivacyService.Anonymize(customer, now.AddYears(1));
         Assert.Equal(now, customer.AnonymizedAt);
     }
 
-    // ─── helpers ───
-
-    /// <summary>A customer of the supplier of the scenario with no request at all.</summary>
     private static async Task<Guid> AddCustomerAsync(ServiceRequestScenario s, string email)
     {
         var customer = new ServiceCustomer
@@ -359,7 +345,6 @@ public class ServiceCustomerPrivacyServiceTests
         return customer.Id;
     }
 
-    /// <summary>A showcase request that was taken, started and completed at its time (Friday 9 October by default).</summary>
     private static async Task<ServiceRequest> CompletedAsync(ServiceRequestScenario s, DateTime? start = null)
     {
         var (request, _) = await s.BookedAsync(await s.InputAsync(start));

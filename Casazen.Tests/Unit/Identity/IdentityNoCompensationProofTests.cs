@@ -54,7 +54,6 @@ public sealed class IdentityNoCompensationProofTests
                             Assert.NotEqual(BiometricOutcome.Accept, decision.LogOutcome);
                             Assert.NotEqual(BiometricOutcome.Accept, decision.ShadowOutcome);
 
-                            // The reason of the check says what happened to it, next to the similarity that passed: nothing was traded.
                             var reason = Assert.Single(decision.Reasons, entry => entry.Check == check);
                             Assert.NotEqual(VerificationReasons.Results.Passed, reason.Result);
                         }

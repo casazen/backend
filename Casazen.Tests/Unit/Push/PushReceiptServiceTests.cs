@@ -7,10 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Push;
 
-/// <summary>
-/// MO-04 (A6-29): the recurring <c>push-receipts</c> job reads the Expo receipts of the accepted pushes, removes the
-/// devices reported as <c>DeviceNotRegistered</c> and logs the errors without the push token.
-/// </summary>
 public class PushReceiptServiceTests : IDisposable
 {
     private static readonly DateTime Now = new(2026, 9, 25, 8, 0, 0, DateTimeKind.Utc);
@@ -58,7 +54,6 @@ public class PushReceiptServiceTests : IDisposable
 
         Assert.Contains("MessageRateExceeded", _logger.AllOutput, StringComparison.Ordinal);
         Assert.DoesNotContain("secret-token-value", _logger.AllOutput, StringComparison.Ordinal);
-        // Only DeviceNotRegistered removes the device.
         Assert.True(await _db.DeviceRegistrations.AnyAsync(d => d.Id == device.Id));
     }
 

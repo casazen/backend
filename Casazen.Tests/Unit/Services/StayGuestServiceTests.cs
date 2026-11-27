@@ -10,29 +10,22 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The guest columns of the check-in (E03/F01/US01/T01, NF-40, NF-46): the tourist tax exemption is the host's decision, and the new personal
-/// columns are erased with the guest and, for the exemption, encrypted at rest.
-/// </summary>
 public class StayGuestServiceTests
 {
-    // One provider for the whole class: EF keeps one model per provider (see OctorateConnectionEncryptionTests).
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     [Fact]
     public async Task StayGuest_GuestPortalSave_KeepsHostTaxExemption_Test()
     {
         await using var db = CreateContext();
-        await db.Database.EnsureCreatedAsync(); // the seeded exemption reasons
+        await db.Database.EnsureCreatedAsync();
         var booking = await SeedBookingAsync(db);
         var service = new StayGuestService(db, new AlloggiatiCodeTableService(db, NullLogger<AlloggiatiCodeTableService>.Instance));
 
-        // The host chooses the exemption.
         var byHost = await service.ReplaceAsync(booking, [Guest(TouristTaxExemptionReason.ResidentCode)], StayGuestAuthor.Host("auth0|host"));
         Assert.True(byHost.Success);
         Assert.Equal(TouristTaxExemptionReason.ResidentCode, (await db.StayGuests.SingleAsync()).TaxExemptionCode);
 
-        // The guest portal sends another code, or none: the host's choice stays, and nothing of the input is read for it.
         var byGuest = await service.ReplaceAsync(booking, [Guest(TouristTaxExemptionReason.HealthCareCode)], StayGuestAuthor.GuestPortal);
         Assert.True(byGuest.Success);
         Assert.Equal(TouristTaxExemptionReason.ResidentCode, (await db.StayGuests.SingleAsync()).TaxExemptionCode);
@@ -40,14 +33,12 @@ public class StayGuestServiceTests
         Assert.True(byGuestWithout.Success);
         Assert.Equal(TouristTaxExemptionReason.ResidentCode, (await db.StayGuests.SingleAsync()).TaxExemptionCode);
 
-        // The automatic reason (the age) can never be chosen.
         var automatic = await service.ReplaceAsync(booking, [Guest(TouristTaxExemptionReason.MinorAgeCode)], StayGuestAuthor.Host("auth0|host"));
         var error = Assert.Single(automatic.Errors);
         Assert.Equal(nameof(StayGuestInput.TaxExemptionCode), error.Field);
         Assert.Equal(CheckInValidationKeys.TaxExemptionInvalid, error.MessageKey);
         Assert.Equal(TouristTaxExemptionReason.ResidentCode, (await db.StayGuests.SingleAsync()).TaxExemptionCode);
 
-        // The host clears it: the input is the whole truth for the host.
         var cleared = await service.ReplaceAsync(booking, [Guest(null)], StayGuestAuthor.Host("auth0|host"));
         Assert.True(cleared.Success);
         Assert.Null((await db.StayGuests.SingleAsync()).TaxExemptionCode);
@@ -92,7 +83,6 @@ public class StayGuestServiceTests
         Assert.Null(row.EducationLevel);
         Assert.Null(row.TaxExemptionCode);
 
-        // The kind and the position stay, so the stay keeps its shape; a second pass changes nothing.
         Assert.Equal(StayGuestType.SingleGuest, row.Type);
         Assert.False(GuestDataEraser.AnonymizeStayGuest(row, new DateTime(2026, 11, 7, 9, 0, 0, DateTimeKind.Utc)));
     }
@@ -115,7 +105,6 @@ public class StayGuestServiceTests
 
         var stored = (string)converter.ConvertToProvider(TouristTaxExemptionReason.HealthCareCode)!;
 
-        // What the column holds is a payload with nothing of the reason in it, read back only through the converter.
         Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored, StringComparison.Ordinal);
         Assert.DoesNotContain(TouristTaxExemptionReason.HealthCareCode, stored, StringComparison.Ordinal);
         Assert.DoesNotContain("health", stored, StringComparison.OrdinalIgnoreCase);

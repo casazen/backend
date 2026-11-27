@@ -45,8 +45,6 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    // ─── The cap on the emails ──────────────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task Cap_EightInvitationsAtOnce_LetExactlyTheLimitThrough_AndTheSendsAddUpToIt()
     {
@@ -77,7 +75,6 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
             () => CreateInvitationAsync(Invite(orgB.Id, "b1@example.com", "auth0|owner-b")),
             () => CreateInvitationAsync(Invite(orgB.Id, "b2@example.com", "auth0|owner-b")));
 
-        // One for each org, whichever of the two requests of an org wins.
         Assert.All(outcomes, o => Assert.True(o.Succeeded, o.Code));
         Assert.Equal(2, (await ListAsync(orgA.Id)).Count);
         Assert.Equal(2, (await ListAsync(orgB.Id)).Count);
@@ -102,8 +99,6 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
         Assert.Single(stored.SendLog);
     }
 
-    // ─── The properties of the invitation ───────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task Accept_TheSameLinkFiveTimesAtOnce_GivesTheCarriedPropertiesOnce_AndOnlyTheLiveOnes()
     {
@@ -120,11 +115,9 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
                 Invite(org.Id, "anna@example.com", propertyScope: PropertyScope.Selected, propertyIds: [first, second, gone]));
         }
 
-        // (Guids are sorted on the client on both sides: PostgreSQL orders a uuid byte by byte, .NET does not.)
         Assert.Equal(new[] { first, second, gone }.Order(), (await _kit.ReadInvitationPropertiesAsync(sent.Invitation.Id)).Order());
         var token = OrgInvitationTestKit.TokenInEmail(Assert.Single(_kit.Emails.Snapshot()));
 
-        // A property deleted between the invitation and the acceptance is skipped, not an error.
         await using (var admin = _kit.NewDb())
         {
             await admin.Database.ExecuteSqlAsync($"""UPDATE "Properties" SET "IsDeleted" = TRUE WHERE "Id" = {gone}""");
@@ -138,7 +131,6 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
         var member = await _kit.ReadMemberAsync("auth0|anna");
         Assert.Equal((OrgRole.Collaborator, PropertyScope.Selected), (member!.Role, member.PropertyScope));
 
-        // «Who gave what to whom» is one line for the acceptance, whoever of the five calls did the work.
         var lines = await _kit.ReadActivityAsync(org.Id);
         var access = Assert.Single(lines, l => l.Type == OrgActivityType.MemberPropertyAccessChanged);
         using (var details = JsonDocument.Parse(access.DetailsJson))
@@ -162,8 +154,6 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
 
         var token = OrgInvitationTestKit.TokenInEmail(Assert.Single(_kit.Emails.Snapshot()));
 
-        // The member, its memberships, its grants, the closing of the invitation and the lines of the log are one unit of work: the
-        // service joins a transaction that is already open and leaves the commit to its owner, so a rollback takes all of it away.
         await using (var db = _kit.NewDb())
         {
             await using var outer = await db.Database.BeginTransactionAsync();
@@ -201,13 +191,10 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
         await using (var db = _kit.NewDb())
             result = await _kit.Maintenance(db).RunAsync();
 
-        // On PostgreSQL the purge does not read the carried rows: the foreign key deletes them with the invitation.
         Assert.Equal(1, result.Purged);
         Assert.Empty(await _kit.ReadInvitationPropertiesAsync(old.Id));
         Assert.Equal([first], await _kit.ReadInvitationPropertiesAsync(recent.Id));
     }
-
-    // ─── The areas of a member ──────────────────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task SetAreas_AgainstAChangeOfRoleAndADeactivation_EightRounds_NeverLeavesAProjectionNobodyWrote()
@@ -224,7 +211,6 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
                 () => TeamAsync(team => team.ChangeRoleAsync(org.Id, member.Id, OrgRole.Accountant, OwnerId)),
                 () => TeamAsync(team => team.DeactivateAsync(org.Id, member.Id, OwnerId)));
 
-            // Three independent writes of one member: all of them are allowed, and whatever the order the result is coherent.
             Assert.All(outcomes, o => Assert.True(o.Succeeded, $"round {round}: {o.Code}"));
             await AssertTheProjectionIsTheOneOfTheMemberAsync(userId);
         }
@@ -241,15 +227,12 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
             .ToList();
         Assert.NotEmpty(areas);
 
-        // The rows of the role the member ended up with, in the areas it ended up in, and no other.
         var expected = OrgRoleCatalog.ProjectionOf(member.Role, areas)
             .Select(p => $"{p.ContextKey}/{p.RoleKey}")
             .Order(StringComparer.Ordinal)
             .ToList();
         Assert.Equal(expected, memberships);
     }
-
-    // ─── The reach of a collaborator of one mode ────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task HostScope_ACollaboratorOfOneMode_ReachesOnlyTheGrantedPropertiesOfThatMode_AndTheOverviewCountsInsideIt()
@@ -280,7 +263,6 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
         var onlyShort = bothAreas with { GrantedMode = RentalMode.Short };
         var onlyLong = bothAreas with { GrantedMode = RentalMode.Long };
 
-        // The grants of the other mode stay in the table; the area decides which of them the person reaches.
         Assert.Equal(new[] { shortGranted, longGranted }.Order(), (await ReachedAsync(bothAreas)).Order());
         Assert.Equal([shortGranted], await ReachedAsync(onlyShort));
         Assert.Equal([longGranted], await ReachedAsync(onlyLong));
@@ -304,8 +286,6 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
         var forShort = await HostNotificationAudience.UsersToTell(db, org.Id, shortProperty, "auth0|anna", OwnerId).Select(u => u.Id).ToListAsync();
         var forLong = await HostNotificationAudience.UsersToTell(db, org.Id, longProperty, "auth0|anna", OwnerId).Select(u => u.Id).ToListAsync();
 
-        // The person in charge is told only about the property it can open: the grant on the long-term one stays in the table and
-        // no longer reaches anybody who works in short-term rentals only. The owner hears of both, as always.
         Assert.Contains("auth0|anna", forShort);
         Assert.DoesNotContain("auth0|anna", forLong);
         Assert.Contains(OwnerId, forShort);
@@ -323,8 +303,6 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
             .ToListAsync();
     }
 
-    // ─── The overview ───────────────────────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task Overview_TheNumberOfCommands_DoesNotGrowWithTheSizeOfTheOrg()
     {
@@ -338,7 +316,6 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
         await GrowAsync(org.Id, from: 7, count: 24);
         var large = await CommandsOfTheOverviewAsync(org.Id, expectedProperties: 31);
 
-        // A count or a grouped count for each figure, never a query per property or per person.
         Assert.True(small > 0);
         Assert.True(small <= 20, $"{small} commands for the smallest org");
         Assert.Equal(small, medium);
@@ -373,7 +350,6 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
         return counter.Count;
     }
 
-    /// <summary>Counts the commands a context sends to the server.</summary>
     private sealed class CommandCounter : DbCommandInterceptor
     {
         private int _count;
@@ -398,9 +374,6 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
         }
     }
 
-    // ─── The matrix of the roles ────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The levels of each role in the order of the screen (booking, prices, marketing, guests, money, leases, rents, jobs, people, billing, suppliers, settings, security).</summary>
     private static readonly (OrgRole Role, string Levels)[] ExpectedLevels =
     [
         (OrgRole.Owner, "Y Y Y Y Y Y Y Y Y Y Y Y Y"),
@@ -431,14 +404,11 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
             Assert.Equal(expected, levels);
         }
 
-        // The restricted membership of the property manager (AM-D12) is in the matrix as the migration seeded it.
         var manager = roles.Single(r => r.Role == OrgRole.PropertyManager);
         Assert.Equal(AccountContext.RoleKeys.Manager, manager.PermissionsByContext[AccountContext.Key].RoleKey);
         Assert.Equal([AccountContext.Permissions.SuppliersManage], manager.PermissionsByContext[AccountContext.Key].Permissions);
         Assert.DoesNotContain(AccountContext.Key, roles.Single(r => r.Role == OrgRole.Collaborator).PermissionsByContext.Keys);
     }
-
-    // ─── Shared ─────────────────────────────────────────────────────────────────────────────────────────
 
     private static CreateOrgInvitation Invite(
         Guid orgId,
@@ -479,7 +449,6 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
         return await _kit.Invitations(db).ListAsync(orgId);
     }
 
-    /// <summary>The result of one request that raced the others: it worked, or a rule of the domain refused it (anything else fails the test).</summary>
     private sealed record Outcome(bool Succeeded, string? Code);
 
     private static async Task<Outcome> OutcomeOfAsync(Func<Task> action)
@@ -495,7 +464,6 @@ public class OrgTeamCompletionsPostgresTests : IAsyncLifetime
         }
     }
 
-    /// <summary>Starts every action at the same moment (a shared gate) and waits for all of them.</summary>
     private static async Task<Outcome[]> InParallelAsync(params Func<Task>[] actions)
     {
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

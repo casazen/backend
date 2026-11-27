@@ -7,17 +7,11 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>A column of a table at one point of the migration history.</summary>
-/// <param name="Name">Column name.</param>
-/// <param name="IsNullable">False = the database refuses a row without a value.</param>
-/// <param name="HasDefault">A default, a generated value or an identity: an INSERT may leave the column out.</param>
 internal sealed record SchemaColumn(string Name, bool IsNullable, bool HasDefault)
 {
-    /// <summary>The INSERT must name this column (NOT NULL and nothing fills it in).</summary>
     public bool IsRequired => !IsNullable && !HasDefault;
 }
 
-/// <summary>The tables of the database right after one migration was applied.</summary>
 internal sealed record SchemaStep(string MigrationId, IReadOnlyDictionary<string, IReadOnlyDictionary<string, SchemaColumn>> Tables);
 
 /// <summary>
@@ -42,7 +36,6 @@ internal static class MigrationSchemaReplay
     /// </summary>
     private const string SystemColumn = "xmin";
 
-    /// <summary>One step per migration, oldest first.</summary>
     public static IReadOnlyList<SchemaStep> Run(DbContext db)
     {
         var assembly = db.GetService<IMigrationsAssembly>();
@@ -65,11 +58,9 @@ internal static class MigrationSchemaReplay
         return steps;
     }
 
-    /// <summary>The step of the migration whose id ends with <c>_name</c>.</summary>
     public static SchemaStep Step(IReadOnlyList<SchemaStep> steps, string migrationName) =>
         steps.Single(s => s.MigrationId.EndsWith("_" + migrationName, StringComparison.Ordinal));
 
-    /// <summary>The step right before the migration whose id ends with <c>_name</c> (what <c>PreviousMigration</c> of a test migrates to).</summary>
     public static SchemaStep StepBefore(IReadOnlyList<SchemaStep> steps, string migrationName)
     {
         var index = steps.ToList().FindIndex(s => s.MigrationId.EndsWith("_" + migrationName, StringComparison.Ordinal));

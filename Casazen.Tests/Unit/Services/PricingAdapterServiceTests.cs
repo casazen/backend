@@ -10,13 +10,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// PC-15 (A2-14, A2-34): seasonal suggestions computed from the property's real nightly rate, one row per date,
-/// regenerated in place.
-/// </summary>
 public sealed class PricingAdapterServiceTests : IDisposable
 {
-    // 2026-07-01 04:00 Rome (CEST).
     private static readonly DateTimeOffset Start = new(2026, 7, 1, 2, 0, 0, TimeSpan.Zero);
 
     private readonly AppDbContext _db;
@@ -108,7 +103,7 @@ public sealed class PricingAdapterServiceTests : IDisposable
         var second = await RowsAsync(property.Id);
         Assert.Equal(SeasonalPriceCalculator.WindowDays, second.Count);
         Assert.Equal(first.Select(r => r.Id), second.Select(r => r.Id));
-        Assert.Empty(await _db.PricingHistories.ToListAsync()); // no invented history any more
+        Assert.Empty(await _db.PricingHistories.ToListAsync());
     }
 
     [Fact]

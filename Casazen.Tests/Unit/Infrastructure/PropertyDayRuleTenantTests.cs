@@ -28,7 +28,6 @@ public class PropertyDayRuleTenantTests
         var mine = NewRows(orgA, price: 150m);
         var theirs = NewRows(orgB, price: 900m);
 
-        // The system writes both sets (no caller, so no filter), as the services of each org would.
         await using (var system = NewDb(databaseName, tenant: null))
         {
             system.PropertyDayRules.AddRange(mine.Rule, theirs.Rule);
@@ -47,13 +46,11 @@ public class PropertyDayRuleTenantTests
         var chunk = Assert.Single(await asOrgA.CalendarChangeChunks.AsNoTracking().ToListAsync());
         Assert.Equal(mine.Chunk.Id, chunk.Id);
 
-        // By the property of the other org, by the price and by the state: nothing of theirs is there.
         Assert.False(await asOrgA.PropertyDayRules.AsNoTracking().AnyAsync(r => r.PropertyId == theirs.Rule.PropertyId));
         Assert.False(await asOrgA.PropertyDayRules.AsNoTracking().AnyAsync(r => r.Price == 900m));
         Assert.False(await asOrgA.CalendarChangeProcesses.AsNoTracking().AnyAsync(p => p.State == CalendarChangeState.Failed));
         Assert.False(await asOrgA.CalendarChangeChunks.AsNoTracking().AnyAsync(c => c.PropertyId == theirs.Chunk.PropertyId));
 
-        // A caller with no org is fail-closed: it matches nothing.
         await using var nobody = NewDb(databaseName, new FixedTenantContext(null));
         Assert.Empty(await nobody.PropertyDayRules.AsNoTracking().ToListAsync());
         Assert.Empty(await nobody.CalendarChangeProcesses.AsNoTracking().ToListAsync());

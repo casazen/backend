@@ -10,7 +10,6 @@ using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
-// OrgEntity alias from Casazen.Tests.csproj
 
 namespace Casazen.Tests.Integration;
 
@@ -301,7 +300,6 @@ public class ServiceCategoriesIntegrationTests : IClassFixture<CasazenWebApplica
         return (hostId, hostOrg.Id, property.Id);
     }
 
-    /// <summary>A confirmed stay on the property: short-rent requests are for a stay (SU-07, D2).</summary>
     private async Task<Guid> SeedStayAsync(Guid orgId, Guid propertyId)
     {
         using var scope = _factory.Services.CreateScope();

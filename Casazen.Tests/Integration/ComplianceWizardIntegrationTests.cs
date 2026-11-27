@@ -81,7 +81,6 @@ public class ComplianceWizardIntegrationTests : IClassFixture<CasazenWebApplicat
             confirmDeparture = true,
         });
 
-        // A5-24: the quick check-out of the app declares nothing, so the property is not ready (never a fixed true).
         Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
         Assert.False((await complete.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("propertyReady").GetBoolean());
     }

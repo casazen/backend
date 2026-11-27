@@ -21,7 +21,6 @@ namespace Casazen.Tests.Unit.Jobs;
 /// </summary>
 public class RliDeadlineReminderJobTests : IAsyncLifetime
 {
-    // Signed 1/8/2026, start 1/10/2026 → deadline 31/8/2026.
     private static readonly DateTime SignedAt = new(2026, 8, 1, 9, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime StartOctober = new(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
     private const string Deadline = "2026-08-31";
@@ -65,8 +64,7 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
     {
         var lease = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt);
 
-        await RunAsync("2026-08-16T08:00:00Z"); // 15 days before: t-15
-        // No run on 24/8 (7 days before): the next run still sends the ≤ 7 reminder.
+        await RunAsync("2026-08-16T08:00:00Z");
         await RunAsync("2026-08-25T08:00:00Z");
 
         Assert.Equal([$"t-15:{Deadline}", $"t-7:{Deadline}"], await PayloadsAsync(lease));
@@ -80,7 +78,7 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
 
         await RunAsync("2026-08-25T06:00:00Z");
         await RunAsync("2026-08-25T18:00:00Z");
-        await RunAsync("2026-08-26T08:00:00Z"); // still within the ≤ 7 threshold
+        await RunAsync("2026-08-26T08:00:00Z");
 
         Assert.Equal([$"t-7:{Deadline}"], await PayloadsAsync(lease));
         Assert.Single(_sent);
@@ -91,7 +89,7 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
     {
         var lease = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt);
 
-        await RunAsync("2026-08-28T08:00:00Z"); // 3 days before: ≤ 7, not also ≤ 15
+        await RunAsync("2026-08-28T08:00:00Z");
 
         Assert.Equal([$"t-7:{Deadline}"], await PayloadsAsync(lease));
     }
@@ -125,7 +123,6 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
     {
         var lease = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt);
 
-        // 22:30 UTC on 23/8 is 24/8 in Rome: 7 days to 31/8 (8 on the UTC calendar).
         await RunAsync("2026-08-23T22:30:00Z");
 
         Assert.Equal([$"t-7:{Deadline}"], await PayloadsAsync(lease));
@@ -145,7 +142,6 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
     [PostgresFact]
     public async Task ExecuteAsync_DraftLeaseWithStartDatePassed_SendsReminderWithNotSignedNotice()
     {
-        // Not signed yet, start 1/8: the stipula can only come later, so the deadline is 31/8 from the start date.
         var lease = await SeedLeaseAsync(LeaseStatus.Draft, new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc), signedAt: null);
 
         await RunAsync("2026-08-20T08:00:00Z");
@@ -157,12 +153,9 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
     [PostgresFact]
     public async Task ExecuteAsync_DraftStillBeingTyped_WithAStartDatePassed_GetsNoReminder()
     {
-        // LR-12: the lease above (start 1/8, 15 days to the deadline) when the wizard still keeps its values in DraftData. It is not a
-        // contract yet, its dates may be starting values, and the landlord who is still typing is not reminded of it.
         var typed = await SeedLeaseAsync(
             LeaseStatus.Draft, new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc), signedAt: null, draftData: "{}");
         var complete = await SeedLeaseAsync(LeaseStatus.Draft, new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc), signedAt: null);
-        // The guard is about drafts: a lease that is signed is reminded whatever typed state it has left behind.
         var signed = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt, draftData: "{}");
 
         await RunAsync("2026-08-20T08:00:00Z");
@@ -180,7 +173,7 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
         var complete = await SeedLeaseAsync(LeaseStatus.Draft, StartOctober, signedAt: null, extraEu: true);
         var signed = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt, extraEu: true, draftData: "{}");
 
-        await RunAsync("2026-10-01T08:00:00Z"); // the delivery day
+        await RunAsync("2026-10-01T08:00:00Z");
 
         Assert.Empty(await QuesturaPayloadsAsync(typed));
         Assert.Equal([$"{Questura.Delivery}:{QuesturaDeadline}"], await QuesturaPayloadsAsync(complete));
@@ -232,16 +225,16 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
     {
         var lease = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt, extraEu: true);
 
-        await RunAsync("2026-09-27T08:00:00Z"); // delivery in 4 days: nothing yet
+        await RunAsync("2026-09-27T08:00:00Z");
         Assert.Empty(await QuesturaPayloadsAsync(lease));
-        await RunAsync("2026-09-28T08:00:00Z"); // delivery in 3 days
-        await RunAsync("2026-09-28T18:00:00Z"); // same day: no duplicate
-        await RunAsync("2026-09-29T08:00:00Z"); // still "before delivery"
-        await RunAsync("2026-10-01T08:00:00Z"); // delivery day
-        await RunAsync("2026-10-02T08:00:00Z"); // still within the 48 hours
-        await RunAsync("2026-10-03T08:00:00Z"); // the 48 hours end
-        await RunAsync("2026-10-04T08:00:00Z"); // overdue
-        await RunAsync("2026-10-05T08:00:00Z"); // overdue already sent
+        await RunAsync("2026-09-28T08:00:00Z");
+        await RunAsync("2026-09-28T18:00:00Z");
+        await RunAsync("2026-09-29T08:00:00Z");
+        await RunAsync("2026-10-01T08:00:00Z");
+        await RunAsync("2026-10-02T08:00:00Z");
+        await RunAsync("2026-10-03T08:00:00Z");
+        await RunAsync("2026-10-04T08:00:00Z");
+        await RunAsync("2026-10-05T08:00:00Z");
 
         Assert.Equal(
             [
@@ -286,7 +279,6 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
     [PostgresFact]
     public async Task ExecuteAsync_RegisteredLeaseWithExtraEuTenant_StillRemindsTheQuestura()
     {
-        // The RLI registration does not replace the Questura communication (fiscale.md L14).
         var lease = await SeedLeaseAsync(LeaseStatus.Registered, StartOctober, SignedAt, extraEu: true);
 
         await RunAsync("2026-10-01T08:00:00Z");
@@ -301,7 +293,7 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
             LeaseStatus.Signed, StartOctober, SignedAt, extraEu: true,
             deliveryDate: new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Utc));
 
-        await RunAsync("2026-10-01T08:00:00Z"); // start date, but the property is delivered on 10/10
+        await RunAsync("2026-10-01T08:00:00Z");
         Assert.Empty(await QuesturaPayloadsAsync(lease));
 
         await RunAsync("2026-10-12T08:00:00Z");
@@ -348,13 +340,9 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
         Assert.Empty(_sent);
     }
 
-    // The pure threshold theories (QuesturaThresholds.Reached, Thresholds.Reached) are in RliDeadlineThresholdsTests: this class
-    // creates a PostgreSQL database for every test, which they do not need.
-
     [PostgresFact]
     public async Task ExecuteAsync_TwoLandlords_RemindsEachLandlordOnce()
     {
-        // LT-14 (A7-28): co-owners each have the registration obligation; a repeated address gets one email.
         var lease = await SeedLeaseAsync(
             LeaseStatus.Signed, StartOctober, SignedAt, coLandlordEmails: ["coowner@example.com", "HOST@example.com"]);
 
@@ -389,7 +377,6 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
     [PostgresFact]
     public async Task ExecuteAsync_ThresholdRecordedBeforeLt14_IsNotSentAgain()
     {
-        // A reminder recorded with the bare payload (first landlord only, before LT-14) counts as sent to all.
         var lease = await SeedLeaseAsync(LeaseStatus.Signed, StartOctober, SignedAt, coLandlordEmails: ["coowner@example.com"]);
         await using (var db = _database!.CreateContext())
         {
@@ -416,7 +403,6 @@ public class RliDeadlineReminderJobTests : IAsyncLifetime
         await job.ExecuteAsync();
     }
 
-    /// <summary>Thresholds sent, without the landlord suffix (<c>:{partyId}</c>, LT-14), one per landlord reached.</summary>
     private async Task<List<string?>> PayloadsAsync(Guid leaseId) =>
         (await RawPayloadsAsync(leaseId)).Select(p => p is null ? null : p[..p.LastIndexOf(':')]).ToList();
 

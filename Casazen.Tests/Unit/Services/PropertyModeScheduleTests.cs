@@ -9,20 +9,11 @@ using static Casazen.Tests.Unit.Services.PropertyModeHarness;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// PM-02: programming and withdrawing a change of rental mode. One change waiting per property; the same checks as the
-/// preview, made again at the creation; to long-term the calendar closes from the night before the day, at once, for two
-/// years (the booking site, the host and the portals that read the export stop taking those nights); the host is told
-/// after the commit.
-/// "Today" is 10 October 2026.
-/// </summary>
 public class PropertyModeScheduleTests : IDisposable
 {
     private readonly PropertyModeHarness _h = new();
 
     public void Dispose() => _h.Dispose();
-
-    // ─── Schedule ───────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Schedule_ToLongNothingInTheWay_WritesAScheduledChangeAndTellsTheHost()
@@ -41,7 +32,6 @@ public class PropertyModeScheduleTests : IDisposable
         Assert.Equal(Now.UtcDateTime, stored.CreatedAt);
         Assert.Null(stored.AppliedAt);
         Assert.Null(stored.FailureReason);
-        // Nothing changes on the property until its day.
         Assert.Equal(RentalMode.Short, (await _h.ReloadPropertyAsync(property.Id)).RentalMode);
         _h.Notifications.Verify(
             n => n.SendPropertyModeChangeAsync(
@@ -61,7 +51,6 @@ public class PropertyModeScheduleTests : IDisposable
         Assert.Equal(CalendarBlockSource.Manual, block.Source);
         Assert.Null(block.FeedId);
         Assert.Equal(property.OrgId, block.OrgId);
-        // The night of the 19th checks out on the morning of the 20th, which the change treats as not free yet.
         Assert.Equal(Day(19), block.StartUtc);
         Assert.Equal(new DateTime(2028, 10, 20, 0, 0, 0, DateTimeKind.Utc), block.EndUtc);
         Assert.Null(block.Summary);
@@ -70,8 +59,6 @@ public class PropertyModeScheduleTests : IDisposable
     [Fact]
     public async Task Schedule_ToLong_AnEarlierStayStaysFree_TheCheckoutNightOfTheChangeIsClosed()
     {
-        // The stay of the 12th to the 15th leaves on the morning of the 15th: free from the 16th, so it does not stand
-        // in the way. The block starts the night before the change and does not cover that stay.
         var property = await _h.SeedPropertyAsync();
         await _h.SeedStayAsync(property, Day(12), Day(15));
 
@@ -317,8 +304,6 @@ public class PropertyModeScheduleTests : IDisposable
         Assert.Equal(PropertyModeChangeStatus.Scheduled, (await _h.ReloadChangeAsync(change.Id)).Status);
     }
 
-    // ─── Cancel ─────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Cancel_AWaitingChangeToLong_IsWithdrawnAndTheCalendarOpensAgain()
     {
@@ -422,16 +407,12 @@ public class PropertyModeScheduleTests : IDisposable
             n => n.SendPropertyModeChangeAsync(It.IsAny<PropertyModeNotice>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    // ─── The booking side of the closed calendar ────────────────────────────────────────────────────
-
     [Fact]
     public async Task Schedule_ToLong_TheClosedNightsAreTakenByTheSingleOccupancyRule()
     {
         var property = await _h.SeedPropertyAsync();
         await _h.Service.ScheduleAsync(property.Id, RentalMode.Long, Day(20), UserId);
 
-        // The rule the public availability, the booking checks and the export use (BK-05). The night before the day is
-        // taken too: a stay on it checks out on the morning of the change. The night before that stays free.
         _h.Db.ChangeTracker.Clear();
         Assert.True(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(19), Day(20))));
         Assert.True(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(20), Day(21))));

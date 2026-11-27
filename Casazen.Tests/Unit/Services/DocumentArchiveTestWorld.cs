@@ -12,7 +12,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>A private bucket in memory: what the sources of the document archive open (<c>StorageBucket.Private</c> only).</summary>
 internal sealed class InMemoryFileStorage : IFileStorage
 {
     private readonly Dictionary<string, byte[]> _objects = new(StringComparer.Ordinal);
@@ -69,14 +68,9 @@ internal sealed class DocumentArchiveWorld
     public static readonly DateOnly TaxWithoutReceiptDay = new(2026, 8, 16);
     public static readonly DateOnly OtherOrgTaxDay = new(2026, 8, 17);
 
-    /// <summary>Every type the three sources of the documents serve: what a caller without <c>guest.read</c> may read (the statement holds those three sources only).</summary>
     public static DocumentArchiveAccess Everything { get; } = new(
         new HashSet<ArchiveDocumentType> { ArchiveDocumentType.PropertyDocument, ArchiveDocumentType.Contract, ArchiveDocumentType.TouristTax });
 
-    /// <summary>
-    /// Every type the five sources of the container serve (E20/F02/US01/T01): the three above and the proofs of the compliance duties the host uploaded. The
-    /// statement of the list, the count and the export holds all five sources.
-    /// </summary>
     public static DocumentArchiveAccess EveryType { get; } = new(
         new HashSet<ArchiveDocumentType>
         {
@@ -118,7 +112,6 @@ internal sealed class DocumentArchiveWorld
 
     public Guid OtherOrgTaxReceipt { get; private set; }
 
-    /// <summary>The storage key of the file of a document, to take it away from the bucket.</summary>
     public Dictionary<Guid, string> KeysByDocument { get; } = [];
 
     public static async Task<DocumentArchiveWorld> CreateAsync()
@@ -132,7 +125,6 @@ internal sealed class DocumentArchiveWorld
 
     public static byte[] Pdf(string text) => Encoding.ASCII.GetBytes($"%PDF-1.4 {text}");
 
-    /// <summary>The five sources as <c>AddDocumentArchive</c> registers them, in its order, over this database and this bucket.</summary>
     public IReadOnlyList<IDocumentArchiveSource> Sources() =>
     [
         new PropertyDocumentArchiveSource(Db, Storage),
@@ -145,9 +137,6 @@ internal sealed class DocumentArchiveWorld
     public DocumentArchiveService Service(DocumentArchiveOptions? limits = null) =>
         new(Sources(), Db, Options.Create(limits ?? new DocumentArchiveOptions()), NullLogger<DocumentArchiveService>.Instance);
 
-    /// <summary>
-    /// More documents of the granted property, as an upload stores them: no size, and a file in the bucket (one more file name each time).
-    /// </summary>
     public async Task AddPropertyDocumentsAsync(int count)
     {
         for (var number = 0; number < count; number++)
@@ -157,10 +146,6 @@ internal sealed class DocumentArchiveWorld
         Db.ChangeTracker.Clear();
     }
 
-    /// <summary>
-    /// A proof the host uploaded for <paramref name="property"/> (E20/F02/US01/T01), as the archive of the proofs stores it: the row, the line of the flat it was filed under
-    /// and one for each of <paramref name="alsoCovering"/> (a receipt of several flats), and its file in the private bucket under the key the real code builds.
-    /// </summary>
     public async Task<Guid> AddProofAsync(Property property, ManualProofKind kind, DateOnly day, params Property[] alsoCovering)
     {
         var id = Guid.NewGuid();
@@ -188,7 +173,6 @@ internal sealed class DocumentArchiveWorld
         return id;
     }
 
-    /// <summary>Deletes a property the way the host does (PC-05): softly, so its documents, its leases and its proofs stay in their tables.</summary>
     public async Task SoftDeleteAsync(Property property)
     {
         var row = await Db.Properties.SingleAsync(p => p.Id == property.Id);

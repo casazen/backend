@@ -17,7 +17,6 @@ public class HangfireStorageSettingsTests
     [Fact]
     public void Resolve_TestAndProdSearchPaths_ProduceDifferentDedicatedSchemas()
     {
-        // Railway runs both environments with ASPNETCORE_ENVIRONMENT=Production: only the SearchPath differs.
         var test = HangfireStorageSettings.Resolve(Config(), TestConnection, Environment(Environments.Production));
         var prod = HangfireStorageSettings.Resolve(Config(), ProdConnection, Environment(Environments.Production));
 
@@ -83,7 +82,6 @@ public class HangfireStorageSettingsTests
     [Fact]
     public void ResolveSchema_ProductionWithoutSearchPath_ExplicitSchemaIsAccepted()
     {
-        // A dedicated database per environment (e.g. two Supabase projects) may keep the classic name.
         Assert.Equal("hangfire", HangfireStorageSettings.ResolveSchema("hangfire", SupabaseHost, Environments.Production));
     }
 

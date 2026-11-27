@@ -24,11 +24,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E22/F01/US01/T03: the biometric settings of an organization. An organization administrator sets the thresholds within bounds (0.50 &lt;= escalate &lt; accept
-/// &lt;= 0.95, attempts 1 to 5) and every change leaves them provisional; only platform staff marks a calibration; nobody reads or writes another organization's
-/// row; and a change leaves a line in the activity log and in the application log. No row is today's defaults.
-/// </summary>
 public class BiometricSettingsServiceTests : IAsyncLifetime
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 14, 10, 0, 0, TimeSpan.Zero);
@@ -63,13 +58,6 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _db.DisposeAsync();
 
-    // ─── The proofs of the brief ─────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (data): thresholds out of bounds are refused with their own code and nothing changes. The bounds are 0.50 &lt;= escalate &lt; accept &lt;= 0.95 and
-    /// attempts 1 to 5, checked on the whole result (a member left out keeps its value), with no row written, no line in the activity log, and the row of an
-    /// organization that has one left exactly as it was.
-    /// </summary>
     [Theory]
     [InlineData("0.85", "0.49", 3, "biometric_thresholds_out_of_range")]
     [InlineData("0.96", "0.70", 3, "biometric_thresholds_out_of_range")]
@@ -85,13 +73,11 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
         var service = Service();
         var update = new BiometricSettingsUpdate(true, Decimal(accept), Decimal(escalate), attempts);
 
-        // No row yet: refused, and nothing is created or logged.
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => service.UpdateAsync(_agency, update, "auth0|admin", Ct));
         Assert.Equal(code, refused.Code);
         Assert.Empty(await _db.BiometricSettings.ToListAsync(Ct));
         Assert.Empty(await _db.OrgActivityEntries.ToListAsync(Ct));
 
-        // With a row: refused, and the row is as it was (the values, the calibration, the single line of its creation).
         await service.UpdateAsync(_agency, new BiometricSettingsUpdate(true, 0.80m, 0.60m, 4), "auth0|admin", Ct);
         await service.MarkCalibratedAsync(_agency, "auth0|staff", Ct);
         var before = await _db.BiometricSettings.AsNoTracking().SingleAsync(Ct);
@@ -105,7 +91,6 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
         Assert.Equal(lines, await _db.OrgActivityEntries.CountAsync(Ct));
     }
 
-    /// <summary>A member left out keeps its value, and the bounds are checked on the result: a threshold that alone looks fine can break the order against the other.</summary>
     [Fact]
     public async Task BiometricSettings_APartialUpdate_IsCheckedAsAWhole()
     {
@@ -120,7 +105,6 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
         Assert.Equal((0.80m, 0.60m, 5), (kept.AcceptThreshold, kept.EscalateThreshold, kept.MaxAttempts));
     }
 
-    /// <summary>The bounds themselves are accepted, a value is rounded to the four decimals the column keeps before it is checked, and the same values again are not a change.</summary>
     [Fact]
     public async Task BiometricSettings_TheBoundsThemselves_AreAccepted()
     {
@@ -132,7 +116,6 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
         var narrowest = await service.UpdateAsync(_agency, new BiometricSettingsUpdate(true, 0.5001m, 0.50m, 5), "auth0|admin", Ct);
         Assert.Equal((0.5001m, 0.50m, 5), (narrowest.AcceptThreshold, narrowest.EscalateThreshold, narrowest.MaxAttempts));
 
-        // 0.95004 is 0.9500 in the column, so it is inside the bound; 0.49996 is 0.5000.
         var rounded = await service.UpdateAsync(_agency, new BiometricSettingsUpdate(true, 0.95004m, 0.49996m, 3), "auth0|admin", Ct);
         Assert.Equal((0.95m, 0.50m), (rounded.AcceptThreshold, rounded.EscalateThreshold));
     }
@@ -158,20 +141,17 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
         Assert.Equal(0.90m, (await service.GetAsync(_agency, Ct)).AcceptThreshold);
         Assert.Equal(0.80m, (await service.GetAsync(_other, Ct)).AcceptThreshold);
 
-        // An organization that does not exist: nothing is calibrated, written or created.
         var unknown = Guid.NewGuid();
         Assert.Null(await service.MarkCalibratedAsync(unknown, "auth0|staff", Ct));
         await Assert.ThrowsAsync<NotFoundException>(() => service.UpdateAsync(unknown, new BiometricSettingsUpdate(true, 0.90m, 0.60m, 3), "auth0|admin", Ct));
         Assert.DoesNotContain(await _db.BiometricSettings.ToListAsync(Ct), s => s.OrgId == unknown);
         Assert.DoesNotContain(await _db.OrgActivityEntries.ToListAsync(Ct), e => e.OrgId == unknown);
 
-        // At the endpoint of the platform: 404 not_found.
         var admin = new AdminBiometricsController(Mock.Of<IBiometricModelStatusReader>(), service) { ControllerContext = ContextOf("auth0|staff") };
         var notFound = Assert.IsType<ObjectResult>((await admin.MarkCalibrated(unknown, Ct)).Result);
         Assert.Equal(StatusCodes.Status404NotFound, notFound.StatusCode);
         Assert.Equal("not_found", Assert.IsType<ProblemDetails>(notFound.Value).Extensions["code"]);
 
-        // The endpoint of the organization has no organization to name: it works on the one of the caller's context, and only on it.
         var resolver = new Mock<IOrgContextResolver>();
         resolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(_other);
         var own = new BiometricSettingsController(service, resolver.Object) { ControllerContext = ContextOf("auth0|admin-b") };
@@ -180,8 +160,6 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
         Assert.False(seen.IsDefault);
         foreach (var action in RoutedActions(typeof(BiometricSettingsController)))
         {
-            // E70/F02/US01/T02: the one id a route of this controller names is the segment's (segments/{id:guid}), a segment of the caller's org; another org's is a 404
-            // (IdentitySegmentEndpointsTests). No route and no parameter names an organization.
             Assert.DoesNotContain(action.Method.GetParameters(), p => p.Name == "orgId" || (p.ParameterType == typeof(Guid) && p.Name != "id"));
             Assert.True(
                 action.Verb.Template is null or "segments" or "segments/{id:guid}",
@@ -218,11 +196,9 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
         Assert.False(calibrated.Provisional);
         Assert.Equal(Now.UtcDateTime, calibrated.CalibratedAt);
 
-        // The same values again: no change, the calibration stays.
         var same = await service.UpdateAsync(_agency, new BiometricSettingsUpdate(true, 0.85m, 0.70m, 3), "auth0|admin", Ct);
         Assert.False(same.Provisional);
 
-        // A different value, even the attempts alone or the switch: provisional again.
         _clock.Advance(TimeSpan.FromMinutes(5));
         var changed = await service.UpdateAsync(_agency, new BiometricSettingsUpdate(null, null, null, 2), "auth0|admin", Ct);
         Assert.True(changed.Provisional);
@@ -230,9 +206,6 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
         Assert.Null((await _db.BiometricSettings.AsNoTracking().SingleAsync(Ct)).CalibratedAt);
     }
 
-    // ─── Defaults, audit, the endpoint ───────────────────────────────────────────────────────────────────
-
-    /// <summary>No row is today's defaults: 0.85, 0.70 and 3 attempts, provisional, enabled on the Agency plan only (ADR-013-R13); the same the flow applies.</summary>
     [Fact]
     public async Task BiometricSettings_NoRow_IsTodaysDefaults()
     {
@@ -253,16 +226,11 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
         Assert.Equal(IdentityVerificationFlowService.DefaultPolicy.MaxAttempts, agency.MaxAttempts);
         Assert.Empty(await _db.BiometricSettings.ToListAsync(Ct));
 
-        // Saving the defaults again is no change: no row, no line.
         await service.UpdateAsync(_agency, new BiometricSettingsUpdate(null, 0.85m, 0.70m, 3), "auth0|admin", Ct);
         Assert.Empty(await _db.BiometricSettings.ToListAsync(Ct));
         Assert.Empty(await _db.OrgActivityEntries.ToListAsync(Ct));
     }
 
-    /// <summary>
-    /// A change writes one line in the activity log of the org (the fact, no values, the actor and the org as the subject) in the same save, and one in the
-    /// application log with the new numbers and who; the calibration writes one with the staff user as the actor; a repeat writes none.
-    /// </summary>
     [Fact]
     public async Task BiometricSettings_AChangeLeavesAnAuditLine_TheCalibrationToo_ARepeatNone()
     {
@@ -291,7 +259,6 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
         Assert.Single(_logs, line => line.Contains("marked as calibrated by auth0|staff", StringComparison.Ordinal));
     }
 
-    /// <summary>The staff's calibration of an organization that never saved anything gives it a row with today's defaults (enabled as its plan says), calibrated.</summary>
     [Fact]
     public async Task BiometricSettings_CalibratingAnOrganizationWithNoRow_CreatesItsRowFromTheDefaults()
     {
@@ -329,17 +296,14 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
         Assert.Equal((true, 0.9m, 0.6m, 2, true, false), (saved.Enabled, saved.AcceptThreshold, saved.EscalateThreshold, saved.MaxAttempts, saved.Provisional, saved.IsDefault));
         Assert.Equal("auth0|admin", (await _db.OrgActivityEntries.SingleAsync(Ct)).ActorUserId);
 
-        // An empty body changes nothing; a bound that is broken is the service's DomainRuleException (the error middleware makes it a 422).
         Assert.IsType<OkObjectResult>((await controller.Put(new UpdateBiometricSettingsDto(), Ct)).Result);
         await Assert.ThrowsAsync<DomainRuleException>(() => controller.Put(new UpdateBiometricSettingsDto { MaxAttempts = 9 }, Ct));
 
-        // No organization in the context: 404.
         resolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync((Guid?)null);
         Assert.Equal(StatusCodes.Status404NotFound, Assert.IsType<ObjectResult>((await controller.Get(Ct)).Result).StatusCode);
         Assert.Equal(StatusCodes.Status404NotFound, Assert.IsType<ObjectResult>((await controller.Put(new UpdateBiometricSettingsDto(), Ct)).Result).StatusCode);
     }
 
-    /// <summary>Behind the flag of the identification, like the rest of it: while it is off the settings answer as a route that does not exist.</summary>
     [Fact]
     public void Endpoint_IsBehindTheIdentificationFlag()
     {
@@ -347,13 +311,10 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
 
         Assert.Equal([FeatureFlags.CheckInIdentityVerification], gates);
 
-        // E70/F02/US01/T02: the segments of the self-hosted verification sit next to the settings, behind the self-hosted flow too.
         Assert.Equal(
             ["CreateSegment", "Get", "GetSegments", "Put", "UpdateSegment"],
             RoutedActions(typeof(BiometricSettingsController)).Select(a => a.Method.Name).Order(StringComparer.Ordinal));
     }
-
-    // ─── Fixtures ────────────────────────────────────────────────────────────────────────────────────────
 
     private BiometricSettingsService Service() => new(_db, _clock, new ListLogger<BiometricSettingsService>(_logs), new ActivityLog(_db, _clock));
 
@@ -376,7 +337,6 @@ public class BiometricSettingsServiceTests : IAsyncLifetime
         },
     };
 
-    /// <summary>A logger that keeps every formatted line, to prove what is written.</summary>
     private sealed class ListLogger<T>(List<string> lines) : ILogger<T>
     {
         public IDisposable? BeginScope<TState>(TState state)

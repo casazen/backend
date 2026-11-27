@@ -77,8 +77,6 @@ public class OrgPropertyAccessServiceTests
         Guid orgId, Guid memberId, PropertyScope scope, string actor = OwnerId, params Guid[] propertyIds) =>
         RunAsync(s => s.SetAsync(orgId, memberId, actor, scope, propertyIds));
 
-    // --- Reading the access of a member ---------------------------------------------------------------
-
     [Fact]
     public async Task GetAsync_ACollaboratorWithEveryProperty_ReachesAllOfThem_AndCanBeLimited()
     {
@@ -105,7 +103,6 @@ public class OrgPropertyAccessServiceTests
         var memberId = await AddMemberAsync(orgId, "auth0|pia", role);
         await AddPropertyAsync(orgId, "Trullo");
         await AddPropertyAsync(orgId, "Casa Bianca");
-        // A stale Selected on a role that cannot be limited (written by hand) never narrows the view.
         await using (var db = _kit.NewDb())
         {
             (await db.OrgMembers.IgnoreQueryFilters().SingleAsync(m => m.Id == memberId)).PropertyScope = PropertyScope.Selected;
@@ -153,8 +150,6 @@ public class OrgPropertyAccessServiceTests
 
         var view = await RunAsync(s => s.GetAsync(orgId, everything));
 
-        // The owner, the admin, the manager and the collaborator with every property reach both (four people); the deactivated
-        // admin nobody. The first property is also reached by the two limited collaborators, the second by the one given it.
         Assert.Equal(6, view.Properties.Single(p => p.PropertyId == first).PeopleWithAccess);
         Assert.Equal(5, view.Properties.Single(p => p.PropertyId == second).PeopleWithAccess);
     }
@@ -173,7 +168,6 @@ public class OrgPropertyAccessServiceTests
         Assert.Equal(PropertyScope.Selected, view.PropertyScope);
         Assert.True(view.Properties.Single(p => p.PropertyId == trullo).Granted);
         Assert.False(view.Properties.Single(p => p.PropertyId == casa).Granted);
-        // The owner reaches both, the collaborator one.
         Assert.Equal(2, view.Properties.Single(p => p.PropertyId == trullo).PeopleWithAccess);
         Assert.Equal(1, view.Properties.Single(p => p.PropertyId == casa).PeopleWithAccess);
     }
@@ -189,8 +183,6 @@ public class OrgPropertyAccessServiceTests
 
         Assert.Equal(OrgInvitationErrors.MemberNotFound, error.Code);
     }
-
-    // --- Setting the access ---------------------------------------------------------------------------
 
     [Fact]
     public async Task SetAsync_Selected_GivesExactlyTheProperties_AndInvalidatesTheCacheOfTheMember()
@@ -241,7 +233,6 @@ public class OrgPropertyAccessServiceTests
         var trullo = await AddPropertyAsync(orgId, "Trullo");
         await SetAsync(orgId, memberId, PropertyScope.Selected, OwnerId, trullo);
 
-        // The ids sent with All are ignored (even unknown ones): All means every property.
         var view = await SetAsync(orgId, memberId, PropertyScope.All, OwnerId, Guid.NewGuid());
 
         Assert.Equal(PropertyScope.All, view.PropertyScope);
@@ -317,8 +308,6 @@ public class OrgPropertyAccessServiceTests
         Assert.Equal(OrgMembershipErrors.ScopeNotSupported, error.Code);
     }
 
-    // --- Who may set it ------------------------------------------------------------------------------
-
     [Fact]
     public async Task SetAsync_AnAdminLimitsACollaborator_ButNotAnotherAdmin()
     {
@@ -334,7 +323,6 @@ public class OrgPropertyAccessServiceTests
 
         Assert.Equal(PropertyScope.Selected, done.PropertyScope);
         Assert.Equal(OrgInvitationErrors.OwnerRequired, error.Code);
-        // The owner may touch an administrator (here with nothing to change).
         Assert.False((await SetAsync(orgId, otherAdmin, PropertyScope.All)).ScopeSupported);
     }
 
@@ -388,8 +376,6 @@ public class OrgPropertyAccessServiceTests
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => SetAsync(orgId, memberId, (PropertyScope)99));
     }
 
-    // --- The member in charge of a property ------------------------------------------------------------
-
     private async Task<string?> ResponsibleOfAsync(Guid propertyId)
     {
         await using var db = _kit.NewDb();
@@ -411,7 +397,6 @@ public class OrgPropertyAccessServiceTests
         await RunAsync(s => s.SetResponsibleAsync(orgId, trullo, "auth0|manager"));
         Assert.Equal("auth0|manager", await ResponsibleOfAsync(trullo));
 
-        // Nobody: the creator is told again.
         await RunAsync(s => s.SetResponsibleAsync(orgId, trullo, null));
         Assert.Null(await ResponsibleOfAsync(trullo));
     }

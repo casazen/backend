@@ -95,7 +95,6 @@ public class BookingsControllerTests
             HttpContext = new DefaultHttpContext
             {
                 User = new ClaimsPrincipal(identity),
-                // ApiProblem (FD-05 contract) localizes the detail through SharedResources.
                 RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
             },
         };
@@ -105,7 +104,6 @@ public class BookingsControllerTests
     private static IAuthorizationService HostAuthorization(Guid? callerOrgId = null) =>
         HostAuthorizationTestHarness.Create(callerOrgId ?? OrgId);
 
-    /// <summary>What <c>BookingService.PriceHostStayAsync</c> returns: nightly rate x nights + cleaning fee, plus the tax.</summary>
     private static DirectBookingQuote HostQuote(Property property, DateTime checkIn, DateTime checkOut, TouristTaxQuote tax)
     {
         var nights = (checkOut.Date - checkIn.Date).Days;
@@ -169,7 +167,6 @@ public class BookingsControllerTests
             Source = BookingSource.Direct,
         };
 
-        // SR-03b: the plain list is the search without a filter (SR-03-FU7), so it asks the search service, once.
         _mockSearch
             .Setup(s => s.SearchAsync(
                 It.Is<HostScope>(scope => scope.OrgId == OrgId && scope.OwnerId == OwnerId),
@@ -188,7 +185,6 @@ public class BookingsControllerTests
         Assert.Equal(1, paged.TotalCount);
         Assert.Equal(1, paged.Page);
         Assert.Equal(10, paged.PageSize);
-        // No per-booking authorization lookup any more (A2-17): the scope is applied by the single query.
         _mockAuthz.VerifyNoOtherCalls();
         _mockSearch.Verify(
             s => s.SearchAsync(It.IsAny<HostScope>(), It.IsAny<BookingSearchCriteria>(), It.IsAny<CancellationToken>()),
@@ -253,8 +249,6 @@ public class BookingsControllerTests
     [Fact]
     public async Task GetAll_AsksOnlyForTheTwoFiltersItHas_AndNothingElse()
     {
-        // The plain list narrows by the property and the guest, and no more: no chip, no channel, no order. It must not turn into a
-        // search that filters (SR-03-FU7: the same rule, the same answer).
         SetUser(OwnerId);
         var property = MakeProperty();
         _mockPropertyService.Setup(s => s.GetPropertyRecordAsync(PropertyId)).ReturnsAsync(property);
@@ -302,7 +296,6 @@ public class BookingsControllerTests
         Guest? storedGuest = null;
 
         _mockPropertyService.Setup(s => s.GetPropertyAsync(PropertyId)).ReturnsAsync(MakeProperty());
-        // No minors in the request: every guest counts as an adult for the tourist tax (BK-03).
         _mockBookingService
             .Setup(b => b.PriceHostStayAsync(
                 It.Is<Property>(p => p.Id == PropertyId),

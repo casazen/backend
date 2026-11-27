@@ -18,7 +18,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>«Calcola con l'AI» of the step «Prezzi» (WIZ-AI-PRICE): who may ask, what is passed on, what comes back.</summary>
 public class PropertyPriceSuggestionControllerTests
 {
     private const string OwnerId = "auth0|owner_123";
@@ -39,8 +38,6 @@ public class PropertyPriceSuggestionControllerTests
             HostAuthorizationTestHarness.Create(TestOrgId),
             NullLogger<PropertyPriceSuggestionController>.Instance);
     }
-
-    // ─── Suggest ─────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Suggest_TheOwner_GetsTheSuggestion()
@@ -164,8 +161,6 @@ public class PropertyPriceSuggestionControllerTests
             Times.Never);
     }
 
-    // ─── GetAvailability ─────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -207,8 +202,6 @@ public class PropertyPriceSuggestionControllerTests
         _suggestions.Verify(s => s.IsAvailableAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    // ─── The doors ───────────────────────────────────────────────────────────────
-
     [Fact]
     public void Suggest_IsUnderTheAiRateLimit_AndAsksForTheWritePermission()
     {
@@ -229,8 +222,6 @@ public class PropertyPriceSuggestionControllerTests
         Assert.NotNull(action);
         Assert.Null(action.GetCustomAttribute<AiRateLimitAttribute>());
     }
-
-    // ─── Helpers ─────────────────────────────────────────────────────────────────
 
     private void SetUser(string userId)
     {

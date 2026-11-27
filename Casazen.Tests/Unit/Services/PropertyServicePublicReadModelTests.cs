@@ -16,9 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// US-001 (#212) service-layer projection tests for public read-models (AC1, AC3, AC5, AC7).
-/// </summary>
 public class PropertyServicePublicReadModelTests
 {
     private static PropertyService CreateService(AppDbContext context) =>
@@ -180,7 +177,7 @@ public class PropertyServicePublicReadModelTests
     [Theory]
     [InlineData(null, CinStatus.Missing)]
     [InlineData("IT058091C27G5FFZDZ", CinStatus.Valid)]
-    [InlineData("IT123450123456789", CinStatus.Invalid)] // old invented format after the CO-01 migration
+    [InlineData("IT123450123456789", CinStatus.Invalid)]
     [InlineData("BAD", CinStatus.Invalid)]
     public async Task SearchAsync_DerivesCinStatus_FromCinCode(string? cinCode, CinStatus expected)
     {
@@ -207,8 +204,6 @@ public class PropertyServicePublicReadModelTests
 
         Assert.Equal(expected, dto.CinStatus);
     }
-
-    // ── SearchByOrgAsync ─────────────────────────────────────────────────────────
 
     [Fact]
     public async Task SearchByOrgAsync_ReturnsOnlyPropertiesForGivenOrg()
@@ -329,8 +324,6 @@ public class PropertyServicePublicReadModelTests
         Assert.Empty(result);
     }
 
-    // ── GetPublicPropertyForOrgAsync ─────────────────────────────────────────────
-
     [Fact]
     public async Task GetPublicPropertyForOrgAsync_ReturnsDetail_WhenPropertyBelongsToOrg()
     {
@@ -369,7 +362,6 @@ public class PropertyServicePublicReadModelTests
     [Fact]
     public async Task GetPublicPropertyForOrgAsync_ReturnsNull_WhenPropertyBelongsToOtherOrg()
     {
-        // AC3: cross-org property lookup must return null so controller returns 404.
         await using var context = CreateContext();
         var orgA = await SeedOrgAsync(context);
         var orgB = await SeedOrgAsync(context);
@@ -450,8 +442,6 @@ public class PropertyServicePublicReadModelTests
         Assert.Equal(property.Id, dto!.Id);
     }
 
-    // ─── Coordinates, stay rules and host data on the public read models (DB-03) ─────────────────────
-
     private static Property PublishedProperty(Guid orgId, string name = "Casa Segreta") => new()
     {
         OwnerId = "auth0|owner-secret",
@@ -514,7 +504,6 @@ public class PropertyServicePublicReadModelTests
         Assert.NotNull(dto);
         Assert.Equal(45.46m, dto.Latitude);
         Assert.Equal(9.19m, dto.Longitude);
-        // The host still reads and edits the exact position.
         var stored = await context.Properties.AsNoTracking().SingleAsync(p => p.Id == property.Id);
         Assert.Equal(45.464211m, stored.Latitude);
         Assert.Equal(9.191383m, stored.Longitude);
@@ -534,7 +523,6 @@ public class PropertyServicePublicReadModelTests
         Assert.NotNull(dto);
         Assert.Equal(45.46m, dto.Latitude);
         Assert.Equal(9.19m, dto.Longitude);
-        // No member of the public DTOs can carry the street address or the unit.
         var members = dto.GetType().GetProperties().Select(p => p.Name).ToList();
         Assert.DoesNotContain(members, n => n.Equals("Address", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(members, n => n.Equals("Unit", StringComparison.OrdinalIgnoreCase));
@@ -597,7 +585,6 @@ public class PropertyServicePublicReadModelTests
         Assert.NotNull(dto);
         Assert.Null(dto.MinNights);
         Assert.Equal(0m, dto.WeekendSurchargePercent);
-        // No connected account yet: nothing can be booked, and no phone nor host name was ever entered.
         Assert.False(dto.AcceptsBookings);
         Assert.Null(dto.HostName);
         Assert.Null(dto.PublicPhone);

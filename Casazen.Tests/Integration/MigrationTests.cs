@@ -26,10 +26,8 @@ public class MigrationTests : IDisposable
     [Fact]
     public async Task FixOwnerIdType_Migration_ConvertsGuidToString()
     {
-        // Arrange - Create database with initial schema
         await _context.Database.EnsureCreatedAsync();
 
-        // Verify Property entity has string OwnerId
         var propertyEntityType = _context.Model.FindEntityType(typeof(Property));
         Assert.NotNull(propertyEntityType);
 
@@ -42,7 +40,6 @@ public class MigrationTests : IDisposable
     [Fact]
     public async Task Property_WithStringOwnerId_CanBeSavedAndRetrieved()
     {
-        // Arrange
         await _context.Database.EnsureCreatedAsync();
 
         var property = new Property
@@ -53,11 +50,9 @@ public class MigrationTests : IDisposable
             OwnerId = "auth0|test_user_123"
         };
 
-        // Act
         _context.Properties.Add(property);
         await _context.SaveChangesAsync();
 
-        // Assert
         var savedProperty = await _context.Properties
             .FirstOrDefaultAsync(p => p.Name == "Test Property");
 
@@ -69,7 +64,6 @@ public class MigrationTests : IDisposable
     [Fact]
     public async Task Property_WithVariousOwnerIdFormats_CanBeSaved()
     {
-        // Arrange
         await _context.Database.EnsureCreatedAsync();
 
         var ownerIds = new[]
@@ -81,7 +75,6 @@ public class MigrationTests : IDisposable
             "twitter|xyz123"
         };
 
-        // Act
         foreach (var ownerId in ownerIds)
         {
             _context.Properties.Add(new Property
@@ -94,7 +87,6 @@ public class MigrationTests : IDisposable
         }
         await _context.SaveChangesAsync();
 
-        // Assert
         var properties = await _context.Properties.ToListAsync();
         Assert.Equal(ownerIds.Length, properties.Count);
 
@@ -109,13 +101,11 @@ public class MigrationTests : IDisposable
     [Fact]
     public async Task Property_OwnerIdMaxLength_IsEnforced()
     {
-        // Arrange
         await _context.Database.EnsureCreatedAsync();
 
         var propertyEntityType = _context.Model.FindEntityType(typeof(Property));
         var ownerIdProperty = propertyEntityType?.FindProperty(nameof(Property.OwnerId));
 
-        // Assert
         Assert.NotNull(ownerIdProperty);
         Assert.Equal(255, ownerIdProperty.GetMaxLength());
     }
@@ -123,13 +113,11 @@ public class MigrationTests : IDisposable
     [Fact]
     public async Task Property_OwnerIdIsRequired_IsEnforced()
     {
-        // Arrange
         await _context.Database.EnsureCreatedAsync();
 
         var propertyEntityType = _context.Model.FindEntityType(typeof(Property));
         var ownerIdProperty = propertyEntityType?.FindProperty(nameof(Property.OwnerId));
 
-        // Assert
         Assert.NotNull(ownerIdProperty);
         Assert.False(ownerIdProperty.IsNullable);
     }
@@ -137,7 +125,6 @@ public class MigrationTests : IDisposable
     [Fact]
     public async Task GetByOwnerAsync_WithStringOwnerId_ReturnsCorrectProperties()
     {
-        // Arrange
         await _context.Database.EnsureCreatedAsync();
 
         var ownerId1 = "auth0|owner_1";
@@ -150,12 +137,10 @@ public class MigrationTests : IDisposable
         );
         await _context.SaveChangesAsync();
 
-        // Act
         var owner1Properties = await _context.Properties
             .Where(p => p.OwnerId == ownerId1 && p.IsActive)
             .ToListAsync();
 
-        // Assert
         Assert.Equal(2, owner1Properties.Count);
         Assert.All(owner1Properties, p => Assert.Equal(ownerId1, p.OwnerId));
     }
@@ -163,7 +148,6 @@ public class MigrationTests : IDisposable
     [Fact]
     public async Task Migration_PreservesOtherPropertyColumns()
     {
-        // Arrange
         await _context.Database.EnsureCreatedAsync();
 
         var property = new Property
@@ -188,11 +172,9 @@ public class MigrationTests : IDisposable
             IsActive = true
         };
 
-        // Act
         _context.Properties.Add(property);
         await _context.SaveChangesAsync();
 
-        // Assert
         var savedProperty = await _context.Properties
             .FirstOrDefaultAsync(p => p.Name == "Full Property");
 
@@ -212,17 +194,13 @@ public class MigrationTests : IDisposable
     [Fact]
     public void Migration_ChecksColumnTypeInSchema()
     {
-        // Arrange
         var propertyEntityType = _context.Model.FindEntityType(typeof(Property));
         var ownerIdProperty = propertyEntityType?.FindProperty(nameof(Property.OwnerId));
 
-        // Assert
         Assert.NotNull(ownerIdProperty);
 
-        // Verify it's a string type
         Assert.Equal(typeof(string), ownerIdProperty.ClrType);
 
-        // Verify constraints
         Assert.False(ownerIdProperty.IsNullable);
         Assert.Equal(255, ownerIdProperty.GetMaxLength());
     }

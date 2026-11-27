@@ -13,7 +13,6 @@ public class FacePoseTests
 {
     private const double Degrees = 180 / Math.PI;
 
-    /// <summary>The landmarks of the face the legacy tests of the pose use: eyes 32 apart at y 22, nose at y 33, mouth at y 45; the nose moved by <paramref name="noseOffset"/> to the right.</summary>
     private static float[] LegacyFace(float noseOffset) => [16, 22, 48, 22, 32 + noseOffset, 33, 22, 45, 42, 45];
 
     [Theory]
@@ -24,7 +23,6 @@ public class FacePoseTests
     [InlineData(18f)]
     public void YawDegrees_IsTheEstimateOfTheActivePoseService_Unchanged(float noseOffset)
     {
-        // The offset of the nose over the distance of the eyes (32), over the depth of the nose over the distance of the eyes (0.636267): the formula the legacy proof had.
         var expected = Math.Atan(noseOffset * 32 / (32.0 * 32.0) / 0.636267) * Degrees;
 
         Assert.Equal(expected, FacePose.YawDegrees(LegacyFace(noseOffset)), 6);
@@ -76,7 +74,6 @@ public class FacePoseTests
     [Fact]
     public void Pitch_TheFrontalFaceOfTheAlignmentTemplate_IsLevel()
     {
-        // The template the recognition models align faces to (FaceAlignment.Template112): the constants of the pitch are its proportions, so it reads as a level face.
         float[] template = [38.2946f, 51.6963f, 73.5318f, 51.5014f, 56.0252f, 71.7366f, 41.5493f, 92.3655f, 70.7299f, 92.2041f];
 
         var angles = FacePose.Estimate(Face(template));
@@ -93,7 +90,6 @@ public class FacePoseTests
     [InlineData(0.30)]
     public void Pitch_TheNoseTowardsTheEyes_IsAFaceLookingUp_AndTowardsTheMouthLookingDown(double shareOfEyesToMouth)
     {
-        // The nose tip stands 0.495 of the way from the eyes to the mouth; moved by a share of that distance it is a pitch of atan(share / 0.551).
         var expected = Math.Atan(shareOfEyesToMouth / 0.551) * Degrees;
 
         Assert.Equal(expected, FacePose.PitchDegrees(Frontal(noseRatio: 0.495 - shareOfEyesToMouth)), 0);
@@ -105,7 +101,6 @@ public class FacePoseTests
     [Fact]
     public void Pitch_IsAsTheModelSaysItIs_ForTheDepthOfTheNose()
     {
-        // The model, written from its start: a nose tip 0.551 distances from the eyes to the mouth in front of the plane of the face, the head pitched by 15 degrees upward (the nose goes towards the eyes by the depth of the nose times the tangent of the pitch).
         var pitch = 15 * Math.PI / 180;
         var ratio = 0.495 - (0.551 * Math.Tan(pitch));
 
@@ -118,7 +113,6 @@ public class FacePoseTests
         var level = Frontal(noseRatio: 0.40);
         var pitch = FacePose.PitchDegrees(level);
 
-        // The nose moved sideways (a turn) leaves the pitch alone.
         float[] turned = [.. level];
         turned[4] += 7;
         Assert.Equal(pitch, FacePose.PitchDegrees(turned), 6);
@@ -130,11 +124,9 @@ public class FacePoseTests
     [Fact]
     public void Pitch_IsBoundedByTheGeometry_AndNeedsAFaceThatIsUpright()
     {
-        // The nose just under the eyes and just over the mouth: the most the model gives (about +42 and -42 degrees), not more.
         Assert.InRange(FacePose.PitchDegrees(Frontal(noseRatio: 0.01)), 40, 43);
         Assert.InRange(FacePose.PitchDegrees(Frontal(noseRatio: 0.99)), -43, -40);
 
-        // The nose on the line of the eyes, above it, on the line of the mouth or below it, or the mouth above the eyes: no estimate.
         Assert.True(double.IsNaN(FacePose.PitchDegrees(Frontal(noseRatio: 0))));
         Assert.True(double.IsNaN(FacePose.PitchDegrees(Frontal(noseRatio: -0.2))));
         Assert.True(double.IsNaN(FacePose.PitchDegrees(Frontal(noseRatio: 1))));
@@ -145,7 +137,6 @@ public class FacePoseTests
     [Fact]
     public void SequenceTestFrames_WritesLandmarksThatTheEstimateReadsBack()
     {
-        // The scripts of the tests of the validation write the head with the inverse of this estimate: they have to agree.
         foreach (var (yaw, pitch) in new[] { (0.0, 0.0), (30.0, 0.0), (-30.0, 0.0), (0.0, 18.0), (0.0, -18.0), (-25.0, 12.0) })
         {
             var angles = FacePose.Estimate(SequenceTestFrames.Face(640, 480, yaw, pitch));
@@ -155,7 +146,6 @@ public class FacePoseTests
         }
     }
 
-    /// <summary>A face of the model: the eyes 40 apart at y 40 (level), the mouth 46.2 below them (the proportion of the template), and the nose tip at <paramref name="noseRatio"/> of the way down.</summary>
     private static float[] Frontal(double noseRatio)
     {
         const double eyeDistance = 40;
@@ -163,7 +153,6 @@ public class FacePoseTests
         return [(float)(100 - (eyeDistance / 2)), 40, (float)(100 + (eyeDistance / 2)), 40, 100, (float)(40 + (noseRatio * eyesToMouth)), 82, (float)(40 + eyesToMouth), 118, (float)(40 + eyesToMouth)];
     }
 
-    /// <summary>The landmarks turned by <paramref name="rollDegrees"/> about their middle and scaled.</summary>
     private static float[] Transform(float[] points, double rollDegrees, double scale)
     {
         var roll = rollDegrees * Math.PI / 180;

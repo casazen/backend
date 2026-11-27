@@ -83,8 +83,6 @@ public class NotificationServiceChk12Tests : IDisposable
         Assert.Equal(PushAudience.BookingHosts(booking.Id), push.Audience);
         Assert.Equal($"/bookings/{booking.Id}", push.Payload.Route);
 
-        // What the host reads: the property and the day, and nothing of the guest, in the email and in the push. The service writes in the default culture
-        // (Italian); the English texts of the same templates, with the inputs the service gives them, are scanned by the next tests.
         AssertNoGuestData(new[] { email.Content.Subject, email.Content.HtmlBody, push.Payload.Title, push.Payload.Body }, booking);
         Assert.Contains("Villa Rosa", email.Content.Subject, StringComparison.Ordinal);
         Assert.Contains("05/11/2026", email.Content.Subject, StringComparison.Ordinal);
@@ -101,7 +99,6 @@ public class NotificationServiceChk12Tests : IDisposable
         var english = CultureInfo.GetCultureInfo("en");
         var link = EmailTestHelpers.Links().HostBooking(booking.Id);
 
-        // The inputs NotificationService gives the templates: the property, the arrival day, the legal deadline of a short stay and the link; never the guest.
         var email = kind switch
         {
             StayAlertKind.ReceiptMissing => EmailTemplates.ReceiptMissing(english, "Villa Rosa", booking.CheckInDate, link),
@@ -143,7 +140,6 @@ public class NotificationServiceChk12Tests : IDisposable
         Assert.All(emails, e => Assert.Contains("Villa Rosa", e.Subject, StringComparison.Ordinal));
     }
 
-    /// <summary>What the host reads names the property and the day and nothing of the guest: no name, no address, no booking code.</summary>
     private static void AssertNoGuestData(IEnumerable<string> texts, Booking booking) =>
         Assert.All(texts, text =>
         {
@@ -185,7 +181,6 @@ public class NotificationServiceChk12Tests : IDisposable
 
         await Service().SendComplianceAlertAsync(alert, ["host@example.com", "HOST@example.com", "", "admin@example.com"], key);
 
-        // Distinct addresses only (the same address in another case is the same one), none blank.
         Assert.Equal(["host@example.com", "admin@example.com"], _emails.Queued.Select(e => e.To!).ToArray());
         var email = _emails.Queued[0];
         Assert.Equal("compliance-period-alert", email.Template);
@@ -246,7 +241,6 @@ public class NotificationServiceChk12Tests : IDisposable
             push.Audience);
         Assert.Equal(forWhoCanAct, push.Audience.RequiredPermission is not null);
 
-        // The e-mail goes to the address it is given, the contact address of the organization: it is not a person and is never narrowed.
         Assert.Equal("host@example.com", Assert.Single(_emails.Queued).To);
     }
 

@@ -11,12 +11,10 @@ namespace Casazen.Tests.Unit.Architecture;
 /// </summary>
 public class GuestDataIsolationArchitectureTests
 {
-    /// <summary>The files of the CRM and of what it feeds, by name.</summary>
     private static readonly Regex CrmFile = new(
         "(Crm|Segment|Campaign|GuestContact|GuestMatching|Suppression|Unsubscribe)[A-Za-z]*\\.cs$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-    /// <summary>What the CRM must never read.</summary>
     private static readonly (Regex Pattern, string Hint)[] Forbidden =
     [
         (new(@"\bStayGuests?\b"), "the stay guests of the police record"),
@@ -37,7 +35,6 @@ public class GuestDataIsolationArchitectureTests
             .Where(file => !IsExcluded(file.Relative) && CrmFile.IsMatch(Path.GetFileName(file.Path)))
             .ToList();
 
-        // The guard covers the CRM: it would pass on nothing if the files moved.
         Assert.Contains(files, f => f.Relative.EndsWith("/CrmContactIndex.cs", StringComparison.Ordinal));
         Assert.Contains(files, f => f.Relative.EndsWith("/CampaignService.cs", StringComparison.Ordinal));
         Assert.Contains(files, f => f.Relative.EndsWith("/GuestSegment.cs", StringComparison.Ordinal));
@@ -67,10 +64,8 @@ public class GuestDataIsolationArchitectureTests
     private static bool IsExcluded(string relativePath) =>
         relativePath.Contains("/bin/", StringComparison.Ordinal)
         || relativePath.Contains("/obj/", StringComparison.Ordinal)
-        // Migrations are history: the model of every table is in them.
         || relativePath.Contains("/Migrations/", StringComparison.Ordinal);
 
-    /// <summary>Drops a trailing <c>//</c> comment, so a file may explain the rule it keeps.</summary>
     private static string StripComment(string line)
     {
         var index = line.IndexOf("//", StringComparison.Ordinal);

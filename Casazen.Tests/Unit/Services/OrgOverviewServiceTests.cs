@@ -35,9 +35,6 @@ public class OrgOverviewServiceTests
         return org.Id;
     }
 
-    // ─── The properties ─────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Four short-term properties (to complete: the first and the third), two long-term, one deleted, and one of another org.</summary>
     private async Task<(Guid Pending, Guid Active, Guid Suspended, Guid Inactive, Guid LongOne, Guid LongTwo)> SeedPropertiesAsync(Guid orgId)
     {
         var pending = await _kit.SeedPropertyAsync(orgId, "In attesa", compliance: PropertyComplianceStatus.Pending);
@@ -62,8 +59,6 @@ public class OrgOverviewServiceTests
 
         var overview = await GetAsync(orgId);
 
-        // Six live properties (a deleted one is not one). To complete: short-term, active and not yet able to take bookings: the
-        // pending and the suspended; a long-term property has no listing to activate, and an inactive one is not «to complete».
         Assert.Equal(new OrgOverviewProperties(Total: 6, Short: 4, Long: 2, ToComplete: 2), overview.Properties);
     }
 
@@ -90,10 +85,8 @@ public class OrgOverviewServiceTests
             await _kit.PropertyAccess(db).SetAsync(orgId, memberId, OwnerId, PropertyScope.Selected, [pending, longOne]);
 
         var granted = await GetAsync(orgId, new HostScope(orgId, GrantedToUserId: "auth0|anna"));
-        // Working in both areas: one short-term (to complete) and one long-term.
         Assert.Equal(new OrgOverviewProperties(Total: 2, Short: 1, Long: 1, ToComplete: 1), granted.Properties);
 
-        // Working in the short-term area only: the long-term grant stays and is not reached.
         var shortOnly = await GetAsync(orgId, new HostScope(orgId, GrantedToUserId: "auth0|anna", GrantedMode: RentalMode.Short));
         Assert.Equal(new OrgOverviewProperties(Total: 1, Short: 1, Long: 0, ToComplete: 1), shortOnly.Properties);
     }
@@ -106,8 +99,6 @@ public class OrgOverviewServiceTests
         Assert.Equal(new OrgOverviewProperties(0, 0, 0, 0), overview.Properties);
         Assert.Equal(new OrgOverviewAlloggiati(0), overview.Alloggiati);
     }
-
-    // ─── Alloggiati ─────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Alloggiati_CountsTheShortTermPropertiesWithoutCredentials_AndNotTheLongTermOnes()
@@ -129,7 +120,6 @@ public class OrgOverviewServiceTests
 
         var overview = await GetAsync(orgId);
 
-        // Four short-term properties, one with credentials; the two long-term ones need none, the deleted one is not counted.
         Assert.Equal(3, overview.Alloggiati!.PropertiesWithoutCredentials);
         Assert.NotEqual(Guid.Empty, pending);
     }
@@ -148,8 +138,6 @@ public class OrgOverviewServiceTests
 
         Assert.Equal(1, overview.Alloggiati!.PropertiesWithoutCredentials);
     }
-
-    // ─── The plan ───────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(SubscriptionStatus.Active, "ok")]
@@ -178,8 +166,6 @@ public class OrgOverviewServiceTests
         Assert.True((await GetAsync(orgId)).OpenAccess);
     }
 
-    // ─── People ─────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Seats_OfTheOrg_AreTheUsedAndTheMaxOfThePlan()
     {
@@ -190,7 +176,6 @@ public class OrgOverviewServiceTests
 
         var seats = (await GetAsync(orgId)).Seats!;
 
-        // The owner, one active member and one open invitation; a deactivated member holds no seat. Pro: ten.
         Assert.Equal(new OrgOverviewSeats(Used: 3, Max: 10, Unlimited: false), seats);
     }
 
@@ -220,7 +205,6 @@ public class OrgOverviewServiceTests
 
         var invitations = (await GetAsync(orgId)).Invitations!;
 
-        // Two open (the expired ones and the revoked one do not wait for anybody); the oldest has waited five whole days.
         Assert.Equal(new OrgOverviewInvitations(Pending: 2, OldestPendingDays: 5), invitations);
     }
 
@@ -248,8 +232,6 @@ public class OrgOverviewServiceTests
         Assert.Equal(new OrgOverviewAccessRequests(0), overview.AccessRequests);
         Assert.Equal(new OrgOverviewSuppliers(0), overview.Suppliers);
     }
-
-    // ─── The latest activity of people ──────────────────────────────────────────────────────────────────
 
     private async Task RecordAsync(Guid orgId, OrgActivityType type, string? actor, string subject, params (string, string)[] details)
     {
@@ -298,8 +280,6 @@ public class OrgOverviewServiceTests
 
         Assert.Empty((await GetAsync(orgId)).RecentActivity!);
     }
-
-    // ─── Sections the caller may not see ────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetAsync_ACallerWhoHoldsEveryPermission_GetsEverySection()
@@ -353,7 +333,6 @@ public class OrgOverviewServiceTests
         Assert.Equal("org.members.manage", OrgOverviewSections.People);
         Assert.Equal("org.suppliers.manage", OrgOverviewSections.Suppliers);
         Assert.Equal("org.activity.read", OrgOverviewSections.Activity);
-        // The owner and the administrators hold every one of them (the seeded roles), the other roles none but their own.
         var owner = OrgRoleCatalog.SeededRoles.Single(r => r.RoleKey == AccountContext.RoleKeys.Owner).Permissions;
         Assert.All(OrgOverviewSections.All, permission => Assert.Contains(permission, owner));
     }

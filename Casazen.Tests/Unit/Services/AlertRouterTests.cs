@@ -44,7 +44,6 @@ public class AlertRouterTests : IAsyncLifetime
     [Fact]
     public async Task AlertRouter_QuietHours_LegalOverride_Test()
     {
-        // 22:15 UTC on 5 November 2026 is 23:15 in Rome (CET).
         var now = new DateTimeOffset(2026, 11, 5, 22, 15, 0, TimeSpan.Zero);
         var router = Router(new Casazen.Tests.Unit.FakeTimeProvider(now));
         var booking = Guid.NewGuid();
@@ -65,14 +64,12 @@ public class AlertRouterTests : IAsyncLifetime
             Assert.Null(row.DismissedAt);
         });
 
-        // Not legal: stored, held back until 08:00 in Rome (07:00 UTC), nothing sent.
         var held = Assert.Single(rows, row => row.AlertType == AlertType.CheckInPending);
         Assert.Equal(new DateTime(2026, 11, 6, 7, 0, 0, DateTimeKind.Utc), held.RemindAt);
         Assert.Null(held.DeliveredAt);
         Assert.Null(held.Deadline);
         Assert.DoesNotContain(_publisher.Sent, sent => sent.AlertId == held.Id);
 
-        // Legal: not held back, delivered now with the deadline, pushed to the user.
         var legal = rows.Where(row => PopupAlert.IsLegal(row.AlertType)).ToList();
         Assert.Equal(2, legal.Count);
         foreach (var row in legal)
@@ -85,7 +82,6 @@ public class AlertRouterTests : IAsyncLifetime
 
         Assert.Equal(2, _publisher.Sent.Count);
 
-        // The preferences were created with the defaults the first time an alert was routed.
         var preferences = Assert.Single(await ReadPreferencesAsync());
         Assert.Equal(_orgId, preferences.OrgId);
         Assert.Equal(UserId, preferences.UserId);
@@ -93,7 +89,6 @@ public class AlertRouterTests : IAsyncLifetime
         Assert.Equal(new TimeOnly(8, 0), preferences.QuietHoursEnd);
         Assert.True(preferences.LegalAlertsOverrideQuietHours);
 
-        // The same open alert again, and a user who is in no host org: nothing is written, nothing is sent.
         await router.RouteAlertAsync(AlertType.CheckInPending, booking, "Booking", UserId, AlertUrgency.High, null, Ct);
         await router.RouteAlertAsync(AlertType.AlloggiatiDeadline, booking, "Booking", "auth0|nobody", AlertUrgency.High, deadline, Ct);
         Assert.Equal(3, (await ReadAlertsAsync()).Count);
@@ -101,16 +96,12 @@ public class AlertRouterTests : IAsyncLifetime
         Assert.Single(await ReadPreferencesAsync());
     }
 
-    /// <summary>
-    /// The end of the quiet hours is the wall-clock time of Rome, so it is 07:00 UTC in winter and 06:00 UTC in summer, also on the nights the
-    /// clocks change; outside the quiet hours the alert is delivered at once.
-    /// </summary>
     [Theory]
-    [InlineData("2026-11-05T22:15:00Z", "2026-11-06T07:00:00Z")] // 23:15 in Rome: the quiet hours end tomorrow morning
-    [InlineData("2026-11-06T04:30:00Z", "2026-11-06T07:00:00Z")] // 05:30 in Rome: they end this morning
-    [InlineData("2026-10-24T20:30:00Z", "2026-10-25T07:00:00Z")] // 22:30 in Rome (summer time), the clocks go back that night
-    [InlineData("2026-03-28T21:30:00Z", "2026-03-29T06:00:00Z")] // 22:30 in Rome (winter time), the clocks go forward that night
-    [InlineData("2026-11-05T11:00:00Z", null)] // 12:00 in Rome: no quiet hours
+    [InlineData("2026-11-05T22:15:00Z", "2026-11-06T07:00:00Z")]
+    [InlineData("2026-11-06T04:30:00Z", "2026-11-06T07:00:00Z")]
+    [InlineData("2026-10-24T20:30:00Z", "2026-10-25T07:00:00Z")]
+    [InlineData("2026-03-28T21:30:00Z", "2026-03-29T06:00:00Z")]
+    [InlineData("2026-11-05T11:00:00Z", null)]
     public async Task RouteAlertAsync_AnAlertThatIsNotLegal_WaitsForTheEndOfTheQuietHoursOnTheClockOfRome(string at, string? remindAt)
     {
         var now = DateTimeOffset.Parse(at, CultureInfo.InvariantCulture);

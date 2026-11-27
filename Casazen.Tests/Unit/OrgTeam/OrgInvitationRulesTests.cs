@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.OrgTeam;
 
-/// <summary>AM-02: the fixed numbers and small rules of the org invitations.</summary>
 public class OrgInvitationRulesTests
 {
     private static readonly DateTime Now = new(2026, 10, 8, 10, 30, 0, DateTimeKind.Utc);

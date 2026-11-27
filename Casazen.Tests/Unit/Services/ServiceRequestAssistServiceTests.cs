@@ -81,16 +81,12 @@ public class ServiceRequestAssistServiceTests
         return new Rig(service, ai, suppliers, requests, MakeProperty(comune));
     }
 
-    // ─── Availability ────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task IsAvailable_ReflectsTheProviderInEffect()
     {
         Assert.True(await Create(aiOn: true).Service.IsAvailableAsync());
         Assert.False(await Create(aiOn: false).Service.IsAvailableAsync());
     }
-
-    // ─── The suggestion ──────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Assist_AGoodAnswer_IsTheCategoryTheUrgencyAndTheTexts_WithCasazenWhenASupplierCoversTheComune()
@@ -178,8 +174,6 @@ public class ServiceRequestAssistServiceTests
         Assert.DoesNotContain("info@", result.Explanation ?? string.Empty);
     }
 
-    // ─── What goes to the provider ───────────────────────────────────────────────
-
     [Fact]
     public async Task Assist_TheRequestHoldsTheWordsOfTheHost_AndNothingOfTheProperty()
     {
@@ -240,8 +234,6 @@ public class ServiceRequestAssistServiceTests
         Assert.Equal(ServiceRequestAssistReasons.NotUnderstood, result.Reason);
         Assert.Empty(rig.Requests);
     }
-
-    // ─── When there is no suggestion ─────────────────────────────────────────────
 
     [Fact]
     public async Task Assist_WithoutAnActiveProvider_SaysSo_AndIsNotAnError()
@@ -316,7 +308,6 @@ public class ServiceRequestAssistServiceTests
         Assert.False(first.AiUsed);
         Assert.Equal(AiSuggestionFallbackReasons.AiInvalidAnswer, first.Reason);
         Assert.Equal(AiSuggestionFallbackReasons.AiInvalidAnswer, second.Reason);
-        // A bad answer is not kept: the second call goes to the provider again.
         Assert.Equal(2, rig.Requests.Count);
     }
 
@@ -335,8 +326,6 @@ public class ServiceRequestAssistServiceTests
             Times.Never);
     }
 
-    // ─── The cache ───────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Assist_TheSameWordsTwice_AreAskedOnce_ButTheChannelIsReadAgain()
     {
@@ -348,7 +337,6 @@ public class ServiceRequestAssistServiceTests
         Assert.Single(rig.Requests);
         Assert.Equal(first.Category, second.Category);
         Assert.Equal(first.Summary, second.Summary);
-        // The suppliers around the property change: the channel is never part of what is kept.
         rig.Suppliers.Verify(
             s => s.GetActiveByComuneAsync(It.IsAny<ComuneTarget>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
             Times.Exactly(2));

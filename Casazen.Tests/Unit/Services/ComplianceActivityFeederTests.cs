@@ -45,7 +45,6 @@ public class ComplianceActivityFeederTests
             Property(world.Property, ComplianceCockpitAction.UploadIstatProof, ComplianceItemKind.Istat, Yellow(ComplianceReasonCodes.PeriodOpen), period: "2026-10"),
             Property(world.Property, ComplianceCockpitAction.DeclareTouristTax, ComplianceItemKind.TouristTax, Red(ComplianceReasonCodes.EvidenceMissing), period: "2026-10"),
             Property(world.Property, ComplianceCockpitAction.DeclareTouristTax, ComplianceItemKind.TouristTax, Red(ComplianceReasonCodes.EvidenceMissing), period: "2026-09"),
-            // The operational items of the cockpit keep their own producers.
             Property(world.Property, ComplianceCockpitAction.ActivateProperty, ComplianceItemKind.Cin, Red(ComplianceReasonCodes.CinMissing)),
         };
         var status = Result(items, bookings: [stay, entrusted, manual, done], identity: [identity], properties: [world.Property.Id], periods: ["2026-09", "2026-10"]);
@@ -63,21 +62,18 @@ public class ComplianceActivityFeederTests
         var send = Assert.Single(todos, t => t.EntityId == stay);
         Assert.Equal((ActivityType.AlloggiatiDeadline, ActivityAction.UploadAlloggiatiProof, InternalActivity.BookingEntityType, ActivityUrgency.High, deadline, ComplianceReasonCodes.DeadlineOverdue),
             (Enum.Parse<ActivityType>(send.ActivityType), send.Action!.Value, send.EntityType!, send.Urgency!.Value, send.Deadline!.Value, send.Reason!));
-        // Yellow is medium; the receipt to upload has the type the alert stages use; the stay entrusted to the channel manager is a To do too.
         var receipt = Assert.Single(todos, t => t.EntityId == entrusted);
         Assert.Equal((ActivityType.ReceiptToRetrieve.ToString(), ActivityUrgency.Medium), (receipt.ActivityType, receipt.Urgency!.Value));
         Assert.Equal(ActivityAction.SendAlloggiatiManually, Row(t => t.EntityId == manual, t => t.Action!.Value));
         Assert.Equal(ActivityAction.VerifyIdentity, Row(t => t.EntityId == identity, t => t.Action!.Value));
         Assert.DoesNotContain(todos, t => t.EntityId == done);
 
-        // A property item is about the property.
         Assert.Equal(
             (ActivityType.ReconnectChannelManager.ToString(), ActivityAction.ActivateOctorateSend, "Property"),
             Row(t => t.Action == ActivityAction.ActivateOctorateSend, t => (t.ActivityType, t.Action!.Value, t.EntityType!)));
         Assert.Equal(ActivityAction.RenewPoliceCredentials, Row(t => t.ActivityType == nameof(ActivityType.CredentialsToRenew), t => t.Action!.Value));
         Assert.Equal(ActivityAction.EnterMunicipalityTaxRate, Row(t => t.ActivityType == nameof(ActivityType.MunicipalityTaxRateMissing), t => t.Action!.Value));
 
-        // An item of a month is about the property and carries the month: (action, property, month), one for each month.
         var istat = Assert.Single(todos, t => t.Action == ActivityAction.UploadIstatProof);
         Assert.Equal(("PropertyPeriod:2026-10", world.Property.Id), (istat.EntityType, istat.EntityId));
         var taxes = todos.Where(t => t.Action == ActivityAction.DeclareTouristTax).OrderBy(t => t.EntityType, StringComparer.Ordinal).ToList();
@@ -101,8 +97,6 @@ public class ComplianceActivityFeederTests
         await world.Feeder(db).FeedAsync(world.Scope, yellow, CancellationToken.None);
         await world.Feeder(db).FeedAsync(world.Scope, red, CancellationToken.None);
 
-        // The same reading twice raised one; the item that turned red has ONE open To do, the red one (high, with its reason): the yellow one it
-        // replaced is closed by the system, not left on the list with the old urgency.
         var todos = await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync();
         var only = Assert.Single(todos, t => t.CompletedAt is null);
         Assert.Equal((stay, InternalActivity.StatusPending, ActivityUrgency.High, ComplianceReasonCodes.ReceiptMissing), (only.EntityId, only.Status, only.Urgency!.Value, only.Reason));
@@ -134,14 +128,10 @@ public class ComplianceActivityFeederTests
         await using var db = world.Db();
         await world.Feeder(db).FeedAsync(world.Scope, first, CancellationToken.None);
 
-        // A To do the alert stages raised for a stay this evaluation did not look at (it arrives later) and that is still active, and one another
-        // producer raised for a stay it did look at, with the same action: the second is the item's To do, the first is nobody's business here.
         var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, world.Clock);
         await activities.CreateAsync(Todo(world.Property, ActivityType.ReceiptToRetrieve, ActivityAction.UploadAlloggiatiProof, outside), CancellationToken.None);
         await activities.CreateAsync(Todo(world.Property, ActivityType.ReceiptToRetrieve, ActivityAction.UploadAlloggiatiProof, raisedBySomeoneElse), CancellationToken.None);
 
-        // Later: the first stay turns green, the second is gone (not listed any more), the receipt of the third is still awaited, the connection
-        // is no longer an item (active), the tax of October is green; the stay of the other producer is in the universe and has no item.
         var second = Result(
             [
                 Stay(world.Property, turnsGreen, ComplianceCockpitAction.UploadAlloggiatiReceipt, Green()),
@@ -198,33 +188,26 @@ public class ComplianceActivityFeederTests
         async Task FeedAsync(ComplianceStatusItem item) =>
             await world.Feeder(db).FeedAsync(world.Scope, Result([item], bookings: [stay], identity: [identity]), CancellationToken.None);
 
-        // The communication to send: a To do of the deadline, high.
         await FeedAsync(Stay(world.Property, stay, ComplianceCockpitAction.SendAlloggiati, Red(ComplianceReasonCodes.AlloggiatiNotSent)));
         var toSend = Assert.Single(await OpenOfAsync(db, stay));
         Assert.Equal((nameof(ActivityType.AlloggiatiDeadline), ActivityUrgency.High, ComplianceReasonCodes.AlloggiatiNotSent), (toSend.ActivityType, toSend.Urgency!.Value, toSend.Reason));
 
-        // The host declares the send: the item asks for the receipt now (the same action and id of the To do list, another type, yellow). The To do
-        // of the deadline does not stay on the list as it was.
         await FeedAsync(Stay(world.Property, stay, ComplianceCockpitAction.UploadAlloggiatiReceipt, Yellow(ComplianceReasonCodes.AwaitingReceipt)));
         var awaited = Assert.Single(await OpenOfAsync(db, stay));
         Assert.NotEqual(toSend.Id, awaited.Id);
         Assert.Equal((nameof(ActivityType.ReceiptToRetrieve), ActivityUrgency.Medium, ComplianceReasonCodes.AwaitingReceipt), (awaited.ActivityType, awaited.Urgency!.Value, awaited.Reason));
 
-        // The same reading again: nothing changes, not even the row. The receipt is late: the same item turns red and so does its urgency.
         await FeedAsync(Stay(world.Property, stay, ComplianceCockpitAction.UploadAlloggiatiReceipt, Yellow(ComplianceReasonCodes.AwaitingReceipt)));
         Assert.Equal(awaited.Id, Assert.Single(await OpenOfAsync(db, stay)).Id);
         await FeedAsync(Stay(world.Property, stay, ComplianceCockpitAction.UploadAlloggiatiReceipt, Red(ComplianceReasonCodes.ReceiptMissing)));
         var late = Assert.Single(await OpenOfAsync(db, stay));
         Assert.Equal((ActivityUrgency.High, ComplianceReasonCodes.ReceiptMissing), (late.Urgency!.Value, late.Reason));
 
-        // And back to yellow (the connection was fixed): the urgent count does not keep a To do that is no longer red.
         await FeedAsync(Stay(world.Property, stay, ComplianceCockpitAction.UploadAlloggiatiReceipt, Yellow(ComplianceReasonCodes.EntrustedToChannelManager)));
         var again = Assert.Single(await OpenOfAsync(db, stay));
         Assert.Equal((ActivityUrgency.Medium, ComplianceReasonCodes.EntrustedToChannelManager), (again.Urgency!.Value, again.Reason));
         Assert.Equal(1, await db.InternalActivities.CountAsync(a => a.Action != null && a.EntityId == stay && a.CompletedAt == null));
 
-        // A To do another producer raised (the operators' alert: its reason is a text for the people, not a code of the status) is the item's To do as
-        // it is: its urgency and its words are not rewritten by the feed.
         var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, world.Clock);
         const string alertReason = "Verifica dell'identita da decidere";
         var alert = await activities.CreateAsync(
@@ -263,8 +246,6 @@ public class ComplianceActivityFeederTests
         var feeder = new ComplianceActivityFeeder(activities.Object, db, new MemoryCache(new MemoryCacheOptions()), NullLogger<ComplianceActivityFeeder>.Instance);
         var status = Result([Stay(world.Property, stay, ComplianceCockpitAction.SendAlloggiati, Red(ComplianceReasonCodes.AlloggiatiNotSent))], bookings: [stay]);
 
-        // The first run is reading what is open (it waits there); the same caller asks again at that moment, as the Home and the cockpit do: it is
-        // left alone at once, and the work is done once.
         var first = feeder.FeedAsync(world.Scope, status, CancellationToken.None);
         await feeder.FeedAsync(world.Scope, status, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
         Assert.False(first.IsCompleted);
@@ -273,7 +254,6 @@ public class ComplianceActivityFeederTests
         await first;
         activities.Verify(a => a.CreateAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>()), Times.Once);
 
-        // A run that fails gives the throttle back: the next read tries again at once.
         var failing = new Mock<IInternalActivityService>();
         failing
             .Setup(a => a.FindOpenAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
@@ -306,12 +286,10 @@ public class ComplianceActivityFeederTests
         await using var db = world.Db();
         await world.Feeder(db).FeedAsync(world.Scope, status, CancellationToken.None);
 
-        // One run is bounded: the red ones are in, whatever the order of the evaluation was.
         var first = await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync();
         Assert.Equal(ComplianceActivityFeeder.MaxChangesPerRun, first.Count);
         Assert.All(reds, id => Assert.Contains(first, t => t.EntityId == id));
 
-        // The next read (a feeder with no throttle yet stands for the time that passed) goes on with the rest and raises nothing twice.
         await world.Feeder(db).FeedAsync(world.Scope, status, CancellationToken.None);
         Assert.Equal(reds.Length + yellows.Length, await db.InternalActivities.CountAsync(a => a.Action != null));
     }
@@ -328,12 +306,10 @@ public class ComplianceActivityFeederTests
         await world.Feeder(db).FeedAsync(world.Scope, inactive, CancellationToken.None);
         Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.Action == ActivityAction.ActivateOctorateSend && a.CompletedAt == null).ToListAsync());
 
-        // This time Octorate was not asked about the property (over the limit of the call): no item, and no reason to close what Octorate said before.
         var notRead = Result([], properties: [world.Property.Id], connectionNotRead: [world.Property.Id]);
         await world.Feeder(db).FeedAsync(world.Scope, notRead, CancellationToken.None);
         Assert.Single(await db.InternalActivities.AsNoTracking().Where(a => a.Action == ActivityAction.ActivateOctorateSend && a.CompletedAt == null).ToListAsync());
 
-        // Read and no longer an item (the send is active): now it is closed.
         await world.Feeder(db).FeedAsync(world.Scope, Result([], properties: [world.Property.Id]), CancellationToken.None);
         Assert.Empty(await db.InternalActivities.AsNoTracking().Where(a => a.Action == ActivityAction.ActivateOctorateSend && a.CompletedAt == null).ToListAsync());
     }
@@ -354,7 +330,6 @@ public class ComplianceActivityFeederTests
 
         Assert.Equal([first], (await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync()).Select(t => t.EntityId!.Value));
 
-        // Another scope of the same org is a read of its own.
         var other = world.Scope with { GrantedToUserId = "auth0|collaborator" };
         await feeder.FeedAsync(other, Result([Stay(world.Property, second, ComplianceCockpitAction.SendAlloggiati, Red(ComplianceReasonCodes.AlloggiatiNotSent))], bookings: [second]), CancellationToken.None);
         Assert.Equal(2, await db.InternalActivities.CountAsync(a => a.Action != null));
@@ -369,7 +344,6 @@ public class ComplianceActivityFeederTests
         await using var db = world.Db();
         var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, world.Clock);
 
-        // The alert to the operators (VerificationOperatorAlerts) came first for one booking: the feed finds it and raises nothing more for it.
         var alert = await activities.CreateAsync(
             Todo(world.Property, ActivityType.IdentityVerification, ActivityAction.VerifyIdentity, raisedByAlert), CancellationToken.None);
         var status = Result(
@@ -405,16 +379,12 @@ public class ComplianceActivityFeederTests
             {
                 ComplianceCockpitAction.ActivateProperty, ComplianceCockpitAction.CompleteGuestCheckIn,
                 ComplianceCockpitAction.CheckOut, ComplianceCockpitAction.ConfirmPropertyReady,
-                // casazen/backend#979: the Ticino police notification has a section of its own in the cockpit, not an item of the status.
                 ComplianceCockpitAction.NotifyTicinoPolice,
 
-                // E31/F02/US01/T01: the notification of the other cantons has its own section too (swissNotifications).
                 ComplianceCockpitAction.NotifyGuestsAuthority,
             }.Order(),
             notFed.Order());
     }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────────
 
     private static Task<List<InternalActivity>> OpenOfAsync(AppDbContext db, Guid bookingId) =>
         db.InternalActivities.AsNoTracking().Where(a => a.Action != null && a.EntityId == bookingId && a.CompletedAt == null).ToListAsync();

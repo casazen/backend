@@ -3,11 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services.ICal;
 
-/// <summary>
-/// The free-looking events (<c>TRANSP:TRANSPARENT</c>, every all-day event of Google Calendar) are not busy occurrences any
-/// more, but they are not thrown away either: the parser returns them apart, from today on, and the supplier sync keeps them
-/// occupied until the supplier answers.
-/// </summary>
 public class ICalFeedParserFreeEventsTests
 {
     private static readonly DateOnly WindowFrom = new(2026, 9, 1);

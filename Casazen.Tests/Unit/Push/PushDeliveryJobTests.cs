@@ -27,8 +27,6 @@ public class PushDeliveryJobTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    // ─── recipients ───
-
     [Fact]
     public async Task SendAsync_PropertyHosts_SendsToTheMemberInChargeAndTheAdministratorsOfItsOrg()
     {
@@ -36,7 +34,6 @@ public class PushDeliveryJobTests : IDisposable
 
         await Job().SendAsync("key-property", Push(PushAudience.PropertyHosts(world.PropertyId)), CancellationToken.None);
 
-        // The manager is in charge (Property.ResponsibleUserId), the owner is an administrator.
         Assert.Equal(["ExponentPushToken[manager]", "ExponentPushToken[owner-a]"], SentTokens());
     }
 
@@ -47,12 +44,8 @@ public class PushDeliveryJobTests : IDisposable
 
         await Job().SendAsync("key-booking", Push(PushAudience.BookingHosts(world.BookingId)), CancellationToken.None);
 
-        // Not owner B (a user of the org that is neither in charge nor an administrator), not the owner's phone registered
-        // under an old org, not the supplier.
         Assert.Equal(["ExponentPushToken[manager]", "ExponentPushToken[owner-a]"], SentTokens());
     }
-
-    // ─── AM-03: who is told is the member in charge and the administrators, not whoever has a user role ───
 
     private async Task SetResponsibleAsync(Guid propertyId, string? userId)
     {
@@ -70,7 +63,6 @@ public class PushDeliveryJobTests : IDisposable
 
         await Job().SendAsync("key-nobody", Push(PushAudience.PropertyHosts(world.PropertyId)), CancellationToken.None);
 
-        // The creator is the owner (an administrator too); the property manager is org-wide but not in charge.
         Assert.Equal(["ExponentPushToken[owner-a]"], SentTokens());
     }
 
@@ -127,8 +119,6 @@ public class PushDeliveryJobTests : IDisposable
     [Fact]
     public async Task SendAsync_AUserWithTheAdminUserRoleIsNotAnAdministratorOfTheOrg()
     {
-        // The old rule told every user whose User.Role is Admin or PropertyManager: a platform admin in the org's rows was an
-        // org administrator. An administrator of the org is an Owner or Admin member.
         var world = await SeedWorldAsync();
         _db.Users.Add(NewUser("auth0|platform-admin", world.OrgId, UserRole.Admin));
         _db.DeviceRegistrations.Add(NewDevice("auth0|platform-admin", world.OrgId, "ExponentPushToken[platform-admin]"));
@@ -158,7 +148,6 @@ public class PushDeliveryJobTests : IDisposable
     public async Task SendAsync_APersonInChargeOfAnotherOrg_IsNotToldAboutThisOnes()
     {
         var world = await SeedWorldAsync();
-        // The named person works in another org by now (its user row says so): the administrators still hear about it.
         var user = await _db.Users.SingleAsync(u => u.Id == "auth0|manager");
         user.OrgId = Guid.NewGuid();
         await _db.SaveChangesAsync();
@@ -176,12 +165,8 @@ public class PushDeliveryJobTests : IDisposable
 
         await Job().SendAsync("key-supplier", Push(PushAudience.SupplierOrg(world.SupplierOrgId)), CancellationToken.None);
 
-        // The member linked by SupplierOrgId (whose own org is a host org) and the member of the supplier org; not the
-        // inactive member, not the hosts.
         Assert.Equal(["ExponentPushToken[supplier-host-too]", "ExponentPushToken[supplier-member]"], SentTokens());
     }
-
-    // ─── NF-65: one user, the one the preferences of notifications selected ───
 
     [Fact]
     public async Task SendAsync_User_SendsToThatUsersDevicesInTheOrgOnly()
@@ -190,7 +175,6 @@ public class PushDeliveryJobTests : IDisposable
 
         await Job().SendAsync("key-user", Push(PushAudience.User(world.OrgId, "auth0|owner-a")), CancellationToken.None);
 
-        // Not the manager, who is a host of the property too, and not the same person's phone registered under an old org.
         Assert.Equal(["ExponentPushToken[owner-a]"], SentTokens());
     }
 
@@ -233,8 +217,6 @@ public class PushDeliveryJobTests : IDisposable
         Assert.Empty(_db.PushDeliveries);
     }
 
-    // ─── batches ───
-
     [Fact]
     public async Task SendAsync_150Devices_SendsTwoRequestsOf100And50()
     {
@@ -251,8 +233,6 @@ public class PushDeliveryJobTests : IDisposable
             Assert.Equal(Now, d.SentAt);
         });
     }
-
-    // ─── idempotency ───
 
     [Fact]
     public async Task SendAsync_SecondBatchNotTakenThenRetried_EveryDeviceGetsExactlyOneMessage()
@@ -313,7 +293,6 @@ public class PushDeliveryJobTests : IDisposable
         await Job().SendAsync("key-timeout", push, CancellationToken.None);
         await Job().SendAsync("key-timeout", push, CancellationToken.None);
 
-        // Expo may have delivered them: at most once per device and event.
         Assert.Single(_expo.SendRequests);
         Assert.All(await _db.PushDeliveries.ToListAsync(), d => Assert.Equal(PushDeliveryStatus.Sending, d.Status));
     }
@@ -337,8 +316,6 @@ public class PushDeliveryJobTests : IDisposable
         });
     }
 
-    // ─── tickets ───
-
     [Fact]
     public async Task SendAsync_TicketDeviceNotRegistered_RemovesThatDeviceOnly()
     {
@@ -353,8 +330,6 @@ public class PushDeliveryJobTests : IDisposable
         Assert.Equal(PushDeliveryStatus.Failed, failed.Status);
         Assert.Equal(ExpoPushErrors.DeviceNotRegistered, failed.Error);
     }
-
-    // ─── message ───
 
     [Fact]
     public async Task SendAsync_Message_CarriesTheTextAppRouteChannelAndIds()
@@ -376,7 +351,6 @@ public class PushDeliveryJobTests : IDisposable
         var message = _expo.Messages[0];
         Assert.Equal("Richiesta rifiutata dal fornitore", message.Title);
         Assert.Equal("Pulizie presso Villa: il fornitore ha rifiutato la richiesta.", message.Body);
-        // MO-03 (A6-19): the channel the app creates and a route the app can open.
         Assert.Equal(PushDeliveryJob.AndroidChannelId, message.ChannelId);
         Assert.True(PushRoutes.IsAppRoute(message.Data["route"]));
         Assert.Equal(PushRoutes.Booking(world.BookingId), message.Data["route"]);
@@ -402,10 +376,6 @@ public class PushDeliveryJobTests : IDisposable
         });
     }
 
-    /// <summary>
-    /// E05/F04/US01/T02 (NF-68): the push about an item of the approval queue carries <c>data.approvalItemId</c> and the <c>categoryId</c> of the app (<c>draft-ready</c>: its Approve and
-    /// Edit buttons); every other push carries neither, and its message is the one it always was (no <c>categoryId</c> member at all, not a null).
-    /// </summary>
     [Fact]
     public async Task SendAsync_AnApprovalPush_CarriesTheItemAndTheCategory_AnyOtherPushNeither()
     {
@@ -433,7 +403,6 @@ public class PushDeliveryJobTests : IDisposable
         Assert.False(withoutItem.Data.ContainsKey("approvalItemId"));
         Assert.Null(withoutItem.CategoryId);
 
-        // On the wire: the category is a member of the message when there is one, and left out when there is none.
         var json = System.Text.Json.JsonSerializer.Serialize(new[] { withItem, withoutItem }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(json, "\"categoryId\""));
         Assert.Contains("\"categoryId\":\"draft-ready\"", json, StringComparison.Ordinal);
@@ -449,12 +418,9 @@ public class PushDeliveryJobTests : IDisposable
         Assert.Equal(PushDeliveryJob.MaxAttempts, retry.Attempts);
         var lockAttribute = Assert.Single(method.GetCustomAttributes(typeof(DisableConcurrentExecutionAttribute), false)
             .Cast<DisableConcurrentExecutionAttribute>());
-        // Argument {0} is the delivery key: two runs of the same event never overlap.
         Assert.Equal("deliveryKey", method.GetParameters()[0].Name);
         Assert.Contains("{0}", lockAttribute.Resource);
     }
-
-    // ─── helpers ───
 
     private PushDeliveryJob Job() => new(_db, _expo, _clock, NullLogger<PushDeliveryJob>.Instance);
 
@@ -476,7 +442,6 @@ public class PushDeliveryJobTests : IDisposable
         {
             OrgId = org.Id,
             OwnerId = "auth0|owner-a",
-            // AM-03: the manager is in charge of this property; the owner (an administrator of the org) is told as well.
             ResponsibleUserId = "auth0|manager",
             Name = "Villa",
             Address = "Via Test 1",

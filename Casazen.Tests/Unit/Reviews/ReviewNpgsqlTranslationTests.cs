@@ -44,7 +44,6 @@ public class ReviewNpgsqlTranslationTests
 
     public static TheoryData<string> EveryScope() => new() { "collaborator", "collaborator-one-area", "account-in-no-team", "whole-org" };
 
-    /// <summary>One row of each source of the reviews, in the order of the columns of the page statement, so the probe goes on to the statements that read the words of the page.</summary>
     private static DataTable? PageRowsOf(string sql)
     {
         if (!IsThePage(sql))
@@ -98,8 +97,6 @@ public class ReviewNpgsqlTranslationTests
             new DomainEventRecorder(db, NullTenantContext.Instance, TimeProvider.System),
             NullLogger<OtaReviewService>.Instance);
 
-    // ─── The list and the detail of the hub ───
-
     [Theory]
     [MemberData(nameof(EveryScope))]
     public async Task TheListOfReviews_IsTranslatedToSqlByNpgsql_AsOneUnionPagedInTheDatabase(string scope)
@@ -119,7 +116,6 @@ public class ReviewNpgsqlTranslationTests
         Assert.Contains("\"OtaReviews\"", page, StringComparison.Ordinal);
         Assert.StartsWith("SELECT COUNT", statements.First().TrimStart(), StringComparison.OrdinalIgnoreCase);
 
-        // The reviews are the whole statement: no conversation, no word of a review, in the count or in the page.
         Assert.All(new[] { statements.First(), page }, sql =>
         {
             Assert.DoesNotContain("\"GuestThreads\"", sql, StringComparison.Ordinal);
@@ -128,7 +124,6 @@ public class ReviewNpgsqlTranslationTests
             Assert.DoesNotContain("\"Text\"", sql, StringComparison.Ordinal);
         });
 
-        // The words are read for the page, after it: one statement for each source.
         Assert.Contains(statements, sql => sql.Contains("\"OtaReviews\"", StringComparison.Ordinal) && sql.Contains("GuestReviewTextEncrypted", StringComparison.Ordinal));
         Assert.Contains(statements, sql => sql.Contains("FROM \"Reviews\"", StringComparison.Ordinal) && sql.Contains("\"Text\"", StringComparison.Ordinal));
     }
@@ -180,8 +175,6 @@ public class ReviewNpgsqlTranslationTests
         Assert.Contains(statements, sql => sql.Contains("FROM \"Reviews\"", StringComparison.Ordinal));
         Assert.Contains(statements, sql => sql.Contains("FROM \"OtaReviews\"", StringComparison.Ordinal));
     }
-
-    // ─── The service and the job of the channels ───
 
     [Theory]
     [MemberData(nameof(EveryScope))]
@@ -249,7 +242,6 @@ public class ReviewNpgsqlTranslationTests
 
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => job.ExecuteAsync(CancellationToken.None));
 
-        // The org was found, then both selections were compiled and sent: the bookings with no row of the review yet, and the rows that are due.
         Assert.Contains(statements, sql => sql.Contains("\"Bookings\"", StringComparison.Ordinal) && sql.Contains("NOT EXISTS", StringComparison.Ordinal));
         Assert.Contains(statements, sql => sql.Contains("\"OtaReviews\"", StringComparison.Ordinal) && sql.Contains("\"NextPollAt\"", StringComparison.Ordinal));
     }

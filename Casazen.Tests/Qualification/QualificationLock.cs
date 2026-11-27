@@ -12,13 +12,10 @@ namespace Casazen.Tests.Qualification;
 // calibration, a new weight file, another aggregation, another manifest each make it refuse, naming the member that differs and never its value.
 // PRIVACY: a lock holds versions, hashes, thresholds and counts: nothing of a person.
 
-/// <summary>The SHA-256 of the weight file of each of the three models of the decisions (lower case hexadecimal), as the store proved them.</summary>
 public sealed record QualificationWeightHashes(string FaceDetector, string AntiSpoofing, string FaceRecognition);
 
-/// <summary>The aggregation rules the policy freezes: how the similarities of the chosen frames are combined (and over how many), and how their liveness is.</summary>
 public sealed record QualificationAggregation(string MatchRule, int MatchFrames, string LivenessRule, int LivenessFrames);
 
-/// <summary>The thresholds of the policy the qualification freezes: the acceptance and the floor of the review of the similarity, the least of each frame, and the least liveness.</summary>
 public sealed record QualificationFrozenThresholds(double Accept, double ReviewFloor, double MinEachFrame, double LivenessMinScore);
 
 /// <summary>
@@ -41,13 +38,11 @@ public sealed record QualificationLock(
     int TestPersons,
     DateTimeOffset CreatedAt)
 {
-    /// <summary>The name of the file, in the output folder of the run when no other path is given.</summary>
     public const string FileName = "lock.json";
 
     /// <summary>The code of a final test that refuses to start because what is in force is not what was frozen.</summary>
     public const string MismatchCode = "qualification_lock_mismatch";
 
-    // A lock is read strictly: a member that is missing, null or unknown is a lock that cannot be trusted.
     private static readonly JsonSerializerOptions StrictJson = new(QualificationResults.JsonOptions)
     {
         RespectRequiredConstructorParameters = true,
@@ -93,10 +88,6 @@ public sealed record QualificationLock(
             createdAt);
     }
 
-    /// <summary>
-    /// The configuration a run reports (<see cref="QualificationResults"/>: its policy, its models with their weight hashes, its thresholds, its dataset) as a lock, to be checked against the
-    /// lock that was frozen: the report of a candidate version says whether the run it reports used the frozen configuration. <see cref="CreatedAt"/> is the time of the run.
-    /// </summary>
     public static QualificationLock FromResults(QualificationResults results)
     {
         ArgumentNullException.ThrowIfNull(results);
@@ -129,7 +120,6 @@ public sealed record QualificationLock(
             results.RunAt);
     }
 
-    /// <summary>The lock of what the pipeline has in force now (<see cref="From"/> with its policy and its models).</summary>
     public static QualificationLock Capture(QualificationPipeline pipeline, string datasetManifestHash, int testPersons, DateTimeOffset createdAt)
     {
         ArgumentNullException.ThrowIfNull(pipeline);
@@ -140,7 +130,6 @@ public sealed record QualificationLock(
         return From(snapshot.Policy, snapshot.Hash, pipeline.Models.Snapshot, datasetManifestHash, testPersons, createdAt);
     }
 
-    /// <summary>The dataset a manifest file describes, as the lock freezes it: the canonical SHA-256 of the file and how many persons its test split has.</summary>
     public static (string ManifestHash, int TestPersons) DatasetIdentityOf(string manifestPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(manifestPath);
@@ -201,7 +190,6 @@ public sealed record QualificationLock(
         return new QualificationLockVerdict(differing);
     }
 
-    /// <summary>The JSON text of the lock.</summary>
     public string ToJson() => JsonSerializer.Serialize(this, QualificationResults.JsonOptions);
 
     /// <summary>
@@ -231,7 +219,6 @@ public sealed record QualificationLock(
         }
     }
 
-    /// <summary>Reads a lock from its file; a file that is not there, not a lock or not a whole one is <see cref="QualificationRunCodes.LockUnreadable"/> (nothing of it is quoted).</summary>
     public static QualificationLock Load(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -251,7 +238,6 @@ public sealed record QualificationLock(
         return frozen;
     }
 
-    /// <summary>Whether every member is what a lock holds: versions and rules that are named, hashes that are SHA-256, frames that are counted and thresholds that are numbers of a policy.</summary>
     private bool IsWhole()
     {
         static bool Threshold(double value) => double.IsFinite(value) && value > 0 && value <= 1;
@@ -276,23 +262,18 @@ public sealed record QualificationLock(
 
     private static string WeightOf(BiometricModelsSnapshot models, string role)
     {
-        // ComputeWeightsHash proved that every role is there, loaded, with a SHA-256.
         return models.Models.First(info => string.Equals(info.Role, role, StringComparison.Ordinal)).WeightHash!.ToLowerInvariant();
     }
 
     private static bool IsSha256(string? value) => value is { Length: 64 } && value.All(char.IsAsciiHexDigit);
 }
 
-/// <summary>The answer of <see cref="QualificationLock.Verify"/>: the names of the members that differ, none when what is in force is what was frozen.</summary>
 public sealed record QualificationLockVerdict(IReadOnlyList<string> DifferingMembers)
 {
-    /// <summary>True when nothing differs.</summary>
     public bool Ok => DifferingMembers.Count == 0;
 
-    /// <summary><see cref="QualificationLock.MismatchCode"/> when something differs, else null.</summary>
     public string? Code => Ok ? null : QualificationLock.MismatchCode;
 
-    /// <summary>Throws <see cref="QualificationLockMismatchException"/>, which names the members, when something differs.</summary>
     public void ThrowIfMismatch()
     {
         if (!Ok)
@@ -300,13 +281,10 @@ public sealed record QualificationLockVerdict(IReadOnlyList<string> DifferingMem
     }
 }
 
-/// <summary>A final test that refuses to start: <see cref="QualificationLock.MismatchCode"/> and the names of the members of the lock that differ from what is in force. Never a value.</summary>
 public sealed class QualificationLockMismatchException(IReadOnlyList<string> members) : Exception(QualificationLock.MismatchCode + ": " + string.Join(", ", members))
 {
-    /// <summary>The code, <see cref="QualificationLock.MismatchCode"/>.</summary>
     public string Code => QualificationLock.MismatchCode;
 
-    /// <summary>The names of the members that differ.</summary>
     public IReadOnlyList<string> Members { get; } = members;
 }
 
@@ -322,10 +300,8 @@ public sealed class QualificationLockMismatchException(IReadOnlyList<string> mem
 /// </summary>
 public static class QualificationFinalGate
 {
-    /// <summary>What follows the path of the lock in the name of its marker.</summary>
     public const string MarkerSuffix = ".final-started";
 
-    /// <summary>The marker of the final test of the lock at <paramref name="lockPath"/>: the file next to it that says the test was started (<c>lock.json.final-started</c>).</summary>
     public static string MarkerPathOf(string lockPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(lockPath);
@@ -363,7 +339,6 @@ public static class QualificationFinalGate
         return await run();
     }
 
-    // The marker holds hashes and the time: nothing of a person. It is created, never replaced, and stays when the run breaks.
     private static void WriteMarker(string path, QualificationLock frozen)
     {
         var directory = Path.GetDirectoryName(path);

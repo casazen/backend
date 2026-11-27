@@ -86,7 +86,6 @@ public sealed class SiteDomainAccessFilterTests : IDisposable
     [Fact]
     public async Task Filter_ThePrincipalIsTheCredentialsOrg_NeverAnotherOnesModule()
     {
-        // The org of the request is the org of the credential: the module of another org is no help.
         var withoutModule = SeedOrg("without-module");
         var withModule = SeedOrg("with-module");
 
@@ -99,10 +98,6 @@ public sealed class SiteDomainAccessFilterTests : IDisposable
         Assert.Null(otherContext.Result);
     }
 
-    /// <summary>
-    /// «The answer the console endpoints give»: for every commercial state the middleware on <c>OrgDomainController</c> and the filter on the plugin's action refuse or
-    /// pass together, with the same status, the same <c>code</c> and, for a module, the same module.
-    /// </summary>
     [Theory]
     [InlineData("without-module")]
     [InlineData("unpaid")]
@@ -142,8 +137,6 @@ public sealed class SiteDomainAccessFilterTests : IDisposable
         Assert.Equal(CommercialAccessDecision.Allowed, CommercialAccessRules.Evaluate(OrgOf("without-module"), module: null));
         Assert.Equal(CommercialAccessDecision.Allowed, CommercialAccessRules.Evaluate(OrgOf("with-module"), Module));
     }
-
-    // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
 
     private static OrgEntity OrgOf(string state)
     {
@@ -196,7 +189,6 @@ public sealed class SiteDomainAccessFilterTests : IDisposable
         return org.Id;
     }
 
-    /// <summary>The filter, as a call of the connection of <paramref name="orgId"/> reaches it.</summary>
     private async Task<(ResourceExecutingContext Context, bool NextCalled)> InvokeFilterAsync(Guid orgId)
     {
         var services = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider();
@@ -220,7 +212,6 @@ public sealed class SiteDomainAccessFilterTests : IDisposable
         return (context, nextCalled);
     }
 
-    /// <summary>The middleware of the console on <c>OrgDomainController.GetDomain</c>, for a signed-in billing administrator of <paramref name="orgId"/>.</summary>
     private async Task<(DefaultHttpContext Context, bool NextCalled)> InvokeMiddlewareAsync(Guid orgId)
     {
         var controller = typeof(OrgDomainController);
@@ -260,7 +251,6 @@ public sealed class SiteDomainAccessFilterTests : IDisposable
         return (context.Response.StatusCode, json.RootElement.Clone());
     }
 
-    /// <summary>A problem as it goes on the wire: its extensions (the stable <c>code</c>) at the top.</summary>
     private static Dictionary<string, object?> ProblemBody(ProblemDetails problem) =>
         problem.Extensions.ToDictionary(extension => extension.Key, extension => (object?)extension.Value);
 }

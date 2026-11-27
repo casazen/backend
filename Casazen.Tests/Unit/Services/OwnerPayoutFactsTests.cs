@@ -24,10 +24,8 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class OwnerPayoutFactsTests
 {
-    /// <summary>The day of the payouts: 5 November, for the statement of October.</summary>
     private static readonly DateOnly PaidOn = new(2026, 11, 5);
 
-    /// <summary>A hash of a source document the accountant checked (invented).</summary>
     private static readonly string CheckedSource = new('c', 64);
 
     /// <summary>
@@ -49,7 +47,6 @@ public class OwnerPayoutFactsTests
 
         var result = await world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(owner, version, "k-portal"), null);
 
-        // The base is the stay the agency collected: 21% of 1000, once; the payout settles the whole balance (500 + 300 + 1000).
         var evidence = Assert.Single(result.Evidence);
         Assert.Equal((TaxDecision.Applicable, 1000m, 210m, "1919"), (evidence.Decision, evidence.GrossBase!.Value, evidence.Amount!.Value, evidence.TaxCode));
         Assert.Equal((1800m, 210m, 1590m), (result.Payout.GrossAmount, result.Payout.WithholdingAmount, result.Payout.NetAmount));
@@ -66,7 +63,6 @@ public class OwnerPayoutFactsTests
         Assert.Equal((true, 1000m, PayoutStayReasons.InBase, PayoutStayReasons.RecordedPayment), (ofDirect.InBase, ofDirect.BaseAmount!.Value, ofDirect.Reason, ofDirect.Collection));
         Assert.Equal(210m, (await world.Withholding.GenerateF24Async(world.OrgId, 11, 2026)).TotalAmount);
 
-        // An owner whose only stay the portal withheld: no withholding at all, the gross paid whole, and the evidence says why.
         var other = await world.OwnerAsync();
         var otherHouse = await world.PropertyAsync(other);
         await world.AgencyHoldsAccountAsync(otherHouse, BookingSource.Airbnb);
@@ -78,10 +74,6 @@ public class OwnerPayoutFactsTests
         Assert.Equal((400m, 0m, 400m), (none.Payout.GrossAmount, none.Payout.WithholdingAmount, none.Payout.NetAmount));
     }
 
-    /// <summary>
-    /// Money: the tourist tax is never in the base. A stay paid with a payment the agency recorded (1020, of which 20 tourist tax) and a stay of a portal that pays the
-    /// agency (520, of which 20 tourist tax) give a base of 1000 + 500: the gross without the tax, as the ledger posted them.
-    /// </summary>
     [Fact]
     public async Task PayoutFacts_TouristTaxExcludedFromBase_Test()
     {
@@ -134,7 +126,6 @@ public class OwnerPayoutFactsTests
         Assert.Equal([PayoutFactRules.StayGross], parameters.GrossBaseComponents);
         Assert.Equal(["Airbnb"], parameters.PortalsWithholding!);
 
-        // From 1 November the owner follows the draft: the payout of 5 November is refused, nothing is written.
         await world.Fiscal.SaveProfileAsync(world.OrgId, owner, FactsWorld.Profile("EUR", draft.Id, new DateOnly(2026, 11, 1)), null);
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(owner, version, "k-draft"), null));
         Assert.Equal(OwnerFiscalErrors.PolicyNotApproved, refused.Code);
@@ -147,7 +138,6 @@ public class OwnerPayoutFactsTests
         Assert.Equal((OwnerFiscalErrors.PolicyNotApproved, (WithholdingDecision?)null, (decimal?)null), (preview.BlockingCode, preview.Decision, preview.WithholdingAmount));
         Assert.Equal(1000m, Assert.Single(preview.Facts.Stays).Gross);
 
-        // The draft's source is not pinned: no approval without the hash of the document checked.
         var unpinned = await Assert.ThrowsAsync<DomainRuleException>(() => world.Fiscal.ApprovePolicyAsync(world.OrgId, draft.Id, "TEST Commercialista", null));
         Assert.Equal((OwnerFiscalErrors.PolicyInvalid, "sourceSha256"), (unpinned.Code, unpinned.Extensions["field"]));
         world.Db.ChangeTracker.Clear();
@@ -177,7 +167,6 @@ public class OwnerPayoutFactsTests
 
         var result = await world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(owner, version, "k-chf") with { Currency = "CHF" }, null);
 
-        // The statement owes 950 CHF (1000 EUR at the rate of the payment day); the withholding is 210 EUR, kept as 197.40 CHF.
         Assert.Equal(("CHF", 950m, 197.40m, 752.60m), (result.Payout.Currency, result.Payout.GrossAmount, result.Payout.WithholdingAmount, result.Payout.NetAmount));
         var evidence = Assert.Single(result.Evidence);
         Assert.Equal((1000m, 210m), (evidence.GrossBase!.Value, evidence.Amount!.Value));
@@ -185,16 +174,11 @@ public class OwnerPayoutFactsTests
         Assert.Equal(("CHF", "EUR"), (facts.Currency, facts.WithholdingCurrency));
         Assert.Equal(new PayoutFx("EUR", "CHF", 0.94m, "TEST BCE", new DateOnly(2026, 11, 4)), facts.Fx);
 
-        // The ledger line of the withholding says it in francs, from the euro decided and the rate of the day.
         var line = await world.Db.OwnerLedgerEntries.AsNoTracking().SingleAsync(e => e.EntryType == OwnerLedgerEntryType.Withholding);
         Assert.Equal(("CHF", -197.40m, "EUR", -210m, 0.94m), (line.StatementCurrency, line.Amount, line.OriginalCurrency, line.OriginalAmount, line.FxRate));
         Assert.Equal(210m, (await world.Withholding.GenerateF24Async(world.OrgId, 11, 2026)).TotalAmount);
     }
 
-    /// <summary>
-    /// Money (guards): a payout never pays more than the version still owes (422 with the balance); a payout of a part of it decides on all its stays, and a second
-    /// payout of the same version decides on none of them again (no double withholding); once the balance is paid nothing more is.
-    /// </summary>
     [Fact]
     public async Task PayoutFacts_GrossNeverExceedsTheBalance_AndAStayIsDecidedOnce_Test()
     {
@@ -220,10 +204,6 @@ public class OwnerPayoutFactsTests
         Assert.Equal(210m, await world.Db.TaxObligationEvidence.SumAsync(e => e.Amount ?? 0m));
     }
 
-    /// <summary>
-    /// Money: a stay paid in two months (a deposit of 400 in October, the balance of 600 in November) is withheld once on each part, by the payout that pays it: the
-    /// payout of October decides the deposit (84), the payout of November only the balance (126), never the deposit again and never without the balance.
-    /// </summary>
     [Fact]
     public async Task PayoutFacts_StayPaidInTwoMonths_EachPartIsDecidedOnce_Test()
     {
@@ -292,7 +272,6 @@ public class OwnerPayoutFactsTests
         var second = await world.Payouts.ConfirmPayoutAsync(world.OrgId, world.Payout(owner, version, "k-p2") with { GrossAmount = 400m }, null);
         Assert.Equal((0m, OwnerWithholdingRules.NoStaysToDecide), (second.Payout.WithholdingAmount, Assert.Single(second.Evidence).ReasonCode));
 
-        // The wire of P1 bounced: P1 is reversed, P2 is not. The stay P1 decided is open again: the preview and the next payout decide it once more.
         await world.Payouts.ReversePayoutAsync(world.OrgId, first.Payout.Id, "TEST bonifico respinto", null);
         var preview = await world.Payouts.PreviewPayoutAsync(world.OrgId, version, PaidOn);
         Assert.Equal((600m, 210m, (string?)null), (preview.Balance, preview.WithholdingAmount!.Value, preview.BlockingCode));
@@ -339,7 +318,6 @@ public class OwnerPayoutFactsTests
         Assert.Equal((stay, true, PayoutStayReasons.InBase), (fact.BookingId, fact.Qualifying, fact.Reason));
     }
 
-    /// <summary>The rules of a stay, pure: a stay longer than the short let, or of a property outside Italy, is no qualifying short let; a stay paid at the property is not the agency's.</summary>
     [Fact]
     public void PayoutFactRules_EvaluateStay_QualifyingAndCollection_Test()
     {
@@ -406,7 +384,6 @@ public class OwnerPayoutFactsTests
 
         public WithholdingService Withholding { get; }
 
-        /// <summary>The section <c>OwnerAccounting</c> of the committed <c>appsettings.json</c>: the draft and the defaults of the tests are the ones deployed.</summary>
         public static OwnerAccountingOptions Committed()
         {
             var directory = new DirectoryInfo(System.AppContext.BaseDirectory);
@@ -464,7 +441,6 @@ public class OwnerPayoutFactsTests
             return owner.Id;
         }
 
-        /// <summary>A house in Italy, in euro, all of <paramref name="owner"/>'s.</summary>
         public async Task<Guid> PropertyAsync(Guid owner)
         {
             var property = new Property { OrgId = OrgId, OwnerId = "auth0|agency", Name = "TEST Casa", Address = "Via 1", City = "Como", Country = "IT", Currency = "EUR" };
@@ -481,7 +457,6 @@ public class OwnerPayoutFactsTests
             return property.Id;
         }
 
-        /// <summary>The agency holds the account of the house on <paramref name="channel"/> (V2).</summary>
         public async Task AgencyHoldsAccountAsync(Guid property, BookingSource channel)
         {
             Db.PropertyChannelAccountHolders.Add(new PropertyChannelAccountHolder
@@ -495,17 +470,12 @@ public class OwnerPayoutFactsTests
             await Db.SaveChangesAsync();
         }
 
-        /// <summary>The agency's rate of a day: one <paramref name="from"/> is <paramref name="rate"/> <paramref name="to"/>.</summary>
         public async Task RateAsync(string from, string to, DateOnly day, decimal rate)
         {
             Db.OwnerFxRates.Add(new OwnerFxRate { OrgId = OrgId, BaseCurrency = from, QuoteCurrency = to, RateDate = day, Rate = rate, Source = "TEST BCE" });
             await Db.SaveChangesAsync();
         }
 
-        /// <summary>
-        /// A checked-out stay of 2 nights in October worth <paramref name="gross"/> without the tourist tax: paid with a payment the agency recorded (the payment of the
-        /// whole, tourist tax included, and the withholding of its portal when given), or posted from the booking (a portal that collects, with no commission of its own).
-        /// </summary>
         public async Task<Guid> StayAsync(Guid property, BookingSource channel, decimal gross, bool paid = false, decimal touristTax = 0m, decimal portalWithholding = 0m)
         {
             var guest = new Guest { OrgId = OrgId, FirstName = "Test", LastName = "Guest", Email = $"{Guid.NewGuid():N}@example.com" };
@@ -559,7 +529,6 @@ public class OwnerPayoutFactsTests
             return version.Id;
         }
 
-        /// <summary>The payout request of the dialog: the version, the day, the reference and the key; no fact, no amount.</summary>
         public OwnerPayoutCommand Payout(Guid owner, Guid version, string key) => new()
         {
             IdempotencyKey = key,

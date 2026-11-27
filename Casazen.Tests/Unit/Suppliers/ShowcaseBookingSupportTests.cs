@@ -8,7 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>SP-10: the codes and the texts (Italian and English) of the booking from a supplier's public showcase.</summary>
 public class ShowcaseBookingSupportTests
 {
     [Fact]
@@ -99,7 +98,6 @@ public class ShowcaseBookingSupportTests
     [Fact]
     public void Limits_TheTokenOfTheLink_FitsInTheBodyAndInTheCheck()
     {
-        // A token is 43 characters (32 bytes in base64url); the limit leaves room and stops an oversized value.
         Assert.True(ShowcaseBookingLimits.TokenMaxLength >= 43);
         Assert.True(ShowcaseBookingLimits.TokenMaxLength <= 256);
         Assert.Equal(43, ShowcaseBookingTokens.New().Length);

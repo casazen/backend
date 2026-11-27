@@ -3,7 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>FD-13 (A4-07, D3): email links always come from App:PublicSiteBaseUrl, never from a default domain.</summary>
 public class PublicSiteLinksTests
 {
     [Fact]
@@ -30,7 +29,6 @@ public class PublicSiteLinksTests
 
         var url = links.SupplierInviteSignup(token);
 
-        // SU-01 (A4-03): the web app page, never the backend; no email or comune in the URL.
         Assert.Equal($"https://app.example.org/register?inviteToken={token}", url);
     }
 
@@ -42,7 +40,6 @@ public class PublicSiteLinksTests
 
         var url = links.OnSiteRequestConfirmation("villa rosa", bookingId, "t0k_en-1");
 
-        // BK-06: the page of the org's booking site; no personal data in the URL.
         Assert.Equal(
             "https://app.example.org/book/villa%20rosa/requests/0f8fad5b-d9cb-469f-a165-70867728950e/confirm?token=t0k_en-1",
             url);
@@ -75,7 +72,6 @@ public class PublicSiteLinksTests
     {
         var links = EmailTestHelpers.Links("https://staging.example.org/");
 
-        // SP-14: the supplier's Account Link sends the supplier back to the supplier console, not to the host's payments page.
         Assert.Equal("https://staging.example.org/app/supplier/settings?stripe_return=1", links.SupplierConnectOnboardingReturn());
         Assert.Equal("https://staging.example.org/app/supplier/settings?stripe_refresh=1", links.SupplierConnectOnboardingRefresh());
         Assert.Equal("/app/supplier/settings", PublicSiteLinks.SupplierSettingsPagePath);
@@ -86,10 +82,8 @@ public class PublicSiteLinksTests
     {
         var links = EmailTestHelpers.Links("https://app.example.org");
 
-        // Stripe may only send the browser back to the public web app.
         Assert.True(links.IsOnPublicSite(links.SupplierConnectOnboardingReturn()));
         Assert.True(links.IsOnPublicSite(links.SupplierConnectOnboardingRefresh()));
-        // The host's Connect return pages and the billing allow-list are untouched (BK-09, PL-16).
         Assert.Equal("https://app.example.org/app/short-rent/settings/payments?stripe_return=1", links.ConnectOnboardingReturn());
         Assert.Equal("https://app.example.org/app/short-rent/settings/payments?stripe_refresh=1", links.ConnectOnboardingRefresh());
         Assert.All(
@@ -117,7 +111,6 @@ public class PublicSiteLinksTests
     {
         var links = EmailTestHelpers.Links("https://app.example.org/");
 
-        // BK-10: no booking id, email or checkout token in the URL; the page asks for the code and the email.
         Assert.Equal("https://app.example.org/book/villa%20rosa/my-bookings", links.GuestBookings("villa rosa"));
     }
 
@@ -126,7 +119,6 @@ public class PublicSiteLinksTests
     {
         var links = EmailTestHelpers.Links("https://app.example.org/");
 
-        // BK-11: the page opens with the code filled in and still asks for the email; no booking id, email or token.
         Assert.Equal(
             "https://app.example.org/book/villa-rosa/my-bookings?code=K7M4Q-9XP2H",
             links.GuestBookings("villa-rosa", "K7M4Q-9XP2H"));

@@ -44,7 +44,6 @@ public class AgencyPermissionsHttpIntegrationTests(CasazenWebApplicationFactory 
         Assert.Equal("<Document/>", await file.Content.ReadAsStringAsync());
     }
 
-    /// <summary>The rest of the matrix: the administrator holds everything, the property manager the owner list only, the accountant nothing.</summary>
     [Theory]
     [InlineData(OrgRole.Admin, HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.OK)]
     [InlineData(OrgRole.PropertyManager, HttpStatusCode.OK, HttpStatusCode.Forbidden, HttpStatusCode.Forbidden, HttpStatusCode.Forbidden)]
@@ -92,7 +91,6 @@ public class AgencyPermissionsHttpIntegrationTests(CasazenWebApplicationFactory 
         Assert.Equal(HttpStatusCode.NotFound, (await asOwner.GetAsync("/api/withholding/f24/pdf?month=10&year=2026")).StatusCode);
     }
 
-    /// <summary>An org on the agency plan with its owner (member row and memberships), one property owner with an IBAN and one wire batch.</summary>
     private async Task<Agency> SeedAgencyAsync()
     {
         var (ownerId, orgId) = await OrgTeamHttp.SeedOwnerWithTeamRowsAsync(factory);

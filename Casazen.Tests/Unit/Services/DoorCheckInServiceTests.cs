@@ -30,17 +30,12 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E22/F01/US02/T01 proofs of the QR code at the door: the guest who types the right data reaches the check-in link of its stay and of THAT property only (permission), every wrong
-/// datum answers the same thing and never says which part was wrong (privacy), and the endpoint is limited to five attempts a minute for each client IP and door token (permission).
-/// </summary>
 public class DoorCheckInServiceTests
 {
     private const string Code = "ABCDE12345";
     private static readonly DateTimeOffset Now = new(2026, 11, 20, 9, 0, 0, TimeSpan.Zero);
     private static readonly DateOnly Today = new(2026, 11, 20);
 
-    /// <summary>Permission: a stay of another property (or of another org), with the right code and date, is not found by the door of this one, and no link is issued.</summary>
     [Fact]
     public async Task DoorCheckIn_OtherPropertyStayNotFound_Test()
     {
@@ -59,7 +54,6 @@ public class DoorCheckInServiceTests
         world.CheckIn.Verify(c => c.ReissueLinkAsync(otherOrgStay.Id, It.IsAny<Guid>()), Times.Never);
         world.CheckIn.Verify(c => c.ReissueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
 
-        // The door of the other property finds its own stay with the same data.
         var other = await world.Service().OpenAsync(world.OtherDoorToken, new DoorCheckInInput("FGH7K2M9PQ", null, Today));
         Assert.True(other.Found);
         world.CheckIn.Verify(c => c.ReissueLinkAsync(otherPropertyStay.Id, world.OrgId), Times.Once);
@@ -71,7 +65,6 @@ public class DoorCheckInServiceTests
         await using var world = await World.CreateAsync();
         var stay = await world.AddStayAsync(world.Property.Id, "Rossi", Code, Today);
 
-        // The code as it is read on the e-mail: dash, small letters and the letters a person confuses.
         var result = await world.Service().OpenAsync(world.DoorToken, new DoorCheckInInput("abcde-12345", null, Today));
 
         Assert.Equal(new DoorCheckInResult(World.IssuedToken), result);
@@ -105,11 +98,9 @@ public class DoorCheckInServiceTests
 
         Assert.True((await world.Service().OpenAsync(world.DoorToken, new DoorCheckInInput(null, "dangelo", Today))).Found);
 
-        // A member of the group does not leave a document: his surname does not open the stay.
         Assert.Equal(DoorCheckInResult.NotFound, await world.Service().OpenAsync(world.DoorToken, new DoorCheckInInput(null, "Gialli", Today)));
     }
 
-    /// <summary>A surname that two arriving stays share opens none (it would be a guess among strangers), and the code is not asked from a code that does not exist.</summary>
     [Fact]
     public async Task DoorCheckIn_TwoStaysWithTheSameSurname_OpenNone()
     {
@@ -121,10 +112,6 @@ public class DoorCheckInServiceTests
         Assert.True((await world.Service().OpenAsync(world.DoorToken, new DoorCheckInInput(Code, null, Today))).Found);
     }
 
-    /// <summary>
-    /// Privacy: every way of not finding a stay is the same answer, at the service and at the endpoint (same status, same code, same text), so the door never says whether the code,
-    /// the surname, the date or the door itself was wrong, nor that the stay exists.
-    /// </summary>
     [Fact]
     public async Task DoorCheckIn_NoEnumeration_Test()
     {
@@ -141,21 +128,21 @@ public class DoorCheckInServiceTests
 
         var wrong = new (string DoorToken, DoorCheckInInput Input)[]
         {
-            (world.DoorToken, new DoorCheckInInput("BCDEF23457", null, Today)),                // a code that does not exist
-            (world.DoorToken, new DoorCheckInInput(Code, null, Today.AddDays(1))),             // the right code, the wrong date
-            (world.DoorToken, new DoorCheckInInput(Code, null, null)),                         // no date
-            (world.DoorToken, new DoorCheckInInput(null, "Bianchi", Today)),                   // a surname that does not exist
-            (world.DoorToken, new DoorCheckInInput(null, "R", Today)),                         // not a surname
-            (world.DoorToken, new DoorCheckInInput(null, null, Today)),                        // nothing typed
-            (world.DoorToken, new DoorCheckInInput("not a code", null, Today)),                // not a code
-            (world.DoorToken, new DoorCheckInInput("BCDEF23456", null, Today)),                // cancelled
-            (world.DoorToken, new DoorCheckInInput("CDEFG34567", null, Today)),                // checked out
-            (world.DoorToken, new DoorCheckInInput("DEFGH45678", null, Today)),                // no-show
-            (world.DoorToken, new DoorCheckInInput("EFGHJ56789", null, Today.AddDays(10))),    // arrives in ten days
-            (world.DoorToken, new DoorCheckInInput("FGHJK67891", null, Today.AddDays(-20))),   // over for weeks
-            (world.DoorToken, new DoorCheckInInput("GHJKM78912", null, Today)),                // the check-in is complete
-            (new string('x', 32), new DoorCheckInInput(Code, null, Today)),                    // a door token that does not exist
-            ("short", new DoorCheckInInput(Code, null, Today)),                                // not even shaped like one
+            (world.DoorToken, new DoorCheckInInput("BCDEF23457", null, Today)),
+            (world.DoorToken, new DoorCheckInInput(Code, null, Today.AddDays(1))),
+            (world.DoorToken, new DoorCheckInInput(Code, null, null)),
+            (world.DoorToken, new DoorCheckInInput(null, "Bianchi", Today)),
+            (world.DoorToken, new DoorCheckInInput(null, "R", Today)),
+            (world.DoorToken, new DoorCheckInInput(null, null, Today)),
+            (world.DoorToken, new DoorCheckInInput("not a code", null, Today)),
+            (world.DoorToken, new DoorCheckInInput("BCDEF23456", null, Today)),
+            (world.DoorToken, new DoorCheckInInput("CDEFG34567", null, Today)),
+            (world.DoorToken, new DoorCheckInInput("DEFGH45678", null, Today)),
+            (world.DoorToken, new DoorCheckInInput("EFGHJ56789", null, Today.AddDays(10))),
+            (world.DoorToken, new DoorCheckInInput("FGHJK67891", null, Today.AddDays(-20))),
+            (world.DoorToken, new DoorCheckInInput("GHJKM78912", null, Today)),
+            (new string('x', 32), new DoorCheckInInput(Code, null, Today)),
+            ("short", new DoorCheckInInput(Code, null, Today)),
         };
 
         var service = world.Service();
@@ -180,16 +167,11 @@ public class DoorCheckInServiceTests
         Assert.All(answers, answer => Assert.Equal(first, answer));
         world.CheckIn.Verify(c => c.ReissueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
 
-        // The one that opens answers the token and nothing else.
         var ok = Assert.IsType<OkObjectResult>(
             (await controller.Open(world.DoorToken, new DoorCheckInRequest { BookingCode = Code, ArrivalDate = Today }, CancellationToken.None)).Result);
         Assert.Equal(World.IssuedToken, Assert.IsType<DoorCheckInResponse>(ok.Value).Token);
     }
 
-    /// <summary>
-    /// A stay already in progress opens the door whatever the day it arrived, and a stay that arrived yesterday or arrives tomorrow too; the date typed must be the arrival
-    /// date of the stay (the proof is the date, not only the code).
-    /// </summary>
     [Theory]
     [InlineData(-5, 2, true)]
     [InlineData(-1, 3, true)]
@@ -213,7 +195,6 @@ public class DoorCheckInServiceTests
         await using var world = await World.CreateAsync();
         await world.AddStayAsync(world.Property.Id, "Rossi", Code, Today.AddDays(1));
 
-        // 23:30 UTC of the 20th is 00:30 of the 21st in Rome: the stay of the 21st arrives today.
         world.Clock.SetUtcNow(new DateTimeOffset(2026, 11, 20, 23, 30, 0, TimeSpan.Zero));
         Assert.True((await world.Service().OpenAsync(world.DoorToken, new DoorCheckInInput(Code, null, Today.AddDays(1)))).Found);
     }
@@ -237,11 +218,9 @@ public class DoorCheckInServiceTests
         Assert.True(PropertyDoorTokens.IsWellFormed(rotated));
         Assert.NotEqual(oldToken, rotated);
 
-        // The printed code of the old token answers like a code that never existed; the new one opens the stay.
         Assert.Equal(DoorCheckInResult.NotFound, await world.Service().OpenAsync(oldToken, new DoorCheckInInput(Code, null, Today)));
         Assert.True((await world.Service().OpenAsync(rotated!, new DoorCheckInInput(Code, null, Today))).Found);
 
-        // A property of another org, or one that does not exist, has no token to make.
         Assert.Null(await world.Service().GetOrCreateTokenAsync(world.ForeignOrgId, propertyId));
         Assert.Null(await world.Service().RotateTokenAsync(world.OrgId, Guid.NewGuid()));
     }
@@ -261,10 +240,6 @@ public class DoorCheckInServiceTests
         Assert.Equal($"https://site.example.test/checkin/porta/{tokens[0]}", links.DoorCheckIn(tokens[0]));
     }
 
-    /// <summary>
-    /// Permission: five attempts a minute for each client IP and door token, the sixth is refused; a made-up token cannot share the budget of the real one, and the partition holds a hash of
-    /// the token, never the token. The endpoint is behind the flag of the identity verification and this policy.
-    /// </summary>
     [Fact]
     public void DoorCheckIn_RateLimited_Test()
     {
@@ -276,14 +251,12 @@ public class DoorCheckInServiceTests
         Assert.True(policy.PartitionByToken);
         Assert.Equal(RateLimitingServiceCollectionExtensions.DoorTokenRouteValue, policy.TokenRouteValue);
 
-        // The sixth attempt of the same client at the same door is refused.
         using var limiter = new FixedWindowRateLimiter(options);
         for (var attempt = 1; attempt <= 5; attempt++)
             Assert.True(limiter.AttemptAcquire().IsAcquired);
 
         Assert.False(limiter.AttemptAcquire().IsAcquired);
 
-        // The partition is the client and the door token, and never the raw token.
         var one = Context("203.0.113.7", "door-token-one");
         var sameAgain = Context("203.0.113.7", "door-token-one");
         var otherDoor = Context("203.0.113.7", "door-token-two");
@@ -310,10 +283,6 @@ public class DoorCheckInServiceTests
         }
     }
 
-    /// <summary>
-    /// Data and permission (E22/F01/US02 post-review): the guest at the door never gets the attempts of the face check again. A guest that spent two of its three attempts and opens the door
-    /// gets the SAME session with a new token: every earlier link is dead, the counter stays at two (the third attempt is the last), and the consent, the document read and the language stay with it.
-    /// </summary>
     [Fact]
     public async Task DoorCheckIn_SecondOpening_KeepsTheAttemptsAlreadySpent_Test()
     {
@@ -357,26 +326,19 @@ public class DoorCheckInServiceTests
         Assert.Equal("de", kept.Language);
         Assert.Equal(GuestCheckInService.HashToken(second.Token!), kept.TokenHash);
 
-        // The e-mail of the old link told of a link that is dead: the renewed one is a link to copy. The delivery of the dead link ended each time.
         Assert.Equal(GuestCheckInLinkEmailStatus.NotRequested, kept.LinkEmailStatus);
         Assert.Null(kept.SentAt);
         deliveries.Verify(d => d.EndAsync(world.OrgId, stay.Id, CheckInLinkEndReasons.LinkReplaced, It.IsAny<CancellationToken>()), Times.Exactly(2));
 
-        // Every earlier link is dead; the last one opens the same session.
         Assert.Null(await checkIn.GetSessionByTokenAsync(emailedLink));
         Assert.Null(await checkIn.GetSessionByTokenAsync(first.Token!));
         var current = Assert.IsType<GuestCheckInSession>(await checkIn.GetSessionByTokenAsync(second.Token!));
         Assert.Equal(session.Id, current.Id);
 
-        // The face check says it too: one attempt left, so the third attempt is the last.
         var state = await world.Flow().GetStateAsync(current, CancellationToken.None);
         Assert.Equal(1, state.AttemptsRemaining);
     }
 
-    /// <summary>
-    /// A stay with no open link gets a new session, as before; a link past its expiry is not renewed (its window is over): it is expired and a new session is made. Of two open links the one the
-    /// guest works on is kept with its attempts, and the other one is expired.
-    /// </summary>
     [Fact]
     public async Task DoorCheckIn_NoOpenLink_MakesANewSession_AndTwoOpenLinksKeepTheOneInProgress()
     {
@@ -448,23 +410,20 @@ public class DoorCheckInServiceTests
         var right = new DoorCheckInInput(Code, null, Today);
         var wrong = new[]
         {
-            new DoorCheckInInput("BCDEF23457", null, Today),    // a code that does not exist
-            new DoorCheckInInput(Code, null, Today.AddDays(1)), // the right code, the wrong date
-            new DoorCheckInInput(null, "Bianchi", Today),       // a surname nobody has
+            new DoorCheckInInput("BCDEF23457", null, Today),
+            new DoorCheckInInput(Code, null, Today.AddDays(1)),
+            new DoorCheckInInput(null, "Bianchi", Today),
         };
 
-        // The attempts that open never count, however many.
         for (var attempt = 0; attempt < DoorCheckInRules.FailureLimit + 5; attempt++)
             Assert.True((await service.OpenAsync(world.DoorToken, right)).Found);
 
-        // One failure short of the limit the door still opens.
         for (var attempt = 0; attempt < DoorCheckInRules.FailureLimit - 1; attempt++)
             Assert.Equal(DoorCheckInResult.NotFound, await service.OpenAsync(world.DoorToken, wrong[attempt % wrong.Length]));
 
         Assert.False(tracker.IsLocked(world.DoorToken));
         Assert.True((await service.OpenAsync(world.DoorToken, right)).Found);
 
-        // The failure that reaches the limit closes the door: nothing opens it now, the right data neither.
         Assert.Equal(DoorCheckInResult.NotFound, await service.OpenAsync(world.DoorToken, wrong[0]));
         Assert.True(tracker.IsLocked(world.DoorToken));
         Assert.Equal(DoorCheckInResult.NotFound, await service.OpenAsync(world.DoorToken, right));
@@ -472,7 +431,6 @@ public class DoorCheckInServiceTests
         Assert.Equal(DoorCheckInResult.NotFound, await service.OpenAsync(world.DoorToken, right));
         world.CheckIn.Verify(c => c.ReissueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()), Times.Never);
 
-        // At the endpoint it is the same 404, with the same code and text, as for a wrong datum: the answer never says that the door is closed.
         var closed = Assert.IsType<ObjectResult>(
             (await controller.Open(world.DoorToken, new DoorCheckInRequest { BookingCode = Code, ArrivalDate = Today }, CancellationToken.None)).Result);
         var guess = Assert.IsType<ObjectResult>(
@@ -485,17 +443,14 @@ public class DoorCheckInServiceTests
         Assert.Equal(guessDetails.Extensions["code"]?.ToString(), closedDetails.Extensions["code"]?.ToString());
         Assert.Equal(guessDetails.Detail, closedDetails.Detail);
 
-        // Another door is not touched, and a made-up token costs nothing (it is not a door, so it is not counted).
         Assert.True((await service.OpenAsync(world.OtherDoorToken, new DoorCheckInInput("FGH7K2M9PQ", null, Today))).Found);
         for (var attempt = 0; attempt < DoorCheckInRules.FailureLimit + 5; attempt++)
             Assert.Equal(DoorCheckInResult.NotFound, await service.OpenAsync(new string('x', 32), wrong[0]));
         Assert.False(tracker.IsLocked(new string('x', 32)));
 
-        // «Rigenera» gives a new door with no failures: the stay opens at the new token.
         var rotated = await service.RotateTokenAsync(world.OrgId, world.Property.Id);
         Assert.True((await service.OpenAsync(rotated!, right)).Found);
 
-        // The failures age out: the second door, closed by its own, opens again when they are out of the window.
         for (var attempt = 0; attempt < DoorCheckInRules.FailureLimit; attempt++)
             Assert.Equal(DoorCheckInResult.NotFound, await service.OpenAsync(world.OtherDoorToken, wrong[0]));
         Assert.True(tracker.IsLocked(world.OtherDoorToken));
@@ -539,7 +494,6 @@ public class DoorCheckInServiceTests
 
         async Task<(bool ActionRan, IActionResult? Result, DefaultHttpContext Http)> RunAsync(string address)
         {
-            // The answer is localized from the resources of the product, so the context needs the localizer.
             var http = new DefaultHttpContext { RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider() };
             http.Connection.RemoteIpAddress = IPAddress.Parse(address);
             var context = new ActionExecutingContext(
@@ -560,7 +514,6 @@ public class DoorCheckInServiceTests
         }
     }
 
-    /// <summary>The stays, the properties and the check-in service that issues a link, in an in-memory database; the clock says 10:00 of 2026-11-20 in Rome.</summary>
     private sealed class World : IAsyncDisposable
     {
         public const string IssuedToken = "issued-check-in-token";
@@ -609,17 +562,14 @@ public class DoorCheckInServiceTests
 
         public DoorCheckInService Service() => new(Db, CheckIn.Object, NullLogger<DoorCheckInService>.Instance, Clock);
 
-        /// <summary>The door with the real check-in service on the same database, to see what the sessions hold after it.</summary>
         public DoorCheckInService Service(IGuestCheckInService checkIn) => new(Db, checkIn, NullLogger<DoorCheckInService>.Instance, Clock);
 
-        /// <summary>The door that counts the failed attempts of each door for every client together.</summary>
         public DoorCheckInService Service(IDoorCheckInFailureTracker failures) =>
             new(Db, CheckIn.Object, NullLogger<DoorCheckInService>.Instance, Clock, failures);
 
         public GuestCheckInService RealCheckIn(ICheckInLinkDeliveryService? deliveries = null) =>
             new(Db, NullLogger<GuestCheckInService>.Instance, timeProvider: Clock, linkDeliveries: deliveries);
 
-        /// <summary>The flow of the identity verification, with fakes for everything but the state it reads from the session.</summary>
         public IdentityVerificationFlowService Flow() => new(
             Db,
             Mock.Of<IIdentityVerificationAgent>(),

@@ -27,14 +27,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E15/F01/US02/T01 (NF-101): how the package of the accountant is sent to the accountant. The settings are the organization's and nobody else's (the whole org saves and reads, a caller restricted to some
-/// properties does neither: the permission rule), the address of the accountant is encrypted at rest (the privacy rule), a refused change saves nothing, and every query names its org. EF InMemory;
-/// the controller over mocks of the resolvers.
-/// </summary>
 public class AccountantPackageSettingsTests : IDisposable
 {
-    // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     private const string UserId = "auth0|amministratrice";
@@ -71,12 +65,6 @@ public class AccountantPackageSettingsTests : IDisposable
         bool ownerAccounting = false) =>
         new(enabled, email, day, noContents ? null : contents ?? AllKeys, ownerAccounting);
 
-    // ---------------------------------------------------------------- the permission rule (the proof)
-
-    /// <summary>
-    /// PROOF TEST: permission rule. The settings of the send belong to the whole organization: a caller whose scope is a part of it (a collaborator «Solo alcuni», an account outside the org team) can neither save nor read them,
-    /// even holding the permissions the policies ask for, and nothing is saved or read; the caller that reaches the whole org saves them in its own org, with its own user.
-    /// </summary>
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -92,7 +80,6 @@ public class AccountantPackageSettingsTests : IDisposable
         Assert.All(new[] { saved, read }, result => Assert.Equal((StatusCodes.Status403Forbidden, ProblemCodes.Forbidden), (StatusOf(result), CodeOf(result))));
         harness.Settings.VerifyNoOtherCalls();
 
-        // The same body, from a caller that reaches the whole org, is saved in that org with that user.
         var whole = new ControllerHarness(orgId, new HostScope(orgId));
         whole.Settings
             .Setup(s => s.SaveAsync(orgId, It.IsAny<AccountantPackageSettingsChange>(), UserId, It.IsAny<CancellationToken>()))
@@ -124,7 +111,6 @@ public class AccountantPackageSettingsTests : IDisposable
         }
     }
 
-    /// <summary>The doors of the settings: the flag and <c>payment.read</c> on the class, <c>property.write</c> on top of it for the save and nothing else, nothing anonymous.</summary>
     [Fact]
     public void TheSettingsEndpoints_AreBehindTheFlagAndPaymentRead_AndOnlyTheSaveAsksPropertyWrite()
     {
@@ -167,12 +153,6 @@ public class AccountantPackageSettingsTests : IDisposable
         Assert.Equal("private, no-store", harness.Http.Response.Headers.CacheControl.ToString());
     }
 
-    // ---------------------------------------------------------------- the owner accounting (the permission proof)
-
-    /// <summary>
-    /// PROOF TEST: permission rule. The package an agency sends every month holds the owner accounting, which a property manager may not read (it does not hold agency.statement.view): through the controller, with the real
-    /// service, the body the wizard sends by default (every folder) is refused to it with its code and saves nothing; the folders it may read are saved; the administrator, who holds the permission, chooses every folder.
-    /// </summary>
     [Fact]
     public async Task AccountantSettings_PropertyManagerCannotSaveOwnerAccountingFolders_Test()
     {
@@ -193,10 +173,6 @@ public class AccountantPackageSettingsTests : IDisposable
         Assert.Equal(AllKeys, everything.Contents);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule. On an organization on the agency plan a caller without agency.statement.view cannot choose any folder that carries the owner accounting (the three made of it and the two that hold a part of
-    /// it): 422 and nothing saved, and a refused change leaves what was saved as it was; what it may read it saves, and the holder of the permission chooses the folder.
-    /// </summary>
     [Theory]
     [InlineData("ownerInvoices")]
     [InlineData("statements")]
@@ -221,7 +197,6 @@ public class AccountantPackageSettingsTests : IDisposable
         Assert.Contains(folder, AccountantPackageFolderRules.KeysOf(holder.Contents));
     }
 
-    /// <summary>An organization whose package holds no owner accounting (another plan, or an agency in the read-only mode of a downgrade) refuses nobody: there is nothing to share.</summary>
     [Theory]
     [InlineData(PlanTier.Starter, false)]
     [InlineData(PlanTier.Pro, false)]
@@ -236,7 +211,6 @@ public class AccountantPackageSettingsTests : IDisposable
         Assert.Equal(AccountantPackageFolders.All, view.Contents);
     }
 
-    /// <summary>The controller evaluates agency.statement.view by its name, once, and tells the service whether the caller holds it.</summary>
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -254,8 +228,6 @@ public class AccountantPackageSettingsTests : IDisposable
         harness.Settings.Verify(s => s.SaveAsync(orgId, It.Is<AccountantPackageSettingsChange>(c => c.OwnerAccounting == holdsStatementView), UserId, It.IsAny<CancellationToken>()), Times.Once);
         harness.Authorization.Verify(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), CasazenPolicies.AgencyStatementView), Times.Once);
     }
-
-    // ---------------------------------------------------------------- the privacy rule
 
     /// <summary>
     /// PROOF TEST: privacy rule. The address of the accountant is in the list of the encrypted columns, with a purpose of its own, and what the converter of the column hands to the table is a Data Protection payload with
@@ -280,25 +252,20 @@ public class AccountantPackageSettingsTests : IDisposable
 
         var stored = (string)converter.ConvertToProvider(NormalizedAddress)!;
 
-        // What the column holds: a payload, and nothing of the address in it (only values too long to turn up in random text by chance are searched for).
         Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored, StringComparison.Ordinal);
         Assert.DoesNotContain(NormalizedAddress, stored, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("studio-rossi", stored, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("commercialista", stored, StringComparison.OrdinalIgnoreCase);
 
-        // Read back only through the decryption of its own purpose: the protector of another column cannot read it.
         Assert.Equal(NormalizedAddress, converter.ConvertFromProvider(stored));
         Assert.ThrowsAny<CryptographicException>(() => Provider.CreateProtector(EncryptedColumns.GuestDocumentPurpose).Unprotect(stored));
 
-        // The service works with the encryption configured: the address saved comes back as typed (normalized).
         var org = OrgTeamTestData.AddOrg(db);
         await db.SaveChangesAsync();
         var service = new AccountantPackageSettingsService(db, NullLogger<AccountantPackageSettingsService>.Instance, _clock);
         await service.SaveAsync(org.Id, Change(), UserId);
         Assert.Equal(NormalizedAddress, (await service.GetAsync(org.Id)).Email);
     }
-
-    // ---------------------------------------------------------------- the service
 
     [Fact]
     public async Task Get_AnOrgThatSavedNothing_HasTheDefaults_AndNothingIsWritten()
@@ -353,7 +320,6 @@ public class AccountantPackageSettingsTests : IDisposable
         Assert.True(stored.UpdatedAt > stored.CreatedAt);
     }
 
-    /// <summary>An address that is cleared is stored as nothing, never as an empty text: the job asks the column <c>IS NOT NULL</c> and must never compare an encrypted column with a text.</summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -368,7 +334,6 @@ public class AccountantPackageSettingsTests : IDisposable
         Assert.Null((await _db.AccountantPackageSettings.AsNoTracking().SingleAsync()).AccountantEmail);
     }
 
-    /// <summary>A refused change saves nothing, in the order a person fixes them, with the code the screen translates.</summary>
     [Theory]
     [InlineData("missing-enabled", AccountantPackageErrors.SettingsInvalid)]
     [InlineData("missing-day", AccountantPackageErrors.SettingsInvalid)]
@@ -424,7 +389,6 @@ public class AccountantPackageSettingsTests : IDisposable
         Assert.Equal(before, await Service().GetAsync(orgId));
     }
 
-    /// <summary>Every query names the org: the settings of an organization are never read, replaced or created by another.</summary>
     [Fact]
     public async Task Settings_OfAnotherOrg_AreNeverReadOrReplaced()
     {
@@ -456,8 +420,6 @@ public class AccountantPackageSettingsTests : IDisposable
         Assert.DoesNotContain("studio-rossi", line.Message, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ---------------------------------------------------------------- the folders
-
     [Fact]
     public void Folders_TheKeysAreTheFolderNamesOfThePackage_InItsOrder_AndRoundTrip()
     {
@@ -481,7 +443,6 @@ public class AccountantPackageSettingsTests : IDisposable
             AccountantPackageFolderRules.Singles.Where(AccountantPackageFolderRules.IsOwnerAccounting).Select(AccountantPackageFolderRules.FolderOf).Order());
     }
 
-    /// <summary>An empty list never means «every folder»: it is refused, like an unknown key and a repeated one.</summary>
     [Theory]
     [InlineData("vat,vat")]
     [InlineData("invoices")]
@@ -502,8 +463,6 @@ public class AccountantPackageSettingsTests : IDisposable
         Assert.False(AccountantPackageFolderRules.TryFromKeys(null, out var missing));
         Assert.Equal(AccountantPackageFolders.None, missing);
     }
-
-    // ---------------------------------------------------------------- the controller harness
 
     private static SaveAccountantPackageSettingsRequest WholeRequest() =>
         new() { Enabled = true, Email = Address, SendDay = 5, Contents = [.. AllKeys] };

@@ -94,7 +94,6 @@ public class BillingIntegrationTests : IClassFixture<CasazenWebApplicationFactor
         Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("detail").GetString()));
     }
 
-    /// <summary>Public URL of the web app configured by <see cref="CasazenWebApplicationFactory"/>.</summary>
     private const string PublicSite = "https://casazen-app.vercel.app";
 
     private const string PlanPage = PublicSite + "/app/short-rent/settings/plan";
@@ -105,7 +104,6 @@ public class BillingIntegrationTests : IClassFixture<CasazenWebApplicationFactor
     [Fact]
     public async Task CreateCheckoutSession_WithoutReturnUrls_ReturnsToPlanPageOfConfiguredPublicSite()
     {
-        // PL-11 (A1-31): no domain in code, the return pages are built from App:PublicSiteBaseUrl on a real route.
         using var client = await NewBillingAdminClientAsync();
 
         var response = await client.PostAsJsonAsync("/api/billing/checkout-session", new { planTier = "Pro", billingCountry = "IT" });
@@ -167,7 +165,6 @@ public class BillingIntegrationTests : IClassFixture<CasazenWebApplicationFactor
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            // The org of this test's admin already has a Stripe customer.
             var stored = await db.Orgs.SingleAsync(o => o.Id == org.Id);
             stored.StripeCustomerId = FakeStripeBillingService.CustomerIdFor(org.Id);
             await db.SaveChangesAsync();
@@ -184,7 +181,6 @@ public class BillingIntegrationTests : IClassFixture<CasazenWebApplicationFactor
     [Fact]
     public async Task CreateCheckoutSession_PlanWithoutPriceId_Returns422AndPlanIsNotPurchasable()
     {
-        // PL-11 (A1-31): outside Production a plan without a Stripe Price id is disabled with an explicit error.
         await using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
             config.AddInMemoryCollection(new Dictionary<string, string?> { ["Billing:Prices:Scale"] = "price_PLACEHOLDER_scale" })));
         var userId = $"auth0|pl11-{Guid.NewGuid():N}";
@@ -249,7 +245,6 @@ public class BillingIntegrationTests : IClassFixture<CasazenWebApplicationFactor
         return client;
     }
 
-    /// <summary>Query of the fake Stripe Checkout URL: the return pages the checkout was created with.</summary>
     private static async Task<System.Collections.Specialized.NameValueCollection> CheckoutQueryAsync(HttpResponseMessage response)
     {
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

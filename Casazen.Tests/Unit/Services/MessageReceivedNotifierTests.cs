@@ -33,10 +33,8 @@ public class MessageReceivedNotifierTests : IDisposable
     private const string GuestAddress = "zefirino.ospite@example.org";
     private const string SecretText = "Ciao, il mio IBAN è IT60X0542811101000000123456, chiamami al 333 1234567 o scrivi a zefirino.ospite@example.org";
 
-    // 12:00 in Rome (November: UTC+1), outside the quiet hours.
     private static readonly DateTime Noon = new(2026, 11, 6, 11, 0, 0, DateTimeKind.Utc);
 
-    // 23:00 in Rome, inside the quiet hours that end at 08:00 (07:00 UTC).
     private static readonly DateTime Night = new(2026, 11, 6, 22, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime MorningDue = new(2026, 11, 7, 7, 0, 0, DateTimeKind.Utc);
 
@@ -88,10 +86,6 @@ public class MessageReceivedNotifierTests : IDisposable
         (OtaMessageThread Thread, OtaMessage Message) Unassigned,
         string OwnerEmail);
 
-    /// <summary>
-    /// A host org with an owner and a collaborator limited to the property A (named in charge of A and of B, granted A only); a conversation of a channel
-    /// on A, one on B and one not mapped to any property, each with an inbound message that holds the guest's name and words.
-    /// </summary>
     private async Task<World> SeedAsync()
     {
         var org = OrgTeamTestData.AddOrg(_db);
@@ -182,8 +176,6 @@ public class MessageReceivedNotifierTests : IDisposable
             .Select(c => ((QueuedMessageAlert)c.Job.Args[0], ((ScheduledState)c.State).EnqueueAt))
             .ToList();
 
-    // ─── The defaults (AC-NF65-2) and the route (AC-NF65-5) ───
-
     [Fact]
     public async Task Handle_ANewMessage_GivesTheOwnerTheCounterAndThePush_ByDefault()
     {
@@ -206,7 +198,6 @@ public class MessageReceivedNotifierTests : IDisposable
         Assert.Contains("Casa Rosa", push.Payload.Body, StringComparison.Ordinal);
         Assert.Contains("Airbnb", push.Payload.Body, StringComparison.Ordinal);
 
-        // The email is not a default.
         Assert.Empty(_email.Snapshot());
         Assert.Empty(ScheduledAlerts());
     }
@@ -221,8 +212,6 @@ public class MessageReceivedNotifierTests : IDisposable
         await Notifier().HandleAsync(received, CancellationToken.None);
         await Notifier().HandleAsync(received, CancellationToken.None);
 
-        // One row of the bell for each of the two people (the owner and the collaborator in charge), one tell to the open sessions of each, one
-        // email; the push goes again with the same key, which the delivery turns into one push per device.
         Assert.Equal(2, await _db.InAppNotifications.CountAsync());
         _publisher.Verify(p => p.PublishAsync(Owner, PushTypes.OtaMessage, world.OnA.Thread.Id, It.IsAny<CancellationToken>()), Times.Once);
         Assert.Single(_email.Snapshot(), e => e.To == world.OwnerEmail);
@@ -230,8 +219,6 @@ public class MessageReceivedNotifierTests : IDisposable
         Assert.Equal(2, ownerPushes.Count);
         Assert.All(ownerPushes, p => Assert.Equal(PushDeliveryKeys.OtaMessage(world.OnA.Message.Id, Owner), p.DeliveryKey));
     }
-
-    // ─── Email: the person's own address, once every ten minutes per conversation (AC-NF65-6) ───
 
     [Fact]
     public async Task Handle_TheEmailGoesToThePersonsOwnAddress_AtMostOneEveryTenMinutesForAConversation()
@@ -257,7 +244,6 @@ public class MessageReceivedNotifierTests : IDisposable
         Assert.All(sent, e => Assert.Equal(EmailTemplates.Names.HostMessageReceived, e.Template));
         Assert.Contains("Casa Rosa", sent[0].Content.Subject, StringComparison.Ordinal);
         Assert.Contains($"/app/short-rent/messages/ota:{world.OnA.Thread.Id:D}", sent[0].Content.HtmlBody, StringComparison.Ordinal);
-        // No push to the owner, who chose the email and the counter (the collaborator in charge of A has the default).
         Assert.DoesNotContain(_push.Queued, p => p.Audience.UserId == Owner);
     }
 
@@ -272,11 +258,8 @@ public class MessageReceivedNotifierTests : IDisposable
         _email.Refuse = false;
         await Notifier().HandleAsync(Received(world.OrgId, world.OnA, Noon.AddMinutes(1)), CancellationToken.None);
 
-        // The first one was not queued (no provider): the next message tries again, it does not wait ten minutes.
         Assert.Single(_email.Snapshot());
     }
-
-    // ─── Quiet hours (AC-NF65-3) ───
 
     [Fact]
     public async Task Handle_InTheQuietHours_PushAndEmailWaitForTheMorning_TheCounterDoesNot()
@@ -382,8 +365,6 @@ public class MessageReceivedNotifierTests : IDisposable
         Assert.Empty(_push.Queued);
     }
 
-    // ─── Who is told (AC-NF65-4) ───
-
     [Fact]
     public async Task Handle_ACollaboratorLimitedToSomeProperties_IsNotToldAboutTheThreadsOfTheOthers()
     {
@@ -395,7 +376,6 @@ public class MessageReceivedNotifierTests : IDisposable
         var forAAndB = _push.Queued.Select(p => p.Audience.UserId).Order(StringComparer.Ordinal).ToList();
 
         Assert.Equal([Collaborator, Owner], forA);
-        // The thread of B adds the owner only: the collaborator was never given B.
         Assert.Equal([Collaborator, Owner, Owner], forAAndB);
         Assert.Equal(
             [Collaborator, Owner, Owner],
@@ -411,7 +391,6 @@ public class MessageReceivedNotifierTests : IDisposable
 
         var push = Assert.Single(_push.Queued);
         Assert.Equal(PushAudience.User(world.OrgId, Owner), push.Audience);
-        // No property to name: the text names the channel.
         Assert.DoesNotContain("Casa", push.Payload.Body, StringComparison.Ordinal);
         Assert.Contains("Airbnb", push.Payload.Body, StringComparison.Ordinal);
     }
@@ -440,7 +419,6 @@ public class MessageReceivedNotifierTests : IDisposable
         await Assert.ThrowsAsync<TimeoutException>(() => Notifier().HandleAsync(Received(world.OrgId, world.OnA, Noon), CancellationToken.None));
         Assert.Empty(_push.Queued);
 
-        // The event is delivered again, the database answers: the owner is told as if nothing had happened.
         _permissions
             .Setup(p => p.HasPermissionOrThrowAsync(Owner, "short-rent", "booking.read", It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -469,7 +447,6 @@ public class MessageReceivedNotifierTests : IDisposable
     [Fact]
     public async Task Deliver_TheUrgentAlertOfAMessageAlreadyAlerted_IsAPushAndANotificationOfItsOwn_WithTheRouteOfTheConversation()
     {
-        // E05/F05/US02/T01: under the key of the new message the urgent alert would find what that message already had, and tell nobody.
         var world = await SeedAsync();
 
         await Delivery().DeliverAsync(
@@ -486,8 +463,6 @@ public class MessageReceivedNotifierTests : IDisposable
         Assert.All(toOwner, p => Assert.Equal(PushRoutes.MessageThread($"ota:{world.OnA.Thread.Id:D}"), p.Payload.Route));
         Assert.Equal(2, await _db.InAppNotifications.CountAsync(n => n.UserId == Owner));
     }
-
-    // ─── What the handler ignores ───
 
     [Fact]
     public async Task Handle_AnotherSourceAnotherEventOrABrokenPayload_DoesNothing()
@@ -515,7 +490,6 @@ public class MessageReceivedNotifierTests : IDisposable
         var otherOrg = OrgTeamTestData.AddOrg(_db);
         await _db.SaveChangesAsync();
 
-        // The event says another org: the thread of this org is not found in it, and nobody is told.
         await Notifier().HandleAsync(Received(otherOrg.Id, world.OnA, Noon), CancellationToken.None);
 
         Assert.Empty(_push.Queued);
@@ -535,8 +509,6 @@ public class MessageReceivedNotifierTests : IDisposable
         Assert.Empty(_push.Queued);
     }
 
-    // ─── Failures: the bus delivers the event again ───
-
     [Fact]
     public async Task Handle_APushThatCannotBeQueued_ThrowsAfterTheOthersWereTold_SoTheBusDeliversTheEventAgain()
     {
@@ -552,7 +524,6 @@ public class MessageReceivedNotifierTests : IDisposable
         await Assert.ThrowsAsync<AggregateException>(
             () => Notifier(refusing.Object).HandleAsync(Received(world.OrgId, world.OnA, Noon), CancellationToken.None));
 
-        // The owner was told in spite of the collaborator's failure; the counters of both are written, and a redelivery writes none again.
         refusing.Verify(p => p.Enqueue(It.IsAny<string>(), PushAudience.User(world.OrgId, Owner), It.IsAny<PushNotificationPayload>()), Times.Once);
         Assert.Equal(2, await _db.InAppNotifications.CountAsync());
         await Assert.ThrowsAsync<AggregateException>(
@@ -563,7 +534,6 @@ public class MessageReceivedNotifierTests : IDisposable
     [Fact]
     public async Task DeliverOrRetry_APersonCannotBeAlerted_TheAlertGoesToAJob_AndNothingIsThrown()
     {
-        // A message of a direct booking has no event of the outbox to be delivered again, and its send must not fail.
         var world = await SeedAsync();
         var alert = AlertOnA(world);
         var refusing = new Mock<IPushNotificationService>();
@@ -582,7 +552,6 @@ public class MessageReceivedNotifierTests : IDisposable
         Assert.IsType<ScheduledState>(retry.State);
         Assert.Equal(2, await _db.InAppNotifications.CountAsync());
 
-        // The job delivers the alert again: the collaborator is told now, and what was done is not done twice.
         await new HostMessageAlertDueJob(Delivery()).RetryAsync(alert, CancellationToken.None);
 
         Assert.Contains(_push.Queued, p => p.Audience == PushAudience.User(world.OrgId, Collaborator));
@@ -622,12 +591,6 @@ public class MessageReceivedNotifierTests : IDisposable
     private static HostMessageAlert AlertOnA(World world) =>
         new(world.OrgId, HostMessageSource.Ota, NotificationEventType.NewGuestMessage, world.OnA.Thread.Id, world.OnA.Message.Id, Noon);
 
-    // ─── Privacy (ADR-022-R21, ADR-032-R13) ───
-
-    /// <summary>
-    /// PROOF TEST: privacy rule. A guest's message carries personal data (words, an IBAN, a phone number, an address, a name). Whatever the host
-    /// chose (counter, push and email), none of them reaches a push, an email, a notification of the bell or the arguments of a job.
-    /// </summary>
     [Fact]
     public async Task MessageNotifier_NoMessageText_InPushEmailOrNotification_Test()
     {
@@ -650,7 +613,6 @@ public class MessageReceivedNotifierTests : IDisposable
         payloads.AddRange(ScheduledAlerts().Select(s => JsonSerializer.Serialize(s.Args)));
         payloads.AddRange(_publisher.Invocations.Select(i => string.Join('|', i.Arguments)));
 
-        // The three channels were really used, so the proof looks at something.
         Assert.NotEmpty(_push.Queued);
         Assert.NotEmpty(_email.Snapshot());
         Assert.NotEmpty(await _db.InAppNotifications.ToListAsync());
@@ -672,7 +634,6 @@ public class MessageReceivedNotifierTests : IDisposable
                 Assert.DoesNotContain(secret, payload, StringComparison.OrdinalIgnoreCase);
         }
 
-        // The email names the property and the channel and sends the host to the conversation.
         var email = _email.Snapshot().First(e => e.Content.Subject.Contains("Casa Rosa", StringComparison.Ordinal));
         Assert.Contains("Airbnb", email.Content.HtmlBody, StringComparison.Ordinal);
         Assert.Contains("Casa Rosa", email.Content.HtmlBody, StringComparison.Ordinal);

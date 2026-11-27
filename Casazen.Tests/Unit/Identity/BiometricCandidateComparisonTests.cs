@@ -34,8 +34,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
             Directory.Delete(_folder, recursive: true);
     }
 
-    // ─── The proof of the brief ──────────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// Proof (security, decision D6): a candidate never decides live. Nothing the verification flow is made of, down its constructors and fields (through every implementation of an interface or
     /// of an abstract type it takes, wrappers and lazy values included), takes the comparison or its interface; no service the identity verification registers takes it either. The guard is not
@@ -48,7 +46,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
 
         var reachable = Dependencies(typeof(IdentityVerificationFlowService));
 
-        // The walk goes down to the models (so it would meet the comparison if the flow, or what it takes, took it).
         Assert.Contains(typeof(IIdentityVerificationAgent), reachable);
         Assert.Contains(typeof(IBiometricModelStore), reachable);
         Assert.Contains(typeof(IFaceEmbedder), reachable);
@@ -71,7 +68,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         Assert.Equal(typeof(BiometricCandidateComparison), descriptor.ImplementationType);
         Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
 
-        // Of everything the identity verification registers, nothing has the comparison among the parameters of its constructor.
         var takers = services
             .Select(service => service.ImplementationType)
             .OfType<Type>()
@@ -80,12 +76,9 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         Assert.Empty(takers);
     }
 
-    // ─── Acceptance criterion 3: paired scores on the same inputs ────────────────────────────────────────
-
     [Fact]
     public async Task CompareAsync_AMatchCase_GivesTheSimilaritiesOfTheReferenceAndOfTheCandidate_OnTheSameInputs()
     {
-        // The candidate is a copy of the bundled SFace: the same weights on the same faces, so every similarity is the same.
         var options = BundledBiometricModels.PublishedOptions();
         options.FaceRecognitionCandidate = CandidateFrom<FaceRecognitionCandidateOptions>(options.FaceRecognition, "recognition-copy.onnx");
         using var store = await BundledBiometricModels.LoadAsync(options);
@@ -107,7 +100,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         Assert.Equal(options.FaceRecognition.Sha256, reference.WeightHash, ignoreCase: true);
         Assert.Equal(options.FaceRecognitionCandidate.Sha256, candidate.WeightHash, ignoreCase: true);
 
-        // One similarity per frame, in the order of the frames, on the scale of the check-in; the frame with no face is 0 for both.
         Assert.Equal(3, reference.Scores.Count);
         Assert.Equal(3, candidate.Scores.Count);
         Assert.All(reference.Scores.Concat(candidate.Scores), score => Assert.InRange(score, 0.0, 1.0));
@@ -116,7 +108,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         for (var index = 0; index < 3; index++)
             Assert.Equal(reference.Scores[index], candidate.Scores[index], 6);
 
-        // And the reference is what the check-in computes: the cosine of the two vectors of its own embedder, clamped to 0..1.
         var own = new FaceEmbedder(store, Options.Create(options));
         var portrait = own.Embed(scene.Document, scene.PortraitFace, CancellationToken.None);
         for (var index = 0; index < 2; index++)
@@ -125,7 +116,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
             Assert.Equal(Math.Clamp(EmbeddingMath.CosineSimilarity(portrait, frame), 0.0, 1.0), reference.Scores[index], 6);
         }
 
-        // Both took time, and the vectors the reference made (the portrait and the two frames with a face) were zeroed.
         Assert.True(reference.LatencyMs > 0);
         Assert.True(candidate.LatencyMs > 0);
         Assert.Equal(3, embedder.Issued.Count);
@@ -158,7 +148,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         Assert.True(result.Reference.LatencyMs > 0);
         Assert.True(candidate.LatencyMs > 0);
 
-        // The reference is the service of the check-in on the same bytes (the third answer of the detector double).
         var service = new AntiSpoofingService(NullLogger<AntiSpoofingService>.Instance, store, detector, Options.Create(options));
         using var picture = new MemoryStream(frame, writable: false);
         Assert.Equal((await service.ScoreLivenessAsync(picture)).Score, referenceScore, 6);
@@ -179,7 +168,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         using var store = await BundledBiometricModels.LoadAsync(options);
         using var scene = MatchScene(frames: 3, withoutFace: 0);
 
-        // A small face: the crop of the face is enlarged up to the scale and no further than the picture, so a large face would leave the two scales the same crop.
         var face = SequenceTestFrames.Face(Width, Height, widthShare: 0.2);
 
         var matches = await Comparison(store, scene.Detector, new FaceEmbedder(store, Options.Create(options)), options).CompareAsync([scene.Case("match")], CancellationToken.None);
@@ -203,7 +191,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         using var store = await BundledBiometricModels.LoadAsync(options);
         using var scene = MatchScene(frames: 2, withoutFace: 0);
 
-        // The pictures a liveness case is decoded into are new objects: the detector double finds the face of the size of the frames in them.
         var face = SequenceTestFrames.Face(Width, Height);
         scene.Detector.Fallback = image => image.Width == Width && image.Height == Height ? [face] : [];
         var results = await Comparison(store, scene.Detector, new FaceEmbedder(store, Options.Create(options)), options)
@@ -217,12 +204,9 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         });
     }
 
-    // ─── The window between «the store is ready» and «the store has looked at the candidates» ────────────
-
     [Fact]
     public async Task CompareAsync_ACandidateTheStoreHasNotLookedAtYet_IsCandidateLoading_NotAMissingOne_AndTheReferenceRan()
     {
-        // The store publishes «ready» as soon as the three models are loaded and loads the candidates after them: for a moment it is ready, the candidates are configured and its snapshot lists none of them.
         var options = BundledBiometricModels.PublishedOptions();
         options.FaceRecognitionCandidate = CandidateFrom<FaceRecognitionCandidateOptions>(options.FaceRecognition, "recognition-copy.onnx");
         options.AntiSpoofingCandidate = CandidateFrom<AntiSpoofingCandidateOptions>(options.AntiSpoofing, "antispoofing-copy.onnx");
@@ -235,7 +219,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
 
         var results = await Comparison(early, scene.Detector, new FaceEmbedder(loaded, Options.Create(options)), options).CompareAsync(cases, CancellationToken.None);
 
-        // The reference ran, and the candidate of each role is a run that says why it has no scores: not a null, which would be «no candidate».
         Assert.Equal(2, results.Count);
         Assert.All(results, result => Assert.True(result.Reference.Ran));
         var recognition = Assert.IsType<CandidateModelRun>(results[0].Candidate);
@@ -249,11 +232,9 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
             Assert.Null(run.WeightHash);
         });
 
-        // Who it is: the name and the version of what is configured (its weights are not proved yet).
         Assert.Equal((options.FaceRecognitionCandidate.Name, options.FaceRecognitionCandidate.Version), (recognition.Name, recognition.Version));
         Assert.Equal((options.AntiSpoofingCandidate.Name, options.AntiSpoofingCandidate.Version), (presence.Name, presence.Version));
 
-        // The same cases once the store has looked at the candidates (the real store, which loaded them): both candidates ran.
         var settled = await Comparison(loaded, scene.Detector, new FaceEmbedder(loaded, Options.Create(options)), options).CompareAsync(cases, CancellationToken.None);
 
         Assert.All(settled, result => Assert.True(Assert.IsType<CandidateModelRun>(result.Candidate).Ran));
@@ -262,8 +243,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
     [Fact]
     public async Task CompareAsync_ACandidateThatIsNotConfigured_IsNull_WhetherOrNotTheStoreHasLookedAtTheCandidatesYet()
     {
-        // Nothing is configured: the runner must tell this from a candidate that is loading, so the answer stays «no candidate» (null). A configured candidate the store looked at and could not load is null
-        // too, with its code in the snapshot (CompareAsync_ACandidateWithAnotherHash_IsNotLoaded_AndTheComparisonIsTheReferenceAlone).
         var options = BundledBiometricModels.PublishedOptions();
         using var loaded = await BundledBiometricModels.LoadAsync(options);
         using var scene = MatchScene(frames: 2, withoutFace: 0);
@@ -281,8 +260,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
             Assert.Null(result.Candidate);
         });
     }
-
-    // ─── Acceptance criterion 2: a wrong hash ────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task CompareAsync_ACandidateWithAnotherHash_IsNotLoaded_AndTheComparisonIsTheReferenceAlone()
@@ -303,8 +280,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         Assert.True(result.Reference.Ran);
         Assert.Null(result.Candidate);
     }
-
-    // ─── The reference is not available, there is no portrait, a case fails ──────────────────────────────
 
     [Fact]
     public async Task CompareAsync_WhenTheReferenceModelsAreNotAvailable_EveryCaseIsACode_NeverAnException()
@@ -338,7 +313,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         using var broken = MatchScene(frames: 2, withoutFace: 0, portrait: true, detector);
         using var good = MatchScene(frames: 2, withoutFace: 0, portrait: true, detector);
 
-        // A picture that was disposed has no pixels: reading it fails, and says so with a code, not with the message of the exception.
         broken.Frames[0].Dispose();
 
         var results = await Comparison(store, detector, new FaceEmbedder(store, Options.Create(options)), options)
@@ -364,8 +338,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
             () => Comparison(store, scene.Detector, new FaceEmbedder(store, Options.Create(options)), options).CompareAsync([scene.Case("match")], new CancellationToken(canceled: true)));
         Assert.Empty(scene.Detector.Calls);
     }
-
-    // ─── The cases and the class itself ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Cases_NeedAnIdentifierAndTheirPictures()
@@ -404,14 +376,11 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
             field => typeof(ILogger).IsAssignableFrom(field.FieldType));
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────────────────────────────────
-
     private static BiometricCandidateComparison Comparison(IBiometricModelStore store, IFaceDetector detector, IFaceEmbedder embedder, BiometricModelOptions options)
     {
         return new BiometricCandidateComparison(store, detector, embedder, Options.Create(options));
     }
 
-    /// <summary>A copy of a bundled model in the temporary folder, described as a candidate: its own name, the path of the copy and the hash it really has (the one of the original).</summary>
     private T CandidateFrom<T>(ModelFileOptions bundled, string fileName)
         where T : ModelFileOptions, new()
     {
@@ -428,7 +397,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         };
     }
 
-    /// <summary>The picture of a document and frames, with the faces the detector double finds in them.</summary>
     private sealed class Scene : IDisposable
     {
         public required RasterImage Document { get; init; }
@@ -476,7 +444,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         return new Scene { Document = document, Frames = pictures, Detector = detector, PortraitFace = portraitFace, FrameFace = frameFace };
     }
 
-    /// <summary>Every type the root is made of, down its constructors and fields, through every implementation of an interface or an abstract type of the application, wrappers and lazy values unwrapped.</summary>
     private static HashSet<Type> Dependencies(Type root)
     {
         var implementations = new[] { typeof(IdentityVerificationFlowService).Assembly, typeof(IBiometricVerificationService).Assembly, typeof(IdentityVerificationServiceCollectionExtensions).Assembly }
@@ -515,7 +482,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         return seen;
     }
 
-    /// <summary>The type and what it is made of: the element of an array or a reference and the arguments of a generic type, followed down.</summary>
     private static IEnumerable<Type> Parts(Type type)
     {
         yield return type;
@@ -532,7 +498,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         }
     }
 
-    /// <summary>A flow that takes a service that takes the comparison: two levels down.</summary>
     private sealed class PlantedFlow(PlantedService inner)
     {
         public override string ToString() => inner.ToString() ?? string.Empty;
@@ -543,16 +508,11 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         public override string ToString() => comparison.ToString() ?? string.Empty;
     }
 
-    /// <summary>A flow that takes the comparison as a lazy value.</summary>
     private sealed class PlantedLazyFlow(Lazy<IBiometricCandidateComparison> comparison)
     {
         public override string ToString() => comparison.Value.ToString() ?? string.Empty;
     }
 
-    /// <summary>
-    /// A store as the real one is for a moment after it publishes «ready» and before it has looked at the candidates (it loads them after the three models): the three models are there, its snapshot lists no
-    /// candidate and none is loaded.
-    /// </summary>
     private sealed class StoreThatHasNotLookedAtTheCandidates(IBiometricModelStore inner) : IBiometricModelStore
     {
         public BiometricModelsSnapshot Snapshot => inner.Snapshot with { Candidates = [] };
@@ -566,7 +526,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         public LoadedBiometricModel? FaceRecognition => inner.FaceRecognition;
     }
 
-    /// <summary>An embedder that keeps what it hands out (the very arrays the application holds), to prove the application zeroes them, and lets the real one do the work.</summary>
     private sealed class RecordingEmbedder(IFaceEmbedder inner) : IFaceEmbedder
     {
         public List<float[]> Issued { get; } = [];
@@ -579,7 +538,6 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         }
     }
 
-    /// <summary>An embedder that must not be asked.</summary>
     private sealed class ThrowingEmbedder : IFaceEmbedder
     {
         public float[] Embed(RasterImage image, DetectedFace face, CancellationToken cancellationToken) =>

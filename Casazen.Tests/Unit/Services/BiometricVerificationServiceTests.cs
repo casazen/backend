@@ -9,10 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E03/F04/US01/T01: the decision of the face check (ADR-013): the models are asked for faces, liveness and vectors, and the safe default is the
-/// operator. The models are replaced by scripts, so these tests prove the rules of the service, not the weights.
-/// </summary>
 public class BiometricVerificationServiceTests
 {
     private const double Accept = 0.85;
@@ -57,7 +53,6 @@ public class BiometricVerificationServiceTests
             accept,
             escalate);
 
-    /// <summary>A vector that has the cosine <paramref name="similarity"/> with [1, 0].</summary>
     private static float[] VectorWithSimilarity(double similarity) =>
         [(float)similarity, (float)Math.Sqrt(1 - (similarity * similarity)), 0f];
 
@@ -217,7 +212,6 @@ public class BiometricVerificationServiceTests
     [InlineData(0.0, BiometricOutcome.Reject)]
     public void MapOutcome_AtTheThresholds_FollowsAdr013R4(double similarity, BiometricOutcome expected)
     {
-        // Accept at or above the accept threshold, Reject at or under the escalate one, Escalate between the two.
         Assert.Equal(expected, BiometricVerificationService.MapOutcome(similarity, Accept, Escalate));
     }
 

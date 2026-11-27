@@ -60,7 +60,6 @@ public class OrgBrandingRulesTests
     [InlineData("urban")]
     public void NormalizeThemeId_UnsupportedTheme_ThrowsThemeInvalid(string input)
     {
-        // montagna and urban are read as aliases but never written: a console from before DB-01 cannot store them any more.
         var ex = Assert.Throws<DomainRuleException>(() => OrgBrandingRules.NormalizeThemeId(input));
         Assert.Equal(OrgBrandingRules.ThemeInvalidCode, ex.Code);
     }
@@ -113,8 +112,6 @@ public class OrgBrandingRulesTests
         Assert.Equal(new object[] { OrgBrandingRules.TaglineMaxLength }, ex.MessageArgs);
     }
 
-    // ─── Public profile of the booking site (DB-03) ─────────────────────────────────────────────────
-
     [Fact]
     public void NormalizeSubtitle_WhitespaceAndNewLines_CollapsesIntoSingleSpaces()
     {
@@ -147,7 +144,6 @@ public class OrgBrandingRulesTests
     [Fact]
     public void NormalizeSubtitle_LengthIsMeasuredAfterTheWhitespaceIsCollapsed()
     {
-        // 150 words of one letter separated by runs of spaces: the raw text is long, the collapsed one is 299 characters.
         var raw = string.Join("    ", Enumerable.Repeat("a", 150));
 
         Assert.Equal(string.Join(' ', Enumerable.Repeat("a", 150)), OrgBrandingRules.NormalizeSubtitle(raw));
@@ -193,10 +189,10 @@ public class OrgBrandingRulesTests
     }
 
     [Theory]
-    [InlineData("12345")] // 5 digits
-    [InlineData("+1234567890123456")] // 16 digits
-    [InlineData("333 123 4567 ext 5")] // letters
-    [InlineData("333-12+34567")] // a plus that is not the first character
+    [InlineData("12345")]
+    [InlineData("+1234567890123456")]
+    [InlineData("333 123 4567 ext 5")]
+    [InlineData("333-12+34567")]
     [InlineData("++393331234567")]
     [InlineData("tel:+393331234567")]
     [InlineData("<script>")]
@@ -246,9 +242,9 @@ public class OrgBrandingRulesTests
     }
 
     [Theory]
-    [InlineData(800, 300)] // too narrow for a desktop cover
-    [InlineData(1600, 200)] // too short
-    [InlineData(9000, 3000)] // over the decompression guard
+    [InlineData(800, 300)]
+    [InlineData(1600, 200)]
+    [InlineData(9000, 3000)]
     public void ValidateImage_HeroOutsideDimensions_ThrowsDimensionsInvalid(int width, int height)
     {
         var ex = Assert.Throws<DomainRuleException>(

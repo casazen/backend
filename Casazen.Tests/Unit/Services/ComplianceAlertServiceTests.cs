@@ -24,7 +24,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class ComplianceAlertServiceTests : IDisposable
 {
-    // 09:00 in Rome (winter time): the hour of the alerts of a period. The deadline day of October 2026 is 10 November.
     private static readonly DateTimeOffset Start = new(2026, 11, 7, 8, 0, 0, TimeSpan.Zero);
 
     private readonly AppDbContext _db = OrgTeamTestData.NewDb();
@@ -176,8 +175,6 @@ public class ComplianceAlertServiceTests : IDisposable
                 It.IsAny<CancellationToken>()),
             times);
 
-    // ─── The module's flag ───
-
     [Fact]
     public async Task RunAsync_TheModuleIsOff_DoesNothingAndWritesNothing()
     {
@@ -195,8 +192,6 @@ public class ComplianceAlertServiceTests : IDisposable
         Assert.Empty(await _db.ComplianceAlertStates.ToListAsync());
     }
 
-    // ─── Periods ───
-
     [Fact]
     public async Task RunAsync_AnIstatMonthWithoutProof_IsAlertedOncePerStage_WithItsTodoAndItsPopup()
     {
@@ -206,7 +201,6 @@ public class ComplianceAlertServiceTests : IDisposable
         var first = await Service().RunAsync();
         var again = await Service().RunAsync();
 
-        // The deadline is approaching: one alert, then nothing however many runs.
         Assert.Equal(1, first.Sent);
         Assert.Equal(0, again.Sent);
         VerifySent(ComplianceAlertKind.PeriodDeadlineApproaching, ComplianceAlertType.IstatPeriod, Times.Once());
@@ -237,10 +231,8 @@ public class ComplianceAlertServiceTests : IDisposable
                 Start.UtcDateTime,
                 It.IsAny<CancellationToken>()),
             Times.Once);
-        // The audience is read once for the stage, for the email and for the popup alike: the popup carries the people already read.
         _recipients.Verify(r => r.ForPropertyAsync(orgId, propertyId, It.IsAny<CancellationToken>()), Times.Once);
 
-        // The morning after the deadline day the engine says red and the next stage is due: overdue, once.
         _clock.SetUtcNow(new DateTimeOffset(2026, 11, 11, 8, 0, 0, TimeSpan.Zero));
         Evaluation(orgId, propertyId, IstatItem(propertyId, new DateOnly(2026, 11, 11)));
         var overdue = await Service().RunAsync();
@@ -285,7 +277,6 @@ public class ComplianceAlertServiceTests : IDisposable
 
         await Service().RunAsync();
 
-        // The item is open: its "To do" is not among those closed, for the month it is about.
         _followUp.Verify(
             f => f.CloseTodosAsync(
                 It.Is<IReadOnlyCollection<ActivityType>>(t => t.Single() == ActivityType.IstatDeadline),
@@ -379,14 +370,12 @@ public class ComplianceAlertServiceTests : IDisposable
 
         var failed = await Service().RunAsync();
 
-        // Nothing claimed, nothing sent, nothing left behind: an alert about a legal deadline is not lost for a hiccup of the audience read.
         Assert.Equal(0, failed.Sent);
         Assert.Empty(await _db.ComplianceAlertStates.ToListAsync());
         _notifications.VerifyNoOtherCalls();
         _followUp.Verify(f => f.OpenTodoAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>()), Times.Never);
         _followUp.Verify(f => f.PopupAsync(It.IsAny<ComplianceAlertPopup>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The next run finds the stage due again and delivers it, once.
         _recipients
             .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ComplianceAlertRecipients(["org@example.com"], ["auth0|owner"]));
@@ -458,8 +447,6 @@ public class ComplianceAlertServiceTests : IDisposable
         Assert.Equal(2, (await _db.ComplianceAlertStates.SingleAsync()).AlertCount);
     }
 
-    // ─── Connection ───
-
     [Fact]
     public async Task RunAsync_AnInactiveConnectionWithAStayComingSoon_IsAlertedAtDetection_AndOnceMoreTwoDaysLater_ThenNever()
     {
@@ -482,7 +469,6 @@ public class ComplianceAlertServiceTests : IDisposable
                     && r.Reason == ComplianceReasonCodes.ConnectionInactive),
                 It.IsAny<CancellationToken>()),
             Times.Once);
-        // The connection is not a legal deadline: no popup.
         _followUp.Verify(f => f.PopupAsync(It.IsAny<ComplianceAlertPopup>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
 
         _clock.Advance(TimeSpan.FromDays(2));
@@ -580,7 +566,6 @@ public class ComplianceAlertServiceTests : IDisposable
         await Service().RunAsync();
         Assert.Equal(ComplianceAlertStage.ConnectionDetected, (await _db.ComplianceAlertStates.SingleAsync()).Stage);
 
-        // The host fixes it: the send is active, the alert is cleared and its "To do" closed.
         _connection = ConnectionHealthState.Active;
         _clock.Advance(TimeSpan.FromHours(1));
         var cleared = await Service().RunAsync();
@@ -595,7 +580,6 @@ public class ComplianceAlertServiceTests : IDisposable
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
-        // A later incident is a new one: alerted from the first stage again.
         _connection = ConnectionHealthState.Inactive;
         _clock.Advance(TimeSpan.FromHours(1));
         var again = await Service().RunAsync();

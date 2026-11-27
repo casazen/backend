@@ -18,8 +18,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class ServiceRequestLifecycleTests
 {
-    // ─── Start ───
-
     [Fact]
     public async Task StartAsync_TakenRequest_GoesInCorsoRecordsTheMomentAndTellsTheHost()
     {
@@ -104,8 +102,6 @@ public class ServiceRequestLifecycleTests
         Assert.Equal(ServiceRequestErrorCodes.SupplierNotActive, ex.Code);
     }
 
-    // ─── Complete: the final price, the notes ───
-
     [Fact]
     public async Task CompleteAsync_WithoutDetails_KeepsTheAgreedPriceAsTheFinalOneAndLeavesTheHostNotesAlone()
     {
@@ -182,7 +178,7 @@ public class ServiceRequestLifecycleTests
 
         var saved = await s.ReadAsync(taken.Id);
         Assert.Equal(12000, saved.FinalAmountCents);
-        Assert.False(saved.FinalAmountNeedsConfirmation); // exactly +20 %
+        Assert.False(saved.FinalAmountNeedsConfirmation);
         Assert.Equal(
             new[]
             {
@@ -194,7 +190,7 @@ public class ServiceRequestLifecycleTests
     }
 
     [Theory]
-    [InlineData(12000, false)] // +20 %: the limit is "more than"
+    [InlineData(12000, false)]
     [InlineData(12001, true)]
     [InlineData(9000, false)]
     public async Task CompleteAsync_FinalAmountAgainstTheQuote_FlagsOnlyWhatIsMoreThanTwentyPercentAbove(int finalAmount, bool flagged)
@@ -205,7 +201,7 @@ public class ServiceRequestLifecycleTests
         await s.Service.CompleteAsync(taken.Id, s.SupplierOrgId, new CompleteServiceRequestCommand(FinalAmountCents: finalAmount));
 
         var saved = await s.ReadAsync(taken.Id);
-        Assert.Equal(ServiceRequestStatus.Completato, saved.Status); // only the data and the flag: the confirmation comes with SP-15
+        Assert.Equal(ServiceRequestStatus.Completato, saved.Status);
         Assert.Equal(finalAmount, saved.FinalAmountCents);
         Assert.Equal(flagged, saved.FinalAmountNeedsConfirmation);
     }
@@ -216,7 +212,7 @@ public class ServiceRequestLifecycleTests
     public async Task CompleteAsync_NoQuote_ComparesWithTheEstimateOfTheService(int finalAmount, bool flagged)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var taken = await s.TakenAsync(); // estimate 60.00 euro
+        var taken = await s.TakenAsync();
 
         await s.Service.CompleteAsync(taken.Id, s.SupplierOrgId, new CompleteServiceRequestCommand(FinalAmountCents: finalAmount));
 
@@ -301,14 +297,11 @@ public class ServiceRequestLifecycleTests
         Assert.Equal(PushTypes.ServiceRequestCompleted, Assert.Single(s.Pushes).Payload.Type);
     }
 
-    // ─── Cancel: who may cancel what ───
-
     public static TheoryData<ServiceRequestStatus, bool, bool> CancelMatrix => new()
     {
-        // status, may the host cancel, may the supplier cancel
         { ServiceRequestStatus.Richiesto, true, true },
         { ServiceRequestStatus.PresoInCarico, true, true },
-        { ServiceRequestStatus.InCorso, true, false }, // the host up to the work in progress, the supplier only before the start
+        { ServiceRequestStatus.InCorso, true, false },
         { ServiceRequestStatus.Completato, false, false },
         { ServiceRequestStatus.Pagato, false, false },
         { ServiceRequestStatus.Rifiutato, false, false },
@@ -380,7 +373,6 @@ public class ServiceRequestLifecycleTests
         Assert.Equal(ServiceRequestActorParty.Host, saved.CancelledBy);
         Assert.Equal("Ospiti partiti prima", saved.CancellationReason);
         Assert.Null(saved.ResponseDueAt);
-        // The time the request held stays on it, as history; it holds no slot anymore.
         Assert.Equal(ServiceRequestScenario.FridayAt10, saved.ScheduledStartUtc);
 
         var email = Assert.Single(s.Emails.Snapshot());
@@ -533,7 +525,6 @@ public class ServiceRequestLifecycleTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var request = await s.RequestAsync();
 
-        // The queues are test doubles that cannot fail; a failing one must not undo the cancellation (A4-20).
         using var failing = new ServiceRequestTestKit(s.Db, new ThrowingEmailQueue(), new ThrowingPushQueue(), s.Clock);
 
         var cancelled = await failing.Service.CancelAsHostAsync(request.Id, s.HostOrgId, "Prova");
@@ -541,8 +532,6 @@ public class ServiceRequestLifecycleTests
         Assert.Equal(ServiceRequestStatus.Annullato, cancelled.Status);
         Assert.Equal(ServiceRequestStatus.Annullato, (await s.ReadAsync(request.Id)).Status);
     }
-
-    // ─── Remind ───
 
     [Fact]
     public async Task RemindAsync_NewRequest_RecordsTheMomentAndTellsTheSupplierWithoutExtendingTheDeadline()
@@ -675,8 +664,6 @@ public class ServiceRequestLifecycleTests
 
         Assert.NotNull((await s.ReadAsync(request.Id)).LastRemindedAt);
     }
-
-    // ─── Mark paid keeps working ───
 
     [Fact]
     public async Task MarkPaidAsync_CompletedRequestWithAFinalAmount_StillGoesToPagatoAndKeepsTheAmount()

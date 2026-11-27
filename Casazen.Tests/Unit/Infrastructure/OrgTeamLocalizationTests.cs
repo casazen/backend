@@ -7,14 +7,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// AM-02: every refusal of the org team has a stable code and a message in Italian and in English (the clients translate
-/// the code, the API localizes the message). The table is the contract: a code without a message, a message that is the same
-/// in both languages or a validation key that does not exist fails here, without starting the web host.
-/// </summary>
 public class OrgTeamLocalizationTests
 {
-    /// <summary>Every code of the team and the key of its message, written out by hand.</summary>
     public static TheoryData<string, string> CodesAndKeys => new()
     {
         { OrgInvitationErrors.Invalid, "InvitationInvalid" },
@@ -45,7 +39,6 @@ public class OrgTeamLocalizationTests
         { OrgAccessRequestErrors.LimitReached, "AccessRequestLimitReached" },
     };
 
-    /// <summary>The messages of the 400 the activity log answers for a filter that makes no sense (no code of their own: the generic validation code).</summary>
     public static TheoryData<string> ActivityFilterKeys => new()
     {
         "OrgActivityTypeUnknown",

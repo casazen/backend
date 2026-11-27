@@ -7,10 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SP-04e: <c>GET api/supplier/inbox/counts</c>, the numbers on the chips of the list and on the menu: one place, the rules of the tabs,
-/// the supplier of the caller only, and the payments that are late.
-/// </summary>
 public class SupplierInboxCountsTests
 {
     [Fact]
@@ -33,9 +29,9 @@ public class SupplierInboxCountsTests
 
         Assert.Equal(2, counts.ToAnswer);
         Assert.Equal(1, counts.AwaitingCustomer);
-        Assert.Equal(3, counts.Scheduled); // two taken and one in progress
+        Assert.Equal(3, counts.Scheduled);
         Assert.Equal(3, counts.ToCollect);
-        Assert.Equal(4, counts.Archive); // one paid, two rejected, one cancelled
+        Assert.Equal(4, counts.Archive);
         Assert.Equal(0, counts.PaymentsLate);
     }
 
@@ -111,26 +107,23 @@ public class SupplierInboxCountsTests
     [Fact]
     public async Task Counts_AHostOrgThatIsNotTheSupplier_HasNothing()
     {
-        // The host org owns the requests it sends but is not their supplier: nothing is counted for it.
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.SeedAsync(ServiceRequestStatus.Richiesto);
 
         Assert.Equal(new SupplierInboxCounts(0, 0, 0, 0, 0, 0), await s.Reader.GetInboxCountsAsync(s.HostOrgId));
     }
 
-    // ─── The payments that are late ───
-
     [Fact]
     public async Task PaymentsLate_AreTheOnesFlaggedLateThatTheHostStillOwes()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var late = SupplierReadModelsTestSupport.Now.AddDays(-1);
-        await LatePaymentAsync(s, ServicePaymentStatus.Requested, late); // counts
-        await LatePaymentAsync(s, ServicePaymentStatus.Failed, late); // counts
-        await LatePaymentAsync(s, ServicePaymentStatus.Requested, lateAt: null); // asked, not late
-        await LatePaymentAsync(s, ServicePaymentStatus.Processing, late); // the money is on its way
-        await LatePaymentAsync(s, ServicePaymentStatus.NeedsReview, late); // waits for an admin, not for the host
-        await LatePaymentAsync(s, ServicePaymentStatus.Canceled, late); // withdrawn
+        await LatePaymentAsync(s, ServicePaymentStatus.Requested, late);
+        await LatePaymentAsync(s, ServicePaymentStatus.Failed, late);
+        await LatePaymentAsync(s, ServicePaymentStatus.Requested, lateAt: null);
+        await LatePaymentAsync(s, ServicePaymentStatus.Processing, late);
+        await LatePaymentAsync(s, ServicePaymentStatus.NeedsReview, late);
+        await LatePaymentAsync(s, ServicePaymentStatus.Canceled, late);
 
         var counts = await s.Reader.GetInboxCountsAsync(s.SupplierOrgId);
 
@@ -184,12 +177,6 @@ public class SupplierInboxCountsTests
         Assert.Equal(1, counts.ToCollect);
     }
 
-    // ─── helpers ───
-
-    /// <summary>
-    /// Two new requests to answer, one with a proposal, two taken, one in progress, three completed, one paid, two rejected and one
-    /// cancelled.
-    /// </summary>
     private static async Task SeedAsync(ServiceRequestScenario s)
     {
         await s.SeedAsync(ServiceRequestStatus.Richiesto);
@@ -213,7 +200,6 @@ public class SupplierInboxCountsTests
         await s.SeedAsync(ServiceRequestStatus.Annullato, r => r.CancelledAt = r.CreatedAt);
     }
 
-    /// <summary>A completed request with a payment in <paramref name="status"/>, flagged late at <paramref name="lateAt"/> (not when null).</summary>
     private static async Task LatePaymentAsync(ServiceRequestScenario s, ServicePaymentStatus status, DateTime? lateAt)
     {
         var request = await s.SeedCompletedAsync(change: r => r.PaymentMode = ServiceRequestPaymentMode.Online);

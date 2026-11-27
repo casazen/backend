@@ -31,14 +31,11 @@ public class HostOverviewScenarioTests
     {
         var (db, world) = await SeedAsync();
         await using var _ = db;
-        // What PostgreSQL would refuse: a key that points at nothing, a unique index that holds the same key twice.
         await HostScopeScenario.AssertReferentialIntegrityAsync(db);
 
         var wholeOrg = await Search(db).CountAsync(world.OrgWide, new BookingSearchCriteria());
         var restricted = await Search(db).CountAsync(world.Restricted, new BookingSearchCriteria());
 
-        // Nine bookings for each property: the three of the scenario and six of this one. The first property has its arrival today (in
-        // progress), the second one's is on the 11th (to come).
         Assert.Equal(new BookingCounts(18, 2, 5, 5, 4, 2), wholeOrg);
         Assert.Equal(new BookingCounts(9, 1, 2, 3, 2, 1), restricted);
         Assert.Equal(wholeOrg.All, wholeOrg.ToConfirm + wholeOrg.Upcoming + wholeOrg.InProgress + wholeOrg.Completed + wholeOrg.Cancelled);
@@ -52,7 +49,6 @@ public class HostOverviewScenarioTests
 
         async Task<int> CountAsync(BookingSearchCriteria criteria) => (await Search(db).CountAsync(world.OrgWide, criteria)).All;
 
-        // The channels tell the portals apart (NF-78): the cancelled Expedia stay of each property is Expedia's, not «other» (a local source).
         Assert.Equal(
             new[] { 2, 4, 6, 2, 2, 2 },
             new[]
@@ -86,7 +82,6 @@ public class HostOverviewScenarioTests
         var wholeOrg = await service.GetTodayAsync(world.OrgWide, new HostTodayOptions(IncludePayments: true));
         var restricted = await service.GetTodayAsync(world.Restricted, new HostTodayOptions(IncludePayments: true));
 
-        // Arrivals, departures, check-ins to come, interventions of the day and requests waiting: only the first property arrives today.
         Assert.Equal((1, 2, 5, 4, 2), (wholeOrg.Arrivals.Count, wholeOrg.Departures.Count, wholeOrg.Upcoming.Count, wholeOrg.Services.Count, wholeOrg.Approvals.Count));
         Assert.Equal((1, 1, 2, 2, 1), (restricted.Arrivals.Count, restricted.Departures.Count, restricted.Upcoming.Count, restricted.Services.Count, restricted.Approvals.Count));
         var arrival = Assert.Single(restricted.Arrivals.Items);
@@ -130,10 +125,8 @@ public class HostOverviewScenarioTests
         Assert.Equal(HostOverviewSeriesUnit.Month, months.Series!.Unit);
         Assert.Equal(["2026-10", "2026-11", "2026-12"], months.Series.Buckets.Select(b => b.Label));
         Assert.Equal(months.Revenue!.Amount, months.Series.Buckets.Sum(b => b.Amount));
-        // The two requests of November are waiting for the host.
         Assert.Equal(2, months.Upcoming.PendingApproval);
         Assert.True(october.Collected!.PaymentCount > 0 && october.Revenue!.Amount > 0);
-        // The soonest three of the org: today's arrival, then the two stays of the 10th. The fourth (the 11th) is not tied with them.
         var arrivals = next.NextArrivals.Select(s => (s.PropertyName, s.GuestName.Split(' ')[0], s.CheckInDate.Day)).Order().ToList();
         Assert.Equal(
             [("Casa Bianca", "Anna", 10), ("Trullo", "Anna", 10), ("Trullo", "arrives", 9)],

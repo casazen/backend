@@ -61,7 +61,6 @@ public class PropertyCleaningSetupServiceTests
         return org.Id;
     }
 
-    /// <summary>The supplier org of the world of <see cref="HostScopeScenario"/>, with an active profile that covers Ostuni, where its properties are.</summary>
     private static async Task AddProfileToWorldSupplierAsync(AppDbContext db, HostScopeWorld world, SupplierStatus status = SupplierStatus.Active)
     {
         db.SupplierProfiles.Add(new SupplierProfile
@@ -89,12 +88,6 @@ public class PropertyCleaningSetupServiceTests
         db.ChangeTracker.Clear();
     }
 
-    // ─── Proofs: the rules of the brief that cost data or permission if wrong ──────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (data): a supplier that does not cover the comune of the property is refused with its own code, as a service request would refuse it, and nothing is saved; the
-    /// supplier that covers it is saved with the same body.
-    /// </summary>
     [Fact]
     public async Task CleaningSetup_SupplierOutsideComuneRefused_Test()
     {
@@ -118,10 +111,6 @@ public class PropertyCleaningSetupServiceTests
         Assert.Equal(Actor, row.UpdatedByUserId);
     }
 
-    /// <summary>
-    /// Proof (permission): the property of another org is not found, whatever is asked of it: a read, a save and a bulk save answer as for a property that does not exist, and
-    /// nothing is written for it.
-    /// </summary>
     [Fact]
     public async Task CleaningSetup_OtherOrganizationProperty404_Test()
     {
@@ -139,22 +128,16 @@ public class PropertyCleaningSetupServiceTests
         Assert.Equal("property_not_found", write.Code);
         Assert.Equal(("property_not_found", false), (bulk.Code, bulk.Saved));
         Assert.Empty(await scenario.Db.PropertyCleaningSetups.ToListAsync());
-        // A scope of another org than the one the save is for is a mistake of the caller, never a widening.
         await Assert.ThrowsAsync<ArgumentException>(
             () => service.SaveBulkAsync(scenario.HostOrgId, new HostScope(otherOrg), [scenario.PropertyId], Staff(ServiceRequestScenario.HostUserId), Actor));
     }
 
-    /// <summary>
-    /// Proof (data): a bulk save answers for each property, in the order received. One that cannot be saved comes back with its code and does not stop the others, one of
-    /// another org or unknown is «not found», a repeated id counts once, and the counts never say «all saved» when one was not.
-    /// </summary>
     [Fact]
     public async Task CleaningSetup_BulkReportsEachResult_Test()
     {
         await using var db = HostScopeScenario.NewInMemoryDb();
         var world = await HostScopeScenario.SeedAsync(db);
         await AddProfileToWorldSupplierAsync(db, world);
-        // The second property is in another comune than the one the supplier covers.
         await ChangeAsync<Property>(db, world.Hidden.Id, p => p.City = "Milano");
         var unknown = Guid.NewGuid();
 
@@ -174,9 +157,6 @@ public class PropertyCleaningSetupServiceTests
         Assert.Equal(world.Granted.Id, (await db.PropertyCleaningSetups.AsNoTracking().SingleAsync()).PropertyId);
     }
 
-    // ─── The reach of the caller ───────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>A collaborator «Solo alcuni» saves only the properties it was given: the others of the org come back as «not found» in the result, and are not written.</summary>
     [Fact]
     public async Task Bulk_ACollaboratorWithSomeProperties_SavesOnlyThoseItWasGiven()
     {
@@ -192,7 +172,6 @@ public class PropertyCleaningSetupServiceTests
         Assert.Equal([world.Granted.Id], await db.PropertyCleaningSetups.AsNoTracking().Select(s => s.PropertyId).ToListAsync());
     }
 
-    /// <summary>None is none: an empty list is 422, never «every property», and so is a list over the cap; a body that is wrong for every property is refused before anything is saved.</summary>
     [Fact]
     public async Task Bulk_AnEmptyList_ATooLongOne_AndAWrongBody_AreRefusedBeforeAnythingIsSaved()
     {
@@ -219,9 +198,6 @@ public class PropertyCleaningSetupServiceTests
         Assert.Empty(await db.PropertyCleaningSetups.ToListAsync());
     }
 
-    // ─── The price ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The price is in the currency of the property and says so: another currency, and a price with none, are refused; a Swiss property takes francs and nothing else.</summary>
     [Fact]
     public async Task Price_ComesWithTheCurrencyOfTheProperty_NeverAnother()
     {
@@ -246,11 +222,6 @@ public class PropertyCleaningSetupServiceTests
         Assert.Equal("CHF", Assert.Single(swiss.MessageArgs));
     }
 
-    /// <summary>
-    /// Proof (money): the requests to the suppliers of the marketplace, their prices and their payments are in euro and nothing is converted, so a property in another currency takes no
-    /// supplier. An active supplier setup of a Swiss house is refused (422, with the currency in the message) and nothing is saved; kept switched off a supplier setup is only kept; back
-    /// in euro the supplier is accepted.
-    /// </summary>
     [Fact]
     public async Task CleaningSetup_SupplierForAPropertyInAnotherCurrencyRefused_Test()
     {
@@ -273,7 +244,6 @@ public class PropertyCleaningSetupServiceTests
         Assert.True(saved.Active);
     }
 
-    /// <summary>In a bulk save a house in another currency comes back with its own code and does not stop the others.</summary>
     [Fact]
     public async Task Bulk_AHouseInAnotherCurrency_TakesNoSupplier_AndTheOthersAreSaved()
     {
@@ -308,8 +278,6 @@ public class PropertyCleaningSetupServiceTests
 
         Assert.Equal(PropertyCleaningSetupRules.PriceInvalid, error.Code);
     }
-
-    // ─── The cleaner ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Cleaner_IsOneOfTheTwoKinds_AndOnlyTheColumnsOfItsKind()
@@ -354,10 +322,6 @@ public class PropertyCleaningSetupServiceTests
         Assert.True(kept.Configured);
     }
 
-    /// <summary>
-    /// A member of the staff is an active member of the org who reaches the property: the owner reaches all, the collaborator «Solo alcuni» only the ones it was given, a member who
-    /// was deactivated or a person of another org none.
-    /// </summary>
     [Fact]
     public async Task Staff_MustBeAnActiveMemberWhoReachesTheProperty()
     {
@@ -396,8 +360,6 @@ public class PropertyCleaningSetupServiceTests
         Assert.Equal("property_not_bookable_in_long_mode", error.Code);
     }
 
-    // ─── The time, the replacement and the answer ────────────────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(4)]
     [InlineData(1441)]
@@ -422,14 +384,12 @@ public class PropertyCleaningSetupServiceTests
         Assert.Equal(PropertyCleaningSetupRules.StartTimeInvalid, error.Code);
     }
 
-    /// <summary>A save replaces what the property had (the supplier of before is gone when the staff takes over), and the answer says what really applies: the defaults of the time and the length.</summary>
     [Fact]
     public async Task Save_ReplacesTheSetup_AndTheAnswerSaysTheTimeAndTheLengthThatApply()
     {
         using var scenario = await ServiceRequestScenario.CreateAsync();
         var service = Service(scenario);
         await ChangeAsync<Property>(scenario.Db, scenario.PropertyId, p => p.CheckOutBy = new TimeOnly(11, 0));
-        // The host is the owner of its org: a member who reaches every property.
         scenario.Db.OrgMembers.Add(new OrgMember { OrgId = scenario.HostOrgId, UserId = ServiceRequestScenario.HostUserId, Role = OrgRole.Owner });
         await scenario.Db.SaveChangesAsync();
 
@@ -455,7 +415,6 @@ public class PropertyCleaningSetupServiceTests
         Assert.Null(row.StartTime);
     }
 
-    /// <summary>The supplier of a setup is «trusted» when the org lists it as one for this property (a list with no property is every property); it is a preference, never a rule.</summary>
     [Fact]
     public async Task View_SaysWhetherTheSupplierIsOneOfTheTrustedOnes()
     {
@@ -482,9 +441,6 @@ public class PropertyCleaningSetupServiceTests
         Assert.True(everywhere.SupplierIsTrusted);
     }
 
-    // ─── The texts ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Every message of the setup exists in Italian and in English (the API answers a localized text for each code).</summary>
     [Fact]
     public void Messages_OfTheSetupAndTheAutomation_ExistInItalianAndEnglish()
     {

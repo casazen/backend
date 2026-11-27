@@ -57,9 +57,9 @@ public class AlloggiatiReportSchedulingTests
         await using var db = CreateDb();
         var booking = await SeedBookingAsync(db);
 
-        await CreateScheduler(db, CheckIn.AddDays(-2)).EnsureScheduledAsync(booking.Id); // guest portal
-        await CreateJob(db, RomeMidnightOfCheckIn).ReportGuestAsync(booking.GuestId, booking.Id); // arrival day
-        await CreateScheduler(db, RomeMidnightOfCheckIn.AddHours(15)).EnsureScheduledAsync(booking.Id); // host check-in
+        await CreateScheduler(db, CheckIn.AddDays(-2)).EnsureScheduledAsync(booking.Id);
+        await CreateJob(db, RomeMidnightOfCheckIn).ReportGuestAsync(booking.GuestId, booking.Id);
+        await CreateScheduler(db, RomeMidnightOfCheckIn.AddHours(15)).EnsureScheduledAsync(booking.Id);
 
         _jobs.Verify(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Once);
         var report = await db.AlloggiatiWebReports.SingleAsync();
@@ -72,8 +72,8 @@ public class AlloggiatiReportSchedulingTests
         await using var db = CreateDb();
         var booking = await SeedBookingAsync(db);
 
-        await CreateScheduler(db, CheckIn.AddDays(-2)).EnsureScheduledAsync(booking.Id); // guest portal
-        await CreateScheduler(db, RomeMidnightOfCheckIn.AddMinutes(30)).EnsureScheduledAsync(booking.Id); // host check-in
+        await CreateScheduler(db, CheckIn.AddDays(-2)).EnsureScheduledAsync(booking.Id);
+        await CreateScheduler(db, RomeMidnightOfCheckIn.AddMinutes(30)).EnsureScheduledAsync(booking.Id);
 
         _jobs.Verify(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Once);
         _jobs.Verify(c => c.ChangeState(It.IsAny<string>(), It.IsAny<IState>(), It.IsAny<string>()), Times.Never);

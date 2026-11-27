@@ -100,7 +100,6 @@ public class GuestCheckInServiceTests
         Assert.Null((await svc.GetPublicViewAsync(token))?.PrivacyNoticeOrgSlug);
     }
 
-    /// <summary>The org row of the seed (the seed has none) with the slug its links must carry (NF-140).</summary>
     private static async Task<Casazen.Core.Entities.Org> AddOrgAsync(Seed seed, string slug)
     {
         var org = new Casazen.Core.Entities.Org { Id = seed.OrgId, Slug = slug, Name = slug, DisplayName = slug };
@@ -109,7 +108,6 @@ public class GuestCheckInServiceTests
         return org;
     }
 
-    /// <summary>A confirmed booking of another org, with its org row and its slug, in the same database as the seed.</summary>
     private static async Task<(Guid BookingId, Guid OrgId)> AddStayOfAnotherOrgAsync(AppDbContext db, string slug)
     {
         var orgId = Guid.NewGuid();
@@ -148,10 +146,6 @@ public class GuestCheckInServiceTests
         return (bookingId, orgId);
     }
 
-    /// <summary>
-    /// NF-140: a link with a published privacy notice carries the slug of its org, and the slug the consent step links the notice through
-    /// is the same one, as it always was.
-    /// </summary>
     [Fact]
     public async Task GetPublicView_PublishedPrivacyNotice_ReturnsTheOrgSlugAndTheNoticeSlug()
     {
@@ -169,7 +163,6 @@ public class GuestCheckInServiceTests
         Assert.Equal("agenzia-uno", view.PrivacyNoticeOrgSlug);
     }
 
-    /// <summary>NF-140: the notice was withdrawn, so the consent step has no notice to link, and the link still says which org it belongs to.</summary>
     [Fact]
     public async Task GetPublicView_WithdrawnPrivacyNotice_ReturnsTheOrgSlugAndNoNoticeSlug()
     {
@@ -193,7 +186,6 @@ public class GuestCheckInServiceTests
         Assert.Null(view.PrivacyNoticeOrgSlug);
     }
 
-    /// <summary>NF-140: an org that never published a notice: the slug the consent step uses stays empty, the slug of the org does not.</summary>
     [Fact]
     public async Task GetPublicView_NoPrivacyNotice_ReturnsTheOrgSlugAndNoNoticeSlug()
     {
@@ -210,10 +202,6 @@ public class GuestCheckInServiceTests
         Assert.Null(view.PrivacyNoticeOrgSlug);
     }
 
-    /// <summary>
-    /// NF-140 and A5-28: a completed link shows that the check-in is done and the slug of its org, public data, and nothing of the booking or of the
-    /// guests, even where the org has a published notice (the notice slug is part of the consent step, which a completed link no longer has).
-    /// </summary>
     [Fact]
     public async Task GetPublicView_CompletedSession_ReturnsTheOrgSlugAndNothingOfTheStay()
     {
@@ -238,10 +226,6 @@ public class GuestCheckInServiceTests
         Assert.Null(view.Guests);
     }
 
-    /// <summary>
-    /// NF-140, isolation between agencies: in one database each link carries the slug of the org that owns its own stay, never the slug of another org.
-    /// The page on an agency's domain relies on it to refuse the link of another agency.
-    /// </summary>
     [Fact]
     public async Task GetPublicView_TwoOrgsInTheSameDatabase_EachLinkCarriesTheSlugOfItsOwnOrg()
     {
@@ -265,10 +249,10 @@ public class GuestCheckInServiceTests
         var rawToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
 
         Assert.NotNull(rawToken);
-        Assert.Equal(64, rawToken.Length); // 32 bytes ΓåÆ 64 hex chars
+        Assert.Equal(64, rawToken.Length);
 
         var session = await seed.Db.GuestCheckInSessions.FirstAsync();
-        Assert.NotEqual(rawToken, session.TokenHash); // hash differs from raw
+        Assert.NotEqual(rawToken, session.TokenHash);
         Assert.Equal(GuestCheckInSessionStatus.Inviato, session.Status);
     }
 
@@ -382,7 +366,7 @@ public class GuestCheckInServiceTests
         await using var seed = await SeedAsync();
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
-        _ = await svc.GetSessionByTokenAsync(token); // advance to InCompilazione
+        _ = await svc.GetSessionByTokenAsync(token);
 
         var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
 
@@ -398,7 +382,6 @@ public class GuestCheckInServiceTests
         Assert.Equal("YA1234567", guest!.DocumentNumber);
         Assert.Equal(Gender.Male, guest.Gender);
 
-        // CO-12: the stay's guest line, linked to the booker.
         var stayGuest = await seed.Db.StayGuests.SingleAsync();
         Assert.Equal(StayGuestType.SingleGuest, stayGuest.Type);
         Assert.Equal(0, stayGuest.Position);
@@ -567,9 +550,6 @@ public class GuestCheckInServiceTests
         Assert.True(secondResult.Duplicate);
     }
 
-    // ─── The hosts are told (push, bell, live message) ───
-
-    /// <summary>What a service asks of <see cref="IPushNotificationService"/>; it can be made to fail.</summary>
     private sealed class RecordingPush : IPushNotificationService
     {
         public List<(string Key, PushAudience Audience, PushNotificationPayload Payload)> Calls { get; } = [];
@@ -605,7 +585,6 @@ public class GuestCheckInServiceTests
         Assert.Equal(seed.BookingId, payload.BookingId);
         Assert.Equal(PushRoutes.Booking(seed.BookingId), payload.Route);
         Assert.Contains("Test Property", payload.Body);
-        // The lock screen never carries a guest's name, the booker's or one typed in the form.
         foreach (var name in new[] { "Mario", "Rossi", "Luigi", "Verdi" })
             Assert.DoesNotContain(name, payload.Title + payload.Body);
     }
@@ -649,7 +628,6 @@ public class GuestCheckInServiceTests
 
         var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
 
-        // The guest's data is saved and the guest is told it worked: telling the hosts is best effort.
         Assert.True(result.Success);
         Assert.Equal(GuestCheckInSessionStatus.Completo, (await seed.Db.GuestCheckInSessions.SingleAsync()).Status);
     }
@@ -882,7 +860,6 @@ public class GuestCheckInServiceTests
         AssertSingleError(result, null, nameof(GuestCheckInSubmitRequest.MarketingConsentEmail), CheckInValidationKeys.MarketingConsentMinor);
         Assert.Empty(await seed.Db.MarketingConsentRecords.ToListAsync());
 
-        // On the day of the 18th birthday the booker is of age and consents.
         var adult = BuildValidSubmitRequest(dateOfBirth: new DateTime(2008, 10, 1, 0, 0, 0, DateTimeKind.Utc));
         adult.MarketingConsentEmail = true;
         adult.MarketingEmail = "luigi@example.it";
@@ -1111,8 +1088,6 @@ public class GuestCheckInServiceTests
         Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.Inviato);
     }
 
-    // ─── NF-132: a property in canton Ticino ────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetPublicView_TicinoProperty_AsksTheFieldsOfThePoliceFileAndThePlate_OtherPropertiesNot()
     {
@@ -1142,7 +1117,6 @@ public class GuestCheckInServiceTests
 
         var refused = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest { Guests = [TicinoHead("Via Test Nassa 15"), Member("Anna"), child] });
 
-        // In Ticino the police file notifies every adult: the second adult cannot be left without a document; the child of 7 needs none.
         Assert.False(refused.Success);
         Assert.Equal(["1.DocumentType", "1.DocumentNumber"], refused.ValidationErrors.Select(e => $"{e.Index}.{e.Field}"));
         Assert.Empty(seed.Db.StayGuests);
@@ -1221,7 +1195,6 @@ public class GuestCheckInServiceTests
             var converter = Assert.IsType<EncryptedStringConverter>(column.GetValueConverter());
             Assert.Null(column.GetMaxLength());
 
-            // Deterministic: the stored text is a Data Protection payload, not the value, and only the converter reads it back.
             var stored = (string)converter.ConvertToProvider(value)!;
             Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored, StringComparison.Ordinal);
             Assert.NotEqual(value, stored);
@@ -1260,10 +1233,8 @@ public class GuestCheckInServiceTests
         Assert.Null((await seed.Db.Bookings.AsNoTracking().SingleAsync()).VehiclePlate);
     }
 
-    /// <summary>One provider for the class: EF keeps one model per provider.</summary>
     private static readonly IDataProtectionProvider EncryptionProvider = TestDataProtection.Shared;
 
-    /// <summary>A booking of a property in canton Ticino: country CH and a municipality of canton TI the test writes itself (the seed is not read).</summary>
     private static async Task<Seed> SeedTicinoAsync(int capacity)
     {
         var seed = await SeedAsync(capacity);
@@ -1278,7 +1249,6 @@ public class GuestCheckInServiceTests
         return seed;
     }
 
-    /// <summary>The head of the stay (the booker, Mario Rossi) with a document and, when given, the home of the Ticino file.</summary>
     private static StayGuestInput TicinoHead(string? street) => new()
     {
         Type = "HeadOfFamily",

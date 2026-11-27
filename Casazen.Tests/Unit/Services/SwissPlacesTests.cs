@@ -34,7 +34,6 @@ public class SwissPlacesTests(SwissPlacesTests.SeededDirectory seeded) : IClassF
         "6600;00;Locarno;5113;Locarno;TI\n" +
         "6900;00;Lugano;5192;Lugano;TI\n";
 
-    /// <summary>One in-memory database with the seed of the build, loaded once for the class (the reads never write).</summary>
     public sealed class SeededDirectory : IAsyncLifetime
     {
         public string DatabaseName { get; } = "swiss-places-" + Guid.NewGuid().ToString("N");
@@ -50,10 +49,6 @@ public class SwissPlacesTests(SwissPlacesTests.SeededDirectory seeded) : IClassF
         public Task DisposeAsync() => Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Data: the BFS numbers the whole Ticino logic depends on are the official ones, read from the seed this build loads (the old hand-written list
-    /// had Lugano as 5113, Locarno as 5093, Mendrisio as 5190 and Ascona as 5237; the brief expected Ascona 5101, the official file says 5091).
-    /// </summary>
     [Fact]
     public void SwissPlaces_KeyTicinoMunicipalities_HaveOfficialNumbers_Test()
     {
@@ -165,7 +160,6 @@ public class SwissPlacesTests(SwissPlacesTests.SeededDirectory seeded) : IClassF
         Assert.Empty(await directory.SearchLocalitiesAsync("12345", 20));
         Assert.Null(await directory.FindMunicipalityAsync("Lugano"));
 
-        // Loaded, a search that finds nothing is still an empty list and an unknown number is still null.
         await SwissMunicipalitySeed.ApplyAsync(db, Encoding.UTF8.GetBytes(SmallSeed), TimeProvider.System, CancellationToken.None);
         Assert.Empty(await directory.SearchLocalitiesAsync("zzqqxx", 20));
         Assert.Null(await directory.FindMunicipalityAsync("9999"));
@@ -198,7 +192,6 @@ public class SwissPlacesTests(SwissPlacesTests.SeededDirectory seeded) : IClassF
         Assert.Contains(Assert.IsAssignableFrom<IReadOnlyList<SwissLocalityDto>>(search.Value), l => l.Name == "Lugano" && l.MunicipalityCode == "5192");
     }
 
-    /// <summary>Permission: the directory is read only by a signed-in user who may read properties; no action of the controller is public.</summary>
     [Fact]
     public void SwissPlacesApi_RequiresAuthentication_Test()
     {
@@ -254,11 +247,6 @@ public class SwissPlacesTests(SwissPlacesTests.SeededDirectory seeded) : IClassF
             (await db.SwissLocalities.OrderBy(l => l.PostalCode).ToListAsync()).Select(l => (l.PostalCode, l.Name, l.MunicipalityCode)));
     }
 
-    /// <summary>
-    /// Data: a municipality the new file no longer has (a merger) stays while a property still carries its number, of any org and deleted ones too:
-    /// removing it would leave the stored place of the property, and the canton of the tax lines of its documents, without an answer. The ones nobody
-    /// carries are removed; the load says how many were kept and for how many properties, now and on the next startup with the same file.
-    /// </summary>
     [Fact]
     public async Task Seed_KeepsAMunicipalityThatAPropertyStillCarries_AndRemovesTheOthers()
     {

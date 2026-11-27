@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Utilities;
 
-/// <summary>
-/// SR-10: the CSV the host downloads is safe to open. A text a spreadsheet would run as a formula (a property name typed by a user, for
-/// example) is written with a leading apostrophe, and the file is the Italian one: BOM, <c>;</c>, decimal comma, <c>CRLF</c>.
-/// </summary>
 public class CsvWriterTests
 {
     [Theory]
@@ -30,7 +26,6 @@ public class CsvWriterTests
         Assert.Equal(expectedCell + ";12,50;-3\r\n", Encoding.UTF8.GetString(file, 3, file.Length - 3));
     }
 
-    /// <summary>E06/F03/US03/T01: a calendar day is <c>yyyy-MM-dd</c> whatever the culture of the server (a date format with a time would throw at run time).</summary>
     [Fact]
     public void Write_ACalendarDay_IsWrittenAsAnIsoDay_WhateverTheCultureOfTheServer()
     {
@@ -48,7 +43,6 @@ public class CsvWriterTests
         }
     }
 
-    /// <summary>The one rule of what a spreadsheet would run, shared by the CSV (a leading apostrophe) and the Excel file (a text cell).</summary>
     [Theory]
     [InlineData("=1+1", true)]
     [InlineData("+39 333", true)]

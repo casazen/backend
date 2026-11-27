@@ -98,7 +98,6 @@ public class SupplierMatchServiceTests
         Assert.Contains("Clean Co Srl", result.Recommended!.MatchReason);
     }
 
-    // SE-05 (A8-27): the client shows the AI notice only next to a reason an AI model really wrote.
     [Fact]
     public async Task MatchAsync_FlagOnAndProviderAnswers_ReasonIsMarkedAsAiGenerated()
     {
@@ -156,7 +155,6 @@ public class SupplierMatchServiceTests
         Assert.False(result.Recommended!.ReasonGeneratedByAi);
     }
 
-    // A8-25: the answer is cached per org, so a second match of the same org pays nothing and another org never reads it.
     [Fact]
     public async Task MatchAsync_SameOrgTwice_ReusesTheCachedReasonAndAnotherOrgAsksTheProvider()
     {
@@ -185,8 +183,6 @@ public class SupplierMatchServiceTests
             Times.Exactly(2));
     }
 
-    // ─── SP-REL: the reliability of the suppliers is part of the score ───
-
     [Fact]
     public async Task MatchAsync_WithNoHistory_KeepsTheScoreOfBefore_AndTheSuppliersAreOrderedByName()
     {
@@ -197,7 +193,6 @@ public class SupplierMatchServiceTests
 
         var result = await service.MatchAsync(orgId, propertyId, "cleaning", ServiceRequestUrgency.Normal);
 
-        // A supplier with a bio scores 5 more, as it always did.
         Assert.Equal(second, result.Recommended!.OrgId);
         Assert.Equal(75, result.Recommended.MatchScore);
         var alternative = Assert.Single(result.Alternatives);
@@ -212,7 +207,6 @@ public class SupplierMatchServiceTests
         var (orgId, propertyId, clean) = await SeedAsync(db);
         var reliable = await AddSupplierAsync(db, "Zeta Srl");
         var reliability = Reliability(db);
-        // "Zeta" comes after "Clean Co" by name, so only its history can put it first.
         for (var i = 0; i < 3; i++)
         {
             await reliability.RecordAsync(reliable, SupplierReliabilityEventKind.RepliedInTime, Guid.NewGuid(), DateTime.UtcNow);
@@ -234,7 +228,6 @@ public class SupplierMatchServiceTests
         var (orgId, propertyId, missed) = await SeedAsync(db);
         var other = await AddSupplierAsync(db, "Zeta Srl");
         var reliability = Reliability(db);
-        // "Clean Co" would come first by name: two missed deadlines and a dispute put it behind.
         await reliability.RecordAsync(missed, SupplierReliabilityEventKind.NoReplyInTime, Guid.NewGuid(), DateTime.UtcNow);
         await reliability.RecordAsync(missed, SupplierReliabilityEventKind.NoReplyInTime, Guid.NewGuid(), DateTime.UtcNow);
         await reliability.RecordAsync(missed, SupplierReliabilityEventKind.DisputeOpened, Guid.NewGuid(), DateTime.UtcNow);
@@ -256,7 +249,6 @@ public class SupplierMatchServiceTests
         await AddSupplierAsync(db, "Zeta Srl");
         var off = new SupplierRankingOptions { ReliabilityEnabled = false };
         var reliability = Reliability(db, off);
-        // The event is still written (the weights can be turned on later), it just does not move anybody.
         await reliability.RecordAsync(first, SupplierReliabilityEventKind.NoReplyInTime, Guid.NewGuid(), DateTime.UtcNow);
         var service = CreateService(
             db, Mock.Of<IAiSupplierDiscoveryService>(), Mock.Of<IAiProvider>(), aiEnabled: false, reliability: reliability, ranking: off);
@@ -312,8 +304,6 @@ public class SupplierMatchServiceTests
         Assert.Equal(70 - 8, Assert.Single(result.Alternatives).MatchScore);
     }
 
-    // ─── SP-BKP: the backups are picked by the same score ───
-
     [Fact]
     public async Task RankActiveAsync_IsTheScoreOfTheMatch_ReliabilityIncluded_BestFirst()
     {
@@ -326,7 +316,6 @@ public class SupplierMatchServiceTests
 
         var ranked = await service.RankActiveAsync(ComuneTarget.ForProperty(await db.Properties.AsNoTracking().SingleAsync()), "cleaning", ServiceRequestUrgency.Normal);
 
-        // "Zeta" comes last by name: only its job without a dispute puts it first.
         Assert.Equal([reliable, first], ranked.Select(r => r.Profile.OrgId));
         Assert.Equal([72, 70], ranked.Select(r => r.Score));
     }
@@ -342,7 +331,6 @@ public class SupplierMatchServiceTests
         var delta = await AddSupplierAsync(db, "Delta Srl");
         var reliability = Reliability(db);
 
-        // Gamma and Delta answer in time and do their jobs (Gamma more than Delta); Alfa missed a deadline; Beta has no history.
         for (var i = 0; i < 5; i++)
         {
             await reliability.RecordAsync(gamma, SupplierReliabilityEventKind.RepliedInTime, Guid.NewGuid(), DateTime.UtcNow);
@@ -372,15 +360,12 @@ public class SupplierMatchServiceTests
             max: 3,
             CancellationToken.None);
 
-        // The best three of the others, never the supplier the host chose: Gamma (85), Delta (79) and Beta (70); Alfa (60) and the primary stay out.
         Assert.Equal([gamma, delta, beta], backups.Select(b => b.OrgId));
     }
 
-    // The match only reads the points (and the tests write events): the agenda is used to excuse a missed deadline, which they do not record.
     private static SupplierReliabilityService Reliability(AppDbContext db, SupplierRankingOptions? ranking = null) =>
         new(db, Mock.Of<ISupplierAgendaService>(), Options.Create(ranking ?? new SupplierRankingOptions()), NullLogger<SupplierReliabilityService>.Instance);
 
-    /// <summary>Another active supplier of Roma and cleaning, to rank against the one <see cref="SeedAsync"/> adds.</summary>
     private static async Task<Guid> AddSupplierAsync(AppDbContext db, string legalName, string? bio = null)
     {
         var orgId = Guid.NewGuid();

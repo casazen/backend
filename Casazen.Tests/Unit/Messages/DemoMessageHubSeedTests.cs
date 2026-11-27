@@ -17,11 +17,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Messages;
 
-/// <summary>
-/// E05/F02/US01/T01: the conversations the showcase writes for the hub of messages, written by the real seed code over the houses and stays of the
-/// catalog (the markers the reset leaves) and read back by the hub itself: the counters of every thread agree with its messages, the rows are marked as
-/// showcase data (the reset deletes them by their markers) and the hub lists all three as conversations to answer.
-/// </summary>
 public class DemoMessageHubSeedTests : IAsyncLifetime
 {
     private readonly AppDbContext _db = HostScopeScenario.NewInMemoryDb();
@@ -34,7 +29,6 @@ public class DemoMessageHubSeedTests : IAsyncLifetime
         _world = await HostScopeScenario.SeedAsync(_db);
         var orgId = _world.OrgId;
 
-        // The two stays the conversations are about, as the reset creates them: a booking of the public checkout and one that came from Airbnb.
         var guest = new Guest { OrgId = orgId, FirstName = "Laura", LastName = "Conti", Email = "ospite.demo.tassa-ospiti@example.com" };
         _db.Guests.Add(guest);
         var direct = Stay(orgId, _world.Granted.Id, guest.Id, BookingSource.Direct);
@@ -102,7 +96,6 @@ public class DemoMessageHubSeedTests : IAsyncLifetime
     {
         await SeedAllAsync();
 
-        // The direct conversation: one message of the guest, unread, so it waits for an answer.
         var direct = await _db.GuestThreads.AsNoTracking().SingleAsync(t => t.BookingId == _directBookingId);
         Assert.Equal(_world.Granted.Id, direct.PropertyId);
         Assert.NotNull(direct.LastGuestMessageAt);
@@ -113,7 +106,6 @@ public class DemoMessageHubSeedTests : IAsyncLifetime
         Assert.Equal(GuestMessageSender.Guest, directMessage.Sender);
         Assert.Contains("TEST", directMessage.Text, StringComparison.Ordinal);
 
-        // The conversation of Airbnb about the stay: a read question, an answer, a new question; one unread, the guest wrote last.
         var reservation = await _db.OtaMessageThreads.AsNoTracking().SingleAsync(t => t.BookingId == _channelBookingId);
         Assert.Equal(_world.Hidden.Id, reservation.PropertyId);
         Assert.Equal(OtaChannel.Airbnb, reservation.ChannelSource);
@@ -130,7 +122,6 @@ public class DemoMessageHubSeedTests : IAsyncLifetime
         Assert.All(reservationMessages, m => Assert.Equal(OtaMessageDeliveryState.Sent, m.DeliveryState));
         Assert.Equal(reservationMessages.Select(m => m.OctorateMessageId).Distinct().Count(), reservationMessages.Count);
 
-        // The request of Booking.com: no booking, the guest wrote and nobody answered.
         var request = await _db.OtaMessageThreads.AsNoTracking().SingleAsync(t => t.BookingId == null);
         Assert.Equal(_world.Granted.Id, request.PropertyId);
         Assert.Equal(OtaChannel.Booking, request.ChannelSource);
@@ -138,7 +129,6 @@ public class DemoMessageHubSeedTests : IAsyncLifetime
         Assert.Equal(1, request.UnreadCount);
         Assert.Equal(OtaMessageDirection.Inbound, request.LastMessageDirection);
 
-        // Everything invented says TEST, and the threads of the channel manager have ids that cannot be a real one.
         Assert.All(await _db.OtaMessages.AsNoTracking().ToListAsync(), m =>
         {
             Assert.Contains("TEST", m.Text, StringComparison.Ordinal);
@@ -146,7 +136,6 @@ public class DemoMessageHubSeedTests : IAsyncLifetime
         });
         Assert.All(new[] { reservation, request }, t => Assert.StartsWith("TEST-", t.OctorateThreadId, StringComparison.Ordinal));
 
-        // The reset finds them by their markers: the two threads of the channels and the direct one.
         var markers = await _db.TestDataMarkers.AsNoTracking().Where(m => m.Origin == TestDataOrigins.Showcase).ToListAsync();
         Assert.Equal(
             new[] { reservation.Id, request.Id }.Order(),

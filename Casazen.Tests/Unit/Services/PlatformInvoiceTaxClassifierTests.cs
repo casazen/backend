@@ -94,7 +94,6 @@ public class PlatformInvoiceTaxClassifierTests
     [Fact]
     public void Classify_CustomerOutsideEuWithoutRegistration_IsNotCollectingAndFlagged()
     {
-        // Before PL-13 such a customer was labelled "EU_BELOW_THRESHOLD" (A1-08 c).
         var invoice = PaidInvoice("US", totalExcludingTax: 2900, taxes: [Tax(0, "not_collecting", null)]);
 
         var result = PlatformInvoiceTaxClassifier.Classify(invoice, [], null);

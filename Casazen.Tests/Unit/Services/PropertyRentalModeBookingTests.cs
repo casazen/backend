@@ -18,12 +18,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// PM-01: a property in long-term mode takes no stay. The public checkout and its quote, the host's price of a stay (quote,
-/// new and changed manual booking) and the creation of a manual booking refuse it with 422
-/// <c>property_not_bookable_in_long_mode</c> (localized key <c>PropertyNotBookableInLongMode</c>) before anything is
-/// written; a short-rent property keeps answering as before (404 when it is not published).
-/// </summary>
 public class PropertyRentalModeBookingTests
 {
     private const string ConsentVersion = "2026-06-direct-checkout-v1";
@@ -106,7 +100,6 @@ public class PropertyRentalModeBookingTests
     [Fact]
     public async Task QuoteDirectBookingAsync_ShortPropertyNotPublished_IsStillNotFound()
     {
-        // The old answers do not change: only a long-term property gets the reason.
         var property = StoredProperty(RentalMode.Short, PropertyComplianceStatus.Pending);
 
         await Assert.ThrowsAsync<NotFoundException>(() => _service.QuoteDirectBookingAsync(
@@ -123,7 +116,6 @@ public class PropertyRentalModeBookingTests
     [Fact]
     public async Task PriceHostStayAsync_LongProperty_Is422EvenBeforeTheGuestsCheck()
     {
-        // A long-term property has no guest capacity (0): "too many guests" would hide the reason.
         var property = new Property { Id = Guid.NewGuid(), RentalMode = RentalMode.Long, MaxGuests = 0 };
 
         var error = await Assert.ThrowsAsync<DomainRuleException>(() =>
@@ -196,7 +188,6 @@ public class PropertyRentalModeBookingTests
     [Fact]
     public async Task CreateManualBookingAsync_PropertyNotFound_IsLeftToTheOtherChecks()
     {
-        // The guard needs the property; a missing one is not its business (the booking checks and the key answer).
         _properties.Setup(p => p.GetRecordAsync(It.IsAny<Guid>())).ReturnsAsync((Property?)null);
         var booking = new Booking
         {

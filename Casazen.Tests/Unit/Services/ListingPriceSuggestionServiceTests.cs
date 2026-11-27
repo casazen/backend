@@ -16,7 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>«Calcola con l'AI» of the step «Prezzi» (WIZ-AI-PRICE): what reaches the AI, what is believed of its answer, what the host gets.</summary>
 public class ListingPriceSuggestionServiceTests
 {
     private const string ComoIstat = "013075";
@@ -32,8 +31,6 @@ public class ListingPriceSuggestionServiceTests
 
     private const string GoodAnswer =
         """{"nightlyRate": 135, "rangeMin": 115, "rangeMax": 160, "cleaningFee": 60, "weekendSurchargePercent": 15, "minNights": 2, "rationale": "Zona centrale e terrazza."}""";
-
-    // ─── What the host gets ──────────────────────────────────────────────────────
 
     [Fact]
     public async Task SuggestAsync_TheAiAnswers_ReturnsTheCheckedPriceAndWhatItWasBasedOn()
@@ -59,7 +56,6 @@ public class ListingPriceSuggestionServiceTests
         Assert.Equal("CO", suggestion.BasedOn.Province);
         Assert.Equal("Lombardia", suggestion.BasedOn.Region);
         Assert.Equal(4, suggestion.BasedOn.SimilarListings);
-        // The wifi, the terrace and the hot tub: the smoke detector says nothing about a price.
         Assert.Equal(3, suggestion.BasedOn.Amenities);
         Assert.Equal(
             new[]
@@ -93,7 +89,6 @@ public class ListingPriceSuggestionServiceTests
         Assert.Contains("vasca idromassaggio", prompt);
         Assert.Contains("mediana 130 €", prompt);
         Assert.Contains("in linea con le case simili", prompt);
-        // What a host types in a free field never leaves, and neither does anything else that identifies the home.
         Assert.DoesNotContain("Casa Como", prompt);
         Assert.DoesNotContain("Via Natta", prompt);
         Assert.DoesNotContain("Il segreto della casa", prompt);
@@ -167,8 +162,6 @@ public class ListingPriceSuggestionServiceTests
         Assert.DoesNotContain("mediana", SentPrompt(ai));
     }
 
-    // ─── The similar homes ───────────────────────────────────────────────────────
-
     [Fact]
     public async Task SuggestAsync_HomesThatTheSiteDoesNotShow_AndTheHostsOwn_AreNotInTheFigures()
     {
@@ -177,7 +170,6 @@ public class ListingPriceSuggestionServiceTests
         var otherOrgId = await AddOrgAsync(db);
         var inactiveOrgId = await AddOrgAsync(db, isActive: false);
 
-        // Two homes that count, and then everything that must not: the figures stay under the minimum.
         await AddHomeAsync(db, otherOrgId, 100m);
         await AddHomeAsync(db, otherOrgId, 120m);
         await AddHomeAsync(db, orgId, 900m);
@@ -234,12 +226,9 @@ public class ListingPriceSuggestionServiceTests
 
         Assert.Equal(5, suggestion.BasedOn.SimilarListings);
         Assert.Contains("di varie dimensioni", SentPrompt(ai));
-        // Homes of every size are no band: a price over all the figures of the small ones is not refused.
         Assert.True(suggestion.AiUsed);
         Assert.Equal(300m, suggestion.NightlyRate);
     }
-
-    // ─── Without the AI ──────────────────────────────────────────────────────────
 
     [Fact]
     public async Task SuggestAsync_NoProviderConfigured_AndNoFigures_SaysWhyAndSuggestsNothing()
@@ -329,7 +318,6 @@ public class ListingPriceSuggestionServiceTests
         var (_, property) = await SeedHomeAsync(db);
         using var cancellation = new CancellationTokenSource();
         var ai = new Mock<IAiProvider>();
-        // The caller leaves while the provider is answering: the call is cancelled, not turned into «the AI is not available».
         ai.Setup(p => p.GenerateAsync(It.IsAny<AiRequest>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns((AiRequest _, AiModelTier _, string _, CancellationToken _) =>
             {
@@ -387,8 +375,6 @@ public class ListingPriceSuggestionServiceTests
         Assert.Equal(130m, suggestion.NightlyRate);
         Assert.Null(suggestion.Rationale);
     }
-
-    // ─── The cache ───────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task SuggestAsync_TheSameDataTwice_AsksTheAiOnce()
@@ -464,8 +450,6 @@ public class ListingPriceSuggestionServiceTests
         VerifyCalls(ai, Times.Exactly(2));
     }
 
-    // ─── Is the AI there ─────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(AiOptions.StubProvider, null, null, false)]
     [InlineData("", "key", null, false)]
@@ -485,8 +469,6 @@ public class ListingPriceSuggestionServiceTests
 
         Assert.Equal(expected, available);
     }
-
-    // ─── Helpers ─────────────────────────────────────────────────────────────────
 
     private static AppDbContext CreateDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -523,7 +505,6 @@ public class ListingPriceSuggestionServiceTests
             p => p.GenerateAsync(It.IsAny<AiRequest>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             times);
 
-    /// <summary>The host's home: a flat in Como, 3 guests, 1 bedroom, 2 bathrooms, 75 m², with a terrace and a hot tub.</summary>
     private static async Task<(Guid OrgId, Property Property)> SeedHomeAsync(AppDbContext db)
     {
         var orgId = await AddOrgAsync(db);
@@ -572,7 +553,6 @@ public class ListingPriceSuggestionServiceTests
         return id;
     }
 
-    /// <summary>A home the public site shows: short rent, active, activated, 1 bedroom, 3 guests, in Como; <paramref name="change"/> spoils it.</summary>
     private static async Task AddHomeAsync(AppDbContext db, Guid orgId, decimal rate, Action<Property>? change = null)
     {
         var home = new Property

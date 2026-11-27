@@ -37,7 +37,6 @@ public class ConcordatoFacileStatusKeyTests
         Assert.Null(StatusHttpClient(configured).DefaultRequestHeaders.Authorization);
     }
 
-    /// <summary>The typed client is a named client of the factory (named after its type): configured by the registration, nothing is sent.</summary>
     private static HttpClient StatusHttpClient(string? key)
     {
         var settings = new Dictionary<string, string?> { ["ConcordatoFacile:StatusApiKey"] = key };
