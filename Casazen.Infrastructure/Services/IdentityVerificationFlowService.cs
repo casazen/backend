@@ -875,7 +875,7 @@ public sealed partial class IdentityVerificationFlowService(
             FormatId: selfHosted ? session.IdentityFormatId : null,
             GuidedRetryAvailable: selfHosted && !closed && !passed && !operatorPath && session.IdentityGuidedRetries < GuidedRetriesOfThePolicy(),
             Closed: closed,
-            Outcome: closed ? GuestOutcomeOf(session.IdentityOutcomeCode) : null);
+            Outcome: closed ? GuestOutcomeOf(session.IdentityOutcomeCode, session.OperatorRequestedAt is not null) : null);
     }
 
     /// <summary>The guided retries the policy offers (<c>closure.guidedRetries</c>); none while the policy is not usable.</summary>

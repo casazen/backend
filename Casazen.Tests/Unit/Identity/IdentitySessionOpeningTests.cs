@@ -231,9 +231,13 @@ public sealed class IdentitySessionOpeningTests
     {
         Assert.All(VerificationAlertReasons.All, reason => Assert.NotEqual(IdentityOutcomeCodes.AutoApproved, IdentityVerificationFlowService.IdentityOutcomeOf(reason)));
         Assert.Equal(IdentityOutcomeCodes.Review, IdentityVerificationFlowService.IdentityOutcomeOf("a_reason_of_tomorrow"));
-        Assert.Equal(IdentityVerificationGuestResults.Ok, IdentityVerificationFlowService.GuestOutcomeOf(IdentityOutcomeCodes.AutoApproved));
-        Assert.All(IdentityOutcomeCodes.All.Where(code => code != IdentityOutcomeCodes.AutoApproved), code =>
-            Assert.Equal(IdentityVerificationGuestResults.Operator, IdentityVerificationFlowService.GuestOutcomeOf(code)));
+        Assert.Equal(IdentityVerificationGuestResults.Ok, IdentityVerificationFlowService.GuestOutcomeOf(IdentityOutcomeCodes.AutoApproved, handedToAPerson: false));
+
+        // Every other code handed the verification to a person; an abandoned one did not (the retention closed it, nobody was told): it says nothing until the guest asks for one.
+        Assert.All(IdentityOutcomeCodes.All.Where(code => code != IdentityOutcomeCodes.AutoApproved && code != IdentityOutcomeCodes.Abandoned), code =>
+            Assert.Equal(IdentityVerificationGuestResults.Operator, IdentityVerificationFlowService.GuestOutcomeOf(code, handedToAPerson: true)));
+        Assert.Null(IdentityVerificationFlowService.GuestOutcomeOf(IdentityOutcomeCodes.Abandoned, handedToAPerson: false));
+        Assert.Equal(IdentityVerificationGuestResults.Operator, IdentityVerificationFlowService.GuestOutcomeOf(IdentityOutcomeCodes.Abandoned, handedToAPerson: true));
     }
 
     /// <summary>
@@ -344,6 +348,48 @@ public sealed class IdentitySessionOpeningTests
         Assert.True(request.OperatorPathOpen);
         Assert.True(request.State.Closed);
         Assert.Equal(alerts, world.Alerts.Count);
+    }
+
+    /// <summary>
+    /// E73/F01/US02/T03 (review of S015): a verification the hourly retention closed as abandoned is closed and says nothing more. The public state has no outcome (it must not say that
+    /// a person has it: no operator was told, no request, no alert), the identity steps refuse it as every closed verification, and the way to a person stays open: once the guest asks
+    /// for one the hand-off is real, the operators are told once and the outcome is <c>operator</c>.
+    /// </summary>
+    [Fact]
+    public async Task IdentitySessionOpening_AnAbandonedSession_IsClosedWithNoOutcome_UntilTheGuestAsksForAPerson()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.StayAsync("Rita", "Moro");
+        Assert.Equal(IdentityOpenStatus.Answered, (await world.Flow().OpenIdentityAsync(session, ServedVersion, IdentityChannels.AndroidChrome, Ct)).Status);
+
+        // The next day the hourly retention closes it: the real service, on a context of its own, as the job runs.
+        world.Clock.Advance(TimeSpan.FromHours(25));
+        var counts = await world.Retention().PurgeAsync(world.Clock.GetUtcNow().UtcDateTime, Ct);
+
+        Assert.Equal(1, counts.AbandonedSessions);
+        var closed = await world.ReadBackAsync(session.Id);
+        Assert.Equal(IdentityOutcomeCodes.Abandoned, closed.IdentityOutcomeCode);
+        Assert.NotNull(closed.IdentityClosedAt);
+        Assert.Null(closed.OperatorRequestedAt);
+        Assert.Equal(0, world.Alerts.Count);
+
+        await world.Db.Entry(session).ReloadAsync(Ct);
+        var dto = PublicIdentityVerificationStateDto.From(await world.Flow().GetStateAsync(session, Ct));
+        Assert.True(dto.Closed);
+        Assert.Null(dto.Outcome);
+        Assert.False(dto.OperatorRequested);
+        Assert.True(dto.OperatorPathOpen);
+        Assert.Equal(IdentityOpenStatus.Closed, (await world.Flow().OpenIdentityAsync(session, ServedVersion, IdentityChannels.AndroidChrome, Ct)).Status);
+
+        // The guest asks for a person: that is the hand-off, told once; the closure keeps its first code and the outcome is now operator.
+        var asked = PublicIdentityVerificationStateDto.From(await world.Flow().RequestOperatorAsync(session, Ct));
+        Assert.True(asked.Closed);
+        Assert.True(asked.OperatorRequested);
+        Assert.Equal(IdentityVerificationGuestResults.Operator, asked.Outcome);
+        Assert.Equal(1, world.Alerts.Count);
+        var handedOff = await world.ReadBackAsync(session.Id);
+        Assert.NotNull(handedOff.OperatorRequestedAt);
+        Assert.Equal((closed.IdentityClosedAt, IdentityOutcomeCodes.Abandoned), (handedOff.IdentityClosedAt, handedOff.IdentityOutcomeCode));
     }
 
     // ─── The bound guest ─────────────────────────────────────────────────────────────────────────────────
@@ -747,6 +793,19 @@ public sealed class IdentitySessionOpeningTests
             using var document = new MemoryStream(TestImages.Png(120, 80, seed: 3));
             Assert.True((await Flow().SubmitDocumentAsync(session, document, Ct)).DocumentStored);
         }
+
+        /// <summary>A context of its own on the same store, as a job has it.</summary>
+        public AppDbContext NewContext() => new(_options, null, _dataProtection);
+
+        /// <summary>The hourly retention of the identity verification on a context of its own, with the flags, the bucket and the clock of the world.</summary>
+        public Casazen.Infrastructure.Identity.IdentityRetentionService Retention() => new(
+            NewContext(),
+            Storage,
+            Flags,
+            Microsoft.Extensions.Options.Options.Create(new Casazen.Core.Options.IdentityVerificationOptions()),
+            new Casazen.Infrastructure.Identity.IdentityRetentionRunLog(),
+            Clock,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Casazen.Infrastructure.Identity.IdentityRetentionService>.Instance);
 
         /// <summary>The session as it was saved, read by another context on the same store.</summary>
         public async Task<GuestCheckInSession> ReadBackAsync(Guid sessionId)
