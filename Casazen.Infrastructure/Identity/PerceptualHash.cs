@@ -93,7 +93,10 @@ public static class PerceptualHash
         return hash.ToString("x16", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>A hash from its 16 hexadecimal digits, upper or lower case; false for anything else (a null, a blank, a different length, another character).</summary>
+    /// <summary>
+    /// A hash from its 16 hexadecimal digits, upper or lower case; false for anything else (a null, a blank, a different length, another character). On false the flow has no
+    /// hash for that picture: its <see cref="DocumentPictureFingerprint"/> holds null, never the 0 this method leaves in <paramref name="hash"/>, which is the hash of a plain picture.
+    /// </summary>
     public static bool TryParseHex(string? text, out ulong hash)
     {
         hash = 0;

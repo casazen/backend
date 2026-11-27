@@ -28,6 +28,9 @@ public class DocumentSideClassifierTests
 
     private static readonly DocumentSideClassifier Classifier = new();
 
+    /// <summary>The widest distance a policy may allow (<c>perceptualDuplicateMaxDistance</c> goes from 0 to 64): every hash is within it of every other one.</summary>
+    private const int WidestPolicyDistance = 64;
+
     /// <summary>The distance the committed policy file calls the same side photographed twice.</summary>
     private static int PolicyDistance()
     {
@@ -38,7 +41,7 @@ public class DocumentSideClassifierTests
     private static DocumentGeometryReport Geometry(bool? portraitInZone) =>
         new(true, new NormalizedBox(0.1, 0.1, 0.8, 0.7), true, 1.58, true, 0, portraitInZone, 0, 0.4, [], DocumentGeometryRules.Version);
 
-    private static DocumentPictureFingerprint Picture(string sha, ulong hash, DocumentSide? side) => new(sha, hash, side);
+    private static DocumentPictureFingerprint Picture(string sha, ulong? hash, DocumentSide? side) => new(sha, hash, side);
 
     private static string Sha(RasterImage picture) => Convert.ToHexString(SHA256.HashData(picture.Rgb));
 
@@ -201,6 +204,34 @@ public class DocumentSideClassifierTests
     {
         Assert.Equal(IdentityGuidanceCodes.DocumentSideDuplicate, Classifier.CheckPair(DocumentSide.Back, Picture("AA", 0, null), Picture("BB", 0b1111, null), 4));
         Assert.Null(Classifier.CheckPair(DocumentSide.Back, Picture("AA", 0, null), Picture("BB", 0b1111, null), 3));
+    }
+
+    [Fact]
+    public void CheckPair_AMissingHashOnOnePicture_IsNeverADuplicateByTheHashAlone()
+    {
+        // 0 is the hash of a plain picture, so a missing hash must not read as 0: nothing is close to a hash that is not there, whichever picture lacks it.
+        Assert.Null(Classifier.CheckPair(DocumentSide.Back, Picture("AA", null, null), Picture("BB", 0, null), PolicyDistance()));
+        Assert.Null(Classifier.CheckPair(DocumentSide.Back, Picture("AA", 0, null), Picture("BB", null, null), PolicyDistance()));
+        Assert.Null(Classifier.CheckPair(DocumentSide.Back, Picture("AA", null, null), Picture("BB", 0b101, null), WidestPolicyDistance));
+    }
+
+    [Fact]
+    public void CheckPair_AMissingHashOnBothPictures_IsNeverADuplicateByTheHashAlone()
+    {
+        // Even with the widest distance a policy may allow (64: every hash is close to every other one), two pictures with no hash are not told apart by the hash.
+        Assert.Null(Classifier.CheckPair(DocumentSide.Back, Picture("AA", null, null), Picture("BB", null, null), PolicyDistance()));
+        Assert.Null(Classifier.CheckPair(DocumentSide.Back, Picture("AA", null, null), Picture("BB", null, null), WidestPolicyDistance));
+        Assert.Equal(IdentityGuidanceCodes.DocumentSideDuplicate, Classifier.CheckPair(DocumentSide.Back, Picture("AA", 0, null), Picture("BB", ulong.MaxValue, null), WidestPolicyDistance));
+    }
+
+    [Fact]
+    public void CheckPair_AMissingHash_LeavesTheSha256AndTheSideToSayThePicturesAreTheSame()
+    {
+        var sameFile = Classifier.CheckPair(DocumentSide.Back, Picture("ab12cd", null, null), Picture("AB12CD", null, null), PolicyDistance());
+        var sameSide = Classifier.CheckPair(DocumentSide.Back, Picture("AA", null, DocumentSide.Front), Picture("BB", null, DocumentSide.Front), PolicyDistance());
+
+        Assert.Equal(IdentityGuidanceCodes.DocumentSideDuplicate, sameFile);
+        Assert.Equal(IdentityGuidanceCodes.DocumentSideDuplicate, sameSide);
     }
 
     [Fact]

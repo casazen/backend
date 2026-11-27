@@ -9,10 +9,13 @@ namespace Casazen.Infrastructure.Identity;
 /// told it (null when it could not be told). These are derived values of the document: the flow keeps them in <c>DocumentCheckJson</c> only while the verification runs and clears
 /// them at the closure (E73), and they are never logged, so <see cref="ToString"/> prints none of them.
 /// </summary>
-/// <param name="Sha256">The SHA-256 of the bytes of the picture, in hexadecimal.</param>
-/// <param name="DHash">The difference hash of the picture.</param>
+/// <param name="Sha256">The SHA-256 of the bytes of the picture, in hexadecimal; empty when the flow has none.</param>
+/// <param name="DHash">
+/// The difference hash of the picture; null when the flow does not have it (for example <see cref="PerceptualHash.TryParseHex"/> refused the text it kept). A missing hash is not 0:
+/// 0 is the hash of a plain picture. While the hash of either picture is missing the hashes are not compared, and only the SHA-256 and the side can say the pictures are the same.
+/// </param>
 /// <param name="Side">The side the picture shows, by its content; null when it could not be told.</param>
-public sealed record DocumentPictureFingerprint(string Sha256, ulong DHash, DocumentSide? Side)
+public sealed record DocumentPictureFingerprint(string Sha256, ulong? DHash, DocumentSide? Side)
 {
     public override string ToString()
     {
@@ -53,8 +56,9 @@ public sealed class DocumentSideClassifier
     /// <summary>
     /// Whether <paramref name="picture"/>, sent as <paramref name="declaredSide"/>, can be the picture of that side next to <paramref name="other"/>, the picture the flow holds
     /// for the other side (null while the other side has not been sent). The code of <see cref="IdentityGuidanceCodes"/> to ask the guest for a new capture, or null when the pair is
-    /// fine. <c>document_side_duplicate</c> when the SHA-256 is the other side's (the same file), when the distance of the difference hashes is at most
-    /// <paramref name="perceptualDuplicateMaxDistance"/> (the same picture of the same side, photographed again), or when both pictures show the same side (two fronts); it
+    /// fine. <c>document_side_duplicate</c> when the SHA-256 is the other side's (the same file), when both pictures have a difference hash and their distance is at most
+    /// <paramref name="perceptualDuplicateMaxDistance"/> (the same picture of the same side, photographed again; a missing hash never makes a duplicate), or when both pictures
+    /// show the same side (two fronts); it
     /// comes first, since the guest is asked for the other side either way. <c>document_wrong_side</c> when the picture shows a side and it is not the declared one: the guest is
     /// asked for the other side, not punished. A picture of an unknown side is neither (the geometry asked for it already), and nothing is wrong with a side declared as
     /// <see cref="DocumentSide.Single"/>, the side of a format that has one.
@@ -77,7 +81,8 @@ public sealed class DocumentSideClassifier
         if (!string.IsNullOrEmpty(picture.Sha256) && string.Equals(picture.Sha256, other.Sha256, StringComparison.OrdinalIgnoreCase))
             return true;
 
-        if (PerceptualHash.Distance(picture.DHash, other.DHash) <= maxDistance)
+        // A hash the flow does not have is never "close": it is null, not 0, and the hashes are compared only when both pictures have one.
+        if (picture.DHash is { } hash && other.DHash is { } otherHash && PerceptualHash.Distance(hash, otherHash) <= maxDistance)
             return true;
 
         return picture.Side is { } side && other.Side == side;
