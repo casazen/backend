@@ -16,9 +16,10 @@ namespace Casazen.Tests.Unit.Identity;
 
 /// <summary>
 /// E71/F01/US02/T02 (NF-190, NF-191, D11): the coherence of the fields of a document. The MRZ and the visual zone must agree on what identifies the holder, after the
-/// normalization the MRZ makes of a name and with the century of a date inferred; a field read on one side only is unknown, never a conflict; an expired document, an
-/// impossible date and a failed check digit are told apart; the flags of <see cref="MrzCheckInConsistency"/> appear as they are; the report holds no value read on the
-/// document. The MRZ of these tests is built with its own check digits and read by the parser of the application.
+/// normalization the MRZ makes of a name and with the century of a date inferred; a field read on one side only is unknown, never a conflict and never an agreement, and
+/// no flag of the report says «ok» for an unknown; an expired document, an impossible date, a printed expiry, sex or nationality that is not the MRZ one and a failed
+/// check digit are told apart; the flags of <see cref="MrzCheckInConsistency"/> appear (the citizenship typed as the name of a state is compared as its code); the report
+/// holds no value read on the document, nor does the text of its context. The MRZ of these tests is built with its own check digits and read by the parser of the application.
 /// </summary>
 public class DocumentCoherenceCheckerTests
 {

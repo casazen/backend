@@ -146,8 +146,8 @@ public sealed class DocumentCoherenceChecker
         // field_coherence: what the card prints a second time, beside the MRZ. When the expiry, the sex or the nationality were read on both and differ, the print was
         // altered or misread (a classic sign of tampering) and the check fails. A value read on one side only adds no entry: the fields that identify the holder are the
         // ones that must be compared (side_consistency, and they are not compared twice), these are compared when both are there.
-        foreach (var name in PrintedAgainstMrz.Where(name => !identifying.Contains(name) && Comparable(name, machine, printed)))
-            checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.FieldCoherence, CompareSides(name, machine, printed, referenceMayBeCut: false), name));
+        foreach (var twice in PrintedAgainstMrz.Where(candidate => !identifying.Contains(candidate) && Comparable(candidate, machine, printed)))
+            checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.FieldCoherence, CompareSides(twice, machine, printed, referenceMayBeCut: false), twice));
 
         // booking_consistency: MrzCheckInConsistency, reused: true agrees, false disagrees, null was not compared. Only the nationality is brought to a common form
         // first (NationalityOnTheBooking): the check-in keeps the citizenship as the name of a state, which the comparison alone cannot read.
