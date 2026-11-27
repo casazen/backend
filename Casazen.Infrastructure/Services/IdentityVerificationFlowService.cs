@@ -6,6 +6,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
 using Casazen.Core.Features;
 using Casazen.Core.Identity;
+using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -16,6 +17,7 @@ using Casazen.Infrastructure.Identity;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -63,7 +65,11 @@ public sealed partial class IdentityVerificationFlowService(
     IPropertySwissPlaceResolver? swissPlaces = null,
     IGuestEmailBrandingProvider? emailBranding = null,
     IActivePoseVerificationService? activePose = null,
-    IFeatureFlags? featureFlags = null) : IIdentityVerificationFlowService
+    IFeatureFlags? featureFlags = null,
+    IdentityPolicyProvider? identityPolicy = null,
+    IBiometricModelStore? biometricModels = null,
+    IOptions<IdentityVerificationOptions>? identityOptions = null,
+    PresenceChallengeIssuer? presenceIssuer = null) : IIdentityVerificationFlowService
 {
     /// <summary>Data Protection purpose of the encrypted picture of a document in the private bucket. Never change it: stored pictures would become unreadable.</summary>
     public const string DocumentImageContentPurpose = "Casazen.DocumentImage.Content";

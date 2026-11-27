@@ -9105,4 +9105,6 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="IdentitySegmentQualificationMismatch" xml:space="preserve"><value>La versione o le impronte indicate non sono quelle della politica e dei pesi in vigore: il segmento non viene qualificato.</value></data>
   <data name="IdentitySegmentPolicyProvisional" xml:space="preserve"><value>La politica in vigore è provvisoria: nessun segmento si può qualificare finché non viene pubblicata una politica calibrata.</value></data>
   <data name="IdentitySegmentFingerprintUnavailable" xml:space="preserve"><value>La politica o i modelli non sono disponibili in questo momento: il segmento non si può qualificare.</value></data>
+  <!-- E72/F01/US01/T01 (NF-192): the presence challenge of the self-hosted identity step. The page translates the codes; these are the details of the problem (the closed verification answers with CheckInIdentityAlreadyClosed above). -->
+  <data name="CheckInPresenceChallengeUnavailable" xml:space="preserve"><value>Ora non è possibile avviare la prova di presenza. Puoi continuare con una persona.</value></data>
 </root>
