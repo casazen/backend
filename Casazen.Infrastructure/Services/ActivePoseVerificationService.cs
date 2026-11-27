@@ -1,5 +1,6 @@
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -91,34 +92,9 @@ public sealed class ActivePoseVerificationService(
     internal static bool IsRequestedTurn(DetectedFace first, DetectedFace second, bool noseToRight)
     {
         // The weak-perspective estimate is a guide to a deliberate turn, not a calibrated anatomical measurement.
-        var frontal = YawDegrees(first.Landmarks);
-        var turned = YawDegrees(second.Landmarks);
+        var frontal = FacePose.YawDegrees(first.Landmarks);
+        var turned = FacePose.YawDegrees(second.Landmarks);
         var direction = noseToRight ? 1 : -1;
         return Math.Abs(frontal) <= 15 && direction * turned >= 20 && direction * (turned - frontal) >= 15;
-    }
-
-    private static double YawDegrees(float[] points)
-    {
-        if (points.Length != 10 || !points.All(float.IsFinite))
-            return double.NaN;
-
-        double dx = points[2] - points[0], dy = points[3] - points[1];
-        var eyeDistanceSquared = dx * dx + dy * dy;
-        if (dx <= 0 || eyeDistanceSquared < 64 || Math.Abs(dy) > dx * 0.6)
-            return double.NaN;
-
-        var noseX = points[4] - (points[0] + points[2]) * 0.5;
-        var noseY = points[5] - (points[1] + points[3]) * 0.5;
-        var mouthX = (points[6] + points[8]) * 0.5 - points[4];
-        var mouthY = (points[7] + points[9]) * 0.5 - points[5];
-        if (dx * noseY <= dy * noseX || dx * mouthY <= dy * mouthX)
-            return double.NaN;
-
-        // Under yaw, nose displacement projects with sin(yaw) and eye separation with cos(yaw).
-        // Nose depth / frontal eye-centre separation from MediaPipe's canonical_face_model.obj:
-        // nose landmark 1, eye centres from the midpoints of 33/133 and 263/362.
-        const double noseDepthOverEyeDistance = 0.636267;
-        var offset = (noseX * dx + noseY * dy) / eyeDistanceSquared;
-        return Math.Atan(offset / noseDepthOverEyeDistance) * (180 / Math.PI);
     }
 }

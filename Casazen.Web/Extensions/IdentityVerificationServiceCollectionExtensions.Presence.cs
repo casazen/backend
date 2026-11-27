@@ -20,5 +20,9 @@ public static partial class IdentityVerificationServiceCollectionExtensions
         // same scoped instance as IIdentityVerificationFlowService, so the controller and the closure see one session, one lock and one challenge.
         services.AddSingleton<PresenceChallengeIssuer>();
         services.AddScoped<IIdentityPresenceFlow>(provider => (IIdentityPresenceFlow)provider.GetRequiredService<IIdentityVerificationFlowService>());
+
+        // E72/F01/US01/T03: the validation of a sequence of frames (one face, quality, timing, continuity, the moves in order) with the face detector and embedder of the
+        // check-in and the policy it is given. Stateless: it keeps nothing of a frame.
+        services.AddSingleton<PresenceSequenceValidator>();
     }
 }
