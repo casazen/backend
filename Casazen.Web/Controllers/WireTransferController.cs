@@ -208,14 +208,6 @@ public class WireTransferController(
     /// The org of the caller when the caller reaches the whole org, <c>null</c> (403) when it has no org or its reach is limited to some properties (a collaborator «Solo
     /// alcuni», an account in no org team): the payouts of the wire page are those of every owner, so a partial reach is refused before anything is read, never narrowed.
     /// </summary>
-    private async Task<Guid?> OrgWideAsync()
-    {
-        var ct = HttpContext.RequestAborted;
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
-        if (orgId is null)
-            return null;
-
-        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct);
-        return scope is { IsOrgWide: true } ? orgId : null;
-    }
+    private Task<Guid?> OrgWideAsync() =>
+        HostCallerResolver.OrgWideAsync(User, orgContextResolver, hostScopeResolver, HttpContext.RequestAborted);
 }

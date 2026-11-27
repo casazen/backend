@@ -393,15 +393,8 @@ public class WithholdingController(
     }
 
     /// <summary>The org of the caller when it reaches the whole of it; <c>null</c> (403) for a caller restricted to some properties or without an org.</summary>
-    private async Task<Guid?> OrgAsync()
-    {
-        var ct = HttpContext.RequestAborted;
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
-        if (orgId is null)
-            return null;
-        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct);
-        return scope is { IsOrgWide: true } ? orgId : null;
-    }
+    private Task<Guid?> OrgAsync() =>
+        HostCallerResolver.OrgWideAsync(User, orgContextResolver, hostScopeResolver, HttpContext.RequestAborted);
 }
 
 /// <summary>DTO for withholding summary response.</summary>

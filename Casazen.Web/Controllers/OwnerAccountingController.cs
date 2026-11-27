@@ -483,15 +483,8 @@ public class OwnerAccountingController(
     }
 
     /// <summary>The caller's org, only when its reach is the whole org (the owner accounting spans the properties of the owners).</summary>
-    private async Task<Guid?> OrgAsync()
-    {
-        var ct = HttpContext.RequestAborted;
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
-        if (orgId is null)
-            return null;
-        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct);
-        return scope is { IsOrgWide: true } ? orgId : null;
-    }
+    private Task<Guid?> OrgAsync() =>
+        HostCallerResolver.OrgWideAsync(User, orgContextResolver, hostScopeResolver, HttpContext.RequestAborted);
 }
 
 /// <summary>
