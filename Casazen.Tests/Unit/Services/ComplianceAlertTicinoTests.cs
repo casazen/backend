@@ -12,12 +12,16 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Push;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Integration;
 using Casazen.Tests.Unit.BackgroundJobs;
 using Casazen.Tests.Unit.Email;
 using Casazen.Tests.Unit.Logging;
 using Casazen.Tests.Unit.Push;
 using Casazen.Web.BackgroundJobs;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -277,6 +281,7 @@ public class ComplianceAlertTicinoTests : IDisposable
     private readonly Mock<IFeatureFlags> _flags = new();
     private readonly Mock<IComplianceAlertFollowUp> _followUp = new();
     private readonly Mock<IComplianceAlertRecipientResolver> _recipients = new();
+    private readonly Mock<IContextAuthorizationService> _permissions = new();
     private readonly CapturingLogger<ComplianceAlertService> _log = new();
     private readonly ComplianceOptions _options = new();
     private readonly Dictionary<Guid, Tenant> _tenants = [];
@@ -289,6 +294,16 @@ public class ComplianceAlertTicinoTests : IDisposable
             .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid orgId, Guid propertyId, CancellationToken _) =>
                 new ComplianceAlertRecipients([_tenants[orgId].Address], [_tenants[orgId].OwnerId]));
+
+        // The alert of the 24 hours is told to the people who can act on it (alloggiati.submit): the audience is read with that permission. Here the owner of the org holds it; the
+        // audience that leaves out who does not is proved with the real services in ComplianceAlertAudienceTests.
+        _recipients
+            .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<NotificationPermission>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid orgId, Guid propertyId, NotificationPermission _, CancellationToken _) =>
+                new ComplianceAlertRecipients([_tenants[orgId].Address], [_tenants[orgId].OwnerId]));
+        _permissions
+            .Setup(p => p.HasPermissionOrThrowAsync(It.IsAny<string>(), ComplianceAlertAudience.AlloggiatiSubmit.ContextKey, ComplianceAlertAudience.AlloggiatiSubmit.PermissionKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
     }
 
     public void Dispose() => _db.Dispose();
@@ -480,7 +495,7 @@ public class ComplianceAlertTicinoTests : IDisposable
             pushes.Select(p => p.Payload.Type).ToArray());
         Assert.All(pushes, p =>
         {
-            Assert.Equal(PushAudience.PropertyHosts(tenant.PropertyId), p.Audience);
+            Assert.Equal(PushAudience.PropertyHosts(tenant.PropertyId, ComplianceAlertAudience.AlloggiatiSubmit), p.Audience);
             Assert.Equal(PushRoutes.Properties, p.Payload.Route);
             Assert.Null(p.Payload.BookingId);
             Assert.Null(p.Payload.ServiceRequestId);
@@ -662,20 +677,23 @@ public class ComplianceAlertTicinoTests : IDisposable
         Assert.Contains(emails, e => e.To == a.Address && e.Content.Subject.Contains(a.PropertyName, StringComparison.Ordinal));
         Assert.Contains(emails, e => e.To == b.Address && e.Content.Subject.Contains(b.PropertyName, StringComparison.Ordinal));
         Assert.DoesNotContain(emails, e => e.To == c.Address);
-        _recipients.Verify(r => r.ForPropertyAsync(a.OrgId, a.PropertyId, It.IsAny<CancellationToken>()), Times.Once);
-        _recipients.Verify(r => r.ForPropertyAsync(b.OrgId, b.PropertyId, It.IsAny<CancellationToken>()), Times.Once);
-        _recipients.Verify(r => r.ForPropertyAsync(c.OrgId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-        _recipients.Verify(r => r.ForPropertyAsync(a.OrgId, b.PropertyId, It.IsAny<CancellationToken>()), Times.Never);
-        _recipients.Verify(r => r.ForPropertyAsync(b.OrgId, a.PropertyId, It.IsAny<CancellationToken>()), Times.Never);
+        var alloggiatiSubmit = ComplianceAlertAudience.AlloggiatiSubmit;
+        _recipients.Verify(r => r.ForPropertyAsync(a.OrgId, a.PropertyId, alloggiatiSubmit, It.IsAny<CancellationToken>()), Times.Once);
+        _recipients.Verify(r => r.ForPropertyAsync(b.OrgId, b.PropertyId, alloggiatiSubmit, It.IsAny<CancellationToken>()), Times.Once);
+        _recipients.Verify(r => r.ForPropertyAsync(c.OrgId, It.IsAny<Guid>(), It.IsAny<NotificationPermission>(), It.IsAny<CancellationToken>()), Times.Never);
+        _recipients.Verify(r => r.ForPropertyAsync(a.OrgId, b.PropertyId, It.IsAny<NotificationPermission>(), It.IsAny<CancellationToken>()), Times.Never);
+        _recipients.Verify(r => r.ForPropertyAsync(b.OrgId, a.PropertyId, It.IsAny<NotificationPermission>(), It.IsAny<CancellationToken>()), Times.Never);
+        // The audience of the alert of the 24 hours is always read with the permission: the one without it is never asked for these alerts.
+        _recipients.Verify(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
 
         // The push goes to the hosts of the property, and the bell, written by the real job from that audience, holds each entry for the people of the org of the property only.
         Assert.Equal(
-            new[] { PushAudience.PropertyHosts(a.PropertyId), PushAudience.PropertyHosts(b.PropertyId) }.OrderBy(x => x.Id),
+            new[] { PushAudience.PropertyHosts(a.PropertyId, alloggiatiSubmit), PushAudience.PropertyHosts(b.PropertyId, alloggiatiSubmit) }.OrderBy(x => x.Id),
             _pushes.Queued.Select(p => p.Audience).OrderBy(x => x.Id));
         var publisher = new RecordingPublisher();
         foreach (var push in _pushes.Queued)
         {
-            var job = new InAppNotificationJob(_db, _clock, publisher, NullLogger<InAppNotificationJob>.Instance);
+            var job = new InAppNotificationJob(_db, _clock, publisher, NullLogger<InAppNotificationJob>.Instance, _permissions.Object);
             await job.CreateAsync(push.DeliveryKey, QueuedInAppNotification.From(push.Audience, push.Payload, _clock.GetUtcNow().UtcDateTime), CancellationToken.None);
         }
 
@@ -689,6 +707,121 @@ public class ComplianceAlertTicinoTests : IDisposable
         Assert.Equal(
             new[] { (a.OwnerId, a.PropertyId), (b.OwnerId, b.PropertyId) }.OrderBy(x => x.Item1),
             rows.Select(r => (r.UserId, r.EntityId ?? Guid.Empty)).OrderBy(x => x.Item1));
+    }
+
+    // ─── The audience of the alert is who can act on it, with the real services ───
+
+    /// <summary>The same service with the REAL audience: the real resolver over the real preferences and the real evaluation of a permission, so who is told is decided by the services and not by a mock.</summary>
+    private ComplianceAlertService ServiceWithTheRealAudience(IContextAuthorizationService permissions) =>
+        new(
+            _db,
+            Mock.Of<IComplianceStatusService>(),
+            Mock.Of<IComplianceConnectionHealthService>(),
+            Mock.Of<IPropertySenderStore>(),
+            new ComplianceAlertRecipientResolver(_db, new NotificationPreferenceService(_db, permissions, _clock, NullLogger<NotificationPreferenceService>.Instance)),
+            Mock.Of<ITouristTaxDeadlineSource>(),
+            new NotificationService(_db, _emails, _pushes, EmailTestHelpers.Links(), NullLogger<NotificationService>.Instance),
+            _followUp.Object,
+            _flags.Object,
+            Options.Create(_options),
+            _log,
+            _clock,
+            new TicinoNotificationService(_db, _clock));
+
+    private ContextAuthorizationService RealPermissions()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Authorization:UserCacheSeconds"] = "0" }).Build();
+        var accessor = new HttpContextAccessor();
+        return new ContextAuthorizationService(
+            new UserAuthorizationSnapshotStore(_db, new MemoryCache(new MemoryCacheOptions()), accessor, configuration),
+            new LegalDocumentService(new ConfigurationBuilder().Build(), NullLogger<LegalDocumentService>.Instance),
+            accessor,
+            NullLogger<ContextAuthorizationService>.Instance);
+    }
+
+    /// <summary>The owner finished the onboarding (the host contexts are withheld before it, and with them the permission): it holds <c>alloggiati.submit</c> on its token.</summary>
+    private async Task OnboardOwnerAsync(Tenant tenant)
+    {
+        var owner = await _db.Users.SingleAsync(u => u.Id == tenant.OwnerId);
+        await HostOnboardingSeed.MarkOnboardedAsync(_db, owner, tenant.OrgId, new LegalDocumentService(new ConfigurationBuilder().Build(), NullLogger<LegalDocumentService>.Instance));
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>A collaborator «Solo alcuni» of the org, given the flat and put in charge of it, with the role of the staff (it does not hold <c>alloggiati.submit</c>).</summary>
+    private async Task<string> AddCollaboratorInChargeAsync(Tenant tenant)
+    {
+        var id = tenant.OwnerId.Replace("-owner", "-collab", StringComparison.Ordinal);
+        var user = OrgTeamTestData.AddUser(_db, id, tenant.OrgId);
+        await HostOnboardingSeed.MarkOnboardedAsync(_db, user, tenant.OrgId, new LegalDocumentService(new ConfigurationBuilder().Build(), NullLogger<LegalDocumentService>.Instance));
+        OrgTeamTestData.AddMember(_db, id, tenant.OrgId, OrgRole.Collaborator).PropertyScope = PropertyScope.Selected;
+        OrgTeamTestData.AddMembership(_db, id, "short-rent", "staff");
+        _db.PropertyMemberAccesses.Add(new PropertyMemberAccess { OrgId = tenant.OrgId, UserId = id, PropertyId = tenant.PropertyId });
+        (await _db.Properties.SingleAsync(p => p.Id == tenant.PropertyId)).ResponsibleUserId = id;
+        await _db.SaveChangesAsync();
+        return id;
+    }
+
+    private async Task<string[]> BellOfTheQueuedAlertsAsync(IContextAuthorizationService permissions)
+    {
+        var job = new InAppNotificationJob(_db, _clock, new RecordingPublisher(), NullLogger<InAppNotificationJob>.Instance, permissions);
+        foreach (var push in _pushes.Queued)
+            await job.CreateAsync(push.DeliveryKey, QueuedInAppNotification.From(push.Audience, push.Payload, _clock.GetUtcNow().UtcDateTime), CancellationToken.None);
+
+        return (await _db.InAppNotifications.AsNoTracking().Select(n => n.UserId).ToListAsync()).Order(StringComparer.Ordinal).ToArray();
+    }
+
+    [Fact]
+    public async Task TicinoAlerts_ACollaboratorInChargeWithoutAlloggiatiSubmit_IsNotToldInTheApp_ButTheOwnerAndTheAddressOfTheOrgAre_Test()
+    {
+        var tenant = await SeedTenantAsync("a");
+        await OnboardOwnerAsync(tenant);
+        var collaborator = await AddCollaboratorInChargeAsync(tenant);
+        await AddStayAsync(tenant, Day, arrivedAtUtc: "2026-11-19T14:00:00Z");
+        var permissions = RealPermissions();
+
+        _clock.SetUtcNow(DateTimeOffset.Parse("2026-11-19T17:00:00Z", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal));
+        Assert.Equal(1, (await ServiceWithTheRealAudience(permissions).RunAsync()).Sent);
+
+        // The stage is claimed and the e-mail goes to the address of the organization, as always; the push, the bell and the live update are for the hosts who hold the permission.
+        Assert.Equal(ComplianceAlertStage.TicinoFileToPrepare, (await _db.ComplianceAlertStates.SingleAsync()).Stage);
+        Assert.Equal(tenant.Address, Assert.Single(_emails.Snapshot()).To);
+        var push = Assert.Single(_pushes.Queued);
+        Assert.Equal(PushAudience.PropertyHosts(tenant.PropertyId, ComplianceAlertAudience.AlloggiatiSubmit), push.Audience);
+        Assert.Equal([tenant.OwnerId], await BellOfTheQueuedAlertsAsync(permissions));
+        Assert.DoesNotContain(collaborator, await _db.InAppNotifications.AsNoTracking().Select(n => n.UserId).ToListAsync());
+
+        // The same collaborator is still told about the alerts of the Italian deadlines: the audience of those alerts is unchanged.
+        var italian = await new ComplianceAlertRecipientResolver(_db, new NotificationPreferenceService(_db, permissions, _clock, NullLogger<NotificationPreferenceService>.Instance))
+            .ForPropertyAsync(tenant.OrgId, tenant.PropertyId, CancellationToken.None);
+        Assert.Contains(collaborator, italian.UserIds);
+    }
+
+    [Fact]
+    public async Task TicinoAlerts_WhenNobodyWhoReachesTheFlatHoldsAlloggiatiSubmit_TheAlertGoesOnAsToday_OnlyNobodyIsToldInTheApp_Test()
+    {
+        // The owner never finished the onboarding, so it holds no permission; the collaborator in charge has none either: nobody who reaches the flat can act on the day.
+        var tenant = await SeedTenantAsync("a");
+        var collaborator = await AddCollaboratorInChargeAsync(tenant);
+        await AddStayAsync(tenant, Day, arrivedAtUtc: "2026-11-19T14:00:00Z");
+        var permissions = RealPermissions();
+
+        _clock.SetUtcNow(DateTimeOffset.Parse("2026-11-19T17:00:00Z", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal));
+        Assert.Equal(1, (await ServiceWithTheRealAudience(permissions).RunAsync()).Sent);
+
+        // The alert state progresses as it does with an audience, the e-mail goes to the address of the organization, the cockpit lists the day (it reads the same service)...
+        var state = await _db.ComplianceAlertStates.SingleAsync();
+        Assert.Equal((ComplianceAlertType.TicinoNotification, "2026-11-19", ComplianceAlertStage.TicinoFileToPrepare), (state.Type, state.ReferenceKey, state.Stage));
+        Assert.Equal(tenant.Address, Assert.Single(_emails.Snapshot()).To);
+        var listed = await new TicinoNotificationService(_db, _clock).ListPendingDaysAsync(tenant.OrgId, null, Day);
+        Assert.Equal(Day, Assert.Single(listed).Day);
+
+        // ...only nobody is told in the app, and the log says why with ids and no name.
+        Assert.Empty(await BellOfTheQueuedAlertsAsync(permissions));
+        Assert.Contains("nobody who reaches the property holds alloggiati.submit", _log.AllOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain(collaborator, _log.AllOutput, StringComparison.Ordinal);
+
+        // A second run of the same hour sends nothing: the stage was claimed once.
+        Assert.Equal(0, (await ServiceWithTheRealAudience(permissions).RunAsync()).Sent);
     }
 
     [Fact]
@@ -832,7 +965,7 @@ public class ComplianceAlertTicinoTests : IDisposable
         var publisher = new RecordingPublisher();
         foreach (var push in _pushes.Queued)
         {
-            var job = new InAppNotificationJob(_db, _clock, publisher, NullLogger<InAppNotificationJob>.Instance);
+            var job = new InAppNotificationJob(_db, _clock, publisher, NullLogger<InAppNotificationJob>.Instance, _permissions.Object);
             await job.CreateAsync(push.DeliveryKey, QueuedInAppNotification.From(push.Audience, push.Payload, _clock.GetUtcNow().UtcDateTime), CancellationToken.None);
         }
 

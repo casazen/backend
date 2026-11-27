@@ -217,6 +217,39 @@ public class NotificationServiceChk12Tests : IDisposable
         Assert.Equal(PushTypes.ConnectionInactive, Assert.Single(_push.Queued).Payload.Type);
     }
 
+    // The push of an alert about the notification of the guests to the police is for the hosts who can act on it (alloggiati.submit); every other alert is for the hosts of the property, as it always was.
+    [Theory]
+    [InlineData(ComplianceAlertType.TicinoNotification, ComplianceAlertKind.TicinoFileToPrepare, true)]
+    [InlineData(ComplianceAlertType.TicinoNotification, ComplianceAlertKind.TicinoOverdue, true)]
+    [InlineData(ComplianceAlertType.SwissNotification, ComplianceAlertKind.SwissNotificationToPrepare, true)]
+    [InlineData(ComplianceAlertType.SwissNotification, ComplianceAlertKind.SwissNotificationOverdue, true)]
+    [InlineData(ComplianceAlertType.IstatPeriod, ComplianceAlertKind.PeriodOverdue, false)]
+    [InlineData(ComplianceAlertType.TouristTaxPeriod, ComplianceAlertKind.PeriodDeadlineApproaching, false)]
+    [InlineData(ComplianceAlertType.ConnectionInactive, ComplianceAlertKind.ConnectionInactive, false)]
+    public async Task SendComplianceAlertAsync_OnlyThePoliceNotificationAlerts_GoToTheHostsWhoCanActOnThem(ComplianceAlertType type, ComplianceAlertKind kind, bool forWhoCanAct)
+    {
+        var (_, propertyId) = await SeedAsync();
+        var alert = new ComplianceAlert(
+            type,
+            propertyId,
+            kind,
+            Period: "2026-10",
+            DeadlineDay: new DateOnly(2026, 11, 10),
+            ArrivalDay: new DateOnly(2026, 11, 19),
+            DueAtUtc: new DateTime(2026, 11, 20, 14, 0, 0, DateTimeKind.Utc));
+
+        await Service().SendComplianceAlertAsync(alert, ["host@example.com"], "key-audience");
+
+        var push = Assert.Single(_push.Queued);
+        Assert.Equal(
+            forWhoCanAct ? PushAudience.PropertyHosts(propertyId, ComplianceAlertAudience.AlloggiatiSubmit) : PushAudience.PropertyHosts(propertyId),
+            push.Audience);
+        Assert.Equal(forWhoCanAct, push.Audience.RequiredPermission is not null);
+
+        // The e-mail goes to the address it is given, the contact address of the organization: it is not a person and is never narrowed.
+        Assert.Equal("host@example.com", Assert.Single(_emails.Queued).To);
+    }
+
     [Fact]
     public async Task SendComplianceAlertAsync_APropertyThatIsGone_SendsNothing()
     {

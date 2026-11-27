@@ -73,7 +73,12 @@ public enum PushAudienceKind
 /// the org and, in <see cref="UserId"/>, the user; for <see cref="PushAudienceKind.PlatformStaff"/> the subject of the event; for
 /// <see cref="PushAudienceKind.OrgAdmins"/> the org.
 /// </summary>
-public sealed record PushAudience(PushAudienceKind Kind, Guid Id, string? UserId = null)
+/// <param name="RequiredPermission">
+/// Only for <see cref="PushAudienceKind.PropertyHosts"/> (E30/F02/US01/T01, E31/F02/US01/T01): when set, the hosts of the property who <b>also hold</b> this permission are the recipients, the others
+/// of the same property are not (no device is pushed, no entry of the bell is written for them). Judged when the jobs run, by the one evaluation of a permission
+/// (<c>IContextAuthorizationService</c>), on top of the reach of the hosts. <c>null</c> (every other audience, and the hosts of a property as they always were): no narrowing.
+/// </param>
+public sealed record PushAudience(PushAudienceKind Kind, Guid Id, string? UserId = null, NotificationPermission? RequiredPermission = null)
 {
     /// <summary>The devices of one user of a host org (NF-65): the user is one of the recipients <c>INotificationPreferenceService</c> selected.</summary>
     public static PushAudience User(Guid orgId, string userId) => new(PushAudienceKind.User, orgId, userId);
@@ -81,6 +86,13 @@ public sealed record PushAudience(PushAudienceKind Kind, Guid Id, string? UserId
     public static PushAudience BookingHosts(Guid bookingId) => new(PushAudienceKind.BookingHosts, bookingId);
 
     public static PushAudience PropertyHosts(Guid propertyId) => new(PushAudienceKind.PropertyHosts, propertyId);
+
+    /// <summary>
+    /// The hosts of the property <b>who also hold</b> <paramref name="requiredPermission"/> (the alerts of the notification of the guests to the police, which only a person with
+    /// <c>alloggiati.submit</c> can act on): the same reach as <see cref="PropertyHosts(Guid)"/>, narrowed to the people who hold the permission.
+    /// </summary>
+    public static PushAudience PropertyHosts(Guid propertyId, NotificationPermission requiredPermission) =>
+        new(PushAudienceKind.PropertyHosts, propertyId, RequiredPermission: requiredPermission ?? throw new ArgumentNullException(nameof(requiredPermission)));
 
     public static PushAudience SupplierOrg(Guid supplierOrgId) => new(PushAudienceKind.SupplierOrg, supplierOrgId);
 

@@ -125,9 +125,9 @@ public class ConfigurationFeatureFlagsTests
                 "Auth0HostSync",
                 // E40/F01/US01/T01: the embeddable booking pages, the WordPress plugin and the GTM container of the agency, off until they are delivered.
                 "SiteEmbed",
-                // E30/F02/US01/T01: the staged alerts about the 24 hours of the notification of the guests of a Ticino property to the cantonal police, off until the product owner has seen them on an arrival.
+                // E30/F02/US01/T01: the staged alerts about the 24 hours of the notification of the guests of a Ticino property to the cantonal police (and, in the same job, those of the arrival days of the other cantons, E31/F02/US01/T01), off until the product owner has seen them on an arrival.
                 "TicinoNotificationAlerts",
-                // E29/F02/US01/T01: the regimes of the registration of the guests of Italy and of the 26 cantons (card of a property, effective duty), off until the product owner has read the catalog.
+                // E29/F02/US01/T01: the regimes of the registration of the guests of Italy and of the 26 cantons (card of a property, effective duty), with the assisted notification of the other cantons (E31/F02/US01/T01) and the guest register (E31/F01/US01/T01) behind it, off until the product owner has read the catalog.
                 "GuestRegistrationRegimes",
                 // E50/F01/US01/T01: the guest portal, the services of the suppliers in it and the automatic replies of its chat, off until they are delivered and decided.
                 "GuestPortal",

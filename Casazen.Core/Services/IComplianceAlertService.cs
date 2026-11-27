@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
@@ -288,6 +289,36 @@ public interface ITouristTaxDeadlineSource
 }
 
 /// <summary>
+/// Who may hear about an alert of a given <see cref="ComplianceAlertType"/> beyond the people who reach the property (E30/F02/US01/T01, E31/F02/US01/T01, NF-127, NF-131): the one definition of
+/// the alerts that go only to the people who <b>can act on them</b>. The notification of the guests to the police of Ticino, and to the authority of another canton, is declared and its
+/// receipt recorded with <c>alloggiati.submit</c> (<c>CasazenPolicies.AlloggiatiSubmit</c>), so a person who reaches the property but does not hold it (a collaborator, an accountant) is not
+/// told about it in the app: no push, no entry of the bell, no live update. The alerts of the Italian Alloggiati and ISTAT deadlines, the ones about a period and the connection and the monthly
+/// summary keep the audience they always had (<see cref="RequiredPermissionOf"/> is <c>null</c> for them).
+/// </summary>
+/// <remarks>
+/// <para>The permission is the one the policy asks, in the context the policy names, and it is judged by the one evaluation of a permission: <see cref="IContextAuthorizationService"/>, the one the
+/// policy handler uses (roles of the memberships, the owner on the token before the team, the host onboarding, a deactivated member never). Nothing here rebuilds who holds a permission or who
+/// reaches a property: <see cref="INotificationPreferenceService"/> keeps deciding the reach, and the permission only narrows it.</para>
+/// <para>The <b>e-mail</b> is not narrowed: it goes to the contact address of the organization, which is the address of the organization and not a person.</para>
+/// </remarks>
+public static class ComplianceAlertAudience
+{
+    /// <summary>
+    /// <c>alloggiati.submit</c> in the short-rent context: the permission that declares a day notified, records the receipt of the portal and registers the guests of a stay. It is exactly the
+    /// permission of <c>CasazenPolicies.AlloggiatiSubmit</c> (<c>RequireContext:short-rent:alloggiati.submit</c>); a test compares the two.
+    /// </summary>
+    public static NotificationPermission AlloggiatiSubmit { get; } = new(OrgRoleCatalog.ShortRent, HostPermissions.AlloggiatiSubmit);
+
+    /// <summary>
+    /// The permission the people told about an alert of <paramref name="type"/> must hold on top of reaching the property: <see cref="AlloggiatiSubmit"/> for the notification of the guests of
+    /// Ticino (<see cref="ComplianceAlertType.TicinoNotification"/>) and of the other cantons (<see cref="ComplianceAlertType.SwissNotification"/>); <c>null</c> for every other alert,
+    /// whose audience is unchanged.
+    /// </summary>
+    public static NotificationPermission? RequiredPermissionOf(ComplianceAlertType type) =>
+        type is ComplianceAlertType.TicinoNotification or ComplianceAlertType.SwissNotification ? AlloggiatiSubmit : null;
+}
+
+/// <summary>
 /// Who receives a compliance alert (E03/F02/US02/T01, NF-52): the port the per-person preferences of NF-65 replace. The default implementation is
 /// today's audience, narrowed to the people who may hear about the property (<c>HostScope</c>): the organization's address, and the people of
 /// <see cref="INotificationPreferenceService"/> for the event «legal deadline», which is the one place that applies the reach of a collaborator
@@ -300,6 +331,16 @@ public interface IComplianceAlertRecipientResolver
     /// they still reach it, and the administrators). A collaborator limited to some properties is among them only for a property it was given.
     /// </summary>
     Task<ComplianceAlertRecipients> ForPropertyAsync(Guid orgId, Guid propertyId, CancellationToken ct);
+
+    /// <summary>
+    /// As <see cref="ForPropertyAsync(Guid, Guid, CancellationToken)"/>, with the people narrowed to the ones who also hold <paramref name="requiredPermission"/> (an alert they can act on:
+    /// <see cref="ComplianceAlertAudience.RequiredPermissionOf"/>), on top of every reach rule (the person in charge while they still reach the property, the administrators, a collaborator
+    /// «Solo alcuni» only for a property it was given, a deactivated member never). The reach stays <see cref="INotificationPreferenceService"/>'s: the permission is asked of it
+    /// (<see cref="NotificationEventContext.RequiredPermission"/>) and never rebuilt here. <see cref="ComplianceAlertRecipients.Emails"/> is the address of the organization as before: it is the
+    /// organization's, not a person. <see cref="ComplianceAlertRecipients.UserIds"/> may be empty (nobody who reaches the property holds the permission): nobody is told in the app and the
+    /// alert goes on as it does today.
+    /// </summary>
+    Task<ComplianceAlertRecipients> ForPropertyAsync(Guid orgId, Guid propertyId, NotificationPermission requiredPermission, CancellationToken ct);
 
     /// <summary>
     /// Who is told about something of the organization as a whole, with no property (the monthly summary): the organization's address and the

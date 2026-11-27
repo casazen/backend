@@ -83,6 +83,33 @@ public class StayGuestService(
         return result;
     }
 
+    public async Task<IReadOnlySet<int>> GetDocumentNumberPositionsAsync(
+        Booking booking,
+        IReadOnlyList<StayGuest> guests,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        ArgumentNullException.ThrowIfNull(guests);
+
+        // A single guest and a head have a document by their kind (the Alloggiati record): as it always was, whatever the property.
+        var positions = guests
+            .Where(guest => AlloggiatiRecordRules.RequiresDocument(guest.Type))
+            .Select(guest => guest.Position)
+            .ToHashSet();
+
+        // NF-132: in a stay of a property in canton Ticino the check-in also stores the document of every adult the police file notifies on their own row, family and group members
+        // included, so the host may read their numbers too. «In Ticino» and «notified» are the questions ReplaceAsync and the check-in ask: the one check of the jurisdiction and
+        // TicinoPoliceFile.NotifiedPositions (here, its adults: a minor's number is never an answer). Another stay keeps the answer it had.
+        if (await _ticino.IsPropertyInTicinoAsync(booking.PropertyId))
+        {
+            positions.UnionWith(TicinoPoliceFile.NotifiedAdultPositions(
+                guests.Select(guest => (guest.Position, guest.Type, guest.DateOfBirth is { } born ? DateOnly.FromDateTime(born) : (DateOnly?)null)),
+                DateOnly.FromDateTime(booking.CheckInDate)));
+        }
+
+        return positions;
+    }
+
     public async Task<IReadOnlyList<StayGuestFieldError>> ValidateAsync(
         IReadOnlyList<StayGuestInput> guests,
         CancellationToken cancellationToken = default)

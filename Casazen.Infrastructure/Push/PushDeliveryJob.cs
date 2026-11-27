@@ -32,7 +32,8 @@ public sealed class PushDeliveryJob(
     AppDbContext db,
     IExpoPushClient expoClient,
     TimeProvider timeProvider,
-    ILogger<PushDeliveryJob> logger)
+    ILogger<PushDeliveryJob> logger,
+    IContextAuthorizationService? contextAuthorization = null)
 {
     public const int MaxAttempts = 5;
 
@@ -232,7 +233,7 @@ public sealed class PushDeliveryJob(
         var devices = audience.Kind switch
         {
             PushAudienceKind.BookingHosts => await BookingHostDevicesAsync(audience.Id, cancellationToken),
-            PushAudienceKind.PropertyHosts => await PropertyHostDevicesAsync(audience.Id, cancellationToken),
+            PushAudienceKind.PropertyHosts => await PropertyHostDevicesAsync(audience.Id, audience.RequiredPermission, cancellationToken),
             PushAudienceKind.SupplierOrg => await SupplierDevicesAsync(audience.Id, cancellationToken),
             PushAudienceKind.VerificationOperators => await VerificationOperatorDevicesAsync(audience.Id, cancellationToken),
             PushAudienceKind.User => await UserDevicesAsync(audience.Id, audience.UserId, cancellationToken),
@@ -331,7 +332,7 @@ public sealed class PushDeliveryJob(
             .ToListAsync(cancellationToken);
     }
 
-    private async Task<List<DeviceRegistration>> PropertyHostDevicesAsync(Guid propertyId, CancellationToken cancellationToken)
+    private async Task<List<DeviceRegistration>> PropertyHostDevicesAsync(Guid propertyId, NotificationPermission? requiredPermission, CancellationToken cancellationToken)
     {
         // IgnoreQueryFilters: background job without a tenant; the recipients are limited to the property's org.
         var property = await db.Properties
@@ -346,7 +347,46 @@ public sealed class PushDeliveryJob(
             return [];
         }
 
-        return await HostDevicesAsync(property.OrgId, propertyId, property.ResponsibleUserId, property.OwnerId, cancellationToken);
+        if (requiredPermission is null)
+            return await HostDevicesAsync(property.OrgId, propertyId, property.ResponsibleUserId, property.OwnerId, cancellationToken);
+
+        return await HostDevicesHoldingAsync(property.OrgId, propertyId, property.ResponsibleUserId, property.OwnerId, requiredPermission, cancellationToken);
+    }
+
+    /// <summary>
+    /// The devices of the hosts of a property who also hold <paramref name="required"/> (an alert only a person with a permission can act on, <see cref="PushAudience.RequiredPermission"/>): the hosts of
+    /// <see cref="HostDevicesAsync"/> narrowed by the one evaluation of a permission (<see cref="HostNotificationAudience.HoldingAsync"/>), the same the job of the bell applies to the same event: the phone
+    /// and the bell tell the same people. Without that evaluation (a job built without it) nobody is told: a permission is never taken as held, and the log says so.
+    /// </summary>
+    private async Task<List<DeviceRegistration>> HostDevicesHoldingAsync(
+        Guid orgId,
+        Guid propertyId,
+        string? responsibleUserId,
+        string ownerId,
+        NotificationPermission required,
+        CancellationToken cancellationToken)
+    {
+        var hosts = await HostNotificationAudience.UsersToTell(db, orgId, propertyId, responsibleUserId, ownerId)
+            .Select(user => user.Id)
+            .ToListAsync(cancellationToken);
+        if (hosts.Count == 0)
+            return [];
+
+        if (contextAuthorization is null)
+        {
+            logger.LogError("Push skipped: its audience asks the permission {Permission} and no evaluation of permissions is available, so nobody is told", required.PermissionKey);
+            return [];
+        }
+
+        var holders = await HostNotificationAudience.HoldingAsync(contextAuthorization, hosts, required, cancellationToken);
+        if (holders.Count == 0)
+            return [];
+
+        return await db.DeviceRegistrations
+            .AsNoTracking()
+            .Where(device => device.OrgId == orgId && holders.Contains(device.UserId))
+            .OrderBy(d => d.CreatedAt)
+            .ToListAsync(cancellationToken);
     }
 
     /// <summary>

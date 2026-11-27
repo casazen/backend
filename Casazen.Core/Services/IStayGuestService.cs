@@ -15,6 +15,18 @@ public interface IStayGuestService
     /// </summary>
     Task<IReadOnlyList<StayGuest>> GetForBookingAsync(Booking booking, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The positions of the guests of <paramref name="booking"/> whose <b>full document number</b> the host may read (<c>GET api/alloggiati/{bookingId}/stay-guests/document-numbers</c>): the
+    /// single guests and the heads (<see cref="Regulatory.AlloggiatiRecordRules.RequiresDocument"/>, as ever) and, in a stay of a property in canton Ticino (NF-132), every <b>adult</b> family or
+    /// group member the police file notifies on their own row (<see cref="Regulatory.TicinoPoliceFile.NotifiedAdultPositions"/>, the very predicate <see cref="ReplaceAsync"/> and the check-in use to
+    /// ask and keep the document of every adult the file notifies), because the Ticino check-in stores their numbers. Never a minor family or group member, whatever is stored; any other stay,
+    /// Italian or of another canton, answers exactly what it always did. <paramref name="guests"/> are the guests of the stay as <see cref="GetForBookingAsync"/> reads them.
+    /// </summary>
+    Task<IReadOnlySet<int>> GetDocumentNumberPositionsAsync(
+        Booking booking,
+        IReadOnlyList<StayGuest> guests,
+        CancellationToken cancellationToken = default);
+
     /// <summary>The guests of several bookings of the same org, with the same fallback, keyed by booking id.</summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<StayGuest>>> GetForBookingsAsync(
         IReadOnlyCollection<Booking> bookings,

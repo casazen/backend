@@ -15,8 +15,9 @@ section 27 is the acceptance scenario that walks the whole chain of Ticino, from
 
 ## 1. The flow
 
-1. A property is in canton Ticino when its country is `CH` and its Swiss municipality belongs to canton `TI`
-   (`ITicinoNotificationService.IsPropertyInTicinoAsync`, the one check of the jurisdiction).
+1. A property is in canton Ticino when its country is `CH` and the one resolver of the place of a Swiss property (`IPropertySwissPlaceResolver`) puts its municipality in
+   canton `TI` (`ITicinoNotificationService.IsPropertyInTicinoAsync`, the one check of the jurisdiction, asks that resolver and nothing else). The host does **not** have to
+   store the municipality: the one the postal code and the city give counts as well, and an open place is never «in Ticino» (§ 1.1).
 2. The guests fill the online check-in (or the host fills the guests in the wizard). For a Ticino property the check-in asks, on top of
    the Alloggiati record: the **document type and number of every adult** (family and group members included; every minor of a stay
    without adults; in a group of 6 or more only the leader, § 5), the **home address** (street, postal code, town) and the state of residence of
@@ -29,6 +30,32 @@ section 27 is the acceptance scenario that walks the whole chain of Ticino, from
    decision D1) and records the receipt of the portal (`POST …/upload-receipt`, type `Police`, report date = the arrival day) **or**, with no receipt, declares the day
    uploaded (`POST …/ticino-notification/declare`, § 14-15). Either closes the day.
 
+### 1.1 Where the municipality of a property comes from
+
+Every rule of this runbook that depends on the canton (the file, the days to notify, the alerts, the regime, the readiness, the guest register, the assisted notification) reads the
+**one resolver of the place of a Swiss property**, `IPropertySwissPlaceResolver` (`PropertySwissPlaceResolver`, E29/F01/US01/T02, decisions D3 and D4; the full rules and the directory are in
+[`docs/compliance/swiss-municipalities.md`](../compliance/swiss-municipalities.md)). No rule copies the test «country `CH` and canton `TI`». The place of a property comes, in this order, from:
+
+1. **The municipality the host stored**: `Property.SwissMunicipalityCode`, the BFS number the property form sends as `swissMunicipalityCode` when the host confirms or picks a place. When the official
+   directory has it, **it wins** (`source: Stored`), whatever the postal code and the city say.
+2. **Otherwise the one derived from the postal code and the locality or city**, through the official swisstopo directory (`SwissMunicipalities` and `SwissLocalities`, loaded at startup by
+   `OfficialReferenceData__SeedSwissPlacesOnStartup`, on by default; [deploy-checklist.md](deploy-checklist.md) § 2): the four digits of the postal code; the localities of that postal code all in one
+   municipality, that one; several, the one whose official name is the city (only when all the candidates lie in one canton: a postal code in two cantons, like `6533`, is never decided on a name),
+   else the one that has a locality of that postal code named as the city. `6900` «Lugano» is Lugano (BFS 5192, canton TI), `6600` «Locarno» is Locarno (5113). It is `source: Derived`: nothing is written
+   to the property, the host confirms it in the form.
+3. **Otherwise the place stays open, and nothing is invented.** The postal code and the city leave several municipalities open (`ambiguous`: no municipality and no canton at all), or the postal code is not a
+   Swiss one, or the directory does not have it or is not loaded: the property has **no known canton**. Its readiness reason is `swiss_municipality_missing` (§ 22), its regime is `CH-UNKNOWN` (§ 21), it is
+   **not in Ticino** (no day to notify, no alert, no file) and it is not given the other cantons' flow either, until the host picks the municipality.
+
+Resolving only reads. A derived place is never stored behind the host's back; a `city` or `postalCode` changed in a request that does not send the municipality clears the one stored (as for the Italian
+comune). The create request has no country (every property it creates is Italian and refuses a municipality with 422 `swiss_municipality_not_applicable`), so the host stores the municipality on
+the update of a property whose country is `CH`.
+
+**What the property form shows** (`GET api/properties/{id}`: `swissMunicipalityCode`, `swissMunicipalityName`, `swissCantonCode` of the stored one, `swissPlace { municipalityCode, municipalityName,
+cantonCode, source, ambiguous }` of the place the rules use, and `isInTicino`): with a municipality stored, its name and canton under the field; with none, the place the postal code and the city give as a
+proposal the host confirms with one tap (`6900` alone leaves Lugano, Massagno and Paradiso open: the form lists them and chooses none); a directory that is not loaded or cannot be read is said as it is and
+never blocks the form (the host saves all the same and confirms the place later).
+
 ## 2. Configuration
 
 | Key (environment variable) | Default | Values | Without it |
@@ -36,7 +63,16 @@ section 27 is the acceptance scenario that walks the whole chain of Ticino, from
 | `GuestNotifications:TicinoCsvEncoding` (`GuestNotifications__TicinoCsvEncoding`) | `windows-1252` | `windows-1252`, `utf-8` (case-insensitive) | the default; any other value stops the application at startup (`ValidateOnStart`) |
 
 The committed `appsettings.json` has the default. Nothing else is needed for the file: no flag (it completes a flow already in `develop`), no
-secret (CasaZen keeps no credential of the portal). The alerts of § 8-13 have their own flag and options (§ 11).
+secret (CasaZen keeps no credential of the portal). The two flags of this runbook are defined here, once; the alerts of § 8-13 have their own options (§ 11).
+
+**The two flags.** Both are `false` in the committed `appsettings.json` and in `FeatureFlags.All` (`ConfigurationFeatureFlagsTests` checks it), a missing value is off, they need no other variable to start, and
+they are on in the `test` environment only on the product owner's order and unset (off) in production until he has seen what they turn on ([feature-flags.md](feature-flags.md),
+[deploy-checklist.md](deploy-checklist.md) § 2). The sections below say how to turn each one on and back off.
+
+| Flag (environment variable) | Turns on | Off means | Not behind it |
+|---|---|---|---|
+| `Features:TicinoNotificationAlerts` (`Features__TicinoNotificationAlerts`) | The staged alerts of the 24 hours of the notification to the police of Ticino (§ 8-13), and, in the same hourly `stay-alerts` job, those of the arrival days of the other cantons (§ 26: only for the days the assisted notification lists, so it needs the flag below as well). | The job reads no day, writes no alert state and queues nothing: no e-mail, no push, no entry of the bell. It does not need `Features:ComplianceTrafficLight`. | The cockpit sections `ticinoNotifications` and `swissNotifications`, the declaration, the file. |
+| `Features:GuestRegistrationRegimes` (`Features__GuestRegistrationRegimes`) | The regimes of Italy and of the 26 cantons (§ 21: `GET` and `PUT api/properties/{id}/guest-registration`, the setting of the host), the assisted notification of the cantons other than Ticino (§ 26: its routes and the cockpit section `swissNotifications`) and the guest register (§ 25). | The routes answer 404 before authentication, nothing reads the host's setting (`Properties.GuestNotificationOverride`) and the section is empty: Ticino behaves exactly as before. | The readiness of a Swiss property (§ 22), the Ticino flow, the field `ticinoStructureId` of the create request. |
 
 ## 3. The encoding of the CSV
 
@@ -107,6 +143,19 @@ police, question 4 of the draft request):
   retention of the Alloggiati data). No image of a document is kept for a Swiss property (decision D6).
 - The file is rebuilt on every request and never stored; its download is never cached (`Cache-Control: private, no-store`) and asks
   `guest.read`.
+- **The full document numbers of the notified family members.** `GET /api/alloggiati/{bookingId}/stay-guests/document-numbers` asks `guest.read` and the check of the booking and of its org of the
+  other stay endpoints (another org's booking is a 404, one the caller may not read a 403). It answers the number of a single guest and of a head, as ever, and, **in a stay of a property in
+  Ticino** (§ 1.1), the number of every **adult** family or group member the file notifies on their own row, because the Ticino check-in stores it (NF-132, `AddSwissGuestFields`): the host's edit
+  dialog fills each guest by `position` from this answer, so the number of the second adult is no longer typed again. There is no second rule for «who is notified»:
+  `IStayGuestService.GetDocumentNumberPositionsAsync` asks the one check of the jurisdiction (`IsPropertyInTicinoAsync`) and `TicinoPoliceFile.NotifiedAdultPositions`, which is
+  `NotifiedPositions` (the predicate of the check-in and of the save of the guests) limited to the adults.
+  - **Never** the number of a minor family or group member (not even in a stay with no adult, where the file notifies each minor; a minor who is a single guest keeps the number it always had),
+    of a guest with no number stored, or of a member of a group of six or more (only its leader is a row).
+  - The `position` filter works as before. A stay of an Italian property, or of a Swiss property outside Ticino, answers exactly what it always answered (its single guests and heads).
+  - The audit line holds the user, the booking and the **positions**, never a number. The shape of the answer and the guest summary are unchanged: the summary asks this answer when a row has
+    `requiresDocument` and a masked number (the head of the stay, whose number the Ticino check-in always stores), and the dialog reads the kind, the place of issue and the masked number of a
+    member from the guest of the check-in wizard of the same position.
+  - Tests: `AlloggiatiDocumentNumbersTests`, `TicinoPoliceFileTests.NotifiedAdultPositions_*`.
 
 ## 8. The alerts of the 24 hours: what they are
 
@@ -118,13 +167,14 @@ same hourly `stay-alerts` job ([hangfire.md § 9](hangfire.md#9-stay-alerts-co-1
 go out once, the e-mail templates, the push chain and the bell with its live update ([in-app-notifications.md](in-app-notifications.md) § 9-10). The placeholder
 `TicinoReminderJob` (a TODO that was never registered) no longer exists; `StayAlertService` stays Italian only.
 
-Behind its own flag, **`Features:TicinoNotificationAlerts`, off by default** ([feature-flags.md](feature-flags.md)): off, the job reads no Ticino day, writes no row and
+Behind its own flag, **`Features:TicinoNotificationAlerts`, off by default** (defined in § 2; [feature-flags.md](feature-flags.md)): off, the job reads no Ticino day, writes no row and
 queues nothing. It does not need `Features:ComplianceTrafficLight`; with both off the whole run does nothing.
 
 ## 9. Which days, which stages
 
 **Which days.** Only `ITicinoNotificationService.ListPendingDaysAsync` says (last 14 days, every org): the arrival days of the stays that owe a notification (an active status
-and no no-show) of the Ticino properties (country `CH` and a municipality of canton `TI`) that no receipt of the portal and no declaration «I uploaded the file» (§ 14) closes. **That
+and no no-show) of the Ticino properties (country `CH` and a place the resolver puts in canton `TI`: the municipality the host stored, else the one its postal code and city give, § 1.1;
+a place left open is not in Ticino) that no receipt of the portal and no declaration «I uploaded the file» (§ 14) closes. **That
 service is the one place that says a day is closed**: the alerts respect the declaration with no change in them. Before a stage is claimed the detail of the day is
 read from the same service, so a day closed meanwhile sends nothing. `DueAtUtc` is its deadline: 24 hours from the first recorded arrival, else the end of the arrival day.
 
@@ -149,18 +199,33 @@ read from the same service, so a day closed meanwhile sends nothing. `DueAtUtc` 
 
 ## 10. Who is told, how, and what it says
 
+The alerts of this part (and, in § 26, those of the other cantons) are about a duty only a person with **`alloggiati.submit`** can close: the permission that declares a day notified and records the
+receipt of the portal (`CasazenPolicies.AlloggiatiSubmit`, `RequireContext:short-rent:alloggiati.submit`). So they are told in the app only to the people who **hold it on top of reaching the property**;
+the e-mail is the address of the organization. `ComplianceAlertAudience` (Core) is the one definition of which alerts go only to who can act (the Ticino and the other-canton alerts; the Italian deadline
+alerts, the ones about a period, the connection and the monthly summary keep the audience they always had).
+
 - **E-mail**: one message to the **contact address of the organization** (`ComplianceAlertRecipientResolver.ForPropertyAsync` gives that single address as `Emails`, like the stay alerts
-  and the ISTAT alerts; the people it also lists are read for the popup of the router, which the Ticino alerts do not use). There is **no e-mail to a single person and no narrowing by
-  reach** on this channel; nobody of another org is told. Texts `TicinoNotificationAlert_*` of `EmailTexts.resx` and `EmailTexts.en.resx` (**Italian and English only**: German, French and
-  Spanish hold the guest check-in e-mails and nothing else, `EmailTextsParityTests`); the button leads to `/app/short-rent/compliance`.
-- **Push, bell and live update** through `IPushNotificationService.Enqueue` with `PushAudience.PropertyHosts(propertyId)` (the **person in charge of the property**, while they still reach it
-  (a collaborator «Solo alcuni» only for a property they were given), and the **administrators of the org**: `HostNotificationAudience`): the types `ticino-notification-due` and
-  `ticino-notification-overdue`, route `/properties`. The decorator writes the bell entry and the job publishes `notificationsChanged`; both carry the **property** as `entityId` (the id of the
-  audience: an arrival day is not an entity, so the entry names the property and not the day, and the client opens the Ticino page of the property on its first day to notify). The web
-  client is to show the pop-up and read the cockpit again on those two types (the frontend slice of the notification types, E30/F02/US03/T01: until it maps them the bell shows the generic
-  sentence for a type it does not know).
-- **Known limit, like the ISTAT alerts.** There is no «compliance» permission in the catalog, and the people told by push and bell are not narrowed to who holds `alloggiati.submit` (the permission
-  that records the receipt, `SwissComplianceController` `upload-receipt`): the person in charge may be a collaborator, who does not have it, and hears about a duty they cannot close.
+  and the ISTAT alerts). It is the address of the organization and not a person: there is **no e-mail to a single person and no narrowing by reach or by permission** on this channel, and it
+  goes as today even when nobody holds the permission; nobody of another org is told. Texts `TicinoNotificationAlert_*` of `EmailTexts.resx` and `EmailTexts.en.resx` (**Italian and English only**:
+  German, French and Spanish hold the guest check-in e-mails and nothing else, `EmailTextsParityTests`); the button leads to `/app/short-rent/compliance`.
+- **Push, bell and live update** through `IPushNotificationService.Enqueue` with `PushAudience.PropertyHosts(propertyId, alloggiati.submit)`: the hosts of the property (the **person in charge of the
+  property**, while they still reach it (a collaborator «Solo alcuni» only for a property they were given), and the **administrators of the org**: `HostNotificationAudience`) **who also hold
+  `alloggiati.submit`**. The two jobs that resolve the audience when they run, `PushDeliveryJob` (the devices) and `InAppNotificationJob` (the entry of the bell and the live update), apply the permission
+  to the same people with the one evaluation of a permission the policies use (`IContextAuthorizationService`, through `HostNotificationAudience.HoldingAsync`: the memberships of the person after its
+  onboarding, the owner on its token before the team, never a deactivated member), so the phone and the bell cannot disagree. `INotificationPreferenceService` stays the one place that decides the reach
+  (`ComplianceAlertRecipientResolver.ForPropertyAsync(orgId, propertyId, permission, ct)` hands it the permission as the `RequiredPermission` of the event); nothing here rebuilds who reaches a property
+  or who holds a permission. The types are `ticino-notification-due` and `ticino-notification-overdue`, route `/properties`; both entries carry the **property** as `entityId` (the id of the audience: an
+  arrival day is not an entity, so the entry names the property and not the day, and the client opens the Ticino page of the property on its first day to notify). The web client is to show the
+  pop-up and read the cockpit again on those two types (the frontend slice of the notification types, E30/F02/US03/T01: until it maps them the bell shows the generic sentence for a type it does not know).
+- **Who is, and is not, told.** The owner, an administrator and a property manager hold the permission (their roles carry it): they are told when they reach the property. A **collaborator without
+  `alloggiati.submit`** (the seeded role of the collaborator has none), an accountant, a member who was deactivated and an administrator who has not finished the host onboarding (the host contexts are
+  withheld until then, so they cannot act either) are **not told in the app**, even when they are the person in charge; a collaborator «Solo alcuni» who holds the permission (a role of the matrix may
+  give it) is told only for a property it was given. A job queued by the previous version has no permission in its arguments and tells the hosts of the property as it did.
+- **Nobody holds it.** When nobody who reaches the property holds the permission the alert goes on exactly as it does with an audience: the stage is claimed (sent once), the e-mail goes to the address of
+  the organization, the cockpit lists the day; only nobody is told in the app, and the log says once, with ids and no name, that nobody who reaches the property holds the permission. A job built without
+  the evaluation of permissions (it is registered in the application) tells nobody for such an audience and says so in the log: a permission is never taken as held.
+- **The declaration of a day is not an alert.** The live refresh of § 18 (`ticino-notification-declared`, `swiss-notification-declared`) is the refresh of what a co-host did and keeps reaching every host
+  of the property, whatever the permission: it makes the open cockpit pages read again.
 - **No «To do» and no popup of the router**: the cockpit lists the day in its own section (`ticinoNotifications`), outside the feed of the «To do» on purpose.
 - **Privacy.** The text names the property, the arrival day, the deadline and the **types** of field the data of the day miss: the codes of `TicinoMissing` (`firstName`, `lastName`,
   `birthDate`, `nationality`, `documentType`, `guests`) and `structureId` (the identifier of the structure is not entered), translated. Never the name of a guest, a value, a document
@@ -169,9 +234,10 @@ read from the same service, so a day closed meanwhile sends nothing. `DueAtUtc` 
 
 ## 11. Configuration of the alerts
 
+The flag `Features__TicinoNotificationAlerts` is in § 2. The thresholds:
+
 | Variable | Default | Meaning |
 |---|---|---|
-| `Features__TicinoNotificationAlerts` | `false` | The flag |
 | `Compliance__TicinoArrivalAlertDelayHours` | `2` | Hours after the first expected check-in for stage 1 |
 | `Compliance__TicinoArrivalAlertDefaultHourLocal` | `18` | Hour (0-23) of stage 1 when no stay of the day has an expected check-in |
 | `Compliance__TicinoDueWarningHours` | `6` | Hours before the deadline for stage 2 |
@@ -193,8 +259,9 @@ SELECT "Type", count(*) FROM casazen_test."InAppNotifications"
 WHERE "Type" IN ('ticino-notification-due', 'ticino-notification-overdue') AND "CreatedAt" > now() - interval '7 days' GROUP BY 1;
 ```
 
-- **Turn it on (test only, on the product owner's order)**: `Features__TicinoNotificationAlerts=true` on the `test` environment (the change redeploys). Properties of canton Ticino need
-  a municipality of the canton (`Property.SwissMunicipalityCode`) and the structure identifier; a day needs a stay that arrived and neither a receipt of the portal nor a declaration (§ 14).
+- **Turn it on (test only, on the product owner's order)**: `Features__TicinoNotificationAlerts=true` on the `test` environment (the change redeploys). A property is of canton Ticino when the
+  resolver places it there (§ 1.1: the municipality the host stored, **or** the one its postal code and city give; with neither, the property is not in Ticino and no day is listed); its file needs the structure
+  identifier (a day whose property has none is alerted all the same, and the alert says the identifier is missing, § 10); a day needs a stay that arrived and neither a receipt of the portal nor a declaration (§ 14).
 - **Roll back**: set the flag off (or unset it): the next run reads and sends nothing. The state rows are harmless; to start over for a day delete its row
   (`DELETE FROM casazen_test."ComplianceAlertStates" WHERE "Type" = 4 AND "PropertyId" = '<id>' AND "ReferenceKey" = 'yyyy-MM-dd';`), which makes the stages due at that moment go out once more.
   No migration: `ComplianceAlertStates.Type` is an integer with no CHECK, and value 4 is new.
@@ -205,8 +272,8 @@ WHERE "Type" IN ('ticino-notification-due', 'ticino-notification-overdue') AND "
 `ComplianceAlertKind`, `ComplianceAlertStage`), `Casazen.Core/Services/ComplianceAlertSchedule.Ticino.cs` (the rules), `Casazen.Core/Options/ComplianceOptions.cs`,
 `Casazen.Core/Features/FeatureFlags.cs`, `Casazen.Core/Services/IPushNotificationService.cs` (`PushTypes.TicinoNotificationDue|Overdue`),
 `Casazen.Infrastructure/Services/ComplianceAlertService.Ticino.cs` (the run), `Casazen.Infrastructure/Services/NotificationService.cs`,
-`Casazen.Infrastructure/Email/Templates/EmailTemplates.TicinoNotification.cs`. Tests: `ComplianceAlertTicinoTests` (the schedule with the two daylight saving changes, each stage once,
-a closed day stops the alerts, another org is never alerted, flag off sends nothing, the payload holds no personal data, the registration with `ValidateScopes`, the enumerations of
+`Casazen.Infrastructure/Email/Templates/EmailTemplates.TicinoNotification.cs`, and for who is told (§ 10) `ComplianceAlertAudience` (`IComplianceAlertService.cs`), `ComplianceAlertRecipientResolver`, `HostNotificationAudience.HoldingAsync`, `PushAudience.RequiredPermission`, `PushDeliveryJob` and `InAppNotificationJob`. Tests: `ComplianceAlertAudienceTests` (the real services: the collaborator without the license is not told, the Italian alert still tells it, the administrator, the manager and the person in charge who hold it are, a collaborator «Solo alcuni» with the license only for a property it was given, a deactivated member never, the phone and the bell tell the same people, a job without the evaluation tells nobody), `ComplianceAlertTicinoTests` (the schedule with the two daylight saving changes, each stage once,
+a closed day stops the alerts, another org is never alerted, flag off sends nothing, the payload holds no personal data, nobody holds the license and the alert goes on, the registration with `ValidateScopes`, the enumerations of
 `ComplianceAlertType` and `PushTypes`).
 
 ## 14. The declaration «I uploaded the file» and the one rule of a closed day
@@ -339,9 +406,7 @@ Ticino is one of 28 regimes: Italy, the 26 cantons and the Swiss place nobody kn
 what CasaZen does (catalog and rules: [`docs/compliance/guest-registration-switzerland.md`](../compliance/guest-registration-switzerland.md)). `IGuestRegistrationRegimeResolver` decides which one a
 property is under (country, then the canton the place resolver gives, then the catalog), and the Ticino code above keeps working: it reads the same canton from the same resolver.
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `Features__GuestRegistrationRegimes` | `false` | The flag |
+The flag `Features__GuestRegistrationRegimes` is defined in § 2 (the card, the assisted notification of § 26 and the register of § 25 are behind it).
 
 - **Behind the flag.** `GET api/properties/{id}/guest-registration` → `{ regime, effectiveDuty, override, place, identifierMissing }` and `PUT` the same route with `{ "override": "Required" | "NotRequired" | null }`
   (the permissions `property.read` and `property.write`, the row check of the property: another org's property is a 404, one outside the caller's scope a 403; the member `override` must be in the body).
@@ -394,9 +459,7 @@ The host's own record of its guests for a period, as a clean table to keep and t
 from for the cantons that notify on a portal. It is the same for **every Swiss regime, Ticino included**; an Italian property has none (its register is the Alloggiati file). CasaZen writes a table and
 gives **no legal advice**: how long the host keeps it is the hint of the regime (§ 21), not a rule of the file. It sends nothing to anybody and never stores the file.
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `Features__GuestRegistrationRegimes` | `false` | The flag of § 21: off, both endpoints answer 404 `not_found` before authentication |
+Behind the flag `Features__GuestRegistrationRegimes` (§ 2): off, both endpoints answer 404 `not_found` before authentication.
 
 - **The endpoints** (`SwissComplianceController`, under `api/properties/{propertyId}/swiss`):
   - `GET guest-register?from=&to=&format=csv`: the file. `from` and `to` are required (`yyyy-MM-dd`), both days **included**, by the **arrival day** of the stay; at most **366 days**, both ends counted
@@ -453,7 +516,7 @@ FROM casazen_test."SwissNotificationFileEvents" WHERE "Format" = 'register' ORDE
 In a canton other than Ticino whose regime (§ 21) is an **obligation to report to an authority** and for which CasaZen's support is the assisted notification (today Basel-Stadt, Fribourg, Geneva, Neuchâtel,
 Nidwalden, Schaffhausen, Thurgau, Zug and Zurich: `SwissAssistedNotification.Covers`) CasaZen prepares what the host needs and watches the deadline, and **transmits nothing** (decision D1): the host copies the data onto the
 official portal of the canton (or sends the paper, the e-mail, the way the canton asks) and **declares the day notified**. A canton that only asks the host to keep a register is the register's (E31/F01), whatever the
-host says; Ticino keeps its own flow (§ 1-20) and never appears here. The whole of it is behind **`Features:GuestRegistrationRegimes`** (off by default); the alerts need `Features:TicinoNotificationAlerts` as well.
+host says; Ticino keeps its own flow (§ 1-20) and never appears here. The whole of it is behind **`Features:GuestRegistrationRegimes`**; the alerts need `Features:TicinoNotificationAlerts` as well (both flags: § 2).
 
 - **Which days are raised.** A day is listed (cockpit, alerts) only when **all** of this holds: the flag is on; the property is Swiss and the one resolver (`IGuestRegistrationRegimeResolver`, § 21) puts it under a covered
   regime; its **effective duty is `Required`** (the host said so with the setting of § 21, or the regime is verified as covering private rentals: today Schaffhausen and Zug), never `Ask` or `NotRequired`; and a stay arrived
@@ -489,8 +552,8 @@ host says; Ticino keeps its own flow (§ 1-20) and never appears here. The whole
   regime**, once each (state row of `ComplianceAlertStates` with the arrival day as reference, the type tells it from the Ticino rows), `ComplianceAlertSchedule.DueSwissStep`, which is `DueTicinoStep` with the Swiss type and
   kinds: the arrival day (two hours after the first expected check-in, else 18:00, never after 23:00), six hours before the deadline, the deadline, then at most two reminders 24 hours apart. The thresholds are the **same
   five options** `Compliance:Ticino*` (§ 11): no new configuration. Where the deadline is the arrival (`AtArrival`) a day whose arrival is recorded is overdue from that moment, so its first alert is the overdue one, at
-  the first hourly run after it. Push types `swiss-notification-due` and `swiss-notification-overdue`, the same audience, channels, privacy and bell entry as § 10 (the property as `entityId`); e-mail to the contact address of
-  the org; the text names the property, the day, the deadline and the types of field that miss, **never a guest**, and says «autorità cantonale» (no supplier is named). **Italian and English only**
+  the first hourly run after it. Push types `swiss-notification-due` and `swiss-notification-overdue`, the same audience (the hosts who also hold `alloggiati.submit`, the permission that declares the day, `ComplianceAlertAudience`), channels, privacy and bell entry as § 10 (the property as `entityId`); e-mail to the contact address of
+  the org (it is not a person: not narrowed); the text names the property, the day, the deadline and the types of field that miss, **never a guest**, and says «autorità cantonale» (no supplier is named). **Italian and English only**
   (`SwissNotification*` of `EmailTexts.resx` and `.en.resx`): `EmailTextsParityTests` allows the guest languages to hold only the guest check-in texts, and a host alert is never sent in them. No «To do», no popup.
 - **Checking.** `SELECT "PropertyId", "ReferenceKey", "Stage", "AlertCount", "LastAlertAt" FROM casazen_test."ComplianceAlertStates" WHERE "Type" = 5 ORDER BY "UpdatedAt" DESC LIMIT 50;` and the declarations with
   `"RegimeCode" IS NOT NULL` (§ 20). The bell entries: `"Type" IN ('swiss-notification-due', 'swiss-notification-overdue', 'swiss-notification-declared')`.

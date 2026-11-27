@@ -187,7 +187,75 @@ public class DemoShowcaseTests
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
         Assert.Contains(DemoShowcaseCatalog.Properties, p => p.Publish);
         Assert.Contains(DemoShowcaseCatalog.Properties, p => p.Key == DemoShowcaseCatalog.DraftKey && !p.Publish);
-        Assert.All(DemoShowcaseCatalog.Properties, p => Assert.Equal(6, p.Place.IstatCode.Length));
+        // Every Italian house has the six digits of its ISTAT comune; the one Swiss flat (Scenario.SwissGuestRegistration) has none, as a Swiss property never has an Italian comune.
+        Assert.All(DemoShowcaseCatalog.Properties.Where(p => p.Swiss is null), p => Assert.Equal(6, p.Place.IstatCode.Length));
+        Assert.All(DemoShowcaseCatalog.Properties.Where(p => p.Swiss is not null), p => Assert.Equal((string.Empty, string.Empty), (p.Place.IstatCode, p.Place.RegionCode)));
+    }
+
+    /// <summary>
+    /// casazen/backend#979 (E29-E31), the demo rule: the showcase has ONE Swiss flat, in Lugano, and a confirmed stay of yesterday that exercises the Swiss flow: two adults with the data of the
+    /// Swiss file (a head with a Swiss home and a Swiss identity card, a family member with a foreign passport), the document of each adult, guests at example.com, numbers that say TEST and the TEST
+    /// structure number of the Ticino portal. The two older flats of Ticino stay Italian-model properties of the agency scenario, as they were.
+    /// </summary>
+    [Fact]
+    public void SwissGuestRegistration_TheDemoHasOneSwissFlat_WithAStayOfYesterdayWhoseAdultsCarryTheSwissFile()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.SwissGuestRegistration, DemoShowcaseCatalog.Scenarios);
+        var flat = Assert.Single(DemoShowcaseCatalog.Properties, p => p.Swiss is not null);
+        Assert.Equal(DemoShowcaseCatalog.SwissFlatKey, flat.Key);
+        Assert.Equal([DemoShowcaseCatalog.Scenario.SwissGuestRegistration], flat.Scenarios);
+        Assert.Equal((RentalMode.Short, true), (flat.Mode, flat.Publish));
+        Assert.Equal(("Lugano", "6900"), (flat.Place.City, flat.Place.PostalCode));
+        Assert.Null(flat.Cadastral);
+
+        // A TEST structure number that is valid under the real check the file and the activation use.
+        var structure = flat.Swiss!.TicinoStructureId;
+        Assert.Equal(DemoShowcaseCatalog.SwissFlatStructureId, structure);
+        Assert.True(TicinoStructureId.IsValid(structure));
+        Assert.Equal(structure, TicinoStructureId.Normalize(structure));
+        Assert.Contains("TEST", structure, StringComparison.Ordinal);
+
+        // The stay: confirmed, arrived yesterday, a booking of the booking site paid at the property (nothing reaches Stripe), at example.com.
+        var stay = Assert.Single(flat.Bookings);
+        Assert.Equal(DemoShowcaseCatalog.Scenario.SwissGuestRegistration, stay.Scenario);
+        Assert.Equal((BookingStatus.Confirmed, -1, BookingSource.Direct, PaymentOption.OnSite), (stay.Status, stay.CheckInOffsetDays, stay.Source, stay.PaymentOption));
+        Assert.EndsWith("@example.com", stay.Email, StringComparison.Ordinal);
+        Assert.False(stay.NoShow);
+        Assert.Null(stay.Ota);
+        Assert.Null(stay.Compliance);
+
+        // Two adults, a head of family and a family member, a valid composition; each has a Swiss file's data: a document that says TEST, a place of birth and a nationality, and the Swiss home.
+        var guests = Assert.IsAssignableFrom<IReadOnlyList<DemoStayGuestTemplate>>(stay.Guests);
+        Assert.Equal([StayGuestType.HeadOfFamily, StayGuestType.FamilyMember], guests.Select(g => g.Type));
+        Assert.Empty(AlloggiatiRecordRules.CompositionErrors(guests.Select(g => g.Type).ToList()));
+        Assert.All(guests, g =>
+        {
+            Assert.True(g.AgeAtCheckIn >= TicinoPoliceFile.AdultAge);
+            var swiss = Assert.IsType<DemoSwissGuestTemplate>(g.Swiss);
+            Assert.Contains("TEST", swiss.DocumentNumber, StringComparison.Ordinal);
+            Assert.False(string.IsNullOrWhiteSpace(swiss.DocumentIssuePlaceName));
+            Assert.Equal(("Bahnhofstrasse 12", "8001", "Zürich", "Svizzera"), (swiss.Home.Street, swiss.Home.PostalCode, swiss.Home.City, swiss.Home.CountryName));
+            // The file reads the states by name: each one is a state the table of the file knows.
+            Assert.NotNull(TicinoCountryCodes.FromCheckIn(null, swiss.CitizenshipName));
+            Assert.NotNull(TicinoCountryCodes.FromCheckIn(null, swiss.BirthCountryName));
+            Assert.Equal("CHE", TicinoCountryCodes.FromCheckIn(null, swiss.Home.CountryName));
+        });
+        Assert.Equal("CHE", TicinoCountryCodes.FromCheckIn(null, guests[0].Swiss!.CitizenshipName));
+        Assert.Equal(GuestDocumentType.IdentityCard, guests[0].Swiss!.DocumentType);
+        Assert.NotEqual("CHE", TicinoCountryCodes.FromCheckIn(null, guests[1].Swiss!.CitizenshipName));
+        Assert.Equal(GuestDocumentType.Passport, guests[1].Swiss!.DocumentType);
+
+        // Decision D6: no image of a document is kept for a Swiss property: no check-in session of the showcase is about this stay.
+        Assert.DoesNotContain(DemoShowcaseCatalog.CheckIns, c => c.PropertyKey == flat.Key || c.BookingKey == stay.Key);
+
+        // The two older flats of Ticino are not touched: Italian-model properties with the invented ISTAT codes, for the agency scenario only.
+        foreach (var key in new[] { "villa-lugano", "chalet-locarno" })
+        {
+            var older = Assert.Single(DemoShowcaseCatalog.Properties, p => p.Key == key);
+            Assert.Null(older.Swiss);
+            Assert.Equal([DemoShowcaseCatalog.Scenario.AgencyPropertiesCrossRegion], older.Scenarios);
+            Assert.StartsWith("9999", older.Place.IstatCode, StringComparison.Ordinal);
+        }
     }
 
     /// <summary>

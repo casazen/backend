@@ -657,7 +657,7 @@ public class TicinoPilotScenarioTests
 
         /// <summary>The pushes of the alerts of the 24 hours that go to the hosts of the flat <paramref name="propertyId"/>, in the order they were queued.</summary>
         private List<QueuedPushRecord> AlertPushesOf(Guid propertyId) =>
-            AlertPushes().Where(p => p.Audience.Equals(PushAudience.PropertyHosts(propertyId))).ToList();
+            AlertPushes().Where(p => p.Audience.Equals(PushAudience.PropertyHosts(propertyId, ComplianceAlertAudience.AlloggiatiSubmit))).ToList();
 
         /// <summary>What the families type on the page of the check-in, in one text: the control that every term of <see cref="GuestData"/> finds it.</summary>
         private const string TypedByTheGuests =

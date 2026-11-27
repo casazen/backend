@@ -18,6 +18,15 @@ public sealed class QueuedPush
     /// <summary>The user of a <see cref="PushAudienceKind.User"/> audience; <c>null</c> for the others (and for a job queued before it existed).</summary>
     public string? AudienceUserId { get; set; }
 
+    /// <summary>
+    /// The context of the permission the hosts of a <see cref="PushAudienceKind.PropertyHosts"/> audience must also hold (<see cref="PushAudience.RequiredPermission"/>): <c>short-rent</c>
+    /// for the alerts of the notification of the guests to the police. <c>null</c> for every other push, and for a job queued before it existed (no narrowing).
+    /// </summary>
+    public string? AudiencePermissionContext { get; set; }
+
+    /// <summary>The permission itself (<c>alloggiati.submit</c>); <c>null</c> with <see cref="AudiencePermissionContext"/>.</summary>
+    public string? AudiencePermissionKey { get; set; }
+
     public string Title { get; set; } = string.Empty;
 
     public string Body { get; set; } = string.Empty;
@@ -36,13 +45,19 @@ public sealed class QueuedPush
     /// <summary>The category of notification the app registered (<c>categoryId</c>); <c>null</c> for the others (and for a job queued before it existed).</summary>
     public string? CategoryId { get; set; }
 
-    public PushAudience ToAudience() => new(AudienceKind, AudienceId, AudienceUserId);
+    public PushAudience ToAudience() => new(
+        AudienceKind,
+        AudienceId,
+        AudienceUserId,
+        AudiencePermissionContext is { Length: > 0 } context && AudiencePermissionKey is { Length: > 0 } key ? new NotificationPermission(context, key) : null);
 
     public static QueuedPush From(PushAudience audience, PushNotificationPayload payload) => new()
     {
         AudienceKind = audience.Kind,
         AudienceId = audience.Id,
         AudienceUserId = audience.UserId,
+        AudiencePermissionContext = audience.RequiredPermission?.ContextKey,
+        AudiencePermissionKey = audience.RequiredPermission?.PermissionKey,
         Title = payload.Title,
         Body = payload.Body,
         Type = payload.Type,

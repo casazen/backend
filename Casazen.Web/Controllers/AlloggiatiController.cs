@@ -234,6 +234,18 @@ public class AlloggiatiController(
     /// <c>guest.read</c> only; every request is logged with the user and the positions (audit), never the numbers.
     /// <paramref name="position"/> limits the answer to one guest.
     /// </summary>
+    /// <remarks>
+    /// <para><b>Whose number.</b> The single guests and the heads of the stay (<see cref="AlloggiatiRecordRules.RequiresDocument"/>) and, in a stay of a property in canton Ticino
+    /// (NF-132), every <b>adult</b> family or group member the police file notifies on their own row, whose document the Ticino check-in stores: the host's edit dialog fills each guest by
+    /// <c>position</c> from this answer, so the number of the second adult is no longer typed again (<see cref="IStayGuestService.GetDocumentNumberPositionsAsync"/>, the predicate the check-in
+    /// and the save of the guests use). Any other stay answers exactly what it always did: an Italian stay, and a stay of another canton, only its single guests and heads.</para>
+    /// <para><b>Never</b> the number of a minor family or group member, of a guest with no number stored, or of a member of a group of six or more (only its leader is a row). The same policy,
+    /// the same check of the booking and of its org (<c>AuthorizeBookingAsync</c>: a booking of another org is a 404, one the caller may not read a 403) and the same audit line as before: the
+    /// user, the booking and the <b>positions</b>, never a number.</para>
+    /// <para>The summary of the guests (<see cref="AlloggiatiGuestSummaryDto"/>) is unchanged: it asks this answer when one of its rows <c>requiresDocument</c> and has a masked number
+    /// (the head of a stay, whose number the Ticino check-in always stores); the row of a member keeps <c>requiresDocument</c> false and no masked number, and the dialog reads its kind, its place
+    /// of issue and its masked number from the guest of the check-in wizard of the same position.</para>
+    /// </remarks>
     [HttpGet("{bookingId:guid}/stay-guests/document-numbers")]
     [Authorize(Policy = CasazenPolicies.GuestRead)]
     public async Task<ActionResult<IEnumerable<StayGuestDocumentNumberDto>>> GetDocumentNumbers(
@@ -245,9 +257,10 @@ public class AlloggiatiController(
             return denied;
 
         var guests = await stayGuestService.GetForBookingAsync(booking!, HttpContext.RequestAborted);
+        var withNumber = await stayGuestService.GetDocumentNumberPositionsAsync(booking!, guests, HttpContext.RequestAborted);
         var numbers = guests
             .Where(g => position is null || g.Position == position)
-            .Where(g => AlloggiatiRecordRules.RequiresDocument(g.Type) && !string.IsNullOrWhiteSpace(g.DocumentNumber))
+            .Where(g => withNumber.Contains(g.Position) && !string.IsNullOrWhiteSpace(g.DocumentNumber))
             .Select(g => new StayGuestDocumentNumberDto
             {
                 Position = g.Position,
