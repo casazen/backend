@@ -3,20 +3,19 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// DB-03 on real PostgreSQL: the <c>AddDirectBookingPublicData</c> migration adds <c>Properties.MinNights</c> (null = no
-/// minimum), <c>Properties.WeekendSurchargePercent</c> (0 = no surcharge) with a CHECK each, and <c>Orgs.Subtitle</c>,
-/// <c>Orgs.HostName</c>, <c>Orgs.PublicPhone</c> (null = nothing published). The rows that existed before it are written with
-/// SQL that names only the columns of that time (<see cref="LegacyOrgRows"/>, <see cref="LegacyPropertyRows"/>): the model also
-/// writes the columns of this migration and of the ones that come after. Every existing row must come out with the values that
-/// change nothing, and a writer that does not know the columns (the old release during a deploy) must keep working.
+/// DB-03 on real PostgreSQL, on the schema as it is now (a copy of the migrated template): <c>Properties.MinNights</c> (null = no
+/// minimum) and <c>Properties.WeekendSurchargePercent</c> (0 = no surcharge) have a CHECK each, <c>Orgs.Subtitle</c>,
+/// <c>Orgs.HostName</c> and <c>Orgs.PublicPhone</c> (null = nothing published) have the types the model maps, a writer that does
+/// not know the columns still inserts with the defaults, and the model saves and reads everything back. The rows are written with
+/// SQL that names only the columns of the first tables (<see cref="LegacyOrgRows"/>, <see cref="LegacyPropertyRows"/>). The
+/// defaults that the <c>AddDirectBookingPublicData</c> migration gave to the rows that existed, and its revert, ran when the
+/// release that carried it went to production: they are not replayed any more.
 /// </summary>
 public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
 {
@@ -24,7 +23,7 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
 
     private PostgresTestDatabase? _database;
 
-    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateAsync();
+    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateMigratedAsync();
 
     public async Task DisposeAsync()
     {
@@ -33,47 +32,9 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
     }
 
     [PostgresFact]
-    public async Task Migration_ExistingRows_GetTheDefaultsThatChangeNothingAndKeepEverythingElse()
-    {
-        var org = Guid.NewGuid();
-        var withRate = Guid.NewGuid();
-        var longTerm = Guid.NewGuid();
-        await using (var db = _database!.CreateContext())
-        {
-            await _database!.MigrateEmptyToAsync(PreviousMigration(db));
-            await InsertOrgAsync(db, org);
-            await InsertPropertyAsync(db, withRate, org, "Casa al mare", maxGuests: 4, nightlyRate: 187.50m);
-            await InsertPropertyAsync(db, longTerm, org, "Locato", maxGuests: 0, nightlyRate: 0m);
-            await db.Database.MigrateAsync();
-        }
-
-        await using var after = _database.CreateContext();
-        var properties = await after.Properties.IgnoreQueryFilters().AsNoTracking().Where(p => p.OrgId == org).OrderBy(p => p.Name).ToListAsync();
-        Assert.Equal(2, properties.Count);
-        Assert.All(properties, p =>
-        {
-            Assert.Null(p.MinNights);
-            Assert.Equal(0m, p.WeekendSurchargePercent);
-            Assert.Equal(UpdatedAt, p.UpdatedAt);
-        });
-        var house = properties.Single(p => p.Id == withRate);
-        Assert.Equal(187.50m, house.NightlyRate);
-        Assert.Equal(4, house.MaxGuests);
-        Assert.Equal(45.464211m, house.Latitude);
-
-        var stored = await after.Orgs.IgnoreQueryFilters().AsNoTracking().SingleAsync(o => o.Id == org);
-        Assert.Null(stored.Subtitle);
-        Assert.Null(stored.HostName);
-        Assert.Null(stored.PublicPhone);
-        Assert.Equal("Org DB-03", stored.DisplayName);
-        Assert.Empty(await after.Database.GetPendingMigrationsAsync());
-    }
-
-    [PostgresFact]
     public async Task Migration_NewColumns_AreThere_WithTheTypesTheModelMaps()
     {
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
 
         var rows = await db.Database
             .SqlQuery<string>($"""
@@ -104,7 +65,6 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
     {
         // The old release keeps running during a deploy: its INSERTs name neither column, and the defaults satisfy the CHECKs.
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
         var org = Guid.NewGuid();
         var property = Guid.NewGuid();
         await InsertOrgAsync(db, org);
@@ -188,7 +148,6 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
     {
         // The whole path through the model: the entities write the new columns, the CHECKs and the lengths hold.
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
         var org = new OrgEntity
         {
             Name = "Org DB-03",
@@ -230,36 +189,6 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
         Assert.Equal("+393331234567", storedOrg.PublicPhone);
     }
 
-    [PostgresFact]
-    public async Task Migration_DownThenUp_DropsAndRestoresTheColumnsAndTheConstraints()
-    {
-        var org = Guid.NewGuid();
-        var property = Guid.NewGuid();
-        await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
-        await InsertOrgAsync(db, org);
-        await InsertPropertyAsync(db, property, org, "Casa", maxGuests: 2, nightlyRate: 90m);
-        await db.Database.ExecuteSqlAsync($"""UPDATE "Properties" SET "MinNights" = 2, "WeekendSurchargePercent" = 10 WHERE "Id" = {property}""");
-
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
-        var columns = await db.Database
-            .SqlQuery<string>($"""SELECT column_name::text AS "Value" FROM information_schema.columns WHERE table_name IN ('Properties', 'Orgs')""")
-            .ToListAsync();
-        var constraints = await db.Database
-            .SqlQuery<string>($"""SELECT conname::text AS "Value" FROM pg_constraint WHERE conname LIKE 'CK_Properties_%'""")
-            .ToListAsync();
-        Assert.DoesNotContain("MinNights", columns);
-        Assert.DoesNotContain("WeekendSurchargePercent", columns);
-        Assert.DoesNotContain("PublicPhone", columns);
-        Assert.DoesNotContain("CK_Properties_MinNights", constraints);
-        Assert.DoesNotContain("CK_Properties_WeekendSurchargePercent", constraints);
-
-        await db.Database.MigrateAsync();
-        var restored = await db.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == property);
-        Assert.Null(restored.MinNights);
-        Assert.Equal(0m, restored.WeekendSurchargePercent);
-    }
-
     // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
 
     private async Task<Guid> MigratedPropertyAsync()
@@ -267,7 +196,6 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
         var org = Guid.NewGuid();
         var property = Guid.NewGuid();
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
         await InsertOrgAsync(db, org);
         await InsertPropertyAsync(db, property, org, "Casa", maxGuests: 2, nightlyRate: 90m);
         return property;
@@ -305,13 +233,4 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
             NightlyRate = nightlyRate,
             UpdatedAt = UpdatedAt,
         });
-
-    private static string PreviousMigration(AppDbContext db)
-    {
-        var all = db.Database.GetMigrations().ToList();
-        var index = all.FindIndex(m => m.EndsWith("_AddDirectBookingPublicData", StringComparison.Ordinal));
-        Assert.True(index > 0, "AddDirectBookingPublicData migration not found.");
-        return all[index - 1];
-    }
-
 }

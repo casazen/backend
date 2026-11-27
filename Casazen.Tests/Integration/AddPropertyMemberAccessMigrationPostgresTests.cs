@@ -1,50 +1,26 @@
-using Casazen.Core.Authorization;
-using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// AM-03 on a real PostgreSQL database: the migration <c>AddPropertyMemberAccess</c>. It adds the grants table with its
-/// unique index and its delete rules, the person in charge of a property, and the three finer permissions to the roles that
-/// already did the work (the owner and the property manager hold exactly what they held, the collaborator gets the
-/// interventions); and its rollback takes away what it added and nothing else.
+/// AM-03 on a real PostgreSQL database, on the schema as it is now (a copy of the migrated template): the grants table of the
+/// <c>AddPropertyMemberAccess</c> migration has its unique index and its delete rules, and so does the column of the person in charge
+/// of a property. Which finer permissions the migration added to the roles that already did the work, and its revert, ran when the
+/// release that carried it went to production: they are not replayed any more.
 /// </summary>
 public class AddPropertyMemberAccessMigrationPostgresTests : IAsyncLifetime
 {
     private PostgresTestDatabase? _database;
 
-    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateAsync();
+    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateMigratedAsync();
 
     public async Task DisposeAsync()
     {
         if (_database is not null)
             await _database.DisposeAsync();
     }
-
-    private static string PreviousMigration(AppDbContext db)
-    {
-        var all = db.Database.GetMigrations().ToList();
-        var index = all.FindIndex(m => m.EndsWith("_AddPropertyMemberAccess", StringComparison.Ordinal));
-        Assert.True(index > 0);
-        return all[index - 1];
-    }
-
-    /// <summary>This migration's own id: the test migrates up to it, not to the latest, so a later migration that seeds a permission
-    /// (AM-02c: <c>org.suppliers.manage</c> for the role 13) is not counted as something this one added.</summary>
-    private static string ThisMigration(AppDbContext db) =>
-        db.Database.GetMigrations().Single(m => m.EndsWith("_AddPropertyMemberAccess", StringComparison.Ordinal));
-
-    private static async Task<List<(int RoleId, string Permission)>> PermissionsAsync(AppDbContext db) =>
-        (await db.RolePermissions.AsNoTracking().Select(p => new { p.RoleId, p.PermissionKey }).ToListAsync())
-        .Select(p => (p.RoleId, p.PermissionKey))
-        .OrderBy(p => p.RoleId).ThenBy(p => p.PermissionKey, StringComparer.Ordinal)
-        .ToList();
 
     private async Task<string> TextAsync(string sql)
     {
@@ -55,49 +31,9 @@ public class AddPropertyMemberAccessMigrationPostgresTests : IAsyncLifetime
         return Convert.ToString(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
     }
 
-    /// <summary>The rows the migration adds: the three permissions to the owner and the property manager, one to the collaborator.</summary>
-    private static List<(int RoleId, string Permission)> AddedRows()
-    {
-        const int shortRentOwner = 1;
-        const int shortRentPropertyManager = 7;
-        const int shortRentCollaborator = 9;
-        var rows = new List<(int, string)>();
-
-        // The approval permission is one of ShortRentFine since E05/F04/US01/T01, but a later migration adds it (AddApprovalDecisionAndOriginAction):
-        // this one added the three of AM-03 and no more.
-        foreach (var permission in HostPermissions.ShortRentFine.Where(p => p != HostPermissions.ApprovalDecide))
-        {
-            rows.Add((shortRentOwner, permission));
-            rows.Add((shortRentPropertyManager, permission));
-        }
-
-        rows.Add((shortRentCollaborator, HostPermissions.ServiceRequestWrite));
-        return rows;
-    }
-
-    [PostgresFact]
-    public async Task Migrate_Up_AddsExactlyTheFinePermissions_AndKeepsEveryOtherOne()
-    {
-        await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
-        var before = await PermissionsAsync(db);
-
-        // Up to this migration only: the rows that appear are the ones this migration writes, whatever later ones seed.
-        db.GetService<IMigrator>().Migrate(ThisMigration(db));
-
-        db.ChangeTracker.Clear();
-        var after = await PermissionsAsync(db);
-        Assert.Equal(AddedRows().Order().ToList(), after.Except(before).Order().ToList());
-        Assert.Empty(before.Except(after));
-        Assert.DoesNotContain(ThisMigration(db), await db.Database.GetPendingMigrationsAsync());
-    }
-
     [PostgresFact]
     public async Task Migrate_Up_TheGrantsTableAndTheColumnAreThereWithTheirRules()
     {
-        await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
-
         Assert.Equal("1", await TextAsync("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'PropertyMemberAccesses'"));
         Assert.Equal(
             "YES",
@@ -112,24 +48,5 @@ public class AddPropertyMemberAccessMigrationPostgresTests : IAsyncLifetime
         Assert.Equal("c", await TextAsync("SELECT confdeltype FROM pg_constraint WHERE conname = 'FK_PropertyMemberAccesses_Users_UserId'"));
         Assert.Equal("r", await TextAsync("SELECT confdeltype FROM pg_constraint WHERE conname = 'FK_PropertyMemberAccesses_Orgs_OrgId'"));
         Assert.Equal("n", await TextAsync("SELECT confdeltype FROM pg_constraint WHERE conname = 'FK_Properties_Users_ResponsibleUserId'"));
-    }
-
-    [PostgresFact]
-    public async Task Migrate_Down_RemovesWhatItAdded_AndNothingElse()
-    {
-        await using var db = _database!.CreateContext();
-        var previous = PreviousMigration(db);
-        db.GetService<IMigrator>().Migrate(previous);
-        var before = await PermissionsAsync(db);
-        await db.Database.MigrateAsync();
-
-        db.GetService<IMigrator>().Migrate(previous);
-
-        db.ChangeTracker.Clear();
-        Assert.Equal(before, await PermissionsAsync(db));
-        Assert.Equal("0", await TextAsync("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'PropertyMemberAccesses'"));
-        Assert.Equal(
-            "0",
-            await TextAsync("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'Properties' AND column_name = 'ResponsibleUserId'"));
     }
 }

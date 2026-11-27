@@ -1,20 +1,18 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Migrations;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// SP-05 migration (<see cref="AddSupplierBusyWindowFeedKey"/>) on real PostgreSQL: it applies and reverts, it applies over a table
-/// that already holds windows (the ones set by hand, with no UID, and engagements of a feed), and once applied the index refuses
-/// the same occurrence of a supplier twice while leaving the windows with no UID alone.
+/// SP-05 migration (<c>AddSupplierBusyWindowFeedKey</c>) on real PostgreSQL, on the schema as it is now (a copy of the migrated
+/// template): the index is unique on the supplier, the UID and the start and only covers the windows that have a UID, and it refuses
+/// the same occurrence of a supplier twice while leaving the windows with no UID alone. The apply and revert of the migration, and
+/// its apply over a table that already held windows, ran when the release that carried it went to production: they are not replayed.
 /// </summary>
 public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
 {
@@ -24,7 +22,7 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
 
     private PostgresTestDatabase? _database;
 
-    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateAsync();
+    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateMigratedAsync();
 
     public async Task DisposeAsync()
     {
@@ -33,33 +31,9 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
     }
 
     [PostgresFact]
-    public async Task Migration_AppliesAndRevertsOnARealDatabase()
+    public async Task Index_IsUniqueOnTheSupplierTheUidAndTheStart_AndIsPartial()
     {
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
-        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
-        Assert.Equal(1, await CountIndexesAsync(db));
-
-        await db.GetService<IMigrator>().MigrateAsync(PreviousMigration(db));
-        Assert.Equal(0, await CountIndexesAsync(db));
-
-        await db.Database.MigrateAsync();
-        Assert.Equal(1, await CountIndexesAsync(db));
-    }
-
-    [PostgresFact]
-    public async Task Migration_OverATableThatHoldsWindows_Applies_AndIsPartial()
-    {
-        await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
-        var org = await SeedSupplierAsync(db);
-        // What exists before SP-05: windows set by hand, no UID, even two at the same hour.
-        db.SupplierBusyWindows.Add(Window(org, null, Ten, SupplierBusyWindowKind.Block, SupplierBusyWindowSource.Manual));
-        db.SupplierBusyWindows.Add(Window(org, null, Ten, SupplierBusyWindowKind.Block, SupplierBusyWindowSource.Manual));
-        db.SupplierBusyWindows.Add(Window(org, null, Ten.AddDays(1), SupplierBusyWindowKind.ExtraOpening, SupplierBusyWindowSource.Manual));
-        await db.SaveChangesAsync();
-
-        await db.Database.MigrateAsync();
 
         Assert.Equal(1, await CountIndexesAsync(db));
         var definition = await db.Database
@@ -68,14 +42,12 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
         Assert.Contains("UNIQUE", definition, StringComparison.Ordinal);
         Assert.Contains("(\"OrgId\", \"ExternalUid\", \"StartUtc\")", definition, StringComparison.Ordinal);
         Assert.Contains("WHERE (\"ExternalUid\" IS NOT NULL)", definition, StringComparison.Ordinal);
-        Assert.Equal(3, await db.SupplierBusyWindows.CountAsync());
     }
 
     [PostgresFact]
     public async Task Index_RefusesTheSameOccurrenceOfASupplierTwice_AndNothingElse()
     {
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
         var orgA = await SeedSupplierAsync(db);
         var orgB = await SeedSupplierAsync(db);
         db.SupplierBusyWindows.Add(Window(orgA, "uid", Ten, SupplierBusyWindowKind.External, SupplierBusyWindowSource.ICalFeed));
@@ -103,14 +75,6 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
 
     // ─── helpers ─────────────────────────────────────────────────────────────────
 
-    private static string PreviousMigration(AppDbContext db)
-    {
-        var all = db.Database.GetMigrations().ToList();
-        var index = all.FindIndex(m => m.EndsWith("_AddSupplierBusyWindowFeedKey", StringComparison.Ordinal));
-        Assert.True(index > 0, "AddSupplierBusyWindowFeedKey migration not found.");
-        return all[index - 1];
-    }
-
     private static async Task<int> CountIndexesAsync(AppDbContext db) =>
         (int)await db.Database
             .SqlQuery<long>($"SELECT count(*) AS \"Value\" FROM pg_indexes WHERE indexname = {IndexName}")
@@ -128,8 +92,8 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
             OrgType = OrgType.Supplier,
             PlanTier = PlanTier.Starter,
         };
-        // Plain SQL: the first test seeds on the schema of the migration before this one, which lacks the columns that later
-        // migrations add to the org (DB-03: HostName, PublicPhone, Subtitle) and to the profile (the current model would write them).
+        // Plain SQL: the org and the profile are written with the helpers that name only the columns they need, so a column that
+        // a later migration adds to the org (DB-03: HostName, PublicPhone, Subtitle) or to the profile cannot break this test.
         await LegacyOrgRows.InsertAsync(db, org);
         await db.Database.ExecuteSqlAsync($"""UPDATE "Orgs" SET "OrgType" = {(int)org.OrgType} WHERE "Id" = {org.Id}""");
         await SupplierProfileSql.InsertAsync(db, new SupplierProfile
