@@ -529,6 +529,69 @@ public sealed class DocumentStepSelfHostedTests
         Assert.Equal(Cie.Id, card.FormatId);
     }
 
+    /// <summary>
+    /// IDENT-TILT: a card held crooked is read where the zones of the format are. The picture of the guest is a photo taken by hand, the card in it is turned by some degrees: the box that
+    /// holds it is larger than it and its zones, which are fractions of a card that lies straight, would be out. The reader of the zones (and, through it, the reading of the MRZ band on the
+    /// card) is handed the card levelled and upright, not the picture and not a box cut out of it; the face is looked for in it too, so the portrait is found where the layout puts it.
+    /// </summary>
+    [Theory]
+    [InlineData(4.0)]
+    [InlineData(-6.0)]
+    [InlineData(8.0)]
+    public async Task DocumentStep_TheReaderOfTheZonesIsHandedTheCardLevelled_WhenThePictureIsHeldCrooked(double degrees)
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        var back = Picture(DocumentSide.Back);
+        world.Mrz.Add(back, CieMrz());
+        world.Zoned.Fields[DocumentSide.Front] = FrontFields();
+        Assert.True((await world.Flow().SubmitDocumentAsync(session, new MemoryStream(back), DocumentSide.Back, Ct)).DocumentStored);
+        using var upright = DocumentImageFactory.Render(Cie, DocumentSide.Front, DocumentImageFactory.WholeCard);
+        using var crooked = DocumentImageFactory.Rotated(upright, degrees);
+        var crookedPicture = TestImages.Png(crooked.Width, crooked.Height, crooked.Rgb);
+        world.Zoned.Cards.Clear();
+
+        var result = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(crookedPicture), DocumentSide.Front, Ct);
+
+        // The card is found whole at its angle, the portrait is where the layout says, and the zones are read on a card of the size of the card (the box that holds a card held 8 degrees is 20% larger).
+        Assert.True(result.DocumentStored);
+        Assert.DoesNotContain(IdentityGuidanceCodes.DocumentEdgesNotVisible, result.GuidanceCodes);
+        var card = Assert.Single(world.Zoned.Cards, read => read.Side == DocumentSide.Front);
+        Assert.InRange(card.Width, 470, 495);
+        Assert.InRange(card.Height, 295, 315);
+        Assert.True(card.PortraitIsWhereTheLayoutSaysIt);
+        Assert.Equal(Cie.Id, card.FormatId);
+
+        // The side is kept as the picture the guest sent, with its checks as flags; nothing the card says, and no angle, is in a log or in the record.
+        var saved = ReadCheck(await world.ReadBackAsync(session.Id));
+        Assert.True(saved.Front!.GeometryOk);
+        Assert.Equal("front", saved.Front.ClassifiedSide);
+        foreach (var value in new[] { Surname, GivenNames, DocumentNumber, BirthDay, ExpiryDay })
+            Assert.All(world.Logs, line => Assert.DoesNotContain(value, line, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task DocumentStep_ACardHeldMoreCrookedThanTheLimit_IsRefusedAsAnEdgeThatIsNotVisible_AndNothingOfItIsRead()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        world.Zoned.Fields[DocumentSide.Front] = FrontFields();
+        using var upright = DocumentImageFactory.Render(Cie, DocumentSide.Front, DocumentImageFactory.WholeCard);
+        using var crooked = DocumentImageFactory.Rotated(upright, 12);
+
+        var result = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(TestImages.Png(crooked.Width, crooked.Height, crooked.Rgb)), DocumentSide.Front, Ct);
+
+        // As a card cut by the frame: the guest is asked to show the whole card, it is not an attempt and it counts as a refusal of its side; no zone is read and nothing is kept.
+        Assert.False(result.Acceptable);
+        Assert.Equal([IdentityGuidanceCodes.DocumentEdgesNotVisible], result.GuidanceCodes);
+        Assert.False(result.DocumentStored);
+        var saved = await world.ReadBackAsync(session.Id);
+        Assert.Equal(0, saved.BiometricAttempts);
+        Assert.Equal(new Dictionary<string, int> { ["front"] = 1 }, ReadCheck(saved).Refusals);
+        Assert.Empty(world.Zoned.Cards);
+        Assert.Empty(world.Storage.Objects);
+    }
+
     // ---- D8: a fault never approves -----------------------------------------------------------------------------------------------------------------------------------------
 
     [Fact]
