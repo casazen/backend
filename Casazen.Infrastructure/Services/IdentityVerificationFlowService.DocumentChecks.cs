@@ -55,7 +55,7 @@ public sealed partial class IdentityVerificationFlowService
     /// tool, a test of another task) reads the document as it always did, and a policy or a registry that is registered but cannot be used is a person, never a pass.
     /// </summary>
     private bool DocumentChecksWired =>
-        documentPictures is not null && sideClassifier is not null && coherenceChecker is not null && formats is not null && policies is not null;
+        documentPictures is not null && sideClassifier is not null && coherenceChecker is not null && formats is not null && identityPolicy is not null;
 
     /// <summary>The checks of the self-hosted document step run: the flow is on (<see cref="SelfHostedOn"/>) and its services are there (<see cref="DocumentChecksWired"/>).</summary>
     private bool DocumentStepOn => SelfHostedOn && DocumentChecksWired;
@@ -89,7 +89,7 @@ public sealed partial class IdentityVerificationFlowService
 
     private DocumentStepServices? StepServices()
     {
-        var snapshot = policies?.Snapshot;
+        var snapshot = identityPolicy?.Snapshot;
         if (documentPictures is null || sideClassifier is null || coherenceChecker is null || formats is null || snapshot is null || !snapshot.IsReady)
             return null;
 

@@ -160,7 +160,7 @@ public sealed class IdentityPolicyProvider
     /// <item><description><c>document</c>: <c>maxRecapturesPerSide</c> 0 to 10; <c>identifyingFields</c> 1 to 10 names (a lower case letter then letters and digits, at most 40), none repeated; <c>perceptualDuplicateMaxDistance</c> 0 to 64.</description></item>
     /// <item><description><c>presence.challenge</c>: <c>steps</c> 1 to 10; <c>actions</c> known codes of <c>PresenceActions</c>, none repeated; <c>lifetimeSeconds</c> 1 to <see cref="MaxChallengeLifetimeSeconds"/>; <c>stepMs</c> 1 to 60000; <c>leadInMs</c> 0 to 60000; entropy of at least <see cref="MinChallengeEntropyBits"/> bits.</description></item>
     /// <item><description><c>presence.sequence</c>: <c>targetFps</c> 1 to 60; <c>minFrames</c> and <c>maxFrames</c> 1 to 600, <c>minFrames</c> not above <c>maxFrames</c>; <c>minDurationMs</c> and <c>maxDurationMs</c> 1 to 120000, the first not above the second; <c>maxGapMs</c> 1 to 60000; <c>maxShareWithoutFace</c> 0 to 1; <c>detectorMaxSide</c> 32 to 4096.</description></item>
-    /// <item><description><c>presence.continuity</c>: <c>maxCenterJump</c>, <c>maxSizeChange</c> and <c>minPairSimilarity</c> above 0 and at most 1; <c>pairSamples</c> 1 to 60. <c>presence.pose</c>: the three angles above 0 and at most 90 degrees.</description></item>
+    /// <item><description><c>presence.continuity</c>: <c>maxCenterJump</c>, <c>maxSizeChange</c> and <c>minPairSimilarity</c> above 0 and at most 1; <c>pairSamples</c> 1 to 60; <c>minPixelDifference</c> (the mean difference of the pixels, in grey levels, under which a sequence is a still picture played again) above 0 and at most 255. <c>presence.pose</c>: the three angles above 0 and at most 90 degrees.</description></item>
     /// <item><description><c>presence.liveness</c>: <c>frames</c> 1 to 60 and not above <c>presence.sequence.minFrames</c>; <c>minScore</c> above 0 and at most 1; <c>rule</c> a known code.</description></item>
     /// <item><description><c>match</c>: <c>frames</c> 1 to 20 and not above <c>presence.sequence.minFrames</c>; <c>minFrameGapMs</c> 0 to 60000; <c>randomizeAmongTop</c> 1 to 20; <c>aggregation</c> a known code; <c>accept</c>, <c>reviewFloor</c> and <c>minEachFrame</c> above 0 and at most 1, <c>reviewFloor</c> not above <c>accept</c>.</description></item>
     /// <item><description><c>closure.guidedRetries</c>: 0 to 1.</description></item>
@@ -213,6 +213,7 @@ public sealed class IdentityPolicyProvider
         CheckThreshold(failures, "presence.continuity.maxSizeChange", continuity.MaxSizeChange);
         CheckThreshold(failures, "presence.continuity.minPairSimilarity", continuity.MinPairSimilarity);
         CheckRange(failures, "presence.continuity.pairSamples", continuity.PairSamples, 1, 60);
+        CheckGreyLevels(failures, "presence.continuity.minPixelDifference", continuity.MinPixelDifference);
 
         var pose = policy.Presence.Pose;
         CheckDegrees(failures, "presence.pose.turnMinYawDegrees", pose.TurnMinYawDegrees);
@@ -386,6 +387,13 @@ public sealed class IdentityPolicyProvider
     {
         if (!(value > 0 && value <= 90))
             failures.Add($"{name} must be above 0 and at most 90.");
+    }
+
+    /// <summary>A difference of pixels in grey levels of an 8-bit picture: above 0 and at most 255.</summary>
+    private static void CheckGreyLevels(List<string> failures, string name, double value)
+    {
+        if (!(value > 0 && value <= 255))
+            failures.Add($"{name} must be above 0 and at most 255.");
     }
 
     private static void CheckVersionName(List<string> failures, string name, string? value)

@@ -737,7 +737,7 @@ public sealed class DocumentStepSelfHostedTests
                 sideClassifier: wired ? new DocumentSideClassifier() : null,
                 coherenceChecker: wired ? new DocumentCoherenceChecker() : null,
                 formats: wired ? _formats : null,
-                policies: wired ? _policies : null);
+                identityPolicy: wired ? _policies : null);
         }
 
         /// <summary>A confirmed stay of a booker, with an open check-in session, and the consent to the served text recorded.</summary>

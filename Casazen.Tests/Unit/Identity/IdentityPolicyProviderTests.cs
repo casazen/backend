@@ -22,8 +22,11 @@ internal static class IdentityPolicyTestFiles
 {
     public const string ShippedFileName = "identity-policy-2026.11-1.json";
 
-    /// <summary>The canonical SHA-256 of the committed policy file, computed outside this code base (a script that sorts the members and writes no white space).</summary>
-    public const string ShippedCanonicalHash = "99831295b2352a5e317b84de790531f10f9be8d58aea62296b0a54a70f165aae";
+    /// <summary>
+    /// The canonical SHA-256 of the committed policy file, the one <c>IdentityPolicyProvider.CanonicalSha256</c> gives for it (the message of
+    /// <c>IdentityPolicyFileCoherenceTests</c> names it when the file changes); the pin in <c>appsettings.json</c> is the same value.
+    /// </summary>
+    public const string ShippedCanonicalHash = "d2d343e2bf661f316c8e3e4a91252ecf6c9da1e669766609e9e393978fd04426";
 
     public static string RepositoryRoot()
     {
@@ -117,7 +120,9 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         Assert.Equal((3, 90, 1500, 1000, true), (policy.Presence.Challenge.Steps, policy.Presence.Challenge.LifetimeSeconds, policy.Presence.Challenge.StepMs, policy.Presence.Challenge.LeadInMs, policy.Presence.Challenge.NoImmediateRepeat));
         Assert.Equal(PresenceActions.All, policy.Presence.Challenge.Actions);
         Assert.Equal((8, 20, 60, 3000, 12000, 400, 0.1, 320), (policy.Presence.Sequence.TargetFps, policy.Presence.Sequence.MinFrames, policy.Presence.Sequence.MaxFrames, policy.Presence.Sequence.MinDurationMs, policy.Presence.Sequence.MaxDurationMs, policy.Presence.Sequence.MaxGapMs, policy.Presence.Sequence.MaxShareWithoutFace, policy.Presence.Sequence.DetectorMaxSide));
-        Assert.Equal((0.35, 0.3, 0.5, 5), (policy.Presence.Continuity.MaxCenterJump, policy.Presence.Continuity.MaxSizeChange, policy.Presence.Continuity.MinPairSimilarity, policy.Presence.Continuity.PairSamples));
+        Assert.Equal(
+            (0.35, 0.3, 0.5, 5, 1.0),
+            (policy.Presence.Continuity.MaxCenterJump, policy.Presence.Continuity.MaxSizeChange, policy.Presence.Continuity.MinPairSimilarity, policy.Presence.Continuity.PairSamples, policy.Presence.Continuity.MinPixelDifference));
         Assert.Equal((20.0, 12.0, 15.0), (policy.Presence.Pose.TurnMinYawDegrees, policy.Presence.Pose.LookMinPitchDegrees, policy.Presence.Pose.NeutralMaxDegrees));
         Assert.Equal((5, 0.7, IdentityLivenessRules.AllFrames), (policy.Presence.Liveness.Frames, policy.Presence.Liveness.MinScore, policy.Presence.Liveness.Rule));
         Assert.Equal((3, 300, 2, IdentityAggregationRules.Median, 0.85, 0.7, 0.7), (policy.Match.Frames, policy.Match.MinFrameGapMs, policy.Match.RandomizeAmongTop, policy.Match.Aggregation, policy.Match.Accept, policy.Match.ReviewFloor, policy.Match.MinEachFrame));
@@ -246,6 +251,8 @@ public sealed class IdentityPolicyProviderTests : IDisposable
     [InlineData("presence.sequence.maxShareWithoutFace", "-0.1")]
     [InlineData("presence.continuity.maxCenterJump", "0")]
     [InlineData("presence.continuity.minPairSimilarity", "2")]
+    [InlineData("presence.continuity.minPixelDifference", "0")]
+    [InlineData("presence.continuity.minPixelDifference", "256")]
     [InlineData("presence.pose.turnMinYawDegrees", "91")]
     [InlineData("presence.pose.neutralMaxDegrees", "0")]
     [InlineData("closure.guidedRetries", "2")]
@@ -267,6 +274,7 @@ public sealed class IdentityPolicyProviderTests : IDisposable
     [InlineData("match", null)]
     [InlineData("match.accept", null)]
     [InlineData("presence.challenge.actions", null)]
+    [InlineData("presence.continuity.minPixelDifference", null)]
     [InlineData("provisional", null)]
     [InlineData("extra", "1")]
     [InlineData("match.extra", "true")]
@@ -395,8 +403,8 @@ public sealed class IdentityPolicyProviderTests : IDisposable
     [Theory]
     [InlineData("0000000000000000000000000000000000000000000000000000000000000000")]
     [InlineData("not a hash")]
-    [InlineData("99831295b2352a5e317b84de790531f10f9be8d58aea62296b0a54a70f165aa")]
-    [InlineData("99831295b2352a5e317b84de790531f10f9be8d58aea62296b0a54a70f165aaef")]
+    [InlineData("d2d343e2bf661f316c8e3e4a91252ecf6c9da1e669766609e9e393978fd0442")]
+    [InlineData("d2d343e2bf661f316c8e3e4a91252ecf6c9da1e669766609e9e393978fd04426f")]
     public void Snapshot_APinThatIsNotTheHash_IsUnavailable_AsMismatch(string pin)
     {
         File.WriteAllText(Path.Combine(_directory, PolicyFile), IdentityPolicyTestFiles.ShippedText());
@@ -536,7 +544,7 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         // Independent vectors (a script, not this code): the weights hash is the SHA-256 of the three lower case hashes joined with ":" in role order, the
         // fingerprint the SHA-256 of "policyHash:weightsHash".
         Assert.Equal("f299a350bdadffc513a0ec0a9f230297b0c5b364af3f5b553bbdede224043a46", current.WeightsHash);
-        Assert.Equal("d721e2596b1b0b6afb8c634aa42698450c0a4b4041517fd5318c823a79994a19", current.Fingerprint);
+        Assert.Equal("4bb3e13e0aa8f56531af8847b806fdcadc2493f0d9ff019e1233e30425a9bc45", current.Fingerprint);
         Assert.Equal(current.WeightsHash, IdentityConfigurationFingerprint.ComputeWeightsHash(store.Snapshot));
         Assert.Equal(current.Fingerprint, IdentityConfigurationFingerprint.ComputeFingerprint(current.PolicyHash, current.WeightsHash));
     }
