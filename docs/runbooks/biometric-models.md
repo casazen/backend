@@ -22,7 +22,7 @@ AuraFace remains an external alternative. To use it, supply its model path, name
 
 | Code | Where | Meaning | Fix |
 |---|---|---|---|
-| `hash_not_configured` | any model | its SHA-256 is not pinned (the committed value is empty): the file is never used and never downloaded | set the matching `...__Sha256` value |
+| `hash_not_configured` | any model | its SHA-256 is not pinned (an empty `...__Sha256`; the committed `appsettings.json` pins the three bundled models, so for them only an environment override empties it): the file is never used and never downloaded | set the matching `...__Sha256` value |
 | `file_missing` | any model | no file at the path, and no download address (or no way to download) | commit the file, or set `Biometrics__FaceRecognition__DownloadUrl` for AuraFace |
 | `hash_mismatch` | store models | the file is not the one pinned (a download that does not match is deleted) | pin the hash of the file you verified, or supply the right file |
 | `download_failed` | recognition model | the download did not end (network, status, size, timeout) | check the address and `Biometrics__DownloadTimeoutMinutes`, use a volume |
