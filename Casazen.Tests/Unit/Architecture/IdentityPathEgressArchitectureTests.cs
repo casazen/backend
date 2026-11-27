@@ -15,7 +15,8 @@ using Xunit;
 namespace Casazen.Tests.Unit.Architecture;
 
 /// <summary>
-/// E70/F02/US02/T02 (NF-197, ADR-013-R21, decision D5): no picture, frame, crop, OCR text or face representation of the identity path can leave the process.
+/// E70/F02/US02/T02 (NF-197, ADR-013-R21, decision D5): no image goes to an AI provider or to an HttpClient; the encrypted picture of the flow stays in the private
+/// storage (<c>IFileStorage</c>, Supabase Storage, outside Ticino). This test guards the AI providers, the HTTP clients and the side channels, not that storage.
 /// The identity path is every type of the namespace <c>Casazen.Infrastructure.Identity</c> and below, found by convention (nested and compiler-generated types
 /// included), so a class a later task adds there is covered without touching this test; plus the classes of the flow, the pipeline, the OCR and the readers
 /// written before that namespace existed, named in <see cref="NamedPathTypes"/>. Reflection only: no database, no model file, no network and no host (a plain
