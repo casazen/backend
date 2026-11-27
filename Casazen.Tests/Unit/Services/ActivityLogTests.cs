@@ -2,7 +2,6 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 

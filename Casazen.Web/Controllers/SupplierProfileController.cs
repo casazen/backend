@@ -13,7 +13,6 @@ using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Localization;
 

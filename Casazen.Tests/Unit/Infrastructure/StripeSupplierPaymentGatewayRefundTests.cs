@@ -1,6 +1,5 @@
 using System.Net;
 using Casazen.Core.Services;
-using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.External;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;

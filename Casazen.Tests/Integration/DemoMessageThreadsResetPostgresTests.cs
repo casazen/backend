@@ -9,7 +9,6 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit;
 using Casazen.Tests.Unit.Services;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

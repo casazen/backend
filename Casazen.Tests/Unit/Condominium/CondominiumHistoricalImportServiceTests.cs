@@ -4,7 +4,6 @@ using Casazen.Core.Condominium;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
-using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;

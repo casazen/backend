@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Xml.Linq;
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;

@@ -1,4 +1,3 @@
-using Casazen.Core.GuestPortal;
 using Casazen.Infrastructure.GuestPortal;
 using Casazen.Web.Extensions;
 using Casazen.Web.Infrastructure;

@@ -8,7 +8,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Casazen.Tests.Integration.Postgres;
-using Casazen.Tests.Unit.Email;
 using Casazen.Tests.Unit.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;

@@ -11,7 +11,6 @@ using Casazen.Tests.Unit.Email;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 
 namespace Casazen.Tests.Unit.Services;

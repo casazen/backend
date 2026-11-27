@@ -4,7 +4,6 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.Supplier;
 using Casazen.Web.Infrastructure;
@@ -13,7 +12,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 

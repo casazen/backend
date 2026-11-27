@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
 using Casazen.Core.Authorization;
 using Casazen.Core.Search;
 using Casazen.Infrastructure.Search;

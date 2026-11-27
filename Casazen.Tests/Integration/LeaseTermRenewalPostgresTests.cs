@@ -9,7 +9,6 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;

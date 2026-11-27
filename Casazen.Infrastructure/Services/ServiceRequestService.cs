@@ -5,7 +5,6 @@ using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Options;
-using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;

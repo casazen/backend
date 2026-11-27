@@ -2,7 +2,6 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Hangfire.Dashboard;
-using Microsoft.AspNetCore.Http;
 
 namespace Casazen.Web.Infrastructure;
 

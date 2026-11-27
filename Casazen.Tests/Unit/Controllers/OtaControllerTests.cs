@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
-using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
 using Hangfire;
