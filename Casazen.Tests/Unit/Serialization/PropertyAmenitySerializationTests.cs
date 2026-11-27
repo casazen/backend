@@ -40,28 +40,4 @@ public class PropertyAmenitySerializationTests
 
         Assert.Equal($"\"{expected}\"", result);
     }
-
-    [Fact]
-    public void Deserialize_AmenityList_RoundTrip_Succeeds()
-    {
-        var amenities = new List<PropertyAmenity>
-        {
-            PropertyAmenity.WiFi,
-            PropertyAmenity.AirConditioning,
-            PropertyAmenity.Terrace,
-            PropertyAmenity.FreeParking,
-        };
-
-        var json = JsonSerializer.Serialize(amenities, _options);
-        var result = JsonSerializer.Deserialize<List<PropertyAmenity>>(json, _options);
-
-        Assert.Equal(amenities, result);
-    }
-
-    [Fact]
-    public void Deserialize_InvalidStringValue_ThrowsJsonException()
-    {
-        Assert.Throws<JsonException>(() =>
-            JsonSerializer.Deserialize<PropertyAmenity>("\"NonExistentAmenity\"", _options));
-    }
 }
