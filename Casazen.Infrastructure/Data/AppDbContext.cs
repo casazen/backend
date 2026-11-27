@@ -1,13 +1,8 @@
 using Casazen.Core.GuestPortal;
 using Casazen.Infrastructure.Data.Configurations;
 using System.Reflection;
-using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
-using Casazen.Core.Options;
-using Casazen.Core.SiteProfile;
-using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Infrastructure.Search;
 using Microsoft.AspNetCore.DataProtection;
@@ -619,101 +614,20 @@ public class AppDbContext(
         base.OnModelCreating(modelBuilder);
         modelBuilder.ApplyConfiguration(new GuestSupplierOfferConfiguration());
         modelBuilder.ApplyConfiguration(new GuestSupplierOrderConfiguration());
-        modelBuilder.Entity<GuestSupplierOrderDocument>(entity =>
-        {
-            entity.HasOne<GuestSupplierOrder>().WithMany().HasForeignKey(d => d.OrderId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(d => new { d.OrderId, d.ContentHash }).IsUnique();
-        });
-
-        modelBuilder.Entity<PropertyActivationCredential>().HasIndex(p => new { p.OrgId, p.ExpiresAt });
-        modelBuilder.Entity<PropertyActivationCredentialAssignment>(assignment =>
-        {
-            assignment.HasOne<Property>().WithMany().HasForeignKey(a => a.PropertyId).OnDelete(DeleteBehavior.Cascade);
-            assignment.HasOne<PropertyActivationCredential>().WithMany().HasForeignKey(a => a.AccountId).OnDelete(DeleteBehavior.Cascade);
-            assignment.HasIndex(a => new { a.OrgId, a.PropertyId, a.Service }).IsUnique();
-        });
-
-        modelBuilder.Entity<OctoratePreparation>(row =>
-        {
-            row.HasOne<Property>().WithMany().HasForeignKey(p => p.PropertyId).OnDelete(DeleteBehavior.Cascade);
-            row.HasIndex(p => new { p.Environment, p.PropertyId }).IsUnique();
-            row.HasIndex(p => new { p.Environment, p.AccommodationId }).IsUnique();
-            row.HasIndex(p => new { p.Environment, p.BatchId });
-        });
-
-        modelBuilder.Entity<PropertyImportReview>(review =>
-        {
-            review.HasOne<Property>().WithOne().HasForeignKey<PropertyImportReview>(p => p.Id).OnDelete(DeleteBehavior.Cascade);
-            review.HasIndex(p => new { p.OrgId, p.Provider, p.SourceId }).IsUnique();
-        });
-
-        modelBuilder.Entity<Property>()
-            .HasMany(p => p.Bookings)
-            .WithOne(b => b.Property)
-            .HasForeignKey(b => b.PropertyId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<Property>()
-            .HasMany(p => p.OtaIntegrations)
-            .WithOne(o => o.Property)
-            .HasForeignKey(o => o.PropertyId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<Booking>()
-            .HasMany(b => b.Payments)
-            .WithOne(p => p.Booking)
-            .HasForeignKey(p => p.BookingId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<Guest>()
-            .HasMany(g => g.Bookings)
-            .WithOne(b => b.Guest)
-            .HasForeignKey(b => b.GuestId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<AlloggiatiWebReport>()
-            .HasOne(r => r.Booking)
-            .WithMany(b => b.AlloggiatiWebReports)
-            .HasForeignKey(r => r.BookingId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<AlloggiatiWebReport>()
-            .HasOne(r => r.Guest)
-            .WithMany(g => g.AlloggiatiWebReports)
-            .HasForeignKey(r => r.GuestId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // CO-11: "Inviato" only with a real receipt, never as a simulation.
-        modelBuilder.Entity<AlloggiatiWebReport>()
-            .ToTable(t => t.HasCheckConstraint(
-                "CK_AlloggiatiWebReports_SentRequiresReceipt",
-                $"\"Status\" <> {(int)AlloggiatiWebStatus.Inviato} OR btrim(coalesce(\"ConfirmationNumber\", '')) <> ''"));
-
-        // AW-R05: the daily receipt of the account that covers the communication; a receipt removed at the end of its retention leaves
-        // the communication without it (SET NULL), never removes it.
-        modelBuilder.Entity<AlloggiatiWebReport>()
-            .HasOne<AlloggiatiReceipt>()
-            .WithMany()
-            .HasForeignKey(r => r.ReceiptId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        // CO-10: the alert stages of a stay go with it.
-        modelBuilder.Entity<StayAlertState>()
-            .HasOne(s => s.Booking)
-            .WithMany()
-            .HasForeignKey(s => s.BookingId)
-            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.ApplyConfiguration(new GuestSupplierOrderDocumentConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyActivationCredentialConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyActivationCredentialAssignmentConfiguration());
+        modelBuilder.ApplyConfiguration(new OctoratePreparationConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyImportReviewConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyConfiguration());
+        modelBuilder.ApplyConfiguration(new BookingConfiguration());
+        modelBuilder.ApplyConfiguration(new GuestConfiguration());
+        modelBuilder.ApplyConfiguration(new AlloggiatiWebReportConfiguration());
+        modelBuilder.ApplyConfiguration(new StayAlertStateConfiguration());
 
         // CO-17: the check-out of a stay goes with it; its cleaning request survives it as a plain request.
         modelBuilder.ApplyConfiguration(new StayCheckoutConfiguration());
-
-        // CO-20: the CIN alert stage of a property goes with it.
-        modelBuilder.Entity<CinAlertState>()
-            .HasOne(s => s.Property)
-            .WithMany()
-            .HasForeignKey(s => s.PropertyId)
-            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.ApplyConfiguration(new CinAlertStateConfiguration());
 
         // CO-12: the guests of a stay follow their booking; the booker link survives the booker's deletion as null.
         modelBuilder.ApplyConfiguration(new StayGuestConfiguration());
@@ -735,14 +649,7 @@ public class AppDbContext(
 
         // E50/F01/US01/T01 (NF-152): the stay link of a booking (the guest portal), one active link for each booking; it carries the org of the booking (TN-2).
         modelBuilder.ApplyConfiguration(new GuestPortalLinkConfiguration());
-        modelBuilder.Entity<GuestStayChange>(entity =>
-        {
-            entity.HasOne<Booking>().WithMany().HasForeignKey(change => change.BookingId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne<Org>().WithMany().HasForeignKey(change => change.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasIndex(change => change.BookingId).IsUnique().HasFilter("\"ApprovedAt\" IS NULL AND \"RejectedAt\" IS NULL")
-                .HasDatabaseName("UIX_GuestStayChanges_Pending");
-            entity.Property(change => change.Currency).HasMaxLength(3);
-        });
+        modelBuilder.ApplyConfiguration(new GuestStayChangeConfiguration());
 
         // CO-07: one safety checklist per property, going with it; its items go with the checklist. An evidence
         // document deleted by the host leaves the item without proof (SET NULL), never deletes the answer.
@@ -763,12 +670,7 @@ public class AppDbContext(
         // the org of its property (TN-2) and goes with it.
         modelBuilder.ApplyConfiguration(new PropertyRoomConfiguration());
         modelBuilder.ApplyConfiguration(new PropertyStayDiscountConfiguration());
-
-        modelBuilder.Entity<AlloggiatiCodeEntry>()
-            .HasOne(e => e.Import)
-            .WithMany()
-            .HasForeignKey(e => e.ImportId)
-            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.ApplyConfiguration(new AlloggiatiCodeEntryConfiguration());
 
         // SU-04: official ISTAT list of the comuni. The ISTAT code is the key; the cadastral code is unique among the active
         // comuni only (a comune that changes province gets a new ISTAT code and keeps its cadastral code, so the old row,
@@ -779,15 +681,7 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new ComuneOfficialProfileConfiguration());
         modelBuilder.ApplyConfiguration(new ComuneOfficialProfileVersionConfiguration(Database.IsNpgsql()));
 
-        // E29/F01/US01/T01 (NF-124): the localities of the official swisstopo directory, one row per locality and municipality. The key starts with
-        // the postal code, so it is the index of the postal code lookups (the search, the resolver of the place of a property); the search name and
-        // the municipality have their own.
-        modelBuilder.Entity<SwissLocality>(locality =>
-        {
-            locality.HasKey(l => new { l.PostalCode, l.AddOn, l.MunicipalityCode, l.Name });
-            locality.HasIndex(l => l.NormalizedName);
-            locality.HasIndex(l => l.MunicipalityCode);
-        });
+        modelBuilder.ApplyConfiguration(new SwissLocalityConfiguration());
 
         // CO-14: one set of Alloggiati Web credentials per property, going with it; tenant row (TN-2).
         modelBuilder.ApplyConfiguration(new PropertyQuesturaCredentialsConfiguration());
@@ -812,141 +706,14 @@ public class AppDbContext(
         // notification to the Ticino police) and the audit of the files generated for the police (a format and a number of rows, never a guest); tenant rows (TN-2).
         modelBuilder.ApplyConfiguration(new SwissNotificationDeclarationConfiguration());
         modelBuilder.ApplyConfiguration(new SwissNotificationFileEventConfiguration());
-
-        // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
-        modelBuilder.Entity<Booking>()
-            .HasIndex(b => new { b.OrgId, b.BookingCode })
-            .IsUnique();
-
-        // A reservation of Octorate is one booking in an org (E02/F02/US01/T01, ADR-033-R1): the key of the import, whoever imports it and
-        // however many times. Only the rows that have an Octorate id are in it; the others (null) are as many as there are bookings.
-        modelBuilder.Entity<Booking>()
-            .HasIndex(b => new { b.OrgId, b.OctorateReservationId })
-            .IsUnique()
-            .HasFilter("\"OctorateReservationId\" IS NOT NULL")
-            .HasDatabaseName(Booking.OctorateReservationIndexName);
-
-        // GPS coordinates (PC-06, A2-33): 6 decimals are about 0.1 m, the old 2 decimals placed a house up to a kilometre
-        // away on the map. numeric(9,6) holds -999.999999..999.999999: the API accepts only -90..90 and -180..180.
-        modelBuilder.Entity<Property>()
-            .Property(p => p.Latitude)
-            .HasPrecision(9, PropertyAddress.CoordinateScale);
-
-        modelBuilder.Entity<Property>()
-            .Property(p => p.Longitude)
-            .HasPrecision(9, PropertyAddress.CoordinateScale);
-
-        // DB-03: the stay rules the public quote and checkout read (minimum stay, weekend surcharge). The host forms and the
-        // property service validate them; the constraints keep any other writer honest. Both columns are nullable or 0 for
-        // every row that existed before them, so the migration changes no behavior (docs/runbooks/direct-booking.md § 11).
-        modelBuilder.Entity<Property>().ToTable(t =>
-        {
-            t.HasCheckConstraint(
-                "CK_Properties_MinNights",
-                $"\"MinNights\" IS NULL OR \"MinNights\" BETWEEN {PropertyStayRules.MinMinNights} AND {PropertyStayRules.MaxMinNights}");
-            t.HasCheckConstraint(
-                "CK_Properties_WeekendSurchargePercent",
-                $"\"WeekendSurchargePercent\" BETWEEN 0 AND {(int)PropertyStayRules.MaxWeekendSurchargePercent}");
-        });
-
-        // SR-07a: the host's switch «Mostra la casa sul sito» starts true — in the migration, so every row that existed before the
-        // column keeps being on the site — and it is one more condition of PublicListing.IsPublished. The default is for the writers
-        // that do not know the column (the old release during a deploy, a raw INSERT); EF itself always writes the value of the
-        // entity: left to generate it, EF would take an explicit false for «not set» and the insert would write the default (true)
-        // in its place, putting back on the site a property its host hid.
-        // The other fields of the wizard (type, beds, area, headline, times, rules, fee) are nullable: null = never said.
-        modelBuilder.Entity<Property>()
-            .Property(p => p.PublishedOnSite)
-            .HasDefaultValue(true)
-            .ValueGeneratedNever();
-
-        // DB-11a: the site profile (floor, renovation year, energy class and index, kind of place, children, latest arrival, video and tour
-        // addresses, the JSON of the texts and of the photo alt texts). Every column is nullable: null = the host never said, which is
-        // every property that existed before them. The host API validates (SitePropertyProfileRules); the constraints keep any other
-        // writer honest. The ranges repeat the constants of SitePropertyProfileLimits.
-        modelBuilder.Entity<Property>().ToTable(t =>
-        {
-            t.HasCheckConstraint(
-                "CK_Properties_FloorLevel",
-                $"\"FloorLevel\" IS NULL OR \"FloorLevel\" BETWEEN {SitePropertyProfileLimits.MinFloorLevel} AND {SitePropertyProfileLimits.MaxFloorLevel}");
-            t.HasCheckConstraint(
-                "CK_Properties_RenovatedYear",
-                $"\"RenovatedYear\" IS NULL OR \"RenovatedYear\" >= {SitePropertyProfileLimits.MinRenovatedYear}");
-            t.HasCheckConstraint(
-                "CK_Properties_EnergyClass",
-                "\"EnergyClass\" IS NULL OR \"EnergyClass\" IN ('A4', 'A3', 'A2', 'A1', 'A', 'B', 'C', 'D', 'E', 'F', 'G')");
-            t.HasCheckConstraint(
-                "CK_Properties_EnergyIndex",
-                $"\"EnergyIndex\" IS NULL OR (\"EnergyClass\" IS NOT NULL AND \"EnergyIndex\" >= 0 AND \"EnergyIndex\" <= {SitePropertyProfileLimits.MaxEnergyIndex})");
-        });
-
-        // E29/F02/US01/T01 (NF-125): what the host decided about notifying the guests of a Swiss property, stored as the number of the enum;
-        // null = follow the regime of the place (every row that existed before the column, and the default). The service validates it; the
-        // constraint keeps any other writer honest.
-        modelBuilder.Entity<Property>().ToTable(t => t.HasCheckConstraint(
-            "CK_Properties_GuestNotificationOverride",
-            $"\"GuestNotificationOverride\" IS NULL OR \"GuestNotificationOverride\" IN ({(int)Casazen.Core.Enums.GuestNotificationOverride.Required}, "
-            + $"{(int)Casazen.Core.Enums.GuestNotificationOverride.NotRequired})"));
-
-        // Indexes
-        modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
-
-        // SU-04: the comune chosen from the official list; the region follows it.
-        modelBuilder.Entity<Property>().HasIndex(p => p.ComuneIstatCode);
-
-        // PM-01: the lists of the host areas filter the properties of an org by rental mode (GET /api/properties?mode=), and
-        // the jobs and the public site read the short-rent ones; the column is stored as an integer (append only) and the
-        // existing rows keep the default 0 = Short (migration AddPropertyRentalMode, docs/runbooks/property-rental-mode.md).
-        modelBuilder.Entity<Property>().HasIndex(p => new { p.OrgId, p.RentalMode });
-
-        // Unique address PER ORG and per unit (PC-06, A2-19). Before, the index was global: a host with two apartments in
-        // the same building could not create the second, and a host whose address was already used by ANOTHER org got a
-        // 409 that revealed a datum of that tenant. "AddressKey" is a stored generated column (shadow property): street,
-        // city, postal code and unit with case and runs of spaces ignored, so "Via Roma  1" and "via roma 1" are the same
-        // address; it is computed by the database, so every writer of the table is covered and the application never
-        // builds the key (never check-then-insert: the loser of two parallel creates gets 23505 on this index).
-        // A soft-deleted property (PC-05, IsDeleted) frees its address, so it can be re-created there. A paused one
-        // (PC-03, IsPaused) keeps it: pausing is temporary and the property stays the host's.
-        modelBuilder.Entity<Property>()
-            .Property<string>("AddressKey")
-            .HasColumnType("text")
-            .HasComputedColumnSql(
-                "lower(regexp_replace(btrim(\"Address\"), '\\s+', ' ', 'g')) || '|' || "
-                + "lower(regexp_replace(btrim(\"City\"), '\\s+', ' ', 'g')) || '|' || "
-                + "lower(btrim(\"PostalCode\")) || '|' || "
-                + "lower(regexp_replace(btrim(coalesce(\"Unit\", '')), '\\s+', ' ', 'g'))",
-                stored: true);
-
-        modelBuilder.Entity<Property>()
-            .HasIndex("OrgId", "AddressKey")
-            .IsUnique()
-            .HasDatabaseName(PropertyAddress.UniqueIndexName)
-            .HasFilter("\"IsActive\" = true AND \"IsDeleted\" = false");
-
-        modelBuilder.Entity<Property>()
-            .HasIndex(p => new { p.OrgId, p.Slug })
-            .IsUnique()
-            // A soft-deleted property (PC-05) frees its slug: SlugExistsInOrgAsync no longer sees it either.
-            .HasFilter("\"Slug\" IS NOT NULL AND \"IsDeleted\" = false")
-            .HasDatabaseName("UIX_Properties_OrgId_Slug");
-
-        // E22/F01/US02/T01: the door token of the QR code printed for the door is unique in the whole table (the public door page finds the property by
-        // it alone), and a property that never asked for the code has none. A soft-deleted property keeps its token: a printed code is never given to another.
-        modelBuilder.Entity<Property>()
-            .HasIndex(p => p.DoorToken)
-            .IsUnique()
-            .HasFilter("\"DoorToken\" IS NOT NULL")
-            .HasDatabaseName("UIX_Properties_DoorToken");
-
-        modelBuilder.Entity<Booking>().HasIndex(b => b.PropertyId);
-        modelBuilder.Entity<Booking>().HasIndex(b => b.GuestId);
-        modelBuilder.Entity<Booking>().HasIndex(b => b.CheckInDate);
-        modelBuilder.Entity<Booking>().HasIndex(b => b.Status);
-        modelBuilder.Entity<Payment>().HasIndex(p => p.BookingId);
+        modelBuilder.Entity<Booking>(BookingConfiguration.ConfigureLeMiePrenotazioni);
+        modelBuilder.Entity<Property>(PropertyConfiguration.ConfigureGPSCoordinates);
+        modelBuilder.Entity<Booking>(BookingConfiguration.ConfigurePropertyIdIndex);
+        modelBuilder.ApplyConfiguration(new PaymentConfiguration());
 
         // Refunds on Stripe (BK-02): one row per Stripe refund, one Stripe request per row (idempotency key).
         modelBuilder.ApplyConfiguration(new PaymentRefundConfiguration());
-        modelBuilder.Entity<OtaIntegration>().HasIndex(o => o.PropertyId);
+        modelBuilder.ApplyConfiguration(new OtaIntegrationConfiguration());
 
         // Every encrypted column (OTA secrets, iCal import URLs, guest identity documents, Questura credentials) is
         // declared and configured in one place, EncryptedColumns, with the Data Protection value converter
@@ -954,677 +721,97 @@ public class AppDbContext(
         if (EncryptionProvider is not null)
             EncryptedColumns.Configure(modelBuilder, EncryptionProvider);
 
-        modelBuilder.Entity<TouristTaxRate>().HasIndex(t => t.City);
-        modelBuilder.Entity<TouristTaxRate>().HasIndex(t => new { t.City, t.IsActive, t.EffectiveFrom });
-        modelBuilder.Entity<TouristTaxRate>()
-            .Property(t => t.VerificationLevel)
-            .HasConversion<string>()
-            .HasMaxLength(20);
-        modelBuilder.Entity<TouristTaxRate>().HasIndex(t => t.IstatCode);
-        modelBuilder.Entity<TouristTaxRate>()
-            .Property(t => t.CalculationMethod)
-            .HasConversion<string>()
-            .HasMaxLength(30)
-            .HasDefaultValue(TouristTaxCalculationMethod.PerPersonPerNight)
-            .HasSentinel((TouristTaxCalculationMethod)(-1));
-
-        modelBuilder.Entity<SeoContentPage>()
-            .HasIndex(p => new { p.ComuneCode, p.PageType })
-            .IsUnique();
-
-        modelBuilder.Entity<SeoContentPage>()
-            .HasIndex(p => p.LegalReviewStatus);
-
-        modelBuilder.Entity<SeoContentRevision>()
-            .HasOne(r => r.Page)
-            .WithMany(p => p.Revisions)
-            .HasForeignKey(r => r.PageId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        // SE-01: the public sees only the approved revision; deleting it makes the page non-public.
-        modelBuilder.Entity<SeoContentPage>()
-            .HasOne(p => p.PublishedRevision)
-            .WithMany()
-            .HasForeignKey(p => p.PublishedRevisionId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        modelBuilder.Entity<SeoContentRevision>()
-            .Property(r => r.ContentStatus)
-            .HasConversion<string>()
-            .HasMaxLength(40)
-            .HasDefaultValue(SeoContentStatus.Generated)
-            .HasSentinel((SeoContentStatus)(-1));
-
-        modelBuilder.Entity<SeoContentRevision>()
-            .HasIndex(r => new { r.PageId, r.GeneratedAt });
-
-        modelBuilder.Entity<SeoContentReviewEvent>()
-            .Property(e => e.Action)
-            .HasConversion<string>()
-            .HasMaxLength(20);
-
-        modelBuilder.Entity<SeoContentReviewEvent>()
-            .HasOne<SeoContentPage>()
-            .WithMany()
-            .HasForeignKey(e => e.PageId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<SeoContentReviewEvent>()
-            .HasOne<SeoContentRevision>()
-            .WithMany()
-            .HasForeignKey(e => e.RevisionId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<SeoContentReviewEvent>()
-            .HasIndex(e => new { e.PageId, e.OccurredAt });
-
-        modelBuilder.Entity<Guest>().HasIndex(g => g.Email);
-
-        // PricingAdapterConfig → Property (1-to-1)
-        modelBuilder.Entity<PricingAdapterConfig>()
-            .HasOne(c => c.Property)
-            .WithOne(p => p.PricingAdapterConfig)
-            .HasForeignKey<PricingAdapterConfig>(c => c.PropertyId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<PricingAdapterConfig>()
-            .HasIndex(c => new { c.PropertyId, c.IsEnabled });
-
-        // PricingHistory → Property
-        modelBuilder.Entity<PricingHistory>()
-            .HasOne(h => h.Property)
-            .WithMany()
-            .HasForeignKey(h => h.PropertyId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<PricingHistory>()
-            .HasIndex(h => new { h.PropertyId, h.AdaptationDate });
+        modelBuilder.ApplyConfiguration(new TouristTaxRateConfiguration());
+        modelBuilder.ApplyConfiguration(new SeoContentPageConfiguration());
+        modelBuilder.ApplyConfiguration(new SeoContentRevisionConfiguration());
+        modelBuilder.Entity<SeoContentPage>(SeoContentPageConfiguration.ConfigurePublishedRevisionIdForeignKey);
+        modelBuilder.Entity<SeoContentRevision>(SeoContentRevisionConfiguration.ConfigureContentStatus);
+        modelBuilder.ApplyConfiguration(new SeoContentReviewEventConfiguration());
+        modelBuilder.Entity<Guest>(GuestConfiguration.ConfigureEmailIndex);
+        modelBuilder.ApplyConfiguration(new PricingAdapterConfigConfiguration());
+        modelBuilder.ApplyConfiguration(new PricingHistoryConfiguration());
 
         // PC-15: one seasonal suggestion per property and stay date, regenerated in place (upsert by date).
         modelBuilder.ApplyConfiguration(new SeasonalPriceSuggestionConfiguration());
-
-        // PropertyDocument → Property
-        modelBuilder.Entity<PropertyDocument>()
-            .HasOne(d => d.Property)
-            .WithMany(p => p.PropertyDocuments)
-            .HasForeignKey(d => d.PropertyId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<PropertyDocument>()
-            .HasIndex(d => d.PropertyId)
-            .HasDatabaseName("IX_PropertyDocuments_PropertyId");
-
-        modelBuilder.Entity<PropertyDocument>()
-            .Property(d => d.DocumentType)
-            .HasConversion<string>()
-            .HasMaxLength(100);
+        modelBuilder.ApplyConfiguration(new PropertyDocumentConfiguration());
 
         // Demo environment: one platform row, and one marker per invented row so a reset never touches host data.
         modelBuilder.ApplyConfiguration(new DemoEnvironmentSettingConfiguration());
         modelBuilder.ApplyConfiguration(new TestDataMarkerConfiguration());
-
-        modelBuilder.Entity<LeaseDocument>().HasOne(d => d.LeaseContract).WithMany()
-            .HasForeignKey(d => d.LeaseContractId).OnDelete(DeleteBehavior.Cascade);
-        modelBuilder.Entity<LeaseDocument>().HasIndex(d => new { d.LeaseContractId, d.UploadedAt });
-        modelBuilder.Entity<LeaseDocument>().HasIndex(d => d.OrgId);
-
-        // LeaseContract → Property (restrict to preserve history)
-        modelBuilder.Entity<LeaseContract>()
-            .HasOne(l => l.Property)
-            .WithMany()
-            .HasForeignKey(l => l.PropertyId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<LeaseContract>()
-            .Property(l => l.MonthlyRent)
-            .HasPrecision(18, 2);
-
-        // Canone concordato characteristics and range of the lease (LT-10): same table, optional.
-        modelBuilder.Entity<LeaseContract>().OwnsOne(l => l.ConcordatoAssessment);
-        modelBuilder.Entity<LeaseContract>().Navigation(l => l.ConcordatoAssessment).IsRequired(false);
-
-        modelBuilder.Entity<LeaseContract>().HasIndex(l => l.PropertyId);
-        modelBuilder.Entity<LeaseContract>().HasIndex(l => l.Status);
-
-        // LR-14: what is asked of the leases of an org is asked of the end of the period they are in now (the lists, the deadlines, the
-        // occupancy of a property, the tacit renewal job), never of the end the contract states.
-        modelBuilder.Entity<LeaseContract>().HasIndex(l => new { l.OrgId, l.CurrentTermEndDate });
-
-        // Party → LeaseContract (cascade)
-        modelBuilder.Entity<Party>()
-            .HasOne(p => p.LeaseContract)
-            .WithMany(l => l.Parties)
-            .HasForeignKey(p => p.LeaseContractId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        // LT-14: several parties per role, in the order entered.
-        modelBuilder.Entity<Party>()
-            .HasIndex(p => new { p.LeaseContractId, p.Role, p.Position })
-            .IsUnique();
-
-        // LeaseRegistration → LeaseContract (1-to-1, cascade)
-        modelBuilder.Entity<LeaseRegistration>()
-            .HasOne(r => r.LeaseContract)
-            .WithOne(l => l.Registration)
-            .HasForeignKey<LeaseRegistration>(r => r.LeaseContractId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<LeaseRegistration>()
-            .HasIndex(r => r.LeaseContractId)
-            .IsUnique();
-
-        // LT-01 (A7-01): "Registered" only with the official receipt stored, never as a simulation.
-        modelBuilder.Entity<LeaseRegistration>()
-            .ToTable(t => t.HasCheckConstraint(
-                "CK_LeaseRegistrations_RegisteredRequiresReceipt",
-                $"\"Status\" <> {(int)RegistrationStatus.Registered} OR btrim(coalesce(\"ReceiptStoragePath\", '')) <> ''"));
-
-        // LeaseEvent → LeaseContract (cascade)
-        modelBuilder.Entity<LeaseEvent>()
-            .HasOne(e => e.LeaseContract)
-            .WithMany(l => l.Events)
-            .HasForeignKey(e => e.LeaseContractId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<LeaseEvent>()
-            .HasIndex(e => new { e.LeaseContractId, e.OccurredAt });
-
-        // LeaseSigner (LT-02, A7-16): one row per party and lease, removed with the lease or the party.
-        modelBuilder.Entity<LeaseSigner>()
-            .HasOne(s => s.LeaseContract)
-            .WithMany(l => l.Signers)
-            .HasForeignKey(s => s.LeaseContractId)
-            .OnDelete(DeleteBehavior.Cascade);
-        modelBuilder.Entity<LeaseSigner>()
-            .HasOne(s => s.Party)
-            .WithMany()
-            .HasForeignKey(s => s.PartyId)
-            .OnDelete(DeleteBehavior.Cascade);
-        modelBuilder.Entity<LeaseSigner>()
-            .HasOne(s => s.Org)
-            .WithMany()
-            .HasForeignKey(s => s.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<LeaseSigner>()
-            .HasIndex(s => new { s.LeaseContractId, s.PartyId })
-            .IsUnique();
-
-        modelBuilder.Entity<LeaseRegistrationAuthorization>()
-            .HasOne(a => a.LeaseContract)
-            .WithMany()
-            .HasForeignKey(a => a.LeaseContractId)
-            .OnDelete(DeleteBehavior.Cascade);
-        modelBuilder.Entity<LeaseRegistrationAuthorization>()
-            .HasOne(a => a.Org)
-            .WithMany()
-            .HasForeignKey(a => a.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<LeaseRegistrationAuthorization>()
-            .HasIndex(a => a.LeaseContractId);
-        modelBuilder.Entity<LeaseRegistrationAuthorization>().HasIndex(a => a.OrgId);
-
-        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
-            .HasOne(p => p.LeaseContract)
-            .WithMany()
-            .HasForeignKey(p => p.LeaseContractId)
-            .OnDelete(DeleteBehavior.Cascade);
-        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
-            .HasOne(p => p.Org)
-            .WithMany()
-            .HasForeignKey(p => p.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
-            .Property(p => p.FeePercent)
-            .HasPrecision(7, 4);
-        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
-            .HasIndex(p => p.StripeCheckoutSessionId)
-            .IsUnique();
-        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
-            .HasIndex(p => new { p.OrgId, p.LeaseContractId });
-
-        modelBuilder.Entity<RentSchedule>()
-            .HasOne(s => s.LeaseContract)
-            .WithOne(l => l.RentSchedule)
-            .HasForeignKey<RentSchedule>(s => s.LeaseContractId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<RentSchedule>()
-            .HasOne(s => s.Org)
-            .WithMany()
-            .HasForeignKey(s => s.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<RentSchedule>()
-            .HasIndex(s => s.LeaseContractId)
-            .IsUnique();
-
-        modelBuilder.Entity<RentSchedule>()
-            .Property(s => s.Amount)
-            .HasPrecision(18, 2);
-
-        modelBuilder.Entity<RentSchedule>()
-            .HasIndex(s => s.OrgId);
-
-        modelBuilder.Entity<RentLedgerEntry>()
-            .HasOne(e => e.LeaseContract)
-            .WithMany()
-            .HasForeignKey(e => e.LeaseContractId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<RentLedgerEntry>()
-            .HasOne(e => e.RentSchedule)
-            .WithMany(s => s.LedgerEntries)
-            .HasForeignKey(e => e.RentScheduleId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<RentLedgerEntry>()
-            .HasOne(e => e.Org)
-            .WithMany()
-            .HasForeignKey(e => e.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<RentLedgerEntry>()
-            .HasIndex(e => new { e.LeaseContractId, e.PeriodStart })
-            .IsUnique();
-
-        modelBuilder.Entity<RentLedgerEntry>()
-            .Property(e => e.AmountDue)
-            .HasPrecision(18, 2);
-
-        modelBuilder.Entity<RentLedgerEntry>()
-            .Property(e => e.StampDutyAmount)
-            .HasPrecision(18, 2);
-
-        modelBuilder.Entity<RentLedgerEntry>()
-            .HasIndex(e => e.OrgId);
-
-        modelBuilder.Entity<BankLinkPayment>()
-            .HasIndex(p => p.StripePaymentIntentId)
-            .IsUnique();
-
-        modelBuilder.Entity<BankLinkPayment>()
-            .HasIndex(p => p.OrgId);
-
-        modelBuilder.Entity<BankLinkPayment>()
-            .HasIndex(p => p.CondominiumInstallmentId);
-
-        modelBuilder.Entity<BankLinkPayment>()
-            .HasOne<Org>()
-            .WithMany()
-            .HasForeignKey(p => p.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<BankLinkPayment>()
-            .HasIndex(p => p.LeaseMaintenanceRequestId);
-
-        // One open debit per maintenance request. Failed and canceled rows stay, so a retry can start the next one.
-        modelBuilder.Entity<BankLinkPayment>()
-            .HasIndex(p => p.LeaseMaintenanceRequestId)
-            .IsUnique()
-            .HasFilter("\"LeaseMaintenanceRequestId\" IS NOT NULL AND \"Status\" IN (0, 1)")
-            .HasDatabaseName("UIX_BankLinkPayments_OpenMaintenanceRequest");
-
-        modelBuilder.Entity<LeaseMaintenanceRequest>()
-            .HasOne(r => r.LeaseContract)
-            .WithMany()
-            .HasForeignKey(r => r.LeaseContractId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<LeaseMaintenanceRequest>()
-            .HasOne<Org>()
-            .WithMany()
-            .HasForeignKey(r => r.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<LeaseMaintenanceRequest>()
-            .HasIndex(r => new { r.OrgId, r.LeaseContractId, r.CreatedAt });
-
-        modelBuilder.Entity<BankLinkPayment>()
-            .HasOne<LeaseMaintenanceRequest>()
-            .WithMany()
-            .HasForeignKey(p => p.LeaseMaintenanceRequestId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // The rent register of the long-term area (LR-01): the installments of an org by month of due date, in due date order.
-        modelBuilder.Entity<RentLedgerEntry>()
-            .HasIndex(e => new { e.OrgId, e.DueDate });
-
-        // CondoLedger phase 1: the parts of an installment. They go with the installment; AmountDue stays the total.
-        modelBuilder.Entity<RentLedgerComponent>()
-            .HasOne(c => c.RentLedgerEntry)
-            .WithMany(e => e.Components)
-            .HasForeignKey(c => c.RentLedgerEntryId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<RentLedgerComponent>()
-            .HasOne(c => c.Org)
-            .WithMany()
-            .HasForeignKey(c => c.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<RentLedgerComponent>()
-            .Property(c => c.Amount)
-            .HasPrecision(18, 2);
-
-        modelBuilder.Entity<RentLedgerComponent>()
-            .Property(c => c.Kind)
-            .HasConversion<int>();
-
-        modelBuilder.Entity<RentLedgerComponent>()
-            .HasIndex(c => c.RentLedgerEntryId);
-
-        modelBuilder.Entity<RentLedgerComponent>()
-            .HasIndex(c => c.OrgId);
-
-        modelBuilder.Entity<RentLedgerComponent>()
-            .HasOne<TenantCondominiumSettlement>()
-            .WithMany()
-            .HasForeignKey(c => c.TenantSettlementId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<RentLedgerComponent>()
-            .HasIndex(c => c.TenantSettlementId)
-            .IsUnique()
-            .HasFilter("\"TenantSettlementId\" IS NOT NULL");
-
-        modelBuilder.Entity<TenantPaymentDeclaration>()
-            .HasOne(d => d.LeaseContract)
-            .WithMany()
-            .HasForeignKey(d => d.LeaseContractId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<TenantPaymentDeclaration>()
-            .HasOne(d => d.RentLedgerEntry)
-            .WithMany()
-            .HasForeignKey(d => d.RentLedgerEntryId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<TenantPaymentDeclaration>()
-            .HasIndex(d => new { d.RentLedgerEntryId, d.SubmittedAt });
-
-        modelBuilder.Entity<TenantPaymentDeclaration>()
-            .HasIndex(d => d.OrgId);
-
-        // One current condominium clause per lease. The source document is optional and cleared when that document goes.
-        modelBuilder.Entity<LeaseCondominiumTerms>()
-            .HasOne(t => t.LeaseContract)
-            .WithOne(l => l.CondominiumTerms)
-            .HasForeignKey<LeaseCondominiumTerms>(t => t.LeaseContractId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<LeaseCondominiumTerms>()
-            .HasOne(t => t.Org)
-            .WithMany()
-            .HasForeignKey(t => t.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<LeaseCondominiumTerms>()
-            .HasOne(t => t.SourceDocument)
-            .WithMany()
-            .HasForeignKey(t => t.SourceDocumentId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        modelBuilder.Entity<LeaseCondominiumTerms>()
-            .Property(t => t.AdvanceAmount)
-            .HasPrecision(18, 2);
-
-        modelBuilder.Entity<LeaseCondominiumTerms>()
-            .Property(t => t.ExtractionConfidence)
-            .HasPrecision(5, 4);
-
-        modelBuilder.Entity<LeaseCondominiumTerms>()
-            .Property(t => t.AdvanceMode)
-            .HasConversion<int>();
-
-        modelBuilder.Entity<LeaseCondominiumTerms>()
-            .HasIndex(t => t.LeaseContractId)
-            .IsUnique();
-
-        modelBuilder.Entity<LeaseCondominiumTerms>()
-            .HasIndex(t => t.OrgId);
-
-        modelBuilder.Entity<LeaseCondominiumTerms>()
-            .ToTable(t => t.HasCheckConstraint(
-                "CK_LeaseCondominiumTerms_Confidence",
-                "\"ExtractionConfidence\" IS NULL OR (\"ExtractionConfidence\" >= 0 AND \"ExtractionConfidence\" <= 1)"));
-
-        ConfigureCondominium(modelBuilder);
-
-        // The credits of a bank statement confirmed as rent payments (import of the statement of the Canoni page): the fingerprint is
-        // unique per org, so the same movement is imported once; the payer hashes are looked up per org to recognize who paid before.
-        modelBuilder.Entity<RentBankMovement>()
-            .HasOne(m => m.LeaseContract)
-            .WithMany()
-            .HasForeignKey(m => m.LeaseContractId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<RentBankMovement>()
-            .HasOne(m => m.RentLedgerEntry)
-            .WithMany()
-            .HasForeignKey(m => m.RentLedgerEntryId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<RentBankMovement>()
-            .HasOne(m => m.Org)
-            .WithMany()
-            .HasForeignKey(m => m.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<RentBankMovement>()
-            .Property(m => m.Amount)
-            .HasPrecision(18, 2);
-
-        modelBuilder.Entity<RentBankMovement>()
-            .HasIndex(m => new { m.OrgId, m.Fingerprint })
-            .IsUnique();
-
-        modelBuilder.Entity<RentBankMovement>().HasIndex(m => new { m.OrgId, m.PayerIbanHash });
-        modelBuilder.Entity<RentBankMovement>().HasIndex(m => new { m.OrgId, m.PayerNameHash });
-        modelBuilder.Entity<RentBankMovement>().HasIndex(m => m.LeaseContractId);
-        modelBuilder.Entity<RentBankMovement>().HasIndex(m => m.RentLedgerEntryId);
+        modelBuilder.ApplyConfiguration(new LeaseDocumentConfiguration());
+        modelBuilder.ApplyConfiguration(new LeaseContractConfiguration());
+        modelBuilder.ApplyConfiguration(new PartyConfiguration());
+        modelBuilder.ApplyConfiguration(new LeaseRegistrationConfiguration());
+        modelBuilder.ApplyConfiguration(new LeaseEventConfiguration());
+        modelBuilder.ApplyConfiguration(new LeaseSignerConfiguration());
+        modelBuilder.ApplyConfiguration(new LeaseRegistrationAuthorizationConfiguration());
+        modelBuilder.ApplyConfiguration(new OpenapiLeaseRegistrationPaymentConfiguration());
+        modelBuilder.ApplyConfiguration(new RentScheduleConfiguration());
+        modelBuilder.ApplyConfiguration(new RentLedgerEntryConfiguration());
+        modelBuilder.ApplyConfiguration(new BankLinkPaymentConfiguration());
+        modelBuilder.ApplyConfiguration(new LeaseMaintenanceRequestConfiguration());
+        modelBuilder.Entity<BankLinkPayment>(BankLinkPaymentConfiguration.ConfigureLeaseMaintenanceRequestIdForeignKey);
+        modelBuilder.Entity<RentLedgerEntry>(RentLedgerEntryConfiguration.ConfigureOrgIdIndex);
+        modelBuilder.ApplyConfiguration(new RentLedgerComponentConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantPaymentDeclarationConfiguration());
+        modelBuilder.ApplyConfiguration(new LeaseCondominiumTermsConfiguration());
+        modelBuilder.ApplyConfiguration(new CondominiumConfiguration());
+        modelBuilder.ApplyConfiguration(new CondominiumUnitConfiguration());
+        modelBuilder.ApplyConfiguration(new CondominiumPeriodConfiguration());
+        modelBuilder.ApplyConfiguration(new CondominiumStatementConfiguration());
+        modelBuilder.ApplyConfiguration(new CondominiumExpenseLineConfiguration());
+        modelBuilder.ApplyConfiguration(new CondominiumInstallmentConfiguration());
+        modelBuilder.ApplyConfiguration(new CondominiumPriorBalanceConfiguration());
+        modelBuilder.ApplyConfiguration(new CondominiumPaymentConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantCondominiumSettlementConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantExpenseAllocationConfiguration());
+        modelBuilder.ApplyConfiguration(new CondominiumImportBatchConfiguration());
+        modelBuilder.ApplyConfiguration(new CondominiumImportHouseConfiguration());
+        modelBuilder.ApplyConfiguration(new CondominiumImportYearConfiguration());
+        modelBuilder.ApplyConfiguration(new CondominiumStatementProposalConfiguration());
+        modelBuilder.ApplyConfiguration(new RentBankMovementConfiguration());
 
         // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
         modelBuilder.ApplyConfiguration(new ConcordatoFacilePurchaseConfiguration());
         modelBuilder.ApplyConfiguration(new ConcordatoFacileGiftConfiguration());
         modelBuilder.ApplyConfiguration(new CfSimulatedPracticeConfiguration());
-
-        // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
-        // Org tenant key with a unique Slug (AC1).
-        modelBuilder.Entity<Org>()
-            .HasIndex(o => o.Slug)
-            .IsUnique();
-
-        modelBuilder.Entity<Org>()
-            .HasIndex(o => o.StripeCustomerId);
-
-        // The language of the account (AM-08b-b): the orgs that exist when the column is added get Italian, the language they have always had.
-        modelBuilder.Entity<Org>()
-            .Property(o => o.DefaultLanguage)
-            .HasDefaultValue(Casazen.Core.OrgTeam.OrgInvitationRules.DefaultLanguage);
-
-        // Previous public slugs of an org (PL-04, A1-23): shared links keep resolving and the value stays reserved.
-        modelBuilder.Entity<OrgSlugAlias>()
-            .HasOne(a => a.Org)
-            .WithMany()
-            .HasForeignKey(a => a.OrgId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<OrgSlugAlias>()
-            .HasIndex(a => a.OrgId);
+        modelBuilder.ApplyConfiguration(new OrgConfiguration());
+        modelBuilder.ApplyConfiguration(new OrgSlugAliasConfiguration());
 
         // Operator documents of the public site (BK-14, A3-21): immutable versions numbered per org and kind. The unique
         // index is the guarantee of the numbering under concurrent publishes (23505, the loser takes the next number).
         modelBuilder.ApplyConfiguration(new OrgSiteDocumentConfiguration());
-
-        modelBuilder.Entity<Org>()
-            .HasIndex(o => o.CustomDomain)
-            .IsUnique()
-            .HasFilter("\"CustomDomain\" IS NOT NULL AND \"DomainVerificationStatus\" = 1");
-
-        modelBuilder.Entity<Org>()
-            .HasIndex(o => o.Subdomain)
-            .IsUnique()
-            .HasFilter("\"Subdomain\" IS NOT NULL");
-
-        // Surfaces of the agency's own domain (E40/F01/US01): the guest area and the owner portal start off and the Auth0 state NotRequested
-        // (the defaults of their types), the links follow the domain: on for the orgs that exist too, it takes effect only once the domain is
-        // verified and a surface is on. EF always writes the value of the entity: left to generate it, an explicit false would be taken for
-        // «not set» and the insert would write true in its place.
-        modelBuilder.Entity<Org>()
-            .Property(o => o.UseOwnDomainForLinks)
-            .HasDefaultValue(true)
-            .ValueGeneratedNever();
-
-        modelBuilder.Entity<PlatformInvoice>()
-            .HasOne(i => i.Org)
-            .WithMany()
-            .HasForeignKey(i => i.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<PlatformInvoice>()
-            .HasIndex(i => i.StripeInvoiceId)
-            .IsUnique();
-
-        modelBuilder.Entity<PlatformInvoice>()
-            .HasIndex(i => i.OrgId);
-
-        modelBuilder.Entity<PlatformInvoice>()
-            .HasIndex(i => i.SdiStatus);
-
-        modelBuilder.Entity<PlatformInvoice>()
-            .Property(i => i.AmountExVat)
-            .HasPrecision(18, 2);
-
-        modelBuilder.Entity<PlatformInvoice>()
-            .Property(i => i.VatAmount)
-            .HasPrecision(18, 2);
-
-        modelBuilder.Entity<PlatformInvoice>()
-            .Property(i => i.TotalAmount)
-            .HasPrecision(18, 2);
-
-        // OrgId indexes on the tenant-scoped tables + Users (AC2/AC9).
-        modelBuilder.Entity<Property>().HasIndex(p => p.OrgId);
-        modelBuilder.Entity<Booking>().HasIndex(b => b.OrgId);
-        modelBuilder.Entity<LeaseContract>().HasIndex(l => l.OrgId);
-        modelBuilder.Entity<Payment>().HasIndex(p => p.OrgId);
-        modelBuilder.Entity<User>().HasIndex(u => u.OrgId);
-        modelBuilder.Entity<Guest>().HasIndex(g => g.OrgId);
-        // TN-2: child rows that controllers expose carry their parent's OrgId.
-        modelBuilder.Entity<PropertyDocument>().HasIndex(d => d.OrgId);
-        modelBuilder.Entity<OtaIntegration>().HasIndex(o => o.OrgId);
-        modelBuilder.Entity<PricingAdapterConfig>().HasIndex(c => c.OrgId);
-        modelBuilder.Entity<PricingHistory>().HasIndex(h => h.OrgId);
-        modelBuilder.Entity<AlloggiatiWebReport>().HasIndex(r => r.OrgId);
-
-        // OrgId FK constraints (AC2). Restrict: an Org can never be deleted while it still owns
-        // tenant rows. The four tenant tables are required (Guid); User.OrgId is nullable (AC9).
-        modelBuilder.Entity<Property>()
-            .HasOne(p => p.Org).WithMany().HasForeignKey(p => p.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<Booking>()
-            .HasOne(b => b.Org).WithMany().HasForeignKey(b => b.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<LeaseContract>()
-            .HasOne(l => l.Org).WithMany().HasForeignKey(l => l.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<Payment>()
-            .HasOne(p => p.Org).WithMany().HasForeignKey(p => p.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<PropertyFiscalYear>()
-            .HasOne(y => y.Org).WithMany().HasForeignKey(y => y.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<PropertyFiscalYear>()
-            .HasOne(y => y.Property).WithMany().HasForeignKey(y => y.PropertyId)
-            .OnDelete(DeleteBehavior.Cascade);
-        modelBuilder.Entity<PropertyFiscalYear>()
-            .HasIndex(y => new { y.PropertyId, y.TaxYear })
-            .IsUnique();
-        // No unique "one primary per org and year" index any more: the 21% unit is one per taxpayer (CO-18), and one org
-        // can manage several taxpayers. FiscalService checks it under the OrgFiscalRegime advisory lock.
-        modelBuilder.Entity<PropertyFiscalYear>()
-            .HasIndex(y => new { y.OrgId, y.TaxYear });
-        modelBuilder.Entity<PropertyFiscalYear>().HasIndex(y => y.OrgId);
-        modelBuilder.Entity<Payment>()
-            .Property(p => p.OtaWithholdingTax)
-            .HasPrecision(18, 2);
-        modelBuilder.Entity<Payment>()
-            .Property(p => p.NetAmountAfterWithholding)
-            .HasPrecision(18, 2);
-        modelBuilder.Entity<User>()
-            .HasOne(u => u.Org).WithMany().HasForeignKey(u => u.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        // TN-1: a guest belongs to exactly one org. No unique (OrgId, lower(Email)) index: host and
-        // direct bookings store one guest snapshot per booking (#431), so one org legitimately holds
-        // several rows with the same e-mail.
-        modelBuilder.Entity<Guest>()
-            .HasOne(g => g.Org).WithMany().HasForeignKey(g => g.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        // TN-2: child rows copy the OrgId of their parent (property or booking) when they are created.
-        // Restrict like every other OrgId FK; no navigation, the org is never loaded through a child.
-        modelBuilder.Entity<PropertyDocument>()
-            .HasOne<Org>().WithMany().HasForeignKey(d => d.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<OtaIntegration>()
-            .HasOne<Org>().WithMany().HasForeignKey(o => o.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<PricingAdapterConfig>()
-            .HasOne<Org>().WithMany().HasForeignKey(c => c.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<PricingHistory>()
-            .HasOne<Org>().WithMany().HasForeignKey(h => h.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<AlloggiatiWebReport>()
-            .HasOne<Org>().WithMany().HasForeignKey(r => r.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<GuestCheckInSession>()
-            .HasOne<Org>().WithMany().HasForeignKey(s => s.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<GuestCheckInSession>().HasIndex(s => s.OrgId);
-
-        modelBuilder.Entity<AppContextEntity>()
-            .HasKey(c => c.Key);
-
-        modelBuilder.Entity<Role>()
-            .HasIndex(r => new { r.ContextKey, r.RoleKey })
-            .IsUnique();
-
-        modelBuilder.Entity<Role>()
-            .HasOne(r => r.Context)
-            .WithMany(c => c.Roles)
-            .HasForeignKey(r => r.ContextKey)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<RolePermission>()
-            .HasKey(rp => new { rp.RoleId, rp.PermissionKey });
-
-        modelBuilder.Entity<RolePermission>()
-            .HasOne(rp => rp.Role)
-            .WithMany(r => r.Permissions)
-            .HasForeignKey(rp => rp.RoleId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<UserContextMembership>()
-            .HasIndex(m => new { m.UserId, m.ContextKey })
-            .IsUnique();
-
-        modelBuilder.Entity<UserContextMembership>()
-            .HasOne(m => m.User)
-            .WithMany(u => u.ContextMemberships)
-            .HasForeignKey(m => m.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<UserContextMembership>()
-            .HasOne(m => m.Context)
-            .WithMany(c => c.Memberships)
-            .HasForeignKey(m => m.ContextKey)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<UserContextMembership>()
-            .HasOne(m => m.Role)
-            .WithMany(r => r.Memberships)
-            .HasForeignKey(m => m.RoleId)
-            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Org>(OrgConfiguration.ConfigureCustomDomainIndex);
+        modelBuilder.ApplyConfiguration(new PlatformInvoiceConfiguration());
+        modelBuilder.Entity<Property>(PropertyConfiguration.ConfigureOrgIdIndex);
+        modelBuilder.Entity<Booking>(BookingConfiguration.ConfigureOrgIdIndex);
+        modelBuilder.Entity<LeaseContract>(LeaseContractConfiguration.ConfigureOrgIdIndex);
+        modelBuilder.Entity<Payment>(PaymentConfiguration.ConfigureOrgIdIndex);
+        modelBuilder.ApplyConfiguration(new UserConfiguration());
+        modelBuilder.Entity<Guest>(GuestConfiguration.ConfigureOrgIdIndex);
+        modelBuilder.Entity<PropertyDocument>(PropertyDocumentConfiguration.ConfigureOrgIdIndex);
+        modelBuilder.Entity<OtaIntegration>(OtaIntegrationConfiguration.ConfigureOrgIdIndex);
+        modelBuilder.Entity<PricingAdapterConfig>(PricingAdapterConfigConfiguration.ConfigureOrgIdIndex);
+        modelBuilder.Entity<PricingHistory>(PricingHistoryConfiguration.ConfigureOrgIdIndex);
+        modelBuilder.Entity<AlloggiatiWebReport>(AlloggiatiWebReportConfiguration.ConfigureOrgIdIndex);
+        modelBuilder.Entity<Property>(PropertyConfiguration.ConfigureOrgIdForeignKey);
+        modelBuilder.Entity<Booking>(BookingConfiguration.ConfigureOrgIdForeignKey);
+        modelBuilder.Entity<LeaseContract>(LeaseContractConfiguration.ConfigureOrgIdForeignKey);
+        modelBuilder.Entity<Payment>(PaymentConfiguration.ConfigureOrgIdForeignKey);
+        modelBuilder.ApplyConfiguration(new PropertyFiscalYearConfiguration());
+        modelBuilder.Entity<Payment>(PaymentConfiguration.ConfigureOtaWithholdingTax);
+        modelBuilder.Entity<User>(UserConfiguration.ConfigureOrgIdForeignKey);
+        modelBuilder.Entity<Guest>(GuestConfiguration.ConfigureOrgIdForeignKey);
+        modelBuilder.Entity<PropertyDocument>(PropertyDocumentConfiguration.ConfigureOrgIdForeignKey);
+        modelBuilder.Entity<OtaIntegration>(OtaIntegrationConfiguration.ConfigureOrgIdForeignKey);
+        modelBuilder.Entity<PricingAdapterConfig>(PricingAdapterConfigConfiguration.ConfigureOrgIdForeignKey);
+        modelBuilder.Entity<PricingHistory>(PricingHistoryConfiguration.ConfigureOrgIdForeignKey);
+        modelBuilder.Entity<AlloggiatiWebReport>(AlloggiatiWebReportConfiguration.ConfigureOrgIdForeignKey);
+        modelBuilder.ApplyConfiguration(new GuestCheckInSessionOrgConfiguration());
+        modelBuilder.ApplyConfiguration(new AppContextEntityConfiguration());
+        modelBuilder.ApplyConfiguration(new RoleConfiguration());
+        modelBuilder.ApplyConfiguration(new RolePermissionConfiguration());
+        modelBuilder.ApplyConfiguration(new UserContextMembershipConfiguration());
 
         // ─── Org membership (AM-01) ─────────────────────────────────────────────
         modelBuilder.ApplyConfiguration(new OrgMemberConfiguration());
@@ -1640,20 +827,8 @@ public class AppDbContext(
 
         // ─── Activity log of the org (AM-02b) ───────────────────────────────────────────────────────────────
         modelBuilder.ApplyConfiguration(new OrgActivityEntryConfiguration());
-
-        // The member in charge of a property (AM-03): notified together with the org's administrators. The account can go;
-        // the property keeps its history and is simply left without a named person.
-        modelBuilder.Entity<Property>()
-            .HasOne<User>()
-            .WithMany()
-            .HasForeignKey(p => p.ResponsibleUserId)
-            .OnDelete(DeleteBehavior.SetNull);
-        modelBuilder.Entity<Property>()
-            .HasIndex(p => p.ResponsibleUserId)
-            .HasDatabaseName("IX_Properties_ResponsibleUserId");
-
-        modelBuilder.Entity<ConsentRecord>()
-            .HasIndex(c => new { c.UserId, c.OrgId, c.Type });
+        modelBuilder.Entity<Property>(PropertyConfiguration.ConfigureMemberChargeProperty);
+        modelBuilder.ApplyConfiguration(new ConsentRecordConfiguration());
 
         // ─── Signup attribution (SE-03 / A8-03) ─────────────────────────────────
         modelBuilder.ApplyConfiguration(new SignupAttributionConfiguration());
@@ -1661,47 +836,12 @@ public class AppDbContext(
         // SEO funnel events (SE-04): platform data without an org or a person; the report groups by comune over a window,
         // the nightly retention deletes by date.
         modelBuilder.ApplyConfiguration(new SeoEventConfiguration());
-
-        // ─── Supplier console (US-022 / #292) ────────────────────────────────────
-        modelBuilder.Entity<SupplierProfile>()
-            .HasOne(sp => sp.Org)
-            .WithOne()
-            .HasForeignKey<SupplierProfile>(sp => sp.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<SupplierProfile>()
-            .HasIndex(sp => sp.Status);
-
-        // SU-04: comuni chosen from the official list. A column added to a table with rows: the profiles that exist start
-        // with none (nothing is inferred from the free-text ComuniJson).
-        modelBuilder.Entity<SupplierProfile>()
-            .Property(sp => sp.ComuneIstatCodesJson)
-            .HasDefaultValueSql("'[]'::jsonb");
-
-        modelBuilder.Entity<SupplierProfile>()
-            .HasIndex(sp => sp.ClaimTokenHash)
-            .IsUnique()
-            .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
-
-        // SU-13: the slug of the public showcase is unique (profiles without one are not constrained).
-        modelBuilder.Entity<SupplierProfile>()
-            .HasIndex(sp => sp.ShowcaseSlug)
-            .IsUnique()
-            .HasFilter("\"ShowcaseSlug\" IS NOT NULL")
-            .HasDatabaseName("UIX_SupplierProfiles_ShowcaseSlug");
+        modelBuilder.ApplyConfiguration(new SupplierProfileConfiguration());
 
         // One profile per email (SU-14): the unique index on lower(btrim("Email")) is an expression index that EF cannot
         // model; it is created by the migration SupplierProfileEmailUnique (see SupplierProfileEmailIndex).
 
-        modelBuilder.Entity<SupplierAvailability>()
-            .HasOne(sa => sa.SupplierProfile)
-            .WithMany()
-            .HasForeignKey(sa => sa.OrgId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<SupplierAvailability>()
-            .HasIndex(sa => new { sa.OrgId, sa.Date })
-            .IsUnique();
+        modelBuilder.ApplyConfiguration(new SupplierAvailabilityConfiguration());
 
         // SP-02: the supplier's service catalog. Children of the supplier profile (cascade, like the availability days: the
         // repair moves them to the keeper before it deletes a duplicate profile). The slug is unique among the services
@@ -1729,101 +869,20 @@ public class AppDbContext(
         // the settings; xmin is the concurrency token.
         modelBuilder.ApplyConfiguration(new SupplierShowcaseContentConfiguration());
         modelBuilder.ApplyConfiguration(new SupplierShowcaseMediaConfiguration());
-
-        modelBuilder.Entity<SupplierInviteRecord>()
-            .HasIndex(i => i.Email);
-
-        modelBuilder.Entity<SupplierInviteRecord>()
-            .HasIndex(i => new { i.Email, i.IsUsed });
-
-        modelBuilder.Entity<SupplierInviteRecord>()
-            .HasIndex(i => i.TokenHash)
-            .IsUnique()
-            .HasDatabaseName("UIX_SupplierInviteRecords_TokenHash");
-
-        // Audit trail of the admin actions on suppliers and invites (SU-12): read per supplier, newest first. No foreign
-        // key: the trail outlives a supplier org deleted by the fix-orphaned repair.
-        modelBuilder.Entity<SupplierAdminAuditEntry>()
-            .HasIndex(e => new { e.SupplierOrgId, e.OccurredAt });
+        modelBuilder.ApplyConfiguration(new SupplierInviteRecordConfiguration());
+        modelBuilder.ApplyConfiguration(new SupplierAdminAuditEntryConfiguration());
 
         // ─── Host invites (invitation of new independent hosts) ──────────────────
         modelBuilder.ApplyConfiguration(new HostInviteRecordConfiguration());
 
         // Audit trail and source of the daily quota: read by host org and time window. No foreign key: it outlives a purged invite.
         modelBuilder.ApplyConfiguration(new HostInviteAuditEntryConfiguration());
-
-        // ─── Micro-marketplace v0 (US-021 / #293) ────────────────────────────────
-        modelBuilder.Entity<ServiceRequest>()
-            .HasOne(sr => sr.Org)
-            .WithMany()
-            .HasForeignKey(sr => sr.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<ServiceRequest>()
-            .HasOne(sr => sr.Property)
-            .WithMany()
-            .HasForeignKey(sr => sr.PropertyId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<ServiceRequest>()
-            .HasOne(sr => sr.SupplierOrg)
-            .WithMany()
-            .HasForeignKey(sr => sr.SupplierOrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<ServiceRequest>()
-            .HasOne(sr => sr.Booking)
-            .WithMany()
-            .HasForeignKey(sr => sr.BookingId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        modelBuilder.Entity<ServiceRequest>()
-            .HasIndex(sr => new { sr.OrgId, sr.Status });
-
-        modelBuilder.Entity<ServiceRequest>()
-            .HasIndex(sr => new { sr.SupplierOrgId, sr.Status });
-
-        // A4-19 (SU-10): Npgsql maps a uint row version to the xmin system column, so every state transition is saved
-        // only if the row was not changed since it was read.
-        modelBuilder.Entity<ServiceRequest>()
-            .Property(sr => sr.Version)
-            .IsRowVersion();
-
-        // SP-04: a request has an optional catalog service (set to null if the service is ever removed for good; the catalog
-        // deletes softly and the request keeps its own copy of the name), and the planner and the console read a supplier's
-        // requests by the time of the work.
-        modelBuilder.Entity<ServiceRequest>()
-            .HasOne<SupplierServiceListing>()
-            .WithMany()
-            .HasForeignKey(sr => sr.ServiceListingId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        modelBuilder.Entity<ServiceRequest>()
-            .HasIndex(sr => new { sr.SupplierOrgId, sr.ScheduledStartUtc });
+        modelBuilder.ApplyConfiguration(new ServiceRequestConfiguration());
 
         // The JSON columns are added to a table that already has rows: the database gives those the empty list (an empty string
         // is not valid jsonb), the entity gives it to the new ones.
         modelBuilder.ApplyConfiguration(new ServiceRequestPricingConfiguration());
-
-        // The checks mirror ServiceRequestLimits and the rules of the service: a bad row is refused by the database too. A
-        // time has both ends or none, a proposal has its start, end and instant or none, an amount is from 1 cent to the bound.
-        modelBuilder.Entity<ServiceRequest>().ToTable(t =>
-        {
-            t.HasCheckConstraint(
-                "CK_ServiceRequests_ScheduledInterval",
-                "(\"ScheduledStartUtc\" IS NULL AND \"ScheduledEndUtc\" IS NULL) OR "
-                + "(\"ScheduledStartUtc\" IS NOT NULL AND \"ScheduledEndUtc\" IS NOT NULL AND \"ScheduledEndUtc\" > \"ScheduledStartUtc\")");
-            t.HasCheckConstraint(
-                "CK_ServiceRequests_ProposedInterval",
-                "(\"ProposedStartUtc\" IS NULL AND \"ProposedEndUtc\" IS NULL AND \"ProposedAt\" IS NULL) OR "
-                + "(\"ProposedStartUtc\" IS NOT NULL AND \"ProposedEndUtc\" IS NOT NULL AND \"ProposedAt\" IS NOT NULL "
-                + "AND \"ProposedEndUtc\" > \"ProposedStartUtc\")");
-            t.HasCheckConstraint(
-                "CK_ServiceRequests_Amounts",
-                $"(\"EstimatedAmountCents\" IS NULL OR \"EstimatedAmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents}) AND "
-                + $"(\"QuotedAmountCents\" IS NULL OR \"QuotedAmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents}) AND "
-                + $"(\"FinalAmountCents\" IS NULL OR \"FinalAmountCents\" BETWEEN 1 AND {ServiceRequestLimits.MaxAmountCents})");
-        });
+        modelBuilder.Entity<ServiceRequest>(ServiceRequestConfiguration.ConfigureChecksMirrorServiceRequestLimits);
 
         // ─── Booking from the public showcase of a supplier (SP-10, decision D34 revised) ─────────────────────────────
         // A showcase request belongs to the supplier (OrgId = the supplier org), has no property and no booking, and carries its
@@ -1844,14 +903,7 @@ public class AppDbContext(
         // The VAT of the company of a cleaning recharged to the owner (FIX/BE-CLEANING-VAT): the answer on the request, and what an organization remembers of a company.
         modelBuilder.ApplyConfiguration(new ServiceRequestSupplierVatConfiguration());
         modelBuilder.ApplyConfiguration(new SupplierVatDefaultConfiguration());
-
-        // Whether an org's requests also go to backup suppliers: on for every org that exists (the rule is general), so the migration gives
-        // the existing rows true. EF itself always writes the value of the entity: left to generate it, EF would take an explicit false for
-        // «not set» and the insert would write the default (true) in its place, turning the rule back on for an org that switched it off.
-        modelBuilder.Entity<Org>()
-            .Property(o => o.SupplierBackupsEnabled)
-            .HasDefaultValue(true)
-            .ValueGeneratedNever();
+        modelBuilder.Entity<Org>(OrgConfiguration.ConfigureSupplierBackupsEnabled);
 
         // ─── Quote with the customer's approval (SP-04b) ──────────────────────────────────────────────────────────────
         // The offer a supplier makes on a request still waiting for its answer: its columns, and the checks that keep it true.
@@ -1864,25 +916,13 @@ public class AppDbContext(
         // The request on measure (SP-10b): the inquiry that waits for the e-mail check and the messages of its thread.
         modelBuilder.ApplyConfiguration(new ShowcaseInquiryConfiguration());
         modelBuilder.ApplyConfiguration(new ServiceRequestMessageConfiguration());
-
-        // ─── Payment of the service requests inside CasaZen (SP-15a) ─────────────
-        // The commission a supplier is charged instead of the platform's (an admin sets it, SP-15b): a percentage, 0 to 50.
-        modelBuilder.Entity<SupplierProfile>().ToTable(t =>
-            t.HasCheckConstraint(
-                "CK_SupplierProfiles_CommissionPercentOverride",
-                $"\"CommissionPercentOverride\" IS NULL OR \"CommissionPercentOverride\" BETWEEN 0 AND {(int)SupplierPaymentsOptions.MaxCommissionPercent}"));
+        modelBuilder.Entity<SupplierProfile>(SupplierProfileConfiguration.ConfigureTable);
 
         // One payment per request that is not canceled: the live one. A canceled row (replaced by an offline record, or withdrawn)
         // frees the request, so the index ignores it. The creation paths also take the advisory lock ServiceRequestPayment; this
         // index is what makes a second live payment impossible even if one of them did not.
         modelBuilder.ApplyConfiguration(new ServiceRequestPaymentConfiguration());
-
-        // ─── Refunds of the service payments and the commission period (SP-15b) ─────────────
-        // The end of a commission period only makes sense with the percentage it ends.
-        modelBuilder.Entity<SupplierProfile>().ToTable(t =>
-            t.HasCheckConstraint(
-                "CK_SupplierProfiles_CommissionOverrideUntil",
-                "\"CommissionOverrideUntil\" IS NULL OR \"CommissionPercentOverride\" IS NOT NULL"));
+        modelBuilder.Entity<SupplierProfile>(SupplierProfileConfiguration.ConfigureTable2);
 
         // A refund belongs to its payment: restrict, so a payment with refunds is never deleted. The sequence is the n of the
         // idempotency key and is unique within the payment; a Stripe refund and a key belong to one refund each.
@@ -1891,166 +931,21 @@ public class AppDbContext(
         // ─── The complaint and the dispute about a job paid through CasaZen (SP-15c-c) ─────────────
         // One open dispute per payment (unique partial index); a payment, a request and a supplier with a dispute are never deleted.
         modelBuilder.ApplyConfiguration(new ServicePaymentDisputeConfiguration());
-
-        // ─── Property iCal OTA sync (US-018 / #294) ─────────────────────────────
-        modelBuilder.Entity<CalendarBlock>()
-            .HasOne(b => b.Property)
-            .WithMany()
-            .HasForeignKey(b => b.PropertyId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<CalendarBlock>()
-            .HasOne(b => b.Org)
-            .WithMany()
-            .HasForeignKey(b => b.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // Blocks belong to their import feed (PC-11, A2-11): a UID is unique within its feed, and removing the feed
-        // removes its blocks. Airbnb and Booking.com feeds of the same property never touch each other's blocks.
-        modelBuilder.Entity<CalendarBlock>()
-            .HasOne(b => b.Feed)
-            .WithMany()
-            .HasForeignKey(b => b.FeedId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<CalendarBlock>()
-            .HasIndex(b => new { b.FeedId, b.ExternalUid })
-            .IsUnique();
-
-        // The index of the foreign key to the property, declared here so that it stays: EF drops the index of a foreign key when another index
-        // starts with the same column, filtered or not, and the filtered index below holds the Octorate blocks only. Every read of the blocks
-        // of a property (availability, calendar, export) goes through this one.
-        modelBuilder.Entity<CalendarBlock>()
-            .HasIndex(b => b.PropertyId);
-
-        // The blocks read from the Octorate calendar have no feed (E02/F02/US01/T03): the unique index on (FeedId, ExternalUid) does not cover
-        // them (a null feed is never equal to another), so their key is the property and the UID, for that source only
-        // (CalendarBlockSource.Octorate = 2).
-        modelBuilder.Entity<CalendarBlock>()
-            .HasIndex(b => new { b.PropertyId, b.ExternalUid })
-            .IsUnique()
-            .HasFilter("\"Source\" = 2")
-            .HasDatabaseName(CalendarBlock.OctorateUidIndexName);
-
-        // OTA stay created from an imported block (CO-21, D7): one stay per block. Deleting the booking keeps the block,
-        // which takes its nights again on its own.
-        modelBuilder.Entity<CalendarBlock>()
-            .HasOne(b => b.Booking)
-            .WithMany()
-            .HasForeignKey(b => b.BookingId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        modelBuilder.Entity<CalendarBlock>()
-            .HasIndex(b => b.BookingId)
-            .IsUnique();
-
-        // The stays of a feed, found again by the sync (feed + block UID) when a block comes back.
-        modelBuilder.Entity<Booking>()
-            .HasIndex(b => new { b.ICalFeedId, b.ExternalId });
-
-        modelBuilder.Entity<PropertyICalFeed>()
-            .HasOne(f => f.Property)
-            .WithMany()
-            .HasForeignKey(f => f.PropertyId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<PropertyICalFeed>()
-            .HasOne(f => f.Org)
-            .WithMany()
-            .HasForeignKey(f => f.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<PropertyICalFeed>()
-            .HasIndex(f => f.PropertyId);
-
-        modelBuilder.Entity<PropertyICalExport>()
-            .HasOne(e => e.Property)
-            .WithMany()
-            .HasForeignKey(e => e.PropertyId)
-            .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<PropertyICalExport>()
-            .HasOne(e => e.Org)
-            .WithMany()
-            .HasForeignKey(e => e.OrgId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        modelBuilder.Entity<PropertyICalExport>()
-            .HasIndex(e => e.PropertyId)
-            .IsUnique();
+        modelBuilder.ApplyConfiguration(new CalendarBlockConfiguration());
+        modelBuilder.Entity<Booking>(BookingConfiguration.ConfigureICalFeedIdIndex);
+        modelBuilder.ApplyConfiguration(new PropertyICalFeedConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyICalExportConfiguration());
 
         // ─── Scheduled change of rental mode (PM-02) ────────────────────────────
         modelBuilder.ApplyConfiguration(new PropertyModeChangeConfiguration());
-
-        modelBuilder.Entity<PropertyICalExport>()
-            .HasIndex(e => e.ExportToken)
-            .IsUnique();
-
-        // ─── The approval queue (NF-06, E05/F04, NF-68) ─────────────────────────────────────────────────────
-        // The list of an org reads its pending items (and the expiry job the pending ones past their time). The columns of the action, of the edit and of the
-        // rejection are plain nullable columns (an existing row keeps working: OriginActionStatus 0 is NotRequired); the words are encrypted by EncryptedColumns.
-        modelBuilder.Entity<ApprovalQueueItem>()
-            .HasIndex(i => new { i.OrgId, i.Status });
-
-        modelBuilder.Entity<AppContextEntity>().HasData(
-            new AppContextEntity { Key = "short-rent", DisplayName = "Affitti brevi" },
-            new AppContextEntity { Key = "long-rent", DisplayName = "Affitti lungo termine" },
-            new AppContextEntity { Key = "admin", DisplayName = "Amministrazione" });
-
-        modelBuilder.Entity<Role>().HasData(
-            new Role { Id = 1, ContextKey = "short-rent", RoleKey = "property_owner" },
-            new Role { Id = 2, ContextKey = "long-rent", RoleKey = "long_term_landlord" },
-            new Role { Id = 3, ContextKey = "admin", RoleKey = "platform_admin" });
-
-        modelBuilder.Entity<RolePermission>().HasData(
-            new RolePermission { RoleId = 1, PermissionKey = "property.read" },
-            new RolePermission { RoleId = 1, PermissionKey = "property.write" },
-            new RolePermission { RoleId = 1, PermissionKey = "booking.read" },
-            new RolePermission { RoleId = 1, PermissionKey = "booking.write" },
-            new RolePermission { RoleId = 1, PermissionKey = "payment.read" },
-            new RolePermission { RoleId = 1, PermissionKey = "payment.write" },
-            new RolePermission { RoleId = 1, PermissionKey = "ota.read" },
-            new RolePermission { RoleId = 1, PermissionKey = "ota.write" },
-            new RolePermission { RoleId = 1, PermissionKey = "guest.read" },
-            new RolePermission { RoleId = 1, PermissionKey = "guest.write" },
-            // AM-03: carved out of property.write, guest.write and booking.write; the owner keeps doing all of it.
-            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.ServiceRequestWrite },
-            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.GuestManage },
-            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.AlloggiatiSubmit },
-            // E05/F04/US01/T01: the owner decides the items of the approval queue (AddApprovalDecisionAndOriginAction); the property manager's role follows the catalog.
-            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.ApprovalDecide },
-            // E03/F04/US02/T01: the owner decides the identity verifications of its guests (AddIdentityVerificationFields).
-            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.VerificationDecision },
-            // E50/F01/US01/T01: the owner always sets up its guest portal («Portale ospiti», AddGuestPortalLinks); the property manager's role follows the catalog.
-            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.GuestPortalManage },
-            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.Marketing },
-            new RolePermission { RoleId = 2, PermissionKey = "property.read" },
-            new RolePermission { RoleId = 2, PermissionKey = "property.write" },
-            new RolePermission { RoleId = 2, PermissionKey = "lease.read" },
-            new RolePermission { RoleId = 2, PermissionKey = "lease.create" },
-            new RolePermission { RoleId = 2, PermissionKey = "lease.sign" },
-            new RolePermission { RoleId = 2, PermissionKey = "lease.register" },
-            new RolePermission { RoleId = 2, PermissionKey = "rent.read" },
-            new RolePermission { RoleId = 2, PermissionKey = "rent.manage" },
-            new RolePermission { RoleId = 3, PermissionKey = "admin.stats.read" },
-            new RolePermission { RoleId = 3, PermissionKey = "admin.users.read" },
-            new RolePermission { RoleId = 3, PermissionKey = "admin.users.manage" },
-            new RolePermission { RoleId = 3, PermissionKey = "admin.cin.read" },
-            new RolePermission { RoleId = 3, PermissionKey = "admin.jobs.read" },
-            new RolePermission { RoleId = 3, PermissionKey = "admin.tax.manage" },
-            new RolePermission { RoleId = 3, PermissionKey = "admin.seo.read" });
-
-        // AM-01: the account context and the roles of the org team. OrgRoleCatalog is the source (ids 4 to 12); the tests
-        // compare this seed with it and with OrgOwnerRoles.
-        modelBuilder.Entity<AppContextEntity>().HasData(
-            new AppContextEntity { Key = AccountContext.Key, DisplayName = AccountContext.DisplayName });
-
-        modelBuilder.Entity<Role>().HasData(
-            OrgRoleCatalog.SeededRoles.Select(r => new Role { Id = r.Id, ContextKey = r.ContextKey, RoleKey = r.RoleKey }));
-
-        modelBuilder.Entity<RolePermission>().HasData(
-            OrgRoleCatalog.SeededRoles.SelectMany(r =>
-                r.Permissions.Select(p => new RolePermission { RoleId = r.Id, PermissionKey = p })));
+        modelBuilder.Entity<PropertyICalExport>(PropertyICalExportConfiguration.ConfigureExportTokenIndex);
+        modelBuilder.ApplyConfiguration(new ApprovalQueueItemConfiguration());
+        modelBuilder.Entity<AppContextEntity>(AppContextEntityConfiguration.ConfigureSeedData);
+        modelBuilder.Entity<Role>(RoleConfiguration.ConfigureSeedData);
+        modelBuilder.Entity<RolePermission>(RolePermissionConfiguration.ConfigureSeedData);
+        modelBuilder.Entity<AppContextEntity>(AppContextEntityConfiguration.ConfigureSeedData2);
+        modelBuilder.Entity<Role>(RoleConfiguration.ConfigureSeedData2);
+        modelBuilder.Entity<RolePermission>(RolePermissionConfiguration.ConfigureSeedData2);
 
         // Guest check-in session (US-020 / #296)
         modelBuilder.ApplyConfiguration(new GuestCheckInSessionConfiguration());
@@ -2059,30 +954,7 @@ public class AppDbContext(
         // (EncryptedColumns) and the row goes with its booking.
         modelBuilder.ApplyConfiguration(new CheckInLinkDeliveryConfiguration());
         modelBuilder.ApplyConfiguration(new ScheduledMessageConfiguration());
-
-        // E03/F04/US02/T01: who decided a verification and why. The rows written before the columns are the agent's (Biometric = 1) with no
-        // reasons; the sentinel makes EF always write the value of the entity, so a new row is never left to the default by mistake.
-        modelBuilder.Entity<BiometricVerificationLog>()
-            .Property(l => l.Method)
-            .HasDefaultValue(VerificationMethod.Biometric)
-            .HasSentinel((VerificationMethod)(-1));
-        modelBuilder.Entity<BiometricVerificationLog>()
-            .Property(l => l.ReasonsJson)
-            .HasDefaultValueSql("'[]'::jsonb");
-
-        // E70/F01/US01/T02 (NF-194, ADR-013-R18, R19): how the self-hosted policy decided. The rows written before the columns read as the legacy path (DecisionMode
-        // Legacy, 0). The key of an attempt is unique per booking, the last line of defence of the idempotent closure (two processes, one key, one row); the rows of
-        // the legacy path have no key and the filter leaves them out. The index on the booking alone stays declared: the readers of the last row of a booking need it.
-        modelBuilder.Entity<BiometricVerificationLog>()
-            .Property(l => l.DecisionMode)
-            .HasDefaultValue(IdentityDecisionMode.Legacy);
-        modelBuilder.Entity<BiometricVerificationLog>()
-            .HasIndex(l => l.BookingId);
-        modelBuilder.Entity<BiometricVerificationLog>()
-            .HasIndex(l => new { l.BookingId, l.IdempotencyKey })
-            .IsUnique()
-            .HasFilter("\"IdempotencyKey\" IS NOT NULL")
-            .HasDatabaseName(BiometricVerificationLog.IdempotencyIndexName);
+        modelBuilder.ApplyConfiguration(new BiometricVerificationLogConfiguration());
 
         // E70/F01/US01/T02 (NF-194, NF-195): the segments and the evidence of the self-hosted verification; the tenant query filter is applied below, as to every
         // ITenantOwned entity.
@@ -2090,15 +962,9 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new IdentityReviewEvidenceConfiguration());
 
         modelBuilder.ApplyConfiguration(new TerritorialRentAgreementConfiguration());
-
-        modelBuilder.Entity<HighTensionAreaComune>()
-            .HasIndex(c => c.Comune);
-
-        modelBuilder.Entity<ComuneImuChannel>()
-            .HasIndex(c => c.Comune);
-
-        modelBuilder.Entity<RegulatoryDataAuditEntry>()
-            .HasIndex(e => new { e.EntityId, e.OccurredAt });
+        modelBuilder.ApplyConfiguration(new HighTensionAreaComuneConfiguration());
+        modelBuilder.ApplyConfiguration(new ComuneImuChannelConfiguration());
+        modelBuilder.ApplyConfiguration(new RegulatoryDataAuditEntryConfiguration());
 
         // Native host app push tokens (US-025 / #299)
         modelBuilder.ApplyConfiguration(new DeviceRegistrationConfiguration());
@@ -2163,65 +1029,10 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new AssistantLessonConfiguration());
         modelBuilder.ApplyConfiguration(new AssistantDecisionLogConfiguration());
         modelBuilder.ApplyConfiguration(new AssistantTrustProposalConfiguration());
-
-        // ─── Automation routines (NF-26, ADR-022) ────────────────────────────────
-        // Unique constraint on (RoutineId, EventId) ensures idempotence: a routine executes at most once per event (ADR-022-R7).
-        modelBuilder.Entity<RoutineExecution>()
-            .HasIndex(e => new { e.RoutineId, e.EventId })
-            .IsUnique();
-
-        // ─── Transactional outbox of the domain events (ADR-022) ─────────────────
-        // A time trigger emitted twice (a restart, two overlapping runs) loses on the unique key of its org (ADR-022-R8); the events
-        // without a key are never compared. The dispatcher reads the undispatched events by OccurredAt and the cleanup the old
-        // dispatched ones: both through (DispatchedAt, OccurredAt).
-        modelBuilder.Entity<OutboxEvent>(entity =>
-        {
-            entity.HasIndex(e => new { e.OrgId, e.DedupKey })
-                .IsUnique()
-                .HasFilter("\"DedupKey\" IS NOT NULL")
-                .HasDatabaseName(OutboxEvent.DedupIndexName);
-            entity.HasIndex(e => new { e.DispatchedAt, e.OccurredAt });
-        });
-
-        // ─── Octorate connector (ADR-023) ────────────────────────────────────────
-        // One connection per org and environment: one consent covers every property the Octorate user sees (an agency's whole
-        // network), and the client acts for the org of its scope. The account id is for display and audit, not part of the key. The
-        // two token columns get the Data Protection converter from EncryptedColumns (no length: the payload is longer than the text).
-        modelBuilder.Entity<OctorateConnection>(entity =>
-        {
-            entity.HasIndex(c => new { c.OrgId, c.Environment })
-                .IsUnique()
-                .HasDatabaseName(OctorateConnection.OrgEnvironmentIndexName);
-        });
-
-        // A listing found through a connection, once per org, connection and accommodation; a property is confirmed to one listing
-        // only (partial unique index on Status = 2, OctorateMappingStatus.Confirmed). A connection with mappings is never deleted
-        // (RESTRICT); a deleted property leaves its mapping without property (SET NULL). The webhook finds the org of a notification
-        // by the accommodation code across orgs (a system read): its own index.
-        modelBuilder.Entity<OctorateListingMapping>(entity =>
-        {
-            entity.HasOne<OctorateConnection>()
-                .WithMany()
-                .HasForeignKey(m => m.ConnectionId)
-                .OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne<Property>()
-                .WithMany()
-                .HasForeignKey(m => m.PropertyId)
-                .IsRequired(false)
-                .OnDelete(DeleteBehavior.SetNull);
-            entity.Property(m => m.SnapshotRoomsJson).HasColumnType("jsonb");
-            entity.Property(m => m.CandidatePropertyIdsJson).HasColumnType("jsonb");
-            entity.Property(m => m.ChannelIdsJson).HasColumnType("jsonb");
-            entity.HasIndex(m => new { m.OrgId, m.ConnectionId, m.OctorateAccommodationId })
-                .IsUnique()
-                .HasDatabaseName(OctorateListingMapping.AccommodationIndexName);
-            entity.HasIndex(m => new { m.OrgId, m.PropertyId })
-                .IsUnique()
-                .HasFilter("\"Status\" = 2")
-                .HasDatabaseName(OctorateListingMapping.ConfirmedPropertyIndexName);
-            entity.HasIndex(m => new { m.OrgId, m.Status });
-            entity.HasIndex(m => m.OctorateAccommodationId);
-        });
+        modelBuilder.ApplyConfiguration(new RoutineExecutionConfiguration());
+        modelBuilder.ApplyConfiguration(new OutboxEventConfiguration());
+        modelBuilder.ApplyConfiguration(new OctorateConnectionConfiguration());
+        modelBuilder.ApplyConfiguration(new OctorateListingMappingConfiguration());
 
         // The import of existing OTA inventory (D6, E02/F01/US03): one current intent for each property (partial unique indexes), batches with their
         // channels and the external items done for each connection; every row carries its org (restrict) and the tenant filter applies to all.
@@ -2229,31 +1040,8 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OctorateInventoryImportBatchConfiguration());
         modelBuilder.ApplyConfiguration(new OctorateInventoryImportChannelConfiguration());
         modelBuilder.ApplyConfiguration(new OctorateInventoryImportItemConfiguration());
-
-        // The OAuth state of a consent: only its SHA-256 is stored (char 64, unique); the expired rows are deleted by ExpiresAt.
-        modelBuilder.Entity<OctorateOAuthState>(entity =>
-        {
-            entity.Property(s => s.StateHash).IsFixedLength();
-            entity.HasIndex(s => s.StateHash)
-                .IsUnique()
-                .HasDatabaseName(OctorateOAuthState.StateHashIndexName);
-            entity.HasIndex(s => s.ExpiresAt);
-        });
-
-        // The mirror of a CasaZen booking on Octorate (E08/F01/US01/T01, ADR-031): one row per booking, gone with its booking (CASCADE);
-        // the list of the failures of an org reads (OrgId, State). The dates Octorate holds after a 409 are jsonb.
-        modelBuilder.Entity<OctorateBookingSync>(entity =>
-        {
-            entity.HasOne<Booking>()
-                .WithMany()
-                .HasForeignKey(s => s.BookingId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.Property(s => s.OctorateVersionJson).HasColumnType("jsonb");
-            entity.HasIndex(s => s.BookingId)
-                .IsUnique()
-                .HasDatabaseName(OctorateBookingSync.BookingIndexName);
-            entity.HasIndex(s => new { s.OrgId, s.State });
-        });
+        modelBuilder.ApplyConfiguration(new OctorateOAuthStateConfiguration());
+        modelBuilder.ApplyConfiguration(new OctorateBookingSyncConfiguration());
 
         // ─── Invoice data and issuer of the documents (epic E06, NF-81, NF-82) ───────────────────────────────
         // The invoice data of a booking: one row for each booking (unique BookingId), gone with the booking (cascade); the personal columns are
@@ -2312,98 +1100,23 @@ public class AppDbContext(
 
         // The decisions about the regime of the stays of a company tenant (E18/F01/US03/T01, ⚖ I7): the tenant query filter is applied below, to every ITenantOwned entity.
         modelBuilder.ApplyConfiguration(new ShortLetTaxDecisionConfiguration());
-
-        // The invoices of the retired agency-to-owner generator stay readable and are never called compliant (E06/F01/US02/T05): the rows that exist
-        // when the column is added get the legacy code.
-        modelBuilder.Entity<AgencyInvoice>().Property(i => i.ComplianceStatus).HasDefaultValue(AgencyInvoiceCompliance.LegacyUnverified);
-
-        // A payment is recorded on its Octorate reservation once (E08/F01/US01/T01, AC-NF74-4): its transaction is unique in the org. Only
-        // the payments recorded there are in the index.
-        modelBuilder.Entity<Payment>()
-            .HasIndex(p => new { p.OrgId, p.OctorateTransactionId })
-            .IsUnique()
-            .HasFilter("\"OctorateTransactionId\" IS NOT NULL")
-            .HasDatabaseName(Payment.OctorateTransactionIndexName);
+        modelBuilder.ApplyConfiguration(new AgencyInvoiceConfiguration());
+        modelBuilder.Entity<Payment>(PaymentConfiguration.ConfigureOrgIdIndex2);
 
         // ─── Check-in to Octorate (NF-41, NF-45, E03/F01/US01/T03) ───────────────
         // The guests sent (one per booking and position) and the states of a stay (one per booking and state); the tenant query filter is
         // applied below, to every ITenantOwned entity.
         modelBuilder.ApplyConfiguration(new StayGuestOctorateLinkConfiguration());
         modelBuilder.ApplyConfiguration(new OctorateStayStateSyncConfiguration());
-
-        // ─── Internal activities: the staff work (NF-22) and the "To do" list (ADR-026) ───
-        // An organization-level To do has no property, so the property is optional; deleting a property still deletes its
-        // activities, as when it was required. The action is stored by name (the members are appended by later tasks).
-        // The list reads the open To do rows of an org (Action set, CompletedAt null) on every page of the shell; the unique index
-        // keeps one open item per type and entity, so a second CreateAsync, even a parallel one, returns the first.
-        modelBuilder.Entity<InternalActivity>(entity =>
-        {
-            entity.HasOne(a => a.Property)
-                .WithMany()
-                .HasForeignKey(a => a.PropertyId)
-                .IsRequired(false)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.Property(a => a.Action)
-                .HasConversion<string>()
-                .HasMaxLength(50);
-            // Kept on its own: the two indexes below are partial (open To do rows only), so they cannot serve the staff rows,
-            // the closed items or the cascade of an org.
-            entity.HasIndex(a => a.OrgId);
-            entity.HasIndex(a => new { a.OrgId, a.Urgency, a.Deadline })
-                .HasFilter("\"Action\" IS NOT NULL AND \"CompletedAt\" IS NULL")
-                .HasDatabaseName("IX_InternalActivities_OpenTodo");
-            entity.HasIndex(a => new { a.OrgId, a.ActivityType, a.EntityType, a.EntityId })
-                .IsUnique()
-                .HasFilter("\"Action\" IS NOT NULL AND \"CompletedAt\" IS NULL")
-                .HasDatabaseName(InternalActivity.OpenTodoIndexName);
-        });
+        modelBuilder.ApplyConfiguration(new InternalActivityConfiguration());
 
         // ─── The cleaning at check-out (E24/F01/US01, NF-120) ────────────────────────
         // The default cleaner of a property with the price and the time agreed (one for each property), and the automatic cleaning of a stay (one for each
         // stay: the key of the idempotency of the automation). The tenant query filter is applied below, to every ITenantOwned entity.
         modelBuilder.ApplyConfiguration(new PropertyCleaningSetupConfiguration());
         modelBuilder.ApplyConfiguration(new StayCleaningConfiguration());
-
-        // ─── Drafts of the wizards (ADR-024) ─────────────────────────────────────
-        // One draft per person, wizard and entity. The unique indexes are what makes two devices that save the first draft at the same
-        // moment lose to each other (the loser gets 23505 and is answered as a conflict). The database takes two NULLs for different
-        // values, so the draft of a new entity (no EntityId) has an index of its own. The anonymized rows (UserId = '') are left out of
-        // both: they all share the empty UserId, and two of them for the same org, wizard and entity would fail the retention job.
-        // xmin is the concurrency token: two parallel saves of the same version cannot both win. The index on ExpiresAt serves the
-        // retention, which reads the drafts that are over and not yet anonymized.
-        modelBuilder.Entity<WizardDraft>(entity =>
-        {
-            entity.Property(d => d.RowVersion).IsRowVersion();
-            entity.HasIndex(d => new { d.OrgId, d.UserId, d.WizardType, d.EntityId })
-                .IsUnique()
-                .HasFilter("\"EntityId\" IS NOT NULL AND \"UserId\" <> ''")
-                .HasDatabaseName(WizardDraft.ExistingEntityIndexName);
-            entity.HasIndex(d => new { d.OrgId, d.UserId, d.WizardType })
-                .IsUnique()
-                .HasFilter("\"EntityId\" IS NULL AND \"UserId\" <> ''")
-                .HasDatabaseName(WizardDraft.NewEntityIndexName);
-            entity.HasIndex(d => d.ExpiresAt)
-                .HasFilter("\"UserId\" <> ''");
-        });
-
-        // ─── Tourist tax paid to the comuni (NF-100, REP-05) ───────────────────────
-        // The «paid» half of the summary per comune. A comune can be paid in instalments, so the payments of the same comune and period are
-        // not unique: the index only serves the summary, which reads the payments of an org by comune and by the period they lie in. A
-        // fiscal proof must not disappear with a row of the org (RESTRICT), and the amount and the period are checked by the database too:
-        // a payment is above zero and starts no later than it ends.
-        modelBuilder.Entity<TouristTaxRemittance>(entity =>
-        {
-            entity.HasOne<Org>()
-                .WithMany()
-                .HasForeignKey(r => r.OrgId)
-                .OnDelete(DeleteBehavior.Restrict);
-            entity.HasIndex(r => new { r.OrgId, r.ComuneKey, r.PeriodFrom, r.PeriodTo });
-            entity.ToTable(t =>
-            {
-                t.HasCheckConstraint("CK_TouristTaxRemittances_PaidAmountPositive", "\"PaidAmount\" > 0");
-                t.HasCheckConstraint("CK_TouristTaxRemittances_PeriodOrder", "\"PeriodFrom\" <= \"PeriodTo\"");
-            });
-        });
+        modelBuilder.ApplyConfiguration(new WizardDraftConfiguration());
+        modelBuilder.ApplyConfiguration(new TouristTaxRemittanceConfiguration());
 
         // ─── Tourist tax per guest (NF-46, ADR-037) ──────────────────────────────
         // Reference data (exemption reasons, seeded; channel rules, never seeded), the host-declared rates and the confirmed stay record with
@@ -2419,68 +1132,10 @@ public class AppDbContext(
         // Platform reference data, seeded with every row «da verificare» (coverage Unknown) and edited only by the staff, each change in the audit trail. One row
         // for each region and for each autonomous province (two partial unique indexes), never without its https source: the database holds the checks.
         modelBuilder.ApplyConfiguration(new IstatRegionRuleConfiguration());
-
-        // ─── Marketplace (E09/F01, NF-54, NF-56, NF-57, NF-59) ───────────────────
-        // The portals of the channel manager are platform data refreshed once a day, unique by the code Octorate gives them.
-        modelBuilder.Entity<MarketplacePortal>(entity =>
-        {
-            entity.HasIndex(p => p.PortalCode)
-                .IsUnique()
-                .HasDatabaseName(MarketplacePortal.PortalCodeIndexName);
-        });
-
-        // A partner is a row the platform admin enters: unique by its slug, read in the order of its work. Its texts go with it. The checks
-        // keep a code that is not a lowercase slug and a site that is not https out of the table, whoever writes the row.
-        modelBuilder.Entity<MarketplacePartner>(entity =>
-        {
-            entity.HasIndex(p => p.Code)
-                .IsUnique()
-                .HasDatabaseName(MarketplacePartner.CodeIndexName);
-            entity.HasIndex(p => new { p.Job, p.SortOrder });
-            entity.HasMany(p => p.Texts)
-                .WithOne()
-                .HasForeignKey(t => t.PartnerId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.ToTable(t =>
-            {
-                t.HasCheckConstraint(MarketplacePartner.CodeSlugCheckName, "\"Code\" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'");
-                t.HasCheckConstraint(MarketplacePartner.WebsiteHttpsCheckName, "\"WebsiteUrl\" LIKE 'https://%'");
-            });
-        });
-
-        // One row of texts per partner and language (it or en).
-        modelBuilder.Entity<MarketplacePartnerText>(entity =>
-        {
-            entity.Property(t => t.FaqJson).HasColumnType("jsonb");
-            entity.HasIndex(t => new { t.PartnerId, t.Language })
-                .IsUnique()
-                .HasDatabaseName(MarketplacePartnerText.PartnerLanguageIndexName);
-            entity.ToTable(t => t.HasCheckConstraint(MarketplacePartnerText.LanguageCheckName, "\"Language\" IN ('it', 'en')"));
-        });
-
-        // What an org activated. A channel, a tool and a licensed function are per property; a partner is the org's or, when the host declares it
-        // for one property, that property's: two partial unique indexes
-        // (the database takes two NULLs for different values, so one index would let a second org-level row in). An activation goes with its
-        // property (CASCADE; a property is soft-deleted, so in practice it stays). xmin is the concurrency token. The tenant query filter
-        // is applied below, to every ITenantOwned entity.
-        modelBuilder.Entity<MarketplaceActivation>(entity =>
-        {
-            entity.Property(a => a.RowVersion).IsRowVersion();
-            entity.HasOne<Property>()
-                .WithMany()
-                .HasForeignKey(a => a.PropertyId)
-                .IsRequired(false)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(a => new { a.OrgId, a.Kind, a.TargetCode })
-                .IsUnique()
-                .HasFilter("\"PropertyId\" IS NULL")
-                .HasDatabaseName(MarketplaceActivation.OrgLevelIndexName);
-            entity.HasIndex(a => new { a.OrgId, a.PropertyId, a.Kind, a.TargetCode })
-                .IsUnique()
-                .HasFilter("\"PropertyId\" IS NOT NULL")
-                .HasDatabaseName(MarketplaceActivation.PropertyLevelIndexName);
-            entity.HasIndex(a => new { a.OrgId, a.Status });
-        });
+        modelBuilder.ApplyConfiguration(new MarketplacePortalConfiguration());
+        modelBuilder.ApplyConfiguration(new MarketplacePartnerConfiguration());
+        modelBuilder.ApplyConfiguration(new MarketplacePartnerTextConfiguration());
+        modelBuilder.ApplyConfiguration(new MarketplaceActivationConfiguration());
 
         // ─── Activation of CasaZen with Octorate (NF-104..NF-107, E10/F01/US01/T01) ─────────────────────────────
         // The host's intents and the activation facts only: the state of a part or of a flow is derived on read. One state for each org and
@@ -2525,13 +1180,11 @@ public class AppDbContext(
         // UI-13a: the stored search keys and their indexes (global search, docs/runbooks/global-search.md).
         SearchKeyModel.Configure(modelBuilder);
 
-        modelBuilder.Entity<GuestHostExtraOrder>().HasOne<FiscalDocument>().WithMany().HasForeignKey(x => x.SupplementToDocumentId).OnDelete(DeleteBehavior.Restrict);
-        modelBuilder.Entity<GuestHostExtraOrder>().HasIndex(x => new { x.OrgId, x.BookingId });
-        modelBuilder.Entity<GuestHostExtraOrder>().HasIndex(x => new { x.OrgId, x.ExtraId });
-        modelBuilder.Entity<GuestHostExtra>().HasIndex(x => x.OrgId);
+        modelBuilder.ApplyConfiguration(new GuestHostExtraOrderConfiguration());
+        modelBuilder.ApplyConfiguration(new GuestHostExtraConfiguration());
         modelBuilder.Entity<TrustedSupplier>()
             .HasQueryFilter(TrustedSupplierActiveFilter, supplier => supplier.RemovedAt == null);
-        modelBuilder.Entity<GuestCrmProfile>().Property(p => p.MarketingCategoryOverridesJson).HasDefaultValue("{}");
+        modelBuilder.ApplyConfiguration(new GuestCrmProfileConfiguration());
         ApplyTenantQueryFilters(modelBuilder);
     }
 
@@ -2548,179 +1201,6 @@ public class AppDbContext(
 
     private static readonly MethodInfo ApplyTenantQueryFilterMethod = typeof(AppDbContext)
         .GetMethod(nameof(ApplyTenantQueryFilter), BindingFlags.Instance | BindingFlags.NonPublic)!;
-
-    private static void ConfigureCondominium(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<Condominium>(entity =>
-        {
-            entity.HasOne(condominium => condominium.Org).WithMany().HasForeignKey(condominium => condominium.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(condominium => condominium.FiscalStartMonth).HasDefaultValue(6);
-            entity.HasIndex(condominium => condominium.OrgId);
-            entity.ToTable(table => table.HasCheckConstraint("CK_Condominiums_FiscalStartMonth", "\"FiscalStartMonth\" BETWEEN 1 AND 12"));
-        });
-
-        modelBuilder.Entity<CondominiumUnit>(entity =>
-        {
-            entity.HasOne(unit => unit.Condominium).WithMany(condominium => condominium.Units).HasForeignKey(unit => unit.CondominiumId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(unit => unit.Property).WithMany().HasForeignKey(unit => unit.PropertyId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(unit => unit.Org).WithMany().HasForeignKey(unit => unit.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(unit => unit.Millesimi).HasPrecision(8, 2);
-            entity.HasIndex(unit => unit.CondominiumId);
-            entity.HasIndex(unit => new { unit.OrgId, unit.PropertyId });
-        });
-
-        modelBuilder.Entity<CondominiumPeriod>(entity =>
-        {
-            entity.HasOne(period => period.Condominium).WithMany(condominium => condominium.Periods).HasForeignKey(period => period.CondominiumId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(period => period.Org).WithMany().HasForeignKey(period => period.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(period => period.Status).HasConversion<int>();
-            entity.HasIndex(period => new { period.CondominiumId, period.Label }).IsUnique();
-            entity.HasIndex(period => period.OrgId);
-            entity.ToTable(table => table.HasCheckConstraint("CK_CondominiumPeriods_Dates", "\"EndDate\" >= \"StartDate\""));
-        });
-
-        modelBuilder.Entity<CondominiumStatement>(entity =>
-        {
-            entity.HasOne(statement => statement.Period).WithMany(period => period.Statements).HasForeignKey(statement => statement.CondominiumPeriodId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(statement => statement.Org).WithMany().HasForeignKey(statement => statement.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(statement => statement.Kind).HasConversion<int>();
-            entity.Property(statement => statement.Status).HasConversion<int>();
-            entity.Property(statement => statement.TotalAmount).HasPrecision(18, 2);
-            entity.HasIndex(statement => new { statement.CondominiumPeriodId, statement.Kind, statement.RevisionNumber }).IsUnique();
-            entity.HasIndex(statement => new { statement.CondominiumPeriodId, statement.Kind })
-                .IsUnique()
-                .HasFilter("\"Status\" = 1");
-            entity.HasIndex(statement => statement.OrgId);
-        });
-
-        modelBuilder.Entity<CondominiumExpenseLine>(entity =>
-        {
-            entity.HasOne(line => line.Statement).WithMany(statement => statement.Lines).HasForeignKey(line => line.StatementId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(line => line.Unit).WithMany().HasForeignKey(line => line.CondominiumUnitId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(line => line.Org).WithMany().HasForeignKey(line => line.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(line => line.Amount).HasPrecision(18, 2);
-            entity.Property(line => line.RecoverableAmount).HasPrecision(18, 2);
-            entity.Property(line => line.RecoverablePercentage).HasPrecision(5, 2);
-            entity.Property(line => line.Confidence).HasPrecision(5, 4);
-            entity.Property(line => line.ExpenseNature).HasConversion<int>();
-            entity.Property(line => line.TenantRecoverability).HasConversion<int>();
-            entity.Property(line => line.ClassificationSource).HasConversion<int>();
-            entity.Property(line => line.ReviewStatus).HasConversion<int>();
-            entity.HasIndex(line => line.StatementId);
-            entity.HasIndex(line => line.OrgId);
-            entity.ToTable(table => table.HasCheckConstraint(
-                "CK_CondominiumExpenseLines_Confidence",
-                "\"Confidence\" IS NULL OR (\"Confidence\" >= 0 AND \"Confidence\" <= 1)"));
-        });
-
-        modelBuilder.Entity<CondominiumInstallment>(entity =>
-        {
-            entity.HasOne(installment => installment.Period).WithMany(period => period.Installments).HasForeignKey(installment => installment.CondominiumPeriodId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(installment => installment.Org).WithMany().HasForeignKey(installment => installment.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(installment => installment.OrdinaryAmount).HasPrecision(18, 2);
-            entity.Property(installment => installment.PriorSettlementAmount).HasPrecision(18, 2);
-            entity.Property(installment => installment.ExtraordinaryAmount).HasPrecision(18, 2);
-            entity.Property(installment => installment.TotalAmount).HasPrecision(18, 2);
-            entity.Property(installment => installment.Status).HasConversion<int>();
-            entity.HasIndex(installment => new { installment.CondominiumPeriodId, installment.SlotIndex }).IsUnique();
-            entity.HasIndex(installment => installment.OrgId);
-        });
-
-        modelBuilder.Entity<CondominiumPriorBalance>(entity =>
-        {
-            entity.HasOne(balance => balance.Period).WithOne(period => period.PriorBalance).HasForeignKey<CondominiumPriorBalance>(balance => balance.CondominiumPeriodId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(balance => balance.SourcePeriod).WithMany().HasForeignKey(balance => balance.SourcePeriodId).OnDelete(DeleteBehavior.SetNull);
-            entity.HasOne(balance => balance.Org).WithMany().HasForeignKey(balance => balance.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(balance => balance.Amount).HasPrecision(18, 2);
-            entity.Property(balance => balance.Disposition).HasConversion<int>();
-            entity.HasIndex(balance => balance.CondominiumPeriodId).IsUnique();
-            entity.HasIndex(balance => balance.OrgId);
-        });
-
-        modelBuilder.Entity<CondominiumPayment>(entity =>
-        {
-            entity.HasOne(payment => payment.Period).WithMany().HasForeignKey(payment => payment.CondominiumPeriodId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(payment => payment.Installment).WithMany(installment => installment.Payments).HasForeignKey(payment => payment.CondominiumInstallmentId).OnDelete(DeleteBehavior.SetNull);
-            entity.HasOne(payment => payment.PriorBalance).WithMany().HasForeignKey(payment => payment.PriorBalanceId).OnDelete(DeleteBehavior.SetNull);
-            entity.HasOne(payment => payment.Org).WithMany().HasForeignKey(payment => payment.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(payment => payment.Amount).HasPrecision(18, 2);
-            entity.HasIndex(payment => new { payment.OrgId, payment.ExternalSourceHash })
-                .IsUnique()
-                .HasFilter("\"ExternalSourceHash\" IS NOT NULL");
-            entity.HasIndex(payment => payment.CondominiumPeriodId);
-            entity.HasIndex(payment => payment.CondominiumInstallmentId);
-        });
-
-        modelBuilder.Entity<TenantCondominiumSettlement>(entity =>
-        {
-            entity.HasOne(settlement => settlement.LeaseContract).WithMany().HasForeignKey(settlement => settlement.LeaseContractId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(settlement => settlement.Period).WithMany().HasForeignKey(settlement => settlement.CondominiumPeriodId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(settlement => settlement.Org).WithMany().HasForeignKey(settlement => settlement.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(settlement => settlement.RecoverableFinalAmount).HasPrecision(18, 2);
-            entity.Property(settlement => settlement.AdvancesAccountedAmount).HasPrecision(18, 2);
-            entity.Property(settlement => settlement.PriorTenantBalanceAmount).HasPrecision(18, 2);
-            entity.Property(settlement => settlement.SettlementAmount).HasPrecision(18, 2);
-            entity.Property(settlement => settlement.Direction).HasConversion<int>();
-            entity.Property(settlement => settlement.Disposition).HasConversion<int>();
-            entity.Property(settlement => settlement.AllocationRule).HasConversion<int>();
-            entity.Property(settlement => settlement.Status).HasConversion<int>();
-            entity.HasIndex(settlement => new { settlement.LeaseContractId, settlement.StatementId }).IsUnique();
-            entity.HasIndex(settlement => new { settlement.OrgId, settlement.CondominiumPeriodId });
-        });
-
-        modelBuilder.Entity<TenantExpenseAllocation>(entity =>
-        {
-            entity.HasOne(allocation => allocation.Settlement).WithMany(settlement => settlement.Allocations).HasForeignKey(allocation => allocation.TenantCondominiumSettlementId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(allocation => allocation.LeaseContract).WithMany().HasForeignKey(allocation => allocation.LeaseContractId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(allocation => allocation.ExpenseLine).WithMany().HasForeignKey(allocation => allocation.CondominiumExpenseLineId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(allocation => allocation.Org).WithMany().HasForeignKey(allocation => allocation.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(allocation => allocation.BaseAmount).HasPrecision(18, 2);
-            entity.Property(allocation => allocation.AllocatedAmount).HasPrecision(18, 2);
-            entity.Property(allocation => allocation.Rule).HasConversion<int>();
-            entity.Property(allocation => allocation.Status).HasConversion<int>();
-            entity.HasIndex(allocation => allocation.TenantCondominiumSettlementId);
-            entity.HasIndex(allocation => allocation.OrgId);
-        });
-
-        modelBuilder.Entity<CondominiumImportBatch>(entity =>
-        {
-            entity.HasOne(batch => batch.Org).WithMany().HasForeignKey(batch => batch.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(batch => batch.Status).HasConversion<int>();
-            entity.HasIndex(batch => new { batch.OrgId, batch.ContentHash }).IsUnique();
-        });
-
-        modelBuilder.Entity<CondominiumImportHouse>(entity =>
-        {
-            entity.HasOne(house => house.Batch).WithMany(batch => batch.Houses).HasForeignKey(house => house.BatchId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(house => house.Property).WithMany().HasForeignKey(house => house.PropertyId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(house => house.Org).WithMany().HasForeignKey(house => house.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(house => house.Status).HasConversion<int>();
-            entity.HasIndex(house => house.BatchId);
-            entity.HasIndex(house => new { house.OrgId, house.PropertyId });
-        });
-
-        modelBuilder.Entity<CondominiumImportYear>(entity =>
-        {
-            entity.HasOne(year => year.House).WithMany(house => house.Years).HasForeignKey(year => year.HouseId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(year => year.Org).WithMany().HasForeignKey(year => year.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(year => year.Cadence).HasConversion<int>();
-            entity.HasIndex(year => year.HouseId);
-        });
-
-        modelBuilder.Entity<CondominiumStatementProposal>(entity =>
-        {
-            entity.HasOne(proposal => proposal.Condominium).WithMany().HasForeignKey(proposal => proposal.CondominiumId).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(proposal => proposal.Org).WithMany().HasForeignKey(proposal => proposal.OrgId).OnDelete(DeleteBehavior.Restrict);
-            entity.Property(proposal => proposal.Kind).HasConversion<int>();
-            entity.Property(proposal => proposal.Settlement).HasConversion<int>();
-            entity.Property(proposal => proposal.Status).HasConversion<int>();
-            entity.Property(proposal => proposal.OrdinaryAmount).HasPrecision(18, 2);
-            entity.Property(proposal => proposal.ExtraordinaryAmount).HasPrecision(18, 2);
-            entity.Property(proposal => proposal.FinalAmount).HasPrecision(18, 2);
-            entity.Property(proposal => proposal.Confidence).HasPrecision(5, 4);
-            entity.HasIndex(proposal => new { proposal.OrgId, proposal.CondominiumId, proposal.ContentHash });
-        });
-    }
 
     /// <summary>
     /// Global tenant query filter (AC7, TN-2): every read of an <see cref="ITenantOwned"/> entity is scoped
