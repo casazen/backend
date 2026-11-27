@@ -88,7 +88,9 @@ public sealed class PresenceClosurePostgresTests : IAsyncLifetime
         await using var read = NewContext();
         var rows = await read.BiometricVerificationLogs.IgnoreQueryFilters().AsNoTracking().Where(row => row.BookingId == bookingId).ToListAsync();
         var row = Assert.Single(rows);
-        Assert.Equal((key, IdentityDecisionMode.Observation, BiometricOutcome.Escalate, BiometricOutcome.Accept), (row.IdempotencyKey, row.DecisionMode, row.Outcome, row.ShadowOutcome));
+
+        // The property keeps no document (Switzerland, no known canton): the coherence of the two sides cannot be told, so the policy would not approve either (shadow Escalate).
+        Assert.Equal((key, IdentityDecisionMode.Observation, BiometricOutcome.Escalate, BiometricOutcome.Escalate), (row.IdempotencyKey, row.DecisionMode, row.Outcome, row.ShadowOutcome));
         var saved = await read.GuestCheckInSessions.IgnoreQueryFilters().AsNoTracking().SingleAsync(s => s.Id == sessionId);
         Assert.Equal((1, IdentityOutcomeCodes.Review, key), (saved.BiometricAttempts, saved.IdentityOutcomeCode, saved.IdentityLastAttemptKey));
 
