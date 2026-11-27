@@ -176,6 +176,59 @@ public class IdentityPathEgressArchitectureTests
         Assert.Equal("an HTTP client", Forbidden(typeof(Func<HttpClient>), jobsForbidden: false, modelFileDownloader: false));
     }
 
+    /// <summary>
+    /// Test E, privacy (E71/F01/US03/T01): the service container is a way round test A (a class that takes it can resolve an AI provider or an HTTP client at run time with none of them
+    /// a parameter or a field), so no type of the identity namespace holds it but <see cref="ZonedPrefillServices"/>, which names what it gives: every service it gives is a type of the
+    /// identity namespace and none is a way out, and it has no method that resolves what it is asked for.
+    /// </summary>
+    [Fact]
+    public void IdentityPathEgress_TheContainerIsHeldByOneClassOnly_AndThatClassNamesWhatItGives()
+    {
+        var holders = IdentityNamespaceTypes()
+            .Where(type => Outermost(type) != typeof(ZonedPrefillServices))
+            .SelectMany(ContainerHolders)
+            .ToList();
+
+        Assert.True(
+            holders.Count == 0,
+            $"No type of {IdentityNamespace} may hold the service container but {nameof(ZonedPrefillServices)}: an AI provider or an HTTP client could be resolved at run time, out of reach of test A.\n"
+            + string.Join("\n", holders));
+
+        var gives = typeof(ZonedPrefillServices).GetProperties(BindingFlags.Instance | BindingFlags.Public).ToList();
+        Assert.NotEmpty(gives);
+        Assert.All(gives, property =>
+        {
+            Assert.True(
+                InNamespace(property.PropertyType, IdentityNamespace),
+                $"{nameof(ZonedPrefillServices)}.{property.Name} is {Name(property.PropertyType)}, outside {IdentityNamespace}.");
+            Assert.Null(Forbidden(property.PropertyType, jobsForbidden: true, modelFileDownloader: false));
+        });
+        Assert.DoesNotContain(typeof(ZonedPrefillServices).GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly), method => !method.IsSpecialName);
+
+        // The guard is not blind: a class that holds the container is named with its parameter.
+        Assert.Contains(ContainerHolders(typeof(PlantedContainerHolder)), finding => finding.Contains("constructor parameter 'provider'", StringComparison.Ordinal));
+    }
+
+    /// <summary>The constructor parameters and the fields of <paramref name="type"/> (those of its base types too) that are the service container, or a factory of its scopes.</summary>
+    private static IEnumerable<string> ContainerHolders(Type type)
+    {
+        foreach (var constructor in type.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+        {
+            foreach (var parameter in constructor.GetParameters().Where(parameter => IsContainer(parameter.ParameterType)))
+                yield return $"{Name(type)}: constructor parameter '{parameter.Name}' is the service container ({Name(parameter.ParameterType)})";
+        }
+
+        for (var declaring = type; declaring is not null && declaring != typeof(object); declaring = declaring.BaseType)
+        {
+            var fields = declaring.GetFields(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+            foreach (var field in fields.Where(field => IsContainer(field.FieldType)))
+                yield return $"{Name(type)}: field '{field.Name}' is the service container ({Name(field.FieldType)})";
+        }
+    }
+
+    private static bool IsContainer(Type type) =>
+        Parts(type).Any(part => typeof(IServiceProvider).IsAssignableFrom(part) || typeof(IServiceScopeFactory).IsAssignableFrom(part));
+
     /// <summary>Every type of the identity namespace and below in the assemblies of the application, nested and compiler-generated types included.</summary>
     private static List<Type> IdentityNamespaceTypes() =>
         new[] { typeof(ICheckInDocumentReader).Assembly, typeof(LocalCheckInDocumentReader).Assembly, typeof(IdentityVerificationServiceCollectionExtensions).Assembly }
@@ -319,6 +372,12 @@ public class IdentityPathEgressArchitectureTests
 
         var tick = name.IndexOf('`', StringComparison.Ordinal);
         return $"{(tick < 0 ? name : name[..tick])}<{string.Join(", ", type.GetGenericArguments().Select(Name))}>";
+    }
+
+    /// <summary>A class that holds the service container, kept outside the identity namespace (it would fail test E there): the guard must name its parameter.</summary>
+    private sealed class PlantedContainerHolder(IServiceProvider provider)
+    {
+        public IServiceProvider Provider => provider;
     }
 
     /// <summary>A class that breaks every rule of the path, kept outside the identity namespace (it would fail the guard there): the guard must name each member.</summary>

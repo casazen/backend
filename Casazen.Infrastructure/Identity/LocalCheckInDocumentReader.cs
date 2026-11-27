@@ -1,6 +1,8 @@
 using System.Globalization;
+using Casazen.Core.Identity;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
+using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Identity;
 
@@ -11,30 +13,30 @@ namespace Casazen.Infrastructure.Identity;
 /// no AI provider answered. No AI provider, no AI settings, no HTTP client: the picture never leaves the process, whatever the AI configuration of the
 /// platform, and no flag sends it out again. It is held in memory only, at most <see cref="CheckInDocumentLimits.MaxImageBytes"/>, and zeroed before the
 /// answer; it is not stored and not logged. The guest still confirms every field.
+/// <para>
+/// <b>Zoned prefill</b> (<see cref="ReadZonedAsync"/>, E71/F01/US03/T01, NF-190, only asked for with the self-hosted flow on): the same reading, and on top of it the values read by
+/// the zones of the card, each with its side, its zone, its confidence and its source, and the fields of the check-in the guest has still to type. The card is found and set upright
+/// by the geometry of the document (<see cref="DocumentPictureAnalyzer"/>); when it cannot be, the answer is the reading of today and no zone is read. The services of the zones are
+/// taken from the container only when asked for, so the reading of today needs none of them.
+/// </para>
 /// </summary>
-public sealed class LocalCheckInDocumentReader(IMrzExtractionService mrz, IDocumentOcrService ocr) : ICheckInDocumentReader
+public sealed class LocalCheckInDocumentReader(
+    IMrzExtractionService mrz,
+    IDocumentOcrService ocr,
+    ZonedPrefillServices? zonedServices = null,
+    ILogger<LocalCheckInDocumentReader>? logger = null) : ICheckInDocumentReader
 {
     public async Task<CheckInDocumentRead> ReadAsync(Stream content, CancellationToken cancellationToken = default)
     {
         byte[]? bytes = null;
         try
         {
-            try
-            {
-                bytes = await ImageBytes.ReadAllAsync(content, CheckInDocumentLimits.MaxImageBytes, cancellationToken);
-            }
-            catch (InvalidDataException)
-            {
-                return CheckInDocumentRead.Failed("too_large");
-            }
+            CheckInDocumentRead? failure;
+            (bytes, failure) = await ReadBytesAsync(content, cancellationToken);
+            if (failure is not null)
+                return failure;
 
-            // An empty upload answers like an oversized one, as it always did (the endpoint refuses an empty file before asking).
-            if (bytes.Length == 0)
-                return CheckInDocumentRead.Failed("too_large");
-            if (!IsSupportedPicture(bytes))
-                return CheckInDocumentRead.Failed("unsupported_file");
-
-            return await ReadLocalAsync(bytes, cancellationToken);
+            return (await ReadLocalAsync(bytes!, cancellationToken)).Read;
         }
         finally
         {
@@ -42,11 +44,56 @@ public sealed class LocalCheckInDocumentReader(IMrzExtractionService mrz, IDocum
         }
     }
 
+    public async Task<CheckInZonedRead> ReadZonedAsync(Stream content, bool lookForPortrait, CancellationToken cancellationToken = default)
+    {
+        byte[]? bytes = null;
+        try
+        {
+            CheckInDocumentRead? failure;
+            (bytes, failure) = await ReadBytesAsync(content, cancellationToken);
+            if (failure is not null)
+                return CheckInZonedRead.Of(failure);
+
+            var (read, machine) = await ReadLocalAsync(bytes!, cancellationToken);
+
+            // Nothing was read of the document: no zone is read either, and everything is still to be typed.
+            IReadOnlyList<ZonedField> fields = read.Read ? await ReadZonesAsync(bytes!, machine, lookForPortrait, cancellationToken) : [];
+            return new CheckInZonedRead(read, fields, CheckInPrefillFields.MissingFrom(read.Fields, fields));
+        }
+        finally
+        {
+            ImageBytes.Zero(bytes);
+        }
+    }
+
+    /// <summary>The upload as bytes, or the reason it is not read: an empty or too large one is <c>too_large</c> (as it always was), one that is not a JPEG, a PNG or a WebP <c>unsupported_file</c>.</summary>
+    private static async Task<(byte[]? Bytes, CheckInDocumentRead? Failure)> ReadBytesAsync(Stream content, CancellationToken cancellationToken)
+    {
+        byte[] bytes;
+        try
+        {
+            bytes = await ImageBytes.ReadAllAsync(content, CheckInDocumentLimits.MaxImageBytes, cancellationToken);
+        }
+        catch (InvalidDataException)
+        {
+            return (null, CheckInDocumentRead.Failed("too_large"));
+        }
+
+        // An empty upload answers like an oversized one, as it always did (the endpoint refuses an empty file before asking).
+        if (bytes.Length == 0)
+            return (bytes, CheckInDocumentRead.Failed("too_large"));
+        if (!IsSupportedPicture(bytes))
+            return (bytes, CheckInDocumentRead.Failed("unsupported_file"));
+
+        return (bytes, null);
+    }
+
     /// <summary>
     /// The MRZ, then the visual zone of the same picture. Fields the MRZ proved (check digits valid) win and the printed ones complete them; printed fields
-    /// alone count only when the picture shows a document and its names; otherwise the reason says why nothing was read.
+    /// alone count only when the picture shows a document and its names; otherwise the reason says why nothing was read. The MRZ that was read comes with the
+    /// answer (null when none): the zoned prefill tells the format of the document from it.
     /// </summary>
-    private async Task<CheckInDocumentRead> ReadLocalAsync(byte[] bytes, CancellationToken ct)
+    private async Task<(CheckInDocumentRead Read, MrzExtractionResult? Machine)> ReadLocalAsync(byte[] bytes, CancellationToken ct)
     {
         using var stream = new MemoryStream(bytes, writable: false);
         var machine = await mrz.ExtractAsync(stream, ct);
@@ -70,8 +117,8 @@ public sealed class LocalCheckInDocumentReader(IMrzExtractionService mrz, IDocum
         if (printed is null || (checkedFields is null && printed is not { HasDocumentEvidence: true, GivenNames: not null, Surname: not null }))
         {
             if (checkedFields is not null)
-                return new(true, null, checkedFields, checkedSide);
-            return CheckInDocumentRead.Failed(observation.Failure ?? (printed?.HasDocumentEvidence == true ? "unreadable" : "not_document"));
+                return (new(true, null, checkedFields, checkedSide), machine);
+            return (CheckInDocumentRead.Failed(observation.Failure ?? (printed?.HasDocumentEvidence == true ? "unreadable" : "not_document")), machine);
         }
 
         var visual = new CheckInDocumentFields(printed.GivenNames, printed.Surname, Gender(printed.Sex), Day(printed.DateOfBirth),
@@ -80,8 +127,64 @@ public sealed class LocalCheckInDocumentReader(IMrzExtractionService mrz, IDocum
             printed.ResidenceStreet, printed.ResidencePostalCode, printed.ResidenceCityName, printed.ResidenceProvince,
             printed.ResidenceProvince is not null ? "ITALIA" : null, printed.ResidenceProvince is not null ? true : null);
         return checkedFields is null
-            ? new(true, null, visual, printed.DocumentKind switch { "IdentityCard" or "DriversLicense" => "front", "Passport" => "single", _ => null })
-            : new(true, null, Supplement(checkedFields, visual), checkedSide);
+            ? (new(true, null, visual, printed.DocumentKind switch { "IdentityCard" or "DriversLicense" => "front", "Passport" => "single", _ => null }), machine)
+            : (new(true, null, Supplement(checkedFields, visual), checkedSide), machine);
+    }
+
+    /// <summary>
+    /// The values read by the zones of the card of the photo. The format is the one the MRZ of the photo shows, or the card the registry holds when it shows none; the side is not told by
+    /// the prefill, so the MRZ says the side that has it and, without one, the side with the portrait is taken, and the geometry confirms it from the picture itself. Empty when the
+    /// services of the zones are not there, the card cannot be found whole and upright, or the models are not available: the reading of today stands, a guest types what is not read.
+    /// <para>
+    /// <paramref name="lookForPortrait"/> false (no current consent, a minor, a refusal): the face detector is never asked. The card is judged and turned by its box and its MRZ band, and the
+    /// side is the one the MRZ or the layout names, with nothing to confirm it from the picture: a picture of the other side has no label next to a value, so it gives nothing.
+    /// </para>
+    /// </summary>
+    private async Task<IReadOnlyList<ZonedField>> ReadZonesAsync(byte[] bytes, MrzExtractionResult? machine, bool lookForPortrait, CancellationToken ct)
+    {
+        try
+        {
+            if (zonedServices?.Pictures is not { } pictures || zonedServices.Formats is not { } formats || zonedServices.Sides is not { } sides)
+                return [];
+
+            var format = machine is null
+                ? DocumentPictureAnalyzer.DefaultCardFormat(formats.All)
+                : formats.DetectFromMrz(machine.DocumentCode, machine.IssuingState, machine.MrzType);
+            if (format is null)
+                return [];
+
+            DocumentSide declared;
+            if (machine is not null && DocumentSides.TryParse(format.Mrz.Side, out var mrzSide))
+                declared = mrzSide;
+            else
+                declared = DocumentPictureAnalyzer.PortraitSideOf(format) ?? DocumentSide.Front;
+
+            DocumentPicture picture;
+            try
+            {
+                picture = pictures.Open(bytes);
+            }
+            catch (InvalidDataException)
+            {
+                return [];
+            }
+
+            using (picture)
+            {
+                var report = picture.Inspect(format, declared, lookForPortrait, ct);
+                var shown = lookForPortrait ? sides.Classify(report, machine is not null, format) : declared;
+                if (shown is not { } side)
+                    return [];
+
+                return await picture.ReadFieldsAsync(format, side, report, ct);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The prefill is a help, never a decision: the type only is logged (a message could carry what was being read) and the guest types what is missing.
+            logger?.LogWarning("Zoned prefill of a document not run ({ErrorType})", ex.GetType().Name);
+            return [];
+        }
     }
 
     /// <summary>The fields of <paramref name="primary"/>, with the ones it misses taken from <paramref name="other"/>.</summary>

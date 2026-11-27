@@ -80,6 +80,18 @@ public class MrzExtractionResult
     public string? IssuingState { get; set; }
 
     /// <summary>
+    /// The document code of the first line of the MRZ as it is printed, with its filler (<c>I&lt;</c>, <c>ID</c>, <c>C&lt;</c>, <c>P&lt;</c>): what the registry of the formats
+    /// is asked, with the issuing state and <see cref="MrzType"/>, to tell the format of the document (E71/F01/US03/T01). Null for a result that did not come from the reader.
+    /// </summary>
+    public string? DocumentCode { get; set; }
+
+    /// <summary>
+    /// The layout of the MRZ the result was read from, a code of <c>DocumentFormatMrzTypes</c> (<c>TD1</c>: three lines of 30 characters, <c>TD2</c>: two of 36, <c>TD3</c>: two
+    /// of 44). Null for a result that did not come from the reader.
+    /// </summary>
+    public string? MrzType { get; set; }
+
+    /// <summary>
     /// True when every check digit is valid per ICAO 9303 (ADR-009-R23): the three of the fields, the one of the optional data when it is used
     /// and the composite one. A reading with a failed digit is never presented as certain.
     /// </summary>

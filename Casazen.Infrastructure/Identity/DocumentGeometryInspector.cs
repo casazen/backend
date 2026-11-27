@@ -57,7 +57,17 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
     /// are read from <see cref="DocumentFormat.Layout"/>; <paramref name="declaredSide"/> says which side's portrait (<c>document_portrait_missing</c>) and MRZ band (the
     /// rotation of a back) are asked for. Throws <see cref="BiometricUnavailableException"/> when the face models are not available (see the class).
     /// </summary>
-    public DocumentGeometryReport Inspect(RasterImage image, DocumentFormat format, DocumentSide declaredSide, CancellationToken cancellationToken)
+    public DocumentGeometryReport Inspect(RasterImage image, DocumentFormat format, DocumentSide declaredSide, CancellationToken cancellationToken) =>
+        Inspect(image, format, declaredSide, lookForPortrait: true, cancellationToken);
+
+    /// <summary>
+    /// <see cref="Inspect(RasterImage, DocumentFormat, DocumentSide, CancellationToken)"/> with a choice about the face (E71/F01/US03/T01): with <paramref name="lookForPortrait"/> false
+    /// the face detector is never asked, so the report says nothing about the portrait (<see cref="DocumentGeometryReport.PortraitInZone"/> is null, no
+    /// <c>document_portrait_missing</c>) and the turn of the card comes from its box and the MRZ band of the declared side only (a landscape card is taken as upright, a tall one that
+    /// no band can turn is not decided). The prefill of <c>read-document</c> uses it for a guest who has not given the current consent: the face of the document is looked for only after it.
+    /// </summary>
+    public DocumentGeometryReport Inspect(
+        RasterImage image, DocumentFormat format, DocumentSide declaredSide, bool lookForPortrait, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(image);
         ArgumentNullException.ThrowIfNull(format);
@@ -91,7 +101,7 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         {
             cancellationToken.ThrowIfCancellationRequested();
             var tall = box.H * image.Height > box.W * image.Width;
-            orientation = ResolveOrientation(image, cardGray, box, tall, format, declaredSide, cancellationToken);
+            orientation = ResolveOrientation(image, cardGray, box, tall, format, declaredSide, lookForPortrait, cancellationToken);
         }
 
         var codes = new List<string>();
@@ -185,11 +195,20 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
     /// neither, a landscape card is taken as upright and a tall one is not decided.
     /// </summary>
     private Orientation ResolveOrientation(
-        RasterImage image, GrayBitmap? cardGray, NormalizedBox box, bool tall, DocumentFormat format, DocumentSide declaredSide, CancellationToken cancellationToken)
+        RasterImage image,
+        GrayBitmap? cardGray,
+        NormalizedBox box,
+        bool tall,
+        DocumentFormat format,
+        DocumentSide declaredSide,
+        bool lookForPortrait,
+        CancellationToken cancellationToken)
     {
         var baseRotation = tall ? 90 : 0;
         var zone = PortraitZone(format);
-        var evidence = zone is null ? null : FindPortrait(image, box, tall, cancellationToken);
+
+        // Without the permission to look for a face the detector is not asked: no evidence, and the portrait is not judged (null, never «missing»).
+        var evidence = zone is null || !lookForPortrait ? null : FindPortrait(image, box, tall, cancellationToken);
         format.Layout.Sides.TryGetValue(DocumentSides.CodeOf(declaredSide), out var declaredLayout);
 
         if (declaredLayout is { MrzRegion: { } band, Portrait: null })
@@ -197,7 +216,7 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
             var (bandRotation, bandDecided) = MrzBandTurn(cardGray, tall, band);
             if (bandDecided)
             {
-                var (bandInZone, bandFarOutside) = JudgePortrait(zone, evidence);
+                var (bandInZone, bandFarOutside) = lookForPortrait ? JudgePortrait(zone, evidence) : (null, false);
                 return new Orientation(bandRotation, true, bandInZone, bandFarOutside);
             }
         }
@@ -213,7 +232,7 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         }
 
         var (cueRotation, cueDecided) = MrzBandTurn(cardGray, tall, declaredLayout?.MrzRegion);
-        return new Orientation(cueRotation, cueDecided, zone is null ? null : false, false);
+        return new Orientation(cueRotation, cueDecided, zone is null || !lookForPortrait ? null : false, false);
     }
 
     /// <summary>

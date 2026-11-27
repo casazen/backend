@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using Casazen.Core.Entities;
+using Casazen.Core.Identity;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 
@@ -905,15 +906,43 @@ public class SelfieUploadResponse
     public string? LockCodeHeld { get; set; }
 }
 
-/// <summary>Answer of <c>POST /api/public/checkin/{token}/read-document</c>. The photo itself is never returned.</summary>
+/// <summary>
+/// Answer of <c>POST /api/public/checkin/{token}/read-document</c>. The photo itself is never returned. With the self-hosted flow on (<c>Features:CheckInIdentitySelfHosted</c>,
+/// E71/F01/US03/T01, NF-190) it also carries <c>fields</c> (what the zones of the card gave, each with its side, zone and confidence), <c>missing</c> (the check-in fields the guest
+/// has still to type) and <c>source</c> (<c>local</c>: nothing left the process); with it off none of the three is in the answer, which is then exactly the one of before.
+/// </summary>
 public class CheckInDocumentReadResponse
 {
+    /// <summary>The value of <see cref="Source"/>: the photo was read in the process.</summary>
+    public const string LocalSource = "local";
+
     public bool Read { get; set; }
     public string? Reason { get; set; }
     public CheckInDocumentFields? Guest { get; set; }
     public string? Side { get; set; }
     public int? GuestPosition { get; set; }
     public bool ConfirmGuest { get; set; }
+
+    /// <summary>The values read by zone: <c>name</c>, <c>value</c>, <c>side</c>, <c>zone</c>, <c>confidence</c> and <c>source</c> (<c>mrz</c> or <c>viz</c>). Personal data for the guest who sent the photo: never stored or logged.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<CheckInZonedFieldDto>? Fields { get; set; }
+
+    /// <summary>The fields of the check-in (<c>lastName</c>, <c>firstName</c>, <c>gender</c>, <c>dateOfBirth</c>, <c>birthPlace</c>, <c>citizenship</c>, <c>documentKind</c>, <c>documentNumber</c>, <c>issuePlace</c>) the photo did not give: what the guest types.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? Missing { get; set; }
+
+    /// <summary><c>local</c> when the photo was read in the process (<see cref="LocalSource"/>); absent with the self-hosted flow off.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Source { get; set; }
+
+    /// <summary>This answer with the zoned prefill: the <paramref name="fields"/> the zones gave (none when nothing was read, or the photo is not of a guest of the stay), what is still <paramref name="missing"/>, and the source.</summary>
+    public CheckInDocumentReadResponse WithZoned(IReadOnlyList<ZonedField> fields, IReadOnlyList<string> missing)
+    {
+        Fields = [.. fields.Select(CheckInZonedFieldDto.From)];
+        Missing = missing;
+        Source = LocalSource;
+        return this;
+    }
 
     public static CheckInDocumentReadResponse From(CheckInDocumentRead read) => new()
     {
@@ -925,4 +954,33 @@ public class CheckInDocumentReadResponse
         } : null,
         Side = read.Side,
     };
+}
+
+/// <summary>
+/// One value of the zoned prefill (<c>fields</c> of <c>read-document</c>, E71/F01/US03/T01, NF-190): what it is (<c>name</c>, a code of <c>ZonedFieldNames</c>), the <c>value</c>, the
+/// <c>side</c> of the document it was read on (<c>front</c>, <c>back</c> or <c>single</c>), the <c>zone</c> of the format it was read from (the name of a field zone, or <c>mrz</c>), how far
+/// it is trusted (<c>confidence</c>, 0 to 1) and where it comes from (<c>source</c>: <c>mrz</c> with its check digits, or <c>viz</c>, the printed zone). Personal data that goes to the
+/// guest who sent the photo and nowhere else: <see cref="ToString"/> leaves the value out.
+/// </summary>
+public sealed class CheckInZonedFieldDto
+{
+    public string Name { get; set; } = string.Empty;
+    public string Value { get; set; } = string.Empty;
+    public string Side { get; set; } = string.Empty;
+    public string Zone { get; set; } = string.Empty;
+    public double Confidence { get; set; }
+    public string Source { get; set; } = string.Empty;
+
+    public static CheckInZonedFieldDto From(ZonedField field) => new()
+    {
+        Name = field.Name,
+        Value = field.Value,
+        Side = DocumentSides.CodeOf(field.Side),
+        Zone = field.ZoneId,
+        Confidence = field.Confidence,
+        Source = field.Source,
+    };
+
+    /// <summary>The name, the side, the zone and the source: never the value.</summary>
+    public override string ToString() => $"CheckInZonedFieldDto {{ Name = {Name}, Side = {Side}, Zone = {Zone}, Source = {Source} }}";
 }
