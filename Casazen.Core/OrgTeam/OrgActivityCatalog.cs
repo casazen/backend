@@ -298,6 +298,10 @@ public static partial class OrgActivityCatalog
         // records; the part says what the subject id is. Codes only: never a name, a date of a guest, a text or an amount.
         new(OrgActivityType.OwnerPortalChanged, OrgActivityArea.Account, OrgActivitySubjectType.OwnerPortalItem,
             [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Status]),
+
+        // A reviewer opened a picture of the evidence of an identity verification (E73/F01/US02/T02, NF-195, D9): who, which booking and the kind of the picture as
+        // its part (documentPortrait or frame). Never the picture or its address.
+        new(OrgActivityType.IdentityEvidenceViewed, OrgActivityArea.ShortRent, OrgActivitySubjectType.Booking, [OrgActivityDetailKeys.Part]),
     ];
 
     /// <summary>Every event the log can record, in the order of the runbook.</summary>

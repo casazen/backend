@@ -9119,4 +9119,14 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="IdentitySegmentFingerprintUnavailable" xml:space="preserve"><value>La politica o i modelli non sono disponibili in questo momento: il segmento non si può qualificare.</value></data>
   <!-- E72/F01/US01/T01 (NF-192): the presence challenge of the self-hosted identity step. The page translates the codes; these are the details of the problem (the closed verification answers with CheckInIdentityAlreadyClosed above). -->
   <data name="CheckInPresenceChallengeUnavailable" xml:space="preserve"><value>Ora non è possibile avviare la prova di presenza. Puoi continuare con una persona.</value></data>
+  <!-- E73/F01/US01/T02 (NF-192, NF-194): the presence of the self-hosted identity step and its closure. The page translates the codes; these are the details of the problem. -->
+  <data name="CheckInPresenceSequenceRequired" xml:space="preserve"><value>Per verificare l’identità serve ora la prova di presenza con la fotocamera. Ricarica la pagina per continuare.</value></data>
+  <data name="CheckInPresenceChallengeRequired" xml:space="preserve"><value>La prova di presenza non è più valida. Avviane una nuova.</value></data>
+  <data name="CheckInPresenceChallengeExpired" xml:space="preserve"><value>Il tempo per la prova di presenza è scaduto. Avviane una nuova e ripeti i movimenti.</value></data>
+  <data name="CheckInIdempotencyKeyRequired" xml:space="preserve"><value>La richiesta non ha una chiave di invio valida. Riprova dalla pagina del check-in.</value></data>
+  <data name="CheckInPresenceSequenceInvalid" xml:space="preserve"><value>La registrazione non è valida. Ripeti la prova di presenza.</value></data>
+  <data name="CheckInPresenceSequenceTooLarge" xml:space="preserve"><value>La registrazione è troppo grande. Ripeti la prova di presenza.</value></data>
+  <data name="CheckInPresenceProcessingFailed" xml:space="preserve"><value>Non è stato possibile elaborare la prova di presenza. Riprova tra poco: puoi sempre chiedere l’aiuto di una persona.</value></data>
+  <!-- E73/F01/US02/T02 (NF-195): the evidence of the reviewer of an identity verification. One title for every case, so it never says whether an evidence exists. -->
+  <data name="IdentityEvidenceNotFound" xml:space="preserve"><value>Evidenza della verifica non trovata o non più disponibile.</value></data>
 </root>

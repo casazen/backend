@@ -16,8 +16,14 @@ public sealed partial class IdentityVerificationFlowService
     // In-memory providers used by local check-in and unit tests have no row locks.
     private static readonly SemaphoreSlim[] LocalPoseLocks = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
 
-    public Task<SelfieChallenge?> IssueSelfieChallengeAsync(GuestCheckInSession session, CancellationToken ct) =>
-        WithLockedPoseSessionAsync<SelfieChallenge?>(session, null, async () =>
+    public Task<SelfieChallenge?> IssueSelfieChallengeAsync(GuestCheckInSession session, CancellationToken ct)
+    {
+        // E73/F01/US01/T02: with the self-hosted flow on the two-frame selfie is closed (the routes answer presence_sequence_required): no pose challenge is issued, the presence
+        // sequence takes its place.
+        if (SelfHostedOn)
+            return Task.FromResult<SelfieChallenge?>(null);
+
+        return WithLockedPoseSessionAsync<SelfieChallenge?>(session, null, async () =>
         {
             var state = await GetStateAsync(session, ct);
             var check = ReadCheck(session);
@@ -36,11 +42,17 @@ public sealed partial class IdentityVerificationFlowService
             var proof = PoseProtector(session, pose.Attempt).Protect(pose.Id.ToString("N"));
             return new SelfieChallenge(proof, pose.NoseToRight, pose.ExpiresAt);
         }, ct);
+    }
 
     public async Task<SelfieStepResult> SubmitChallengedSelfieAsync(GuestCheckInSession session, Stream selfie, Stream? turnedSelfie,
         string? challengeToken, Stream? documentPhoto, Stream? documentPhotoBack, CancellationToken ct)
     {
         var stale = new SelfieStepResult(SelfieStepStatus.ChallengeRequired, IdentityVerificationGuestResults.Retry, [], 0, null);
+
+        // E73/F01/US01/T02: with the self-hosted flow on the weaker two-frame check is never run, whatever is sent: nothing is read, compared or written.
+        if (SelfHostedOn)
+            return stale;
+
         var (decision, alreadyVerified) = await WithLockedPoseSessionAsync(session, (stale, false), async () =>
         {
             var wasVerified = session.BiometricOutcome == BiometricOutcome.Accept;

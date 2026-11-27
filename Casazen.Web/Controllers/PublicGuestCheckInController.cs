@@ -509,7 +509,10 @@ public partial class PublicGuestCheckInController(
         }
     }
 
-    /// <summary>Issues a short-lived, one-time pose challenge after consent and a document ready for comparison.</summary>
+    /// <summary>
+    /// Issues a short-lived, one-time pose challenge after consent and a document ready for comparison. With <see cref="FeatureFlags.CheckInIdentitySelfHosted"/> on
+    /// (E73/F01/US01/T02) the two-frame selfie is closed: 409 <c>presence_sequence_required</c> (409 <c>identity_already_closed</c> for a closed verification).
+    /// </summary>
     [HttpPost("{token}/selfie-challenge")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
     [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
@@ -523,6 +526,10 @@ public partial class PublicGuestCheckInController(
         // E70/F02/US01/T01: a closed self-hosted verification issues no new challenge.
         if (await RefuseClosedIdentityAsync(session) is { } closed)
             return closed;
+
+        // E73/F01/US01/T02: the weaker two-frame check is not usable with the self-hosted flow on: the presence sequence takes its place.
+        if (SelfHostedIdentityOn())
+            return PresenceSequenceRequired();
 
         var challenge = await verificationFlow.IssueSelfieChallengeAsync(session, HttpContext.RequestAborted);
         if (challenge is null)
@@ -546,6 +553,10 @@ public partial class PublicGuestCheckInController(
     /// the face or the MRZ of such a document is still missing, with no attempt spent. Send the frontal <c>selfie</c>, the requested <c>turnedSelfie</c> and
     /// the <c>challengeToken</c> issued by <c>/selfie-challenge</c>. A missing, expired or consumed challenge returns 409 <c>selfie_challenge_required</c>.
     /// </para>
+    /// <para>
+    /// With <see cref="FeatureFlags.CheckInIdentitySelfHosted"/> on (E73/F01/US01/T02, AC-NF192-4) this route is closed: 409 <c>presence_sequence_required</c> before anything is read
+    /// (409 <c>identity_already_closed</c> for a closed verification); the presence sequence of <c>/presence</c> takes its place.
+    /// </para>
     /// </summary>
     [HttpPost("{token}/selfie")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
@@ -567,6 +578,10 @@ public partial class PublicGuestCheckInController(
         // E70/F02/US01/T01: a closed self-hosted verification takes no new attempt.
         if (await RefuseClosedIdentityAsync(session) is { } closed)
             return closed;
+
+        // E73/F01/US01/T02: the weaker two-frame check is not usable with the self-hosted flow on: nothing of the request is read.
+        if (SelfHostedIdentityOn())
+            return PresenceSequenceRequired();
 
         if (selfie == null || selfie.Length == 0)
             return this.ApiProblem(StatusCodes.Status400BadRequest, "selfie_required", "CheckInSelfieRequired");

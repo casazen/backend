@@ -57,13 +57,16 @@ public sealed class DocumentPictureAnalyzer(DocumentGeometryInspector geometry, 
 
 /// <summary>
 /// One decoded picture of an identity document (E71/F01/US03/T01): its difference hash, the geometry of its card, and the fields read on the card cut out of it and set upright.
-/// Zeroed by <see cref="Dispose"/>, which every caller reaches in a <c>finally</c> (ADR-013-R2).
+/// A card that was not held straight (IDENT-TILT) is read on the card levelled (<see cref="DocumentGeometryReport.RectifiedCard"/>), not on the box cut out of the picture: the zones of the
+/// format are fractions of a card that lies straight. The picture owns the levelled card of every report it made, so that nothing outlives it: zeroed by <see cref="Dispose"/>, which every
+/// caller reaches in a <c>finally</c> (ADR-013-R2).
 /// </summary>
 public sealed class DocumentPicture : IDisposable
 {
     private readonly RasterImage _image;
     private readonly DocumentGeometryInspector _geometry;
     private readonly IZonedFieldReader _zonedFields;
+    private readonly List<DocumentGeometryReport> _reports = [];
 
     internal DocumentPicture(RasterImage image, DocumentGeometryInspector geometry, IZonedFieldReader zonedFields)
     {
@@ -84,7 +87,7 @@ public sealed class DocumentPicture : IDisposable
     /// </summary>
     public DocumentGeometryReport Inspect(DocumentFormat format, DocumentSide declaredSide, CancellationToken cancellationToken)
     {
-        return _geometry.Inspect(_image, format, declaredSide, cancellationToken);
+        return Keep(_geometry.Inspect(_image, format, declaredSide, cancellationToken));
     }
 
     /// <summary>
@@ -93,7 +96,14 @@ public sealed class DocumentPicture : IDisposable
     /// </summary>
     public DocumentGeometryReport Inspect(DocumentFormat format, DocumentSide declaredSide, bool lookForPortrait, CancellationToken cancellationToken)
     {
-        return _geometry.Inspect(_image, format, declaredSide, lookForPortrait, cancellationToken);
+        return Keep(_geometry.Inspect(_image, format, declaredSide, lookForPortrait, cancellationToken));
+    }
+
+    /// <summary>The report of the picture, which the picture now owns (its levelled card, if it has one, is zeroed with the picture).</summary>
+    private DocumentGeometryReport Keep(DocumentGeometryReport report)
+    {
+        _reports.Add(report);
+        return report;
     }
 
     /// <summary>
@@ -112,13 +122,17 @@ public sealed class DocumentPicture : IDisposable
     }
 
     /// <summary>
-    /// The fields read by zone on <paramref name="side"/> of the card of <paramref name="report"/> (the report of <see cref="Inspect"/> for this picture): the card is cut out and
-    /// turned upright (the canonical card) and handed to the reader of the zones, which never throws. Empty when the card is not measurable. The values are personal data that live
-    /// in the memory of the request only.
+    /// The fields read by zone on <paramref name="side"/> of the card of <paramref name="report"/> (the report of <see cref="Inspect(DocumentFormat, DocumentSide, CancellationToken)"/> for this picture): the canonical
+    /// card (cut out and turned upright, or, for a card that was not held straight, the card levelled that the report carries) is handed to the reader of the zones, which also reads the MRZ
+    /// band on it and never throws. Empty when the card is not measurable. The values are personal data that live in the memory of the request only.
     /// </summary>
     public async Task<IReadOnlyList<ZonedField>> ReadFieldsAsync(
         DocumentFormat format, DocumentSide side, DocumentGeometryReport report, CancellationToken cancellationToken)
     {
+        // The levelled card belongs to the report (and, through it, to the picture): the reader only looks at it, and it is not zeroed here.
+        if (UsesRectifiedCard(report))
+            return await _zonedFields.ReadAsync(report.RectifiedCard!, format, side, cancellationToken);
+
         using var card = CutCard(report);
         if (card is null)
             return [];
@@ -127,8 +141,22 @@ public sealed class DocumentPicture : IDisposable
     }
 
     /// <summary>
-    /// The canonical card: the box of the card of <paramref name="report"/> cut out of the upright picture and turned by its rotation, so the card lies upright and landscape; null
-    /// when the card is not measurable. A copy that belongs to the caller, who zeroes it.
+    /// Whether the card of <paramref name="report"/> is read on the card levelled the report carries (IDENT-TILT): the card is measurable and was turned by more than
+    /// <see cref="DocumentGeometryRules.TiltRoundingStepDegrees"/> (the inspector made the levelled copy for it). A card that lies straight is cut as it lies, with no extra copy.
+    /// </summary>
+    internal static bool UsesRectifiedCard(DocumentGeometryReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        return IsMeasurable(report)
+            && report.RectifiedCard is { Rgb.Length: > 0 }
+            && Math.Abs(report.TiltDegrees) > DocumentGeometryRules.TiltRoundingStepDegrees;
+    }
+
+    /// <summary>
+    /// The canonical card cut out as it lies: the box of the card of <paramref name="report"/> cut out of the upright picture and turned by its rotation, so the card lies upright and landscape; null
+    /// when the card is not measurable. A copy that belongs to the caller, who zeroes it. A card that was not held straight is not cut here (<see cref="UsesRectifiedCard"/>): its box is larger
+    /// than it and its zones would be crooked.
     /// </summary>
     internal RasterImage? CutCard(DocumentGeometryReport report)
     {
@@ -155,6 +183,10 @@ public sealed class DocumentPicture : IDisposable
 
     public void Dispose()
     {
+        foreach (var report in _reports)
+            report.Dispose();
+
+        _reports.Clear();
         _image.Dispose();
     }
 }

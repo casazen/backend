@@ -37,6 +37,103 @@ public interface IIdentityPresenceFlow
     /// <param name="status">Why the proof is not valid, or <see cref="PresenceTokenStatus.Valid"/>.</param>
     /// <returns>True when <paramref name="status"/> is <see cref="PresenceTokenStatus.Valid"/>.</returns>
     bool TryValidatePresenceToken(GuestCheckInSession session, string? challengeToken, out PresenceTokenStatus status);
+
+    /// <summary>
+    /// Closes one attempt of the presence (E73/F01/US01/T02, NF-194, ADR-013-R17, R18, R19, decision D8): the frames of <paramref name="submission"/> are read in memory, validated
+    /// against the challenge of the session, the server chooses the frames for the liveness and the match, the versioned policy decides, and the outcome is written atomically
+    /// (one lock of the row of the session, one save). The same <see cref="PresenceSubmission.IdempotencyKey"/> always gets the same answer and never a second outcome: a
+    /// replay is answered first, without reading a frame, also after the challenge expired. The outcomes are the approval (only in a segment that allows it), one guided retry for
+    /// correctable defects, or a person; a fault of a model, a timeout or a policy that is not usable never approves, and the request for a person stays open.
+    /// <para>
+    /// The answer is <see cref="PresenceStepStatus.Done"/> with the result (<c>ok</c>, <c>retry</c> or <c>operator</c>), or the status of a request that was not run (nothing is
+    /// written then: the challenge is not consumed). Behind <c>Features:CheckInIdentityVerification</c> and <c>Features:CheckInIdentitySelfHosted</c>.
+    /// </para>
+    /// </summary>
+    /// <param name="session">The session the public endpoint found by its token, tracked, with its booking, its property and its guest.</param>
+    /// <param name="submission">The parts of the request; the caller owns its streams and disposes them.</param>
+    /// <param name="ct">The cancellation of the request.</param>
+    Task<PresenceStepResult> SubmitPresenceSequenceAsync(GuestCheckInSession session, PresenceSubmission submission, CancellationToken ct);
+}
+
+/// <summary>
+/// One frame of the presence as the endpoint received it (<c>POST api/public/checkin/{token}/presence</c>, part <c>frames</c>): the stream of its content, the length the client
+/// declared and the content type it declared (carried, never trusted). It names no web type, so the flow stays free of ASP.NET.
+/// </summary>
+/// <param name="Content">The content of the part, read once from its current position.</param>
+/// <param name="Length">The length in bytes the client declared.</param>
+/// <param name="ContentType">The content type the client declared.</param>
+public sealed record PresenceFrameUpload(Stream Content, long Length, string? ContentType);
+
+/// <summary>
+/// One attempt of the presence as the guest's page sends it (E73/F01/US01/T02): the explicit key of the attempt (<c>Idempotency-Key</c>), the proof of the challenge, the
+/// timestamps of the frames (a JSON array of integers in milliseconds, the first 0, strictly increasing), the frames, and, for a property that keeps no document (Ticino), the
+/// pictures of the document read before (the front, and the back of a document of two sides), recognised by their SHA-256.
+/// </summary>
+public sealed record PresenceSubmission(
+    string? IdempotencyKey,
+    string? ChallengeToken,
+    string? TimestampsJson,
+    IReadOnlyList<PresenceFrameUpload> Frames,
+    Stream? DocumentPhoto = null,
+    Stream? DocumentPhotoBack = null);
+
+/// <summary>What <see cref="IIdentityPresenceFlow.SubmitPresenceSequenceAsync"/> did. Every status but <see cref="Done"/> wrote nothing.</summary>
+public enum PresenceStepStatus
+{
+    /// <summary>The attempt was answered (decided now, or answered again for its key): see <see cref="PresenceStepResult.Result"/>.</summary>
+    Done = 1,
+
+    /// <summary>No valid <c>Idempotency-Key</c> (400 <c>idempotency_key_required</c>).</summary>
+    IdempotencyKeyRequired = 2,
+
+    /// <summary>The verification of the session is closed and the key is not the one of its last attempt (409 <c>identity_already_closed</c>, with the state).</summary>
+    AlreadyClosed = 3,
+
+    /// <summary>No valid challenge: none issued, the proof of another session, attempt or challenge, or the step not opened (409 <c>presence_challenge_required</c>).</summary>
+    ChallengeRequired = 4,
+
+    /// <summary>The challenge expired (409 <c>presence_challenge_expired</c>): the page asks for a new one.</summary>
+    ChallengeExpired = 5,
+
+    /// <summary>The biometric consent is not the current one (409 <c>biometric_consent_required</c>).</summary>
+    ConsentRequired = 6,
+
+    /// <summary>The document step is not complete, or its kept picture is gone (409 <c>document_check_required</c>).</summary>
+    DocumentRequired = 7,
+
+    /// <summary>A property that keeps no document: its pictures must come again with the frames (400 <c>document_photo_required</c>).</summary>
+    DocumentPhotoRequired = 8,
+
+    /// <summary>A picture of the document sent again is not the one that was read (409 <c>document_photo_mismatch</c>).</summary>
+    DocumentPhotoMismatch = 9,
+
+    /// <summary>The frames or their timestamps are not a valid sequence (422 <c>presence_sequence_invalid</c>).</summary>
+    SequenceInvalid = 10,
+
+    /// <summary>The sequence breaks a limit of <c>IdentityVerification:Presence</c> (413 <c>presence_sequence_too_large</c>).</summary>
+    SequenceTooLarge = 11,
+
+    /// <summary>The session expired or got a new link while the request waited for it, or the self-hosted flow is off (404).</summary>
+    SessionUnavailable = 12,
+}
+
+/// <summary>
+/// The answer of the presence (E73/F01/US01/T02): the status and, when <see cref="PresenceStepStatus.Done"/>, the result the guest sees (<c>ok</c>, <c>retry</c> or <c>operator</c>),
+/// the guidance codes of a guided retry, whether the answer offers the guided retry, the state of the verification and, on <c>ok</c> only, the lock code (or why it is held back).
+/// <paramref name="Replayed"/> says the answer is the one of an attempt already closed with the same key (the body is the same; nothing was run).
+/// </summary>
+public sealed record PresenceStepResult(
+    PresenceStepStatus Status,
+    string? Result,
+    IReadOnlyList<string> Guidance,
+    bool GuidedRetryAvailable,
+    IdentityVerificationState? State,
+    string? LockCode = null,
+    string? LockCodeHeld = null,
+    bool Replayed = false)
+{
+    /// <summary>The way to a person is always open.</summary>
+    public bool OperatorPathOpen => true;
 }
 
 /// <summary>

@@ -203,4 +203,13 @@ public enum OrgActivityType
     /// text or an amount. One event for the whole feature: the catalog is closed (AM-D18).
     /// </summary>
     OwnerPortalChanged = 150,
+
+    // ─── Evidence of the identity verification (E73/F01/US02/T02, NF-195, decision D9) ───────────────────────
+
+    /// <summary>
+    /// A reviewer opened one picture of the evidence kept for the review of a self-hosted identity verification (the crop of the portrait of the document or a frame
+    /// chosen by the server). Written by <c>IdentityReviewEvidenceStore.ReadAsync</c>, in its own save, BEFORE the picture is served: no line, no picture. Subject: the
+    /// booking. Details: the <c>part</c>, the kind of the picture (<c>documentPortrait</c> or <c>frame</c>). Never the picture, its address or a value of the guest.
+    /// </summary>
+    IdentityEvidenceViewed = 151,
 }
