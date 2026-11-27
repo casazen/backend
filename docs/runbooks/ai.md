@@ -23,7 +23,12 @@ reader of the document is removed with its prompt and its cache entry, and no fl
 reads images was configured, the prefill is now the local one (the guest confirms the fields, as with every local reading); rollback is a revert of
 the change. The architecture tests `IdentityPathEgressArchitectureTests` (E70/F02/US02/T02) forbid AI providers, HTTP clients and the types of
 `Casazen.Infrastructure.External` in the whole identity path (every class of `Casazen.Infrastructure.Identity`, plus the flow, the pipeline and the
-readers), and pictures or vectors in the alerts, the lock code, the push and the e-mail queue it calls: a new caller of the AI must stay out of it.
+readers), with one exception, written in ADR-013-R21: the two Tesseract readers (`TesseractMrzTextReader`, `TesseractPageTextReader`) may hold the HTTP
+client factory of the model files, only to download their language files (public data with a pinned SHA-256; `DownloadUrl` is empty by default, so nothing
+is downloaded unless it is configured); no picture, crop or OCR text ever reaches that client, and the tests prove that the exception stays that narrow.
+They also forbid pictures or vectors in the alerts, the lock code, the push and the e-mail queue it calls: a new caller of the AI must stay out of it.
+No image goes to an AI provider or to an HttpClient; the encrypted picture of the flow stays in the private storage (`IFileStorage`, Supabase Storage,
+outside Ticino), which the tests do not guard.
 
 Never put in a prompt sent to an external provider: the notes of a request, a stay or a guest, guest data (names, phone numbers,
 documents, dates of stay), supplier or host names, e-mails, addresses of a person. The only free text that goes is what a person types
