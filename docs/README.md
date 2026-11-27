@@ -8,7 +8,7 @@ La documentazione di progetto (requisiti, punti aperti, decisioni, revisioni leg
 
 | Percorso | Perché resta nel repository |
 |---|---|
-| `runbooks/` (indice: `runbooks/index.md`) | molti test C# li leggono (`DeployChecklistConsistencyTests`, `GlobalSearchRunbookTests`, `LeaseDraftRunbookTests`, `PropertyModeRunbookTests`, `InAppNotificationsRunbookTests`, …) e i messaggi di errore a runtime citano `docs/runbooks/<nome>.md` |
+| `runbooks/` (indice: `runbooks/index.md`) | 13 runbook sono letti da test C# (`DeployChecklistConsistencyTests`, `GlobalSearchRunbookTests`, `LeaseDraftRunbookTests`, `PropertyModeRunbookTests`, `InAppNotificationsRunbookTests`, …), l'indice è asserito da 5 test e i messaggi di errore a runtime citano `docs/runbooks/<nome>.md`; gli altri (circa 64) non hanno legami con i test ma restano insieme agli altri: elenco e vincoli in `documentazione/03-documenti-ai/runbook/README.md` |
 | `TECHNICAL.md` (riferimento API e dati, molto esteso) | tre test ne controllano alcune stringhe; non è verificabile per intero |
 | `INFRA.md`, `AUTH0_SETUP.md` | citati da molti runbook; `INFRA.md` è **da rivedere** (vedi la nota in testa) |
 | `compliance/guest-registration-switzerland.md` | letto da `GuestRegistrationRegimeCatalogTests` (elenca ogni regime del catalogo) |
