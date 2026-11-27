@@ -22,8 +22,11 @@ internal static class IdentityPolicyTestFiles
 {
     public const string ShippedFileName = "identity-policy-2026.11-1.json";
 
-    /// <summary>The canonical SHA-256 of the committed policy file, computed outside this code base (a script that sorts the members and writes no white space).</summary>
-    public const string ShippedCanonicalHash = "99831295b2352a5e317b84de790531f10f9be8d58aea62296b0a54a70f165aae";
+    /// <summary>
+    /// The canonical SHA-256 of the committed policy file, the one <c>IdentityPolicyProvider.CanonicalSha256</c> gives for it (the message of
+    /// <c>IdentityPolicyFileCoherenceTests</c> names it when the file changes); the pin in <c>appsettings.json</c> is the same value.
+    /// </summary>
+    public const string ShippedCanonicalHash = "d2d343e2bf661f316c8e3e4a91252ecf6c9da1e669766609e9e393978fd04426";
 
     public static string RepositoryRoot()
     {
@@ -400,8 +403,8 @@ public sealed class IdentityPolicyProviderTests : IDisposable
     [Theory]
     [InlineData("0000000000000000000000000000000000000000000000000000000000000000")]
     [InlineData("not a hash")]
-    [InlineData("99831295b2352a5e317b84de790531f10f9be8d58aea62296b0a54a70f165aa")]
-    [InlineData("99831295b2352a5e317b84de790531f10f9be8d58aea62296b0a54a70f165aaef")]
+    [InlineData("d2d343e2bf661f316c8e3e4a91252ecf6c9da1e669766609e9e393978fd0442")]
+    [InlineData("d2d343e2bf661f316c8e3e4a91252ecf6c9da1e669766609e9e393978fd04426f")]
     public void Snapshot_APinThatIsNotTheHash_IsUnavailable_AsMismatch(string pin)
     {
         File.WriteAllText(Path.Combine(_directory, PolicyFile), IdentityPolicyTestFiles.ShippedText());
