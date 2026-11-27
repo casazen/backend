@@ -297,6 +297,23 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     }
 
     [Fact]
+    public void Registry_AFileThatCannotBeRead_IsSkippedAsUnreadable_AndTheOthersStillLoad()
+    {
+        // Another process holds the file open: the read fails with an I/O error; that format is not used, the others are.
+        var logger = new CapturingLogger<DocumentFormatRegistry>();
+        Write("formats", "it-passport-test.json", PassportText);
+        Write("formats", CieFileName, CieText());
+        using var held = new FileStream(Path.Combine(_directory, "formats", CieFileName), FileMode.Open, FileAccess.Read, FileShare.None);
+
+        var registry = Create("formats", logger);
+
+        Assert.Equal(new DocumentFormatRejection(CieFileName, DocumentFormatReasonCodes.FormatUnreadable), Assert.Single(registry.Rejected));
+        Assert.Equal(["it-passport-test"], registry.All.Select(format => format.Id));
+        Assert.Null(registry.DetectFromMrz("I<", "ITA", "TD1"));
+        Assert.Single(logger.Lines, line => line.Contains(DocumentFormatReasonCodes.FormatUnreadable, StringComparison.Ordinal) && line.Contains(CieFileName, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Registry_TwoFilesOfOneId_AreBothSkipped_AndTheOtherFormatsLoad()
     {
         // Which of the two is meant cannot be told, and the first by name must not shadow the second: neither is used.

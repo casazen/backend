@@ -461,6 +461,21 @@ public sealed class IdentityPolicyProviderTests : IDisposable
     }
 
     [Fact]
+    public void Snapshot_AFileThatCannotBeRead_IsUnavailable_AsMissing_AndNeverThrows()
+    {
+        // Another process holds the file open: the read fails with an I/O error, which is no reason to throw at a reader, and never one to approve.
+        var path = Path.Combine(_directory, PolicyFile);
+        File.WriteAllText(path, IdentityPolicyTestFiles.ShippedText());
+        using var held = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
+        var logger = new CapturingLogger<IdentityPolicyProvider>();
+
+        var snapshot = Create(PolicyFile, IdentityPolicyTestFiles.ShippedCanonicalHash, logger).Snapshot;
+
+        AssertUnavailable(snapshot, IdentityPolicyReasonCodes.PolicyMissing);
+        Assert.Contains(nameof(IOException), string.Concat(logger.Lines), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Snapshot_ATooLargeFile_IsInvalid_WithoutBeingRead()
     {
         File.WriteAllText(Path.Combine(_directory, PolicyFile), new string(' ', 300_000) + IdentityPolicyTestFiles.ShippedText());
