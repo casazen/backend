@@ -15,11 +15,11 @@ namespace Casazen.Infrastructure.Identity;
 /// <item><description><b>Timing</b> (<c>presence_timing</c>): the frames in the policy's range, the duration within <c>minDurationMs..maxDurationMs</c> (shorter is <c>presence_too_short</c>), the mean rate within half and twice <c>targetFps</c>, no gap above <c>maxGapMs</c> (all correctable), and the duration never longer than the time between the issue of the challenge and the receipt of the sequence: a recording made before the challenge existed is impossible, not correctable.</description></item>
 /// <item><description><b>Faces</b> (<c>presence_single_face</c>, correctable): the face detector on every frame, scaled to <c>detectorMaxSide</c>; any frame with two faces or more fails, and the frames without a face may be at most <c>maxShareWithoutFace</c> of the sequence.</description></item>
 /// <item><description><b>Quality</b> (<c>presence_quality</c>, correctable): the capture rules of the check-in (light and focus of the face, the face large enough: <c>Biometrics:MinFaceAreaRatio</c>) on the frames with one face; the share of them that fail may be at most <c>maxShareWithoutFace</c> too (the one tolerance the policy has for frames that cannot be used).</description></item>
-/// <item><description><b>Continuity</b> (<c>presence_continuity</c>, never correctable): between consecutive frames with one face the centre of the face moves by at most <c>maxCenterJump</c> face widths and its size changes by at most <c>maxSizeChange</c>; the frames are not byte-identical and not all within a grey level of the first one (a still picture played again); and the faces of <c>pairSamples</c> frames spread over the sequence are all at least <c>minPairSimilarity</c> alike (a splice of two people fails).</description></item>
+/// <item><description><b>Continuity</b> (<c>presence_continuity</c>, never correctable): between consecutive frames with one face the centre of the face moves by at most <c>maxCenterJump</c> face widths and its size changes by at most <c>maxSizeChange</c>; the frames are not byte-identical and not all within <c>minPixelDifference</c> grey levels, on average, of the first one (a still picture played again); and the faces of <c>pairSamples</c> frames spread over the sequence are all at least <c>minPairSimilarity</c> alike (a splice of two people fails).</description></item>
 /// <item><description><b>Challenge</b> (<c>presence_challenge</c>, <c>presence_challenge_not_followed</c>, correctable): the baseline is the median pose of the lead-in; a step is answered when, inside its window (<c>leadInMs + i x stepMs</c>, with a tolerance of half a step on each side) the pose departs from the baseline in the direction asked by at least <c>turnMinYawDegrees</c> (turns) or <c>lookMinPitchDegrees</c> (looks); the steps are answered in order (each one strictly after the one before) or the check fails.</description></item>
 /// </list>
-/// Every threshold, count and window is the policy's; the few constants here are bands the spec fixes (half and twice the rate, half a step), the resolution of the pixels
-/// (a grey level) and the geometry of a face (<see cref="FacePose"/>), none a calibration.
+/// Every threshold, count and window is the policy's (the least pixel difference of a moving sequence included); the few constants here are bands the spec fixes (half and
+/// twice the rate, half a step) and the geometry of a face (<see cref="FacePose"/>), none a calibration.
 /// <para>
 /// <b>Never decides.</b> It does not run the liveness or the match (the next slice) and it does not choose the outcome (the closure, E73). <b>Fails closed:</b> with no policy,
 /// no models, a model that fails or a time that is over the report is <see cref="SequenceValidationReport.NotAvailable"/>, never <see cref="SequenceValidationReport.Passed"/>;
@@ -45,13 +45,6 @@ public sealed class PresenceSequenceValidator(
 
     /// <summary>A move is looked for in the window of its step widened by this share of a step on each side: half a step (the spec).</summary>
     private const double StepToleranceShare = 0.5;
-
-    /// <summary>
-    /// How far, in grey levels on average, a frame may be from the first one for the whole sequence to be called a still picture played again: one level, the resolution of
-    /// 8-bit pixels. Below it two frames agree to the precision the data has; it is not a calibrated threshold. A person who answers the challenge moves, and a moving head
-    /// changes far more than a level; a picture repeated by the page, or a recording of a perfectly still scene, does not.
-    /// </summary>
-    private const double StaticMeanDifferenceLevels = 1;
 
     /// <summary>
     /// Judges <paramref name="sequence"/> against <paramref name="challenge"/> with <paramref name="policy"/>. A <c>null</c> policy (the policy is not available) gives
@@ -331,7 +324,7 @@ public sealed class PresenceSequenceValidator(
         CancellationToken token,
         List<SequenceFailure> failures)
     {
-        var broken = IsStill(frames, motion) || JumpsOrChangesSize(frames, rules);
+        var broken = IsStill(frames, motion, rules) || JumpsOrChangesSize(frames, rules);
         var similar = AllFacesAlike(sequence, frames, rules, token);
         if (similar is null)
         {
@@ -348,13 +341,16 @@ public sealed class PresenceSequenceValidator(
             Add(failures, IdentityGuidanceCodes.PresenceContinuity, VerificationReasons.Checks.PresenceContinuity, correctable: false);
     }
 
-    /// <summary>A still picture played again: the frames are the same bytes, or none is more than a grey level, on average, from the first. Judged only when the sequence shows a face.</summary>
-    private static bool IsStill(IReadOnlyList<FrameObservation> frames, MotionEvidence motion)
+    /// <summary>
+    /// A still picture played again: the frames are the same bytes, or none is farther, on average, from the first than <c>minPixelDifference</c> grey levels of the policy.
+    /// A person who answers the challenge moves, and a moving head changes the pixels far more; a picture repeated by the page does not. Judged only when the sequence shows a face.
+    /// </summary>
+    private static bool IsStill(IReadOnlyList<FrameObservation> frames, MotionEvidence motion, IdentityContinuityPolicy rules)
     {
         if (frames.Count(frame => frame.FaceCount >= 1) < 2)
             return false;
 
-        return motion.BytesIdentical || motion.MaxMeanDifference < StaticMeanDifferenceLevels;
+        return motion.BytesIdentical || motion.MaxMeanDifference < rules.MinPixelDifference;
     }
 
     /// <summary>Between consecutive frames that each have one face: the centre of the face moves more than <c>maxCenterJump</c> face widths, or its width changes by more than <c>maxSizeChange</c>.</summary>

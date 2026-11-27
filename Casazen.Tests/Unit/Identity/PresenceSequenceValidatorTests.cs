@@ -129,6 +129,23 @@ public class PresenceSequenceValidatorTests
     }
 
     [Fact]
+    public async Task ValidateAsync_TheLeastPixelDifferenceOfAMovingSequence_IsTheOneOfThePolicy_NotOneOfTheCode()
+    {
+        // One grey level up on half of the pixels of every later frame: on average half a level from the first frame. It is a still picture for the policy of the plan (one
+        // level) and not for a policy that asks for a quarter of a level: the number is the file's. The same bytes in every frame are a still picture whatever the number.
+        var lenient = Policy with { Presence = Policy.Presence with { Continuity = Policy.Presence.Continuity with { MinPixelDifference = 0.25 } } };
+
+        var strict = await JudgeAsync(SequenceTestFrames.StaticReplay(Policy, noise: 1));
+        var withTheLowerNumber = await JudgeAsync(SequenceTestFrames.StaticReplay(Policy, noise: 1), lenient);
+        var sameBytes = await JudgeAsync(SequenceTestFrames.StaticReplay(Policy), lenient);
+
+        Assert.Equal(1, Policy.Presence.Continuity.MinPixelDifference);
+        Assert.Contains(strict.Failures, failure => failure.Code == IdentityGuidanceCodes.PresenceContinuity && !failure.Correctable);
+        Assert.DoesNotContain(withTheLowerNumber.Failures, failure => failure.Code == IdentityGuidanceCodes.PresenceContinuity);
+        Assert.Contains(sameBytes.Failures, failure => failure.Code == IdentityGuidanceCodes.PresenceContinuity && !failure.Correctable);
+    }
+
+    [Fact]
     public async Task ValidateAsync_AMovingHead_IsNotAStillPicture_EvenWithTheSamePixelsOutsideTheFace()
     {
         // The pixels of the frames differ (the script draws noise for each), so a sequence that answers the challenge is not called still.

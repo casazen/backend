@@ -117,7 +117,9 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         Assert.Equal((3, 90, 1500, 1000, true), (policy.Presence.Challenge.Steps, policy.Presence.Challenge.LifetimeSeconds, policy.Presence.Challenge.StepMs, policy.Presence.Challenge.LeadInMs, policy.Presence.Challenge.NoImmediateRepeat));
         Assert.Equal(PresenceActions.All, policy.Presence.Challenge.Actions);
         Assert.Equal((8, 20, 60, 3000, 12000, 400, 0.1, 320), (policy.Presence.Sequence.TargetFps, policy.Presence.Sequence.MinFrames, policy.Presence.Sequence.MaxFrames, policy.Presence.Sequence.MinDurationMs, policy.Presence.Sequence.MaxDurationMs, policy.Presence.Sequence.MaxGapMs, policy.Presence.Sequence.MaxShareWithoutFace, policy.Presence.Sequence.DetectorMaxSide));
-        Assert.Equal((0.35, 0.3, 0.5, 5), (policy.Presence.Continuity.MaxCenterJump, policy.Presence.Continuity.MaxSizeChange, policy.Presence.Continuity.MinPairSimilarity, policy.Presence.Continuity.PairSamples));
+        Assert.Equal(
+            (0.35, 0.3, 0.5, 5, 1.0),
+            (policy.Presence.Continuity.MaxCenterJump, policy.Presence.Continuity.MaxSizeChange, policy.Presence.Continuity.MinPairSimilarity, policy.Presence.Continuity.PairSamples, policy.Presence.Continuity.MinPixelDifference));
         Assert.Equal((20.0, 12.0, 15.0), (policy.Presence.Pose.TurnMinYawDegrees, policy.Presence.Pose.LookMinPitchDegrees, policy.Presence.Pose.NeutralMaxDegrees));
         Assert.Equal((5, 0.7, IdentityLivenessRules.AllFrames), (policy.Presence.Liveness.Frames, policy.Presence.Liveness.MinScore, policy.Presence.Liveness.Rule));
         Assert.Equal((3, 300, 2, IdentityAggregationRules.Median, 0.85, 0.7, 0.7), (policy.Match.Frames, policy.Match.MinFrameGapMs, policy.Match.RandomizeAmongTop, policy.Match.Aggregation, policy.Match.Accept, policy.Match.ReviewFloor, policy.Match.MinEachFrame));
@@ -246,6 +248,8 @@ public sealed class IdentityPolicyProviderTests : IDisposable
     [InlineData("presence.sequence.maxShareWithoutFace", "-0.1")]
     [InlineData("presence.continuity.maxCenterJump", "0")]
     [InlineData("presence.continuity.minPairSimilarity", "2")]
+    [InlineData("presence.continuity.minPixelDifference", "0")]
+    [InlineData("presence.continuity.minPixelDifference", "256")]
     [InlineData("presence.pose.turnMinYawDegrees", "91")]
     [InlineData("presence.pose.neutralMaxDegrees", "0")]
     [InlineData("closure.guidedRetries", "2")]
@@ -267,6 +271,7 @@ public sealed class IdentityPolicyProviderTests : IDisposable
     [InlineData("match", null)]
     [InlineData("match.accept", null)]
     [InlineData("presence.challenge.actions", null)]
+    [InlineData("presence.continuity.minPixelDifference", null)]
     [InlineData("provisional", null)]
     [InlineData("extra", "1")]
     [InlineData("match.extra", "true")]
