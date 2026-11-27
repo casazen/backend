@@ -254,7 +254,99 @@ public sealed class BiometricsHealthCheckTests : IDisposable
         Assert.All(status.Models.Where(m => m.Role != BiometricModelRoles.MrzOcr), m => Assert.Null(m.Code));
     }
 
+    // ─── The optional second candidates (E72/F01/US02/T03): they are ignored ─────────────────────────────
+
+    /// <summary>
+    /// Proof (data): a candidate never changes the health. In every situation of the store, with the flag on or off, with the files pinned or not, and whatever the candidates are (not configured,
+    /// configured and loaded, failed with a code, not valid, not looked at yet), the state of the set, its reason, the entries of the three models and the entry of the health check are exactly the
+    /// ones they are with no candidate at all: <c>Healthy</c> where it was healthy, <c>Degraded</c> with the same description where it was degraded.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Situations))]
+    public async Task BiometricsHealth_TheOptionalCandidates_NeverChangeTheEntryTheStateOrTheModels_Test(string situation, bool featureOn, BiometricModelsSnapshot snapshot, bool pinned)
+    {
+        var baselineReader = Reader(featureOn, snapshot, pinned);
+        var baseline = baselineReader.Read();
+        var baselineHealth = await new BiometricsHealthCheck(baselineReader).CheckHealthAsync(new HealthCheckContext());
+
+        foreach (var mode in new[] { "not configured", "loaded", "failed", "not valid", "not looked at yet" })
+        {
+            var configured = mode != "not configured";
+            var withCandidates = snapshot with { Candidates = CandidateInfos(mode) };
+            var reader = Reader(featureOn, withCandidates, pinned, configure: options => ConfigureCandidates(options, configured));
+
+            var status = reader.Read();
+            var health = await new BiometricsHealthCheck(reader).CheckHealthAsync(new HealthCheckContext());
+
+            Assert.Equal(baseline.State, status.State);
+            Assert.Equal(baseline.ReasonCode, status.ReasonCode);
+            Assert.Equal(baseline.Models, status.Models);
+            Assert.Equal(baselineHealth.Status, health.Status);
+            Assert.True(baselineHealth.Description == health.Description, $"{situation}, candidates {mode}: the health description changed");
+            Assert.DoesNotContain("candidate", health.Description, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public void Describe_TheOptionalCandidates_AreListedApart_WithTheirOwnState()
+    {
+        var snapshot = Ready();
+        var options = new BiometricModelOptions();
+        File.WriteAllBytes(System.IO.Path.Combine(_folder, "ocrb.traineddata"), [1]);
+        var mrz = new MrzOcrOptions { Mrz = new ModelFileOptions { Name = "OCR-B", Path = "ocrb.traineddata", Sha256 = PinnedHash } };
+
+        // Not configured: both, whatever the state of the store (it is read from the options, so it is true before the store has finished and when it never will).
+        var none = BiometricModelStatuses.Describe(true, snapshot, options, mrz, _folder);
+        Assert.Equal(BiometricModelStatusStates.Ready, none.State);
+        Assert.Equal([BiometricModelRoles.AntiSpoofingCandidate, BiometricModelRoles.FaceRecognitionCandidate], none.Candidates.Select(candidate => candidate.Role));
+        Assert.All(none.Candidates, candidate => Assert.Equal(BiometricModelStatusStates.NotConfigured, candidate.State));
+        Assert.Equal(4, none.Models.Count);
+
+        // Configured: the store is ready and has not looked at it yet, it is loaded, it failed with its code, the store never will, the flag is off.
+        options.FaceRecognitionCandidate = new FaceRecognitionCandidateOptions { Name = "Candidate", Version = "1", License = "MIT", Path = SecretPath, Sha256 = PinnedHash };
+        var loading = BiometricModelStatuses.Describe(true, snapshot, options, mrz, _folder);
+        var loaded = BiometricModelStatuses.Describe(true, snapshot with { Candidates = [Info(BiometricModelRoles.FaceRecognitionCandidate, loaded: true, null)] }, options, mrz, _folder);
+        var failed = BiometricModelStatuses.Describe(true, snapshot with { Candidates = [Info(BiometricModelRoles.FaceRecognitionCandidate, loaded: false, "hash_mismatch")] }, options, mrz, _folder);
+        var never = BiometricModelStatuses.Describe(true, new BiometricModelsSnapshot(BiometricModelsState.Unavailable, "file_missing", []), options, mrz, _folder);
+        var off = BiometricModelStatuses.Describe(false, snapshot, options, mrz, _folder);
+
+        BiometricModelStatus Recognition(BiometricModelsStatus status) => status.Candidates.Single(candidate => candidate.Role == BiometricModelRoles.FaceRecognitionCandidate);
+
+        Assert.Equal(BiometricModelStatusStates.Loading, Recognition(loading).State);
+        Assert.Equal(BiometricModelStatusStates.Ready, Recognition(loaded).State);
+        Assert.Equal((BiometricModelStatusStates.Failed, "hash_mismatch"), (Recognition(failed).State, Recognition(failed).Code));
+        Assert.Equal((BiometricModelStatusStates.Failed, "not_loaded"), (Recognition(never).State, Recognition(never).Code));
+        Assert.Equal(BiometricModelStatusStates.Disabled, Recognition(off).State);
+        Assert.True(Recognition(loaded).Pinned);
+        Assert.Equal(BiometricModelStatusStates.NotConfigured, none.Candidates[0].State);
+
+        // Apart: the set is as ready as it was in every case, and the three models are the same four entries.
+        Assert.All(new[] { loading, loaded, failed }, status => Assert.Equal(none.State, status.State));
+        Assert.All(new[] { loading, loaded, failed }, status => Assert.Equal(none.Models, status.Models));
+    }
+
     // ─── Fixtures ────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>What the store says of the two candidates in each situation of <see cref="BiometricsHealth_TheOptionalCandidates_NeverChangeTheEntryTheStateOrTheModels_Test"/>.</summary>
+    private static List<BiometricModelInfo> CandidateInfos(string mode)
+    {
+        BiometricModelInfo[] roles =
+        [
+            Info(BiometricModelRoles.AntiSpoofingCandidate, loaded: mode == "loaded", mode switch { "not configured" => BiometricModelStatusStates.NotConfigured, "failed" => "hash_mismatch", "not valid" => "config_invalid", _ => null }),
+            Info(BiometricModelRoles.FaceRecognitionCandidate, loaded: mode == "loaded", mode switch { "not configured" => BiometricModelStatusStates.NotConfigured, "failed" => "file_missing", "not valid" => "config_invalid", _ => null }),
+        ];
+        return mode == "not looked at yet" ? [] : [.. roles];
+    }
+
+    /// <summary>The options of the candidates: configured (a file, a hash) or not.</summary>
+    private static void ConfigureCandidates(BiometricModelOptions options, bool configured)
+    {
+        if (!configured)
+            return;
+
+        options.AntiSpoofingCandidate = new AntiSpoofingCandidateOptions { Name = "Presence candidate", Version = "1", License = "MIT", Path = SecretPath, Sha256 = PinnedHash };
+        options.FaceRecognitionCandidate = new FaceRecognitionCandidateOptions { Name = "Recognition candidate", Version = "1", License = "MIT", Path = SecretPath, Sha256 = PinnedHash };
+    }
 
     public static TheoryData<string, bool, BiometricModelsSnapshot, bool> Situations()
     {
@@ -291,7 +383,7 @@ public sealed class BiometricsHealthCheckTests : IDisposable
         return data;
     }
 
-    private BiometricModelStatusReader Reader(bool featureOn, BiometricModelsSnapshot snapshot, bool pinned, bool ocrFile = false)
+    private BiometricModelStatusReader Reader(bool featureOn, BiometricModelsSnapshot snapshot, bool pinned, bool ocrFile = false, Action<BiometricModelOptions>? configure = null)
     {
         var ocrPath = System.IO.Path.Combine(_folder, "ocrb.traineddata");
         if (ocrFile)
@@ -303,6 +395,7 @@ public sealed class BiometricsHealthCheckTests : IDisposable
             AntiSpoofing = Spec("MiniFASNetV2", pinned),
             FaceRecognition = Spec("AuraFace-v1", pinned, "Apache-2.0"),
         };
+        configure?.Invoke(biometrics);
         var mrz = new MrzOcrOptions { Mrz = new ModelFileOptions { Name = "OCR-B", Path = ocrPath, Sha256 = pinned ? PinnedHash : string.Empty } };
         return new BiometricModelStatusReader(
             new StoreWithSnapshot(snapshot),
