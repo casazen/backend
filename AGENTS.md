@@ -68,7 +68,7 @@ La documentazione di progetto sta nella cartella **`docs/` del workspace CasaZen
 4. **Date assolute** (AAAA-MM-GG) e, in testa a ogni documento vivo, l'ultima verifica: `Verificato il AAAA-MM-GG su develop@<sha>` solo se hai davvero controllato i fatti contro codice o `gh`; altrimenti `Stato: NON verificato — fonte: <file>`. Non scrivere «consegnato» ciò che è specifica o placeholder.
 5. **A fine lavoro rimuovi i file temporanei** che hai creato (script, log, patch, bozze).
 6. **Documenti riservati** (business plan, listino, pareri, contratti, dati di clienti) **mai** in questo repository pubblico.
-7. I **documenti ufficiali** (`01-documenti-ufficiali/`) non si riscrivono senza richiesta dell'utente.
+7. I **documenti ufficiali** (`01-documenti-ufficiali/`) non si riscrivono senza richiesta dell'utente. Eccezione: la documentazione tecnica (`01-documenti-ufficiali/documentazione-tecnica/`) si aggiorna come da regola 2 e il PDF si rigenera con `node docs/01-documenti-ufficiali/documentazione-tecnica/sorgenti/build-pdf.mjs` (servono Chrome o Edge e Python con `pypdfium2`).
 8. Se una regola di questa sezione confligge con quanto trovi nel repository, **segnalalo** (nella PR o nel report) invece di scegliere in silenzio.
 
 Senza accesso al workspace (per esempio in una sandbox cloud) non inventare né ricreare documenti qui: scrivi nella PR cosa andrebbe aggiornato in `docs/`.

@@ -54,7 +54,7 @@ public class ServiceDisputeArchitectureTests
         ["Casazen.Web/Controllers/HostServiceRequestDisputesController.cs"] = "The host's door.",
         ["Casazen.Web/Controllers/SupplierServiceDisputesController.cs"] = "The supplier's door.",
         ["Casazen.Web/Controllers/AdminServiceDisputesController.cs"] = "The admin's door.",
-        ["Casazen.Web/Extensions/ServiceCollectionExtensions.cs"] = "Registers it.",
+        ["Casazen.Web/Extensions/SupplierRequestsServiceCollectionExtensions.cs"] = "Registers it.",
     };
 
     private static readonly IReadOnlyDictionary<string, string> MayNameThePenalties = new Dictionary<string, string>
@@ -63,7 +63,7 @@ public class ServiceDisputeArchitectureTests
         ["Casazen.Infrastructure/Services/LoggingSupplierDisputePenalties.cs"] = "The default sink: it only logs.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.cs"] = "Receives the sink.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.DisputesAdmin.cs"] = "Records the penalty once, after the decision for the customer was committed.",
-        ["Casazen.Web/Extensions/ServiceCollectionExtensions.cs"] = "Registers it.",
+        ["Casazen.Web/Extensions/SupplierRequestsServiceCollectionExtensions.cs"] = "Registers it.",
     };
 
     [Fact]
