@@ -75,6 +75,11 @@ public class DocumentCoherenceCheckerTests
         Assert.Empty(report.Codes);
         Assert.All(report.Checks, entry => Assert.Equal(DocumentCoherenceResults.Passed, entry.Result));
 
+        // Nothing is unknown, every check of the report passed, and the one answer for the checks the format requires (the layout and the portrait are the geometry's) is yes.
+        Assert.Equal(0, report.UnknownCount);
+        Assert.All(DocumentCoherenceReport.CarriedChecks, check => Assert.Equal(DocumentCoherenceResults.Passed, report.Summary(check)));
+        Assert.True(report.AllPassed(Cie.RequiredChecks));
+
         // The five checks of the format that this task carries out are all in the report, in the order of the checks of the format; the fields of the policy have one each.
         Assert.Equal(
             [
@@ -174,7 +179,8 @@ public class DocumentCoherenceCheckerTests
 
         Assert.Equal(DocumentCoherenceResults.Passed, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.Surname));
         Assert.Equal(DocumentCoherenceResults.Unknown, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.GivenNames));
-        Assert.False(report.IdentifyingConflict);
+        // No conflict, and not an agreement either: the given names were not compared, so the sides are not said to agree.
+        Assert.Null(report.IdentifyingConflict);
     }
 
     [Fact]
@@ -269,9 +275,10 @@ public class DocumentCoherenceCheckerTests
 
         Assert.False(report.MrzValid);
         Assert.Equal(DocumentCoherenceResults.Failed, Result(report, DocumentFormatChecks.MrzCheckDigits));
-        // The birth date of the MRZ is not in a reading whose own digit failed: it cannot be compared, which is not a conflict.
+        // The birth date of the MRZ is not in a reading whose own digit failed: it cannot be compared, which is not a conflict (and not an agreement).
         Assert.Equal(DocumentCoherenceResults.Unknown, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.BirthDate));
-        Assert.False(report.IdentifyingConflict);
+        Assert.Null(report.IdentifyingConflict);
+        Assert.False(report.AllPassed(Cie.RequiredChecks));
     }
 
     [Fact]
@@ -309,7 +316,7 @@ public class DocumentCoherenceCheckerTests
         Assert.Equal(DocumentCoherenceResults.Unknown, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.BirthDate));
         Assert.Equal(DocumentCoherenceResults.Unknown, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.DocumentNumber));
         Assert.Equal(DocumentCoherenceResults.Passed, Result(report, DocumentFormatChecks.SideConsistency, ZonedFieldNames.Surname));
-        Assert.False(report.IdentifyingConflict);
+        Assert.Null(report.IdentifyingConflict);
 
         // And the other way round: the card has everything and the MRZ was not read.
         var machineOnly = Checker.Check(Card(), null, Stay, Cie, Policy);
@@ -317,7 +324,31 @@ public class DocumentCoherenceCheckerTests
         Assert.All(
             machineOnly.Checks.Where(entry => entry.Check == DocumentFormatChecks.SideConsistency),
             entry => Assert.Equal(DocumentCoherenceResults.Unknown, entry.Result));
-        Assert.False(machineOnly.IdentifyingConflict);
+        Assert.Null(machineOnly.IdentifyingConflict);
+    }
+
+    [Fact]
+    public void Check_AValidMrzAndOnlyTheSurnamePrinted_IsNotAPass_AndNoFlagSaysOk()
+    {
+        // The MRZ is read and valid, the card was read for the surname only: three of the four fields that identify the holder were never compared, the issue date
+        // is only printed and was not read, and the guest has typed nothing yet.
+        var report = Checker.Check([Printed(ZonedFieldNames.Surname, "ROSSI")], Reading(), Stay, Cie, Policy);
+
+        // What was checked is said as it is: the digits hold and the MRZ says the card is valid on the day of the stay.
+        Assert.True(report.MrzValid);
+        Assert.False(report.Expired);
+        // What was not checked is not «ok»: no flag takes an unread value for a good one.
+        Assert.Null(report.IdentifyingConflict);
+        Assert.Null(report.DatesValid);
+        Assert.Equal(DocumentCoherenceResults.Unknown, report.Summary(DocumentFormatChecks.SideConsistency));
+        Assert.Equal(DocumentCoherenceResults.Unknown, report.Summary(DocumentFormatChecks.FieldCoherence));
+        Assert.Equal(DocumentCoherenceResults.Unknown, report.Summary(DocumentFormatChecks.BookingConsistency));
+        Assert.Equal(DocumentCoherenceResults.Passed, report.Summary(DocumentFormatChecks.MrzCheckDigits));
+        Assert.Equal(DocumentCoherenceResults.Passed, report.Summary(DocumentFormatChecks.Expiry));
+        Assert.Equal(report.Checks.Count(entry => entry.Result == DocumentCoherenceResults.Unknown), report.UnknownCount);
+        Assert.True(report.UnknownCount > 0);
+        Assert.False(report.AllPassed(Cie.RequiredChecks));
+        Assert.Empty(report.Codes);
     }
 
     [Fact]
@@ -325,12 +356,17 @@ public class DocumentCoherenceCheckerTests
     {
         var report = Checker.Check([], null, Stay, Cie, Policy);
 
+        // The MRZ is not valid when it was not read, and every other flag is unknown: none says «ok» for something that was not read.
         Assert.False(report.MrzValid);
-        Assert.False(report.IdentifyingConflict);
-        Assert.False(report.Expired);
-        Assert.True(report.DatesValid);
+        Assert.Null(report.IdentifyingConflict);
+        Assert.Null(report.Expired);
+        Assert.Null(report.DatesValid);
         Assert.Empty(report.Codes);
         Assert.DoesNotContain(report.Checks, entry => entry.Result == DocumentCoherenceResults.Passed);
+        Assert.All(report.Checks, entry => Assert.Equal(DocumentCoherenceResults.Unknown, entry.Result));
+        Assert.Equal(report.Checks.Count, report.UnknownCount);
+        Assert.All(DocumentCoherenceReport.CarriedChecks, check => Assert.Equal(DocumentCoherenceResults.Unknown, report.Summary(check)));
+        Assert.False(report.AllPassed(Cie.RequiredChecks));
         Assert.Equal(
             [
                 DocumentFormatChecks.MrzCheckDigits, DocumentFormatChecks.Expiry, DocumentFormatChecks.SideConsistency, DocumentFormatChecks.FieldCoherence,
@@ -390,25 +426,26 @@ public class DocumentCoherenceCheckerTests
     [InlineData("1985-03-12", "2032-03-12", "2032-03-12", true)] // issued the day it expires: odd, possible
     public void Check_AnImpossibleDate_SetsDatesValidFalse(string birth, string issue, string expiry, bool valid)
     {
-        // No MRZ: the dates alone are judged, so no conflict between the sides gets in the way.
+        // No MRZ: the dates alone are judged, so no conflict between the sides gets in the way (and nothing is compared, so nothing is said of the sides).
         var report = Checker.Check(Card(birthDate: birth, issueDate: issue, expiryDate: expiry), null, Stay, Cie, Policy);
 
         Assert.Equal(valid, report.DatesValid);
         Assert.Equal(
             valid,
             report.Checks.Where(entry => entry.Check == DocumentFormatChecks.FieldCoherence).All(entry => entry.Result != DocumentCoherenceResults.Failed));
-        Assert.False(report.IdentifyingConflict);
+        Assert.Null(report.IdentifyingConflict);
     }
 
     [Fact]
-    public void Check_ADateThatWasNotRead_IsUnknown_AndDoesNotMakeTheDatesInvalid()
+    public void Check_ADateThatWasNotRead_IsUnknown_AndTheDatesAreNeitherValidNorInvalid()
     {
         var report = Checker.Check([Printed(ZonedFieldNames.Surname, "ROSSI")], Reading(), Stay, Cie, Policy);
 
-        Assert.True(report.DatesValid);
-        // The MRZ has the birth date and the expiry: those are judged. The issue date is only printed: unknown.
+        // The MRZ has the birth date and the expiry: those are judged. The issue date is only printed and was not read: unknown, so the dates are not said to be valid.
         Assert.Equal(DocumentCoherenceResults.Passed, Result(report, DocumentFormatChecks.FieldCoherence, ZonedFieldNames.BirthDate));
         Assert.Equal(DocumentCoherenceResults.Unknown, Result(report, DocumentFormatChecks.FieldCoherence, ZonedFieldNames.IssueDate));
+        Assert.Null(report.DatesValid);
+        Assert.Equal(DocumentCoherenceResults.Unknown, report.Summary(DocumentFormatChecks.FieldCoherence));
     }
 
     [Fact]
@@ -472,6 +509,8 @@ public class DocumentCoherenceCheckerTests
         var entry = Assert.Single(report.Checks, check => check.Check == DocumentFormatChecks.SideConsistency);
         Assert.Equal(DocumentCoherenceResults.Unknown, entry.Result);
         Assert.Null(entry.Field);
+        Assert.Null(report.IdentifyingConflict);
+        Assert.False(report.AllPassed(Cie.RequiredChecks));
     }
 
     [Fact]
@@ -489,6 +528,9 @@ public class DocumentCoherenceCheckerTests
 
         var json = JsonSerializer.Serialize(report);
 
+        // The flags, the entries and the codes are what is kept; the derived answers (the count of unknowns) are not part of the shape.
+        Assert.Contains("IdentifyingConflict", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("UnknownCount", json, StringComparison.Ordinal);
         foreach (var value in new[]
                  {
                      "ROSSI", "BIANCHI", "VERDI", "MARIA", "GIUSEPPINA", "LUCIA", "GIOVANNI", "CA12345AA", "CB11111BB", "ZZ99999ZZ", "1985", "1991", "1970",
@@ -504,6 +546,109 @@ public class DocumentCoherenceCheckerTests
             Assert.True(entry.Field is null || ZonedFieldNames.All.Contains(entry.Field) || DocumentCoherenceFields.All.Contains(entry.Field));
         });
         Assert.All(report.Codes, code => Assert.Contains(code, IdentityGuidanceCodes.All));
+    }
+
+    /// <summary>The entries of a report in which every check passed: one entry for most checks, two for the ones that have more.</summary>
+    private static List<DocumentCoherenceCheck> AllPassedEntries() =>
+    [
+        new(DocumentFormatChecks.MrzCheckDigits, DocumentCoherenceResults.Passed),
+        new(DocumentFormatChecks.Expiry, DocumentCoherenceResults.Passed, ZonedFieldNames.ExpiryDate),
+        new(DocumentFormatChecks.SideConsistency, DocumentCoherenceResults.Passed, ZonedFieldNames.Surname),
+        new(DocumentFormatChecks.SideConsistency, DocumentCoherenceResults.Passed, ZonedFieldNames.BirthDate),
+        new(DocumentFormatChecks.FieldCoherence, DocumentCoherenceResults.Passed, ZonedFieldNames.BirthDate),
+        new(DocumentFormatChecks.FieldCoherence, DocumentCoherenceResults.Passed, ZonedFieldNames.IssueDate),
+        new(DocumentFormatChecks.BookingConsistency, DocumentCoherenceResults.Passed, DocumentCoherenceFields.Names),
+    ];
+
+    /// <summary>The report of <see cref="AllPassedEntries"/> where every entry of one check has another result.</summary>
+    private static DocumentCoherenceReport ReportWith(string check, string result) =>
+        DocumentCoherenceReport.FromChecks(AllPassedEntries().Select(entry => entry.Check == check ? entry with { Result = result } : entry).ToList());
+
+    [Fact]
+    public void AllPassed_NeedsEveryEntryOfEveryRequiredCheckToHavePassed()
+    {
+        Assert.True(DocumentCoherenceReport.FromChecks(AllPassedEntries()).AllPassed(Cie.RequiredChecks));
+
+        // One entry that is not a pass, in any check, and the answer is no: an unknown is no pass, a failure neither, and a result nobody knows is not one.
+        foreach (var spoiled in new[] { DocumentCoherenceResults.Unknown, DocumentCoherenceResults.Failed, "maybe" })
+        {
+            for (var index = 0; index < AllPassedEntries().Count; index++)
+            {
+                var entries = AllPassedEntries();
+                entries[index] = entries[index] with { Result = spoiled };
+
+                Assert.False(DocumentCoherenceReport.FromChecks(entries).AllPassed(Cie.RequiredChecks), $"entry {index} {spoiled}");
+            }
+        }
+    }
+
+    [Fact]
+    public void AllPassed_ACheckWithoutEntries_AnEmptyList_AndANameOfNoCheck_NeverPass()
+    {
+        var report = DocumentCoherenceReport.FromChecks(AllPassedEntries());
+
+        // A required check that has no entry at all was not made.
+        var withoutExpiry = DocumentCoherenceReport.FromChecks(AllPassedEntries().Where(entry => entry.Check != DocumentFormatChecks.Expiry).ToList());
+        Assert.False(withoutExpiry.AllPassed(Cie.RequiredChecks));
+        Assert.False(withoutExpiry.AllPassed([DocumentFormatChecks.Expiry]));
+        Assert.False(DocumentCoherenceReport.FromChecks([]).AllPassed(Cie.RequiredChecks));
+
+        // A format that requires nothing this report can vouch for is not a pass either (an empty list is never «all»), and the checks of the geometry are not judged here.
+        Assert.False(report.AllPassed([]));
+        Assert.False(report.AllPassed([DocumentFormatChecks.Layout, DocumentFormatChecks.Portrait]));
+        Assert.True(report.AllPassed([DocumentFormatChecks.Layout, DocumentFormatChecks.Expiry]));
+
+        // A name that is no check of the plan (a typo in a format file) never passes.
+        Assert.False(report.AllPassed([DocumentFormatChecks.Expiry, "expirey"]));
+    }
+
+    [Fact]
+    public void Summary_IsFailedWhenOneEntryFailed_PassedOnlyWhenEveryEntryPassed_AndUnknownOtherwise()
+    {
+        List<DocumentCoherenceCheck> entries =
+        [
+            new(DocumentFormatChecks.SideConsistency, DocumentCoherenceResults.Passed, ZonedFieldNames.Surname),
+            new(DocumentFormatChecks.SideConsistency, DocumentCoherenceResults.Unknown, ZonedFieldNames.BirthDate),
+            new(DocumentFormatChecks.FieldCoherence, DocumentCoherenceResults.Unknown, ZonedFieldNames.IssueDate),
+            new(DocumentFormatChecks.FieldCoherence, DocumentCoherenceResults.Failed, ZonedFieldNames.BirthDate),
+            new(DocumentFormatChecks.Expiry, DocumentCoherenceResults.Passed, ZonedFieldNames.ExpiryDate),
+        ];
+        var mixed = DocumentCoherenceReport.FromChecks(entries);
+
+        Assert.Equal(DocumentCoherenceResults.Unknown, mixed.Summary(DocumentFormatChecks.SideConsistency));
+        Assert.Equal(DocumentCoherenceResults.Failed, mixed.Summary(DocumentFormatChecks.FieldCoherence));
+        Assert.Equal(DocumentCoherenceResults.Passed, mixed.Summary(DocumentFormatChecks.Expiry));
+        Assert.Equal(DocumentCoherenceResults.Unknown, mixed.Summary(DocumentFormatChecks.MrzCheckDigits));
+        Assert.Equal(DocumentCoherenceResults.Unknown, mixed.Summary("no_such_check"));
+        Assert.Equal(2, mixed.UnknownCount);
+    }
+
+    [Fact]
+    public void FromChecks_TheFlagsAndTheCodesComeFromTheEntries_AndAnUnknownEntryIsNeverOk()
+    {
+        var conflict = ReportWith(DocumentFormatChecks.SideConsistency, DocumentCoherenceResults.Failed);
+        Assert.True(conflict.IdentifyingConflict);
+        Assert.Equal([IdentityGuidanceCodes.DocumentFieldConflict], conflict.Codes);
+        Assert.Null(ReportWith(DocumentFormatChecks.SideConsistency, DocumentCoherenceResults.Unknown).IdentifyingConflict);
+
+        var expired = ReportWith(DocumentFormatChecks.Expiry, DocumentCoherenceResults.Failed);
+        Assert.True(expired.Expired);
+        Assert.Equal([IdentityGuidanceCodes.DocumentExpired], expired.Codes);
+        Assert.Null(ReportWith(DocumentFormatChecks.Expiry, DocumentCoherenceResults.Unknown).Expired);
+
+        Assert.False(ReportWith(DocumentFormatChecks.FieldCoherence, DocumentCoherenceResults.Failed).DatesValid);
+        Assert.Null(ReportWith(DocumentFormatChecks.FieldCoherence, DocumentCoherenceResults.Unknown).DatesValid);
+
+        Assert.False(ReportWith(DocumentFormatChecks.MrzCheckDigits, DocumentCoherenceResults.Failed).MrzValid);
+        Assert.False(ReportWith(DocumentFormatChecks.MrzCheckDigits, DocumentCoherenceResults.Unknown).MrzValid);
+
+        // And when every entry passed, each flag says what it means.
+        var passed = DocumentCoherenceReport.FromChecks(AllPassedEntries());
+        Assert.False(passed.IdentifyingConflict);
+        Assert.False(passed.Expired);
+        Assert.True(passed.DatesValid);
+        Assert.True(passed.MrzValid);
+        Assert.Empty(passed.Codes);
     }
 
     [Fact]

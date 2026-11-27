@@ -26,6 +26,10 @@ public sealed record DocumentCoherenceContext(DateOnly CheckInDate, CheckInIdent
 /// <para>
 /// Pure and without state: no I/O, no clock (the day comes with the context), no configuration; so it is a singleton and a test builds it with <c>new</c>.
 /// </para>
+/// <para>
+/// The flags and the codes of the report are derived from its entries (<see cref="DocumentCoherenceReport.FromChecks"/>): an <c>unknown</c> entry leaves its flag
+/// unknown (<c>null</c>), never «ok», and <see cref="DocumentCoherenceReport.AllPassed"/> is the one answer to whether the checks a format requires all passed.
+/// </para>
 /// <list type="bullet">
 /// <item><b>mrz_check_digits</b>: passed when the MRZ was read and every ICAO 9303 check digit holds, failed when one fails, unknown when no MRZ was read.</item>
 /// <item><b>expiry</b>: failed when the date of expiry (the MRZ one, digit-protected, else the printed one) is before the day of the stay; the day itself is valid.</item>
@@ -80,7 +84,6 @@ public sealed class DocumentCoherenceChecker
         var machine = MachineValues(fields, mrz?.Result);
         var printed = PrintedValues(fields);
         var checks = new List<DocumentCoherenceCheck>();
-        var codes = new List<string>();
 
         // mrz_check_digits: nothing proves an MRZ that was not read, so nothing is assumed.
         var digits = mrz?.Result is not { } read ? DocumentCoherenceResults.Unknown : read.CheckDigitsValid ? DocumentCoherenceResults.Passed : DocumentCoherenceResults.Failed;
@@ -97,11 +100,9 @@ public sealed class DocumentCoherenceChecker
         // side_consistency: the fields that identify the holder, one entry each.
         var nameFieldIsFull = NameFieldIsFull(machine, format);
         var identifying = policy.Document.IdentifyingFields.Distinct(StringComparer.Ordinal).ToList();
-        var conflict = false;
         foreach (var name in identifying)
         {
             var result = CompareSides(name, machine, printed, MayBeCut(name, machine, nameFieldIsFull));
-            conflict |= result == DocumentCoherenceResults.Failed;
             checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.SideConsistency, result, name));
         }
 
@@ -120,7 +121,6 @@ public sealed class DocumentCoherenceChecker
         var issueResult = issue is not { } issued || expiry is not { } until
             ? DocumentCoherenceResults.Unknown
             : issued > until ? DocumentCoherenceResults.Failed : DocumentCoherenceResults.Passed;
-        var datesValid = birthResult != DocumentCoherenceResults.Failed && issueResult != DocumentCoherenceResults.Failed;
         checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.FieldCoherence, birthResult, ZonedFieldNames.BirthDate));
         checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.FieldCoherence, issueResult, ZonedFieldNames.IssueDate));
 
@@ -133,12 +133,8 @@ public sealed class DocumentCoherenceChecker
         checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, Flag(booking.DocumentNumber), ZonedFieldNames.DocumentNumber));
         checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, Flag(booking.Nationality), ZonedFieldNames.Nationality));
 
-        if (conflict)
-            codes.Add(IdentityGuidanceCodes.DocumentFieldConflict);
-        if (expired)
-            codes.Add(IdentityGuidanceCodes.DocumentExpired);
-
-        return new DocumentCoherenceReport(checks, conflict, expired, datesValid, digits == DocumentCoherenceResults.Passed, codes);
+        // The flags and the codes come from the entries and from nothing else: an unknown entry makes a flag unknown, never «ok».
+        return DocumentCoherenceReport.FromChecks(checks);
     }
 
     /// <summary>
