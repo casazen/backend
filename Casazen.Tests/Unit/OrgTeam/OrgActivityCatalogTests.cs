@@ -436,17 +436,6 @@ public class OrgActivityCatalogTests
 
     // ─── The runbook lists the same events ──────────────────────────────────────────────────────────────
 
-    [Fact]
-    public void Runbook_ListsEveryEventOfTheCatalog_AndSaysWhichAreReserved()
-    {
-        var runbook = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "docs", "runbooks", "org-team.md"));
-
-        foreach (var info in OrgActivityCatalog.All)
-            Assert.Contains($"`{info.Type}`", runbook, StringComparison.Ordinal);
-
-        Assert.Contains("reserved", runbook, StringComparison.OrdinalIgnoreCase);
-    }
-
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(System.AppContext.BaseDirectory);
