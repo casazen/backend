@@ -1,12 +1,15 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Casazen.Core.Identity;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Identity;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Logging;
 using Casazen.Web.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
@@ -648,6 +651,28 @@ public class DocumentCoherenceCheckerTests
             Assert.True(entry.Field is null || ZonedFieldNames.All.Contains(entry.Field) || DocumentCoherenceFields.All.Contains(entry.Field));
         });
         Assert.All(report.Codes, code => Assert.Contains(code, IdentityGuidanceCodes.All));
+    }
+
+    [Fact]
+    public void DocumentCoherenceContext_ToString_NeverShowsWhatTheGuestTyped()
+    {
+        // Privacy (ADR-013, R19): the context holds the names, the birth date and the document number the guest typed, and a record writes all of its members when it is
+        // logged by mistake. It says the day of the stay and that something was typed, nothing else, however it is written.
+        var typed = new CheckInIdentity("MARIA GIUSEPPINA", "ROSSI", new DateOnly(1985, 3, 12), "CA12345AA", "ITALIA");
+        var context = new DocumentCoherenceContext(new DateOnly(2026, 12, 10), typed);
+        var log = new CapturingLogger<DocumentCoherenceChecker>();
+        log.LogInformation("The context of a check {Context}", context);
+
+        var written = new[] { context.ToString(), $"{context}", string.Format(CultureInfo.InvariantCulture, "{0}", context), log.AllOutput };
+
+        Assert.All(written, text =>
+        {
+            Assert.Contains("2026-12-10", text, StringComparison.Ordinal);
+            foreach (var value in new[] { "MARIA", "GIUSEPPINA", "ROSSI", "1985", "03-12", "12.03", "CA12345AA", "ITALIA" })
+                Assert.DoesNotContain(value, text, StringComparison.OrdinalIgnoreCase);
+        });
+        Assert.Contains("typed", context.ToString(), StringComparison.Ordinal);
+        Assert.Contains("none", new DocumentCoherenceContext(new DateOnly(2026, 12, 10)).ToString(), StringComparison.Ordinal);
     }
 
     /// <summary>The entries of a report in which every check passed: one entry for most checks, two for the ones that have more.</summary>

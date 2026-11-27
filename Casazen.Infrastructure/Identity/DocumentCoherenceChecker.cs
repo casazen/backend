@@ -16,7 +16,18 @@ namespace Casazen.Infrastructure.Identity;
 /// that expires before this day is expired; a birth after it, or more than 120 years before it, is impossible.
 /// </param>
 /// <param name="Declared">The first and last names, the date of birth, the document number and the citizenship the guest typed, or null while nothing is typed.</param>
-public sealed record DocumentCoherenceContext(DateOnly CheckInDate, CheckInIdentity? Declared = null);
+public sealed record DocumentCoherenceContext(DateOnly CheckInDate, CheckInIdentity? Declared = null)
+{
+    /// <summary>
+    /// The day of the stay, and whether the guest typed anything: never what was typed. The names, the birth date and the document number are personal data, and the
+    /// text a record writes of itself is what a log line gets when somebody logs it by mistake (<see cref="ZonedField"/> does the same for a value read).
+    /// </summary>
+    public override string ToString()
+    {
+        var day = CheckInDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return $"DocumentCoherenceContext {{ CheckInDate = {day}, Declared = {(Declared is null ? "none" : "typed")} }}";
+    }
+}
 
 /// <summary>
 /// The coherence of the fields read on a document (E71/F01/US02/T02, NF-190, NF-191, decision D11): whether the MRZ and the visual zone agree on the fields that
