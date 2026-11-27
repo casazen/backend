@@ -371,7 +371,7 @@ public sealed class IdentitySessionOpeningTests
         Assert.Equal(IdentityOutcomeCodes.Abandoned, closed.IdentityOutcomeCode);
         Assert.NotNull(closed.IdentityClosedAt);
         Assert.Null(closed.OperatorRequestedAt);
-        Assert.Equal(0, world.Alerts.Count);
+        Assert.Empty(world.Alerts);
 
         await world.Db.Entry(session).ReloadAsync(Ct);
         var dto = PublicIdentityVerificationStateDto.From(await world.Flow().GetStateAsync(session, Ct));
@@ -386,7 +386,7 @@ public sealed class IdentitySessionOpeningTests
         Assert.True(asked.Closed);
         Assert.True(asked.OperatorRequested);
         Assert.Equal(IdentityVerificationGuestResults.Operator, asked.Outcome);
-        Assert.Equal(1, world.Alerts.Count);
+        Assert.Single(world.Alerts);
         var handedOff = await world.ReadBackAsync(session.Id);
         Assert.NotNull(handedOff.OperatorRequestedAt);
         Assert.Equal((closed.IdentityClosedAt, IdentityOutcomeCodes.Abandoned), (handedOff.IdentityClosedAt, handedOff.IdentityOutcomeCode));
