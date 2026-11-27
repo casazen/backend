@@ -90,6 +90,12 @@ public static class CandidateRunCodes
 
     /// <summary>The run failed (the type of the failure is not told: a message could carry what was being read).</summary>
     public const string Error = "error";
+
+    /// <summary>
+    /// The candidate is configured and the store has not looked at it yet: the store is ready as soon as the three models are loaded and loads the candidates after them, so for a moment (longer for a large
+    /// file) it is ready and its <c>Candidates</c> is empty. The reference ran; the candidate has no scores yet, and the runner waits and compares again. It is not «no candidate».
+    /// </summary>
+    public const string CandidateLoading = "candidate_loading";
 }
 
 /// <summary>
@@ -116,7 +122,11 @@ public sealed record CandidateModelRun(string Role, string Name, string Version,
 /// <param name="CaseId">The label of the case.</param>
 /// <param name="Kind">Which models the case was for.</param>
 /// <param name="Reference">The reference model (SFace for a match, MiniFASNetV2 for a liveness) as the check-in runs it.</param>
-/// <param name="Candidate">The candidate of the same role on the same inputs; null when that candidate is not loaded (not configured, or it failed: the snapshot of the store says why).</param>
+/// <param name="Candidate">
+/// The candidate of the same role on the same inputs. <b>Three answers, and the runner tells them apart:</b> a run that ran (its scores); <c>null</c> when the candidate is not configured, or it failed (the
+/// <c>Candidates</c> of the snapshot of the store say which, and why); and a run with no scores and the code <see cref="CandidateRunCodes.CandidateLoading"/> when the candidate is configured but the store has
+/// not looked at it yet (the store is ready as soon as the three models are, and loads the candidates after them): the runner waits and compares again, and never records that case as «no candidate».
+/// </param>
 public sealed record CandidateCaseResult(string CaseId, CandidateCaseKind Kind, CandidateModelRun Reference, CandidateModelRun? Candidate);
 
 /// <summary>
@@ -128,7 +138,8 @@ public interface IBiometricCandidateComparison
 {
     /// <summary>
     /// Runs every case through the reference model and, where one is loaded, through the candidate of the same role, on the same inputs, with the latency of each. One result per case, in
-    /// order; a case that fails is a result with a code, never an exception that stops the others. A caller that cancels gets the cancellation.
+    /// order; a case that fails is a result with a code, never an exception that stops the others. A candidate that is configured but not yet looked at by the store is a run with the code
+    /// <see cref="CandidateRunCodes.CandidateLoading"/>, not a missing one (<see cref="CandidateCaseResult.Candidate"/>). A caller that cancels gets the cancellation.
     /// </summary>
     Task<IReadOnlyList<CandidateCaseResult>> CompareAsync(IReadOnlyList<CandidateCase> cases, CancellationToken ct);
 }

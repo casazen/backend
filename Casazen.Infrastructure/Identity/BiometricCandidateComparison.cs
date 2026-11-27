@@ -14,7 +14,8 @@ namespace Casazen.Infrastructure.Identity;
 /// difference between the two is the model and what describes it. The faces are found once, by the detector of the check-in, and both models are given the same ones.
 /// <para>
 /// <b>It decides nothing and nothing depends on it.</b> It is registered for the qualification runner and never injected into the flow; it reads the candidates the store loaded and has no way to load one.
-/// With no candidate loaded the answer is the reference alone. It has no logger (the numbers of a case are the result, not a log), the vectors are zeroed after each comparison, and a case that fails
+/// With no candidate loaded the answer is the reference alone, except for a candidate that is configured but not yet looked at by the store (it loads them after the three models): that one is a run with the code
+/// <see cref="CandidateRunCodes.CandidateLoading"/>, so the runner can tell it from a candidate that is not there. It has no logger (the numbers of a case are the result, not a log), the vectors are zeroed after each comparison, and a case that fails
 /// is a code in its result, never the message of an exception.
 /// </para>
 /// </summary>
@@ -24,12 +25,17 @@ public sealed class BiometricCandidateComparison(
     IFaceEmbedder referenceEmbedder,
     IOptions<BiometricModelOptions> options) : IBiometricCandidateComparison
 {
-    /// <summary>The models of a comparison: the reference, and the candidate of each role when it is loaded.</summary>
+    /// <summary>
+    /// The models of a comparison, read from the store once for the whole call: the reference, the candidate of each role when it is loaded and, for a role whose candidate is configured but not yet looked at by
+    /// the store, the note that it is still loading (<see cref="CandidateRunCodes.CandidateLoading"/>).
+    /// </summary>
     private sealed record Rig(
         IFaceEmbedder ReferenceEmbedder,
         IFaceEmbedder? CandidateEmbedder,
         IAntiSpoofingService ReferenceLiveness,
-        IAntiSpoofingService? CandidateLiveness);
+        IAntiSpoofingService? CandidateLiveness,
+        bool RecognitionCandidateLoading,
+        bool AntiSpoofingCandidateLoading);
 
     public async Task<IReadOnlyList<CandidateCaseResult>> CompareAsync(IReadOnlyList<CandidateCase> cases, CancellationToken ct)
     {
@@ -56,12 +62,17 @@ public sealed class BiometricCandidateComparison(
 
     private Rig BuildRig(BiometricModelOptions settings)
     {
+        // The snapshot before the candidates: the store publishes them together, so a role that is not in the snapshot is one the store has not looked at yet, never one that was loaded a moment ago.
+        var examined = store.Snapshot.Candidates;
+        var recognition = store.FaceRecognitionCandidate;
+        var antiSpoofing = store.AntiSpoofingCandidate;
+
         IFaceEmbedder? candidateEmbedder = null;
-        if (store.FaceRecognitionCandidate is { } recognition)
+        if (recognition is not null)
             candidateEmbedder = new FaceEmbedder(new CandidateModelStore(antiSpoofing: null, recognition), Options.Create(settings.ForFaceRecognitionCandidate()));
 
         IAntiSpoofingService? candidateLiveness = null;
-        if (store.AntiSpoofingCandidate is { } antiSpoofing)
+        if (antiSpoofing is not null)
         {
             candidateLiveness = new AntiSpoofingService(
                 NullLogger<AntiSpoofingService>.Instance,
@@ -72,7 +83,18 @@ public sealed class BiometricCandidateComparison(
 
         // The service of the check-in over the real store: the reference is what the check-in runs, not a copy of it.
         var referenceLiveness = new AntiSpoofingService(NullLogger<AntiSpoofingService>.Instance, store, detector, options);
-        return new Rig(referenceEmbedder, candidateEmbedder, referenceLiveness, candidateLiveness);
+        var recognitionLoading = recognition is null && IsLoading(BiometricModelRoles.FaceRecognitionCandidate, settings.FaceRecognitionCandidate, examined);
+        var antiSpoofingLoading = antiSpoofing is null && IsLoading(BiometricModelRoles.AntiSpoofingCandidate, settings.AntiSpoofingCandidate, examined);
+        return new Rig(referenceEmbedder, candidateEmbedder, referenceLiveness, candidateLiveness, recognitionLoading, antiSpoofingLoading);
+    }
+
+    /// <summary>
+    /// Whether a candidate is configured and the store has not looked at it yet: the store is ready once the three models are loaded and loads the candidates after them, so for a moment the role is configured, has
+    /// no model and is not in <c>Candidates</c> either. A role the store did look at (not configured, or failed with its code) is not loading: it is a candidate that is not there.
+    /// </summary>
+    private static bool IsLoading(string role, ModelFileOptions spec, IReadOnlyList<BiometricModelInfo> examined)
+    {
+        return BiometricModelOptions.IsCandidateConfigured(spec) && !examined.Any(info => string.Equals(info.Role, role, StringComparison.Ordinal));
     }
 
     // ───── a match: the portrait of the document against the chosen frames ─────
@@ -103,6 +125,10 @@ public sealed class BiometricCandidateComparison(
                 candidateRun = portrait is null
                     ? Failed(BiometricModelRoles.FaceRecognitionCandidate, candidate, settings.FaceRecognitionCandidate, CandidateRunCodes.NoFace)
                     : Embed(BiometricModelRoles.FaceRecognitionCandidate, candidate, rig.CandidateEmbedder, portraitImage, portrait, match.Frames, faces, ct);
+            }
+            else if (rig.RecognitionCandidateLoading)
+            {
+                candidateRun = Failed(BiometricModelRoles.FaceRecognitionCandidate, null, settings.FaceRecognitionCandidate, CandidateRunCodes.CandidateLoading);
             }
 
             return new CandidateCaseResult(match.Id, match.Kind, referenceRun, candidateRun);
@@ -200,6 +226,8 @@ public sealed class BiometricCandidateComparison(
         CandidateModelRun? candidateRun = null;
         if (rig.CandidateLiveness is not null && candidate is not null)
             candidateRun = await ScoreAsync(BiometricModelRoles.AntiSpoofingCandidate, candidate, rig.CandidateLiveness, liveness.EncodedFrame, ct);
+        else if (rig.AntiSpoofingCandidateLoading)
+            candidateRun = Failed(BiometricModelRoles.AntiSpoofingCandidate, null, settings.AntiSpoofingCandidate, CandidateRunCodes.CandidateLoading);
 
         return new CandidateCaseResult(liveness.Id, liveness.Kind, referenceRun, candidateRun);
     }

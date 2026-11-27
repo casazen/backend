@@ -217,6 +217,71 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
         });
     }
 
+    // ─── The window between «the store is ready» and «the store has looked at the candidates» ────────────
+
+    [Fact]
+    public async Task CompareAsync_ACandidateTheStoreHasNotLookedAtYet_IsCandidateLoading_NotAMissingOne_AndTheReferenceRan()
+    {
+        // The store publishes «ready» as soon as the three models are loaded and loads the candidates after them: for a moment it is ready, the candidates are configured and its snapshot lists none of them.
+        var options = BundledBiometricModels.PublishedOptions();
+        options.FaceRecognitionCandidate = CandidateFrom<FaceRecognitionCandidateOptions>(options.FaceRecognition, "recognition-copy.onnx");
+        options.AntiSpoofingCandidate = CandidateFrom<AntiSpoofingCandidateOptions>(options.AntiSpoofing, "antispoofing-copy.onnx");
+        using var loaded = await BundledBiometricModels.LoadAsync(options);
+        var early = new StoreThatHasNotLookedAtTheCandidates(loaded);
+        using var scene = MatchScene(frames: 2, withoutFace: 0);
+        var face = SequenceTestFrames.Face(Width, Height);
+        scene.Detector.Fallback = image => image.Width == Width && image.Height == Height ? [face] : [];
+        var cases = new CandidateCase[] { scene.Case("match"), new LivenessCase("frame", TestJpeg.Noise(Width, Height, seed: 3)) };
+
+        var results = await Comparison(early, scene.Detector, new FaceEmbedder(loaded, Options.Create(options)), options).CompareAsync(cases, CancellationToken.None);
+
+        // The reference ran, and the candidate of each role is a run that says why it has no scores: not a null, which would be «no candidate».
+        Assert.Equal(2, results.Count);
+        Assert.All(results, result => Assert.True(result.Reference.Ran));
+        var recognition = Assert.IsType<CandidateModelRun>(results[0].Candidate);
+        var presence = Assert.IsType<CandidateModelRun>(results[1].Candidate);
+        Assert.Equal((BiometricModelRoles.FaceRecognitionCandidate, CandidateRunCodes.CandidateLoading), (recognition.Role, recognition.FailureCode));
+        Assert.Equal((BiometricModelRoles.AntiSpoofingCandidate, CandidateRunCodes.CandidateLoading), (presence.Role, presence.FailureCode));
+        Assert.All(new[] { recognition, presence }, run =>
+        {
+            Assert.False(run.Ran);
+            Assert.Empty(run.Scores);
+            Assert.Null(run.WeightHash);
+        });
+
+        // Who it is: the name and the version of what is configured (its weights are not proved yet).
+        Assert.Equal((options.FaceRecognitionCandidate.Name, options.FaceRecognitionCandidate.Version), (recognition.Name, recognition.Version));
+        Assert.Equal((options.AntiSpoofingCandidate.Name, options.AntiSpoofingCandidate.Version), (presence.Name, presence.Version));
+
+        // The same cases once the store has looked at the candidates (the real store, which loaded them): both candidates ran.
+        var settled = await Comparison(loaded, scene.Detector, new FaceEmbedder(loaded, Options.Create(options)), options).CompareAsync(cases, CancellationToken.None);
+
+        Assert.All(settled, result => Assert.True(Assert.IsType<CandidateModelRun>(result.Candidate).Ran));
+    }
+
+    [Fact]
+    public async Task CompareAsync_ACandidateThatIsNotConfigured_IsNull_WhetherOrNotTheStoreHasLookedAtTheCandidatesYet()
+    {
+        // Nothing is configured: the runner must tell this from a candidate that is loading, so the answer stays «no candidate» (null). A configured candidate the store looked at and could not load is null
+        // too, with its code in the snapshot (CompareAsync_ACandidateWithAnotherHash_IsNotLoaded_AndTheComparisonIsTheReferenceAlone).
+        var options = BundledBiometricModels.PublishedOptions();
+        using var loaded = await BundledBiometricModels.LoadAsync(options);
+        using var scene = MatchScene(frames: 2, withoutFace: 0);
+        var face = SequenceTestFrames.Face(Width, Height);
+        scene.Detector.Fallback = image => image.Width == Width && image.Height == Height ? [face] : [];
+        var cases = new CandidateCase[] { scene.Case("match"), new LivenessCase("frame", TestJpeg.Noise(Width, Height, seed: 3)) };
+
+        var early = await Comparison(new StoreThatHasNotLookedAtTheCandidates(loaded), scene.Detector, new FaceEmbedder(loaded, Options.Create(options)), options).CompareAsync(cases, CancellationToken.None);
+        var settled = await Comparison(loaded, scene.Detector, new FaceEmbedder(loaded, Options.Create(options)), options).CompareAsync(cases, CancellationToken.None);
+
+        Assert.Equal(4, early.Count + settled.Count);
+        Assert.All(early.Concat(settled), result =>
+        {
+            Assert.True(result.Reference.Ran);
+            Assert.Null(result.Candidate);
+        });
+    }
+
     // ─── Acceptance criterion 2: a wrong hash ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -482,6 +547,23 @@ public sealed class BiometricCandidateComparisonTests : IDisposable
     private sealed class PlantedLazyFlow(Lazy<IBiometricCandidateComparison> comparison)
     {
         public override string ToString() => comparison.Value.ToString() ?? string.Empty;
+    }
+
+    /// <summary>
+    /// A store as the real one is for a moment after it publishes «ready» and before it has looked at the candidates (it loads them after the three models): the three models are there, its snapshot lists no
+    /// candidate and none is loaded.
+    /// </summary>
+    private sealed class StoreThatHasNotLookedAtTheCandidates(IBiometricModelStore inner) : IBiometricModelStore
+    {
+        public BiometricModelsSnapshot Snapshot => inner.Snapshot with { Candidates = [] };
+
+        public bool IsAvailable => inner.IsAvailable;
+
+        public LoadedBiometricModel? FaceDetector => inner.FaceDetector;
+
+        public LoadedBiometricModel? AntiSpoofing => inner.AntiSpoofing;
+
+        public LoadedBiometricModel? FaceRecognition => inner.FaceRecognition;
     }
 
     /// <summary>An embedder that keeps what it hands out (the very arrays the application holds), to prove the application zeroes them, and lets the real one do the work.</summary>
