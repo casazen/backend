@@ -103,6 +103,35 @@ public sealed class LocalPrefillTests
     }
 
     [Fact]
+    public async Task ReadZoned_ACardHeldCrooked_IsReadOnTheCardLevelledAndUpright()
+    {
+        // IDENT-TILT: a photo taken by hand turns the card by some degrees. The zones are read where the layout puts them, on the card levelled, not on the box that holds the crooked card.
+        var world = new Zones();
+        using var upright = DocumentImageFactory.Render(Cie, DocumentSide.Front, DocumentImageFactory.WholeCard);
+        using var crooked = DocumentImageFactory.Rotated(upright, -5);
+        var front = TestImages.Png(crooked.Width, crooked.Height, crooked.Rgb);
+        world.Ocr.Fields = new DocumentOcrResult
+        {
+            HasDocumentEvidence = true,
+            DocumentKind = "IdentityCard",
+            GivenNames = GivenNames,
+            Surname = Surname,
+            DocumentNumber = DocumentNumber,
+        };
+        world.Zoned.Fields[DocumentSide.Front] = FrontFields();
+
+        var result = await world.Reader().ReadZonedAsync(new MemoryStream(front), Ct);
+
+        Assert.True(result.Read.Read);
+        Assert.Equal(7, result.Fields.Count);
+        var card = Assert.Single(world.Zoned.Cards);
+        Assert.Equal((DocumentSide.Front, "it-cie-3.0"), (card.Side, card.FormatId));
+        Assert.InRange(card.Width, 470, 495);
+        Assert.InRange(card.Height, 295, 315);
+        Assert.True(card.PortraitIsWhereTheLayoutSaysIt);
+    }
+
+    [Fact]
     public async Task ReadZoned_ACardThatCannotBeFoundWhole_KeepsTheReadingOfToday_AndReadsNoZone()
     {
         var world = new Zones();
