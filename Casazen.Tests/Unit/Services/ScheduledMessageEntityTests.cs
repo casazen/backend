@@ -20,7 +20,7 @@ namespace Casazen.Tests.Unit.Services;
 public class ScheduledMessageEntityTests
 {
     // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     private static AppDbContext NewDb(string? name = null, ITenantContext? tenant = null) =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(name ?? Guid.NewGuid().ToString()).Options, tenant, Provider);

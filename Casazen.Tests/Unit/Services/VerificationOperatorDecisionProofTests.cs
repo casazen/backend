@@ -183,7 +183,7 @@ public class VerificationOperatorDecisionProofTests
         private readonly DbContextOptions<AppDbContext> _options =
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"verification-decision-{Guid.NewGuid()}").Options;
 
-        private readonly IDataProtectionProvider _dataProtection = new EphemeralDataProtectionProvider();
+        private readonly IDataProtectionProvider _dataProtection = TestDataProtection.Shared;
         private readonly List<object> _rows = [];
 
         public World()

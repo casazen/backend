@@ -47,7 +47,7 @@ public class DemoOnboardingResetPostgresTests : IAsyncLifetime
     private readonly FixedTimeProvider _clock = new(new DateTimeOffset(At));
 
     // One protection for every context of a test: the tokens one context writes are the ones the next reads.
-    private readonly EphemeralDataProtectionProvider _protection = new();
+    private readonly EphemeralDataProtectionProvider _protection = TestDataProtection.Shared;
     private PostgresTestDatabase? _database;
 
     public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateMigratedAsync("demoonbreset");

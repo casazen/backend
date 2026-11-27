@@ -1163,7 +1163,7 @@ public class ItalianPortalTouristTaxTests
         new(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(databaseName ?? $"ItalianPortalTouristTax_{Guid.NewGuid()}").Options,
             tenant ?? new FixedTenant(null),
-            new EphemeralDataProtectionProvider());
+            TestDataProtection.Shared);
 
     private sealed class FixedTenant(Guid? orgId) : ITenantContext
     {

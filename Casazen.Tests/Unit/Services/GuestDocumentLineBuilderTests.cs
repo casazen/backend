@@ -647,7 +647,7 @@ public class GuestDocumentLineBuilderTests
     }
 
     private static AppDbContext NewDb() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"GuestDocumentLines_{Guid.NewGuid()}").Options, new LinesTenant(), new EphemeralDataProtectionProvider());
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"GuestDocumentLines_{Guid.NewGuid()}").Options, new LinesTenant(), TestDataProtection.Shared);
 
     private sealed class LinesTenant : ITenantContext
     {

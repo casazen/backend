@@ -246,7 +246,7 @@ public class OwnerOnboardingServiceTests : IAsyncLifetime
         const string Vat = "01234567897";
         const string Iban = "IT60X0542811101000000123456";
         var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"owners-secret-{Guid.NewGuid()}").Options;
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         AppDbContext Keyed() => new(options, null, provider);
         HostScopeWorld world;
         await using (var seed = Keyed())

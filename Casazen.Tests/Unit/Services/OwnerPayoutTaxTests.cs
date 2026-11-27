@@ -365,7 +365,7 @@ public class OwnerPayoutTaxTests
         public static Task<PayoutWorld> CreateAsync() => Task.FromResult(new PayoutWorld(new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"Payouts_{Guid.NewGuid()}").Options,
             new PayoutTenant(),
-            new EphemeralDataProtectionProvider())));
+            TestDataProtection.Shared)));
 
         /// <summary>An owner with its approved rule set (its own version per jurisdiction) and a complete profile from January.</summary>
         public async Task<Guid> OwnerAsync(string jurisdiction, string currency, OwnerAccountingRuleParameters parameters, DateOnly? validTo = null)

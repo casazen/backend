@@ -338,7 +338,7 @@ public class OwnerPortalStatementsTests
                 new AppDbContext(
                     new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerPortalStatements_{Guid.NewGuid()}").Options,
                     new PortalTenant(),
-                    new EphemeralDataProtectionProvider()),
+                    TestDataProtection.Shared),
                 agencyTier);
             await world.SeedAsync(language, withOwners);
             return world;

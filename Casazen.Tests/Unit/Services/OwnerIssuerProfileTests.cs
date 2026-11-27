@@ -39,7 +39,7 @@ public class OwnerIssuerProfileTests
 {
     private static readonly Guid OrgId = Guid.NewGuid();
     private static readonly HostScope OrgWide = new(OrgId);
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
     private static readonly DateTimeOffset Now = new(2026, 11, 20, 10, 0, 0, TimeSpan.Zero);
 
     /// <summary>

@@ -60,7 +60,7 @@ public class AccessCodeStatusProofTests
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase($"AccessCodeStatusPrivacy_{Guid.NewGuid()}")
             .Options;
-        var dataProtection = new EphemeralDataProtectionProvider();
+        var dataProtection = TestDataProtection.Shared;
         var withCode = NewProperty(orgId, "Trullo");
         var withoutCode = NewProperty(orgId, "Alba");
         var setAt = new DateTime(2026, 10, 9, 8, 0, 0, DateTimeKind.Utc);
@@ -178,7 +178,7 @@ public class AccessCodeStatusProofTests
                     npgsql => npgsql.MigrationsAssembly("Casazen.Infrastructure"))
                 .Options,
             new FixedTenantContext(orgId),
-            new EphemeralDataProtectionProvider());
+            TestDataProtection.Shared);
 
     private static PropertyAccessCode NewCode(Guid orgId, Guid propertyId, DateTime updatedAt) => new()
     {

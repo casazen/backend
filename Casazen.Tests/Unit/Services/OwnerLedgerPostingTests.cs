@@ -539,7 +539,7 @@ public class OwnerLedgerPostingTests
         public static Task<World> CreateAsync() => Task.FromResult(new World(new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerPosting_{Guid.NewGuid()}").Options,
             new PostingTenant(),
-            new EphemeralDataProtectionProvider())));
+            TestDataProtection.Shared)));
 
         /// <summary>A Swiss owner paid in francs, with a complete profile from January and the approved Swiss rule set (created once).</summary>
         public async Task<Guid> OwnerAsync()

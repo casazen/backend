@@ -54,7 +54,7 @@ internal sealed class OwnerMonthEndWorld
         var db = sameDatabaseAs?.Db ?? new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerMonthEnd_{Guid.NewGuid()}").Options,
             new MonthEndTenant(),
-            new EphemeralDataProtectionProvider());
+            TestDataProtection.Shared);
         var clock = sameDatabaseAs?.Clock ?? new FakeTimeProvider(new DateTimeOffset(2026, 11, 14, 10, 0, 0, TimeSpan.Zero));
         return Task.FromResult(new OwnerMonthEndWorld(db, Guid.NewGuid(), clock, files));
     }

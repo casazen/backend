@@ -137,7 +137,7 @@ public class ServicePaymentDisputeTenancyTests
         using var encrypted = new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
             tenantContext: null,
-            new EphemeralDataProtectionProvider());
+            TestDataProtection.Shared);
         Assert.True(EncryptedColumns.IsConfigured(encrypted));
     }
 

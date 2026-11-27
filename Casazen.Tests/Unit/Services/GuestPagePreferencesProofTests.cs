@@ -183,7 +183,7 @@ public class GuestPagePreferencesProofTests
                 configuration,
                 NullLogger<GuestBookingLookupService>.Instance,
                 Clock);
-            var sessions = new GuestSessionService(lookup, new GuestSessionTokens(new EphemeralDataProtectionProvider(), Clock), configuration, Clock);
+            var sessions = new GuestSessionService(lookup, new GuestSessionTokens(TestDataProtection.Shared, Clock), configuration, Clock);
 
             var crmValues = crmOptions ?? new CrmOptions();
             var crm = Options.Create(crmValues);

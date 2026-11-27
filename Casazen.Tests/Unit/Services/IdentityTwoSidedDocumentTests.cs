@@ -819,7 +819,7 @@ public class IdentityTwoSidedDocumentTests
         private readonly DbContextOptions<AppDbContext> _options =
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"two-sided-document-{Guid.NewGuid()}").Options;
 
-        private readonly IDataProtectionProvider _dataProtection = new EphemeralDataProtectionProvider();
+        private readonly IDataProtectionProvider _dataProtection = TestDataProtection.Shared;
         private readonly Guid _propertyId = Guid.NewGuid();
         private readonly Mock<IEmailQueue> _queue = new();
         private readonly Mock<IAccessCodeService> _codes = new();

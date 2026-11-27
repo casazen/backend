@@ -34,7 +34,7 @@ internal sealed class ScheduledMessageRig
     public static readonly DateTimeOffset Now = new(2026, 11, 18, 10, 0, 0, TimeSpan.Zero);
 
     private readonly string _database = $"scheduled-messages-{Guid.NewGuid()}";
-    private readonly EphemeralDataProtectionProvider _keys = new();
+    private readonly EphemeralDataProtectionProvider _keys = TestDataProtection.Shared;
     private readonly HashSet<string> _delivered = [];
     private readonly HashSet<string> _refused = [];
     private readonly HashSet<string> _refusedBefore = [];

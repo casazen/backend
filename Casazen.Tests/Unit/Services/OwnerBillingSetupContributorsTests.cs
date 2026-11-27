@@ -172,7 +172,7 @@ public class OwnerBillingSetupContributorsTests
             var db = new AppDbContext(
                 new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerBillingSetup_{Guid.NewGuid()}").Options,
                 new SetupTenant(),
-                new EphemeralDataProtectionProvider());
+                TestDataProtection.Shared);
             db.Orgs.Add(new OrgEntity { Id = AgencyId, Name = "TEST Agenzia", DisplayName = "TEST Agenzia", Slug = "test-agenzia", PlanTier = tier });
             db.Orgs.Add(new OrgEntity { Id = OtherAgencyId, Name = "TEST Altra", DisplayName = "TEST Altra", Slug = "test-altra", PlanTier = PlanTier.Agency });
             db.SaveChanges();

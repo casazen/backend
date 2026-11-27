@@ -17,7 +17,7 @@ namespace Casazen.Tests.Unit.Services;
 public class StayGuestServiceTests
 {
     // One provider for the whole class: EF keeps one model per provider (see OctorateConnectionEncryptionTests).
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     [Fact]
     public async Task StayGuest_GuestPortalSave_KeepsHostTaxExemption_Test()

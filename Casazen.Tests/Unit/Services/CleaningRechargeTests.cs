@@ -509,7 +509,7 @@ public class CleaningRechargeTests
             new AppDbContext(
                 new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"CleaningRecharge_{Guid.NewGuid()}").Options,
                 new CleaningRechargeTenant(),
-                new EphemeralDataProtectionProvider()),
+                TestDataProtection.Shared),
             costs));
 
         /// <summary>A Swiss owner paid in francs, with a complete profile from January and the approved Swiss rule set (created once).</summary>

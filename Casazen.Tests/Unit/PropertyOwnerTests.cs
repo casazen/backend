@@ -39,7 +39,7 @@ public class PropertyOwnerTests
             .UseInMemoryDatabase($"PropertyOwnerEncryptionTest_{Guid.NewGuid()}")
             .Options;
 
-        var dataProtection = new EphemeralDataProtectionProvider();
+        var dataProtection = TestDataProtection.Shared;
         var orgId = Guid.NewGuid();
 
         // Assert: The model has encryption converters on Iban and FiscalCode
@@ -108,7 +108,7 @@ public class PropertyOwnerTests
             .UseInMemoryDatabase($"PropertyOwnerIbanAccessTest_{Guid.NewGuid()}")
             .Options;
 
-        var dataProtection = new EphemeralDataProtectionProvider();
+        var dataProtection = TestDataProtection.Shared;
         var orgId = Guid.NewGuid();
         var ownerId = Guid.NewGuid();
         var userId = "auth0|test-user";

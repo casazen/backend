@@ -156,7 +156,7 @@ public class OwnerFiscalProfileServiceTests
         new(db, new FakeTimeProvider(new DateTimeOffset(2026, 11, 12, 10, 0, 0, TimeSpan.Zero)), NullLogger<OwnerFiscalProfileService>.Instance);
 
     private static AppDbContext NewDb() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerFiscal_{Guid.NewGuid()}").Options, new ProfileTenant(), new EphemeralDataProtectionProvider());
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerFiscal_{Guid.NewGuid()}").Options, new ProfileTenant(), TestDataProtection.Shared);
 
     private static async Task<Guid> SeedOwnerAsync(AppDbContext db)
     {

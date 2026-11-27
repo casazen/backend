@@ -25,7 +25,7 @@ namespace Casazen.Tests.Unit.Octorate;
 public class OctorateTokenRefreshTests
 {
     // One provider for the whole class: EF keeps one model per provider.
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     private static readonly Guid OrgA = Guid.Parse("c3d4e5f6-0718-4293-a4b5-c6d7e8f90a01");
     private const string RefreshToken = "RT-original-5b0c7e9a";

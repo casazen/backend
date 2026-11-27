@@ -345,11 +345,11 @@ public class OctorateDocumentImportProofTests
     private static AppDbContext NewDb()
     {
         _name = $"OctorateDocuments_{Guid.NewGuid()}";
-        return new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_name).Options, new DocumentTenant(null), new EphemeralDataProtectionProvider());
+        return new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_name).Options, new DocumentTenant(null), TestDataProtection.Shared);
     }
 
     private static AppDbContext NewDb(AppDbContext same, Guid orgId) =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_name!).Options, new DocumentTenant(orgId), new EphemeralDataProtectionProvider());
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_name!).Options, new DocumentTenant(orgId), TestDataProtection.Shared);
 
     private static async Task<(Guid PropertyId, Guid BookingId)> SeedOrgAsync(AppDbContext db, Guid orgId, string accommodation, string reservation)
     {

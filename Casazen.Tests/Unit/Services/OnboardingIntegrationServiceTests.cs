@@ -37,7 +37,7 @@ namespace Casazen.Tests.Unit.Services;
 public class OnboardingIntegrationServiceTests : IAsyncLifetime
 {
     // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     private static readonly CancellationToken Ct = CancellationToken.None;
 

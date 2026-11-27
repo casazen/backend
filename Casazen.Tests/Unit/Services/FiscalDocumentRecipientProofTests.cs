@@ -375,7 +375,7 @@ public class FiscalDocumentRecipientProofTests
     };
 
     private static AppDbContext NewDb() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalDocumentRecipient_{Guid.NewGuid()}").Options, new RecipientTenant(), new EphemeralDataProtectionProvider());
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalDocumentRecipient_{Guid.NewGuid()}").Options, new RecipientTenant(), TestDataProtection.Shared);
 }
 
 file sealed class RecipientTenant : ITenantContext

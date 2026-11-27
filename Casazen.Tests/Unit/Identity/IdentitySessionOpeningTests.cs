@@ -531,7 +531,7 @@ public sealed class IdentitySessionOpeningTests
         private readonly DbContextOptions<AppDbContext> _options =
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"identity-session-{Guid.NewGuid()}").Options;
 
-        private readonly IDataProtectionProvider _dataProtection = new EphemeralDataProtectionProvider();
+        private readonly IDataProtectionProvider _dataProtection = TestDataProtection.Shared;
         private readonly Guid _propertyId = Guid.NewGuid();
         private readonly Mock<ICheckInLegalTexts> _legalTexts = ActivePoseFlowTestVerifier.CreateRegistry();
 

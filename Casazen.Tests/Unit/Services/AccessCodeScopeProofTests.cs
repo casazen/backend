@@ -25,7 +25,7 @@ public class AccessCodeScopeProofTests
     public async Task AccessCode_BookingOfAnotherProperty_IsNotReadOutsideTheScope_Test()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"access-code-scope-{Guid.NewGuid()}").Options;
-        await using var db = new AppDbContext(options, null, new EphemeralDataProtectionProvider());
+        await using var db = new AppDbContext(options, null, TestDataProtection.Shared);
         var orgId = Guid.NewGuid();
         db.Orgs.Add(new OrgEntity
         {

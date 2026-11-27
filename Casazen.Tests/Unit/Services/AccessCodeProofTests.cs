@@ -39,7 +39,7 @@ public class AccessCodeProofTests
             .UseInMemoryDatabase($"AccessCodeVerificationTest_{Guid.NewGuid()}")
             .Options;
 
-        var dataProtection = new EphemeralDataProtectionProvider();
+        var dataProtection = TestDataProtection.Shared;
         var orgId = Guid.NewGuid();
         var propertyId = Guid.NewGuid();
         var guestId = Guid.NewGuid();
@@ -264,7 +264,7 @@ public class AccessCodeProofTests
             .UseInMemoryDatabase($"AccessCodeEncryptionTest_{Guid.NewGuid()}")
             .Options;
 
-        var dataProtection = new EphemeralDataProtectionProvider();
+        var dataProtection = TestDataProtection.Shared;
         var orgId = Guid.NewGuid();
 
         // Assert: The model has encryption converter on EncryptedCode

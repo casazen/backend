@@ -912,7 +912,7 @@ public sealed class DocumentStepSelfHostedTests
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"document-step-{Guid.NewGuid()}").Options;
 
         // One provider for every world: the model of the context is cached by it (DataProtectionModelCacheKeyFactory), so the model is built once and not once per test.
-        private static readonly IDataProtectionProvider SharedProtection = new EphemeralDataProtectionProvider();
+        private static readonly IDataProtectionProvider SharedProtection = TestDataProtection.Shared;
 
         private readonly IDataProtectionProvider _dataProtection = SharedProtection;
         private readonly Guid _propertyId = Guid.NewGuid();

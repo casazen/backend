@@ -27,7 +27,7 @@ public class GuestContactEncryptionPostgresTests
     public async Task GuestContact_Value_EncryptedAtRest_Test()
     {
         await using var database = PostgresTestDatabase.CreateMigrated("crmenc");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var at = new DateTime(2026, 11, 6, 8, 30, 0, DateTimeKind.Utc);
         var emailHash = new string('a', GuestContact.ValueHashLength);
         var phoneHash = new string('b', GuestContact.ValueHashLength);
