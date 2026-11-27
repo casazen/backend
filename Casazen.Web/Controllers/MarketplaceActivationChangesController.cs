@@ -157,17 +157,8 @@ public sealed class MarketplaceActivationChangesController(
     }
 
     /// <summary>The caller's id, org and scope; <c>null</c> when it has no org or reaches nothing in it.</summary>
-    private async Task<Caller?> CallerAsync(CancellationToken cancellationToken)
-    {
-        if (User.GetUserId() is not { Length: > 0 } userId
-            || await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken) is not { } orgId
-            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId, cancellationToken) is not { } scope)
-        {
-            return null;
-        }
-
-        return new Caller(userId, orgId, scope);
-    }
+    private Task<HostCaller?> CallerAsync(CancellationToken cancellationToken) =>
+        HostCallerResolver.CallerAsync(User, orgContextResolver, hostScopeResolver, cancellationToken);
 
     /// <summary><c>it</c> or <c>en</c>: the query when it names one, otherwise the language of the request.</summary>
     private static string LanguageOf(string? lang) =>
@@ -176,6 +167,4 @@ public sealed class MarketplaceActivationChangesController(
     private void NoStore() => Response.Headers.CacheControl = "private, no-store";
 
     private ObjectResult NoOrg() => this.ApiProblem(StatusCodes.Status403Forbidden, "no_org_context", "NoOrganizationContext");
-
-    private sealed record Caller(string UserId, Guid OrgId, HostScope Scope);
 }
