@@ -405,7 +405,7 @@ public class OwnerIssuedDocumentsTests
         public const string GuestPec = "ospite@pec.example.com";
 
         private static readonly DateTime Cutoff = new(2026, 11, 20, 8, 0, 0, DateTimeKind.Utc);
-        private readonly EphemeralDataProtectionProvider _protection = new();
+        private readonly EphemeralDataProtectionProvider _protection = TestDataProtection.Shared;
         private readonly DbContextOptions<AppDbContext> _options;
         private readonly Mock<IOwnerStatementDocuments> _statements = new();
 

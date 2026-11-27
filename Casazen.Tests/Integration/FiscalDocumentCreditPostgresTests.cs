@@ -32,7 +32,7 @@ namespace Casazen.Tests.Integration;
 /// </summary>
 public class FiscalDocumentCreditPostgresTests
 {
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
     private static readonly DateTimeOffset Now = new(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
 
     /// <summary>PROOF TEST: money rule. An invoice of 122 and two parallel credit notes of 100: one is issued, the other refused, the total credited stays 100.</summary>

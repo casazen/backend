@@ -162,29 +162,9 @@ public class FiscalDocumentSdiController(
     }
 
     /// <summary>The document when the caller reaches it: through its booking, or the whole org for a document without a booking (as <see cref="FiscalDocumentsController"/>).</summary>
-    private async Task<FiscalDocument?> ReachableAsync(Guid id, HostOperationRequirement operation)
-    {
-        var ct = HttpContext.RequestAborted;
-        var document = await documents.GetAsync(id, ct);
-        if (document is null)
-            return null;
-
-        if (document.BookingId is { } bookingId)
-            return await CanOnBookingAsync(bookingId, operation, ct) ? document : null;
-
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
-        return orgId is not null
-               && document.OrgId == orgId.Value
-               && await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct) is { IsOrgWide: true }
-            ? document
-            : null;
-    }
-
-    private async Task<bool> CanOnBookingAsync(Guid bookingId, HostOperationRequirement operation, CancellationToken ct)
-    {
-        var booking = await hostResources.ForBookingAsync(bookingId, ct);
-        return booking is not null && await authorizationService.IsAuthorizedAsync(User, booking, operation);
-    }
+    private Task<FiscalDocument?> ReachableAsync(Guid id, HostOperationRequirement operation) =>
+        FiscalDocumentReach.ReachableAsync(
+            User, id, operation, documents, hostResources, authorizationService, orgContextResolver, hostScopeResolver, HttpContext.RequestAborted);
 
     private ActionResult DocumentNotFound() =>
         this.ApiProblem(StatusCodes.Status404NotFound, FiscalDocumentErrors.NotFound, "FiscalDocumentNotFound");

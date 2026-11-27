@@ -13,7 +13,7 @@ public class ReviewLinkTokensTests
     [Fact]
     public void TryRead_OnlyAnUntouchedUnexpiredTokenOfThisKeyRingAndPurpose_OpensItsBooking()
     {
-        var keys = new EphemeralDataProtectionProvider();
+        var keys = TestDataProtection.Shared;
         var tokens = new ReviewLinkTokens(keys);
         var booking = Guid.NewGuid();
         var token = tokens.Create(booking, DateTimeOffset.UtcNow.AddDays(1));

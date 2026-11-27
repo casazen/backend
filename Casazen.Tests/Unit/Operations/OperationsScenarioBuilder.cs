@@ -107,7 +107,7 @@ internal sealed partial class OperationsScenarioBuilder : IAsyncDisposable
 
     public static readonly DateOnly CheckOutDay = new(2026, 12, 7);
 
-    private static readonly IDataProtectionProvider SharedKeys = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider SharedKeys = TestDataProtection.Shared;
 
     private static readonly Regex TokenInText = TokenPattern();
 

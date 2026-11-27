@@ -1165,7 +1165,7 @@ public class OwnerStatementDocumentsTests
                 new AppDbContext(
                     new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerStatementDocuments_{Guid.NewGuid()}").Options,
                     new StatementTenant(),
-                    new EphemeralDataProtectionProvider()),
+                    TestDataProtection.Shared),
                 swiss ?? new Casazen.Core.Options.SwissTouristTaxOptions(),
                 readsPortalAccounts);
             await world.SeedAsync(approved, convertedStay, borneByAgency);

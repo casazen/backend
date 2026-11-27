@@ -165,7 +165,7 @@ internal sealed partial class AcceptanceScenarioBuilder : IAsyncDisposable
 
     private static readonly Lazy<IConfiguration> Shipped = new(LoadShippedConfiguration, LazyThreadSafetyMode.ExecutionAndPublication);
 
-    private static readonly IDataProtectionProvider SharedKeys = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider SharedKeys = TestDataProtection.Shared;
 
     private readonly DbContextOptions<AppDbContext> _options;
     private readonly ServiceProvider _noServices = new ServiceCollection().BuildServiceProvider();

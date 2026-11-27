@@ -165,15 +165,8 @@ public class AccountantPackageController(
     }
 
     /// <summary>The org of the caller, only when its reach is the whole org: the settings of the send are the organization's, never a part of it (null without an org, a scope or the whole reach).</summary>
-    private async Task<Guid?> WholeOrgAsync(CancellationToken cancellationToken)
-    {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        if (orgId is null)
-            return null;
-
-        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
-        return scope is { IsOrgWide: true } ? orgId : null;
-    }
+    private Task<Guid?> WholeOrgAsync(CancellationToken cancellationToken) =>
+        HostCallerResolver.OrgWideAsync(User, orgContextResolver, hostScopeResolver, cancellationToken);
 
     private sealed record Caller(HostScope Scope, AccountantPackageAccess Access, string UserId);
 

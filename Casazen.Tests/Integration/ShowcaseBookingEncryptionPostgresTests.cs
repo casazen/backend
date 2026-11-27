@@ -35,7 +35,7 @@ public class ShowcaseBookingEncryptionPostgresTests
     public async Task SaveChanges_TheCustomerTheHoldAndThePlace_TheDatabaseNeverHoldsTheClearValues()
     {
         await using var database = PostgresTestDatabase.CreateMigrated("sp10enc");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var seed = await SeedAsync(database, provider, encrypted: true);
 
         // A context without Data Protection reads the stored text.
@@ -68,7 +68,7 @@ public class ShowcaseBookingEncryptionPostgresTests
     public async Task Read_TheEncryptedColumns_RoundTripThroughEf()
     {
         await using var database = PostgresTestDatabase.CreateMigrated("sp10enc");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var seed = await SeedAsync(database, provider, encrypted: true);
 
         await using var db = new AppDbContext(database.CreateOptions(), tenantContext: null, provider);
@@ -85,7 +85,7 @@ public class ShowcaseBookingEncryptionPostgresTests
     public async Task Read_AnEmptyOrMissingValue_StaysEmptyOrMissing()
     {
         await using var database = PostgresTestDatabase.CreateMigrated("sp10enc");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var seed = await SeedAsync(database, provider, encrypted: true, withoutOptionals: true);
 
         await using var db = new AppDbContext(database.CreateOptions(), tenantContext: null, provider);
@@ -104,7 +104,7 @@ public class ShowcaseBookingEncryptionPostgresTests
     public async Task Startup_ValuesStoredInClear_AreEncryptedOnceByTheStartupStep()
     {
         await using var database = PostgresTestDatabase.CreateMigrated("sp10enc");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var seed = await SeedAsync(database, provider, encrypted: false);
 
         await using (var stored = database.CreateContext())

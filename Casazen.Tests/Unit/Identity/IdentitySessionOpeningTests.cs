@@ -231,9 +231,13 @@ public sealed class IdentitySessionOpeningTests
     {
         Assert.All(VerificationAlertReasons.All, reason => Assert.NotEqual(IdentityOutcomeCodes.AutoApproved, IdentityVerificationFlowService.IdentityOutcomeOf(reason)));
         Assert.Equal(IdentityOutcomeCodes.Review, IdentityVerificationFlowService.IdentityOutcomeOf("a_reason_of_tomorrow"));
-        Assert.Equal(IdentityVerificationGuestResults.Ok, IdentityVerificationFlowService.GuestOutcomeOf(IdentityOutcomeCodes.AutoApproved));
-        Assert.All(IdentityOutcomeCodes.All.Where(code => code != IdentityOutcomeCodes.AutoApproved), code =>
-            Assert.Equal(IdentityVerificationGuestResults.Operator, IdentityVerificationFlowService.GuestOutcomeOf(code)));
+        Assert.Equal(IdentityVerificationGuestResults.Ok, IdentityVerificationFlowService.GuestOutcomeOf(IdentityOutcomeCodes.AutoApproved, handedToAPerson: false));
+
+        // Every other code handed the verification to a person; an abandoned one did not (the retention closed it, nobody was told): it says nothing until the guest asks for one.
+        Assert.All(IdentityOutcomeCodes.All.Where(code => code != IdentityOutcomeCodes.AutoApproved && code != IdentityOutcomeCodes.Abandoned), code =>
+            Assert.Equal(IdentityVerificationGuestResults.Operator, IdentityVerificationFlowService.GuestOutcomeOf(code, handedToAPerson: true)));
+        Assert.Null(IdentityVerificationFlowService.GuestOutcomeOf(IdentityOutcomeCodes.Abandoned, handedToAPerson: false));
+        Assert.Equal(IdentityVerificationGuestResults.Operator, IdentityVerificationFlowService.GuestOutcomeOf(IdentityOutcomeCodes.Abandoned, handedToAPerson: true));
     }
 
     /// <summary>
@@ -255,22 +259,25 @@ public sealed class IdentitySessionOpeningTests
         var session = await world.StayAsync("Nora", "Galli", path == "minor" ? new DateTime(2014, 3, 3) : null);
         Assert.Equal(IdentityOpenStatus.Answered, (await world.Flow().OpenIdentityAsync(session, ServedVersion, IdentityChannels.AndroidChrome, Ct)).Status);
 
+        // E73/F01/US01/T02: with the self-hosted flow on the two-frame selfie is closed, so the review, the attempts used and the error come from the closure of the presence.
         switch (path)
         {
             case "review":
                 await world.ReadyAsync(session);
-                world.Agent.Next(IdentityVerificationResult.Review);
-                await world.SelfieAsync(session);
+                world.Collector.Next(PresenceClosureKit.LivenessFailed());
+                await world.PresenceAsync(session);
                 break;
             case "last-attempt":
+                // The attempts are used up (by the legacy path before the self-hosted flow, or a maximum lowered since): the closure hands the verification to a person.
                 await world.ReadyAsync(session);
-                world.Agent.Next(IdentityVerificationResult.NotOk, lastAttempt: true);
-                await world.SelfieAsync(session);
+                session.BiometricAttempts = 3;
+                await world.Db.SaveChangesAsync(Ct);
+                await world.PresenceAsync(session);
                 break;
             case "error":
                 await world.ReadyAsync(session);
-                world.Agent.Fail(new InvalidOperationException("model crashed"));
-                await world.SelfieAsync(session);
+                world.Collector.Fail(new InvalidOperationException("model crashed"));
+                await world.PresenceAsync(session);
                 break;
             case "consent-refused":
                 await world.Flow().RecordConsentAsync(session, false, null, IdentityChannels.AndroidChrome, Ct);
@@ -341,6 +348,48 @@ public sealed class IdentitySessionOpeningTests
         Assert.True(request.OperatorPathOpen);
         Assert.True(request.State.Closed);
         Assert.Equal(alerts, world.Alerts.Count);
+    }
+
+    /// <summary>
+    /// E73/F01/US02/T03 (review of S015): a verification the hourly retention closed as abandoned is closed and says nothing more. The public state has no outcome (it must not say that
+    /// a person has it: no operator was told, no request, no alert), the identity steps refuse it as every closed verification, and the way to a person stays open: once the guest asks
+    /// for one the hand-off is real, the operators are told once and the outcome is <c>operator</c>.
+    /// </summary>
+    [Fact]
+    public async Task IdentitySessionOpening_AnAbandonedSession_IsClosedWithNoOutcome_UntilTheGuestAsksForAPerson()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.StayAsync("Rita", "Moro");
+        Assert.Equal(IdentityOpenStatus.Answered, (await world.Flow().OpenIdentityAsync(session, ServedVersion, IdentityChannels.AndroidChrome, Ct)).Status);
+
+        // The next day the hourly retention closes it: the real service, on a context of its own, as the job runs.
+        world.Clock.Advance(TimeSpan.FromHours(25));
+        var counts = await world.Retention().PurgeAsync(world.Clock.GetUtcNow().UtcDateTime, Ct);
+
+        Assert.Equal(1, counts.AbandonedSessions);
+        var closed = await world.ReadBackAsync(session.Id);
+        Assert.Equal(IdentityOutcomeCodes.Abandoned, closed.IdentityOutcomeCode);
+        Assert.NotNull(closed.IdentityClosedAt);
+        Assert.Null(closed.OperatorRequestedAt);
+        Assert.Empty(world.Alerts);
+
+        await world.Db.Entry(session).ReloadAsync(Ct);
+        var dto = PublicIdentityVerificationStateDto.From(await world.Flow().GetStateAsync(session, Ct));
+        Assert.True(dto.Closed);
+        Assert.Null(dto.Outcome);
+        Assert.False(dto.OperatorRequested);
+        Assert.True(dto.OperatorPathOpen);
+        Assert.Equal(IdentityOpenStatus.Closed, (await world.Flow().OpenIdentityAsync(session, ServedVersion, IdentityChannels.AndroidChrome, Ct)).Status);
+
+        // The guest asks for a person: that is the hand-off, told once; the closure keeps its first code and the outcome is now operator.
+        var asked = PublicIdentityVerificationStateDto.From(await world.Flow().RequestOperatorAsync(session, Ct));
+        Assert.True(asked.Closed);
+        Assert.True(asked.OperatorRequested);
+        Assert.Equal(IdentityVerificationGuestResults.Operator, asked.Outcome);
+        Assert.Single(world.Alerts);
+        var handedOff = await world.ReadBackAsync(session.Id);
+        Assert.NotNull(handedOff.OperatorRequestedAt);
+        Assert.Equal((closed.IdentityClosedAt, IdentityOutcomeCodes.Abandoned), (handedOff.IdentityClosedAt, handedOff.IdentityOutcomeCode));
     }
 
     // ─── The bound guest ─────────────────────────────────────────────────────────────────────────────────
@@ -531,15 +580,28 @@ public sealed class IdentitySessionOpeningTests
         private readonly DbContextOptions<AppDbContext> _options =
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"identity-session-{Guid.NewGuid()}").Options;
 
-        private readonly IDataProtectionProvider _dataProtection = new EphemeralDataProtectionProvider();
+        private readonly IDataProtectionProvider _dataProtection = TestDataProtection.Shared;
         private readonly Guid _propertyId = Guid.NewGuid();
         private readonly Mock<ICheckInLegalTexts> _legalTexts = ActivePoseFlowTestVerifier.CreateRegistry();
+
+        // E73/F01/US01/T02: the closure of the presence, the real path of a review or an error with the self-hosted flow on: the committed policy pinned, the models there, a
+        // double of the pipeline and a segment in observation.
+        private readonly string _directory = Path.Combine(Path.GetTempPath(), "casazen-identity-session-" + Guid.NewGuid().ToString("N"));
+        private readonly Casazen.Infrastructure.Identity.IdentityPolicyProvider _policy;
+        private readonly Mock<IIdentitySegmentService> _segments = new();
 
         private World(string[] flags)
         {
             Db = new AppDbContext(_options, null, _dataProtection);
             Flags = new TestFeatureFlags(flags);
+            Directory.CreateDirectory(_directory);
+            _policy = PresenceClosureKit.Policy(_directory);
+            _segments
+                .Setup(segments => segments.ResolveAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(EvidenceBundles.Observation);
         }
+
+        public ScriptedEvidenceCollector Collector { get; } = new();
 
         public Guid OrgId { get; } = Guid.NewGuid();
 
@@ -608,7 +670,28 @@ public sealed class IdentitySessionOpeningTests
             new ListLogger<IdentityVerificationFlowService>(Logs),
             legalTexts: _legalTexts.Object,
             activePose: new ActivePoseFlowTestVerifier(),
-            featureFlags: Flags);
+            featureFlags: Flags,
+            identityPolicy: _policy,
+            biometricModels: new FakeBiometricModelStore(),
+            identityOptions: Microsoft.Extensions.Options.Options.Create(new Casazen.Core.Options.IdentityVerificationOptions()),
+            presenceIssuer: new Casazen.Infrastructure.Identity.PresenceChallengeIssuer(),
+            frameReader: new Casazen.Infrastructure.Identity.FrameSequenceReader(
+                Microsoft.Extensions.Options.Options.Create(new Casazen.Core.Options.IdentityVerificationOptions()),
+                Microsoft.Extensions.Options.Options.Create(new Casazen.Core.Options.BiometricModelOptions()),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<Casazen.Infrastructure.Identity.FrameSequenceReader>.Instance),
+            evidenceCollector: Collector,
+            segments: _segments.Object,
+            decisionEngine: new Casazen.Infrastructure.Identity.IdentityDecisionEngine());
+
+        /// <summary>One attempt of the presence on the real closure: a challenge when the step offers one, the frames and a new key; the pipeline answers what the test scripted.</summary>
+        public async Task<PresenceStepResult> PresenceAsync(GuestCheckInSession session)
+        {
+            var flow = Flow();
+            var challenge = await flow.IssuePresenceChallengeAsync(session, Ct);
+            var answer = await flow.SubmitPresenceSequenceAsync(session, PresenceClosureKit.Submission(PresenceClosureKit.NewKey(), challenge?.ChallengeToken), Ct);
+            Assert.Equal((PresenceStepStatus.Done, IdentityVerificationGuestResults.Operator), (answer.Status, answer.Result));
+            return answer;
+        }
 
         /// <summary>The public endpoints over the real flow, for <paramref name="session"/> and a request that carries <paramref name="userAgent"/>.</summary>
         public PublicGuestCheckInController Controller(GuestCheckInSession session, string userAgent)
@@ -711,15 +794,18 @@ public sealed class IdentitySessionOpeningTests
             Assert.True((await Flow().SubmitDocumentAsync(session, document, Ct)).DocumentStored);
         }
 
-        public async Task SelfieAsync(GuestCheckInSession session)
-        {
-            var flow = Flow();
-            var challenge = await flow.IssueSelfieChallengeAsync(session, Ct);
-            using var selfie = new MemoryStream(TestImages.Png(96, 96, seed: 5));
-            using var turned = new MemoryStream([1, 2, 3]);
-            var result = await flow.SubmitChallengedSelfieAsync(session, selfie, turned, challenge?.ChallengeToken, null, null, Ct);
-            Assert.Equal(IdentityVerificationGuestResults.Operator, result.Result);
-        }
+        /// <summary>A context of its own on the same store, as a job has it.</summary>
+        public AppDbContext NewContext() => new(_options, null, _dataProtection);
+
+        /// <summary>The hourly retention of the identity verification on a context of its own, with the flags, the bucket and the clock of the world.</summary>
+        public Casazen.Infrastructure.Identity.IdentityRetentionService Retention() => new(
+            NewContext(),
+            Storage,
+            Flags,
+            Microsoft.Extensions.Options.Options.Create(new Casazen.Core.Options.IdentityVerificationOptions()),
+            new Casazen.Infrastructure.Identity.IdentityRetentionRunLog(),
+            Clock,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Casazen.Infrastructure.Identity.IdentityRetentionService>.Instance);
 
         /// <summary>The session as it was saved, read by another context on the same store.</summary>
         public async Task<GuestCheckInSession> ReadBackAsync(Guid sessionId)
@@ -728,7 +814,12 @@ public sealed class IdentitySessionOpeningTests
             return await other.GuestCheckInSessions.AsNoTracking().IgnoreQueryFilters().SingleAsync(s => s.Id == sessionId, Ct);
         }
 
-        public async ValueTask DisposeAsync() => await Db.DisposeAsync();
+        public async ValueTask DisposeAsync()
+        {
+            await Db.DisposeAsync();
+            if (Directory.Exists(_directory))
+                Directory.Delete(_directory, recursive: true);
+        }
     }
 
     /// <summary>The guests of the stay the world says, else the booker alone; the flow reads nothing else of the service.</summary>

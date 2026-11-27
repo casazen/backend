@@ -173,7 +173,7 @@ public static class ScheduledMessagePlanner
     }
 
     /// <summary>
-    /// The offset a routine asks for, in whole hours: <c>days * 24 + hours</c> of its <c>EventConfig</c>, the one reading of <c>TimeTrigger.OffsetHours</c> (a test keeps them equal); <c>null</c> when
+    /// The offset a routine asks for, in whole hours: <c>days * 24 + hours</c> of its <c>EventConfig</c>, the one reading of it (<c>TimeTrigger.OffsetHours</c> calls this method); <c>null</c> when
     /// the configuration is not that: not JSON, not an object, a member that is not a whole number of zero or more, or more than <see cref="MaxOffsetHours"/> in all.
     /// </summary>
     public static int? OffsetHours(string? eventConfig)

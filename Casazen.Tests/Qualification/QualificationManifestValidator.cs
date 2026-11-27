@@ -123,9 +123,34 @@ public sealed record QualificationManifestError(string Code, string? PersonId = 
 }
 
 /// <summary>
+/// The kinds of case that must never be approved, the ones the criterion «no false approval on a critical case» is measured on (the names the results use): an attack, a person
+/// with the document of another one (an impostor pair), an altered document and a foreign image. A kind is measured only on WHOLE check-ins of it (a document and a sequence
+/// together), because only those get a decision of the policy: a split with none of a kind cannot show that nothing of that kind is approved.
+/// </summary>
+public static class QualificationCriticalKinds
+{
+    /// <summary>A presentation attack that is a whole check-in.</summary>
+    public const string Attack = QualificationCaseKinds.Attack;
+
+    /// <summary>A real person present with the document of another person of the split.</summary>
+    public const string ImpostorPair = QualificationCaseKinds.ImpostorPair;
+
+    /// <summary>A document that was altered.</summary>
+    public const string Altered = "altered";
+
+    /// <summary>An image that is not a document of the format.</summary>
+    public const string Foreign = "foreign";
+
+    /// <summary>Every kind, in this order.</summary>
+    public static IReadOnlyList<string> All { get; } = [Attack, ImpostorPair, Altered, Foreign];
+}
+
+/// <summary>
 /// What a split holds (counts only): its persons, its captures (those of its persons), the genuine ones, the impostor pairs (a genuine capture whose document
 /// belongs to another person) and how many distinct couples of persons they make (the evidence of identity separation does not grow by repeating one couple),
-/// the altered and foreign documents, and the attacks per class (every class is listed, 0 when there is none).
+/// the altered and foreign documents, and the attacks per class (every class is listed, 0 when there is none). <see cref="CriticalCheckIns"/> are the whole check-ins (a document and
+/// a sequence together) of each kind of <see cref="QualificationCriticalKinds"/>: the cases of the split the policy takes a decision on and the criterion on critical false approvals
+/// is measured on (null for counts that were not made by the validator).
 /// </summary>
 public sealed record QualificationSplitCounts(
     string Split,
@@ -136,25 +161,66 @@ public sealed record QualificationSplitCounts(
     int DistinctImpostorPairs,
     int AlteredDocuments,
     int ForeignDocuments,
-    IReadOnlyDictionary<string, int> AttacksByClass)
+    IReadOnlyDictionary<string, int> AttacksByClass,
+    IReadOnlyDictionary<string, int>? CriticalCheckIns = null)
 {
+    /// <summary>
+    /// The kinds of critical case this split cannot measure: none of its captures is a whole check-in of the kind. A split with no capture is not asked for them (it is not used), and
+    /// counts that do not say are asked for all of them.
+    /// </summary>
+    public IReadOnlyList<string> CriticalKindsMissing()
+    {
+        if (Captures == 0)
+            return [];
+
+        return [.. QualificationCriticalKinds.All.Where(kind => CriticalCheckIns is null || CriticalCheckIns.GetValueOrDefault(kind) == 0)];
+    }
+
     /// <summary>One line, numbers and codes only.</summary>
     public string Describe()
     {
         var attacks = string.Join(", ", AttacksByClass.Select(pair => string.Create(CultureInfo.InvariantCulture, $"{pair.Key}={pair.Value}")));
+        var wholes = CriticalCheckIns;
+        var critical = wholes is null
+            ? string.Empty
+            : " wholeCheckIns[" + string.Join(", ", QualificationCriticalKinds.All.Select(kind => string.Create(CultureInfo.InvariantCulture, $"{kind}={wholes.GetValueOrDefault(kind)}"))) + "]";
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{Split}: persons={Persons} captures={Captures} genuine={GenuineCaptures} impostorPairs={ImpostorPairs} (distinct {DistinctImpostorPairs}) altered={AlteredDocuments} foreign={ForeignDocuments} attacks[{attacks}]");
+            $"{Split}: persons={Persons} captures={Captures} genuine={GenuineCaptures} impostorPairs={ImpostorPairs} (distinct {DistinctImpostorPairs}) altered={AlteredDocuments} foreign={ForeignDocuments} attacks[{attacks}]{critical}");
     }
 }
 
-/// <summary>The outcome of a validation: the errors (none when the manifest is valid) and the counts per split, which are reported also when there are errors.</summary>
+/// <summary>The codes of the warnings of a manifest: what it is valid without and a qualification cannot do without (never renamed or reused: a new one goes at the end).</summary>
+public static class QualificationManifestWarningCodes
+{
+    /// <summary>A split that has captures has no whole check-in of a kind of critical case: the criterion on critical false approvals cannot be measured on it.</summary>
+    public const string CriticalKindMissing = "critical_kind_missing";
+}
+
+/// <summary>One warning of a manifest: a code, the split it is about and the kind of critical case (a code of <see cref="QualificationCriticalKinds"/>). Never a value.</summary>
+public sealed record QualificationManifestWarning(string Code, string Split, string Kind)
+{
+    public override string ToString()
+    {
+        return $"{Code} split={Split} kind={Kind}";
+    }
+}
+
+/// <summary>
+/// The outcome of a validation: the errors (none when the manifest is valid), the counts per split, which are reported also when there are errors, and the warnings: a split that has
+/// captures and no whole check-in of a kind of critical case cannot show that nothing of that kind is approved (a manifest can be valid without them: the development split may do without;
+/// the test split may not, and the final test is not started on it).
+/// </summary>
 public sealed record QualificationManifestReport(IReadOnlyList<QualificationManifestError> Errors, IReadOnlyList<QualificationSplitCounts> Splits)
 {
     /// <summary>No error: the dataset may be used.</summary>
     public bool IsValid => Errors.Count == 0;
 
-    /// <summary>The errors and the counts as text: codes, ids and numbers only, safe to print.</summary>
+    /// <summary>For each split with captures, each kind of critical case it has no whole check-in of: codes and names only.</summary>
+    public IReadOnlyList<QualificationManifestWarning> Warnings =>
+        [.. Splits.SelectMany(split => split.CriticalKindsMissing().Select(kind => new QualificationManifestWarning(QualificationManifestWarningCodes.CriticalKindMissing, split.Split, kind)))];
+
+    /// <summary>The errors, the counts and the warnings as text: codes, ids and numbers only, safe to print.</summary>
     public override string ToString()
     {
         var text = new StringBuilder(IsValid ? "valid" : string.Create(CultureInfo.InvariantCulture, $"{Errors.Count} error(s)"));
@@ -163,6 +229,9 @@ public sealed record QualificationManifestReport(IReadOnlyList<QualificationMani
 
         foreach (var split in Splits)
             text.Append("\n  ").Append(split.Describe());
+
+        foreach (var warning in Warnings)
+            text.Append("\n  warning ").Append(warning);
 
         return text.ToString();
     }
@@ -222,7 +291,8 @@ public static class QualificationManifestValidator
         string? AttackClass,
         string? OwnerId,
         bool Altered,
-        bool Foreign);
+        bool Foreign,
+        bool WholeCheckIn);
 
     private sealed class Run
     {
@@ -403,7 +473,8 @@ public static class QualificationManifestValidator
                 attackClass,
                 ownerId,
                 capture.Document?.Altered ?? false,
-                capture.Document?.Foreign ?? false));
+                capture.Document?.Foreign ?? false,
+                capture.Document is not null && capture.Sequence is not null));
         }
 
         private string? CheckAttackClass(QualificationCapture capture, string? kind, string? id, string at)
@@ -560,6 +631,16 @@ public static class QualificationManifestValidator
                 foreach (var attackClass in QualificationAttackClasses.All)
                     attacks[attackClass] = captures.Count(capture => capture.Kind == QualificationCaptureKinds.Attack && capture.AttackClass == attackClass);
 
+                // The whole check-ins (a document and a sequence) of each kind of critical case: the ones the policy takes a decision on.
+                var wholes = captures.Where(capture => capture.WholeCheckIn).ToList();
+                var critical = new Dictionary<string, int>(StringComparer.Ordinal)
+                {
+                    [QualificationCriticalKinds.Attack] = wholes.Count(capture => capture.Kind == QualificationCaptureKinds.Attack),
+                    [QualificationCriticalKinds.ImpostorPair] = impostors.Count(capture => capture.WholeCheckIn),
+                    [QualificationCriticalKinds.Altered] = wholes.Count(capture => capture.Altered),
+                    [QualificationCriticalKinds.Foreign] = wholes.Count(capture => capture.Foreign),
+                };
+
                 counts.Add(new QualificationSplitCounts(
                     split,
                     _splitOfPerson.Count(person => person.Value == split),
@@ -569,7 +650,8 @@ public static class QualificationManifestValidator
                     impostors.Select(capture => (capture.PersonId, capture.OwnerId)).Distinct().Count(),
                     captures.Count(capture => capture.Altered),
                     captures.Count(capture => capture.Foreign),
-                    attacks));
+                    attacks,
+                    critical));
             }
 
             return counts;

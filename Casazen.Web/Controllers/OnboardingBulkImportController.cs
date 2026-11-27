@@ -58,35 +58,17 @@ public sealed class OnboardingBulkImportController(
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status415UnsupportedMediaType)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
-    public async Task<ActionResult<BulkImportResultDto>> Import(
+    public Task<ActionResult<BulkImportResultDto>> Import(
         IFormFile? file,
         [FromQuery] bool dryRun = true,
-        CancellationToken cancellationToken = default)
-    {
-        var userId = User.GetUserId();
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        var scope = orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
-        if (scope is null || string.IsNullOrWhiteSpace(userId))
-            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
-
-        if (file is null || file.Length == 0)
-            return this.ApiProblem(StatusCodes.Status400BadRequest, BulkImportCodes.FileMissing, "OnboardingImportFileMissing");
-
-        // Judged on the size the request declares, before a byte of it is copied.
-        if (file.Length > BulkImportLimits.MaxFileBytes)
-        {
-            return this.ApiProblem(
-                StatusCodes.Status413PayloadTooLarge,
-                BulkImportCodes.FileTooLarge,
-                "OnboardingImportFileTooLarge",
-                BulkImportLimits.MaxFileBytes / (1024 * 1024));
-        }
-
-        var content = new byte[file.Length];
-        await using (var stream = file.OpenReadStream())
-            await stream.ReadExactlyAsync(content, cancellationToken);
-
-        var result = await import.ImportAsync(scope, userId, file.FileName, content, dryRun, cancellationToken);
-        return Ok(BulkImportResultDto.From(result));
-    }
+        CancellationToken cancellationToken = default) =>
+        BulkFileImport.ImportAsync(
+            this,
+            orgContextResolver,
+            hostScopeResolver,
+            file,
+            dryRun,
+            (scope, userId, fileName, content, dry, ct) => import.ImportAsync(scope, userId, fileName, content, dry, ct),
+            result => BulkImportResultDto.From(result),
+            cancellationToken);
 }

@@ -313,31 +313,8 @@ public sealed class MarketplaceChangeService(
     }
 
     /// <summary>The org is connected (the connector is on and it has a connected account in this environment) and the property has its confirmed listing.</summary>
-    private async Task<Link> RequireLinkAsync(Guid orgId, Guid propertyId, CancellationToken ct)
-    {
-        var connectionKey = await ConnectedAccountAsync(orgId, ct) ?? throw NotConnected();
-        var accommodation = await db.OctorateListingMappings.AsNoTracking()
-            .Where(m => m.OrgId == orgId
-                        && m.PropertyId == propertyId
-                        && m.ConnectionId == connectionKey
-                        && m.Status == OctorateMappingStatus.Confirmed)
-            .Select(m => m.OctorateAccommodationId)
-            .FirstOrDefaultAsync(ct);
-        return accommodation is null ? throw NotLinked() : new Link(accommodation);
-    }
-
-    /// <summary>The id of the org's connected account in this environment; <c>null</c> while the connector is off or the org is not connected.</summary>
-    private async Task<Guid?> ConnectedAccountAsync(Guid orgId, CancellationToken ct)
-    {
-        if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
-            return null;
-
-        var environment = OctorateEnvironments.Of(hostEnvironment);
-        return await db.OctorateConnections.AsNoTracking()
-            .Where(c => c.OrgId == orgId && c.Environment == environment && c.Status == OctorateConnectionStatus.Connected)
-            .Select(c => (Guid?)c.Id)
-            .FirstOrDefaultAsync(ct);
-    }
+    private async Task<Link> RequireLinkAsync(Guid orgId, Guid propertyId, CancellationToken ct) =>
+        new Link(await MarketplaceReads.RequireLinkedAccommodationAsync(db, featureFlags, hostEnvironment, orgId, propertyId, ct));
 
     /// <summary>
     /// What goes to the channel manager: only what the portal asks for (the identifier of the property, the username and the password) and the host gave, trimmed; anything
@@ -422,12 +399,6 @@ public sealed class MarketplaceChangeService(
     }
 
     private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
-
-    private static DomainConflictException NotConnected() =>
-        new(MarketplaceActivationErrorCodes.OctorateNotConnected, "MarketplaceOctorateNotConnected");
-
-    private static DomainRuleException NotLinked() =>
-        new(MarketplaceActivationErrorCodes.PropertyNotLinked, "MarketplacePropertyNotLinked");
 
     private static DomainConflictException ConnectionMissing() =>
         new(MarketplaceActivationErrorCodes.ConnectionMissing, "MarketplaceConnectionMissing");

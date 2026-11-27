@@ -549,7 +549,7 @@ public class OwnerAccountingCloseTests
             var db = new AppDbContext(
                 new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerLedger_{Guid.NewGuid()}").Options,
                 new LedgerCloseTenant(),
-                new EphemeralDataProtectionProvider());
+                TestDataProtection.Shared);
             return Task.FromResult(new World(db, new FakeTimeProvider(new DateTimeOffset(2026, 11, 12, 10, 0, 0, TimeSpan.Zero))));
         }
 

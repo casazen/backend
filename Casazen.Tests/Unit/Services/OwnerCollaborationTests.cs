@@ -35,7 +35,7 @@ public partial class OwnerCollaborationTests
     private const string Agent = "auth0|agenzia";
 
     // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     /// <summary>
     /// PROOF TEST: permission rule (AC-NF111-4). A contact holds exactly the permissions the owner gave, each on its own: with <c>calendar.read</c> only it

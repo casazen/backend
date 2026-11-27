@@ -638,6 +638,56 @@ public sealed class QualificationManifestValidatorTests : IDisposable
             report.Errors.Select(error => error.Code));
     }
 
+    /// <summary>
+    /// Proof (a target that cannot be measured fails): the validator counts, per split, the whole check-ins (a document and a sequence) of each kind of critical case, and a split that has captures
+    /// and none of a kind is a WARNING (the manifest stays valid: a development split may do without; the test split may not, and the final test is not started on it).
+    /// </summary>
+    [Fact]
+    public void Validate_TheWholeCheckInsOfEachKindOfCriticalCase_AreCounted_AndAKindWithNoneIsAWarningNotAnError()
+    {
+        var report = QualificationManifestValidator.Validate(RoundTrip(ValidManifest()), _folder);
+
+        Assert.True(report.IsValid, report.ToString());
+
+        // Test: two attacks and a person with the document of another, all with a sequence; no altered and no foreign document.
+        var test = report.Splits[2];
+        Assert.Equal((2, 1, 0, 0), (test.CriticalCheckIns!["attack"], test.CriticalCheckIns["impostor_pair"], test.CriticalCheckIns["altered"], test.CriticalCheckIns["foreign"]));
+        Assert.Equal(["altered", "foreign"], test.CriticalKindsMissing());
+
+        // Development has a person with the document of another and nothing else; calibration has one genuine capture: every kind is missing.
+        Assert.Equal(["attack", "altered", "foreign"], report.Splits[0].CriticalKindsMissing());
+        Assert.Equal(QualificationCriticalKinds.All, report.Splits[1].CriticalKindsMissing());
+
+        // The warnings name the code, the split and the kind, and nothing else.
+        Assert.Equal(9, report.Warnings.Count);
+        Assert.All(report.Warnings, warning => Assert.Equal(QualificationManifestWarningCodes.CriticalKindMissing, warning.Code));
+        Assert.Contains(report.Warnings, warning => warning.Split == QualificationSplits.Test && warning.Kind == QualificationCriticalKinds.Altered);
+        Assert.Contains("warning critical_kind_missing split=test kind=altered", report.ToString(), StringComparison.Ordinal);
+        Assert.Contains("wholeCheckIns[attack=2, impostor_pair=1, altered=0, foreign=0]", test.Describe(), StringComparison.Ordinal);
+
+        // A split with no capture is not asked for them.
+        var empty = QualificationManifestValidator.Validate(RoundTrip(ValidManifest() with { Persons = [new QualificationPerson("p-dev-1", QualificationSplits.Development)], Captures = [NewCapture("c-dev-9", "p-dev-1", "s-dev", "d-dev")] }), _folder);
+        Assert.Empty(empty.Splits[2].CriticalKindsMissing());
+    }
+
+    [Fact]
+    public void Validate_ACaptureWithoutASequence_IsNoWholeCheckIn_OfAnyKindOfCriticalCase()
+    {
+        // c-test-3 (an attack) and c-test-2 (a person with the document of another, altered and foreign) have a document and no sequence: nothing can be decided on them.
+        var manifest = WithCapture(
+            WithCapture(ValidManifest(), "c-test-3", capture => capture with { Sequence = null }),
+            "c-test-2",
+            capture => WithDocument(capture, altered: true, foreign: true) with { Sequence = null });
+
+        var test = QualificationManifestValidator.Validate(RoundTrip(manifest), _folder).Splits[2];
+
+        Assert.Equal((1, 0, 0, 0), (test.CriticalCheckIns!["attack"], test.CriticalCheckIns["impostor_pair"], test.CriticalCheckIns["altered"], test.CriticalCheckIns["foreign"]));
+
+        // The counts of the documents are as they were: they count the documents, not the check-ins.
+        Assert.Equal((1, 1, 1), (test.ImpostorPairs, test.AlteredDocuments, test.ForeignDocuments));
+        Assert.Equal(["impostor_pair", "altered", "foreign"], test.CriticalKindsMissing());
+    }
+
     private void AssertFrontIsRefused(string front)
     {
         var escaping = WithCapture(ValidManifest(), "c-dev-1", capture => capture with { Document = capture.Document! with { Front = front } });

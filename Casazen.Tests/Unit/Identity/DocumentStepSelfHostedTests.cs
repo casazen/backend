@@ -94,7 +94,9 @@ public sealed class DocumentStepSelfHostedTests
         var state = await world.Flow().GetStateAsync(session, Ct);
         Assert.True(state.DocumentChecked);
         Assert.Equal("it-cie-3.0", state.FormatId);
-        Assert.Equal(IdentityVerificationSteps.Selfie, state.Step);
+
+        // E73/F01/US01/T02: on the self-hosted flow the step after the document is the presence (the two-frame selfie is closed).
+        Assert.Equal(IdentityVerificationSteps.Presence, state.Step);
         Assert.Equal(["front", "back"], state.DocumentSides);
     }
 
@@ -975,7 +977,7 @@ public sealed class DocumentStepSelfHostedTests
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"document-step-{Guid.NewGuid()}").Options;
 
         // One provider for every world: the model of the context is cached by it (DataProtectionModelCacheKeyFactory), so the model is built once and not once per test.
-        private static readonly IDataProtectionProvider SharedProtection = new EphemeralDataProtectionProvider();
+        private static readonly IDataProtectionProvider SharedProtection = TestDataProtection.Shared;
 
         private readonly IDataProtectionProvider _dataProtection = SharedProtection;
         private readonly Guid _propertyId = Guid.NewGuid();

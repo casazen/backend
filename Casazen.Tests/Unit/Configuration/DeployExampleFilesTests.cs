@@ -7,7 +7,7 @@ namespace Casazen.Tests.Unit.Configuration;
 /// DEPLOY-CFG: the committed example files of the Railway variables (<c>secrets/railway.*.variables.example.json</c>) keep the
 /// two environments aligned. The checks that compared them with the deploy checklist were removed on 2026-11-27, when the
 /// project documentation moved out of the repository (the checklist now lives in the workspace folder
-/// <c>documentazione/03-documenti-ai/runbook/backend/deploy-checklist.md</c>, the only source of truth for documents).
+/// <c>docs/03-documenti-ai/runbook/backend/deploy-checklist.md</c>, the only source of truth for documents).
 /// </summary>
 public class DeployExampleFilesTests
 {

@@ -46,7 +46,7 @@ public class GuestErasureCrmPostgresTests
     public async Task GdprErasure_OnPostgres_KeepsTheOptOutWhenTheProfileIsDeleted_Test()
     {
         await using var database = PostgresTestDatabase.CreateMigrated("crmerase");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var seeded = await SeedAsync(database, provider, withSecondGuest: false);
 
         GuestErasureOutcome outcome;
@@ -85,7 +85,7 @@ public class GuestErasureCrmPostgresTests
     public async Task GdprErasure_OnPostgres_ProfileOfOtherGuests_SurvivesAndTheOptOutLeavesIt_Test()
     {
         await using var database = PostgresTestDatabase.CreateMigrated("crmerase");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var seeded = await SeedAsync(database, provider, withSecondGuest: true);
 
         await using (var db = Open(database, provider))
@@ -124,7 +124,7 @@ public class GuestErasureCrmPostgresTests
     public async Task GdprErasure_OnPostgres_GuestsOfOneProfileErasedInTheSameRun_TakeTheProfileWithThem_Test()
     {
         await using var database = PostgresTestDatabase.CreateMigrated("crmerase");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var seeded = await SeedAsync(database, provider, withSecondGuest: true);
 
         await using (var db = Open(database, provider))
@@ -158,7 +158,7 @@ public class GuestErasureCrmPostgresTests
     public async Task GdprErasure_OnPostgres_ProfileWithMergedProfiles_TakesTheTombstonesAndKeepsTheOptOutLeftOnOne_Test()
     {
         await using var database = PostgresTestDatabase.CreateMigrated("crmerase");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var seeded = await SeedAsync(database, provider, withSecondGuest: false, withMergedProfiles: true);
 
         await using (var db = Open(database, provider))
@@ -185,7 +185,7 @@ public class GuestErasureCrmPostgresTests
     public async Task GdprErasure_OnPostgres_ProfileOfOtherGuestsWithMergedProfiles_EmptiesTheTombstonesAndKeepsThePointer_Test()
     {
         await using var database = PostgresTestDatabase.CreateMigrated("crmerase");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var seeded = await SeedAsync(database, provider, withSecondGuest: true, withMergedProfiles: true);
 
         await using (var db = Open(database, provider))

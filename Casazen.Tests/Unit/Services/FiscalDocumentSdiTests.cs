@@ -447,7 +447,7 @@ public class FiscalDocumentSdiTests
     }
 
     private static AppDbContext NewDb() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalSdi_{Guid.NewGuid()}").Options, new SdiTenant(), new EphemeralDataProtectionProvider());
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalSdi_{Guid.NewGuid()}").Options, new SdiTenant(), TestDataProtection.Shared);
 
     /// <summary>An issued electronic invoice of CasaZen «to send», as the issue leaves it (the XML, the snapshot of the issuer); the arguments change what the test needs.</summary>
     private static async Task<FiscalDocument> SeedAsync(

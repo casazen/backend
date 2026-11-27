@@ -626,7 +626,7 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
 
         public AppDbContext Db { get; }
 
-        public IDataProtectionProvider DataProtection { get; } = new EphemeralDataProtectionProvider();
+        public IDataProtectionProvider DataProtection { get; } = TestDataProtection.Shared;
 
         public Casazen.Tests.Unit.FakeTimeProvider Clock { get; } = new(Now);
 

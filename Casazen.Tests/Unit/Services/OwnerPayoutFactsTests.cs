@@ -377,7 +377,7 @@ public class OwnerPayoutFactsTests
             Db = new AppDbContext(
                 new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"PayoutFacts_{Guid.NewGuid()}").Options,
                 new FactsTenant(),
-                new EphemeralDataProtectionProvider());
+                TestDataProtection.Shared);
             Clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 12, 10, 0, 0, TimeSpan.Zero));
             var accounting = OptionsFactory.Create(Committed());
             var fiscalRules = OptionsFactory.Create(new ShortStayFiscalOptions());

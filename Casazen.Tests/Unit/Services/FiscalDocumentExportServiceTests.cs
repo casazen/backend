@@ -268,7 +268,7 @@ public class FiscalDocumentExportServiceTests
         };
 
     private static AppDbContext NewDb() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalDocumentExport_{Guid.NewGuid()}").Options, new ExportTenant(), new EphemeralDataProtectionProvider());
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalDocumentExport_{Guid.NewGuid()}").Options, new ExportTenant(), TestDataProtection.Shared);
 
     private static async Task<(Guid Booking, Guid Property)> SeedBookingAsync(AppDbContext db, Guid orgId, string propertyName)
     {

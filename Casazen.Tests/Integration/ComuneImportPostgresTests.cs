@@ -19,7 +19,7 @@ public class ComuneImportPostgresTests : IAsyncLifetime
 {
     private PostgresTestDatabase? _database;
 
-    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateAsync();
+    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateMigratedAsync();
 
     public async Task DisposeAsync()
     {
@@ -239,22 +239,6 @@ public class ComuneImportPostgresTests : IAsyncLifetime
         typeof(ComuneImportService).Assembly.GetManifestResourceStream(ComuneImportService.SeedResourceName)
         ?? throw new InvalidOperationException("The seed file is not part of the build.");
 
-    private readonly object _migrationGate = new();
-    private bool _migrated;
-
-    /// <summary>A new context on the database, migrated once.</summary>
-    private AppDbContext MigratedContext()
-    {
-        lock (_migrationGate)
-        {
-            if (!_migrated)
-            {
-                using var migrator = _database!.CreateContext();
-                migrator.Database.Migrate();
-                _migrated = true;
-            }
-        }
-
-        return _database!.CreateContext();
-    }
+    /// <summary>A new context on the database, which is already at the latest migration (a copy of the migrated template).</summary>
+    private AppDbContext MigratedContext() => _database!.CreateContext();
 }

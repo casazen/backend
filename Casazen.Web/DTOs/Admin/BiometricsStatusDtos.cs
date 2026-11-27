@@ -1,3 +1,4 @@
+using Casazen.Infrastructure.Identity;
 using Casazen.Infrastructure.Services;
 
 namespace Casazen.Web.DTOs.Admin;
@@ -21,12 +22,77 @@ public sealed class BiometricsStatusDto
 
     public IReadOnlyList<BiometricModelStatusDto> Models { get; set; } = [];
 
-    public static BiometricsStatusDto From(BiometricModelsStatus status) => new()
+    /// <summary>
+    /// The verifiable deletion of what the self-hosted verification keeps (E73/F01/US02/T03, NF-195, AC-NF195-4): what is overdue now and the last run of the hourly purge.
+    /// Null only for a status built without it.
+    /// </summary>
+    public IdentityRetentionStatusDto? Retention { get; set; }
+
+    public static BiometricsStatusDto From(BiometricModelsStatus status, IdentityRetentionStatus? retention = null) => new()
     {
         Enabled = status.FeatureEnabled,
         State = status.State,
         ReasonCode = status.ReasonCode,
         Models = status.Models.Select(BiometricModelStatusDto.From).ToList(),
+        Retention = retention is null ? null : IdentityRetentionStatusDto.From(retention),
+    };
+}
+
+/// <summary>
+/// The retention of the self-hosted identity verification as a platform administrator checks it (E73/F01/US02/T03): <c>overdueEvidence</c> are the pictures kept for a
+/// reviewer past their expiry and not deleted, <c>overdueDocumentImages</c> the kept pictures of documents that no session is still using; both read from the database, across
+/// every organization, and both 0 when nothing overdue remains (the hourly purge deletes the evidence past its time whatever the flags say, and the kept pictures while one of the
+/// two flags of the self-hosted verification is on). <c>lastRunAt</c> and <c>lastRunCounts</c> are the last run of this process (null after a start until the first run). Counts and a
+/// time only.
+/// </summary>
+public sealed class IdentityRetentionStatusDto
+{
+    public int OverdueEvidence { get; set; }
+
+    public int OverdueDocumentImages { get; set; }
+
+    public DateTime? LastRunAt { get; set; }
+
+    public IdentityRetentionCountsDto? LastRunCounts { get; set; }
+
+    public static IdentityRetentionStatusDto From(IdentityRetentionStatus status) => new()
+    {
+        OverdueEvidence = status.OverdueEvidence,
+        OverdueDocumentImages = status.OverdueDocumentImages,
+        LastRunAt = status.LastRun?.RanAt,
+        LastRunCounts = status.LastRun is { } run ? IdentityRetentionCountsDto.From(run) : null,
+    };
+}
+
+/// <summary>What one run of the identity retention deleted, per category, and how many organizations it could not finish (counts only).</summary>
+public sealed class IdentityRetentionCountsDto
+{
+    public int ExpiredEvidence { get; set; }
+
+    public int DecidedEvidence { get; set; }
+
+    public int AbandonedSessions { get; set; }
+
+    public int AbandonedEvidence { get; set; }
+
+    public int AbandonedDocumentImages { get; set; }
+
+    public int DocumentChecksCleared { get; set; }
+
+    public int VerificationLogsDeleted { get; set; }
+
+    public int FailedOrgs { get; set; }
+
+    public static IdentityRetentionCountsDto From(IdentityRetentionRun run) => new()
+    {
+        ExpiredEvidence = run.Counts.ExpiredEvidence,
+        DecidedEvidence = run.Counts.DecidedEvidence,
+        AbandonedSessions = run.Counts.AbandonedSessions,
+        AbandonedEvidence = run.Counts.AbandonedEvidence,
+        AbandonedDocumentImages = run.Counts.AbandonedDocumentImages,
+        DocumentChecksCleared = run.Counts.DocumentChecksCleared,
+        VerificationLogsDeleted = run.Counts.VerificationLogsDeleted,
+        FailedOrgs = run.FailedOrgs,
     };
 }
 

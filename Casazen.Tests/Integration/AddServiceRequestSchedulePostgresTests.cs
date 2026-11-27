@@ -2,35 +2,25 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Migrations;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// SP-04 migration (<see cref="AddServiceRequestSchedule"/>) on real PostgreSQL: it applies and reverts, a row written by code that
-/// does not know the new columns (the previous release while the migration is applied) still gets their defaults, the checks
-/// refuse the rows the rules never write, the service of the catalog is kept as a link that clears itself when the service is
-/// deleted, the statuses and the actors are stored as the explicit integers of the enums, and the index of the inbox exists.
+/// SP-04 schema (<c>AddServiceRequestSchedule</c>) on real PostgreSQL, on a copy of the migrated template: a row written by code
+/// that does not know the new columns still gets their defaults, the checks refuse the rows the rules never write, the service of
+/// the catalog is kept as a link that clears itself when the service is deleted, the statuses and the actors are stored as the
+/// explicit integers of the enums, and the index of the inbox exists. The test that applied and reverted the migration went away
+/// once it reached production.
 /// </summary>
 public class AddServiceRequestSchedulePostgresTests : IAsyncLifetime
 {
-    private static readonly string[] NewColumns =
-    [
-        "ScheduledStartUtc", "ScheduledEndUtc", "ServiceListingId", "ServiceNameSnapshot", "OptionsJson", "EstimatedAmountCents",
-        "QuotedAmountCents", "FinalAmountCents", "PriceLinesJson", "FinalAmountNeedsConfirmation", "ResponseDueAt", "StartedAt",
-        "CancelledAt", "CancelledBy", "CancellationReason", "CompletionNotes", "WorkPhotosJson", "LastRemindedAt",
-        "ProposedStartUtc", "ProposedEndUtc", "ProposedAt", "ProposedByUserId", "ProposalMessage",
-    ];
-
     private PostgresTestDatabase? _database;
 
-    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateAsync();
+    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateMigratedAsync();
 
     public async Task DisposeAsync()
     {
@@ -39,27 +29,9 @@ public class AddServiceRequestSchedulePostgresTests : IAsyncLifetime
     }
 
     [PostgresFact]
-    public async Task Migration_AppliesAndRevertsOnARealDatabase()
-    {
-        await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
-        Assert.Equal(NewColumns.Length, await CountColumnsAsync(db));
-        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
-
-        await db.GetService<IMigrator>().MigrateAsync(PreviousMigration(db));
-        Assert.Equal(0, await CountColumnsAsync(db));
-        Assert.Equal(0, await CountObjectsAsync(db, "pg_indexes", "indexname", "IX_ServiceRequests_SupplierOrgId_ScheduledStartUtc"));
-        Assert.Equal(0, await CountObjectsAsync(db, "pg_constraint", "conname", "CK_ServiceRequests_ScheduledInterval"));
-
-        await db.Database.MigrateAsync();
-        Assert.Equal(NewColumns.Length, await CountColumnsAsync(db));
-    }
-
-    [PostgresFact]
     public async Task ARowWrittenWithoutTheNewColumns_GetsTheirDefaults()
     {
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
         var (hostOrg, property, supplierOrg) = await SeedParentsAsync(db);
         var id = Guid.NewGuid();
 
@@ -207,7 +179,6 @@ public class AddServiceRequestSchedulePostgresTests : IAsyncLifetime
     public async Task Index_TheRequestsOfASupplierAreIndexedByTheirTime()
     {
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
 
         var definition = await db.Database
             .SqlQuery<string>($"SELECT indexdef AS \"Value\" FROM pg_indexes WHERE indexname = 'IX_ServiceRequests_SupplierOrgId_ScheduledStartUtc'")
@@ -221,32 +192,9 @@ public class AddServiceRequestSchedulePostgresTests : IAsyncLifetime
 
     private sealed record Parents(Guid HostOrg, Guid Property, Guid SupplierOrg);
 
-    private static string PreviousMigration(AppDbContext db)
-    {
-        var all = db.Database.GetMigrations().ToList();
-        var index = all.FindIndex(m => m.EndsWith("_AddServiceRequestSchedule", StringComparison.Ordinal));
-        Assert.True(index > 0, "AddServiceRequestSchedule migration not found.");
-        return all[index - 1];
-    }
-
-    private static async Task<int> CountColumnsAsync(AppDbContext db)
-    {
-        var names = NewColumns;
-        return (int)await db.Database
-            .SqlQuery<long>($"SELECT count(*) AS \"Value\" FROM information_schema.columns WHERE table_name = 'ServiceRequests' AND column_name = ANY({names})")
-            .SingleAsync();
-    }
-
-    private static async Task<int> CountObjectsAsync(AppDbContext db, string catalog, string column, string name)
-    {
-        var sql = $"SELECT count(*) AS \"Value\" FROM {catalog} WHERE {column} = '{name}'";
-        return (int)await db.Database.SqlQueryRaw<long>(sql).SingleAsync();
-    }
-
     private async Task<Parents> MigratedWithParentsAsync()
     {
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
         var (hostOrg, property, supplierOrg) = await SeedParentsAsync(db);
         return new Parents(hostOrg, property, supplierOrg);
     }

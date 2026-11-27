@@ -534,7 +534,7 @@ public class GuestAccountBookingServiceTests
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options,
             new FixedTenantContext(tenantOrg, filterEnabled: true));
 
-    private GuestSessionTokens Tokens() => new(new EphemeralDataProtectionProvider(), _clock);
+    private GuestSessionTokens Tokens() => new(TestDataProtection.Shared, _clock);
 
     private static IConfiguration Settings(Dictionary<string, string?>? values = null) =>
         new ConfigurationBuilder().AddInMemoryCollection(values ?? []).Build();

@@ -129,7 +129,7 @@ public class CuDatasetTests
 
         // What the column holds (the EF InMemory database keeps the values the model hands it, so the proof is on the converter of the model, as for the other encrypted columns): a payload, none of the
         // recipient's data in it, never the clear JSON, read back only through the decryption of its own purpose.
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         await using var keyed = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options, tenantContext: null, provider);
         var column = keyed.Model.FindEntityType(typeof(TaxReportingDataset))!.FindProperty(nameof(TaxReportingDataset.PayloadJson))!;
         var converter = Assert.IsType<EncryptedStringConverter>(column.GetValueConverter());

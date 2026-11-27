@@ -49,6 +49,11 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Self-hosted document step</b> (E71/F01/US03/T01, the part <c>IdentityVerificationFlowService.DocumentChecks.cs</c>): on top of the reading of today every picture of the
 /// document is checked for its geometry, its side and its format, refused with a targeted code when it is not good (a refusal is not an attempt, and after
 /// <c>policy.document.maxRecapturesPerSide</c> of them a person decides), and the coherence of the sides is kept as flags. Off, nothing of it runs.</para>
+/// <para><b>Self-hosted presence and closure</b> (E73/F01/US01/T02, the part <c>IdentityVerificationFlowService.Sequence.cs</c>): with the flow on, the step after the document is
+/// <c>presence</c> (a challenge and a sequence of frames, decided by the versioned policy in one lock and one save, idempotent by its key) and the two-frame selfie of today is closed
+/// (its routes answer <c>presence_sequence_required</c>). Off, nothing of it runs and the selfie is the step, as before.</para>
+/// <para><b>Evidence of the reviewer</b> (E73/F01/US02/T01, <c>Features:CheckInIdentityReviewEvidence</c>): a review of the closure keeps the crop of the portrait and the frames the
+/// server chose, encrypted and for a short time, before the kept pictures of the document go (<see cref="IdentityReviewEvidenceStore"/>); never in Ticino, never on an approval.</para>
 /// </remarks>
 public sealed partial class IdentityVerificationFlowService(
     AppDbContext db,
@@ -76,7 +81,12 @@ public sealed partial class IdentityVerificationFlowService(
     DocumentPictureAnalyzer? documentPictures = null,
     DocumentSideClassifier? sideClassifier = null,
     DocumentCoherenceChecker? coherenceChecker = null,
-    DocumentFormatRegistry? formats = null) : IIdentityVerificationFlowService
+    DocumentFormatRegistry? formats = null,
+    FrameSequenceReader? frameReader = null,
+    IPresenceEvidenceCollector? evidenceCollector = null,
+    IIdentitySegmentService? segments = null,
+    IdentityDecisionEngine? decisionEngine = null,
+    IdentityReviewEvidenceStore? reviewEvidence = null) : IIdentityVerificationFlowService
 {
     /// <summary>Data Protection purpose of the encrypted picture of a document in the private bucket. Never change it: stored pictures would become unreadable.</summary>
     public const string DocumentImageContentPurpose = "Casazen.DocumentImage.Content";
@@ -825,21 +835,25 @@ public sealed partial class IdentityVerificationFlowService(
         // when the face and the MRZ were found across the pictures, so a reloaded page asks for the missing side instead of the selfie.
         var documentChecked = check is not null && DocumentComplete(session, check);
 
+        // E70/F02/US01/T01: the members of the self-hosted session, read only while the self-hosted flow is on (off, they keep their defaults, as before).
+        var selfHosted = SelfHostedOn;
+
+        // E73/F01/US01/T02: on the self-hosted flow a guided retry is a retry the guest was offered, and the step after the document is the presence (the two-frame selfie is closed).
         string? result = passed
             ? IdentityVerificationGuestResults.Ok
             : operatorPath
                 ? IdentityVerificationGuestResults.Operator
-                : session.BiometricAttempts > 0 ? IdentityVerificationGuestResults.Retry : null;
+                : session.BiometricAttempts > 0 || (selfHosted && session.IdentityGuidedRetries > 0) ? IdentityVerificationGuestResults.Retry : null;
         var step = passed
             ? IdentityVerificationSteps.Done
             : operatorPath || !offered
                 ? IdentityVerificationSteps.Operator
                 : !consented
                     ? IdentityVerificationSteps.Consent
-                    : documentChecked ? IdentityVerificationSteps.Selfie : IdentityVerificationSteps.Document;
+                    : documentChecked
+                        ? selfHosted ? IdentityVerificationSteps.Presence : IdentityVerificationSteps.Selfie
+                        : IdentityVerificationSteps.Document;
 
-        // E70/F02/US01/T01: the members of the self-hosted session, read only while the self-hosted flow is on (off, they keep their defaults, as before).
-        var selfHosted = SelfHostedOn;
         var closed = selfHosted && session.IdentityClosedAt is not null;
         return new IdentityVerificationState(
             step,
@@ -859,8 +873,16 @@ public sealed partial class IdentityVerificationFlowService(
             NoticeVersion: selfHosted ? session.IdentityNoticeVersion : null,
             Choice: selfHosted ? session.IdentityChoice : null,
             FormatId: selfHosted ? session.IdentityFormatId : null,
+            GuidedRetryAvailable: selfHosted && !closed && !passed && !operatorPath && session.IdentityGuidedRetries < GuidedRetriesOfThePolicy(),
             Closed: closed,
-            Outcome: closed ? GuestOutcomeOf(session.IdentityOutcomeCode) : null);
+            Outcome: closed ? GuestOutcomeOf(session.IdentityOutcomeCode, session.OperatorRequestedAt is not null) : null);
+    }
+
+    /// <summary>The guided retries the policy offers (<c>closure.guidedRetries</c>); none while the policy is not usable.</summary>
+    private int GuidedRetriesOfThePolicy()
+    {
+        var snapshot = identityPolicy?.Snapshot;
+        return snapshot is not null && snapshot.IsReady ? snapshot.Policy.Closure.GuidedRetries : 0;
     }
 
     /// <summary>What every step needs: the settings of the org, the guest who verifies and whether the property keeps no document.</summary>

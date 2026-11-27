@@ -31,9 +31,9 @@ public sealed class HostCalendarService(
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(query);
-        EnsureWindow(query.From, query.To);
+        HostCalendarRequestRules.EnsureWindow(query.From, query.To);
 
-        var requested = RequestedIds(query.PropertyIds);
+        var requested = HostCalendarRequestRules.RequestedIds(query.PropertyIds);
         var (properties, total) = await ReadPropertiesAsync(scope, requested, HostCalendarLimits.MaxProperties, cancellationToken);
         var (nowUtc, todayRome) = Now();
         var today = DateOnly.FromDateTime(todayRome);
@@ -64,9 +64,9 @@ public sealed class HostCalendarService(
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(query);
-        EnsureWindow(query.From, query.To);
+        HostCalendarRequestRules.EnsureWindow(query.From, query.To);
 
-        var requested = RequestedIds(query.PropertyIds);
+        var requested = HostCalendarRequestRules.RequestedIds(query.PropertyIds);
         var (properties, _) = await ReadPropertiesAsync(scope, requested, null, cancellationToken);
         var (nowUtc, todayRome) = Now();
         var today = DateOnly.FromDateTime(todayRome);
@@ -88,34 +88,6 @@ public sealed class HostCalendarService(
     }
 
     // --- The range and the properties -----------------------------------------------------------------------
-
-    private static void EnsureWindow(DateOnly from, DateOnly to)
-    {
-        if (to < from)
-            throw new ArgumentException("The last day of the range is before the first.", nameof(to));
-
-        if (to.DayNumber - from.DayNumber + 1 > HostCalendarLimits.MaxWindowDays)
-        {
-            throw new DomainRuleException(
-                HostCalendarErrorCodes.WindowTooLarge, HostCalendarErrorCodes.WindowTooLargeMessageKey, HostCalendarLimits.MaxWindowDays);
-        }
-    }
-
-    // The properties asked for by id, without repeats; null when none were asked for.
-    private static List<Guid>? RequestedIds(IReadOnlyCollection<Guid>? ids)
-    {
-        if (ids is null || ids.Count == 0)
-            return null;
-
-        var distinct = ids.Distinct().ToList();
-        if (distinct.Count > HostCalendarLimits.MaxProperties)
-        {
-            throw new DomainRuleException(
-                HostCalendarErrorCodes.TooManyProperties, HostCalendarErrorCodes.TooManyPropertiesMessageKey, HostCalendarLimits.MaxProperties);
-        }
-
-        return distinct;
-    }
 
     // The short-rent properties of the scope, by name. A property that is not the caller's is not read, so asking for it by id
     // gives nothing, the same as an id that does not exist. With a limit, one row more is read to know whether the list was cut.

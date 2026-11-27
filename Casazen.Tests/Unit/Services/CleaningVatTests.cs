@@ -618,7 +618,7 @@ public class CleaningVatTests
             new AppDbContext(
                 new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"CleaningVat_{Guid.NewGuid()}").Options,
                 new CleaningVatTenant(),
-                new EphemeralDataProtectionProvider()));
+                TestDataProtection.Shared));
 
         /// <summary>A Swiss owner paid in francs, with a complete profile from January and the approved Swiss rule set (created once).</summary>
         public async Task<Guid> OwnerAsync()

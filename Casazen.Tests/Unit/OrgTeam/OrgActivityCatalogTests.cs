@@ -52,6 +52,7 @@ public class OrgActivityCatalogTests
     [InlineData(OrgActivityType.OwnerImportApplied, 130)]
     [InlineData(OrgActivityType.OwnerInvitationChanged, 140)]
     [InlineData(OrgActivityType.OwnerPortalChanged, 150)]
+    [InlineData(OrgActivityType.IdentityEvidenceViewed, 151)]
     public void Type_TheIntegerOfEveryEvent_IsPinned(OrgActivityType type, int value)
     {
         // The value is what the database holds: reordering or reusing it would rewrite history.
@@ -61,7 +62,7 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Type_EveryEventOfTheEnum_IsPinnedAbove()
     {
-        Assert.Equal(32, Enum.GetValues<OrgActivityType>().Length);
+        Assert.Equal(33, Enum.GetValues<OrgActivityType>().Length);
     }
 
     [Fact]
@@ -78,7 +79,7 @@ public class OrgActivityCatalogTests
     }
 
     [Fact]
-    public void Catalog_DescribesEveryEventOnce_AndTheCatalogStaysUnderThirtyTwoEvents()
+    public void Catalog_DescribesEveryEventOnce_AndTheCatalogStaysUnderThirtyThreeEvents()
     {
         var described = OrgActivityCatalog.All.Select(e => e.Type).ToList();
 
@@ -88,8 +89,9 @@ public class OrgActivityCatalogTests
         // (the compliance handoff, the sender and delegation of E03/F01/US05 and the two of «Do it for me» of E10/F01/US03), so it is
         // thirty until the PO decides otherwise; the owner portfolio of an agency (E10/F02/US02: the import and the invitations, ADR-011-R11) adds two
         // more, thirty-two, which the PO is asked to confirm (docs/runbooks/org-team.md section 30). The owner portal operations (E07/F07/US01) take the
-        // thirty-second with ONE event for the whole feature (its part and status say what changed): the catalog is now at the cap.
-        Assert.InRange(described.Count, 1, 32);
+        // thirty-second with ONE event for the whole feature (its part and status say what changed). The read of the evidence of an identity verification
+        // (E73/F01/US02/T02, NF-195, decision D9: every access to the evidence is audited) is the thirty-third, decided by the plan and to be confirmed by the PO.
+        Assert.InRange(described.Count, 1, 33);
     }
 
     [Fact]

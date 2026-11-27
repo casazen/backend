@@ -30,7 +30,7 @@ public class StayTouristTaxServiceTests
     private const string SevesoIstat = "108040";
 
     // One provider for the whole class: EF keeps one model per provider.
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     [Fact]
     public async Task StayTouristTax_ChannelCollected_NoDoubleCharge_Test()

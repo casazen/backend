@@ -1,3 +1,4 @@
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -30,7 +31,7 @@ public sealed class DocumentStepRegistrationTests
         await using var provider = Services().BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         await using var scope = provider.CreateAsyncScope();
         await using var db = new AppDbContext(
-            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"document-step-registration-{Guid.NewGuid()}").Options, null, new EphemeralDataProtectionProvider());
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"document-step-registration-{Guid.NewGuid()}").Options, null, TestDataProtection.Shared);
 
         var flow = ActivatorUtilities.CreateInstance<IdentityVerificationFlowService>(
             scope.ServiceProvider,
@@ -43,7 +44,7 @@ public sealed class DocumentStepRegistrationTests
             Mock.Of<IDocumentOcrService>(),
             Mock.Of<IStayGuestService>(),
             Mock.Of<IFileStorage>(),
-            new EphemeralDataProtectionProvider(),
+            TestDataProtection.Shared,
             TimeProvider.System,
             NullLogger<IdentityVerificationFlowService>.Instance);
 
@@ -70,7 +71,11 @@ public sealed class DocumentStepRegistrationTests
         Assert.NotNull(zoned.Sides);
     }
 
-    /// <summary>The registrations of the identity step of the application, with doubles for the models, the readers and the options it registers elsewhere.</summary>
+    /// <summary>
+    /// The registrations of the identity step of the application, with doubles for the models, the readers and the options it registers elsewhere. Since the closure of the presence
+    /// (E73/F01/US01/T02) the flow also takes the pipeline of the presence and the segments, so the doubles of what they need from elsewhere are here too: the embedder and the
+    /// anti-spoofing of the models, the store of the models, the database, the flags and the clock.
+    /// </summary>
     private static ServiceCollection Services()
     {
         var services = new ServiceCollection();
@@ -81,6 +86,17 @@ public sealed class DocumentStepRegistrationTests
         services.AddSingleton(Mock.Of<IPageTextReader>());
         services.AddScoped(_ => Mock.Of<IMrzExtractionService>());
         services.AddScoped(_ => Mock.Of<IDocumentOcrService>());
+        services.AddSingleton(Mock.Of<IFaceEmbedder>());
+        services.AddScoped(_ => Mock.Of<IAntiSpoofingService>());
+        services.AddSingleton<IBiometricModelStore>(new Casazen.Tests.Unit.Services.FakeBiometricModelStore());
+        services.AddSingleton(Mock.Of<IFeatureFlags>());
+        services.AddSingleton(TimeProvider.System);
+
+        // E73/F01/US02/T01: the flow also takes the store of the evidence of the reviewer, which writes to the private bucket with Data Protection.
+        services.AddSingleton(Mock.Of<IFileStorage>());
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+        var databaseName = $"document-step-registration-services-{Guid.NewGuid()}";
+        services.AddScoped(_ => new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(databaseName).Options));
         services.AddSelfHostedIdentityVerification();
         return services;
     }

@@ -431,7 +431,7 @@ public class V2WithoutRechargeTests
             var world = new World(new AppDbContext(
                 new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"V2WithoutRecharge_{Guid.NewGuid()}").Options,
                 new V2WithoutRechargeTenant(),
-                new EphemeralDataProtectionProvider()));
+                TestDataProtection.Shared));
             await world.SeedAsync();
             return world;
         }

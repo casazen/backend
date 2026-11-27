@@ -35,7 +35,7 @@ public class OtaReviewEncryptionPostgresTests
     public async Task OtaReview_TextIsEncryptedAtRest_Test()
     {
         await using var database = await PostgresTestDatabase.CreateMigratedAsync("otarevenc");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var (orgId, bookingId) = await SeedAirbnbStayAsync(database);
 
         await using (var db = new AppDbContext(database.CreateOptions(), tenantContext: null, provider))
@@ -95,7 +95,7 @@ public class OtaReviewEncryptionPostgresTests
     public async Task OtaReview_SecondWriterOfTheSameRow_IsRefusedByXmin_AndOneRowPerBookingAndChannel_Test()
     {
         await using var database = await PostgresTestDatabase.CreateMigratedAsync("otarevxmin");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var (_, bookingId) = await SeedAirbnbStayAsync(database);
 
         Guid reviewId;

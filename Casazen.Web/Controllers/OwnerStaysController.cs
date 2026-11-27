@@ -154,15 +154,8 @@ public sealed class OwnerStaysController(
     }
 
     /// <summary>The org of the caller when it reaches the whole org; <c>null</c> for a caller restricted to some properties (or with no org).</summary>
-    private async Task<Guid?> OrgAsync(CancellationToken cancellationToken)
-    {
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        if (orgId is null)
-            return null;
-
-        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
-        return scope is { IsOrgWide: true } ? orgId : null;
-    }
+    private Task<Guid?> OrgAsync(CancellationToken cancellationToken) =>
+        HostCallerResolver.OrgWideAsync(User, orgContextResolver, hostScopeResolver, cancellationToken);
 
     private ObjectResult Forbidden() => this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 }

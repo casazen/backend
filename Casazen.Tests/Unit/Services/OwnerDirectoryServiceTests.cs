@@ -227,7 +227,7 @@ public class OwnerDirectoryServiceTests
         public const string Creator = "auth0|titolare";
 
         private readonly DbContextOptions<AppDbContext> _options;
-        private readonly IDataProtectionProvider _protection = new EphemeralDataProtectionProvider();
+        private readonly IDataProtectionProvider _protection = TestDataProtection.Shared;
 
         private DirectoryWorld(DbContextOptions<AppDbContext> options)
         {

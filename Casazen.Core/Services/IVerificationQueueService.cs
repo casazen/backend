@@ -143,7 +143,10 @@ public static class VideoCallLinks
 /// <summary>
 /// A booking awaiting manual verification, shown in the operator queue. <paramref name="Reasons"/> are the checks of the last automatic outcome
 /// (codes, values and thresholds, never an image or a document value) and <paramref name="Provisional"/> says whether its thresholds were not
-/// calibrated (E03/F04/US02/T03, AC-NF51-5).
+/// calibrated (E03/F04/US02/T03, AC-NF51-5). E73/F01/US02/T02 (NF-195): how the last automatic outcome was decided (<paramref name="DecisionMode"/>, the
+/// <paramref name="ShadowOutcome"/> of the policy, its <paramref name="PolicyVersion"/>, the <paramref name="FormatId"/> and the <paramref name="Channel"/>, all null or
+/// <c>Legacy</c> for a row of the legacy path or no automatic outcome at all) and the <paramref name="Evidence"/> kept for the reviewer (null when there is none or the
+/// evidence is off).
 /// </summary>
 public sealed record PendingVerification(
     Guid BookingId,
@@ -157,7 +160,16 @@ public sealed record PendingVerification(
     int BiometricAttempts,
     DateTime RaisedAt,
     IReadOnlyList<VerificationReason> Reasons,
-    bool Provisional);
+    bool Provisional,
+    Entities.Enums.IdentityDecisionMode DecisionMode = Entities.Enums.IdentityDecisionMode.Legacy,
+    Entities.Enums.BiometricOutcome? ShadowOutcome = null,
+    string? PolicyVersion = null,
+    string? FormatId = null,
+    string? Channel = null,
+    PendingEvidenceSummary? Evidence = null);
+
+/// <summary>The evidence kept for the reviewer of a booking (E73/F01/US02/T02): how many pictures are live and when the first of them expires (UTC). Never a picture.</summary>
+public sealed record PendingEvidenceSummary(int Count, DateTime ExpiresAt);
 
 /// <summary>
 /// The figures of the identity verifications of one period (E03/F04/US02/T03, NF-51 monitoring): the automatic outcomes by result
