@@ -139,7 +139,7 @@ public class WirePayableReadsTests
         var orgId = Guid.NewGuid();
         var otherOrgId = Guid.NewGuid();
         var options = NewOptions();
-        var keys = new EphemeralDataProtectionProvider();
+        var keys = TestDataProtection.Shared;
         await using var db = NewDb(orgId, options: options, provider: keys);
         await AddIssuerAsync(db, orgId);
         var service = NewService(db);

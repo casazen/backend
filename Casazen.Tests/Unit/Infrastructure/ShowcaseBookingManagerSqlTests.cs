@@ -166,5 +166,5 @@ public class ShowcaseBookingManagerSqlTests
                     npgsql => npgsql.MigrationsAssembly("Casazen.Infrastructure"))
                 .Options,
             tenantContext: null,
-            encrypted ? new EphemeralDataProtectionProvider() : null);
+            encrypted ? TestDataProtection.Shared : null);
 }

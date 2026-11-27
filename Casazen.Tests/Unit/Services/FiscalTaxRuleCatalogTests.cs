@@ -538,7 +538,7 @@ public class FiscalTaxRuleCatalogTests
     };
 
     private static AppDbContext NewDb() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"TaxRules_{Guid.NewGuid()}").Options, new CatalogTenant(), new EphemeralDataProtectionProvider());
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"TaxRules_{Guid.NewGuid()}").Options, new CatalogTenant(), TestDataProtection.Shared);
 }
 
 /// <summary>The catalog of the tax rules for the tests: the one shipped in <c>appsettings.json</c>, or one built by a test.</summary>

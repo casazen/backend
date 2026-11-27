@@ -393,7 +393,7 @@ public class OwnerMandateServiceTests
         public static World Create() => new(new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerMandates_{Guid.NewGuid()}").Options,
             new MandateTenant(),
-            new EphemeralDataProtectionProvider()));
+            TestDataProtection.Shared));
 
         /// <summary>An owner of the org and, from <paramref name="start"/>, the whole of a property of its own (none without a start).</summary>
         public async Task<Guid> OwnerAsync(DateOnly? start, DateOnly? end = null, string propertyOwner = "auth0|agency")

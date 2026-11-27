@@ -62,7 +62,7 @@ internal sealed class GuestSessionPhoneWorld : IDisposable
             configuration,
             LookupLogs,
             Clock);
-        Sessions = new GuestSessionService(lookup, new GuestSessionTokens(new EphemeralDataProtectionProvider(), Clock), configuration, Clock);
+        Sessions = new GuestSessionService(lookup, new GuestSessionTokens(TestDataProtection.Shared, Clock), configuration, Clock);
         Controller = new GuestAreaController(Sessions, Flags);
         Lockout = new GuestPhoneLookupLockout(Options.Create(new GuestPhoneLookupLockoutOptions()), Clock);
         Filter = new GuestPhoneLookupLockoutFilter(Lockout, Flags, FilterLogs);

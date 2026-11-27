@@ -23,7 +23,7 @@ public class AccessCodeTwoStepReleaseTests
     private static (AppDbContext Db, Guid BookingId, Guid OrgId) Seed(Mock<ITouristTaxCollectionService>? touristTax = null, bool verified = true)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"access-code-two-step-{Guid.NewGuid()}").Options;
-        var db = new AppDbContext(options, null, new EphemeralDataProtectionProvider());
+        var db = new AppDbContext(options, null, TestDataProtection.Shared);
         var orgId = Guid.NewGuid();
         db.Orgs.Add(new OrgEntity
         {

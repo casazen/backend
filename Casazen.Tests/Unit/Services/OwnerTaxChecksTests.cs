@@ -823,7 +823,7 @@ public class OwnerTaxChecksTests
             new AppDbContext(
                 new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerTaxChecks_{Guid.NewGuid()}").Options,
                 null,
-                new EphemeralDataProtectionProvider()),
+                TestDataProtection.Shared),
             new FakeTimeProvider(Now),
             flagOn,
             rules ?? new ShortStayFiscalOptions());

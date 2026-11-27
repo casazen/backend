@@ -474,7 +474,7 @@ public class ShowcaseBookingTenancyTests
                     npgsql => npgsql.MigrationsAssembly("Casazen.Infrastructure"))
                 .Options,
             tenantContext: null,
-            encrypted ? new EphemeralDataProtectionProvider() : null);
+            encrypted ? TestDataProtection.Shared : null);
 
     /// <summary>The source without the lines that are only a comment (documentation names the tables without using them).</summary>
     private static string CodeWithoutComments(string text) =>

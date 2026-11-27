@@ -210,7 +210,7 @@ public class Pain001ValidationProofTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<ITenantContext>(new WireTestTenant(orgId));
-        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+        services.AddSingleton<IDataProtectionProvider>(TestDataProtection.Shared);
         services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase($"Pain001Di_{Guid.NewGuid()}"));
         services.AddScoped<IWireTransferService, WireTransferService>();
         await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });

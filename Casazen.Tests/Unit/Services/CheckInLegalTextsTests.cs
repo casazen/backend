@@ -410,7 +410,7 @@ public sealed class CheckInLegalTextsTests : IDisposable
 
         private FlowRig()
         {
-            Db = new AppDbContext(_options, null, new EphemeralDataProtectionProvider());
+            Db = new AppDbContext(_options, null, TestDataProtection.Shared);
             Alerts.Setup(a => a.RaiseAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         }
 
@@ -503,7 +503,7 @@ public sealed class CheckInLegalTextsTests : IDisposable
             Mock.Of<IDocumentOcrService>(),
             new StayGuestService(Db, Mock.Of<IAlloggiatiCodeTableService>()),
             Mock.Of<IFileStorage>(),
-            new EphemeralDataProtectionProvider(),
+            TestDataProtection.Shared,
             new FakeTimeProvider(Now),
             NullLogger<IdentityVerificationFlowService>.Instance,
             legalTexts: legalTexts);

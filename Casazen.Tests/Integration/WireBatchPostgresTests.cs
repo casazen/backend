@@ -30,7 +30,7 @@ public class WireBatchPostgresTests
     public async Task WireBatch_TwoRequestsForTheSamePayouts_MakeOneBatch_Postgres_Test()
     {
         await using var database = await PostgresTestDatabase.CreateMigratedAsync("wirebatch");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var orgId = Guid.NewGuid();
         await AddOrgAsync(database, provider, orgId);
         await using var db = NewDb(orgId, options: database.CreateOptions(), provider: provider);
@@ -64,7 +64,7 @@ public class WireBatchPostgresTests
     public async Task WireBatch_PayoutTakenByAnotherBatchMeanwhile_IsRefusedByTheUniqueIndex_Postgres_Test()
     {
         await using var database = await PostgresTestDatabase.CreateMigratedAsync("wirebatch");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var orgId = Guid.NewGuid();
         await AddOrgAsync(database, provider, orgId);
         await using var db = NewDb(orgId, options: database.CreateOptions(), provider: provider);

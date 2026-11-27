@@ -26,7 +26,7 @@ public class OtaMessageEncryptionPostgresTests
     public async Task OtaMessage_Text_NotPlaintextInDatabase_Test()
     {
         await using var database = PostgresTestDatabase.CreateMigrated("otamsgenc");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var at = new DateTime(2026, 11, 6, 9, 15, 0, DateTimeKind.Utc);
 
         Guid orgId;

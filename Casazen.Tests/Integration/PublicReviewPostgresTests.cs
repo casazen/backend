@@ -39,7 +39,7 @@ public class PublicReviewPostgresTests
     {
         await using var database = await PostgresTestDatabase.CreateMigratedAsync("reviewonce");
         var (orgId, bookingId) = await SeedDirectStayAsync(database);
-        var keys = new EphemeralDataProtectionProvider();
+        var keys = TestDataProtection.Shared;
         var token = new ReviewLinkTokens(keys).Create(bookingId, DateTimeOffset.UtcNow.AddDays(1));
         var command = new SubmitReviewCommand(5, "Un soggiorno perfetto.", true);
 

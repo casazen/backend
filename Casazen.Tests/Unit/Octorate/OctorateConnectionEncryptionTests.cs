@@ -17,7 +17,7 @@ namespace Casazen.Tests.Unit.Octorate;
 public class OctorateConnectionEncryptionTests
 {
     // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     private const string AccessToken = "oct-access-7c1f0e2a9b4d4f6e8a1b3c5d7e9f0a2b6c8d";
     private const string RefreshToken = "oct-refresh-4e6a8c0b2d4f6a8c0e2b4d6f8a0c2e4f6a8c";

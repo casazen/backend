@@ -43,7 +43,7 @@ public class BookingInvoiceDataEncryptionPostgresTests
     public async Task BookingInvoiceData_PersonalData_EncryptedAtRest_Test()
     {
         await using var database = PostgresTestDatabase.CreateMigrated("invenc");
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var at = new DateTime(2026, 11, 6, 8, 30, 0, DateTimeKind.Utc);
         var orgId = Guid.NewGuid();
         var bookingId = Guid.NewGuid();

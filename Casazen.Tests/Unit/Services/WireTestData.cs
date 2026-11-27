@@ -81,7 +81,7 @@ internal static class WireTestData
     /// <summary>A context of <paramref name="orgId"/> with the encrypted columns on (<paramref name="provider"/>, or an ephemeral one).</summary>
     public static AppDbContext NewDb(Guid orgId, bool filterEnabled = true, DbContextOptions<AppDbContext>? options = null, IDataProtectionProvider? provider = null)
     {
-        return new AppDbContext(options ?? NewOptions(), new WireTestTenant(orgId, filterEnabled), provider ?? new EphemeralDataProtectionProvider());
+        return new AppDbContext(options ?? NewOptions(), new WireTestTenant(orgId, filterEnabled), provider ?? TestDataProtection.Shared);
     }
 
     /// <summary>

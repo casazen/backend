@@ -616,7 +616,7 @@ public class FiscalDocumentDeliveryTests
     [Fact]
     public void LinkTokens_OpenOnlyForTheirDocument_AndNotForAnotherPurposeAnExpiredOrAChangedToken()
     {
-        var keys = new EphemeralDataProtectionProvider();
+        var keys = TestDataProtection.Shared;
         var tokens = new FiscalDocumentLinkTokens(keys);
         var document = Guid.NewGuid();
         var token = tokens.Create(document, DateTimeOffset.UtcNow.AddDays(30));
@@ -877,7 +877,7 @@ public class FiscalDocumentDeliveryTests
 
         public Kit(bool queueAccepts, bool linksConfigured, bool emailConfigured)
         {
-            Keys = new EphemeralDataProtectionProvider();
+            Keys = TestDataProtection.Shared;
             Db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalDelivery_{Guid.NewGuid()}").Options, new NoTenant(), Keys);
             Tokens = new FiscalDocumentLinkTokens(Keys);
             Memory = new MemoryCache(new MemoryCacheOptions());

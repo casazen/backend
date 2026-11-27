@@ -477,5 +477,5 @@ public class ConnectOnboardingServiceTests
             new DbContextOptionsBuilder<AppDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString())
                 .Options,
-            dataProtectionProvider: new EphemeralDataProtectionProvider());
+            dataProtectionProvider: TestDataProtection.Shared);
 }

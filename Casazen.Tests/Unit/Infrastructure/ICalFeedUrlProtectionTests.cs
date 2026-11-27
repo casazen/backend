@@ -103,5 +103,5 @@ public class ICalFeedUrlProtectionTests
         context.Model.FindEntityType(typeof(PropertyICalFeed))!.FindProperty(nameof(PropertyICalFeed.ImportUrl))!.GetValueConverter();
 
     private static EncryptedStringConverter NewConverter() =>
-        new(new EphemeralDataProtectionProvider(), PropertyICalFeedUrlEncryption.Purpose, PropertyICalFeedUrlEncryption.IsLegacyPlaintext);
+        new(TestDataProtection.Shared, PropertyICalFeedUrlEncryption.Purpose, PropertyICalFeedUrlEncryption.IsLegacyPlaintext);
 }

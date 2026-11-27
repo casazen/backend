@@ -19,7 +19,7 @@ namespace Casazen.Tests.Unit.Assistant;
 public class AssistantEntitiesProofTests
 {
     // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     /// <summary>
     /// Privacy rule: the text of a knowledge entry, the text a lesson proposes and the response template of a situation (a Wi-Fi password or a note of the host can be in any of

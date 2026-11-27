@@ -58,7 +58,8 @@ public class LeaseTermRenewalPostgresTests : IAsyncLifetime
 
         await using (var db = database.CreateContext())
         {
-            db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+            // A copy of the template at the previous migration (made once for the run), not a replay of every migration before it.
+            await database.MigrateEmptyToAsync(PreviousMigration(db));
             await LegacyOrgRows.InsertAsync(db, new OrgEntity
             {
                 Id = org,

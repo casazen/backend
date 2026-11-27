@@ -45,7 +45,7 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
     private static int _inMemoryWarningWritten;
 
     /// <summary>In-memory key ring shared by all the test hosts of the process (see <see cref="ConfigureWebHost"/>).</summary>
-    public static IDataProtectionProvider SharedDataProtectionProvider { get; } = new EphemeralDataProtectionProvider();
+    public static IDataProtectionProvider SharedDataProtectionProvider { get; } = TestDataProtection.Shared;
 
     private readonly object _databaseLock = new();
     private PostgresTestDatabase? _database;

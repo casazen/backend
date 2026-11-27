@@ -1261,7 +1261,7 @@ public class GuestCheckInServiceTests
     }
 
     /// <summary>One provider for the class: EF keeps one model per provider.</summary>
-    private static readonly IDataProtectionProvider EncryptionProvider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider EncryptionProvider = TestDataProtection.Shared;
 
     /// <summary>A booking of a property in canton Ticino: country CH and a municipality of canton TI the test writes itself (the seed is not read).</summary>
     private static async Task<Seed> SeedTicinoAsync(int capacity)
