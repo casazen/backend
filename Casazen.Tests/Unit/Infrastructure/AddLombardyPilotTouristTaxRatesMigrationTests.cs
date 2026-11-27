@@ -1,39 +1,17 @@
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Regulatory;
 using Casazen.Core.TouristTax;
-using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Data.Seeds;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>SEO-LOCALE: tourist tax rates of the new Lombardy SEO pilots, only the rows free of ambiguity.</summary>
+/// <summary>
+/// SEO-LOCALE: tourist tax rates of the new Lombardy SEO pilots, only the rows free of ambiguity (the seed of the migration and
+/// the calculator on it). The test that re-read the script of the migration went away once it reached production.
+/// </summary>
 public class AddLombardyPilotTouristTaxRatesMigrationTests
 {
-    [Fact]
-    public void Script_InsertsTheRatesOfTheSixComuniAndNoneOfTheAmbiguousOnes()
-    {
-        using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(
-                "Host=localhost;Database=casazen_design;Username=postgres;Password=postgres",
-                npgsql => npgsql.MigrationsAssembly("Casazen.Infrastructure"))
-            .Options);
-        var keys = db.GetService<IMigrationsAssembly>().Migrations.Keys.ToList();
-        var index = keys.FindIndex(k => k.EndsWith("_AddLombardyPilotTouristTaxRates", StringComparison.Ordinal));
-        Assert.True(index > 0);
-
-        var script = db.GetService<IMigrator>().GenerateScript(fromMigration: keys[index - 1], toMigration: keys[index]);
-
-        Assert.Contains("INSERT INTO \"TouristTaxRates\"", script);
-        foreach (var rate in TouristTaxLombardyPilotSeed.NewRates())
-            Assert.Contains(rate.Id.ToString(), script);
-        foreach (var notLoaded in new[] { "Bellagio", "Menaggio", "Tremezzina", "Varenna", "Varese", "Luino", "Monza", "Domaso", "Seregno" })
-            Assert.DoesNotContain($"'{notLoaded}'", script);
-    }
-
     [Fact]
     public void NewRates_FitTheColumnsAndCiteAnOfficialHttpsSource()
     {
