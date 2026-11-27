@@ -891,7 +891,10 @@ internal sealed class PresenceClosureWorld : IAsyncDisposable
 
     public AppDbContext Db { get; }
 
-    public IDataProtectionProvider DataProtection { get; } = new EphemeralDataProtectionProvider();
+    // One provider for every world: the model of the context is cached by it (DataProtectionModelCacheKeyFactory), so the model is built once and not once per test.
+    private static readonly IDataProtectionProvider SharedProtection = new EphemeralDataProtectionProvider();
+
+    public IDataProtectionProvider DataProtection { get; } = SharedProtection;
 
     public FakeTimeProvider Clock { get; } = new(PresenceClosureKit.Now);
 
