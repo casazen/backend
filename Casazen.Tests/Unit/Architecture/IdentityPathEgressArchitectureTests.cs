@@ -43,6 +43,7 @@ public class IdentityPathEgressArchitectureTests
     /// <c>BiometricModelStore</c>, and only where a download address is configured (none by default), like the weights of the models. For these two, and for
     /// nothing else, the factory of that client and the client it makes are allowed (<see cref="ModelFileDownloadClient"/>); the picture goes to
     /// <c>ReadLineAsync</c> and <c>ReadPageAsync</c>, which run the library in the process, and never reaches that client. Every other rule holds for them too.
+    /// The exception is written in ADR-013-R21 and in docs/runbooks/ai.md, and test D proves that it stays narrow.
     /// </summary>
     private static readonly Type[] ModelFileDownloaders = [typeof(TesseractMrzTextReader), typeof(TesseractPageTextReader)];
 
@@ -137,8 +138,9 @@ public class IdentityPathEgressArchitectureTests
     }
 
     /// <summary>
-    /// Test D, sanity: the convention cannot silently scan nothing (the identity namespace holds the local reader of the check-in at least), and the guard is not
-    /// blind (a class that broke each rule would be named with each member, the allowance of the model files included).
+    /// Test D, sanity: the convention cannot silently scan nothing (the identity namespace holds the local reader of the check-in at least), the guard is not
+    /// blind (a class that broke each rule would be named with each member), and the allowance of the model files stays narrow: in the two readers that download
+    /// their language files only the factory of that client and the client it makes are allowed, and everywhere else they are named too.
     /// </summary>
     [Fact]
     public void IdentityPathEgress_TheConventionScansTheIdentityNamespace()
@@ -156,6 +158,22 @@ public class IdentityPathEgressArchitectureTests
         Assert.Contains(findings, finding => finding.StartsWith($"{planted}: field '<Client>k__BackingField' is an HTTP client", StringComparison.Ordinal));
         // The job client is a rule of the identity namespace only: the named classes are held to the other rules.
         Assert.DoesNotContain(ForbiddenDependencies(typeof(PlantedEgress), jobsForbidden: false), finding => finding.Contains("'jobs'", StringComparison.Ordinal));
+
+        // The allowance of the model files is narrow: exactly the two readers that download their language files (no class of the identity namespace), and in them only
+        // the factory of that client and the client it makes. The client itself, an AI provider and a wrapper of the factory are still named there...
+        Assert.Equal(2, ModelFileDownloaders.Length);
+        Assert.Contains(typeof(TesseractMrzTextReader), ModelFileDownloaders);
+        Assert.Contains(typeof(TesseractPageTextReader), ModelFileDownloaders);
+        Assert.DoesNotContain(ModelFileDownloaders, type => InNamespace(type, IdentityNamespace));
+        Assert.Null(Forbidden(typeof(IHttpClientFactory), jobsForbidden: true, modelFileDownloader: true));
+        Assert.Null(Forbidden(typeof(Func<HttpClient>), jobsForbidden: true, modelFileDownloader: true));
+        Assert.Equal("an HTTP client", Forbidden(typeof(HttpClient), jobsForbidden: true, modelFileDownloader: true));
+        Assert.Equal("an AI provider", Forbidden(typeof(IAiProvider), jobsForbidden: true, modelFileDownloader: true));
+        Assert.Equal("an HTTP client factory", Forbidden(typeof(Lazy<IHttpClientFactory>), jobsForbidden: true, modelFileDownloader: true));
+        // ...and everywhere else, the other named classes and the whole identity namespace, the factory and the client it makes are named too.
+        Assert.Equal("an HTTP client factory", Forbidden(typeof(IHttpClientFactory), jobsForbidden: true, modelFileDownloader: false));
+        Assert.Equal("an HTTP client factory", Forbidden(typeof(IHttpClientFactory), jobsForbidden: false, modelFileDownloader: false));
+        Assert.Equal("an HTTP client", Forbidden(typeof(Func<HttpClient>), jobsForbidden: false, modelFileDownloader: false));
     }
 
     /// <summary>Every type of the identity namespace and below in the assemblies of the application, nested and compiler-generated types included.</summary>
