@@ -34,7 +34,19 @@ internal static class DocumentPortrait
     public static DetectedFace? Find(IFaceDetector detector, RasterImage document, BiometricModelOptions settings,
         CancellationToken token, out RasterImage? rotatedDocument, bool requireAlignment = true)
     {
+        return FindOriented(detector, document, settings, token, out rotatedDocument, out _, requireAlignment);
+    }
+
+    /// <summary>
+    /// <see cref="Find"/> that also says in which orientation of <paramref name="document"/> the face was found (E71/F01/US01/T01): the EXIF value that makes
+    /// the document upright, as <see cref="RasterImage.Oriented"/> takes it (1 upright, 6 a quarter turn clockwise, 8 counter-clockwise, 3 a half turn); 1 as
+    /// well when no face was found. The face is in the coordinates of <paramref name="rotatedDocument"/> when there is one, else of <paramref name="document"/>.
+    /// </summary>
+    public static DetectedFace? FindOriented(IFaceDetector detector, RasterImage document, BiometricModelOptions settings,
+        CancellationToken token, out RasterImage? rotatedDocument, out int exifOrientation, bool requireAlignment = true)
+    {
         rotatedDocument = null;
+        exifOrientation = 1;
         var face = detector.Detect(document, settings.DocumentDetectionScoreThreshold, token).FirstOrDefault();
         if (!requireAlignment && face is not null)
             return face;
@@ -56,7 +68,10 @@ internal static class DocumentPortrait
             if (detected is not null && (face is null || detected.Score > face.Score))
             {
                 if (!requireAlignment)
+                {
+                    exifOrientation = orientation;
                     return detected;
+                }
 
                 bestOrientation = orientation;
                 face = detected;
@@ -65,6 +80,7 @@ internal static class DocumentPortrait
 
         if (bestOrientation != 1)
             rotatedDocument = preview.Oriented(bestOrientation);
+        exifOrientation = bestOrientation;
         return face;
     }
 }
