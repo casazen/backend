@@ -266,6 +266,12 @@ public sealed class QualificationManifestValidatorTests : IDisposable
         });
         manifest = WithCapture(manifest, "c-test-3", capture => capture with { AttackClass = "SECRET-CLASS-TEXT" });
 
+        // References to persons nobody lists are not echoed either, whatever they look like.
+        manifest = WithCapture(
+            manifest,
+            "c-test-4",
+            capture => capture with { Person = "SECRET-PERSON-REF-TEXT", Document = capture.Document! with { OwnerPerson = "SECRET-OWNER-REF-TEXT" } });
+
         var report = QualificationManifestValidator.Validate(manifest, _folder);
 
         Assert.False(report.IsValid);
@@ -340,14 +346,14 @@ public sealed class QualificationManifestValidatorTests : IDisposable
         var errors = report.Errors.Select(error => (error.Code, error.CaptureId, error.PersonId, error.Field)).ToList();
         Assert.Equal(
             [
-                (QualificationManifestErrorCodes.CapturePersonUnknown, "c-dev-1", "p-ghost-1", "person"),
+                (QualificationManifestErrorCodes.CapturePersonUnknown, "c-dev-1", null, "person"),
                 (QualificationManifestErrorCodes.CaptureSessionInvalid, "c-dev-1", null, "session"),
                 (QualificationManifestErrorCodes.CaptureDeviceInvalid, "c-dev-1", null, "device"),
                 (QualificationManifestErrorCodes.CaptureChannelUnknown, "c-dev-1", null, "channel"),
                 (QualificationManifestErrorCodes.CaptureKindUnknown, "c-dev-1", null, "kind"),
                 (QualificationManifestErrorCodes.CaptureEmpty, "c-dev-2", null, "document"),
                 (QualificationManifestErrorCodes.DocumentFormatInvalid, "c-cal-1", null, "document.format"),
-                (QualificationManifestErrorCodes.DocumentOwnerUnknown, "c-cal-1", "p-ghost-2", "document.ownerPerson"),
+                (QualificationManifestErrorCodes.DocumentOwnerUnknown, "c-cal-1", null, "document.ownerPerson"),
                 (QualificationManifestErrorCodes.SequenceChallengeInvalid, "c-cal-1", null, "sequence.challenge"),
                 (QualificationManifestErrorCodes.CaptureIdDuplicate, "c-test-1", null, null),
                 (QualificationManifestErrorCodes.CaptureIdInvalid, null, null, "captures[8]"),

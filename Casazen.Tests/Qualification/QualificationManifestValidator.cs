@@ -6,8 +6,9 @@ using Casazen.Core.Identity;
 namespace Casazen.Tests.Qualification;
 
 // E74/F01/US01/T02 (NF-198, D12): the checks a dataset manifest must pass before anybody runs a qualification on it. The validator answers with CODES and IDS
-// only, never a value: an error names a code, a person or a capture id (an id that passed the id check, otherwise the position in the list), and the member
-// that failed; the counts are numbers. It checks that a file EXISTS and never opens one: the ground-truth files are read by the runner alone and never printed.
+// only, never a value: an error names a code, the id of a person the manifest LISTS or of a capture with a valid id (else the position), and the member
+// that failed; a reference to a person nobody lists is NOT echoed (the capture and the member say where). The counts are numbers. It checks that a file
+// EXISTS and never opens one: the ground-truth files are read by the runner alone and never printed.
 // Codes are never renamed or reused: a new one goes at the end of its list.
 
 /// <summary>The codes of the errors of <see cref="QualificationManifestValidator"/>.</summary>
@@ -99,8 +100,9 @@ public static class QualificationManifestErrorCodes
 }
 
 /// <summary>
-/// One error of a manifest: a code, the person and/or the capture it is about (ids that passed the id check; none when the id itself is the problem, then
-/// <see cref="Field"/> carries the position, such as <c>captures[3]</c>), and the member that failed (<c>rights.purpose</c>, <c>document.front</c>). Never a value.
+/// One error of a manifest: a code, the person (one the manifest lists) and/or the capture (one with a valid id) it is about, and the member that failed
+/// (<c>rights.purpose</c>, <c>document.front</c>). When the id itself is the problem, or a reference points at nobody, no id is echoed: <see cref="Field"/> says
+/// where (<c>person</c>, or the position <c>captures[3]</c>). Never a value.
 /// </summary>
 public sealed record QualificationManifestError(string Code, string? PersonId = null, string? CaptureId = null, string? Field = null)
 {
@@ -359,7 +361,7 @@ public static class QualificationManifestValidator
             var personId = IsSafeId(capture.Person) ? capture.Person : null;
             var known = personId is not null && _persons.Contains(personId);
             if (!known)
-                Add(QualificationManifestErrorCodes.CapturePersonUnknown, personId: personId, captureId: id, field: at + "person");
+                Add(QualificationManifestErrorCodes.CapturePersonUnknown, captureId: id, field: at + "person");
 
             var split = known ? _splitOfPerson.GetValueOrDefault(personId!) : null;
 
@@ -434,7 +436,7 @@ public static class QualificationManifestValidator
             var ownerId = IsSafeId(document.OwnerPerson) ? document.OwnerPerson : null;
             if (ownerId is null || !_persons.Contains(ownerId))
             {
-                Add(QualificationManifestErrorCodes.DocumentOwnerUnknown, personId: ownerId, captureId: id, field: at + "document.ownerPerson");
+                Add(QualificationManifestErrorCodes.DocumentOwnerUnknown, captureId: id, field: at + "document.ownerPerson");
                 return null;
             }
 
