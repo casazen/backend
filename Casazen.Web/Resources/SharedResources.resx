@@ -9096,4 +9096,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AlloggiatiDirectSender" xml:space="preserve"><value>Per questo soggiorno CasaZen invia i dati ad Alloggiati Web. Consulta lo stato dell’invio diretto.</value></data>
   <data name="Ross1000StructureLocked" xml:space="preserve"><value>La struttura usa l’invio diretto. Mantieni lo stesso codice ROSS1000 per aggiornare le credenziali.</value></data>
   <data name="Ross1000SenderCutoverInProgress" xml:space="preserve"><value>È in corso un cambio di mittente. Riprova al termine.</value></data>
+  <!-- E72/F01/US01/T01 (NF-192): the presence challenge of the self-hosted identity step. The page translates the codes; these are the details of the problem. -->
+  <data name="CheckInIdentityAlreadyClosed" xml:space="preserve"><value>La verifica dell’identità è chiusa: non si accettano più passaggi. Puoi sempre chiedere una persona.</value></data>
+  <data name="CheckInPresenceChallengeUnavailable" xml:space="preserve"><value>Ora non è possibile avviare la prova di presenza. Puoi continuare con una persona.</value></data>
 </root>

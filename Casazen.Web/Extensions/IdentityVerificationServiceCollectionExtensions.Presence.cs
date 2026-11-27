@@ -1,3 +1,4 @@
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Identity;
 
 namespace Casazen.Web.Extensions;
@@ -14,5 +15,10 @@ public static partial class IdentityVerificationServiceCollectionExtensions
     {
         // E72/F01/US01/T02: the JPEG frames of a sequence, read and decoded in memory with the limits of IdentityVerification:Presence. Stateless.
         services.AddSingleton<FrameSequenceReader>();
+
+        // E72/F01/US01/T01: the challenge the server draws from the policy (stateless), and the presence interface of the flow, which the flow service implements: the
+        // same scoped instance as IIdentityVerificationFlowService, so the controller and the closure see one session, one lock and one challenge.
+        services.AddSingleton<PresenceChallengeIssuer>();
+        services.AddScoped<IIdentityPresenceFlow>(provider => (IIdentityPresenceFlow)provider.GetRequiredService<IIdentityVerificationFlowService>());
     }
 }
