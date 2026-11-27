@@ -37,6 +37,10 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Behind the modules' flags.</b> With <c>Features:ComplianceTrafficLight</c> off the periods and the connection are not run and nothing of
 /// them is written; the Ticino arrival days (<c>ComplianceAlertService.Ticino.cs</c>) have <c>Features:TicinoNotificationAlerts</c>. Both off: the run does
 /// nothing and writes nothing.</item>
+/// <item><b>Who is told.</b> The address of the organization gets the e-mail of every alert. The people told in the app are the ones <see cref="IComplianceAlertRecipientResolver"/> says
+/// reach the property; for the alerts about the notification of the guests to the police (Ticino and the other cantons) only the ones who also hold <c>alloggiati.submit</c>, the
+/// permission that declares the day (<see cref="ComplianceAlertAudience"/>): the audience is read with it before the stage is claimed, the push, the bell and the live update go to the same
+/// people (<see cref="PushAudience.RequiredPermission"/>), and when nobody holds it the stage goes on as it does with an audience, only nobody is told in the app.</item>
 /// <item><b>Leaves behind</b> (<see cref="IComplianceAlertFollowUp"/>): the "To do" of the condition (the same item the feed of the cockpit raises) and,
 /// for ISTAT, a popup alert when the deadline is within 24 hours; the "To do" of a period is closed when the engine says it is green or gone. A Ticino
 /// arrival day leaves neither: the cockpit lists it in its own section (<c>ticinoNotifications</c>), outside the feed of the "To do" on purpose.</item>
@@ -374,10 +378,15 @@ public sealed partial class ComplianceAlertService(
         // Who is told is read BEFORE the stage is claimed, once, for the email and for the popup. A read that fails (a passing database error) leaves the stage
         // unclaimed: the next run finds it due again and tries again, so an alert about a legal deadline is not lost for a hiccup that has nothing to do with
         // sending it.
+        // An alert about the notification of the guests to the police (Ticino, another canton) is told only to the people who can act on it, the ones who hold alloggiati.submit on top of
+        // reaching the property (ComplianceAlertAudience): the others of the property are not told in the app, whatever their reach. Every other alert keeps the audience it has always had.
+        var required = ComplianceAlertAudience.RequiredPermissionOf(step.Type);
         ComplianceAlertRecipients audience;
         try
         {
-            audience = await recipients.ForPropertyAsync(orgId, step.Alert.PropertyId, ct);
+            audience = required is null
+                ? await recipients.ForPropertyAsync(orgId, step.Alert.PropertyId, ct)
+                : await recipients.ForPropertyAsync(orgId, step.Alert.PropertyId, required, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -392,6 +401,18 @@ public sealed partial class ComplianceAlertService(
 
         if (!await ClaimAsync(orgId, step, now, ct))
             return 0;
+
+        // Nobody who reaches the property holds the permission: the stage goes on exactly as it does with an audience (it is claimed, the e-mail goes to the address of the organization, the
+        // cockpit lists the day), only nobody is told in the app. Said once, with ids only, so a host who is not alerted can be explained.
+        if (required is not null && audience.UserIds.Count == 0)
+        {
+            logger.LogInformation(
+                "Compliance alert {Type} (stage {Stage}) of property {PropertyId}: nobody who reaches the property holds {Permission}, so nobody is told in the app",
+                step.Type,
+                step.Stage,
+                step.Alert.PropertyId,
+                required.PermissionKey);
+        }
 
         var delivered = true;
         try

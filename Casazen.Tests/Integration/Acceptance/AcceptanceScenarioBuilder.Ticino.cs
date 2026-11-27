@@ -463,6 +463,10 @@ internal sealed class TicinoScope : IAsyncDisposable
         recipients
             .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid orgId, Guid _, CancellationToken _) => world.AudienceOf(orgId));
+        // The alerts of the 24 hours are told to the people who can act on them (alloggiati.submit): the audience is read with that permission, and here the agency's own user holds it.
+        recipients
+            .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<NotificationPermission>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid orgId, Guid _, NotificationPermission _, CancellationToken _) => world.AudienceOf(orgId));
         Alerts = new ComplianceAlertService(
             db,
             Mock.Of<IComplianceStatusService>(),

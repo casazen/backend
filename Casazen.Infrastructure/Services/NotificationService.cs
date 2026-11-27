@@ -171,9 +171,14 @@ public class NotificationService(
             Casazen.Core.Entities.ComplianceAlertType.SwissNotification => EmailTemplates.SwissNotificationPush(culture, alert, property.Name),
             _ => EmailTemplates.CompliancePush(culture, alert, property.Name),
         };
+        // The hosts of the property, and for an alert only a person with a permission can act on (the notification of the guests to the police: alloggiati.submit) the ones of them who hold it:
+        // the push, the entry of the bell and the live update of the open pages go to the same people (the jobs that resolve the audience apply the permission, ComplianceAlertAudience).
+        var audience = ComplianceAlertAudience.RequiredPermissionOf(alert.Type) is { } required
+            ? PushAudience.PropertyHosts(alert.PropertyId, required)
+            : PushAudience.PropertyHosts(alert.PropertyId);
         if (!pushNotifications.Enqueue(
                 deliveryKey,
-                PushAudience.PropertyHosts(alert.PropertyId),
+                audience,
                 new PushNotificationPayload(push.Title, push.Body, PushTypes.ForComplianceAlert(alert), null, PushRoutes.Properties)))
         {
             logger.LogWarning(

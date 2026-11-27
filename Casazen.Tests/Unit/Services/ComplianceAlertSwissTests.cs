@@ -165,6 +165,11 @@ public class ComplianceAlertSwissTests : IDisposable
         _recipients
             .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid orgId, Guid _, CancellationToken _) => new ComplianceAlertRecipients([_addressOfOrg[orgId]], []));
+
+        // The alert of the other cantons is told to the people who can act on it (alloggiati.submit): the audience is read with that permission.
+        _recipients
+            .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<NotificationPermission>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid orgId, Guid _, NotificationPermission _, CancellationToken _) => new ComplianceAlertRecipients([_addressOfOrg[orgId]], []));
     }
 
     public void Dispose() => _world.Dispose();
@@ -250,7 +255,7 @@ public class ComplianceAlertSwissTests : IDisposable
             pushes.Select(p => p.Payload.Type).ToArray());
         Assert.All(pushes, p =>
         {
-            Assert.Equal(PushAudience.PropertyHosts(property.Id), p.Audience);
+            Assert.Equal(PushAudience.PropertyHosts(property.Id, ComplianceAlertAudience.AlloggiatiSubmit), p.Audience);
             Assert.Equal(PushRoutes.Properties, p.Payload.Route);
             Assert.Null(p.Payload.BookingId);
             Assert.Null(p.Payload.ServiceRequestId);
@@ -402,9 +407,9 @@ public class ComplianceAlertSwissTests : IDisposable
         Assert.Equal(
             new[] { a.Property.Id, b.Property.Id }.Order(),
             _pushes.Queued.Select(p => p.Audience.Id).Order());
-        _recipients.Verify(r => r.ForPropertyAsync(a.Org.Id, a.Property.Id, It.IsAny<CancellationToken>()), Times.Once);
-        _recipients.Verify(r => r.ForPropertyAsync(b.Org.Id, b.Property.Id, It.IsAny<CancellationToken>()), Times.Once);
-        _recipients.Verify(r => r.ForPropertyAsync(c.Org.Id, It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _recipients.Verify(r => r.ForPropertyAsync(a.Org.Id, a.Property.Id, ComplianceAlertAudience.AlloggiatiSubmit, It.IsAny<CancellationToken>()), Times.Once);
+        _recipients.Verify(r => r.ForPropertyAsync(b.Org.Id, b.Property.Id, ComplianceAlertAudience.AlloggiatiSubmit, It.IsAny<CancellationToken>()), Times.Once);
+        _recipients.Verify(r => r.ForPropertyAsync(c.Org.Id, It.IsAny<Guid>(), It.IsAny<NotificationPermission>(), It.IsAny<CancellationToken>()), Times.Never);
         _recipients.VerifyNoOtherCalls();
         Assert.Equal(2, await _world.Db.ComplianceAlertStates.CountAsync());
     }

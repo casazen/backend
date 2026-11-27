@@ -186,18 +186,33 @@ read from the same service, so a day closed meanwhile sends nothing. `DueAtUtc` 
 
 ## 10. Who is told, how, and what it says
 
+The alerts of this part (and, in § 26, those of the other cantons) are about a duty only a person with **`alloggiati.submit`** can close: the permission that declares a day notified and records the
+receipt of the portal (`CasazenPolicies.AlloggiatiSubmit`, `RequireContext:short-rent:alloggiati.submit`). So they are told in the app only to the people who **hold it on top of reaching the property**;
+the e-mail is the address of the organization. `ComplianceAlertAudience` (Core) is the one definition of which alerts go only to who can act (the Ticino and the other-canton alerts; the Italian deadline
+alerts, the ones about a period, the connection and the monthly summary keep the audience they always had).
+
 - **E-mail**: one message to the **contact address of the organization** (`ComplianceAlertRecipientResolver.ForPropertyAsync` gives that single address as `Emails`, like the stay alerts
-  and the ISTAT alerts; the people it also lists are read for the popup of the router, which the Ticino alerts do not use). There is **no e-mail to a single person and no narrowing by
-  reach** on this channel; nobody of another org is told. Texts `TicinoNotificationAlert_*` of `EmailTexts.resx` and `EmailTexts.en.resx` (**Italian and English only**: German, French and
-  Spanish hold the guest check-in e-mails and nothing else, `EmailTextsParityTests`); the button leads to `/app/short-rent/compliance`.
-- **Push, bell and live update** through `IPushNotificationService.Enqueue` with `PushAudience.PropertyHosts(propertyId)` (the **person in charge of the property**, while they still reach it
-  (a collaborator «Solo alcuni» only for a property they were given), and the **administrators of the org**: `HostNotificationAudience`): the types `ticino-notification-due` and
-  `ticino-notification-overdue`, route `/properties`. The decorator writes the bell entry and the job publishes `notificationsChanged`; both carry the **property** as `entityId` (the id of the
-  audience: an arrival day is not an entity, so the entry names the property and not the day, and the client opens the Ticino page of the property on its first day to notify). The web
-  client is to show the pop-up and read the cockpit again on those two types (the frontend slice of the notification types, E30/F02/US03/T01: until it maps them the bell shows the generic
-  sentence for a type it does not know).
-- **Known limit, like the ISTAT alerts.** There is no «compliance» permission in the catalog, and the people told by push and bell are not narrowed to who holds `alloggiati.submit` (the permission
-  that records the receipt, `SwissComplianceController` `upload-receipt`): the person in charge may be a collaborator, who does not have it, and hears about a duty they cannot close.
+  and the ISTAT alerts). It is the address of the organization and not a person: there is **no e-mail to a single person and no narrowing by reach or by permission** on this channel, and it
+  goes as today even when nobody holds the permission; nobody of another org is told. Texts `TicinoNotificationAlert_*` of `EmailTexts.resx` and `EmailTexts.en.resx` (**Italian and English only**:
+  German, French and Spanish hold the guest check-in e-mails and nothing else, `EmailTextsParityTests`); the button leads to `/app/short-rent/compliance`.
+- **Push, bell and live update** through `IPushNotificationService.Enqueue` with `PushAudience.PropertyHosts(propertyId, alloggiati.submit)`: the hosts of the property (the **person in charge of the
+  property**, while they still reach it (a collaborator «Solo alcuni» only for a property they were given), and the **administrators of the org**: `HostNotificationAudience`) **who also hold
+  `alloggiati.submit`**. The two jobs that resolve the audience when they run, `PushDeliveryJob` (the devices) and `InAppNotificationJob` (the entry of the bell and the live update), apply the permission
+  to the same people with the one evaluation of a permission the policies use (`IContextAuthorizationService`, through `HostNotificationAudience.HoldingAsync`: the memberships of the person after its
+  onboarding, the owner on its token before the team, never a deactivated member), so the phone and the bell cannot disagree. `INotificationPreferenceService` stays the one place that decides the reach
+  (`ComplianceAlertRecipientResolver.ForPropertyAsync(orgId, propertyId, permission, ct)` hands it the permission as the `RequiredPermission` of the event); nothing here rebuilds who reaches a property
+  or who holds a permission. The types are `ticino-notification-due` and `ticino-notification-overdue`, route `/properties`; both entries carry the **property** as `entityId` (the id of the audience: an
+  arrival day is not an entity, so the entry names the property and not the day, and the client opens the Ticino page of the property on its first day to notify). The web client is to show the
+  pop-up and read the cockpit again on those two types (the frontend slice of the notification types, E30/F02/US03/T01: until it maps them the bell shows the generic sentence for a type it does not know).
+- **Who is, and is not, told.** The owner, an administrator and a property manager hold the permission (their roles carry it): they are told when they reach the property. A **collaborator without
+  `alloggiati.submit`** (the seeded role of the collaborator has none), an accountant, a member who was deactivated and an administrator who has not finished the host onboarding (the host contexts are
+  withheld until then, so they cannot act either) are **not told in the app**, even when they are the person in charge; a collaborator «Solo alcuni» who holds the permission (a role of the matrix may
+  give it) is told only for a property it was given. A job queued by the previous version has no permission in its arguments and tells the hosts of the property as it did.
+- **Nobody holds it.** When nobody who reaches the property holds the permission the alert goes on exactly as it does with an audience: the stage is claimed (sent once), the e-mail goes to the address of
+  the organization, the cockpit lists the day; only nobody is told in the app, and the log says once, with ids and no name, that nobody who reaches the property holds the permission. A job built without
+  the evaluation of permissions (it is registered in the application) tells nobody for such an audience and says so in the log: a permission is never taken as held.
+- **The declaration of a day is not an alert.** The live refresh of § 18 (`ticino-notification-declared`, `swiss-notification-declared`) is the refresh of what a co-host did and keeps reaching every host
+  of the property, whatever the permission: it makes the open cockpit pages read again.
 - **No «To do» and no popup of the router**: the cockpit lists the day in its own section (`ticinoNotifications`), outside the feed of the «To do» on purpose.
 - **Privacy.** The text names the property, the arrival day, the deadline and the **types** of field the data of the day miss: the codes of `TicinoMissing` (`firstName`, `lastName`,
   `birthDate`, `nationality`, `documentType`, `guests`) and `structureId` (the identifier of the structure is not entered), translated. Never the name of a guest, a value, a document
@@ -244,8 +259,8 @@ WHERE "Type" IN ('ticino-notification-due', 'ticino-notification-overdue') AND "
 `ComplianceAlertKind`, `ComplianceAlertStage`), `Casazen.Core/Services/ComplianceAlertSchedule.Ticino.cs` (the rules), `Casazen.Core/Options/ComplianceOptions.cs`,
 `Casazen.Core/Features/FeatureFlags.cs`, `Casazen.Core/Services/IPushNotificationService.cs` (`PushTypes.TicinoNotificationDue|Overdue`),
 `Casazen.Infrastructure/Services/ComplianceAlertService.Ticino.cs` (the run), `Casazen.Infrastructure/Services/NotificationService.cs`,
-`Casazen.Infrastructure/Email/Templates/EmailTemplates.TicinoNotification.cs`. Tests: `ComplianceAlertTicinoTests` (the schedule with the two daylight saving changes, each stage once,
-a closed day stops the alerts, another org is never alerted, flag off sends nothing, the payload holds no personal data, the registration with `ValidateScopes`, the enumerations of
+`Casazen.Infrastructure/Email/Templates/EmailTemplates.TicinoNotification.cs`, and for who is told (§ 10) `ComplianceAlertAudience` (`IComplianceAlertService.cs`), `ComplianceAlertRecipientResolver`, `HostNotificationAudience.HoldingAsync`, `PushAudience.RequiredPermission`, `PushDeliveryJob` and `InAppNotificationJob`. Tests: `ComplianceAlertAudienceTests` (the real services: the collaborator without the license is not told, the Italian alert still tells it, the administrator, the manager and the person in charge who hold it are, a collaborator «Solo alcuni» with the license only for a property it was given, a deactivated member never, the phone and the bell tell the same people, a job without the evaluation tells nobody), `ComplianceAlertTicinoTests` (the schedule with the two daylight saving changes, each stage once,
+a closed day stops the alerts, another org is never alerted, flag off sends nothing, the payload holds no personal data, nobody holds the license and the alert goes on, the registration with `ValidateScopes`, the enumerations of
 `ComplianceAlertType` and `PushTypes`).
 
 ## 14. The declaration «I uploaded the file» and the one rule of a closed day
@@ -524,8 +539,8 @@ host says; Ticino keeps its own flow (§ 1-20) and never appears here. The whole
   regime**, once each (state row of `ComplianceAlertStates` with the arrival day as reference, the type tells it from the Ticino rows), `ComplianceAlertSchedule.DueSwissStep`, which is `DueTicinoStep` with the Swiss type and
   kinds: the arrival day (two hours after the first expected check-in, else 18:00, never after 23:00), six hours before the deadline, the deadline, then at most two reminders 24 hours apart. The thresholds are the **same
   five options** `Compliance:Ticino*` (§ 11): no new configuration. Where the deadline is the arrival (`AtArrival`) a day whose arrival is recorded is overdue from that moment, so its first alert is the overdue one, at
-  the first hourly run after it. Push types `swiss-notification-due` and `swiss-notification-overdue`, the same audience, channels, privacy and bell entry as § 10 (the property as `entityId`); e-mail to the contact address of
-  the org; the text names the property, the day, the deadline and the types of field that miss, **never a guest**, and says «autorità cantonale» (no supplier is named). **Italian and English only**
+  the first hourly run after it. Push types `swiss-notification-due` and `swiss-notification-overdue`, the same audience (the hosts who also hold `alloggiati.submit`, the permission that declares the day, `ComplianceAlertAudience`), channels, privacy and bell entry as § 10 (the property as `entityId`); e-mail to the contact address of
+  the org (it is not a person: not narrowed); the text names the property, the day, the deadline and the types of field that miss, **never a guest**, and says «autorità cantonale» (no supplier is named). **Italian and English only**
   (`SwissNotification*` of `EmailTexts.resx` and `.en.resx`): `EmailTextsParityTests` allows the guest languages to hold only the guest check-in texts, and a host alert is never sent in them. No «To do», no popup.
 - **Checking.** `SELECT "PropertyId", "ReferenceKey", "Stage", "AlertCount", "LastAlertAt" FROM casazen_test."ComplianceAlertStates" WHERE "Type" = 5 ORDER BY "UpdatedAt" DESC LIMIT 50;` and the declarations with
   `"RegimeCode" IS NOT NULL` (§ 20). The bell entries: `"Type" IN ('swiss-notification-due', 'swiss-notification-overdue', 'swiss-notification-declared')`.

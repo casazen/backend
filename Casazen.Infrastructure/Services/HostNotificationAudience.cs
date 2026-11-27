@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -31,6 +32,35 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 internal static class HostNotificationAudience
 {
+    /// <summary>
+    /// The ones of <paramref name="userIds"/> who hold <paramref name="required"/>, in the order given: <b>the one place that narrows an audience to a permission</b> (the service of the
+    /// preferences, the push job and the job of the bell all call it), so a permission is judged by the one evaluation of it, <see cref="IContextAuthorizationService"/> (the one the policy
+    /// handler uses: the memberships of the person after its onboarding, the owner on its token before the team, never a deactivated member), and never by a copy of it.
+    /// </summary>
+    /// <remarks>
+    /// An error while the memberships are read is thrown, not answered as «no» (<see cref="IContextAuthorizationService.HasPermissionOrThrowAsync"/>): the callers run in the event bus and in jobs,
+    /// and a person dropped for a passing error would be missed for good, while an exception makes the event or the job be delivered again.
+    /// </remarks>
+    public static async Task<List<string>> HoldingAsync(
+        IContextAuthorizationService contextAuthorization,
+        IEnumerable<string> userIds,
+        NotificationPermission required,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(contextAuthorization);
+        ArgumentNullException.ThrowIfNull(userIds);
+        ArgumentNullException.ThrowIfNull(required);
+
+        var holders = new List<string>();
+        foreach (var userId in userIds)
+        {
+            if (await contextAuthorization.HasPermissionOrThrowAsync(userId, required.ContextKey, required.PermissionKey, ct))
+                holders.Add(userId);
+        }
+
+        return holders;
+    }
+
     /// <summary>
     /// The users of <paramref name="orgId"/> to tell about something that belongs to the org and to no property (NF-65: a conversation of a channel
     /// whose listing is not mapped yet): the administrators, the owner and the <c>Admin</c>s. Nobody limited to some properties is among them: the

@@ -18,7 +18,10 @@ public interface INotificationService
     /// Delivers an alert about a period or the connection of a property of the <c>stay-alerts</c> job (E03/F02/US02/T01, NF-52): an email to
     /// <paramref name="emails"/> (the audience of <see cref="IComplianceAlertRecipientResolver"/>) and a push to the hosts of the property, both
     /// queued on Hangfire (the push once per <paramref name="deliveryKey"/> and device, MO-04). The job decides when; this only renders and queues.
-    /// The text names the property and the period or the deadline day, never guest data. A property that is gone sends nothing.
+    /// The text names the property and the period or the deadline day, never guest data. A property that is gone sends nothing. The push (and with it the
+    /// entry of the bell and the live update) of an alert about the notification of the guests to the police goes only to the hosts who also hold the
+    /// permission that declares the day (<see cref="ComplianceAlertAudience"/>, <see cref="PushAudience.RequiredPermission"/>): the e-mail, which is the
+    /// address of the organization, is not narrowed.
     /// </summary>
     Task SendComplianceAlertAsync(
         ComplianceAlert alert,

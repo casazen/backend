@@ -14,15 +14,28 @@ namespace Casazen.Infrastructure.Services;
 /// member never. That service is the one place that decides it (<c>HostNotifyingPathsArchitectureTests</c>), so this class never rebuilds the reach
 /// of anybody. The channels of each person (the push, the bell, the email to its own address, the quiet hours) stay today's until the per-person
 /// preferences of NF-65 replace the delivery of these alerts; here only the audience is read.</para>
+/// <para><b>An alert only a person with a permission can act on</b> (the notification of the guests to the police, <see cref="ComplianceAlertAudience"/>): the permission is handed to the same
+/// service as the <see cref="NotificationEventContext.RequiredPermission"/> of the event, which asks <see cref="IContextAuthorizationService"/> (the evaluation of a permission the policies
+/// use) for each person of the reach it decided: this class neither reads a role nor a permission. The address of the organization is not a person and is not narrowed.</para>
 /// <para>The answer holds ids and addresses and nothing else; nothing is logged.</para>
 /// </remarks>
 public sealed class ComplianceAlertRecipientResolver(
     AppDbContext db,
     INotificationPreferenceService preferences) : IComplianceAlertRecipientResolver
 {
-    public async Task<ComplianceAlertRecipients> ForPropertyAsync(Guid orgId, Guid propertyId, CancellationToken ct)
+    public Task<ComplianceAlertRecipients> ForPropertyAsync(Guid orgId, Guid propertyId, CancellationToken ct) =>
+        ForPropertyCoreAsync(orgId, propertyId, requiredPermission: null, ct);
+
+    public Task<ComplianceAlertRecipients> ForPropertyAsync(Guid orgId, Guid propertyId, NotificationPermission requiredPermission, CancellationToken ct)
     {
-        var people = await preferences.ResolveAsync(new NotificationEventContext(orgId, NotificationEventType.LegalDeadline, propertyId), ct);
+        ArgumentNullException.ThrowIfNull(requiredPermission);
+        return ForPropertyCoreAsync(orgId, propertyId, requiredPermission, ct);
+    }
+
+    private async Task<ComplianceAlertRecipients> ForPropertyCoreAsync(Guid orgId, Guid propertyId, NotificationPermission? requiredPermission, CancellationToken ct)
+    {
+        var people = await preferences.ResolveAsync(
+            new NotificationEventContext(orgId, NotificationEventType.LegalDeadline, propertyId, RequiredPermission: requiredPermission), ct);
         return new ComplianceAlertRecipients(await OrganizationAddressAsync(orgId, ct), UserIdsOf(people));
     }
 

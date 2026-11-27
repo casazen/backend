@@ -37,12 +37,27 @@ public sealed class QueuedInAppNotification
     /// <summary>UTC instant of the event (when the push was queued), so a late run or a retry does not move it.</summary>
     public DateTime OccurredAt { get; set; }
 
-    public PushAudience ToAudience() => new(AudienceKind, AudienceId);
+    /// <summary>
+    /// The context of the permission the hosts of a <see cref="PushAudienceKind.PropertyHosts"/> audience must also hold (<see cref="PushAudience.RequiredPermission"/>), the same as the push of the
+    /// event: the bell and the phone tell the same people. <c>null</c> for every other event, and for a job queued before it existed (no narrowing).
+    /// </summary>
+    public string? AudiencePermissionContext { get; set; }
+
+    /// <summary>The permission itself (<c>alloggiati.submit</c>); <c>null</c> with <see cref="AudiencePermissionContext"/>.</summary>
+    public string? AudiencePermissionKey { get; set; }
+
+    public PushAudience ToAudience() => new(AudienceKind, AudienceId, RequiredPermission: AudienceRequiredPermission());
+
+    /// <summary>The permission the audience asks of the hosts, or <c>null</c> when it narrows nobody.</summary>
+    internal NotificationPermission? AudienceRequiredPermission() =>
+        AudiencePermissionContext is { Length: > 0 } context && AudiencePermissionKey is { Length: > 0 } key ? new NotificationPermission(context, key) : null;
 
     public static QueuedInAppNotification From(PushAudience audience, PushNotificationPayload payload, DateTime occurredAtUtc) => new()
     {
         AudienceKind = audience.Kind,
         AudienceId = audience.Id,
+        AudiencePermissionContext = audience.RequiredPermission?.ContextKey,
+        AudiencePermissionKey = audience.RequiredPermission?.PermissionKey,
         Type = payload.Type,
         EntityId = EntityOf(audience, payload),
         OccurredAt = UtcDateTime.Normalize(occurredAtUtc),
@@ -96,7 +111,8 @@ public sealed class InAppNotificationJob(
     AppDbContext db,
     TimeProvider timeProvider,
     IInAppNotificationPublisher publisher,
-    ILogger<InAppNotificationJob> logger)
+    ILogger<InAppNotificationJob> logger,
+    IContextAuthorizationService? contextAuthorization = null)
 {
     public const int MaxAttempts = 5;
 
@@ -250,7 +266,7 @@ public sealed class InAppNotificationJob(
             case PushAudienceKind.BookingHosts:
                 return await BookingHostsAsync(notification.AudienceId, notification.Type, cancellationToken);
             case PushAudienceKind.PropertyHosts:
-                return await PropertyHostsAsync(notification.AudienceId, cancellationToken);
+                return await PropertyHostsAsync(notification.AudienceId, notification.AudienceRequiredPermission(), cancellationToken);
             case PushAudienceKind.SupplierOrg:
                 return await SupplierUsersAsync(notification.AudienceId, cancellationToken);
             case PushAudienceKind.VerificationOperators:
@@ -295,7 +311,7 @@ public sealed class InAppNotificationJob(
         return Recipients.Of(booking.OrgId, await hosts.Select(user => user.Id).ToListAsync(cancellationToken));
     }
 
-    private async Task<Recipients> PropertyHostsAsync(Guid propertyId, CancellationToken cancellationToken)
+    private async Task<Recipients> PropertyHostsAsync(Guid propertyId, NotificationPermission? requiredPermission, CancellationToken cancellationToken)
     {
         // IgnoreQueryFilters: background job without a tenant; the recipients are limited to the property's org.
         var property = await db.Properties
@@ -310,7 +326,29 @@ public sealed class InAppNotificationJob(
             return Recipients.None;
         }
 
-        return await HostsAsync(property.OrgId, propertyId, property.ResponsibleUserId, property.OwnerId, cancellationToken);
+        var hosts = await HostsAsync(property.OrgId, propertyId, property.ResponsibleUserId, property.OwnerId, cancellationToken);
+        return requiredPermission is null ? hosts : await HoldingAsync(hosts, requiredPermission, cancellationToken);
+    }
+
+    /// <summary>
+    /// The people of <paramref name="hosts"/> who also hold <paramref name="required"/> (an alert only a person with a permission can act on, <see cref="PushAudience.RequiredPermission"/>), by the one
+    /// evaluation of a permission (<see cref="HostNotificationAudience.HoldingAsync"/>), the same the push job applies to the same event: the bell and the phone tell the same people. Without that
+    /// evaluation (a job built without it) nobody is told: a permission is never taken as held, and the log says so.
+    /// </summary>
+    private async Task<Recipients> HoldingAsync(Recipients hosts, NotificationPermission required, CancellationToken cancellationToken)
+    {
+        if (hosts.Users.Count == 0)
+            return hosts;
+
+        if (contextAuthorization is null)
+        {
+            logger.LogError("In-app notification skipped: its audience asks the permission {Permission} and no evaluation of permissions is available, so nobody is told", required.PermissionKey);
+            return Recipients.None;
+        }
+
+        var holders = (await HostNotificationAudience.HoldingAsync(contextAuthorization, hosts.Users.Select(user => user.UserId), required, cancellationToken))
+            .ToHashSet(StringComparer.Ordinal);
+        return new Recipients([.. hosts.Users.Where(user => holders.Contains(user.UserId))]);
     }
 
     /// <summary>

@@ -377,8 +377,8 @@ public static class FeatureFlags
     /// <c>stay-alerts</c> job reads no Ticino day and writes no alert state, and nothing is queued: no e-mail, no push, no entry of the bell. On, every
     /// arrival day of a Ticino property that is not closed (no receipt of the portal, and the declaration when it exists) gets three stages, each sent once:
     /// the arrival day («prepare the file»), six hours before the deadline, and overdue followed by at most two reminders, to the contact address of the organization
-    /// (the one e-mail) and to the person in charge of the property and the administrators of the organization (push, bell and the live update of the open pages, the
-    /// types <c>ticino-notification-due</c> and <c>ticino-notification-overdue</c>). The cockpit section of the days to notify (<c>ticinoNotifications</c>) is not behind it. Independent of
+    /// (the one e-mail) and to the person in charge of the property and the administrators of the organization who also hold <c>alloggiati.submit</c>, the permission that declares the day
+    /// (push, bell and the live update of the open pages, the types <c>ticino-notification-due</c> and <c>ticino-notification-overdue</c>; <c>ComplianceAlertAudience</c>). The cockpit section of the days to notify (<c>ticinoNotifications</c>) is not behind it. Independent of
     /// <see cref="ComplianceTrafficLight"/>. It needs no variable to start. The thresholds are <c>Compliance__Ticino*</c>. The same job and flag also run the alerts of the arrival
     /// days of a property in another canton (E31/F02/US01/T01, <c>swiss-notification-due</c> and <c>swiss-notification-overdue</c>, the same thresholds), for the days that
     /// <see cref="GuestRegistrationRegimes"/> lets the assisted notification list.
