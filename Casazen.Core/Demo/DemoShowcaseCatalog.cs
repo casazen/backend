@@ -17,12 +17,21 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-20.1";
+    public const string Version = "2026-11-27.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
 
     public const string DraftKey = "monolocale-bozza";
+
+    /// <summary>The key of the one Swiss flat of the showcase, in Lugano (<see cref="Scenario.SwissGuestRegistration"/>).</summary>
+    public const string SwissFlatKey = "appartamento-lugano";
+
+    /// <summary>
+    /// The TEST «Numero identificativo LEAR / NO-LEAR» of the Swiss flat: letters and digits joined by a hyphen, valid for <c>TicinoStructureId.IsValid</c> (the check the file and the activation of the
+    /// flat use) and saying TEST. It is the number of no structure.
+    /// </summary>
+    public const string SwissFlatStructureId = "NL-TEST0001";
 
     /// <summary>
     /// The email of the demo guest of the mobile app: the account the store reviewers sign in with. The bookings of
@@ -418,6 +427,16 @@ public static class DemoShowcaseCatalog
         /// only names the property that shows it.
         /// </summary>
         public const string IstatRegionCoverage = "istat-region-coverage";
+
+        /// <summary>
+        /// The notification of the guests to the police in Switzerland (casazen/backend#979, NF-124..NF-133): one short-rent flat in Lugano, canton Ticino, of country <c>CH</c> with the postal
+        /// code 6900 and the city and <b>no municipality stored</b> (the one resolver of the place of a Swiss property derives canton TI from them) and a TEST structure number of the Ticino
+        /// portal, and one confirmed stay that arrived yesterday with two adults carrying the data of the Swiss file: a head of family with a Swiss home and a Swiss identity card and a family
+        /// member with a foreign passport, the document of each stored and, as for every Swiss property, no image of a document (D6). With <c>Features:GuestRegistrationRegimes</c> and
+        /// <c>Features:TicinoNotificationAlerts</c> on, the cockpit lists the day to declare, the file of the day has two rows and the alerts watch its 24 hours; the showcase itself never turns a
+        /// flag on. The two flats of Ticino of <see cref="AgencyPropertiesCrossRegion"/> are Italian-model properties with invented ISTAT codes and show none of this.
+        /// </summary>
+        public const string SwissGuestRegistration = "swiss-guest-registration";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -519,6 +538,7 @@ public static class DemoShowcaseCatalog
         Scenario.TaxReportingYearEnd,
         Scenario.BookingFourOrigins,
         Scenario.IstatRegionCoverage,
+        Scenario.SwissGuestRegistration,
     ];
 
     /// <summary>
@@ -1553,6 +1573,68 @@ public static class DemoShowcaseCatalog
             Cadastral: null,
             Scenarios: [Scenario.AgencyPropertiesCrossRegion],
             Bookings: []),
+        // casazen/backend#979 (Scenario.SwissGuestRegistration): the one demo flat that is Swiss for the product, as a Swiss flat is stored: country CH, the postal code 6900 and the city, NO
+        // municipality (the resolver derives Lugano, canton TI, from them), a TEST structure number of the Ticino portal and none of the Italian data (no ISTAT code, CIN, regional document or
+        // safety checklist: the status of a Swiss property asks none). The two flats of Ticino above are Italian-model properties for the agency scenario and do not exercise any Swiss flow.
+        new(
+            Key: SwissFlatKey,
+            Name: "Appartamento Lugano (demo)",
+            Place: new DemoPlace("Lugano", string.Empty, string.Empty, "6900", "Via Canova 12"),
+            Description: "Annuncio di dimostrazione a Lugano, Ticino, per la notifica degli ospiti alla polizia cantonale. Dati inventati e segnati come test.",
+            Mode: RentalMode.Short,
+            Publish: true,
+            Bedrooms: 2,
+            Bathrooms: 1,
+            MaxGuests: 4,
+            NightlyRate: 180m,
+            CleaningFee: 40m,
+            Cadastral: null,
+            Scenarios: [Scenario.SwissGuestRegistration],
+            Bookings:
+            [
+                // The stay that arrived yesterday: two adults with the data of the Swiss file, so the cockpit lists a Ticino day to declare (its deadline is the end of the arrival day, as no arrival is
+                // recorded) and the file of the day has two rows. The head lives in Zurich and shows a Swiss identity card; the family member was born in Germany and shows a
+                // German passport. The document of both adults is stored (NF-132) and no image of a document is kept for a Swiss property (D6). Guests at example.com, numbers that say TEST.
+                new(
+                    "ticino-arrivo-ieri",
+                    "Erika",
+                    "Muster",
+                    "ospite.demo.ticino-1@example.com",
+                    -1,
+                    3,
+                    BookingStatus.Confirmed,
+                    Scenario.SwissGuestRegistration,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    Guests:
+                    [
+                        new(
+                            "Erika",
+                            "Muster",
+                            StayGuestType.HeadOfFamily,
+                            44,
+                            Swiss: new DemoSwissGuestTemplate(
+                                "Svizzera",
+                                "Svizzera",
+                                GuestDocumentType.IdentityCard,
+                                "TEST-CH-ID-0001",
+                                "Zurigo",
+                                new DemoSwissHome("Bahnhofstrasse 12", "8001", "Zürich", "Svizzera"))),
+                        new(
+                            "Hans",
+                            "Muster",
+                            StayGuestType.FamilyMember,
+                            46,
+                            Swiss: new DemoSwissGuestTemplate(
+                                "Germania",
+                                "Germania",
+                                GuestDocumentType.Passport,
+                                "TEST-DE-PASS-0002",
+                                "Berlino",
+                                new DemoSwissHome("Bahnhofstrasse 12", "8001", "Zürich", "Svizzera"))),
+                    ]),
+            ],
+            Swiss: new DemoSwissProperty(SwissFlatStructureId)),
         new(
             Key: "appartamento-napoli",
             Name: "Appartamento Napoli (demo)",
@@ -2473,7 +2555,43 @@ public sealed record DemoStayGuestTemplate(
     int AgeAtCheckIn,
     string? TaxExemptionCode = null,
     bool DocumentExpired = false,
-    bool BirthPlaceMissing = false);
+    bool BirthPlaceMissing = false,
+    DemoSwissGuestTemplate? Swiss = null);
+
+/// <summary>
+/// What the Swiss check-in records about a guest of a demo stay in Switzerland (casazen/backend#979, NF-132) in place of the Italian data every other demo guest has: where the guest was
+/// born and the nationality, the <b>document of the guest</b> (the Swiss file notifies every adult on their own row, so the document of each adult is stored, a family member's included:
+/// kind, number and place of issue, invented and saying TEST) and the home (street, postal code, town and state), which the file writes as «Indirizzo», «CAP», «Domicilio» and «Nazione».
+/// The check-in of a Swiss property keeps no image of the document (decision D6): the template has none to write, and no <see cref="DemoCheckInTemplate"/> names such a stay.
+/// </summary>
+/// <param name="BirthCountryName">The state of birth, as the Alloggiati list names it (the guest was born abroad of Italy).</param>
+/// <param name="CitizenshipName">The nationality, as the Alloggiati list names it: the file writes its alpha-3 code.</param>
+/// <param name="DocumentType">The kind of the document the guest showed.</param>
+/// <param name="DocumentNumber">The number of the document: invented, it says TEST.</param>
+/// <param name="DocumentIssuePlaceName">The place that issued it.</param>
+/// <param name="Home">The home of the guest.</param>
+public sealed record DemoSwissGuestTemplate(
+    string BirthCountryName,
+    string CitizenshipName,
+    GuestDocumentType DocumentType,
+    string DocumentNumber,
+    string DocumentIssuePlaceName,
+    DemoSwissHome Home);
+
+/// <summary>The home of a guest of a Swiss stay (NF-132): invented, like the rest of the demo.</summary>
+/// <param name="Street">Street and number.</param>
+/// <param name="PostalCode">Postal code.</param>
+/// <param name="City">Town.</param>
+/// <param name="CountryName">The state of the home, as the Alloggiati list names it.</param>
+public sealed record DemoSwissHome(string Street, string PostalCode, string City, string CountryName);
+
+/// <summary>
+/// A demo property in Switzerland (country <c>CH</c>, casazen/backend#979), written as the product stores a Swiss flat: the franc and the clock of Zurich
+/// (<c>PropertyService.ApplyCountryDefaults</c>), the postal code and the city and <b>no stored municipality</b> (the place is derived by the one resolver), and none of what is Italian:
+/// no ISTAT comune and region, no CIN, no regional documents and no safety checklist, which the status of a Swiss property never asks.
+/// </summary>
+/// <param name="TicinoStructureId">The «Numero identificativo LEAR / NO-LEAR» of the structure (a TEST number valid for <see cref="Regulatory.TicinoStructureId"/>).</param>
+public sealed record DemoSwissProperty(string TicinoStructureId);
 
 /// <summary>
 /// A tenant maintenance request of the showcase. <see cref="Paid"/> stays false: opening and approving do not pay it.
@@ -2791,7 +2909,8 @@ public sealed record DemoPropertyTemplate(
     IReadOnlyList<DemoStayDiscount>? StayDiscounts = null,
     DemoDeclaredTouristTaxRate? DeclaredTouristTaxRate = null,
     DemoComplianceSenderTemplate? ComplianceSender = null,
-    IReadOnlyList<DemoDayRule>? DayRules = null);
+    IReadOnlyList<DemoDayRule>? DayRules = null,
+    DemoSwissProperty? Swiss = null);
 
 /// <summary>
 /// A room of a demo property with its beds (NF-34): invented like the rest of the demo. The counters of the property (<c>Bedrooms</c>, <c>Beds</c>)

@@ -267,14 +267,9 @@ public sealed class NotificationPreferenceService(
     /// </summary>
     private async Task<List<Candidate>> HoldingAsync(List<Candidate> candidates, NotificationPermission required, CancellationToken ct)
     {
-        var holders = new List<Candidate>(candidates.Count);
-        foreach (var candidate in candidates)
-        {
-            if (await contextAuthorization.HasPermissionOrThrowAsync(candidate.UserId, required.ContextKey, required.PermissionKey, ct))
-                holders.Add(candidate);
-        }
-
-        return holders;
+        // The one place that narrows an audience to a permission, shared with the push job and the job of the bell (HostNotificationAudience.HoldingAsync).
+        var holders = (await HostNotificationAudience.HoldingAsync(contextAuthorization, candidates.Select(c => c.UserId), required, ct)).ToHashSet(StringComparer.Ordinal);
+        return candidates.Where(candidate => holders.Contains(candidate.UserId)).ToList();
     }
 
     // ─── Reads ───

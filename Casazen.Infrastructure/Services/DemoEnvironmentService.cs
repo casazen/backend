@@ -1788,7 +1788,9 @@ public class DemoEnvironmentService(
     internal async Task CreateShowcasePropertyAsync(
         Guid orgId, string ownerId, DemoPropertyTemplate template, CancellationToken cancellationToken)
     {
-        var place = await ResolvePlaceAsync(template.Place, cancellationToken);
+        // A flat in Switzerland has no Italian comune to look up and no ISTAT code or region: its place is its postal code and its city, as the product stores a Swiss flat.
+        var swiss = template.Swiss;
+        var place = swiss is null ? await ResolvePlaceAsync(template.Place, cancellationToken) : template.Place;
         var now = UtcNow();
         var property = new Property
         {
@@ -1800,8 +1802,8 @@ public class DemoEnvironmentService(
             Address = place.Address,
             City = place.City,
             PostalCode = place.PostalCode,
-            ComuneIstatCode = place.IstatCode,
-            RegionCode = place.RegionCode,
+            ComuneIstatCode = swiss is null ? place.IstatCode : null,
+            RegionCode = swiss is null ? place.RegionCode : null,
             RentalMode = template.Mode,
             Bedrooms = template.Bedrooms,
             Bathrooms = template.Bathrooms,
@@ -1814,6 +1816,17 @@ public class DemoEnvironmentService(
             CreatedAt = now,
             UpdatedAt = now,
         };
+        if (swiss is not null)
+        {
+            // The country as the property form and the import store Switzerland (SwissPlace.CountryCode, what the one resolver of the place compares with), with what the property service gives a
+            // property of that country: the franc and the clock of Zurich (ApplyCountryDefaults). No municipality is stored on purpose: the resolver derives it from the postal code and the
+            // city, which is what this flat shows. The structure number is the TEST one the file and the activation check (TicinoStructureId).
+            property.Country = SwissPlace.CountryCode;
+            property.Currency = "CHF";
+            property.Timezone = "Europe/Zurich";
+            property.TicinoStructureId = TicinoStructureId.Normalize(swiss.TicinoStructureId);
+        }
+
         if (template.Cadastral is { } cadastral)
         {
             property.CadastralSheet = cadastral.Sheet;
@@ -1997,6 +2010,8 @@ public class DemoEnvironmentService(
     internal async Task CreateBookingAsync(
         Guid orgId, Property property, DemoBookingTemplate template, DateOnly today, CancellationToken cancellationToken)
     {
+        // The booker is the first guest of the stay: when that guest has a Swiss home (NF-132) the record of the booker lives there too, not in Rome.
+        var home = template.Guests?.FirstOrDefault()?.Swiss?.Home;
         var guest = new Guest
         {
             OrgId = orgId,
@@ -2006,8 +2021,10 @@ public class DemoEnvironmentService(
             // The placeholder every demo guest has unless the template gives a number: the CRM does not take it for a phone, so no two demo guests
             // look as if they shared one (only the guests of the CRM scenario that say so do).
             PhoneNumber = template.Phone ?? "+390000000000",
-            Country = "Italia",
-            City = "Roma",
+            Address = home?.Street ?? string.Empty,
+            PostalCode = home?.PostalCode ?? string.Empty,
+            Country = home?.CountryName ?? "Italia",
+            City = home?.City ?? "Roma",
         };
         db.Guests.Add(guest);
         await db.SaveChangesAsync(cancellationToken);
@@ -2467,6 +2484,30 @@ public class DemoEnvironmentService(
             row.BirthProvince = null;
         }
 
+        // NF-132: the guest of a stay in Switzerland is recorded as the Swiss check-in records it: born and living abroad of Italy, the nationality, and the document of the guest, a family member's
+        // included (the file notifies every adult on their own row). The kind of the document is the one the guest showed, whatever the kind of guest; a document dated as the other demo ones.
+        // No image of a document is made for a Swiss property (decision D6): the template has none, and nothing else is written.
+        if (demo.Swiss is { } swiss)
+        {
+            row.BornInItaly = false;
+            row.BirthComuneName = string.Empty;
+            row.BirthProvince = null;
+            row.BirthCountryName = swiss.BirthCountryName;
+            row.CitizenshipName = swiss.CitizenshipName;
+            row.ResidenceInItaly = false;
+            row.ResidenceComuneName = null;
+            row.ResidenceProvince = null;
+            row.ResidenceCountryName = swiss.Home.CountryName;
+            row.ResidenceStreet = swiss.Home.Street;
+            row.ResidencePostalCode = swiss.Home.PostalCode;
+            row.ResidenceCityName = swiss.Home.City;
+            row.DocumentType = swiss.DocumentType;
+            row.DocumentNumber = swiss.DocumentNumber;
+            row.DocumentIssuePlaceName = swiss.DocumentIssuePlaceName;
+            row.DocumentIssuedOn = demo.DocumentExpired ? arrival.AddYears(-10).AddDays(-20) : arrival.AddYears(-3);
+            row.DocumentExpiresOn = demo.DocumentExpired ? arrival.AddDays(-20) : arrival.AddYears(7);
+        }
+
         return row;
     }
 
@@ -2543,10 +2584,18 @@ public class DemoEnvironmentService(
         CancellationToken cancellationToken)
     {
         var changed = FillBase(property);
-        changed |= await FillComuneAsync(property, cancellationToken);
-        changed |= FillCin(property, usedCins);
-        changed |= await FillDocumentsAsync(property, origin, templateKey, cancellationToken);
-        changed |= await FillSafetyAsync(property, origin, templateKey, cancellationToken);
+
+        // A property in Switzerland is not given what is Italian: no ISTAT comune and region (the name of its city would be looked up in the Italian list, where a Swiss town has no
+        // place), no CIN, no regional documents and no safety checklist. The status of a Swiss property asks none of them (CinFormat.IsRequiredForCountry, the empty list of the required
+        // documents of country CH, the safety step of an Italian property only), so writing them would invent what a real Swiss property never has.
+        if (!SwissPlace.IsSwissCountry(property.Country))
+        {
+            changed |= await FillComuneAsync(property, cancellationToken);
+            changed |= FillCin(property, usedCins);
+            changed |= await FillDocumentsAsync(property, origin, templateKey, cancellationToken);
+            changed |= await FillSafetyAsync(property, origin, templateKey, cancellationToken);
+        }
+
         if (!changed)
             return false;
 

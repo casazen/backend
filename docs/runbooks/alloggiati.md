@@ -263,8 +263,10 @@ expired by time was never marked expired, so the daily job never sent a new one.
 - **Document number**: the summary returns it masked (`documentNumberMasked`, `*****` + last 3, as on the guest portal).
   "Mostra" (and "Copia tutto", and opening "Modifica ospiti") call
   `GET /api/alloggiati/{bookingId}/stay-guests/document-numbers[?position=n]` (`booking.read` on the booking and
-  `guest.read`), logged with user, booking and positions, never the numbers. A host without `guest.read` re-enters the
-  number in the form, like the guest.
+  `guest.read`), logged with user, booking and positions, never the numbers. It answers the single guests and the heads
+  and, in a stay of a property in Ticino, also the adult family or group members the police file notifies on their own
+  row, never a minor or a guest with no number stored (see `guest-notification-switzerland.md`, § 7). A host without
+  `guest.read` re-enters the number in the form, like the guest.
 
 ### Guest document scans (FD-07 open point)
 
