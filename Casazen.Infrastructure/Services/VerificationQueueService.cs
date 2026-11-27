@@ -4,12 +4,14 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Identity;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -37,7 +39,8 @@ public class VerificationQueueService(
     IInternalActivityService? activities = null,
     IDomainEventRecorder? domainEvents = null,
     AgencyDomainLinks? agencyLinks = null,
-    IGuestEmailBrandingProvider? emailBranding = null) : IVerificationQueueService
+    IGuestEmailBrandingProvider? emailBranding = null,
+    IdentityReviewEvidenceStore? reviewEvidence = null) : IVerificationQueueService
 {
     /// <summary>The model name of an operator row when no automatic outcome came before it (a refused consent, a request of the guest).</summary>
     internal const string OperatorModelName = "operator";
@@ -93,10 +96,15 @@ public class VerificationQueueService(
         var automatic = (await db.BiometricVerificationLogs
                 .AsNoTracking()
                 .Where(l => bookingIds.Contains(l.BookingId) && l.Method == VerificationMethod.Biometric)
-                .Select(l => new { l.BookingId, l.CreatedAt, l.ReasonsJson, l.Provisional })
+                .Select(l => new { l.BookingId, l.CreatedAt, l.ReasonsJson, l.Provisional, l.DecisionMode, l.ShadowOutcome, l.PolicyVersion, l.FormatId, l.Channel })
                 .ToListAsync(cancellationToken))
             .GroupBy(l => l.BookingId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.CreatedAt).First());
+
+        // E73/F01/US02/T02: the evidence kept for the reviewer, counted per booking (none while the evidence is off).
+        var evidence = reviewEvidence is null
+            ? new Dictionary<Guid, PendingEvidenceSummary>()
+            : await reviewEvidence.SummariesAsync(scope.OrgId, bookingIds, cancellationToken);
 
         return results.Select(r =>
         {
@@ -113,7 +121,13 @@ public class VerificationQueueService(
                 r.BiometricAttempts,
                 r.UpdatedAt,
                 VerificationReasons.Parse(last?.ReasonsJson),
-                last?.Provisional ?? false);
+                last?.Provisional ?? false,
+                last?.DecisionMode ?? IdentityDecisionMode.Legacy,
+                last?.ShadowOutcome,
+                last?.PolicyVersion,
+                last?.FormatId,
+                last?.Channel,
+                evidence.GetValueOrDefault(r.Id));
         }).ToList();
     }
 
@@ -396,6 +410,7 @@ public class VerificationQueueService(
 
         // The decision first: the gate of the code reads the latest row of the log from the database.
         await db.SaveChangesAsync(cancellationToken);
+        await DeleteEvidenceOfTheDecisionAsync(session.OrgId, bookingId);
         await CloseTodoAsync(session.OrgId, bookingId, operatorUserId, cancellationToken);
 
         logger.LogInformation(
@@ -443,6 +458,7 @@ public class VerificationQueueService(
         await AddOperatorLogAsync(session, BiometricOutcome.Reject, operatorUserId, reason, now, cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
+        await DeleteEvidenceOfTheDecisionAsync(session.OrgId, bookingId);
         await CloseTodoAsync(session.OrgId, bookingId, operatorUserId, cancellationToken);
 
         // The reason is the operator's free text: it is in the log row, never in the application log.
@@ -574,6 +590,28 @@ public class VerificationQueueService(
             OperatorNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
             CreatedAt = now,
         });
+    }
+
+    /// <summary>
+    /// E73/F01/US02/T02 (NF-195, D9): the evidence kept for the reviewer of the booking goes with the decision of an operator (the objects, then the rows marked <c>decided</c>), right
+    /// after the decision is committed: the objects of the storage are no part of a transaction, and a row is marked deleted only once its object is gone. The decision is the
+    /// operator's and stands whatever happens here: a failure is logged by its type, and the hourly purge deletes what is left (its sweep of the decided bookings). Whatever the
+    /// flags say: a deletion is never behind a flag. With no token of the request: the decision is taken, a client that drops must not leave the evidence behind.
+    /// </summary>
+    private async Task DeleteEvidenceOfTheDecisionAsync(Guid orgId, Guid bookingId)
+    {
+        if (reviewEvidence is null)
+            return;
+
+        try
+        {
+            await reviewEvidence.DeleteForBookingAsync(orgId, bookingId, IdentityEvidenceDeletionReasons.Decided, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(
+                "Verification of booking {BookingId} decided: its review evidence was not deleted ({ErrorType}); the hourly purge deletes it", bookingId, ex.GetType().Name);
+        }
     }
 
     /// <summary>Closes the open "To do" of the verification of the booking (<see cref="ActivityType.IdentityVerification"/>): the decision resolves it.</summary>
