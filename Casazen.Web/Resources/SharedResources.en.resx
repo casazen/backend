@@ -9116,4 +9116,12 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="IdentitySegmentFingerprintUnavailable" xml:space="preserve"><value>The policy or the models are not available right now: the segment cannot be qualified.</value></data>
   <!-- E72/F01/US01/T01 (NF-192): the presence challenge of the self-hosted identity step. The page translates the codes; these are the details of the problem (the closed verification answers with CheckInIdentityAlreadyClosed above). -->
   <data name="CheckInPresenceChallengeUnavailable" xml:space="preserve"><value>The presence check cannot start now. You can continue with a person.</value></data>
+  <!-- E73/F01/US01/T02 (NF-192, NF-194): the presence of the self-hosted identity step and its closure. The page translates the codes; these are the details of the problem. -->
+  <data name="CheckInPresenceSequenceRequired" xml:space="preserve"><value>The identity check now needs the presence check with the camera. Reload the page to continue.</value></data>
+  <data name="CheckInPresenceChallengeRequired" xml:space="preserve"><value>The presence check is no longer valid. Start a new one.</value></data>
+  <data name="CheckInPresenceChallengeExpired" xml:space="preserve"><value>The time for the presence check is over. Start a new one and repeat the moves.</value></data>
+  <data name="CheckInIdempotencyKeyRequired" xml:space="preserve"><value>The request has no valid submission key. Try again from the check-in page.</value></data>
+  <data name="CheckInPresenceSequenceInvalid" xml:space="preserve"><value>The recording is not valid. Repeat the presence check.</value></data>
+  <data name="CheckInPresenceSequenceTooLarge" xml:space="preserve"><value>The recording is too large. Repeat the presence check.</value></data>
+  <data name="CheckInPresenceProcessingFailed" xml:space="preserve"><value>The presence check could not be processed. Try again shortly: you can always ask a person for help.</value></data>
 </root>
