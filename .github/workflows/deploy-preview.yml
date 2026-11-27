@@ -41,7 +41,6 @@ jobs:
               '1. Wait for Railway + Vercel deployment checks (green) on this PR',
               '2. Open Vercel preview URL + backend URL (Railway PR URL or shared test)',
               '3. Run acceptance criteria from the linked Issue',
-              '4. Update `Sessions/bundle-<epic>.md` if part of a release bundle',
             ].join('\n');
 
             const { data: comments } = await github.rest.issues.listComments({
