@@ -522,5 +522,4 @@ default_seconds_per_test_integration	0.2550
 1.0	Casazen.Tests.Integration.LeaseDraftSentIntegrationTests
 1.0	Casazen.Tests.Unit.Infrastructure.CalendarTodayArchitectureTests
 1.0	Casazen.Tests.Integration.SupplierPaymentsFlagOffTests
-1.0	Casazen.Tests.Unit.Configuration.DeployChecklistConsistencyTests
 1.0	Casazen.Tests.Unit.Services.ShowcaseReplyDeadlineTests

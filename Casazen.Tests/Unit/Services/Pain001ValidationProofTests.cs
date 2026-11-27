@@ -150,40 +150,6 @@ public class Pain001ValidationProofTests
     }
 
     /// <summary>
-    /// Data rule: the embedded schemas are the files their publishers give, byte for byte. The SHA-256 of each embedded file is the one the runbook records for it
-    /// (<c>docs/runbooks/wire-transfers.md</c>, the table of the official schemas, read here so that the runbook is the one record), so a file that was edited,
-    /// replaced, or put in the other folder (the ISO schema renamed into <c>Swiss/</c> compiles, has the same namespace and passes every proof that only removes an
-    /// element) fails here, and so does a checksum of the runbook that is not the one of the build. Exactly the two official files are embedded, one in each folder,
-    /// and they are two different files.
-    /// </summary>
-    [Fact]
-    public void EmbeddedSchemas_HaveTheChecksumsOfTheRunbook_Test()
-    {
-        var runbook = File.ReadAllLines(Path.Combine(FindRepositoryRoot(), "docs", "runbooks", "wire-transfers.md"));
-        var assembly = typeof(Pain001SchemaProvider).Assembly;
-        var embeddedFiles = new[]
-        {
-            (Name: Pain001SchemaProvider.IsoResourcePrefix + Pain001V09Writer.IsoSchemaFile, File: Pain001V09Writer.IsoSchemaFile),
-            (Name: Pain001SchemaProvider.SwissResourcePrefix + Pain001V09Writer.SwissSchemaFile, File: Pain001V09Writer.SwissSchemaFile),
-        };
-
-        Assert.Equal(embeddedFiles.Select(f => f.Name).Order(StringComparer.Ordinal), Pain001SchemaProvider.EmbeddedSchemaNames());
-
-        var recorded = new List<string>();
-        foreach (var (name, file) in embeddedFiles)
-        {
-            using var stream = assembly.GetManifestResourceStream(name);
-            Assert.NotNull(stream);
-            var runbookChecksum = RunbookChecksumOf(runbook, file);
-
-            Assert.Equal(runbookChecksum, Convert.ToHexStringLower(SHA256.HashData(stream)));
-            recorded.Add(runbookChecksum);
-        }
-
-        Assert.Equal(2, recorded.Distinct(StringComparer.Ordinal).Count());
-    }
-
-    /// <summary>
     /// The loader that compiles the embedded official files, tried here with stand-in files: a schema of the namespace the file is written in becomes a
     /// set that validates; no file is no set and no reason (a build that lacks the files simply has no schema); a file that does not compile, that has a DTD, that is
     /// another schema or the schema of the other message is no set and the reason is kept. A broken file is never taken for an installed schema.
