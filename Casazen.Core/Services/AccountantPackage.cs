@@ -66,9 +66,6 @@ public sealed record AccountantPackagePeriod
     /// <summary>True when <paramref name="day"/> is one of the days of the period.</summary>
     public bool Contains(DateOnly day) => day >= From && day <= To;
 
-    /// <summary>True when the statement month is one of the months of the period.</summary>
-    public bool ContainsMonth(int year, int month) => (year * 100) + month >= (From.Year * 100) + From.Month && (year * 100) + month <= (To.Year * 100) + To.Month;
-
     /// <summary>The first year and the last a package may name: the years of the host reports.</summary>
     public const int MinYear = HostDashboardPeriod.MinCustomYear;
 

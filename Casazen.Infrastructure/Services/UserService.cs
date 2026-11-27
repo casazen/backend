@@ -31,11 +31,6 @@ public class UserService(
         return await repository.GetByIdAsync(id);
     }
 
-    public async Task<User?> GetUserByEmailAsync(string email)
-    {
-        return await repository.GetByEmailAsync(email);
-    }
-
     public async Task<User> UpdateUserAsync(User user)
     {
         var existing = await repository.GetByIdAsync(user.Id);

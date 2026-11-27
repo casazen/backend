@@ -263,10 +263,4 @@ public static class ServiceCollectionExtensions
             ).WithPolicyKey($"{platform}-resilience");
         });
     }
-
-    public static IApplicationBuilder UseCasazenMiddleware(this IApplicationBuilder app)
-    {
-        app.UseErrorHandling();
-        return app;
-    }
 }

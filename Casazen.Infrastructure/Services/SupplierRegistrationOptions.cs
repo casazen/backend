@@ -31,12 +31,6 @@ public sealed class SupplierRegistrationOptions
     public bool AnyComune { get; set; } = true;
 
     public bool SelfServeEnabled => PilotComuni.Count > 0;
-
-    /// <summary>The pilot comune with this code, or null.</summary>
-    public SupplierPilotComune? FindPilotComune(string? code) =>
-        string.IsNullOrWhiteSpace(code)
-            ? null
-            : PilotComuni.FirstOrDefault(c => string.Equals(c.Code.Trim(), code.Trim(), StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>A pilot comune: its code (the format used by admin invites) and the name shown to suppliers.</summary>
