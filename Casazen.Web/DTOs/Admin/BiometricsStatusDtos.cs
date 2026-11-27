@@ -30,6 +30,25 @@ public sealed class BiometricsStatusDto
     };
 }
 
+/// <summary>
+/// The qualification of a segment of the self-hosted identity verification (E70/F02/US01/T02, NF-194, <c>PUT api/admin/biometrics/{orgId}/segments/{segmentId}/qualification</c>),
+/// recorded by a platform administrator after the offline qualification: the policy version, the canonical policy hash and the weights hash it was made with (they must be
+/// the ones in force, and the policy calibrated, or 422 <c>identity_segment_invalid</c>), the SHA-256 of the report of the qualification and the level of assurance
+/// (<c>consistency</c> or <c>cryptographic</c>) the segment requires from then on. Hashes and codes only.
+/// </summary>
+public sealed class QualifyIdentitySegmentDto
+{
+    public string? PolicyVersion { get; set; }
+
+    public string? PolicyHash { get; set; }
+
+    public string? WeightsHash { get; set; }
+
+    public string? ReportSha256 { get; set; }
+
+    public string? RequiredAssurance { get; set; }
+}
+
 /// <summary>One model of <see cref="BiometricsStatusDto"/>.</summary>
 public sealed class BiometricModelStatusDto
 {

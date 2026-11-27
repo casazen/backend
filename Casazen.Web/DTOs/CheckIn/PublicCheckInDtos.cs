@@ -278,6 +278,21 @@ public sealed class BiometricConsentResponse
     public PublicIdentityVerificationStateDto State { get; set; } = new();
 }
 
+/// <summary>
+/// The opening of the self-hosted identity step (<c>POST api/public/checkin/{token}/identity/open</c>, E70/F02/US01/T01): <c>noticeVersion</c> is the version of the
+/// biometric consent text the page shows, as <c>GET .../legal-texts</c> served it (422 <c>notice_version_unknown</c> for any other).
+/// </summary>
+public sealed class IdentityOpenRequest
+{
+    public string? NoticeVersion { get; set; }
+}
+
+/// <summary>The state of the verification after the opening (<c>selfHosted</c>, <c>opened</c>, <c>noticeVersion</c>, <c>choice</c>, <c>closed</c>, <c>outcome</c> among the rest).</summary>
+public sealed class IdentityOpenResponse
+{
+    public PublicIdentityVerificationStateDto State { get; set; } = new();
+}
+
 /// <summary>The guest asked for a person (<c>POST api/public/checkin/{token}/request-operator</c>): the operators are alerted.</summary>
 public sealed class OperatorRequestResponse
 {

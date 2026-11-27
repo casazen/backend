@@ -28,6 +28,27 @@ public interface IIdentityVerificationFlowService
     Task<BiometricConsentResult> RecordConsentAsync(GuestCheckInSession session, bool consentGiven, string? consentVersion, CancellationToken ct);
 
     /// <summary>
+    /// <see cref="RecordConsentAsync(GuestCheckInSession, bool, string?, CancellationToken)"/> on the self-hosted flow (E70/F02/US01/T01, NF-188,
+    /// <c>Features:CheckInIdentitySelfHosted</c> with <c>Features:CheckInIdentityVerification</c>): the answer is also the <b>choice</b> of the guest,
+    /// <c>automatic</c> for a consent given to the served version, <c>assisted</c> for a refusal (<c>IdentityChoice</c>, <c>IdentityChoiceAt</c>), and a session whose
+    /// identity step was not opened (<see cref="OpenIdentityAsync"/>) is opened by it, with the version of the consent the registry serves as the notice and
+    /// <paramref name="channel"/> (a code of <c>IdentityChannels</c>, the family of the browser: never the User-Agent) as its channel. A consent for another version is
+    /// still <see cref="BiometricConsentStatus.VersionUnknown"/> and records nothing. With the self-hosted flow off it is the four-argument method, unchanged.
+    /// </summary>
+    Task<BiometricConsentResult> RecordConsentAsync(GuestCheckInSession session, bool consentGiven, string? consentVersion, string? channel, CancellationToken ct);
+
+    /// <summary>
+    /// Opens the identity step of the self-hosted flow (E70/F02/US01/T01, NF-188, AC-NF188-1..2), once: the first call records when (<c>IdentityOpenedAt</c>), the
+    /// notice shown, which must be the version of the biometric consent the registry of the legal texts serves now (<c>IdentityNoticeVersion</c> and the SHA-256 of
+    /// its reference text, <c>IdentityNoticeTextHash</c>, as the consent keeps it), the <paramref name="channel"/> (a code of <c>IdentityChannels</c>; anything else is
+    /// <c>web:other</c>) and binds the verification to ONE guest, the one the flow verifies (<c>IdentityGuestId</c>, see the remarks of the service). Later calls change
+    /// nothing and answer the state. A closed verification answers <see cref="IdentityOpenStatus.Closed"/>, another version of the notice
+    /// <see cref="IdentityOpenStatus.NoticeVersionUnknown"/>; a verification that already passed or is already with a person is not opened (the state says so).
+    /// Serialized on the session row like the presence challenge. With the self-hosted flow off nothing is recorded.
+    /// </summary>
+    Task<IdentityOpenResult> OpenIdentityAsync(GuestCheckInSession session, string? noticeVersion, string? channel, CancellationToken ct);
+
+    /// <summary>
     /// Reads the document (the MRZ, then the printed fields) with the capture guidance of the agent, checks it against the check-in data of the
     /// guest who must verify (flags only, kept on the session) and, outside Ticino and after the consent, keeps its photo encrypted so the selfie
     /// can be compared without sending it again. One picture with the face and the MRZ (a passport): <see cref="DocumentSide.Single"/>.
@@ -70,7 +91,11 @@ public interface IIdentityVerificationFlowService
     Task<SelfieStepResult> SubmitChallengedSelfieAsync(GuestCheckInSession session, Stream selfie, Stream? turnedSelfie,
         string? challengeToken, Stream? documentPhoto, Stream? documentPhotoBack, CancellationToken ct);
 
-    /// <summary>The guest asks for a person, at any step, also after a retry or a failed attempt (AC-NF51-11): the operators are alerted at once.</summary>
+    /// <summary>
+    /// The guest asks for a person, at any step, also after a retry or a failed attempt (AC-NF51-11): the operators are alerted at once. On the self-hosted flow an
+    /// opened verification that is not closed records the switch to the assisted path (<c>IdentityChoice</c> <c>assisted</c>) and is closed by the hand-off; the
+    /// request stays available after the closure.
+    /// </summary>
     Task<IdentityVerificationState> RequestOperatorAsync(GuestCheckInSession session, CancellationToken ct);
 }
 
@@ -227,6 +252,25 @@ public enum BiometricConsentStatus
 
 /// <summary>The answer to the consent and the state after it.</summary>
 public sealed record BiometricConsentResult(BiometricConsentStatus Status, IdentityVerificationState State);
+
+/// <summary>What the opening of the identity step did (<see cref="IIdentityVerificationFlowService.OpenIdentityAsync"/>).</summary>
+public enum IdentityOpenStatus
+{
+    /// <summary>The state answers: the step was opened now, or before (nothing changed), or not at all because the verification is over (see <see cref="IdentityVerificationState.Opened"/>).</summary>
+    Answered = 1,
+
+    /// <summary>The notice named is not the version of the biometric consent the registry serves now: nothing recorded (422 <c>notice_version_unknown</c>).</summary>
+    NoticeVersionUnknown = 2,
+
+    /// <summary>The verification of the session is closed: no new step (409 <c>identity_already_closed</c>, with the state).</summary>
+    Closed = 3,
+
+    /// <summary>The session expired or got a new link while the request waited for it: nothing recorded (404).</summary>
+    SessionUnavailable = 4,
+}
+
+/// <summary>The opening of the identity step: what it did and the state after it (null only for <see cref="IdentityOpenStatus.SessionUnavailable"/>).</summary>
+public sealed record IdentityOpenResult(IdentityOpenStatus Status, IdentityVerificationState? State);
 
 /// <summary>
 /// The reading of the document (the fields for the guest to confirm), whether the capture is good enough, the guidance codes, whether its photo

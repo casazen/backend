@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Casazen.Core.Entities;
-using Casazen.Core.Features;
 using Casazen.Core.Identity;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
@@ -33,7 +32,7 @@ public sealed partial class IdentityVerificationFlowService : IIdentityPresenceF
         // What does not depend on the session is read before its row is locked: the flags, the policy and the models. When one of them is missing nothing is stored
         // and no lock is taken; the page offers the assisted path.
         var snapshot = identityPolicy?.Snapshot;
-        if (!SelfHostedFlowIsOn() || presenceIssuer is null || snapshot is null || !snapshot.IsReady || biometricModels is not { IsAvailable: true })
+        if (!SelfHostedOn || presenceIssuer is null || snapshot is null || !snapshot.IsReady || biometricModels is not { IsAvailable: true })
             return Task.FromResult<PresenceChallengeIssue?>(null);
 
         var policy = snapshot.Policy;
@@ -102,12 +101,6 @@ public sealed partial class IdentityVerificationFlowService : IIdentityPresenceF
         status = PresenceTokenStatus.Valid;
         return true;
     }
-
-    /// <summary>The two flags of the self-hosted flow, both on: the alone-flag of the plan works only together with the one of the identity step.</summary>
-    private bool SelfHostedFlowIsOn() =>
-        featureFlags is not null
-        && featureFlags.IsEnabled(FeatureFlags.CheckInIdentityVerification)
-        && featureFlags.IsEnabled(FeatureFlags.CheckInIdentitySelfHosted);
 
     /// <summary>The attempt a presence challenge is for: the attempts made, the guided retries used, and this one.</summary>
     private static int PresenceAttempt(GuestCheckInSession session) => session.BiometricAttempts + session.IdentityGuidedRetries + 1;
