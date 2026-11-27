@@ -93,6 +93,12 @@ public static class IdentityVerificationSteps
     /// <summary>The selfie is to be taken.</summary>
     public const string Selfie = "selfie";
 
+    /// <summary>
+    /// The presence is to be proven (the self-hosted flow, <c>Features:CheckInIdentitySelfHosted</c>, E70-E74): a challenge and a sequence of frames take the
+    /// place of the selfie.
+    /// </summary>
+    public const string Presence = "presence";
+
     /// <summary>The verification passed.</summary>
     public const string Done = "done";
 
@@ -162,6 +168,14 @@ public static class DocumentSides
 /// For a document of two sides (E22/F01/US01/T02) <paramref name="DocumentSides"/> are the pictures of the attempt (<c>front</c>, <c>back</c>, or
 /// <c>single</c>) and <paramref name="DocumentSideNeeded"/> the side still to photograph (<c>front</c> or <c>back</c>), so a reloaded page asks for it; the
 /// document counts as checked, and the step moves to the selfie, only when the face and the MRZ were found across the pictures.
+/// <para>
+/// The self-hosted flow (E70-E74, <c>Features:CheckInIdentitySelfHosted</c>) adds the members after <paramref name="DocumentSideNeeded"/>, false or null until
+/// its tasks fill them, so the legacy path reads exactly as before: <paramref name="SelfHosted"/> (the session follows the self-hosted flow),
+/// <paramref name="Opened"/> (the step was opened and bound to one guest), <paramref name="NoticeVersion"/> (the version of the notice recorded at the opening),
+/// <paramref name="Choice"/> (a code of <c>IdentityChoices</c>), <paramref name="FormatId"/> (the format of the registry the document was read as),
+/// <paramref name="GuidedRetryAvailable"/> (the one guided retry is still available), <paramref name="Closed"/> (the verification is closed: no new attempt) and
+/// <paramref name="Outcome"/> (what the guest sees of the closed verification: <c>ok</c>, <c>retry</c> or <c>operator</c>).
+/// </para>
 /// </summary>
 public sealed record IdentityVerificationState(
     string Step,
@@ -175,7 +189,15 @@ public sealed record IdentityVerificationState(
     bool DocumentNotArchived,
     int VerifyingGuestPosition,
     IReadOnlyList<string>? DocumentSides = null,
-    string? DocumentSideNeeded = null)
+    string? DocumentSideNeeded = null,
+    bool SelfHosted = false,
+    bool Opened = false,
+    string? NoticeVersion = null,
+    string? Choice = null,
+    string? FormatId = null,
+    bool GuidedRetryAvailable = false,
+    bool Closed = false,
+    string? Outcome = null)
 {
     /// <summary>The way to a person is always open.</summary>
     public bool OperatorPathOpen => true;

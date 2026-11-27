@@ -482,6 +482,10 @@ public static class ServiceCollectionExtensions
         // E03/F04/US02/T04: the verification of one check-in session (consent, document, selfie, operator, lock code release), behind
         // Features:CheckInIdentityVerification like the public endpoints that call it.
         services.AddScoped<IIdentityVerificationFlowService, IdentityVerificationFlowService>();
+        // E70/F01/US01/T01 (NF-188..NF-199): the self-hosted identity verification, its options (section IdentityVerification) and the hooks of the tasks of
+        // E70-E74, which register their services only in their own part of IdentityVerificationServiceCollectionExtensions, never here. Read at run time
+        // behind Features:CheckInIdentitySelfHosted.
+        services.AddSelfHostedIdentityVerification();
         // NF-12: Operator verification queue for manual biometric decisions (ADR-013).
         services.AddScoped<IVerificationQueueService, VerificationQueueService>();
         // E22/F01/US01/T03: the biometric settings of an organization (the thresholds and the attempts, provisional until a platform administrator marks a

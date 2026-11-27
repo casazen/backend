@@ -50,6 +50,21 @@ public static class RateLimitPolicies
     public const string GuestCheckInSubmit = "GuestCheckInSubmit";
 
     /// <summary>
+    /// The opening of the self-hosted identity step and its presence challenge (<c>POST api/public/checkin/{token}/identity/open</c> and
+    /// <c>…/presence-challenge</c>, E70-E74, NF-188, NF-192): 30 a minute for each client IP and token, partitioned like <see cref="GuestCheckIn"/> (the partition
+    /// holds a hash of the <c>{token}</c>, never the token). A budget of its own, so a reload, the guided retry and a network resume of the identity step never
+    /// spend the 10 a minute of the reads of the form.
+    /// </summary>
+    public const string GuestIdentity = "GuestIdentity";
+
+    /// <summary>
+    /// The upload of a presence sequence (<c>POST api/public/checkin/{token}/presence</c>, ADR-013-R17): each call carries up to
+    /// <c>IdentityVerification:Presence:MaxSequenceBytes</c> of frames and runs the models in the request, so it is the tightest of the identity limits: 6 a minute
+    /// for each client IP and token, partitioned like <see cref="GuestCheckIn"/>.
+    /// </summary>
+    public const string GuestIdentityUpload = "GuestIdentityUpload";
+
+    /// <summary>
     /// The guest at the door (<c>POST api/public/checkin/door/{doorToken}</c>, E22/F01/US02/T01): a booking code (or a surname) and a date open the check-in link of a stay, so it is the tightest
     /// of the check-in limits: 5 a minute for each client IP and door token (the partition holds a hash of the <c>{doorToken}</c> of the route, never the token itself).
     /// </summary>

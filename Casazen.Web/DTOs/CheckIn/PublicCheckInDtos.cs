@@ -124,8 +124,8 @@ public class PublicCheckInContextResponse
 
 /// <summary>
 /// Where the identity verification of the session stands (E03/F04/US02/T04): <c>step</c> is <c>consent</c>, <c>document</c>, <c>selfie</c>,
-/// <c>done</c> or <c>operator</c>; <c>result</c> the last one (<c>ok</c>, <c>retry</c>, <c>operator</c>) or null; only the guest at
-/// <c>verifyingGuestPosition</c> (the one who leaves the document) is asked for a selfie; <c>operatorPathOpen</c> is always true.
+/// <c>presence</c> (the self-hosted flow, E70-E74), <c>done</c> or <c>operator</c>; <c>result</c> the last one (<c>ok</c>, <c>retry</c>, <c>operator</c>) or null;
+/// only the guest at <c>verifyingGuestPosition</c> (the one who leaves the document) is asked for a selfie; <c>operatorPathOpen</c> is always true.
 /// </summary>
 public sealed class PublicIdentityVerificationStateDto
 {
@@ -151,6 +151,33 @@ public sealed class PublicIdentityVerificationStateDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? DocumentSideNeeded { get; set; }
 
+    /// <summary>
+    /// The session follows the self-hosted flow (E70-E74, <c>Features:CheckInIdentitySelfHosted</c>, frontend key <c>checkInIdentitySelfHosted</c>). False on the
+    /// legacy path, where every member below keeps its default.
+    /// </summary>
+    public bool SelfHosted { get; set; }
+
+    /// <summary>The identity step was opened and bound to one guest of the session (NF-188).</summary>
+    public bool Opened { get; set; }
+
+    /// <summary>The version of the notice recorded at the opening; null before it.</summary>
+    public string? NoticeVersion { get; set; }
+
+    /// <summary><c>automatic</c> or <c>assisted</c> (<c>IdentityChoices</c>); null before the guest chose.</summary>
+    public string? Choice { get; set; }
+
+    /// <summary>The format of the registry the document was read as (the Italian electronic identity card first); null before it was recognised.</summary>
+    public string? FormatId { get; set; }
+
+    /// <summary>The one guided retry of a correctable defect is still available.</summary>
+    public bool GuidedRetryAvailable { get; set; }
+
+    /// <summary>The verification is closed: no document or presence step is accepted any more, the request for a person stays open.</summary>
+    public bool Closed { get; set; }
+
+    /// <summary>What the guest sees of the closed verification: <c>ok</c>, <c>retry</c> or <c>operator</c>; null before it is decided.</summary>
+    public string? Outcome { get; set; }
+
     public static PublicIdentityVerificationStateDto From(IdentityVerificationState state) => new()
     {
         Step = state.Step,
@@ -166,6 +193,14 @@ public sealed class PublicIdentityVerificationStateDto
         VerifyingGuestPosition = state.VerifyingGuestPosition,
         DocumentSides = state.DocumentSides ?? [],
         DocumentSideNeeded = state.DocumentSideNeeded,
+        SelfHosted = state.SelfHosted,
+        Opened = state.Opened,
+        NoticeVersion = state.NoticeVersion,
+        Choice = state.Choice,
+        FormatId = state.FormatId,
+        GuidedRetryAvailable = state.GuidedRetryAvailable,
+        Closed = state.Closed,
+        Outcome = state.Outcome,
     };
 }
 

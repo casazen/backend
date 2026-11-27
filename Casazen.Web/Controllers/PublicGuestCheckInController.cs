@@ -22,7 +22,7 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/public/checkin")]
 [AllowAnonymous]
-public class PublicGuestCheckInController(
+public partial class PublicGuestCheckInController(
     IGuestCheckInService checkInService,
     IAlloggiatiCodeTableService codeTableService,
     ICheckInDocumentReader documentReader,

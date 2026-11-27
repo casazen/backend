@@ -122,15 +122,46 @@ public static class FeatureFlags
     public const string ConcordatoFacile = "ConcordatoFacile";
 
     /// <summary>
-    /// DEB-01 (2026-10-31): the reading of the identity document (MRZ, OCR, NF-10) and the selfie check (liveness, face match, NF-11,
-    /// ADR-013) of the guest's check-in page, <c>POST api/public/checkin/{token}/document</c> and <c>POST …/selfie</c>. <b>Off by
-    /// default</b>: the services behind them are placeholders (MRZ and OCR never read anything, the liveness is always true, the face
-    /// similarity is a fixed 0.75), so a public endpoint would hand out made-up results. Off, both answer 404 before anything of the
-    /// request is read, so no image reaches the application. The guest's data is entered by hand (<c>POST api/public/checkin/{token}</c>,
-    /// not behind this flag). Turn it on only once real models replace the placeholders and the assessment of the biometric data
-    /// (art. 9 GDPR) is done.
+    /// DEB-01 (2026-10-31), E03/F04, E22/F01: the identity step of the guest's check-in page: the legal texts and the biometric consent, the reading of the
+    /// identity document (MRZ, OCR, NF-10, <c>POST api/public/checkin/{token}/document</c>), the selfie check (liveness, face match, NF-11, ADR-013,
+    /// <c>…/selfie-challenge</c> and <c>…/selfie</c>) and the request for a person. <b>Off by default</b>. The models run in the web process (ONNX Runtime on the
+    /// CPU: YuNet, MiniFASNetV2, SFace, and the Tesseract data of the MRZ and of the printed fields); they are bundled with the application and pinned by SHA-256
+    /// (<c>Biometrics:*:Sha256</c>, <c>MrzOcr:*:Sha256</c>): a file that is missing or has another hash is not used and every verification goes to a person
+    /// (<c>docs/runbooks/biometric-models.md</c>). Off, those endpoints answer 404 before anything of the request is read, so no image reaches the application;
+    /// the guest's data is entered by hand (<c>POST api/public/checkin/{token}</c>, not behind this flag). Turn it on only once the thresholds are calibrated on
+    /// real data, the legal texts are approved and the assessment of the biometric data (art. 9 GDPR) is done. The self-hosted flow of E70-E74
+    /// (<see cref="CheckInIdentitySelfHosted"/>) works only together with it.
     /// </summary>
     public const string CheckInIdentityVerification = "CheckInIdentityVerification";
+
+    /// <summary>
+    /// E70-E74 (NF-188..NF-199, product decisions D1-D14 of 2026-11-27): the self-hosted identity verification of the check-in, <b>off by default</b>. On, and
+    /// only together with <see cref="CheckInIdentityVerification"/> (alone it does nothing), the identity step follows the self-hosted flow: the verification is
+    /// bound to one guest of the session, the document is checked against the registry of the formats (the Italian electronic identity card first), the prefill is
+    /// read locally by zones, the presence is proven by a challenge and a sequence of frames, and a versioned policy file decides; its decision is recorded as the
+    /// shadow decision and a person decides, unless the segment (property × format × channel) is qualified and <see cref="CheckInIdentityAutoApproval"/> is on.
+    /// Off, the identity step is the one of E03/F04 and E22/F01, unchanged. E70/F01/US01/T01 owns the flag: the other tasks of E70-E74 only read it. It needs no
+    /// variable to start (the section <c>IdentityVerification</c> has committed defaults). The frontend reads the key <c>checkInIdentitySelfHosted</c>.
+    /// </summary>
+    public const string CheckInIdentitySelfHosted = "CheckInIdentitySelfHosted";
+
+    /// <summary>
+    /// E70-E74 (NF-194, D4, ADR-013-R19): the platform-wide permission to approve the identity of a guest automatically, only inside a segment (property × format ×
+    /// channel) qualified for the active policy version, policy hash and weights hash, <b>off by default</b>. Off, every attempt goes to a person (observation) even
+    /// in a qualified segment: the decision of the policy is only recorded as the shadow decision. It works only with <see cref="CheckInIdentitySelfHosted"/> and
+    /// <see cref="CheckInIdentityVerification"/> on; turning it off is the platform-wide rollback to observation. E70/F01/US01/T01 owns the flag. It needs no
+    /// variable to start. The frontend reads the key <c>checkInIdentityAutoApproval</c>.
+    /// </summary>
+    public const string CheckInIdentityAutoApproval = "CheckInIdentityAutoApproval";
+
+    /// <summary>
+    /// E70-E74 (NF-195, D9, ADR-013-R20): the minimal evidence kept for the person who reviews a verification (the crop of the portrait of the document and at
+    /// most <c>IdentityVerification:Evidence:MaxFrames</c> frames chosen by the server), encrypted, with a short time to live
+    /// (<c>IdentityVerification:Evidence:RetentionHours</c>), never an embedding and never for a property in Ticino, <b>off by default</b>. Off, nothing is kept,
+    /// as today. It works only with <see cref="CheckInIdentitySelfHosted"/> and <see cref="CheckInIdentityVerification"/> on. E70/F01/US01/T01 owns the flag. It
+    /// needs no variable to start. The frontend reads the key <c>checkInIdentityReviewEvidence</c>.
+    /// </summary>
+    public const string CheckInIdentityReviewEvidence = "CheckInIdentityReviewEvidence";
 
     /// <summary>
     /// E02/F01/US02/T01 (ADR-023): the Octorate connector, <b>off by default</b> until the sandbox is validated. Off, every endpoint of
@@ -468,5 +499,8 @@ public static class FeatureFlags
         GuestPortalSupplierServices,
         GuestPortalAutoReplies,
         MarketingGuestInterestAi,
+        CheckInIdentitySelfHosted,
+        CheckInIdentityAutoApproval,
+        CheckInIdentityReviewEvidence,
     ];
 }
