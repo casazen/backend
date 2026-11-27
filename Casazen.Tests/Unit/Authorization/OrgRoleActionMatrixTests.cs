@@ -182,6 +182,7 @@ public class OrgRoleActionMatrixTests
         { typeof(VerificationController), nameof(VerificationController.RecordVerification), Operators },
         { typeof(VerificationController), nameof(VerificationController.RejectVerification), Operators },
         { typeof(VerificationController), nameof(VerificationController.GetMetrics), Operators },
+        { typeof(VerificationController), nameof(VerificationController.ExportPilot), Operators },
 
         // The people of the org, and the properties each of them reaches.
         { typeof(OrgMembersController), nameof(OrgMembersController.List), Team },
