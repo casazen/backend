@@ -238,12 +238,22 @@ public partial class VerificationController(
     /// review and not ok, the operators' decisions, and the share of the concluded verifications an operator concluded. The period is
     /// <paramref name="from"/> to <paramref name="to"/> (days in Europe/Rome, both included; by default the last 30 days); a period that ends
     /// before it starts or is longer than 366 days is 400 <c>verification_metrics_period_invalid</c>.
+    /// <para>
+    /// With <see cref="FeatureFlags.CheckInIdentityVerification"/> and <see cref="FeatureFlags.CheckInIdentitySelfHosted"/> both on, the answer also has <c>identity</c> (E73/F01/US03/T01,
+    /// NF-196): the counters of the self-hosted identity verification of the same period and the same scope, with the complete denominator (every step opened, refusals, unsupported
+    /// formats, errors, unavailability and abandonments included), the Wilson 95% intervals, the shadow decision against the human one, the p50 and p95 of the latency and of the review
+    /// time, and the coverage by format and browser. With either flag off <c>identity</c> is not in the answer: it is exactly the answer it was before.
+    /// </para>
     /// </summary>
     [HttpGet("metrics")]
     [ProducesResponseType(typeof(VerificationMetricsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<VerificationMetricsDto>> GetMetrics([FromQuery] DateOnly? from, [FromQuery] DateOnly? to)
+    public async Task<ActionResult<VerificationMetricsDto>> GetMetrics(
+        [FromQuery] DateOnly? from,
+        [FromQuery] DateOnly? to,
+        [FromServices] IFeatureFlags featureFlags,
+        [FromServices] IIdentityVerificationMetricsService identityMetrics)
     {
         var userId = GetUserId();
         if (userId == null)
@@ -253,18 +263,14 @@ public partial class VerificationController(
         if (scope == null)
             return Unauthorized();
 
-        var last = to ?? timeProvider.TodayInRomeAsDateOnly();
-        var first = from ?? last.AddDays(-(DefaultMetricsPeriodDays - 1));
-        if (first > last || last.DayNumber - first.DayNumber + 1 > MaxMetricsPeriodDays)
+        if (!TryResolvePeriod(from, to, out var first, out var last))
             return this.ApiProblem(StatusCodes.Status400BadRequest, "verification_metrics_period_invalid", "VerificationMetricsPeriodInvalid");
 
-        var metrics = await verificationService.GetMetricsAsync(
-            scope,
-            RomeCalendar.StartOfDayUtc(first),
-            RomeCalendar.StartOfDayUtc(last.AddDays(1)),
-            HttpContext.RequestAborted);
+        var fromUtc = RomeCalendar.StartOfDayUtc(first);
+        var toUtc = RomeCalendar.StartOfDayUtc(last.AddDays(1));
+        var metrics = await verificationService.GetMetricsAsync(scope, fromUtc, toUtc, HttpContext.RequestAborted);
 
-        return Ok(new VerificationMetricsDto
+        var answer = new VerificationMetricsDto
         {
             From = first,
             To = last,
@@ -275,8 +281,33 @@ public partial class VerificationController(
             OperatorRejected = metrics.OperatorRejected,
             OperatorDecisions = metrics.OperatorDecisions,
             OperatorShare = metrics.OperatorShare,
-        });
+        };
+
+        // The same org and the same reach as the figures above, the same period; nothing is read while a flag is off.
+        if (SelfHostedIdentityOn(featureFlags))
+            answer.Identity = IdentityVerificationMetricsDto.From(await identityMetrics.GetAsync(scope, fromUtc, toUtc, HttpContext.RequestAborted));
+
+        return Ok(answer);
     }
+
+    /// <summary>
+    /// The period of <see cref="GetMetrics"/> and of the export of the pilot (<c>VerificationController.Export.cs</c>), one rule for both: <paramref name="from"/> to
+    /// <paramref name="to"/>, days in Europe/Rome, both included, by default the last <see cref="DefaultMetricsPeriodDays"/> days. False for a period that ends before it starts or is
+    /// longer than <see cref="MaxMetricsPeriodDays"/> days.
+    /// </summary>
+    private bool TryResolvePeriod(DateOnly? from, DateOnly? to, out DateOnly first, out DateOnly last)
+    {
+        last = to ?? timeProvider.TodayInRomeAsDateOnly();
+        first = from ?? last.AddDays(-(DefaultMetricsPeriodDays - 1));
+        return first <= last && last.DayNumber - first.DayNumber + 1 <= MaxMetricsPeriodDays;
+    }
+
+    /// <summary>
+    /// The self-hosted identity verification is on: <see cref="FeatureFlags.CheckInIdentityVerification"/> AND <see cref="FeatureFlags.CheckInIdentitySelfHosted"/>, the gate of the
+    /// counters of <see cref="GetMetrics"/> and of the export of the pilot.
+    /// </summary>
+    private static bool SelfHostedIdentityOn(IFeatureFlags featureFlags) =>
+        featureFlags.IsEnabled(FeatureFlags.CheckInIdentityVerification) && featureFlags.IsEnabled(FeatureFlags.CheckInIdentitySelfHosted);
 
     /// <summary>The caller reach on host data (TN-3), null when the caller has no org.</summary>
     private async Task<HostScope?> ResolveScopeAsync(string userId)
