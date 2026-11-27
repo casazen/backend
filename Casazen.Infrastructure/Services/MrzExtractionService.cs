@@ -406,7 +406,7 @@ public class MrzExtractionService(
         var composite = document + documentCheck + birth + birthCheck + expiry + expiryCheck + personal + personalCheck;
 
         return Build(
-            "Passport", DocumentFormatMrzTypes.Td3, line1[..2], Letters(line1[2..5], ref corrected), line1[5..], Letters(line2[10..13], ref corrected), line2[20],
+            "Passport", DocumentFormatMrzTypes.Td3, Letters(line1[..2], ref corrected), Letters(line1[2..5], ref corrected), line1[5..], Letters(line2[10..13], ref corrected), line2[20],
             document, documentCheck, birth, birthCheck, expiry, expiryCheck, personalValid, composite, compositeCheck, corrected,
             today ?? TimeProvider.System.TodayInRomeAsDateOnly());
     }
@@ -436,7 +436,7 @@ public class MrzExtractionService(
         ResolveLongDocumentNumber(ref document, ref documentCheck, optional);
 
         return Build(
-            "ResidencePermit", DocumentFormatMrzTypes.Td2, line1[..2], Letters(line1[2..5], ref corrected), line1[5..], Letters(line2[10..13], ref corrected), line2[20],
+            "ResidencePermit", DocumentFormatMrzTypes.Td2, Letters(line1[..2], ref corrected), Letters(line1[2..5], ref corrected), line1[5..], Letters(line2[10..13], ref corrected), line2[20],
             document, documentCheck, birth, birthCheck, expiry, expiryCheck, true, composite, compositeCheck, corrected,
             today ?? TimeProvider.System.TodayInRomeAsDateOnly());
     }
@@ -466,7 +466,7 @@ public class MrzExtractionService(
         ResolveLongDocumentNumber(ref document, ref documentCheck, optionalFirst);
 
         return Build(
-            "IdCard", DocumentFormatMrzTypes.Td1, line1[..2], Letters(line1[2..5], ref corrected), line3, Letters(line2[15..18], ref corrected), line2[7],
+            "IdCard", DocumentFormatMrzTypes.Td1, Letters(line1[..2], ref corrected), Letters(line1[2..5], ref corrected), line3, Letters(line2[15..18], ref corrected), line2[7],
             document, documentCheck, birth, birthCheck, expiry, expiryCheck, true, composite, compositeCheck, corrected,
             today ?? TimeProvider.System.TodayInRomeAsDateOnly());
     }

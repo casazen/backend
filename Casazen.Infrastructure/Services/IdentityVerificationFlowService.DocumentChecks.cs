@@ -126,6 +126,15 @@ public sealed partial class IdentityVerificationFlowService
             format = services.Formats.DetectFromMrz(machine.DocumentCode, machine.IssuingState, machine.MrzType);
             if (format is null)
             {
+                // Only an MRZ whose check digits all hold is evidence of a format the registry does not know. The document code and the issuing state of its first line are covered by
+                // no check digit, so one character the OCR read wrong (an I read as 1) would close the verification for good and be counted as an unsupported format: a doubtful MRZ
+                // is a picture to take again, refused with the guidance of an unreadable reading and counted as any refusal.
+                if (!machine.CheckDigitsValid)
+                {
+                    logger.LogInformation("Document step of session {SessionId}: the MRZ is doubtful and its format is not in the registry; the picture is asked again", session.Id);
+                    return Answer(await RefuseDocumentAsync(session, context, side, RejectionGuidance(assessment, mrzReading), services.Policy, ct));
+                }
+
                 logger.LogInformation("Document step of session {SessionId}: the format of the document is not in the registry; a person decides", session.Id);
                 return Answer(await HandOffDocumentAsync(
                     session, context, side, IdentityOutcomeCodes.FormatUnsupported, VerificationAlertReasons.Review, IdentityGuidanceCodes.DocumentFormatUnsupported, ct));

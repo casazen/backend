@@ -306,6 +306,40 @@ public sealed class DocumentStepSelfHostedTests
         }
     }
 
+    /// <summary>
+    /// A doubtful MRZ (a check digit that fails) of a code the registry does not know is no proof of an unsupported format: the document code and the issuing state are covered by no check
+    /// digit, so one character the OCR read wrong must not close the verification for good. The picture is asked again, refused with the guidance of an unreadable reading and counted.
+    /// </summary>
+    [Fact]
+    public async Task DocumentStep_ADoubtfulMrzOfAnUnknownCode_IsRefusedAndCounted_NotClosedForGood()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        var back = Picture(DocumentSide.Back);
+        world.Mrz.Add(back, CieMrz(read =>
+        {
+            read.DocumentCode = "ZZ";
+            read.CheckDigitsValid = false;
+            read.Confidence = 0.40;
+        }));
+
+        var result = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(back), DocumentSide.Back, Ct);
+
+        Assert.False(result.Acceptable);
+        Assert.False(result.DocumentStored);
+        Assert.Contains(CaptureGuidanceCodes.ShowWholeDocument, result.GuidanceCodes);
+        Assert.DoesNotContain(IdentityGuidanceCodes.DocumentFormatUnsupported, result.GuidanceCodes);
+        var saved = await world.ReadBackAsync(session.Id);
+        Assert.Null(saved.IdentityClosedAt);
+        Assert.Null(saved.IdentityOutcomeCode);
+        Assert.Null(saved.OperatorRequestedAt);
+        Assert.Null(saved.IdentityFormatId);
+        Assert.Equal(new Dictionary<string, int> { ["back"] = 1 }, ReadCheck(saved).Refusals);
+        Assert.Equal(0, saved.BiometricAttempts);
+        Assert.Empty(world.Alerts);
+        Assert.Empty(world.Storage.Objects);
+    }
+
     // ---- AC4: the coherence is kept as flags and never stops the step ------------------------------------------------------------------------------------------------------
 
     [Fact]
