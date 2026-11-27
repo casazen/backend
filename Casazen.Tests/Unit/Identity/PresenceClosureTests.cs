@@ -448,6 +448,36 @@ public sealed class PresenceClosureTests
         Assert.DoesNotContain(Convert.ToBase64String(PresenceClosureKit.FrontPicture), output, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("pipeline")]
+    [InlineData("deletion")]
+    public async Task PresenceClosure_AnExceptionIsLoggedByItsTypeOnly_NeverByItsTextNorTheNameOfTheGuest(string failing)
+    {
+        // Proof (privacy, ADR-013-R2): what a model or the storage throws may carry what it was reading, a name, a number of a document, a score. The log of the flow names the session and the TYPE
+        // of the exception, nothing of its text, of the guest or of a number of a person: when the pipeline throws (the attempt goes to a person) and when the deletion of the kept picture does.
+        await using var world = await PresenceClosureWorld.CreateAsync();
+        var session = await world.ReadyStayAsync();
+        var token = await world.IssueChallengeAsync(session);
+        const string secret = "the face of Anna Bianchi, document CA00000AA, similarity 0.8123, crashed";
+        if (failing == "pipeline")
+            world.Collector.Fail(new InvalidOperationException(secret));
+        else
+            world.Storage.FailNextDelete = new InvalidOperationException(secret);
+
+        var logger = new CapturingLogger<IdentityVerificationFlowService>();
+        var request = world.Flow(logger: logger).SubmitPresenceSequenceAsync(session, PresenceClosureKit.Submission(PresenceClosureKit.NewKey(), token), Ct);
+        if (failing == "pipeline")
+            Assert.Equal(IdentityVerificationGuestResults.Operator, (await request).Result);
+        else
+            await Assert.ThrowsAsync<InvalidOperationException>(() => request);
+
+        var output = logger.AllOutput;
+        Assert.Contains(nameof(InvalidOperationException), output, StringComparison.Ordinal);
+        foreach (var forbidden in new[] { "crashed", "Anna", "Bianchi", "CA00000AA", "0.8123", "0,8123", "the face of" })
+            Assert.DoesNotContain(forbidden, output, StringComparison.Ordinal);
+        Assert.All(logger.Entries, entry => Assert.Null(entry.Exception));
+    }
+
     [Fact]
     public void PresenceEvidence_TheChecksOfTheDecision_AreTheValidationTheChoiceAndTheLiveness()
     {

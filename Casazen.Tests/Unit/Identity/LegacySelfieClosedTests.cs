@@ -4,6 +4,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Features;
 using Casazen.Core.Identity;
 using Casazen.Core.Services;
+using Casazen.Tests.Unit.Logging;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.CheckIn;
@@ -16,6 +17,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -227,6 +229,27 @@ public sealed class LegacySelfieClosedTests
     }
 
     [Fact]
+    public async Task PresenceEndpoint_TheFlowFails_LogsTheTypeOfTheErrorOnly_NeverItsText()
+    {
+        // Proof (privacy, ADR-013-R2): the error of the flow may carry what it was reading (a name, a number of a document, a score). The 500 is logged with the session and the TYPE of the
+        // exception; the text of the exception, the name of the guest and the numbers never reach the log.
+        SetupOpenSession();
+        var presence = new Mock<IIdentityPresenceFlow>();
+        presence.Setup(flow => flow.SubmitPresenceSequenceAsync(It.IsAny<GuestCheckInSession>(), It.IsAny<PresenceSubmission>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("storage is down: the guest is Mario Rossi, document CA00000AA, similarity 0.8123"));
+        var logger = new CapturingLogger<PublicGuestCheckInController>();
+
+        var failed = await SelfHostedController(logger).SubmitPresence(Token, presence.Object, [Image("frames", "image/jpeg")], "[0]", "proof", idempotencyKey: Guid.NewGuid().ToString());
+
+        Assert.Equal("presence_processing_failed", Problem(failed.Result, StatusCodes.Status500InternalServerError).Extensions["code"]);
+        var output = logger.AllOutput;
+        Assert.Contains(nameof(InvalidOperationException), output, StringComparison.Ordinal);
+        foreach (var forbidden in new[] { "storage is down", "Mario", "Rossi", "CA00000AA", "0.8123", "0,8123" })
+            Assert.DoesNotContain(forbidden, output, StringComparison.Ordinal);
+        Assert.All(logger.Entries, entry => Assert.Null(entry.Exception));
+    }
+
+    [Fact]
     public async Task PresenceEndpoint_WithAFlagOff_IsNotThere_AndAnUnknownLinkIs404()
     {
         var presence = new Mock<IIdentityPresenceFlow>();
@@ -307,10 +330,10 @@ public sealed class LegacySelfieClosedTests
         _checkIn.Setup(service => service.GetSessionByTokenAsync(Token))
             .ReturnsAsync(new GuestCheckInSession { Id = Guid.NewGuid(), BookingId = Guid.NewGuid(), OrgId = Guid.NewGuid(), IdentityOpenedAt = DateTime.UtcNow });
 
-    private PublicGuestCheckInController SelfHostedController() =>
-        Controller(new TestFeatureFlags(FeatureFlags.CheckInIdentityVerification, FeatureFlags.CheckInIdentitySelfHosted));
+    private PublicGuestCheckInController SelfHostedController(ILogger<PublicGuestCheckInController>? logger = null) =>
+        Controller(new TestFeatureFlags(FeatureFlags.CheckInIdentityVerification, FeatureFlags.CheckInIdentitySelfHosted), logger);
 
-    private PublicGuestCheckInController Controller(IFeatureFlags flags) => new(
+    private PublicGuestCheckInController Controller(IFeatureFlags flags, ILogger<PublicGuestCheckInController>? logger = null) => new(
         _checkIn.Object,
         Mock.Of<IAlloggiatiCodeTableService>(),
         Mock.Of<ICheckInDocumentReader>(),
@@ -318,7 +341,7 @@ public sealed class LegacySelfieClosedTests
         _flow.Object,
         flags,
         Mock.Of<IStringLocalizer<SharedResources>>(),
-        NullLogger<PublicGuestCheckInController>.Instance)
+        logger ?? NullLogger<PublicGuestCheckInController>.Instance)
     {
         ControllerContext = new ControllerContext
         {
