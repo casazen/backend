@@ -1,7 +1,49 @@
 {
-  "$comment": "Bundled files are pinned to their source revisions and SHA-256. AuraFace is an optional external recognizer.",
+  "$comment": "Bundled files are pinned to their source revisions and SHA-256. AuraFace is an optional external recognizer. The two optional candidate roles (candidateRoles) have no entry in models while they are not configured: a candidate gets one, with its source, licence and size, only when someone configures it.",
   "schemaVersion": 1,
   "toleranceRatio": 0.2,
+  "candidateRoles": [
+    {
+      "role": "anti_spoofing_candidate",
+      "usedBy": "Biometrics:AntiSpoofingCandidate",
+      "delivery": "none",
+      "variables": [
+        "Biometrics__AntiSpoofingCandidate__Name",
+        "Biometrics__AntiSpoofingCandidate__Version",
+        "Biometrics__AntiSpoofingCandidate__License",
+        "Biometrics__AntiSpoofingCandidate__Provenance",
+        "Biometrics__AntiSpoofingCandidate__Path",
+        "Biometrics__AntiSpoofingCandidate__Sha256",
+        "Biometrics__AntiSpoofingCandidate__DownloadUrl",
+        "Biometrics__AntiSpoofingCandidate__CropScale",
+        "Biometrics__AntiSpoofingCandidate__InputSize"
+      ],
+      "notes": [
+        "A plug-in point for the offline comparison with MiniFASNetV2 (E72/F01/US02/T03): it never decides, and the readiness of the models, the health entry and the fingerprint of the decisions ignore it. No weight file is committed: the rights on the weights, and on their use in a SaaS, are verified first (docs/runbooks/biometric-models.md, Second candidate)."
+      ]
+    },
+    {
+      "role": "face_recognition_candidate",
+      "usedBy": "Biometrics:FaceRecognitionCandidate",
+      "delivery": "none",
+      "variables": [
+        "Biometrics__FaceRecognitionCandidate__Name",
+        "Biometrics__FaceRecognitionCandidate__Version",
+        "Biometrics__FaceRecognitionCandidate__License",
+        "Biometrics__FaceRecognitionCandidate__Provenance",
+        "Biometrics__FaceRecognitionCandidate__Path",
+        "Biometrics__FaceRecognitionCandidate__Sha256",
+        "Biometrics__FaceRecognitionCandidate__DownloadUrl",
+        "Biometrics__FaceRecognitionCandidate__InputSize",
+        "Biometrics__FaceRecognitionCandidate__Mean",
+        "Biometrics__FaceRecognitionCandidate__Std",
+        "Biometrics__FaceRecognitionCandidate__RgbOrder"
+      ],
+      "notes": [
+        "A plug-in point for the offline comparison with SFace (E72/F01/US02/T03), with the normalization the candidate was trained with: same rules as the anti-spoofing candidate, and the same rule for the weights."
+      ]
+    }
+  ],
   "models": [
     {
       "id": "yunet",

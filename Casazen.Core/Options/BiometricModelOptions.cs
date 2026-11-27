@@ -47,6 +47,16 @@ public class BiometricModelOptions
         Path = "MlModels/biometrics/face_recognition_sface_2021dec.onnx",
     };
 
+    /// <summary>
+    /// The optional second candidate for the anti-spoofing model (E72/F01/US02/T03, decision D6): a plug-in point only. Empty (the committed state) is <b>not configured</b>: nothing is
+    /// loaded and the role reports <c>not_configured</c>. Configured, it is verified by its SHA-256 like the three models above and used only by the offline comparison of the
+    /// qualification, <b>never by a decision</b>: the readiness of the models, the health entry and every verification ignore it. No weight file of a candidate is in the repository.
+    /// </summary>
+    public AntiSpoofingCandidateOptions AntiSpoofingCandidate { get; set; } = new();
+
+    /// <summary>The optional second candidate for the recognition model (E72/F01/US02/T03, decision D6): same rules as <see cref="AntiSpoofingCandidate"/>, plus the normalization the candidate was trained with.</summary>
+    public FaceRecognitionCandidateOptions FaceRecognitionCandidate { get; set; } = new();
+
     /// <summary>Longest side of the picture given to the detector, in pixels (multiples of 32 are used). Default 640.</summary>
     public int DetectorInputSize { get; set; } = 640;
 
@@ -138,9 +148,113 @@ public class BiometricModelOptions
         return failures;
     }
 
+    /// <summary>
+    /// True when anything of an optional candidate is set: a path, a SHA-256 or a download address. A candidate with none of the three is <b>not configured</b>: nothing is loaded, nothing is
+    /// validated and nothing is reported as wrong.
+    /// </summary>
+    public static bool IsCandidateConfigured(ModelFileOptions candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        return !string.IsNullOrWhiteSpace(candidate.Path) || !string.IsNullOrWhiteSpace(candidate.Sha256) || !string.IsNullOrWhiteSpace(candidate.DownloadUrl);
+    }
+
+    /// <summary>
+    /// Configuration errors of the anti-spoofing candidate, empty when it is not configured or usable. <b>Never part of <see cref="Validate"/></b>: a candidate that is wrong must not take the
+    /// three models of the decisions down with it, so the store reads this apart and a failure leaves only the candidate unloaded (<c>config_invalid</c>). Names the setting, never a value.
+    /// </summary>
+    public IReadOnlyList<string> ValidateAntiSpoofingCandidate()
+    {
+        if (!IsCandidateConfigured(AntiSpoofingCandidate))
+            return [];
+
+        var setting = $"{SectionName}:{nameof(AntiSpoofingCandidate)}";
+        var failures = new List<string>(AntiSpoofingCandidate.Validate(setting));
+        if (double.IsNaN(AntiSpoofingCandidate.CropScale) || AntiSpoofingCandidate.CropScale is < 1 or > 8)
+            failures.Add($"{setting}:CropScale must be between 1 and 8.");
+        if (AntiSpoofingCandidate.InputSize is < 16 or > 512)
+            failures.Add($"{setting}:InputSize must be between 16 and 512.");
+        return failures;
+    }
+
+    /// <summary>Configuration errors of the recognition candidate, empty when it is not configured or usable; apart from <see cref="Validate"/> like <see cref="ValidateAntiSpoofingCandidate"/>.</summary>
+    public IReadOnlyList<string> ValidateFaceRecognitionCandidate()
+    {
+        if (!IsCandidateConfigured(FaceRecognitionCandidate))
+            return [];
+
+        var setting = $"{SectionName}:{nameof(FaceRecognitionCandidate)}";
+        var failures = new List<string>(FaceRecognitionCandidate.Validate(setting));
+        if (FaceRecognitionCandidate.InputSize is < 32 or > 512)
+            failures.Add($"{setting}:InputSize must be between 32 and 512.");
+        if (!double.IsFinite(FaceRecognitionCandidate.Mean))
+            failures.Add($"{setting}:Mean must be a number.");
+        if (!double.IsFinite(FaceRecognitionCandidate.Std) || FaceRecognitionCandidate.Std <= 0)
+            failures.Add($"{setting}:Std must be positive.");
+        return failures;
+    }
+
+    /// <summary>
+    /// A copy of these settings with the face cut for the anti-spoofing the way the candidate wants it (<see cref="AntiSpoofingCandidateOptions.CropScale"/> and
+    /// <see cref="AntiSpoofingCandidateOptions.InputSize"/>): what the offline comparison runs the candidate with, through the same code as the reference.
+    /// </summary>
+    public BiometricModelOptions ForAntiSpoofingCandidate()
+    {
+        var copy = (BiometricModelOptions)MemberwiseClone();
+        copy.LivenessCropScale = AntiSpoofingCandidate.CropScale;
+        copy.LivenessInputSize = AntiSpoofingCandidate.InputSize;
+        return copy;
+    }
+
+    /// <summary>
+    /// A copy of these settings with the normalization of the recognition candidate (<see cref="FaceRecognitionCandidateOptions"/>: size, mean, divisor and colour order) in place of the
+    /// reference's, for the offline comparison.
+    /// </summary>
+    public BiometricModelOptions ForFaceRecognitionCandidate()
+    {
+        var copy = (BiometricModelOptions)MemberwiseClone();
+        copy.RecognitionInputSize = FaceRecognitionCandidate.InputSize;
+        copy.RecognitionMean = FaceRecognitionCandidate.Mean;
+        copy.RecognitionStd = FaceRecognitionCandidate.Std;
+        copy.RecognitionRgbOrder = FaceRecognitionCandidate.RgbOrder;
+        return copy;
+    }
+
     private static void CheckFraction(List<string> failures, string name, double value)
     {
         if (double.IsNaN(value) || value <= 0 || value >= 1)
             failures.Add($"{SectionName}:{name} must be between 0 and 1 (exclusive).");
     }
+}
+
+/// <summary>
+/// The optional second candidate for the anti-spoofing model (<c>Biometrics:AntiSpoofingCandidate:*</c>, E72/F01/US02/T03): the file (<see cref="ModelFileOptions"/>) and how a face is cut for
+/// it. The defaults are the ones of the reference model (MiniFASNetV2): a candidate with another crop is described by configuration. Empty file settings mean not configured.
+/// </summary>
+public class AntiSpoofingCandidateOptions : ModelFileOptions
+{
+    /// <summary>How much the face box is enlarged before it is cut for the candidate (1 to 8). Default 2.7, the reference's.</summary>
+    public double CropScale { get; set; } = 2.7;
+
+    /// <summary>Side of the square cut given to the candidate, in pixels (16 to 512). Default 80, the reference's.</summary>
+    public int InputSize { get; set; } = 80;
+}
+
+/// <summary>
+/// The optional second candidate for the recognition model (<c>Biometrics:FaceRecognitionCandidate:*</c>, E72/F01/US02/T03): the file (<see cref="ModelFileOptions"/>) and the normalization the
+/// candidate was trained with, like the options of AuraFace (<see cref="BiometricModelOptions.RecognitionMean"/> and the following): a candidate with another normalization is described by
+/// configuration. The defaults are the ones of the reference model (SFace). Empty file settings mean not configured.
+/// </summary>
+public class FaceRecognitionCandidateOptions : ModelFileOptions
+{
+    /// <summary>Side of the aligned face given to the candidate, in pixels (32 to 512), when the model does not fix its own input size; one that does wins. Default 112.</summary>
+    public int InputSize { get; set; } = 112;
+
+    /// <summary>Value taken from every pixel before the candidate (127.5 for the models of the ArcFace family, 0 for SFace). Default 0.</summary>
+    public double Mean { get; set; }
+
+    /// <summary>Divisor of every pixel after the mean (above 0; 127.5 for the models of the ArcFace family, 1 for SFace). Default 1.</summary>
+    public double Std { get; set; } = 1;
+
+    /// <summary>True when the candidate wants red, green, blue; false for blue, green, red. Default true.</summary>
+    public bool RgbOrder { get; set; } = true;
 }
