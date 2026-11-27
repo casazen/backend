@@ -1,7 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -9,19 +8,17 @@ using Xunit;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// SR-07a on real PostgreSQL: the <c>AddPropertyWizardFields</c> migration gives <c>Properties</c> the fields of the wizard «Aggiungi
-/// immobile». Every property that existed before it comes out with the new fields not set and <c>PublishedOnSite</c> true, so it is
-/// on the booking site exactly when it was (<see cref="PublicListing.IsPublished"/>); and the switch the host turns off is
-/// saved and read back as off, then back on, through the model (a default value in the column must never write over an explicit
-/// <c>false</c>, which would put a hidden property back on the site).
+/// SR-07a on real PostgreSQL: the columns that the <c>AddPropertyWizardFields</c> migration gave <c>Properties</c> for the wizard
+/// «Aggiungi immobile» are saved and read back through the model, and the switch the host turns off is saved and read back as
+/// off, then back on (a default value in the column must never write over an explicit <c>false</c>, which would put a hidden
+/// property back on the site, <see cref="PublicListing.IsPublished"/>). The test of the properties that existed before the
+/// migration (all still published, the new fields not set) went away once it reached production.
 /// </summary>
 public class AddPropertyWizardFieldsMigrationPostgresTests : IAsyncLifetime
 {
-    private static readonly DateTime UpdatedAt = new(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
-
     private PostgresTestDatabase? _database;
 
-    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateAsync();
+    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateMigratedAsync();
 
     public async Task DisposeAsync()
     {
@@ -30,66 +27,9 @@ public class AddPropertyWizardFieldsMigrationPostgresTests : IAsyncLifetime
     }
 
     [PostgresFact]
-    public async Task Migration_ExistingProperties_AreStillOnTheSiteAndTheNewFieldsAreNotSet()
-    {
-        var org = Guid.NewGuid();
-        var activated = Guid.NewGuid();
-        var pending = Guid.NewGuid();
-        await using (var db = _database!.CreateContext())
-        {
-            await _database!.MigrateEmptyToAsync(PreviousMigration(db));
-            await LegacyOrgRows.InsertAsync(db, new OrgEntity
-            {
-                Id = org,
-                Name = "Org SR-07a",
-                Slug = $"sr07a-{org:N}",
-                DisplayName = "Org SR-07a",
-                ContactEmail = "sr07a@example.com",
-                PlanTier = PlanTier.Starter,
-                IsActive = true,
-            });
-            await InsertPropertyAsync(db, activated, org, "Attiva");
-            await InsertPropertyAsync(db, pending, org, "Da completare");
-            await db.Database.MigrateAsync();
-
-            // The one activated before the migration (the compliance column is older than the migration, set by SQL here).
-            await db.Database.ExecuteSqlAsync(
-                $"""UPDATE "Properties" SET "ComplianceStatus" = {(int)PropertyComplianceStatus.Active} WHERE "Id" = {activated}""");
-        }
-
-        await using var after = _database.CreateContext();
-        var properties = await after.Properties.IgnoreQueryFilters().AsNoTracking().Where(p => p.OrgId == org).ToListAsync();
-        Assert.Equal(2, properties.Count);
-        Assert.All(properties, p =>
-        {
-            Assert.True(p.PublishedOnSite);
-            Assert.Null(p.AccommodationType);
-            Assert.Null(p.Beds);
-            Assert.Null(p.AreaSqm);
-            Assert.Null(p.ListingTitle);
-            Assert.Null(p.CheckInFrom);
-            Assert.Null(p.CheckOutBy);
-            Assert.Null(p.SmokingPolicy);
-            Assert.Null(p.PetsPolicy);
-            Assert.Null(p.PartiesPolicy);
-            Assert.Null(p.QuietHoursFrom);
-            Assert.Null(p.QuietHoursTo);
-            Assert.Null(p.ExtraGuestFeePerNight);
-            Assert.Equal(UpdatedAt, p.UpdatedAt);
-        });
-
-        // On the site exactly as before: the activated one is published, the one still to complete is not.
-        var published = await after.Properties.IgnoreQueryFilters().AsNoTracking()
-            .Where(p => p.OrgId == org).Where(PublicListing.IsPublished).Select(p => p.Id).ToListAsync();
-        Assert.Equal(new[] { activated }, published.ToArray());
-        Assert.Empty(await after.Database.GetPendingMigrationsAsync());
-    }
-
-    [PostgresFact]
     public async Task Model_SavesTheFields_AndTheSwitchOffAndBackOnThroughTheSameUpdateAsTheForms()
     {
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
         var org = new OrgEntity
         {
             Name = "Org SR-07a",
@@ -159,35 +99,5 @@ public class AddPropertyWizardFieldsMigrationPostgresTests : IAsyncLifetime
 
         await using var published = _database.CreateContext();
         Assert.True(await published.Properties.IgnoreQueryFilters().Where(PublicListing.IsPublished).AnyAsync(p => p.Id == property.Id));
-    }
-
-    // A property with the columns of the first Properties table only (LegacyPropertyRows): the model also writes the columns of
-    // this migration, which do not exist yet at the point where the rows are written.
-    private static Task InsertPropertyAsync(AppDbContext db, Guid id, Guid orgId, string name) =>
-        LegacyPropertyRows.InsertAsync(db, new Property
-        {
-            Id = id,
-            OrgId = orgId,
-            OwnerId = "auth0|sr07a",
-            Name = name,
-            Description = "SR-07a",
-            Address = "Via SR-07a " + id.ToString("N"),
-            City = "Milano",
-            PostalCode = "20121",
-            Latitude = 45.464211m,
-            Longitude = 9.191383m,
-            Bedrooms = 1,
-            Bathrooms = 1,
-            MaxGuests = 2,
-            NightlyRate = 90m,
-            UpdatedAt = UpdatedAt,
-        });
-
-    private static string PreviousMigration(AppDbContext db)
-    {
-        var all = db.Database.GetMigrations().ToList();
-        var index = all.FindIndex(m => m.EndsWith("_AddPropertyWizardFields", StringComparison.Ordinal));
-        Assert.True(index > 0, "AddPropertyWizardFields migration not found.");
-        return all[index - 1];
     }
 }

@@ -26,7 +26,7 @@ namespace Casazen.Tests.Integration;
 /// SU-15 (A4-11, A9-14) on PostgreSQL: saving the supplier's iCal URL queues a Hangfire job instead of a
 /// <c>Task.Run</c> on the request's scoped services, the job updates the availability; the sync frees only the days of
 /// the feed; a failing feed never stops the others; two runs on the same supplier never collide. Downloads go through a
-/// scripted <see cref="ISafeExternalHttpClient"/>: no network. Migration: <see cref="SupplierCalendarSyncSourceMigrationPostgresTests"/>.
+/// scripted <see cref="ISafeExternalHttpClient"/>: no network. Migration: <c>AddSupplierCalendarSyncSource</c>.
 /// </summary>
 public class SupplierCalendarSyncPostgresTests : IClassFixture<SupplierCalendarSyncPostgresTests.Factory>
 {
