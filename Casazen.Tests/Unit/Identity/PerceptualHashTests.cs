@@ -132,17 +132,46 @@ public class PerceptualHashTests
     }
 
     [Theory]
-    [InlineData(1280, 960)]
-    [InlineData(320, 240)]
-    public void DHash64_ThePictureAtAnotherSize_IsTheSameHash(int width, int height)
+    [InlineData(DocumentSide.Front, 1280, 960, 0)]
+    [InlineData(DocumentSide.Front, 960, 720, 0)]
+    [InlineData(DocumentSide.Front, 320, 240, 0)]
+    [InlineData(DocumentSide.Front, 160, 120, 5)]
+    [InlineData(DocumentSide.Back, 1280, 960, 2)]
+    [InlineData(DocumentSide.Back, 960, 720, 2)]
+    [InlineData(DocumentSide.Back, 320, 240, 5)]
+    [InlineData(DocumentSide.Back, 160, 120, 4)]
+    public void DHash64_ThePictureAtAnotherSize_FlipsTheMeasuredBitsAndStaysWithinThePolicyDistance(DocumentSide side, int width, int height, int measuredBits)
     {
-        // Phones send what their camera makes: the hash must not depend on the resolution of the photo.
-        using var original = Card(DocumentSide.Front);
+        // Phones send what their camera makes: the hash must not depend much on the resolution of the photo. It is close, not the same: the bits flipped are measured here
+        // (the back has a dense MRZ band, where near-equal cells flip) and written in the documentation of PerceptualHash.
+        using var original = Card(side);
         using var resized = original.Resized(width, height);
 
         var distance = PerceptualHash.Distance(PerceptualHash.DHash64(original), PerceptualHash.DHash64(resized));
 
+        Assert.Equal(measuredBits, distance);
         Assert.True(distance <= PolicyDistance(), $"distance {distance} against the policy distance {PolicyDistance()}");
+    }
+
+    [Theory]
+    [InlineData(DocumentSide.Front, 1, 3)]
+    [InlineData(DocumentSide.Front, 2, 7)]
+    [InlineData(DocumentSide.Front, 3, 7)]
+    [InlineData(DocumentSide.Front, 8, 11)]
+    [InlineData(DocumentSide.Back, 1, 5)]
+    [InlineData(DocumentSide.Back, 2, 6)]
+    [InlineData(DocumentSide.Back, 3, 8)]
+    [InlineData(DocumentSide.Back, 8, 14)]
+    public void DHash64_TheCardShiftedByAFewPixels_FlipsTheMeasuredBits(DocumentSide side, int shift, int measuredBits)
+    {
+        // The measured cost of a second shot of the same side, shifted in both directions: with the provisional distance of the policy (6) the front shifted by 2 pixels and the
+        // back shifted by 3 are already out of reach of the hash, so the SHA-256 stays the sure sign of the same file until the qualification measures real photos (E74).
+        using var first = Card(side);
+        using var shifted = Card(side, new DocumentImageFactory.Placement(80 + shift, 70 + shift, 480, 303));
+
+        var distance = PerceptualHash.Distance(PerceptualHash.DHash64(first), PerceptualHash.DHash64(shifted));
+
+        Assert.Equal(measuredBits, distance);
     }
 
     [Fact]

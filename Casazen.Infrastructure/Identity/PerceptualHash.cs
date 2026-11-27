@@ -6,15 +6,23 @@ namespace Casazen.Infrastructure.Identity;
 
 /// <summary>
 /// The difference hash of a picture (E71/F01/US01/T02, NF-189): 64 bits that say, for 64 pairs of neighbouring parts of the picture, which of the two is the brighter. Two
-/// photos of the same side of a card, a little shifted or lit differently, differ in a few bits; the two sides of a card, or two cards, in many. The flow uses it with
-/// the SHA-256 of the bytes to refuse the same side sent twice (<c>document_side_duplicate</c>, <see cref="DocumentSideClassifier"/>); the distance that counts as the same
-/// picture is <c>policy.document.perceptualDuplicateMaxDistance</c>, never a number here.
+/// photos of the same side of a card differ in some bits (measured below: a few for a copy at another size or a little shifted), the two sides of a card, or two cards, in
+/// more. The flow uses it with the SHA-256 of the bytes to refuse the same side sent twice (<c>document_side_duplicate</c>, <see cref="DocumentSideClassifier"/>); the distance
+/// that counts as the same picture is <c>policy.document.perceptualDuplicateMaxDistance</c>, never a number here.
 /// <para>
 /// <b>What it is.</b> The picture is reduced to a thumbnail of 9 by 8 cells (each cell the mean luminance of the pixels it covers, ITU-R BT.601 as
 /// <c>RasterImage.ToGray</c> has it); each of the 8 rows gives 8 bits, one for each pair of neighbouring cells: 1 when the left cell is brighter than the right one,
 /// 0 otherwise (a tie is 0, so a plain picture is 0). The bits are in reading order, the first pair of the top row being the most significant bit. The result depends
-/// on nothing but the pixels: it is the same on every machine and every run, and the same for a picture and for a copy of it at another size. A turned picture has
-/// another hash.
+/// on nothing but the pixels: it is the same on every machine and every run. A turned picture has another hash.
+/// </para>
+/// <para>
+/// <b>What it costs, measured.</b> On the card <c>DocumentImageFactory</c> generates (480 by 303 pixels in a picture of 640 by 480, all text, so many neighbouring cells have
+/// nearly the same brightness and a near-tie flips with a small change; <c>PerceptualHashTests</c> holds every figure). The same card at another size is close, not the same:
+/// the front flips 0 bits at 1280 by 960, 960 by 720 and 320 by 240 and 5 at 160 by 120; the back (a dense MRZ band) flips 2, 2, 5 and 4. More light flips none. A shift of the
+/// card by 1, 2 and 3 pixels (both ways) flips 3, 7 and 7 bits of the front (11 for 8 pixels) and 5, 6 and 8 of the back (14 for 8 pixels). A half turn flips 14 (front) and 13
+/// (back), the front against the back 15. So against the provisional distance of the policy (6) a second shot of the same side taken by hand can already be out of reach (the
+/// front shifted by 2 pixels, the back by 3): until the qualification measures it on real photos (E74), the SHA-256 is what says it is the same file, and the hash only
+/// catches the very same shot sent again, resized or a little shifted.
 /// </para>
 /// <para>
 /// <b>Privacy.</b> A hash is a derived value of the document: the flow keeps it in <c>DocumentCheckJson</c> only while the verification runs (it clears it at the closure,
