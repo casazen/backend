@@ -39,7 +39,6 @@ public sealed class DoorCheckInIpRateLimitFilter(
             return;
         }
 
-        // No address and no door token in the log: the policy, the route and the trace id identify the event.
         logger.LogWarning(
             "Rate limit exceeded: policy {Policy} on {Method} {Route}. TraceId={TraceId}",
             limiter.PolicyName,

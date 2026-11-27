@@ -96,7 +96,6 @@ public class LongRentAgendaController(
         return Ok(await agenda.GetOverviewAsync(scope, cancellationToken));
     }
 
-    /// <summary><c>yyyy-MM-dd</c> between the years 2000 and 2100.</summary>
     private static bool TryParseDay(string value, out DateOnly day)
     {
         if (DateOnly.TryParseExact(value.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out day)

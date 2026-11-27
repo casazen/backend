@@ -29,13 +29,6 @@ public class ServiceRequestCleaningVatController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>
-    /// The question of a completed cleaning: the country and the rate of «Sì» (the standard rate of the country of the cleaning on its day; <c>null</c> when the table has
-    /// none), the answer given, what the organization remembers for the company, what the invoice of the agency uses, and whether the caller may remember.
-    /// </summary>
-    /// <response code="200">The question.</response>
-    /// <response code="403">The caller may not read the property of the request.</response>
-    /// <response code="404"><c>service_request_not_found</c>.</response>
     [HttpGet]
     [Authorize(Policy = CasazenPolicies.SharedPropertyRead)]
     [ProducesResponseType(typeof(CleaningVatDto), StatusCodes.Status200OK)]
@@ -86,7 +79,6 @@ public class ServiceRequestCleaningVatController(
         if (!await MayAsync(scope, question, write: true))
             return Forbid();
 
-        // The remembered answer decides the cleanings of every property of the organization: never a caller restricted to some of them.
         if (body.Remember && !scope.IsOrgWide)
             return this.ApiProblem(StatusCodes.Status403Forbidden, CleaningVatErrors.RememberForbidden, CleaningVatErrors.RememberForbiddenMessageKey);
 
@@ -94,17 +86,12 @@ public class ServiceRequestCleaningVatController(
         return Ok(CleaningVatDto.From(answered, scope.IsOrgWide));
     }
 
-    /// <summary>The caller's scope on its org, or <c>null</c> when it has no org or reaches nothing (never widened).</summary>
     private async Task<HostScope?> ScopeOfCallerAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
     }
 
-    /// <summary>
-    /// The permission on the property of the request, in the context of the request: short-rent or long-rent. The request was read in the caller's org and scope, so its org is
-    /// the scope's.
-    /// </summary>
     private Task<bool> MayAsync(HostScope scope, CleaningVatQuestion question, bool write)
     {
         var resource = new HostResource(scope.OrgId, question.PropertyOwnerUserId, question.PropertyId);

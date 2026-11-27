@@ -38,13 +38,6 @@ public class PublicSupplierInquiryController(
     TimeProvider timeProvider,
     IOptions<ShowcaseBookingOptions> options) : ControllerBase
 {
-    /// <summary>
-    /// Keeps what the customer wrote and sends the customer the e-mail that checks the address. 201 with the id of the inquiry and when
-    /// the link lapses; the same <c>clientRequestId</c> is the same inquiry. The supplier receives nothing until the address is checked. 404
-    /// <c>not_found</c> (supplier), <c>supplier_service_not_found</c>; 422 <c>supplier_booking_invalid</c> (with <c>fields</c>),
-    /// <c>supplier_booking_consent_required</c> / <c>_outdated</c>, <c>supplier_booking_outside_zone</c>, <c>supplier_booking_offline</c> (the supplier paused the showcase, SP-13a); 429 <c>rate_limited</c> (per IP, per
-    /// address, or three requests of the address waiting).
-    /// </summary>
     [HttpPost]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
     [EnableRateLimiting(RateLimitPolicies.PublicSupplierBookingCreate)]
@@ -66,7 +59,6 @@ public class PublicSupplierInquiryController(
         if (supplier is null)
             return SupplierNotFound();
 
-        // The trap for robots: answered like a request, with an id that leads nowhere; nothing is stored, nothing is sent.
         if (!string.IsNullOrWhiteSpace(request.Website))
         {
             return StatusCode(
@@ -80,8 +72,6 @@ public class PublicSupplierInquiryController(
                 });
         }
 
-        // SP-13a: a showcase the supplier paused takes no new request on measure either, with the answer the slots and the estimate give.
-        // The check of an address written before the pause is not gated: that customer is answered all the same.
         if (await showcase.IsPausedAsync(supplier, ct))
             throw ShowcaseBookingErrors.OfflineSupplier();
 
@@ -99,8 +89,6 @@ public class PublicSupplierInquiryController(
         }
         catch (ShowcaseBookingTooManyHoldsException)
         {
-            // The same answer as the limit per address, to the second: the exact time the oldest request of the address lapses (what the
-            // exception carries) would tell the client when someone wrote with that address.
             return SupplierBookingEmailRateLimitFilter.RateLimitedResult(HttpContext, emailLimit.Window);
         }
     }
@@ -133,23 +121,19 @@ public class PublicSupplierInquiryController(
         if (supplier is null)
             return SupplierNotFound();
 
-        // A wrong link is the NotFoundException of the service, answered as 404 supplier_booking_link_invalid by the error middleware.
         var confirmation = await inquiries.ConfirmEmailAsync(supplier, id, request.Token, ct);
         return Ok(PublicSupplierInquiryMapper.ToDto(confirmation));
     }
 
-    /// <summary>Not indexable, not cacheable: the answers belong to one customer.</summary>
     private void MarkPrivate()
     {
         Response.Headers["X-Robots-Tag"] = "noindex";
         Response.Headers.CacheControl = "no-store";
     }
 
-    /// <summary>The 404 of an unknown, pending or suspended supplier: one answer for the three.</summary>
     private ObjectResult SupplierNotFound() =>
         this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierShowcaseNotFound");
 
-    /// <summary>A 422 that names the fields at fault, as the booking does.</summary>
     private ObjectResult RuleProblem(string code, string messageKey, IReadOnlyList<object> messageArgs, IReadOnlyList<string> fields)
     {
         var problem = ApiProblemDetails.Create(HttpContext, StatusCodes.Status422UnprocessableEntity, code, messageKey, messageArgs);

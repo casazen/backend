@@ -12,7 +12,6 @@ public class PushReceiptsJob(PushReceiptService receiptService)
 {
     public const string RecurringJobId = "push-receipts";
 
-    /// <summary>Every 15 minutes: Expo advises reading a receipt about 15 minutes after the send.</summary>
     public const string Cron = "*/15 * * * *";
 
     [DisableConcurrentExecution(JobLockTimeouts.FrequentSeconds)]

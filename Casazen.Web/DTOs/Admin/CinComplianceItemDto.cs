@@ -7,6 +7,6 @@ public class CinComplianceItemDto
     public string OwnerId { get; set; } = string.Empty;
     public string OwnerEmail { get; set; } = string.Empty;
     public string? CinCode { get; set; }
-    public string CinStatus { get; set; } = string.Empty; // "valid" | "missing" | "invalid"
+    public string CinStatus { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
 }

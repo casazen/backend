@@ -27,8 +27,6 @@ namespace Casazen.Web.Controllers;
 [PrivateAnswer]
 public class MeNotificationPreferencesController(INotificationPreferenceService preferences) : ControllerBase
 {
-    /// <summary>The caller's settings: the quiet hours, one entry for each kind of event and the channels that can deliver.</summary>
-    /// <response code="200">The settings (the defaults for a caller who never saved).</response>
     [HttpGet]
     [ProducesResponseType(typeof(NotificationPreferencesDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -40,10 +38,6 @@ public class MeNotificationPreferencesController(INotificationPreferenceService 
         return Ok(NotificationPreferencesDto.From(await preferences.GetAsync(userId, cancellationToken)));
     }
 
-    /// <summary>Saves the quiet hours and the channels of the kinds of event of the body; the others stay as they are.</summary>
-    /// <response code="200">The settings after the save.</response>
-    /// <response code="404">The caller has no host org.</response>
-    /// <response code="422">The legal deadline left without a channel, a channel that cannot deliver, nothing to save, or a kind of event twice.</response>
     [HttpPut]
     [ProducesResponseType(typeof(NotificationPreferencesDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

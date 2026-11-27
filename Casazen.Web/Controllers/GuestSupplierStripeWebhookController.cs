@@ -56,7 +56,6 @@ public sealed class GuestSupplierStripeWebhookController(
         if (!Guid.TryParse(intent.Metadata.GetValueOrDefault("orderId"), out var id)) return BadRequest();
         var order = await db.GuestSupplierOrders.SingleOrDefaultAsync(x => x.Id == id && x.StripeSandbox && (setup ? x.StripeSetupIntentId == intent.Id : x.StripePaymentIntentId == intent.Id), ct);
         if (order is null) return BadRequest();
-        // Fetch Stripe's current state so a delayed event cannot revert a capture or revive a canceled hold.
         return await checkout.ReconcileAsync(order, ct) ? Ok() : Conflict();
     }
 

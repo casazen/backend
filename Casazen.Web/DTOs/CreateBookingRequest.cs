@@ -2,9 +2,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Casazen.Web.DTOs;
 
-/// <summary>
-/// Inline guest payload embedded in a booking create request (JSON: <c>guest.phone</c>).
-/// </summary>
 public class CreateBookingGuestRequest
 {
     [Required(ErrorMessage = "FirstNameRequired")]
@@ -22,7 +19,6 @@ public class CreateBookingGuestRequest
     [MaxLength(255)]
     public string Email { get; set; } = string.Empty;
 
-    /// <summary>Phone number (international format accepted; JSON property: <c>phone</c>).</summary>
     [Required(ErrorMessage = "PhoneRequired")]
     [MinLength(10, ErrorMessage = "PhoneTooShort")]
     [MaxLength(20)]
@@ -34,10 +30,6 @@ public class CreateBookingGuestRequest
     public string Country { get; set; } = string.Empty;
 }
 
-/// <summary>
-/// Request body for creating a booking. Excludes server-managed fields
-/// (<c>Id</c>, <c>OrgId</c>, <c>GuestId</c>, pricing totals).
-/// </summary>
 public class CreateBookingRequest : IValidatableObject
 {
     [Required(ErrorMessage = "PropertyRequired")]
@@ -52,14 +44,9 @@ public class CreateBookingRequest : IValidatableObject
     [Range(1, 100, ErrorMessage = "GuestsCountRange")]
     public int NumberOfGuests { get; set; }
 
-    /// <summary>
-    /// Minors among <see cref="NumberOfGuests"/> (PC-07). 0 when omitted: every guest then counts as an adult for the
-    /// tourist tax, as before.
-    /// </summary>
     [Range(0, 99)]
     public int NumberOfChildren { get; set; }
 
-    /// <summary>Age of each minor at check-in (0-17), asked when the tourist tax of the comune depends on it (BK-03).</summary>
     public List<int>? ChildrenAges { get; set; }
 
     [Required(ErrorMessage = "GuestInfoRequired")]

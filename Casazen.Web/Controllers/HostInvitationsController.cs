@@ -46,7 +46,6 @@ public class HostInvitationsController(IHostInviteService invites, IOrgContextRe
         return StatusCode(StatusCodes.Status201Created, HostInviteSentDto.From(sent));
     }
 
-    /// <summary>The caller's own invites, newest first, paginated. <c>state</c> is <c>Pending</c>, <c>Used</c>, <c>Expired</c> or <c>Revoked</c>.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(PagedResultDto<HostInviteDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResultDto<HostInviteDto>>> List(
@@ -75,7 +74,6 @@ public class HostInvitationsController(IHostInviteService invites, IOrgContextRe
         });
     }
 
-    /// <summary>The daily quota of the caller's org: limit, used, remaining and when the oldest use leaves the 24-hour window.</summary>
     [HttpGet("quota")]
     [ProducesResponseType(typeof(HostInviteQuotaDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<HostInviteQuotaDto>> GetQuota(CancellationToken cancellationToken)
@@ -87,10 +85,6 @@ public class HostInvitationsController(IHostInviteService invites, IOrgContextRe
         return Ok(HostInviteQuotaDto.From(await invites.GetQuotaAsync(caller.OrgId, cancellationToken)));
     }
 
-    /// <summary>
-    /// Sends an invite of the caller again: a new link and a new 7-day expiry, the old link stops working. It counts against the
-    /// daily quota. 404 <c>host_invite_not_found</c>, 409 <c>host_invite_not_resendable</c>, <c>duplicate_invite</c>, 429.
-    /// </summary>
     [HttpPost("{id:guid}/resend")]
     [ProducesResponseType(typeof(HostInviteSentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -105,7 +99,6 @@ public class HostInvitationsController(IHostInviteService invites, IOrgContextRe
         return Ok(HostInviteSentDto.From(await invites.ResendAsync(Actor(caller), id, cancellationToken)));
     }
 
-    /// <summary>Revokes a pending invite of the caller. 404 <c>host_invite_not_found</c>, 409 <c>host_invite_not_pending</c>.</summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

@@ -5,10 +5,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Infrastructure;
 
-/// <summary>
-/// What the two import endpoints of the onboarding (the data of the properties, the owner portfolio) do in the same way: who asks, the file and its size, and
-/// the bytes read from memory (NF-105, ONB-02, ONB-06). The service that checks and writes the rows, and the DTO of the answer, are the endpoint's.
-/// </summary>
 internal static class BulkFileImport
 {
     /// <summary>
@@ -34,7 +30,6 @@ internal static class BulkFileImport
         if (file is null || file.Length == 0)
             return controller.ApiProblem(StatusCodes.Status400BadRequest, BulkImportCodes.FileMissing, "OnboardingImportFileMissing");
 
-        // Judged on the size the request declares, before a byte of it is copied.
         if (file.Length > BulkImportLimits.MaxFileBytes)
         {
             return controller.ApiProblem(

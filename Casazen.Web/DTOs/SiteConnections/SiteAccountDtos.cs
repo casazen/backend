@@ -26,10 +26,8 @@ public sealed record SiteAccountDto(
     string PublicAddressKind,
     OrgDomainConfigDto Domain)
 {
-    /// <summary>The org is served on its own verified domain.</summary>
     public const string CustomDomainKind = "customDomain";
 
-    /// <summary>The org is on the address of CasaZen: the slug says who a widget is for.</summary>
     public const string CasazenKind = "casazen";
 
     public static SiteAccountDto From(SiteAccount account, IStringLocalizer<SharedResources> localizer)
@@ -46,7 +44,6 @@ public sealed record SiteAccountDto(
     }
 }
 
-/// <summary>The answer of <c>POST api/site/v1/domain/verify</c>: the result of the check as the console gets it, and the account as it is now.</summary>
 public sealed record SiteDomainVerifyResponse(OrgDomainVerifyResultDto Verify, SiteAccountDto Account);
 
 /// <summary>
@@ -58,7 +55,6 @@ public sealed class SetSiteDomainRequest
 {
     private string? _customDomain;
 
-    /// <summary>FQDN, at most 253 characters, checked by the same service as the console's (<c>org_domain_invalid</c>); <c>null</c> for the address of CasaZen.</summary>
     [StringLength(253)]
     public string? CustomDomain
     {
@@ -70,7 +66,6 @@ public sealed class SetSiteDomainRequest
         }
     }
 
-    /// <summary>True when the body carried the member <c>customDomain</c>, also as <c>null</c>.</summary>
     [JsonIgnore]
     public bool CustomDomainSpecified { get; private set; }
 }

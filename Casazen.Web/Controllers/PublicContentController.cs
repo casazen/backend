@@ -56,14 +56,9 @@ public class PublicContentController(ISeoContentService seoContentService, IFeat
         return page is null ? NotFound() : Ok(WithSignupCtaWhenEnabled(page));
     }
 
-    /// <summary>The page without its call to action to sign up while CasaZen is on private invitation (SEO-INVITE).</summary>
     private SeoPagePublicDto WithSignupCtaWhenEnabled(SeoPagePublicDto page) =>
         featureFlags.IsEnabled(FeatureFlags.SeoSignupCta) ? page : page with { Cta = null };
 
-    /// <summary>
-    /// Public tourist tax calculator of a comune page (A8-12, A8-23), with the engine of the checkout (BK-03). A comune
-    /// without rate answers 200 with <c>status = RateUnavailable</c>, never an error; 404 only for an unknown comune.
-    /// </summary>
     [HttpPost("tourist-tax/calculate")]
     [EnableRateLimiting(RateLimitPolicies.PublicTouristTaxCalc)]
     [ProducesResponseType(typeof(PublicTouristTaxCalculateResponse), StatusCodes.Status200OK)]
@@ -87,7 +82,6 @@ public class PublicContentController(ISeoContentService seoContentService, IFeat
             : Ok(result);
     }
 
-    /// <summary>Problem code of an invalid calculator request (400).</summary>
     public const string TouristTaxQuoteInvalidCode = "tourist_tax_quote_invalid";
 
     private static bool IsValidCalculation(PublicTouristTaxCalculateRequest? request)
@@ -95,7 +89,6 @@ public class PublicContentController(ISeoContentService seoContentService, IFeat
         if (request is null || string.IsNullOrWhiteSpace(request.ComuneSlug))
             return false;
 
-        // Same calendar dates as the engine (Europe/Rome), so a valid request never reaches it with 0 nights.
         var nights = RomeCalendar.DateInRome(request.CheckOutDate).DayNumber
             - RomeCalendar.DateInRome(request.CheckInDate).DayNumber;
         var ages = request.ChildrenAges;

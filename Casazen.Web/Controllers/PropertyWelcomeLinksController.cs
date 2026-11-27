@@ -30,10 +30,6 @@ public class PropertyWelcomeLinksController(
     PublicSiteLinks siteLinks,
     ILogger<PropertyWelcomeLinksController> logger) : ControllerBase
 {
-    /// <summary>
-    /// The active link of the property: <c>{ active, url, createdAt }</c>; <c>active: false</c> (and nothing else) when it has none. 404
-    /// <c>property_not_found</c>; 403.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(WelcomeLinkDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -48,10 +44,6 @@ public class PropertyWelcomeLinksController(
         return Ok(WelcomeLinkDto.From(link, siteLinks));
     }
 
-    /// <summary>
-    /// Makes the link of the property: 201 with the new link, or 200 with the one it already has (the call is safe to repeat; it never changes
-    /// the code of a link that exists, <c>rotate</c> does). 404 <c>property_not_found</c>; 403.
-    /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(WelcomeLinkDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(WelcomeLinkDto), StatusCodes.Status201Created)]
@@ -72,10 +64,6 @@ public class PropertyWelcomeLinksController(
         return Created($"/api/properties/{propertyId}/welcome-link", dto);
     }
 
-    /// <summary>
-    /// Replaces the code: the active link is revoked and a new one is made, in one step. 201 with the new link. The printed code of the old one
-    /// stops working at once (the public page answers it like a code that never existed). 404 <c>property_not_found</c>; 403.
-    /// </summary>
     [HttpPost("rotate")]
     [ProducesResponseType(typeof(WelcomeLinkDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -91,10 +79,6 @@ public class PropertyWelcomeLinksController(
         return Created($"/api/properties/{propertyId}/welcome-link", WelcomeLinkDto.From(link, siteLinks));
     }
 
-    /// <summary>
-    /// The property as the authorization sees it, or the answer to give: 404 when it is not one of the caller's org (the tenant filter hides
-    /// it), 403 when the caller may not write it.
-    /// </summary>
     private async Task<(HostResource? Property, ActionResult? Denied)> AuthorizeAsync(Guid propertyId, CancellationToken cancellationToken)
     {
         var property = await hostResources.ForPropertyAsync(propertyId, cancellationToken);

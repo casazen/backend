@@ -74,11 +74,6 @@ public class AccountantPackageController(
         return new EmptyResult();
     }
 
-    /// <summary>
-    /// The summary of the agency for the period as JSON (<see cref="AgencySummaryDto"/>): occupancy and revenue, collections, the documents issued to the guests for each issuer, the costs
-    /// of the channels, the tourist tax and, for a caller who may read the owner accounting, the commissions, the invoices to the owners, the payouts, the wires, the margin and the report
-    /// by owner. The very figures of <c>riepilogo-agenzia/</c> in the ZIP. For a year it is the annual summary of the commissions.
-    /// </summary>
     [HttpGet("agency-summary")]
     [ProducesResponseType(typeof(AgencySummaryDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -164,16 +159,11 @@ public class AccountantPackageController(
         return Ok(AccountantPackageEmailQueuedDto.From(sent));
     }
 
-    /// <summary>The org of the caller, only when its reach is the whole org: the settings of the send are the organization's, never a part of it (null without an org, a scope or the whole reach).</summary>
     private Task<Guid?> WholeOrgAsync(CancellationToken cancellationToken) =>
         HostCallerResolver.OrgWideAsync(User, orgContextResolver, hostScopeResolver, cancellationToken);
 
     private sealed record Caller(HostScope Scope, AccountantPackageAccess Access, string UserId);
 
-    /// <summary>
-    /// The caller's reach and what it may read: its scope (null without a user, an org or a scope, never widened to the whole org), and the owner accounting only with
-    /// <c>agency.statement.view</c> (the policy of the owner statements: the agency plan and the permission of the role).
-    /// </summary>
     private async Task<Caller?> ResolveCallerAsync(CancellationToken cancellationToken)
     {
         if (User.GetUserId() is not { } userId)

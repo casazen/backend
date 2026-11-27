@@ -1,5 +1,3 @@
-// File: Casazen.Web/Extensions/ServiceCollectionExtensions.cs
-
 using Casazen.Core.Authorization;
 using Casazen.Core.Features;
 using Casazen.Core.Options;
@@ -31,7 +29,6 @@ public static class ServiceCollectionExtensions
     {
         var connectionString = NpgsqlConnectionStringNormalizer.Normalize(
             configuration.GetConnectionString("DefaultConnection"));
-        // Bounded Npgsql pool (HOSTING): the EF contexts of requests and jobs share Database:MaxPoolSize connections.
         if (!string.IsNullOrEmpty(connectionString))
         {
             connectionString = DatabaseConnectionSettings
@@ -64,14 +61,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserAuthorizationSnapshotStore>(sp => sp.GetRequiredService<UserAuthorizationSnapshotStore>());
         services.AddScoped<IUserAuthorizationCache>(sp => sp.GetRequiredService<UserAuthorizationSnapshotStore>());
         services.AddScoped<IUserContextMembershipService, UserContextMembershipService>();
-        // AM-01: the org's people (OrgMember) and, in the same transaction, the memberships that project their role.
         services.AddScoped<IOrgMembershipService, OrgMembershipService>();
-        // AM-03: which properties a caller reaches (from the org membership, in the authorization snapshot), and who is the
-        // holder of the org for the acts the law ties to the landlord (RLI delega, IMU communication).
         services.AddScoped<IHostScopeResolver, HostScopeResolver>();
         services.AddScoped<IOrgHolderService, OrgHolderService>();
         services.AddScoped<IContextAuthorizationService, ContextAuthorizationService>();
-        // PL-02: host contexts only after the onboarding and the current consents; refusals answer 403 onboarding_required.
         services.AddScoped<IHostOnboardingGate, HostOnboardingGate>();
         services.AddSingleton<IAuthorizationMiddlewareResultHandler, OnboardingRequiredAuthorizationResultHandler>();
         services.AddScoped<IAuthorizationHandler, ContextAuthorizationHandler>();
@@ -83,7 +76,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAuthorizationHandler, OwnerPortalAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, OwnerPortalHostOriginAuthorizationHandler>();
 
-        // The complete policy set (TN-3), in its own file.
         services.AddCasazenAuthorizationPolicies();
 
         return services;
@@ -97,7 +89,6 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddCasazenCors(this IServiceCollection services)
     {
-        // Read from the final configuration (IConfiguration from DI), and validated when the host starts.
         services.AddOptions<CorsOriginOptions>()
             .Configure<IConfiguration>((options, configuration) =>
             {
@@ -109,7 +100,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<CorsOriginAllowList>();
 
         services.AddCors();
-        // Replaces the default provider registered by AddCors; scoped so an ICorsOriginSource may use the DbContext.
         services.Replace(ServiceDescriptor.Scoped<ICorsPolicyProvider, CasazenCorsPolicyProvider>());
         return services;
     }
@@ -133,12 +123,6 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>
-    /// The application services of the web host. Each area registers its own services in its own file of this folder
-    /// (<c>*ServiceCollectionExtensions.cs</c>); the calls below follow the order in which the registrations stood when they were all in
-    /// this one method. The order matters for the services resolved as <c>IEnumerable&lt;T&gt;</c> and for the hosted services: a new
-    /// registration goes into the area it belongs to, in the position it needs.
-    /// </summary>
     public static IServiceCollection AddCasazenServices(this IServiceCollection services)
     {
         services.AddCasazenBookingCoreServices();
@@ -173,10 +157,6 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>
-    /// The five-year retention of the documents of the Ticino police rules (NF-128): the daily job, scoped like the other jobs. A registration test resolves
-    /// it with validated scopes.
-    /// </summary>
     public static IServiceCollection AddSwissComplianceRetention(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -210,18 +190,13 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCasazenOtaIntegrations(this IServiceCollection services, IConfiguration configuration)
     {
-        // Always registered: OtaManager depends on it. With the flag off it has no
-        // adapter to return, so nothing can call an OTA partner API.
         services.AddScoped<IChannelFactory, ChannelFactory>();
 
-        // OTA partner API in freeze (D10): adapters, HTTP clients and rate limiter only with Features:OtaPartnerApi on.
         if (!ConfigurationFeatureFlags.IsEnabled(configuration, FeatureFlags.OtaPartnerApi))
             return services;
 
-        // Register rate limiter as singleton (shared across all OTA adapters)
         services.AddSingleton<OtaRateLimiter>();
 
-        // Configure HttpClients for each OTA adapter with Polly policies
         ConfigureOtaHttpClient<AirbnbAdapter>(services, configuration, "Airbnb");
         ConfigureOtaHttpClient<BookingComAdapter>(services, configuration, "BookingCom");
         ConfigureOtaHttpClient<ExpediaAdapter>(services, configuration, "Expedia");
@@ -245,7 +220,7 @@ public static class ServiceCollectionExtensions
 
         services.AddHttpClient<TAdapter>(client =>
         {
-            client.Timeout = timeout.Add(TimeSpan.FromSeconds(5)); // Add buffer for retries
+            client.Timeout = timeout.Add(TimeSpan.FromSeconds(5));
             client.DefaultRequestHeaders.Add("Accept", "application/json");
             client.DefaultRequestHeaders.Add("User-Agent", "CasaZen/1.0");
         })

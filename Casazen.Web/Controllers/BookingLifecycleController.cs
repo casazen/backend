@@ -39,11 +39,6 @@ public class BookingLifecycleController(
     ILogger<BookingLifecycleController> logger,
     OtaChannelActionPolicy channelPolicy) : ControllerBase
 {
-    /// <summary>
-    /// Price of a stay the host is entering or changing (manual booking): lodging, cleaning and the tourist tax of the
-    /// comune (BK-03), computed like the booking will record it. <c>touristTax.ageRulesApply</c> tells the form to ask
-    /// for the minors and their ages; <c>ChildAgesRequired</c> means they are missing.
-    /// </summary>
     [HttpPost("quote")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(DirectBookingQuoteResponse), StatusCodes.Status200OK)]
@@ -143,8 +138,6 @@ public class BookingLifecycleController(
         if (!await CanWriteAsync(id, cancellationToken))
             return BookingNotFound();
 
-        // The quote says what the guest has paid and what the money of the edit comes to: money, so payment.read on the property as the quote of
-        // the cancellation (BookingCancellationController.GetQuote).
         if (!await CanAccessAsync(id, PaymentOperations.Read, cancellationToken))
             return EditPaymentPermissionMissing();
 
@@ -242,10 +235,6 @@ public class BookingLifecycleController(
         return Ok(MapCheckoutWizard(state));
     }
 
-    /// <summary>
-    /// The check-out wizard of a stay without any change (CO-17): after the check-out it shows what the host declared,
-    /// and whether the property is still to be declared ready.
-    /// </summary>
     [HttpGet("{id:guid}/checkout-wizard")]
     [ProducesResponseType(typeof(CheckoutWizardDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -284,11 +273,6 @@ public class BookingLifecycleController(
         return events is null ? BookingNotFound() : Ok(BookingTimelineDto.From(id, events));
     }
 
-    /// <summary>
-    /// Saves the progress of the check-out wizard (CO-17): the step the host is on and the answers given so far. Nothing
-    /// is created or declared until <c>/complete</c>. 409 <c>checkout_wizard_not_started</c> before the start,
-    /// <c>booking_already_checked_out</c> after the completion; 422 <c>checkout_step_invalid</c> for an unknown step.
-    /// </summary>
     [HttpPut("{id:guid}/checkout-wizard/progress")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(CheckoutWizardDto), StatusCodes.Status200OK)]
@@ -328,12 +312,6 @@ public class BookingLifecycleController(
         return Ok(MapCheckoutWizard(state));
     }
 
-    /// <summary>
-    /// Completes the check-out wizard, once started (409 <c>checkout_wizard_not_started</c>): the guest left
-    /// (<c>confirmDeparture</c>), the cleaning request to the chosen supplier is created for the stay or skipped, the
-    /// tourist tax collection and the property readiness are recorded as declared; same rules and transition as
-    /// <c>POST /check-out</c>. <c>propertyReady</c> is true only when the host declared it.
-    /// </summary>
     [HttpPost("{id:guid}/checkout-wizard/complete")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(CompleteCheckoutWizardResponse), StatusCodes.Status200OK)]
@@ -474,11 +452,9 @@ public class BookingLifecycleController(
         };
     }
 
-    /// <summary>TN-3: the booking is visible (tenant filter) and the caller has <c>booking.write</c> on its property.</summary>
     private Task<bool> CanWriteAsync(Guid bookingId, CancellationToken cancellationToken) =>
         CanAccessAsync(bookingId, BookingOperations.Write, cancellationToken);
 
-    /// <summary>TN-3: the booking is visible (tenant filter) and the caller has <paramref name="operation"/> on its property.</summary>
     private async Task<bool> CanAccessAsync(
         Guid bookingId,
         HostOperationRequirement operation,
@@ -509,7 +485,6 @@ public class BookingLifecycleController(
     private ObjectResult BookingNotFound() =>
         this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "BookingNotFound");
 
-    /// <summary>403: the edit would move money (or shows it) and the caller has no <c>payment.write</c> (<c>payment.read</c> for the quote).</summary>
     private ObjectResult EditPaymentPermissionMissing() =>
         this.ApiProblem(StatusCodes.Status403Forbidden, BookingErrorCodes.EditPaymentPermissionRequired, "BookingEditPaymentPermissionRequired");
 }

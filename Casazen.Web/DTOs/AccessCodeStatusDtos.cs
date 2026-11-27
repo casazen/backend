@@ -15,10 +15,8 @@ public sealed class AccessCodeStatusDto
 
     public string City { get; init; } = string.Empty;
 
-    /// <summary>True when a lock code was set for the property.</summary>
     public bool AccessCodeSet { get; init; }
 
-    /// <summary>When the code was last set (UTC); <c>null</c> when none is set.</summary>
     public DateTime? UpdatedAt { get; init; }
 
     public static AccessCodeStatusDto From(AccessCodeStatusItem item)

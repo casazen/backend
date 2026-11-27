@@ -52,8 +52,6 @@ public class FiscalDocumentSettingsController(
         if (orgId is null)
             return Unauthorized();
 
-        // A caller who may read the setting sees who the issuer is; the bank accounts of the organization (IBAN, QR-IBAN) in full only the one who may change
-        // the setting (the whole organization and property.write): any other, a collaborator «Solo alcuni» or a read-only role included, gets them masked.
         var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
         var bankAccountsInClear = scope is { IsOrgWide: true } && (await authorizationService.AuthorizeAsync(User, CasazenPolicies.PropertyWrite)).Succeeded;
         return Ok(ToDto(await issuer.GetSettingsAsync(orgId.Value, cancellationToken), bankAccountsInClear));
@@ -78,7 +76,6 @@ public class FiscalDocumentSettingsController(
         if (orgId is null)
             return Unauthorized();
 
-        // The setting is the organization's: a caller who reaches only some of its properties cannot decide who issues for all of them.
         var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
         if (scope is not { IsOrgWide: true })
         {
@@ -89,7 +86,6 @@ public class FiscalDocumentSettingsController(
                 DocumentIssuerErrorCodes.MessageKeyOf(DocumentIssuerErrorCodes.NeedsWholeOrg));
         }
 
-        // The caller changes the setting (the whole organization and property.write): it gets the bank accounts back as it saved them.
         var saved = await issuer.SaveSettingsAsync(orgId.Value, request.ToCommand(), User.GetUserId(), cancellationToken);
         return Ok(ToDto(saved, bankAccountsInClear: true));
     }

@@ -24,7 +24,6 @@ public class CalendarController(
     IHostScopeResolver hostScopeResolver,
     TimeProvider timeProvider) : ControllerBase
 {
-    /// <summary>First and last year a day may be asked for.</summary>
     private const int MinYear = 2000;
     private const int MaxYear = 2100;
 
@@ -55,7 +54,6 @@ public class CalendarController(
         [FromQuery] string? timezone = null,
         CancellationToken cancellationToken = default)
     {
-        // Days the calendar can write: a day outside them is no calendar, and the day after it may not exist.
         if (!InBounds(fromDay) || !InBounds(toDay) || !TryParseIds(propertyIds, out var ids))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.BadRequest, "CalendarInvalidRequest");
 
@@ -78,10 +76,8 @@ public class CalendarController(
             calendar, from, to, zone, TimezoneHelper.GetUtcOffsetMinutes(zone, timeProvider.GetUtcNow().UtcDateTime)));
     }
 
-    // Also the rule of the days of the calendar (CalendarDaysController): one definition of the bounds and of the list of ids.
     internal static bool InBounds(DateOnly? day) => day is null || day.Value.Year is >= MinYear and <= MaxYear;
 
-    // The ids of the request, repeated or separated by commas; false for anything that is not an id.
     internal static bool TryParseIds(string[]? values, out List<Guid> ids)
     {
         ids = [];

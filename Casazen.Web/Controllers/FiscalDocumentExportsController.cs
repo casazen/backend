@@ -33,19 +33,10 @@ public class FiscalDocumentExportsController(
     TimeProvider timeProvider,
     ILogger<FiscalDocumentExportsController> logger) : ControllerBase
 {
-    /// <summary>Code of a <c>format</c> that is missing or is not <c>csv</c> or <c>xlsx</c>.</summary>
     public const string InvalidFormatCode = "fiscal_export_invalid_format";
 
-    /// <summary>Code of a <c>from</c> after <c>to</c>, or a day out of the years the reports support.</summary>
     public const string InvalidRangeCode = "fiscal_export_invalid_range";
 
-    /// <summary>
-    /// The file of the issued documents the caller reaches, newest first. <c>format</c> is <c>csv</c> or <c>xlsx</c> (400 <c>fiscal_export_invalid_format</c>
-    /// for any other word, or none); <c>from</c>/<c>to</c> are Europe/Rome days of the issue, both included (400 <c>fiscal_export_invalid_range</c>);
-    /// <c>kind</c>, <c>source</c>, <c>bookingId</c> and <c>propertyId</c> narrow the list as they do on <c>GET api/fiscal/documents</c>. The file is named
-    /// <c>documenti-yyyy-MM</c> after the month of <c>from</c> (else of <c>to</c>, else the current month). 422 <c>csv_too_many_rows</c> or
-    /// <c>xlsx_too_many_rows</c> when the list is longer than a file holds: narrow the period.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -79,7 +70,6 @@ public class FiscalDocumentExportsController(
             return NotFound();
         }
 
-        // The scope narrows the rows in SQL; only the issued documents are read, and never more than a file holds.
         var rows = await documents.ListForExportAsync(
             scope,
             new FiscalDocumentCriteria(bookingId, propertyId, fromDay, toDay, kind, Status: null, source),
@@ -100,7 +90,6 @@ public class FiscalDocumentExportsController(
             FiscalDocumentExports.FileName(month, FiscalDocumentExportFormats.ExtensionOf(fileFormat)));
     }
 
-    /// <summary>The days are in the years the reports support and the first is not after the last; a missing day is no limit.</summary>
     private static bool IsSupportedRange(DateOnly? fromDay, DateOnly? toDay) =>
         (fromDay is not { } from || from.Year >= HostDashboardPeriod.MinCustomYear && from.Year <= HostDashboardPeriod.MaxCustomYear)
         && (toDay is not { } to || to.Year >= HostDashboardPeriod.MinCustomYear && to.Year <= HostDashboardPeriod.MaxCustomYear)

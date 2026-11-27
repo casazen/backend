@@ -55,10 +55,6 @@ public sealed record OwnerMandateDto(
         m.MandatePdfUrl?.StartsWith(StorageKeys.OwnerMandate(m.OrgId, m.PropertyOwnerId, string.Empty), StringComparison.Ordinal) == true);
 }
 
-/// <summary>
-/// The structured billing address of an owner (<c>GET/PUT api/owners/{id}/address</c>), in clear: only callers with the finance permission get it, and every
-/// read is logged with ids, never values.
-/// </summary>
 public sealed record OwnerAddressDto(
     Guid OwnerId,
     string? Street,
@@ -72,7 +68,6 @@ public sealed record OwnerAddressDto(
         owner.Id, owner.BillingStreet, owner.BillingCivic, owner.BillingPostalCode, owner.BillingCity, owner.BillingProvince, owner.BillingCountry);
 }
 
-/// <summary>A commission rule of a channel of the agency, as stored.</summary>
 public sealed record ChannelCommissionRuleDto(
     Guid Id,
     string Channel,
@@ -85,11 +80,6 @@ public sealed record ChannelCommissionRuleDto(
     public static ChannelCommissionRuleDto From(OrgChannelCommissionRule r) => new(r.Id, r.Channel, r.Percent, r.Base, r.ValidFrom, r.ValidTo, r.CreatedAt);
 }
 
-/// <summary>
-/// The channel commission rules of the agency (<c>GET/PUT api/owner-accounting/channel-commission-rules</c>): <see cref="Rules"/> is the list a <c>PUT</c>
-/// replaces; <see cref="Channels"/> says, for each portal, what applies today: the rule in force, or the configured default (<c>isDefault: true</c>), or
-/// nothing (<c>percent: null</c>).
-/// </summary>
 public sealed record ChannelCommissionRuleSetDto(IReadOnlyList<ChannelCommissionRuleDto> Rules, IReadOnlyList<ChannelCommissionInForce> Channels)
 {
     public static ChannelCommissionRuleSetDto From(ChannelCommissionRuleSet set) =>

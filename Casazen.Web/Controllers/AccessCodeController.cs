@@ -8,10 +8,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Property access code management (NF-13, E06/F03/US01/T01).
-/// Codes are encrypted at rest and NEVER released without verification.
-/// </summary>
 [ApiController]
 [Route("api")]
 public class AccessCodeController : ControllerBase
@@ -64,10 +60,6 @@ public class AccessCodeController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// Sets the access code for a property (encrypted storage).
-    /// Requires property.write permission.
-    /// </summary>
     [HttpPost("properties/{id}/access-code")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -83,12 +75,6 @@ public class AccessCodeController : ControllerBase
         return Ok();
     }
 
-    /// <summary>
-    /// Gets the access code for a booking (verification required).
-    /// Logs the access and blocks if verification not passed.
-    /// Requires booking.read permission, and the booking of a property the caller reaches (AM-03: a collaborator «Solo alcuni» reads the code of
-    /// the properties it was given only; another property is a 404, like a booking that does not exist).
-    /// </summary>
     [HttpGet("bookings/{id}/access-code")]
     [Authorize(Policy = CasazenPolicies.BookingRead)]
     [ProducesResponseType(typeof(AccessCodeResponse), StatusCodes.Status200OK)]
@@ -113,16 +99,12 @@ public class AccessCodeController : ControllerBase
     }
 }
 
-/// <summary>Request to set an access code.</summary>
 public sealed record SetAccessCodeRequest
 {
-    /// <summary>Plain text access code (will be encrypted).</summary>
     public required string Code { get; init; }
 }
 
-/// <summary>Response containing the access code.</summary>
 public sealed record AccessCodeResponse
 {
-    /// <summary>Plain text access code.</summary>
     public required string Code { get; init; }
 }

@@ -24,7 +24,6 @@ public sealed record SeoTouristTaxFacts(
     DateTime EffectiveFrom,
     string? SourceUrl)
 {
-    /// <summary>The facts of the single simple rate of the page, or <c>null</c> when there is none to summarize.</summary>
     public static SeoTouristTaxFacts? From(IReadOnlyList<PublicTouristTaxRateSummaryDto> rates)
     {
         if (rates is not { Count: 1 })
@@ -43,8 +42,6 @@ public sealed record SeoTouristTaxFacts(
 
         return new SeoTouristTaxFacts(
             rate.RatePerPersonPerNight,
-            // A cap of one night or an exemption under one year is no usual rule and would read «1 notti» / «1 anni»: the summary
-            // leaves it to the approved text of the page.
             rate.MaxNights is > 1 ? rate.MaxNights : null,
             rate.MinimumAge > 1 ? rate.MinimumAge : 0,
             rate.EffectiveFrom,

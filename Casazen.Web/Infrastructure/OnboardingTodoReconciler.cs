@@ -32,7 +32,6 @@ public sealed class OnboardingTodoReconciler(
         if (rows.Count == 0)
             return;
 
-        // Completion is the org's fact, never inferred from the subset of properties a collaborator can see.
         var orgScope = new HostScope(orgId);
         var plan = await plans.GetPlanAsync(orgId, orgScope, ct);
         var completed = plan.Parts
@@ -92,8 +91,6 @@ public sealed class OnboardingTodoReconciler(
                     break;
             }
 
-            // A reminder follows the logical part/property/channel, never the id of a historical attempt. Keep the newest
-            // actionable item so its resume link remains valid; closed rows stay available for the audit trail.
             var duplicate = process is not null && (!obsolete || settled) && !seen.Add(process);
             if (obsolete || duplicate)
                 await activities.CloseAsync(row.Id, InternalActivity.ClosedBySystem, ct);

@@ -8,18 +8,12 @@ namespace Casazen.Web.BackgroundJobs;
 
 public static partial class RecurringJobsRegistration
 {
-    /// <summary>
-    /// The jobs of the channels: the OTA partner API (frozen), the Octorate connector (bookings, calendar, conversations, reviews, listings) and the
-    /// import of the documents Octorate issued.
-    /// </summary>
     private static void RegisterChannelJobs(IRecurringJobManager recurringJobManager, IFeatureFlags featureFlags)
     {
         ConfigureOtaPartnerJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OtaPartnerApi));
 
-        // E02/F02: the jobs of the Octorate connector (bookings and calendar), only while the connector is on.
         ConfigureOctorateJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
 
-        // E06/F03/US02/T01: the import of the documents Octorate issued, only while the connector and the import are both on.
         ConfigureOctorateDocumentJobs(
             recurringJobManager,
             featureFlags.IsEnabled(FeatureFlags.OctorateConnector) && featureFlags.IsEnabled(FeatureFlags.OctorateDocumentImport));
@@ -79,7 +73,6 @@ public static partial class RecurringJobsRegistration
             CalendarSyncJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        // E05/F01/US01/T03 (NF-62, OCT-09): the copy of the OTA conversations, kept up to date by the webhook and recovered by these two passes.
         recurringJobManager.AddOrUpdate<OtaMessageReconcileJob>(
             OtaMessageReconcileJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
@@ -92,15 +85,12 @@ public static partial class RecurringJobsRegistration
             OtaMessageDeepReconcileJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        // E05/F06/US01/T02 (NF-69, OCT-12): the reviews of the Airbnb bookings, read one booking at a time (the API has no list), every six hours.
         recurringJobManager.AddOrUpdate<OtaReviewSyncJob>(
             OtaReviewSyncJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             OtaReviewSyncJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        // E02/F03/US01/T07: the follow-up of the publications of the listings (every 15 minutes), the channels that went silent (daily) and the
-        // changes made on Octorate outside CasaZen (hourly). None of them writes to Octorate but the sending of the photos a run left unsent and the removal of a photo that left the gallery.
         recurringJobManager.AddOrUpdate<ListingStatusSyncJob>(
             ListingStatusSyncJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),

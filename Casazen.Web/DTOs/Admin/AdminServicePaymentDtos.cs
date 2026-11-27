@@ -25,42 +25,30 @@ public sealed class AdminServicePaymentDto
 
     public string? PayerName { get; set; }
 
-    /// <summary><c>Requested</c>, <c>Processing</c>, <c>Paid</c>, <c>Failed</c>, <c>Canceled</c>, <c>PartiallyRefunded</c>, <c>Refunded</c>, <c>NeedsReview</c> and, for the money CasaZen holds (SP-15c), <c>Authorized</c>, <c>Held</c>, <c>Released</c>, <c>Disputed</c> or <c>TransferFailed</c>.</summary>
     public string Status { get; set; } = string.Empty;
 
-    /// <summary><c>Stripe</c> or <c>Offline</c>; null while it is not paid.</summary>
     public string? PaidVia { get; set; }
 
     public int AmountCents { get; set; }
 
-    /// <summary>ISO currency in capitals (<c>EUR</c>).</summary>
     public string Currency { get; set; } = string.Empty;
 
-    /// <summary>The commission percentage the payment was created with (a snapshot).</summary>
     public decimal CommissionPercent { get; set; }
 
-    /// <summary>CasaZen's commission in cents; 0 when none was charged.</summary>
     public int CommissionCents { get; set; }
 
-    /// <summary>What the supplier gets before Stripe's own fees.</summary>
     public int NetCents { get; set; }
 
     public int RefundedCents { get; set; }
 
-    /// <summary>The part of the commission that went back with the refunds, in proportion (rounded to the cent).</summary>
     public int CommissionRefundedCents { get; set; }
 
     public DateTime? RequestedAt { get; set; }
 
-    /// <summary>When the payment became late (unpaid <c>LateAfterDays</c> after the request); null while on time.</summary>
     public DateTime? LateAt { get; set; }
 
     public DateTime? PaidAt { get; set; }
 
-    /// <summary>
-    /// Stripe's code of the last failed attempt, or, for a payment that needs a review, <c>review:</c> and what did not match
-    /// (<c>account</c>, <c>amount</c>, <c>currency</c>, <c>fee</c>, <c>intent</c>). No personal data.
-    /// </summary>
     public string? FailureCode { get; set; }
 
     public string? StripePaymentIntentId { get; set; }
@@ -69,33 +57,24 @@ public sealed class AdminServicePaymentDto
 
     public DateTime CreatedAt { get; set; }
 
-    /// <summary><c>DirectCharge</c> (SP-15a: the supplier's own money) or <c>PlatformHeld</c> (SP-15c: CasaZen holds it until it is released).</summary>
     public string FundsModel { get; set; } = nameof(ServiceFundsModel.DirectCharge);
 
-    /// <summary>When the card was charged and CasaZen began to hold the money; null for a direct charge or a block not charged yet.</summary>
     public DateTime? CapturedAt { get; set; }
 
-    /// <summary>When the money is due to the supplier; null until the work is completed.</summary>
     public DateTime? ReleaseAt { get; set; }
 
-    /// <summary>When the supplier was paid.</summary>
     public DateTime? ReleasedAt { get; set; }
 
-    /// <summary>The Stripe transfer that paid the supplier.</summary>
     public string? StripeTransferId { get; set; }
 
-    /// <summary>Transfers Stripe refused so far; the release job tries again with a growing delay.</summary>
     public int TransferAttempts { get; set; }
 
-    /// <summary>Why the last transfer did not go: a Stripe code, or <c>account_not_ready</c>. No personal data.</summary>
     public string? TransferFailureCode { get; set; }
 
     public DateTime? TransferNextAttemptAt { get; set; }
 
-    /// <summary>The card dispute (chargeback) Stripe opened on the charge; after the release it is CasaZen's loss.</summary>
     public string? CardDisputeId { get; set; }
 
-    /// <summary>Stripe's status of the card dispute (<c>needs_response</c>, <c>won</c>, <c>lost</c>…).</summary>
     public string? CardDisputeStatus { get; set; }
 
     public DateTime? CardDisputeAt { get; set; }
@@ -138,7 +117,6 @@ public sealed class AdminServicePaymentDto
     };
 }
 
-/// <summary>One refund of a service payment.</summary>
 public sealed class AdminServicePaymentRefundDto
 {
     public Guid Id { get; set; }
@@ -148,7 +126,6 @@ public sealed class AdminServicePaymentRefundDto
 
     public int AmountCents { get; set; }
 
-    /// <summary><c>Pending</c>, <c>Succeeded</c>, <c>Failed</c>, <c>Canceled</c> or <c>RequiresAction</c>. Only a succeeded refund counts.</summary>
     public string Status { get; set; } = string.Empty;
 
     /// <summary><c>Admin</c>, <c>Stripe</c> (made outside CasaZen) or <c>System</c> (CasaZen gave the money back because the request closed, SP-15c).</summary>
@@ -156,13 +133,10 @@ public sealed class AdminServicePaymentRefundDto
 
     public string? StripeRefundId { get; set; }
 
-    /// <summary>Stripe's reason when it failed or was canceled.</summary>
     public string? FailureCode { get; set; }
 
-    /// <summary>The admin's note.</summary>
     public string? Reason { get; set; }
 
-    /// <summary>The part of the commission that went back with this refund, in cents; null until it succeeds.</summary>
     public int? CommissionRefundedCents { get; set; }
 
     public DateTime CreatedAt { get; set; }
@@ -185,7 +159,6 @@ public sealed class AdminServicePaymentRefundDto
     };
 }
 
-/// <summary>A payment with its refunds (<c>GET api/admin/service-payments/{id}</c>).</summary>
 public sealed class AdminServicePaymentDetailDto
 {
     public AdminServicePaymentDto Payment { get; set; } = new();
@@ -199,10 +172,8 @@ public sealed class AdminServicePaymentDetailDto
     };
 }
 
-/// <summary>Body of <c>POST api/admin/service-payments/{id}/refund</c> (SP-15b).</summary>
 public sealed class RefundServicePaymentRequest
 {
-    /// <summary>The amount to give back, in cents; everything still refundable when left out.</summary>
     [Range(1, ServiceRequestLimits.MaxAmountCents, ErrorMessage = ServicePaymentErrors.RefundAmountInvalidMessageKey)]
     public int? AmountCents { get; set; }
 
@@ -219,24 +190,18 @@ public sealed class RefundServicePaymentRequest
     public bool KeepCommission { get; set; }
 }
 
-/// <summary>The commission applied to a supplier (<c>GET/PUT api/admin/suppliers/{orgId}/commission</c>).</summary>
 public sealed class SupplierCommissionDto
 {
     public Guid SupplierOrgId { get; set; }
 
-    /// <summary>The platform's percentage (<c>SupplierPayments:CommissionPercent</c>).</summary>
     public decimal PlatformPercent { get; set; }
 
-    /// <summary>The supplier's own percentage; null when it has none.</summary>
     public decimal? OverridePercent { get; set; }
 
-    /// <summary>When the override stops; null = it has no end.</summary>
     public DateTime? OverrideUntil { get; set; }
 
-    /// <summary>The override is in force now.</summary>
     public bool OverrideActive { get; set; }
 
-    /// <summary>What a payment created now is charged.</summary>
     public decimal EffectivePercent { get; set; }
 
     internal static SupplierCommissionDto From(SupplierCommissionSetting setting) => new()
@@ -250,19 +215,12 @@ public sealed class SupplierCommissionDto
     };
 }
 
-/// <summary>Body of <c>PUT api/admin/suppliers/{orgId}/commission</c> (SP-15b).</summary>
 public sealed class SetSupplierCommissionRequest
 {
-    /// <summary>
-    /// The supplier's own commission, a percentage from 0 to the highest the configuration allows with two decimals at most (0 is a
-    /// free period). Null removes the override: the platform's percentage applies again.
-    /// </summary>
     public decimal? Percent { get; set; }
 
-    /// <summary>When the override stops (UTC), in the future; left out = no end. Only with a percentage.</summary>
     public DateTime? Until { get; set; }
 
-    /// <summary>Why: required, at most 500 characters. Recorded in the audit trail with the admin and the old and new value.</summary>
     [Required(ErrorMessage = ServicePaymentErrors.CommissionReasonMessageKey)]
     [MaxLength(ServicePaymentLimits.OfflineNoteMaxLength, ErrorMessage = ServicePaymentErrors.CommissionReasonMessageKey)]
     public string Reason { get; set; } = string.Empty;

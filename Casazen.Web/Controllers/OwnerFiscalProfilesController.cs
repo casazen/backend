@@ -24,7 +24,6 @@ public class OwnerFiscalProfilesController(
     IHostScopeResolver hostScopeResolver,
     ILogger<OwnerFiscalProfilesController> logger) : ControllerBase
 {
-    /// <summary>The profiles of an owner, the newest first; full values only with <c>agency.owner.financial.manage</c>.</summary>
     [HttpGet("api/owners/{ownerId:guid}/fiscal-profiles")]
     [ProducesResponseType(typeof(List<OwnerFiscalProfileDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -38,17 +37,12 @@ public class OwnerFiscalProfilesController(
         var list = await profiles.ListProfilesAsync(orgId.Value, ownerId, HttpContext.RequestAborted);
         if (full)
         {
-            // Audit: the caller read the full fiscal identifiers of the owner (ADR-012-R3). Never the values.
             logger.LogInformation("Full fiscal profiles of owner {OwnerId} read by user {UserId}", ownerId, User.FindFirst("sub")?.Value);
         }
 
         return Ok(list.Select(p => OwnerFiscalProfileDto.From(p, full)).ToList());
     }
 
-    /// <summary>
-    /// A new profile of the owner from <c>validFrom</c> (the one in force ends the day before). 422 <c>owner_fiscal_profile_invalid</c> (with the
-    /// <c>field</c>); 409 <c>owner_fiscal_profile_overlap</c>.
-    /// </summary>
     [HttpPost("api/owners/{ownerId:guid}/fiscal-profiles")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerFiscalProfileDto), StatusCodes.Status201Created)]
@@ -65,11 +59,6 @@ public class OwnerFiscalProfilesController(
         return CreatedAtAction(nameof(List), new { ownerId }, OwnerFiscalProfileDto.From(profile, full: true));
     }
 
-    /// <summary>
-    /// Whether the owner can be used on <c>date</c> (a statement, a payout): <c>{ ready: true, profileId, policyId, ruleCode, ruleVersion, jurisdiction }</c>,
-    /// or the 422 that blocks it (<c>owner_fiscal_profile_missing</c>, <c>owner_fiscal_profile_incomplete</c>, <c>owner_fiscal_policy_missing</c>,
-    /// <c>owner_fiscal_policy_not_approved</c>, <c>owner_fiscal_policy_not_effective</c>, <c>owner_fiscal_policy_jurisdiction_mismatch</c>).
-    /// </summary>
     [HttpGet("api/owners/{ownerId:guid}/fiscal-profiles/readiness")]
     [ProducesResponseType(typeof(OwnerFiscalReadinessDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
@@ -83,7 +72,6 @@ public class OwnerFiscalProfilesController(
         return Ok(new OwnerFiscalReadinessDto(true, resolution.Profile.Id, resolution.Policy.Id, resolution.Policy.RuleCode, resolution.Policy.Version, resolution.Policy.Jurisdiction));
     }
 
-    /// <summary>The rule sets of the agency.</summary>
     [HttpGet("api/owner-accounting/policies")]
     [ProducesResponseType(typeof(List<OwnerAccountingPolicyDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<OwnerAccountingPolicyDto>>> Policies()
@@ -95,7 +83,6 @@ public class OwnerFiscalProfilesController(
         return Ok((await profiles.ListPoliciesAsync(orgId.Value, HttpContext.RequestAborted)).Select(OwnerAccountingPolicyDto.From).ToList());
     }
 
-    /// <summary>A new rule set, not approved. 422 <c>owner_policy_invalid</c> (with the <c>field</c>); 409 <c>owner_policy_version_exists</c>.</summary>
     [HttpPost("api/owner-accounting/policies")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerAccountingPolicyDto), StatusCodes.Status201Created)]
@@ -191,7 +178,6 @@ public sealed record OwnerFiscalProfileDto(
         !full);
 }
 
-/// <summary>A rule set: its identity, validity, source, parameters and approval.</summary>
 public sealed record OwnerAccountingPolicyDto(
     Guid Id,
     string Jurisdiction,
@@ -211,14 +197,11 @@ public sealed record OwnerAccountingPolicyDto(
         OwnerAccountingRuleParameters.FromJson(p.ParametersJson), p.ApprovedAt is not null, p.ApprovedAt, p.ApprovedByName);
 }
 
-/// <summary>The readiness of an owner on a day: the profile and the approved rule that apply.</summary>
 public sealed record OwnerFiscalReadinessDto(bool Ready, Guid ProfileId, Guid PolicyId, string RuleCode, string RuleVersion, string Jurisdiction);
 
-/// <summary>The approval of a rule set: the qualified accountant who approved it and, for a rule set whose source is not pinned yet, the SHA-256 of the document checked.</summary>
 public sealed record ApproveOwnerPolicyRequest
 {
     public string? ApprovedByName { get; init; }
 
-    /// <summary>The SHA-256 (64 hexadecimal characters) of the source document the accountant checked: required for a rule set seeded without it.</summary>
     public string? SourceSha256 { get; init; }
 }

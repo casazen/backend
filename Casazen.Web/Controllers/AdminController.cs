@@ -20,7 +20,6 @@ public class AdminController(
     IEntitlementService entitlementService,
     ILogger<AdminController> logger) : ControllerBase
 {
-    /// <summary>Returns platform KPI stats for the admin dashboard.</summary>
     [HttpGet("stats")]
     public async Task<ActionResult<AdminStatsDto>> GetStats()
     {
@@ -51,7 +50,6 @@ public class AdminController(
         });
     }
 
-    /// <summary>Returns a paginated CIN compliance report. Admin only.</summary>
     [HttpGet("cin-compliance")]
     public async Task<ActionResult<PagedResultDto<CinComplianceItemDto>>> GetCinCompliance(
         [FromQuery] string? cinStatus = null,
@@ -64,7 +62,6 @@ public class AdminController(
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "CinStatusUnknown");
         }
 
-        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500 (A1-26): clamp them instead.
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
@@ -87,7 +84,6 @@ public class AdminController(
         });
     }
 
-    /// <summary>Lists the OTA connections behind a sync-health counter. Admin only.</summary>
     [HttpGet("ota-sync")]
     public async Task<ActionResult<PagedResultDto<OtaSyncItem>>> GetOtaSync(
         [FromQuery, Required, RegularExpression("^(synced|failed|neverSynced)$")] string status,
@@ -101,7 +97,6 @@ public class AdminController(
         return Ok(new PagedResultDto<OtaSyncItem> { Items = items, TotalCount = total, Page = page, PageSize = pageSize });
     }
 
-    /// <summary>Returns the status of all registered Hangfire recurring jobs. Admin only.</summary>
     [HttpGet("jobs")]
     public async Task<ActionResult<IEnumerable<JobStatusDto>>> GetJobs()
     {
@@ -152,7 +147,6 @@ public class AdminController(
                 : this.ApiProblem(StatusCodes.Status409Conflict, PlanProblemCodes.SubscriptionRequired, "SubscriptionRequired");
         }
 
-        // The org's activity log says that CasaZen staff changed the plan (the actor is the staff account, an id).
         var updated = await orgService.UpdatePlanTierAsync(
             orgId, planTier, User.GetUserId(), PlanChangeSource.Staff, cancellationToken);
         if (updated is null)

@@ -3,7 +3,6 @@ using Casazen.Web.DTOs.Onboarding;
 
 namespace Casazen.Web.Mapping;
 
-/// <summary>The integration settings and the reopen of a part (NF-108, E10/F01/US02/T01) as the API answers them: codes, counts and instants only.</summary>
 public static class OnboardingIntegrationMapping
 {
     public static OnboardingIntegrationDto ToDto(this OnboardingIntegrationOverview overview) => new()
@@ -24,7 +23,6 @@ public static class OnboardingIntegrationMapping
 
     public static OnboardingIntegrationPartDto ToDto(this OnboardingIntegrationPart part)
     {
-        // The plan part as the plan endpoint gives it, so the two answers can never say different things about a part.
         var plan = part.Plan.ToDto();
         return new OnboardingIntegrationPartDto
         {

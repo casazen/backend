@@ -14,7 +14,6 @@ public class OctorateDocumentImportJob(IOctorateDocumentImportService import, IL
 {
     public const string RecurringJobId = "octorate-document-import";
 
-    /// <summary>Every 30 minutes.</summary>
     public const string Cron = "*/30 * * * *";
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
@@ -25,7 +24,6 @@ public class OctorateDocumentImportJob(IOctorateDocumentImportService import, IL
         {
             try
             {
-                // Every accommodation is read from its own last import: a structure that fails keeps its date, whatever the others did.
                 await import.ImportAsync(orgId, since: null, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

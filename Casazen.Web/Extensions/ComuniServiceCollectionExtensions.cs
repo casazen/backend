@@ -23,19 +23,11 @@ public static class ComuniServiceCollectionExtensions
         services.AddScoped<ISupplierPilotComuni, SupplierPilotComuni>();
         services.AddScoped<IPropertyComuneResolver, PropertyComuneResolver>();
 
-        // The official Swiss localities and municipalities of swisstopo (E29/F01/US01/T01, NF-124): the search of the locality picker and the
-        // lookup of a municipality (SwissPlacesController); the seed is loaded at startup by SwissPlacesSeedHostedService.
         services.AddScoped<ISwissPlacesDirectory, SwissPlacesDirectory>();
-        // E29/F01/US01/T02: the one resolver of the place of a Swiss property (stored municipality, else derived from postal code and city), read by
-        // the Ticino notification, the OTR report, the year-end count of Ticino, the policy of the identity documents and the property record.
         services.AddScoped<IPropertySwissPlaceResolver, PropertySwissPlaceResolver>();
-        // E29/F02/US01/T01 (NF-125, D3): the one resolver of the regime of the registration of the guests of a property (Italy, one of the 26 cantons, or the
-        // unknown Swiss place) and the writer of the host's setting; the endpoints are behind Features:GuestRegistrationRegimes, the readiness of a Swiss
-        // property (the municipality, the structure number of Ticino) is not.
         services.AddScoped<IGuestRegistrationRegimeResolver, GuestRegistrationRegimeResolver>();
         services.AddScoped<IGuestNotificationOverrideService, GuestNotificationOverrideService>();
 
-        // Pilot comuni of supplier self-serve registration (SU-01): no default, validated at startup.
         services.AddOptions<SupplierRegistrationOptions>()
             .BindConfiguration(SupplierRegistrationOptions.SectionName)
             .ValidateOnStart();

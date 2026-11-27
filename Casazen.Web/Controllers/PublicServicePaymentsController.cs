@@ -24,7 +24,6 @@ namespace Casazen.Web.Controllers;
 [AllowAnonymous]
 public class PublicServicePaymentsController(ISupplierPaymentService payments) : ControllerBase
 {
-    /// <summary>The payment: who asks for what, the lines of the price and where it stands (<c>Payable</c>, <c>Processing</c>, <c>Paid</c>, <c>Unavailable</c>).</summary>
     [HttpPost("{paymentId:guid}")]
     [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
     [ProducesResponseType(typeof(PublicServicePaymentDto), StatusCodes.Status200OK)]
@@ -65,6 +64,5 @@ public class PublicServicePaymentsController(ISupplierPaymentService payments) :
         return Ok(ServicePaymentSessionDto.From(await payments.CreatePublicSessionAsync(paymentId, request.Token, cancellationToken)));
     }
 
-    /// <summary>The answers carry a state, and the session a client secret: nothing is cached by the browser or a proxy.</summary>
     private void SetNoStore() => Response.Headers.CacheControl = "private, no-store";
 }

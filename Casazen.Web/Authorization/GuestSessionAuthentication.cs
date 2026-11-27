@@ -9,19 +9,14 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Authorization;
 
-/// <summary>Names of the authentication scheme and the claims of a guest session (DB-06a).</summary>
 public static class GuestSessionDefaults
 {
-    /// <summary>The authentication scheme of the policy <see cref="CasazenPolicies.GuestSession"/>; the only one that policy uses.</summary>
     public const string AuthenticationScheme = "GuestSession";
 
-    /// <summary>The org of the site the session was opened on.</summary>
     public const string OrgIdClaim = "cz_guest_org";
 
-    /// <summary>The hash of the guest's email (never the address).</summary>
     public const string EmailHashClaim = "cz_guest_email";
 
-    /// <summary>When the session ends, in Unix seconds (UTC).</summary>
     public const string ExpiresAtClaim = "cz_guest_exp";
 }
 
@@ -66,7 +61,6 @@ public sealed class GuestSessionAuthenticationHandler(
         }
         catch (InvalidOperationException)
         {
-            // The request already belongs to another org: never mix the two.
             return Task.FromResult(AuthenticateResult.Fail("The request belongs to another org."));
         }
 
@@ -83,13 +77,8 @@ public sealed class GuestSessionAuthenticationHandler(
     }
 }
 
-/// <summary>What an action of the guest area reads from its caller.</summary>
 public static class GuestSessionPrincipalExtensions
 {
-    /// <summary>
-    /// The ticket of a guest session (org, email hash, end of the session), or <c>null</c> when the principal is not one. Behind the policy
-    /// <see cref="CasazenPolicies.GuestSession"/> it is never <c>null</c>.
-    /// </summary>
     public static GuestSessionTicket? GetGuestSessionTicket(this ClaimsPrincipal user)
     {
         ArgumentNullException.ThrowIfNull(user);

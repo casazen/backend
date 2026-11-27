@@ -65,14 +65,12 @@ public sealed class DefinedEnumJsonConverterFactory(IStringLocalizer localizer) 
             if (IsDeclared(value))
                 return value;
 
-            // Thrown with a message: System.Text.Json adds the path, MVC turns it into the field error of the 400.
             throw new JsonException(localizer[MessageKey, AllowedNames].Value);
         }
 
         private static bool IsDeclared(TEnum value) =>
             IsFlags ? (ToBits(value) & ~DeclaredBits) == 0 : Enum.IsDefined(value);
 
-        // Any underlying type, negative values included (their two's complement bits).
         private static ulong ToBits(TEnum value) =>
             Type.GetTypeCode(typeof(TEnum)) == TypeCode.UInt64
                 ? Convert.ToUInt64(value, CultureInfo.InvariantCulture)

@@ -26,13 +26,6 @@ public class SupplierClientsController(
     ISupplierClientsService clients,
     ISupplierOrgContextResolver supplierOrgContextResolver) : ControllerBase
 {
-    /// <summary>
-    /// A page of the supplier's customers, the one with the latest activity first. <c>filter</c>: <c>tutti</c> (default), <c>host</c>, <c>privati</c>,
-    /// <c>abituali</c> (at least three jobs taken) or <c>nuovi</c> (no job taken yet). <c>pageSize</c> up to 200 (the console searches the name on the rows
-    /// it loaded). Each customer carries <c>id</c> (the <c>clientId</c> of the inbox), <c>kind</c>, <c>label</c> ("Nome C." for a private customer until a job
-    /// of theirs is taken, then the full name), <c>jobsAccepted</c>, <c>jobsCompleted</c>, <c>lastJobAt</c>, <c>nextJobAt</c>, <c>grossPaidCents</c>,
-    /// <c>regular</c>, <c>source</c> and, <b>only after the take</b>, <c>contact</c>; a customer removed by the retention has <c>anonymized: true</c> and no name.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(SupplierClientsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -58,10 +51,6 @@ public class SupplierClientsController(
         return Ok(SupplierClientsMapper.ToResponse(result, page, pageSize));
     }
 
-    /// <summary>
-    /// One customer with its latest six requests that are open or taken (each is a request of <c>GET api/supplier/inbox/{id}</c>). 404
-    /// <c>supplier_client_not_found</c> when the id is not a customer of the caller's supplier org (another supplier's answers the same).
-    /// </summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(SupplierClientDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -77,6 +66,5 @@ public class SupplierClientsController(
         return Ok(SupplierClientsMapper.ToDetailDto(detail));
     }
 
-    /// <summary>The answers carry the personal data of private customers: nothing is cached by the browser or a proxy.</summary>
     private void SetNoStore() => Response.Headers.CacheControl = "private, no-store";
 }

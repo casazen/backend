@@ -34,7 +34,6 @@ public class BookingApprovalController(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>Requests waiting for the host (guest email confirmed, deadline not passed), soonest deadline first.</summary>
     [HttpGet("approval-requests")]
     [ProducesResponseType(typeof(IReadOnlyList<BookingApprovalRequestDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<BookingApprovalRequestDto>>> GetApprovalRequests(
@@ -71,17 +70,11 @@ public class BookingApprovalController(
         if (!await CanWriteAsync(id, cancellationToken))
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "BookingNotFound");
 
-        // The only host confirmation of a pending booking (PC-07): "pay at the property" requests (D5) and the pending
-        // bookings the host entered by hand go through the same action.
         logger.LogInformation("Host confirming pending booking {BookingId}", id);
         await hostBookings.ConfirmAsync(id, cancellationToken);
         return Ok(await ResponseOfAsync(id));
     }
 
-    /// <summary>
-    /// Declines the request: the booking is cancelled (<c>OnSiteRequestDeclined</c>), its dates released, and the guest
-    /// gets an email with the optional <c>message</c>. Same 409 answers as <see cref="Approve"/>.
-    /// </summary>
     [HttpPost("{id:guid}/decline")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(BookingResponseDto), StatusCodes.Status200OK)]
@@ -104,10 +97,6 @@ public class BookingApprovalController(
         return Ok(await ResponseOfAsync(id));
     }
 
-    /// <summary>
-    /// TN-3: the tenant filter hides a booking of another org; a visible one still needs <c>booking.write</c> on its
-    /// property (owner or org-wide role).
-    /// </summary>
     private async Task<bool> CanWriteAsync(Guid bookingId, CancellationToken cancellationToken)
     {
         var booking = await bookingService.GetBookingAsync(bookingId);

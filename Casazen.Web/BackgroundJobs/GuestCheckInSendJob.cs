@@ -68,16 +68,10 @@ public class GuestCheckInSendJob(
             return;
         }
 
-        // A5-27: a link past its validity is expired, so it neither blocks a new link nor shows as open to the host.
         await checkInService.ExpireStaleSessionsAsync();
 
         var now = _clock.GetUtcNow().UtcDateTime;
         var today = _clock.TodayInRome();
-        // Calendar window in Europe/Rome (QA-CLOCK): arrivals from today to today + SendWindowDays, whatever the hour
-        // of the run, as the guest page opens the check-in (GuestBookingLookupService). An instant bound would drop the
-        // last day of the window between 22:00 and 24:00 UTC, when Rome is already on the next day.
-        // casazen/backend#978: each org says how many days before the arrival its links go (the booking flow), up to the life of a link: the widest window is read,
-        // then each stay is kept by the window of its org.
         var windowEnd = today.AddDays(flowSettings is null ? options.Value.SendWindowDays : Math.Max(options.Value.SendWindowDays, MaxLinkDays));
 
         var bookings = await db.Bookings
@@ -91,7 +85,6 @@ public class GuestCheckInSendJob(
                  b.CheckOutDate >= today))
             .ToListAsync();
 
-        // A stay of an org whose links the host sends (manual) gets no link and no reminder from here; the others only once their window opened.
         var flows = await FlowsOfAsync(bookings);
         bookings = bookings
             .Where(b => b.Status == BookingStatus.CheckedIn
@@ -105,13 +98,11 @@ public class GuestCheckInSendJob(
         await RemindAsync(today, now);
     }
 
-    /// <summary>The most days before the arrival an org may send its links: the life of a link.</summary>
     private int MaxLinkDays => Math.Clamp(
         options.Value.SessionLifetimeDays,
         GuestCheckInOptions.MinSessionLifetimeDays,
         GuestCheckInOptions.MaxSessionLifetimeDays);
 
-    /// <summary>The booking flow of the orgs of <paramref name="bookings"/>; <c>null</c> without the settings service (a test that predates it): every org sends, with the window of the options.</summary>
     private async Task<IReadOnlyDictionary<Guid, BookingFlowSettingsView>?> FlowsOfAsync(IReadOnlyCollection<Booking> bookings) =>
         flowSettings is null || bookings.Count == 0
             ? null
@@ -123,12 +114,10 @@ public class GuestCheckInSendJob(
     private int DaysBefore(IReadOnlyDictionary<Guid, BookingFlowSettingsView>? flows, Guid orgId) =>
         flows is not null && flows.TryGetValue(orgId, out var flow) ? flow.CheckInLinkDaysBefore : options.Value.SendWindowDays;
 
-    /// <summary>First stage: the link of the stays that have none usable.</summary>
     private async Task SendLinksAsync(List<Booking> bookings, DateTime now)
     {
         var bookingIds = bookings.Select(b => b.Id).ToList();
 
-        // A usable link (open and not expired) or a completed check-in: nothing to send.
         var coveredBookingIds = await db.GuestCheckInSessions
             .Where(s =>
                 bookingIds.Contains(s.BookingId) &&
@@ -138,7 +127,6 @@ public class GuestCheckInSendJob(
             .Distinct()
             .ToListAsync();
 
-        // Communication already sent (receipt) or declared sent by the host: no guest data to collect.
         var completedReportBookingIds = await db.AlloggiatiWebReports
             .Where(r =>
                 bookingIds.Contains(r.BookingId) &&
@@ -154,14 +142,11 @@ public class GuestCheckInSendJob(
         if (candidates.Count == 0)
             return;
 
-        // E03/F04/US02: a stay whose identity verification is with an operator (rejected by one, or a hand-off still open) gets no new link: a new
-        // session would start the verification again and could open the lock code against the decision of a person.
         var withOperator = await VerificationHandOff.BookingsWithOperatorAsync(db, candidates.Select(b => b.Id).ToList(), CancellationToken.None);
         candidates = candidates.Where(b => !withOperator.Contains(b.Id)).ToList();
         if (candidates.Count == 0)
             return;
 
-        // Guest data already complete (entered by the host, CO-09): the stay no longer needs the guest's link.
         var guestsByBooking = await stayGuests.GetForBookingsAsync(candidates);
 
         foreach (var booking in candidates)
@@ -221,7 +206,6 @@ public class GuestCheckInSendJob(
             .Include(b => b.Guest)
             .Where(b => b.Status == BookingStatus.Confirmed && b.CheckInDate >= today && b.CheckInDate <= windowEnd)
             .ToListAsync();
-        // casazen/backend#978: the org whose links the host sends gets no reminder either (the reminder is a new link).
         var flows = await FlowsOfAsync(bookings);
         bookings = bookings.Where(b => SendsLinks(flows, b.OrgId)).ToList();
         if (bookings.Count == 0)
@@ -229,7 +213,6 @@ public class GuestCheckInSendJob(
 
         var bookingIds = bookings.Select(b => b.Id).ToList();
 
-        // One reminder per stay, whatever the number of runs; none once the guest completed the check-in.
         var notToRemind = await db.GuestCheckInSessions
             .Where(s =>
                 bookingIds.Contains(s.BookingId) &&
@@ -238,7 +221,6 @@ public class GuestCheckInSendJob(
             .Distinct()
             .ToListAsync();
 
-        // The latest link of each stay: a reminder only after a link issued before today.
         var todayInRome = DateOnly.FromDateTime(today);
         var latestLinks = (await db.GuestCheckInSessions
                 .Where(s => bookingIds.Contains(s.BookingId))
@@ -249,7 +231,6 @@ public class GuestCheckInSendJob(
         notToRemind.AddRange(bookingIds.Where(id =>
             !latestLinks.TryGetValue(id, out var issuedAt) || RomeCalendar.DateInRome(issuedAt) >= todayInRome));
 
-        // The communication sent (receipt) or declared sent: no guest data to collect.
         var reported = await db.AlloggiatiWebReports
             .Where(r =>
                 bookingIds.Contains(r.BookingId) &&
@@ -263,8 +244,6 @@ public class GuestCheckInSendJob(
         if (candidates.Count == 0)
             return;
 
-        // E03/F04/US02: nor is a stay whose identity verification is with an operator reminded: the new link replaces the session that holds the
-        // consent, the attempts and the hand-off, and the guest would start the verification again.
         var withOperator = await VerificationHandOff.BookingsWithOperatorAsync(db, candidates.Select(b => b.Id).ToList(), CancellationToken.None);
         candidates = candidates.Where(b => !withOperator.Contains(b.Id)).ToList();
         if (candidates.Count == 0)
@@ -297,7 +276,6 @@ public class GuestCheckInSendJob(
 
             try
             {
-                // The language of the latest session where the guest chose one (a link the host issued later has none of its own).
                 var language = await db.GuestCheckInSessions
                     .Where(s => s.BookingId == booking.Id && s.Language != null)
                     .OrderByDescending(s => s.CreatedAt)
@@ -306,7 +284,6 @@ public class GuestCheckInSendJob(
 
                 var link = await checkInService.IssueLinkAsync(booking.Id, booking.OrgId);
 
-                // Marked before the email is queued: the email job reads the mark to write the reminder, and a second run finds it.
                 var session = await db.GuestCheckInSessions.SingleAsync(s => s.Id == link.SessionId);
                 session.Language = language;
                 session.ReminderSentAt = now;

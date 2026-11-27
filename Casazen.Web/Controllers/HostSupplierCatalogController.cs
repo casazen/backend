@@ -9,12 +9,6 @@ using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// What the host reads of a supplier to ask it for an intervention (SR-08a): its published services and the free slots of one of them,
-/// for a property of the host (<c>property.read</c> in short-rent, the property authorized as a <see cref="HostResource"/>: org,
-/// permission, scope). Reads only, no flag: nothing changes. Both answer for a supplier that is active and covers the comune of the
-/// property, with the codes the creation of a request uses.
-/// </summary>
 [ApiController]
 [Route("api/suppliers/{supplierOrgId:guid}/services")]
 [Authorize(Policy = CasazenPolicies.PropertyRead)]
@@ -83,10 +77,6 @@ public class HostSupplierCatalogController(
         return Ok(HostSupplierSlotsResponse.Of(slots));
     }
 
-    /// <summary>
-    /// The property of the read: required (400), in the caller's org (404) and readable by the caller (403), as the supplier picker
-    /// authorizes it. Returns the failure, or the caller's org.
-    /// </summary>
     private async Task<(ActionResult? Failure, Guid OrgId)> AuthorizeAsync(Guid propertyId, CancellationToken cancellationToken)
     {
         if (propertyId == Guid.Empty)

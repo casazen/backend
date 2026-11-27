@@ -8,16 +8,11 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// The reports of the hosts about reviews and the decision of the staff (DB-12a): the queue and the answer, by API only (the screen of the
-/// staff console is another task). A review is taken down only here, with a reason that is written down.
-/// </summary>
 [ApiController]
 [Route("api/admin/reviews/reports")]
 [Authorize(Policy = CasazenPolicies.AdminOnly)]
 public class AdminReviewsController(IAdminReviewService reviews) : ControllerBase
 {
-    /// <summary>The reports of every org, oldest first, a page at a time; <c>status</c> (<c>Open</c>, <c>Kept</c>, <c>Removed</c>) filters them.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(PagedResultDto<AdminReviewReportDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResultDto<AdminReviewReportDto>>> List(
@@ -36,10 +31,6 @@ public class AdminReviewsController(IAdminReviewService reviews) : ControllerBas
         });
     }
 
-    /// <summary>
-    /// Decides an open report: <c>Keep</c> leaves the review public, <c>Remove</c> takes it down. The reason is required and kept with the
-    /// report. 409 <c>review_report_already_decided</c> for a report that was decided.
-    /// </summary>
     [HttpPost("{id:guid}/decide")]
     [ProducesResponseType(typeof(AdminReviewReportDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

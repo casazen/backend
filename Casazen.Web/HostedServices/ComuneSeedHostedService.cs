@@ -33,7 +33,6 @@ public class ComuneSeedHostedService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The API starts anyway: without the list the pickers say so and the health check is degraded.
             logger.LogError(ex, "Comuni seed on startup failed: import the official list as admin (docs/runbooks/comuni-istat.md)");
         }
     }

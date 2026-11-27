@@ -97,7 +97,6 @@ public class SupplierEarningsController(
 
         var rows = await earnings.ExportAsync(orgId.Value, query, cancellationToken);
 
-        // UTF-8 with a byte order mark: a spreadsheet opens the accents of a name right (as the staff export of the commission).
         var csv = Encoding.UTF8.GetBytes(SupplierEarningsCsv.Write(rows));
         var body = new byte[Encoding.UTF8.Preamble.Length + csv.Length];
         Encoding.UTF8.Preamble.CopyTo(body);
@@ -107,7 +106,6 @@ public class SupplierEarningsController(
         return File(body, SupplierEarningsCsv.ContentType + "; charset=utf-8", SupplierEarningsCsv.FileName(_clock.TodayInRomeAsDateOnly()));
     }
 
-    /// <summary>The filters of the list, or the 400 that refuses them.</summary>
     private bool TryReadQuery(
         string? tab,
         DateOnly? from,
@@ -137,6 +135,5 @@ public class SupplierEarningsController(
         return true;
     }
 
-    /// <summary>The answers describe money: nothing is cached by the browser or a proxy.</summary>
     private void SetNoStore() => Response.Headers.CacheControl = "private, no-store";
 }

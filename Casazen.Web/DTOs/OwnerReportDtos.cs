@@ -11,24 +11,18 @@ namespace Casazen.Web.DTOs;
 /// </summary>
 public sealed class OwnerReportDto
 {
-    /// <summary>The name of the report with its base (Italian, the one of the file).</summary>
     public string Title { get; init; } = string.Empty;
 
-    /// <summary>Always <c>accrual</c>: the nights of the confirmed stays, whenever the money came in; occupancy is in nights.</summary>
     public string Basis { get; init; } = "accrual";
 
-    /// <summary>Always EUR: properties have no currency.</summary>
     public string Currency { get; init; } = "EUR";
 
     public ReportPeriodDto Period { get; init; } = new();
 
-    /// <summary>The owners that hold a part of a property of the report in the period, by name.</summary>
     public IReadOnlyList<OwnerReportRowDto> Rows { get; init; } = [];
 
-    /// <summary>The properties nobody owns in the period, and the part of a property no owner holds.</summary>
     public OwnerReportRowDto Unassigned { get; init; } = new();
 
-    /// <summary>The whole scope, as the Home gives it for the same days (worked out over all the stays at once: it can differ by a cent from the sum of the rows).</summary>
     public WeightedFiguresDto Total { get; init; } = new();
 
     public static OwnerReportDto From(OwnerPerformanceReport report, string title, string anonymizedLabel)
@@ -47,21 +41,16 @@ public sealed class OwnerReportDto
     }
 }
 
-/// <summary>An owner (or the properties nobody owns) with its weighted figures.</summary>
 public sealed class OwnerReportRowDto
 {
-    /// <summary>The owner of the registry; null for the row of the properties nobody owns.</summary>
     public Guid? OwnerId { get; init; }
 
-    /// <summary>First and last name; the anonymized label for an owner whose personal data was anonymized; null for the row of the properties nobody owns.</summary>
     public string? DisplayName { get; init; }
 
-    /// <summary>The properties of the report the owner holds a part of in the period.</summary>
     public int PropertyCount { get; init; }
 
     public WeightedFiguresDto Figures { get; init; } = new();
 
-    /// <summary>The part of the revenue of the whole scope this row has, from 0 to 1; null when the scope had no revenue.</summary>
     public decimal? RevenueShare { get; init; }
 
     public static OwnerReportRowDto From(OwnerPerformanceRow row, string anonymizedLabel, decimal totalRevenue) => new()
@@ -74,17 +63,10 @@ public sealed class OwnerReportRowDto
     };
 }
 
-/// <summary>
-/// The figures of a cut weighted by an ownership share (<see cref="OwnerPerformanceFigures"/>): the nights and the stays can be
-/// fractions of a night or of a stay when a house is shared. ADR, RevPAR and the occupancy are worked out from the weighted values, not
-/// by averaging the ones of the properties. Money to the cent, nights and stays to two decimals.
-/// </summary>
 public sealed class WeightedFiguresDto
 {
-    /// <summary>Euros, rounded to the cent.</summary>
     public decimal Revenue { get; init; }
 
-    /// <summary><see cref="Revenue"/> in cents of euro, exact.</summary>
     public long RevenueCents { get; init; }
 
     public decimal OccupiedNights { get; init; }
@@ -93,24 +75,18 @@ public sealed class WeightedFiguresDto
 
     public decimal ClosedNights { get; init; }
 
-    /// <summary>Occupied over available nights, from 0 to 1; null when nothing is available.</summary>
     public decimal? OccupancyRate { get; init; }
 
     public decimal StayCount { get; init; }
 
-    /// <summary>The nights of the stays that fall in the period: what the revenue is pro rata of.</summary>
     public decimal RevenueNights { get; init; }
 
-    /// <summary>Revenue over <see cref="RevenueNights"/>, to the cent; null without a night, never zero.</summary>
     public decimal? Adr { get; init; }
 
-    /// <summary><see cref="Adr"/> in cents of euro.</summary>
     public long? AdrCents { get; init; }
 
-    /// <summary>Revenue over <see cref="AvailableNights"/>, to the cent; null when nothing is available, never zero.</summary>
     public decimal? RevPar { get; init; }
 
-    /// <summary><see cref="RevPar"/> in cents of euro.</summary>
     public long? RevParCents { get; init; }
 
     public static WeightedFiguresDto From(OwnerPerformanceFigures figures)

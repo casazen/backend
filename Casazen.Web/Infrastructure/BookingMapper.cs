@@ -7,21 +7,12 @@ namespace Casazen.Web.Infrastructure;
 
 public static class BookingMapper
 {
-    /// <param name="booking">The booking, with its property and guest when loaded.</param>
-    /// <param name="channelPolicy">Which channels let the host change or cancel a booking from CasaZen; none = every channel closed (see <see cref="Fill{T}"/>).</param>
     public static BookingResponseDto ToResponse(Booking booking, OtaChannelActionPolicy? channelPolicy = null) =>
         ToResponse(booking, DateTime.UtcNow, channelPolicy);
 
-    /// <param name="booking">The booking, with its property and guest when loaded.</param>
-    /// <param name="nowUtc">Instant that decides whether a "pay at the property" request is still open.</param>
-    /// <param name="channelPolicy">Which channels let the host change or cancel a booking from CasaZen; none = every channel closed (see <see cref="Fill{T}"/>).</param>
     public static BookingResponseDto ToResponse(Booking booking, DateTime nowUtc, OtaChannelActionPolicy? channelPolicy = null) =>
         Fill(new BookingResponseDto(), booking, nowUtc, channelPolicy);
 
-    /// <summary>
-    /// A row of the booking list (SR-03b): the booking and what the list says besides it. Without <paramref name="details"/> (a row
-    /// the service did not describe) nothing has come in.
-    /// </summary>
     public static BookingListItemDto ToListItem(
         Booking booking, BookingRowDetails? details, DateTime nowUtc, OtaChannelActionPolicy? channelPolicy = null)
     {
@@ -30,7 +21,6 @@ public static class BookingMapper
         item.PaymentState = (details?.PaymentState ?? BookingPaymentState.None).ToString();
         item.PaidAmount = details?.PaidAmount;
         item.AlloggiatiStatus = details?.AlloggiatiStatus?.ToString();
-        // The answer is the host's only once the guest confirmed the email; a request that is not the host's yet has no term to show.
         item.RespondBy = OnSiteRequests.StateOf(booking, nowUtc) == OnSiteRequestState.AwaitingHostApproval
             ? booking.RequestExpiresAt
             : null;
@@ -67,18 +57,13 @@ public static class BookingMapper
         response.BasePrice = booking.BasePrice;
         response.CleaningFee = booking.CleaningFee;
         response.TouristTax = booking.TouristTax;
-        // The amounts are in the currency of the property (CHF-MONEY); a booking read without its property says the default one.
         response.Currency = StayCurrency.ForProperty(booking.Property);
         response.PriceOverridden = booking.PriceOverridden;
         response.PriceOverrideNote = booking.PriceOverrideNote;
         response.Status = booking.Status.ToString();
         response.CancellationNote = booking.CancellationNote;
         response.Source = booking.Source.ToString();
-        // The channel of a booking that came from a channel through the channel manager: what tells it apart from the others (the "OTA" badge). A
-        // booking CasaZen made and sent to Octorate has a reservation there too, and is not one: the one definition of «of a channel» decides.
         response.OtaSource = OtaChannelActionPolicy.IsChannelBooking(booking) ? booking.Source.ToString() : null;
-        // The origin the host reads (E27/F01/US01/T01, NF-123): from the source and the attribution of the booking, by the one rule of BookingOrigins. The
-        // source above is unchanged (the invoicing reasons per channel); a booking of the agency's booking engine is AgencySite and has no OtaSource.
         response.Origin = BookingOrigins.Of(booking).ToString();
         response.OriginChannel = BookingOrigins.PortalOf(booking);
         response.SpecialRequests = booking.SpecialRequests;
@@ -88,7 +73,6 @@ public static class BookingMapper
         response.RequestExpiresAt = OnSiteRequests.StateOf(booking, nowUtc) is null ? null : booking.RequestExpiresAt;
         response.IcalFeedId = booking.ICalFeedId;
         response.ChannelLabel = booking.ChannelLabel;
-        // A cancelled stay has nothing left to check (CO-21).
         var review = booking.Status == BookingStatus.Cancelled ? null : booking.OtaReviewReason;
         response.OtaReviewReason = review?.ToString();
         response.OtaReviewRaisedAt = review is null ? null : booking.OtaReviewRaisedAt;
@@ -108,9 +92,7 @@ public static class BookingMapper
         response.CancelledAt = booking.CancelledAt;
         response.ArrivedAt = booking.ArrivedAt;
         response.CheckedOutAt = booking.CheckedOutAt;
-        // The rule of PUT /api/bookings/{id}: the booking sheet and the calendar do not guess it (SR-05a).
         response.CanEdit = BookingEditabilityDto.From(BookingEditRules.Of(booking));
-        // What the host may do (E08/F03/US03/T02): the change and the cancellation, with the rule of the channel for a booking of a channel.
         response.ChangeOptions = BookingChangeOptionsDto.From(BookingEditRules.ChangeOptionsOf(booking, channelPolicy));
         return response;
     }

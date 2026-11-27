@@ -57,7 +57,6 @@ public sealed class AdminSupportVaultController(ISupportVaultService vault) : Co
         return Ok(SupportVaultSecretDto.From(await vault.StoreAsync(staffUserId, input, cancellationToken)));
     }
 
-    /// <summary>Removes a credential of the vault (204, also when there was none).</summary>
     [HttpDelete("{secretId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

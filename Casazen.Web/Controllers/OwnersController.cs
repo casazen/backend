@@ -10,11 +10,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Property owners for agency tier (ADR-012). Every action is scoped to the caller's agency org: an owner
-/// of another org answers 404. Responses are DTOs, never the entity. IBAN is masked in the list;
-/// full IBAN requires <c>agency.owner.financial.read</c> permission and is audit-logged.
-/// </summary>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = CasazenPolicies.AgencyOwnerView)]
@@ -23,15 +18,8 @@ public class OwnersController(
     IOrgContextResolver orgContextResolver,
     ILogger<OwnersController> logger) : ControllerBase
 {
-    /// <summary>404: the owner IBAN is missing (<c>GET /api/owners/{id}/iban</c>).</summary>
     public const string IbanMissingCode = "owner_iban_missing";
 
-    /// <summary>
-    /// List of property owners for the agency. IBAN is masked (last 4 chars only, ADR-012-R3).
-    /// Requires <c>agency.owner.view</c> policy. Each owner carries the number of its properties, the kind and the settlement currency of its fiscal profile in force and the
-    /// mandate in force today (<c>null</c> without one), all read with the list in one query (FIX/RES-OWNERS). The owners are those of the caller's org inside its reach: the
-    /// whole org, or for a caller restricted to some properties the owners whose every property it reaches (the rule of the mandates of the owner).
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(List<PropertyOwnerSummaryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -81,7 +69,6 @@ public class OwnersController(
             return this.ApiProblem(StatusCodes.Status404NotFound, IbanMissingCode, "OwnerIbanMissing");
         }
 
-        // Audit log: user viewed the full IBAN (ADR-012-R3). NEVER log the IBAN value itself.
         logger.LogInformation(
             "User {UserId} viewed full IBAN of property owner {OwnerId}",
             User.GetUserId(), id);
@@ -90,10 +77,6 @@ public class OwnersController(
         return Ok(PropertyOwnerDtoMapper.ToIbanDto(owner));
     }
 
-    /// <summary>
-    /// The structured billing address of the owner (E13/F01/US01/T01), in clear. Requires <c>agency.owner.financial.read</c> and an owner in the caller's
-    /// reach (the whole org, or an owner whose every property the caller reaches); the read is logged with ids, never the address. 404 <c>owner_not_found</c>.
-    /// </summary>
     [HttpGet("{id:guid}/address")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialRead)]
     [ProducesResponseType(typeof(OwnerAddressDto), StatusCodes.Status200OK)]
@@ -136,7 +119,6 @@ public class OwnersController(
         return Ok(OwnerAddressDto.From(owner));
     }
 
-    /// <summary>The caller's reach on its org; <c>null</c> without an org or a reach (never widened to the whole org).</summary>
     private async Task<HostScope?> ScopeAsync(IHostScopeResolver hostScopeResolver)
     {
         var ct = HttpContext.RequestAborted;

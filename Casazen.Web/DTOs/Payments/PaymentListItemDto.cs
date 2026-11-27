@@ -17,37 +17,26 @@ public sealed class PaymentListItemDto
 
     public Guid BookingId { get; init; }
 
-    /// <summary>The code the guest knows, <c>XXXXX-XXXXX</c>, of the booking this payment is for.</summary>
     public string BookingCode { get; init; } = string.Empty;
 
     public Guid PropertyId { get; init; }
 
     public string PropertyName { get; init; } = string.Empty;
 
-    /// <summary>First and last name of the guest of the booking.</summary>
     public string GuestName { get; init; } = string.Empty;
 
-    /// <summary>Gross amount, in <see cref="Currency"/>.</summary>
     public decimal Amount { get; init; }
 
-    /// <summary><see cref="Amount"/> in cents of <see cref="Currency"/>.</summary>
     public long AmountCents { get; init; }
 
-    /// <summary>What was refunded so far, in <see cref="Currency"/>.</summary>
     public decimal RefundedAmount { get; init; }
 
     public long RefundedAmountCents { get; init; }
 
-    /// <summary>
-    /// ISO 4217 code of the property of the booking (EUR or CHF, <see cref="StayCurrency"/>): a payment has no currency column of its own,
-    /// it is charged and refunded in the one of its property.
-    /// </summary>
     public string Currency { get; init; } = StayCurrency.Default;
 
-    /// <summary><c>Pending</c>, <c>Processing</c>, <c>Completed</c>, <c>Failed</c>, <c>Refunded</c>, <c>PartiallyRefunded</c> or <c>Canceled</c>.</summary>
     public PaymentStatus Status { get; init; }
 
-    /// <summary><c>CreditCard</c>, <c>BankTransfer</c>, <c>PayPal</c>, <c>ApplePay</c>, <c>GooglePay</c> or <c>CashOnArrival</c>.</summary>
     public PaymentMethod Method { get; init; }
 
     public string TransactionId { get; init; } = string.Empty;
@@ -57,17 +46,14 @@ public sealed class PaymentListItemDto
     /// <summary>The Stripe PaymentIntent the host sees on the payment page; <c>null</c> for a payment that never went through Stripe.</summary>
     public string? StripePaymentIntentId { get; init; }
 
-    /// <summary>When the payment was settled (UTC); <c>null</c> until then.</summary>
     public DateTime? ProcessedAt { get; init; }
 
-    /// <summary>OTA withholding (21%) on the amount, in euros; 0 when none applies.</summary>
     public decimal OtaWithholdingTax { get; init; }
 
     public long OtaWithholdingTaxCents { get; init; }
 
     public bool WithholdingTaxApplied { get; init; }
 
-    /// <summary><c>None</c>, <c>AutoOta</c> or <c>Manual</c>.</summary>
     public WithholdingSource WithholdingSource { get; init; }
 
     public decimal NetAmountAfterWithholding { get; init; }
@@ -78,13 +64,8 @@ public sealed class PaymentListItemDto
 
     public DateTime UpdatedAt { get; init; }
 
-    /// <summary>
-    /// The day the stay of the booking starts, <c>yyyy-MM-dd</c> (a calendar day, no time zone); <c>null</c> when the API did not read it.
-    /// The web app tells the payments of a coming or current stay from the ones of a past stay by it and by <see cref="BookingCheckOut"/>.
-    /// </summary>
     public DateOnly? BookingCheckIn { get; init; }
 
-    /// <summary>The day the stay of the booking ends, <c>yyyy-MM-dd</c>; <c>null</c> when the API did not read it.</summary>
     public DateOnly? BookingCheckOut { get; init; }
 
     public static PaymentListItemDto From(PaymentListItem item) => new()

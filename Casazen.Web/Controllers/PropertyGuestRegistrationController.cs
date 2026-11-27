@@ -41,11 +41,6 @@ public sealed class PropertyGuestRegistrationController(
     IStringLocalizer<SharedResources> localizer,
     ILogger<PropertyGuestRegistrationController> logger) : ControllerBase
 {
-    /// <summary>The regime of the property, the duty in effect, the host's setting, the place and what the property still lacks.</summary>
-    /// <response code="200">The card of the property.</response>
-    /// <response code="403">The caller does not reach the property.</response>
-    /// <response code="404"><c>property_not_found</c>: no such property in the caller's org.</response>
-    /// <response code="422"><c>guest_registration_country_not_supported</c>.</response>
     [HttpGet]
     [ProducesResponseType(typeof(GuestRegistrationDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -87,7 +82,6 @@ public sealed class PropertyGuestRegistrationController(
 
         if (!request.OverrideSent)
         {
-            // A body without the member is a mistake, never «follow the regime again» by omission: that is said with a null.
             ModelState.AddModelError("override", localizer[GuestRegistrationErrorCodes.OverrideRequiredMessageKey]);
             return ValidationProblem(ModelState);
         }
@@ -113,13 +107,8 @@ public sealed class PropertyGuestRegistrationController(
         return Ok(GuestRegistrationDto.From(resolution, localizer));
     }
 
-    /// <summary>
-    /// The row-level check of the property (TN-3): 404 when it is not visible (another org, or none), 403 when it is the org's but the caller may not do
-    /// <paramref name="operation"/> on it. <c>null</c> when allowed.
-    /// </summary>
     private async Task<ActionResult?> AuthorizeAsync(Guid propertyId, HostOperationRequirement operation, CancellationToken cancellationToken)
     {
-        // Tenant filter: another org's property is not found, the same answer as a property that does not exist.
         var resource = await hostResources.ForPropertyAsync(propertyId, cancellationToken);
         if (resource is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound");

@@ -16,17 +16,13 @@ namespace Casazen.Web.Infrastructure;
 /// </remarks>
 public static class OrgDomainOutcomeResults
 {
-    /// <summary>The <c>code</c> of the 403 for an org whose plan has no custom domain.</summary>
     public const string PlanRequiredCode = "plan_required";
 
-    /// <summary>The plan that has the custom domain, as the 403 says it (<c>requiredPlan</c>): Pro, and Scale which includes it.</summary>
     public const string RequiredPlan = "Pro";
 
-    /// <summary>403 <c>plan_required</c> with <c>requiredPlan</c>.</summary>
     public static ObjectResult PlanRequired(this ControllerBase controller) =>
         controller.StatusCode(StatusCodes.Status403Forbidden, new { code = PlanRequiredCode, requiredPlan = RequiredPlan });
 
-    /// <summary>The answer to a refused <see cref="IOrgDomainService.SetDomainAsync"/>; <c>null</c> for a success with its configuration.</summary>
     public static ActionResult? DomainFailure(this ControllerBase controller, SetOrgDomainResult result)
     {
         ArgumentNullException.ThrowIfNull(controller);
@@ -50,7 +46,6 @@ public static class OrgDomainOutcomeResults
         };
     }
 
-    /// <summary>The answer to a refused <see cref="IOrgDomainService.VerifyDomainAsync"/>; <c>null</c> for a success with its verification.</summary>
     public static ActionResult? DomainFailure(this ControllerBase controller, VerifyOrgDomainResult result)
     {
         ArgumentNullException.ThrowIfNull(controller);
@@ -68,7 +63,6 @@ public static class OrgDomainOutcomeResults
         };
     }
 
-    /// <summary>The answer to a refused <see cref="IOrgDomainService.SetSurfacesAsync"/>; <c>null</c> for a success with its configuration.</summary>
     public static ActionResult? DomainFailure(this ControllerBase controller, SetOrgDomainSurfacesResult result)
     {
         ArgumentNullException.ThrowIfNull(controller);

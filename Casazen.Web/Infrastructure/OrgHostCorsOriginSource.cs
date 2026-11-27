@@ -26,7 +26,6 @@ namespace Casazen.Web.Infrastructure;
 /// </summary>
 public sealed class OrgHostCorsOriginSource(IPublicHostResolver hostResolver) : ICorsOriginSource
 {
-    /// <summary>Path prefixes every org host may call.</summary>
     public static readonly string[] PublicPathPrefixes = ["/api/public", "/api/legal"];
 
     /// <summary>
@@ -49,14 +48,12 @@ public sealed class OrgHostCorsOriginSource(IPublicHostResolver hostResolver) : 
         if (resolved is null)
             return false;
 
-        // The owner portal answers only the domain of an agency that serves it there (HostSurfaceRules through resolve-host).
         return publicEndpoint || resolved.Surfaces.OwnerPortal;
     }
 
     private static bool StartsWithAny(PathString path, string[] prefixes) =>
         prefixes.Any(prefix => path.StartsWithSegments(prefix, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>The host of an <c>https://host</c> origin (no port, path, query or user info), or false.</summary>
     internal static bool TryGetHost(string origin, out string host)
     {
         host = string.Empty;

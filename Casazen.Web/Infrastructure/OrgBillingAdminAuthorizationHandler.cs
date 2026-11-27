@@ -49,7 +49,6 @@ public class OrgBillingAdminAuthorizationHandler(
         "Admin",
     };
 
-    /// <summary>The owner's token roles: the ones that must not count for a member who is not the owner (see <see cref="HasAllowedRole"/>).</summary>
     private static readonly HashSet<string> OwnerTokenRoles = new(StringComparer.OrdinalIgnoreCase)
     {
         "PropertyOwner",
@@ -76,9 +75,6 @@ public class OrgBillingAdminAuthorizationHandler(
         if (string.IsNullOrWhiteSpace(userId))
             return;
 
-        // Read once per request (shared with every other policy of the request): the JWT roles are not enough to pass
-        // for a member the org deactivated (AM-01); the request itself is refused earlier with member_inactive, this is
-        // the policy's own guard.
         var snapshot = await snapshotStore.GetAsync(userId);
         if (snapshot.IsOrgMemberDeactivated)
             return;
@@ -117,8 +113,6 @@ public class OrgBillingAdminAuthorizationHandler(
         if (snapshot.OrgMember.Role is OrgRole.Owner or OrgRole.Admin)
             return true;
 
-        // Collaborator, property manager, accountant: only as the platform admin (HasAllowedRole leaves the owner's
-        // token roles out for a member who is not the owner).
         return HasAllowedRole(user, snapshot) ||
                snapshot.Memberships.Any(m =>
                    string.Equals(m.ContextKey, "admin", StringComparison.OrdinalIgnoreCase) &&
@@ -136,10 +130,6 @@ public class OrgBillingAdminAuthorizationHandler(
         snapshot.Role is not (UserRole.Staff or UserRole.Guest) &&
         snapshot.Memberships.Any(IsAllowedBillingMembership);
 
-    /// <summary>
-    /// The owner's (or administrator's) role key (<see cref="OrgOwnerRoles"/>), or a membership of the account context
-    /// that holds <c>org.billing.manage</c>: the permission this policy evaluates (AM-01).
-    /// </summary>
     private static bool IsAllowedBillingMembership(ContextAccess membership) =>
         OrgOwnerRoles.IsOwnerRole(membership.ContextKey, membership.RoleKey) ||
         (AccountContext.IsAccountContext(membership.ContextKey) &&

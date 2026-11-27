@@ -12,13 +12,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// «Suggerisci un testo» of the wizard «Aggiungi immobile» (step «Foto e annuncio»): the AI writes the headline and the description of the
-/// listing from the photos, the comune and the data of the property (<see cref="IPropertyListingTextService"/>). Nothing is saved here: the
-/// host reads the text, changes it and saves it with the step. Short-rent only, like every short-stay side of a property: the permission is
-/// <c>property.write</c> and the row is authorized like the photos (the property of the caller's org, a colleague's one only with a role that
-/// reaches it, TN-3). Every call counts towards the AI limits of the user and of the org (<see cref="AiRateLimitAttribute"/>).
-/// </summary>
 [ApiController]
 [Route("api/properties/{id:guid}/listing-text")]
 [Authorize(Policy = CasazenPolicies.PropertyWrite)]
@@ -28,7 +21,6 @@ public class PropertyListingTextController(
     IAuthorizationService hostAuthorization,
     ILogger<PropertyListingTextController> logger) : ControllerBase
 {
-    /// <summary>Six reduced photos in base64 and the JSON around them (<see cref="AiPhotoLimits.RequestOverheadBytes"/>).</summary>
     private const long MaxRequestBytes =
         ListingTextLimits.MaxPhotos * (long)AiPhotoLimits.MaxPhotoBytes * 4 / 3 + AiPhotoLimits.RequestOverheadBytes;
 
@@ -68,7 +60,6 @@ public class PropertyListingTextController(
         return Ok(suggestion);
     }
 
-    /// <summary>Preview all seven listing fields in one of the fourteen supported languages. Nothing is saved.</summary>
     [HttpPost("fields-suggestion")]
     [AiRateLimit]
     [RequestSizeLimit(MaxRequestBytes)]
@@ -106,17 +97,11 @@ public class PropertyListingTextController(
     }
 }
 
-/// <summary>The body of <c>POST api/properties/{id}/listing-text/suggestion</c>.</summary>
 public sealed class ListingTextSuggestionRequest
 {
-    /// <summary>
-    /// Up to six photos of the gallery, cover first, reduced by the web app to about 1,024 pixels: base64 of a JPEG, PNG or WebP image (a
-    /// <c>data:</c> prefix is accepted). Empty: the AI writes from the data alone.
-    /// </summary>
     [MaxLength(ListingTextLimits.MaxPhotos, ErrorMessage = "AiPhotosInvalid")]
     public List<string> Photos { get; set; } = [];
 
-    /// <summary>True for «Rigenera»: a new text even when one was written for the same data and photos a moment ago.</summary>
     public bool Regenerate { get; set; }
 }
 

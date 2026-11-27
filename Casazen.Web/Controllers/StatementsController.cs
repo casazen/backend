@@ -9,13 +9,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Monthly owner statements (ADR-017). Statements are generated per property owner per property per month,
-/// with revenue breakdown, commission, expenses, and net payable computed with banker's rounding.
-/// Co-owners each receive their own statement, split by percentage (ADR-017-R3/R4). Reading and exporting needs
-/// <c>agency.statement.view</c>, generating, approving and publishing <c>agency.statement.manage</c> too (DEB-01: it was the owner
-/// view, which the property manager holds).
-/// </summary>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = CasazenPolicies.AgencyStatementView)]
@@ -26,12 +19,6 @@ public class StatementsController(
     IOrgContextResolver orgContextResolver,
     ILogger<StatementsController> logger) : ControllerBase
 {
-    /// <summary>
-    /// List of owner statements for the caller's agency org. Ordered by year/month descending.
-    /// Optionally filtered by property owner and/or property.
-    /// </summary>
-    /// <param name="propertyOwnerId">Optional: filter by property owner.</param>
-    /// <param name="propertyId">Optional: filter by property.</param>
     [HttpGet]
     [ProducesResponseType(typeof(List<OwnerStatementDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<OwnerStatementDto>>> GetAll(
@@ -83,10 +70,6 @@ public class StatementsController(
         }).ToList());
     }
 
-    /// <summary>
-    /// Generates a new monthly statement for the given owner, property, and period.
-    /// The statement is created in Draft status with line items for all bookings collected in that month.
-    /// </summary>
     [HttpPost("generate")]
     [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]
     [ProducesResponseType(typeof(OwnerStatementDto), StatusCodes.Status201Created)]
@@ -108,7 +91,6 @@ public class StatementsController(
             request.Year,
             HttpContext.RequestAborted);
 
-        // Reload with navigation properties for DTO
         statement = await db.OwnerStatements
             .Include(s => s.PropertyOwner)
             .Include(s => s.Property)
@@ -138,10 +120,6 @@ public class StatementsController(
         return CreatedAtAction(nameof(GetAll), new { }, dto);
     }
 
-    /// <summary>
-    /// Approves a Draft statement, locking it for review. The statement can no longer be edited.
-    /// An Approved statement must be reviewed by the host or agency before publishing.
-    /// </summary>
     [HttpPost("{id:guid}/approve")]
     [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -159,10 +137,6 @@ public class StatementsController(
         return Ok();
     }
 
-    /// <summary>
-    /// Publishes an Approved statement, sending it to the owner. The statement becomes immutable.
-    /// Any corrections after publication must be made via adjustment rows in the next month's statement (ADR-017-R5).
-    /// </summary>
     [HttpPost("{id:guid}/publish")]
     [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -180,21 +154,12 @@ public class StatementsController(
         return Ok();
     }
 
-    /// <summary>
-    /// Exports a statement as PDF (ADR-017-R7, NF-25): the lines, the commission and the totals as stored, every amount in the currency of the
-    /// statement, the stored payouts and withholding evidence with its rule version, and the label that it is not an invoice. Only an Approved
-    /// or Published statement is exported (422 <c>statement_not_exportable</c>); another org's statement is 404. Nothing is calculated or saved.
-    /// </summary>
     [HttpGet("{id:guid}/pdf")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public Task<ActionResult> GetPdf(Guid id) => ExportAsync(id, StatementExportFormat.Pdf);
 
-    /// <summary>
-    /// Exports a statement as CSV (ADR-017, NF-25): one row per line with all its columns, then the totals, the payouts and the withholding
-    /// evidence, for a spreadsheet set to Italian. Same rules as the PDF.
-    /// </summary>
     [HttpGet("{id:guid}/csv")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -214,7 +179,6 @@ public class StatementsController(
     }
 }
 
-/// <summary>DTO for owner statement summary in list and detail responses.</summary>
 public record OwnerStatementDto
 {
     public Guid Id { get; init; }
@@ -236,7 +200,6 @@ public record OwnerStatementDto
     public DateTime CreatedAt { get; init; }
 }
 
-/// <summary>Request to generate a new statement.</summary>
 public record GenerateStatementRequest
 {
     public Guid PropertyOwnerId { get; init; }

@@ -94,18 +94,15 @@ public class OwnerInvoiceSdiController(
         if (!await IsOwnerInvoiceOfAsync(orgId, id))
             return DocumentNotFound();
 
-        // A declaration with no kind is the one invalid field the service names (it never guesses what was meant).
         var declaration = new SdiDeclaration(request.Kind ?? default, request.Date, request.Reference, request.ErrorCode, request.ErrorText);
         var state = await sdi.DeclareManuallyAsync(id, declaration, HttpContext.RequestAborted);
         logger.LogInformation("Owner invoice {DocumentId}: SDI state declared by the agency ({Kind})", id, declaration.Kind);
         return Ok(FiscalDocumentSdiDto.From(state, texts, DocumentLanguages.Current));
     }
 
-    /// <summary>The caller's org, only when its reach is the whole org (as <see cref="OwnerInvoicesController"/>).</summary>
     private Task<Guid?> OrgAsync() =>
         HostCallerResolver.OrgWideAsync(User, orgContextResolver, hostScopeResolver, HttpContext.RequestAborted);
 
-    /// <summary>The document is an invoice of the property manager to an owner, of <paramref name="orgId"/>.</summary>
     private async Task<bool> IsOwnerInvoiceOfAsync(Guid orgId, Guid id) =>
         await documents.GetAsync(id, HttpContext.RequestAborted) is { Purpose: FiscalDocumentPurpose.OwnerInvoice } document && document.OrgId == orgId;
 

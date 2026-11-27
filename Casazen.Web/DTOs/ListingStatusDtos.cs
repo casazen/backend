@@ -35,7 +35,6 @@ public sealed record ListingChannelStatusDto(
     string? ReasonDetail,
     IReadOnlyList<string> ChangedOutside)
 {
-    /// <summary>The key of the message for a code nobody wrote words for: the row still says something, never a bare «error».</summary>
     public const string GenericReasonKey = "ListingChannelErrorGeneric";
 
     public static ListingChannelStatusDto From(ListingChannelStatus status, IStringLocalizer<SharedResources> localizer)
@@ -84,10 +83,6 @@ public sealed record ListingStatusResponse(Guid PropertyId, IReadOnlyList<Listin
     }
 }
 
-/// <summary>The worst state of a property across its channels (<c>GET api/properties/channel-status</c>), for the property list.</summary>
-/// <param name="PropertyId">The property.</param>
-/// <param name="WorstStatus">The state that needs the most attention.</param>
-/// <param name="SyncAlert">At least one channel was not confirmed for more than 24 hours.</param>
 public sealed record ListingPropertySummaryDto(Guid PropertyId, ChannelPublishStatus WorstStatus, bool SyncAlert)
 {
     public static ListingPropertySummaryDto From(ListingPropertySummary summary)
@@ -97,15 +92,12 @@ public sealed record ListingPropertySummaryDto(Guid PropertyId, ChannelPublishSt
     }
 }
 
-/// <summary>The person's choice about a change made outside CasaZen (<c>POST api/properties/{id}/channels/{code}/outside-change/resolve</c>).</summary>
 public sealed class ResolveOutsideChangeRequest
 {
-    /// <summary><c>keep</c>: publish CasaZen's version again over the change; <c>take</c>: adopt the descriptions the channel manager holds.</summary>
     [Required(ErrorMessage = "OutsideChangeChoiceInvalid")]
     [RegularExpression("^(?i:keep|take)$", ErrorMessage = "OutsideChangeChoiceInvalid")]
     public string? Choice { get; set; }
 
-    /// <summary>The choice as the service takes it.</summary>
     public OutsideChangeChoice ToChoice() =>
         string.Equals(Choice?.Trim(), "take", StringComparison.OrdinalIgnoreCase) ? OutsideChangeChoice.Take : OutsideChangeChoice.Keep;
 }

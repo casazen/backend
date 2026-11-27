@@ -5,7 +5,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.GuestMessages;
 
-/// <summary>The body of a message, from the guest or from the host: plain text, up to 2000 characters.</summary>
 public sealed class SendMessageRequest
 {
     [Required(ErrorMessage = "GuestMessageTextInvalid")]
@@ -13,7 +12,6 @@ public sealed class SendMessageRequest
     public string Text { get; set; } = string.Empty;
 }
 
-/// <summary>A message sent from a portal stay link.</summary>
 public sealed class SendPortalMessageRequest
 {
     [Required(ErrorMessage = "GuestMessageTextInvalid")]
@@ -24,7 +22,6 @@ public sealed class SendPortalMessageRequest
     public bool RequestHost { get; init; }
 }
 
-/// <summary>A message of the thread. <c>Sender</c> is <c>Guest</c> or <c>Host</c>; the text is plain text, to be shown as text.</summary>
 public sealed class GuestMessageDto
 {
     public Guid Id { get; init; }
@@ -43,10 +40,6 @@ public sealed class GuestMessageDto
     };
 }
 
-/// <summary>
-/// The thread as the guest reads it. <c>State</c> is <c>Open</c> or <c>Closed</c>; <c>ClosesAt</c> is when it stops taking messages (a
-/// closed thread is read-only: the guest can still read it).
-/// </summary>
 public sealed class GuestThreadDto
 {
     public GuestThreadState State { get; init; }
@@ -79,11 +72,6 @@ public sealed class SentGuestMessageDto
     };
 }
 
-/// <summary>
-/// The thread of a booking as its host reads it. <c>State</c> is <c>Open</c>, <c>Closed</c> or <c>Unavailable</c> (not a direct booking,
-/// or cancelled: there is no thread and the screen shows no Messaggi); <c>UnreadCount</c> counts the guest's messages the host has not
-/// read; <c>NeedsReply</c> is true when the thread is open and the last message is the guest's.
-/// </summary>
 public sealed class HostThreadDto
 {
     public GuestThreadState State { get; init; }
@@ -102,10 +90,6 @@ public sealed class HostThreadDto
     };
 }
 
-/// <summary>
-/// One thread in the host's list (<c>GET api/messages</c>). <c>LastGuestMessagePreview</c> is the start of the guest's last message (plain
-/// text, for the host only); <c>NeedsReply</c> is the thread of the «Da rispondere» list.
-/// </summary>
 public sealed class HostThreadSummaryDto
 {
     public Guid BookingId { get; init; }
@@ -140,10 +124,6 @@ public sealed class HostThreadSummaryDto
     };
 }
 
-/// <summary>
-/// The threads of the host with messages not read yet (<c>GET api/messages/unread</c>): one item per booking, only the ones with
-/// <c>unreadCount</c> above zero. No text and no name: the badges of the calendar and the lists need the counters only.
-/// </summary>
 public sealed class HostUnreadThreadsDto
 {
     public IReadOnlyList<HostUnreadThreadDto> Items { get; init; } = [];

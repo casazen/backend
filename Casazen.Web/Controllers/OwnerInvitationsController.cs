@@ -7,10 +7,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Owner invitation endpoints for agency tier (ADR-011-R4).
-/// Rate limited to 100 invitations per day per org.
-/// </summary>
 [ApiController]
 [Route("api/owners/{propertyOwnerId:guid}/invite")]
 [Authorize(Policy = CasazenPolicies.AgencyOwnerManage)]
@@ -44,7 +40,6 @@ public class OwnerInvitationsController(
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        // The reach of the caller (AM-03): an owner that holds nothing inside it is the same 404 as one that does not exist.
         var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted);
         if (scope is null)
             return Forbid();
@@ -67,5 +62,4 @@ public class OwnerInvitationsController(
     }
 }
 
-/// <summary>Response DTO for invitation creation.</summary>
 public record InvitationCreatedDto(Guid InvitationId);

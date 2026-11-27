@@ -19,18 +19,12 @@ public static class ApprovalQueueServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // The actions of the queue itself: approving the draft of a message sends it to the conversation (IMessageReplyService, one send for each item); approving a campaign
-        // approves it and schedules it when it has a time. Scoped: they hold the database and the services of the request.
         services.AddScoped<IApprovalOriginAction, MessageDraftApprovalAction>();
         services.AddScoped<IApprovalOriginAction, CampaignApprovalAction>();
 
-        // The registry finds an action by item type. It asks the container for the actions when the first approval needs one, not when it is built: the campaign action needs the
-        // campaign service, which needs the queue, which needs the registry.
         services.AddScoped<IApprovalOriginActionRegistry>(provider =>
             new ApprovalOriginActionRegistry(() => provider.GetServices<IApprovalOriginAction>()));
 
-        // The alert of a new item: the "To do" and the bell, the push and the e-mail of each person the preferences select. What the quiet hours hold back, and an alert that failed
-        // for somebody, is delivered by the job. HostNotifyingPathsArchitectureTests: the delivery asks INotificationPreferenceService.
         services.AddScoped<ApprovalAlertDelivery>();
         services.AddScoped<ApprovalAlertJob>();
 

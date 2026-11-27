@@ -11,7 +11,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>The account's sender preference, not its credentials or proof of operational activation.</summary>
 [ApiController]
 [Route("api/orgs/me/compliance-sender")]
 [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]

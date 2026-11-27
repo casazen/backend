@@ -43,7 +43,6 @@ public sealed class SupplierBookingEmailRateLimiter : IDisposable
     /// </summary>
     public TimeSpan Window => _window;
 
-    /// <summary>Takes one permit for <paramref name="email"/> at the supplier <paramref name="supplierSlug"/>; the time to wait when there is none left.</summary>
     public bool TryAcquire(string supplierSlug, string email, out TimeSpan retryAfter)
     {
         ArgumentNullException.ThrowIfNull(supplierSlug);

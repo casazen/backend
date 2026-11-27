@@ -8,30 +8,22 @@ namespace Casazen.Web.DTOs;
 /// </summary>
 public sealed class ComuneDto
 {
-    /// <summary>ISTAT code, 6 digits, a string: the leading zeros matter.</summary>
     public string IstatCode { get; init; } = string.Empty;
 
-    /// <summary>Cadastral (Belfiore) code, e.g. <c>H501</c>; null when the official list does not have it yet.</summary>
     public string? CadastralCode { get; init; }
 
-    /// <summary>Name in Italian: what is stored as the city of a property.</summary>
     public string Name { get; init; } = string.Empty;
 
-    /// <summary>Official denomination, with the other language where there is one (<c>Bolzano/Bozen</c>).</summary>
     public string DisplayName { get; init; } = string.Empty;
 
-    /// <summary>Province plate code, two letters.</summary>
     public string ProvinceCode { get; init; } = string.Empty;
 
-    /// <summary>CasaZen's region code (<c>LOM</c>), the key of the regional rules.</summary>
     public string? RegionCode { get; init; }
 
-    /// <summary>ISTAT code of the region (<c>03</c>).</summary>
     public string RegionIstatCode { get; init; } = string.Empty;
 
     public string RegionName { get; init; } = string.Empty;
 
-    /// <summary>False for a comune that is no longer in the list (a merger, a suppression): it cannot be chosen again.</summary>
     public bool IsActive { get; init; }
 
     public static ComuneDto From(Comune comune)
@@ -52,7 +44,6 @@ public sealed class ComuneDto
     }
 }
 
-/// <summary>Answer of <c>GET /api/comuni</c>: the matches and whether the official list is imported at all.</summary>
 public sealed class ComuneSearchResponse
 {
     /// <summary>
@@ -64,7 +55,6 @@ public sealed class ComuneSearchResponse
     public IReadOnlyList<ComuneDto> Items { get; init; } = [];
 }
 
-/// <summary>Source of the official list, as shown to admins.</summary>
 public sealed class ComuneImportDto
 {
     public Guid Id { get; init; }
@@ -99,7 +89,6 @@ public sealed class ComuneImportDto
     };
 }
 
-/// <summary>State of the official list for <c>GET /api/admin/comuni</c>.</summary>
 public sealed class ComuneDatasetStatusDto
 {
     public bool Available { get; init; }
@@ -107,9 +96,5 @@ public sealed class ComuneDatasetStatusDto
     public int ActiveRows { get; init; }
     public ComuneImportDto? LastImport { get; init; }
 
-    /// <summary>
-    /// Pilot comuni of the supplier self-serve registration (<c>Suppliers:PilotComuni</c>) that are not an active comune of the
-    /// list: they are not offered until the configuration is fixed. Empty when the list is not imported.
-    /// </summary>
     public IReadOnlyList<string> InvalidPilotComuni { get; init; } = [];
 }

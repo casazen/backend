@@ -7,16 +7,11 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Optional bank link of the signed-in organisation (the landlord), through Stripe Financial Connections on the existing
-/// Stripe account. The manual bank transfer is unchanged. Starting a payment does not mark a due paid.
-/// </summary>
 [ApiController]
 [Route("api/orgs/me/bank-links")]
 [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
 public class OrgBankLinkController(IOrgContextResolver orgContextResolver, IBankLinkService bankLinks) : ControllerBase
 {
-    /// <summary>Financial Connections session for the org's Stripe customer. The browser completes the link with the client secret.</summary>
     [HttpPost("sessions")]
     [ProducesResponseType(typeof(BankLinkSession), StatusCodes.Status200OK)]
     public async Task<ActionResult<BankLinkSession>> CreateSession(CancellationToken cancellationToken)
@@ -26,7 +21,6 @@ public class OrgBankLinkController(IOrgContextResolver orgContextResolver, IBank
         return Ok(await bankLinks.CreateOrgSessionAsync(orgId, cancellationToken));
     }
 
-    /// <summary>The linked account id, if any. No IBAN.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(BankLinkAccount), StatusCodes.Status200OK)]
     public async Task<ActionResult<BankLinkAccount>> Get(CancellationToken cancellationToken)
@@ -36,7 +30,6 @@ public class OrgBankLinkController(IOrgContextResolver orgContextResolver, IBank
         return Ok(await bankLinks.GetOrgAccountAsync(orgId, cancellationToken));
     }
 
-    /// <summary>Stores the Financial Connections account id (<c>fca_…</c>) after the browser flow, once Stripe says it belongs to this org.</summary>
     [HttpPost]
     [ProducesResponseType(typeof(BankLinkAccount), StatusCodes.Status200OK)]
     public async Task<ActionResult<BankLinkAccount>> Attach(
@@ -93,7 +86,6 @@ public class OrgBankLinkController(IOrgContextResolver orgContextResolver, IBank
     }
 }
 
-/// <summary>The Financial Connections account id returned to the browser. Not an IBAN.</summary>
 public sealed class AttachBankLinkDto
 {
     [Required(ErrorMessage = "BankLinkAccountIdInvalid")]
@@ -101,7 +93,6 @@ public sealed class AttachBankLinkDto
     public string AccountId { get; set; } = string.Empty;
 }
 
-/// <summary>A transfer from the linked account. Leave the installment empty to start one that is not a rent due.</summary>
 public sealed class StartBankLinkPaymentDto
 {
     [Range(1, 100_000_000, ErrorMessage = "BankLinkAmountInvalid")]
@@ -114,7 +105,6 @@ public sealed class StartBankLinkPaymentDto
 
     public Guid? InstallmentId { get; set; }
 
-    /// <summary>With <see cref="CondominiumInstallmentId"/>, the landlord pays that condominium rate. Not a contract field.</summary>
     public Guid? CondominiumId { get; set; }
 
     public Guid? CondominiumInstallmentId { get; set; }

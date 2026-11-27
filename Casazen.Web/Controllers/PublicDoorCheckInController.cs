@@ -26,19 +26,10 @@ namespace Casazen.Web.Controllers;
 [PrivateAnswer]
 public class PublicDoorCheckInController(IDoorCheckInService doorCheckIn) : ControllerBase
 {
-    /// <summary>Problem code of everything that does not open (404): the one answer, whatever part of the data was wrong.</summary>
     public const string NotFoundCode = "door_checkin_not_found";
 
-    /// <summary>
-    /// Largest body of the endpoint (2 KB): a booking code or a surname and a date. A body of an anonymous call is small, as the other anonymous calls of the guests
-    /// (<c>GuestCancellationController</c>, <c>GuestAreaController</c>); a larger one is refused by the server with 413 before it is read.
-    /// </summary>
     public const int MaxRequestBytes = 2048;
 
-    /// <summary>
-    /// Finds the stay and gives it its check-in link: <c>{ token }</c> to open <c>/checkin/{token}</c>. 404 <c>door_checkin_not_found</c> for every other case; 429 over the limit, the one per client
-    /// IP and door token and the one per client IP over every door (<see cref="DoorCheckInIpRateLimiter"/>).
-    /// </summary>
     [HttpPost("{doorToken}")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
     [EnableRateLimiting(RateLimitPolicies.PublicDoorCheckIn)]

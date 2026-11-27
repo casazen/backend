@@ -25,10 +25,6 @@ public class BookingMessagesController(
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService) : ControllerBase
 {
-    /// <summary>
-    /// The thread of the booking, oldest message first. <c>state</c> <c>Unavailable</c> for a booking that has no thread (not a direct
-    /// booking, cancelled); <c>unreadCount</c> and <c>needsReply</c> tell what the host still has to read and answer.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(HostThreadDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -67,7 +63,6 @@ public class BookingMessagesController(
         return Ok(SentGuestMessageDto.From(sent));
     }
 
-    /// <summary>Marks the guest's messages as read by the host (up to the last one written) and answers the thread as it is after.</summary>
     [HttpPost("read")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(HostThreadDto), StatusCodes.Status200OK)]

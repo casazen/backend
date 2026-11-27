@@ -29,10 +29,6 @@ public class ManualBlocksController(
     IAuthorizationService authorizationService,
     ILogger<ManualBlocksController> logger) : ControllerBase
 {
-    /// <summary>
-    /// Manual blocks of the property with a night from <paramref name="from"/> (included) to <paramref name="to"/>
-    /// (excluded), stay dates; without <paramref name="from"/> the blocks not over yet (today in Europe/Rome).
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<ManualBlockDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -60,12 +56,6 @@ public class ManualBlocksController(
         return Ok(blocks.Select(ManualBlockDto.From).ToList());
     }
 
-    /// <summary>
-    /// Closes the nights: 201 with the block. 404 <c>property_not_found</c>; 409
-    /// <c>calendar_block_overlaps_booking</c>, <c>calendar_block_overlaps_block</c>; 422
-    /// <c>calendar_block_invalid_range</c>, <c>calendar_block_in_past</c>, <c>calendar_block_too_long</c>,
-    /// <c>calendar_block_invalid_reason</c>, <c>calendar_block_note_too_long</c>.
-    /// </summary>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(ManualBlockDto), StatusCodes.Status201Created)]
@@ -95,10 +85,6 @@ public class ManualBlocksController(
         return Created($"/api/properties/{propertyId}/blocks/{block.Id}", ManualBlockDto.From(block));
     }
 
-    /// <summary>
-    /// Removes a manual block: its nights are free again. 204. 404 <c>calendar_block_not_found</c> (also a block of
-    /// another property); 422 <c>calendar_block_not_manual</c> for a block imported from an iCal feed.
-    /// </summary>
     [HttpDelete("{blockId:guid}")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

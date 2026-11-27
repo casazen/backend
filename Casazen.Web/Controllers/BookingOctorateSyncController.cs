@@ -9,11 +9,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// The mirror of a booking on the channel manager (E08/F01/US01/T03, NF-74, NF-80): the host asks again for a push that failed or was refused.
-/// TN-3: the booking is authorized as a <see cref="HostResource"/> of its property for <c>booking.write</c>; a booking of another org, or one the
-/// caller may not reach, answers 404 like a missing one. Behind <c>Features:OctorateConnector</c>: 404 while it is off, before authentication.
-/// </summary>
 [ApiController]
 [Route("api/bookings/{id:guid}/octorate-sync")]
 [FeatureGate(FeatureFlags.OctorateConnector)]

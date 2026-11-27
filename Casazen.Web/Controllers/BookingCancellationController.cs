@@ -30,11 +30,6 @@ public class BookingCancellationController(
     ILogger<BookingCancellationController> logger,
     IOtaBookingCancellationService? otaCancellationService = null) : ControllerBase
 {
-    /// <summary>
-    /// What cancelling now would do: paid and refundable amounts, the minimum refund of the rule that applies (free
-    /// cancellation deadline, property cancellation policy) and whether an unpaid intent would be canceled. Needs
-    /// <c>booking.read</c> and <c>payment.read</c>.
-    /// </summary>
     [HttpGet("cancellation")]
     public async Task<ActionResult<BookingCancellationQuoteDto>> GetQuote(Guid id)
     {
@@ -101,10 +96,6 @@ public class BookingCancellationController(
             result.CanceledIntents));
     }
 
-    /// <summary>
-    /// Generates a signed one-time cancellation link and emails it to the guest (BK-02, BK-07, PO 2026-10-08).
-    /// Needs <c>booking.write</c> on the booking's property (the host decides when to send the link).
-    /// </summary>
     [HttpPost("guest-cancel-link")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     public async Task<IActionResult> SendGuestCancelLink(Guid id)
@@ -131,10 +122,6 @@ public class BookingCancellationController(
         }
     }
 
-    /// <summary>
-    /// The cancellation of a booking of a channel: Octorate is asked first and the booking is cancelled in CasaZen only when it confirms (see
-    /// <see cref="IOtaBookingCancellationService"/>). It moves no money, so it needs no <c>payment.write</c>: the channel collects its own bookings.
-    /// </summary>
     private async Task<ActionResult<CancelBookingResponse>> CancelChannelBookingAsync(Booking booking, string? reason)
     {
         var service = otaCancellationService
@@ -148,7 +135,6 @@ public class BookingCancellationController(
         }
         catch (OtaCancellationUnavailableException ex)
         {
-            // Octorate did not answer: the booking is as it was, and the host is told so, with the sentence that says how to ask on the channel.
             var problem = ApiProblemDetails.Create(HttpContext, StatusCodes.Status503ServiceUnavailable, OctorateSyncErrorCodes.Unavailable, ex.GuidanceKey);
             problem.Extensions[OtaChannelActionPolicy.GuidanceKeyExtension] = ex.GuidanceKey;
             problem.Extensions[OtaChannelActionPolicy.ChannelExtension] = ex.Channel;

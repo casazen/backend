@@ -26,10 +26,6 @@ public class ScheduledMessagesController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>
-    /// The timeline of the booking in time order, each message with its planned time and the zone of the property, the routine, the state, the reason it is blocked or skipped, whether it was edited, the channel it will
-    /// use and the text as it will read, with the variables the booking has no value for. 404 for a booking out of the reach of the caller.
-    /// </summary>
     [HttpGet("api/bookings/{id:guid}/scheduled-messages")]
     [Authorize(Policy = CasazenPolicies.BookingRead)]
     [ProducesResponseType(typeof(IReadOnlyList<ScheduledMessageDto>), StatusCodes.Status200OK)]
@@ -47,11 +43,6 @@ public class ScheduledMessagesController(
         return Ok(views.Select(ScheduledMessageDto.From).ToList());
     }
 
-    /// <summary>
-    /// Edits the text of one message for this booking only: <c>{ text }</c>, or an empty text to go back to the template of the routine. 404 for a message out of the reach; 409
-    /// <c>scheduled_message_not_editable</c> for one that was sent, skipped, cancelled or expired, <c>scheduled_message_in_progress</c> while a send holds it (the text was read when the send began),
-    /// <c>scheduled_message_changed</c> when somebody else changed it meanwhile; 422 <c>message_text_invalid</c>, <c>template_variable_unknown</c>.
-    /// </summary>
     [HttpPut("api/scheduled-messages/{id:guid}")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [RequestSizeLimit(16384)]
@@ -71,10 +62,6 @@ public class ScheduledMessagesController(
         return Ok(ScheduledMessageDto.From(await messages.EditAsync(scope, id, request.Text, userId, cancellationToken)));
     }
 
-    /// <summary>
-    /// «Skip»: the message will not be sent; the other people who reach the property are told. 404 for a message out of the reach; 409 <c>scheduled_message_not_editable</c> for one that already ended,
-    /// <c>scheduled_message_in_progress</c> for one a send holds (it is on its way: the answer «skipped» would not be true).
-    /// </summary>
     [HttpPost("api/scheduled-messages/{id:guid}/skip")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(ScheduledMessageDto), StatusCodes.Status200OK)]
@@ -91,11 +78,6 @@ public class ScheduledMessagesController(
         return Ok(ScheduledMessageDto.From(await messages.SkipAsync(scope, id, userId, cancellationToken)));
     }
 
-    /// <summary>
-    /// «Send now»: sends the message at once, whatever its planned time and the send window, once whichever of the routine, the sweep and this call reaches it first. 200 with the message (a message the guest cannot be
-    /// written to is answered as skipped by the system); 404 for a message out of the reach; 409 <c>scheduled_message_not_sendable</c> for one that was sent, skipped, cancelled or expired,
-    /// <c>scheduled_message_in_progress</c> while another actor sends it; 422 <c>scheduled_message_blocked</c> with the missing items (<c>missing</c>) for one that is still blocked; 429.
-    /// </summary>
     [HttpPost("api/scheduled-messages/{id:guid}/send-now")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [EnableRateLimiting(RateLimitPolicies.HostMessageSend)]
@@ -115,7 +97,6 @@ public class ScheduledMessagesController(
         return Ok(ScheduledMessageDto.From(await messages.SendNowAsync(scope, id, userId, cancellationToken)));
     }
 
-    /// <summary>The row is in the reach of the caller (the service applies the scope in SQL) and the caller may write the booking of its property (the row check of the booking).</summary>
     private async Task<bool> CanWriteRowAsync(HostScope scope, Guid id, CancellationToken cancellationToken) =>
         await messages.FindBookingIdAsync(scope, id, cancellationToken) is { } bookingId
         && await IsAuthorizedAsync(bookingId, BookingOperations.Write, cancellationToken);

@@ -27,12 +27,10 @@ public class AdminAlloggiatiCodeTablesController(
     /// <summary>Code of an import rejected because of the file content (422, with <c>lines</c>).</summary>
     public const string ImportInvalidCode = "alloggiati_code_import_invalid";
 
-    /// <summary>Code of an unknown table name (404).</summary>
     public const string TableUnknownCode = "alloggiati_code_table_unknown";
 
     private const long MaxRequestBytes = AlloggiatiCodeTableService.MaxFileBytes + 64 * 1024;
 
-    /// <summary>Rows and last import of every table.</summary>
     [HttpGet]
     public async Task<ActionResult<IEnumerable<AlloggiatiCodeTableStatusDto>>> GetStatus()
     {
@@ -40,11 +38,6 @@ public class AdminAlloggiatiCodeTablesController(
         return Ok(status.Select(AlloggiatiCodeTableStatusDto.From));
     }
 
-    /// <summary>
-    /// Imports an official table (<c>Comuni</c>, <c>Stati</c>, <c>Documenti</c>, <c>TipiAlloggiato</c>) from a
-    /// multipart upload: <c>file</c> (CSV/TXT) and <c>sourceVersion</c> (e.g. the download date). A file with any
-    /// invalid line is rejected as a whole: 422 <c>alloggiati_code_import_invalid</c> with <c>lines</c>.
-    /// </summary>
     [HttpPost("{table}")]
     [RequestSizeLimit(MaxRequestBytes)]
     [RequestFormLimits(MultipartBodyLengthLimit = MaxRequestBytes)]

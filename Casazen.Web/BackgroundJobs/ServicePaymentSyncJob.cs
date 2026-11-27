@@ -19,7 +19,6 @@ public class ServicePaymentSyncJob(ISupplierPaymentJobService payments, ILogger<
 {
     public const string RecurringJobId = "service-payment-sync";
 
-    /// <summary>Every 15 minutes.</summary>
     public const string Cron = "*/15 * * * *";
 
     // One run at a time; a second run started anyway (a retry, the dashboard) waits for the first and then finds nothing left to do.

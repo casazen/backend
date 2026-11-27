@@ -30,17 +30,10 @@ public class UsersController(
     PublicSiteLinks publicSiteLinks,
     Casazen.Infrastructure.Data.AppDbContext? commercialDb = null) : ControllerBase
 {
-    /// <summary>
-    /// 422 on <c>PUT /api/users/onboarding</c> from a user without an org and without consents: the first org is
-    /// created only together with the legal consents. The client answers it with the consents step (A1-01).
-    /// </summary>
     public const string ConsentsRequiredCode = "consents_required";
     public const string ConsentsIncompleteCode = "consents_incomplete";
     public const string StaleDocumentsCode = "stale_documents";
 
-    // ─── Admin endpoints ────────────────────────────────────────────────────
-
-    /// <summary>Returns a paginated, filtered list of all users. Admin only.</summary>
     [HttpGet]
     [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult<PagedResultDto<UserSummaryDto>>> GetAll(
@@ -50,7 +43,6 @@ public class UsersController(
         [FromQuery] bool? isActive = null,
         [FromQuery] string? search = null)
     {
-        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500 (A1-26): clamp them instead.
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, 100);
         logger.LogInformation("Admin: listing users page={Page} pageSize={PageSize}", page, pageSize);
@@ -69,7 +61,6 @@ public class UsersController(
         });
     }
 
-    /// <summary>Returns a single user by ID. Admin only.</summary>
     [HttpGet("{id}")]
     [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult<UserDetailDto>> GetById(string id)
@@ -81,12 +72,6 @@ public class UsersController(
         return Ok(ToDetail(user, await ResolveOrgAsync(user)));
     }
 
-    // ─── Self-service endpoints ──────────────────────────────────────────────
-
-    /// <summary>
-    /// Returns the caller's own profile. Creates the DB record on first call (upsert by sub). <c>emailVerified</c> tells whether
-    /// Auth0 verified the account's email address: the guest area of the mobile app (<c>api/guest/*</c>) needs it.
-    /// </summary>
     [HttpGet("me")]
     public async Task<ActionResult<UserDetailDto>> GetMe(
         [FromServices] IAccountEmailResolver accountEmails,
@@ -102,7 +87,6 @@ public class UsersController(
         return Ok(await ToOwnDetailAsync(user, accountEmails, cancellationToken));
     }
 
-    /// <summary>Completes first-time onboarding by assigning roles from rental type choice.</summary>
     [HttpPost("onboarding")]
     public Task<ActionResult<OnboardingResponseDto>> PostOnboarding([FromBody] OnboardingRequestDto dto) =>
         CompleteOnboardingAsync(dto, requireConsents: true);
@@ -138,7 +122,6 @@ public class UsersController(
         return Ok(new SignupAttributionResultDto { Recorded = recorded });
     }
 
-    /// <summary>Updates the caller's own profile (first name, last name, phone).</summary>
     [HttpPut("me")]
     public async Task<ActionResult<UserDetailDto>> UpdateMe(
         [FromBody] UpdateProfileDto dto,
@@ -164,7 +147,6 @@ public class UsersController(
         return Ok(await ToOwnDetailAsync(updated, accountEmails, cancellationToken));
     }
 
-    /// <summary>Changes the role of a user. Admin only.</summary>
     [HttpPut("{id}/role")]
     [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult> ChangeRole(string id, [FromBody] ChangeRoleDto dto)
@@ -201,8 +183,6 @@ public class UsersController(
         return Ok(new { id, role = newRole.ToString(), rolesSynced = true });
     }
 
-    /// <summary>Returns the roles the user currently holds in Auth0, restricted to the ones an admin can manage
-    /// (A1-17: Admin, PropertyOwner, LongTermLandlord, Supplier). Admin only.</summary>
     [HttpGet("{id}/roles")]
     [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult<UserRolesDto>> GetRoles(string id)
@@ -266,7 +246,6 @@ public class UsersController(
 
         if (!result.RoleSync.Succeeded)
         {
-            // Same as ChangeRole: the roles are unchanged, so this must not be reported as done. Retrying is safe.
             return this.ApiProblem(
                 StatusCodes.Status502BadGateway,
                 result.RoleSync.ErrorCode ?? Auth0SyncResult.ApiErrorCode,
@@ -303,10 +282,6 @@ public class UsersController(
             localizer[result.Auth0Sync.Succeeded ? "UserDeactivated" : "UserDeactivatedAuth0NotSynced"]));
     }
 
-    /// <summary>
-    /// Reactivates a deactivated user (PL-03). Admin only. Auth0 gets back the roles removed by the deactivation, then the
-    /// account is unblocked; when Auth0 fails the user stays unable to log in until the call is repeated.
-    /// </summary>
     [HttpPost("{id}/reactivate")]
     [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult<UserActivationResponseDto>> Reactivate(
@@ -353,13 +328,9 @@ public class UsersController(
         OnboardingRequestDto dto,
         bool requireConsents)
     {
-        // Enum.TryParse alone also accepts a numeric string with no declared member (e.g. "7"), which then reached
-        // MapRentalTypeToRoles as a value nothing was written to handle: ArgumentOutOfRangeException -> 500 instead
-        // of a clean 400 (A1-35, A7-31).
         if (!EnumNames.TryParseDefined<RentalType>(dto.RentalType, out var rentalType))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "RentalTypeUnknown");
 
-        // The requested plan is only validated: the org starts on Starter, paid tiers come from Stripe (#274).
         if (!string.IsNullOrWhiteSpace(dto.PlanTier) && !PlanCatalog.TryParseTier(dto.PlanTier, out _))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingPlanTierUnknown");
 
@@ -407,8 +378,6 @@ public class UsersController(
         if (!validationSuccess)
             return ToConsentError(validationError);
 
-        // Legacy clients may omit the selection, but their new host organization still starts behind
-        // the payment gate with the requested rental areas.
         var initialSelection = dto.CommercialSignup ?? (!hadHostOrg
             ? new CommercialSignup { Profile = rentalType == RentalType.LongTerm ? "long-rent" : "owner", RentalArea = rentalType == RentalType.Both ? "Both" : null }
             : null);
@@ -419,7 +388,6 @@ public class UsersController(
         if (user.OrgId is not Guid orgId)
             return this.ApiProblem(StatusCodes.Status500InternalServerError, ProblemCodes.InternalError, "InternalServerErrorDetail");
 
-        // TN-4: the rest of this request (consent records, tenant filter) is scoped to the org just created or linked.
         tenantContext.SetOrgId(orgId);
 
         var (success, error, consentsRecorded) = await onboardingService.ValidateAndRecordConsentsAsync(
@@ -436,7 +404,6 @@ public class UsersController(
         if (initialSelection is { } selection && commercialDb is not null)
         {
             var commercialOrg = await commercialDb.Orgs.FindAsync([orgId], HttpContext.RequestAborted);
-            // Never replace a paid configuration through the account-creation endpoint.
             if (commercialOrg is not null && !BillingSubscriptionPolicy.BlocksNewCheckout(commercialOrg))
             {
                 var savedCommercial = CommercialSignup.Read(commercialOrg.CommercialSignupJson);
@@ -448,8 +415,6 @@ public class UsersController(
                     commercialOrg.IsAgency = true;
                     commercialOrg.Name = selection.AgencyName!.Trim();
                     commercialOrg.DisplayName = commercialOrg.Name;
-                    // CompleteOnboardingAsync already creates the founder's OrgRole.Owner membership,
-                    // including account administration and invitation permissions. Never a platform Admin role.
                 }
                 await commercialDb.SaveChangesAsync(HttpContext.RequestAborted);
             }
@@ -470,7 +435,6 @@ public class UsersController(
     private ActionResult<OnboardingResponseDto> ToConsentError(ConsentValidationError? error) =>
         error?.Type switch
         {
-            // The clients recognize a stale legal document by the `staleDocuments` field, kept next to the stable code.
             ConsentValidationErrorType.StaleVersion => StaleDocumentsProblem(error),
             _ => this.ApiProblem(StatusCodes.Status400BadRequest, ConsentsIncompleteCode, "ConsentsIncomplete"),
         };
@@ -485,8 +449,6 @@ public class UsersController(
             ContentTypes = { ApiProblemDetails.ContentType },
         };
     }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────
 
     private string? GetSub() =>
         User.FindFirst("sub")?.Value
@@ -522,10 +484,6 @@ public class UsersController(
     private async Task<Org?> ResolveOrgAsync(User user) =>
         user.OrgId.HasValue ? await orgService.GetByIdAsync(user.OrgId.Value) : null;
 
-    /// <summary>
-    /// The caller's own profile, with where it stands with the host onboarding gate (PL-02) and whether its email address is
-    /// verified (the token's claim; Auth0 only when the token has none, <see cref="IAccountEmailResolver"/>).
-    /// </summary>
     private async Task<UserDetailDto> ToOwnDetailAsync(
         User user,
         IAccountEmailResolver accountEmails,
@@ -536,7 +494,6 @@ public class UsersController(
         var onboarding = await hostOnboardingGate.GetStatusAsync(user.Id, HttpContext.RequestAborted);
         detail.OnboardingRequired = !onboarding.IsComplete;
         detail.ConsentsAccepted = onboarding.ConsentsAccepted;
-        // A supplier org owns no properties: the "first property" step is for host orgs only.
         if (user.OrgId is Guid orgId && org?.OrgType != OrgType.Supplier)
             detail.HasProperties = await onboardingService.OrgHasPropertiesAsync(orgId, HttpContext.RequestAborted);
         detail.CommercialEnabledAddons = System.Text.Json.JsonSerializer.Deserialize<string[]>(org?.CommercialPaidAddonsJson ?? "[]") ?? [];
@@ -562,7 +519,6 @@ public class UsersController(
         UpdatedAt = u.UpdatedAt,
         OnboardingCompletedAt = u.OnboardingCompletedAt,
         OrgId = u.OrgId,
-        // A user whose only org is a supplier org registered before SupplierOrgId existed counts as linked too.
         SupplierOrgId = u.SupplierOrgId ?? (org?.OrgType == OrgType.Supplier ? org.Id : null),
         Org = org is null
             ? null

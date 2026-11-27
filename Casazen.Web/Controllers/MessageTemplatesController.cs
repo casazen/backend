@@ -25,10 +25,6 @@ public class MessageTemplatesController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>
-    /// The templates of the organization, by name and language; <c>activeOnly</c> keeps the ones the composer offers. Each has the <c>variables</c> its body
-    /// uses.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<MessageTemplateDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -42,10 +38,6 @@ public class MessageTemplatesController(
         return Ok(items.Select(MessageTemplateDto.From).ToList());
     }
 
-    /// <summary>
-    /// Creates a template. 201; 409 <c>message_template_exists</c> (the same name and language); 422 <c>message_template_invalid</c> (name, language or text
-    /// missing or too long) or <c>template_variable_unknown</c> (a variable that is none of the eight).
-    /// </summary>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [RequestSizeLimit(16384)]
@@ -63,7 +55,6 @@ public class MessageTemplatesController(
         return StatusCode(StatusCodes.Status201Created, MessageTemplateDto.From(created));
     }
 
-    /// <summary>Changes a template of the organization. 404 <c>message_template_not_found</c>; the same 409 and 422 as the creation.</summary>
     [HttpPut("{id:guid}")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [RequestSizeLimit(16384)]
@@ -82,7 +73,6 @@ public class MessageTemplatesController(
         return Ok(MessageTemplateDto.From(updated));
     }
 
-    /// <summary>Deletes a template of the organization. 204; 404 <c>message_template_not_found</c>.</summary>
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -98,11 +88,6 @@ public class MessageTemplatesController(
         return NoContent();
     }
 
-    /// <summary>
-    /// The text of a template for a conversation (<c>{ threadKey }</c>): the variables are filled in with the booking and the property of the conversation.
-    /// Nothing is stored or sent. 400 <c>thread_key_invalid</c>; 404 <c>message_template_not_found</c> or <c>thread_not_found</c>; 422
-    /// <c>template_variable_missing</c> (naming the variable the conversation has no value for) or <c>template_variable_unknown</c>.
-    /// </summary>
     [HttpPost("{id:guid}/render")]
     [RequestSizeLimit(4096)]
     [ProducesResponseType(typeof(RenderedMessageTemplateDto), StatusCodes.Status200OK)]

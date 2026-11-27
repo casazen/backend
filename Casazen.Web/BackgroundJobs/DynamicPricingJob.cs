@@ -17,12 +17,8 @@ public class DynamicPricingJob(
     IPricingAdapterService pricingService,
     ILogger<DynamicPricingJob> logger)
 {
-    /// <summary>Recurring job id (kept from the earlier "dynamic pricing" job so the existing schedule is updated in place).</summary>
     public const string RecurringJobId = "dynamic-pricing-adaptation";
 
-    /// <summary>
-    /// Main entry point for the recurring job. Called daily at 02:00 UTC by Hangfire.
-    /// </summary>
     [DisableConcurrentExecution("DynamicPricingJob", JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync()
     {

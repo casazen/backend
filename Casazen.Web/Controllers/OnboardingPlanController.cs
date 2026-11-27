@@ -33,9 +33,6 @@ public sealed class OnboardingPlanController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>The plan of the caller's org over the properties it reaches.</summary>
-    /// <response code="200">The twelve parts, «What you need», the path and <c>activated</c>.</response>
-    /// <response code="403">The caller has no org, or reaches nothing in it.</response>
     [HttpGet("plan")]
     [Authorize(Policy = CasazenPolicies.SharedPropertyRead)]
     [PrivateAnswer]
@@ -52,9 +49,6 @@ public sealed class OnboardingPlanController(
         return Ok((await plan.GetPlanAsync(scope.OrgId, scope, cancellationToken)).ToDto());
     }
 
-    /// <summary>The connected path «start with CasaZen» of UX-10: its six steps mapped to the parts, which are visible, and the next one.</summary>
-    /// <response code="200">The path.</response>
-    /// <response code="403">The caller has no org, or reaches nothing in it.</response>
     [HttpGet("path")]
     [Authorize(Policy = CasazenPolicies.SharedPropertyRead)]
     [PrivateAnswer]
@@ -71,12 +65,6 @@ public sealed class OnboardingPlanController(
         return Ok((await plan.GetPathAsync(scope.OrgId, scope, cancellationToken)).ToDto());
     }
 
-    /// <summary>
-    /// «Do it later»: the part is deferred and one "To do" reminds the host at <c>remindAt</c> (UTC) or, without one, tomorrow at 09:00 in Rome.
-    /// </summary>
-    /// <response code="200">The part, now <c>deferred</c>, with its reminder and its "To do".</response>
-    /// <response code="404"><c>onboarding_part_unknown</c>: the route names no part.</response>
-    /// <response code="422"><c>onboarding_part_prerequisite</c>: another part requires this one; <c>onboarding_remind_at_invalid</c>; <c>onboarding_part_not_open</c>: the part is done or not available.</response>
     [HttpPost("parts/{key}/defer")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     [ProducesResponseType(typeof(OnboardingPartChangeDto), StatusCodes.Status200OK)]
@@ -95,10 +83,6 @@ public sealed class OnboardingPlanController(
             cancellationToken);
     }
 
-    /// <summary>«Save and exit»: the part stays open and one "To do" (tomorrow at 09:00 in Rome) keeps what remains from disappearing silently.</summary>
-    /// <response code="200">The part, <c>open</c>, with its reminder and its "To do".</response>
-    /// <response code="404"><c>onboarding_part_unknown</c>.</response>
-    /// <response code="422"><c>onboarding_part_not_open</c>: the part is done or not available, nothing remains.</response>
     [HttpPost("parts/{key}/exit")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     [ProducesResponseType(typeof(OnboardingPartChangeDto), StatusCodes.Status200OK)]
@@ -114,9 +98,6 @@ public sealed class OnboardingPlanController(
             cancellationToken);
     }
 
-    /// <summary>The host takes the part up again: the deferral is cleared and its "To do" closed.</summary>
-    /// <response code="200">The part, <c>open</c>, with no reminder and no "To do".</response>
-    /// <response code="404"><c>onboarding_part_unknown</c>.</response>
     [HttpPost("parts/{key}/resume")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     [ProducesResponseType(typeof(OnboardingPartChangeDto), StatusCodes.Status200OK)]

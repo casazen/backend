@@ -61,7 +61,6 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
             return;
         }
 
-        // Empty error responses (auth challenge/forbid, rate limiter, unmatched route...) get the same shape.
         if (IsEmptyErrorResponse(context))
             await WriteProblemAsync(context, ApiProblemDetails.Create(context, context.Response.StatusCode));
     }
@@ -151,10 +150,6 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
         return WriteProblemAsync(context, problem);
     }
 
-    /// <summary>
-    /// Only unwraps containers that add no information (reflection, single-task aggregates). Other inner exceptions
-    /// are causes (e.g. a PostgresException inside a DbUpdateException) and must not change the response.
-    /// </summary>
     private static Exception Unwrap(Exception exception)
     {
         while (true)
@@ -175,7 +170,6 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
 
     private void LogRejected(HttpContext context, Exception exception, int statusCode, string code)
     {
-        // 4xx outcome of a business rule: no stack trace, no exception message (it may echo user input).
         logger.LogInformation(
             "Request rejected with {StatusCode} {ErrorCode} ({ExceptionType}) on {Method} {Route}. TraceId={TraceId}",
             statusCode,
@@ -211,7 +205,6 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
     private static Task WriteProblemAsync(HttpContext context, ProblemDetails problem)
     {
         context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
-        // Serialize with the runtime type: a ValidationProblemDetails must keep its "errors".
         return context.Response.WriteAsJsonAsync(problem, problem.GetType(), JsonOptions, ApiProblemDetails.ContentType);
     }
 }

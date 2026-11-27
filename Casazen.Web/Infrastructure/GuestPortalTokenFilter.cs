@@ -22,16 +22,12 @@ public sealed class GuestPortalTokenFilter(
     GuestPortalContextAccessor accessor,
     ILogger<GuestPortalTokenFilter> logger) : IAsyncResourceFilter
 {
-    /// <summary>The route value of the token: <c>{token}</c> of <c>api/public/guest-portal/{token}</c>.</summary>
     public const string TokenRouteValue = "token";
 
-    /// <summary>After <see cref="PrivateAnswerAttribute"/> (order 0), so every answer of the portal is private, the 404 included.</summary>
     public const int FilterOrder = 10;
 
-    /// <summary>The <c>instance</c> of the 404: the prefix of the route, never the address with the token.</summary>
     public const string ProblemInstance = "/api/public/guest-portal";
 
-    /// <summary>The message of the 404 (<c>SharedResources</c>, it and en).</summary>
     public const string LinkInvalidMessageKey = "GuestPortalLinkInvalid";
 
     public async Task OnResourceExecutionAsync(ResourceExecutingContext context, ResourceExecutionDelegate next)
@@ -56,10 +52,6 @@ public sealed class GuestPortalTokenFilter(
         }
     }
 
-    /// <summary>
-    /// The one 404 of the portal: <c>guest_portal_link_invalid</c>, private (<c>no-store</c>, <c>noindex</c>), with the prefix of the route as its
-    /// <c>instance</c>. The endpoints of the portal answer it too when the stay is no longer there.
-    /// </summary>
     public static ObjectResult LinkInvalid(HttpContext httpContext)
     {
         ArgumentNullException.ThrowIfNull(httpContext);
@@ -79,7 +71,6 @@ public sealed class GuestPortalTokenFilter(
     }
 }
 
-/// <summary>The <see cref="PortalContext"/> of the current request, set by <see cref="GuestPortalTokenFilter"/>. Scoped.</summary>
 public sealed class GuestPortalContextAccessor : IGuestPortalContextAccessor
 {
     public PortalContext? Current { get; set; }

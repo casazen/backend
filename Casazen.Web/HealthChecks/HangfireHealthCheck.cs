@@ -15,12 +15,10 @@ public sealed class HangfireHealthCheck(
     IHostEnvironment environment,
     TimeProvider timeProvider) : IHealthCheck
 {
-    /// <summary>Hangfire servers send a heartbeat every 30 seconds; older than this the server is considered stopped.</summary>
     public static readonly TimeSpan HeartbeatTolerance = TimeSpan.FromMinutes(2);
 
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        // Registered only with a database connection string (AddCasazenHangfire).
         var storage = services.GetService<JobStorage>();
         if (storage is null)
         {
@@ -32,7 +30,6 @@ public sealed class HangfireHealthCheck(
         IList<ServerDto> servers;
         try
         {
-            // The monitoring API is synchronous: keep the request thread free and honour the check timeout.
             servers = await Task.Run(() => storage.GetMonitoringApi().Servers(), cancellationToken)
                 .WaitAsync(cancellationToken);
         }

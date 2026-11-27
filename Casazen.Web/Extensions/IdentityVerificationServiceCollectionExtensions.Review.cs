@@ -13,11 +13,8 @@ public static partial class IdentityVerificationServiceCollectionExtensions
 {
     static partial void AddReviewServices(IServiceCollection services)
     {
-        // E73/F01/US02/T01, T02: the evidence of the reviewer (kept by the closure, read by the operators, deleted at the decision). Scoped: it holds the database of the request.
         services.AddScoped<IdentityReviewEvidenceStore>();
 
-        // E73/F01/US02/T03: the retention of the evidence, of the abandoned sessions, of the checks of the document and of the verification logs, its job, and what the last run did
-        // (one record for the process, read by the status of the platform administrators).
         services.AddScoped<IdentityRetentionService>();
         services.AddSingleton<IdentityRetentionRunLog>();
         services.AddScoped<IdentityEvidencePurgeJob>();

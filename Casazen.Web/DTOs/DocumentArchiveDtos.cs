@@ -36,7 +36,6 @@ public sealed class ArchiveDocumentDto
     };
 }
 
-/// <summary>A page of the archive: <c>TotalCount</c> is all the documents that match the filters, whatever the page.</summary>
 public sealed class DocumentArchivePageDto
 {
     public IReadOnlyList<ArchiveDocumentDto> Items { get; init; } = [];
@@ -53,10 +52,8 @@ public sealed class DocumentArchivePageDto
     };
 }
 
-/// <summary>A type the caller may read and how many documents of it match the filters (<c>GET api/documents/types</c>).</summary>
 public sealed record ArchiveTypeCountDto(string Type, int Count);
 
-/// <summary>The types the caller may read, each with its count; a type the caller may not read is not here.</summary>
 public sealed class DocumentArchiveTypesDto
 {
     public IReadOnlyList<ArchiveTypeCountDto> Types { get; init; } = [];

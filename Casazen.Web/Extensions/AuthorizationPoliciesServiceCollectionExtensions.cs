@@ -7,27 +7,20 @@ using Microsoft.AspNetCore.Authentication;
 
 namespace Casazen.Web.Extensions;
 
-/// <summary>
-/// The complete authorization policy set (TN-3): see <c>CasazenPolicies</c> for how to choose one. Called by <see cref="ServiceCollectionExtensions.AddCasazenAuthorization"/>
-/// after the registration of the authorization handlers.
-/// </summary>
 public static class AuthorizationPoliciesServiceCollectionExtensions
 {
     public static IServiceCollection AddCasazenAuthorizationPolicies(this IServiceCollection services)
     {
-        // The complete policy set (TN-3): see CasazenPolicies for how to choose one.
         var builder = services.AddAuthorizationBuilder()
             .AddPolicy(CasazenPolicies.Authenticated, policy => policy.RequireAuthenticatedUser())
             .AddPolicy(CasazenPolicies.AdminOnly, policy => policy.RequireRole("Admin"))
             .AddPolicy(CasazenPolicies.Supplier, policy => policy.RequireRole("Supplier"))
             .AddPolicy(CasazenPolicies.OrgBillingAdmin, policy =>
                 policy.Requirements.Add(new OrgBillingAdminRequirement()))
-            // The guest of a booking site with no account (DB-06a): its own authentication scheme, no role, no host context.
             .AddPolicy(CasazenPolicies.GuestSession, policy => policy
                 .AddAuthenticationSchemes(GuestSessionDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
                 .RequireClaim(GuestSessionDefaults.OrgIdClaim))
-            // The plugin of a site connected to the org (S022): the SiteToken scheme only, its connection, its org and the scope of the domain.
             .AddPolicy(CasazenPolicies.SiteConnection, policy => policy
                 .AddAuthenticationSchemes(SiteTokenDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
@@ -44,8 +37,6 @@ public static class AuthorizationPoliciesServiceCollectionExtensions
             .AddPolicy(CasazenPolicies.TenantAccount, policy => policy
                 .RequireAuthenticatedUser()
                 .RequireAssertion(context => !string.IsNullOrWhiteSpace(context.User.GetUserId())))
-            // Owner portal access (ADR-011): context=owner_portal claim, MUST NOT include host roles. E40/F01/US01/T02: a call from an agency's own
-            // domain also needs that agency in the owner's agency_ids (a separate requirement, so the two are AND-ed).
             .AddPolicy(CasazenPolicies.OwnerPortal, policy =>
             {
                 policy.Requirements.Add(new OwnerPortalRequirement());

@@ -22,7 +22,6 @@ public class OwnerMandatesController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>The mandate versions of the owner, the newest first. 404 <c>owner_not_found</c>.</summary>
     [HttpGet("api/owners/{ownerId:guid}/mandates")]
     [ProducesResponseType(typeof(List<OwnerMandateDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -35,10 +34,6 @@ public class OwnerMandatesController(
         return Ok(versions.Select(OwnerMandateDto.From).ToList());
     }
 
-    /// <summary>
-    /// A new version from <c>validFrom</c>: the version in force ends the day before. 422 <c>owner_mandate_invalid</c> (with the <c>field</c>); 409
-    /// <c>owner_mandate_overlap</c>; 404 <c>owner_not_found</c>.
-    /// </summary>
     [HttpPost("api/owners/{ownerId:guid}/mandates")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerMandateDto), StatusCodes.Status201Created)]
@@ -54,7 +49,6 @@ public class OwnerMandatesController(
         return CreatedAtAction(nameof(List), new { ownerId }, OwnerMandateDto.From(mandate));
     }
 
-    /// <summary>Read a PDF into suggestions only: no mandate or document is persisted.</summary>
     [HttpPost("api/owners/{ownerId:guid}/mandates/read-document")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [RequestSizeLimit(OwnerMandateDocuments.MaxBytes + 65536)]
@@ -69,7 +63,6 @@ public class OwnerMandatesController(
         return Ok(await documents.ReadAsync(scope, ownerId, form.File, HttpContext.RequestAborted));
     }
 
-    /// <summary>Attach the PDF privately only when its reviewed mandate version is confirmed.</summary>
     [HttpPost("api/owners/{ownerId:guid}/mandates/with-document")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [RequestSizeLimit(OwnerMandateDocuments.MaxBytes + 65536)]
@@ -106,11 +99,6 @@ public class OwnerMandatesController(
         return File(stream, "application/pdf", $"mandato-{mandateId:N}.pdf");
     }
 
-    /// <summary>
-    /// The standard mandate (<c>{ template, ownerIds? }</c>) for every owner of the agency in reach with an ownership not ended and no mandate (or only the
-    /// listed owners): the counts of the versions created and of the owners skipped. 422 <c>owner_mandate_invalid</c>, <c>owner_mandate_owners_empty</c>;
-    /// 404 <c>owner_not_found</c> for a listed owner.
-    /// </summary>
     [HttpPost("api/owner-mandates/apply-template")]
     [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
     [ProducesResponseType(typeof(OwnerMandateTemplateResult), StatusCodes.Status200OK)]
@@ -124,7 +112,6 @@ public class OwnerMandatesController(
         return Ok(await mandates.ApplyTemplateAsync(scope, command, User.GetUserId(), HttpContext.RequestAborted));
     }
 
-    /// <summary>The caller's reach on its org; <c>null</c> without an org or a reach (never widened to the whole org).</summary>
     private async Task<HostScope?> ScopeAsync()
     {
         var ct = HttpContext.RequestAborted;
@@ -133,7 +120,6 @@ public class OwnerMandatesController(
     }
 }
 
-/// <summary>Multipart mandate upload. Command is omitted when only requesting suggestions.</summary>
 public sealed class MandateDocumentForm
 {
     public IFormFile? File { get; set; }

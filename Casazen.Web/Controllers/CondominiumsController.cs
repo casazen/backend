@@ -139,7 +139,6 @@ public partial class CondominiumsController(
             cancellationToken));
     }
 
-    /// <summary>The same year the PDFs print: budget, extraordinary, prior balance, final, paid and still to pay.</summary>
     [HttpGet("{condominiumId:guid}/periods/{periodId:guid}/report")]
     public async Task<ActionResult<SituazioneReport.Year>> Report(Guid condominiumId, Guid periodId, CancellationToken cancellationToken)
     {
@@ -169,11 +168,6 @@ public partial class CondominiumsController(
         return File(pdf, "application/pdf", "spese-ancora-da-pagare.pdf");
     }
 
-    /// <summary>
-    /// Reads a free-form administrator PDF and proposes the budget or the final in the fiscal year it names.
-    /// Nothing is posted. A scanned file with no text, or a file without a year and an amount, is refused.
-    /// The same statement can still be entered by hand.
-    /// </summary>
     [HttpPost("{condominiumId:guid}/statements/read")]
     [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
     [RequestSizeLimit(1_048_576)]
@@ -208,7 +202,6 @@ public partial class CondominiumsController(
             new StatementFileUpload(file.FileName, buffer.ToArray()), userId, cancellationToken));
     }
 
-    /// <summary>Posts a proposal the reader stored. An uncertain line is not charged to the tenant.</summary>
     [HttpPost("{condominiumId:guid}/statements/proposals/{proposalId:guid}/confirm")]
     [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
     public async Task<ActionResult<StatementProposalView>> ConfirmProposal(
@@ -223,10 +216,6 @@ public partial class CondominiumsController(
         return Ok(result);
     }
 
-    /// <summary>
-    /// Posts a <c>condo-statement-v1</c> text or PDF into the fiscal year named in the file. The same numbers can be entered
-    /// by hand. A free-form administrator PDF is refused here; it is proposed by <c>statements/read</c> and posted only after confirmation.
-    /// </summary>
     [HttpPost("{condominiumId:guid}/statements/import")]
     [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
     [RequestSizeLimit(1_048_576)]

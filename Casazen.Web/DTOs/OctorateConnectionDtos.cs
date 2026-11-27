@@ -44,15 +44,12 @@ public sealed record OctorateConnectionResponse(
 /// <param name="AuthorizationUrl">The address of the consent page.</param>
 public sealed record OctorateConnectStartResponse(string AuthorizationUrl);
 
-/// <summary>What the CasaZen callback page received from Octorate (<c>POST api/octorate/connect/complete</c>).</summary>
 public sealed class OctorateConnectCompleteRequest
 {
-    /// <summary>The authorization code of the callback.</summary>
     [Required(ErrorMessage = "OctorateCodeRequired")]
     [MaxLength(2048, ErrorMessage = "OctorateCodeRequired")]
     public string Code { get; set; } = string.Empty;
 
-    /// <summary>The state of the callback, the one <c>connect/start</c> put in the consent address.</summary>
     [Required(ErrorMessage = "OctorateStateRequired")]
     [MaxLength(256, ErrorMessage = "OctorateStateRequired")]
     public string State { get; set; } = string.Empty;

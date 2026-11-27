@@ -8,10 +8,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Compliance summary cockpit (US-019 / #295 AC10), of the properties the caller reaches (AM-03). Every item says what it
-/// still lacks, with stable codes and fields (SR-03).
-/// </summary>
 [ApiController]
 [Route("api/compliance")]
 [Authorize(Policy = "RequireContext:short-rent:booking.read")]

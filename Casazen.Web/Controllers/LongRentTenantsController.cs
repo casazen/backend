@@ -35,7 +35,6 @@ public class LongRentTenantsController(
 {
     private const string TenantNotFoundCode = "tenant_not_found";
 
-    /// <summary>The name of the downloaded file: neutral on purpose, it must not carry the name of the person.</summary>
     private const string ExportFileName = "dati-personali.json";
 
     private static readonly JsonSerializerOptions ExportJson = new(JsonSerializerDefaults.Web)
@@ -162,10 +161,6 @@ public class LongRentTenantsController(
         return Ok(result);
     }
 
-    /// <summary>
-    /// The leases of the person the caller may handle (<see cref="LeaseOperations.Create"/> on the property of each, one check per
-    /// property): 404 when there is no such person in the caller's reach, 403 when there is but none of their leases may be handled.
-    /// </summary>
     private async Task<(IReadOnlySet<Guid>? Allowed, IActionResult? Denied)> AuthorizeLeasesAsync(
         HostScope scope, Guid tenantId, CancellationToken cancellationToken)
     {

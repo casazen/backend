@@ -81,7 +81,6 @@ public sealed class MarketplacePartnersController(
         if (await CallerAsync(cancellationToken) is not { } caller)
             return NoOrg();
 
-        // A day that is not there is not «today»: the host says when it did it.
         if (request.DeclaredOn is not { } declaredOn)
             throw new DomainRuleException(MarketplacePartnerErrorCodes.DeclaredDateInvalid, "MarketplaceDeclaredDateInvalid");
 
@@ -91,7 +90,6 @@ public sealed class MarketplacePartnersController(
         return Ok(MarketplacePartnerActivationDto.From(activation));
     }
 
-    /// <summary>The caller's id, org and scope; <c>null</c> when it has no org or reaches nothing in it.</summary>
     private Task<HostCaller?> CallerAsync(CancellationToken cancellationToken) =>
         HostCallerResolver.CallerAsync(User, orgContextResolver, hostScopeResolver, cancellationToken);
 

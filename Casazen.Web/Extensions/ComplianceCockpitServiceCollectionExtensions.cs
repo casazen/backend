@@ -19,16 +19,9 @@ public static class ComplianceCockpitServiceCollectionExtensions
         // only with an archived proof; the feeder keeps one To do per item and closes it when the item turns green. Both are read-side of the
         // cockpit (ComplianceWizardService.GetSummaryAsync); nothing is sent to an authority or to Octorate.
         services.AddScoped<IComplianceStatusService, ComplianceStatusService>();
-        // The archive of the proofs CasaZen holds for those obligations and the log of what was sent (E03/F02/US03/T01, NF-47): the proofs the host
-        // uploads (private bucket, signed addresses), the line every successful send writes, the coverage report over the same rules as the light
-        // and the exports built on request. Options: Compliance:Archive (all optional).
         services.AddScoped<IComplianceSendLog, ComplianceSendLog>();
         services.AddScoped<IComplianceArchiveService, ComplianceArchiveService>();
-        // E20/F02/US01/T01 (NF-47, CHK-08): the proofs are kept five years from their upload; the daily job (compliance-proof-retention) deletes the file and the row of
-        // those whose time is over. Always scheduled, nothing to configure.
         services.AddScoped<Casazen.Infrastructure.Jobs.ComplianceProofRetentionJob>();
-        // NF-128 (casazen/backend#979): the receipts of the Ticino police, the group sheets and the parents' authorizations are kept five years from their date; the
-        // daily job (swiss-compliance-retention) deletes the file and the row of those whose time is over (never an OTR report). Always scheduled, nothing to configure.
         services.AddSwissComplianceRetention();
         // E20/F02/US01/T02 (NF-121, NF-16, decision O4): the photos of the identity documents and the legacy scan of a stay covered by an archived Alloggiati receipt are deleted by the
         // daily job (guest-document-purge) and by a run queued after each receipt upload; behind Features:PurgeDocumentsAfterReceipt, off by default (the deletion cannot be undone).
@@ -36,8 +29,6 @@ public static class ComplianceCockpitServiceCollectionExtensions
         services.AddScoped<Casazen.Infrastructure.Jobs.GuestDocumentPurgeJob>();
         services.AddScoped<IComplianceActivityFeeder, ComplianceActivityFeeder>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
-        // «Gestisci con AI» of the page of the adempimenti: asks the guests for their data (e-mail with the check-in link, chat messages the
-        // host sends, written by the AI when one is in effect) and closes the departures that are over; the rest stays the host's.
         services.AddScoped<IAutopilotMessageWriter, AutopilotMessageWriter>();
         services.AddScoped<IComplianceAutopilotService, ComplianceAutopilotService>();
         // CHK-15 (E03/F05/US01/T01): the controlled passage of a host to the Octorate Cassetto Compliance. It prepares the allowlisted address

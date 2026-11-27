@@ -3,7 +3,6 @@ using Casazen.Web.DTOs.Onboarding;
 
 namespace Casazen.Web.Mapping;
 
-/// <summary>The activation plan (NF-104, NF-10, E10/F01/US01/T03) as the API answers it: codes, counts and ids only.</summary>
 public static class OnboardingPlanMapping
 {
     public static OnboardingPlanDto ToDto(this OnboardingPlan plan) => new()

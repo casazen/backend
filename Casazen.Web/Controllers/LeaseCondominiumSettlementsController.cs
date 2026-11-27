@@ -8,10 +8,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// The tenant's consuntivo settlement (CondoLedger phase 3). Calculating and posting do not email or message the tenant:
-/// the landlord sends it by hand. Reads need <c>lease.read</c>; changes need <c>lease.create</c>.
-/// </summary>
 [ApiController]
 [Route("api/leases/{leaseId:guid}/condominium-settlements")]
 [Authorize(Policy = CasazenPolicies.LeaseRead)]
@@ -24,10 +20,6 @@ public class LeaseCondominiumSettlementsController(
 {
     private const string LeaseNotFoundCode = "lease_not_found";
 
-    /// <summary>
-    /// Drafts the settlement of a confirmed consuntivo. Positive is a debit, negative a credit, under one cent is even.
-    /// The destination defaults to the next installment.
-    /// </summary>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
     public async Task<ActionResult<TenantSettlementView>> Calculate(
@@ -44,7 +36,6 @@ public class LeaseCondominiumSettlementsController(
             cancellationToken));
     }
 
-    /// <summary>Confirms a draft. Nothing is posted and nothing is sent.</summary>
     [HttpPost("{settlementId:guid}/confirm")]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
     public async Task<ActionResult<TenantSettlementView>> Confirm(
@@ -56,10 +47,6 @@ public class LeaseCondominiumSettlementsController(
         return Ok(await settlements.ConfirmAsync(scope!, leaseId, settlementId, userId!, cancellationToken));
     }
 
-    /// <summary>
-    /// Posts a confirmed settlement. Issued and paid rent installments keep their rent and advance. The same settlement
-    /// posted again is the same component. The tenant is not notified.
-    /// </summary>
     [HttpPost("{settlementId:guid}/post")]
     [Authorize(Policy = CasazenPolicies.LeaseCreate)]
     public async Task<ActionResult<TenantSettlementView>> Post(

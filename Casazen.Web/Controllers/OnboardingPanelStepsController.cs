@@ -63,8 +63,6 @@ public sealed class OnboardingPanelStepsController(
         return Ok((await steps.StartAsync(caller.Scope, caller.UserId, request, cancellationToken)).ToDto());
     }
 
-    /// <summary>The steps of the org the caller reaches, the most recently started first.</summary>
-    /// <response code="200">The stored state of each step.</response>
     [HttpGet]
     [PrivateAnswer]
     [ProducesResponseType(typeof(List<PanelStepDto>), StatusCodes.Status200OK)]
@@ -100,9 +98,6 @@ public sealed class OnboardingPanelStepsController(
         return Ok((await steps.GetStatusAsync(caller.Scope, id, cancellationToken)).ToDto());
     }
 
-    /// <summary>The explicit trigger of a check (the window of the panel was closed, the tab got the focus again): held to a minimum gap from the previous check.</summary>
-    /// <response code="200">The stored state, after the check if it ran.</response>
-    /// <response code="404"><c>panel_step_not_found</c>.</response>
     [HttpPost("{id:guid}/verify")]
     [PrivateAnswer]
     [ProducesResponseType(typeof(PanelStepDto), StatusCodes.Status200OK)]

@@ -36,27 +36,14 @@ public class SupplierShowcaseContentController(
     IShowcaseTextSuggestionService textSuggestions,
     PublicSiteLinks publicSiteLinks) : ControllerBase
 {
-    /// <summary>The period of the two numbers of the showcase: the requests of the last 30 days (decision VT-D15).</summary>
     private const int StatsDays = 30;
 
-    /// <summary>
-    /// The content: the draft (empty before the first save), what is published, the state (<c>Draft</c>, <c>Online</c>, <c>ChangesReady</c>,
-    /// <c>Paused</c>), what a publication would change (<c>changes</c>), the <c>version</c> to send back with the next save and the public
-    /// address. A read creates no row.
-    /// </summary>
     [HttpGet("content")]
     [ProducesResponseType(typeof(ShowcaseContentResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ShowcaseContentResponse>> Get(CancellationToken cancellationToken) =>
         await RunAsync(orgId => content.GetAsync(orgId, cancellationToken), ensureAddress: true, cancellationToken);
 
-    /// <summary>
-    /// Saves a change of the draft (the editor's autosave). The body is the <c>version</c> the editor read and the members to change, as a
-    /// JSON merge patch: a member that is there replaces the stored one, an object is merged member by member, a list replaces the whole
-    /// list, <c>null</c> clears. Texts are cleaned and every field is checked on the whole result (limits, the color, the images, the
-    /// services); a draft may be incomplete. 409 <c>showcase_version_conflict</c> for a stale version (reload and apply the change again),
-    /// 422 <c>showcase_content_invalid</c> for a value that does not fit the contract.
-    /// </summary>
     [HttpPatch("content")]
     [EnableRateLimiting(RateLimitPolicies.SupplierShowcaseSave)]
     [RequestSizeLimit(ShowcaseContentLimits.MaxBodyBytes)]
@@ -73,10 +60,6 @@ public class SupplierShowcaseContentController(
             ensureAddress: false,
             cancellationToken);
 
-    /// <summary>
-    /// Throws the changes of the draft away: it goes back to what is published (an empty draft while nothing is). The body may carry the
-    /// <c>version</c> the editor read; when it does it must be the current one (409 <c>showcase_version_conflict</c>).
-    /// </summary>
     [HttpPost("discard")]
     [ProducesResponseType(typeof(ShowcaseContentResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -110,11 +93,6 @@ public class SupplierShowcaseContentController(
             ensureAddress: false,
             cancellationToken);
 
-    /// <summary>
-    /// "Annulla" after a publication: the version published before is published again (none, for the first publication: the showcase is a
-    /// draft again), the draft stays as it is. 409 <c>showcase_undo_unavailable</c> once <c>undoUntil</c> has passed or something else was
-    /// changed (a save, a discard, a pause).
-    /// </summary>
     [HttpPost("publish/undo")]
     [ProducesResponseType(typeof(ShowcaseContentResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -133,11 +111,6 @@ public class SupplierShowcaseContentController(
     public async Task<ActionResult<ShowcaseContentResponse>> Pause(CancellationToken cancellationToken) =>
         await RunAsync(orgId => content.PauseAsync(orgId, cancellationToken), ensureAddress: false, cancellationToken);
 
-    /// <summary>
-    /// "Riattiva": reopens a paused showcase and, on one that is not paused, judges the bookings again (the account became ready after the
-    /// publication). Opens the bookings when everything they need is ready. 422 <c>showcase_not_published</c> or
-    /// <c>showcase_supplier_not_active</c>.
-    /// </summary>
     [HttpPost("resume")]
     [ProducesResponseType(typeof(ShowcaseContentResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -145,12 +118,6 @@ public class SupplierShowcaseContentController(
     public async Task<ActionResult<ShowcaseContentResponse>> Resume(CancellationToken cancellationToken) =>
         await RunAsync(orgId => content.ResumeAsync(orgId, cancellationToken), ensureAddress: false, cancellationToken);
 
-    /// <summary>
-    /// The short status of the showcase for the home and the checklist of the console: whether it is published, whether the draft has changes, whether
-    /// it is paused, the public address, the two true numbers (<c>requests30d</c>: the requests that came from the showcase in the last 30 days,
-    /// <c>pending30d</c>: how many of them still wait for an answer), what a publication would change, when it was published and last saved, and
-    /// <c>completeness</c> (0 to 100: the share of the readiness items that are done).
-    /// </summary>
     [HttpGet("status")]
     [ProducesResponseType(typeof(ShowcaseStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -167,10 +134,6 @@ public class SupplierShowcaseContentController(
         return Ok(ShowcaseContentMapper.ToStatus(view, stats, url));
     }
 
-    /// <summary>
-    /// The two true numbers of the showcase editor: the requests that came from the showcase in the last 30 days and how many of them still wait for
-    /// the supplier's answer. Visits and conversion are not counted (decision VT-D15).
-    /// </summary>
     [HttpGet("stats")]
     [ProducesResponseType(typeof(ShowcaseStatsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -184,10 +147,6 @@ public class SupplierShowcaseContentController(
         return Ok(new ShowcaseStatsDto { Days = stats.Days, Requests = stats.Requests, Pending = stats.Pending });
     }
 
-    /// <summary>
-    /// Whether the AI help of the texts can answer now (a provider is configured): when it cannot, the editor shows none of it and keeps the static
-    /// starter. Reads no data of the supplier and calls no provider.
-    /// </summary>
     [HttpGet("texts/suggestion/status")]
     [ProducesResponseType(typeof(ShowcaseTextSuggestionStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -251,7 +210,6 @@ public class SupplierShowcaseContentController(
         return Ok(ShowcaseContentMapper.ToResponse(view, path, url));
     }
 
-    /// <summary>The path and the absolute URL of the supplier's showcase; both <c>null</c> while it has no address (never activated).</summary>
     private async Task<(string? Path, string? Url)> AddressAsync(Guid orgId, bool ensure, CancellationToken cancellationToken)
     {
         if (ensure)

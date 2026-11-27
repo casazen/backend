@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>OTA partner credentials per property: in freeze behind <see cref="FeatureFlags.OtaPartnerApi"/> (D10).</summary>
 [ApiController]
 [Route("api/properties/{propertyId}/ota-integrations")]
 [Authorize(Policy = "RequireContext:short-rent:ota.read")]

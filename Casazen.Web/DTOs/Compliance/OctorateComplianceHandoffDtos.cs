@@ -11,22 +11,17 @@ namespace Casazen.Web.DTOs.Compliance;
 /// </summary>
 public sealed class OctorateComplianceHandoffRequest
 {
-    /// <summary><c>Alloggiati</c> or <c>Istat</c>.</summary>
     [Required(ErrorMessage = "OctorateHandoffTopicRequired")]
     public OctorateHandoffTopic? Topic { get; set; }
 
-    /// <summary>The property the check is about.</summary>
     [Required(ErrorMessage = "OctorateHandoffPropertyRequired")]
     public Guid? PropertyId { get; set; }
 
-    /// <summary>The stay, when the check starts from a booking; it must be a booking of the property.</summary>
     public Guid? BookingId { get; set; }
 
-    /// <summary>The period of the check, <c>yyyy-MM</c> or <c>yyyy-MM-dd</c>, when it has one.</summary>
     [MaxLength(OctorateHandoffInput.MaxPeriodLength, ErrorMessage = "OctorateHandoffPeriodInvalid")]
     public string? Period { get; set; }
 
-    /// <summary>The relative CasaZen route the host comes from (path and query, starting with <c>/</c>): the client saves it to come back to.</summary>
     [Required(ErrorMessage = "OctorateHandoffReturnPathRequired")]
     [MaxLength(OctorateHandoffInput.MaxReturnPathLength, ErrorMessage = "OctorateHandoffReturnPathInvalid")]
     public string? ReturnPath { get; set; }
@@ -57,7 +52,6 @@ public sealed record OctorateComplianceHandoffResponse(
     OctorateComplianceHandoffContextDto Context,
     OctorateComplianceHandoffGuideDto Guide)
 {
-    /// <summary>The answer for a prepared handoff, with the guide written in the language of the request.</summary>
     public static OctorateComplianceHandoffResponse From(OctorateHandoff handoff, IStringLocalizer localizer)
     {
         ArgumentNullException.ThrowIfNull(handoff);
@@ -97,13 +91,8 @@ public sealed record OctorateComplianceHandoffContextDto(
     string? BookingCode,
     string? Period);
 
-/// <summary>The guide of the check: a stable code, and the two texts of the code in the language of the request.</summary>
-/// <param name="Code">One of <see cref="OctorateHandoffGuides.All"/>.</param>
-/// <param name="MenuPath">Where to go in the panel, once the host is signed in.</param>
-/// <param name="Check">What to look at there: the host's to verify, CasaZen does not know the outcome.</param>
 public sealed record OctorateComplianceHandoffGuideDto(string Code, string MenuPath, string Check)
 {
-    /// <summary>The guide of <paramref name="code"/> from the resources (Italian default, English).</summary>
     public static OctorateComplianceHandoffGuideDto From(string code, IStringLocalizer localizer)
     {
         ArgumentNullException.ThrowIfNull(localizer);

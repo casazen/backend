@@ -17,7 +17,6 @@ public sealed class IstatRegionRuleDto
 
     public string RegionIstatCode { get; init; } = string.Empty;
 
-    /// <summary>The plate code of the autonomous province (<c>BZ</c>, <c>TN</c>) the row is about; null for a region.</summary>
     public string? ProvinceCode { get; init; }
 
     public string RegionName { get; init; } = string.Empty;
@@ -107,7 +106,6 @@ public sealed class UpdateIstatRegionRequest
     [MaxLength(IstatRegionRule.NotesMaxLength, ErrorMessage = "IstatRegionFieldMaxLength")]
     public string? Notes { get; set; }
 
-    /// <summary>The update the service applies.</summary>
     public IstatRegionRuleUpdate ToUpdate() => new(
         RegionIstatCode!,
         ProvinceCode,
@@ -133,10 +131,8 @@ public sealed class IstatCoverageDto
 {
     public Guid PropertyId { get; init; }
 
-    /// <summary>False for a property outside Italy: no region, no next step.</summary>
     public bool Applies { get; init; }
 
-    /// <summary>True when the comune of the property is in the list and the table has the row of its territory.</summary>
     public bool RegionKnown { get; init; }
 
     public string? RegionIstatCode { get; init; }
@@ -156,7 +152,6 @@ public sealed class IstatCoverageDto
 
     public IReadOnlyList<string> RequiredGuestFields { get; init; } = [];
 
-    /// <summary>False when the row is not verified: no field is asked, and none can be said to be not required.</summary>
     public bool RequiredGuestFieldsKnown { get; init; }
 
     public IstatCoverage Coverage { get; init; }

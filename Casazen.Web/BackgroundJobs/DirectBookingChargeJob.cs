@@ -17,7 +17,7 @@ namespace Casazen.Web.BackgroundJobs;
 /// </remarks>
 public class DirectBookingChargeJob(DeferredChargeService deferredCharges, ILogger<DirectBookingChargeJob> logger)
 {
-    [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)] // never two charging runs at once
+    [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync()
     {
         var run = await deferredCharges.RunDueChargesAsync(CancellationToken.None);

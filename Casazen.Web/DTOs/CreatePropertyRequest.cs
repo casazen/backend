@@ -17,34 +17,24 @@ namespace Casazen.Web.DTOs;
 /// </summary>
 public class CreatePropertyRequest
 {
-    /// <summary>Display name of the property.</summary>
     [Required(ErrorMessage = "PropertyNameRequired")]
     [MaxLength(100, ErrorMessage = "PropertyNameTooLong")]
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Full description shown to guests.</summary>
     [MaxLength(Casazen.Core.Services.ListingTextLimits.DescriptionMaxLength, ErrorMessage = "PropertyDescriptionTooLong")]
     public string Description { get; set; } = string.Empty;
 
-    /// <summary>Street address of the property.</summary>
     [Required(ErrorMessage = "PropertyAddressRequired")]
     [MaxLength(500, ErrorMessage = "PropertyAddressTooLong")]
     public string Address { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Interno / scala of the apartment in the building (e.g. <c>int. 5</c>, <c>Scala B int. 5</c>), optional (PC-06,
-    /// A2-19). Several apartments of the same building are different properties of the org if their units differ; the
-    /// same address and unit twice in an org is refused with 409 <c>duplicate_property_address</c>.
-    /// </summary>
     [MaxLength(PropertyAddress.UnitMaxLength, ErrorMessage = "PropertyUnitTooLong")]
     public string? Unit { get; set; }
 
-    /// <summary>City where the property is located.</summary>
     [Required(ErrorMessage = "PropertyCityRequired")]
     [MaxLength(50, ErrorMessage = "PropertyCityTooLong")]
     public string City { get; set; } = string.Empty;
 
-    /// <summary>Postal / ZIP code.</summary>
     [MaxLength(10, ErrorMessage = "PropertyPostalCodeTooLong")]
     public string PostalCode { get; set; } = string.Empty;
 
@@ -65,52 +55,29 @@ public class CreatePropertyRequest
     [RegularExpression(SwissPlaceErrorCodes.CodePattern, ErrorMessage = SwissPlaceErrorCodes.InvalidFormatMessageKey)]
     public string? SwissMunicipalityCode { get; set; }
 
-    /// <summary>
-    /// Geographic latitude in degrees, -90 to 90 (A2-33); more than 6 decimals (about 0.1 m) are rounded. <c>0</c> with a
-    /// longitude of <c>0</c> = not set.
-    /// </summary>
     [Range(typeof(decimal), "-90", "90", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyLatitudeRange")]
     public decimal Latitude { get; set; }
 
-    /// <summary>Geographic longitude in degrees, -180 to 180 (A2-33); more than 6 decimals are rounded.</summary>
     [Range(typeof(decimal), "-180", "180", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyLongitudeRange")]
     public decimal Longitude { get; set; }
 
-    /// <summary>Number of bedrooms (0–100): <c>0</c> is a studio flat (monolocale, A2-27).</summary>
     [Range(0, 100, ErrorMessage = "PropertyBedroomsRange")]
     public int Bedrooms { get; set; }
 
-    /// <summary>Number of bathrooms, whole number (1–50, A2-27).</summary>
     [Range(1, 50, ErrorMessage = "PropertyBathroomsRange")]
     public int Bathrooms { get; set; }
 
-    /// <summary>
-    /// Maximum number of guests of a short stay (0–100). <c>0</c> = not set: a property kept only for long-term leases
-    /// has none (A7-06); the short-stay listing cannot be activated until it is set (activation wizard).
-    /// </summary>
     [Range(0, 100, ErrorMessage = "PropertyMaxGuestsRange")]
     public int MaxGuests { get; set; }
 
-    /// <summary>
-    /// Base nightly rate in euros (€0–€100,000). <c>0</c> = no short-stay rate (long-term only property, A7-06); the
-    /// short-stay listing cannot be activated until it is set (activation wizard).
-    /// </summary>
     [Range(0, 100000, ErrorMessage = "PropertyNightlyRateRange")]
     public decimal NightlyRate { get; set; }
 
-    /// <summary>
-    /// Fewest nights the public booking site accepts (DB-03), 1 to 30; <c>null</c> or left out = no minimum. The guests' quote
-    /// and checkout refuse a shorter stay (422 <c>direct_booking_min_nights_not_met</c>); the host can still enter one by hand.
-    /// </summary>
     [Range(PropertyStayRules.MinMinNights, PropertyStayRules.MaxMinNights, ErrorMessage = "PropertyMinNightsRange")]
     public int? MinNights { get; set; }
 
-    /// <summary>
-    /// Percent added to the nightly rate on the Friday and Saturday nights of a stay (DB-03), 0 to 100 with two decimals;
-    /// <c>0</c> or left out = no surcharge (the default: the price of a stay does not change).
-    /// </summary>
     [Range(typeof(decimal), "0", "100", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyWeekendSurchargeRange")]
     public decimal WeekendSurchargePercent { get; set; }
@@ -124,70 +91,46 @@ public class CreatePropertyRequest
     /// </summary>
     public RentalMode? RentalMode { get; set; }
 
-    /// <summary>One-time cleaning fee in euros (€0–€10,000).</summary>
     [Range(0, 10000, ErrorMessage = "PropertyCleaningFeeRange")]
     public decimal CleaningFee { get; set; }
 
-    /// <summary>Refundable damage deposit in euros (€0–€50,000).</summary>
     [Range(0, 50000, ErrorMessage = "PropertyDamageDepositRange")]
     public decimal DamageDeposit { get; set; }
 
-    /// <summary>List of amenities available at the property.</summary>
     public List<PropertyAmenity> Amenities { get; set; } = new();
 
-    /// <summary>House rules presented to guests before booking.</summary>
     [MaxLength(1000, ErrorMessage = "PropertyHouseRulesTooLong")]
     public string HouseRules { get; set; } = string.Empty;
 
-    // The fields of the wizard «Aggiungi immobile» (SR-07a). All optional: left out they are not set, which is how every
-    // client that does not know them (the forms of today, the long-rent form) keeps behaving.
-
-    /// <summary>The kind of accommodation (<c>Apartment</c>, <c>HouseOrVilla</c>, <c>TrulloOrMasseria</c>, <c>LoftOrPenthouse</c>, <c>RoomOrSuite</c>); left out = not set.</summary>
     public AccommodationType? AccommodationType { get; set; }
 
-    /// <summary>Number of beds (1–100); left out = not set.</summary>
     [Range(PropertyHouseRules.MinBeds, PropertyHouseRules.MaxBeds, ErrorMessage = "PropertyBedsRange")]
     public int? Beds { get; set; }
 
-    /// <summary>Living area in square metres (1–9999); left out = not set.</summary>
     [Range(PropertyHouseRules.MinAreaSqm, PropertyHouseRules.MaxAreaSqm, ErrorMessage = "PropertyAreaSqmRange")]
     public int? AreaSqm { get; set; }
 
-    /// <summary>The headline of the listing, at most 60 characters; left out or blank = the listing uses the name.</summary>
     [MaxLength(PropertyHouseRules.ListingTitleMaxLength, ErrorMessage = "PropertyListingTitleTooLong")]
     public string? ListingTitle { get; set; }
 
-    /// <summary>
-    /// «Mostra la casa sul sito»: <c>true</c> or left out (the default) = the property is on the booking site as soon as it is
-    /// activated; <c>false</c> = the host keeps it off. It never publishes anything on its own: the activation is still needed.
-    /// </summary>
     public bool? PublishedOnSite { get; set; }
 
-    /// <summary>The earliest time guests can arrive, <c>HH:mm</c> on the property's clock; left out = not set.</summary>
     public TimeOnly? CheckInFrom { get; set; }
 
-    /// <summary>The time by which guests must leave, <c>HH:mm</c> on the property's clock; left out = not set.</summary>
     public TimeOnly? CheckOutBy { get; set; }
 
-    /// <summary>Smoking (<c>No</c>, <c>OutdoorsOnly</c>, <c>Yes</c>); <c>Yes</c> puts the amenity <c>SmokingAllowed</c> in the list and any other answer takes it out; left out = not set.</summary>
     public SmokingPolicy? SmokingPolicy { get; set; }
 
-    /// <summary>Pets (<c>No</c>, <c>OnRequest</c>, <c>Yes</c>); <c>Yes</c> puts the amenity <c>PetFriendly</c> in the list and any other answer takes it out; left out = not set.</summary>
     public PetsPolicy? PetsPolicy { get; set; }
 
-    /// <summary>Parties and events (<c>No</c>, <c>OnRequest</c>); left out = not set.</summary>
     public PartiesPolicy? PartiesPolicy { get; set; }
 
-    /// <summary>Children (<c>No</c>, <c>OnRequest</c>, <c>Yes</c>): the structured rule the channels receive (NF-37); left out = not set.</summary>
     public ChildrenPolicy? ChildrenPolicy { get; set; }
 
-    /// <summary>Quiet hours start, <c>HH:mm</c>; sent together with <see cref="QuietHoursTo"/> or not at all (422 <c>property_quiet_hours_incomplete</c>).</summary>
     public TimeOnly? QuietHoursFrom { get; set; }
 
-    /// <summary>Quiet hours end, <c>HH:mm</c>; sent together with <see cref="QuietHoursFrom"/> or not at all.</summary>
     public TimeOnly? QuietHoursTo { get; set; }
 
-    /// <summary>What the host asks per night for each extra guest, in euros (0–1000); left out = extra guests are not accepted. A house rule: the price of a stay does not add it.</summary>
     [Range(typeof(decimal), "0", "1000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
         ErrorMessage = "PropertyExtraGuestFeeRange")]
     public decimal? ExtraGuestFeePerNight { get; set; }
@@ -202,43 +145,27 @@ public class CreatePropertyRequest
     [CinCode]
     public string? CinCode { get; set; }
 
-    /// <summary>
-    /// The «Numero identificativo LEAR / NO-LEAR» of the structure for the Ticino police portal (E29/F02/US01/T02, NF-129, casazen/backend#979), e.g.
-    /// <c>NL-12345678</c>, with the same validation and normalisation as the update: spaces are ignored and the value is stored uppercase (see
-    /// <c>TicinoStructureId</c>); 400 <c>validation_error</c> when it is not 3 to 20 letters and digits with single hyphens; <c>null</c>, blank or left
-    /// out = none. It is meaningful only for a property in Ticino.
-    /// </summary>
     [MaxLength(40, ErrorMessage = Casazen.Core.Regulatory.TicinoStructureId.InvalidFormatMessageKey)]
     [TicinoStructureId]
     public string? TicinoStructureId { get; set; }
 
-    /// <summary>
-    /// IANA timezone identifier used for booking date calculations
-    /// (e.g. <c>Europe/Rome</c>). Defaults to <c>Europe/Rome</c>.
-    /// </summary>
     [MaxLength(50, ErrorMessage = "PropertyTimezoneInvalid")]
     [IanaTimeZone(ErrorMessage = "PropertyTimezoneInvalid")]
     public string Timezone { get; set; } = "Europe/Rome";
 
-    /// <summary>Optional reference to the cancellation policy applied to new bookings.</summary>
     public Guid? CancellationPolicyId { get; set; }
 
-    /// <summary>Host override of catalog full-refund hours. Null keeps the catalog window.</summary>
     [Range(0, 24 * 365, ErrorMessage = "PropertyCancellationHoursRange")]
     public int? CancellationFullRefundHours { get; set; }
 
-    /// <summary>Host override of catalog partial-refund hours.</summary>
     [Range(0, 24 * 365, ErrorMessage = "PropertyCancellationHoursRange")]
     public int? CancellationPartialRefundHours { get; set; }
 
-    /// <summary>Host override of catalog partial-refund percent (0-100).</summary>
     [Range(typeof(decimal), "0", "100", ErrorMessage = "PropertyCancellationPercentRange")]
     public decimal? CancellationPartialRefundPercent { get; set; }
 
-    /// <summary>Percent of stay or non-refundable. Long stays (28+ nights) ignore this.</summary>
     public HostCancellationRefundType CancellationRefundType { get; set; } = HostCancellationRefundType.Percent;
 
-    /// <summary>Optional URL slug for direct booking links (unique within org).</summary>
     [MaxLength(100, ErrorMessage = "PropertySlugTooLong")]
     public string? Slug { get; set; }
 

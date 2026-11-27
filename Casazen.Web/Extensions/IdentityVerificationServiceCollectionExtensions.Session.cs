@@ -13,7 +13,6 @@ public static partial class IdentityVerificationServiceCollectionExtensions
 {
     static partial void AddSessionServices(IServiceCollection services)
     {
-        // E70/F02/US01/T02: property × format × channel, observation by default; scoped like the database it reads.
         services.AddScoped<IIdentitySegmentService, IdentitySegmentService>();
     }
 }

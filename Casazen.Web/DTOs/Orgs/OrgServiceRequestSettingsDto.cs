@@ -1,9 +1,5 @@
 namespace Casazen.Web.DTOs.Orgs;
 
-/// <summary>
-/// The org's rules for the requests it sends to suppliers (SP-BKP): <c>GET/PUT /api/orgs/me/service-request-settings</c>, under the policy
-/// <c>OrgBillingAdmin</c> like the rest of the org's settings.
-/// </summary>
 public class OrgServiceRequestSettingsDto
 {
     /// <summary>

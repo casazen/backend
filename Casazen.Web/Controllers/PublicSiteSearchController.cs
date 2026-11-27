@@ -52,12 +52,6 @@ public class PublicSiteSearchController(IOrgService orgService, IPublicSiteSearc
         return Ok(await search.SearchStaysAsync(org, query.ToCriteria(), cancellationToken));
     }
 
-    /// <summary>
-    /// The days of the whole site, for the «Quando» field of the home (<c>GET api/public/orgs/{slug}/calendar</c>): for each day from <c>from</c>
-    /// (default today) to <c>to</c> (excluded, default 12 months later; 13 at most) whether some house that sleeps the party is free for the night
-    /// (<c>anyAvailable</c>), the cheapest night among those houses in cents (<c>fromPriceCents</c>) and the shortest minimum stay among them.
-    /// Days before today are not listed. 404 for a site that does not resolve; 422 <c>public_site_calendar_range_invalid</c>.
-    /// </summary>
     [HttpGet("calendar")]
     [EnableRateLimiting(RateLimitPolicies.PublicStaySearch)]
     [ProducesResponseType(typeof(PublicSiteCalendar), StatusCodes.Status200OK)]
@@ -79,10 +73,6 @@ public class PublicSiteSearchController(IOrgService orgService, IPublicSiteSearc
         return Ok(await search.GetSiteCalendarAsync(org, from, to, adults, children, cancellationToken));
     }
 
-    /// <summary>
-    /// The places of the site, for the «Dove» field (<c>GET api/public/orgs/{slug}/destinations</c>): the comuni of the published houses with how
-    /// many houses each has; <c>id</c> is the value of the <c>where</c> filter of the list.
-    /// </summary>
     [HttpGet("destinations")]
     [ProducesResponseType(typeof(IReadOnlyList<PublicDestination>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

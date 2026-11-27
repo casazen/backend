@@ -24,10 +24,8 @@ public sealed class SiteDomainAccessAttribute() : TypeFilterAttribute(typeof(Sit
 {
 }
 
-/// <summary>The filter of <see cref="SiteDomainAccessAttribute"/>: reads the org of the credential and asks <see cref="CommercialAccessRules"/>.</summary>
 public sealed class SiteDomainAccessFilter(AppDbContext db) : IAsyncResourceFilter
 {
-    /// <summary>The module of the console's domain endpoints, looked up where the middleware keeps it, so the plugin never has a module of its own.</summary>
     public static string? Module { get; } = CommercialAccessMiddleware.ModuleForController("OrgDomain");
 
     public async Task OnResourceExecutionAsync(ResourceExecutingContext context, ResourceExecutionDelegate next)

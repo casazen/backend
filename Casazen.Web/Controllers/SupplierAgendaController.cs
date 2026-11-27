@@ -35,9 +35,6 @@ public class SupplierAgendaController(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    // ─── Weekly working hours ────────────────────────────────────────────────────
-
-    /// <summary>The weekly working hours: seven days, Monday first, each with its bands (none is a rest day).</summary>
     [HttpGet("availability/hours")]
     [ProducesResponseType(typeof(SupplierHoursDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -46,11 +43,6 @@ public class SupplierAgendaController(
             async orgId => Ok(SupplierAgendaMapper.ToDto(await agenda.GetHoursAsync(orgId, cancellationToken))),
             cancellationToken);
 
-    /// <summary>
-    /// Replaces the weekly working hours: the days sent, up to 3 bands each (minutes after midnight on the wall clock of
-    /// Rome); a weekday that is not sent is a rest day. 422 <c>supplier_hours_invalid</c> (with <c>fields</c>) for bands that
-    /// overlap, an end that is not after its start, more than 3 bands in a day or a repeated weekday.
-    /// </summary>
     [HttpPut("availability/hours")]
     [ProducesResponseType(typeof(SupplierHoursDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
@@ -64,9 +56,6 @@ public class SupplierAgendaController(
                 await agenda.ReplaceHoursAsync(orgId, SupplierAgendaMapper.ToInput(request), cancellationToken))),
             cancellationToken);
 
-    // ─── Time off ────────────────────────────────────────────────────────────────
-
-    /// <summary>The time off that has not ended yet (last day today or later), by first day, with the limit per supplier.</summary>
     [HttpGet("availability/time-off")]
     [ProducesResponseType(typeof(SupplierTimeOffListResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -83,11 +72,6 @@ public class SupplierAgendaController(
             },
             cancellationToken);
 
-    /// <summary>
-    /// Adds a time off: every day from <c>fromDate</c> to <c>toDate</c> (both included) is closed to new bookings; the jobs
-    /// already accepted stay. 201 with the entry. 422 <c>supplier_time_off_invalid</c> (with <c>fields</c>) or
-    /// <c>supplier_time_off_limit_reached</c>.
-    /// </summary>
     [HttpPost("availability/time-off")]
     [ProducesResponseType(typeof(SupplierTimeOffDto), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
@@ -104,7 +88,6 @@ public class SupplierAgendaController(
             },
             cancellationToken);
 
-    /// <summary>Deletes a time off: its days are open again. 204; 404 <c>supplier_time_off_not_found</c> for another supplier's or a deleted one.</summary>
     [HttpDelete("availability/time-off/{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -117,9 +100,6 @@ public class SupplierAgendaController(
             },
             cancellationToken);
 
-    // ─── Blocks and extra openings ───────────────────────────────────────────────
-
-    /// <summary>The blocks and extra openings set by hand that have not ended yet, by start, with the limit per supplier.</summary>
     [HttpGet("availability/blocks")]
     [ProducesResponseType(typeof(SupplierBlockListResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -136,11 +116,6 @@ public class SupplierAgendaController(
             },
             cancellationToken);
 
-    /// <summary>
-    /// Blocks hours (<c>Block</c>: no slot overlaps them) or opens hours on top of the weekly ones (<c>ExtraOpening</c>, inside
-    /// one day of Rome). Instants in UTC. 201 with the block. 422 <c>supplier_block_invalid</c> (with <c>fields</c>) or
-    /// <c>supplier_block_limit_reached</c>.
-    /// </summary>
     [HttpPost("availability/blocks")]
     [ProducesResponseType(typeof(SupplierBlockDto), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
@@ -157,10 +132,6 @@ public class SupplierAgendaController(
             },
             cancellationToken);
 
-    /// <summary>
-    /// Deletes a block or extra opening the supplier set by hand. 204; 404 <c>supplier_block_not_found</c> for another
-    /// supplier's, a deleted one, or an engagement of the supplier's calendar feed (that one comes back at the next sync).
-    /// </summary>
     [HttpDelete("availability/blocks/{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -173,9 +144,6 @@ public class SupplierAgendaController(
             },
             cancellationToken);
 
-    // ─── Rules ───────────────────────────────────────────────────────────────────
-
-    /// <summary>The rules of the agenda; the defaults while the supplier never saved any (a read writes nothing).</summary>
     [HttpGet("availability/rules")]
     [ProducesResponseType(typeof(SupplierRulesDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -184,10 +152,6 @@ public class SupplierAgendaController(
             async orgId => Ok(SupplierAgendaMapper.ToDto(await agenda.GetRulesAsync(orgId, cancellationToken))),
             cancellationToken);
 
-    /// <summary>
-    /// Replaces the five rules (all of them are needed). 422 <c>supplier_rules_invalid</c> (with <c>fields</c>) for a rule
-    /// that is missing or outside its limits.
-    /// </summary>
     [HttpPut("availability/rules")]
     [ProducesResponseType(typeof(SupplierRulesDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
@@ -200,8 +164,6 @@ public class SupplierAgendaController(
             async orgId => Ok(SupplierAgendaMapper.ToDto(
                 await agenda.ReplaceRulesAsync(orgId, SupplierAgendaMapper.ToInput(request), cancellationToken))),
             cancellationToken);
-
-    // ─── Urgent requests (SP-04c) ────────────────────────────────────────────────
 
     /// <summary>
     /// The urgent settings: whether the supplier accepts urgent requests (today and tomorrow, 30 minutes of notice), the window of the
@@ -216,10 +178,6 @@ public class SupplierAgendaController(
             async orgId => Ok(SupplierAgendaMapper.ToDto(await agenda.GetUrgentAsync(orgId, cancellationToken))),
             cancellationToken);
 
-    /// <summary>
-    /// Replaces the urgent settings (all four are needed). 422 <c>supplier_urgent_invalid</c> (with <c>fields</c>) for a value that is
-    /// missing or outside its limits: a window that does not start before it ends, a surcharge above 50000 cents (500 €).
-    /// </summary>
     [HttpPut("availability/urgent")]
     [ProducesResponseType(typeof(SupplierUrgentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
@@ -232,8 +190,6 @@ public class SupplierAgendaController(
             async orgId => Ok(SupplierAgendaMapper.ToDto(
                 await agenda.ReplaceUrgentAsync(orgId, SupplierAgendaMapper.ToInput(request), cancellationToken))),
             cancellationToken);
-
-    // ─── Calendar ────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// What the supplier's calendar shows from <paramref name="from"/> to <paramref name="to"/> (Europe/Rome days, both
@@ -261,8 +217,6 @@ public class SupplierAgendaController(
             async orgId => Ok(SupplierAgendaMapper.ToDto(await agenda.GetCalendarAsync(orgId, rangeFrom, rangeTo, cancellationToken))),
             cancellationToken);
     }
-
-    // ─── Conflicts and preview (SP-03b) ──────────────────────────────────────────
 
     /// <summary>
     /// The jobs to come that have something wrong, from <paramref name="from"/> to <paramref name="to"/> (Europe/Rome days, both

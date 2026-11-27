@@ -54,8 +54,6 @@ public sealed class OctorateExistingInventoryController(
         if (await CallerAsync(cancellationToken) is not { } caller)
             return NoOrg();
 
-        // A selection of no property is not «all the properties»: only leaving the list out takes the whole inventory. A wizard with nothing
-        // ticked must not start a batch on the whole organization of someone who reaches it.
         if (request.PropertyIds is { Count: 0 })
             throw new DomainRuleException("existing_inventory_scope_invalid", "ExistingInventoryScopeInvalid");
 
@@ -75,9 +73,6 @@ public sealed class OctorateExistingInventoryController(
         return Created($"/api/octorate/existing-inventory/batches/{batch.Id}", ExistingInventoryBatchDto.From(batch));
     }
 
-    /// <summary>The batch as stored: the steps, the counts and the stable error codes of each channel. Reads the result of the channel access when it is due.</summary>
-    /// <response code="200">The batch.</response>
-    /// <response code="404">The batch is not the org's, or the caller does not reach it.</response>
     [HttpGet("existing-inventory/batches/{id:guid}")]
     [ProducesResponseType(typeof(ExistingInventoryBatchDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -169,14 +164,6 @@ public sealed class OctorateExistingInventoryController(
         return Ok(ExistingInventoryBatchDto.From(batch));
     }
 
-    /// <summary>
-    /// Imports the rooms of every channel whose access is given, reads the listings again and stops at <c>AwaitingMapping</c>. Repeating it is
-    /// safe. A listing whose last operation has an unknown result (<c>d6_result_unknown</c>) is asked again only when its accommodation id is in
-    /// <c>retryUnknown</c>.
-    /// </summary>
-    /// <response code="200">The batch after the run (a channel that needs attention says why).</response>
-    /// <response code="404">The batch is not the org's, or the caller does not reach it.</response>
-    /// <response code="409"><c>existing_inventory_access_pending</c>: no channel has its access given yet.</response>
     [HttpPost("existing-inventory/batches/{id:guid}/run")]
     [ProducesResponseType(typeof(ExistingInventoryBatchDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -219,8 +206,6 @@ public sealed class OctorateExistingInventoryController(
         return Ok(ExistingInventoryBatchDto.From(batch));
     }
 
-    /// <summary>The scenario the person declared for each property or group of the org it reaches.</summary>
-    /// <response code="200">The intents.</response>
     [HttpGet("inventory-intents")]
     [ProducesResponseType(typeof(IReadOnlyList<InventoryIntentDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -234,14 +219,6 @@ public sealed class OctorateExistingInventoryController(
         return Ok(intents.Select(InventoryIntentDto.From).ToList());
     }
 
-    /// <summary>
-    /// Declares the scenario of each property (or named group) of a mixed portfolio. «New» is a choice only the person makes: it is refused
-    /// while an import batch or a mapping exists for the property, and nothing turns an existing scenario into it.
-    /// </summary>
-    /// <response code="200">The intents that were set.</response>
-    /// <response code="404">A property is not the org's or is not within the caller's reach.</response>
-    /// <response code="409"><c>inventory_intent_change_refused</c>, <c>inventory_intent_conflict</c>.</response>
-    /// <response code="422"><c>inventory_scenario_invalid</c>, <c>inventory_group_required</c>, <c>inventory_intent_duplicate</c>.</response>
     [HttpPut("inventory-intents")]
     [ProducesResponseType(typeof(IReadOnlyList<InventoryIntentDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -268,7 +245,6 @@ public sealed class OctorateExistingInventoryController(
         return Ok(intents.Select(InventoryIntentDto.From).ToList());
     }
 
-    /// <summary>The caller's org, id and token roles; <c>null</c> when it has no org.</summary>
     private async Task<ExistingInventoryCaller?> CallerAsync(CancellationToken cancellationToken)
     {
         if (User.GetUserId() is not { Length: > 0 } userId

@@ -32,30 +32,22 @@ public class BookingsController(
     IBookingOctorateSyncReader octorateSync,
     OtaChannelActionPolicy channelPolicy) : ControllerBase
 {
-    /// <summary>Code of a <c>status</c> query value of the search that is not the name of a booking status (SR-03).</summary>
     public const string InvalidStatusCode = "booking_list_invalid_status";
 
-    /// <summary>Code of a <c>from</c> after <c>to</c> in the search (SR-03).</summary>
     public const string InvalidRangeCode = "booking_list_invalid_range";
 
-    /// <summary>Upper bound for <c>pageSize</c> on <c>GET /api/bookings</c>, same cap as the other paged lists.</summary>
     private const int MaxPageSize = 100;
 
     private readonly BookingsOptions _bookingsOptions = bookingsOptions.Value;
 
-    /// <summary>Code of a <c>view</c> query value of the search that is not the name of a chip (SR-03b).</summary>
     public const string InvalidViewCode = "booking_list_invalid_view";
 
-    /// <summary>Code of a <c>channel</c> query value of the search that is not the name of a channel (SR-03b).</summary>
     public const string InvalidChannelCode = "booking_list_invalid_channel";
 
-    /// <summary>Code of an <c>origin</c> query value of the search that is not the name of an origin (E27/F01/US01/T01, NF-123).</summary>
     public const string InvalidOriginCode = "booking_list_invalid_origin";
 
-    /// <summary>Code of a <c>checkInStatus</c> query value of the search that is not the name of a check-in state (SR-03b).</summary>
     public const string InvalidCheckInStatusCode = "booking_list_invalid_check_in_status";
 
-    /// <summary>Code of a <c>sort</c> query value of the search that is not an order the list knows (SR-03b).</summary>
     public const string InvalidSortCode = "booking_list_invalid_sort";
 
     /// <summary>
@@ -84,13 +76,11 @@ public class BookingsController(
         if (GetUserId() == null)
             return Unauthorized();
 
-        // Out-of-range values would become a negative OFFSET/LIMIT in SQL, i.e. a 500 (A1-26): clamp them instead.
         page = Math.Max(page, 1);
         var effectivePageSize = Math.Clamp(pageSize ?? _bookingsOptions.DefaultPageSize, 1, MaxPageSize);
 
         var cancellationToken = HttpContext.RequestAborted;
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        // No org yet, or no reach on it: nothing of any org is visible (the tenant filter showed nothing either).
         if (orgId is null
             || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
             return Ok(new PagedResultDto<BookingListItemDto> { Items = [], TotalCount = 0, Page = page, PageSize = effectivePageSize });
@@ -171,7 +161,6 @@ public class BookingsController(
         if (GetUserId() == null)
             return Unauthorized();
 
-        // The size of a page of the plain list when the caller does not say (PC-14: Bookings:DefaultPageSize).
         var requestedPageSize = pageSize ?? _bookingsOptions.DefaultPageSize;
 
         if (TryReadFilters(
@@ -181,7 +170,6 @@ public class BookingsController(
 
         var cancellationToken = HttpContext.RequestAborted;
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-        // No org yet, or no reach on it: nothing of any org is visible, as in the plain list.
         if (orgId is null
             || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
         {
@@ -205,13 +193,6 @@ public class BookingsController(
         return Ok(ToPage(result, channelPolicy));
     }
 
-    /// <summary>
-    /// How many bookings are in each chip of the list (SR-03b): <c>{ all, toConfirm, upcoming, inProgress, completed, cancelled }</c>
-    /// for the bookings that satisfy the filters of <c>GET /api/bookings/search</c> but the chip (<c>view</c>), the page and the
-    /// order. One aggregate query, filtered in SQL by the caller's scope like the list. A booking is in at most one chip, so the
-    /// counters never count it twice. Same 400s as the search for the filters it takes (<c>origin</c> too, E27/F01/US01/T01); same 404 and 403
-    /// for <c>propertyId</c>.
-    /// </summary>
     [HttpGet("counts")]
     [ProducesResponseType(typeof(BookingCountsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -254,8 +235,6 @@ public class BookingsController(
         return Ok(BookingCountsDto.From(await searchService.CountAsync(scope, filters, cancellationToken)));
     }
 
-    // The filters of a request as criteria, or the 400 that says which one is not understood (the same words for the list and the
-    // counters of its chips). The page, the size and the money are the caller's to add.
     private ObjectResult? TryReadFilters(
         DateOnly? fromDay,
         DateOnly? toDay,
@@ -315,8 +294,6 @@ public class BookingsController(
         return null;
     }
 
-    // The answer of the lists: each booking with what its row says besides it. Every row says its channel (otaSource, the "OTA" badge) and what
-    // the host may do with it (changeOptions); the amounts of the channel are the detail's.
     private static PagedResultDto<BookingListItemDto> ToPage(BookingSearchPage result, OtaChannelActionPolicy channelPolicy)
     {
         var nowUtc = DateTime.UtcNow;
@@ -329,7 +306,6 @@ public class BookingsController(
         };
     }
 
-    // Money (what came in on a booking) is payment data: it needs payment.read, which the collaborator does not hold (SR-D7).
     private async Task<bool> CanReadPaymentsAsync(IAuthorizationService hostAuthorization) =>
         (await hostAuthorization.AuthorizeAsync(User, CasazenPolicies.PaymentRead)).Succeeded;
 
@@ -347,7 +323,6 @@ public class BookingsController(
         return BookingOctorateSyncDto.From(status, canRetry);
     }
 
-    // 404 when the property is not in the caller's org, 403 without booking.read on it; null when the filter may be used.
     private async Task<ActionResult?> DenyPropertyFilterAsync(Guid? propertyId, IAuthorizationService hostAuthorization)
     {
         if (propertyId is not { } id)
@@ -368,10 +343,6 @@ public class BookingsController(
         return null;
     }
 
-    /// <summary>
-    /// The statuses of the <c>status</c> query values (repeated, or separated by commas), by name and case-insensitive: a number
-    /// would bind to an undefined enum value, so it is refused like any other word. No value at all = no filter.
-    /// </summary>
     public static bool TryParseStatuses(IEnumerable<string>? values, out IReadOnlyList<BookingStatus> statuses)
     {
         var parsed = new List<BookingStatus>();
@@ -433,7 +404,6 @@ public class BookingsController(
         var mirror = await octorateSync.GetAsync(booking.OrgId, booking.Id, HttpContext.RequestAborted);
         var pushedByCasaZen = mirror is not null;
 
-        // What came in: the state for everyone, the money only for a caller who may read payments (SR-D7). The payments came with the booking.
         var payments = booking.Payments.Select(p => new BookingPaymentFact(p.Status, p.Amount, p.RefundedAmount)).ToList();
         response.PaymentState = BookingListRules.PaymentStateOf(booking.TotalPrice, payments).ToString();
         var canReadPayments = await CanReadPaymentsAsync(hostAuthorization);
@@ -455,18 +425,14 @@ public class BookingsController(
                 }
                 : null;
 
-            // Who collects (E08/F03/US03/T02, NF-77) and where each figure comes from (Stripe, the channel manager, the host): money data as well.
             response.Collection = BookingCollectionDto.From(booking);
             response.AmountSources = BookingAmountSourcesDto.From(BookingAmountSourceRules.Of(booking, booking.Payments, pushedByCasaZen));
         }
 
-        // The mirror of the booking on the channel manager: a state and a code, no money, so whoever reads the booking sees it.
         response.OctorateSync = await OctorateSyncOfAsync(booking, mirror, hostAuthorization);
-        // A communication exists for a stay that is confirmed or later: a request, a hold or a cancelled booking has none.
         response.GuestDataComplete = booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut
             ? await alloggiatiWebService.IsStayDataCompleteAsync(id)
             : null;
-        // OTA stay from iCal (CO-21): the dates its block has now on the channel, for the "da verificare" notice.
         if (booking.ICalFeedId is not null)
         {
             var block = await otaStays.GetLinkedBlockAsync(id, HttpContext.RequestAborted);
@@ -510,12 +476,8 @@ public class BookingsController(
             return Forbid();
         }
 
-        // PM-01: a property in long-term mode takes no stay: 422 property_not_bookable_in_long_mode. Before the guests
-        // check, which would answer "too many guests (0)" for a property without guest capacity.
         PropertyRentalModeRules.EnsureShortRent(property);
 
-        // A CHF house is booked like any other, in its own currency (CHF-MONEY, which supersedes ADR-001-R10); only a currency the
-        // product does not take (neither EUR nor CHF) is refused.
         if (!StayCurrency.IsSupported(property.Currency))
         {
             return this.ApiProblem(
@@ -574,7 +536,6 @@ public class BookingsController(
             UpdatedAt = DateTime.UtcNow,
         };
 
-        // Status (Confirmed), source (Manual), guest snapshot and the overlap check (409) are the service's job.
         var created = await bookingService.CreateManualBookingAsync(booking, NewGuestSnapshot(property.OrgId, request.Guest));
         var loaded = await bookingService.GetBookingAsync(created.Id);
         var response = loaded is null ? BookingMapper.ToResponse(created) : BookingMapper.ToResponse(loaded);
@@ -607,7 +568,6 @@ public class BookingsController(
         [FromServices] IAuthorizationService hostAuthorization,
         [FromQuery] string? timezone = null)
     {
-        // TN-3: the tenant filter hides a property of another org (404); a visible one still needs booking.read on it.
         var property = await propertyService.GetPropertyAsync(propertyId);
         if (property == null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound");
@@ -669,7 +629,6 @@ public class BookingsController(
             GuestName = b.GuestName,
         }).ToList();
 
-        // OTA stays created from iCal (CO-21): feed and "da verificare" on the booking item.
         var stays = bookings.ToDictionary(b => b.Id);
         foreach (var item in items)
         {
@@ -679,7 +638,6 @@ public class BookingsController(
             item.OtaReviewReason = stay.Status == BookingStatus.Cancelled ? null : stay.OtaReviewReason?.ToString();
         }
 
-        // A block that became an OTA stay with the same dates is shown once, as the stay (its nights count once too).
         items.AddRange(blocks.Where(block => !block.RepresentedByStay).Select(block => new CalendarItemDto
         {
             Type = "ical-block",
@@ -729,8 +687,6 @@ public class BookingsController(
         return Ok(AlloggiatiStatusDto.From(status));
     }
 
-    // One guest snapshot per host booking (#431), owned by the property's org (TN-1): never a lookup by
-    // e-mail, so a booking can neither reuse nor reveal a guest of another org.
     private static Guest NewGuestSnapshot(Guid orgId, CreateBookingGuestRequest guestInfo) => new()
     {
         OrgId = orgId,

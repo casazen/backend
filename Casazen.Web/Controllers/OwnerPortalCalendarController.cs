@@ -35,11 +35,6 @@ public sealed class OwnerPortalCalendarController(
 {
     private readonly string? _customClaimNamespace = auth0Options.Value.CustomClaimNamespace;
 
-    /// <summary>
-    /// The calendar of a property: runs of nights (<c>start</c> included, <c>end</c> excluded) that are <c>available</c>, <c>occupied</c> by a guest,
-    /// <c>blocked</c>, or an <c>ownerStay</c> of the caller with its id and state. From <c>from</c> to <c>to</c> (<c>yyyy-MM-dd</c>, both included; today and
-    /// the next 90 nights by default, at most 366), cut to the ownerships in force of the caller. Needs <c>calendar.read</c>.
-    /// </summary>
     [HttpGet("calendar")]
     [ProducesResponseType(typeof(OwnerCalendar), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -58,7 +53,6 @@ public sealed class OwnerPortalCalendarController(
         return Ok(await stays.GetCalendarAsync(access, propertyId, from, to, cancellationToken));
     }
 
-    /// <summary>The owner stays of the owner profiles the caller follows (<c>calendar.read</c> or <c>stays.request</c>), newest arrival first.</summary>
     [HttpGet("stays")]
     [ProducesResponseType(typeof(IReadOnlyList<OwnerStayView>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -71,7 +65,6 @@ public sealed class OwnerPortalCalendarController(
         return Ok(await stays.ListForOwnerAsync(access, cancellationToken));
     }
 
-    /// <summary>The rule an owner stay on the property follows, and the nights already held this year. Needs <c>stays.request</c>.</summary>
     [HttpGet("stays/rule")]
     [ProducesResponseType(typeof(OwnerStayRuleSummary), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -85,11 +78,6 @@ public sealed class OwnerPortalCalendarController(
         return Ok(await stays.GetRuleForOwnerAsync(access, propertyId, cancellationToken));
     }
 
-    /// <summary>
-    /// Asks for an owner stay (<c>startDate</c> the arrival, <c>endDate</c> the departure). 201 with the stay, <c>requested</c>; 422 with the code of the rule
-    /// it breaks (<c>owner_stay_notice_too_short</c>, <c>owner_stay_allowance_exceeded</c>, ...); 409 <c>owner_stay_dates_unavailable</c>. Needs
-    /// <c>stays.request</c>.
-    /// </summary>
     [HttpPost("stays")]
     [ProducesResponseType(typeof(OwnerStayView), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -106,7 +94,6 @@ public sealed class OwnerPortalCalendarController(
         return StatusCode(StatusCodes.Status201Created, stay);
     }
 
-    /// <summary>Withdraws an owner stay that has not ended; an approved one gives its block back. A repeat answers the same. Needs <c>stays.request</c>.</summary>
     [HttpPost("stays/{stayId:guid}/cancel")]
     [ProducesResponseType(typeof(OwnerStayView), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -127,5 +114,4 @@ public sealed class OwnerPortalCalendarController(
             : null;
 }
 
-/// <summary>An owner stay to ask for: the property, the arrival and the departure (<c>yyyy-MM-dd</c>).</summary>
 public sealed record OwnerStayRequestBody(Guid PropertyId, DateOnly StartDate, DateOnly EndDate);
