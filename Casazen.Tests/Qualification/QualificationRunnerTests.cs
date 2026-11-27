@@ -11,7 +11,10 @@ namespace Casazen.Tests.Qualification;
 /// <summary>The long runs of the qualification pipeline on a real dataset (see the comments at the top of the file); nothing they print is more than ids of the manifest, counts and file names.</summary>
 public sealed class QualificationRunnerTests(ITestOutputHelper output)
 {
-    /// <summary>The real pipeline on the captures of the development or the calibration split: writes <c>results.json</c> to the output folder.</summary>
+    /// <summary>
+    /// The real pipeline on the captures of the development or the calibration split: writes <c>results.json</c> to the output folder and, for the calibration split, the proposal of the thresholds
+    /// (<c>identity-policy-&lt;yyyy.MM&gt;-&lt;n&gt;.json</c> and <c>calibration-proposal.json</c>), which a person reviews, commits and pins before the configuration is frozen.
+    /// </summary>
     [QualificationFact(QualificationSplits.Development, QualificationSplits.Calibration)]
     public async Task QualificationRun_OnTheDevelopmentOrCalibrationSplit_WritesTheResultsOfTheRealPipeline()
     {
@@ -28,5 +31,13 @@ public sealed class QualificationRunnerTests(ITestOutputHelper output)
         Assert.NotEmpty(results.Cases);
         var failed = results.Cases.Count(candidate => candidate.Error is not null);
         output.WriteLine($"{results.Cases.Count} cases ({failed} that broke), {results.ImpostorTrials.Count} impostor trials of {results.ImpostorSampling.PairsAvailable} possible pairs; policy {results.Policy.Version}.");
+
+        if (!string.Equals(split, QualificationSplits.Calibration, StringComparison.Ordinal))
+            return;
+
+        var proposal = QualificationCalibration.Propose(results, targets, pipeline.ActivePolicy, pipeline.ProtectedPolicyFolders(), outDirectory, pipeline.Clock);
+        output.WriteLine(proposal.Proposed
+            ? $"policy proposed: {proposal.PolicyFile}, canonical SHA-256 {proposal.PolicyCanonicalHash}, changed: {string.Join(", ", proposal.ChangedMembers)}."
+            : $"no policy proposed: {string.Join(", ", proposal.Codes)}.");
     }
 }
