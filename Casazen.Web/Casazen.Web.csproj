@@ -35,6 +35,11 @@
     <None Update="MlModels\licenses\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="MlModels\**\*.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="MlModels\**\*.traineddata" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- Versioned decision policy of the self-hosted identity verification (E70/F01/US02/T01, ADR-013-R18): shipped with the API and used only when its canonical
+         SHA-256 equals IdentityVerification:PolicySha256. A qualified file is never edited: a new calibration is a new file. The JSON is a Content item in the Web
+         SDK, a None item elsewhere: both are listed. -->
+    <Content Update="IdentityPolicies\**\*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="IdentityPolicies\**\*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
