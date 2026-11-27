@@ -1,5 +1,4 @@
 using Casazen.Core.Entities;
-using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;

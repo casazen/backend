@@ -1,4 +1,3 @@
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;

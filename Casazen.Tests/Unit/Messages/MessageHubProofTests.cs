@@ -9,7 +9,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
-using Casazen.Web.DTOs.Messages;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;

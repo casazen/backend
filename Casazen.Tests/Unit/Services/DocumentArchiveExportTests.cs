@@ -8,7 +8,6 @@ using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Controllers;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;

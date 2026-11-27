@@ -5,7 +5,6 @@ using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
-using Casazen.Infrastructure.OTA.Resilience;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
 using Casazen.Infrastructure.Data;

@@ -14,7 +14,6 @@ using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Configuration;
 using Casazen.Web.Infrastructure;
-using Casazen.Web.Middleware;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.EntityFrameworkCore;
