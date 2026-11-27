@@ -149,6 +149,23 @@ public sealed class IdentityPolicyProvider
     }
 
     /// <summary>The members of a policy that are out of their bounds, by their name in the file and what is wrong with them; empty when it is valid. Never a value.</summary>
+    /// <remarks>
+    /// <para>
+    /// The bounds are the STRUCTURE of a policy (no number of them is a threshold of a decision, and none is a calibration), written here once. <b>A policy outside any of
+    /// them, a calibrated one too, is <c>policy_invalid</c></b>: the log names the member, never its value, and a bound is widened by a change of this method, not of a file.
+    /// The bounds are inclusive, "above 0" excludes 0:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description><c>version</c>, <c>captureRules</c>: 1 to 50 lower case letters, digits, dots, hyphens or underscores, starting with a letter or a digit (the columns of the rows that keep them).</description></item>
+    /// <item><description><c>document</c>: <c>maxRecapturesPerSide</c> 0 to 10; <c>identifyingFields</c> 1 to 10 names (a lower case letter then letters and digits, at most 40), none repeated; <c>perceptualDuplicateMaxDistance</c> 0 to 64.</description></item>
+    /// <item><description><c>presence.challenge</c>: <c>steps</c> 1 to 10; <c>actions</c> known codes of <c>PresenceActions</c>, none repeated; <c>lifetimeSeconds</c> 1 to <see cref="MaxChallengeLifetimeSeconds"/>; <c>stepMs</c> 1 to 60000; <c>leadInMs</c> 0 to 60000; entropy of at least <see cref="MinChallengeEntropyBits"/> bits.</description></item>
+    /// <item><description><c>presence.sequence</c>: <c>targetFps</c> 1 to 60; <c>minFrames</c> and <c>maxFrames</c> 1 to 600, <c>minFrames</c> not above <c>maxFrames</c>; <c>minDurationMs</c> and <c>maxDurationMs</c> 1 to 120000, the first not above the second; <c>maxGapMs</c> 1 to 60000; <c>maxShareWithoutFace</c> 0 to 1; <c>detectorMaxSide</c> 32 to 4096.</description></item>
+    /// <item><description><c>presence.continuity</c>: <c>maxCenterJump</c>, <c>maxSizeChange</c> and <c>minPairSimilarity</c> above 0 and at most 1; <c>pairSamples</c> 1 to 60. <c>presence.pose</c>: the three angles above 0 and at most 90 degrees.</description></item>
+    /// <item><description><c>presence.liveness</c>: <c>frames</c> 1 to 60 and not above <c>presence.sequence.minFrames</c>; <c>minScore</c> above 0 and at most 1; <c>rule</c> a known code.</description></item>
+    /// <item><description><c>match</c>: <c>frames</c> 1 to 20 and not above <c>presence.sequence.minFrames</c>; <c>minFrameGapMs</c> 0 to 60000; <c>randomizeAmongTop</c> 1 to 20; <c>aggregation</c> a known code; <c>accept</c>, <c>reviewFloor</c> and <c>minEachFrame</c> above 0 and at most 1, <c>reviewFloor</c> not above <c>accept</c>.</description></item>
+    /// <item><description><c>closure.guidedRetries</c>: 0 to 1.</description></item>
+    /// </list>
+    /// </remarks>
     internal static IReadOnlyList<string> Validate(IdentityDecisionPolicy policy)
     {
         var failures = new List<string>();
