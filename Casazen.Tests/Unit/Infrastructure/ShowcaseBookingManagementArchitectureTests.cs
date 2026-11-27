@@ -26,7 +26,7 @@ public class ShowcaseBookingManagementArchitectureTests
         ["Casazen.Infrastructure/Services/ServiceRequestService.Customer.cs"] = "Implements the actions with the other transitions of a request.",
         ["Casazen.Infrastructure/Services/ServiceRequestService.Thread.cs"] = "Implements the actions of the conversation of a request on measure (SP-10b).",
         ["Casazen.Infrastructure/Services/ShowcaseBookingManager.cs"] = "The only caller: it proves who is asking, then acts.",
-        ["Casazen.Web/Extensions/ServiceCollectionExtensions.cs"] = "Registers the interface.",
+        ["Casazen.Web/Extensions/SupplierRequestsServiceCollectionExtensions.cs"] = "Registers the interface.",
     };
 
     [Fact]
@@ -62,7 +62,7 @@ public class ShowcaseBookingManagementArchitectureTests
         ["Casazen.Infrastructure/Services/ShowcaseBookingManager.cs"] = "The only caller of the payer's «all fine»: it proves who is asking first.",
         ["Casazen.Infrastructure/Services/ServiceRequestService.cs"] = "Charges the card when the supplier accepts and settles the money of a request that closes.",
         ["Casazen.Infrastructure/Services/ServiceRequestAutoCancelService.cs"] = "Settles the money of the requests it cancels.",
-        ["Casazen.Web/Extensions/ServiceCollectionExtensions.cs"] = "Registers it.",
+        ["Casazen.Web/Extensions/SupplierRequestsServiceCollectionExtensions.cs"] = "Registers it.",
     };
 
     /// <summary>The files that may name the payer's «all fine» (it releases the money to the supplier at once), each with the reason.</summary>

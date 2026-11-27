@@ -602,7 +602,7 @@ public class FiscalDocumentCorrectionTests
     }
 
     private static AppDbContext NewDb() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalCorrection_{Guid.NewGuid()}").Options, new SdiTenant(), new EphemeralDataProtectionProvider());
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalCorrection_{Guid.NewGuid()}").Options, new SdiTenant(), TestDataProtection.Shared);
 
     private static async Task<Guid> SeedBookingAsync(AppDbContext db, bool seedOrg = false)
     {

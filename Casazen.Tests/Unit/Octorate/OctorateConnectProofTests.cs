@@ -46,7 +46,7 @@ public class OctorateConnectProofTests
     }
 
     // One provider for the whole class: EF keeps one model per provider.
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     private static readonly Guid OrgA = Guid.Parse("2b9e6f1c-4d3a-4c7e-9a51-6e0f3d2c1b01");
     private static readonly Guid OrgB = Guid.Parse("8c1d2e3f-5a6b-4c7d-8e9f-0a1b2c3d4e02");

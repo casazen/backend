@@ -170,7 +170,7 @@ public class FiscalControllersReachTests
         await using var db = new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OctorateDocumentsReach_{Guid.NewGuid()}").Options,
             new ReachTenant(),
-            new EphemeralDataProtectionProvider());
+            TestDataProtection.Shared);
         var foreign = Imported(OtherOrgId, "D-foreign");
         var own = Imported(OrgId, "D-own");
         db.FiscalDocuments.AddRange(foreign, own);
@@ -196,7 +196,7 @@ public class FiscalControllersReachTests
         await using var db = new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OctorateDocumentsOwn_{Guid.NewGuid()}").Options,
             new ReachTenant(),
-            new EphemeralDataProtectionProvider());
+            TestDataProtection.Shared);
         var own = Imported(OrgId, "D-own");
         own.OctorateAccommodationId = "ACC-9";
         db.FiscalDocuments.Add(own);

@@ -22,7 +22,7 @@ namespace Casazen.Tests.Integration;
 /// </summary>
 public class WizardDraftRetentionPostgresTests
 {
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     // Another key ring: what it protected cannot be read with Provider, as a draft whose Data Protection keys were lost or rotated.
     private static readonly IDataProtectionProvider LostKeys = new EphemeralDataProtectionProvider();

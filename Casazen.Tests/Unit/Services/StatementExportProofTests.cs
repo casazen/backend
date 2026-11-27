@@ -190,7 +190,7 @@ public class StatementExportProofTests
         new(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"StatementExport_{Guid.NewGuid()}").Options,
             new ExportTenant(OrgId),
-            new EphemeralDataProtectionProvider());
+            TestDataProtection.Shared);
 
     private static async Task<(Guid PropertyId, Guid OwnerId)> SeedOwnerWithPaidBookingAsync(AppDbContext db)
     {

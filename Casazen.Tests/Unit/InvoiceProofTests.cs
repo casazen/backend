@@ -216,7 +216,7 @@ public class InvoiceProofTests
             var db = new AppDbContext(
                 new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"Invoices_{Guid.NewGuid()}").Options,
                 new InvoiceTenant(),
-                new EphemeralDataProtectionProvider());
+                TestDataProtection.Shared);
             db.Orgs.Add(new OrgEntity
             {
                 Id = OrgId,

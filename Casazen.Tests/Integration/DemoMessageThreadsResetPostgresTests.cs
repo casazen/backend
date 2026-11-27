@@ -87,7 +87,7 @@ public class DemoMessageThreadsResetPostgresTests : IAsyncLifetime
         }
     }
 
-    private AppDbContext NewDb() => new(_database!.CreateOptions(), tenantContext: null, new EphemeralDataProtectionProvider());
+    private AppDbContext NewDb() => new(_database!.CreateOptions(), tenantContext: null, TestDataProtection.Shared);
 
     private static DemoEnvironmentService Service(AppDbContext db) => new(
         db,

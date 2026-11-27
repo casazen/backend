@@ -21,7 +21,7 @@ namespace Casazen.Tests.Integration;
 /// </summary>
 public class FiscalNumberingPostgresTests
 {
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     /// <summary>PROOF TEST: money and data rule. Twelve parallel issues and one rolled back: numbers 1 to 12, no gap, no duplicate.</summary>
     [PostgresFact]

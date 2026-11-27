@@ -570,7 +570,7 @@ public class DoorCheckInServiceTests
 
         private World()
         {
-            Db = new AppDbContext(_options, null, new EphemeralDataProtectionProvider());
+            Db = new AppDbContext(_options, null, TestDataProtection.Shared);
             CheckIn.Setup(c => c.ReissueLinkAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
                 .ReturnsAsync((Guid bookingId, Guid _) => new IssuedCheckInLink(Guid.NewGuid(), IssuedToken, Now.UtcDateTime.AddDays(7)));
         }
@@ -630,7 +630,7 @@ public class DoorCheckInServiceTests
             Mock.Of<IDocumentOcrService>(),
             new StayGuestService(Db, Mock.Of<IAlloggiatiCodeTableService>()),
             Mock.Of<IFileStorage>(),
-            new EphemeralDataProtectionProvider(),
+            TestDataProtection.Shared,
             Clock,
             NullLogger<IdentityVerificationFlowService>.Instance);
 

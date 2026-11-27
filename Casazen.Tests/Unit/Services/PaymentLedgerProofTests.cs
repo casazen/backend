@@ -208,7 +208,7 @@ public class PaymentLedgerProofTests
     };
 
     private static AppDbContext NewDb() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"PaymentLedger_{Guid.NewGuid()}").Options, new LedgerTenant(), new EphemeralDataProtectionProvider());
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"PaymentLedger_{Guid.NewGuid()}").Options, new LedgerTenant(), TestDataProtection.Shared);
 
     private static async Task<(Guid Booking, Guid Property)> SeedBookingAsync(
         AppDbContext db,

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Scheduling;
 
 namespace Casazen.Infrastructure.Events;
 
@@ -20,7 +21,7 @@ public static class TimeTrigger
     public const string Weekly = "Weekly";
 
     /// <summary>The largest offset taken, one year in hours: a longer one is a mistake in the routine, not a trigger.</summary>
-    public const int MaxOffsetHours = 366 * 24;
+    public const int MaxOffsetHours = ScheduledMessagePlanner.MaxOffsetHours;
 
     private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -46,35 +47,7 @@ public static class TimeTrigger
     /// that: not JSON, not an object, a member that is not a whole number of zero or more, or more than
     /// <see cref="MaxOffsetHours"/> in all.
     /// </summary>
-    public static int? OffsetHours(string? eventConfig)
-    {
-        if (string.IsNullOrWhiteSpace(eventConfig))
-            return 0;
-
-        try
-        {
-            using var document = JsonDocument.Parse(eventConfig);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-                return null;
-
-            long days = 0;
-            long hours = 0;
-            foreach (var member in document.RootElement.EnumerateObject())
-            {
-                if (string.Equals(member.Name, "days", StringComparison.OrdinalIgnoreCase) && !TryWholeNumber(member.Value, out days))
-                    return null;
-                if (string.Equals(member.Name, "hours", StringComparison.OrdinalIgnoreCase) && !TryWholeNumber(member.Value, out hours))
-                    return null;
-            }
-
-            var total = (days * 24) + hours;
-            return total <= MaxOffsetHours ? (int)total : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
+    public static int? OffsetHours(string? eventConfig) => ScheduledMessagePlanner.OffsetHours(eventConfig);
 
     /// <summary>
     /// The dedup key of a trigger: <c>{kind}:{offset}:{entityId}:{dueAt}</c>, where <c>dueAt</c> is the UTC hour the trigger is due
@@ -109,14 +82,6 @@ public static class TimeTrigger
         }
 
         return true;
-    }
-
-    private static bool TryWholeNumber(JsonElement value, out long number)
-    {
-        number = 0;
-        return value.ValueKind == JsonValueKind.Number
-            && value.TryGetInt64(out number)
-            && number is >= 0 and <= MaxOffsetHours;
     }
 }
 

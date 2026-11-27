@@ -35,7 +35,7 @@ internal sealed class RoutineRig
     private readonly List<(Job Job, IState State)> _scheduled = [];
 
     // One key ring for the rig, so a link made by one service is read by another.
-    private readonly EphemeralDataProtectionProvider _keys = new();
+    private readonly EphemeralDataProtectionProvider _keys = TestDataProtection.Shared;
 
     public RoutineRig()
     {

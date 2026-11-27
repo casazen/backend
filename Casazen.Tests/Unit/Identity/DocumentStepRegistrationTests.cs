@@ -31,7 +31,7 @@ public sealed class DocumentStepRegistrationTests
         await using var provider = Services().BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         await using var scope = provider.CreateAsyncScope();
         await using var db = new AppDbContext(
-            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"document-step-registration-{Guid.NewGuid()}").Options, null, new EphemeralDataProtectionProvider());
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"document-step-registration-{Guid.NewGuid()}").Options, null, TestDataProtection.Shared);
 
         var flow = ActivatorUtilities.CreateInstance<IdentityVerificationFlowService>(
             scope.ServiceProvider,
@@ -44,7 +44,7 @@ public sealed class DocumentStepRegistrationTests
             Mock.Of<IDocumentOcrService>(),
             Mock.Of<IStayGuestService>(),
             Mock.Of<IFileStorage>(),
-            new EphemeralDataProtectionProvider(),
+            TestDataProtection.Shared,
             TimeProvider.System,
             NullLogger<IdentityVerificationFlowService>.Instance);
 

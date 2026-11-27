@@ -29,7 +29,7 @@ public class StatementProofTests
             .UseInMemoryDatabase($"StatementRoundingTest_{Guid.NewGuid()}")
             .Options;
 
-        var dataProtection = new EphemeralDataProtectionProvider();
+        var dataProtection = TestDataProtection.Shared;
         var orgId = Guid.NewGuid();
         var propertyId = Guid.NewGuid();
         var propertyOwnerId = Guid.NewGuid();
@@ -167,7 +167,7 @@ public class StatementProofTests
             .UseInMemoryDatabase($"StatementCoOwnerSplitTest_{Guid.NewGuid()}")
             .Options;
 
-        var dataProtection = new EphemeralDataProtectionProvider();
+        var dataProtection = TestDataProtection.Shared;
         var orgId = Guid.NewGuid();
         var propertyId = Guid.NewGuid();
         var owner1Id = Guid.NewGuid();

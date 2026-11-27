@@ -36,7 +36,7 @@ public class SwissComplianceReceiptArchiveTests
         db.SwissComplianceReceipts.Add(legacy);
         await db.SaveChangesAsync();
         var storage = new InMemoryFileStorage();
-        var protection = new EphemeralDataProtectionProvider();
+        var protection = TestDataProtection.Shared;
         var service = Service(db, storage, protection);
 
         using var input = new MemoryStream(Original);
@@ -76,7 +76,7 @@ public class SwissComplianceReceiptArchiveTests
         var sibling = SeedProperty(db, property.OrgId);
         await db.SaveChangesAsync();
         var storage = new InMemoryFileStorage();
-        var protection = new EphemeralDataProtectionProvider();
+        var protection = TestDataProtection.Shared;
         var service = Service(db, storage, protection);
         using var input = new MemoryStream(Original);
         var row = await service.RecordAsync(property.Id, SwissComplianceFileType.Police, ReportDate, "TEST-only", input);
@@ -101,7 +101,7 @@ public class SwissComplianceReceiptArchiveTests
         var property = SeedProperty(db, Guid.NewGuid());
         await db.SaveChangesAsync();
         var storage = new Mock<IFileStorage>(MockBehavior.Strict);
-        var service = Service(db, storage.Object, new EphemeralDataProtectionProvider());
+        var service = Service(db, storage.Object, TestDataProtection.Shared);
         var invalid = await Assert.ThrowsAsync<DomainRuleException>(() => service.RecordAsync(property.Id,
             SwissComplianceFileType.Police, ReportDate, "TEST-only", Stream.Null));
         Assert.Equal("swiss_receipt_file_invalid", invalid.Code);

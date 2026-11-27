@@ -78,6 +78,45 @@ internal static class MarketplaceReads
         return new MarketplaceOctorateState(true, connected);
     }
 
+    /// <summary>The id of the org's connected account in this environment; <c>null</c> while the connector is off or the org is not connected.</summary>
+    public static async Task<Guid?> ConnectedAccountAsync(
+        AppDbContext db, IFeatureFlags featureFlags, IHostEnvironment hostEnvironment, Guid orgId, CancellationToken ct)
+    {
+        if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
+            return null;
+
+        var environment = OctorateEnvironments.Of(hostEnvironment);
+        return await db.OctorateConnections.AsNoTracking()
+            .Where(c => c.OrgId == orgId && c.Environment == environment && c.Status == OctorateConnectionStatus.Connected)
+            .Select(c => (Guid?)c.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>
+    /// The org is connected (the connector is on and it has a connected account in this environment) and the property has its confirmed listing: the
+    /// accommodation id of the listing, which is the <c>acc</c> of every call to the channel manager. Otherwise the 409 of an org that is not
+    /// connected, or the 422 of a property that is not linked.
+    /// </summary>
+    public static async Task<string> RequireLinkedAccommodationAsync(
+        AppDbContext db, IFeatureFlags featureFlags, IHostEnvironment hostEnvironment, Guid orgId, Guid propertyId, CancellationToken ct)
+    {
+        var connectionKey = await ConnectedAccountAsync(db, featureFlags, hostEnvironment, orgId, ct) ?? throw NotConnected();
+        var accommodation = await db.OctorateListingMappings.AsNoTracking()
+            .Where(m => m.OrgId == orgId
+                        && m.PropertyId == propertyId
+                        && m.ConnectionId == connectionKey
+                        && m.Status == OctorateMappingStatus.Confirmed)
+            .Select(m => m.OctorateAccommodationId)
+            .FirstOrDefaultAsync(ct);
+        return accommodation ?? throw NotLinked();
+    }
+
+    private static DomainConflictException NotConnected() =>
+        new(MarketplaceActivationErrorCodes.OctorateNotConnected, "MarketplaceOctorateNotConnected");
+
+    private static DomainRuleException NotLinked() =>
+        new(MarketplaceActivationErrorCodes.PropertyNotLinked, "MarketplacePropertyNotLinked");
+
     /// <summary>
     /// The texts of a partner in <paramref name="language"/>, else in Italian (the default of the product), else <c>null</c>: the fallback is
     /// the whole row, not field by field, because a cost that is missing in one language is not the cost of the other.

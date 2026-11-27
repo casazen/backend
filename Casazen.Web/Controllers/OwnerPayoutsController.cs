@@ -103,15 +103,8 @@ public class OwnerPayoutsController(
         return Ok(OwnerPayoutDto.From(result.Payout, result.Evidence));
     }
 
-    private async Task<Guid?> OrgAsync()
-    {
-        var ct = HttpContext.RequestAborted;
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
-        if (orgId is null)
-            return null;
-        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct);
-        return scope is { IsOrgWide: true } ? orgId : null;
-    }
+    private Task<Guid?> OrgAsync() =>
+        HostCallerResolver.OrgWideAsync(User, orgContextResolver, hostScopeResolver, HttpContext.RequestAborted);
 }
 
 /// <summary>The reversal of a payout, with its reason.</summary>

@@ -46,7 +46,7 @@ public class ShowcaseBookingEncryptionTests
     [Fact]
     public void EveryColumnOfTheBooking_HasTheConverterOfItsPurpose_AndItsValuesComeBackThroughIt()
     {
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         using var db = NewContext(provider);
 
         foreach (var (entity, property, purpose) in EncryptedColumnsOfSp10)
@@ -72,7 +72,7 @@ public class ShowcaseBookingEncryptionTests
     [Fact]
     public void WhatTheSupplierSeesBeforeTheTake_AndWhatFindsACustomer_IsNotEncrypted()
     {
-        using var db = NewContext(new EphemeralDataProtectionProvider());
+        using var db = NewContext(TestDataProtection.Shared);
         var clear = new (Type Entity, string Property)[]
         {
             (typeof(ServiceRequest), nameof(ServiceRequest.LocationCity)),
@@ -93,7 +93,7 @@ public class ShowcaseBookingEncryptionTests
     [Fact]
     public void WithoutAProvider_TheModelHasNoConverter_SoNothingIsEverStoredInClearByMistakeInProduction()
     {
-        using var encrypted = NewContext(new EphemeralDataProtectionProvider());
+        using var encrypted = NewContext(TestDataProtection.Shared);
         using var plain = NewContext(null);
 
         Assert.True(EncryptedColumns.IsConfigured(encrypted));
@@ -105,7 +105,7 @@ public class ShowcaseBookingEncryptionTests
     [Fact]
     public async Task TheWholeBooking_WorksWithTheEncryptionConfigured()
     {
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         using var s = await ServiceRequestScenario.CreateAsync(dataProtection: provider);
         await s.EnableBookingAsync();
         Assert.True(EncryptedColumns.IsConfigured(s.Db));
@@ -128,7 +128,7 @@ public class ShowcaseBookingEncryptionTests
     [Fact]
     public async Task TheSuppliersConsole_ReadsThePlaceAndTheContacts_OnlyAfterTheTake_WithTheEncryptionConfigured()
     {
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         using var s = await ServiceRequestScenario.CreateAsync(dataProtection: provider);
         await s.EnableBookingAsync();
         var (booked, _) = await s.BookedAsync();

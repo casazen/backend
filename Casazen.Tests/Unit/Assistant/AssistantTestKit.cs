@@ -31,7 +31,7 @@ internal static class AssistantTestKit
     public static readonly DateTimeOffset Now = new(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
 
     // One provider for the whole test run: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     /// <summary>The name of a new InMemory store: contexts over the same name see the same data, as two requests over one database do.</summary>
     public static string NewStore() => $"assistant-{Guid.NewGuid()}";

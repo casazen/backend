@@ -692,7 +692,7 @@ public class FiscalDocumentServiceProofTests
     }
 
     private static AppDbContext NewDb() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalDocuments_{Guid.NewGuid()}").Options, new ServiceTenant(), new EphemeralDataProtectionProvider());
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalDocuments_{Guid.NewGuid()}").Options, new ServiceTenant(), TestDataProtection.Shared);
 
     private static async Task<Guid> SeedAsync(AppDbContext db, BookingSource source, DocumentRegime regime = DocumentRegime.VatOrdinary)
     {

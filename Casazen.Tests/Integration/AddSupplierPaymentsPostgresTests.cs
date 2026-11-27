@@ -4,34 +4,24 @@ using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// SP-15a migration (<c>AddSupplierPayments</c>) on real PostgreSQL: it applies and reverts; a request written by code that does
-/// not know the new columns (the previous release while the migration is applied) still gets <c>PaymentMode = Manual</c>; the checks
-/// refuse the rows the rules never write (a commission not strictly below the amount, a net that is not what is left, a percentage
-/// outside 0 to 50, a host payment without a payer org, a paid payment that does not say when and how, a refund above the amount);
-/// the unique index lets a request have one payment that is not canceled; nothing under a payment can be deleted; and the enums are
-/// stored as the explicit integers the code and the webhook of SP-15b rely on.
+/// SP-15a schema (<c>AddSupplierPayments</c>) on real PostgreSQL, on a copy of the migrated template: a request written by code
+/// that does not know the new columns still gets <c>PaymentMode = Manual</c>; the checks refuse the rows the rules never write (a
+/// commission not strictly below the amount, a net that is not what is left, a percentage outside 0 to 50, a host payment without a
+/// payer org, a paid payment that does not say when and how, a refund above the amount); the unique index lets a request have one
+/// payment that is not canceled; nothing under a payment can be deleted; and the enums are stored as the explicit integers the code
+/// and the webhook of SP-15b rely on. The test that applied and reverted the migration went away once it reached production.
 /// </summary>
 public class AddSupplierPaymentsPostgresTests : IAsyncLifetime
 {
-    private static readonly string[] PaymentColumns =
-    [
-        "Id", "ServiceRequestId", "SupplierOrgId", "PayerKind", "PayerOrgId", "AmountCents", "Currency", "CommissionPercent",
-        "ApplicationFeeCents", "NetCents", "FeeVatMode", "FeeVatCents", "Status", "StripePaymentIntentId", "ConnectedAccountId",
-        "PaymentIntentCount", "PaymentTokenHash", "RequestedAt", "LastSentAt", "SentCount", "LateAt", "FailureCode", "PaidAt",
-        "PaidVia", "RefundedCents", "LineItemsJson", "OfflineNote", "MarkedPaidByUserId", "CanceledAt", "CreatedAt", "UpdatedAt",
-    ];
-
     private PostgresTestDatabase? _database;
 
-    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateAsync();
+    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateMigratedAsync();
 
     public async Task DisposeAsync()
     {
@@ -40,30 +30,9 @@ public class AddSupplierPaymentsPostgresTests : IAsyncLifetime
     }
 
     [PostgresFact]
-    public async Task Migration_AppliesAndRevertsOnARealDatabase()
-    {
-        await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
-        Assert.Equal(PaymentColumns.Length, await CountColumnsAsync(db, "ServiceRequestPayments"));
-        Assert.Equal(3, await CountColumnsAsync(db, "ServiceRequests", "PaymentMode", "FinalAmountConfirmedAt", "PaidBy"));
-        Assert.Equal(1, await CountColumnsAsync(db, "SupplierProfiles", "CommissionPercentOverride"));
-        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
-
-        await db.GetService<IMigrator>().MigrateAsync(PreviousMigration(db));
-        Assert.Equal(0, await CountColumnsAsync(db, "ServiceRequestPayments"));
-        Assert.Equal(0, await CountColumnsAsync(db, "ServiceRequests", "PaymentMode", "FinalAmountConfirmedAt", "PaidBy"));
-        Assert.Equal(0, await CountColumnsAsync(db, "SupplierProfiles", "CommissionPercentOverride"));
-        Assert.Equal(0, await CountObjectsAsync(db, "pg_constraint", "conname", "CK_SupplierProfiles_CommissionPercentOverride"));
-
-        await db.Database.MigrateAsync();
-        Assert.Equal(PaymentColumns.Length, await CountColumnsAsync(db, "ServiceRequestPayments"));
-    }
-
-    [PostgresFact]
     public async Task ARequestWrittenWithoutTheNewColumns_IsManual()
     {
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
         var parents = await SeedParentsAsync(db);
         var id = Guid.NewGuid();
 
@@ -356,32 +325,9 @@ public class AddSupplierPaymentsPostgresTests : IAsyncLifetime
 
     private sealed record Parents(Guid HostOrg, Guid Property, Guid SupplierOrg, Guid Request);
 
-    private static string PreviousMigration(AppDbContext db)
-    {
-        var all = db.Database.GetMigrations().ToList();
-        var index = all.FindIndex(m => m.EndsWith("_AddSupplierPayments", StringComparison.Ordinal));
-        Assert.True(index > 0, "AddSupplierPayments migration not found.");
-        return all[index - 1];
-    }
-
-    private static async Task<int> CountColumnsAsync(AppDbContext db, string table, params string[] columns)
-    {
-        var names = columns.Length == 0 ? PaymentColumns : columns;
-        return (int)await db.Database
-            .SqlQuery<long>($"SELECT count(*) AS \"Value\" FROM information_schema.columns WHERE table_name = {table} AND column_name = ANY({names})")
-            .SingleAsync();
-    }
-
-    private static async Task<int> CountObjectsAsync(AppDbContext db, string catalog, string column, string name)
-    {
-        var sql = $"SELECT count(*) AS \"Value\" FROM {catalog} WHERE {column} = '{name}'";
-        return (int)await db.Database.SqlQueryRaw<long>(sql).SingleAsync();
-    }
-
     private async Task<Parents> MigratedWithRequestAsync()
     {
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
         return await SeedParentsAsync(db);
     }
 

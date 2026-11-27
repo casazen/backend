@@ -847,7 +847,7 @@ public class FiscalDocumentBookingChangeTests
     }
 
     private static AppDbContext NewDb() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalChanges_{Guid.NewGuid()}").Options, new ChangeTenant(), new EphemeralDataProtectionProvider());
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalChanges_{Guid.NewGuid()}").Options, new ChangeTenant(), TestDataProtection.Shared);
 
     private sealed class ChangeTenant : ITenantContext
     {

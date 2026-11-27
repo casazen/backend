@@ -25,7 +25,7 @@ public class AccessCodeTouristTaxHoldProofTests
     public async Task AccessCode_HeldBackFromTheGuestInEveryChannel_WhileTheTouristTaxIsDue_ThenReleased_Test()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"access-code-hold-{Guid.NewGuid()}").Options;
-        await using var db = new AppDbContext(options, null, new EphemeralDataProtectionProvider());
+        await using var db = new AppDbContext(options, null, TestDataProtection.Shared);
         var orgId = Guid.NewGuid();
         db.Orgs.Add(new OrgEntity
         {
@@ -64,7 +64,7 @@ public class AccessCodeTouristTaxHoldProofTests
     public async Task AccessCode_WithoutTheTouristTaxCollection_IsReleasedAsBefore()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"access-code-nohold-{Guid.NewGuid()}").Options;
-        await using var db = new AppDbContext(options, null, new EphemeralDataProtectionProvider());
+        await using var db = new AppDbContext(options, null, TestDataProtection.Shared);
         var orgId = Guid.NewGuid();
         db.Orgs.Add(new OrgEntity
         {

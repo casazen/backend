@@ -361,7 +361,7 @@ public class DocumentPlanServiceTests
         public static async Task<World> CreateAsync(CleaningFeeTreatment agencyCleaning)
         {
             var db = new AppDbContext(
-                new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"DocumentPlan_{Guid.NewGuid()}").Options, new PlanTenant(), new EphemeralDataProtectionProvider());
+                new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"DocumentPlan_{Guid.NewGuid()}").Options, new PlanTenant(), TestDataProtection.Shared);
             db.Orgs.Add(new OrgEntity
             {
                 Id = OrgId,

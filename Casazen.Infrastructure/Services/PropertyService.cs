@@ -291,29 +291,7 @@ public class PropertyService(
             .OrderBy(p => p.City)
             .ThenBy(p => p.NightlyRate)
             .Take(50)
-            .Select(p => new PublicPropertyRow
-            {
-                Id = p.Id,
-                Slug = p.Slug,
-                OrgSlug = p.Org.Slug,
-                Name = p.Name,
-                Description = p.Description,
-                City = p.City,
-                PostalCode = p.PostalCode,
-                ComuneIstatCode = p.ComuneIstatCode,
-                Latitude = p.Latitude,
-                Longitude = p.Longitude,
-                Bedrooms = p.Bedrooms,
-                Bathrooms = p.Bathrooms,
-                MaxGuests = p.MaxGuests,
-                NightlyRate = p.NightlyRate,
-                CleaningFee = p.CleaningFee,
-                Currency = p.Currency,
-                Amenities = p.Amenities,
-                PhotoUrls = p.PhotoUrls,
-                CinCode = p.CinCode,
-                Timezone = p.Timezone,
-            })
+            .Select(SearchRow)
             .ToListAsync();
 
         return rows.Select(MapPublicProperty).ToList();
@@ -327,29 +305,7 @@ public class PropertyService(
             .OrderBy(p => p.City)
             .ThenBy(p => p.NightlyRate)
             .Take(50)
-            .Select(p => new PublicPropertyRow
-            {
-                Id = p.Id,
-                Slug = p.Slug,
-                OrgSlug = p.Org.Slug,
-                Name = p.Name,
-                Description = p.Description,
-                City = p.City,
-                PostalCode = p.PostalCode,
-                ComuneIstatCode = p.ComuneIstatCode,
-                Latitude = p.Latitude,
-                Longitude = p.Longitude,
-                Bedrooms = p.Bedrooms,
-                Bathrooms = p.Bathrooms,
-                MaxGuests = p.MaxGuests,
-                NightlyRate = p.NightlyRate,
-                CleaningFee = p.CleaningFee,
-                Currency = p.Currency,
-                Amenities = p.Amenities,
-                PhotoUrls = p.PhotoUrls,
-                CinCode = p.CinCode,
-                Timezone = p.Timezone,
-            })
+            .Select(SearchRow)
             .ToListAsync(cancellationToken);
 
         return rows.Select(MapPublicProperty).ToList();
@@ -759,6 +715,33 @@ public class PropertyService(
         TourUrl = p.TourUrl,
         SiteProfileJson = p.SiteProfileJson,
         PhotoAltJson = p.PhotoAltJson,
+    };
+
+    /// <summary>
+    /// What the public search reads of a property, in one place for both ways to ask for it (everywhere and by org): one expression, so one SQL.
+    /// </summary>
+    private static readonly System.Linq.Expressions.Expression<Func<Property, PublicPropertyRow>> SearchRow = p => new PublicPropertyRow
+    {
+        Id = p.Id,
+        Slug = p.Slug,
+        OrgSlug = p.Org.Slug,
+        Name = p.Name,
+        Description = p.Description,
+        City = p.City,
+        PostalCode = p.PostalCode,
+        ComuneIstatCode = p.ComuneIstatCode,
+        Latitude = p.Latitude,
+        Longitude = p.Longitude,
+        Bedrooms = p.Bedrooms,
+        Bathrooms = p.Bathrooms,
+        MaxGuests = p.MaxGuests,
+        NightlyRate = p.NightlyRate,
+        CleaningFee = p.CleaningFee,
+        Currency = p.Currency,
+        Amenities = p.Amenities,
+        PhotoUrls = p.PhotoUrls,
+        CinCode = p.CinCode,
+        Timezone = p.Timezone,
     };
 
     private class PublicPropertyRow

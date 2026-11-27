@@ -362,7 +362,7 @@ internal sealed class OwnerInvoiceRig : IAsyncDisposable
         var db = new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"OwnerInvoices_{Guid.NewGuid()}").Options,
             new OwnerInvoiceTenant(),
-            new EphemeralDataProtectionProvider());
+            TestDataProtection.Shared);
         var rig = new OwnerInvoiceRig(db);
         db.Orgs.Add(new OrgEntity
         {

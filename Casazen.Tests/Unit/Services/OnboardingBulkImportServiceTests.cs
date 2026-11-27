@@ -68,7 +68,7 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         const string Secret = "7391#Zeta";
         const string WrongSecret = "q!";
         var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"lock-code-{Guid.NewGuid()}").Options;
-        var provider = new EphemeralDataProtectionProvider();
+        var provider = TestDataProtection.Shared;
         var orgId = Guid.NewGuid();
         var good = Guid.NewGuid();
         var bad = Guid.NewGuid();

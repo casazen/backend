@@ -856,7 +856,7 @@ public class FiscalDocumentAutomationTests
     }
 
     private static AppDbContext NewDb() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalAutomation_{Guid.NewGuid()}").Options, new AutomationTenant(), new EphemeralDataProtectionProvider());
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"FiscalAutomation_{Guid.NewGuid()}").Options, new AutomationTenant(), TestDataProtection.Shared);
 
     private sealed class AutomationTenant : ITenantContext
     {

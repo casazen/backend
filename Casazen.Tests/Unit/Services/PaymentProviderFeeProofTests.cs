@@ -156,7 +156,7 @@ public class PaymentProviderFeeProofTests
         new(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"ProviderFees_{Guid.NewGuid()}").Options,
             new FeeTenant(),
-            new EphemeralDataProtectionProvider());
+            TestDataProtection.Shared);
 
     private static async Task<Payment> SeedPaymentAsync(
         AppDbContext db,

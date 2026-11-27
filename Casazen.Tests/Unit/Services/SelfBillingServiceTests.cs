@@ -740,7 +740,7 @@ internal sealed class SelfBillingRig : IAsyncDisposable
         var db = new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"SelfBilling_{Guid.NewGuid()}").Options,
             new SelfBillingTenant(),
-            new EphemeralDataProtectionProvider());
+            TestDataProtection.Shared);
         var rig = new SelfBillingRig(db);
         db.Orgs.Add(new OrgEntity
         {

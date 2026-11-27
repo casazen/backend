@@ -32,7 +32,7 @@ public class FiscalDocumentPostgresTests
     private const string Xml = "<FatturaElettronica><Denominazione>Trattoria Il Glicine S.r.l.</Denominazione></FatturaElettronica>";
     private const string ClosingNote = "Nota di credito 4711 di Booking.com per il signor Mario Rossi";
 
-    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+    private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     /// <summary>PROOF TEST: money and data rule. No number twice in one org and series, no Octorate document imported twice.</summary>
     [PostgresFact]
