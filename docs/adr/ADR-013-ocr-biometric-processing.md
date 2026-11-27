@@ -1,6 +1,6 @@
 # ADR-013: OCR and Biometric Processing
 
-**Status:** Accepted  
+**Status:** Accepted (amended 2026-11-27)  
 **Date:** 2026-10-24  
 **Issue:** none (run R20261024-1925)  
 **Informs:** NF-10, NF-11
@@ -145,3 +145,35 @@ Per GDPR art. 7:
 - YuNet training data provenance not verified (DPIA notes risk)
 
 **CI cost:** +15s for proof tests with real images
+
+## Amendment 2026-11: self-hosted identity verification
+
+**Date:** 2026-11-27 (run R20261103-1506, task E70/F01/US01/T01) · **Informs:** NF-188 to NF-199 (epics E70-E74)
+
+**Why:** the identity check of the guest at the check-in becomes entirely self-hosted and policy-driven (specification `analisi-identificazione-self-hosted.md`, product decisions D1-D14 of 2026-11-27): no image, video frame or face representation goes to an external inference service, a versioned and frozen policy decides, and a person decides wherever the automation is not qualified. Before this amendment the presence is two still frames with a challenge of one bit (R1, R2, R12), the outcome comes from the thresholds of the organization (R4, R5), nothing is kept for the reviewer (R2), and the prefill `POST /api/public/checkin/{token}/read-document` may send the photo of the document to an AI provider.
+
+**Decision delta:**
+
+- **Three flags, all off by default** (`Casazen.Core/Features/FeatureFlags.cs`): `CheckInIdentitySelfHosted` (the self-hosted flow, only together with `CheckInIdentityVerification`), `CheckInIdentityAutoApproval` (the platform-wide permission to approve automatically inside a qualified segment) and `CheckInIdentityReviewEvidence` (the minimal encrypted evidence for the reviewer). With them off the path of R1-R16 is unchanged; no task of the plan turns one on or edits a legal text.
+- **Presence by challenge and frame sequence** (R17, R22): the server issues an unpredictable challenge of several moves (more than one bit), with an expiry, bound to the session and the attempt; the browser sends a dense sequence of timestamped JPEG frames; the server validates it (one face per frame, quality, plausible timing, continuity, the moves in their order), chooses the frames itself and runs MiniFASNetV2 on every frame it chose. No video is decoded on the server and no native dependency is added.
+- **Decision by a versioned policy** (R18, R19): one policy file holds every threshold and the aggregation rule, pinned by a canonical SHA-256; presence and similarity are independent conditions (no compensation); the closure is atomic and idempotent (header `Idempotency-Key`). Automatic approval only in a segment (property × format × channel) qualified for the policy and the weights in force, with `CheckInIdentityAutoApproval` on; everywhere else the decision of the policy is the shadow decision of the log row and a person decides. A change of the policy or of the weights brings a segment back to observation; a segment is suspended by configuration.
+- **Evidence for the reviewer** (R20): the one exception to R2, only with `CheckInIdentityReviewEvidence` on.
+- **No outflow** (R21): the prefill reads locally, whatever the flags; architecture tests guard the whole identity path.
+- **Configuration**: section `IdentityVerification` (`Casazen.Core/Options/IdentityVerificationOptions.cs`): the policy file and its hash, the folder of the formats, the transport limits of the presence, the evidence and the retention. They are limits, never decision thresholds.
+
+| ID | Priority | Requirement |
+|---|---|---|
+| ADR-013-R17 | P0 | The presence of the self-hosted flow MUST be a server challenge (several random moves, more than one bit, expiring, bound to the session and the attempt) plus a dense timestamped frame sequence sent to `POST /api/public/checkin/{token}/presence`, validated and decided synchronously in the request (not Hangfire) within `IdentityVerification:Presence:SequenceTimeoutMs`; with `CheckInIdentitySelfHosted` on, the legacy `selfie` routes MUST refuse (`presence_sequence_required`) |
+| ADR-013-R18 | P0 | Every decision of the self-hosted flow MUST come from a versioned policy file pinned by SHA-256 (`IdentityVerification:PolicyFile`, `IdentityVerification:PolicySha256`) whose outcomes are automatic approval, one guided retry for a correctable defect, or review with reasons, never an automatic reject; a model fault, a timeout, or a policy file that is missing or does not match its hash MUST never approve; R4 and R5 stay for the legacy path |
+| ADR-013-R19 | P0 | Automatic approval MUST happen only in a segment (property × format × channel) qualified for the active policy version, policy hash and weights hash, with `CheckInIdentityAutoApproval` on; otherwise the segment is in observation: the decision of the policy MUST be recorded as the shadow decision of the log row and a person decides |
+| ADR-013-R20 | P0 | Exception to R2, only with `CheckInIdentityReviewEvidence` on: the crop of the portrait of the document and at most `IdentityVerification:Evidence:MaxFrames` frames chosen by the server MAY be kept for the reviewer, encrypted in the private storage, with a time to live (`IdentityVerification:Evidence:RetentionHours`), read only with the verification permission on a reachable property and audited, deleted at the decision or at the expiry; never an embedding, never in a log or a queue, never for a Ticino property (R6) |
+| ADR-013-R21 | P0 | No image, OCR value or face representation of the identity path MUST reach an inference provider, whatever the flags: `POST /api/public/checkin/{token}/read-document` MUST read locally, and architecture tests MUST forbid AI providers and HTTP clients in the classes of the identity path (flow, pipeline, OCR, readers, the namespace `Casazen.Infrastructure.Identity`) |
+| ADR-013-R22 | P1 | The frames of a presence sequence MUST be JPEG with a longest side of at most `IdentityVerification:Presence:MaxFrameSide` pixels; R12 stays for the legacy selfie |
+
+**Replaces:** none. R1, R2, R4, R5 and R12 stay in force for the legacy path (`CheckInIdentitySelfHosted` off); R20 is the one exception to R2 and R6 applies to it; R17 and R22 apply to the self-hosted path only.
+
+**Consequences delta:**
+- Follow-on work: the epics E70-E74 (the session bound to one guest, the registry of the formats with the Italian electronic identity card first, the guided capture and the local reading by zones, the presence, the match on frames chosen by the server, the policy and the segments, the evidence with its time to live and its purge, the counters and the export of the pilot, the offline qualification toolkit), all behind the flags above.
+- Schema: one migration for the whole plan, `AddSelfHostedIdentityVerification` (E70/F01/US01/T02): the identity columns of `GuestCheckInSessions` and `BiometricVerificationLogs`, and the tables `IdentitySegmentSettings` and `IdentityReviewEvidences`; keys, hashes, codes and times only, never an image or a vector.
+- Pre-launch gates (manual, NF-199): real data collected with explicit rights and the qualification by a separate QA, the pilot of 500 check-ins with a parallel human verification, the final numeric criteria, the DPIA and the legal texts, the licences of the weights, real devices, hosting with the network egress disabled.
+- Risk: a generic browser cannot prove the physical origin of the video; it is qualified before any sale (NF-192).

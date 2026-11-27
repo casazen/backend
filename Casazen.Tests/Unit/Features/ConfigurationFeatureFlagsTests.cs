@@ -134,8 +134,38 @@ public class ConfigurationFeatureFlagsTests
                 "GuestPortalSupplierServices",
                 "GuestPortalAutoReplies",
                 "MarketingGuestInterestAi",
+                // E70/F01/US01/T01: the self-hosted identity verification, the automatic approval in a qualified segment and the evidence for the reviewer, off until the product owner orders them.
+                "CheckInIdentitySelfHosted",
+                "CheckInIdentityAutoApproval",
+                "CheckInIdentityReviewEvidence",
             },
             FeatureFlags.All);
+    }
+
+    /// <summary>
+    /// E70/F01/US01/T01 (D3, data: production stays closed): the three flags of the self-hosted identity verification are off when nothing is configured and in the
+    /// committed appsettings.json, and each follows its own key alone: turning one on never turns another on, nor the legacy <c>CheckInIdentityVerification</c>.
+    /// </summary>
+    [Theory]
+    [InlineData(FeatureFlags.CheckInIdentitySelfHosted)]
+    [InlineData(FeatureFlags.CheckInIdentityAutoApproval)]
+    [InlineData(FeatureFlags.CheckInIdentityReviewEvidence)]
+    public void IsEnabled_SelfHostedIdentityFlags_AreOffByDefault_AndFollowOnlyTheirOwnKey(string flag)
+    {
+        string[] identityFlags =
+        [
+            FeatureFlags.CheckInIdentityVerification, FeatureFlags.CheckInIdentitySelfHosted, FeatureFlags.CheckInIdentityAutoApproval,
+            FeatureFlags.CheckInIdentityReviewEvidence,
+        ];
+        var committed = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(FindRepositoryRoot(), "Casazen.Web", "appsettings.json"), optional: false)
+            .Build();
+
+        Assert.False(Flags(new Dictionary<string, string?>()).IsEnabled(flag));
+        Assert.Equal("False", committed[$"{FeatureFlags.SectionName}:{flag}"]);
+
+        var on = Flags(new Dictionary<string, string?> { [$"{FeatureFlags.SectionName}:{flag}"] = "true" });
+        Assert.Equal([flag], identityFlags.Where(on.IsEnabled));
     }
 
     [Theory]

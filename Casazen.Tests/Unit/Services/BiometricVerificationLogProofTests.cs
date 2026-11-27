@@ -80,12 +80,16 @@ public class BiometricVerificationLogProofTests
         // ADR-013-R2: Verify log only stores metadata, not sensitive biometric data
         // Allowed fields: Id, OrgId, BookingId, GuestId, Outcome, Attempts, ModelName, ModelVersion,
         // ThresholdsJson, OperatorUserId, OperatorNote, CreatedAt, and navigation properties; since E03/F04/US02/T01 also who decided
-        // (Method), the codes of the checks (ReasonsJson), whether the thresholds were provisional and the duration.
+        // (Method), the codes of the checks (ReasonsJson), whether the thresholds were provisional and the duration; since E70/F01/US01/T02 also how the
+        // self-hosted policy decided: the version and the SHA-256 of the policy file (PolicyVersion, PolicyHash), the mode (DecisionMode) and the
+        // shadow outcome (ShadowOutcome) as enums, the id of the format of the registry (FormatId), the coarse family of the browser (Channel) and
+        // the opaque idempotency key of the attempt (IdempotencyKey): versions, hashes, codes and keys only, never an image, a crop or a vector.
         var expectedFields = new[]
         {
             "id", "orgid", "bookingid", "guestid", "outcome", "attempts", "modelname",
             "modelversion", "thresholdsjson", "operatoruserid", "operatornote", "createdat",
             "method", "reasonsjson", "provisional", "durationms",
+            "policyversion", "policyhash", "decisionmode", "shadowoutcome", "formatid", "channel", "idempotencykey",
             "org", "booking", "guest", "operatoruser" // navigation properties
         };
 

@@ -20,7 +20,7 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = CasazenPolicies.VerificationDecision)]
-public class VerificationController(
+public partial class VerificationController(
     IVerificationQueueService verificationService,
     IHostScopeResolver hostScopeResolver,
     IOrgContextResolver orgContextResolver,

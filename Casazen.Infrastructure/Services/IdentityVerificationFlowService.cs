@@ -10,6 +10,7 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Identity;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -448,7 +449,7 @@ public sealed partial class IdentityVerificationFlowService(
                     neutral.Position = 0;
                     var start = System.Diagnostics.Stopwatch.GetTimestamp();
                     var passed = await activePose.VerifyAsync(neutral, turnedSelfie, direction, policy.AcceptThreshold, ct);
-                    var reason = new VerificationReason("active_pose", passed ? VerificationReasons.Results.Passed : VerificationReasons.Results.Failed);
+                    var reason = new VerificationReason(VerificationReasons.Checks.ActivePose, passed ? VerificationReasons.Results.Passed : VerificationReasons.Results.Failed);
                     outcome = outcome with
                     {
                         Reasons = [.. outcome.Reasons, reason],
@@ -1194,6 +1195,8 @@ internal sealed record StoredDocumentPicture(bool? Face, bool? QualityOk, Docume
 /// (<see cref="TwoSided"/>) what each picture showed. A record written before the two-sided document has none of the optional members and reads as a
 /// single picture. No value read on the document. <c>ProofKey</c> is the key the proofs of the numbers (<see cref="StoredDocumentPicture.NumberProof"/>) were made with, the token hash the session
 /// had when its first picture came: a session that gets a new token keeps it, so its proofs still verify; a record without it uses the token hash of the session, as before.
+/// <c>Presence</c> is the presence challenge of the self-hosted flow (E70/F01/US01/T01, <see cref="StoredPresenceChallenge"/>): null on the legacy path and in every
+/// record written before it, which reads exactly as before.
 /// </summary>
 internal sealed record StoredDocumentCheck(
     DocumentCheck Check,
@@ -1205,4 +1208,5 @@ internal sealed record StoredDocumentCheck(
     bool TwoSided = false,
     int VerifyingGuestPosition = 0,
     string? ProofKey = null,
-    StoredPoseChallenge? Pose = null);
+    StoredPoseChallenge? Pose = null,
+    StoredPresenceChallenge? Presence = null);

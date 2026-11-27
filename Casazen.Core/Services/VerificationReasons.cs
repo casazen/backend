@@ -42,6 +42,44 @@ public static class VerificationReasons
 
         /// <summary>The models could not run (not available, timeout, error): the verification goes to the operator.</summary>
         public const string Processing = "processing";
+
+        /// <summary>The head-turn proof of the legacy selfie (E22/F01: the neutral and the turned frame, the direction asked).</summary>
+        public const string ActivePose = "active_pose";
+
+        // E70/F01/US01/T01: the checks of the self-hosted verification (NF-189..NF-194, ADR-013-R17..R19).
+
+        /// <summary>The presence challenge was followed: the moves asked, in their order, before its expiry, for its session and attempt.</summary>
+        public const string PresenceChallenge = "presence_challenge";
+
+        /// <summary>The timing of the sequence is plausible: dense, ordered, and never longer than the time since the challenge was issued.</summary>
+        public const string PresenceTiming = "presence_timing";
+
+        /// <summary>The sequence is continuous: no static replay, no splice of two people.</summary>
+        public const string PresenceContinuity = "presence_continuity";
+
+        /// <summary>Every frame of the sequence holds one face, and only one.</summary>
+        public const string PresenceSingleFace = "presence_single_face";
+
+        /// <summary>The frames are good enough to be judged (light, focus, size of the face).</summary>
+        public const string PresenceQuality = "presence_quality";
+
+        /// <summary>The document fits the layout of its format: the whole card, its edges, its orientation, the portrait where the layout expects it.</summary>
+        public const string DocumentLayout = "document_layout";
+
+        /// <summary>The sides of the document are the expected ones: no side repeated, no wrong side.</summary>
+        public const string DocumentSide = "document_side";
+
+        /// <summary>The fields read agree across the sides, the dates and the check digits (a conflict on an identifying field goes to review).</summary>
+        public const string DocumentCoherence = "document_coherence";
+
+        /// <summary>The format of the document is in the registry of the formats.</summary>
+        public const string DocumentFormat = "document_format";
+
+        /// <summary>The format and the channel give the level of document assurance the segment requires.</summary>
+        public const string AssuranceLevel = "assurance_level";
+
+        /// <summary>The segment is in observation: the decision of the policy is the shadow decision and a person decides.</summary>
+        public const string ObservationMode = "observation_mode";
     }
 
     /// <summary>The results of a check.</summary>

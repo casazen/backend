@@ -45,6 +45,10 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.GuestCheckIn, 10, OneMinute, "CheckIn:RateLimitPermitLimit", PartitionByToken: true),
         new(RateLimitPolicies.GuestCheckInSubmit, 3, OneMinute, "CheckIn:SubmitRateLimitPermitLimit", PartitionByToken: true),
 
+        // The self-hosted identity step (E70/F01/US01/T01): the opening and the presence challenge, and the upload of a presence sequence, per client IP and token.
+        new(RateLimitPolicies.GuestIdentity, 30, OneMinute, PartitionByToken: true),
+        new(RateLimitPolicies.GuestIdentityUpload, 6, OneMinute, PartitionByToken: true),
+
         // The guest at the door (E22/F01/US02/T01): a booking code or a surname and a date open the check-in link of a stay: 5 a minute per client IP and door token.
         new(RateLimitPolicies.PublicDoorCheckIn, 5, OneMinute, PartitionByToken: true, TokenRouteValue: DoorTokenRouteValue),
         new(RateLimitPolicies.PublicTouristTaxCalc, 30, OneMinute, "SeoTouristTax:RateLimitPermitLimit"),

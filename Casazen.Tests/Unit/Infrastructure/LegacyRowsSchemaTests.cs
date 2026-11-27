@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
+using IdentityMigrationTests = Casazen.Tests.Integration.AddSelfHostedIdentityVerificationMigrationPostgresTests;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -41,6 +42,9 @@ public class LegacyRowsSchemaTests
     private const string Db01 = "AddPublicSiteFontAndThemeIds";
     private const string Db11a = "AddPropertySiteProfile";
     private const string E40 = "AddHostSurfaces";
+    private const string E70 = "AddSelfHostedIdentityVerification";
+    private const string E70SessionRows = nameof(IdentityMigrationTests) + ".Session";
+    private const string E70LogRows = nameof(IdentityMigrationTests) + ".Log";
     private const string Latest = "*";
 
     private static readonly Regex InsertShape = new(
@@ -66,6 +70,8 @@ public class LegacyRowsSchemaTests
         [nameof(LegacyOrgInvitationRows)] = LegacyOrgInvitationRows.Statement(new OrgInvitation()),
         [RentScheduleRows] = LegacyRentRows.ScheduleStatement(new Casazen.Core.Entities.RentSchedule()),
         [RentInstallmentRows] = LegacyRentRows.InstallmentStatement(new RentLedgerEntry()),
+        [E70SessionRows] = IdentityMigrationTests.LegacySessionStatement(Guid.Empty, Guid.Empty, Guid.Empty),
+        [E70LogRows] = IdentityMigrationTests.LegacyLogStatement(Guid.Empty, Guid.Empty, Guid.Empty, Guid.Empty),
     };
 
     private static IReadOnlyList<SchemaStep> Steps => LazySteps.Value;
@@ -127,6 +133,12 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyOrgRows), Db11a },
         { nameof(LegacyPropertyRows), Db11a },
         { nameof(LegacyOrgRows), E40 },
+        { nameof(LegacyOrgRows), E70 },
+        { nameof(LegacyPropertyRows), E70 },
+        { nameof(LegacyGuestRows), E70 },
+        { nameof(LegacyBookingRows), E70 },
+        { E70SessionRows, E70 },
+        { E70LogRows, E70 },
     };
 
     /// <summary>The first migration after which each helper is valid (see the summary of each helper).</summary>
