@@ -113,6 +113,7 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
     [InlineData("verification flag off")]
     [InlineData("self-hosted flag off")]
     [InlineData("identity step not opened")]
+    [InlineData("assisted path chosen")]
     [InlineData("verification closed")]
     [InlineData("consent missing")]
     [InlineData("consent text changed")]
@@ -134,6 +135,9 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
                 break;
             case "self-hosted flag off":
                 world.Flags.Set(FeatureFlags.CheckInIdentitySelfHosted, false);
+                break;
+            case "assisted path chosen":
+                session.IdentityChoice = IdentityChoices.Assisted;
                 break;
             case "identity step not opened":
                 session.IdentityOpenedAt = null;

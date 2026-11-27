@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Features;
+using Casazen.Core.Identity;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Microsoft.AspNetCore.DataProtection;
@@ -39,9 +40,10 @@ public sealed partial class IdentityVerificationFlowService : IIdentityPresenceF
         var limits = identityOptions?.Value.Presence ?? new IdentityPresenceOptions();
         return WithLockedPoseSessionAsync<PresenceChallengeIssue?>(session, null, async () =>
         {
-            // Opened and not closed; then what the legacy step also asks of a selfie: the consent is the current one, the document step is complete, the verification
-            // is not with a person (a refusal, a minor, an organization that does not offer it, the attempts used) and has not passed.
-            if (session.IdentityOpenedAt is null || session.IdentityClosedAt is not null)
+            // Opened and not closed, and the guest did not choose a person (the assisted path is never handed an automatic challenge); then what the legacy step
+            // also asks of a selfie: the consent is the current one, the document step is complete, the verification is not with a person (a refusal, a minor, an
+            // organization that does not offer it, the attempts used) and has not passed.
+            if (session.IdentityOpenedAt is null || session.IdentityClosedAt is not null || session.IdentityChoice == IdentityChoices.Assisted)
                 return null;
 
             var state = await GetStateAsync(session, ct);
