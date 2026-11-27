@@ -48,6 +48,15 @@ internal static class IdentityPolicyTestFiles
         return File.ReadAllText(Path.Combine(SourceFolder(), ShippedFileName));
     }
 
+    /// <summary>
+    /// The text of the candidate policy file <paramref name="version"/> (<c>identity-policy-2026.11-2</c> or <c>-3</c>, IDENT-TESTPOLICY): the committed policy, not provisional, with the three
+    /// similarity thresholds of the candidate. No pin of a candidate is committed: the tests compute its canonical hash from the file.
+    /// </summary>
+    public static string CandidateText(string version)
+    {
+        return File.ReadAllText(Path.Combine(SourceFolder(), version + ".json"));
+    }
+
     /// <summary>The committed policy with the members at <paramref name="edits"/> set to a JSON literal (a null literal removes the member), written compactly.</summary>
     public static string Edited(params (string Path, string? Literal)[] edits)
     {
@@ -632,6 +641,78 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         {
             return new IdentityConfigurationFingerprint(ProviderFor(IdentityPolicyTestFiles.ShippedText(), fileName: "again.json"), new FakeModelStore(snapshot)).Current()!;
         }
+    }
+
+    // ─── The candidate policy files (IDENT-TESTPOLICY, NF-194) ───────────────────────────────────────────
+
+    /// <summary>
+    /// AC1: each candidate policy file is the committed policy with exactly five members different: its version (the name of its file), the end of the provisional state and the three
+    /// similarity thresholds. The numbers are candidates to compare on real runs, never a calibration (the qualification toolkit proposes the final policy as a new file). Every other
+    /// limit and rule is the committed one; when another change adds a member to the committed policy this fails until the candidates are made again from it.
+    /// </summary>
+    [Theory]
+    [InlineData("identity-policy-2026.11-2", "0.5", "0.363", "0.3")]
+    [InlineData("identity-policy-2026.11-3", "0.4", "0.3", "0.25")]
+    public void CandidatePolicyFile_IsTheCommittedPolicyWithOnlyTheVersionTheProvisionalFlagAndTheThreeThresholdsChanged(string version, string accept, string reviewFloor, string minEachFrame)
+    {
+        var expected = IdentityPolicyTestFiles.Edited(
+            ("version", $"\"{version}\""),
+            ("provisional", "false"),
+            ("match.accept", accept),
+            ("match.reviewFloor", reviewFloor),
+            ("match.minEachFrame", minEachFrame));
+        var text = IdentityPolicyTestFiles.CandidateText(version);
+
+        Assert.True(IdentityConfigurationJson.TryCanonicalize(Encoding.UTF8.GetBytes(expected), out var expectedCanonical));
+        Assert.True(IdentityConfigurationJson.TryCanonicalize(Encoding.UTF8.GetBytes(text), out var actualCanonical));
+        Assert.Equal(expectedCanonical, actualCanonical);
+    }
+
+    /// <summary>
+    /// AC2 and AC3, the way a candidate is chosen and the only way: with the two variables (<c>IdentityVerification__PolicyFile</c> and <c>IdentityVerification__PolicySha256</c>, here as the
+    /// configuration keys they bind to) over the committed <c>appsettings.json</c>, the services of the application give the ready, non-provisional candidate read from the build output,
+    /// with its canonical hash and its thresholds; with the committed defaults alone they give the committed provisional policy and its pin, as before.
+    /// </summary>
+    [Theory]
+    [InlineData("identity-policy-2026.11-2", 0.5, 0.363, 0.3)]
+    [InlineData("identity-policy-2026.11-3", 0.4, 0.3, 0.25)]
+    public void AddCasazenServices_TheTwoVariables_SelectTheCandidatePolicy_AndTheCommittedDefaultsKeepTheProvisionalOne(string version, double accept, double reviewFloor, double minEachFrame)
+    {
+        var hash = IdentityPolicyProvider.CanonicalSha256(Encoding.UTF8.GetBytes(IdentityPolicyTestFiles.CandidateText(version)))!;
+        var variables = new Dictionary<string, string?>
+        {
+            ["IdentityVerification:PolicyFile"] = $"IdentityPolicies/{version}.json",
+            ["IdentityVerification:PolicySha256"] = hash,
+        };
+
+        var candidate = SnapshotOfTheServices(variables);
+        var committed = SnapshotOfTheServices(new Dictionary<string, string?>());
+
+        Assert.True(candidate.IsReady);
+        Assert.False(candidate.Provisional);
+        var policy = candidate.Policy!;
+        Assert.Equal((version, false, hash), (policy.Version, policy.Provisional, candidate.Hash));
+        Assert.Equal((accept, reviewFloor, minEachFrame), (policy.Match.Accept, policy.Match.ReviewFloor, policy.Match.MinEachFrame));
+        Assert.True(committed.IsReady);
+        Assert.True(committed.Provisional);
+        Assert.Equal(IdentityPolicyTestFiles.ShippedCanonicalHash, committed.Hash);
+        Assert.NotEqual(committed.Hash, candidate.Hash);
+    }
+
+    /// <summary>What the services of the application, built over the committed <c>appsettings.json</c> and the configuration <paramref name="variables"/> on top of it, make of the policy.</summary>
+    private static IdentityPolicySnapshot SnapshotOfTheServices(Dictionary<string, string?> variables)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(IdentityPolicyTestFiles.RepositoryRoot(), "Casazen.Web", "appsettings.json"), optional: false)
+            .AddInMemoryCollection(variables)
+            .Build();
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddLogging();
+        services.AddCasazenServices();
+        using var provider = services.BuildServiceProvider();
+
+        return provider.GetRequiredService<IdentityPolicyProvider>().Snapshot;
     }
 
     private static void AssertUnavailable(IdentityPolicySnapshot snapshot, string reasonCode)
