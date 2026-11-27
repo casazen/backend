@@ -544,6 +544,136 @@ public sealed class DocumentStepSelfHostedTests
         Assert.Empty(world.Storage.Objects);
     }
 
+    /// <summary>
+    /// Proof (data): every way to a person from the document step (the refusals beyond the maximum, a format the registry does not know, a model that fails, a policy or a registry that
+    /// cannot be used) takes with it the picture already kept of the other side: its object leaves the private storage and its row is marked deleted, whatever the reason.
+    /// </summary>
+    [Theory]
+    [InlineData("unreadable", IdentityOutcomeCodes.Review)]
+    [InlineData("unsupported", IdentityOutcomeCodes.FormatUnsupported)]
+    [InlineData("technical", IdentityOutcomeCodes.TechnicalError)]
+    [InlineData("unavailable", IdentityOutcomeCodes.Unavailable)]
+    public async Task DocumentStep_EveryWayToAPerson_TakesTheSideAlreadyKept(string way, string outcome)
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        world.Zoned.Fields[DocumentSide.Front] = FrontFields();
+        Assert.True((await world.Flow().SubmitDocumentAsync(session, new MemoryStream(Picture(DocumentSide.Front)), DocumentSide.Front, Ct)).DocumentStored);
+        Assert.Single(world.Storage.Objects);
+        Assert.Single(await world.Db.DocumentImages.IgnoreQueryFilters().Where(image => image.DeletedAt == null).ToListAsync(Ct));
+
+        var back = Picture(DocumentSide.Back);
+        switch (way)
+        {
+            case "unsupported":
+                world.Mrz.Add(back, CieMrz(read =>
+                {
+                    read.DocumentCode = "P<";
+                    read.MrzType = "TD3";
+                }));
+                break;
+            case "technical":
+                world.Mrz.Add(back, CieMrz());
+                world.Detector.Fail = new BiometricUnavailableException();
+                break;
+            case "unavailable":
+                world.Mrz.Add(back, CieMrz());
+                world.Break("policy-missing");
+                break;
+        }
+
+        if (way == "unreadable")
+        {
+            // The back is refused as many times as it may be captured again, and once more: a new file each time, so each one counts.
+            var maximum = world.Policies.Snapshot.Policy!.Document.MaxRecapturesPerSide;
+            for (var refusal = 0; refusal <= maximum; refusal++)
+                await world.Flow().SubmitDocumentAsync(session, new MemoryStream(PlainPicture(100 + refusal)), DocumentSide.Back, Ct);
+        }
+        else
+        {
+            await world.Flow().SubmitDocumentAsync(session, new MemoryStream(back), DocumentSide.Back, Ct);
+        }
+
+        var saved = await world.ReadBackAsync(session.Id);
+        Assert.Equal(outcome, saved.IdentityOutcomeCode);
+        Assert.NotNull(saved.IdentityClosedAt);
+        Assert.Empty(world.Storage.Objects);
+        Assert.Empty(await world.Db.DocumentImages.IgnoreQueryFilters().Where(image => image.DeletedAt == null).ToListAsync(Ct));
+    }
+
+    // ---- AC1: the codes of the capture checks refuse a picture too, and so does a picture that cannot be decoded ----------------------------------------------------------------
+
+    [Fact]
+    public async Task DocumentStep_ACaptureTheAgentFindsPoor_IsRefusedWithItsGuidance_AndIsNotKept()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        world.Agent.Codes = [CaptureGuidanceCodes.MoreLight, CaptureGuidanceCodes.AvoidGlare];
+
+        var result = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(Picture(DocumentSide.Front)), DocumentSide.Front, Ct);
+
+        // A card the geometry finds whole is still refused when the capture checks of today ask for more light or less glare: any guidance code refuses, and the guest is told that one.
+        Assert.False(result.Acceptable);
+        Assert.Equal([CaptureGuidanceCodes.MoreLight, CaptureGuidanceCodes.AvoidGlare], result.GuidanceCodes);
+        Assert.False(result.DocumentStored);
+        Assert.Empty(world.Storage.Objects);
+        var saved = await world.ReadBackAsync(session.Id);
+        Assert.Equal(0, saved.BiometricAttempts);
+        Assert.Null(ReadCheck(saved).Front);
+        Assert.Equal(1, ReadCheck(saved).Refusals!["front"]);
+        Assert.Null(saved.OperatorRequestedAt);
+    }
+
+    [Fact]
+    public async Task DocumentStep_APictureThatCannotBeDecoded_IsRefusedAsRetakePicture_AndCounted()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+
+        var result = await world.Flow().SubmitDocumentAsync(session, new MemoryStream("not a picture at all, only text"u8.ToArray()), DocumentSide.Front, Ct);
+
+        Assert.False(result.Acceptable);
+        Assert.Equal([CaptureGuidanceCodes.RetakePicture], result.GuidanceCodes);
+        Assert.False(result.DocumentStored);
+        var saved = await world.ReadBackAsync(session.Id);
+        Assert.Equal(0, saved.BiometricAttempts);
+        Assert.Equal(1, ReadCheck(saved).Refusals!["front"]);
+        Assert.Null(saved.OperatorRequestedAt);
+        Assert.Empty(world.Storage.Objects);
+    }
+
+    // ---- ADR-013-R6: a property that keeps no document keeps nothing, with the flow on too ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task DocumentStep_ForAPropertyThatKeepsNoDocument_KeepsNothing_AndLeavesTheCoherenceUnknown()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.StayAsync(GivenNames, Surname, ready: true, propertyId: await world.SwissPropertyAsync());
+        var back = Picture(DocumentSide.Back);
+        world.Mrz.Add(back, CieMrz());
+        world.Zoned.Fields[DocumentSide.Front] = FrontFields();
+
+        var first = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(Picture(DocumentSide.Front)), DocumentSide.Front, Ct);
+        var second = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(back), DocumentSide.Back, Ct);
+
+        // No picture and no row (the object storage and the table of the documents are empty), and the step is complete by its flags: both sides passed their checks and the format is known.
+        Assert.True(first.DocumentNotArchived);
+        Assert.False(first.DocumentStored);
+        Assert.False(second.DocumentStored);
+        Assert.True(second.Acceptable);
+        Assert.Empty(world.Storage.Objects);
+        Assert.Empty(await world.Db.DocumentImages.IgnoreQueryFilters().ToListAsync(Ct));
+        var saved = await world.ReadBackAsync(session.Id);
+        var check = ReadCheck(saved);
+        Assert.True(check.Front!.GeometryOk);
+        Assert.True(check.Back!.GeometryOk);
+        Assert.Equal("it-cie-3.0", saved.IdentityFormatId);
+
+        // The two sides were never in memory together: the checks across them are unknown, never a pass.
+        Assert.Null(check.Coherence);
+        Assert.True((await world.Flow().GetStateAsync(session, Ct)).DocumentChecked);
+    }
+
     // ---- Privacy: flags and hashes, never a value --------------------------------------------------------------------------------------------------------------------------
 
     /// <summary>
@@ -584,6 +714,33 @@ public sealed class DocumentStepSelfHostedTests
             ["classifiedSide", "dHash", "face", "geometryOk", "mrz", "numberProof", "qualityOk"],
             json.RootElement.GetProperty("front").EnumerateObject().Select(member => member.Name).Order());
         Assert.NotEmpty(world.Logs);
+
+        // And a hand-off to a person with a document that says its values (a passport: its format is not in the registry): the answer, the state, the record, the alert and every line of
+        // the log hold none of them.
+        var passport = Picture(DocumentSide.Back, new DocumentImageFactory.Placement(90, 70, 480, 303));
+        world.Mrz.Add(passport, CieMrz(read =>
+        {
+            read.DocumentType = "Passport";
+            read.DocumentCode = "P<";
+            read.MrzType = "TD3";
+        }));
+
+        var handedOff = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(passport), DocumentSide.Back, Ct);
+
+        Assert.Equal([IdentityGuidanceCodes.DocumentFormatUnsupported], handedOff.GuidanceCodes);
+        var closed = await world.ReadBackAsync(session.Id);
+        Assert.Equal(IdentityOutcomeCodes.FormatUnsupported, closed.IdentityOutcomeCode);
+        var answer = JsonSerializer.Serialize(handedOff.GuidanceCodes, FlowJson);
+        var state = JsonSerializer.Serialize(await world.Flow().GetStateAsync(session, Ct), FlowJson);
+        Assert.NotEmpty(world.Alerts);
+        foreach (var value in values)
+        {
+            Assert.DoesNotContain(value, closed.DocumentCheckJson!, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(value, answer, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(value, state, StringComparison.OrdinalIgnoreCase);
+            Assert.All(world.Alerts, alert => Assert.DoesNotContain(value, alert.Reason, StringComparison.OrdinalIgnoreCase));
+            Assert.All(world.Logs, line => Assert.DoesNotContain(value, line, StringComparison.OrdinalIgnoreCase));
+        }
     }
 
     // ---- AC6: with the flow off nothing of it runs -------------------------------------------------------------------------------------------------------------------------
@@ -757,6 +914,8 @@ public sealed class DocumentStepSelfHostedTests
 
         public SwitchableDetector Detector { get; }
 
+        public ScriptedAgent Agent { get; } = new();
+
         public ScriptedMrz Mrz { get; } = new();
 
         public ScriptedZonedReader Zoned { get; } = new();
@@ -834,7 +993,7 @@ public sealed class DocumentStepSelfHostedTests
             var inspector = new DocumentGeometryInspector(Detector, Options.Create(new BiometricModelOptions()));
             return new IdentityVerificationFlowService(
                 context ?? Db,
-                new ScriptedAgent(),
+                Agent,
                 Alerts,
                 Mock.Of<IAccessCodeService>(),
                 Mock.Of<IEmailQueue>(),
@@ -861,7 +1020,30 @@ public sealed class DocumentStepSelfHostedTests
             return await StayAsync(GivenNames, Surname, ready: true);
         }
 
-        public async Task<GuestCheckInSession> StayAsync(string firstName, string lastName, bool ready = false)
+        /// <summary>A property in Switzerland whose municipality the host did not confirm: it keeps no document (the prudent reading of ADR-013-R6, the one of Ticino).</summary>
+        public async Task<Guid> SwissPropertyAsync()
+        {
+            var id = Guid.NewGuid();
+            Db.Properties.Add(new Property
+            {
+                Id = id,
+                OrgId = OrgId,
+                OwnerId = "auth0|owner",
+                Name = "Casa Ticino",
+                Address = "Via Test 1",
+                City = "Lugano",
+                PostalCode = "6900",
+                Country = "CH",
+                Bedrooms = 1,
+                Bathrooms = 1,
+                MaxGuests = 2,
+                NightlyRate = 100m,
+            });
+            await Db.SaveChangesAsync(Ct);
+            return id;
+        }
+
+        public async Task<GuestCheckInSession> StayAsync(string firstName, string lastName, bool ready = false, Guid? propertyId = null)
         {
             var guest = new Guest
             {
@@ -876,7 +1058,7 @@ public sealed class DocumentStepSelfHostedTests
             {
                 Id = Guid.NewGuid(),
                 OrgId = OrgId,
-                PropertyId = _propertyId,
+                PropertyId = propertyId ?? _propertyId,
                 GuestId = guest.Id,
                 CheckInDate = new DateTime(2026, 11, 30),
                 CheckOutDate = new DateTime(2026, 12, 2),
@@ -977,11 +1159,14 @@ public sealed class DocumentStepSelfHostedTests
         }
     }
 
-    /// <summary>An agent that finds every capture good: the quality of the pictures is the business of the geometry here.</summary>
+    /// <summary>An agent that finds every capture good unless it is told otherwise: the quality of the pictures is the business of the geometry here.</summary>
     private sealed class ScriptedAgent : IIdentityVerificationAgent
     {
+        /// <summary>The guidance the agent gives to every capture: none, or what a poor capture gets (<c>more_light</c>, <c>avoid_glare</c>...).</summary>
+        public IReadOnlyList<string> Codes { get; set; } = [];
+
         public Task<CaptureAssessment> AssessCaptureAsync(Stream image, CaptureKind kind, CancellationToken ct) =>
-            Task.FromResult(new CaptureAssessment(true, [], [], true));
+            Task.FromResult(new CaptureAssessment(Codes.Count == 0, Codes, [], true));
 
         public Task<IdentityVerificationOutcome> VerifyAsync(IdentityVerificationRequest request, CancellationToken ct) =>
             throw new NotSupportedException("The document step runs no verification.");
