@@ -176,7 +176,7 @@ public sealed class LocalPrefillTests
         var mrz = new ScriptedMrz();
         mrz.Add(back, CieMrz());
         var logs = new List<string>();
-        var reader = new LocalCheckInDocumentReader(mrz, new Ocr(), new ServiceCollection().BuildServiceProvider(), new ListLogger(logs));
+        var reader = new LocalCheckInDocumentReader(mrz, new Ocr(), new ZonedPrefillServices(new ServiceCollection().BuildServiceProvider()), new ListLogger(logs));
 
         var result = await reader.ReadZonedAsync(new MemoryStream(back), Ct);
 
@@ -451,7 +451,7 @@ public sealed class LocalPrefillTests
 
         public LocalCheckInDocumentReader Reader()
         {
-            return new LocalCheckInDocumentReader(Mrz, Ocr, _provider.CreateScope().ServiceProvider, new ListLogger(Logs));
+            return new LocalCheckInDocumentReader(Mrz, Ocr, new ZonedPrefillServices(_provider.CreateScope().ServiceProvider), new ListLogger(Logs));
         }
     }
 

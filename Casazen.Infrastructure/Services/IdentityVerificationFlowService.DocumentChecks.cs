@@ -52,9 +52,10 @@ public sealed partial class IdentityVerificationFlowService
 
     /// <summary>
     /// The services of the document step are all there. The application registers them (the part <c>DocumentStep</c> and the ones it relies on); a flow built by hand without them (a
-    /// tool, a test of another task) reads the document as it always did, and a policy or a registry that is registered but cannot be used is a person, never a pass.
+    /// tool, a test of another task) reads the document as it always did, and a policy or a registry that is registered but cannot be used is a person, never a pass. That the application
+    /// does register them all is proved by <c>DocumentStepRegistrationTests</c>: a service that stopped being registered would turn the checks off in silence, and that test fails.
     /// </summary>
-    private bool DocumentChecksWired =>
+    internal bool DocumentChecksWired =>
         documentPictures is not null && sideClassifier is not null && coherenceChecker is not null && formats is not null && identityPolicy is not null;
 
     /// <summary>The checks of the self-hosted document step run: the flow is on (<see cref="SelfHostedOn"/>) and its services are there (<see cref="DocumentChecksWired"/>).</summary>

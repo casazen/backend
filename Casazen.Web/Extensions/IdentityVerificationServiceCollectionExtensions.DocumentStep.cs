@@ -15,5 +15,8 @@ public static partial class IdentityVerificationServiceCollectionExtensions
         // Scoped: it holds the reader of the zones, which is scoped (it reads the MRZ through IMrzExtractionService), and the inspector of the geometry, a singleton. It keeps nothing of a
         // picture: each picture is opened for a call and zeroed when the call ends.
         services.AddScoped<DocumentPictureAnalyzer>();
+
+        // What the zoned prefill takes from the container only when it is asked for (the reading of today needs none of it): the one holder of the container of the identity namespace.
+        services.AddScoped<ZonedPrefillServices>();
     }
 }

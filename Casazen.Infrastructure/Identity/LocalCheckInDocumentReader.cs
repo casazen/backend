@@ -2,7 +2,6 @@ using System.Globalization;
 using Casazen.Core.Identity;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Identity;
@@ -24,7 +23,7 @@ namespace Casazen.Infrastructure.Identity;
 public sealed class LocalCheckInDocumentReader(
     IMrzExtractionService mrz,
     IDocumentOcrService ocr,
-    IServiceProvider? services = null,
+    ZonedPrefillServices? zonedServices = null,
     ILogger<LocalCheckInDocumentReader>? logger = null) : ICheckInDocumentReader
 {
     public async Task<CheckInDocumentRead> ReadAsync(Stream content, CancellationToken cancellationToken = default)
@@ -145,12 +144,8 @@ public sealed class LocalCheckInDocumentReader(
     {
         try
         {
-            if (services?.GetService<DocumentPictureAnalyzer>() is not { } pictures
-                || services.GetService<DocumentFormatRegistry>() is not { } formats
-                || services.GetService<DocumentSideClassifier>() is not { } sides)
-            {
+            if (zonedServices?.Pictures is not { } pictures || zonedServices.Formats is not { } formats || zonedServices.Sides is not { } sides)
                 return [];
-            }
 
             var format = machine is null
                 ? DocumentPictureAnalyzer.DefaultCardFormat(formats.All)
