@@ -143,6 +143,19 @@ police, question 4 of the draft request):
   retention of the Alloggiati data). No image of a document is kept for a Swiss property (decision D6).
 - The file is rebuilt on every request and never stored; its download is never cached (`Cache-Control: private, no-store`) and asks
   `guest.read`.
+- **The full document numbers of the notified family members.** `GET /api/alloggiati/{bookingId}/stay-guests/document-numbers` asks `guest.read` and the check of the booking and of its org of the
+  other stay endpoints (another org's booking is a 404, one the caller may not read a 403). It answers the number of a single guest and of a head, as ever, and, **in a stay of a property in
+  Ticino** (§ 1.1), the number of every **adult** family or group member the file notifies on their own row, because the Ticino check-in stores it (NF-132, `AddSwissGuestFields`): the host's edit
+  dialog fills each guest by `position` from this answer, so the number of the second adult is no longer typed again. There is no second rule for «who is notified»:
+  `IStayGuestService.GetDocumentNumberPositionsAsync` asks the one check of the jurisdiction (`IsPropertyInTicinoAsync`) and `TicinoPoliceFile.NotifiedAdultPositions`, which is
+  `NotifiedPositions` (the predicate of the check-in and of the save of the guests) limited to the adults.
+  - **Never** the number of a minor family or group member (not even in a stay with no adult, where the file notifies each minor; a minor who is a single guest keeps the number it always had),
+    of a guest with no number stored, or of a member of a group of six or more (only its leader is a row).
+  - The `position` filter works as before. A stay of an Italian property, or of a Swiss property outside Ticino, answers exactly what it always answered (its single guests and heads).
+  - The audit line holds the user, the booking and the **positions**, never a number. The shape of the answer and the guest summary are unchanged: the summary asks this answer when a row has
+    `requiresDocument` and a masked number (the head of the stay, whose number the Ticino check-in always stores), and the dialog reads the kind, the place of issue and the masked number of a
+    member from the guest of the check-in wizard of the same position.
+  - Tests: `AlloggiatiDocumentNumbersTests`, `TicinoPoliceFileTests.NotifiedAdultPositions_*`.
 
 ## 8. The alerts of the 24 hours: what they are
 

@@ -408,6 +408,24 @@ public static class TicinoPoliceFile
     }
 
     /// <summary>
+    /// The positions of the <b>adults</b> among <see cref="NotifiedPositions"/> (18 or more at <paramref name="arrival"/>): the guests whose document the check-in stores because the file
+    /// notifies them on their own row, family and group members included. Never a minor, not even in a stay of minors only, where the file notifies each minor; never a member of a group
+    /// of six or more, whose leader is the only row. It is <see cref="NotifiedPositions"/> and nothing else that decides which guests these are: the host's edit dialog reads their numbers
+    /// through <c>GET api/alloggiati/{bookingId}/stay-guests/document-numbers</c> (a single guest and a head have their document by their kind; the adult members of a stay of Ticino
+    /// have it because the file notifies them).
+    /// </summary>
+    public static IReadOnlySet<int> NotifiedAdultPositions(IEnumerable<(int Position, StayGuestType Type, DateOnly? BirthDate)> guests, DateOnly arrival)
+    {
+        ArgumentNullException.ThrowIfNull(guests);
+        var all = guests.ToList();
+        var notified = NotifiedPositions(all, arrival);
+        return all
+            .Where(g => notified.Contains(g.Position) && g.BirthDate is { } born && AgeAt(born, arrival) >= AdultAge)
+            .Select(g => g.Position)
+            .ToHashSet();
+    }
+
+    /// <summary>
     /// The members of the group of a stay for its sheet (decision D11), in the order of the check-in (the head of group first when the check-in put it
     /// first); null when the stay is not a group of <see cref="GroupMinSize"/> or more. A datum the check-in does not have stays empty.
     /// </summary>

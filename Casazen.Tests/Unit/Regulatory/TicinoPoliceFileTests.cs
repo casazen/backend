@@ -395,6 +395,43 @@ public class TicinoPoliceFileTests
         Assert.Equal([0, 1], minors.Order());
     }
 
+    // The guests whose document the host may read in a stay of Ticino besides the single guests and the heads: the ADULTS the file notifies, so never a minor (the file notifies the minors of a stay
+    // with no adult, which are not in this answer), never a guest of unknown age, and in a group of six or more nobody but the leader.
+    [Fact]
+    public void NotifiedAdultPositions_AreTheAdultsTheFileNotifies_NeverAMinor_NeverAGuestOfUnknownAge()
+    {
+        var arrival = new DateOnly(2026, 11, 19);
+
+        var family = TicinoPoliceFile.NotifiedAdultPositions(
+            [(0, StayGuestType.HeadOfFamily, new DateOnly(1980, 1, 1)), (1, StayGuestType.FamilyMember, new DateOnly(1982, 6, 6)), (2, StayGuestType.FamilyMember, new DateOnly(2017, 3, 1)),
+             (3, StayGuestType.FamilyMember, new DateOnly(2008, 11, 19)), (4, StayGuestType.FamilyMember, new DateOnly(2008, 11, 20)), (5, StayGuestType.FamilyMember, null)],
+            arrival);
+
+        // The head, the second adult and the guest who turns 18 on the day of the arrival; the child, the one who turns 18 the day after and the guest with no birth date are not.
+        Assert.Equal([0, 1, 3], family.Order());
+
+        // A stay of minors only: the file notifies each of them, and none of them is an adult.
+        var minors = TicinoPoliceFile.NotifiedAdultPositions(
+            [(0, StayGuestType.SingleGuest, new DateOnly(2010, 1, 1)), (1, StayGuestType.SingleGuest, new DateOnly(2012, 1, 1))], arrival);
+        Assert.Equal([0, 1], TicinoPoliceFile.NotifiedPositions(
+            [(0, StayGuestType.SingleGuest, new DateOnly(2010, 1, 1)), (1, StayGuestType.SingleGuest, new DateOnly(2012, 1, 1))], arrival).Order());
+        Assert.Empty(minors);
+
+        // A group of six: only the leader is a row of the file, so only the leader can be in the answer, and the members are not (adults or not).
+        var group = TicinoPoliceFile.NotifiedAdultPositions(
+            [(0, StayGuestType.HeadOfGroup, new DateOnly(1975, 1, 1)), (1, StayGuestType.GroupMember, new DateOnly(1980, 1, 1)), (2, StayGuestType.GroupMember, new DateOnly(1981, 1, 1)),
+             (3, StayGuestType.GroupMember, new DateOnly(1982, 1, 1)), (4, StayGuestType.GroupMember, new DateOnly(1983, 1, 1)), (5, StayGuestType.GroupMember, new DateOnly(2015, 1, 1))],
+            arrival);
+        Assert.Equal([0], group.Order());
+
+        // A group of five is not a group: every adult is a row.
+        var smallGroup = TicinoPoliceFile.NotifiedAdultPositions(
+            [(0, StayGuestType.HeadOfGroup, new DateOnly(1975, 1, 1)), (1, StayGuestType.GroupMember, new DateOnly(1980, 1, 1)), (2, StayGuestType.GroupMember, new DateOnly(1981, 1, 1)),
+             (3, StayGuestType.GroupMember, new DateOnly(1982, 1, 1)), (4, StayGuestType.GroupMember, new DateOnly(2015, 1, 1))],
+            arrival);
+        Assert.Equal([0, 1, 2, 3], smallGroup.Order());
+    }
+
     // ─── D11: groups of six or more and minors without an adult ─────────────────────────────────────────
 
     [Fact]

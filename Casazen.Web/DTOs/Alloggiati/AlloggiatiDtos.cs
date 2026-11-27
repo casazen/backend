@@ -371,7 +371,10 @@ public class AlloggiatiRowCodesDto
     public string? DocumentIssuePlace { get; set; }
 }
 
-/// <summary>Full document number of a guest of the stay (CO-09: shown on an explicit request of the host, audited).</summary>
+/// <summary>
+/// Full document number of a guest of the stay (CO-09: shown on an explicit request of the host, audited). It is the number of a single guest or a head and, in a stay of a property in
+/// canton Ticino (NF-132), of every adult family or group member the police file notifies; never of a minor and never of a guest with no number stored. The <see cref="Position"/> says whose.
+/// </summary>
 public class StayGuestDocumentNumberDto
 {
     public int Position { get; set; }
