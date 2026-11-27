@@ -101,6 +101,13 @@ public static class VerificationReasons
         public const string BirthDateMismatch = "birth_date_mismatch";
         public const string DocumentNumberMismatch = "document_number_mismatch";
         public const string NationalityMismatch = "nationality_mismatch";
+
+        /// <summary>
+        /// A value declared for the booking (the names, the birth date, the document number or the citizenship) differs from the document: a known conflict of the
+        /// self-hosted verification (<c>document_coherence</c>), a person decides (IDENT-DECLARED).
+        /// </summary>
+        public const string BookingMismatch = "booking_mismatch";
+
         public const string Unavailable = "unavailable";
         public const string Timeout = "timeout";
         public const string Error = "error";

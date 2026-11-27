@@ -15,7 +15,11 @@ namespace Casazen.Infrastructure.Identity;
 /// The calendar day of the check-in of the stay (a date, not an instant: the caller takes it from <c>RomeCalendar</c> on the injected <c>TimeProvider</c>). A document
 /// that expires before this day is expired; a birth after it, or more than 120 years before it, is impossible.
 /// </param>
-/// <param name="Declared">The first and last names, the date of birth, the document number and the citizenship the guest typed, or null while nothing is typed.</param>
+/// <param name="Declared">
+/// What was declared for the guest the session verifies: the first and last names, the date of birth, the document number and the citizenship (typed in the data
+/// step, or the record of the booker the host or the channel filled), or null while nothing is declared. A field with nothing declared has nothing to be compared
+/// with: it is <c>not_applicable</c> in <c>booking_consistency</c>, never a conflict (IDENT-DECLARED).
+/// </param>
 public sealed record DocumentCoherenceContext(DateOnly CheckInDate, CheckInIdentity? Declared = null)
 {
     /// <summary>
@@ -52,9 +56,11 @@ public sealed record DocumentCoherenceContext(DateOnly CheckInDate, CheckInIdent
 /// <item><b>field_coherence</b>: the dates are possible (the birth is not after the day of the stay and not more than 120 years before it, the issue is not after
 /// the expiry) and what the card prints a second time agrees with the MRZ: the expiry, the sex and the nationality, each when both were read (one read on a side only
 /// adds no entry), a difference being a classic sign of an altered print.</item>
-/// <item><b>booking_consistency</b>: the flags of <see cref="MrzCheckInConsistency"/> (names, birth date, document number, nationality), as they are; the nationality
-/// is compared after the name of the state the guest typed («ITALIA») is brought to its code through the explicit table of the check-in, and stays unknown for a
-/// name that table does not have (never guessed).</item>
+/// <item><b>booking_consistency</b>: the flags of <see cref="MrzCheckInConsistency"/> (names, birth date, document number, nationality) for what was declared; the
+/// nationality is compared after the name of the state the guest typed («ITALIA») is brought to its code through the explicit table of the check-in, and stays unknown
+/// for a name that table does not have (never guessed). A value declared and different is a conflict (<c>failed</c>); a field with nothing declared (blank, no birth
+/// date, or nothing declared at all) has nothing to be compared with and is <c>not_applicable</c>, never a conflict and never a pass by itself (IDENT-DECLARED); an MRZ
+/// that was not read leaves every field <c>unknown</c>, whatever was declared: the check could not run.</item>
 /// </list>
 /// </summary>
 public sealed class DocumentCoherenceChecker
@@ -150,14 +156,10 @@ public sealed class DocumentCoherenceChecker
             checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.FieldCoherence, CompareSides(twice, machine, printed, referenceMayBeCut: false), twice));
 
         // booking_consistency: MrzCheckInConsistency, reused: true agrees, false disagrees, null was not compared. Only the nationality is brought to a common form
-        // first (NationalityOnTheBooking): the check-in keeps the citizenship as the name of a state, which the comparison alone cannot read.
-        var booking = mrz?.Result is { } machineRead && context.Declared is { } declared
-            ? NationalityOnTheBooking(MrzCheckInConsistency.Compare(machineRead, declared), machineRead, declared)
-            : new MrzConsistency(null, null, null, null);
-        checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, Flag(booking.Names), DocumentCoherenceFields.Names));
-        checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, Flag(booking.BirthDate), ZonedFieldNames.BirthDate));
-        checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, Flag(booking.DocumentNumber), ZonedFieldNames.DocumentNumber));
-        checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, Flag(booking.Nationality), ZonedFieldNames.Nationality));
+        // first (NationalityOnTheBooking): the check-in keeps the citizenship as the name of a state, which the comparison alone cannot read. A field with nothing
+        // declared is not_applicable (nothing to compare: no conflict, no pass); without an MRZ the check could not run and every field is unknown.
+        foreach (var (field, result) in BookingConsistency(mrz?.Result, context.Declared))
+            checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, result, field));
 
         // The flags and the codes come from the entries and from nothing else: an unknown entry makes a flag unknown, never «ok».
         return DocumentCoherenceReport.FromChecks(checks);
@@ -354,6 +356,40 @@ public sealed class DocumentCoherenceChecker
     }
 
     private static string LettersOnly(string value) => new(value.ToUpperInvariant().Where(ch => ch is >= 'A' and <= 'Z').ToArray());
+
+    /// <summary>
+    /// The entries of <c>booking_consistency</c>, by field, in the order names, birth date, document number, nationality (IDENT-DECLARED). Without an MRZ the check
+    /// could not run: every field is <c>unknown</c>, whatever was declared. With one, a field with nothing declared (blank first and last names, no birth date, a blank
+    /// number or citizenship; every field when nothing was declared at all) is <c>not_applicable</c>; a field declared has the flag of
+    /// <see cref="MrzCheckInConsistency"/> as it is: agrees is <c>passed</c>, differs is <c>failed</c> (a name that is only a part of the one of the document included,
+    /// as the comparison has it), and a value that cannot be compared (its field is not in the reading, a citizenship the table does not have) is <c>unknown</c>.
+    /// </summary>
+    private static (string Field, string Result)[] BookingConsistency(MrzExtractionResult? machine, CheckInIdentity? declared)
+    {
+        if (machine is null)
+        {
+            return
+            [
+                (DocumentCoherenceFields.Names, DocumentCoherenceResults.Unknown),
+                (ZonedFieldNames.BirthDate, DocumentCoherenceResults.Unknown),
+                (ZonedFieldNames.DocumentNumber, DocumentCoherenceResults.Unknown),
+                (ZonedFieldNames.Nationality, DocumentCoherenceResults.Unknown),
+            ];
+        }
+
+        var typed = declared ?? new CheckInIdentity(null, null, null, null, null);
+        var flags = NationalityOnTheBooking(MrzCheckInConsistency.Compare(machine, typed), machine, typed);
+        return
+        [
+            (DocumentCoherenceFields.Names, Declared(!string.IsNullOrWhiteSpace(typed.FirstName) || !string.IsNullOrWhiteSpace(typed.LastName), flags.Names)),
+            (ZonedFieldNames.BirthDate, Declared(typed.DateOfBirth is not null, flags.BirthDate)),
+            (ZonedFieldNames.DocumentNumber, Declared(!string.IsNullOrWhiteSpace(typed.DocumentNumber), flags.DocumentNumber)),
+            (ZonedFieldNames.Nationality, Declared(!string.IsNullOrWhiteSpace(typed.Citizenship), flags.Nationality)),
+        ];
+    }
+
+    /// <summary>The result of a field of the booking: its flag when a value was declared, <c>not_applicable</c> when nothing was (nothing to compare with).</summary>
+    private static string Declared(bool declared, bool? agrees) => declared ? Flag(agrees) : DocumentCoherenceResults.NotApplicable;
 
     /// <summary>
     /// The flags of <see cref="MrzCheckInConsistency"/> with the nationality compared on the same footing. The check-in keeps the citizenship as the name of a state

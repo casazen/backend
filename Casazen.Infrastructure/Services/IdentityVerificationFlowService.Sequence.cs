@@ -286,28 +286,17 @@ public sealed partial class IdentityVerificationFlowService
     }
 
     /// <summary>
-    /// The coherence of the document from the entries the document step kept (<see cref="StoredDocumentCheck.Coherence"/>): an identifying conflict, a failed check digit of the MRZ
-    /// and an expired document in this order; a pass only when every check the format requires passed; unknown otherwise (no entries, as in Ticino, or a format the registry does
-    /// not hold): never a pass.
+    /// The coherence of the document from the entries the document step kept (<see cref="StoredDocumentCheck.Coherence"/>), by the one rule of <see cref="IdentityDocumentCoherences"/>:
+    /// an identifying conflict, a failed check digit of the MRZ, an expired document and a value declared for the booking that differs from the document (IDENT-DECLARED) in this
+    /// order; a pass only when every check the format requires holds (nothing declared for the booking is <c>not_applicable</c>, no conflict); unknown otherwise (no entries, as in
+    /// Ticino, or a format the registry does not hold): never a pass.
     /// </summary>
     private IdentityDocumentCoherence CoherenceOf(StoredDocumentCheck stored, string? formatId)
     {
         if (stored.Coherence is not { Count: > 0 } entries)
             return IdentityDocumentCoherence.Unknown;
 
-        var report = DocumentCoherenceReport.FromChecks(entries);
-        if (report.IdentifyingConflict == true)
-            return IdentityDocumentCoherence.IdentifyingConflict;
-
-        if (report.Summary(DocumentFormatChecks.MrzCheckDigits) == DocumentCoherenceResults.Failed)
-            return IdentityDocumentCoherence.MrzInvalid;
-
-        if (report.Expired == true)
-            return IdentityDocumentCoherence.Expired;
-
-        return formats?.Get(formatId) is { } format && report.AllPassed(format.RequiredChecks)
-            ? IdentityDocumentCoherence.Passed
-            : IdentityDocumentCoherence.Unknown;
+        return IdentityDocumentCoherences.Of(DocumentCoherenceReport.FromChecks(entries), formats?.Get(formatId));
     }
 
     /// <summary>e. The one save of the decision: a guided retry, or the closure of the verification with its log row.</summary>

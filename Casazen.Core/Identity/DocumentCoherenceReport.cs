@@ -16,11 +16,19 @@ namespace Casazen.Core.Identity;
 /// take an unread date for a valid one), and <see cref="AllPassed"/> is the one answer to «may this document go on»: true only when every check the format
 /// requires has entries and every entry passed.
 /// </para>
+/// <para>
+/// <b>Nothing declared is no conflict</b> (IDENT-DECLARED, NF-190): a field of <c>booking_consistency</c> for which nothing was declared (a booking from a channel
+/// has only a name, the guest page saves nothing typed before the identity step) has nothing to be compared with and is <c>not_applicable</c>: neutral, never a
+/// conflict and never a pass by itself. A value declared and different from the document is still a conflict (<c>failed</c>), and a value declared that cannot be
+/// compared is still <c>unknown</c>. <c>not_applicable</c> belongs to <c>booking_consistency</c> only: in any other check it is no pass (<see cref="Summary"/>), and it
+/// satisfies the requirement of a format for that one check only (<see cref="AllPassed"/>).
+/// </para>
 /// </summary>
 /// <param name="Checks">
 /// Every check made, in the order of <see cref="DocumentFormatChecks.All"/> (<c>mrz_check_digits</c>, <c>expiry</c>, <c>side_consistency</c>, <c>field_coherence</c>,
-/// <c>booking_consistency</c>), each with its result: <c>unknown</c> is never a pass. A format that requires a check needs it to have at least one entry and every
-/// entry <c>passed</c> (<see cref="Summary"/>, <see cref="AllPassed"/>).
+/// <c>booking_consistency</c>), each with its result: <c>unknown</c> is never a pass, <c>not_applicable</c> (only in <c>booking_consistency</c>) is neutral. A format
+/// that requires a check needs it to have at least one entry and every entry <c>passed</c>, or, for <c>booking_consistency</c>, <c>not_applicable</c>
+/// (<see cref="Summary"/>, <see cref="AllPassed"/>).
 /// </param>
 /// <param name="IdentifyingConflict">
 /// The summary of <c>side_consistency</c>: <c>true</c> when a field the policy calls identifying (surname, given names, birth date, document number) reads
@@ -61,21 +69,27 @@ public sealed record DocumentCoherenceReport(
     /// <summary>The fields of <c>field_coherence</c> that are dates: the ones <see cref="DatesValid"/> summarizes.</summary>
     private static readonly string[] DateFields = [ZonedFieldNames.BirthDate, ZonedFieldNames.IssueDate, ZonedFieldNames.ExpiryDate];
 
-    /// <summary>How many entries of the report are <c>unknown</c>: what could not be checked, never counted as a pass.</summary>
+    /// <summary>
+    /// How many entries of the report are <c>unknown</c>: what could not be checked, never counted as a pass. A <c>not_applicable</c> entry is not one: nothing was
+    /// declared to compare the document with.
+    /// </summary>
     [JsonIgnore]
     public int UnknownCount => Checks.Count(entry => entry.Result == DocumentCoherenceResults.Unknown);
 
     /// <summary>
-    /// The result of a whole check: <c>failed</c> when one entry failed, <c>passed</c> only when it has at least one entry and every entry passed, <c>unknown</c>
-    /// otherwise (no entry, or an entry that could not be told). A name that is not a check of this report is <c>unknown</c>.
+    /// The result of a whole check: <c>failed</c> when one entry failed; <c>passed</c> when at least one entry passed and every other entry passed or, in
+    /// <c>booking_consistency</c> only, is <c>not_applicable</c>; <c>not_applicable</c> when every entry of <c>booking_consistency</c> is (nothing was declared to
+    /// compare with); <c>unknown</c> otherwise (no entry, an entry that could not be told, or a <c>not_applicable</c> entry in any other check). A name that is not a
+    /// check of this report is <c>unknown</c>.
     /// </summary>
     public string Summary(string check) => SummaryOf(Checks, check, null);
 
     /// <summary>
     /// The one answer to «does the coherence of this document hold»: true only when <paramref name="requiredChecks"/> (the checks a format requires, for example
-    /// <see cref="DocumentFormat.RequiredChecks"/>) names at least one check this report carries and every one of them is <c>passed</c> (<see cref="Summary"/>):
-    /// an <c>unknown</c> entry is not a pass, an empty list requires nothing it can vouch for and is false, and a name that is no check of the plan never passes. The
-    /// checks of the format that another report carries (<c>layout</c>, <c>portrait</c>: the geometry of the document) are not judged here.
+    /// <see cref="DocumentFormat.RequiredChecks"/>) names at least one check this report carries, every one of them is <c>passed</c> (<see cref="Summary"/>) or, for
+    /// <c>booking_consistency</c> only, <c>not_applicable</c>, and at least one of them passed: an <c>unknown</c> entry is not a pass, <c>not_applicable</c> satisfies
+    /// no other check and never vouches for a document alone, an empty list requires nothing it can vouch for and is false, and a name that is no check of the plan
+    /// never passes. The checks of the format that another report carries (<c>layout</c>, <c>portrait</c>: the geometry of the document) are not judged here.
     /// </summary>
     public bool AllPassed(IEnumerable<string> requiredChecks)
     {
@@ -85,7 +99,9 @@ public sealed record DocumentCoherenceReport(
             .Where(check => CarriedChecks.Contains(check) || !DocumentFormatChecks.All.Contains(check))
             .Distinct(StringComparer.Ordinal)
             .ToList();
-        return judged.Count > 0 && judged.All(check => Summary(check) == DocumentCoherenceResults.Passed);
+        return judged.Count > 0
+            && judged.All(Satisfied)
+            && judged.Any(check => Summary(check) == DocumentCoherenceResults.Passed);
     }
 
     /// <summary>
@@ -109,9 +125,23 @@ public sealed record DocumentCoherenceReport(
         return new DocumentCoherenceReport(checks, conflict, expired, datesValid, mrzValid, codes);
     }
 
+    /// <summary>
+    /// Whether <paramref name="check"/> holds as a format requires it: <c>passed</c>, or <c>not_applicable</c> for <c>booking_consistency</c> only (nothing was declared
+    /// to compare the document with). <see cref="Summary"/> never gives <c>not_applicable</c> for another check; the name is tested all the same.
+    /// </summary>
+    private bool Satisfied(string check)
+    {
+        var summary = Summary(check);
+        return summary == DocumentCoherenceResults.Passed
+            || (summary == DocumentCoherenceResults.NotApplicable && string.Equals(check, DocumentFormatChecks.BookingConsistency, StringComparison.Ordinal));
+    }
+
     private static string SummaryOf(IReadOnlyList<DocumentCoherenceCheck> checks, string check, string[]? onlyFields)
     {
+        // Nothing declared to compare with is neutral in the check of the booking, and only there: in any other check it is no pass.
+        var neutralAllowed = string.Equals(check, DocumentFormatChecks.BookingConsistency, StringComparison.Ordinal);
         var seen = false;
+        var passed = false;
         var notTold = false;
         foreach (var entry in checks)
         {
@@ -122,12 +152,16 @@ public sealed record DocumentCoherenceReport(
             if (entry.Result == DocumentCoherenceResults.Failed)
                 return DocumentCoherenceResults.Failed;
 
-            // Anything but «passed» that is not «failed» is not a pass either: an unknown, or a result nobody knows.
-            if (entry.Result != DocumentCoherenceResults.Passed)
-                notTold = true;
+            if (entry.Result == DocumentCoherenceResults.Passed)
+                passed = true;
+            else if (!(neutralAllowed && entry.Result == DocumentCoherenceResults.NotApplicable))
+                notTold = true; // An unknown, a result nobody knows, or not_applicable outside the booking: not a pass either.
         }
 
-        return seen && !notTold ? DocumentCoherenceResults.Passed : DocumentCoherenceResults.Unknown;
+        if (!seen || notTold)
+            return DocumentCoherenceResults.Unknown;
+
+        return passed ? DocumentCoherenceResults.Passed : DocumentCoherenceResults.NotApplicable;
     }
 
     /// <summary>A finding: true when the check failed, false when it passed, null when it could not be told.</summary>
@@ -168,8 +202,14 @@ public static class DocumentCoherenceResults
     /// <summary>The check could not be made: a value is missing (it was not read, or its own check digit failed), or it cannot be compared. Never a pass.</summary>
     public const string Unknown = "unknown";
 
+    /// <summary>
+    /// There was nothing to compare with: no value was declared for this field of the booking (IDENT-DECLARED). Written in <c>booking_consistency</c> only, and neutral
+    /// there: never a conflict and never a pass by itself; in any other check it is no pass (<see cref="DocumentCoherenceReport.Summary"/>).
+    /// </summary>
+    public const string NotApplicable = "not_applicable";
+
     /// <summary>Every code, in this order.</summary>
-    public static IReadOnlyList<string> All { get; } = [Passed, Failed, Unknown];
+    public static IReadOnlyList<string> All { get; } = [Passed, Failed, Unknown, NotApplicable];
 }
 
 /// <summary>

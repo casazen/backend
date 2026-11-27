@@ -140,7 +140,10 @@ public static class DocumentFormatChecks
     /// </summary>
     public const string FieldCoherence = "field_coherence";
 
-    /// <summary>The document agrees with the data of the booking.</summary>
+    /// <summary>
+    /// The document agrees with the data declared for the booking: a value declared and different is a conflict; with nothing declared there is nothing to compare and
+    /// the check is <c>not_applicable</c>, which satisfies the requirement of this check only (<see cref="DocumentCoherenceReport.AllPassed"/>, IDENT-DECLARED).
+    /// </summary>
     public const string BookingConsistency = "booking_consistency";
 
     /// <summary>Every code, in this order.</summary>

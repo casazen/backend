@@ -19,8 +19,9 @@ namespace Casazen.Infrastructure.Identity;
 /// change) and the guided retries used are fewer than <c>closure.guidedRetries</c>: one guided retry with the guidance codes of the failures, whatever the document, the format and the
 /// match say: they are judged by the attempt that follows, as ever, and a guided retry is never an approval (its shadow decision is the review, it has no outcome code and closes nothing).
 /// Otherwise a person reviews: the same correctable defects after the guided retry are reviewed with their reasons.</description></item>
-/// <item><description><b>The document.</b> A coherence that is not a pass (an identifying conflict, an invalid MRZ, an expired document, or a coherence that could not be told)
-/// or a document that is not complete: review, never correctable.</description></item>
+/// <item><description><b>The document.</b> A coherence that is not a pass (an identifying conflict, an invalid MRZ, an expired document, a value declared for the booking that
+/// differs from the document, or a coherence that could not be told) or a document that is not complete: review, never correctable. Nothing declared for the booking is no
+/// conflict: the coherence passes on the document alone (<see cref="IdentityDocumentCoherences"/>).</description></item>
 /// <item><description><b>The similarity.</b> In the review band, under the floor, a weak frame, no portrait, or no comparison at all: review, never correctable.</description></item>
 /// <item><description><b>The format and the assurance.</b> No format, or a format that does not give on the channel the assurance the segment requires
 /// (<c>assurance_requires_chip</c>): review with <c>assurance_level</c>.</description></item>
@@ -220,7 +221,10 @@ public sealed class IdentityDecisionEngine
         };
     }
 
-    /// <summary>The result of the coherence of the document: a coherence that could not be told, or a document not complete, is <c>not_run</c> (never a pass).</summary>
+    /// <summary>
+    /// The result of the coherence of the document: a coherence that could not be told, or a document not complete, is <c>not_run</c> (never a pass); a value declared for
+    /// the booking that differs from the document is <c>booking_mismatch</c>, the stable code of that conflict.
+    /// </summary>
     private static string CoherenceResult(IdentityEvidenceBundle bundle)
     {
         if (!bundle.DocumentComplete)
@@ -232,6 +236,7 @@ public sealed class IdentityDecisionEngine
             IdentityDocumentCoherence.IdentifyingConflict => VerificationReasons.Results.Failed,
             IdentityDocumentCoherence.MrzInvalid => VerificationReasons.Results.CheckDigitsInvalid,
             IdentityDocumentCoherence.Expired => VerificationReasons.Results.Expired,
+            IdentityDocumentCoherence.BookingConflict => VerificationReasons.Results.BookingMismatch,
             _ => VerificationReasons.Results.NotRun,
         };
     }

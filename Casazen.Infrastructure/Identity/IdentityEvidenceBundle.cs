@@ -59,6 +59,12 @@ public enum IdentityDocumentCoherence
 
     /// <summary>The document expires before the day of the stay.</summary>
     Expired = 4,
+
+    /// <summary>
+    /// A value declared for the booking (the names, the birth date, the document number or the citizenship) is there and differs from the document, in a format that
+    /// requires <c>booking_consistency</c>: a known conflict, never a pass (IDENT-DECLARED). Nothing declared is no conflict (<c>not_applicable</c>).
+    /// </summary>
+    BookingConflict = 5,
 }
 
 /// <summary>Whether the models could run for the attempt. Anything but <see cref="None"/> is a fault, and a fault never approves (D8).</summary>

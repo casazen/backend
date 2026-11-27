@@ -628,20 +628,11 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         return new SideOutcome(new QualificationSideResult(sideCode, null, false, null, 0, codes), [], new MrzReading(null, []), null, false, false);
     }
 
-    /// <summary>The coherence as the decision reads it (the rule of the flow): an identifying conflict, an invalid MRZ, an expired document, then a pass only when every check the format requires passed.</summary>
-    private static IdentityDocumentCoherence CoherenceOf(DocumentCoherenceReport report, DocumentFormat format)
-    {
-        if (report.IdentifyingConflict == true)
-            return IdentityDocumentCoherence.IdentifyingConflict;
-
-        if (report.Summary(DocumentFormatChecks.MrzCheckDigits) == DocumentCoherenceResults.Failed)
-            return IdentityDocumentCoherence.MrzInvalid;
-
-        if (report.Expired == true)
-            return IdentityDocumentCoherence.Expired;
-
-        return report.AllPassed(format.RequiredChecks) ? IdentityDocumentCoherence.Passed : IdentityDocumentCoherence.Unknown;
-    }
+    /// <summary>
+    /// The coherence as the decision reads it: the very rule of the flow (<see cref="IdentityDocumentCoherences"/>), an identifying conflict, an invalid MRZ, an expired document, a
+    /// value declared for the booking that differs from the document, then a pass only when every check the format requires holds.
+    /// </summary>
+    private static IdentityDocumentCoherence CoherenceOf(DocumentCoherenceReport report, DocumentFormat format) => IdentityDocumentCoherences.Of(report, format);
 
     private static string CoherenceCode(IdentityDocumentCoherence coherence) => coherence switch
     {
@@ -649,6 +640,7 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         IdentityDocumentCoherence.IdentifyingConflict => QualificationDecisionCodes.CoherenceIdentifyingConflict,
         IdentityDocumentCoherence.MrzInvalid => QualificationDecisionCodes.CoherenceMrzInvalid,
         IdentityDocumentCoherence.Expired => QualificationDecisionCodes.CoherenceExpired,
+        IdentityDocumentCoherence.BookingConflict => QualificationDecisionCodes.CoherenceBookingConflict,
         _ => QualificationDecisionCodes.CoherenceUnknown,
     };
 
