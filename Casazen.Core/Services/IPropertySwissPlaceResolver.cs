@@ -70,8 +70,11 @@ public sealed record SwissPlace(string? MunicipalityCode, string? MunicipalityNa
     /// <summary>The postal code and the city of the property leave several municipalities open: nothing is chosen.</summary>
     public static SwissPlace AmbiguousPlace { get; } = new(null, null, null, SwissPlaceSource.Derived, Ambiguous: true);
 
+    /// <summary>The country of a property in Switzerland as it is stored (<c>Property.Country</c>, ISO 3166-1 alpha-2, as the property form and the import save it): <see cref="IsSwissCountry"/> compares with it.</summary>
+    public const string CountryCode = "CH";
+
     /// <summary>The country of a property is Switzerland (<c>CH</c>, case and spaces ignored).</summary>
-    public static bool IsSwissCountry(string? country) => string.Equals(country?.Trim(), "CH", StringComparison.OrdinalIgnoreCase);
+    public static bool IsSwissCountry(string? country) => string.Equals(country?.Trim(), CountryCode, StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>What the resolver reads of a property: its country, its stored municipality, its postal code and its city.</summary>
