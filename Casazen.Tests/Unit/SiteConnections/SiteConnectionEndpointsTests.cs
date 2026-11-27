@@ -10,11 +10,13 @@ using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.SiteConnections;
 using Casazen.Web.Infrastructure;
+using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -177,8 +179,12 @@ public sealed class SiteConnectionEndpointsTests : IDisposable
     private PublicSiteConnectionsController Exchange() =>
         new(Service()) { ControllerContext = Context(new ClaimsPrincipal(new ClaimsIdentity())) };
 
+    // The disconnection needs the connections only: the account and the domain of S023 have their own tests (SiteApiDomainEndpointsTests).
     private SiteApiController Plugin(ClaimsPrincipal user) =>
-        new(Service()) { ControllerContext = Context(user) };
+        new(Service(), Mock.Of<ISiteAccountBuilder>(), Mock.Of<IOrgDomainService>(), Mock.Of<IStringLocalizer<SharedResources>>())
+        {
+            ControllerContext = Context(user),
+        };
 
     private static ControllerContext Context(ClaimsPrincipal user) => new()
     {

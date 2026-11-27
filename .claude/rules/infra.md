@@ -8,7 +8,7 @@
 | Backend API | Railway (Docker, .NET 10) | Two Railway environments: `test` / `production` |
 | Frontend | Vercel (Vite SPA) | Preview URLs per PR; `develop` → staging; `main` → production |
 
-Full setup guide: `docs/INFRA.md`
+Full setup guide: `documentazione/03-documenti-ai/runbook/backend/INFRA.md`
 
 ## Deploy model (native integrations)
 

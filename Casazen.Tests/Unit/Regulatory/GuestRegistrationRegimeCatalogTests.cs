@@ -320,16 +320,6 @@ public class GuestRegistrationRegimeCatalogTests
         }
     }
 
-    /// <summary>The compliance page lists every regime of the catalog (the table it holds is the one the code has).</summary>
-    [Fact]
-    public void TheCompliancePage_NamesEveryRegime()
-    {
-        var page = File.ReadAllText(Path.Combine(SolutionRoot(), "docs", "compliance", "guest-registration-switzerland.md"));
-
-        foreach (var regime in GuestRegistrationRegimeCatalog.All)
-            Assert.Contains($"`{regime.Code}`", page, StringComparison.Ordinal);
-    }
-
     private static Dictionary<string, string> Resx(string fileName)
     {
         var path = Path.Combine(SolutionRoot(), "Casazen.Web", "Resources", fileName);

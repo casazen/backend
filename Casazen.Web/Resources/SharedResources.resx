@@ -3343,6 +3343,9 @@
   <data name="SiteConnectionNotFound" xml:space="preserve">
     <value>Il sito collegato non è stato trovato.</value>
   </data>
+  <data name="SitePublicAddressNotConfigured" xml:space="preserve">
+    <value>L'indirizzo pubblico di CasaZen non è configurato su questo ambiente: il plugin non sa quale indirizzo usare. Riprova più tardi o contatta l'assistenza.</value>
+  </data>
   <data name="OrgAccessDenied" xml:space="preserve">
     <value>Accesso negato a questa organizzazione.</value>
   </data>

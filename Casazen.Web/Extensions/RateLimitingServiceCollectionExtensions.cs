@@ -142,6 +142,9 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.SiteConnectAuthorize, 10, TimeSpan.FromMinutes(10), PartitionByUser: true),
         new(RateLimitPolicies.SiteConnectToken, 20, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.SiteApi, 120, OneMinute, PartitionBySiteConnection: true),
+
+        // The check of the agency's domain by the plugin (S023): it asks DNS and the Vercel Domains API, so it is tight and has a budget of its own, per credential.
+        new(RateLimitPolicies.SiteDomainVerify, 20, TimeSpan.FromMinutes(10), PartitionBySiteConnection: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

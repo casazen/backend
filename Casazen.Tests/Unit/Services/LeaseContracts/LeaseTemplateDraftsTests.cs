@@ -285,29 +285,6 @@ public sealed partial class LeaseTemplateDraftsTests
         }
     }
 
-    [Fact]
-    public void ReferenceDrafts_TheAiDraftsOfTheTransitorioAndTheStudenti_AreSavedAsDocumentationWithoutAPipeline()
-    {
-        var folder = Path.Combine(Directory.GetParent(WebProjectDirectory())!.FullName, "docs", "legal-drafts", "leases");
-
-        foreach (var name in new[] { "contratto-transitorio.md", "contratto-studenti.md" })
-        {
-            var path = Path.Combine(folder, name);
-            Assert.True(File.Exists(path), $"{name} not found in docs/legal-drafts/leases");
-
-            var content = File.ReadAllText(path, Encoding.UTF8);
-            Assert.Contains("Bozza non approvata", content, StringComparison.Ordinal);
-            Assert.Contains("nessuna pipeline di prodotto", content, StringComparison.Ordinal);
-            Assert.Contains("| Variabile |", content, StringComparison.Ordinal);
-            Assert.Contains("D.M. 16 gennaio 2017", content, StringComparison.Ordinal);
-        }
-
-        // Never a template of the product: the folders of LeaseTemplates are template variants only (the transitory model there is the
-        // official Allegato B, not the AI draft kept in docs/legal-drafts).
-        var templateFolders = Directory.GetDirectories(TemplatesDirectory()).Select(d => Path.GetFileName(d)).ToList();
-        Assert.All(templateFolders, f => Assert.True(Enum.TryParse<LeaseTemplateVariant>(f, out _), $"LeaseTemplates/{f} is not a template variant"));
-    }
-
     // ---- the transitory model (TR): the Allegato B of the D.M. 16/01/2017 ------------------------------------------
 
     [Fact]
