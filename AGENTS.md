@@ -14,7 +14,7 @@ API **.NET 10** + **PostgreSQL 16** per CasaZen: immobili, prenotazioni, ospiti,
 | `Casazen.Web` | controller, DTO, autenticazione e policy, middleware, DI, job Hangfire |
 | `Casazen.Tests` | test unitari, di integrazione (PostgreSQL reale) e vincoli architetturali |
 
-Il flusso delle dipendenze è Web → Core/Infrastructure; il dominio resta in Core. L'organizzazione (`OrgId`) e l'ambito sugli immobili sono controlli di accesso ai dati, non filtri opzionali: usa lo scope e le policy esistenti e non accettare un `OrgId` del client come autorità. Stack: Auth0 (JWT su ogni `/api`), Stripe (webhook con firma verificata), Resend (email in coda su Hangfire), Hangfire (uno schema per ambiente). Ogni funzione nuova va dietro un **feature flag** spento di default (`Features:<Nome>`, variabile `Features__<Nome>`; elenco e regole in `documentazione/03-documenti-ai/runbook/backend/feature-flags.md`).
+Il flusso delle dipendenze è Web → Core/Infrastructure; il dominio resta in Core. L'organizzazione (`OrgId`) e l'ambito sugli immobili sono controlli di accesso ai dati, non filtri opzionali: usa lo scope e le policy esistenti e non accettare un `OrgId` del client come autorità. Stack: Auth0 (JWT su ogni `/api`), Stripe (webhook con firma verificata), Resend (email in coda su Hangfire), Hangfire (uno schema per ambiente). Ogni funzione nuova va dietro un **feature flag** spento di default (`Features:<Nome>`, variabile `Features__<Nome>`; elenco e regole in `docs/03-documenti-ai/runbook/backend/feature-flags.md`).
 
 ## Ambiente locale (e Cursor Cloud)
 
@@ -22,7 +22,7 @@ Il flusso delle dipendenze è Web → Core/Infrastructure; il dominio resta in C
 |---|---|
 | PostgreSQL 16 | database locale `casazen_dev` sulla porta 5432; stringa d'esempio in `Casazen.Web/appsettings.Development.example.json` (il file `appsettings.Development.json` non si committa) |
 | API `Casazen.Web` | `http://localhost:5000`, `https://localhost:5001`; Swagger solo in sviluppo su `/swagger` |
-| Hangfire | incluso; schema `Hangfire:Schema` o `hangfire_<SearchPath>` (`documentazione/03-documenti-ai/runbook/backend/hangfire.md`) |
+| Hangfire | incluso; schema `Hangfire:Schema` o `hangfire_<SearchPath>` (`docs/03-documenti-ai/runbook/backend/hangfire.md`) |
 
 Su una VM Cursor Cloud .NET sta in `~/.dotnet` (`export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$HOME/.dotnet/tools:$PATH"`) e PostgreSQL può non partire da solo: `sudo pg_ctlcluster 16 main start`.
 
@@ -34,8 +34,8 @@ dotnet ef database update --project Casazen.Infrastructure --startup-project Cas
 dotnet run --project Casazen.Web
 ```
 
-- Health: `GET /api/health/live` → 200; `/api/health/ready` e `/api/health` → 200 `degraded` se Stripe, email o Auth0 M2M non sono configurati in locale, 503 se database o Hangfire sono giù (`documentazione/03-documenti-ai/runbook/backend/health-checks.md`). `GET /api/properties` senza bearer → 401.
-- Non esiste un `docker-compose.yml` alla radice (solo `observability/docker-compose.yml`). Database e hosting: `documentazione/03-documenti-ai/runbook/backend/INFRA.md` (da rivedere, vedi `docs/README.md`).
+- Health: `GET /api/health/live` → 200; `/api/health/ready` e `/api/health` → 200 `degraded` se Stripe, email o Auth0 M2M non sono configurati in locale, 503 se database o Hangfire sono giù (`docs/03-documenti-ai/runbook/backend/health-checks.md`). `GET /api/properties` senza bearer → 401.
+- Non esiste un `docker-compose.yml` alla radice (solo `observability/docker-compose.yml`). Database e hosting: `docs/03-documenti-ai/runbook/backend/INFRA.md` (da rivedere, vedi `docs/README.md`).
 - Le chiavi Auth0/Stripe/Resend dell'esempio sono segnaposto: i servizi esterni sono opzionali per gli smoke test locali.
 
 ## Prima di consegnare
@@ -60,10 +60,10 @@ dotnet format --verify-no-changes
 
 ## Documentazione: tienila pulita e aggiornata
 
-La documentazione di progetto sta nella cartella **`documentazione/` del workspace CasaZen** (la cartella che contiene `backend/`, `frontend/` e `mobile/`), **fuori dai repository** di proposito. `01-documenti-ufficiali/` è scritta o approvata dall'utente o da professionisti; `03-documenti-ai/` è scritta dall'AI (requisiti, punti aperti, decisioni, revisioni, integrazioni, ADR, consegne). Regole:
+La documentazione di progetto sta nella cartella **`docs/` del workspace CasaZen** (la cartella che contiene `backend/`, `frontend/` e `mobile/`; **non** la cartella `docs/` di questo repository, che ha solo un `README.md` di indirizzamento), **fuori dai repository** di proposito. `01-documenti-ufficiali/` è scritta o approvata dall'utente o da professionisti; `03-documenti-ai/` è scritta dall'AI (requisiti, punti aperti, decisioni, revisioni, integrazioni, ADR, consegne). Regole:
 
-1. **Un solo posto.** Analisi, requisiti, punti aperti, decisioni, revisioni legali e fiscali, ADR, specifiche e report vivono solo in `documentazione/`. **Non creare `.md` sparsi in questo repository** e niente log, JSON di stato, cartelle «attempt», report o appunti di sessione (sono rumore e restano nella storia git). **Nessuna eccezione**: anche i runbook, il riferimento esteso (`TECHNICAL.md`) e le guide di infrastruttura vivono in `documentazione/03-documenti-ai/runbook/backend/` (indice in `runbook/README.md`); dal 2026-11-27 nessun test del repository li legge più, e si aggiornano lì nella stessa PR del codice.
-2. **La PR che cambia un comportamento aggiorna i documenti toccati**: lo stato dei requisiti (`documentazione/03-documenti-ai/requisiti/<area>.md`), i punti aperti (quelli chiusi vanno in `decisioni.md` con data e decisione), i runbook, **la guida utente** (`frontend/guida/**` sorgenti e `frontend/public/guida/**` pagine generate con `npm run guida:build`, più i testi `productGuide` della guida in-app in `frontend/src/i18n/locales/{it,en}.json`) e **la documentazione tecnica ufficiale** (`documentazione/01-documenti-ufficiali/documentazione-tecnica/`, sorgenti e PDF: si rigenera quando cambiano architettura, stack, integrazioni, sicurezza o moduli). Se questi due artefatti non sono ancora in `develop`, citali comunque nella PR.
+1. **Un solo posto.** Analisi, requisiti, punti aperti, decisioni, revisioni legali e fiscali, ADR, specifiche e report vivono solo in `docs/`. **Non creare `.md` sparsi in questo repository** e niente log, JSON di stato, cartelle «attempt», report o appunti di sessione (sono rumore e restano nella storia git). **Nessuna eccezione**: anche i runbook, il riferimento esteso (`TECHNICAL.md`) e le guide di infrastruttura vivono in `docs/03-documenti-ai/runbook/backend/` (indice in `runbook/README.md`); dal 2026-11-27 nessun test del repository li legge più, e si aggiornano lì nella stessa PR del codice.
+2. **La PR che cambia un comportamento aggiorna i documenti toccati**: lo stato dei requisiti (`docs/03-documenti-ai/requisiti/<area>.md`), i punti aperti (quelli chiusi vanno in `decisioni.md` con data e decisione), i runbook, **la guida utente** (`frontend/guida/**` sorgenti e `frontend/public/guida/**` pagine generate con `npm run guida:build`, più i testi `productGuide` della guida in-app in `frontend/src/i18n/locales/{it,en}.json`) e **la documentazione tecnica ufficiale** (`docs/01-documenti-ufficiali/documentazione-tecnica/`, sorgenti e PDF: si rigenera quando cambiano architettura, stack, integrazioni, sicurezza o moduli). Se questi due artefatti non sono ancora in `develop`, citali comunque nella PR.
 3. **Una sola fonte per argomento**: collega, non copiare. Se trovi due versioni dello stesso documento, tieni la corrente e togli l'altra.
 4. **Date assolute** (AAAA-MM-GG) e, in testa a ogni documento vivo, l'ultima verifica: `Verificato il AAAA-MM-GG su develop@<sha>` solo se hai davvero controllato i fatti contro codice o `gh`; altrimenti `Stato: NON verificato — fonte: <file>`. Non scrivere «consegnato» ciò che è specifica o placeholder.
 5. **A fine lavoro rimuovi i file temporanei** che hai creato (script, log, patch, bozze).
@@ -71,4 +71,4 @@ La documentazione di progetto sta nella cartella **`documentazione/` del workspa
 7. I **documenti ufficiali** (`01-documenti-ufficiali/`) non si riscrivono senza richiesta dell'utente.
 8. Se una regola di questa sezione confligge con quanto trovi nel repository, **segnalalo** (nella PR o nel report) invece di scegliere in silenzio.
 
-Senza accesso al workspace (per esempio in una sandbox cloud) non inventare né ricreare documenti qui: scrivi nella PR cosa andrebbe aggiornato in `documentazione/`.
+Senza accesso al workspace (per esempio in una sandbox cloud) non inventare né ricreare documenti qui: scrivi nella PR cosa andrebbe aggiornato in `docs/`.

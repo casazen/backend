@@ -8,7 +8,7 @@
 | Backend API | Railway (Docker, .NET 10) | Two Railway environments: `test` / `production` |
 | Frontend | Vercel (Vite SPA) | Preview URLs per PR; `develop` → staging; `main` → production |
 
-Full setup guide: `documentazione/03-documenti-ai/runbook/backend/INFRA.md`
+Full setup guide: `docs/03-documenti-ai/runbook/backend/INFRA.md`
 
 ## Deploy model (native integrations)
 
@@ -70,4 +70,4 @@ Supabase free tier pauses after 7 days of inactivity. Use `supabase-keepalive.ym
 
 ## Release bundles
 
-When a feature spans both BE and FE (e.g., BE #165 + FE #177), both must be verified on test before either is promoted to production; track the bundle in the PR descriptions and in `documentazione/03-documenti-ai/consegne/` of the workspace (no `Sessions/` folder exists any more).
+When a feature spans both BE and FE (e.g., BE #165 + FE #177), both must be verified on test before either is promoted to production; track the bundle in the PR descriptions and in `docs/03-documenti-ai/consegne/` of the workspace (no `Sessions/` folder exists any more).

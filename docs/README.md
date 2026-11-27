@@ -2,9 +2,9 @@
 
 > Verificato il 2026-11-27 su `develop@82cb00ac`. Questa cartella contiene **solo questo file**: non aggiungere altri `.md` in `docs/` (vedi `AGENTS.md`, sezione «Documentazione»).
 
-Tutta la documentazione di progetto sta nella cartella **`documentazione/` del workspace CasaZen** (la cartella che contiene `backend/`, `frontend/` e `mobile/`), **fuori dai repository**: unica fonte di verità. Dal 2026-11-27 ci sono anche i runbook, il riferimento esteso e le guide di infrastruttura; nessun test C# li legge più.
+Tutta la documentazione di progetto sta nella cartella **`docs/` del workspace CasaZen** (`<workspace>/docs/`) (la cartella che contiene `backend/`, `frontend/` e `mobile/`), **fuori dai repository**: unica fonte di verità. Dal 2026-11-27 ci sono anche i runbook, il riferimento esteso e le guide di infrastruttura; nessun test C# li legge più.
 
-| Cercavi | Ora è in `documentazione/` |
+| Cercavi | Ora è nel workspace, sotto `<workspace>/docs/` |
 |---|---|
 | `docs/runbooks/*.md` (89 runbook; l'indice `index.md` era obsoleto) | `03-documenti-ai/runbook/backend/` (indice con argomento e dimensione in `03-documenti-ai/runbook/README.md`) |
 | `docs/TECHNICAL.md`, `docs/INFRA.md`, `docs/AUTH0_SETUP.md` | `03-documenti-ai/runbook/backend/` |
@@ -19,4 +19,4 @@ Tutta la documentazione di progetto sta nella cartella **`documentazione/` del w
 | `docs/PROJECT.md`, `docs/index.md`, `docs/technical/`, `docs/FRONTEND-*.md` | `AGENTS.md` e `README.md` del repository |
 | `Sessions/` e `councils/` | rimossi: sintesi in `03-documenti-ai/{punti-aperti.md,decisioni.md,consegne/,requisiti/}` |
 
-Mappa completa, file per file: `documentazione/99-archivio/MAPPA-SPOSTAMENTI.md`. I file rimossi si recuperano dalla storia git: `git show 232b21fb:<vecchio percorso>` (o `82cb00ac:` per i runbook). I messaggi di errore e i commenti del codice che citano `docs/runbooks/<nome>.md` indicano il vecchio percorso: il file è ora in `documentazione/03-documenti-ai/runbook/backend/<nome>.md`.
+Mappa completa, file per file: `<workspace>/docs/99-archivio/MAPPA-SPOSTAMENTI.md`. I file rimossi si recuperano dalla storia git: `git show 232b21fb:<vecchio percorso>` (o `82cb00ac:` per i runbook). I messaggi di errore e i commenti del codice che citano `docs/runbooks/<nome>.md` indicano il vecchio percorso: il file è ora in `<workspace>/docs/03-documenti-ai/runbook/backend/<nome>.md`.
