@@ -76,7 +76,7 @@ public class MessageAssistantRegistrationTests
     {
         var root = FindRepositoryRoot();
         var program = File.ReadAllText(Path.Combine(root, "Casazen.Web", "Program.cs"));
-        var shared = File.ReadAllText(Path.Combine(root, "Casazen.Web", "Extensions", "ServiceCollectionExtensions.cs"));
+        var shared = ReadSharedRegistrations(root);
 
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(program, @"builder\.Services\.AddMessageAssistant\(\);"));
         Assert.DoesNotContain("AssistantKnowledgeService", shared, StringComparison.Ordinal);
@@ -84,6 +84,18 @@ public class MessageAssistantRegistrationTests
         Assert.DoesNotContain("AssistantSituationService", shared, StringComparison.Ordinal);
         Assert.DoesNotContain("AssistantDraftService", shared, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// The text of every file of the web host that registers services except the one of the area under test: the shared registration
+    /// (<c>AddCasazenServices</c>) is spread over one file for each area, so "the shared one" is all of them.
+    /// </summary>
+    private static string ReadSharedRegistrations(string root) =>
+        string.Join(
+            '\n',
+            Directory.EnumerateFiles(Path.Combine(root, "Casazen.Web", "Extensions"), "*.cs")
+                .Where(path => !string.Equals(Path.GetFileName(path), "MessageAssistantServiceCollectionExtensions.cs", StringComparison.Ordinal))
+                .Order(StringComparer.Ordinal)
+                .Select(path => File.ReadAllText(path)));
 
     private static string FindRepositoryRoot()
     {
