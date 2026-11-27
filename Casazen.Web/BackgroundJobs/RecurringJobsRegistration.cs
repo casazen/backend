@@ -206,11 +206,15 @@ public static class RecurringJobsRegistration
             GuestDocumentPurgeJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        // E73/F01/US02/T03 (NF-195, D9): the evidence of the reviewers of the identity verification past its time, the abandoned sessions, the checks of the document and the
-        // verification logs past their retention, every hour at minute 40 UTC, only while the self-hosted verification or its evidence is on (read again at every run).
-        ConfigureIdentityRetention(
-            recurringJobManager,
-            featureFlags.IsEnabled(FeatureFlags.CheckInIdentitySelfHosted) || featureFlags.IsEnabled(FeatureFlags.CheckInIdentityReviewEvidence));
+        // E73/F01/US02/T03 (NF-195, D9): the retention of what the identity verification keeps, every hour at minute 40 UTC: the evidence of the reviewers past its time, the abandoned
+        // sessions, the kept pictures and the checks of the document and the verification logs past their retention. Always registered: the service reads the flags at each run, and with
+        // both Features:CheckInIdentitySelfHosted and Features:CheckInIdentityReviewEvidence off it deletes only the evidence past its time (a flag switched off must never leave a
+        // biometric picture with no expiry); the other categories wait for a flag.
+        recurringJobManager.AddOrUpdate<IdentityEvidencePurgeJob>(
+            IdentityEvidencePurgeJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            IdentityEvidencePurgeJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         // NF-128 (casazen/backend#979, decisions D10, D11): the receipts of the Ticino police notifications, the group sheets and the parents' authorizations are kept
         // five years from their date; the file and the row of those whose time is over are deleted every day at 03:55 UTC, counts only in the log, never an OTR report.
@@ -440,25 +444,6 @@ public static class RecurringJobsRegistration
             ScheduledMessageSweepJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             ScheduledMessageSweepJob.Cron,
-            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-    }
-
-    /// <summary>
-    /// The hourly retention of the self-hosted identity verification (E73/F01/US02/T03): scheduled only while <paramref name="enabled"/> (<c>Features:CheckInIdentitySelfHosted</c> or
-    /// <c>Features:CheckInIdentityReviewEvidence</c> on); otherwise the schedule of an earlier deploy is removed. The job takes no argument but the token Hangfire gives.
-    /// </summary>
-    private static void ConfigureIdentityRetention(IRecurringJobManager recurringJobManager, bool enabled)
-    {
-        if (!enabled)
-        {
-            recurringJobManager.RemoveIfExists(IdentityEvidencePurgeJob.RecurringJobId);
-            return;
-        }
-
-        recurringJobManager.AddOrUpdate<IdentityEvidencePurgeJob>(
-            IdentityEvidencePurgeJob.RecurringJobId,
-            job => job.ExecuteAsync(CancellationToken.None),
-            IdentityEvidencePurgeJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

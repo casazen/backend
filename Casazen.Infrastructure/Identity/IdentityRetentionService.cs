@@ -17,7 +17,9 @@ namespace Casazen.Infrastructure.Identity;
 
 /// <summary>
 /// The retention and the verifiable deletion of what the self-hosted identity verification keeps (E73/F01/US02/T03, NF-195, decision D9), run every hour by
-/// <c>IdentityEvidencePurgeJob</c> while <c>Features:CheckInIdentitySelfHosted</c> or <c>Features:CheckInIdentityReviewEvidence</c> is on (read again at every run). Every
+/// <c>IdentityEvidencePurgeJob</c>, which is always scheduled. The flags are read again at every run: while <c>Features:CheckInIdentitySelfHosted</c> or
+/// <c>Features:CheckInIdentityReviewEvidence</c> is on every category below runs; with both off only the first one runs, the evidence past its time, because a flag switched off
+/// must never leave a biometric picture with no expiry (the others wait for a flag). Every
 /// category is applied organization by organization, each query naming the organization (a job has no tenant), in batches of <see cref="BatchSize"/> rows:
 /// <list type="number">
 /// <item><b>evidence past its time</b> (<c>ExpiresAt</c> reached): the object goes, the row is kept marked deleted, reason <c>expired</c>; and, as a safety sweep, the evidence of
@@ -52,35 +54,34 @@ public sealed class IdentityRetentionService(
 
     private static readonly GuestCheckInSessionStatus[] OpenStatuses = [GuestCheckInSessionStatus.Inviato, GuestCheckInSessionStatus.InCompilazione];
 
-    /// <summary>The purge runs: one of the two flags of the self-hosted verification that keep something is on.</summary>
+    /// <summary>The whole retention runs: one of the two flags of the self-hosted verification that keep something is on. With both off only the evidence past its time is deleted.</summary>
     public bool PurgeOn =>
         featureFlags.IsEnabled(FeatureFlags.CheckInIdentitySelfHosted) || featureFlags.IsEnabled(FeatureFlags.CheckInIdentityReviewEvidence);
 
     /// <summary>
-    /// One run of the retention at <paramref name="utcNow"/>: the counts of what it deleted, per category. Nothing while both flags are off. With a section
-    /// <c>IdentityVerification</c> that is not valid only the evidence is purged (its times are on its rows); the rest waits for a valid section, with a warning.
+    /// One run of the retention at <paramref name="utcNow"/>: the counts of what it deleted, per category. With both flags off only the evidence past its time is deleted (its time
+    /// is on its row, and a flag never leaves an evidence with no expiry); the other categories wait for a flag. With a section <c>IdentityVerification</c> that is not valid only
+    /// the evidence is purged (its times are on its rows); the rest waits for a valid section, with a warning.
     /// </summary>
     public async Task<IdentityRetentionCounts> PurgeAsync(DateTime utcNow, CancellationToken ct)
     {
         var now = AsUtc(utcNow);
-        if (!PurgeOn)
-        {
-            logger.LogInformation("Identity retention: the self-hosted verification and its evidence are off, nothing to purge");
-            return IdentityRetentionCounts.None;
-        }
+        var whole = PurgeOn;
+        if (!whole)
+            logger.LogInformation("Identity retention: the self-hosted verification and its evidence are off; only the evidence past its time is deleted");
 
         var options = identityOptions.Value;
-        var periods = options.Validate().Count == 0 ? options.Retention : null;
-        if (periods is null)
+        var periods = whole && options.Validate().Count == 0 ? options.Retention : null;
+        if (whole && periods is null)
             logger.LogWarning("Identity retention: the section IdentityVerification is not valid; only the evidence is purged (retention_config_invalid)");
 
         var total = IdentityRetentionCounts.None;
         var failed = 0;
-        foreach (var orgId in await OrgsWithWorkAsync(now, periods, ct))
+        foreach (var orgId in await OrgsWithWorkAsync(now, periods, whole, ct))
         {
             try
             {
-                total += await PurgeOrgAsync(orgId, now, periods, ct);
+                total += await PurgeOrgAsync(orgId, now, periods, whole, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -143,16 +144,18 @@ public sealed class IdentityRetentionService(
         return images.Where(image => !inUse.Any(session => session.OrgId == image.OrgId && session.BookingId == image.BookingId));
     }
 
-    /// <summary>The organizations that have something for a category; the same conditions as the categories, so an organization with nothing is never visited.</summary>
-    private async Task<List<Guid>> OrgsWithWorkAsync(DateTime now, IdentityRetentionOptions? periods, CancellationToken ct)
+    /// <summary>
+    /// The organizations that have something for a category; the same conditions as the categories, so an organization with nothing is never visited. While not
+    /// <paramref name="whole"/> (both flags off) only those with evidence past its time.
+    /// </summary>
+    private async Task<List<Guid>> OrgsWithWorkAsync(DateTime now, IdentityRetentionOptions? periods, bool whole, CancellationToken ct)
     {
         var orgs = new HashSet<Guid>();
-        orgs.UnionWith(await db.IdentityReviewEvidences
-            .IgnoreQueryFilters()
-            .Where(evidence => evidence.DeletedAt == null)
-            .Select(evidence => evidence.OrgId)
-            .Distinct()
-            .ToListAsync(ct));
+        var live = db.IdentityReviewEvidences.IgnoreQueryFilters().Where(evidence => evidence.DeletedAt == null);
+        if (!whole)
+            live = live.Where(evidence => evidence.ExpiresAt <= now);
+
+        orgs.UnionWith(await live.Select(evidence => evidence.OrgId).Distinct().ToListAsync(ct));
 
         if (periods is not null)
         {
@@ -166,10 +169,13 @@ public sealed class IdentityRetentionService(
         return [.. orgs.Order()];
     }
 
-    private async Task<IdentityRetentionCounts> PurgeOrgAsync(Guid orgId, DateTime now, IdentityRetentionOptions? periods, CancellationToken ct)
+    private async Task<IdentityRetentionCounts> PurgeOrgAsync(Guid orgId, DateTime now, IdentityRetentionOptions? periods, bool whole, CancellationToken ct)
     {
         var expired = await DeleteEvidenceAsync(
             () => LiveEvidence(orgId).Where(evidence => evidence.ExpiresAt <= now), IdentityEvidenceDeletionReasons.Expired, now, ct);
+        if (!whole)
+            return IdentityRetentionCounts.None with { ExpiredEvidence = expired };
+
         var decided = await DeleteEvidenceAsync(() => DecidedEvidence(orgId), IdentityEvidenceDeletionReasons.Decided, now, ct);
         if (periods is null)
             return IdentityRetentionCounts.None with { ExpiredEvidence = expired, DecidedEvidence = decided };

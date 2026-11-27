@@ -41,8 +41,9 @@ public sealed class BiometricsStatusDto
 /// <summary>
 /// The retention of the self-hosted identity verification as a platform administrator checks it (E73/F01/US02/T03): <c>overdueEvidence</c> are the pictures kept for a
 /// reviewer past their expiry and not deleted, <c>overdueDocumentImages</c> the kept pictures of documents that no session is still using; both read from the database, across
-/// every organization, and both 0 when nothing overdue remains (the hourly purge deletes them). <c>lastRunAt</c> and <c>lastRunCounts</c> are the last run of this process (null
-/// after a start until the first run, and while the purge is not scheduled). Counts and a time only.
+/// every organization, and both 0 when nothing overdue remains (the hourly purge deletes the evidence past its time whatever the flags say, and the kept pictures while one of the
+/// two flags of the self-hosted verification is on). <c>lastRunAt</c> and <c>lastRunCounts</c> are the last run of this process (null after a start until the first run). Counts and a
+/// time only.
 /// </summary>
 public sealed class IdentityRetentionStatusDto
 {

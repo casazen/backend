@@ -33,7 +33,7 @@ public sealed class AdminBiometricsController(
     /// <summary>
     /// Per model: name, version, licence, state, failure code and whether its SHA-256 is pinned. No path, no hash, no address. The same reading the
     /// <c>biometrics</c> entry of <c>/api/health/ready</c> is made of. Since E73/F01/US02/T03 (NF-195) also <c>retention</c>: the evidence of the reviewers past its time and the
-    /// kept pictures of documents nobody uses any more (both should be 0: the hourly purge deletes them), and the last run of the purge: counts and a time only.
+    /// kept pictures of documents nobody uses any more (the first should always be 0, the second while one of the two flags of the self-hosted verification is on: the hourly purge deletes them), and the last run of the purge: counts and a time only.
     /// </summary>
     /// <response code="200">The state of the set and of each model, and of the retention.</response>
     [HttpGet("status")]

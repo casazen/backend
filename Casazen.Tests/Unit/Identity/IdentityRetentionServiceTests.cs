@@ -266,20 +266,50 @@ public sealed class IdentityRetentionServiceTests
     }
 
     [Fact]
-    public async Task IdentityRetention_WithBothFlagsOff_DeletesNothing()
+    public async Task IdentityRetention_WithBothFlagsOff_DeletesOnlyTheEvidencePastItsTime()
     {
+        // Proof (privacy, review of S015, point 2): a flag switched off never leaves an evidence with no expiry, so with both flags off a run deletes the evidence past its time (and
+        // only that: the sweep of the decided stays, the abandoned sessions, the kept pictures, the checks of the document and the logs wait for a flag).
         await using var world = new RetentionWorld();
         world.Flags.Set(FeatureFlags.CheckInIdentitySelfHosted, false);
         world.Flags.Set(FeatureFlags.CheckInIdentityReviewEvidence, false);
         var stay = await world.StayAsync(world.OrgA);
+        var decidedStay = await world.StayAsync(world.OrgA);
+        var oldStay = await world.StayAsync(world.OrgA, new DateTime(2025, 10, 31, 0, 0, 0, DateTimeKind.Utc));
         var expired = await world.EvidenceAsync(world.OrgA, stay, expiresAt: Now.UtcDateTime.AddMinutes(-1));
+        var live = await world.EvidenceAsync(world.OrgA, stay, expiresAt: Now.UtcDateTime.AddHours(5));
+        var decided = await world.EvidenceAsync(world.OrgA, decidedStay, expiresAt: Now.UtcDateTime.AddHours(40));
+        await world.LogAsync(world.OrgA, decidedStay, VerificationMethod.Operator, BiometricOutcome.Reject, Now.UtcDateTime.AddMinutes(-5));
+        var abandoned = await world.SessionAsync(world.OrgA, stay, openedAt: Now.UtcDateTime.AddHours(-30), withChallenge: true);
+        var image = await world.DocumentImageAsync(world.OrgA, stay);
+        var oldLog = await world.LogAsync(world.OrgA, oldStay, VerificationMethod.Biometric, BiometricOutcome.Accept, new DateTime(2025, 10, 30, 9, 0, 0, DateTimeKind.Utc));
+        var stale = await world.SessionAsync(world.OrgA, oldStay, openedAt: null, expiresAt: Now.UtcDateTime.AddDays(-40));
 
-        Assert.Equal(IdentityRetentionCounts.None, await world.Service().PurgeAsync(Now.UtcDateTime, Ct));
-        Assert.True(world.Storage.Objects.ContainsKey(expired.StorageKey));
+        var counts = await world.Service().PurgeAsync(Now.UtcDateTime, Ct);
 
-        // One of the two is enough for the purge to run.
+        Assert.Equal(IdentityRetentionCounts.None with { ExpiredEvidence = 1 }, counts);
+        var rows = await world.EvidenceRowsAsync();
+        Assert.Equal((Now.UtcDateTime, IdentityEvidenceDeletionReasons.Expired), (rows.Single(row => row.Id == expired.Id).DeletedAt, rows.Single(row => row.Id == expired.Id).DeletionReason));
+        Assert.False(world.Storage.Objects.ContainsKey(expired.StorageKey));
+        Assert.All(new[] { live, decided }, row => Assert.Null(rows.Single(kept => kept.Id == row.Id).DeletedAt));
+        Assert.True(world.Storage.Objects.ContainsKey(live.StorageKey));
+        Assert.True(world.Storage.Objects.ContainsKey(decided.StorageKey));
+        await using (var read = world.NewContext())
+        {
+            Assert.Null((await read.GuestCheckInSessions.IgnoreQueryFilters().AsNoTracking().SingleAsync(session => session.Id == abandoned.Id)).IdentityClosedAt);
+            Assert.NotNull((await read.GuestCheckInSessions.IgnoreQueryFilters().AsNoTracking().SingleAsync(session => session.Id == stale.Id)).DocumentCheckJson);
+            Assert.True(await read.DocumentImages.IgnoreQueryFilters().AnyAsync(row => row.Id == image.Id));
+            Assert.True(await read.BiometricVerificationLogs.IgnoreQueryFilters().AnyAsync(row => row.Id == oldLog.Id));
+        }
+
+        Assert.Equal(Now.UtcDateTime, world.RunLog.Last!.RanAt);
+
+        // One of the two flags is enough for the whole retention: the rest of the categories run.
         world.Flags.Set(FeatureFlags.CheckInIdentityReviewEvidence, true);
-        Assert.Equal(1, (await world.Service().PurgeAsync(Now.UtcDateTime, Ct)).ExpiredEvidence);
+        var whole = await world.Service().PurgeAsync(Now.UtcDateTime, Ct);
+
+        Assert.Equal((0, 1, 1, 1, 1), (whole.ExpiredEvidence, whole.DecidedEvidence, whole.AbandonedSessions, whole.AbandonedDocumentImages, whole.VerificationLogsDeleted));
+        Assert.True(whole.DocumentChecksCleared >= 1);
     }
 
     [Fact]
@@ -344,12 +374,14 @@ public sealed class IdentityRetentionServiceTests
     }
 
     [Theory]
-    [InlineData(false, false, false)]
-    [InlineData(true, false, true)]
-    [InlineData(false, true, true)]
-    [InlineData(true, true, true)]
-    public void IdentityEvidencePurgeJob_IsScheduledHourly_OnlyWithOneOfTheTwoFlagsOn_AndCarriesNoData(bool selfHosted, bool evidence, bool scheduled)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void IdentityEvidencePurgeJob_IsScheduledHourly_WhateverTheFlagsSay_AndCarriesNoData(bool selfHosted, bool evidence)
     {
+        // Review of S015, point 2: a flag switched off must never leave an evidence with no expiry, so the job is always there (as GuestDocumentPurgeJob and
+        // SwissComplianceRetentionJob are); what a run does with both flags off is proved by IdentityRetention_WithBothFlagsOff_DeletesOnlyTheEvidencePastItsTime.
         var flags = new TestFeatureFlags();
         flags.Set(FeatureFlags.CheckInIdentitySelfHosted, selfHosted);
         flags.Set(FeatureFlags.CheckInIdentityReviewEvidence, evidence);
@@ -362,10 +394,8 @@ public sealed class IdentityRetentionServiceTests
         RecurringJobsRegistration.Configure(manager.Object, flags);
 
         Assert.Equal("identity-evidence-purge", IdentityEvidencePurgeJob.RecurringJobId);
-        Assert.Equal(scheduled, registered.ContainsKey(IdentityEvidencePurgeJob.RecurringJobId));
-        manager.Verify(m => m.RemoveIfExists(IdentityEvidencePurgeJob.RecurringJobId), scheduled ? Times.Never() : Times.Once());
-        if (!scheduled)
-            return;
+        Assert.True(registered.ContainsKey(IdentityEvidencePurgeJob.RecurringJobId));
+        manager.Verify(m => m.RemoveIfExists(IdentityEvidencePurgeJob.RecurringJobId), Times.Never());
 
         var (job, cron, options) = registered[IdentityEvidencePurgeJob.RecurringJobId];
         Assert.Equal(("40 * * * *", TimeZoneInfo.Utc), (cron, options.TimeZone));
