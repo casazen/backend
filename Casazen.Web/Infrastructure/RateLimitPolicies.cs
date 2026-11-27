@@ -330,4 +330,10 @@ public static class RateLimitPolicies
     /// so the sites behind one hosting address never share a budget: 120 a minute. A call without a valid credential is refused before the limiter.
     /// </summary>
     public const string SiteApi = "SiteApi";
+
+    /// <summary>
+    /// The check of the agency's domain by the plugin (<c>POST api/site/v1/domain/verify</c>, S023, site integration plan §10.4): each call asks DNS and the Vercel Domains API,
+    /// so it has a budget of its own on top of <see cref="SiteApi"/> and it is tight: 20 in ten minutes. Partitioned by <b>credential</b> like <see cref="SiteApi"/>.
+    /// </summary>
+    public const string SiteDomainVerify = "SiteDomainVerify";
 }

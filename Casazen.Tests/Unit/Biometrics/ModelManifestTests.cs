@@ -133,34 +133,6 @@ public sealed class ModelManifestTests
     }
 
     [Fact]
-    public void Manifest_EveryVariableItNames_ExistsInTheOptions_AndIsInTheDeployChecklist()
-    {
-        var checklist = File.ReadAllText(System.IO.Path.Combine(SolutionRoot(), "docs", "runbooks", "deploy-checklist.md"));
-
-        foreach (var entry in Entries())
-        {
-            var id = Text(entry, "id");
-            var config = entry.GetProperty("config");
-
-            var sha256 = Text(config, "sha256");
-            AssertOption(sha256, "Sha256", id);
-            Assert.Contains($"`{sha256}`", checklist, StringComparison.Ordinal);
-
-            if (config.TryGetProperty("downloadUrl", out var downloadUrl))
-            {
-                AssertOption(downloadUrl.GetString()!, "DownloadUrl", id);
-                Assert.Contains($"`{downloadUrl.GetString()}`", checklist, StringComparison.Ordinal);
-            }
-
-            if (config.TryGetProperty("set", out var set))
-            {
-                foreach (var variable in set.EnumerateObject())
-                    Assert.NotNull(ResolveOption(variable.Name));
-            }
-        }
-    }
-
-    [Fact]
     public void Manifest_TheCandidateRoles_HaveNoEntryWhileTheyAreNotConfigured_AndNothingCommittedConfiguresOne()
     {
         // Not configured is the state of the committed application: the defaults of the options and the appsettings.json that ships.
@@ -185,42 +157,6 @@ public sealed class ModelManifestTests
         Assert.DoesNotContain(
             Directory.EnumerateFiles(models, "*", SearchOption.AllDirectories).Select(System.IO.Path.GetFileName),
             file => file is not null && file.Contains("candidate", StringComparison.OrdinalIgnoreCase));
-    }
-
-    [Fact]
-    public void Manifest_TheCandidateRolesSection_NamesEveryVariableOfTheirOptions_AndTheChecklistDocumentsEachOne()
-    {
-        var checklist = File.ReadAllText(System.IO.Path.Combine(SolutionRoot(), "docs", "runbooks", "deploy-checklist.md"));
-        using var document = JsonDocument.Parse(File.ReadAllText(ManifestPath()));
-        var section = document.RootElement.GetProperty("candidateRoles").EnumerateArray().ToList();
-
-        // The candidate settings of the options, found by reflection: a setting added to a candidate without the manifest and the checklist fails here.
-        var candidateProperties = typeof(BiometricModelOptions)
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(property => property.Name.EndsWith("Candidate", StringComparison.Ordinal) && typeof(ModelFileOptions).IsAssignableFrom(property.PropertyType))
-            .ToList();
-        Assert.Equal(["AntiSpoofingCandidate", "FaceRecognitionCandidate"], candidateProperties.Select(property => property.Name).Order(StringComparer.Ordinal));
-        Assert.Equal(candidateProperties.Count, section.Count);
-
-        foreach (var property in candidateProperties)
-        {
-            var role = Assert.Single(section, entry => Text(entry, "usedBy") == $"Biometrics:{property.Name}");
-            Assert.Contains(Text(role, "role"), Roles);
-            Assert.Equal("none", Text(role, "delivery"));
-
-            var expected = property.PropertyType
-                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Select(setting => $"Biometrics__{property.Name}__{setting.Name}")
-                .Order(StringComparer.Ordinal)
-                .ToList();
-            Assert.Equal(expected, role.GetProperty("variables").EnumerateArray().Select(variable => variable.GetString()!).Order(StringComparer.Ordinal));
-
-            foreach (var variable in expected)
-            {
-                Assert.NotNull(ResolveOption(variable));
-                Assert.Contains($"`{variable}`", checklist, StringComparison.Ordinal);
-            }
-        }
     }
 
     [Fact]

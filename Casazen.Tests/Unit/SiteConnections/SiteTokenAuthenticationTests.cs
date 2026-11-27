@@ -217,7 +217,10 @@ public class SiteTokenAuthenticationTests
         Assert.Equal(SiteTokenDefaults.AuthenticationScheme, pluginAuthorize.AuthenticationSchemes);
         Assert.Equal(CasazenPolicies.SiteConnection, pluginAuthorize.Policy);
         Assert.Equal("api/site/v1", plugin.GetCustomAttribute<RouteAttribute>()?.Template);
-        Assert.Equal(["Disconnect"], Actions(plugin).Select(a => a.Name));
+        // S022 has the disconnection; S023 the account and the domain (the plugin's own tests: SiteApiDomainEndpointsTests).
+        Assert.Equal(
+            ["Disconnect", "GetAccount", "SetDomain", "SetSurfaces", "VerifyDomain"],
+            Actions(plugin).Select(a => a.Name).Order(StringComparer.Ordinal));
         Assert.Equal(RateLimitPolicies.SiteApi, plugin.GetCustomAttribute<EnableRateLimitingAttribute>()?.PolicyName);
 
         var exchange = typeof(PublicSiteConnectionsController);
@@ -268,7 +271,11 @@ public class SiteTokenAuthenticationTests
             Assert.Equal(StatusCodes.Status404NotFound, off.Response.StatusCode);
             Assert.False(reached, $"{controller.Name}.{action.Name} ran with SiteEmbed off.");
 
+            // Several gates on one endpoint need every flag on: the surfaces of the domain (S023) are behind WhiteLabelHost too, like the console's.
             flags.Set(FeatureFlags.SiteEmbed, true);
+            foreach (var gate in metadata.OfType<FeatureGateAttribute>())
+                flags.Set(gate.Flag, true);
+
             var on = new DefaultHttpContext();
             on.SetEndpoint(new Endpoint(_ => Task.CompletedTask, new EndpointMetadataCollection(metadata), action.Name));
             await middleware.InvokeAsync(on);
@@ -285,6 +292,10 @@ public class SiteTokenAuthenticationTests
         Assert.Equal((20, TimeSpan.FromMinutes(10), false, false), (token.DefaultPermitLimit, token.DefaultWindow, token.PartitionByUser, token.PartitionBySiteConnection));
         var api = Policy(RateLimitPolicies.SiteApi);
         Assert.Equal((120, TimeSpan.FromMinutes(1), false, true), (api.DefaultPermitLimit, api.DefaultWindow, api.PartitionByUser, api.PartitionBySiteConnection));
+
+        // S023: the check of the domain has a budget of its own, tighter, and counts per credential too.
+        var verify = Policy(RateLimitPolicies.SiteDomainVerify);
+        Assert.Equal((20, TimeSpan.FromMinutes(10), false, true), (verify.DefaultPermitLimit, verify.DefaultWindow, verify.PartitionByUser, verify.PartitionBySiteConnection));
 
         // Two sites behind one hosting address have a budget each; a call with no credential counts by address.
         var siteA = SiteCall(Guid.NewGuid());

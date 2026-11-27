@@ -1,7 +1,7 @@
 name: PR Environment Guide
 
 # Deploys are handled by native integrations:
-# - Railway: optional PR deploys or shared test URL (see docs/INFRA.md)
+# - Railway: optional PR deploys or shared test URL (see the INFRA guide in the project documentation)
 # - Vercel: automatic preview per PR on casazen/frontend
 # This workflow posts validation links on the PR (no Railway CLI).
 
@@ -30,7 +30,7 @@ jobs:
               '',
               '| Service | How it deploys | URL |',
               '|---------|----------------|-----|',
-              '| **Backend** | Railway test env (merge to `develop` or PR deploy — see [INFRA.md](docs/INFRA.md)) | ' + (hasTestUrl ? `[${testUrl}](${testUrl})` : testUrl) + ' |',
+              '| **Backend** | Railway test env (merge to `develop` or PR deploy — see the INFRA guide in the project documentation) | ' + (hasTestUrl ? `[${testUrl}](${testUrl})` : testUrl) + ' |',
               '| **Frontend** | Vercel GitHub integration (automatic) | See **Vercel** bot comment on this PR ↓ |',
               '',
               hasTestUrl

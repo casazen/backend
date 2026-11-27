@@ -662,6 +662,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgDomainService, OrgDomainService>();
         // The connection of a site to the org (S022): the one-time code, its exchange for the plugin's credential, the checks of the SiteToken scheme.
         services.AddScoped<ISiteConnectionService, SiteConnectionService>();
+        // The account of a connected plugin (S023): the org, the address of its embeddable pages and its domain settings, made once for the four endpoints that answer it.
+        services.AddScoped<ISiteAccountBuilder, SiteAccountBuilder>();
         // The owner sign-in on an agency's own domain (E40/F01/US02/T01, NF-141): the registrar of the hosts in the shared Auth0 tenant (Auth0:HostSync,
         // nothing is called without its client id or while Auth0HostSync is off) and the one place that moves the state and tells the org's administrators.
         services.AddOptions<Auth0HostSyncOptions>().BindConfiguration(Auth0HostSyncOptions.SectionName);

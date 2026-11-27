@@ -17,7 +17,7 @@
   - If the embedded ISTAT code differs from the property's comune, show a non-blocking warning only (`CinFormat.HasIstatComuneMismatch`): the CIN never changes after a relocation or reclassification. Needs a trusted ISTAT code on the property (not the free-text city).
   - Never derive a CIN from a regional code (CIR/CIS/CIPAT/CIU).
   - The old `IT-XXXXX-XXXXXXXXXX` format is WRONG.
-  - Details and sources: `documentazione/03-documenti-ai/revisioni/normativa/cin.md` § "Formato verificato (2026-09)" (workspace folder, outside the repo); runbook `docs/runbooks/cin-format.md`
+  - Details and sources: `documentazione/03-documenti-ai/revisioni/normativa/cin.md` § "Formato verificato (2026-09)" (workspace folder, outside the repo); runbook `documentazione/03-documenti-ai/runbook/backend/cin-format.md`
 - **Guest data**: GDPR-compliant, Alloggiati Web integration, data retention applies
 - **Tourist tax**: regional rates in `TaxRate` entity — NEVER hardcode
 
