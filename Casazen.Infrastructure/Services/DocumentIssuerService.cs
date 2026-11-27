@@ -293,7 +293,7 @@ public sealed class DocumentIssuerService(
                 FiscalDocumentRules.MissingIssuerFields(IssuerData.Empty, null, null, identity.VatNumber, identity.FiscalCode), null);
         }
 
-        var issuer = DataOf(profile);
+        var issuer = OwnerIssuerProfileRules.DataOf(profile);
         var rule = RuleInForceToday(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, profile.CleaningFeeTreatment);
         var effectiveRegimeCode = FiscalDocumentRules.IsSwiss(profile.CountryCode)
             ? null
@@ -310,37 +310,6 @@ public sealed class DocumentIssuerService(
             FiscalDocumentRules.MissingIssuerFields(issuer, profile.DocumentRegime, effectiveRegimeCode, identity.VatNumber, identity.FiscalCode),
             rule);
     }
-
-    /// <summary>The data of a stored profile as the wizard shows it.</summary>
-    private static IssuerData DataOf(OrgFiscalIssuerProfile profile) =>
-        new(
-            profile.LegalName,
-            profile.AddressStreet,
-            profile.AddressCivic,
-            profile.PostalCode,
-            profile.City,
-            profile.Province,
-            profile.CountryCode,
-            profile.FatturaPaRegimeCode,
-            profile.IssuerSdiRecipientCode,
-            profile.IssuerPec,
-            profile.GuestDocumentSeries)
-        {
-            VatRegistered = profile.VatRegistered,
-            SwissVatNumber = profile.SwissVatNumber,
-            Iban = profile.Iban,
-            QrIban = profile.QrIban,
-            StayVatTreatment = profile.StayVatTreatment,
-            CleaningFeeTreatment = profile.CleaningFeeTreatment,
-            OwnerInvoiceSeries = profile.OwnerInvoiceSeries,
-            AutoIssueGuestDocuments = profile.AutoIssueGuestDocuments,
-            EmailGuestDocuments = profile.EmailGuestDocuments,
-            PlatformCollectedTouristTaxChannels = profile.PlatformCollectedTouristTaxChannels,
-            PlatformCollectedTouristTaxChannelsConfirmed = profile.PlatformCollectedTouristTaxChannelsConfirmed,
-            StampDutyReference = profile.StampDutyReference,
-            ConservationAgreementConfirmed = profile.ConservationAgreementConfirmed,
-            VirtualStampConfirmed = profile.VirtualStampConfirmed,
-        };
 
     /// <summary>The normalized data written on the profile, as a whole.</summary>
     internal static void Apply(OrgFiscalIssuerProfile profile, IssuerData data)

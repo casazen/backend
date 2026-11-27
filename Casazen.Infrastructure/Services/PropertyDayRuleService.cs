@@ -56,9 +56,9 @@ public sealed class PropertyDayRuleService(
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(query);
-        EnsureWindow(query.From, query.To);
+        HostCalendarRequestRules.EnsureWindow(query.From, query.To);
 
-        var requested = RequestedIds(query.PropertyIds);
+        var requested = HostCalendarRequestRules.RequestedIds(query.PropertyIds);
         var properties = await ReadPropertiesAsync(scope, requested, cancellationToken);
         var today = _clock.TodayInRomeAsDateOnly();
         if (properties.Count == 0)
@@ -274,36 +274,6 @@ public sealed class PropertyDayRuleService(
     private sealed record MirroredKey(Guid PropertyId);
 
     private sealed record MirroredMemo(bool Mirrored, DateTimeOffset Until);
-
-    // --- The limits of the read, those of the calendar of the host ---------------------------------------------
-
-    private static void EnsureWindow(DateOnly from, DateOnly to)
-    {
-        if (to < from)
-            throw new ArgumentException("The last day of the range is before the first.", nameof(to));
-
-        if (to.DayNumber - from.DayNumber + 1 > HostCalendarLimits.MaxWindowDays)
-        {
-            throw new DomainRuleException(
-                HostCalendarErrorCodes.WindowTooLarge, HostCalendarErrorCodes.WindowTooLargeMessageKey, HostCalendarLimits.MaxWindowDays);
-        }
-    }
-
-    // The properties asked for by id, without repeats; null when none were asked for.
-    private static List<Guid>? RequestedIds(IReadOnlyCollection<Guid>? ids)
-    {
-        if (ids is null || ids.Count == 0)
-            return null;
-
-        var distinct = ids.Distinct().ToList();
-        if (distinct.Count > HostCalendarLimits.MaxProperties)
-        {
-            throw new DomainRuleException(
-                HostCalendarErrorCodes.TooManyProperties, HostCalendarErrorCodes.TooManyPropertiesMessageKey, HostCalendarLimits.MaxProperties);
-        }
-
-        return distinct;
-    }
 
     // --- The rules ---------------------------------------------------------------------------------------------
 

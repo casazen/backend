@@ -55,8 +55,6 @@ public class RliRegistrationService(
     private const string ManualEventPayload = "manual";
     private const string ProviderEventPayload = "provider";
 
-    private static readonly byte[] PdfSignature = "%PDF-"u8.ToArray();
-
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public bool IsProviderFilingAvailable => RliProviderFiling.IsAvailable(featureFlags, provider);
@@ -661,34 +659,8 @@ public class RliRegistrationService(
     /// The whole content when it is a PDF (<c>%PDF-</c> signature) of at most <see cref="RliRegistrationLimits.MaxReceiptBytes"/>, positioned
     /// at the start; null otherwise. The declared length is not trusted: the content is counted while it is read.
     /// </summary>
-    private static async Task<MemoryStream?> ReadPdfAsync(Stream content, long? declaredLength, CancellationToken cancellationToken)
-    {
-        if (declaredLength is <= 0 or > RliRegistrationLimits.MaxReceiptBytes)
-            return null;
-
-        var buffer = new MemoryStream();
-        var chunk = new byte[81920];
-        int read;
-        while ((read = await content.ReadAsync(chunk, cancellationToken)) > 0)
-        {
-            if (buffer.Length + read > RliRegistrationLimits.MaxReceiptBytes)
-            {
-                await buffer.DisposeAsync();
-                return null;
-            }
-
-            buffer.Write(chunk, 0, read);
-        }
-
-        if (buffer.Length < PdfSignature.Length || !buffer.GetBuffer().AsSpan(0, PdfSignature.Length).SequenceEqual(PdfSignature))
-        {
-            await buffer.DisposeAsync();
-            return null;
-        }
-
-        buffer.Position = 0;
-        return buffer;
-    }
+    private static Task<MemoryStream?> ReadPdfAsync(Stream content, long? declaredLength, CancellationToken cancellationToken) =>
+        ReceiptPdfReader.ReadPdfAsync(content, declaredLength, RliRegistrationLimits.MaxReceiptBytes, cancellationToken);
 
     private async Task TryDeleteReceiptAsync(string key)
     {

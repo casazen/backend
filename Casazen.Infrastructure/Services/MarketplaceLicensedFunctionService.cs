@@ -24,7 +24,7 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Only the license decides.</b> A module the license shows on is Active, verified and no longer declared; a verified Active module the license
 /// shows off is To fix (<see cref="MarketplaceFunctionErrorCodes.LicenseModuleOff"/>); a module the license does not state changes nothing, because an
 /// absent flag is not an off flag; a Requested row waits. The reads and the writes happen only with the connector on and the org connected
-/// (<see cref="ConnectedAccountAsync"/>), and an Octorate failure is raised as it is: nothing is recorded on a read that failed. The one exception is
+/// (<see cref="MarketplaceReads.ConnectedAccountAsync"/>), and an Octorate failure is raised as it is: nothing is recorded on a read that failed. The one exception is
 /// asking again for a request under way while the channel manager cannot be read (no answer, a 5xx, the quota used): that request is returned as it is,
 /// so that asking again always gives the same one.</para>
 /// <para><b>Last read.</b> The plan and the room limit of the last live read are kept in memory for a week, by org, property and accommodation (a
@@ -170,31 +170,8 @@ public sealed class MarketplaceLicensedFunctionService(
     }
 
     /// <summary>The org is connected (the connector is on and it has a connected account in this environment) and the property has its confirmed listing.</summary>
-    private async Task<Link> RequireLinkAsync(Guid orgId, Guid propertyId, CancellationToken ct)
-    {
-        var connectionKey = await ConnectedAccountAsync(orgId, ct) ?? throw NotConnected();
-        var accommodation = await db.OctorateListingMappings.AsNoTracking()
-            .Where(m => m.OrgId == orgId
-                        && m.PropertyId == propertyId
-                        && m.ConnectionId == connectionKey
-                        && m.Status == OctorateMappingStatus.Confirmed)
-            .Select(m => m.OctorateAccommodationId)
-            .FirstOrDefaultAsync(ct);
-        return accommodation is null ? throw NotLinked() : new Link(accommodation);
-    }
-
-    /// <summary>The id of the org's connected account in this environment; <c>null</c> while the connector is off or the org is not connected.</summary>
-    private async Task<Guid?> ConnectedAccountAsync(Guid orgId, CancellationToken ct)
-    {
-        if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
-            return null;
-
-        var environment = OctorateEnvironments.Of(hostEnvironment);
-        return await db.OctorateConnections.AsNoTracking()
-            .Where(c => c.OrgId == orgId && c.Environment == environment && c.Status == OctorateConnectionStatus.Connected)
-            .Select(c => (Guid?)c.Id)
-            .FirstOrDefaultAsync(ct);
-    }
+    private async Task<Link> RequireLinkAsync(Guid orgId, Guid propertyId, CancellationToken ct) =>
+        new Link(await MarketplaceReads.RequireLinkedAccommodationAsync(db, featureFlags, hostEnvironment, orgId, propertyId, ct));
 
     private async Task<List<MarketplaceActivation>> RowsAsync(Guid orgId, Guid propertyId, CancellationToken ct) =>
         await db.MarketplaceActivations.AsNoTracking()
@@ -480,12 +457,6 @@ public sealed class MarketplaceLicensedFunctionService(
     };
 
     private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
-
-    private static DomainConflictException NotConnected() =>
-        new(MarketplaceActivationErrorCodes.OctorateNotConnected, "MarketplaceOctorateNotConnected");
-
-    private static DomainRuleException NotLinked() =>
-        new(MarketplaceActivationErrorCodes.PropertyNotLinked, "MarketplacePropertyNotLinked");
 
     private static NotFoundException FunctionUnknown() =>
         new("The function is not one of the modules of the license.")

@@ -104,13 +104,13 @@ public class ComuneImportService(
         if (request.ReferenceDate > _clock.TodayInRomeAsDateOnly())
             return Reject(ComuneImportErrors.ReferenceDateInFuture);
 
-        var bytes = await ReadAllAsync(content, cancellationToken);
+        var bytes = await ImportFileText.ReadAllAsync(content, MaxFileBytes, cancellationToken);
         if (bytes is null)
             return Reject(ComuneImportErrors.FileTooLarge);
         if (bytes.Length == 0)
             return Reject(ComuneImportErrors.EmptyFile);
 
-        var text = Decode(bytes);
+        var text = ImportFileText.Decode(bytes);
         if (text is null)
             return Reject(ComuneImportErrors.UnreadableEncoding);
 
@@ -653,44 +653,6 @@ public class ComuneImportService(
         }
 
         return builder.ToString();
-    }
-
-    /// <summary>UTF-8 (with or without BOM) when valid, otherwise Windows-1252; null when neither applies.</summary>
-    private static string? Decode(byte[] bytes)
-    {
-        try
-        {
-            var text = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(bytes);
-            return text.TrimStart('\uFEFF');
-        }
-        catch (DecoderFallbackException)
-        {
-            try
-            {
-                var windows1252 = CodePagesEncodingProvider.Instance.GetEncoding(
-                    1252, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
-                return windows1252?.GetString(bytes);
-            }
-            catch (DecoderFallbackException)
-            {
-                return null;
-            }
-        }
-    }
-
-    private static async Task<byte[]?> ReadAllAsync(Stream content, CancellationToken cancellationToken)
-    {
-        using var buffer = new MemoryStream();
-        var chunk = new byte[81920];
-        int read;
-        while ((read = await content.ReadAsync(chunk, cancellationToken)) > 0)
-        {
-            if (buffer.Length + read > MaxFileBytes)
-                return null;
-            buffer.Write(chunk, 0, read);
-        }
-
-        return buffer.ToArray();
     }
 
     private static ComuneImportResult Reject(string error) => ComuneImportResult.Rejected(new ComuneImportLineError(0, error));
