@@ -46,6 +46,7 @@ internal static class IdentityTestDocuments
     /// <summary>
     /// The reading of the MRZ of a card of three lines of 30 characters, built with its own check digits and read by the parser of the application (so what the checker
     /// sees is what a reading gives): the name field is cut at 30 characters as a line is. Dates are YYMMDD. <paramref name="birthDigit"/> writes a wrong check digit.
+    /// <paramref name="nationality"/> is the code as the line writes it, filled with the filler to three characters (<c>D</c> for a German card).
     /// </summary>
     public static MrzExtractionResult Mrz(
         string surname = Surname,
@@ -54,12 +55,13 @@ internal static class IdentityTestDocuments
         string birth = "850312",
         string expiry = "320312",
         char sex = 'F',
-        char? birthDigit = null)
+        char? birthDigit = null,
+        string nationality = "ITA")
     {
         var name = surname.Replace(' ', '<') + "<<" + givenNames.Replace(' ', '<');
         var line3 = name.Length > 30 ? name[..30] : name.PadRight(30, '<');
         var line1 = "I<ITA" + documentNumber + MrzSpecimens.Check(documentNumber) + new string('<', 15);
-        var head = birth + (birthDigit ?? MrzSpecimens.Check(birth)) + sex + expiry + MrzSpecimens.Check(expiry) + "ITA" + new string('<', 11);
+        var head = birth + (birthDigit ?? MrzSpecimens.Check(birth)) + sex + expiry + MrzSpecimens.Check(expiry) + nationality.PadRight(3, '<') + new string('<', 11);
         var composite = line1[5..30] + head[..7] + head[8..15] + head[18..29];
         var line2 = head + MrzSpecimens.Check(composite);
         Assert.All(new[] { line1, line2, line3 }, line => Assert.Equal(30, line.Length));

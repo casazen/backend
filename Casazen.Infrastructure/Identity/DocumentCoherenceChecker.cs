@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Casazen.Core.Identity;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 
@@ -39,7 +40,9 @@ public sealed record DocumentCoherenceContext(DateOnly CheckInDate, CheckInIdent
 /// document number as letters and digits. A field read on one side only is unknown, never a conflict.</item>
 /// <item><b>field_coherence</b>: the dates are possible: the birth is not after the day of the stay and not more than 120 years before it, the issue is not after
 /// the expiry.</item>
-/// <item><b>booking_consistency</b>: the flags of <see cref="MrzCheckInConsistency"/> (names, birth date, document number, nationality), as they are.</item>
+/// <item><b>booking_consistency</b>: the flags of <see cref="MrzCheckInConsistency"/> (names, birth date, document number, nationality), as they are; the nationality
+/// is compared after the name of the state the guest typed («ITALIA») is brought to its code through the explicit table of the check-in, and stays unknown for a
+/// name that table does not have (never guessed).</item>
 /// </list>
 /// </summary>
 public sealed class DocumentCoherenceChecker
@@ -124,9 +127,10 @@ public sealed class DocumentCoherenceChecker
         checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.FieldCoherence, birthResult, ZonedFieldNames.BirthDate));
         checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.FieldCoherence, issueResult, ZonedFieldNames.IssueDate));
 
-        // booking_consistency: MrzCheckInConsistency, reused as it is: true agrees, false disagrees, null was not compared.
+        // booking_consistency: MrzCheckInConsistency, reused: true agrees, false disagrees, null was not compared. Only the nationality is brought to a common form
+        // first (NationalityOnTheBooking): the check-in keeps the citizenship as the name of a state, which the comparison alone cannot read.
         var booking = mrz?.Result is { } machineRead && context.Declared is { } declared
-            ? MrzCheckInConsistency.Compare(machineRead, declared)
+            ? NationalityOnTheBooking(MrzCheckInConsistency.Compare(machineRead, declared), machineRead, declared)
             : new MrzConsistency(null, null, null, null);
         checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, Flag(booking.Names), DocumentCoherenceFields.Names));
         checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, Flag(booking.BirthDate), ZonedFieldNames.BirthDate));
@@ -316,6 +320,33 @@ public sealed class DocumentCoherenceChecker
     }
 
     private static string LettersOnly(string value) => new(value.ToUpperInvariant().Where(ch => ch is >= 'A' and <= 'Z').ToArray());
+
+    /// <summary>
+    /// The flags of <see cref="MrzCheckInConsistency"/> with the nationality compared on the same footing. The check-in keeps the citizenship as the name of a state
+    /// of the Alloggiati list («ITALIA»), which <see cref="MrzCheckInConsistency"/> alone compares only when it is itself a code of three letters: a guest who typed
+    /// the name was never said to agree, nor to disagree, with a document that proves it. The name is brought to its ISO 3166 alpha-3 code through the explicit table
+    /// of the check-in (<see cref="TicinoCountryCodes"/>: a name that is not in it is never guessed) and the code of the MRZ is read the same way (the «D» of the German
+    /// documents is DEU); when either code cannot be told the flag stays the one of <see cref="MrzCheckInConsistency"/>, as it is (unknown for a name nobody maps).
+    /// </summary>
+    private static MrzConsistency NationalityOnTheBooking(MrzConsistency flags, MrzExtractionResult machine, CheckInIdentity declared)
+    {
+        var onDocument = CanonicalCountry(machine.Nationality);
+        var typed = CanonicalCountry(declared.Citizenship);
+        return onDocument is null || typed is null ? flags : flags with { Nationality = MrzCheckInConsistency.NationalitiesAgree(onDocument, typed) };
+    }
+
+    /// <summary>
+    /// The ISO 3166 alpha-3 code of a country as the MRZ or the check-in spells it, or null when it cannot be told: a code of the table of the Alloggiati states, the
+    /// name of one of those states, or the «D» of the German documents (ICAO 9303 writes Germany so). What is not in the table is not guessed.
+    /// </summary>
+    private static string? CanonicalCountry(string? value)
+    {
+        var letters = value is null ? string.Empty : LettersOnly(value);
+        if (letters.Length == 0)
+            return null;
+
+        return letters == "D" ? "DEU" : TicinoCountryCodes.FromCheckIn(null, value);
+    }
 
     private static string AlphanumericOnly(string value) => new(value.ToUpperInvariant().Where(ch => ch is >= 'A' and <= 'Z' or >= '0' and <= '9').ToArray());
 

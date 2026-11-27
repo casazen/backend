@@ -26,7 +26,8 @@ public class DocumentCoherenceCheckerTests
     /// <summary>The stay of the tests: the check-in is on the 10th of December 2026, and the guest typed nothing yet.</summary>
     private static readonly DocumentCoherenceContext Stay = new(new DateOnly(2026, 12, 10));
 
-    private static readonly CheckInIdentity Typed = new("MARIA GIUSEPPINA", "ROSSI", new DateOnly(1985, 3, 12), "CA12345AA", "ITA");
+    /// <summary>What the guest typed in the data step: the citizenship is the name of the state, as the Alloggiati list writes it (the check-in keeps no code of three letters).</summary>
+    private static readonly CheckInIdentity Typed = new("MARIA GIUSEPPINA", "ROSSI", new DateOnly(1985, 3, 12), "CA12345AA", "ITALIA");
 
     private static ZonedField Printed(string name, string value, DocumentSide side = DocumentSide.Front) =>
         new(name, value, side, name, 0.55, ZonedFieldSources.Viz);
@@ -451,7 +452,7 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_TheBookingFlags_AreTheOnesOfMrzCheckInConsistency()
     {
-        // The guest typed the same names, another birth date, no number, and a citizenship that is a label, not a code.
+        // The guest typed the same names, another birth date, no number, and a citizenship that is no name of the table of the states (a demonym): not compared.
         var typed = new CheckInIdentity("MARIA GIUSEPPINA", "ROSSI", new DateOnly(1990, 1, 1), null, "Italiana");
         var mrz = IdentityTestDocuments.Mrz();
         var expected = MrzCheckInConsistency.Compare(mrz, typed);
@@ -466,6 +467,25 @@ public class DocumentCoherenceCheckerTests
         // What the guest typed is not what two sides of the document say: a booking mismatch is not an identifying conflict.
         Assert.False(report.IdentifyingConflict);
         Assert.Empty(report.Codes);
+    }
+
+    [Theory]
+    [InlineData("ITALIA", "ITA", DocumentCoherenceResults.Passed)] // the name of the state as the check-in keeps it
+    [InlineData("Italia", "ITA", DocumentCoherenceResults.Passed)]
+    [InlineData("ITA", "ITA", DocumentCoherenceResults.Passed)] // a code typed as such
+    [InlineData("GERMANIA", "D", DocumentCoherenceResults.Passed)] // the German cards write D (ICAO 9303)
+    [InlineData("Germania", "DEU", DocumentCoherenceResults.Passed)]
+    [InlineData("FRANCIA", "ITA", DocumentCoherenceResults.Failed)] // another state: a real disagreement
+    [InlineData("ITALIA", "FRA", DocumentCoherenceResults.Failed)]
+    [InlineData("Italiana", "ITA", DocumentCoherenceResults.Unknown)] // not a name of the table: never guessed
+    [InlineData("Atlantide", "ITA", DocumentCoherenceResults.Unknown)]
+    [InlineData("KOSOVO", "RKS", DocumentCoherenceResults.Unknown)] // a code the table does not have on the card: not compared
+    [InlineData("RKS", "RKS", DocumentCoherenceResults.Passed)] // two equal codes the table does not have: as MrzCheckInConsistency compares them
+    public void Check_TheCitizenshipTypedAsTheNameOfAState_IsComparedThroughTheExplicitTable(string typed, string onTheCard, string expected)
+    {
+        var report = Checker.Check(Card(), Reading(IdentityTestDocuments.Mrz(nationality: onTheCard)), Stay with { Declared = Typed with { Citizenship = typed } }, Cie, Policy);
+
+        Assert.Equal(expected, Result(report, DocumentFormatChecks.BookingConsistency, ZonedFieldNames.Nationality));
     }
 
     [Fact]
