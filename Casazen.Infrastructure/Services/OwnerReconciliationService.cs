@@ -32,7 +32,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerReconciliationService> logger) : IOwnerReconciliationService
 {
-    /// <summary>The states of a payment that collected money (a refund moves it to <c>PartiallyRefunded</c> or <c>Refunded</c>): as the owner ledger reads them.</summary>
     private static readonly PaymentStatus[] CollectedStatuses = [PaymentStatus.Completed, PaymentStatus.PartiallyRefunded, PaymentStatus.Refunded];
 
     public async Task<OwnerReconciliation> GetAsync(Guid orgId, int year, int month, CancellationToken ct = default)
@@ -70,18 +69,12 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
         return new OwnerReconciliation(year, month, channels, statements, ordered);
     }
 
-    // ---------------------------------------------------------------- the channels
-
-    /// <summary>
-    /// One row for each channel and currency with a stay posted in the month; the payout differences of the portals' stays are added to <paramref name="differences"/>.
-    /// </summary>
     private static List<ChannelReconciliationRow> ChannelRows(
         IReadOnlyList<Line> live,
         IReadOnlyDictionary<Guid, BookingInfo> bookings,
         IReadOnlyDictionary<Guid, decimal> paid,
         List<ReconciliationDifference> differences)
     {
-        // The commission the portal kept is the same whoever bears it (the owner, or the agency for an account it holds and does not recharge): the payout expected is the gross less it.
         var stays = live
             .Where(l => l.Type == OwnerLedgerEntryType.BookingRevenue || OwnerLedgerBalance.IsChannelFee(l.Type))
             .Select(l => (Line: l, Booking: BookingOf(l)))
@@ -122,8 +115,6 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
                     expected += stay.Net;
                     if (payout is null)
                     {
-                        // No payment in CasaZen and no net reported: there is no figure to compare, and not available is never a zero (ADR-033-R2). Nothing to expect from a stay
-                        // that nets nothing (a stay for free): nothing is missing.
                         if (stay.Net > 0m)
                         {
                             withoutFigure++;
@@ -144,8 +135,6 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
                     }
                 }
 
-                // The recorded payouts and their difference are the ones of the stays that have a figure (so the listed differences add up to it); a row that expects a payout and has
-                // not one figure has nothing recorded to tell: null, never a zero.
                 var noFigureAtAll = withoutFigure > 0 && withFigure == 0;
                 expectedTotal = expected;
                 recordedTotal = noFigureAtAll ? null : recorded;
@@ -170,10 +159,6 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
         return rows;
     }
 
-    /// <summary>
-    /// The active stays that check out in the month, with no collected payment and a gross to post (the booking path of the ledger, as <c>PlanAsync</c> reads them), that have no live
-    /// revenue line from their booking in any month.
-    /// </summary>
     private async Task<List<ReconciliationDifference>> StaysNotPostedAsync(Guid orgId, DateTime start, DateTime end, CancellationToken ct)
     {
         var stays = (await db.Bookings.AsNoTracking()
@@ -210,12 +195,6 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
             .ToList();
     }
 
-    // ---------------------------------------------------------------- the statements
-
-    /// <summary>
-    /// The published statements against the ledger, one row for each statement currency; the ledger lines the published statements do not hold, and the totals that are not the one
-    /// of their lines, are added to <paramref name="differences"/>.
-    /// </summary>
     private async Task<List<StatementReconciliationRow>> StatementRowsAsync(
         Guid orgId,
         int year,
@@ -225,11 +204,8 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
         List<ReconciliationDifference> differences,
         CancellationToken ct)
     {
-        // A statement holds the balance of its owner: a line for information only (the commission of a portal the agency bears, FIX/BE-V2-NO-RECHARGE) is in no balance, so
-        // it is neither in the total of the ledger nor a difference.
         var lines = allLines.Where(l => OwnerLedgerBalance.Counts(l.Type)).ToList();
 
-        // The newest published version of each owner. Only the columns the totals need: the published file of a version is never read here.
         var published = (await db.OwnerStatementVersions.AsNoTracking()
                 .Where(v => v.OrgId == orgId && v.PeriodYear == year && v.PeriodMonth == month && v.PublishedAt != null)
                 .Select(v => new PublishedVersion(v.Id, v.PropertyOwnerId, v.VersionNumber, v.Currency, v.CutoffAt, v.ClosingBalance - v.OpeningBalance))
@@ -256,7 +232,6 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
             publishedCounts[version.Currency] = publishedCounts.GetValueOrDefault(version.Currency) + 1;
         }
 
-        // The lines the published statement of their owner does not hold: posted after its cut-off, or no statement published at all.
         var notInStatement = lines
             .Where(l => !published.TryGetValue(l.OwnerId, out var version) || l.PostedAt > version.CutoffAt)
             .ToList();
@@ -268,7 +243,6 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
             var key = (group.Key.OwnerId, currency);
             listed[key] = listed.GetValueOrDefault(key) + group.Sum(l => l.Amount);
 
-            // The lines of a booking of an owner are one difference (the stay), any other line is one by itself (the entry).
             if (group.Key.Booking is { } booking)
             {
                 var channel = bookings.TryGetValue(booking, out var info) ? info.Source : (BookingSource?)null;
@@ -283,13 +257,10 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
             }
         }
 
-        // What is left once those lines are taken out: the total of a published statement that is not the total of its lines, told by the version (so the listed differences
-        // always add up to the difference of the totals, also for an owner with lines in more than one currency).
         foreach (var version in published.Values.OrderBy(v => v.OwnerId))
         {
             foreach (var currency in lines.Where(l => l.OwnerId == version.OwnerId).Select(l => l.StatementCurrency).Append(version.Currency).Distinct(StringComparer.Ordinal))
             {
-                // The lines the statement was cut from (the ledger less what was posted after its cut-off) against the total it says.
                 var held = lines.Where(l => l.OwnerId == version.OwnerId && l.StatementCurrency == currency).Sum(l => l.Amount) - listed.GetValueOrDefault((version.OwnerId, currency));
                 var statement = currency == version.Currency ? version.Total : 0m;
                 if (statement != held)
@@ -318,9 +289,6 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
             .ToList();
     }
 
-    // ---------------------------------------------------------------- the reads
-
-    /// <summary>Every line of the month, reversals included.</summary>
     private async Task<List<Line>> LinesAsync(Guid orgId, int year, int month, CancellationToken ct) =>
         await db.OwnerLedgerEntries.AsNoTracking()
             .Where(e => e.OrgId == orgId && e.PeriodYear == year && e.PeriodMonth == month)
@@ -329,7 +297,6 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
                 e.ReversesEntryId, e.PostedAt))
             .ToListAsync(ct);
 
-    /// <summary>The lines among <paramref name="lines"/> that a reversal (in any month) reverses.</summary>
     private Task<HashSet<Guid>> ReversedAsync(Guid orgId, IReadOnlyList<Line> lines, CancellationToken ct) =>
         ReversedAsync(orgId, lines.Select(l => l.Id).ToList(), ct);
 
@@ -359,11 +326,6 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
         return rows.ToDictionary(b => b.Id);
     }
 
-    /// <summary>
-    /// What the payments collected in CasaZen for each booking come to (the payment ledger's paid lines recorded here, by hand or by card), as the owner ledger posts them: each payment
-    /// net of its refunds and without its part of the tourist tax (<see cref="OwnerLedgerRules.RevenueOfPayment"/>, the one definition), so it is compared with an expected payout that has
-    /// no tourist tax in it; a stay that owes no tax (not active, or a no-show) has no part of it, as the posting reads it. A payment refunded in full counts 0.
-    /// </summary>
     private async Task<Dictionary<Guid, decimal>> PaymentsAsync(Guid orgId, List<Guid> bookingIds, IReadOnlyDictionary<Guid, BookingInfo> bookings, CancellationToken ct)
     {
         if (bookingIds.Count == 0)
@@ -380,10 +342,6 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
             .ToDictionary(g => g.Key, g => g.Sum(p => OwnerLedgerRules.RevenueOfPayment(p.Net, bookings[p.BookingId].OwedTouristTax, bookings[p.BookingId].TotalPrice)));
     }
 
-    /// <summary>
-    /// The booking a line comes from: the source of a booking line (the commission of a channel, the revenue and the flat fees of a stay posted from its booking) and the reference of
-    /// a payment line (its booking); <c>null</c> for a charge, a correction, a wire, a payout or an owner invoice.
-    /// </summary>
     private static Guid? BookingOf(Line line) => line.Source switch
     {
         OwnerLedgerSourceType.Booking or OwnerLedgerSourceType.MandateFlatFee => line.SourceId,
@@ -416,16 +374,13 @@ public sealed class OwnerReconciliationService(AppDbContext db, ILogger<OwnerRec
         BookingStatus Status,
         DateTime? NoShowAt)
     {
-        /// <summary>The tourist tax the stay owes: none for a booking that is not active or a no-show (<see cref="AlloggiatiStatusRules"/>, as the posting reads it).</summary>
         public decimal OwedTouristTax => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(Status) && NoShowAt is null ? TouristTax : 0m;
     }
 
     private sealed record PublishedVersion(Guid Id, Guid OwnerId, int Number, string Currency, DateTime CutoffAt, decimal Total);
 
-    /// <summary>What the live lines of one stay say in one currency: its gross, and its commission by where it comes from (positive amounts, the sum of the owners' shares).</summary>
     private sealed record StayFigures(BookingInfo Booking, string Currency, bool HasRevenue, decimal Gross, decimal FeeFromPortal, decimal FeeFromRule, decimal FeeFromDefault)
     {
-        /// <summary>What the portal is expected to pay out for the stay: its gross less its commission.</summary>
         public decimal Net => Gross - FeeFromPortal - FeeFromRule - FeeFromDefault;
 
         public static StayFigures Of(BookingInfo booking, string currency, IEnumerable<Line> lines)

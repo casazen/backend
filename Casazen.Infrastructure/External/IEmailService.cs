@@ -47,11 +47,6 @@ public interface IEmailService
         IReadOnlyDictionary<string, string> headers, string hostName, Guid deliveryId) =>
         SendEmailWithHeadersAsync(to, subject, htmlContent, headers);
 
-    /// <summary>
-    /// The same email with extra headers, for the marketing campaigns: <c>List-Unsubscribe</c> and <c>List-Unsubscribe-Post</c>
-    /// (RFC 2369, RFC 8058), so the mail clients offer the one-click unsubscribe (DEB-01). A sender that cannot set headers sends the
-    /// email without them (this default): the unsubscribe link in the body is still there.
-    /// </summary>
     Task<EmailSendResult> SendEmailWithHeadersAsync(
         string to,
         string subject,

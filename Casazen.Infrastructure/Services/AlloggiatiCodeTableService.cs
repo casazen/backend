@@ -24,10 +24,8 @@ public class AlloggiatiCodeTableService(
     ILogger<AlloggiatiCodeTableService> logger,
     TimeProvider? timeProvider = null) : IAlloggiatiCodeTableService
 {
-    /// <summary>Largest file accepted (the comuni table is the largest one).</summary>
     public const int MaxFileBytes = 10 * 1024 * 1024;
 
-    /// <summary>Line errors listed in a rejected import; the file is rejected as a whole anyway.</summary>
     public const int MaxReportedErrors = 50;
 
     public const int MaxSearchResults = 50;
@@ -348,7 +346,6 @@ public class AlloggiatiCodeTableService(
 
     private static string Cell(IReadOnlyList<string> cells, int index) => index < cells.Count ? cells[index] : string.Empty;
 
-    /// <summary>Splits a delimited line; double quotes enclose a cell and <c>""</c> is a literal quote.</summary>
     private static List<string> SplitLine(string line, char delimiter)
     {
         var cells = new List<string>();

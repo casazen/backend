@@ -69,13 +69,10 @@ public class CalendarSyncJob(
 {
     public const string RecurringJobId = "CalendarSync";
 
-    /// <summary>Every 15 minutes (UTC), like <c>property-ical-sync</c> (ADR-002-R2, NF-36).</summary>
     public const string Cron = "*/15 * * * *";
 
-    /// <summary>The seconds a run waits for the previous one: <c>JobLockTimeouts.FrequentSeconds</c>.</summary>
     public const int LockTimeoutSeconds = 60;
 
-    /// <summary>How many days after today the calendar is read (today included, so a window of one year and a day).</summary>
     public const int HorizonDays = 365;
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
@@ -119,8 +116,6 @@ public class CalendarSyncJob(
             totals.FeedsReinstated);
     }
 
-    // One property: a failure is logged (ids and the type of the error) and does not stop the other properties; false when the org cannot be
-    // read at all (its connection is refused, the environment is wrong, its rate limit is spent) and its other properties would fail alike.
     private async Task<bool> RunOneAsync(OctorateBookingRuns.MappedProperty property, RunTotals totals, CancellationToken ct)
     {
         try
@@ -144,7 +139,6 @@ public class CalendarSyncJob(
         }
         catch (Exception ex)
         {
-            // Nothing the failed run held is kept: the context is clean for the next property.
             db.ChangeTracker.Clear();
             totals.Failed++;
             logger.LogWarning(
@@ -158,7 +152,6 @@ public class CalendarSyncJob(
 
     private async Task<PropertyOutcome> SyncPropertyAsync(OctorateBookingRuns.MappedProperty target, CancellationToken ct)
     {
-        // A deleted property (PC-05) is no longer synced; the soft-delete filter of the model hides it, the tenant filter is ignored (a system read).
         var timezone = await db.Properties
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -206,8 +199,6 @@ public class CalendarSyncJob(
             return PropertyOutcome.Unreadable;
         }
 
-        // A calendar nobody opened (no unit, no price, nothing stopped, on any day) is not a live calendar of the room: it says nothing about the
-        // nights and proves nothing about Octorate having taken over, so the blocks stay as they were and the iCal feeds keep being imported.
         if (!days.Any(d => d.IsOpened))
         {
             logger.LogWarning(
@@ -218,7 +209,6 @@ public class CalendarSyncJob(
 
         var change = await ReplaceBlocksAsync(target, days, from, to, now.UtcDateTime, ct);
 
-        // The read worked and the blocks are saved: the calendar of the listing now stands for the iCal feeds of its channels (ADR-002-R11, R14).
         var feeds = await migration.DeprecateCoveredFeedsAsync(target.PropertyId, ct);
         db.ChangeTracker.Clear();
 
@@ -253,7 +243,6 @@ public class CalendarSyncJob(
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, ct, (PostgresAdvisoryLocks.Scope.PropertyICalSync, target.PropertyId.ToString()));
 
-        // Read under the lock: a booking or a manual block that was being written has been committed, READ COMMITTED sees it.
         var taken = await NightsTakenElsewhereAsync(target, from, to, ct);
         var nights = OctorateClosedNights.Of(days, from, to, taken);
         var runs = OctorateClosedNights.Runs(nights);
@@ -279,7 +268,6 @@ public class CalendarSyncJob(
 
             if (byUid.TryGetValue(uid, out var row))
             {
-                // A row that did not change is not written (LastSyncedAt is the time of the last change).
                 if (row.StartUtc == start && row.EndUtc == end && row.Summary == OctorateClosedNights.BlockSummary)
                     continue;
 
@@ -329,7 +317,6 @@ public class CalendarSyncJob(
         var windowStart = StartOf(from);
         var windowEnd = StartOf(to.AddDays(1));
 
-        // Strict, like the final check before an insert: every booking that is not cancelled takes its dates.
         var stays = await db.Bookings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -390,14 +377,12 @@ public class CalendarSyncJob(
         return orphans.Count;
     }
 
-    /// <summary>Today on the clock of the property (NF-36: dates in the timezone of the property); Europe/Rome when the zone is not one the server knows.</summary>
     private static DateOnly LocalToday(DateTimeOffset now, string timezoneId)
     {
         var zone = !string.IsNullOrWhiteSpace(timezoneId) && TimezoneHelper.IsValidTimezone(timezoneId) ? timezoneId : RomeCalendar.TimeZoneId;
         return DateOnly.FromDateTime(TimezoneHelper.ConvertUtcToLocal(now.UtcDateTime, zone));
     }
 
-    /// <summary>The storage form of a night: midnight UTC of its date.</summary>
     private static DateTime StartOf(DateOnly date) => date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
     private enum PropertyState
@@ -422,7 +407,6 @@ public class CalendarSyncJob(
         public static readonly PropertyOutcome NotOpened = new(PropertyState.NotOpened, null, 0);
     }
 
-    /// <summary>The counts of a whole run, for its log line.</summary>
     private sealed class RunTotals
     {
         public int Properties { get; private set; }

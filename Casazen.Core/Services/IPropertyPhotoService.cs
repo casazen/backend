@@ -2,43 +2,30 @@ using Microsoft.AspNetCore.Http;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Rules of the photo gallery of a property (PC-04, A2-26).</summary>
 public static class PropertyPhotoLimits
 {
-    /// <summary>Photos a property can have in its gallery.</summary>
     public const int MaxPhotos = 20;
 
-    /// <summary>Photos accepted by one upload request (the 413 limit of the endpoint follows from it).</summary>
     public const int MaxFilesPerRequest = 10;
 
-    /// <summary>Largest accepted photo, in bytes (10 MB).</summary>
     public const long MaxFileSizeBytes = 10 * 1024 * 1024;
 
-    /// <summary>Content types of the accepted photos; each file is also checked on its content, not only on its header.</summary>
     public static readonly IReadOnlyList<string> AllowedContentTypes = ["image/jpeg", "image/png", "image/webp"];
 
-    /// <summary>Upper bound of one upload request: <see cref="MaxFilesPerRequest"/> photos plus the multipart overhead.</summary>
     public const long MaxRequestBytes = MaxFilesPerRequest * MaxFileSizeBytes + 1024 * 1024;
 
-    /// <summary>422: the upload carries no file.</summary>
     public const string NoFileCode = "property_photo_none";
 
-    /// <summary>422: more files in one request than <see cref="MaxFilesPerRequest"/>.</summary>
     public const string TooManyFilesCode = "property_photo_too_many_files";
 
-    /// <summary>422: the gallery would exceed <see cref="MaxPhotos"/>.</summary>
     public const string LimitReachedCode = "property_photo_limit_reached";
 
-    /// <summary>422: not a JPEG, PNG or WebP image (extension, declared type or content).</summary>
     public const string InvalidTypeCode = "property_photo_invalid_type";
 
-    /// <summary>422: empty file or larger than <see cref="MaxFileSizeBytes"/>.</summary>
     public const string InvalidSizeCode = "property_photo_invalid_size";
 
-    /// <summary>404: the photo is not (or no longer) in the gallery of the property.</summary>
     public const string NotFoundCode = "property_photo_not_found";
 
-    /// <summary>409: the order sent is not the current gallery (another tab or user changed it meanwhile).</summary>
     public const string GalleryChangedCode = "property_photos_changed";
 }
 
@@ -51,15 +38,6 @@ public static class PropertyPhotoLimits
 /// </summary>
 public interface IPropertyPhotoService
 {
-    /// <summary>
-    /// Validates and stores <paramref name="files"/> (all or none) and appends them to the gallery, in the order sent.
-    /// Returns the gallery after the change.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException">
-    /// <c>property_photo_none</c>, <c>property_photo_too_many_files</c>, <c>property_photo_invalid_type</c>,
-    /// <c>property_photo_invalid_size</c> or <c>property_photo_limit_reached</c>.
-    /// </exception>
-    /// <exception cref="Exceptions.NotFoundException">The property does not exist in the caller's org.</exception>
     Task<IReadOnlyList<string>> AddAsync(Guid propertyId, IReadOnlyList<IFormFile> files, CancellationToken cancellationToken = default);
 
     /// <summary>

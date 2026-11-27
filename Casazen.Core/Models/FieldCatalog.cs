@@ -1,8 +1,5 @@
 namespace Casazen.Core.Models;
 
-/// <summary>
-/// Field type for condition builder (ADR-014-R2).
-/// </summary>
 public enum ConditionFieldType
 {
     Text,
@@ -13,9 +10,6 @@ public enum ConditionFieldType
     Set
 }
 
-/// <summary>
-/// Field definition: ID, type, and available operators.
-/// </summary>
 public record FieldDefinition(
     string FieldId,
     ConditionFieldType Type,
@@ -29,10 +23,8 @@ public record FieldDefinition(
 /// </summary>
 public static class FieldCatalog
 {
-    /// <summary>All available fields for condition builder.</summary>
     public static readonly FieldDefinition[] Fields = new[]
     {
-        // Routine fields - booking/property criteria
         new FieldDefinition(
             "propertyId",
             ConditionFieldType.Set,
@@ -102,7 +94,6 @@ public static class FieldCatalog
         new FieldDefinition("tag", ConditionFieldType.Set, "field.tag", new[] { "in", "notIn" }),
         new FieldDefinition("stage", ConditionFieldType.Enum, "field.stage", new[] { "in", "notIn" }),
 
-        // Segment fields - guest history/profile
         new FieldDefinition(
             "guestOrigin",
             ConditionFieldType.Enum,
@@ -182,32 +173,16 @@ public static class FieldCatalog
             new[] { "is" })
     };
 
-    /// <summary>
-    /// Get field definition by ID.
-    /// </summary>
-    /// <param name="fieldId">Field identifier.</param>
-    /// <returns>Field definition, or null if not found.</returns>
     public static FieldDefinition? GetField(string fieldId)
     {
         return Fields.FirstOrDefault(f => f.FieldId == fieldId);
     }
 
-    /// <summary>
-    /// Check if a field ID is valid.
-    /// </summary>
-    /// <param name="fieldId">Field identifier.</param>
-    /// <returns>True if field exists in catalog.</returns>
     public static bool IsValidField(string fieldId)
     {
         return Fields.Any(f => f.FieldId == fieldId);
     }
 
-    /// <summary>
-    /// Check if an operator is valid for a field.
-    /// </summary>
-    /// <param name="fieldId">Field identifier.</param>
-    /// <param name="operator">Operator to validate.</param>
-    /// <returns>True if operator is valid for the field.</returns>
     public static bool IsValidOperator(string fieldId, string @operator)
     {
         var field = GetField(fieldId);

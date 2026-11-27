@@ -27,16 +27,13 @@ public sealed partial class OctorateTokenService
 {
     private const string PartnerLoginPath = "/rest/v1/identity/apilogin";
 
-    /// <summary>The free text <c>my_note</c> of the login, a label Octorate keeps with the token.</summary>
     private const string PartnerNote = "CasaZen";
 
-    /// <summary>How long a partner token is trusted when Octorate does not say when it expires.</summary>
     private static readonly TimeSpan UnknownPartnerTokenLifetime = TimeSpan.FromHours(1);
 
     private static readonly EventId PartnerTokenAccessedEvent = new(52_002, "OctoratePartnerTokenAccessed");
     private static readonly EventId PartnerTokenRenewedEvent = new(52_003, "OctoratePartnerTokenRenewed");
 
-    /// <summary>The shared cache; one of its own when none was registered (a test, a host that did not call the registration).</summary>
     private readonly OctoratePartnerTokenCache _partnerTokens = partnerTokens ?? new OctoratePartnerTokenCache();
 
     public async Task<string> GetPartnerAccessTokenAsync(CancellationToken ct)
@@ -56,10 +53,6 @@ public sealed partial class OctorateTokenService
         return RenewPartnerTokenAsync(rejectedAccessToken, ct);
     }
 
-    /// <summary>
-    /// The renewal, under the gate. <paramref name="rejectedAccessToken"/>: the token Octorate refused (a forced renewal), or <c>null</c> for
-    /// one that is missing or expires soon. A usable token that is not the rejected one was left by another caller while this one waited.
-    /// </summary>
     private async Task<string> RenewPartnerTokenAsync(string? rejectedAccessToken, CancellationToken ct)
     {
         await _partnerTokens.Gate.WaitAsync(ct);
@@ -118,7 +111,6 @@ public sealed partial class OctorateTokenService
         }
         catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
         {
-            // The 30-second timeout of the client.
             throw new OctorateServerException(null, ex);
         }
 
@@ -139,7 +131,6 @@ public sealed partial class OctorateTokenService
 
             if (status is 400 or 401 or 403)
             {
-                // The type of the error and the status only: never the body, which could repeat what was sent.
                 var (type, suggestion) = OctorateHttp.ReadError(body);
                 logger.LogWarning(
                     "Octorate refused the partner login (HTTP {StatusCode}, {ErrorType}): the application credentials are not accepted",
@@ -151,7 +142,6 @@ public sealed partial class OctorateTokenService
         }
     }
 
-    /// <summary>A cached token is used until it expires within <see cref="RefreshWindow"/>.</summary>
     private bool IsUsable(PartnerToken token) => token.ExpiresAt > Now() + RefreshWindow;
 
     private void LogPartnerAccess() =>

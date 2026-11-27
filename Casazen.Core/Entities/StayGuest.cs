@@ -20,13 +20,10 @@ namespace Casazen.Core.Entities;
 [Index(nameof(BookingId), nameof(Position), IsUnique = true)]
 public class StayGuest : ITenantOwned
 {
-    /// <summary>Longest <see cref="ResidenceStreet"/> accepted on input.</summary>
     public const int ResidenceStreetMaxLength = 200;
 
-    /// <summary>Longest <see cref="ResidencePostalCode"/> accepted on input.</summary>
     public const int ResidencePostalCodeMaxLength = 20;
 
-    /// <summary>Longest <see cref="ResidenceCityName"/> accepted on input.</summary>
     public const int ResidenceCityNameMaxLength = 100;
 
     [Key]
@@ -36,7 +33,6 @@ public class StayGuest : ITenantOwned
     public Guid BookingId { get; set; }
     public virtual Booking Booking { get; set; } = null!;
 
-    /// <summary>Tenant of the row, copied from <see cref="Booking"/> when it is created (TN-2).</summary>
     public Guid OrgId { get; set; }
 
     /// <summary>
@@ -46,7 +42,6 @@ public class StayGuest : ITenantOwned
     public Guid? GuestId { get; set; }
     public virtual Guest? Guest { get; set; }
 
-    /// <summary>Order of the row in the communication, from 0.</summary>
     public int Position { get; set; }
 
     /// <summary>Kind of guest ("tipo alloggiato"). Stored as an integer of CasaZen, never the Alloggiati table code.</summary>
@@ -61,21 +56,17 @@ public class StayGuest : ITenantOwned
     /// <summary>Only <see cref="Entities.Gender.Male"/> or <see cref="Entities.Gender.Female"/> are valid for Alloggiati Web.</summary>
     public Gender? Gender { get; set; }
 
-    /// <summary>Date of birth (date only, UTC midnight).</summary>
     public DateTime? DateOfBirth { get; set; }
 
-    /// <summary>True when born in Italy (comune and province are then required), false when born abroad; null when unknown.</summary>
     public bool? BornInItaly { get; set; }
 
     /// <summary>Code of the comune of birth in the Alloggiati "Comuni" table; Italy only.</summary>
     [MaxLength(9)]
     public string? BirthComuneCode { get; set; }
 
-    /// <summary>Comune of birth as entered (Italy). Rows migrated from the single-guest model keep the old free-text place here.</summary>
     [MaxLength(100)]
     public string BirthComuneName { get; set; } = string.Empty;
 
-    /// <summary>Province of birth: two-letter car plate code (Roma = RM); Italy only.</summary>
     [MaxLength(2)]
     public string? BirthProvince { get; set; }
 
@@ -83,48 +74,29 @@ public class StayGuest : ITenantOwned
     [MaxLength(9)]
     public string? BirthCountryCode { get; set; }
 
-    /// <summary>State of birth as entered (born abroad).</summary>
     [MaxLength(100)]
     public string BirthCountryName { get; set; } = string.Empty;
 
-    /// <summary>Code of the citizenship in the Alloggiati "Stati" table.</summary>
     [MaxLength(9)]
     public string? CitizenshipCode { get; set; }
 
-    /// <summary>Citizenship as entered.</summary>
     [MaxLength(100)]
     public string CitizenshipName { get; set; } = string.Empty;
 
-    /// <summary>Kind of document chosen when no official document table is available. <see cref="GuestDocumentType.Other"/> is not accepted.</summary>
     public GuestDocumentType? DocumentType { get; set; }
 
-    /// <summary>Code of the document type in the Alloggiati "Documenti" table.</summary>
     [MaxLength(5)]
     public string? DocumentTypeCode { get; set; }
 
-    /// <summary>
-    /// Document number; only for a single guest or a head of family or group (the record allows 20 characters, checked
-    /// on input). Encrypted at rest (CO-14, <c>EncryptedColumns</c>): the column is <c>text</c>.
-    /// </summary>
     public string DocumentNumber { get; set; } = string.Empty;
 
-    /// <summary>Code of the place of issue: a comune code (issued in Italy) or a state code (issued abroad).</summary>
     [MaxLength(9)]
     public string? DocumentIssuePlaceCode { get; set; }
 
-    /// <summary>
-    /// Place of issue of the document as entered (comune or state; at most 100 characters, checked on input). Encrypted
-    /// at rest like <see cref="DocumentNumber"/>.
-    /// </summary>
     public string DocumentIssuePlaceName { get; set; } = string.Empty;
 
-    /// <summary>Day the document was issued (date only); null when not entered. Optional at entry (NF-40).</summary>
     public DateOnly? DocumentIssuedOn { get; set; }
 
-    /// <summary>
-    /// Day the document expires (date only); null when not entered. An expired document is stored as it is: the host records what the
-    /// guest showed, and the check-in only warns about it.
-    /// </summary>
     public DateOnly? DocumentExpiresOn { get; set; }
 
     /// <summary>
@@ -137,16 +109,13 @@ public class StayGuest : ITenantOwned
     /// <summary>Code of the comune of residence in the Alloggiati "Comuni" table; Italy only.</summary>
     public string? ResidenceComuneCode { get; set; }
 
-    /// <summary>Comune of residence as entered (Italy).</summary>
     public string? ResidenceComuneName { get; set; }
 
-    /// <summary>Province of residence: two-letter car plate code; Italy only.</summary>
     public string? ResidenceProvince { get; set; }
 
     /// <summary>Code of the state of residence in the Alloggiati "Stati" table (living abroad).</summary>
     public string? ResidenceCountryCode { get; set; }
 
-    /// <summary>State of residence as entered (living abroad).</summary>
     public string? ResidenceCountryName { get; set; }
 
     /// <summary>
@@ -156,28 +125,14 @@ public class StayGuest : ITenantOwned
     /// </summary>
     public string? ResidenceStreet { get; set; }
 
-    /// <summary>
-    /// Postal code of the guest's home («CAP» of the Ticino police file), as written (a foreign code may hold letters); null when not entered.
-    /// At most <see cref="ResidencePostalCodeMaxLength"/> characters, encrypted like <see cref="ResidenceStreet"/>.
-    /// </summary>
     public string? ResidencePostalCode { get; set; }
 
-    /// <summary>
-    /// Town of the guest's home («Domicilio» of the Ticino police file), as written; null when not entered. At most
-    /// <see cref="ResidenceCityNameMaxLength"/> characters, encrypted like <see cref="ResidenceStreet"/>.
-    /// </summary>
     public string? ResidenceCityName { get; set; }
 
-    /// <summary>
-    /// Type of tourism, a code of <c>IstatGuestFieldLists.TourismTypes</c>: a statistical field some regions ask for (NF-40); optional at
-    /// entry, required only where the readiness rules of the check-in say so.
-    /// </summary>
     public string? TourismType { get; set; }
 
-    /// <summary>Way of travelling, a code of <c>IstatGuestFieldLists.TravelWays</c> (statistical field, optional at entry).</summary>
     public string? TravelWay { get; set; }
 
-    /// <summary>Education level, a code of <c>IstatGuestFieldLists.EducationLevels</c> (statistical field, optional at entry).</summary>
     public string? EducationLevel { get; set; }
 
     /// <summary>
@@ -188,7 +143,6 @@ public class StayGuest : ITenantOwned
     /// </summary>
     public string? TaxExemptionCode { get; set; }
 
-    /// <summary>Who entered the data of this row last (CO-09 audit): the guest portal or the host; not recorded before CO-09.</summary>
     public StayGuestDataSource DataSource { get; set; } = StayGuestDataSource.NotRecorded;
 
     /// <summary>User id (Auth0 <c>sub</c>) of the host who entered the row; null for the guest portal. Never returned to clients.</summary>
@@ -204,11 +158,6 @@ public class StayGuest : ITenantOwned
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>
-    /// The row the booking's guest stands for when no guest has been registered yet: the booker, as single guest or, when
-    /// more guests are declared, as head of family. Not saved: its <see cref="Id"/> is empty. The migration
-    /// <c>AddStayGuests</c> applied the same mapping to the bookings that existed before it.
-    /// </summary>
     public static StayGuest FromBooker(Booking booking, Guest guest) => new()
     {
         Id = Guid.Empty,
@@ -241,34 +190,22 @@ public class StayGuest : ITenantOwned
 /// </summary>
 public enum StayGuestType
 {
-    /// <summary>Ospite singolo: document required.</summary>
     SingleGuest = 1,
 
-    /// <summary>Capo famiglia: document required, followed by the family members.</summary>
     HeadOfFamily = 2,
 
-    /// <summary>Capo gruppo: document required, followed by the group members.</summary>
     HeadOfGroup = 3,
 
-    /// <summary>Familiare: no document, follows the head of family.</summary>
     FamilyMember = 4,
 
-    /// <summary>Membro gruppo: no document, follows the head of group.</summary>
     GroupMember = 5,
 }
 
-/// <summary>Who entered the data of a guest of the stay (CO-09). Stored as an integer: never renumber.</summary>
 public enum StayGuestDataSource
 {
-    /// <summary>
-    /// Not recorded: copied from the booker's record (booking, CO-12 backfill) or entered before CO-09, when the author
-    /// was not stored.
-    /// </summary>
     NotRecorded = 0,
 
-    /// <summary>Entered by the guest on the check-in portal.</summary>
     GuestPortal = 1,
 
-    /// <summary>Entered or corrected by the host (<see cref="StayGuest.EnteredByUserId"/>).</summary>
     Host = 2,
 }

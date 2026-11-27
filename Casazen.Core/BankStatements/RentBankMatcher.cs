@@ -1,11 +1,7 @@
 namespace Casazen.Core.BankStatements;
 
-/// <summary>A tenant of a lease, by name: what a payment reason may name.</summary>
 public sealed record RentBankTenant(string FirstName, string LastName);
 
-/// <summary>
-/// A rent installment the landlord has not collected (scheduled or failed) as the matcher sees it: where it is, what it asks and from whom.
-/// </summary>
 public sealed record RentBankCandidate(
     Guid InstallmentId,
     Guid LeaseId,
@@ -18,51 +14,36 @@ public sealed record RentBankCandidate(
     decimal Amount,
     IReadOnlyList<RentBankTenant> Tenants);
 
-/// <summary>A payer seen on a movement the landlord confirmed before: the lease it paid and the hashes of its IBAN and name (never the values).</summary>
 public sealed record RentBankPayer(Guid LeaseId, string? IbanHash, string? NameHash);
 
-/// <summary>A credit of the statement, with the hashes of its payer (null when the file has none).</summary>
 public sealed record RentBankCredit(string Fingerprint, BankMovement Movement, string? IbanHash, string? NameHash);
 
-/// <summary>How sure the matcher is. Only <see cref="High"/> is offered for the one-click confirmation; the others wait for the landlord's choice.</summary>
 public enum RentBankConfidence
 {
-    /// <summary>The amount is the installment's and nothing else fits: the amount alone.</summary>
     Low = 0,
 
-    /// <summary>The amount and some sign of who or when, but not enough to be sure which installment or which lease.</summary>
     Medium = 1,
 
-    /// <summary>The amount, a tenant or payer the lease is known by, and no other lease or installment that fits as well.</summary>
     High = 2,
 }
 
-/// <summary>Why the matcher thinks so; the screen says it in words.</summary>
 public enum RentBankReason
 {
-    /// <summary>The amount is exactly the installment's.</summary>
     Amount = 0,
 
-    /// <summary>The surname of a tenant is in the reason or the payer.</summary>
     Surname = 1,
 
-    /// <summary>The first name of the tenant is there too.</summary>
     FirstName = 2,
 
-    /// <summary>The IBAN paid this lease before.</summary>
     PayerIban = 3,
 
-    /// <summary>The payer's name paid this lease before.</summary>
     PayerName = 4,
 
-    /// <summary>The name or the address of the property is in the reason.</summary>
     Property = 5,
 
-    /// <summary>The reason names the month of the installment.</summary>
     Month = 6,
 }
 
-/// <summary>A credit with the installment the matcher proposes for it and the other ones that could be it (best first).</summary>
 public sealed record RentBankSuggestion(
     RentBankCredit Credit,
     RentBankCandidate Installment,
@@ -70,7 +51,6 @@ public sealed record RentBankSuggestion(
     IReadOnlyList<RentBankReason> Reasons,
     IReadOnlyList<RentBankCandidate> Alternatives);
 
-/// <summary>The outcome: a suggestion for every credit that has at least one installment of its amount to settle, and the credits left over.</summary>
 public sealed record RentBankMatching(IReadOnlyList<RentBankSuggestion> Suggestions, IReadOnlyList<RentBankCredit> Unmatched);
 
 /// <summary>
@@ -94,13 +74,10 @@ public static class RentBankMatcher
     private const int MinPropertyTokenLength = 4;
     private const int MaxAlternatives = 5;
 
-    /// <summary>Days a payment may come before the due date and still be for that installment (the next month paid in advance).</summary>
     public const int DaysEarly = 45;
 
-    /// <summary>Days a payment may come after the due date and still be for that installment (arrears).</summary>
     public const int DaysLate = 400;
 
-    /// <summary>A sure match is never one that came more than this many days after the due date: a payment that late is the landlord's to place.</summary>
     private const int HighConfidenceDaysLate = 120;
 
     /// <summary>
@@ -109,7 +86,6 @@ public static class RentBankMatcher
     /// </summary>
     private const int HighConfidenceDaysEarly = 10;
 
-    /// <summary>The only currency of a rent: a credit in another one never settles an installment.</summary>
     public const string Currency = "EUR";
 
     private static readonly HashSet<string> PropertyStopWords = new(StringComparer.Ordinal)
@@ -157,8 +133,6 @@ public static class RentBankMatcher
         return Assign(drafts, unmatched);
     }
 
-    // ---------------------------------------------------------------- one credit
-
     private sealed class LeaseProfile
     {
         public LeaseProfile(RentBankCandidate sample)
@@ -187,7 +161,6 @@ public static class RentBankMatcher
         public List<string> PropertyTokens { get; }
     }
 
-    /// <summary>What the text of one credit says about one lease.</summary>
     private sealed record Identity(int Points, List<RentBankReason> Reasons);
 
     private sealed record Scored(RentBankCandidate Candidate, int Score, bool MonthMatch, bool MonthConflict, int DaysAfterDue);
@@ -215,7 +188,6 @@ public static class RentBankMatcher
         if (sameAmount.Count == 0 || credit.Movement.Currency != Currency)
             return null;
 
-        // A payment is never dated after today (the importer declares it paid on that day).
         var paidOn = credit.Movement.ValueDate > today ? today : credit.Movement.ValueDate;
         var text = BankValues.NormalizeText($"{credit.Movement.Description} {credit.Movement.CounterpartyName}");
         var padded = $" {text} ";
@@ -247,7 +219,6 @@ public static class RentBankMatcher
         if (scored.Count == 0)
             return null;
 
-        // The lease the credit is for first (what it names), then within it the installment the month, then the day, then the oldest points to.
         var ranked = scored
             .OrderByDescending(item => identities[item.Candidate.LeaseId].Points)
             .ThenByDescending(item => item.MonthMatch)
@@ -309,7 +280,6 @@ public static class RentBankMatcher
         return new Identity(points, reasons);
     }
 
-    /// <summary>The words of a name or surname, together, in the text; «D'Angelo» written «DANGELO» counts.</summary>
     private static bool Contains(string paddedText, HashSet<string> tokens, string phrase)
     {
         if (paddedText.Contains($" {phrase} ", StringComparison.Ordinal))
@@ -329,7 +299,6 @@ public static class RentBankMatcher
         var best = ranked[0];
         var identity = identities[best.Candidate.LeaseId];
 
-        // Is this lease the only one the credit can be for? Another lease that fits nearly as well is a doubt.
         var otherLeaseIdentity = ranked
             .Where(item => item.Candidate.LeaseId != best.Candidate.LeaseId)
             .Select(item => identities[item.Candidate.LeaseId].Points)
@@ -337,7 +306,6 @@ public static class RentBankMatcher
             .Max();
         var leaseClear = identity.Points >= StrongIdentity && otherLeaseIdentity <= identity.Points - LeaseMargin;
 
-        // Is this installment the only one of the lease it can be? Several of the same amount are told apart only by the month the reason names.
         var ofLease = ranked.Where(item => item.Candidate.LeaseId == best.Candidate.LeaseId).ToList();
         var installmentClear = !best.MonthConflict
             && (ofLease.Count == 1 || (best.MonthMatch && ofLease.Count(item => item.MonthMatch) == 1));
@@ -352,12 +320,6 @@ public static class RentBankMatcher
         return RentBankConfidence.Low;
     }
 
-    // ---------------------------------------------------------------- one installment for one credit
-
-    /// <summary>
-    /// Gives each installment to one credit: the surest credits choose first, and a credit whose best installment was taken falls back to its
-    /// next one with one level less of confidence. What no installment is left for is unmatched.
-    /// </summary>
     private static RentBankMatching Assign(List<Draft> drafts, List<RentBankCredit> unmatched)
     {
         var taken = new HashSet<Guid>();
@@ -383,7 +345,6 @@ public static class RentBankMatcher
             var confidence = draft.Confidence;
             if (!ReferenceEquals(chosen, draft.Ranked[0]))
             {
-                // Its own best installment went to a surer credit: what is left is judged on what it says about this one, and is never sure.
                 var fallback = identity.Points > 0 || chosen.MonthMatch ? RentBankConfidence.Medium : RentBankConfidence.Low;
                 confidence = (RentBankConfidence)Math.Min((int)fallback, (int)draft.Confidence);
             }

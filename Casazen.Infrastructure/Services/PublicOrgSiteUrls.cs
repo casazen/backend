@@ -25,7 +25,6 @@ public sealed class PublicOrgSiteUrls(
     IOptions<PublicHostOptions> hostOptions,
     IEntitlementService entitlementService)
 {
-    /// <summary>The host (no scheme, no port) the org's site is served on, or <c>null</c> when it only has the platform path.</summary>
     public string? OwnHost(Org org)
     {
         ArgumentNullException.ThrowIfNull(org);
@@ -56,22 +55,16 @@ public sealed class PublicOrgSiteUrls(
     /// </summary>
     public PublicHostMode ServedMode(Org org) => OwnHost(org) is null ? PublicHostMode.CasazenPath : org.PublicHostMode;
 
-    /// <summary>Canonical URL of the landing page; <c>null</c> only when the org has no own host and the public site is not configured.</summary>
     public string? TryLandingUrl(Org org) =>
         OwnHost(org) is { } host
             ? $"https://{host}{PublicSitePaths.HostLanding}"
             : links.TryPublicPage(PublicSitePaths.Org(org.Slug));
 
-    /// <summary>Canonical URL of a property page (<paramref name="propertySlugOrId"/>: its slug, the id only when it has none).</summary>
     public string? TryPropertyUrl(Org org, string propertySlugOrId) =>
         OwnHost(org) is { } host
             ? $"https://{host}{PublicSitePaths.HostProperty(propertySlugOrId)}"
             : links.TryPublicPage(PublicSitePaths.Property(org.Slug, propertySlugOrId));
 
-    /// <summary>
-    /// Absolute URL of a path of the org's own host (e.g. <c>/sitemap.xml</c>), <c>null</c> when it has none. The org's own
-    /// pages never go through the platform URL.
-    /// </summary>
     public string? TryOwnHostUrl(Org org, string path) =>
         OwnHost(org) is { } host ? $"https://{host}{path}" : null;
 }

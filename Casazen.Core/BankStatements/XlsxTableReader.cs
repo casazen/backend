@@ -6,11 +6,6 @@ using Casazen.Core.Exceptions;
 
 namespace Casazen.Core.BankStatements;
 
-/// <summary>
-/// Reads the first sheet of an Excel workbook (<c>.xlsx</c>) into rows of cells, with nothing but the framework: an xlsx is a zip of XML
-/// parts. The file comes from outside, so every part is read through a limit on what it may unzip to (a zip that declares a small size
-/// and holds a large one is cut), XML is read without DTDs or external entities, and nothing is written anywhere.
-/// </summary>
 internal static class XlsxTableReader
 {
     private const string WorkbookPath = "xl/workbook.xml";
@@ -22,7 +17,6 @@ internal static class XlsxTableReader
     private const int MaxSharedStrings = 200_000;
     private const long MaxSharedStringChars = 24L * 1024 * 1024;
 
-    /// <summary>True when the bytes are a zip with an Excel workbook inside.</summary>
     public static bool LooksLikeWorkbook(byte[] content)
     {
         try
@@ -65,8 +59,6 @@ internal static class XlsxTableReader
     }
 
     private static DomainRuleException Unreadable() => new(BankStatementErrorCodes.Unreadable, "BankStatementUnreadable");
-
-    // ---------------------------------------------------------------- workbook
 
     private static string FindFirstSheetPath(ZipArchive zip)
     {
@@ -178,8 +170,6 @@ internal static class XlsxTableReader
         return text.ToString();
     }
 
-    // ---------------------------------------------------------------- sheet
-
     private static List<Cell[]> ReadSheet(ZipArchiveEntry sheet, IReadOnlyList<string> shared)
     {
         var rows = new List<Cell[]>();
@@ -246,7 +236,6 @@ internal static class XlsxTableReader
 
                     if (cell.NodeType == XmlNodeType.Element && cell.LocalName == "is")
                     {
-                        // An empty <is/> has no end tag to stop on: the reader would stay on it and the loop would read it again, for ever.
                         if (cell.IsEmptyElement)
                             cell.Read();
                         else
@@ -295,7 +284,6 @@ internal static class XlsxTableReader
         return text.ToString();
     }
 
-    /// <summary>Zero-based column of a cell reference such as <c>C12</c> (<c>A</c> is 0, <c>AA</c> is 26); null when the reference is missing or odd.</summary>
     internal static int? ColumnIndex(string? reference)
     {
         if (string.IsNullOrEmpty(reference))
@@ -316,7 +304,6 @@ internal static class XlsxTableReader
         return letters == 0 ? null : column - 1;
     }
 
-    /// <summary>A stream that refuses to give more than a set number of bytes: what a zip entry unzips to is checked here, not trusted from its header.</summary>
     private sealed class LimitedReadStream(Stream inner, long limit) : Stream
     {
         private long _read;

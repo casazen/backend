@@ -6,7 +6,6 @@ using Microsoft.Extensions.Configuration;
 
 namespace Casazen.Infrastructure.Email;
 
-/// <summary>The link of the package of a month (<see cref="AccountantPackageLinks.Create"/>): the address to put in the e-mail, and the last instant (UTC) it opens.</summary>
 public sealed record AccountantPackageLink(string Url, DateTime ExpiresAt);
 
 /// <summary>
@@ -18,22 +17,16 @@ public sealed record AccountantPackageLink(string Url, DateTime ExpiresAt);
 /// </summary>
 public sealed class AccountantPackageLinks(IConfiguration configuration, TimeProvider timeProvider)
 {
-    /// <summary>The variable of the secret of the signed links (ADR-007-R20), read through the configuration.</summary>
     public const string SecretVariable = MarketingUnsubscribeLinks.SecretVariable;
 
-    /// <summary>Format of <c>expiresAt</c>, in UTC (the one of the other signed links).</summary>
     public const string ExpiresAtFormat = MarketingUnsubscribeLinks.ExpiresAtFormat;
 
-    /// <summary>The endpoint that streams the package, under <c>App:ApiBaseUrl</c>.</summary>
     public const string Path = "/api/public/accountant-package";
 
-    /// <summary>True when a link can be built: the secret and the public https address of this API are configured.</summary>
     public bool IsConfigured => Secret is not null && ApiBaseUrl() is not null;
 
     private string? Secret => configuration[SecretVariable] is { } secret && !string.IsNullOrWhiteSpace(secret) ? secret : null;
 
-    /// <summary>The link that opens the package of <paramref name="period"/> (<c>yyyy-MM</c>) of <paramref name="orgId"/>, valid for <see cref="AccountantPackageLinkRules.Lifetime"/> from now.</summary>
-    /// <exception cref="EmailConfigurationException">The secret or the public https address of this API is missing.</exception>
     public AccountantPackageLink Create(Guid orgId, string period)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(period);
@@ -42,7 +35,6 @@ public sealed class AccountantPackageLinks(IConfiguration configuration, TimePro
         var api = ApiBaseUrl() ?? throw new EmailConfigurationException(
             "App:ApiBaseUrl is missing or is not an https address: the link of the package of the accountant cannot be built.");
 
-        // Whole seconds, as the text of the link says them: the expiry in the e-mail and the one the check reads are the same instant.
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var expiresAt = new DateTime(now.Ticks - (now.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc).Add(AccountantPackageLinkRules.Lifetime);
         var expires = expiresAt.ToString(ExpiresAtFormat, CultureInfo.InvariantCulture);
@@ -50,10 +42,6 @@ public sealed class AccountantPackageLinks(IConfiguration configuration, TimePro
         return new AccountantPackageLink(url, expiresAt);
     }
 
-    /// <summary>
-    /// True only for a link made by <see cref="Create"/> for exactly this org and month that has not expired: a missing or malformed value, an expired link, a changed org, month or expiry, a signature of
-    /// another kind of link or a missing secret are all <c>false</c>, and nothing says which. The signature is compared in constant time.
-    /// </summary>
     public bool Verify(Guid orgId, string? period, string? expiresAt, string? signature)
     {
         if (orgId == Guid.Empty || string.IsNullOrWhiteSpace(period) || string.IsNullOrWhiteSpace(expiresAt) || string.IsNullOrWhiteSpace(signature))
@@ -78,14 +66,12 @@ public sealed class AccountantPackageLinks(IConfiguration configuration, TimePro
         return CryptographicOperations.FixedTimeEquals(expected, given);
     }
 
-    /// <summary>HMAC-SHA256 of <c>accountant-package.{orgId}.{period}.{expiresAt}</c> (UTF-8, the org as 36 lowercase characters), hex lowercase.</summary>
     private static string Sign(string secret, Guid orgId, string period, string expiresAt)
     {
         var payload = $"{AccountantPackageLinkRules.SignaturePurpose}.{orgId:D}.{period}.{expiresAt}";
         return Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
     }
 
-    /// <summary>The public https URL of this API (<c>App:ApiBaseUrl</c>, as for the other signed links), without the final slash.</summary>
     private string? ApiBaseUrl()
     {
         var value = configuration["App:ApiBaseUrl"]?.Trim();

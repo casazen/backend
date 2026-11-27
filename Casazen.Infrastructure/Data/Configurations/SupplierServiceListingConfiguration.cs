@@ -33,7 +33,6 @@ internal sealed class SupplierServiceListingConfiguration : IEntityTypeConfigura
             t.HasCheckConstraint(
                 "CK_SupplierServiceListings_WeekdaysMask", "\"WeekdaysMask\" BETWEEN 0 AND 127");
 
-            // The surcharge of an urgent request (SP-04c): the bound of SupplierAgendaLimits, a constant shared with the rules.
             t.HasCheckConstraint(
                 "CK_SupplierServiceListings_UrgentSurchargeCents",
                 $"\"UrgentSurchargeCents\" IS NULL OR \"UrgentSurchargeCents\" BETWEEN 0 AND {SupplierAgendaLimits.MaxUrgentSurchargeCents}");

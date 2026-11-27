@@ -19,9 +19,7 @@ public class NotFoundException : Exception
     {
     }
 
-    /// <summary>Stable snake_case identifier (e.g. <c>guest_not_found</c>); <c>not_found</c> when null.</summary>
     public string? Code { get; init; }
 
-    /// <summary>Resource key of the user-facing message; the generic not-found message when null.</summary>
     public string? MessageKey { get; init; }
 }

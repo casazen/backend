@@ -30,42 +30,29 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed partial class SupplierPaymentService
 {
-    /// <summary>The <c>TransferFailureCode</c> of a release that waits for the supplier's Stripe account.</summary>
     private const string AccountNotReadyCode = "account_not_ready";
 
-    /// <summary>The <c>TransferFailureCode</c> of a release that waits for an answer of Stripe that did not come.</summary>
     private const string StripeUnavailableCode = "stripe_unavailable";
 
-    /// <summary>What one try of the release did.</summary>
     private enum ReleaseResult
     {
-        /// <summary>The supplier was paid (or had been, and it is recorded now).</summary>
         Released,
 
-        /// <summary>The supplier was paid before: nothing to do.</summary>
         AlreadyReleased,
 
-        /// <summary>Not yet: the wait has not passed, a refund is in progress, or the next try is not due.</summary>
         NotYet,
 
-        /// <summary>The payment is not releasable from where it is (not charged, in dispute, closed, or its request was cancelled).</summary>
         NotReleasable,
 
-        /// <summary>Refunds took everything the supplier would have received.</summary>
         NothingToRelease,
 
-        /// <summary>The supplier's account is not ready, or Stripe did not answer: the payment waits and the job tries again.</summary>
         Waiting,
 
-        /// <summary>Stripe refused the transfer: <see cref="ServicePaymentStatus.TransferFailed"/>, tried again later.</summary>
         Refused,
 
-        /// <summary>A transfer that does not match the payment: held for an admin.</summary>
         NeedsReview,
     }
 
-    // For D21 payments the platform returns its proportional share of a refund. Older agreements
-    // continue to deduct the entire refund from the supplier's share.
     private static int SupplierRefundShare(ServiceRequestPayment payment, int grossRefund) =>
         payment.CommissionAddedToPrice
             ? grossRefund - SupplierCommission.FeeRefundedCents(payment.ApplicationFeeCents, payment.AmountCents, grossRefund)
@@ -81,7 +68,6 @@ public sealed partial class SupplierPaymentService
         switch (result)
         {
             case ReleaseResult.Released or ReleaseResult.AlreadyReleased or ReleaseResult.Waiting or ReleaseResult.Refused or ReleaseResult.NeedsReview:
-                // The payer's word stands: if the transfer could not be made now, the job makes it; asking again is not an error.
                 break;
             default:
                 throw NotConfirmable();
@@ -93,10 +79,6 @@ public sealed partial class SupplierPaymentService
             .FirstAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// One try of the release of a payment, under its lock. <paramref name="confirmedByPayer"/> releases without waiting for the moment
-    /// the money is due; <paramref name="clearTracker"/> is for the job, which owns its context.
-    /// </summary>
     private async Task<ReleaseResult> ReleaseAsync(PaymentRef candidate, bool confirmedByPayer, bool clearTracker, CancellationToken cancellationToken)
     {
         if (clearTracker)
@@ -139,7 +121,6 @@ public sealed partial class SupplierPaymentService
                     return ReleaseResult.NotReleasable;
             }
 
-            // The payer's word stands from here on, whatever happens to the transfer: the job makes it if this try cannot.
             if (confirmedByPayer)
             {
                 payment.ReleaseConfirmedAt ??= now;
@@ -173,7 +154,6 @@ public sealed partial class SupplierPaymentService
         var supplier = await ReadSupplierAsync(payment.SupplierOrgId, cancellationToken);
         if (!supplier.CanReceivePayments || string.IsNullOrWhiteSpace(supplier.AccountId))
         {
-            // Nothing is sent to Stripe: the supplier is asked to complete its account (once), and the release waits.
             var first = payment.TransferFailureCode != AccountNotReadyCode;
             Postpone(payment, AccountNotReadyCode, now);
             logger.LogInformation("Payment {PaymentId}: the release waits, the supplier's Stripe account cannot receive money yet", payment.Id);
@@ -183,7 +163,6 @@ public sealed partial class SupplierPaymentService
         var chargeId = payment.StripeChargeId;
         if (string.IsNullOrWhiteSpace(chargeId))
         {
-            // The charge is known from the capture; a payment recorded from the webhook without it reads it from the PaymentIntent.
             PlatformCharge? intent;
             try
             {
@@ -207,7 +186,6 @@ public sealed partial class SupplierPaymentService
 
         var group = payment.TransferGroup ?? ServiceCharges.TransferGroup(payment.ServiceRequestId);
 
-        // 1. The payment's own transfer may exist already: the answer was lost, or the key is older than Stripe remembers it.
         ServiceTransfer? transfer;
         try
         {
@@ -215,7 +193,6 @@ public sealed partial class SupplierPaymentService
         }
         catch (Exception ex) when (IsTransient(ex))
         {
-            // Not knowing whether it exists, nothing is created: a second transfer is worse than a late one.
             logger.LogWarning(ex, "Payment {PaymentId}: the transfers of its group could not be read, the release waits", payment.Id);
             Postpone(payment, StripeUnavailableCode, now);
             return (ReleaseResult.Waiting, null);
@@ -252,14 +229,12 @@ public sealed partial class SupplierPaymentService
             }
             catch (Exception ex) when (IsTransient(ex))
             {
-                // No answer, or an answer that does not say: the same key will tell on the next try.
                 logger.LogWarning(ex, "Payment {PaymentId}: the transfer to the supplier is not confirmed yet, it is tried again", payment.Id);
                 Postpone(payment, StripeUnavailableCode, now);
                 return (ReleaseResult.Waiting, null);
             }
         }
 
-        // 3. Whoever created it, it must be what CasaZen meant: the amount, the supplier's account, not reversed.
         var mismatches = HeldChargeVerification.TransferMismatches(
             amountCents, supplier.AccountId, transfer.AmountCents, transfer.DestinationAccountId, transfer.Reversed);
         if (mismatches.Count > 0)
@@ -294,7 +269,6 @@ public sealed partial class SupplierPaymentService
         && Guid.TryParse(raw, out var id)
         && id == paymentId;
 
-    /// <summary>The supplier was paid: the payment is released, with the transfer that paid it. <c>PaidAt</c> moves to the day of the release.</summary>
     private static void RecordReleased(ServiceRequestPayment payment, ServiceTransfer transfer, DateTime now)
     {
         payment.Status = ServicePaymentStatus.Released;
@@ -308,7 +282,6 @@ public sealed partial class SupplierPaymentService
         payment.UpdatedAt = now;
     }
 
-    /// <summary>The release cannot go on now and is not Stripe's refusal: it waits the base delay, the payment keeps its status and its key.</summary>
     private void Postpone(ServiceRequestPayment payment, string code, DateTime now)
     {
         payment.TransferFailureCode = code;

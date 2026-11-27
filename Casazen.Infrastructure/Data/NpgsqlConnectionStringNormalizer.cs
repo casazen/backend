@@ -3,10 +3,6 @@ using Npgsql;
 
 namespace Casazen.Infrastructure.Data;
 
-/// <summary>
-/// Converts Supabase-style PostgreSQL URIs to Npgsql key=value connection strings.
-/// Railway and Supabase dashboards often expose URIs; EF Core and Hangfire require Npgsql format.
-/// </summary>
 public static partial class NpgsqlConnectionStringNormalizer
 {
     public static string? Normalize(string? connectionString)

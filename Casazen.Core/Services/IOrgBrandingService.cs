@@ -3,12 +3,6 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Writes the public-site branding of an org (BK-12, A3-17): primary color, theme, tagline, logo and hero image.
-/// Values are stored on <see cref="Org"/> and read anonymously through <c>PublicOrgDto</c> and
-/// <c>ResolveHostBrandingDto</c>. Every method returns <c>null</c> when the org does not exist and throws
-/// <c>DomainRuleException</c> (codes in <see cref="OrgBrandingRules"/>) for an invalid value; nothing is changed then.
-/// </summary>
 public interface IOrgBrandingService
 {
     /// <summary>
@@ -19,18 +13,12 @@ public interface IOrgBrandingService
     /// </summary>
     Task<Org?> UpdateAsync(Guid orgId, OrgBrandingUpdate update, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Validates the image from its bytes (<see cref="OrgBrandingRules.ValidateImage"/>), stores it in the public bucket
-    /// of <c>IFileStorage</c> and points the org's logo or hero URL at it (absolute URL). The previous image of the
-    /// same kind is then deleted from the storage when it was uploaded here.
-    /// </summary>
     Task<Org?> SetImageAsync(
         Guid orgId,
         BrandingImageKind kind,
         Stream content,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Clears the org's logo or hero URL and deletes the stored image when it was uploaded here.</summary>
     Task<Org?> RemoveImageAsync(Guid orgId, BrandingImageKind kind, CancellationToken cancellationToken = default);
 }
 
@@ -49,16 +37,9 @@ public sealed record OrgBrandingUpdate(
     FieldUpdate<string> PublicPhone = default,
     FieldUpdate<string> PublicFontId = default);
 
-/// <summary>
-/// A field of an update that can be left out: <see cref="IsSent"/> is false for "keep what is stored" (the default value),
-/// true for "write <see cref="Value"/>", which may be <c>null</c> to clear the field. JSON cannot tell an absent member from a
-/// null one in a plain nullable property; the request DTOs record it and hand it over here.
-/// </summary>
 public readonly record struct FieldUpdate<T>(bool IsSent, T? Value)
 {
-    /// <summary>The field is left as it is.</summary>
     public static FieldUpdate<T> Unchanged => default;
 
-    /// <summary>The field is written with <paramref name="value"/> (<c>null</c> clears it).</summary>
     public static FieldUpdate<T> Set(T? value) => new(true, value);
 }

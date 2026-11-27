@@ -24,28 +24,21 @@ public class OrgSiteDocument : ITenantOwned
 
     public OrgSiteDocumentKind Kind { get; set; }
 
-    /// <summary>1, 2, 3... per org and kind; unique with them.</summary>
     public int Version { get; set; }
 
     public OrgSiteDocumentSource Source { get; set; }
 
-    /// <summary>The text as the operator wrote it (normalized, <see cref="OrgSiteDocumentSource.Text"/> only).</summary>
     public string? Content { get; set; }
 
-    /// <summary>Sanitized HTML built from <see cref="Content"/> when the version was published.</summary>
     public string? ContentHtml { get; set; }
 
-    /// <summary>Absolute https address of the document (<see cref="OrgSiteDocumentSource.ExternalUrl"/> only).</summary>
     [MaxLength(OrgSiteDocumentRules.ExternalUrlMaxLength)]
     public string? ExternalUrl { get; set; }
 
-    /// <summary>When the version was published (UTC).</summary>
     public DateTime PublishedAt { get; set; }
 
-    /// <summary>Auth0 subject of the administrator who published it.</summary>
     [MaxLength(255)]
     public string? PublishedByUserId { get; set; }
 
-    /// <summary>When the operator withdrew the document (UTC); null while it is shown. Only the current version can be withdrawn.</summary>
     public DateTime? WithdrawnAt { get; set; }
 }

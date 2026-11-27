@@ -53,7 +53,6 @@ public sealed class CalendarChangeService(
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>The longest the lookups of the channel manager of one preview take, all its properties together (the budget of the calendar: <see cref="PropertyDayRuleService.MirroredBudget"/>).</summary>
     private readonly TimeSpan _budget = lookupBudget ?? PropertyDayRuleService.MirroredBudget;
 
     private sealed record PropertyRow(Guid Id, string Name, string Timezone, decimal NightlyRate, decimal WeekendSurchargePercent, int? MinNights);
@@ -64,8 +63,6 @@ public sealed class CalendarChangeService(
         Mirrored,
         RoomNotChosen,
     }
-
-    // --- The preview -------------------------------------------------------------------------------------------------------------
 
     public async Task<CalendarChangePreview> PreviewAsync(HostScope scope, CalendarChangeRequest request, CancellationToken cancellationToken = default)
     {
@@ -85,8 +82,6 @@ public sealed class CalendarChangeService(
         var rows = new List<CalendarChangePreviewProperty>(properties.Count);
         var warnings = new List<CalendarChangeWarning>();
 
-        // Whether a property is on the channel manager is advice, asked within a budget as the calendar does: up to fifty lookups in a row never make a preview wait for a
-        // channel manager that is slow or down. What is not asked in time is read as the property being on it, as a lookup that fails is: the preview is never refused.
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         budget.CancelAfter(_budget);
         foreach (var property in properties)
@@ -134,8 +129,6 @@ public sealed class CalendarChangeService(
             warnings);
     }
 
-    // --- The application ---------------------------------------------------------------------------------------------------------
-
     public async Task<CalendarChangeApplyResult> ApplyAsync(
         HostScope scope,
         CalendarChangeRequest request,
@@ -151,7 +144,6 @@ public sealed class CalendarChangeService(
         CalendarChangeRecord? record = null;
         try
         {
-            // The process and its chunks first: the lookup of where each property books may save the unit of work, so nothing else is staged before it.
             record = await recorder.RecordAsync(
                 ids.Count == 1 ? CalendarChangeKind.DayRules : CalendarChangeKind.Bulk,
                 [.. ids.Select(id => new CalendarWindow(id, request.From, request.To))],
@@ -185,16 +177,12 @@ public sealed class CalendarChangeService(
         }
         catch
         {
-            // A change that fails leaves nothing behind: what was staged is forgotten, the rules and the process alike.
             dayRules.DiscardStaged();
             Forget(record);
             throw;
         }
     }
 
-    /// <summary>
-    /// Stages the rules of every property (nothing is saved). A refused change, or one that changes no night at all, is an error of the whole request.
-    /// </summary>
     private async Task<DayRuleApplyResult> StageRulesAsync(
         HostScope scope,
         IReadOnlyList<Guid> ids,
@@ -211,17 +199,12 @@ public sealed class CalendarChangeService(
             skippedPast += applied.SkippedPast;
         }
 
-        // Nothing changes for any property: refused, and nothing is saved (the rows the rule service staged are the ones of no change).
         if (changed == 0)
             throw DayRuleRules.ProblemOf(DayRuleErrorCodes.NothingToChange);
 
         return new DayRuleApplyResult(changed, unchanged, skippedPast);
     }
 
-    /// <summary>
-    /// Enqueues the immediate run of a process, once its save is committed. A queue that cannot take it is not a failure of the change (which is saved, with its
-    /// <c>NextAttemptAt</c> reached): the recurring job picks it up within a minute.
-    /// </summary>
     private void Enqueue(Guid processId)
     {
         try
@@ -234,7 +217,6 @@ public sealed class CalendarChangeService(
         }
     }
 
-    /// <summary>Takes the rows of a recorded change out of the unit of work: the change was given up.</summary>
     private void Forget(CalendarChangeRecord? record)
     {
         if (record is null)
@@ -245,12 +227,6 @@ public sealed class CalendarChangeService(
             db.Entry(chunk).State = EntityState.Detached;
     }
 
-    // --- What the services read --------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// The short-rent properties of the request the caller reaches, in the order of the request. One that is not found (another org's, outside the reach, deleted, in
-    /// long-term mode) fails the whole request: 404 <c>property_not_found</c>.
-    /// </summary>
     private async Task<List<PropertyRow>> ResolvePropertiesAsync(HostScope scope, IReadOnlyList<Guid> ids, CancellationToken ct)
     {
         var found = await db.Properties
@@ -272,7 +248,6 @@ public sealed class CalendarChangeService(
         return [.. ids.Select(id => found.First(p => p.Id == id))];
     }
 
-    // What the host confirmed from the seasonal proposals (PC-15), for all the properties together: the prices a night holds before the rules.
     private async Task<Dictionary<Guid, IReadOnlyDictionary<DateOnly, decimal>>> ReadSeasonalPricesAsync(
         Guid orgId,
         IReadOnlyList<Guid> ids,
@@ -293,16 +268,11 @@ public sealed class CalendarChangeService(
         return result;
     }
 
-    /// <summary>
-    /// Whether the property books into the channel manager, for the preview: advice only. The connector off, or a property that is not connected or whose mapping is not
-    /// confirmed, is not mirrored; a channel manager that cannot be asked is read as the property being on it (only a confirmed mapping asks it) and never refuses the preview.
-    /// </summary>
     private async Task<Reach> ReachOfAsync(Guid propertyId, CancellationToken budget, CancellationToken ct)
     {
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
             return Reach.NotMirrored;
 
-        // The budget of the preview is spent: nothing more is asked, the property is read as on the channel manager.
         ct.ThrowIfCancellationRequested();
         if (budget.IsCancellationRequested)
             return Reach.Mirrored;
@@ -340,9 +310,6 @@ public sealed class CalendarChangeService(
         }
     }
 
-    // --- The summary of the process ----------------------------------------------------------------------------------------------
-
-    /// <summary>What was asked, as fields, actions and values (the weekdays chosen and the patch): never a name, an address or a guest.</summary>
     private static string SummaryOf(CalendarChangeRequest request)
     {
         using var stream = new MemoryStream();

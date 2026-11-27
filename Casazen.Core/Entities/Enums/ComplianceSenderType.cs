@@ -6,12 +6,9 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum ComplianceSenderType
 {
-    /// <summary>The channel manager (Octorate) sends, from the link the host set on its panel.</summary>
     ChannelManager = 1,
 
-    /// <summary>CasaZen sends, with the Questura account of the property.</summary>
     CasaZen = 2,
 
-    /// <summary>Nobody sends automatically: the host sends on the portals.</summary>
     Manual = 3,
 }

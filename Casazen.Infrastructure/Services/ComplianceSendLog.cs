@@ -28,7 +28,6 @@ public sealed class ComplianceSendLog(AppDbContext db, ILogger<ComplianceSendLog
         if (entry.Kind == ComplianceSendKind.AlloggiatiGuests && entry.BookingId is null)
             throw new ArgumentException("The guests of a stay are logged with the stay.", nameof(entry));
 
-        // A receipt or a confirmation id: trimmed, and never longer than its column (a longer one is a mistake of the caller, not a reason to lose the line).
         var reference = string.IsNullOrWhiteSpace(entry.Reference) ? null : entry.Reference.Trim();
         if (reference?.Length > ComplianceSendLogEntry.ReferenceMaxLength)
             throw new ArgumentException("The reference of a send is a receipt or confirmation id.", nameof(entry));

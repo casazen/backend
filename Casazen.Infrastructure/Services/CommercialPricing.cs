@@ -5,7 +5,6 @@ namespace Casazen.Infrastructure.Services;
 
 public static class CommercialPricing
 {
-    // docs/business-plan/LISTINO.md §4. An owner activates these modules within the base subscription.
     public static bool IsIncluded(PlanTier tier, string code) =>
         (tier is PlanTier.Pro or PlanTier.Scale && code is "channels" or "direct-booking" or "compliance" or "operations") ||
         (tier == PlanTier.Scale && code == "messages-ai");

@@ -4,20 +4,12 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Storage;
 
-/// <summary>
-/// Object storage configuration (section <c>Storage</c>, env vars <c>Storage__*</c>).
-/// Runbook: <c>docs/runbooks/storage.md</c>.
-/// </summary>
 public sealed class StorageOptions
 {
     public const string SectionName = "Storage";
     public const string S3Provider = "S3";
     public const string FileSystemProvider = "FileSystem";
 
-    /// <summary>
-    /// <c>S3</c> (Supabase Storage, required outside Development/Testing) or <c>FileSystem</c>
-    /// (Development and tests only). Empty: FileSystem in Development/Testing, S3 elsewhere.
-    /// </summary>
     public string? Provider { get; set; }
 
     /// <summary>
@@ -27,7 +19,6 @@ public sealed class StorageOptions
     /// </summary>
     public string? PublicBaseUrl { get; set; }
 
-    /// <summary>Lifetime of signed URLs of private objects, in minutes (1-60).</summary>
     public int SignedUrlTtlMinutes { get; set; } = 5;
 
     public S3StorageOptions S3 { get; set; } = new();
@@ -38,40 +29,32 @@ public sealed class StorageOptions
 
     public bool UsesS3 => string.Equals(Provider, S3Provider, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>True in the environments where the filesystem provider is allowed.</summary>
     public static bool IsLocalEnvironment(IHostEnvironment environment) =>
         environment.IsDevelopment() || environment.IsEnvironment("Testing");
 }
 
 public sealed class S3StorageOptions
 {
-    /// <summary>S3 endpoint. Supabase: <c>https://&lt;ref&gt;.storage.supabase.co/storage/v1/s3</c>.</summary>
     public string? ServiceUrl { get; set; }
 
-    /// <summary>Region shown in Supabase (Project Settings → Storage → S3 connection), e.g. <c>eu-central-1</c>.</summary>
     public string? Region { get; set; }
 
     public string? AccessKeyId { get; set; }
 
     public string? SecretAccessKey { get; set; }
 
-    /// <summary>Public-read bucket (photos).</summary>
     public string? PublicBucket { get; set; }
 
-    /// <summary>Private bucket (documents, guest ID scans, contracts).</summary>
     public string? PrivateBucket { get; set; }
 
-    /// <summary>Path-style addressing (<c>{endpoint}/{bucket}/{key}</c>), required by Supabase.</summary>
     public bool ForcePathStyle { get; set; } = true;
 }
 
 public sealed class FileSystemStorageOptions
 {
-    /// <summary>Root folder; <c>public/</c> and <c>private/</c> live under it. Default: <c>{ContentRoot}/App_Data/storage</c>.</summary>
     public string? RootPath { get; set; }
 }
 
-/// <summary>Fills the environment-dependent defaults of <see cref="StorageOptions"/>.</summary>
 public sealed class StorageOptionsDefaults(IHostEnvironment environment, IConfiguration configuration)
     : IPostConfigureOptions<StorageOptions>
 {
@@ -98,10 +81,6 @@ public sealed class StorageOptionsDefaults(IHostEnvironment environment, IConfig
     }
 }
 
-/// <summary>
-/// Startup validation (<c>ValidateOnStart</c>): outside Development/Testing the app does not start
-/// without a complete S3 configuration, so files can never silently land on the ephemeral container disk.
-/// </summary>
 public sealed class StorageOptionsValidator(IHostEnvironment environment) : IValidateOptions<StorageOptions>
 {
     public ValidateOptionsResult Validate(string? name, StorageOptions options)
@@ -122,7 +101,6 @@ public sealed class StorageOptionsValidator(IHostEnvironment environment) : IVal
         }
         else if (options.UsesS3)
         {
-            // External calls use HTTPS; plain http is tolerated only locally (e.g. a MinIO container).
             var requireHttps = !StorageOptions.IsLocalEnvironment(environment);
             var s3 = options.S3;
             if (!IsAbsoluteHttpUrl(s3.ServiceUrl, requireHttps))

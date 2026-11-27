@@ -34,7 +34,6 @@ public sealed class ConcordatoFacileGiftService(
             return;
         }
 
-        // Insert new gift with Status=Available
         var gift = new ConcordatoFacileGift
         {
             OrgId = orgId,
@@ -58,8 +57,6 @@ public sealed class ConcordatoFacileGiftService(
         Guid leaseId,
         CancellationToken cancellationToken = default)
     {
-        // CF-FIX2: the gift is spent only on a lease of the org. A lease that does not exist or is another org's is a 404 lease_not_found,
-        // before the transaction and before anything is written.
         await dbContext.EnsureLeaseOfOrgAsync(leaseId, orgId, cancellationToken);
 
         // ADR-006-R4: Acquire PostgreSQL advisory lock for atomicity
@@ -69,7 +66,6 @@ public sealed class ConcordatoFacileGiftService(
             cancellationToken,
             (PostgresAdvisoryLocks.Scope.OrgBillingCheckout, $"concordato-gift-{orgId}"));
 
-        // ADR-006-R6: Check if gift already consumed for this leaseId (re-entry allowed)
         var consumedForThisLease = await dbContext.ConcordatoFacileGifts
             .Where(g => g.OrgId == orgId && g.ConsumedForLeaseId == leaseId)
             .FirstOrDefaultAsync(cancellationToken);
@@ -83,7 +79,6 @@ public sealed class ConcordatoFacileGiftService(
             return CfGiftConsumeResult.AlreadyConsumedForThisLease;
         }
 
-        // ADR-006-R5: Query gift with Status=Available AND ConsumedForLeaseId IS NULL
         var availableGift = await dbContext.ConcordatoFacileGifts
             .Where(g => g.OrgId == orgId
                 && g.Status == ConcordatoFacileGiftStatus.Available
@@ -99,13 +94,11 @@ public sealed class ConcordatoFacileGiftService(
             return CfGiftConsumeResult.AlreadyConsumedForOtherLease;
         }
 
-        // ADR-006-R5: Update gift atomically
         var now = DateTime.UtcNow;
         availableGift.ConsumedForLeaseId = leaseId;
         availableGift.ConsumedAt = now;
         availableGift.Status = ConcordatoFacileGiftStatus.Consumed;
 
-        // ADR-006-R7: Record LeaseEvent for audit trail
         var leaseEvent = new LeaseEvent
         {
             LeaseContractId = leaseId,

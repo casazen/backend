@@ -42,13 +42,11 @@ public static class BankStatementParser
         }
     }
 
-    /// <summary>The format of the bytes, and their text for the text formats; 415 for a PDF, a legacy .xls, an image or any other file.</summary>
     private static (BankStatementFormat Format, string? Text) Detect(byte[] content)
     {
         if (StartsWith(content, "%PDF"))
             throw Unsupported();
 
-        // A legacy Excel file (.xls) is an OLE2 container: it is not read, the landlord saves it as .xlsx or CSV.
         if (content.Length >= 8 && content[0] == 0xD0 && content[1] == 0xCF && content[2] == 0x11 && content[3] == 0xE0)
             throw Unsupported();
 
@@ -87,7 +85,6 @@ public static class BankStatementParser
         return true;
     }
 
-    /// <summary>Control characters in the first bytes (a text never has them, but for the tab and the line breaks); a text with a UTF-16 mark is text.</summary>
     private static bool IsBinary(byte[] content)
     {
         if (content.Length >= 2 && ((content[0] == 0xFF && content[1] == 0xFE) || (content[0] == 0xFE && content[1] == 0xFF)))
@@ -160,7 +157,6 @@ public static class BankPayerHash
 {
     private const string KeyPurpose = "cz-bank-payer-hash-key-v1";
 
-    /// <summary>The key of these hashes, made from the secret the server keeps for its signed links; null when there is no secret.</summary>
     public static byte[]? DeriveKey(string? secret) =>
         string.IsNullOrWhiteSpace(secret)
             ? null
@@ -169,7 +165,6 @@ public static class BankPayerHash
     public static string? Iban(Guid orgId, string? iban, byte[]? key) =>
         key is null || string.IsNullOrWhiteSpace(iban) ? null : Keyed(key, $"cz-bank-payer-iban-v2|{orgId:N}|{iban.Trim().ToUpperInvariant()}");
 
-    /// <summary>The same hash whatever the order of the words and the accents: «Verdi Giulia» and «GIULIA VERDI» are one payer.</summary>
     public static string? Name(Guid orgId, string? name, byte[]? key)
     {
         var words = BankValues.NormalizeText(name)

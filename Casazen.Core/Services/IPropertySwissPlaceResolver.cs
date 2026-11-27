@@ -21,63 +21,37 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IPropertySwissPlaceResolver
 {
-    /// <summary>The place of <paramref name="property"/>; <c>null</c> when it is not in Switzerland or nothing can be derived.</summary>
     Task<SwissPlace?> ResolveAsync(Property property, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The places of many properties with at most two queries whatever their number (a list, a report, a job): the answer has an entry for each
-    /// property that has a place (ambiguous ones included), keyed by <see cref="SwissPlaceLookup.PropertyId"/>.
-    /// </summary>
     Task<IReadOnlyDictionary<Guid, SwissPlace>> ResolveManyAsync(IReadOnlyCollection<SwissPlaceLookup> properties, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The municipality the host chose for a property (the BFS number sent on create or update), as a stored place.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException">
-    /// 422 <c>swiss_places_unavailable</c> when the directory is not loaded, <c>swiss_municipality_unknown</c> when it has no such number.
-    /// </exception>
     Task<SwissPlace> RequireMunicipalityAsync(string municipalityCode, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Where the municipality of a <see cref="SwissPlace"/> comes from.</summary>
 public enum SwissPlaceSource
 {
-    /// <summary>The municipality stored on the property (the host confirmed it).</summary>
     Stored,
 
-    /// <summary>Derived from the postal code and the city of the property: not stored, to be confirmed by the host.</summary>
     Derived,
 }
 
-/// <summary>
-/// Where a Swiss property is: the BFS number and official name of its municipality and the two letters of its canton, where they come from, and
-/// whether its postal code and city leave several municipalities open (<see cref="Ambiguous"/>: then no municipality and no canton at all).
-/// </summary>
 public sealed record SwissPlace(string? MunicipalityCode, string? MunicipalityName, string? CantonCode, SwissPlaceSource Source, bool Ambiguous)
 {
-    /// <summary>The canton of Ticino (ISO 3166-2:CH).</summary>
     public const string TicinoCantonCode = "TI";
 
-    /// <summary>The municipality and the canton are known (not ambiguous).</summary>
     public bool IsKnown => !Ambiguous && MunicipalityCode is not null && CantonCode is not null;
 
-    /// <summary>The place is known and in canton <paramref name="cantonCode"/>.</summary>
     public bool IsInCanton(string cantonCode) => IsKnown && string.Equals(CantonCode, cantonCode, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The place is known and in canton Ticino.</summary>
     public bool IsInTicino => IsInCanton(TicinoCantonCode);
 
-    /// <summary>The postal code and the city of the property leave several municipalities open: nothing is chosen.</summary>
     public static SwissPlace AmbiguousPlace { get; } = new(null, null, null, SwissPlaceSource.Derived, Ambiguous: true);
 
-    /// <summary>The country of a property in Switzerland as it is stored (<c>Property.Country</c>, ISO 3166-1 alpha-2, as the property form and the import save it): <see cref="IsSwissCountry"/> compares with it.</summary>
     public const string CountryCode = "CH";
 
-    /// <summary>The country of a property is Switzerland (<c>CH</c>, case and spaces ignored).</summary>
     public static bool IsSwissCountry(string? country) => string.Equals(country?.Trim(), CountryCode, StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>What the resolver reads of a property: its country, its stored municipality, its postal code and its city.</summary>
 public sealed record SwissPlaceLookup(Guid PropertyId, string? Country, string? SwissMunicipalityCode, string? PostalCode, string? City)
 {
     public static SwissPlaceLookup From(Property property)
@@ -87,27 +61,21 @@ public sealed record SwissPlaceLookup(Guid PropertyId, string? Country, string? 
     }
 }
 
-/// <summary>The codes and message keys of the Swiss municipality of a property.</summary>
 public static class SwissPlaceErrorCodes
 {
-    /// <summary>422: a Swiss municipality sent for a property that is not in Switzerland.</summary>
     public const string NotApplicable = "swiss_municipality_not_applicable";
 
     public const string NotApplicableMessageKey = "SwissMunicipalityNotApplicable";
 
-    /// <summary>422: the BFS number sent is not a municipality of the directory.</summary>
     public const string Unknown = "swiss_municipality_unknown";
 
     public const string UnknownMessageKey = "SwissMunicipalityUnknown";
 
-    /// <summary>422: the directory of the Swiss municipalities is not loaded, so a municipality cannot be checked.</summary>
     public const string Unavailable = "swiss_places_unavailable";
 
     public const string UnavailableMessageKey = "SwissPlacesUnavailable";
 
-    /// <summary>The message key of a <c>swissMunicipalityCode</c> that is not a BFS number (400, field error).</summary>
     public const string InvalidFormatMessageKey = "SwissMunicipalityCodeInvalid";
 
-    /// <summary>A BFS number as the requests accept it: one to four digits (a leading zero is dropped when it is stored).</summary>
     public const string CodePattern = "^[0-9]{1,4}$";
 }

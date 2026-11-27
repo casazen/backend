@@ -22,7 +22,6 @@ public sealed partial class RentBillingService
     {
         await using var transaction = await LockLeaseAsync(leaseId, cancellationToken);
 
-        // Read under the lock, after the renewal saved the new end of the lease in the same transaction.
         var lease = await db.LeaseContracts
             .AsNoTracking()
             .Where(l => l.Id == leaseId)
@@ -92,8 +91,6 @@ public sealed partial class RentBillingService
     {
         await using var transaction = await LockLeaseAsync(leaseId, cancellationToken);
 
-        // Still to be collected and starting after the last day. Paid and in-flight installments are not in the list, so they are never touched;
-        // the one whose period contains the last day starts before it and stays as it is.
         var open = await db.RentLedgerEntries
             .Where(e => e.LeaseContractId == leaseId
                         && e.PeriodStart > lastDay
@@ -107,7 +104,6 @@ public sealed partial class RentBillingService
         var notices = new List<RentPaymentNotice>();
         foreach (var entry in open)
         {
-            // A PaymentIntent the tenant could still pay is canceled first; one paid or in flight meanwhile wins and the installment stays.
             if (entry.StripePaymentIntentId is not null && (entry.ConnectedAccountId is not null || entry.TransactionFee > 0))
             {
                 var current = await CancelIfPayableAsync(entry, cancellationToken);

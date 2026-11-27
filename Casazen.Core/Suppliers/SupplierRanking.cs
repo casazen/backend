@@ -3,7 +3,6 @@ using Casazen.Core.Options;
 
 namespace Casazen.Core.Suppliers;
 
-/// <summary>An event of a supplier as the ranking needs it: what it was, which request it was about and whether the supplier was a backup.</summary>
 public readonly record struct ReliabilityEventRecord(SupplierReliabilityEventKind Kind, Guid? RequestId, bool AsBackup);
 
 /// <summary>What the events of a supplier in the window add up to, before the weights are applied.</summary>
@@ -14,7 +13,6 @@ public readonly record struct ReliabilityEventRecord(SupplierReliabilityEventKin
 /// <param name="Disputes">Jobs a payer disputed.</param>
 public sealed record ReliabilityTally(int RepliedInTime, int CleanJobs, int MissedAsPrimary, int MissedAsBackup, int Disputes)
 {
-    /// <summary>A supplier with no history: it starts neutral.</summary>
     public static ReliabilityTally None { get; } = new(0, 0, 0, 0, 0);
 }
 
@@ -28,9 +26,6 @@ public sealed record ReliabilityTally(int RepliedInTime, int CleanJobs, int Miss
 /// </summary>
 public static class SupplierRanking
 {
-    /// <summary>The score of a supplier for a request: 1 to 100, the higher the better.</summary>
-    /// <param name="openLoad">Requests the supplier holds or may hold now (a backup that only waits for its primary is not one).</param>
-    /// <param name="reliabilityPoints">The result of <see cref="ReliabilityPoints"/> for the supplier; 0 when nothing is known.</param>
     public static int Score(SupplierRankingOptions options, int openLoad, ServiceRequestUrgency urgency, bool hasBio, int reliabilityPoints)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -49,10 +44,6 @@ public static class SupplierRanking
         return Math.Clamp(score + reliabilityPoints, 1, 100);
     }
 
-    /// <summary>
-    /// What the history of a supplier adds to its score (negative when it subtracts): the replies in time and the clean jobs, each up to its
-    /// cap, minus the penalties up to <see cref="SupplierRankingOptions.MaxTotalPenalty"/>. Zero when the reliability is off.
-    /// </summary>
     public static int ReliabilityPoints(SupplierRankingOptions options, ReliabilityTally tally)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -68,7 +59,6 @@ public static class SupplierRanking
         return bonus - Math.Min(penalty, options.MaxTotalPenalty);
     }
 
-    /// <summary>The points a missed deadline costs: all of <see cref="SupplierRankingOptions.NoReplyPenalty"/> for the supplier the host chose, its small share for a backup.</summary>
     public static int NoReplyPenaltyOf(SupplierRankingOptions options, bool asBackup)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -77,10 +67,6 @@ public static class SupplierRanking
             : options.NoReplyPenalty;
     }
 
-    /// <summary>
-    /// Adds up the events of one supplier. A job that was disputed no longer counts as completed without a dispute: the dispute takes back
-    /// the points of the job (and costs its own penalty).
-    /// </summary>
     public static ReliabilityTally Tally(IEnumerable<ReliabilityEventRecord> events)
     {
         ArgumentNullException.ThrowIfNull(events);

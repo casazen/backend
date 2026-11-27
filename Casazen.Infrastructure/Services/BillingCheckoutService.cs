@@ -36,8 +36,6 @@ public sealed class BillingCheckoutService(
 
         var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken)
             ?? throw new NotFoundException($"Org {orgId} not found") { MessageKey = "OrganizationNotFound" };
-        // An instance tracked earlier in the request keeps the values read before the lock: read what the previous
-        // holder committed (customer id, subscription stored by the webhook).
         await dbContext.Entry(org).ReloadAsync(cancellationToken);
 
         if (BillingSubscriptionPolicy.BlocksNewCheckout(org))

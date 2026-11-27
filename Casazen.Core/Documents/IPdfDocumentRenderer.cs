@@ -8,6 +8,5 @@ namespace Casazen.Core.Documents;
 /// </summary>
 public interface IPdfDocumentRenderer
 {
-    /// <summary>The PDF bytes of <paramref name="content"/>.</summary>
     byte[] Render(PdfDocumentContent content);
 }

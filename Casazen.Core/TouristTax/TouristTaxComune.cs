@@ -21,8 +21,6 @@ public sealed record TouristTaxComune(string? IstatCode, string? Name)
     {
         ArgumentNullException.ThrowIfNull(property);
 
-        // The rates are those of the Italian comuni. A house in another country (CHF-MONEY: Switzerland, whose Kurtaxe is not modelled) is
-        // never matched to one by a name that happens to be the same: its amount would be euros added to a total in another currency.
         return IsItalianCountry(property.Country)
             ? new TouristTaxComune(property.ComuneIstatCode, property.City)
             : new TouristTaxComune(null, null);
@@ -36,10 +34,8 @@ public sealed record TouristTaxComune(string? IstatCode, string? Name)
     public static bool IsItalianCountry(string? country) =>
         string.IsNullOrWhiteSpace(country) || string.Equals(country, "IT", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>True when there is nothing to look up (no code and an empty name).</summary>
     public bool IsEmpty => string.IsNullOrWhiteSpace(IstatCode) && NormalizeName(Name).Length == 0;
 
-    /// <summary>True when <paramref name="rate"/> belongs to this comune (active or not, whatever its dates).</summary>
     public bool Matches(TouristTaxRate rate)
     {
         ArgumentNullException.ThrowIfNull(rate);

@@ -44,7 +44,6 @@ public sealed class MessagesFlowProvider(AppDbContext db, FlowPrerequisiteReader
         var connection = await prerequisites.ConnectionAsync(orgId, ct);
         var mapping = await prerequisites.MappingAsync(orgId, ids, ct);
 
-        // A row has a property only while its listing is confirmed. A property has one confirmed listing, so one row; the newest wins if a stale one is left.
         var states = (await db.OtaMessageSyncStates
                 .AsNoTracking()
                 .Where(s => s.OrgId == orgId && s.PropertyId != null && ids.Contains(s.PropertyId.Value))
@@ -282,7 +281,6 @@ public sealed class FiscalDocumentsPartEvaluator(IBillingSetupService billing, I
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        // Nobody issues while the issuance is off, whatever is set: the part is to do again.
         if (!featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance))
             return PartFacts.Counted(0, 1, OnboardingPartReasons.IssuerMissing);
 

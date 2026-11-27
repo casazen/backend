@@ -19,8 +19,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed partial class OwnerCollaborationService
 {
-    // ---------------------------------------------------------------- owner portal
-
     public async Task<IReadOnlyList<OwnerConversationView>> ListConversationsForOwnerAsync(OwnerPortalAccess access, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(access);
@@ -120,8 +118,6 @@ public sealed partial class OwnerCollaborationService
         return new OwnerInboxPreferences(emailNotifications);
     }
 
-    // ---------------------------------------------------------------- agency
-
     public async Task<IReadOnlyList<OwnerConversationView>> ListConversationsForAgencyAsync(Guid orgId, Guid? propertyOwnerId, CancellationToken cancellationToken = default)
     {
         var query = Conversations().AsNoTracking().Where(c => c.OrgId == orgId);
@@ -190,9 +186,6 @@ public sealed partial class OwnerCollaborationService
         return await AttachmentAsync(conversation, messageId, cancellationToken);
     }
 
-    // ---------------------------------------------------------------- shared
-
-    /// <summary>The org, owner profile and reference of a new conversation, checked.</summary>
     private sealed record ConversationTarget(
         Guid OrgId,
         Guid PropertyOwnerId,
@@ -206,10 +199,6 @@ public sealed partial class OwnerCollaborationService
 
     private IQueryable<OwnerMessage> Messages() => db.OwnerMessages.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]);
 
-    /// <summary>
-    /// The caller reads the conversation: <c>inbox.use</c> on its owner profile and, for a conversation about a property or an owner stay, on that property;
-    /// about a document, the document still shared and readable by the caller; about a statement version, <c>accounting.read</c> on the owner profile.
-    /// </summary>
     private static bool CanRead(OwnerPortalAccess access, OwnerConversation conversation, IReadOnlyDictionary<Guid, OwnerDocument> documents)
     {
         if (!access.Covers(conversation.OrgId, conversation.PropertyOwnerId, OwnerPortalPermission.InboxUse))
@@ -247,10 +236,6 @@ public sealed partial class OwnerCollaborationService
         await Conversations().AsNoTracking().FirstOrDefaultAsync(c => c.Id == conversationId && c.OrgId == orgId, cancellationToken)
         ?? throw ConversationNotFound(conversationId);
 
-    /// <summary>
-    /// What a conversation the caller opens is about: the reference its topic names and nothing else, reached by the caller with <c>inbox.use</c> (and the
-    /// permission of the item); the owner profile and the agency follow from it (a general one: the agency named, or the only one).
-    /// </summary>
     private async Task<ConversationTarget> OwnerTargetAsync(OwnerPortalAccess access, StartOwnerConversation command, CancellationToken cancellationToken)
     {
         RequireOnlyTheReferenceOf(command);
@@ -286,7 +271,6 @@ public sealed partial class OwnerCollaborationService
             return new ConversationTarget(document.OrgId, document.PropertyOwnerId, command.Topic, document.PropertyId, null, document.Id, null);
         }
 
-        // A statement version (the only topic left once the reference was checked).
         var version = await db.OwnerStatementVersions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
             .FirstOrDefaultAsync(v => v.Id == command.StatementVersionId && v.PublishedAt != null, cancellationToken);
         if (version is null
@@ -299,7 +283,6 @@ public sealed partial class OwnerCollaborationService
         return new ConversationTarget(version.OrgId, version.PropertyOwnerId, command.Topic, null, null, null, version.Id);
     }
 
-    /// <summary>The same for the agency: the owner profile is of the org, and the reference is of that owner profile and org.</summary>
     private async Task<ConversationTarget> AgencyTargetAsync(Guid orgId, StartOwnerConversation command, CancellationToken cancellationToken)
     {
         RequireOnlyTheReferenceOf(command);
@@ -335,7 +318,6 @@ public sealed partial class OwnerCollaborationService
         return new ConversationTarget(orgId, ownerId, command.Topic, propertyId, command.OwnerStayId, command.DocumentId, command.StatementVersionId);
     }
 
-    /// <summary>A topic that is not one of the list, or a reference that is not the one the topic names (or is missing), is refused.</summary>
     private static void RequireOnlyTheReferenceOf(StartOwnerConversation command)
     {
         var valid = command.Topic switch
@@ -365,7 +347,6 @@ public sealed partial class OwnerCollaborationService
         LastMessageAt = now,
     };
 
-    /// <summary>The subject and the words of a message, trimmed and bounded; the words may be empty only next to a file.</summary>
     private static (string Subject, string Body) Words(string? subject, string? body, bool attachment)
     {
         var cleanSubject = (subject ?? string.Empty).Trim();
@@ -383,7 +364,6 @@ public sealed partial class OwnerCollaborationService
         return clean;
     }
 
-    /// <summary>Writes a message (with its file, stored after the scan) and moves the conversation to the top of the inbox.</summary>
     private async Task<OwnerMessage> PostAsync(
         Guid conversationId,
         OwnerMessageSender sender,
@@ -501,14 +481,12 @@ public sealed partial class OwnerCollaborationService
             .ToListAsync(cancellationToken);
 
         var agency = await db.Orgs.AsNoTracking().Where(o => o.Id == conversation.OrgId).Select(o => o.Name).FirstOrDefaultAsync(cancellationToken) ?? string.Empty;
-        // E40/F01/US01/T03: the conversation on the agency's own domain only once the owner sign-in works there.
         var conversationLink = (await agencyLinks.ForOrgOrPlatformAsync(links, conversation.OrgId, cancellationToken)).OwnerPortalConversation(conversation.Id);
         var content = EmailTemplates.OwnerInboxMessage(new CultureInfo("it-IT"), agency, conversationLink);
         foreach (var address in addresses)
             emailQueue.Enqueue(address, content, EmailTemplates.Names.OwnerInboxMessage);
     }
 
-    /// <summary>Tells the agency that an owner wrote: one e-mail to the contact address of the org, in its language, with the link to the conversation.</summary>
     private async Task TellAgencyAsync(OwnerConversation conversation, CancellationToken cancellationToken)
     {
         if (!links.IsConfigured)

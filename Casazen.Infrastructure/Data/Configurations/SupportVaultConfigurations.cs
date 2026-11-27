@@ -28,10 +28,6 @@ internal sealed class SupportVaultSecretConfiguration : IEntityTypeConfiguration
     }
 }
 
-/// <summary>
-/// One opening of the support vault (E20/F03/US01/T01): the audit row follows its «Do it for me» request and its org (cascade). The index on the request
-/// and the instant is the count of the openings of the last hour.
-/// </summary>
 internal sealed class SupportVaultAccessConfiguration : IEntityTypeConfiguration<SupportVaultAccess>
 {
     public void Configure(EntityTypeBuilder<SupportVaultAccess> entity)

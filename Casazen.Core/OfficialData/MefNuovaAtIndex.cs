@@ -6,10 +6,6 @@ using Casazen.Core.Regulatory;
 
 namespace Casazen.Core.OfficialData;
 
-/// <summary>
-/// Daily CSV of the MEF archive <c>nuova_at</c>: municipal tax acts, not a national list of amounts.
-/// Matching is by cadastral code, then by unique name+province; 0 or &gt;1 rows without a cadastral code is rejected.
-/// </summary>
 public static class MefNuovaAtIndex
 {
     public const string Authority = MefNuovaAtCatalogPage.Authority;

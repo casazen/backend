@@ -9,11 +9,9 @@ namespace Casazen.Core.GuestPortal;
 [GuestPortalRegistry]
 public interface IGuestPortalPolicy
 {
-    /// <summary>Whether the paid services may be shown for the stay of <paramref name="context"/>.</summary>
     Task<bool> CanShowPaidServicesAsync(PortalContext context, CancellationToken cancellationToken = default);
 }
 
-/// <summary>The default: the paid services are shown, for every stay and every source (D12).</summary>
 public sealed class DefaultGuestPortalPolicy : IGuestPortalPolicy
 {
     public Task<bool> CanShowPaidServicesAsync(PortalContext context, CancellationToken cancellationToken = default) => Task.FromResult(true);

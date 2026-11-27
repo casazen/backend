@@ -36,16 +36,12 @@ public sealed class ManualPaymentService(
     IDomainEventRecorder? domainEvents = null,
     IStripeService? stripeService = null) : IManualPaymentService
 {
-    /// <summary>The code of the refusal of a receipt while the guest is paying with the payment link.</summary>
     internal const string PaymentInProgressCode = "payment_in_progress";
 
-    /// <summary>The Stripe code of a PaymentIntent that cannot be cancelled in its state (the guest paid meanwhile).</summary>
     private const string PaymentIntentUnexpectedStateCode = "payment_intent_unexpected_state";
 
-    /// <summary>Prefix of <see cref="Payment.TransactionId"/> for a payment recorded by the host: the rest is the client's key.</summary>
     internal const string KeyPrefix = "manual:";
 
-    /// <summary>Longest key accepted (the column holds 500 characters).</summary>
     internal const int MaxKeyLength = 100;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -58,7 +54,6 @@ public sealed class ManualPaymentService(
         if (key.Length is 0 or > MaxKeyLength)
             throw new DomainRuleException("payment_idempotency_key_invalid", "PaymentIdempotencyKeyInvalid");
 
-        // The host records money that arrived by hand: cash or a bank transfer. Cards and wallets go through Stripe.
         if (command.Method is not (PaymentMethod.CashOnArrival or PaymentMethod.BankTransfer))
             throw new DomainRuleException("payment_method_not_allowed", "PaymentMethodNotAllowed");
 
@@ -85,7 +80,6 @@ public sealed class ManualPaymentService(
             .Where(p => p.BookingId == booking.Id)
             .ToListAsync(cancellationToken);
 
-        // The same key again: the payment it wrote, nothing new. A key that belongs to a different record is a mistake of the client.
         var previous = payments.FirstOrDefault(p => p.TransactionId == transactionId);
         if (previous is not null)
         {
@@ -98,7 +92,6 @@ public sealed class ManualPaymentService(
         if (booking.Status == BookingStatus.Cancelled)
             throw new DomainRuleException("payment_booking_cancelled", "PaymentBookingCancelled");
 
-        // A portal (Airbnb, Booking.com...) collects the money itself: the host does not record a receipt on those stays.
         if (FiscalCopy.IsOtaBookingSource(booking.Source))
             throw new DomainRuleException("payment_booking_from_portal", "PaymentBookingFromPortal");
 
@@ -143,7 +136,6 @@ public sealed class ManualPaymentService(
         if (isNew)
             db.Payments.Add(payment);
 
-        // E08/F01/US01/T04: the money came in; the event is saved with the payment (the Octorate handler records it on the reservation).
         await PaymentEvents.RecordSucceededAsync(
             domainEvents, db, payment, await PaymentEvents.CurrencyOfAsync(db, booking, cancellationToken), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
@@ -218,7 +210,6 @@ public sealed class ManualPaymentService(
                 }
                 catch (Stripe.StripeException ex) when (ex.StripeError?.Code == PaymentIntentUnexpectedStateCode)
                 {
-                    // The guest paid between the read and the cancellation: the receipt waits for the payment to be recorded.
                     throw new DomainConflictException(PaymentInProgressCode, "PaymentInProgress");
                 }
             }
@@ -236,10 +227,6 @@ public sealed class ManualPaymentService(
         && string.IsNullOrEmpty(payment.StripePaymentIntentId)
         && string.IsNullOrEmpty(payment.TransactionId);
 
-    /// <summary>
-    /// The instant a receipt of <paramref name="receivedOn"/> is settled at: midday in Rome of that day, so its Rome date is the
-    /// one the host said whatever the offset, and never later than now (a receipt of today recorded before midday is settled now).
-    /// </summary>
     private static DateTime SettledAt(DateOnly receivedOn, DateTime now)
     {
         var midday = RomeCalendar.ToUtc(receivedOn, new TimeOnly(12, 0));

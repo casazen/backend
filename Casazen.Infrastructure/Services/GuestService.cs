@@ -45,8 +45,6 @@ public class GuestService(
     {
         logger.LogInformation("Creating guest in org {OrgId}", orgId);
 
-        // Only the caller's org is checked: a guest with the same e-mail in another org is a different
-        // record and must never be revealed (no cross-tenant 409).
         if (await repository.ExistsByEmailAsync(orgId, guest.Email, cancellationToken))
         {
             logger.LogWarning("Guest with duplicate email already exists in org {OrgId}", orgId);
@@ -93,7 +91,6 @@ public class GuestService(
     {
         logger.LogInformation("Deleting guest: {GuestId}", id);
 
-        // The guest is read inside the caller's scope: one of another org, or of a property the caller does not reach, is not found.
         var orgId = scope.OrgId;
         var guest = await repository.GetByIdInScopeAsync(scope, id, cancellationToken);
         if (guest is null)
@@ -111,7 +108,6 @@ public class GuestService(
 
         if (!usage.HasReferences)
         {
-            // CO-15: the document scan object goes with the row (FD-07 private storage), and the erasure is audited.
             await gdprService.EraseStoredFilesBeforeRemovalAsync(orgId, id, actorUserId, cancellationToken);
             await repository.DeleteAsync(id);
             logger.LogInformation("Guest deleted: {GuestId}", id);

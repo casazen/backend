@@ -12,7 +12,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IPaymentListService
 {
-    /// <summary>One query whatever the number of payments: the payments of the scope that satisfy <paramref name="criteria"/>, newest first (id as the tie-break).</summary>
     Task<IReadOnlyList<PaymentListItem>> ListAsync(
         HostScope scope,
         PaymentListCriteria criteria,
@@ -33,20 +32,12 @@ public interface IPaymentListService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>A page of the payment list (SR-03b).</summary>
-/// <param name="Items">The payments of the page.</param>
-/// <param name="TotalCount">All the payments that satisfy the criteria, on every page.</param>
-/// <param name="Page">The page taken (1-based) after bringing the request within the limits.</param>
-/// <param name="PageSize">The size taken after bringing the request within the limits.</param>
 public sealed record PaymentListPage(IReadOnlyList<PaymentListItem> Items, int TotalCount, int Page, int PageSize)
 {
-    /// <summary>The page size when the caller asks for pages without saying how big (as the other lists of the host).</summary>
     public const int DefaultPageSize = 20;
 
-    /// <summary>The most payments a page may hold.</summary>
     public const int MaxPageSize = 100;
 
-    /// <summary>The highest page number taken: the order is fixed, a number past the end is just an empty page.</summary>
     public const int MaxPage = 100_000;
 }
 

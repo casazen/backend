@@ -20,7 +20,6 @@ internal sealed class LeaseContractConfiguration : IEntityTypeConfiguration<Leas
 {
     public void Configure(EntityTypeBuilder<LeaseContract> entity)
     {
-        // LeaseContract → Property (restrict to preserve history)
         entity.HasOne(l => l.Property)
             .WithMany()
             .HasForeignKey(l => l.PropertyId)
@@ -29,15 +28,12 @@ internal sealed class LeaseContractConfiguration : IEntityTypeConfiguration<Leas
         entity.Property(l => l.MonthlyRent)
             .HasPrecision(18, 2);
 
-        // Canone concordato characteristics and range of the lease (LT-10): same table, optional.
         entity.OwnsOne(l => l.ConcordatoAssessment);
         entity.Navigation(l => l.ConcordatoAssessment).IsRequired(false);
 
         entity.HasIndex(l => l.PropertyId);
         entity.HasIndex(l => l.Status);
 
-        // LR-14: what is asked of the leases of an org is asked of the end of the period they are in now (the lists, the deadlines, the
-        // occupancy of a property, the tacit renewal job), never of the end the contract states.
         entity.HasIndex(l => new { l.OrgId, l.CurrentTermEndDate });
     }
 
@@ -57,13 +53,11 @@ internal sealed class PartyConfiguration : IEntityTypeConfiguration<Party>
 {
     public void Configure(EntityTypeBuilder<Party> entity)
     {
-        // Party → LeaseContract (cascade)
         entity.HasOne(p => p.LeaseContract)
             .WithMany(l => l.Parties)
             .HasForeignKey(p => p.LeaseContractId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // LT-14: several parties per role, in the order entered.
         entity.HasIndex(p => new { p.LeaseContractId, p.Role, p.Position })
             .IsUnique();
     }
@@ -73,7 +67,6 @@ internal sealed class LeaseRegistrationConfiguration : IEntityTypeConfiguration<
 {
     public void Configure(EntityTypeBuilder<LeaseRegistration> entity)
     {
-        // LeaseRegistration → LeaseContract (1-to-1, cascade)
         entity.HasOne(r => r.LeaseContract)
             .WithOne(l => l.Registration)
             .HasForeignKey<LeaseRegistration>(r => r.LeaseContractId)
@@ -82,7 +75,6 @@ internal sealed class LeaseRegistrationConfiguration : IEntityTypeConfiguration<
         entity.HasIndex(r => r.LeaseContractId)
             .IsUnique();
 
-        // LT-01 (A7-01): "Registered" only with the official receipt stored, never as a simulation.
         entity.ToTable(t => t.HasCheckConstraint(
                 "CK_LeaseRegistrations_RegisteredRequiresReceipt",
                 $"\"Status\" <> {(int)RegistrationStatus.Registered} OR btrim(coalesce(\"ReceiptStoragePath\", '')) <> ''"));
@@ -93,7 +85,6 @@ internal sealed class LeaseEventConfiguration : IEntityTypeConfiguration<LeaseEv
 {
     public void Configure(EntityTypeBuilder<LeaseEvent> entity)
     {
-        // LeaseEvent → LeaseContract (cascade)
         entity.HasOne(e => e.LeaseContract)
             .WithMany(l => l.Events)
             .HasForeignKey(e => e.LeaseContractId)
@@ -107,7 +98,6 @@ internal sealed class LeaseSignerConfiguration : IEntityTypeConfiguration<LeaseS
 {
     public void Configure(EntityTypeBuilder<LeaseSigner> entity)
     {
-        // LeaseSigner (LT-02, A7-16): one row per party and lease, removed with the lease or the party.
         entity.HasOne(s => s.LeaseContract)
             .WithMany(l => l.Signers)
             .HasForeignKey(s => s.LeaseContractId)
@@ -184,7 +174,6 @@ internal sealed class LeaseCondominiumTermsConfiguration : IEntityTypeConfigurat
 {
     public void Configure(EntityTypeBuilder<LeaseCondominiumTerms> entity)
     {
-        // One current condominium clause per lease. The source document is optional and cleared when that document goes.
         entity.HasOne(t => t.LeaseContract)
             .WithOne(l => l.CondominiumTerms)
             .HasForeignKey<LeaseCondominiumTerms>(t => t.LeaseContractId)

@@ -23,10 +23,8 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static class FiscalDocumentTotals
 {
-    /// <summary>The version of the computation (the tax rule has its own version, <c>FiscalDocument.RuleVersion</c>).</summary>
     public const string RuleVersion = "fiscal-totals-2026.11-1";
 
-    /// <summary>The code of amounts that cannot make a document (negative, nothing to bill, a rate out of range).</summary>
     public const string AmountsInvalidCode = "document_amounts_invalid";
 
     /// <summary>
@@ -256,7 +254,6 @@ public static class FiscalDocumentTotals
         return scaled.Where(l => l.GrossAmount > 0m).ToList();
     }
 
-    /// <summary>The net of a gross amount at <paramref name="rate"/> percent, to the cent (half away from zero).</summary>
     public static decimal Net(decimal gross, decimal rate) =>
         rate == 0m ? Math.Round(gross, 2, MidpointRounding.AwayFromZero) : Math.Round(gross * 100m / (100m + rate), 2, MidpointRounding.AwayFromZero);
 
@@ -330,7 +327,6 @@ public sealed record FiscalDocumentLineAmounts(
 /// <summary>One row of the VAT summary: the taxable amount and the VAT of a rate (and nature code).</summary>
 public sealed record FiscalDocumentVatSummary(decimal VatRatePercent, string? NatureCode, decimal TaxableAmount, decimal Tax);
 
-/// <summary>The amounts of a document, as <see cref="FiscalDocumentTotals"/> computed them.</summary>
 public sealed record FiscalDocumentAmounts(
     IReadOnlyList<FiscalDocumentLineAmounts> Lines,
     IReadOnlyList<FiscalDocumentVatSummary> Summary,

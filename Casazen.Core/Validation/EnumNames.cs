@@ -15,11 +15,6 @@ namespace Casazen.Core.Validation;
 /// </remarks>
 public static class EnumNames
 {
-    /// <summary>
-    /// True and <paramref name="result"/> set only when <paramref name="value"/> is, once trimmed, the
-    /// case-insensitive name of a single member <typeparamref name="TEnum"/> declares. Null, blank, a numeric
-    /// string (defined ordinal or not) and a comma-separated list all return false.
-    /// </summary>
     public static bool TryParseDefined<TEnum>(string? value, out TEnum result) where TEnum : struct, Enum
     {
         result = default;

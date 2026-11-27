@@ -44,7 +44,6 @@ public sealed class StripeRentSepaGateway(IConfiguration config, IStripeClient? 
 
     public async Task<PaymentIntent> CreateAsync(string account, Guid leaseId, Guid installmentId, long amount, string key, CancellationToken ct)
     {
-        // Destination charge: Stripe bills processing fees to CasaZen; the full due is sent to the landlord.
         var options = new PaymentIntentCreateOptions
         {
             Amount = amount,

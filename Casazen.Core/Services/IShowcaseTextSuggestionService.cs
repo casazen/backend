@@ -12,10 +12,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IShowcaseTextSuggestionService
 {
-    /// <summary>
-    /// True when an external AI provider can answer now (not the stub, a key and an address configured): when it is not, the editor keeps the
-    /// static starter and shows no AI help.
-    /// </summary>
     Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default);
 
     /// <summary>

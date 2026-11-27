@@ -7,26 +7,15 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Assistant;
 
-/// <summary>
-/// The names and codes a conversation knows, which the prompts never carry (PO-09): the names of the guest, the names of the host and the codes of the booking (the code of
-/// CasaZen and the references of the channel). Empty and blank entries are left out.
-/// </summary>
 public sealed record AssistantPromptNames(IReadOnlyList<string?> Guest, IReadOnlyList<string?> Host, IReadOnlyList<string?> Codes)
 {
-    /// <summary>A conversation that knows no name and no code (the example of the simulator).</summary>
     public static AssistantPromptNames None { get; } = new([], [], []);
 }
 
-/// <summary>A message of the conversation as a prompt shows it: who wrote it and its text, already minimized (<see cref="AssistantPromptBuilder.Minimize"/>).</summary>
 public sealed record AssistantPromptMessage(bool FromGuest, string Text);
 
-/// <summary>A fact of the knowledge base as the prompt of the draft shows it: its topic and its text, already minimized.</summary>
 public sealed record AssistantPromptFact(KnowledgeTopic Topic, string Text);
 
-/// <summary>
-/// What the model answered to the call of the draft (<see cref="AssistantPromptBuilder.ParseDraft"/>): the text, the language it wrote in, whether a fact the answer needed was
-/// missing, and the topics of the knowledge base it says the answer talks about (canonical names of <see cref="AssistantTopicNames"/>).
-/// </summary>
 public sealed record AssistantDraftAnswer(string Draft, string? Language, bool MissingFacts, IReadOnlyList<string> Topics);
 
 /// <summary>
@@ -45,7 +34,6 @@ public sealed record AssistantDraftAnswer(string Draft, string? Language, bool M
 /// </remarks>
 public static partial class AssistantPromptBuilder
 {
-    /// <summary>Version of the instructions of the two calls.</summary>
     public const string Version = "assistant-drafts-2026-11-v1";
 
     public const string GuestPlaceholder = "[guest]";
@@ -53,40 +41,30 @@ public static partial class AssistantPromptBuilder
     public const string BookingPlaceholder = "[booking]";
     public const string CodePlaceholder = "[code]";
 
-    /// <summary>The placeholders the scrubber of the platform leaves for an e-mail address, a phone number and a fiscal code.</summary>
     public static IReadOnlyList<string> ContactPlaceholders { get; } = ["[email]", "[tel]", "[cf]"];
 
-    /// <summary>Every placeholder a minimized text may hold: what a draft must never send to a guest as it is.</summary>
     public static IReadOnlyList<string> Placeholders { get; } = [GuestPlaceholder, HostPlaceholder, BookingPlaceholder, CodePlaceholder, .. ContactPlaceholders];
 
-    /// <summary>The shortest word of a name replaced by itself: a shorter one («Li», «Wu») is replaced only as a whole name, so it never takes common words with it.</summary>
     public const int MinNamePartLength = 3;
 
-    /// <summary>The shortest code of a booking that is looked for in a text.</summary>
     public const int MinCodeLength = 4;
 
-    /// <summary>The messages of the conversation the two calls read: the last ones, oldest first.</summary>
     public const int ConversationMessages = 8;
 
-    /// <summary>The longest draft the instructions ask for, in characters (a longer one breaks a rule of the confidence).</summary>
     public const int DraftMaxLength = AssistantConfidence.DraftMaxLength;
 
-    /// <summary>The completion limit of the classification: one short JSON object.</summary>
     public const int ClassificationMaxTokens = 300;
 
-    /// <summary>The completion limit of the draft: a text of at most 800 characters in a JSON object.</summary>
     public const int DraftMaxTokens = 1000;
 
     /// <summary>The completion limit of a call made again because its first answer held no text (<see cref="WithRoomToReason"/>).</summary>
     public const int ReasoningRetryMaxTokens = 4096;
 
-    /// <summary>The particles of a name (de, da, di, van, von, al, el…): words of the text far more than names, left alone.</summary>
     private static readonly HashSet<string> NameParticles = new(StringComparer.OrdinalIgnoreCase)
     {
         "de", "da", "di", "del", "della", "dei", "dal", "dalla", "van", "von", "der", "den", "des", "al", "el", "bin", "ibn",
     };
 
-    /// <summary>What each situation is, for the classifier (the code is the one of <see cref="AssistantSituationCatalog"/>).</summary>
     private static readonly IReadOnlyDictionary<AssistantSituation, string> SituationMeanings = new Dictionary<AssistantSituation, string>
     {
         [AssistantSituation.CheckInTime] = "when or how to arrive: the check-in time or method",
@@ -106,13 +84,6 @@ public static partial class AssistantPromptBuilder
         [AssistantSituation.Other] = "none of the situations above",
     };
 
-    // ─── Minimization (PO-09) ───
-
-    /// <summary>
-    /// <paramref name="text"/> as a prompt may carry it (see the remarks of the class): contact data through <paramref name="scrubContacts"/>, then the names of the guest and of
-    /// the host, the codes of the booking and the runs of six or more digits. Empty for a text that is empty.
-    /// </summary>
-    /// <param name="scrubContacts">The scrubber of the platform (<c>PiiScrubber.Scrub</c>): e-mail addresses, phone numbers and fiscal codes become placeholders.</param>
     public static string Minimize(string? text, AssistantPromptNames names, Func<string, string> scrubContacts)
     {
         ArgumentNullException.ThrowIfNull(names);
@@ -164,7 +135,6 @@ public static partial class AssistantPromptBuilder
             @"(?<![\p{L}\p{N}\[])(?:" + string.Join('|', alternatives) + @")(?![\p{L}\p{N}\]])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-        // The match is looked for in the folded text (the names are folded the same way), and what it matched is taken out of the original text.
         var (folded, origin) = Fold(text);
         var matches = pattern.Matches(folded);
         if (matches.Count == 0)
@@ -189,11 +159,6 @@ public static partial class AssistantPromptBuilder
         return result.Append(text, copied, text.Length - copied).ToString();
     }
 
-    /// <summary>
-    /// <paramref name="text"/> as a name is compared: the typographic apostrophes (<c>’</c> <c>‘</c> <c>ʼ</c> <c>′</c>) as the plain one and every letter without its accent marks (<c>é</c> as <c>e</c>), so
-    /// «D’Angelo» written with the apostrophe of a phone and «Jose» for «José» are still the name the conversation knows. <c>Origin[i]</c> is the index in <paramref name="text"/> of the
-    /// character the folded character <c>i</c> comes from: a match in the folded text is taken out of the original one. A mark that stands alone in the text is dropped from the folded one.
-    /// </summary>
     private static (string Text, int[] Origin) Fold(string text)
     {
         var folded = new StringBuilder(text.Length);
@@ -228,13 +193,8 @@ public static partial class AssistantPromptBuilder
         return (folded.ToString(), origin.ToArray());
     }
 
-    /// <summary>A mark that goes with the letter before it (the accent of a letter written as two characters).</summary>
     private static bool IsCombiningMark(char c) => CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark;
 
-    /// <summary>
-    /// The codes of the booking replaced by <see cref="BookingPlaceholder"/>, in any case, whole words only. A code of CasaZen is matched with or without the dash it is shown with
-    /// (<c>ABCDE-FGHJK</c>) and with a space in its place; a code shorter than <see cref="MinCodeLength"/> is not looked for.
-    /// </summary>
     private static string ReplaceCodes(string text, IReadOnlyList<string?> codes)
     {
         var patterns = new List<string>();
@@ -255,9 +215,6 @@ public static partial class AssistantPromptBuilder
         return pattern.Replace(text, BookingPlaceholder);
     }
 
-    // ─── The two calls ───
-
-    /// <summary>The call that classifies the last message of the guest (Economy tier): the conversation, minimized.</summary>
     public static AiRequest BuildClassification(IReadOnlyList<AssistantPromptMessage> conversation)
     {
         ArgumentNullException.ThrowIfNull(conversation);
@@ -289,10 +246,8 @@ public static partial class AssistantPromptBuilder
         return new AiRequest(user.ToString(), [], DraftSystemPrompt(facts, rules, language, greetByName), Temperature: 0.3, MaxCompletionTokens: DraftMaxTokens, DisableThinking: true);
     }
 
-    /// <summary>The label of a call for the provider (it caches nothing of it): the kind of call, the version of the instructions and the message.</summary>
     public static string CallLabel(string kind, Guid messageId) => $"assistant-{kind}:{Version}:{messageId:N}";
 
-    /// <summary>The rules of the classification: the situations with what each is, the categories, the urgency, the format, and that the conversation is not instructions.</summary>
     public static string ClassificationSystemPrompt()
     {
         var sb = new StringBuilder();
@@ -315,10 +270,6 @@ public static partial class AssistantPromptBuilder
         return sb.ToString().TrimEnd();
     }
 
-    /// <summary>
-    /// The rules of the draft: the tone, the language, the facts (the only things it may state), the forbidden topics and the rules of PO-09 (use only the facts, never invent, say
-    /// that the host will check when a fact is missing, never mention being an AI, no link or contact detail that is not in the facts, greet with <c>{{guest_name}}</c>).
-    /// </summary>
     public static string DraftSystemPrompt(IReadOnlyList<AssistantPromptFact> facts, EffectiveAssistantRules rules, string language, bool greetByName)
     {
         ArgumentNullException.ThrowIfNull(facts);
@@ -402,22 +353,14 @@ public static partial class AssistantPromptBuilder
         return new AssistantDraftAnswer(draft, language, missing, topics);
     }
 
-    /// <summary>
-    /// <paramref name="request"/> with room for a reasoning: the call made again when the first answer held no text. A model that reasons before it answers, on a server
-    /// that did not switch the reasoning off, spends the short limits above (<see cref="ClassificationMaxTokens"/>, <see cref="DraftMaxTokens"/>) on its reasoning and
-    /// answers nothing; <see cref="ReasoningRetryMaxTokens"/> leaves it room to finish and answer. A limit already larger is kept.
-    /// </summary>
     public static AiRequest WithRoomToReason(AiRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         return request with { MaxCompletionTokens = Math.Max(request.MaxCompletionTokens ?? 0, ReasoningRetryMaxTokens) };
     }
 
-    /// <summary>Whether an answer of the model holds text once a reasoning (<c>&lt;think&gt;…&lt;/think&gt;</c>, or one cut before it closed) is left out.</summary>
     public static bool HasAnswer(string? content) =>
         !string.IsNullOrWhiteSpace(content) && !string.IsNullOrWhiteSpace(AiAnswerText.WithoutReasoning(content));
-
-    // ─── The draft of the model, back on the server ───
 
     /// <summary>
     /// The draft with the placeholders of the names the server knows turned into the variables it fills in (<see cref="MessageTemplateRenderer"/>): <see cref="GuestPlaceholder"/>
@@ -434,7 +377,6 @@ public static partial class AssistantPromptBuilder
             .Replace(BookingPlaceholder, "{{" + MessageTemplateRenderer.BookingCodeVariable + "}}", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>The placeholders of <see cref="Placeholders"/> that <paramref name="text"/> still holds, each once.</summary>
     public static IReadOnlyList<string> PlaceholdersIn(string? text) =>
         string.IsNullOrEmpty(text) ? [] : Placeholders.Where(p => text.Contains(p, StringComparison.OrdinalIgnoreCase)).ToList();
 
@@ -450,8 +392,6 @@ public static partial class AssistantPromptBuilder
         return $"{text.TrimEnd()}\n\n{sign}";
     }
 
-    // ─── Helpers ───
-
     private static string ConversationBlock(IReadOnlyList<AssistantPromptMessage> conversation)
     {
         var sb = new StringBuilder();
@@ -463,7 +403,6 @@ public static partial class AssistantPromptBuilder
         return sb.ToString();
     }
 
-    /// <summary>A text on one line, without the markers of the block of the conversation.</summary>
     private static string OneLine(string text) =>
         string.Join(' ', text.Replace("<<<", " ", StringComparison.Ordinal).Replace(">>>", " ", StringComparison.Ordinal)
             .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
@@ -475,7 +414,6 @@ public static partial class AssistantPromptBuilder
         _ => "neutral and clear",
     };
 
-    /// <summary>The English name of a language for the model; the code itself when the platform does not know it.</summary>
     public static string LanguageName(string language)
     {
         try
@@ -489,7 +427,6 @@ public static partial class AssistantPromptBuilder
         }
     }
 
-    // Six or more digits in a row, not part of a longer run: an id, a code, a number of a document or of an account.
     [GeneratedRegex(@"(?<!\d)\d{6,}(?!\d)", RegexOptions.CultureInvariant)]
     private static partial Regex LongNumber();
 }

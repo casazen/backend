@@ -13,7 +13,6 @@ public readonly record struct OtaChannelCapability(
     bool AttachmentsConfirmed,
     bool AutoReplyConfirmed)
 {
-    /// <summary>Nothing is allowed: the answer for a channel or a kind this table does not know, and for a thread that cannot be written to.</summary>
     public static OtaChannelCapability None => default;
 }
 
@@ -32,30 +31,19 @@ public readonly record struct OtaChannelCapability(
 /// </remarks>
 public static class OtaChannelCapabilities
 {
-    /// <summary>D3: the channels are confirmed to take an attachment written by the host. Not yet.</summary>
     public const bool AttachmentsPolicyConfirmed = false;
 
-    /// <summary>D4: the channels are confirmed to allow an automatic answer. Not yet.</summary>
     public const bool AutoReplyPolicyConfirmed = false;
 
-    /// <summary>The kinds of thread the table has a row for, for each channel.</summary>
     public static IReadOnlyList<OtaThreadKind> Kinds { get; } = [OtaThreadKind.Reservation, OtaThreadKind.Request];
 
-    /// <summary>The channels the table has rows for.</summary>
     public static IReadOnlyList<OtaChannel> Channels { get; } = [OtaChannel.Airbnb, OtaChannel.Booking, OtaChannel.Vrbo, OtaChannel.Expedia];
 
-    // Declared after the two lists it is built from: static initializers run in the order of the text.
     private static readonly IReadOnlyDictionary<(OtaChannel Channel, OtaThreadKind Kind), OtaChannelCapability> Table = Build();
 
-    /// <summary>What the host may do in a conversation of <paramref name="channel"/> of <paramref name="kind"/>; <see cref="OtaChannelCapability.None"/> when the table does not know them.</summary>
     public static OtaChannelCapability For(OtaChannel channel, OtaThreadKind kind) =>
         Table.TryGetValue((channel, kind), out var capability) ? capability : OtaChannelCapability.None;
 
-    /// <summary>
-    /// What the host may do in the conversation with the guest of a direct booking while it is open. It is not a channel, so it has no row of its own
-    /// in the table above, but it is answered by the same screens and read by the same gates: contact details are fine (it is CasaZen's own chat), and
-    /// the attachment (D3) and the automatic answer (D4) are the two policies that are not confirmed, so they are false here too, from the same two switches.
-    /// </summary>
     public static OtaChannelCapability Direct { get; } = new(
         CanReply: true,
         ContactDetailsAllowed: true,

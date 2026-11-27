@@ -4,19 +4,11 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
 
-/// <summary>An attachment of an OTA message as the proxy hands it to the client: the bytes and the type the answer of the channel declared.</summary>
-/// <param name="Content">The file, whole (at most <see cref="OtaAttachmentRules.MaxBytes"/>).</param>
-/// <param name="ContentType">One of <see cref="OtaAttachmentRules.AllowedContentTypes"/>.</param>
 public sealed record OtaAttachmentContent(byte[] Content, string ContentType)
 {
-    /// <summary>True for a type the browser must not render: it is offered as a download.</summary>
     public bool AsDownload => OtaAttachmentRules.IsDownloadOnly(ContentType);
 }
 
-/// <summary>
-/// Reads the file an OTA message points at (E05/F02/US01/T01, ADR-032-R5). The address was given by the channel manager and is stored with the
-/// message; it never leaves the server, so this is the only place that uses it.
-/// </summary>
 public interface IOtaAttachmentFetcher
 {
     /// <summary>
@@ -35,30 +27,22 @@ public interface IOtaAttachmentFetcher
 /// </summary>
 public static class OtaAttachmentRules
 {
-    /// <summary>The most a file may weigh: 20 MB.</summary>
     public const int MaxBytes = 20 * 1024 * 1024;
 
-    /// <summary>How long the whole fetch may take: 30 seconds.</summary>
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
     public const string Jpeg = "image/jpeg";
     public const string Png = "image/png";
     public const string OctetStream = "application/octet-stream";
 
-    /// <summary>The types served: two images, and any other file as a download.</summary>
     public static IReadOnlyList<string> AllowedContentTypes { get; } = [Jpeg, Png, OctetStream];
 
-    /// <summary>
-    /// The type of a <c>Content-Type</c> header without its parameters, in lower case, when it is one of <see cref="AllowedContentTypes"/>;
-    /// <c>null</c> for anything else (an HTML page, an SVG, a missing header).
-    /// </summary>
     public static string? AllowedContentTypeOf(string? mediaType)
     {
         var type = mediaType?.Split(';')[0].Trim().ToLowerInvariant();
         return type is not null && AllowedContentTypes.Contains(type, StringComparer.Ordinal) ? type : null;
     }
 
-    /// <summary>True for the types a browser must not render from our origin: they are offered as a download, whatever they claim to be.</summary>
     public static bool IsDownloadOnly(string contentType) =>
         !string.Equals(contentType, Jpeg, StringComparison.Ordinal) && !string.Equals(contentType, Png, StringComparison.Ordinal);
 
@@ -100,11 +84,6 @@ public static class OtaAttachmentRules
         return true;
     }
 
-    /// <summary>
-    /// True for an address on the public internet: not loopback, not unspecified, not private, link-local (the metadata service of a cloud sits
-    /// at 169.254.169.254), shared (carrier-grade NAT), unique-local, multicast or reserved. An IPv4 address carried in an IPv6 one is judged as
-    /// the IPv4 address it carries.
-    /// </summary>
     public static bool IsPublicAddress(IPAddress address)
     {
         ArgumentNullException.ThrowIfNull(address);

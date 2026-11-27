@@ -13,7 +13,6 @@ public sealed class ApeComplianceService(
     IApeRegistryLookup? registry = null,
     TimeProvider? timeProvider = null) : IApeComplianceService
 {
-    /// <summary>The CasaZen code of Lombardy, whose register (CENED) is public.</summary>
     private const string LombardyRegionCode = "LOM";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -27,8 +26,6 @@ public sealed class ApeComplianceService(
         if (apeDocs.Count == 0)
             throw ApeComplianceException.Required();
 
-        // The code and the energy class typed by the landlord (LT-10) are what the contract prints, and they confirm a certificate the
-        // automatic reading could not read whole (a photo, a photocopy whose header is too dark): no file to read again, nothing to wait for.
         if (apeDocs.Any(d => d.HasApeIdentification))
             return;
 
@@ -45,7 +42,6 @@ public sealed class ApeComplianceService(
 
         if (read.Count == 0)
             throw ApeComplianceException.InvalidContent();
-        // Only certificates past their date: a new one is needed. Any other one the landlord confirms by typing its code and class.
         if (read.TrueForAll(result => result.Status == ApeInspectionStatus.Expired))
             throw new ApeComplianceException(read[0]);
         throw ApeComplianceException.IdentificationRequired();
@@ -57,7 +53,6 @@ public sealed class ApeComplianceService(
         await file.CopyToAsync(buffer);
         buffer.Position = 0;
         var result = await inspector.InspectAsync(buffer);
-        // Not a PDF or an image, a broken file, a certificate past its date: nothing a confirmation could fix.
         if (result.Status is ApeInspectionStatus.NotAPdf or ApeInspectionStatus.Unreadable or ApeInspectionStatus.Expired)
             throw new ApeComplianceException(result);
 
@@ -78,11 +73,6 @@ public sealed class ApeComplianceService(
             : await DescribeAsync(result, context, cancellationToken);
     }
 
-    /// <summary>
-    /// The outcome of a reading and the code and class it gave. A code that is not on the file (or not legible) is asked to the
-    /// register when the certificate is a Lombard one and its index was read: the register's code is taken only if its class is the
-    /// one read on the file (when one was), and then the code is no longer "not read".
-    /// </summary>
     private async Task<ApeUploadCheck> DescribeAsync(ApeInspectionResult result, ApeRegistryContext? context, CancellationToken cancellationToken)
     {
         var outcome = result.Status switch

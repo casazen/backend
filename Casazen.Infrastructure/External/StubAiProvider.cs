@@ -4,11 +4,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.External;
 
-/// <summary>
-/// Stub AI provider (no <c>Ai:Provider</c>, or <c>Stub</c>): template text, no external call. Its answers are marked
-/// <see cref="AiGenerationResult.ProviderConfigured"/> <c>false</c>: the SEO generation never stores them as publishable
-/// text (SE-01, A8-06).
-/// </summary>
 public class StubAiProvider(ILogger<StubAiProvider> logger) : IAiProvider
 {
     public Task<AiGenerationResult> GenerateAsync(

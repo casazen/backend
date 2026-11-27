@@ -70,7 +70,6 @@ public sealed class BookingFlowSettingsService(
             IsDefault = false,
         };
 
-        // Bounds first: nothing is saved, nothing is logged, when a value is out of them.
         Validate(next);
 
         if (row is not null && next == current)

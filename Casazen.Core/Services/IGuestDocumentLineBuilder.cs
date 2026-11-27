@@ -25,11 +25,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IGuestDocumentLineBuilder
 {
-    /// <summary>
-    /// The lines of the booking under <paramref name="rule"/>, and who collected the money. <paramref name="platformCollectedTouristTaxChannels"/> are the channels whose portal
-    /// collects the tourist tax itself (the organization's rule, for a Swiss document and for an Italian one): what <see cref="PlatformCollectedChannelsOf"/> says of the profile of the
-    /// issuer. 404 when the booking is not visible to the caller.
-    /// </summary>
     Task<GuestDocumentLines> BuildAsync(
         Guid bookingId,
         FiscalTaxRule rule,

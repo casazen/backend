@@ -21,8 +21,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed partial class SupplierPaymentService
 {
-    // ─── The admin refunds a payment ────────────────────────────────────────────────────────────────────────────────
-
     public async Task<ServiceRequestPaymentRefund> RefundAsync(
         Guid paymentId,
         int? amountCents,
@@ -51,7 +49,6 @@ public sealed partial class SupplierPaymentService
             var payment = await LoadPaymentAsync(paymentId, cancellationToken) ?? throw PaymentNotFound();
             var refunds = await LoadRefundsAsync(paymentId, cancellationToken);
 
-            // The money CasaZen holds is given back by the rules of the held cycle (SP-15c-a); a direct charge by the ones of SP-15b.
             if (keepCommission && payment.FundsModel != ServiceFundsModel.PlatformHeld)
                 throw new DomainRuleException(ServicePaymentErrors.RefundAmountInvalid, ServicePaymentErrors.RefundAmountInvalidMessageKey);
 
@@ -134,7 +131,6 @@ public sealed partial class SupplierPaymentService
         if (payment.Status == ServicePaymentStatus.Refunded)
             throw new DomainRuleException(ServicePaymentErrors.RefundNothing, ServicePaymentErrors.RefundNothingMessageKey);
 
-        // Released (or with a transfer on Stripe): the money is the supplier's now. Blocked on the card: the block is canceled, not refunded.
         if (payment.FundsModel != ServiceFundsModel.PlatformHeld
             || !HeldPaymentRules.IsMoneyHeld(payment.Status)
             || payment.StripeTransferId is not null
@@ -147,7 +143,6 @@ public sealed partial class SupplierPaymentService
         var inProgressCents = (int)Math.Min(inProgress, int.MaxValue);
         var refundable = HeldPaymentRules.RefundableCents(payment.AmountCents, refundedCents, inProgressCents);
 
-        // R4: only the supplier's part goes back; the commission is CasaZen's.
         if (keepCommission && !payment.CommissionAddedToPrice)
             refundable = Math.Min(refundable, HeldPaymentRules.ReleasableCents(payment.NetCents, refundedCents, inProgressCents));
 
@@ -182,10 +177,6 @@ public sealed partial class SupplierPaymentService
         };
     }
 
-    /// <summary>
-    /// Checks the refund against the payment and builds the pending row (the caller holds the payment lock and saves). The amount
-    /// still refundable is what was paid minus what was refunded and what is being refunded.
-    /// </summary>
     private ServiceRequestPaymentRefund Reserve(
         ServiceRequestPayment payment,
         IReadOnlyList<ServiceRequestPaymentRefund> refunds,
@@ -194,7 +185,6 @@ public sealed partial class SupplierPaymentService
         string actorUserId,
         DateTime now)
     {
-        // Paid outside CasaZen: no money went through CasaZen, nothing to give back from here.
         if (payment.PaidVia == ServicePaymentChannel.Offline
             && payment.Status is ServicePaymentStatus.Paid or ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded)
             throw new DomainRuleException(ServicePaymentErrors.RefundOffline, ServicePaymentErrors.RefundOfflineMessageKey);
@@ -262,7 +252,6 @@ public sealed partial class SupplierPaymentService
 
         var payment = await db.ServiceRequestPayments.AsNoTracking().Where(p => p.Id == row.ServiceRequestPaymentId).FirstAsync(cancellationToken);
 
-        // The money CasaZen holds is on the platform account (no connected account, no commission to give back with the refund).
         var held = payment.FundsModel == ServiceFundsModel.PlatformHeld;
         if (string.IsNullOrWhiteSpace(payment.StripePaymentIntentId) || (!held && string.IsNullOrWhiteSpace(payment.ConnectedAccountId))
             || string.IsNullOrWhiteSpace(row.IdempotencyKey))
@@ -319,14 +308,12 @@ public sealed partial class SupplierPaymentService
         }
         catch (Exception ex) when (!throwOnTransient && IsTransient(ex))
         {
-            // Stripe may or may not have created it: the same key will tell. The amount stays reserved.
             logger.LogWarning(
                 ex, "Refund {RefundId} of service payment {PaymentId} not confirmed by Stripe yet: it stays pending and the sync job resends it",
                 row.Id, payment.Id);
             return row;
         }
 
-        // 3. Record the answer, under the lock again, so a webhook that arrives meanwhile and this answer are applied one at a time.
         db.ChangeTracker.Clear();
         var notices = await UnderPaymentLockAsync(
             payment.ServiceRequestId,
@@ -369,8 +356,6 @@ public sealed partial class SupplierPaymentService
         db.ChangeTracker.Clear();
         return await db.ServiceRequestPaymentRefunds.AsNoTracking().Where(r => r.Id == refundId).FirstAsync(cancellationToken);
     }
-
-    // ─── charge.refunded and refund.* ───────────────────────────────────────────────────────────────────────────────
 
     public async Task<ServicePaymentEventResult> ApplyChargeRefundedAsync(
         string paymentIntentId,
@@ -454,8 +439,6 @@ public sealed partial class SupplierPaymentService
             return false;
         }
 
-        // The money CasaZen holds (SP-15c-a): a refund of it can be recorded once the charge is. A refund that reaches us before the
-        // success it follows reads the PaymentIntent from the platform and records the charge first, with the checks of the webhook.
         if (payment.FundsModel == ServiceFundsModel.PlatformHeld)
             return await CanRecordHeldRefundsAsync(payment, notices, cancellationToken);
 
@@ -488,8 +471,6 @@ public sealed partial class SupplierPaymentService
 
         return recordable;
     }
-
-    // ─── Recording Stripe's refunds ─────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Applies the refunds Stripe reports to the rows of the payment (a refund made outside CasaZen gets a row of its own), then
@@ -537,8 +518,6 @@ public sealed partial class SupplierPaymentService
 
         RecomputeRefunds(payment, refunds, now);
 
-        // SP-15c-c: the refund of a dispute decided for the customer may be this one. The payment leaves Disputed — and what the supplier is still
-        // owed becomes due — only once the payment has given back everything the decision asked for.
         await SettleDecidedDisputeAsync(payment, now, cancellationToken);
     }
 
@@ -581,12 +560,6 @@ public sealed partial class SupplierPaymentService
         return false;
     }
 
-    /// <summary>
-    /// <c>RefundedCents</c> and the status of the payment from its succeeded refunds, and the share of the commission each of them
-    /// gives back: the commission in proportion to the total refunded so far (all of it for a refund in full), the parts adding up
-    /// to that figure whatever the order the refunds succeeded in. A payment that is paid goes back to <c>Paid</c> if every refund
-    /// failed.
-    /// </summary>
     private void RecomputeRefunds(ServiceRequestPayment payment, IReadOnlyList<ServiceRequestPaymentRefund> refunds, DateTime now)
     {
         var succeeded = refunds
@@ -638,7 +611,6 @@ public sealed partial class SupplierPaymentService
                 : refunded >= payment.AmountCents ? ServicePaymentStatus.Refunded : ServicePaymentStatus.PartiallyRefunded;
         }
 
-        // A refund event that says nothing new writes nothing to the payment.
         if (payment.RefundedCents != refunded || payment.Status != status)
         {
             payment.RefundedCents = refunded;
@@ -647,7 +619,6 @@ public sealed partial class SupplierPaymentService
         }
     }
 
-    /// <summary>The refunds of the payment, including the ones added to this context and not saved yet; the ones already tracked are read again.</summary>
     private async Task<List<ServiceRequestPaymentRefund>> LoadRefundsAsync(Guid paymentId, CancellationToken cancellationToken)
     {
         foreach (var tracked in db.ServiceRequestPaymentRefunds.Local
@@ -670,7 +641,6 @@ public sealed partial class SupplierPaymentService
         if (byStripeId is not null)
             return byStripeId;
 
-        // Created by CasaZen but the answer never came back (a timeout): linked through the id it put in the metadata.
         return TryReadRefundId(snapshot) is { } id
             ? refunds.FirstOrDefault(r => r.Id == id && r.StripeRefundId is null)
             : null;
@@ -700,14 +670,12 @@ public sealed partial class SupplierPaymentService
         _ => ServicePaymentRefundStatus.Pending,
     };
 
-    /// <summary>Stripe answered and created nothing (4xx other than 429): the refund failed.</summary>
     private static bool IsRejected(Stripe.StripeException ex)
     {
         var status = (int)ex.HttpStatusCode;
         return status is >= 400 and < 500 && ex.HttpStatusCode != HttpStatusCode.TooManyRequests;
     }
 
-    /// <summary>No answer, or an answer that does not say whether the refund exists: try again with the same key.</summary>
     private static bool IsTransient(Exception ex) =>
         ex is Stripe.StripeException or HttpRequestException or TimeoutException or OperationCanceledException;
 }

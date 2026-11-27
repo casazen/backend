@@ -45,40 +45,23 @@ public sealed record ICalOccurrence(
 {
     public bool HasNights => EndDate > StartDate;
 
-    /// <summary>True when the event covers a stretch of time (<see cref="EndUtc"/> after <see cref="StartUtc"/>).</summary>
     public bool HasDuration => EndUtc > StartUtc;
 }
 
-/// <summary>
-/// Outcome of reading a valid feed: the busy occurrences and how many events were left out and why, for the logs.
-/// Zero occurrences is a valid result (an empty calendar frees every date it used to block).
-/// </summary>
 public sealed class ICalFeedParseResult
 {
     public required IReadOnlyList<ICalOccurrence> Occurrences { get; init; }
 
-    /// <summary>Events with <c>STATUS:CANCELLED</c>: they block nothing.</summary>
     public int CancelledEvents { get; init; }
 
-    /// <summary>
-    /// Events with <c>TRANSP:TRANSPARENT</c> (free time): not in <see cref="Occurrences"/>, so by themselves they block nothing;
-    /// their occurrences from today on are in <see cref="TransparentOccurrences"/>.
-    /// </summary>
     public int TransparentEvents { get; init; }
 
-    /// <summary>
-    /// Occurrences of the transparent ("Available") events that end today or later (Europe/Rome), recurring ones expanded in the
-    /// import window. Unlike <see cref="Occurrences"/> they are not busy: the supplier sync asks the supplier about them.
-    /// </summary>
     public IReadOnlyList<ICalOccurrence> TransparentOccurrences { get; init; } = [];
 
-    /// <summary>Events or occurrences without a usable start, or ending before they start.</summary>
     public int UnreadableEvents { get; init; }
 
-    /// <summary>Recurring events repeating more than once a day (hourly, BYHOUR lists, ...): not expanded.</summary>
     public int UnsupportedRecurrences { get; init; }
 
-    /// <summary>Exception type of the first unreadable event, for the logs (never the message: it can quote the feed).</summary>
     public string? FirstUnreadableError { get; init; }
 
     /// <summary>

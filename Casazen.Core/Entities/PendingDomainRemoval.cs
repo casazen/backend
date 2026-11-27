@@ -10,7 +10,6 @@ namespace Casazen.Core.Entities;
 [System.ComponentModel.DataAnnotations.Schema.Table("PendingDomainRemovals")]
 public class PendingDomainRemoval
 {
-    /// <summary>Normalized FQDN (lower case, no scheme or port).</summary>
     [Key, MaxLength(253)]
     public string Domain { get; set; } = string.Empty;
 

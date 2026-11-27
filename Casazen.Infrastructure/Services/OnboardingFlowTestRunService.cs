@@ -79,7 +79,6 @@ public sealed class OnboardingFlowTestRunService(
         return new FlowTestRunResult(propertyId, booking.Id, results);
     }
 
-    /// <summary>The entities the unit of work would write at the next save.</summary>
     private HashSet<object> PendingEntities() =>
         new(
             db.ChangeTracker.Entries()

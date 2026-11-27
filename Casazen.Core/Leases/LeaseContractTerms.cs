@@ -4,7 +4,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Leases;
 
-/// <summary>Stable codes of the lease term rules (LT-10, A7-13), answered as 422.</summary>
 public static class LeaseTermErrorCodes
 {
     public const string EndBeforeStart = "lease_end_before_start";
@@ -61,10 +60,6 @@ public static class LeaseContractTerms
         _ => taxRegime == LeaseTaxRegime.Ordinario ? FiscalRegime.RegimeOrdinario : FiscalRegime.CedolareSecca,
     };
 
-    /// <summary>
-    /// Contract type and tax regime of a request that sends only the legacy value. A concordato lease had no tax regime:
-    /// it stays unknown (null), never guessed.
-    /// </summary>
     public static (LeaseContractType Type, LeaseTaxRegime? TaxRegime) FromLegacy(FiscalRegime regime) => regime switch
     {
         FiscalRegime.CanoneConcordato => (LeaseContractType.Concordato, null),
@@ -72,21 +67,12 @@ public static class LeaseContractTerms
         _ => (LeaseContractType.Libero, LeaseTaxRegime.CedolareSecca),
     };
 
-    /// <summary>
-    /// Throws a <see cref="DomainRuleException"/> (422) when the term from <paramref name="startDate"/> to the inclusive
-    /// <paramref name="endDate"/> is not allowed for <paramref name="type"/>.
-    /// </summary>
     public static void EnsureTerm(LeaseContractType type, DateTime startDate, DateTime endDate)
     {
         if (CheckTerm(type, startDate, endDate) is { } problem)
             throw new DomainRuleException(problem.Code, problem.MessageKey);
     }
 
-    /// <summary>
-    /// The check of <see cref="EnsureTerm"/> without the exception (LR-13: the guided draft of an imported contract reports the problem
-    /// as something to fix, it does not refuse the request): <c>null</c> when the term is allowed. Without a type only the order of the
-    /// dates is checked.
-    /// </summary>
     public static LeaseTermProblem? CheckTerm(LeaseContractType? type, DateTime startDate, DateTime endDate)
     {
         if (LeaseTerm.Between(startDate, endDate) is not { } term || endDate.Date <= startDate.Date)
@@ -106,18 +92,12 @@ public static class LeaseContractTerms
         };
     }
 
-    /// <summary>True when <paramref name="term"/> is longer than exactly <paramref name="months"/> months.</summary>
     public static bool IsLongerThan(LeaseTerm term, int months) =>
         term.Months > months || (term.Months == months && term.Days > 0);
 }
 
-/// <summary>
-/// What is wrong with a term (<see cref="LeaseContractTerms.CheckTerm"/>): the code and the message key of the 422 it would be, and the
-/// limits of the type in whole months (<c>MaxMonths</c> only where the type has one).
-/// </summary>
 public sealed record LeaseTermProblem(string Code, string MessageKey, int? MinMonths, int? MaxMonths);
 
-/// <summary>Stable codes of the canone concordato checks at lease creation (LT-10, A7-12), answered as 422.</summary>
 public static class ConcordatoErrorCodes
 {
     public const string CharacteristicsRequired = "concordato_characteristics_required";
@@ -130,7 +110,6 @@ public static class ConcordatoErrorCodes
     public const string InvalidElementCounts = "concordato_invalid_element_counts";
     public const string TermTooShort = "concordato_term_too_short";
 
-    /// <summary>Problem code and message key for a range the calculator could not give (its reason code).</summary>
     public static (string Code, string MessageKey) ForReason(string? reasonCode) => reasonCode switch
     {
         CanoneConcordatoReasonCodes.ZoneRequired => (ZoneRequired, "ConcordatoZoneRequired"),

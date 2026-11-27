@@ -10,8 +10,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-// The life of a request after the take (SP-04): start, cancel, remind, propose another time and the batch accept. The rules are
-// the ones of ServiceRequestStateMachine, the schedule rules the ones of the planner; every change is saved under the xmin check.
 public partial class ServiceRequestService
 {
     public async Task<ServiceRequest> StartAsync(
@@ -56,10 +54,6 @@ public partial class ServiceRequestService
         return await CancelAsync(request, ServiceRequestActorParty.Host, reason, cancellationToken);
     }
 
-    /// <summary>
-    /// <c>→ Annullato</c> by <paramref name="actor"/> (the host up to the work in progress, the supplier before it started),
-    /// with the reason; the other party is told. The slot the request held is free again: a cancelled request is no occupancy.
-    /// </summary>
     private async Task<ServiceRequest> CancelAsync(
         ServiceRequest request,
         ServiceRequestActorParty actor,
@@ -93,7 +87,6 @@ public partial class ServiceRequestService
         else if (!wasWaitingBackup)
             await notifier.NotifyHostAsync(request, cancellationToken);
 
-        // SP-15c-a: the block on the customer's card is released, or the money charged is given back in full.
         await SettleClosedMoneyAsync(request, cancellationToken);
 
         // SP-BKP: the host's cancellation closes the backups; a supplier that gives up its request (the primary, or a backup) changes who is
@@ -110,7 +103,6 @@ public partial class ServiceRequestService
     {
         var request = await GetRequestOfHostOrThrow(id, hostOrgId, cancellationToken);
 
-        // A reminder asks for an answer: only a new request waits for one, and not one with a proposal or a quote the host has to answer.
         if (request.Status != ServiceRequestStatus.Richiesto || request.ProposedStartUtc is not null || request.QuoteSentAt is not null)
         {
             throw new DomainRuleException(
@@ -144,8 +136,6 @@ public partial class ServiceRequestService
     {
         var request = await GetRequestOfHostOrThrow(id, hostOrgId, cancellationToken);
 
-        // Only a request nobody answered, with nothing that hangs on its time: no backup that holds the same time, no time the supplier proposed, no quote waiting.
-        // Whatever the supplier took or offered is for the host to decide with the actions it already has.
         if (request is not { Status: ServiceRequestStatus.Richiesto, GroupId: null, ProposedStartUtc: null, QuoteSentAt: null })
         {
             throw new DomainRuleException(
@@ -162,7 +152,6 @@ public partial class ServiceRequestService
             throw TimeInvalid();
         }
 
-        // Under the supplier's calendar lock, as a take is: the new time must not overlap a job the supplier already took.
         await using (var transaction = await LockSupplierCalendarAsync(request.SupplierOrgId, cancellationToken))
         {
             await EnsureNoOverlappingCommitmentAsync(request.SupplierOrgId, request.Id, start, end, cancellationToken);
@@ -194,7 +183,6 @@ public partial class ServiceRequestService
                 ServiceRequestErrorCodes.InvalidTransition, ServiceRequestErrorCodes.CannotProposeMessageKey);
         }
 
-        // SP-BKP: a backup answers the time asked or refuses; the host would be answering a supplier it did not choose.
         if (request.GroupRole == ServiceRequestGroupRole.Backup)
         {
             throw new DomainRuleException(
@@ -210,7 +198,6 @@ public partial class ServiceRequestService
         IDbContextTransaction? transaction = await LockSupplierCalendarAsync(supplierOrgId, cancellationToken);
         await using (transaction)
         {
-            // The proposed time is a time the supplier can do: checked like the time of a take, without the request itself.
             await EnsureSlotFreeAsync(supplierOrgId, schedule, exceptRequestId: request.Id, cancellationToken);
 
             var now = Now();
@@ -221,16 +208,12 @@ public partial class ServiceRequestService
             request.ProposalMessage = message;
             request.UpdatedAt = now;
 
-            // SP-04b: one offer at a time. A quote that waited gives way to the proposed time, as a quote gives way to a proposal.
             if (request.QuoteSentAt is not null)
             {
                 AppendQuoteEvent(request, ServiceRequestQuoteEventKinds.Withdrawn, UtcDateTime.TruncateToMicroseconds(now), request.QuoteTotalCents);
                 ClearQuote(request);
             }
 
-            // A showcase request has no host who may take as long as it needs: the customer has Suppliers:Showcase:
-            // ProposalResponseMinutes to answer (the answer arrives with SP-11), then the request lapses like one nobody
-            // answered. The deadline of the supplier is spent: the supplier did answer.
             if (request.RentalContext == ServiceRequestRentalContext.Showcase)
                 request.ResponseDueAt = now.AddMinutes(showcaseOptions.Value.ProposalResponseMinutes);
 
@@ -240,7 +223,6 @@ public partial class ServiceRequestService
 
         logger.LogInformation("ServiceRequest {Id}: the supplier proposed another time", request.Id);
 
-        // A proposal is an answer, and the deadline of the supplier is spent with it.
         await RecordReplyAsync(request, dueBeforeAnswer, asBackup: false, cancellationToken);
         await notifier.NotifyTimeProposedAsync(request, cancellationToken);
         return request;
@@ -254,8 +236,6 @@ public partial class ServiceRequestService
         var request = await GetRequestOfHostOrThrow(id, hostOrgId, cancellationToken);
         var (proposedStart, proposedEnd, proposedAt) = RequirePendingProposal(request);
 
-        // The proposal is the supplier's offer to do the work at that time: accepting it takes the request on the supplier's
-        // behalf. A supplier suspended meanwhile cannot take work.
         var supplierStatus = await ReadSupplierStatusAsync(request.SupplierOrgId, cancellationToken);
         if (supplierStatus != SupplierStatus.Active)
         {
@@ -273,7 +253,6 @@ public partial class ServiceRequestService
             new SupplierSlotQuery(minutes, service?.MinNoticeHours, service?.WeekdaysMask));
         var proposedBy = request.ProposedByUserId;
 
-        // SP-15a: accepting the proposal is a take, so the request is paid the way the supplier can be paid right now.
         var paymentMode = await ResolvePaymentModeAsync(request, cancellationToken);
 
         IDbContextTransaction? transaction = await LockSupplierCalendarAsync(request.SupplierOrgId, cancellationToken);
@@ -304,7 +283,6 @@ public partial class ServiceRequestService
 
         await notifier.NotifyProposalAnsweredAsync(request, accepted: true, proposedAt, cancellationToken);
 
-        // SP-BKP: accepting the primary's proposal is the take of its job: the backups that still wait are closed.
         await ResolveGroupAfterChangeAsync(request.GroupId, cancellationToken);
         return request;
     }
@@ -317,9 +295,6 @@ public partial class ServiceRequestService
         var request = await GetRequestOfHostOrThrow(id, hostOrgId, cancellationToken);
         var (_, _, proposedAt) = RequirePendingProposal(request);
 
-        // The request stays new and waits for another answer from the supplier. A pending proposal keeps the
-        // auto-cancel job away; if that deadline already passed while the host was deciding, start the window
-        // again. Leaving the elapsed deadline would cancel the request as if nobody had answered.
         var now = Now();
         if (request.GroupId is null && request.ResponseDueAt is { } due && due <= now)
             request.ResponseDueAt = now.AddMinutes(options.Value.HostResponseMinutes);
@@ -328,7 +303,6 @@ public partial class ServiceRequestService
         request.UpdatedAt = now;
         await SaveAsync(request, "proposal rejected", cancellationToken);
 
-        // SP-BKP: the window of a group starts again the same way, for the primary and the backups together.
         if (request.GroupId is { } groupId)
             await ReopenGroupWindowAsync(groupId, cancellationToken);
 
@@ -338,10 +312,6 @@ public partial class ServiceRequestService
         return request;
     }
 
-    /// <summary>
-    /// The proposal a new request is waiting for the host to answer; 422 <see cref="ServiceRequestErrorCodes.NoProposal"/> when the
-    /// request has none (never made, answered, or the request moved on and dropped it).
-    /// </summary>
     private static (DateTime Start, DateTime End, DateTime ProposedAt) RequirePendingProposal(ServiceRequest request)
     {
         if (request is { Status: ServiceRequestStatus.Richiesto, ProposedStartUtc: { } start, ProposedEndUtc: { } end, ProposedAt: { } proposedAt })
@@ -350,7 +320,6 @@ public partial class ServiceRequestService
         throw new DomainRuleException(ServiceRequestErrorCodes.NoProposal, ServiceRequestErrorCodes.NoProposalMessageKey);
     }
 
-    // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the supplier org id.
     private async Task<SupplierStatus?> ReadSupplierStatusAsync(Guid supplierOrgId, CancellationToken cancellationToken) =>
         await db.SupplierProfiles
             .AsNoTracking()
@@ -391,11 +360,9 @@ public partial class ServiceRequestService
             }
             catch (UnauthorizedAccessException)
             {
-                // A request of another supplier answers like a missing one: the batch never tells that it exists.
                 results.Add(Failed(id, ServiceRequestErrorCodes.NotFound, ServiceRequestErrorCodes.NotFoundMessageKey, []));
             }
 
-            // A request that failed may still be tracked with the change that was refused: it must not be saved by the next one.
             if (!results[^1].Accepted)
                 db.ChangeTracker.Clear();
         }

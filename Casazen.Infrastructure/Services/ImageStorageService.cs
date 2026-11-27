@@ -16,7 +16,7 @@ public class ImageStorageService(
     IOptions<StorageOptions> options,
     ILogger<ImageStorageService> logger) : IImageStorageService
 {
-    private const long MaxFileSizeBytes = 10 * 1024 * 1024; // 10MB
+    private const long MaxFileSizeBytes = 10 * 1024 * 1024;
     private static readonly string[] AllowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
     private static readonly string[] AllowedMimeTypes = ["image/jpeg", "image/png", "image/webp"];
     private static readonly string[] AllowedDocumentExtensions = [".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png"];

@@ -7,10 +7,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// One row of the table of a file that has something in it: its number as the person sees it in the sheet (the header is row 1) and its cells,
-/// by column, as text. A cell that is empty is an empty string.
-/// </summary>
 internal sealed record ImportTableRow(int Number, IReadOnlyList<string> Cells);
 
 /// <summary>
@@ -39,13 +35,9 @@ internal static class OnboardingXlsxReader
     private const string RelationshipNamespace = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private const int MaxSharedStrings = 200_000;
 
-    /// <summary>True when the bytes start like a zip archive (the signature of a local file header).</summary>
     public static bool LooksLikeZip(byte[] content) =>
         content.Length >= 4 && content[0] == (byte)'P' && content[1] == (byte)'K' && content[2] == 3 && content[3] == 4;
 
-    /// <summary>The non-blank rows of the first sheet, in order, with their row numbers.</summary>
-    /// <exception cref="DomainPayloadTooLargeException">The archive unzips to more than the limit (413).</exception>
-    /// <exception cref="DomainRuleException">The archive cannot be read (422), or has more rows than the import takes (422).</exception>
     public static List<ImportTableRow> Read(byte[] content)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -71,19 +63,14 @@ internal static class OnboardingXlsxReader
         }
         catch (Exception ex) when (ex is ExpandsTooMuchException || ex.InnerException is ExpandsTooMuchException)
         {
-            // Said by the stream whose bytes were counted; the XML reader may have wrapped it.
             throw TooLarge();
         }
         catch (Exception ex) when (ex is InvalidDataException or XmlException or IOException or NotSupportedException)
         {
-            // A damaged or unsupported archive, a part that is not well-formed XML, a DTD: the same refusal, with no detail of the content.
             throw Unreadable();
         }
     }
 
-    // ---------------------------------------------------------------- workbook
-
-    /// <summary>The path of the first sheet, resolved through the workbook and its relationships (never guessed).</summary>
     private static string FindFirstSheetPath(ZipArchive zip, ByteBudget budget)
     {
         var workbook = zip.GetEntry(WorkbookPath) ?? throw Unreadable();
@@ -143,8 +130,6 @@ internal static class OnboardingXlsxReader
         return strings;
     }
 
-    // ---------------------------------------------------------------- sheet
-
     private static List<ImportTableRow> ReadSheet(ZipArchiveEntry sheet, IReadOnlyList<string> shared, ByteBudget budget)
     {
         var rows = new List<ImportTableRow>();
@@ -175,7 +160,6 @@ internal static class OnboardingXlsxReader
         return rows;
     }
 
-    /// <summary>The cells of one <c>&lt;row&gt;</c> by column. The reader ends on the node after the row.</summary>
     private static List<string> ReadRow(XmlReader reader, IReadOnlyList<string> shared)
     {
         var cells = new List<string>();
@@ -211,10 +195,6 @@ internal static class OnboardingXlsxReader
         return cells;
     }
 
-    /// <summary>
-    /// The text of one <c>&lt;c&gt;</c>. Its value (<c>&lt;v&gt;</c>) or its inline string (<c>&lt;is&gt;</c>) is read; a formula (<c>&lt;f&gt;</c>)
-    /// and anything else is skipped unread. The reader ends on the node after the cell.
-    /// </summary>
     private static string ReadCell(XmlReader reader, string? type, IReadOnlyList<string> shared)
     {
         if (reader.IsEmptyElement)
@@ -240,7 +220,6 @@ internal static class OnboardingXlsxReader
                         inline = ReadRichText(reader);
                         continue;
                     default:
-                        // The formula, a phonetic hint, an extension: never read, never evaluated.
                         reader.Skip();
                         continue;
                 }
@@ -262,10 +241,6 @@ internal static class OnboardingXlsxReader
         };
     }
 
-    /// <summary>
-    /// The text of a string item (<c>&lt;si&gt;</c> of the shared strings, <c>&lt;is&gt;</c> of an inline string): its <c>&lt;t&gt;</c> elements,
-    /// plain or in the runs of rich text, not the phonetic hints (<c>&lt;rPh&gt;</c>). Read node by node. The reader ends on the node after the item.
-    /// </summary>
     private static string ReadRichText(XmlReader reader)
     {
         if (reader.IsEmptyElement)
@@ -301,7 +276,6 @@ internal static class OnboardingXlsxReader
         return Clip(text.ToString());
     }
 
-    /// <summary>Zero-based column of a cell reference such as <c>C12</c> (<c>A</c> is 0, <c>AA</c> is 26); null when the reference is missing or odd.</summary>
     internal static int? ColumnIndex(string? reference)
     {
         if (string.IsNullOrEmpty(reference))
@@ -326,8 +300,6 @@ internal static class OnboardingXlsxReader
     private static string Clip(string? value) =>
         string.IsNullOrEmpty(value) ? string.Empty : value.Length <= BulkImportLimits.MaxCellLength ? value : value[..BulkImportLimits.MaxCellLength];
 
-    // ---------------------------------------------------------------- reading under a budget
-
     private static XmlReader OpenXml(ZipArchiveEntry entry, ByteBudget budget) =>
         XmlReader.Create(
             new BudgetStream(entry.Open(), budget),
@@ -346,7 +318,6 @@ internal static class OnboardingXlsxReader
     private static DomainPayloadTooLargeException TooLarge() =>
         new(BulkImportCodes.FileTooLarge, "OnboardingImportFileTooLarge", BulkImportLimits.MaxFileBytes / (1024 * 1024));
 
-    /// <summary>The bytes the parts have given so far, against what the archive may unzip to in all.</summary>
     private sealed class ByteBudget(long limit)
     {
         private long _used;
@@ -359,10 +330,8 @@ internal static class OnboardingXlsxReader
         }
     }
 
-    /// <summary>The archive gave more bytes than it may: what an entry unzips to is counted here, not trusted from its header.</summary>
     private sealed class ExpandsTooMuchException : Exception;
 
-    /// <summary>A read-only stream that spends the budget for every byte it gives.</summary>
     private sealed class BudgetStream(Stream inner, ByteBudget budget) : Stream
     {
         public override bool CanRead => true;

@@ -22,25 +22,17 @@ namespace Casazen.Core.Leases;
 /// </remarks>
 public static class LeaseDraftDefaults
 {
-    /// <summary>Start and end date of a draft whose dates were never typed: midnight UTC of 1 January 3000.</summary>
     public static readonly DateTime PlaceholderDate = new(3000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>Monthly rent of a draft whose rent was never typed (0: no real rent is ever 0, the rules refuse it).</summary>
     public const decimal PlaceholderRent = 0m;
 
-    /// <summary>The contract type of a draft whose type was never chosen: the enum default, the type most leases are.</summary>
     public const LeaseContractType PlaceholderType = LeaseContractType.Libero;
 
-    /// <summary>
-    /// The step the wizard is on when the draft is created with only the property, and the step a lease created complete in one
-    /// call (<c>POST api/leases</c>) is taken to have reached: the last of the data steps.
-    /// </summary>
     public const int FirstStep = 1;
 
     public const int LastDataStep = 5;
 
     public const int LastStep = 8;
 
-    /// <summary>True when <paramref name="date"/> is the starting value of a draft, not a date somebody typed.</summary>
     public static bool IsPlaceholder(DateTime date) => date.Date == PlaceholderDate.Date;
 }

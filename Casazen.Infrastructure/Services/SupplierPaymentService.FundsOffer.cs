@@ -38,7 +38,6 @@ public sealed partial class SupplierPaymentService
         await using var transaction = await LockAsync(request.Id, cancellationToken);
         var now = Now();
 
-        // Read after the lock: whatever the previous holder committed is seen.
         var payment = await db.ServiceRequestPayments
             .Where(p => p.ServiceRequestId == request.Id && p.Status != ServicePaymentStatus.Canceled)
             .FirstOrDefaultAsync(cancellationToken);
@@ -47,7 +46,6 @@ public sealed partial class SupplierPaymentService
 
         if (payment is not null)
         {
-            // Money that is not a block waiting for a card (an offer already charged and kept, a refund, a review) is not for this call to touch.
             if (payment is not { FundsModel: ServiceFundsModel.PlatformHeld, PayerKind: ServicePayerKind.Private }
                 || payment.Status is not (ServicePaymentStatus.Requested or ServicePaymentStatus.Failed or ServicePaymentStatus.Authorized or ServicePaymentStatus.Held))
             {
@@ -58,7 +56,6 @@ public sealed partial class SupplierPaymentService
             if (ofThisOffer && payment.Status is ServicePaymentStatus.Authorized or ServicePaymentStatus.Held)
                 return null;
 
-            // Asked again for the offer it was made for: the same PaymentIntent, while it is still the right one and can still be paid.
             if (ofThisOffer && payment.StripePaymentIntentId is { } intentId)
             {
                 var current = await ReadPlatformIntentAsync(intentId, cancellationToken);
@@ -88,8 +85,6 @@ public sealed partial class SupplierPaymentService
                 }
             }
 
-            // Of an earlier offer, or a PaymentIntent that cannot be paid anymore: dropped, and the next is made below. A block that was charged
-            // meanwhile is not dropped silently (the money is held; an admin looks at it), nor is one Stripe did not cancel.
             if (payment.Status == ServicePaymentStatus.Held)
                 throw InFlight();
 
@@ -119,7 +114,6 @@ public sealed partial class SupplierPaymentService
             Currency = ServiceCharges.Currency,
             CommissionPercent = percent,
 
-            // The commission CasaZen keeps: nothing is sent to Stripe as a fee, it is the part that is not transferred.
             ApplicationFeeCents = fee,
             NetCents = SupplierCommission.NetCents(offer.TotalCents, fee),
             Status = ServicePaymentStatus.Requested,
@@ -132,8 +126,6 @@ public sealed partial class SupplierPaymentService
             UpdatedAt = now,
         };
 
-        // The PaymentIntent is created before the row is saved: a Stripe failure leaves nothing behind (the customer is told to try again), and a
-        // failure of the save leaves an orphan PaymentIntent nobody can pay (it has no client secret anywhere) that Stripe lets expire.
         var charge = await Platform.CreateAsync(
             new PlatformChargeRequest(
                 created.AmountCents,
@@ -173,8 +165,6 @@ public sealed partial class SupplierPaymentService
             {
                 var payment = await LoadPaymentAsync(known.Id, cancellationToken);
 
-                // Only the card of an offer: a block or a PaymentIntent still waiting for a card. Money that was charged belongs to a request that
-                // was taken (or to a review), and is settled by the road of its own.
                 if (payment is not { FundsModel: ServiceFundsModel.PlatformHeld, PayerKind: ServicePayerKind.Private }
                     || payment.Status is not (ServicePaymentStatus.Requested or ServicePaymentStatus.Failed or ServicePaymentStatus.Authorized))
                 {
@@ -194,7 +184,6 @@ public sealed partial class SupplierPaymentService
                     return;
                 }
 
-                // Charged meanwhile: the money is held now, and goes back in full below.
                 refundAll = outcome == AuthorizationOutcome.Captured;
             }
 
@@ -211,13 +200,11 @@ public sealed partial class SupplierPaymentService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The offer is over already and must stay so: the funds job releases the card on its next run if this cannot.
             DetachPendingPaymentChanges();
             logger.LogError(ex, "The payment of the offer of request {RequestId} could not be dropped now; the funds job will try again", requestId);
         }
     }
 
-    /// <summary>A payment with no PaymentIntent (nothing was ever asked of Stripe) is dropped as it is.</summary>
     private static AuthorizationOutcome DropWithoutIntent(ServiceRequestPayment payment, DateTime now)
     {
         payment.Status = ServicePaymentStatus.Canceled;

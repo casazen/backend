@@ -19,7 +19,6 @@ public class RoutineDelayJob(
 {
     public const int MaxAttempts = 3;
 
-    /// <summary>The seconds a run waits for the one of the same execution before it.</summary>
     public const int LockTimeoutSeconds = 1800;
 
     /// <summary>

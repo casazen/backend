@@ -38,7 +38,6 @@ public class ApprovalQueueService(
     private const int ExpirationDays = ApprovalQueueRules.ExpirationDays;
     private const int ContentVersionMaxLength = 100;
 
-    /// <inheritdoc/>
     public async Task<ApprovalQueueItem> SubmitForApprovalAsync(
         Guid orgId,
         string itemType,
@@ -77,8 +76,6 @@ public class ApprovalQueueService(
             thread = parsedKey.ToString();
         }
 
-        // The draft of a message belongs to a conversation, never to a review; the draft of a reply to a review belongs to the review the item is about (E05/F06/US01/T03): a key of the
-        // other kind would let an approval send a message where a reply was written, or the other way round.
         var isMessageDraft = string.Equals(itemType, ApprovalItemTypes.MessageDraft, StringComparison.Ordinal);
         if (isMessageDraft && (thread is null || parsedKey.IsReview))
             throw new ArgumentException("The draft of a message names the conversation it belongs to.", nameof(threadKey));
@@ -87,7 +84,6 @@ public class ApprovalQueueService(
         if (isReviewReply && (thread is null || !parsedKey.IsReview || parsedKey.Id != itemId))
             throw new ArgumentException("The draft of a reply to a review names the review it answers, which is the item.", nameof(threadKey));
 
-        // What approving does is what the registry says for the type: an item that says it sends a message and has no action that sends it would be approved and do nothing.
         var action = actions.Find(itemType);
         var origin = action?.OriginAction ?? ApprovalOriginActions.None;
         if (originAction is not null && !string.Equals(originAction, origin, StringComparison.Ordinal))
@@ -97,7 +93,6 @@ public class ApprovalQueueService(
                 nameof(originAction));
         }
 
-        // A property that is not one of the org is never trusted: the item is then the org's, which only a caller who reaches every property sees.
         if (propertyId is { } claimed && !await db.Properties.AsNoTracking().AnyAsync(p => p.Id == claimed && p.OrgId == orgId, cancellationToken))
         {
             logger.LogWarning("An item for approval of org {OrgId} names a property that is not one of the org: it is stored with no property", orgId);
@@ -124,7 +119,6 @@ public class ApprovalQueueService(
                 orgId,
                 existing.Id);
 
-            // Only an item that still waits is alerted again: nobody is told about one that was decided.
             if (existing.Status == ApprovalStatus.Pending)
                 await alerts.RaiseOrRetryAsync(new ApprovalAlert(orgId, existing.Id, existing.CreatedAt), cancellationToken);
 
@@ -164,13 +158,11 @@ public class ApprovalQueueService(
             origin,
             expiresAt);
 
-        // The item is saved: from here a failure of the "To do" or of an alert is logged and retried by a job, and never undoes it.
         await alerts.RaiseOrRetryAsync(new ApprovalAlert(orgId, item.Id, item.CreatedAt), cancellationToken);
 
         return item;
     }
 
-    /// <inheritdoc/>
     public async Task<ApprovalQueueItem> EditAsync(
         HostScope scope,
         Guid itemId,
@@ -187,7 +179,6 @@ public class ApprovalQueueService(
         var edited = ApprovalQueueRules.NormalizeEditedText(item.ItemType, text)
                      ?? throw new DomainRuleException(ApprovalQueueRules.EditInvalidCode, "ApprovalEditInvalid");
 
-        // The original text is never overwritten. An edit that gives the original back is no edit: the fields are cleared, so the message goes out as it was written.
         var original = ApprovalQueueRules.NormalizeEditedText(item.ItemType, item.ContentText);
         if (original is not null && string.Equals(edited, original, StringComparison.Ordinal))
         {
@@ -216,7 +207,6 @@ public class ApprovalQueueService(
         return item;
     }
 
-    /// <inheritdoc/>
     public async Task<ApprovalDecision> ApproveAsync(
         HostScope scope,
         Guid itemId,
@@ -291,7 +281,6 @@ public class ApprovalQueueService(
             item.OriginActionStatus = ApprovalOriginActionStatus.NotRequired;
         }
 
-        // The action has run (a message may be on its way to the guest): the decision is recorded whatever happens to the request.
         await db.SaveChangesAsync(CancellationToken.None);
 
         logger.LogInformation(
@@ -310,7 +299,6 @@ public class ApprovalQueueService(
         return decision;
     }
 
-    /// <inheritdoc/>
     public async Task<ApprovalQueueItem> RejectAsync(
         HostScope scope,
         Guid itemId,
@@ -327,7 +315,6 @@ public class ApprovalQueueService(
         var cleanReason = ApprovalQueueRules.NormalizeRejectionReason(reason)
                           ?? throw new DomainRuleException(ApprovalQueueRules.RejectionReasonRequiredCode, "ApprovalRejectionReasonRequired");
 
-        // What the rejection undoes (a campaign goes back to a draft) comes first and is safe to repeat: a failure leaves the item pending, to be rejected again.
         if (actions.Find(item.ItemType) is { } action)
             await action.OnRejectedAsync(item, cleanReason, userId, cancellationToken);
 
@@ -338,7 +325,6 @@ public class ApprovalQueueService(
         item.RejectionReason = cleanReason;
         await db.SaveChangesAsync(cancellationToken);
 
-        // The reason is the host's own words, which may name a guest: only its length is logged.
         logger.LogInformation(
             "Item {QueueItemId} of type {ItemType} rejected by a user in org {OrgId} at {RejectedAt}, reason of {Length} characters",
             item.Id,
@@ -347,13 +333,11 @@ public class ApprovalQueueService(
             now,
             cleanReason.Length);
 
-        // The rejection is saved: its "To do" is closed whatever happens to the request (as for an approval). One that could not be closed is found by the daily job of the queue.
         await CloseTodoAsync(item, userId, CancellationToken.None);
         await TellObserversAsync(new ApprovalDecision(item, null, ApprovalDecisionKind.Rejected, userId));
         return item;
     }
 
-    /// <inheritdoc/>
     public async Task<List<ApprovalQueueItem>> GetPendingAsync(
         HostScope scope,
         CancellationToken cancellationToken = default)
@@ -367,7 +351,6 @@ public class ApprovalQueueService(
             .ToListAsync(cancellationToken);
     }
 
-    /// <inheritdoc/>
     public async Task<bool> ReturnToPendingIfChangedAsync(
         string itemType,
         Guid itemId,
@@ -387,7 +370,6 @@ public class ApprovalQueueService(
             return false;
         }
 
-        // Only return to pending if currently approved and content changed
         if (item.Status == ApprovalStatus.Approved && item.ContentText != currentContentText)
         {
             var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -398,7 +380,6 @@ public class ApprovalQueueService(
             item.ContentText = currentContentText;
             item.ExpiresAt = now.AddDays(ExpirationDays);
 
-            // The new text has to be decided again, with its action: the edit of the old text, the result of the old run and the old "To do" (closed by the approval) go.
             item.EditedContentText = null;
             item.EditedByUserId = null;
             item.EditedAt = null;
@@ -415,7 +396,6 @@ public class ApprovalQueueService(
                 itemId,
                 itemType);
 
-            // The people who may decide are told again: a new alert, with its own keys.
             await alerts.RaiseOrRetryAsync(new ApprovalAlert(item.OrgId, item.Id, now), cancellationToken);
 
             return true;
@@ -424,9 +404,6 @@ public class ApprovalQueueService(
         return false;
     }
 
-    // ─── Helpers ───
-
-    /// <summary>The item in the org and the reach of the scope, tracked; a 404 for any other (another org, another property, none).</summary>
     private async Task<ApprovalQueueItem> FindInScopeAsync(HostScope scope, Guid itemId, CancellationToken ct) =>
         await db.ApprovalQueueItems
             .Where(i => i.OrgId == scope.OrgId && i.Id == itemId)
@@ -452,7 +429,6 @@ public class ApprovalQueueService(
             : throw new ArgumentException($"A user id is at most {TodoLimits.UserIdMaxLength} characters.", nameof(userId));
     }
 
-    /// <summary>Keeps the failure of the action in the item, which stays pending: the code of why (never a sentence), for the host to edit and try again.</summary>
     private async Task RecordFailureAsync(ApprovalQueueItem item, IApprovalOriginAction action, string code)
     {
         item.OriginAction = action.OriginAction;
@@ -461,10 +437,6 @@ public class ApprovalQueueService(
         await db.SaveChangesAsync(CancellationToken.None);
     }
 
-    /// <summary>
-    /// Tells every <see cref="IApprovalDecisionObserver"/> about a decision that is saved, whatever happens to the request. One that fails is logged (the item, the org, the kind of
-    /// decision and the type of the error) and the next one is still told: the decision stands.
-    /// </summary>
     private async Task TellObserversAsync(ApprovalDecision decision)
     {
         foreach (var observer in observers ?? [])
@@ -486,10 +458,6 @@ public class ApprovalQueueService(
         }
     }
 
-    /// <summary>
-    /// Closes the "To do" of a decided item (ADR-026). A "To do" that is not there any more (the host closed it, or it was never raised) is not an error; any other failure is, and the
-    /// decision that was already saved is found by the next approval, which closes it again.
-    /// </summary>
     private async Task CloseTodoAsync(ApprovalQueueItem item, string closedBy, CancellationToken ct)
     {
         if (item.ActivityId is not { } activityId)

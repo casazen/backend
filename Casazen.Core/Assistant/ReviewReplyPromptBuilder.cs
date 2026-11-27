@@ -6,19 +6,14 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Assistant;
 
-/// <summary>The stable codes of what a draft of a reply to a review must never contain (<see cref="ReviewReplyPromptBuilder.Violation"/>).</summary>
 public static class ReviewReplyViolations
 {
-    /// <summary>A promise or an offer of money or of a gift: a refund, a compensation, a discount, a voucher, a free night (PO-09).</summary>
     public const string PromisesMoney = "promises_money";
 
-    /// <summary>The reply says, or lets read, that it is written by an AI, a bot or a program (PO-09).</summary>
     public const string MentionsAi = "mentions_ai";
 
-    /// <summary>A link, an e-mail address or a phone number: a reply to a review is public.</summary>
     public const string ContactDetails = "contact_details";
 
-    /// <summary>A placeholder of the minimization is left in the reply (<c>[guest]</c>, <c>[code]</c>, ...): data the model never saw.</summary>
     public const string Placeholder = "placeholder_left";
 }
 
@@ -35,24 +30,16 @@ public static class ReviewReplyViolations
 /// </remarks>
 public static partial class ReviewReplyPromptBuilder
 {
-    /// <summary>Version of the instructions of the call.</summary>
     public const string Version = "review-replies-2026-11-v1";
 
-    /// <summary>The completion limit of the call: a reply of at most 800 characters in a JSON object.</summary>
     public const int MaxCompletionTokens = 900;
 
-    /// <summary>The words of a promise of money or of a gift, in the languages the reviews are written in, looked for in the text with no accents, in lower case.</summary>
     private static readonly string[] MoneyStems =
     [
         "refund", "reimburs", "rimbors", "restituz", "compensa", "indennizz", "risarc", "ressarc", "discount", "sconto", "voucher", "money back", "free night", "free stay",
         "notte gratis", "gratuit", "gratis", "rembours", "erstattung", "entschadig", "gutschein", "rabatt", "reembols", "descuento", "indemniz", "dedommag",
     ];
 
-    /// <summary>The call that writes the reply (Standard tier): the rating and the text of the review, minimized, with the tone and the language of the rules.</summary>
-    /// <param name="rating">The stars the guest gave (1 to 5), when the review has them.</param>
-    /// <param name="minimizedText">The text of the review after <see cref="AssistantPromptBuilder.Minimize"/>; <c>null</c> or empty for a review with no text (the rating alone).</param>
-    /// <param name="rules">The effective rules of the property: the tone and the languages.</param>
-    /// <param name="maxLength">The most characters of the reply (the room left by the signature included): at most <see cref="ReviewRules.ReplyMaxLength"/>.</param>
     public static AiRequest Build(decimal? rating, string? minimizedText, EffectiveAssistantRules rules, int maxLength)
     {
         ArgumentNullException.ThrowIfNull(rules);
@@ -75,7 +62,6 @@ public static partial class ReviewReplyPromptBuilder
             DisableThinking: true);
     }
 
-    /// <summary>The rules of the call: the tone, the language (the one of the review), what the reply must not say and the format of the answer.</summary>
     public static string SystemPrompt(EffectiveAssistantRules rules, int maxLength)
     {
         ArgumentNullException.ThrowIfNull(rules);
@@ -99,7 +85,6 @@ public static partial class ReviewReplyPromptBuilder
         return sb.ToString().TrimEnd();
     }
 
-    /// <summary>The label of the call for the provider (it caches nothing of it): the kind of call, the version of the instructions and the review.</summary>
     public static string CallLabel(Guid reviewId) => $"review-reply:{Version}:{reviewId:N}";
 
     /// <summary>
@@ -116,11 +101,6 @@ public static partial class ReviewReplyPromptBuilder
         return ReviewRules.NormalizeText(AssistantClassification.String(document.RootElement, "reply"));
     }
 
-    /// <summary>
-    /// The first rule <paramref name="reply"/> breaks (<see cref="ReviewReplyViolations"/>): a promise or an offer of money or of a gift, a mention of being an AI, a link, an address or a number to
-    /// call, a placeholder of the minimization. <c>null</c> for a reply that breaks none. The words are looked for in any case and without accents, in the languages the reviews are written in:
-    /// a word that is not on the list is the instructions' to stop, and the host reads the draft before anything is published.
-    /// </summary>
     public static string? Violation(string reply)
     {
         ArgumentNullException.ThrowIfNull(reply);
@@ -171,7 +151,6 @@ public static partial class ReviewReplyPromptBuilder
     [GeneratedRegex(@"\+?\d[\d\s().\-]{6,}\d", RegexOptions.CultureInvariant)]
     private static partial Regex PhonePattern();
 
-    // «AI» in capitals (the Italian preposition «ai» is lower case), «A.I.».
     [GeneratedRegex(@"\bA\.?I\.?(?!\w)", RegexOptions.CultureInvariant)]
     private static partial Regex AiPattern();
 

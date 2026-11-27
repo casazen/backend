@@ -35,7 +35,6 @@ public sealed record ListingTextFacts(
     int Photos,
     IReadOnlyList<SimilarListingFacts> SimilarListings);
 
-/// <summary>A listing published on CasaZen in the same comune: its public headline (when it has one) and its data, nothing of its host.</summary>
 public sealed record SimilarListingFacts(
     string? Title,
     AccommodationType? Type,
@@ -45,20 +44,12 @@ public sealed record SimilarListingFacts(
     int? AreaSqm,
     IReadOnlyList<PropertyAmenity> Amenities);
 
-/// <summary>
-/// The versioned prompt of «Suggerisci un testo» (the wizard «Aggiungi immobile»): the rules of the answer (true to the data and to the photos,
-/// no invented amenity, position or distance, a fixed structure and length) and the facts of the property. <see cref="Version"/> is part of the
-/// cache key: change it whenever the text below changes, so an answer written with the old rules is not served again. The answer is read back
-/// by <see cref="TryParseAnswer"/>.
-/// </summary>
 public static partial class ListingTextPrompt
 {
     public const string Version = "listing-multilingual-2026-11-v2";
 
-    /// <summary>A little creativity: the text is the host's to correct, but it should not read like a form.</summary>
     public const double Temperature = 0.6;
 
-    /// <summary>A description of up to 1,200 characters and a headline, in JSON: about 500 tokens; the rest is a margin.</summary>
     public const int MaxCompletionTokens = 1_200;
 
     private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
@@ -93,7 +84,6 @@ public static partial class ListingTextPrompt
         "Rispondi solo con un oggetto JSON, senza testo prima o dopo: {\"title\": \"...\", \"description\": \"...\"}. " +
         "Nella descrizione separa i paragrafi con \\n\\n.";
 
-    /// <summary>Every supported channel field, written in the requested language, without filling gaps with invented facts.</summary>
     public static string FullSystemPrompt(string language) => SystemPrompt + "\n\n" +
         $"Ora scrivi TUTTI i testi nella lingua ISO {language} (anche titolo e descrizione), come un copywriter specializzato in locazioni turistiche. " +
         "La descrizione deve essere approfondita, tra 1.300 e 1.900 caratteri quando i fatti disponibili lo consentono; " +
@@ -130,7 +120,6 @@ public static partial class ListingTextPrompt
         }
     }
 
-    /// <summary>The request: the facts of the property, the photos attached and the listings of the same comune.</summary>
     public static string BuildPrompt(ListingTextFacts facts)
     {
         ArgumentNullException.ThrowIfNull(facts);
@@ -179,11 +168,6 @@ public static partial class ListingTextPrompt
         return text.ToString();
     }
 
-    /// <summary>
-    /// Reads the headline and the description from the answer of the AI: the JSON object asked for, also inside a code fence or with words
-    /// around it. The texts come back cleaned (no markdown emphasis, no quotes around the headline, paragraphs separated by one blank line)
-    /// and within the limits of the fields, cut at the end of a word, a sentence or a paragraph. False when either is missing.
-    /// </summary>
     public static bool TryParseAnswer(string? content, out string title, out string description)
     {
         title = string.Empty;
@@ -227,7 +211,6 @@ public static partial class ListingTextPrompt
         return string.Empty;
     }
 
-    /// <summary>Quotes and closing punctuation around a headline: the field shows neither.</summary>
     private static readonly char[] TitleEdges = ['"', '\'', '«', '»', '“', '”', '.', '!', ' '];
 
     private static string CleanTitle(string value)
@@ -266,7 +249,6 @@ public static partial class ListingTextPrompt
         }
     }
 
-    /// <summary>Whole paragraphs while they fit; the first one that does not fit is cut at its last whole sentence (or word).</summary>
     private static string CutAtParagraphOrSentence(IReadOnlyList<string> paragraphs, int max)
     {
         var text = new StringBuilder();

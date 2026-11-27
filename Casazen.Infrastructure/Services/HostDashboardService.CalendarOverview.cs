@@ -20,13 +20,11 @@ public sealed partial class HostDashboardService
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        // The properties the host lists (active, short rent, in reach), the same set the Home counts.
         var properties = await ActivePropertiesInScope(scope, null)
             .Select(p => new { p.Id, p.Name })
             .ToListAsync(cancellationToken);
         var feedsOf = (await GetIcalFeedsAsync(scope, cancellationToken)).ToLookup(feed => feed.PropertyId);
 
-        // The links of the properties in reach and of no others: a token read for a property the caller does not reach would be a leak.
         var tokens = await db.PropertyICalExports
             .AsNoTracking()
             .Where(export => export.OrgId == scope.OrgId)

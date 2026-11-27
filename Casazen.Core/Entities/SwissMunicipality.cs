@@ -13,23 +13,12 @@ namespace Casazen.Core.Entities;
 [Table("SwissMunicipalities")]
 public class SwissMunicipality
 {
-    /// <summary>
-    /// Official BFS municipality number (Gemeindenummer / Numéro OFS / Numero UST), digits without leading zeros. Primary key. Examples: "5192"
-    /// (Lugano), "5113" (Locarno), "261" (Zürich), "351" (Bern).
-    /// </summary>
     [Key, MaxLength(10)]
     public string MunicipalityCode { get; set; } = string.Empty;
 
-    /// <summary>
-    /// ISO 3166-2:CH canton code, 2 characters (e.g. "TI" for Ticino, "ZH" for Zürich, "BE" for Bern).
-    /// </summary>
     [Required, MaxLength(2)]
     public string CantonCode { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Official municipality name as the directory writes it (Gemeindename). For bilingual or trilingual cantons, this is the official variant of
-    /// the directory. Examples: "Lugano", "Zürich", "Biel/Bienne".
-    /// </summary>
     [Required, MaxLength(100)]
     public string OfficialName { get; set; } = string.Empty;
 

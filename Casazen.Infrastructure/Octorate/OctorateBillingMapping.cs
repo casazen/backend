@@ -33,13 +33,10 @@ namespace Casazen.Infrastructure.Octorate;
 /// </remarks>
 internal static class OctorateBillingMapping
 {
-    /// <summary>Bumped when the shape written below changes, so the data already written is written again in the new shape.</summary>
     public const int ContractVersion = 2;
 
-    /// <summary>The body of data with nothing to write: never sent.</summary>
     public const string EmptyBody = "{}";
 
-    // The members of the record (GuestDTO).
     public const string FiscalCodeMember = "fiscalCode";
     public const string VatNumberMember = "vatCode";
     public const string AddressMember = "address";
@@ -47,18 +44,15 @@ internal static class OctorateBillingMapping
     public const string CityMember = "city";
     public const string CountryMember = "country";
 
-    /// <summary>The PEC. Write-only: Octorate answers a flag (<c>legalMailAvailable</c>) and gives the value only through the contact read.</summary>
     public const string PecMember = "legalMail";
 
     // Read only: the denomination of a company and the code of the recipient on the SDI (probably), never written.
     private const string CompanyMember = "company";
     private const string SdiRecipientCodeMember = "destinationOffice";
 
-    // The name of the person is read to complete the recipient, never written.
     private const string FirstNameMember = "firstname";
     private const string LastNameMember = "lastname";
 
-    /// <summary>Every member <see cref="WriteBody"/> can write, and no other: the whole of what leaves CasaZen.</summary>
     public static IReadOnlyList<string> WrittenMembers { get; } =
     [
         FiscalCodeMember,
@@ -129,7 +123,6 @@ internal static class OctorateBillingMapping
         return body.ToJsonString();
     }
 
-    /// <summary>True when <paramref name="data"/> has at least one member to write (a name, a province or a country alone have none: they are never written alone).</summary>
     public static bool HasMembersToWrite(OctorateBillingData data) => WriteBody(data) != EmptyBody;
 
     /// <summary>

@@ -8,7 +8,6 @@ internal sealed class CalendarBlockConfiguration : IEntityTypeConfiguration<Cale
 {
     public void Configure(EntityTypeBuilder<CalendarBlock> entity)
     {
-        // ─── Property iCal OTA sync (US-018 / #294) ─────────────────────────────
         entity.HasOne(b => b.Property)
             .WithMany()
             .HasForeignKey(b => b.PropertyId)
@@ -42,8 +41,6 @@ internal sealed class CalendarBlockConfiguration : IEntityTypeConfiguration<Cale
             .HasFilter("\"Source\" = 2")
             .HasDatabaseName(CalendarBlock.OctorateUidIndexName);
 
-        // OTA stay created from an imported block (CO-21, D7): one stay per block. Deleting the booking keeps the block,
-        // which takes its nights again on its own.
         entity.HasOne(b => b.Booking)
             .WithMany()
             .HasForeignKey(b => b.BookingId)

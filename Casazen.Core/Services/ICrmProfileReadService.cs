@@ -25,10 +25,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface ICrmProfileReadService
 {
-    /// <summary>
-    /// The living profiles (not merged into another) of the caller's org that the caller reaches: an <c>IQueryable</c> of the same context,
-    /// to compose in the same statement (the merge proposals and the segments narrow it further). Nothing is loaded.
-    /// </summary>
     IQueryable<GuestCrmProfile> ProfilesInScope(HostScope scope);
 
     /// <summary>
@@ -40,13 +36,8 @@ public interface ICrmProfileReadService
     /// </summary>
     IQueryable<GuestCrmProfile> ProfilesWhollyInScope(HostScope scope);
 
-    /// <summary>The bookings of the caller's org at the properties the caller reaches.</summary>
     IQueryable<Booking> BookingsInScope(HostScope scope);
 
-    /// <summary>
-    /// One page of the profiles the caller reaches, filtered and sorted (<paramref name="pageSize"/> is cut to
-    /// <see cref="CrmProfileRules.MaxPageSize"/>, <paramref name="page"/> starts at 1).
-    /// </summary>
     Task<CrmProfilePage> ListAsync(
         HostScope scope,
         CrmProfileFilter filter,
@@ -54,16 +45,8 @@ public interface ICrmProfileReadService
         int pageSize,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The detail of a profile the caller reaches.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><c>crm_profile_not_found</c> (404): there is no such profile, it is of another org, the caller does not reach it, or it was merged into another.</exception>
     Task<CrmProfileDetail> GetAsync(HostScope scope, Guid profileId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The list items of these profiles, in the order given; a profile the caller does not reach (or that does not exist) is left out.
-    /// The same item the list shows, computed the same way.
-    /// </summary>
     Task<IReadOnlyList<CrmProfileListItem>> GetItemsAsync(
         HostScope scope,
         IReadOnlyCollection<Guid> profileIds,
@@ -82,19 +65,14 @@ public interface ICrmProfileReadService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>How a page of profiles is sorted. Always descending but <see cref="Name"/>; ties are broken by the id, so a page never repeats a row.</summary>
 public enum CrmProfileSort
 {
-    /// <summary>The latest stay first; the profiles with no stay come last.</summary>
     LastStay = 0,
 
-    /// <summary>The highest spend first.</summary>
     Spend = 1,
 
-    /// <summary>The most stays first.</summary>
     Stays = 2,
 
-    /// <summary>By last name and first name of the name shown, A to Z.</summary>
     Name = 3,
 }
 
@@ -119,7 +97,6 @@ public sealed record CrmProfileFilter(
     bool? ReachableByEmail = null,
     CrmProfileSort Sort = CrmProfileSort.LastStay);
 
-/// <summary>A page of profiles. <paramref name="TotalCount"/> is the number of profiles that match, over all the pages.</summary>
 public sealed record CrmProfilePage(IReadOnlyList<CrmProfileListItem> Items, int TotalCount, int Page, int PageSize);
 
 /// <summary>
@@ -188,15 +165,10 @@ public sealed record CrmProfileStay(
     int Children,
     int? AdvanceDays);
 
-/// <summary>Stays and spend of a profile on one channel.</summary>
 public sealed record CrmChannelTotal(BookingSource Channel, int Stays, decimal Spend);
 
-/// <summary>Stays of a profile at one property.</summary>
 public sealed record CrmPropertyTotal(Guid PropertyId, string PropertyName, int Stays);
 
-/// <summary>
-/// How a guest usually comes: a single, a couple, a family (there is a child) or a group (three adults or more), by the stays that happened.
-/// </summary>
 public enum CrmGroupKind
 {
     Single = 1,
@@ -231,10 +203,8 @@ public sealed record CrmProfileTotals(
     double AverageChildren,
     CrmGroupKind? TypicalGroup);
 
-/// <summary>One review in the summary: the mark and when it was published.</summary>
 public sealed record CrmReviewEntry(int Rating, DateTime PublishedAt);
 
-/// <summary>The reviews of the stays of a profile (not the ones the staff took down): how many, the average mark, the latest ones.</summary>
 public sealed record CrmReviewSummary(int Count, double? AverageRating, IReadOnlyList<CrmReviewEntry> Latest);
 
 /// <summary>

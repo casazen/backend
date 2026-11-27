@@ -40,25 +40,18 @@ public sealed class OctorateComplianceHandoffService(
     ILogger<OctorateComplianceHandoffService> logger,
     TimeProvider? timeProvider = null) : IOctorateComplianceHandoffService
 {
-    /// <summary>404: the property or the booking is not the caller's, is out of its reach, or the booking is not the property's.</summary>
     public const string TargetNotFoundCode = "octorate_handoff_target_not_found";
 
-    /// <summary>409: the property has no confirmed mapping to a listing on Octorate, so there is nothing to check there.</summary>
     public const string PropertyNotMappedCode = "octorate_handoff_property_not_mapped";
 
-    /// <summary>409: no destination is configured (or none passes the allowlist): the host stays in CasaZen.</summary>
     public const string DestinationUnavailableCode = "octorate_handoff_destination_unavailable";
 
-    /// <summary>The member of the 409 <see cref="DestinationUnavailableCode"/> problem that names the guide the client can still show.</summary>
     public const string GuideCodeExtension = "guideCode";
 
-    /// <summary>422: the route to come back to is not a relative CasaZen route.</summary>
     public const string ReturnPathInvalidCode = "octorate_handoff_return_path_invalid";
 
-    /// <summary>422: the period is not a month or a day.</summary>
     public const string PeriodInvalidCode = "octorate_handoff_period_invalid";
 
-    /// <summary>Bytes of randomness of a handoff id (128 bits, written as 32 hexadecimal characters).</summary>
     private const int HandoffIdBytes = 16;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -75,7 +68,6 @@ public sealed class OctorateComplianceHandoffService(
         if (!Enum.IsDefined(request.Topic))
             throw new ArgumentOutOfRangeException(nameof(request), request.Topic, "Unknown handoff topic.");
 
-        // What the caller wrote is checked before anything is read.
         if (!OctorateHandoffInput.TryNormalizeReturnPath(request.ReturnPath, out var returnPath))
             throw new DomainRuleException(ReturnPathInvalidCode, "OctorateHandoffReturnPathInvalid");
 
@@ -110,7 +102,6 @@ public sealed class OctorateComplianceHandoffService(
         var destination = options.Value.ResolveDestination(request.Topic, octorateOptions.Value.FrontendBaseUrl, out var deepLinkRejected);
         if (deepLinkRejected)
         {
-            // The address is configuration, but it is not echoed: the log names the topic only.
             logger.LogWarning(
                 "The verified Octorate deep link for {Topic} is not an allowlisted https address: the handoff does not use it",
                 request.Topic);
@@ -133,7 +124,6 @@ public sealed class OctorateComplianceHandoffService(
         var now = _clock.GetUtcNow().UtcDateTime;
         var handoffId = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(HandoffIdBytes));
 
-        // The line says that the passage started and nothing about what the host will see: ids and short codes only.
         var details = new List<(string Key, string Value)>
         {
             (OrgActivityDetailKeys.Topic, request.Topic.ToString()),

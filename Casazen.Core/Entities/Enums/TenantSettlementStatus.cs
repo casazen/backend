@@ -1,6 +1,5 @@
 namespace Casazen.Core.Entities.Enums;
 
-/// <summary>Life of a tenant condominium settlement. Stored as an integer: never renumber.</summary>
 public enum TenantSettlementStatus
 {
     Draft = 0,

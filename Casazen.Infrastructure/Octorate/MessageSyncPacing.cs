@@ -9,6 +9,5 @@ namespace Casazen.Infrastructure.Octorate;
 /// </summary>
 public sealed class MessageSyncPacing
 {
-    /// <summary><c>true</c> (the default): wait for the bucket to refill. <c>false</c>: end at once with <see cref="OctorateRateLimitException"/>.</summary>
     public bool WaitForCapacity { get; set; } = true;
 }

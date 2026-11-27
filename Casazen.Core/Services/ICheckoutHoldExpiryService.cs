@@ -14,20 +14,14 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface ICheckoutHoldExpiryService
 {
-    /// <summary>Every expired hold (the recurring <c>checkout-hold-expiry</c> job).</summary>
     Task<CheckoutHoldExpiryRun> ExpireDueHoldsAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The expired holds of one property whose stay overlaps [<paramref name="checkIn"/>, <paramref name="checkOut"/>),
-    /// before a new booking takes those dates. Holds of other dates are left to the job.
-    /// </summary>
     Task<CheckoutHoldExpiryRun> ExpireOverlappingHoldsAsync(
         Guid propertyId,
         DateTime checkIn,
         DateTime checkOut,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Most bookings handled by one <see cref="CloseOpenPaymentsOfCancelledBookingsAsync"/> run; the rest waits for the next one.</summary>
     const int CancelledBookingsBatchSize = 50;
 
     /// <summary>

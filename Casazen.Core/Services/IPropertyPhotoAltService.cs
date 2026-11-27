@@ -3,10 +3,6 @@ using Casazen.Core.SiteProfile;
 
 namespace Casazen.Core.Services;
 
-/// <summary>An alternative text (the caption of the photo) and the room the host gives to one photo of the gallery.</summary>
-/// <param name="Url">The address of the photo, as the gallery lists it.</param>
-/// <param name="Alt">The text in Italian and, if the host wants, English; blank = no text.</param>
-/// <param name="RoomId">The room of the same property the photo shows (NF-32, NF-34); <c>null</c> = none. A room that is not the property's is a 404.</param>
 public sealed record PhotoAltInput(string Url, LocalizedTextInput? Alt, Guid? RoomId = null);
 
 /// <summary>
@@ -17,7 +13,6 @@ public sealed record PhotoAltInput(string Url, LocalizedTextInput? Alt, Guid? Ro
 /// </summary>
 public interface IPropertyPhotoAltService
 {
-    /// <summary>The photos of the gallery in display order, each with what is known of it; <c>null</c> when the property does not exist for the caller.</summary>
     Task<IReadOnlyList<PublicPropertyPhotoDto>?> GetAsync(Guid propertyId, CancellationToken cancellationToken = default);
 
     /// <summary>

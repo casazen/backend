@@ -18,7 +18,6 @@ internal sealed class CfSimulatedPracticeConfiguration : IEntityTypeConfiguratio
 
         entity.HasIndex(p => p.PracticeId).IsUnique();
 
-        // The practices of a contract, newest first (the list of the status API).
         entity.HasIndex(p => new { p.LeaseId, p.SubmittedAt });
     }
 }

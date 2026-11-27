@@ -29,14 +29,11 @@ public static class CheckoutHolds
     /// </summary>
     public const int DefaultTtlMinutes = 30;
 
-    /// <summary>The configured hold duration in minutes (at least 1).</summary>
     public static int GetTtlMinutes(IConfiguration configuration) =>
         Math.Max(1, configuration.GetValue(TtlMinutesSetting, DefaultTtlMinutes));
 
-    /// <summary>Holds created before this instant are expired.</summary>
     public static DateTime ExpiryCutoffUtc(DateTime nowUtc, int ttlMinutes) => nowUtc.AddMinutes(-ttlMinutes);
 
-    /// <summary>The instants that decide, at <paramref name="nowUtc"/>, which holds are expired.</summary>
     public static HoldExpiryCutoff CutoffAt(DateTime nowUtc, int ttlMinutes) =>
         new(nowUtc, ExpiryCutoffUtc(nowUtc, ttlMinutes));
 
@@ -95,7 +92,4 @@ public static class CheckoutHolds
     }
 }
 
-/// <summary>When holds are judged (<see cref="CheckoutHolds.IsExpired"/>).</summary>
-/// <param name="NowUtc">Now: a "pay at the property" request past its <see cref="Booking.RequestExpiresAt"/> is expired.</param>
-/// <param name="CheckoutCreatedBeforeUtc">A payment hold created before this instant (now − checkout TTL) is expired.</param>
 public readonly record struct HoldExpiryCutoff(DateTime NowUtc, DateTime CheckoutCreatedBeforeUtc);

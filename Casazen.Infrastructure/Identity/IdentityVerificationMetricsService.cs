@@ -43,7 +43,6 @@ public sealed class IdentityVerificationMetricsService(
         return Summarize(records);
     }
 
-    /// <summary>The counters of <paramref name="records"/>, the steps opened in the period: pure, so the same records always give the same counters.</summary>
     internal static IdentityVerificationMetrics Summarize(IReadOnlyList<IdentityVerificationRecord> records)
     {
         ArgumentNullException.ThrowIfNull(records);
@@ -66,7 +65,6 @@ public sealed class IdentityVerificationMetricsService(
             Coverage(records));
     }
 
-    /// <summary>The policy against the person, for the steps with both a shadow outcome and a decision of a person after it.</summary>
     private static IdentityShadowVsHuman ShadowVsHuman(IReadOnlyList<IdentityVerificationRecord> records)
     {
         int approveApprove = 0, approveReject = 0, reviewApprove = 0, reviewReject = 0;
@@ -95,7 +93,6 @@ public sealed class IdentityVerificationMetricsService(
         return new IdentityShadowVsHuman(approveApprove, approveReject, reviewApprove, reviewReject);
     }
 
-    /// <summary>The steps by format and channel, in ordinal order; the format is <c>unknown</c> when the document was not read as one of the registry.</summary>
     private static List<IdentityCoverageCell> Coverage(IReadOnlyList<IdentityVerificationRecord> records)
     {
         return records

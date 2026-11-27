@@ -39,7 +39,6 @@ public sealed partial class RestSdiEInvoiceProvider(
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
 
-    /// <summary>The longest provider error code kept in a note.</summary>
     private const int MaxCodeLength = 60;
 
     public bool IsConfigured => options.Value.IsConfigured;
@@ -113,7 +112,6 @@ public sealed partial class RestSdiEInvoiceProvider(
 
     public async Task<IReadOnlyList<SdiNotification>> ReadNotificationAsync(string payload, CancellationToken cancellationToken = default)
     {
-        // The body only says what changed (an event of the log of the provider: the endpoint, the method, the id of the resource): the update itself is read again from the API.
         long updateId;
         try
         {
@@ -142,8 +140,6 @@ public sealed partial class RestSdiEInvoiceProvider(
             ? []
             : [new SdiNotification(sendId.Value.ToString(CultureInfo.InvariantCulture), StatusOf(update.RootElement))];
     }
-
-    // ---------------------------------------------------------------- the issuer
 
     /// <summary>
     /// Enables the issuer at the provider: its VAT number (or fiscal code) is a company of the account, found or created. <c>null</c> when it is; the refusal otherwise (a number registered on another
@@ -205,8 +201,6 @@ public sealed partial class RestSdiEInvoiceProvider(
         return normalized == fiscalId || (normalized.StartsWith("IT", StringComparison.Ordinal) && normalized[2..] == fiscalId);
     }
 
-    // ---------------------------------------------------------------- what the SDI said
-
     /// <summary>
     /// The state of an update of the provider. «Delivered»: the receipt of delivery, the notification of non-delivery, the attestation of transmission, the acceptance and the lapse of the terms (the
     /// invoice is issued and available to its recipient). «Rejected»: <c>Scartato</c>, with the codes and the words the SDI gave. «Submitted»: anything else, <c>Inviato</c> included.
@@ -233,7 +227,6 @@ public sealed partial class RestSdiEInvoiceProvider(
         }
     }
 
-    /// <summary>The codes and the words of the errors of a notification of rejection: the first code, and every error as «code description», cleaned.</summary>
     private static (string? Code, string? Detail) ErrorsOf(JsonElement update)
     {
         if (!update.TryGetProperty("errors", out var errors) || errors.ValueKind != JsonValueKind.Array)
@@ -253,13 +246,10 @@ public sealed partial class RestSdiEInvoiceProvider(
         return (codes.FirstOrDefault(), SdiRejectionReasons.Clean(string.Join("; ", lines.Where(line => line.Length > 0))));
     }
 
-    // ---------------------------------------------------------------- the calls
-
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, object? body, string? idempotencyKey, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(method, path);
 
-        // The key of the account is the user name of HTTP Basic, the password is empty (the provider's documentation); it is never logged.
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes(options.Value.ApiKey!.Trim() + ":")));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if (idempotencyKey is not null)
@@ -270,7 +260,6 @@ public sealed partial class RestSdiEInvoiceProvider(
         return await http.SendAsync(request, ct);
     }
 
-    /// <summary>The refusal a non-successful answer is: a short code of the channel and the provider's own error code, never the body.</summary>
     private async Task<SdiSubmissionResult> RefusalAsync(string operation, HttpResponseMessage response, CancellationToken ct) =>
         Refused(operation, response.StatusCode, KindOf(response.StatusCode), await ErrorCodeOfAsync(response, ct));
 
@@ -280,7 +269,6 @@ public sealed partial class RestSdiEInvoiceProvider(
         return SdiSubmissionResult.Failure(error, string.IsNullOrEmpty(code) ? ((int)status).ToString(CultureInfo.InvariantCulture) : $"{(int)status} {code}");
     }
 
-    /// <summary>A file the provider refused (it does not pass its checks) is <c>provider_refused</c>; the credentials, the quota, a missing route and a failure of the provider are <c>provider_error</c>.</summary>
     private static string KindOf(HttpStatusCode status) =>
         status is HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity ? SdiSubmissionErrors.ProviderRefused : SdiSubmissionErrors.ProviderError;
 
@@ -305,7 +293,6 @@ public sealed partial class RestSdiEInvoiceProvider(
         }
     }
 
-    /// <summary>The body of a read that must succeed: a failure is thrown (never turned into «nothing happened»), so the caller reads it again.</summary>
     private async Task<JsonDocument> ReadOrThrowAsync(string operation, HttpResponseMessage response, CancellationToken ct)
     {
         if (!response.IsSuccessStatusCode)
@@ -316,8 +303,6 @@ public sealed partial class RestSdiEInvoiceProvider(
 
         return await ReadAsync(response, ct) ?? throw new SdiProviderException(operation, (int)response.StatusCode);
     }
-
-    // ---------------------------------------------------------------- the JSON of the provider
 
     private static string? IdOf(JsonElement root) => IntegerOf(root, "id") is { } id ? id.ToString(CultureInfo.InvariantCulture) : null;
 
@@ -333,7 +318,6 @@ public sealed partial class RestSdiEInvoiceProvider(
     private static bool? BooleanOf(JsonElement element, string name) =>
         element.ValueKind == JsonValueKind.Object && FindProperty(element, name) is { ValueKind: JsonValueKind.True or JsonValueKind.False } value ? value.GetBoolean() : null;
 
-    /// <summary>The member called <paramref name="name"/>, without regard to case (the log events of the provider are in PascalCase, its resources in snake_case).</summary>
     private static JsonElement? FindProperty(JsonElement element, string name)
     {
         foreach (var property in element.EnumerateObject())

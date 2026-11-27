@@ -20,8 +20,6 @@ public static class FiscalReportDocuments
 
     private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
 
-    // ---------------------------------------------------------------- summary
-
     public static PdfDocumentContent Pdf(AnnualIncomeReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -180,8 +178,6 @@ public static class FiscalReportDocuments
         return WriteCsv(rows);
     }
 
-    // ---------------------------------------------------------------- withholding
-
     public static PdfDocumentContent Pdf(WithholdingReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -266,8 +262,6 @@ public static class FiscalReportDocuments
             string.Empty));
         return WriteCsv(rows);
     }
-
-    // ---------------------------------------------------------------- tourist tax
 
     public static PdfDocumentContent Pdf(TouristTaxReport report)
     {
@@ -373,8 +367,6 @@ public static class FiscalReportDocuments
         return WriteCsv(rows);
     }
 
-    // ---------------------------------------------------------------- shared
-
     /// <summary>Italian label of a regime, with the rate from configuration for the cedolare.</summary>
     public static string RegimeLabel(StrFiscalRegime? regime, FiscalReportRules rules) => regime switch
     {
@@ -386,7 +378,6 @@ public static class FiscalReportDocuments
         _ => "Non assegnato",
     };
 
-    /// <summary>Italian text of a <see cref="FiscalTaxNotes"/> code.</summary>
     public static string TaxNoteText(string note) => note switch
     {
         FiscalTaxNotes.IrpefOrdinariaNotComputed => "Non calcolata: IRPEF ordinaria, a cura del contribuente o del commercialista",
@@ -434,7 +425,6 @@ public static class FiscalReportDocuments
         return taxpayer.ThresholdExceeded ? $"{label}, oltre la soglia" : label;
     }
 
-    /// <summary>Display name of a booking source (enum name for the unknown ones).</summary>
     internal static string ChannelLabel(string source) => source switch
     {
         nameof(BookingSource.BookingCom) => "Booking.com",
@@ -461,10 +451,7 @@ public static class FiscalReportDocuments
 
     private static string MonthLabel(int year, int month) => new DateOnly(year, month, 1).ToString("MMMM yyyy", Italian);
 
-    /// <summary>Amount for a spreadsheet set to Italian: decimal comma, no thousands separator.</summary>
     private static string CsvAmount(decimal value) => value.ToString("0.00", Italian);
 
-    // Every cell is text here (amounts are formatted by CsvAmount), so every cell goes through the guard of CsvWriter, as it always did
-    // (the guard was extracted from this class for SR-10); the fiscal files have never had a limit of rows.
     private static byte[] WriteCsv(IEnumerable<IReadOnlyList<string>> rows) => CsvWriter.Write(rows, CsvWriter.NoLimit);
 }

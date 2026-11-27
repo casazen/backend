@@ -42,35 +42,17 @@ public interface ISiteConnectionService
         string? siteUrl,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The active connections of <paramref name="orgId"/>, the newest first.</summary>
     Task<IReadOnlyList<SiteConnectionSummary>> ListAsync(Guid orgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Revokes the connection <paramref name="connectionId"/> of <paramref name="orgId"/> (the console): true when it is a connection of the org (revoked now, or
-    /// already), false when it is not one of the org.
-    /// </summary>
     Task<bool> RevokeAsync(Guid orgId, Guid connectionId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Revokes the connection <paramref name="connectionId"/> (the plugin disconnects itself; the id is the one of its own credential). False when there is no
-    /// such connection.
-    /// </summary>
     Task<bool> RevokeAsync(Guid connectionId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The connection a credential opens: an active one of an active org, found by the hash of <paramref name="credential"/>; <c>null</c> for anything else
-    /// (malformed, unknown, revoked). Records the use at most once every five minutes.
-    /// </summary>
     Task<SiteConnectionPrincipal?> AuthenticateAsync(string? credential, CancellationToken cancellationToken = default);
 }
 
-/// <summary>A code just created.</summary>
-/// <param name="RedirectUrl">The return address with <c>casazen_code</c> and <c>state</c> added: where the console sends the browser back.</param>
-/// <param name="SiteUrl">The normalized origin of the site, the one the console shows in full.</param>
-/// <param name="ExpiresAt">When the code stops opening (UTC).</param>
 public sealed record SiteConnectionAuthorization(string RedirectUrl, string SiteUrl, DateTime ExpiresAt);
 
-/// <summary>The org a credential acts on, as the plugin shows it.</summary>
 public sealed record SiteConnectionOrg(Guid Id, string Slug, string DisplayName);
 
 /// <summary>A credential just created: shown once.</summary>
@@ -79,7 +61,6 @@ public sealed record SiteConnectionOrg(Guid Id, string Slug, string DisplayName)
 /// <param name="Org">The org it acts on.</param>
 public sealed record SiteConnectionGrant(string AccessToken, Guid ConnectionId, SiteConnectionOrg Org);
 
-/// <summary>An active connection of the org, as the console lists it.</summary>
 public sealed record SiteConnectionSummary(Guid Id, string SiteUrl, DateTime CreatedAt, DateTime? LastUsedAt);
 
 /// <summary>What a valid credential proves: the connection and its org (never a person).</summary>

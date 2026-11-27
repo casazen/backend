@@ -65,7 +65,6 @@ public sealed class LongRentFiscalReportService(
             })
             .ToListAsync(cancellationToken);
 
-        // A lease ended on the day it starts never ran: it is in no report (decision of the product owner, 2026-11-01).
         found = found
             .Where(l => LongRentFiscalRules.Ran(DateOnly.FromDateTime(l.StartDate), DateOnly.FromDateTime(l.CurrentTermEndDate)))
             .ToList();
@@ -75,7 +74,6 @@ public sealed class LongRentFiscalReportService(
         var collected = new Dictionary<Guid, decimal>();
         if (leaseIds.Count > 0)
         {
-            // The first installment of each lease that is still part of the rent (not cancelled): where the register starts.
             trackedFrom = await db.RentLedgerEntries
                 .AsNoTracking()
                 .WithinScope(scope)
@@ -84,7 +82,6 @@ public sealed class LongRentFiscalReportService(
                 .Select(g => new { LeaseId = g.Key, From = g.Min(e => e.PeriodStart) })
                 .ToDictionaryAsync(x => x.LeaseId, x => x.From, cancellationToken);
 
-            // The rent paid in the year (by the day it was paid, not the period it pays: cash), online or declared by the landlord.
             collected = await db.RentLedgerEntries
                 .AsNoTracking()
                 .WithinScope(scope)

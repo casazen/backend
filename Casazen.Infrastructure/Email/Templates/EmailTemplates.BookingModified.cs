@@ -6,7 +6,6 @@ public static partial class EmailTemplates
 {
     public static partial class Names
     {
-        /// <summary>The change of the dates or the guests of a booking of the booking site, to the guest (NF-75, E08/F02/US01/T01).</summary>
         public const string GuestBookingModified = "guest-booking-modified";
     }
 

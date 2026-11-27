@@ -5,11 +5,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Core.Leases;
 
-/// <summary>
-/// What the fiscal report reads of a lease (LR-11b): scalars only. The dates are the Europe/Rome calendar days of the stored
-/// midnights UTC; <see cref="CurrentTermEndDate"/> is the end of the period the lease is in now (LR-14), the date every reader that
-/// asks when a lease ends reads.
-/// </summary>
 public sealed record LongRentFiscalLease(
     Guid Id,
     Guid PropertyId,
@@ -41,7 +36,6 @@ public sealed record LongRentFiscalLease(
 /// </summary>
 public static class LongRentFiscalRules
 {
-    /// <summary>The first year a report may be asked for.</summary>
     public const int FirstYear = 2000;
 
     private const int MonthsPerYear = 12;
@@ -58,17 +52,8 @@ public static class LongRentFiscalRules
         LeaseTaxAdvisoryNoteCodes.TransitorioReliefsToConfirm,
     ];
 
-    /// <summary>
-    /// Whether a lease ran at all: the last day of the period it is in now (<paramref name="currentTermEnd"/>) is after its first day.
-    /// A lease ended on the day it starts, or before, never ran and is in no report (decision of the product owner, 2026-11-01);
-    /// without this the whole-month rule would give it a month of rent and a tax estimate.
-    /// </summary>
     public static bool Ran(DateOnly start, DateOnly currentTermEnd) => currentTermEnd > start;
 
-    /// <summary>
-    /// The months of <paramref name="year"/> with at least one day of the lease, from <paramref name="start"/> to
-    /// <paramref name="end"/> (both included): 0 for a lease that does not touch the year or whose dates are in disorder.
-    /// </summary>
     public static int MonthsInYear(DateOnly start, DateOnly end, int year)
     {
         if (end < start || start.Year > year || end.Year < year)
@@ -90,12 +75,6 @@ public static class LongRentFiscalRules
         return firstTrackedMonth > firstMonthOfTheLease;
     }
 
-    /// <summary>
-    /// The row of a lease for <paramref name="year"/>. <paramref name="trackedFrom"/> is the first day of the first installment of the
-    /// lease in the rent register (not cancelled), <c>null</c> when the register holds none; <paramref name="collected"/> the sum of the
-    /// installments paid in the year, <c>null</c> or 0 when there are none. <paramref name="ata"/> is the high-tension status of the
-    /// comune, read only for a canone concordato lease.
-    /// </summary>
     public static LongRentFiscalRow Row(
         LongRentFiscalLease lease,
         int year,

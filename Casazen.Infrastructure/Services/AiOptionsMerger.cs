@@ -4,7 +4,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Merges the server <c>Ai</c> configuration with the admin override, without sharing mutable instances.</summary>
 public static class AiOptionsMerger
 {
     public const string EnvironmentSource = "environment";
@@ -66,7 +65,6 @@ public static class AiOptionsMerger
         throw new DomainRuleException(AiSettingsErrorCodes.ProviderInvalid, "AiProviderInvalid");
     }
 
-    /// <summary>An absolute https URL without user info, or null when empty. Anything else is refused.</summary>
     public static string? NormalizeBaseUrl(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -95,10 +93,6 @@ public static class AiOptionsMerger
             storedKey is not null);
     }
 
-    /// <summary>
-    /// Legal details committed for DeepSeek stay with DeepSeek. Another provider is listed by its name only: the entity,
-    /// region and transfer basis are not invented here.
-    /// </summary>
     private static AiSubprocessorOptions ForeignProviderDetails(string provider) => new()
     {
         Name = provider,
@@ -138,7 +132,6 @@ public static class AiOptionsMerger
         }
     }
 
-    /// <summary>Last four characters, and only when the key is long enough that they do not reveal it.</summary>
     public static string? Hint(string? apiKey)
     {
         if (string.IsNullOrWhiteSpace(apiKey) || apiKey.Trim().Length < 8)

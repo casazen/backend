@@ -10,40 +10,24 @@ namespace Casazen.Core.Suppliers;
 /// </summary>
 public static class ShowcaseBookingErrors
 {
-    /// <summary>422: a value of the booking is not valid (<see cref="ShowcaseBookingRuleException.Fields"/> names them).</summary>
     public const string Invalid = "supplier_booking_invalid";
 
-    /// <summary>422: the supplier does not take bookings online right now (<c>SupplierSettings.OnlineBookingEnabled</c> is off).</summary>
     public const string Offline = "supplier_booking_offline";
 
-    /// <summary>422: the comune is not one of the supplier's zones: the customer asks for a quote instead.</summary>
     public const string OutsideZone = "supplier_booking_outside_zone";
 
-    /// <summary>422: the customer did not accept the privacy notice.</summary>
     public const string ConsentRequired = "supplier_booking_consent_required";
 
-    /// <summary>422: the customer accepted a version of the privacy notice that is not the current one.</summary>
     public const string ConsentOutdated = "supplier_booking_consent_outdated";
 
-    /// <summary>
-    /// 404: the link of the e-mail check is not valid. One answer for a booking that does not exist, one of another supplier
-    /// and a token that does not match: the link tells nothing about other bookings.
-    /// </summary>
     public const string LinkInvalid = "supplier_booking_link_invalid";
 
-    /// <summary>409: the link is right but the time to check the e-mail (30 minutes by default) has passed: the booking starts again.</summary>
     public const string LinkExpired = "supplier_booking_link_expired";
 
-    /// <summary>
-    /// 422: the supplier is not active anymore (suspended, or not activated) when the customer checks the e-mail: the request
-    /// is not created.
-    /// </summary>
     public const string SupplierUnavailable = "supplier_booking_supplier_unavailable";
 
-    /// <summary>The <c>SharedResources</c> key of the 429 that also stops a fourth unverified booking of the same e-mail address.</summary>
     public const string RateLimitedMessageKey = "RateLimitedDetail";
 
-    /// <summary>Every <c>SharedResources</c> key the booking raises (a test checks that each one exists in Italian and English).</summary>
     public static IReadOnlyList<string> MessageKeys { get; } =
     [
         "SupplierBookingInvalid",
@@ -56,38 +40,25 @@ public static class ShowcaseBookingErrors
         "SupplierBookingSupplierUnavailable",
     ];
 
-    /// <summary>The 422 of a booking with values that are not valid; <paramref name="fields"/> are the JSON names of what is wrong.</summary>
     public static ShowcaseBookingRuleException InvalidFields(IReadOnlyList<string> fields) =>
         new(Invalid, "SupplierBookingInvalid", fields);
 
-    /// <summary>422: the supplier takes no online bookings now.</summary>
     public static DomainRuleException OfflineSupplier() => new(Offline, "SupplierBookingOffline");
 
-    /// <summary>422: the comune is outside the supplier's zones.</summary>
     public static DomainRuleException OutsideSupplierZone() => new(OutsideZone, "SupplierBookingOutsideZone");
 
-    /// <summary>422: no consent.</summary>
     public static DomainRuleException NoConsent() => new(ConsentRequired, "SupplierBookingConsentRequired");
 
-    /// <summary>422: not the current version of the notice.</summary>
     public static DomainRuleException OldConsent() => new(ConsentOutdated, "SupplierBookingConsentOutdated");
 
-    /// <summary>404: the link of the e-mail check is not valid.</summary>
     public static NotFoundException InvalidLink() =>
         new("Showcase booking link not valid") { Code = LinkInvalid, MessageKey = "SupplierBookingLinkInvalid" };
 
-    /// <summary>409: the time to check the e-mail has passed.</summary>
     public static DomainConflictException ExpiredLink() => new(LinkExpired, "SupplierBookingLinkExpired");
 
-    /// <summary>422: the supplier is not active.</summary>
     public static DomainRuleException InactiveSupplier() => new(SupplierUnavailable, "SupplierBookingSupplierUnavailable");
 }
 
-/// <summary>
-/// Names of the fields of a booking request, as the client sends them (what a 422 <c>supplier_booking_invalid</c> lists in
-/// <c>fields</c>). The fields of the estimate (<c>service</c>, <c>quantity</c>, <c>surfaceSqm</c>, <c>options[0].code</c>...) are the
-/// ones of <see cref="SupplierQuoteFields"/>.
-/// </summary>
 public static class ShowcaseBookingFields
 {
     public const string ClientRequestId = "clientRequestId";
@@ -104,17 +75,11 @@ public static class ShowcaseBookingFields
     public const string PrivacyNoticeVersion = "privacyNoticeVersion";
     public const string Token = "token";
 
-    /// <summary>The words of a request on measure (SP-10b), or of a message of its thread.</summary>
     public const string Message = "message";
 
-    /// <summary>The reason a customer gives when it cancels its booking (SP-11).</summary>
     public const string Reason = "reason";
 }
 
-/// <summary>
-/// A 422 of the booking that names the fields at fault: the controller adds them to the response as <c>fields</c>, so the form
-/// can mark them. Like <see cref="SupplierQuoteRuleException"/>, the message arguments are the field names.
-/// </summary>
 public sealed class ShowcaseBookingRuleException : DomainRuleException
 {
     public ShowcaseBookingRuleException(string code, string messageKey, IReadOnlyList<string> fields)
@@ -123,7 +88,6 @@ public sealed class ShowcaseBookingRuleException : DomainRuleException
         Fields = fields;
     }
 
-    /// <summary>JSON names of the fields at fault.</summary>
     public IReadOnlyList<string> Fields { get; }
 }
 
@@ -135,9 +99,5 @@ public sealed class ShowcaseBookingRuleException : DomainRuleException
 public sealed class ShowcaseBookingTooManyHoldsException(TimeSpan retryAfter)
     : Exception("Too many showcase bookings waiting for the e-mail check")
 {
-    /// <summary>
-    /// When the oldest of them lapses, at the latest: the earliest a new booking can be made. It is not given to the client — the
-    /// answer carries the window of the limit per address instead, so the exact time does not tell when someone booked with the address.
-    /// </summary>
     public TimeSpan RetryAfter { get; } = retryAfter;
 }

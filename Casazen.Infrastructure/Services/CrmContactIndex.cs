@@ -24,7 +24,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class CrmContactIndex : ICrmContactIndex
 {
-    /// <summary>The key of Development and Testing when none is configured: public on purpose, it protects nothing.</summary>
     internal const string DevelopmentKey = "casazen-development-crm-contact-index-key-not-secret";
 
     private readonly byte[] _key;
@@ -36,7 +35,6 @@ public sealed class CrmContactIndex : ICrmContactIndex
         {
             if (CrmOptionsValidator.RequiresKey(environment))
             {
-                // The module is off (the validator refuses the startup when it is on): nothing may index a value with this key.
                 logger.LogWarning(
                     "Crm:ContactIndexKey is not configured: the keyed index of the CRM contacts and of the suppression list cannot be computed");
                 _key = [];

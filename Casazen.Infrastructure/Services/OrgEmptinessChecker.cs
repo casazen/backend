@@ -61,10 +61,6 @@ public sealed class OrgEmptinessChecker(AppDbContext db) : IOrgEmptinessChecker
     private static readonly MethodInfo HasRowsMethod = typeof(OrgEmptinessChecker)
         .GetMethod(nameof(HasRowsAsync), BindingFlags.Instance | BindingFlags.NonPublic)!;
 
-    /// <summary>
-    /// The tenant-owned entity types whose rows block the move: every <see cref="ITenantOwned"/> entity of the model but the
-    /// <see cref="OnboardingRows"/> and <see cref="OrgMember"/>. Exposed for the test that proves a new tenant table is checked.
-    /// </summary>
     internal static IReadOnlyList<Type> CheckedTenantTables(AppDbContext context) =>
         context.Model.GetEntityTypes()
             .Where(e => e.BaseType is null
@@ -89,14 +85,12 @@ public sealed class OrgEmptinessChecker(AppDbContext db) : IOrgEmptinessChecker
 
         AddBillingBlockers(org, blockers);
 
-        // The person is the only one in it.
         if (await db.Users.AsNoTracking().AnyAsync(u => u.OrgId == orgId && u.Id != userId, cancellationToken))
             blockers.Add("other_users");
         if (await db.OrgMembers.IgnoreQueryFilters().AsNoTracking()
                 .AnyAsync(m => m.OrgId == orgId && m.UserId != userId, cancellationToken))
             blockers.Add("other_members");
 
-        // Nothing in any tenant table (the "To do" a wizard raises when a person leaves half way is not a row of use: see WizardResumeActivityType).
         foreach (var table in CheckedTenantTables(db))
         {
             var found = table == typeof(InternalActivity)
@@ -109,7 +103,6 @@ public sealed class OrgEmptinessChecker(AppDbContext db) : IOrgEmptinessChecker
         return blockers.Count == 0 ? OrgEmptiness.Empty : new OrgEmptiness(false, blockers);
     }
 
-    /// <summary>The plan and everything a customer sets up around it: Starter, no Stripe, no Connect, no domain, no branding.</summary>
     private static void AddBillingBlockers(Org org, List<string> blockers)
     {
         if (org.PlanTier != PlanTier.Starter)
@@ -139,10 +132,6 @@ public sealed class OrgEmptinessChecker(AppDbContext db) : IOrgEmptinessChecker
         where TEntity : class, ITenantOwned =>
         await db.Set<TEntity>().IgnoreQueryFilters().AsNoTracking().AnyAsync(e => e.OrgId == orgId, cancellationToken);
 
-    /// <summary>
-    /// A row of <c>InternalActivities</c> that is use of the org: any but a "To do" of the type <see cref="WizardResumeActivityType"/>, open or
-    /// closed. The staff work, with its plain-text types, and every other kind of "To do" count.
-    /// </summary>
     private async Task<bool> HasUsedActivityAsync(Guid orgId, CancellationToken cancellationToken) =>
         await db.InternalActivities
             .IgnoreQueryFilters()

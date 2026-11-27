@@ -3,10 +3,6 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// One row for the whole installation. The admin turns the demo environment on from the staff console; it does not
-/// exist in Production (<see cref="Services.IDemoEnvironmentGate"/>).
-/// </summary>
 [Table("DemoEnvironmentSettings")]
 public class DemoEnvironmentSetting
 {

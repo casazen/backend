@@ -21,8 +21,6 @@ public sealed partial class CondominiumAccountingService
                     c.Periods.OrderByDescending(y => y.StartDate).Select(ToPeriod).ToList())).ToList())).ToList();
     }
 
-    // Creating a book from the property is allowed to a member who reaches that property.
-    // The book and its link are saved together: no unlinked or partially configured book is left behind.
     public async Task<CondominiumView> SetupPropertyAsync(HostScope scope, Guid propertyId, CreateCondominiumCommand command,
         string userId, CancellationToken cancellationToken = default)
     {

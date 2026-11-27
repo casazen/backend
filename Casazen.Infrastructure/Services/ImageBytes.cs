@@ -1,9 +1,7 @@
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Reads the bytes of an upload into memory with a limit; the intermediate buffers are zeroed (ADR-013-R2).</summary>
 internal static class ImageBytes
 {
-    /// <summary>The whole stream from its current position, at most <paramref name="maxBytes"/>; more is <see cref="InvalidDataException"/>.</summary>
     public static async Task<byte[]> ReadAllAsync(Stream stream, int maxBytes, CancellationToken cancellationToken)
     {
         if (stream.CanSeek)
@@ -64,14 +62,12 @@ internal static class ImageBytes
         }
     }
 
-    /// <summary>Zeroes an array when there is one.</summary>
     public static void Zero(byte[]? bytes)
     {
         if (bytes is not null)
             Array.Clear(bytes);
     }
 
-    /// <summary>Zeroes an array when there is one.</summary>
     public static void Zero(float[]? values)
     {
         if (values is not null)

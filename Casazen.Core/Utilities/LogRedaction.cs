@@ -8,16 +8,10 @@ namespace Casazen.Core.Utilities;
 /// </summary>
 public static partial class LogRedaction
 {
-    /// <summary>Placeholder for a missing value.</summary>
     public const string Empty = "(none)";
 
-    /// <summary>Placeholder for a value that is not an email address: nothing of it is kept.</summary>
     public const string Hidden = "***";
 
-    /// <summary>
-    /// First character of the local part plus the domain: <c>mario.rossi@example.it</c> becomes <c>m***@example.it</c>.
-    /// A value that is not an address (no <c>@</c>) is hidden completely.
-    /// </summary>
     public static string MaskEmail(string? email)
     {
         if (string.IsNullOrWhiteSpace(email))

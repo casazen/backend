@@ -93,10 +93,6 @@ public sealed record SupplierServiceRequestView(
     ServiceRequestQuote? Quote = null,
     SupplierJobBackup? Backup = null)
 {
-    /// <summary>
-    /// The phase of the request (SP-04e): <see cref="SupplierRequestPhases"/>, derived from the status, the proposed time and the quote in
-    /// one place. An open set: a client shows a generic wording for a value it does not know.
-    /// </summary>
     public string Phase => SupplierRequestPhases.Of(Status, hasPendingProposal: Proposal is not null, hasPendingQuote: Quote is not null);
 }
 
@@ -148,26 +144,17 @@ public sealed record SupplierJobPayment(
     public HostServiceDocumentPlan? HostDocuments { get; init; }
 }
 
-/// <summary>Commercial amounts of a host purchase under the snapshotted D21 terms, before any tax classification.</summary>
 public sealed record HostServiceDocumentPlan(int GrossCents, int RefundedCents, int CommissionCents, int CommissionRefundedCents);
 
-/// <summary>The values of <see cref="SupplierServiceRequestView.Source"/>.</summary>
 public static class SupplierRequestSources
 {
-    /// <summary>A request of a CasaZen host (short-rent or long-rent).</summary>
     public const string CasaZen = "casazen";
 
-    /// <summary>A booking from the supplier's public showcase (SP-10): a customer with no account, e-mail checked.</summary>
     public const string Showcase = "showcase";
 
-    /// <summary>The value of <see cref="SupplierServiceRequestView.Source"/> for a request of <paramref name="source"/>.</summary>
     public static string Of(Entities.Enums.ServiceRequestSource source) =>
         source == Entities.Enums.ServiceRequestSource.Showcase ? Showcase : CasaZen;
 
-    /// <summary>
-    /// The origin named <paramref name="value"/> (<c>casazen</c> or <c>showcase</c>, any case): the <c>source</c> filter of the inbox
-    /// (SP-04e). False for any other value, including numbers and the enum names.
-    /// </summary>
     public static bool TryParse(string? value, out Entities.Enums.ServiceRequestSource source)
     {
         switch (value?.Trim().ToLowerInvariant())
@@ -203,25 +190,12 @@ public sealed record SupplierJobLocation(
     string? Floor = null,
     string? AccessNotes = null);
 
-/// <summary>The stay a short-rent request is for: its id and its Europe/Rome dates, never the guest.</summary>
 public sealed record SupplierJobStay(Guid BookingId, DateOnly CheckIn, DateOnly CheckOut);
 
-/// <summary>
-/// The host contact given to the supplier after the take: the org's display name and contact email (the same contact
-/// the guests get), and the phone of the property owner's profile when the owner filled it in.
-/// </summary>
 public sealed record SupplierJobHostContact(string Name, string? Email, string? Phone);
 
-/// <summary>
-/// When the work is: the scheduled interval (UTC; both null for a request still "da concordare"), the instant the supplier
-/// has to answer by (only while the request is new), and when the work started.
-/// </summary>
 public sealed record SupplierJobSchedule(DateTime? StartUtc, DateTime? EndUtc, DateTime? RespondBy, DateTime? StartedAt);
 
-/// <summary>
-/// The price of a request in cents of euro: what was estimated, what the supplier quoted, the final total with the lines
-/// it adds up to, and whether the customer has to confirm it (decision D7).
-/// </summary>
 public sealed record SupplierJobPrice(
     int? EstimatedAmountCents,
     int? QuotedAmountCents,
@@ -229,26 +203,14 @@ public sealed record SupplierJobPrice(
     bool FinalAmountNeedsConfirmation,
     IReadOnlyList<ServiceRequestPriceLine> Lines)
 {
-    /// <summary>The amount to show: the final total, else the quote, else the estimate; <c>null</c> is "da concordare".</summary>
     public int? AmountCents => FinalAmountCents ?? QuotedAmountCents ?? EstimatedAmountCents;
 }
 
-/// <summary>
-/// The customer of a request. For a host it is the org the request belongs to: <paramref name="Id"/> filters the inbox
-/// (<c>clientId</c>) and the name is the org's display name, which decision D9 shows before the take (the property, the
-/// address and the contact are not). For a private customer of the public showcase (SP-10) it is the
-/// <c>ServiceCustomer</c>: its id filters the inbox too, and the name is <c>Nome C.</c> until the request is taken
-/// (<see cref="SupplierJobDisclosure.CustomerName"/>).
-/// </summary>
 public sealed record SupplierJobClient(Guid Id, string Name);
 
 /// <summary>A time the supplier proposed instead of the requested one, waiting for the host's answer.</summary>
 public sealed record SupplierJobProposal(DateTime StartUtc, DateTime EndUtc, DateTime ProposedAt, string? Message);
 
-/// <summary>
-/// A cancelled request: when, by whom, and the reason (the text written, or one of the codes of
-/// <see cref="ServiceRequestCancellationReasons"/>: <c>NoResponse</c>, <c>ProposalNotAnswered</c>, <c>CancelledByCustomer</c>).
-/// </summary>
 public sealed record SupplierJobCancellation(DateTime At, ServiceRequestActorParty By, string? Reason);
 
 /// <summary>One step of the history of a service request.</summary>
@@ -273,22 +235,16 @@ public sealed record ServiceRequestHistoryEntry(
     string? Reason,
     string? Event = null);
 
-/// <summary>The values of <see cref="ServiceRequestHistoryEntry.Event"/>: the quote steps of a request (SP-04b).</summary>
 public static class ServiceRequestHistoryEvents
 {
-    /// <summary>The supplier sent a quote (or replaced the one that waited).</summary>
     public const string QuoteSent = "quote_sent";
 
-    /// <summary>The take of the request is the acceptance of a quote: its total is the agreed price.</summary>
     public const string QuoteAccepted = "quote_accepted";
 
-    /// <summary>The customer turned a quote down: the request is "to answer" again.</summary>
     public const string QuoteRejected = "quote_rejected";
 
-    /// <summary>The supplier took its quote back: the request is "to answer" again.</summary>
     public const string QuoteWithdrawn = "quote_withdrawn";
 
-    /// <summary>The cancellation of a request whose customer did not answer the quote in time.</summary>
     public const string QuoteExpired = "quote_expired";
 }
 
@@ -307,18 +263,12 @@ public static class ServiceRequestHistoryEvents
 /// </remarks>
 public static class SupplierJobDisclosure
 {
-    /// <summary>True when the property, the notes, the street address and the host contact are shown for a request in <paramref name="status"/>.</summary>
     public static bool IsDisclosed(ServiceRequestStatus status) => status is
         ServiceRequestStatus.PresoInCarico
         or ServiceRequestStatus.InCorso
         or ServiceRequestStatus.Completato
         or ServiceRequestStatus.Pagato;
 
-    /// <summary>
-    /// The name of a private customer as the supplier sees it for a request in <paramref name="status"/> (decision D9): the full
-    /// name once the request is taken, <c>Nome C.</c> before and for a request that was rejected or cancelled
-    /// (<see cref="ShowcaseBookingRules.AbbreviateName"/>).
-    /// </summary>
     public static string CustomerName(ServiceRequestStatus status, string? fullName) =>
         IsDisclosed(status) ? (fullName ?? string.Empty).Trim() : ShowcaseBookingRules.AbbreviateName(fullName);
 }

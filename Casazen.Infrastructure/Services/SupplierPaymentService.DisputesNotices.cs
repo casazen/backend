@@ -52,7 +52,6 @@ public sealed partial class SupplierPaymentService
         }
     }
 
-    /// <summary>The supplier is asked to reply (until when), and the payer is told the complaint was received and the money stays held.</summary>
     private async Task SendDisputeOpenedAsync(
         ServiceRequestPayment payment,
         ServicePaymentDispute dispute,
@@ -93,7 +92,6 @@ public sealed partial class SupplierPaymentService
             logger.LogWarning("The notice of dispute {DisputeId} to the payer was not queued", dispute.Id);
     }
 
-    /// <summary>The payer is told that the supplier replied and that the team of CasaZen decides.</summary>
     private async Task SendDisputeRepliedAsync(ServiceRequestPayment payment, PaymentContext context, CancellationToken cancellationToken)
     {
         var payer = await ReadPayerContactAsync(payment, cancellationToken);
@@ -107,7 +105,6 @@ public sealed partial class SupplierPaymentService
             EmailTemplates.Names.ServiceDisputeRepliedPayer);
     }
 
-    /// <summary>The payer and the supplier are told the outcome and, for the customer, how much goes back (and, for the supplier, how much it is still paid).</summary>
     private async Task SendDisputeResolvedAsync(
         ServiceRequestPayment payment,
         ServicePaymentDispute dispute,
@@ -130,7 +127,6 @@ public sealed partial class SupplierPaymentService
         if (string.IsNullOrWhiteSpace(supplier))
             return;
 
-        // What the supplier is still paid: its part, minus everything given back, as the decision left it.
         var remaining = forCustomer ? Math.Max(0, payment.NetCents - SupplierRefundShare(payment, dispute.RefundTargetCents ?? refund)) : PayableToSupplier(payment);
         emailQueue.Enqueue(
             supplier,
@@ -145,7 +141,6 @@ public sealed partial class SupplierPaymentService
             EmailTemplates.Names.ServiceDisputeResolvedSupplier);
     }
 
-    /// <summary>The supplier is told that the payer took the complaint back and that it is paid.</summary>
     private async Task SendDisputeWithdrawnAsync(ServiceRequestPayment payment, PaymentContext context, CancellationToken cancellationToken)
     {
         var supplier = await ReadSupplierEmailAsync(payment.SupplierOrgId, cancellationToken);
@@ -158,7 +153,6 @@ public sealed partial class SupplierPaymentService
             EmailTemplates.Names.ServiceDisputeWithdrawnSupplier);
     }
 
-    /// <summary>The alert to every active platform admin about a dispute that waits for a decision or whose money did not move: ids, an amount and a code.</summary>
     private async Task SendDisputeAdminAlertAsync(
         ServiceRequestPayment payment,
         ServicePaymentDispute dispute,
@@ -166,7 +160,6 @@ public sealed partial class SupplierPaymentService
         string? detail,
         CancellationToken cancellationToken)
     {
-        // Users are not tenant-filtered; the platform admins are the ones with the Admin role who can still sign in.
         var admins = await db.Users
             .AsNoTracking()
             .Where(u => u.IsActive && u.Role == UserRole.Admin && u.Email != string.Empty)
@@ -188,20 +181,14 @@ public sealed partial class SupplierPaymentService
         }
     }
 
-    /// <summary>What the supplier is owed while the money is held: its part of the price, minus what was already refunded.</summary>
     private static int PayableToSupplier(ServiceRequestPayment payment) =>
         HeldPaymentRules.ReleasableCents(payment.NetCents, SupplierRefundShare(payment, payment.RefundedCents), 0);
 
-    /// <summary>
-    /// The page where a showcase customer manages its booking (with the code filled in; it still asks for the e-mail). A host reads its requests in its
-    /// own area and gets none; nor does a customer whose supplier has no showcase page any more.
-    /// </summary>
     private async Task<string?> ReadBookingManageUrlAsync(ServiceRequestPayment payment, CancellationToken cancellationToken)
     {
         if (payment.PayerOrgId is not null)
             return null;
 
-        // The request has two parties and is not tenant-filtered; scoped by the id the payment points to.
         var code = await db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -209,7 +196,6 @@ public sealed partial class SupplierPaymentService
             .Select(r => r.PublicCode)
             .FirstOrDefaultAsync(cancellationToken);
 
-        // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the supplier org id.
         var slug = await db.SupplierProfiles
             .AsNoTracking()
             .Where(sp => sp.OrgId == payment.SupplierOrgId)

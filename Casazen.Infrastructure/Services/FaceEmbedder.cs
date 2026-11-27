@@ -4,7 +4,6 @@ using Microsoft.ML.OnnxRuntime;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Turns a face into the vector two faces are compared with (E03/F04/US01/T01).</summary>
 public interface IFaceEmbedder
 {
     /// <summary>
@@ -15,10 +14,6 @@ public interface IFaceEmbedder
     float[] Embed(RasterImage image, DetectedFace face, CancellationToken cancellationToken);
 }
 
-/// <summary>
-/// AuraFace-v1 (Apache-2.0) or SFace, run with ONNX Runtime: crop, align on the five landmarks, normalise, embed (ADR-013, NF-24, NF-51). The
-/// crop, the tensor and the output are zeroed before the method returns; only the vector goes back to the caller.
-/// </summary>
 public sealed class FaceEmbedder(IBiometricModelStore store, IOptions<BiometricModelOptions> options) : IFaceEmbedder
 {
     public float[] Embed(RasterImage image, DetectedFace face, CancellationToken cancellationToken)
@@ -63,10 +58,8 @@ public sealed class FaceEmbedder(IBiometricModelStore store, IOptions<BiometricM
     }
 }
 
-/// <summary>The similarity of two vectors of length 1.</summary>
 internal static class EmbeddingMath
 {
-    /// <summary>Scales the vector to length 1 in place. A vector with no length is not a face: <see cref="InvalidDataException"/>.</summary>
     public static void Normalize(float[] vector)
     {
         double sum = 0;
@@ -81,7 +74,6 @@ internal static class EmbeddingMath
             vector[i] = (float)(vector[i] / norm);
     }
 
-    /// <summary>Cosine of the angle between two vectors of the same length; the dot product when both have length 1. -1 to 1.</summary>
     public static double CosineSimilarity(ReadOnlySpan<float> a, ReadOnlySpan<float> b)
     {
         if (a.Length != b.Length || a.Length == 0)
@@ -102,13 +94,8 @@ internal static class EmbeddingMath
     }
 }
 
-/// <summary>
-/// The alignment of a face on the five landmarks (the similarity transform of the ArcFace family): the landmarks YuNet returns go to the fixed
-/// positions the recognition models were trained with, in a square of 112 pixels (scaled for other sizes).
-/// </summary>
 internal static class FaceAlignment
 {
-    /// <summary>Where the right eye, the left eye, the nose, the right and the left corner of the mouth go in 112 x 112 pixels.</summary>
     private static readonly double[] Template112 =
     [
         38.2946, 51.6963,
@@ -118,10 +105,6 @@ internal static class FaceAlignment
         70.7299, 92.2041,
     ];
 
-    /// <summary>
-    /// Least-squares similarity (a scale, a rotation, a shift) from the landmarks to the template: x' = a x - b y + tx, y' = b x + a y + ty.
-    /// False when the landmarks have no spread (all in the same place).
-    /// </summary>
     public static bool TryEstimate(ReadOnlySpan<float> landmarks, int size, out double a, out double b, out double tx, out double ty)
     {
         a = b = tx = ty = 0;
@@ -165,10 +148,6 @@ internal static class FaceAlignment
         return true;
     }
 
-    /// <summary>
-    /// The face of <paramref name="image"/> aligned to a <paramref name="size"/> square, as a planar tensor of <c>(value - mean) / std</c>, in the
-    /// colour order the model wants; null when the landmarks cannot be aligned. What the square does not cover of the picture is black.
-    /// </summary>
     public static float[]? AlignToTensor(RasterImage image, ReadOnlySpan<float> landmarks, int size, double mean, double std, bool rgbOrder)
     {
         if (!TryEstimate(landmarks, size, out var a, out var b, out var tx, out var ty))

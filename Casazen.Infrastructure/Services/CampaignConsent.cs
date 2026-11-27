@@ -10,7 +10,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 internal static class CampaignConsent
 {
-    /// <summary>Whether the guest of the organization gave the marketing consent. The organization is named in the query, so a guest of another organization has none.</summary>
     internal static Task<bool> IsGrantedAsync(AppDbContext db, Guid orgId, Guid guestId, CancellationToken cancellationToken) =>
         db.Guests
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])

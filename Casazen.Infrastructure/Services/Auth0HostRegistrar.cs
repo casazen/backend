@@ -22,7 +22,6 @@ public sealed class Auth0HostSyncOptions
 {
     public const string SectionName = "Auth0:HostSync";
 
-    /// <summary>The client id of the SPA application of the environment (<c>Auth0:HostSync:ClientId</c>); empty: the registration is not configured.</summary>
     public string? ClientId { get; set; }
 }
 
@@ -33,16 +32,13 @@ public sealed class Auth0HostSyncOptions
 /// </summary>
 public sealed class Auth0HostRegistrationGate(TimeSpan? maxWait = null)
 {
-    /// <summary>How long a registration waits for its turn before it gives up with <c>busy</c> (the calls to Auth0 of the one in front last a few seconds).</summary>
     public static readonly TimeSpan DefaultMaxWait = TimeSpan.FromSeconds(20);
 
     private readonly SemaphoreSlim _turn = new(1, 1);
     private readonly TimeSpan _maxWait = maxWait ?? DefaultMaxWait;
 
-    /// <summary>Waits for the turn; false when it did not come within the maximum wait. A cancellation of the caller is an exception.</summary>
     public Task<bool> EnterAsync(CancellationToken cancellationToken) => _turn.WaitAsync(_maxWait, cancellationToken);
 
-    /// <summary>Gives the turn back; only after <see cref="EnterAsync"/> answered true.</summary>
     public void Leave() => _turn.Release();
 }
 
@@ -77,10 +73,8 @@ public sealed partial class Auth0HostRegistrar(
     ILogger<Auth0HostRegistrar> logger,
     Auth0HostRegistrationGate? gate = null) : IAuth0HostRegistrar
 {
-    /// <summary>The turn of this process: the shared singleton, or (a test) a gate of the registrar's own.</summary>
     private readonly Auth0HostRegistrationGate _gate = gate ?? new Auth0HostRegistrationGate();
 
-    /// <summary>The members of the application the registrar reads: the three lists, nothing else.</summary>
     private const string ListFields = "callbacks,allowed_logout_urls,web_origins";
 
     public Task<Auth0HostRegistrationResult> RegisterAsync(string host, CancellationToken cancellationToken = default) =>
@@ -95,12 +89,10 @@ public sealed partial class Auth0HostRegistrar(
         if (!TryOriginOf(host, out var origin))
             return Done(operation, Auth0HostRegistrationResult.Rejected, "invalid_host");
 
-        // Auth0:HostSync:ClientId and the Management credentials: without both nothing is called.
         var clientId = ConfiguredClientId();
         if (clientId is null || !tokenProvider.IsConfigured)
             return Done(operation, Auth0HostRegistrationResult.NotConfigured, "not_configured");
 
-        // The turn of this process comes first and costs no connection; one that does not come in time is a busy answer, never a waiter on the database lock.
         if (!await _gate.EnterAsync(cancellationToken))
             return Done(operation, Auth0HostRegistrationResult.Unavailable, "busy");
 
@@ -168,7 +160,6 @@ public sealed partial class Auth0HostRegistrar(
     private Task<Auth0Application> ReadAsync(string clientId, CancellationToken cancellationToken) =>
         ExecuteAsync(client => client.Clients.GetAsync(clientId, ListFields, includeFields: true, cancellationToken), cancellationToken);
 
-    /// <summary>Runs <paramref name="call"/> with a fresh client; on HTTP 401 the cached token is dropped and the call runs once more with a new one.</summary>
     private async Task<T> ExecuteAsync<T>(Func<ManagementApiClient, Task<T>> call, CancellationToken cancellationToken)
     {
         for (var attempt = 0; ; attempt++)
@@ -199,7 +190,6 @@ public sealed partial class Auth0HostRegistrar(
         return string.IsNullOrEmpty(clientId) || !ClientIdShape().IsMatch(clientId) ? null : clientId;
     }
 
-    /// <summary>A refusal of Auth0 is final until something changes (a scope, the application, the URL); anything else is retried later.</summary>
     private static (Auth0HostRegistrationResult Result, string Code) Classify(Exception ex) => ex switch
     {
         Auth0ManagementTokenException token => (Auth0HostRegistrationResult.Unavailable, token.ErrorCode),
@@ -225,7 +215,6 @@ public sealed partial class Auth0HostRegistrar(
         return result;
     }
 
-    /// <summary>The origin of a host name: lower case, no scheme, port, path or wildcard, never an IP address.</summary>
     private static bool TryOriginOf(string? host, out string origin)
     {
         origin = string.Empty;
@@ -243,7 +232,6 @@ public sealed partial class Auth0HostRegistrar(
     [GeneratedRegex("^[A-Za-z0-9_-]{1,128}$")]
     private static partial Regex ClientIdShape();
 
-    /// <summary>The three lists of the application, as Auth0 keeps them (order included).</summary>
     private sealed record HostLists(IReadOnlyList<string> Callbacks, IReadOnlyList<string> LogoutUrls, IReadOnlyList<string> WebOrigins)
     {
         public static HostLists Of(Auth0Application application) =>
@@ -264,7 +252,6 @@ public sealed partial class Auth0HostRegistrar(
 
         public bool FirstCallbackIs(string url) => Callbacks.Count > 0 && string.Equals(Callbacks[0], url, StringComparison.Ordinal);
 
-        /// <summary>The three lists, whole, in one request: Auth0 replaces each list it receives and leaves every other member of the application alone.</summary>
         public ClientUpdateRequest ToUpdateRequest() => new()
         {
             Callbacks = [.. Callbacks],

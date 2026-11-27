@@ -19,29 +19,22 @@ namespace Casazen.Core.Entities;
 [Table("UserNotificationChannelSettings")]
 public class UserNotificationChannelSetting : ITenantOwned
 {
-    /// <summary>Column length of <see cref="EventType"/> (the member name).</summary>
     public const int EventTypeMaxLength = 64;
 
-    /// <summary>Name of the unique index on <c>(OrgId, UserId, EventType)</c>: a 23505 on it means the row already exists.</summary>
     public const string OncePerUserAndEventIndexName = "UIX_UserNotificationChannelSettings_OrgId_UserId_EventType";
 
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row: the host org of the user. Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The user the choice belongs to (<c>User.Id</c>, the Auth0 subject). Foreign key with <c>ON DELETE CASCADE</c>.</summary>
     [Required, MaxLength(PopupAlert.UserIdMaxLength)]
     public string UserId { get; set; } = string.Empty;
 
-    /// <summary>The kind of event the choice is about. Stored by name.</summary>
     public NotificationEventType EventType { get; set; }
 
-    /// <summary>The channels chosen, as the bits of <see cref="NotificationChannels"/> (an integer in the column). <c>None</c> = nothing at all.</summary>
     public NotificationChannels Channels { get; set; }
 
-    /// <summary>UTC instant of the last save.</summary>
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

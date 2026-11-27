@@ -2,11 +2,6 @@ using Casazen.Core.Authorization;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// The collections report of the host (NF-97, E07/F03/US02/T01): the money that came in by date, by payment method and by channel, the balances still to
-/// collect and the credits. Money, so the web layer reads it only for a caller with <c>payment.read</c>, and it shows only what the caller's
-/// <see cref="HostScope"/> reaches, in SQL (<c>InScope</c>). Each read is a fixed number of queries whatever the number of payments.
-/// </summary>
 public interface IHostCollectionsReportService
 {
     /// <summary>

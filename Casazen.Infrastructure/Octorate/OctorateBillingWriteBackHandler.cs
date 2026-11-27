@@ -72,7 +72,6 @@ public sealed class OctorateBillingWriteBackHandler(
             return;
         }
 
-        // No echo: what Octorate gave is not given back.
         if (payload.Source == InvoiceDataSource.Octorate)
             return;
 
@@ -115,7 +114,6 @@ public sealed class OctorateBillingWriteBackHandler(
         var hash = OctorateBillingMapping.HashOf(data);
         if (string.Equals(row.OctorateBillingHash, hash, StringComparison.Ordinal))
         {
-            // What Octorate holds is what the row holds now: the failure of an earlier, different write is not the state of the booking any more.
             if (row.OctorateBillingError is not null)
             {
                 ClearFailure(row);
@@ -152,7 +150,6 @@ public sealed class OctorateBillingWriteBackHandler(
             }
         }
 
-        // A reservation that names no customer record has nothing to write to: nothing was sent, so nothing is marked as written.
         if (!written)
         {
             logger.LogInformation(
@@ -171,10 +168,6 @@ public sealed class OctorateBillingWriteBackHandler(
         logger.LogInformation("Billing data of booking {BookingId} of org {OrgId} written to Octorate", bookingId, orgId);
     }
 
-    /// <summary>
-    /// Keeps the code of a failure, and when it happened, on the invoice data. A code and a time, never a value of the data. A failure to save it is not
-    /// caught: the event is delivered again, and the write is tried again with it.
-    /// </summary>
     private async Task RecordFailureAsync(BookingInvoiceData row, string code, CancellationToken ct)
     {
         var kept = code.Length > BookingInvoiceData.OctorateBillingErrorMaxLength ? code[..BookingInvoiceData.OctorateBillingErrorMaxLength] : code;
@@ -207,7 +200,6 @@ public sealed class OctorateBillingWriteBackHandler(
         if (state == OctorateSyncState.Pending)
             return true;
 
-        // Any other state is an outcome (synced without a reservation id cannot happen; failed and conflict are decided): nothing is coming.
         if (state is not null)
             return false;
 

@@ -5,10 +5,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.External;
 
-/// <summary>
-/// The <see cref="IAiProvider"/> of the process. Each call reads the settings in effect: an active external provider
-/// goes through the platform budget, DeepSeek without a key answers empty, and <c>Stub</c> never calls anyone.
-/// </summary>
 public sealed class SwitchingAiProvider(
     IAiRuntimeSettings settings,
     DeepSeekAiProvider deepSeek,

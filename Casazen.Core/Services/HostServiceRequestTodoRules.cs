@@ -20,16 +20,10 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class HostServiceRequestTodoRules
 {
-    /// <summary>The service requests that ask something of the host: the ones <see cref="ActionOf"/> gives an action to.</summary>
     public static Expression<Func<ServiceRequest, bool>> NeedTheHost() =>
         r => (r.Status == ServiceRequestStatus.Richiesto && (r.ProposedStartUtc != null || r.QuoteSentAt != null))
              || r.Status == ServiceRequestStatus.Completato;
 
-    /// <summary>
-    /// What a request asks of the host, if anything. The order of the things to do among the requests (<see cref="Rank"/>) is the one
-    /// of the answers: the offer to accept first (the time or the quote the supplier made), then the amount to confirm, then the jobs to pay.
-    /// </summary>
-    /// <param name="hasProposal">The supplier made an offer the host has not answered: a proposed time or a quote.</param>
     public static HostTodoAction? ActionOf(ServiceRequestStatus status, bool hasProposal, bool finalAmountNeedsConfirmation) => status switch
     {
         ServiceRequestStatus.Richiesto when hasProposal => HostTodoAction.RespondToServiceRequest,
@@ -38,11 +32,9 @@ public static class HostServiceRequestTodoRules
         _ => null,
     };
 
-    /// <summary>The position of the action of a request among the requests, as an expression: 0 an answer, 1 an amount, 2 a payment.</summary>
     public static Expression<Func<ServiceRequest, int>> Rank() =>
         r => r.Status == ServiceRequestStatus.Richiesto ? 0 : r.FinalAmountNeedsConfirmation ? 1 : 2;
 
-    /// <summary>What is lacking for the action, with its stable code and field (<see cref="ComplianceMissingCodes"/>).</summary>
     public static ComplianceMissing MissingFor(HostTodoAction action) => action switch
     {
         HostTodoAction.RespondToServiceRequest => new ComplianceMissing(ComplianceMissingCodes.ProposalNotAnswered, "response"),
@@ -51,10 +43,6 @@ public static class HostServiceRequestTodoRules
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, "Not an action about a service request."),
     };
 
-    /// <summary>
-    /// When the answer is due, if something fixes it: the work was asked for a time, and the proposal is to be answered before it.
-    /// The amount to confirm and the payment have no term of their own.
-    /// </summary>
     public static DateTime? DueAt(HostTodoAction action, DateTime? scheduledStart) =>
         action == HostTodoAction.RespondToServiceRequest ? scheduledStart : null;
 }

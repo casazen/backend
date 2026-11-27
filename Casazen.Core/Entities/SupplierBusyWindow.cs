@@ -27,31 +27,20 @@ public class SupplierBusyWindow
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The supplier org (<see cref="SupplierProfile.OrgId"/>).</summary>
     [Required]
     public Guid OrgId { get; set; }
 
-    /// <summary>First instant of the window (UTC).</summary>
     public DateTime StartUtc { get; set; }
 
-    /// <summary>Instant the window ends (UTC), after <see cref="StartUtc"/>.</summary>
     public DateTime EndUtc { get; set; }
 
     public SupplierBusyWindowKind Kind { get; set; } = SupplierBusyWindowKind.Block;
 
     public SupplierBusyWindowSource Source { get; set; } = SupplierBusyWindowSource.Manual;
 
-    /// <summary>
-    /// What the supplier calls it ("Dentista"), or, for a window of the calendar feed, the title of the event cut to the limit;
-    /// optional, at most 80 characters, shown only in the supplier's console.
-    /// </summary>
     [MaxLength(SupplierAgendaLimits.LabelMaxLength)]
     public string? Label { get; set; }
 
-    /// <summary>
-    /// The UID of the iCal event an <see cref="SupplierBusyWindowKind.External"/> window comes from (a stable hash for an event
-    /// without one, SP-05); null for the others.
-    /// </summary>
     [MaxLength(SupplierAgendaLimits.ExternalUidMaxLength)]
     public string? ExternalUid { get; set; }
 

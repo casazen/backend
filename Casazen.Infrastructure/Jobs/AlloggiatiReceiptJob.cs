@@ -4,7 +4,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-// The receipt the SOAP client reads, not the stored daily receipt (the entity Casazen.Core.Entities.AlloggiatiReceipt, AW-R05).
 using AlloggiatiReceipt = Casazen.Infrastructure.Services.AlloggiatiReceipt;
 
 namespace Casazen.Infrastructure.Jobs;
@@ -24,13 +23,8 @@ public class AlloggiatiReceiptJob(
     private const int ReceiptLookbackDays = 30;
     private const int ReceiptAlertThresholdDays = 1;
 
-    /// <summary>
-    /// Process receipt retrieval for all credentials with pending reports.
-    /// Called daily by Hangfire.
-    /// </summary>
     public async Task ProcessReceiptsAsync(CancellationToken ct = default)
     {
-        // Find all credentials with reports in SentReceiptPending status
         var propertyIds = await db.AlloggiatiWebReports
             .Include(r => r.Booking)
             .Where(r => r.Status == AlloggiatiWebStatus.SentReceiptPending)
@@ -54,9 +48,6 @@ public class AlloggiatiReceiptJob(
         }
     }
 
-    /// <summary>
-    /// Retrieve receipts for one credential and update matching reports.
-    /// </summary>
     private async Task ProcessCredentialReceiptsAsync(Guid credentialId, CancellationToken ct)
     {
         try
@@ -64,7 +55,6 @@ public class AlloggiatiReceiptJob(
             var toDate = timeProvider.TodayInRome();
             var fromDate = toDate.AddDays(-ReceiptLookbackDays);
 
-            // Retrieve receipts from Alloggiati Web for last 30 days
             var receipts = await client.RicevutaAsync(credentialId, fromDate, toDate, ct);
 
             if (receipts.Count == 0)
@@ -79,7 +69,6 @@ public class AlloggiatiReceiptJob(
                 receipts.Count,
                 credentialId);
 
-            // Match receipts to pending reports and update their status
             foreach (var receipt in receipts)
             {
                 await ProcessReceiptAsync(credentialId, receipt, ct);
@@ -94,15 +83,11 @@ public class AlloggiatiReceiptJob(
         }
     }
 
-    /// <summary>
-    /// Process one receipt: update reports to Inviato.
-    /// </summary>
     private async Task ProcessReceiptAsync(
         Guid credentialId,
         AlloggiatiReceipt receipt,
         CancellationToken ct)
     {
-        // Find reports with matching confirmation number and SentReceiptPending status
         var reports = await db.AlloggiatiWebReports
             .Include(r => r.Booking)
             .Where(r => r.Status == AlloggiatiWebStatus.SentReceiptPending
@@ -122,7 +107,6 @@ public class AlloggiatiReceiptJob(
             receipt.ConfirmationNumber,
             reports.Count);
 
-        // Update reports to Inviato status
         foreach (var report in reports)
         {
             report.Status = AlloggiatiWebStatus.Inviato;
@@ -131,19 +115,12 @@ public class AlloggiatiReceiptJob(
         }
 
         await db.SaveChangesAsync(ct);
-
-        // The documents of these stays are not deleted here (ADR-015-R7, ADR-013-R7): the one place that deletes them after a receipt is
-        // IGuestDocumentPurgeService (E20/F02/US01/T02), which asks for an archived receipt that covers the stay and for its flag.
     }
 
-    /// <summary>
-    /// Check for receipts missing beyond threshold and alert (ADR-015-R7).
-    /// </summary>
     private async Task CheckMissingReceiptsAsync(Guid credentialId, CancellationToken ct)
     {
         var thresholdDate = timeProvider.TodayInRome().AddDays(-ReceiptAlertThresholdDays);
 
-        // Find properties that use this credential
         var propertyIds = await db.PropertyQuesturaCredentials
             .Where(c => c.Id == credentialId)
             .Select(c => c.PropertyId)
@@ -164,7 +141,6 @@ public class AlloggiatiReceiptJob(
                 ReceiptAlertThresholdDays,
                 credentialId);
 
-            // Alert mechanism: log for now, could trigger notification/email in future
             foreach (var report in missingReports)
             {
                 logger.LogWarning(

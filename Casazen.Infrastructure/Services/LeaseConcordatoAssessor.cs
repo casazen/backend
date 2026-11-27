@@ -6,30 +6,21 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>What <see cref="LeaseConcordatoAssessor"/> found out.</summary>
 public enum ConcordatoAssessmentKind
 {
-    /// <summary>The property is not visible to the caller (tenant filter) or does not exist.</summary>
     PropertyNotFound,
 
-    /// <summary>The calculator gave no range: <see cref="ConcordatoAssessmentResult.Reason"/> says why (null: no particular reason).</summary>
     Unavailable,
 
-    /// <summary>A range exists: <see cref="ConcordatoAssessmentResult.Assessment"/> holds it and whether the rent is inside it.</summary>
     Assessed,
 }
 
-/// <summary>
-/// The result of the check of a rent against the territorial agreement: the assessment ready to be stored with the lease when there
-/// is a range, whether the rent is inside it, and whether the range is only indicative.
-/// </summary>
 public sealed record ConcordatoAssessmentResult(
     ConcordatoAssessmentKind Kind,
     string? Reason = null,
     LeaseConcordatoAssessment? Assessment = null,
     bool Indicative = false)
 {
-    /// <summary>The annual rent is inside the range (only meaningful when <see cref="Kind"/> is <see cref="ConcordatoAssessmentKind.Assessed"/>).</summary>
     public bool RentWithinRange => Assessment?.RentWithinRange ?? false;
 
     public decimal? MinMonthly => Assessment?.CanoneMinMensile;
@@ -37,12 +28,6 @@ public sealed record ConcordatoAssessmentResult(
     public decimal? MaxMonthly => Assessment?.CanoneMaxMensile;
 }
 
-/// <summary>
-/// The canone concordato range recomputed on the server from the declared characteristics and the real term (A7-12), the one rule
-/// that the complete creation of a lease (<see cref="LeaseWorkflowService"/>) and the guided draft (<see cref="LeaseDraftService"/>)
-/// share (LR-12: "si riusa, non si riscrive"). It decides nothing: the caller turns the result into a 422 (creation) or into a need
-/// of the step (draft).
-/// </summary>
 internal sealed class LeaseConcordatoAssessor(ICanoneConcordatoEligibilityService eligibility, TimeProvider clock)
 {
     public async Task<ConcordatoAssessmentResult> AssessAsync(
@@ -102,7 +87,6 @@ internal sealed class LeaseConcordatoAssessor(ICanoneConcordatoEligibilityServic
             CalculatedAt = clock.GetUtcNow().UtcDateTime,
         };
 
-        // Indicative: the range comes from agreement data not confirmed by a lawyer (the calculator's own flag): a guide, it never blocks (A7-23).
         return new ConcordatoAssessmentResult(ConcordatoAssessmentKind.Assessed, Assessment: assessment, Indicative: range.Indicative);
     }
 

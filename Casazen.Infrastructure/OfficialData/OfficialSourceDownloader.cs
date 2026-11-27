@@ -3,7 +3,6 @@ using Casazen.Core.OfficialData;
 
 namespace Casazen.Infrastructure.OfficialData;
 
-/// <summary>Downloads a public official file. Hosts outside the allowlist are refused.</summary>
 public class OfficialSourceDownloader(HttpClient httpClient)
 {
     public const int MaxBytes = 10 * 1024 * 1024;

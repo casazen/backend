@@ -23,7 +23,6 @@ public static partial class EmailTemplates
         public const string ServiceDisputeAdminAlert = "service-dispute-admin-alert";
     }
 
-    /// <summary>What the payer said was wrong, as a phrase the sentence of an e-mail goes on with.</summary>
     public static string ServiceDisputeReasonLabel(CultureInfo culture, ServiceDisputeReason reason) =>
         EmailTexts.Get(
             reason switch
@@ -36,10 +35,6 @@ public static partial class EmailTemplates
             },
             culture);
 
-    /// <summary>
-    /// A complaint was opened, to the supplier: what was reported (the reason, not the words), that the payment is held until it is decided, and until
-    /// when it can reply. For a job nobody marked completed (<paramref name="noShow"/>) the sentence says what CasaZen saw, not that anybody is at fault.
-    /// </summary>
     public static EmailContent ServiceDisputeOpenedToSupplier(
         CultureInfo culture,
         string serviceName,
@@ -63,11 +58,6 @@ public static partial class EmailTemplates
             .Build("ServiceDisputeOpenedSupplier_Subject", builder.FormatInstant(replyDueUtc));
     }
 
-    /// <summary>
-    /// A complaint was opened, to the payer: received, the money stays held until it is decided, the supplier has until a time to reply. When CasaZen opened
-    /// it for a job nobody marked completed (<paramref name="byCasaZen"/>) the sentence says so and that the payer may take it back if the work was done.
-    /// <paramref name="manageUrl"/> is the page of the booking of a showcase customer; a host reads it in its own area and gets none.
-    /// </summary>
     public static EmailContent ServiceDisputeOpenedToPayer(
         CultureInfo culture,
         string supplierName,
@@ -88,7 +78,6 @@ public static partial class EmailTemplates
         return builder.Build("ServiceDisputeOpenedPayer_Subject", serviceName);
     }
 
-    /// <summary>The supplier replied, to the payer: the team of CasaZen reads both and decides; the money stays held until then.</summary>
     public static EmailContent ServiceDisputeRepliedToPayer(CultureInfo culture, string supplierName, string serviceName, string? manageUrl)
     {
         var builder = new EmailHtmlBuilder(culture).Paragraph("ServiceDisputeRepliedPayer_Body", supplierName, serviceName);
@@ -98,10 +87,6 @@ public static partial class EmailTemplates
         return builder.Build("ServiceDisputeRepliedPayer_Subject", serviceName);
     }
 
-    /// <summary>
-    /// A complaint was decided, to the payer. For the supplier the payment is paid out; for the customer the amount that goes back is told (and nothing
-    /// about when it reaches the bank): with <paramref name="refundCents"/> zero the sentence only says the complaint was accepted.
-    /// </summary>
     public static EmailContent ServiceDisputeResolvedToPayer(
         CultureInfo culture,
         string supplierName,
@@ -120,10 +105,6 @@ public static partial class EmailTemplates
         return builder.Build("ServiceDisputeResolvedPayer_Subject", serviceName);
     }
 
-    /// <summary>
-    /// A complaint was decided, to the supplier: in its favour the payment goes to its Stripe account (no promise about when the funds are available there);
-    /// against it, what went back to the payer and what, if anything, it is still paid.
-    /// </summary>
     public static EmailContent ServiceDisputeResolvedToSupplier(
         CultureInfo culture,
         string serviceName,
@@ -151,16 +132,11 @@ public static partial class EmailTemplates
             .Build("ServiceDisputeResolvedSupplier_Subject", serviceName);
     }
 
-    /// <summary>The payer took the complaint back, to the supplier: nothing is wrong, the payment is paid out.</summary>
     public static EmailContent ServiceDisputeWithdrawnToSupplier(CultureInfo culture, string serviceName, int netCents) =>
         new EmailHtmlBuilder(culture)
             .Paragraph("ServiceDisputeWithdrawnSupplier_Body", serviceName, FormatEuro(netCents, culture))
             .Build("ServiceDisputeWithdrawnSupplier_Subject", serviceName);
 
-    /// <summary>
-    /// To every active platform admin: a dispute needs a decision (the supplier replied, or did not in time), the target to decide has passed, or the
-    /// refund of a decision did not go through. Ids, an amount and a code only: no name, no address, no word of either party.
-    /// </summary>
     public static EmailContent ServiceDisputeAdminAlert(
         CultureInfo culture,
         Guid disputeId,

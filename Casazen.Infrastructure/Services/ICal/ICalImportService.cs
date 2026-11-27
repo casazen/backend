@@ -7,11 +7,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services.ICal;
 
-/// <summary>
-/// A calendar block read from a property feed: the nights [<see cref="StartUtc"/>, <see cref="EndUtc"/>) as midnight
-/// UTC of their Europe/Rome dates (the storage convention of date-only values), with a key unique within the feed.
-/// </summary>
-/// <param name="Currency">ISO 4217 currency code; defaulted to Property.Currency when X-CURRENCY absent (ADR-002-R8, NF-02).</param>
 public sealed record ParsedCalendarBlock(
     string ExternalUid,
     DateTime StartUtc,
@@ -19,7 +14,6 @@ public sealed record ParsedCalendarBlock(
     string? Summary,
     string? Currency = null);
 
-/// <summary>The blocks of a property feed and how many duplicate entries were merged into them.</summary>
 public sealed record PropertyICalBlocks(IReadOnlyList<ParsedCalendarBlock> Blocks, int MergedDuplicates);
 
 /// <summary>
@@ -48,15 +42,8 @@ public sealed record SupplierICalBusy(
     int OutsideWindow,
     int OverLimit);
 
-/// <summary>
-/// Import of iCal feeds (#294, PC-10): <see cref="ICalFeedParser"/> with the recurrence window of
-/// <see cref="ICalImportOptions"/> around today in Europe/Rome, and the mapping of the occurrences to property blocks
-/// (<see cref="ToPropertyBlocks"/>) or to what a supplier's feed occupies: busy days and windows of hours
-/// (<see cref="ToSupplierBusy"/>, <see cref="ToBusyDays"/>).
-/// </summary>
 public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOptions> options)
 {
-    /// <summary>Longest range of busy days taken from one supplier event.</summary>
     internal const int MaxBusyDaysPerEvent = 366;
 
     /// <summary>
@@ -68,10 +55,8 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
 
     private const string HashedUidPrefix = "sha256:";
 
-    // "#yyyyMMdd" appended to the UID of each occurrence of a UID with several ranges.
     private const int OccurrenceSuffixLength = 9;
 
-    /// <exception cref="ICalFormatException">The document is not a readable iCalendar feed.</exception>
     public ICalFeedParseResult Parse(string? icsContent)
     {
         var today = timeProvider.TodayInRomeAsDateOnly();
@@ -83,10 +68,8 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
             transparentFrom: today);
     }
 
-    /// <summary>The "now" of the import, for the nearest occurrence of a free-looking event.</summary>
     internal DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;
 
-    /// <summary>See <see cref="ICalImportOptions.BlockUndecidedFreeEvents"/>.</summary>
     internal bool BlockUndecidedFreeEvents => options.Value.BlockUndecidedFreeEvents;
 
     /// <summary>
@@ -117,7 +100,6 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
                 continue;
             }
 
-            // Same UID and start date, different ends: keep the longest (every night stays blocked).
             candidates.AddRange(ranges
                 .GroupBy(o => o.StartDate)
                 .Select(sameStart => ($"{group.Key}#{sameStart.Key:yyyyMMdd}", sameStart.MaxBy(o => o.EndDate)!)));
@@ -133,11 +115,6 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
         return new PropertyICalBlocks(blocks, occurrences.Count(o => o.HasNights) - blocks.Count);
     }
 
-    /// <summary>
-    /// True when <paramref name="externalUid"/> is the key <see cref="ToPropertyBlocks"/> gives to an event with one of
-    /// <paramref name="uids"/>: the UID itself, an occurrence key <c>UID#yyyyMMdd</c> or the hash of a UID too long for
-    /// the column. Used to keep the blocks of events the reader could not understand.
-    /// </summary>
     public static bool IsKeyOfAny(string externalUid, IReadOnlySet<string> uids)
     {
         if (uids.Count == 0)
@@ -159,11 +136,6 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
             && uids.Any(uid => string.Equals(FitKey(uid), externalUid, StringComparison.Ordinal));
     }
 
-    /// <summary>Busy days: every calendar day an occurrence touches, from its first to its last day.</summary>
-    /// <remarks>
-    /// A pure mapping of the occurrences it is given. The supplier sync does <b>not</b> give it every occurrence any more
-    /// (SP-05): <see cref="ToSupplierBusy"/> hands it the all-day ones, the timed ones become windows of hours.
-    /// </remarks>
     public static IReadOnlySet<DateOnly> ToBusyDays(IEnumerable<ICalOccurrence> occurrences)
     {
         var days = new HashSet<DateOnly>();
@@ -215,9 +187,6 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
         var outsideWindow = 0;
         foreach (var occurrence in occurrences)
         {
-            // VALUE=DATE closes the days and has no hours. A timed event with no length closes its day, as before.
-            // Some calendars write an all-day event as 00:00–00:00 in Europe/Rome: those days close too, and the
-            // event stays a window so its title is still on the supplier's agenda.
             if (occurrence.IsAllDay || !occurrence.HasDuration)
             {
                 dayBased.Add(occurrence);
@@ -241,7 +210,6 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
                 occurrence.EndUtc,
                 Truncate(occurrence.Summary, SupplierAgendaLimits.LabelMaxLength));
 
-            // Same key and start: the longest wins (every hour it covers stays occupied).
             if (!folded.TryGetValue((key, parsed.StartUtc), out var kept) || parsed.EndUtc > kept.EndUtc)
                 folded[(key, parsed.StartUtc)] = parsed;
         }
@@ -262,10 +230,6 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
             OverLimit: overLimit);
     }
 
-    /// <summary>
-    /// True when a timed event runs from midnight to a later midnight on the Europe/Rome clock (one or more whole days).
-    /// An hour that merely starts at midnight is not one of these.
-    /// </summary>
     private static bool CoversWholeRomeDays(ICalOccurrence occurrence)
     {
         if (occurrence.IsAllDay || !occurrence.HasDuration)
@@ -286,11 +250,9 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
             Truncate(occurrence.Summary, CalendarBlock.SummaryMaxLength),
             occurrence.Currency ?? defaultCurrency);
 
-    // Stable key of an event without UID: the same event gets the same key at every sync.
     private static string ContentKey(ICalOccurrence occurrence) =>
         Sha256Hex($"{occurrence.StartDate:yyyy-MM-dd}|{occurrence.EndDate:yyyy-MM-dd}|{occurrence.Summary}");
 
-    // The same for a window of hours: the instants, not the dates (two events of one day have two keys).
     private static string WindowContentKey(ICalOccurrence occurrence) =>
         Sha256Hex(FormattableString.Invariant(
             $"{occurrence.StartUtc:yyyyMMdd'T'HHmmss'Z'}|{occurrence.EndUtc:yyyyMMdd'T'HHmmss'Z'}|{occurrence.Summary}"));
@@ -303,7 +265,6 @@ public class ICalImportService(TimeProvider timeProvider, IOptions<ICalImportOpt
     private static string Sha256Hex(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
-    /// <summary>At most <paramref name="maxLength"/> characters, never splitting a surrogate pair.</summary>
     internal static string? Truncate(string? value, int maxLength)
     {
         if (value is null || value.Length <= maxLength)

@@ -40,19 +40,14 @@ public sealed record OwnerPerformanceFigures(
     decimal StayCount,
     decimal RevenueNights)
 {
-    /// <summary>No property, no night, no money.</summary>
     public static OwnerPerformanceFigures Zero { get; } = new(0m, 0m, 0m, 0m, 0m, 0m);
 
-    /// <summary>Occupied / available (0..1); null when nothing is available.</summary>
     public decimal? OccupancyRate => AvailableNights > 0m ? OccupiedNights / AvailableNights : null;
 
-    /// <summary>Revenue over <see cref="RevenueNights"/>, to the cent; null without a night (<see cref="HostPerformanceRules.Adr"/>).</summary>
     public decimal? Adr => HostPerformanceRules.Adr(Revenue, RevenueNights);
 
-    /// <summary>Revenue over <see cref="AvailableNights"/>, to the cent; null when nothing is available (<see cref="HostPerformanceRules.RevPar"/>).</summary>
     public decimal? RevPar => HostPerformanceRules.RevPar(Revenue, AvailableNights);
 
-    /// <summary>The figures of a property, counted by <paramref name="weight"/> (0..1): 1 for all of them, 0.5 for a half.</summary>
     public static OwnerPerformanceFigures Of(HostPerformanceFigures figures, decimal weight = 1m)
     {
         ArgumentNullException.ThrowIfNull(figures);
@@ -66,7 +61,6 @@ public sealed record OwnerPerformanceFigures(
             figures.RevenueNights * weight);
     }
 
-    /// <summary>The sum of two sets of figures.</summary>
     public OwnerPerformanceFigures Plus(OwnerPerformanceFigures other)
     {
         ArgumentNullException.ThrowIfNull(other);

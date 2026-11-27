@@ -36,7 +36,6 @@ public sealed class HostSupplierCatalogService(
         string? category,
         CancellationToken cancellationToken = default)
     {
-        // A value that is not a category code is a 422 before any lookup, as in the supplier picker.
         var code = string.IsNullOrWhiteSpace(category) ? null : ServiceCategories.Require(category);
 
         await EnsureSupplierForPropertyAsync(hostOrgId, propertyId, supplierOrgId, cancellationToken);
@@ -68,7 +67,6 @@ public sealed class HostSupplierCatalogService(
     {
         await EnsureSupplierForPropertyAsync(hostOrgId, propertyId, supplierOrgId, cancellationToken);
 
-        // Another supplier's service, and a deleted one, are answered like a missing one; a draft or a paused one cannot be requested.
         var service = await catalog.FindForRequestAsync(supplierOrgId, serviceId, cancellationToken)
             ?? throw SupplierServiceCatalogErrors.ServiceNotFound(serviceId);
         if (!service.IsRequestable)
@@ -81,8 +79,6 @@ public sealed class HostSupplierCatalogService(
         var rules = await agenda.GetRulesAsync(supplierOrgId, cancellationToken);
         var bookableUntil = today.AddDays(rules.HorizonDays);
 
-        // A service without a duration has no slot to compute (the host gives the time and the length), and a first day past the
-        // horizon is an empty window: no day, not an error.
         if (service.ToSlotQuery() is not { } query
             || PublicSlotWindow.RangeOf(today, bookableUntil, date, HostSupplierSlotLimits.Days) is not { } range)
             return new HostSupplierSlots(service.Id, service.DurationMinutes, null, null, []);
@@ -106,8 +102,6 @@ public sealed class HostSupplierCatalogService(
         Guid supplierOrgId,
         CancellationToken cancellationToken)
     {
-        // IgnoreQueryFilters (tenant only): scoped by the explicit OrgId predicate, as the creation of a request does; another org's
-        // property answers like a missing one and the soft-delete filter stays.
         var property = await db.Properties
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -118,7 +112,6 @@ public sealed class HostSupplierCatalogService(
                 MessageKey = ServiceRequestErrorCodes.PropertyNotFoundMessageKey,
             };
 
-        // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the supplier org id.
         var supplier = await SupplierServiceCatalogService.SuppliersForProperty(db, hostOrgId, propertyId)
             .AsNoTracking()
             .FirstOrDefaultAsync(sp => sp.OrgId == supplierOrgId, cancellationToken)

@@ -4,17 +4,14 @@ namespace Casazen.Core.Services;
 
 public enum CalendarAlertKind
 {
-    /// <summary>Two stays or blocks take the same night of a property. The only alert so far; the gaps and the missing cleanings follow with SR-02d.</summary>
     Conflict,
 }
 
 public enum CalendarAlertSeverity
 {
-    /// <summary>To act on now: a conflict.</summary>
     High,
 }
 
-/// <summary>An item an alert is about, enough to open it.</summary>
 public sealed record CalendarItemRef(CalendarItemType Type, Guid Id);
 
 /// <summary>
@@ -33,19 +30,10 @@ public sealed record CalendarAlert(
     DateOnly To,
     IReadOnlyList<CalendarItemRef> Refs);
 
-/// <summary>What takes nights of a property, as the alerts need it.</summary>
-/// <param name="Type">A stay, a portal's reservation or a block; interventions take no night.</param>
-/// <param name="From">The first night.</param>
-/// <param name="To">The departure day: the first day it no longer takes a night.</param>
 public sealed record CalendarOccupant(Guid Id, CalendarItemType Type, Guid PropertyId, DateOnly From, DateOnly To);
 
 public sealed record CalendarAlertProperty(Guid Id, string Name);
 
-/// <summary>Everything <see cref="CalendarAlertRules.Compute"/> reads: no clock, no database.</summary>
-/// <param name="Today">Today in Europe/Rome.</param>
-/// <param name="From">First day the alerts are asked for.</param>
-/// <param name="To">Last day the alerts are asked for, included.</param>
-/// <param name="Occupants">Everything that takes nights of the properties, read for <paramref name="From"/> to <paramref name="To"/>.</param>
 public sealed record CalendarAlertInput(
     DateOnly Today,
     DateOnly From,
@@ -78,27 +66,18 @@ public static class CalendarAlertRules
         return Sort(alerts);
     }
 
-    /// <summary>The most serious first, then by day, then by id: a total order.</summary>
     public static IReadOnlyList<CalendarAlert> Sort(IEnumerable<CalendarAlert> alerts)
     {
         ArgumentNullException.ThrowIfNull(alerts);
         return alerts.OrderBy(a => a.Severity).ThenBy(a => a.From).ThenBy(a => a.Id, StringComparer.Ordinal).ToList();
     }
 
-    /// <summary>
-    /// A stay as an occupant of its property: the nights from the check-in date (included) to the check-out date (the day it no longer
-    /// takes a night). The one place that shapes a booking for the alerts, for the host calendar and for the event handlers alike.
-    /// </summary>
     public static CalendarOccupant StayOccupant(Guid id, Guid propertyId, DateTime checkIn, DateTime checkOut)
     {
         return new CalendarOccupant(
             id, CalendarItemType.Booking, propertyId, DateOnly.FromDateTime(checkIn), DateOnly.FromDateTime(checkOut));
     }
 
-    /// <summary>
-    /// A calendar block as an occupant of its property: a portal's block of an iCal calendar is <see cref="CalendarItemType.Ical"/>, every
-    /// other block (the host's own, the nights the channel manager closes) <see cref="CalendarItemType.Block"/>.
-    /// </summary>
     public static CalendarOccupant BlockOccupant(Guid id, Guid propertyId, CalendarBlockSource source, DateTime start, DateTime end)
     {
         return new CalendarOccupant(
@@ -109,12 +88,6 @@ public static class CalendarAlertRules
             DateOnly.FromDateTime(end));
     }
 
-    /// <summary>
-    /// The conflicts of one item that has just arrived (E08/F01/US02/T02, NF-80): the input is framed on the nights of the stay
-    /// (<paramref name="checkIn"/> to <paramref name="checkOut"/>) of one property, with every stay and block that takes a night of them as an
-    /// occupant, the stay itself included. It is <see cref="Compute"/> that finds the conflicts, the same rule that feeds the host calendar and
-    /// the Home; this only keeps the ones the item is in, the earliest first.
-    /// </summary>
     public static IReadOnlyList<CalendarAlert> ConflictsOfStay(
         DateOnly today,
         CalendarAlertProperty property,
@@ -143,11 +116,9 @@ public static class CalendarAlertRules
             {
                 var b = occupants[j];
 
-                // In order of arrival: from here on nothing starts before a leaves.
                 if (b.From >= a.To)
                     break;
 
-                // The nights they share: from the later arrival to the earlier departure.
                 var from = b.From;
                 var to = a.To < b.To ? a.To : b.To;
                 if (to <= from || to <= input.Today || from > input.To || to <= input.From)

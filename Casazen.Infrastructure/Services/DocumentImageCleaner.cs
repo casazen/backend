@@ -13,7 +13,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public static class DocumentImageCleaner
 {
-    /// <summary>Deletes the objects of <paramref name="images"/> and stages their rows for removal; returns the objects deleted.</summary>
     public static async Task<int> DeleteAsync(
         AppDbContext db,
         IFileStorage storage,
@@ -44,7 +43,6 @@ public static class DocumentImageCleaner
 
         if (!StorageKeys.IsValid(key))
         {
-            // A reference that is not a storage key (never written by the flow): the row goes, there is nothing to delete.
             logger.LogWarning("Document image {ImageId} does not point to a storage key: row removed, nothing deleted from the storage", imageId);
             return 0;
         }

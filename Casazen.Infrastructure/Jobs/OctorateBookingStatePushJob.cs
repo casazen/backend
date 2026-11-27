@@ -29,7 +29,6 @@ public class OctorateBookingStatePushJob(
     [DisableConcurrentExecution("OctorateBookingStatePushJob.PushAsync:{1}", 60)]
     public async Task PushAsync(Guid orgId, Guid bookingId, BookingStatus status, CancellationToken cancellationToken)
     {
-        // The two states CasaZen owns: the arrival of a checked-in stay and the departure of a checked-out one. Any other status is nothing to send.
         OctorateStayState? state = status switch
         {
             BookingStatus.CheckedIn => OctorateStayState.CheckInEnd,

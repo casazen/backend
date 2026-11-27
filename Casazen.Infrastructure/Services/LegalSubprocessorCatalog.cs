@@ -31,7 +31,6 @@ public static partial class LegalSubprocessorCatalog
     public const string Vercel = "vercel";
     public const string Ai = "ai";
 
-    /// <summary>Variables Railway sets on every deployment: their presence means the API runs on Railway.</summary>
     private static readonly string[] RailwayMarkers = ["RAILWAY_PROJECT_ID", "RAILWAY_ENVIRONMENT_NAME", "RAILWAY_GIT_COMMIT_SHA"];
 
     private const string RailwayRegionVariable = "RAILWAY_REPLICA_REGION";
@@ -39,10 +38,6 @@ public static partial class LegalSubprocessorCatalog
     public static IReadOnlyList<SubprocessorItem> Build(IConfiguration configuration) =>
         Build(configuration, effectiveAi: null);
 
-    /// <param name="effectiveAi">
-    /// The provider in effect (server configuration plus the admin override). Null: read <c>Ai</c> from
-    /// <paramref name="configuration"/> only.
-    /// </param>
     public static IReadOnlyList<SubprocessorItem> Build(IConfiguration configuration, AiOptions? effectiveAi)
     {
         var items = new List<SubprocessorItem>();
@@ -61,7 +56,6 @@ public static partial class LegalSubprocessorCatalog
             || !string.IsNullOrWhiteSpace(configuration[EmailOptions.LegacyResendApiKeyKey]))
             items.Add(Item(configuration, Resend, "Resend", "https://resend.com", "email", detectedRegion: null));
 
-        // The Expo push client is always registered: every device token and notification of the app goes through it.
         items.Add(Item(configuration, Expo, "Expo", "https://expo.dev", "pushNotifications", detectedRegion: null));
 
         if (IsEnabled(configuration, Railway, RailwayMarkers.Any(name => !string.IsNullOrWhiteSpace(configuration[name]))))
@@ -112,7 +106,6 @@ public static partial class LegalSubprocessorCatalog
         }
         catch (ArgumentException)
         {
-            // Malformed connection string: the database is not identified as Supabase.
         }
 
         var database = databaseHost is not null && IsSupabaseHost(databaseHost);
@@ -132,10 +125,6 @@ public static partial class LegalSubprocessorCatalog
         return (purposeKey, region);
     }
 
-    /// <summary>
-    /// The active external AI provider (<see cref="AiOptions"/>, section <c>Ai:Subprocessor</c>): prompts reach it, so it
-    /// is listed (A8-15). Its legal details are never filled in here.
-    /// </summary>
     private static SubprocessorItem? BuildActiveAiProviderItem(AiOptions ai)
     {
         if (!ai.IsExternalProviderActive())
@@ -167,7 +156,6 @@ public static partial class LegalSubprocessorCatalog
         string? detectedRegion)
     {
         var section = configuration.GetSection($"{ProvidersSection}:{Capitalize(key)}");
-        // A region read from the provider's own configuration wins: it is what the code talks to.
         var region = detectedRegion ?? NullIfBlank(section["Region"]) ?? string.Empty;
         var transferMechanism = NullIfBlank(section["TransferMechanism"]);
         var entity = NullIfBlank(section["Entity"]);
@@ -183,7 +171,6 @@ public static partial class LegalSubprocessorCatalog
             Entity: entity);
     }
 
-    /// <summary>English purpose for API clients that do not localize <see cref="SubprocessorItem.PurposeKey"/>.</summary>
     private static readonly Dictionary<string, string> PurposeFallbacks = new()
     {
         ["database"] = "Database",
@@ -242,7 +229,6 @@ public static partial class LegalSubprocessorCatalog
     [GeneratedRegex(@"^[a-z0-9-]+\.auth0\.com$")]
     private static partial Regex Auth0LegacyDomainRegex();
 
-    // Supavisor pooler host: aws-0-eu-west-1.pooler.supabase.com (the project region).
     [GeneratedRegex(@"^aws-\d+-(?<region>[a-z]{2}-[a-z]+-\d+)\.pooler\.supabase\.com$")]
     private static partial Regex SupabasePoolerHostRegex();
 }

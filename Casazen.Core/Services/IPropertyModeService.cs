@@ -11,49 +11,28 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class PropertyModeErrorCodes
 {
-    /// <summary>404: the property does not exist or is of another org.</summary>
     public const string PropertyNotFound = "property_not_found";
 
-    /// <summary>422: the property is already in the mode asked for (the mode is exclusive: there is nothing to change).</summary>
     public const string AlreadyInMode = "property_mode_unchanged";
 
-    /// <summary>422: the day is today or in the past. The change starts at midnight of Rome: the first day is tomorrow.</summary>
     public const string DateTooEarly = "property_mode_date_too_early";
 
-    /// <summary>422: the day is more than <see cref="PropertyModeRules.MaxYearsAhead"/> years away (a typo, not a plan).</summary>
     public const string DateTooFar = "property_mode_date_too_far";
 
-    /// <summary>
-    /// 409: to long-term, a stay (pending, confirmed or checked in) or a block imported from a portal calendar ends on or
-    /// after the day. The message carries the first day that is free.
-    /// </summary>
     public const string BlockedByBookings = "property_mode_blocked_by_bookings";
 
-    /// <summary>
-    /// 409: to short stays, a lease that is not a draft nor rejected ends on or after the day. The message carries the first
-    /// day that is free (<c>EndDate</c> + 1, decision D16: termination and notice are entered by hand later).
-    /// </summary>
     public const string BlockedByLease = "property_mode_blocked_by_lease";
 
-    /// <summary>409: to short stays, the property has a draft lease: it must be deleted first (decision D16).</summary>
     public const string BlockedByDraftLease = "property_mode_blocked_by_draft_lease";
 
-    /// <summary>409: the property already has a change waiting for its day (one at a time).</summary>
     public const string ChangeExists = "property_mode_change_exists";
 
-    /// <summary>404: no change with that id on the property (or of another org).</summary>
     public const string ChangeNotFound = "property_mode_change_not_found";
 
-    /// <summary>409: the change is not waiting any more (applied, cancelled or failed): only a scheduled one is withdrawn.</summary>
     public const string ChangeNotScheduled = "property_mode_change_not_scheduled";
 
-    /// <summary>400: the target of a preview is not <c>short</c> or <c>long</c>.</summary>
     public const string TargetInvalid = "property_mode_target_invalid";
 
-    /// <summary>
-    /// Failure reason only: on its day the property was not in the mode the change started from (somebody put it back by
-    /// hand, runbook). Nothing is applied.
-    /// </summary>
     public const string PropertyChanged = "property_mode_changed";
 
     public const string PropertyNotFoundMessageKey = "PropertyNotFound";
@@ -69,22 +48,14 @@ public static class PropertyModeErrorCodes
     public const string TargetInvalidMessageKey = "PropertyModeTargetInvalid";
 }
 
-/// <summary>What stands in the way of a change of mode (<see cref="PropertyModeBlocker.Kind"/>).</summary>
 public enum PropertyModeBlockerKind
 {
-    /// <summary>A stay of the property: pending, confirmed or checked in, whatever its source (the site, the host, a portal).</summary>
     Stay = 0,
 
-    /// <summary>
-    /// A block imported from a portal calendar (iCal feed) that is not already counted through an OTA stay: the portals'
-    /// reservations arrive as blocks. Wait for it or remove the feed.
-    /// </summary>
     ImportedBlock = 1,
 
-    /// <summary>A lease that is not a draft nor rejected: it keeps the property in long-term mode until its last day.</summary>
     Lease = 2,
 
-    /// <summary>A draft lease: no date frees the property from it, it must be deleted (decision D16).</summary>
     DraftLease = 3,
 }
 
@@ -137,14 +108,9 @@ public sealed record PropertyModePreview(
     IReadOnlyList<string> Issues,
     PropertyModeChange? ScheduledChange)
 {
-    /// <summary>True when a change on <see cref="Date"/> would be accepted.</summary>
     public bool CanSchedule => Issues.Count == 0;
 }
 
-/// <summary>The mode of a property and what happens to it: the change waiting for its day and the last one that finished.</summary>
-/// <param name="Mode">The mode now.</param>
-/// <param name="Scheduled">The change waiting for its day (at most one).</param>
-/// <param name="Last">The latest change that is no longer waiting (applied, cancelled or failed), by creation.</param>
 public sealed record PropertyModeState(
     Guid PropertyId,
     RentalMode Mode,
@@ -174,21 +140,12 @@ public sealed record PropertyModeRunResult(bool Skipped, int Examined, int Appli
 /// </remarks>
 public interface IPropertyModeService
 {
-    /// <summary>
-    /// What a change to <paramref name="to"/> meets: the first day possible and what stands in the way of
-    /// <paramref name="date"/> (the first day possible when none is given). Reads only; nothing is reserved, so the answer
-    /// can be out of date by the time the change is created, which checks again.
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException"><see cref="PropertyModeErrorCodes.PropertyNotFound"/>.</exception>
-    /// <exception cref="Exceptions.DomainRuleException"><see cref="PropertyModeErrorCodes.AlreadyInMode"/>.</exception>
     Task<PropertyModePreview> PreviewAsync(
         Guid propertyId,
         RentalMode to,
         DateTime? date = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The mode of the property, the change waiting for its day and the last finished one.</summary>
-    /// <exception cref="Exceptions.NotFoundException"><see cref="PropertyModeErrorCodes.PropertyNotFound"/>.</exception>
     Task<PropertyModeState> GetStateAsync(Guid propertyId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -212,9 +169,6 @@ public interface IPropertyModeService
         string userId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Withdraws a change that is still waiting for its day. Nothing changes on the property.</summary>
-    /// <exception cref="Exceptions.NotFoundException"><see cref="PropertyModeErrorCodes.ChangeNotFound"/>.</exception>
-    /// <exception cref="Exceptions.DomainConflictException"><see cref="PropertyModeErrorCodes.ChangeNotScheduled"/>.</exception>
     Task CancelAsync(Guid propertyId, Guid changeId, string userId, CancellationToken cancellationToken = default);
 
     /// <summary>

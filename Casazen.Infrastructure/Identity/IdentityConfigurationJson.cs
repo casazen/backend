@@ -27,12 +27,10 @@ namespace Casazen.Infrastructure.Identity;
 /// </summary>
 internal static class IdentityConfigurationJson
 {
-    /// <summary>The deepest nesting a file may have: the files are a few levels deep, anything else is not one of ours.</summary>
     private const int MaxDepth = 16;
 
     private static readonly byte[] Utf8Bom = [0xEF, 0xBB, 0xBF];
 
-    /// <summary>The options every file of the identity configuration is deserialized with (see the remarks of the class).</summary>
     internal static readonly JsonSerializerOptions Strict = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -46,10 +44,6 @@ internal static class IdentityConfigurationJson
         MaxDepth = MaxDepth,
     };
 
-    /// <summary>
-    /// The canonical form of a JSON file. False, with an empty text, when it is not JSON in the strict sense above (a syntax error, comments, a repeated
-    /// member, a number out of range, a lone surrogate): it never throws.
-    /// </summary>
     internal static bool TryCanonicalize(ReadOnlyMemory<byte> utf8Json, out string canonical)
     {
         canonical = string.Empty;
@@ -70,13 +64,11 @@ internal static class IdentityConfigurationJson
         }
     }
 
-    /// <summary>The SHA-256 of a canonical text as UTF-8, lower case hexadecimal (64 characters).</summary>
     internal static string Sha256Hex(string text)
     {
         return Convert.ToHexStringLower(SHA256.HashData(new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(text)));
     }
 
-    /// <summary>Reads a canonical text (or any strict JSON text) into <typeparamref name="T"/> with <see cref="Strict"/>; a <see cref="JsonException"/> names what is wrong.</summary>
     internal static T? ReadStrict<T>(string json)
     {
         return JsonSerializer.Deserialize<T>(json, Strict);
@@ -131,7 +123,6 @@ internal static class IdentityConfigurationJson
         {
             if (i > 0)
             {
-                // The members are sorted, so a repeated name is next to its twin: which of the two values is meant cannot be told, the file is refused.
                 if (string.Equals(members[i].Name, members[i - 1].Name, StringComparison.Ordinal))
                     throw new FormatException("A member is repeated.");
 

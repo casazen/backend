@@ -20,35 +20,27 @@ namespace Casazen.Core.Entities;
 [Table("SiteConnectionCodes")]
 public class SiteConnectionCode : ITenantOwned
 {
-    /// <summary>Name of the unique index on <see cref="CodeHash"/>.</summary>
     public const string CodeHashIndexName = "UIX_SiteConnectionCodes_CodeHash";
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The org the site asks to connect to (TN-2).</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The billing administrator who confirmed: the opaque id of the account.</summary>
     [Required, MaxLength(SiteConnectionRules.UserIdMaxLength)]
     public string CreatedByUserId { get; set; } = string.Empty;
 
-    /// <summary>The origin of the site (<c>https://www.example.com</c>), normalized by <see cref="SiteConnectionRules.TryNormalizeSiteUrl"/>.</summary>
     [Required, MaxLength(SiteConnectionRules.SiteUrlMaxLength)]
     public string SiteUrl { get; set; } = string.Empty;
 
-    /// <summary>SHA-256 (lowercase hex) of the code; unique. The code itself is never stored.</summary>
     [Required, MaxLength(SiteConnectionTokens.HashLength)]
     public string CodeHash { get; set; } = string.Empty;
 
-    /// <summary>The PKCE challenge of the plugin: base64url of the SHA-256 of its verifier (method <c>S256</c> only).</summary>
     [Required, MaxLength(SiteConnectionRules.CodeChallengeLength)]
     public string CodeChallenge { get; set; } = string.Empty;
 
-    /// <summary>UTC. <see cref="SiteConnectionRules.CodeLifetime"/> after the creation.</summary>
     public DateTime ExpiresAt { get; set; }
 
-    /// <summary>UTC when the code was spent (exchanged or tried); <c>null</c> while it was never presented.</summary>
     public DateTime? UsedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

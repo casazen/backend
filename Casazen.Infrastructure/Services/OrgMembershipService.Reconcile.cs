@@ -44,13 +44,10 @@ public sealed partial class OrgMembershipService
         ex is DbUpdateConcurrencyException
         || ex is DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected } };
 
-    /// <summary>A user of a host org, as the reconcile reads it.</summary>
     private sealed record HostUser(string Id, Guid OrgId, UserRole Role);
 
     private async Task<OrgMembershipReconcileReport> RunReconcileAsync(bool dryRun, CancellationToken cancellationToken)
     {
-        // One run at a time; everything below is staged in the change tracker and saved once at the end (one
-        // transaction), or dropped by a dry run.
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, cancellationToken, (PostgresAdvisoryLocks.Scope.OrgMembershipMaintenance, "reconcile"));
 
@@ -60,12 +57,9 @@ public sealed partial class OrgMembershipService
 
         var roleIds = await LoadRoleIdsAsync(cancellationToken);
 
-        // IgnoreQueryFilters: the command acts on every org, whatever the tenant of the admin who runs it.
         var members = await db.OrgMembers.IgnoreQueryFilters().ToListAsync(cancellationToken);
         var memberByUser = members.ToDictionary(m => m.UserId, StringComparer.Ordinal);
 
-        // ── 1. The owner of every host org that has no org member ────────────────────────────────────────────────
-        // Only a Host org: a supplier org may hold several accounts and is no org team (PL-05).
         var hostUsers = await db.Users.AsNoTracking()
             .Where(u => u.OrgId != null && u.Org!.OrgType == OrgType.Host)
             .Select(u => new HostUser(u.Id, u.OrgId!.Value, u.Role))
@@ -92,7 +86,6 @@ public sealed partial class OrgMembershipService
 
             if (candidates.Count > 1)
             {
-                // Several people look like the owner: which one is it is a decision, never a guess.
                 var ids = candidates.Select(u => u.Id).Order(StringComparer.Ordinal).ToList();
                 issues.Add(new OrgMembershipIssue(
                     OrgMembershipReconcileCodes.OwnerAmbiguous,
@@ -135,7 +128,6 @@ public sealed partial class OrgMembershipService
                 OrgMembershipReconcileCodes.SeveralOwners, org.Key, ids, $"{ids.Count} org members of the org are owners."));
         }
 
-        // ── 2. The memberships follow the org roles ─────────────────────────────────────────────────────────────
         var memberUserIds = memberByUser.Keys.ToList();
         var userOrgs = (await db.Users.AsNoTracking()
                 .Where(u => memberUserIds.Contains(u.Id))
@@ -152,7 +144,6 @@ public sealed partial class OrgMembershipService
         {
             if (userOrgs.GetValueOrDefault(member.UserId) != member.OrgId)
             {
-                // The user's org is the one of the request: a member of another org than its user's is a decision.
                 issues.Add(new OrgMembershipIssue(
                     OrgMembershipReconcileCodes.OrgMismatch,
                     member.OrgId,
@@ -171,7 +162,6 @@ public sealed partial class OrgMembershipService
 
             if (member.Role == OrgRole.Owner)
             {
-                // The owner's rental rows come from the onboarding: kept as they are, only reported when there are none.
                 if (rentalRows.Count == 0)
                 {
                     issues.Add(new OrgMembershipIssue(
@@ -183,7 +173,6 @@ public sealed partial class OrgMembershipService
             }
             else
             {
-                // The areas are the rental contexts the member already works in: only the role key of each is aligned.
                 foreach (var row in rentalRows)
                 {
                     desired.Add(new ProjectedRole(row.ContextKey, OrgRoleCatalog.HostRoleKey(member.Role, row.ContextKey)));
@@ -207,7 +196,6 @@ public sealed partial class OrgMembershipService
             }
         }
 
-        // An account membership belongs to an org member: one left without it is a leftover (the member was removed).
         foreach (var leftover in memberships.Where(m => AccountContext.IsAccountContext(m.ContextKey) && !memberByUser.ContainsKey(m.UserId)))
         {
             db.UserContextMemberships.Remove(leftover);
@@ -219,7 +207,6 @@ public sealed partial class OrgMembershipService
             touchedUsers.Add(leftover.UserId);
         }
 
-        // ── 3. Save, or drop the plan ────────────────────────────────────────────────────────────────────────────
         if (dryRun)
         {
             db.ChangeTracker.Clear();

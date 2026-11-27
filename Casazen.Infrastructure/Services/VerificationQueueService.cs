@@ -42,19 +42,12 @@ public class VerificationQueueService(
     IGuestEmailBrandingProvider? emailBranding = null,
     IdentityReviewEvidenceStore? reviewEvidence = null) : IVerificationQueueService
 {
-    /// <summary>The model name of an operator row when no automatic outcome came before it (a refused consent, a request of the guest).</summary>
     internal const string OperatorModelName = "operator";
 
-    /// <summary>The model version of an operator row when no automatic outcome came before it.</summary>
     internal const string OperatorModelVersion = "n/a";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>
-    /// Get bookings needing manual verification within the host's scope (AC-NF12-3).
-    /// A booking needs verification when its session went to the operator (E03/F04/US02/T03: a request of the guest, a refused consent, a
-    /// review, the attempts used; before it: BiometricOutcome Escalate or 3 attempts) and no operator decided it yet.
-    /// </summary>
     public async Task<IReadOnlyList<PendingVerification>> GetPendingVerificationsAsync(
         string userId,
         HostScope scope,
@@ -80,12 +73,10 @@ public class VerificationQueueService(
                         SessionCreatedAt = session.CreatedAt,
                     };
 
-        // AC-NF12-3: the sessions are the ones of the bookings of the caller scope (InScope handles the scope shapes)
         var found = await query
             .OrderBy(v => v.CheckInDate)
             .ToListAsync(cancellationToken);
 
-        // One entry for each booking: when a new link replaced the session that handed the verification over, the latest session says it.
         var results = found
             .GroupBy(v => v.Id)
             .Select(g => g.OrderByDescending(v => v.SessionCreatedAt).First())
@@ -101,7 +92,6 @@ public class VerificationQueueService(
             .GroupBy(l => l.BookingId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.CreatedAt).First());
 
-        // E73/F01/US02/T02: the evidence kept for the reviewer, counted per booking (none while the evidence is off).
         var evidence = reviewEvidence is null
             ? new Dictionary<Guid, PendingEvidenceSummary>()
             : await reviewEvidence.SummariesAsync(scope.OrgId, bookingIds, cancellationToken);
@@ -131,10 +121,6 @@ public class VerificationQueueService(
         }).ToList();
     }
 
-    /// <summary>
-    /// Request a new selfie from the guest by sending an email with a check-in link (AC-NF12-5).
-    /// Returns false when the booking has no active session or the guest has no email.
-    /// </summary>
     public async Task<bool> RequestNewPhotoAsync(
         Guid bookingId,
         HostScope scope,
@@ -177,7 +163,6 @@ public class VerificationQueueService(
         if (requestLock is null)
             throw new DomainConflictException("verification_photo_request_in_progress", "ConflictDetail");
 
-        // A repeat of a completed request must not invalidate the link already in the guest's mailbox.
         var now = UtcNow();
         if (await VerificationHandOff.AwaitingReplacementPhoto(db, scope.OrgId).ContainsAsync(bookingId, cancellationToken)
             && await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == bookingId && s.ExpiresAt > now
@@ -188,7 +173,6 @@ public class VerificationQueueService(
             .OrderByDescending(s => s.CreatedAt).FirstOrDefaultAsync(cancellationToken);
         var withOperator = pending is not null || await VerificationHandOff.IsWithOperatorAsync(db, bookingId, cancellationToken);
 
-        // Replacing a legacy escalated link must not remove the hand-off if the email queue refuses the request.
         if (pending is { OperatorRequestedAt: null })
         {
             pending.OperatorRequestedAt = pending.CreatedAt;
@@ -205,7 +189,6 @@ public class VerificationQueueService(
         var propertyName = booking.Property.Name;
         var culture = EmailTemplates.DefaultCulture;
 
-        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
         var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
         var email = EmailTemplates.GuestNewPhotoRequest(
             culture,
@@ -279,14 +262,12 @@ public class VerificationQueueService(
         var guest = booking.Guest;
         if (string.IsNullOrWhiteSpace(guest.Email))
         {
-            // Nobody to e-mail: the operator is told, and the "To do" says where else to reach the guest (the chat of the portal the booking came from).
             await UpdateTodoAsync(session.OrgId, bookingId, "TodoReason_IdentityVerificationUseChat", null, null, cancellationToken);
             logger.LogInformation("Video call for booking {BookingId} not sent: the guest has no e-mail address, the portal chat is suggested", bookingId);
             return VideoCallOutcome.GuestUnreachable;
         }
 
         var culture = GuestLanguages.CultureOf(GuestLanguages.Resolve(session.Language, null));
-        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
         var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
         var email = EmailTemplates.GuestVideoCall(
             culture,
@@ -301,8 +282,6 @@ public class VerificationQueueService(
             return VideoCallOutcome.NotSent;
         }
 
-        // Only that a call was proposed, and when, in the words of the org's language: not the link (it is in the e-mail), and not who proposed it (the id of
-        // an operator says nothing to the person who reads the "To do"; the log of the application keeps the operator).
         var proposedAt = UtcNow().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
         await UpdateTodoAsync(
             session.OrgId,
@@ -315,11 +294,6 @@ public class VerificationQueueService(
         return VideoCallOutcome.Sent;
     }
 
-    /// <summary>
-    /// What the open "To do" of the verification of the booking says after a video call was proposed, or could not be (the guest has no e-mail address): its
-    /// reason, in the language of the org, and, when there is a <paramref name="noteKey"/>, a line of the same language added to its notes (the newest 2000
-    /// characters are kept) with <paramref name="noteValue"/> in it. Nothing when no "To do" is open.
-    /// </summary>
     private async Task UpdateTodoAsync(
         Guid orgId,
         Guid bookingId,
@@ -397,8 +371,6 @@ public class VerificationQueueService(
         session.UpdatedAt = now;
         await AddOperatorLogAsync(session, decided, operatorUserId, note, now, cancellationToken);
 
-        // E20/F01/US01/T01: an approval is announced on the bus in the same save as its row of the log (ids and the method, nothing else): an org that
-        // lets CasaZen write the guests to the channel manager on their own learns that the identity of the stay is verified. A rejection is not one.
         if (outcome)
         {
             domainEvents?.Record(
@@ -408,7 +380,6 @@ public class VerificationQueueService(
                 orgId: session.OrgId);
         }
 
-        // The decision first: the gate of the code reads the latest row of the log from the database.
         await db.SaveChangesAsync(cancellationToken);
         await DeleteEvidenceOfTheDecisionAsync(session.OrgId, bookingId);
         await CloseTodoAsync(session.OrgId, bookingId, operatorUserId, cancellationToken);
@@ -423,10 +394,6 @@ public class VerificationQueueService(
         return true;
     }
 
-    /// <summary>
-    /// Reject the guest's check-in with a reason (AC-NF12-7).
-    /// Marks the verification as rejected and prevents further attempts; logged as an operator decision (E03/F04/US02/T03). No code is released.
-    /// </summary>
     public async Task<bool> RejectVerificationAsync(
         Guid bookingId,
         HostScope scope,
@@ -454,14 +421,13 @@ public class VerificationQueueService(
         var now = UtcNow();
         session.BiometricOutcome = BiometricOutcome.Reject;
         session.UpdatedAt = now;
-        session.Status = GuestCheckInSessionStatus.Scaduto; // Expire the session to prevent further attempts
+        session.Status = GuestCheckInSessionStatus.Scaduto;
         await AddOperatorLogAsync(session, BiometricOutcome.Reject, operatorUserId, reason, now, cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
         await DeleteEvidenceOfTheDecisionAsync(session.OrgId, bookingId);
         await CloseTodoAsync(session.OrgId, bookingId, operatorUserId, cancellationToken);
 
-        // The reason is the operator's free text: it is in the log row, never in the application log.
         logger.LogInformation("Verification rejected for booking {BookingId}", bookingId);
 
         return true;
@@ -475,7 +441,6 @@ public class VerificationQueueService(
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        // The bookings the caller reaches, in SQL (InScope): a collaborator «Solo alcuni» never counts the stays of another property.
         var bookings = db.Bookings.InScope(scope);
         var counts = await db.BiometricVerificationLogs
             .AsNoTracking()
@@ -494,7 +459,6 @@ public class VerificationQueueService(
         var review = Count(VerificationMethod.Biometric, BiometricOutcome.Escalate);
         var notOk = Count(VerificationMethod.Biometric, BiometricOutcome.Reject);
         var approved = Count(VerificationMethod.Operator, BiometricOutcome.Accept);
-        // Only a rejection is a decision: the operator row that asks the guest for a new photo (Escalate) is not one.
         var rejected = Count(VerificationMethod.Operator, BiometricOutcome.Reject);
         var concluded = ok + approved + rejected;
         var share = concluded == 0 ? 0 : Math.Round((double)(approved + rejected) / concluded, 4);
@@ -502,15 +466,8 @@ public class VerificationQueueService(
         return new VerificationMetrics(fromUtc, toUtc, ok, review, notOk, approved, rejected, share);
     }
 
-    /// <summary>
-    /// The check-in sessions of the bookings that the caller scope reaches (TN-3). The decision endpoints receive only
-    /// a booking id, so this is what stops a collaborator limited to some properties from acting on the guest of another
-    /// property of the same org.
-    /// </summary>
     private IQueryable<GuestCheckInSession> SessionsInScope(HostScope scope)
     {
-        // a query of its own, not InScope inside the lambda: InScope is not a LINQ operator, EF translates this as one EXISTS. The org of the
-        // scope is named too: an org-wide scope adds no filter of its own and must not lean on the tenant filter alone.
         var bookings = db.Bookings.InScope(scope);
         return db.GuestCheckInSessions.Where(s => s.OrgId == scope.OrgId && bookings.Any(b => b.Id == s.BookingId));
     }
@@ -527,11 +484,6 @@ public class VerificationQueueService(
             .Where(s => db.Bookings.Any(b => b.Id == s.BookingId && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null))
             .Unanswered(db);
 
-    /// <summary>
-    /// Stages the operator row that opens the way again (the operator asked the guest for a new photo while the booking was with the operator): it
-    /// is the latest row, so a rejection no longer holds, it settles the hand-off it answers, and it is <b>not a decision</b> (<c>Escalate</c>: the
-    /// gate of the code stays shut, the metrics do not count it). Saved at once, before the guest has a link to use.
-    /// </summary>
     private async Task AddReopenAsync(GuestCheckInSession session, string? operatorUserId, CancellationToken cancellationToken)
     {
         db.BiometricVerificationLogs.Add(new BiometricVerificationLog
@@ -553,10 +505,6 @@ public class VerificationQueueService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Stages the row of an operator's decision: who, the note, and the model, thresholds, reasons and provisional flag of the automatic outcome
-    /// it replaces (none when the guest went to the operator without one). Saved by the caller with the session.
-    /// </summary>
     private async Task AddOperatorLogAsync(
         GuestCheckInSession session,
         BiometricOutcome decided,
@@ -614,7 +562,6 @@ public class VerificationQueueService(
         }
     }
 
-    /// <summary>Closes the open "To do" of the verification of the booking (<see cref="ActivityType.IdentityVerification"/>): the decision resolves it.</summary>
     private async Task CloseTodoAsync(Guid orgId, Guid bookingId, string? operatorUserId, CancellationToken cancellationToken)
     {
         if (activities is null)
@@ -635,10 +582,6 @@ public class VerificationQueueService(
             await activities.CloseAsync(id, string.IsNullOrWhiteSpace(operatorUserId) ? InternalActivity.ClosedBySystem : operatorUserId, cancellationToken);
     }
 
-    /// <summary>
-    /// After an operator's approval: the lock code through the gate of <see cref="IAccessCodeService"/> (channel <c>operator</c>), e-mailed to the
-    /// guest in the language of the check-in page. No code set on the property: nothing is sent.
-    /// </summary>
     private async Task ReleaseCodeToGuestAsync(GuestCheckInSession session, CancellationToken cancellationToken)
     {
         if (accessCodes is null)
@@ -650,7 +593,6 @@ public class VerificationQueueService(
         var code = await accessCodes.ReleaseToGuestAsync(session.BookingId, AccessCodeReleaseChannels.Operator, cancellationToken);
         if (code is null)
         {
-            // Held back until the guest pays the tourist tax (E25/F01/US01/T01): nothing is e-mailed; the guest gets the code on the page once it is paid.
             if (await accessCodes.GetHoldReasonAsync(session.BookingId, cancellationToken) is { } hold)
                 logger.LogInformation("Booking {BookingId} approved by an operator: the lock code is held back ({Reason}) and not e-mailed", session.BookingId, hold);
             else
@@ -661,7 +603,6 @@ public class VerificationQueueService(
 
         var booking = session.Booking;
         var guest = booking.Guest;
-        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
         var branding = await emailBranding.ForOrgOrNullAsync(session.OrgId, cancellationToken);
         var email = EmailTemplates.GuestAccessCode(
             EmailTemplates.GuestAccessCodeCulture(session.Language),

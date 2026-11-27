@@ -37,17 +37,11 @@ namespace Casazen.Core.Suppliers;
 /// </remarks>
 public static class SupplierSlotPlanner
 {
-    /// <summary>The longest range <see cref="PlanRange"/> accepts, in days (a year and a leap day).</summary>
     public const int MaxRangeDays = 366;
 
-    /// <summary>The plan of one Europe/Rome day.</summary>
     public static SupplierDayPlan PlanDay(DateOnly day, SupplierPlanningInput input, SupplierSlotQuery query) =>
         PlanRange(day, day, input, query)[0];
 
-    /// <summary>
-    /// The plan of every Europe/Rome day from <paramref name="from"/> to <paramref name="to"/> (both included), in date
-    /// order. At most <see cref="MaxRangeDays"/> days.
-    /// </summary>
     public static IReadOnlyList<SupplierDayPlan> PlanRange(
         DateOnly from,
         DateOnly to,
@@ -84,7 +78,6 @@ public static class SupplierSlotPlanner
         var duration = TimeSpan.FromMinutes(context.Query.DurationMinutes);
         var step = TimeSpan.FromMinutes(context.Rules.SlotStepMinutes);
 
-        // Only what can touch this day: a stretch that ends before the day starts or starts after it ends cannot overlap a slot.
         var dayInterval = new SupplierInterval(dayStartUtc, dayEndUtc);
         var nearby = context.Widened
             .Where(interval => interval.Overlaps(dayInterval))
@@ -104,7 +97,6 @@ public static class SupplierSlotPlanner
         return new SupplierDayPlan(day, null, slots);
     }
 
-    /// <summary>The first reason the day has no slot, or <c>null</c> when it is open (it may still have no free slot).</summary>
     private static SupplierDayClosure? ClosureOf(DateOnly day, PlanningContext context)
     {
         if (day < context.Today)
@@ -145,8 +137,6 @@ public static class SupplierSlotPlanner
     /// </summary>
     internal static List<SupplierInterval> BandsOf(DateOnly day, PlanningContext context)
     {
-        // An urgent plan has one band a day, the supplier's urgent window (outside its working hours too): the weekly bands and the
-        // extra openings are not part of it.
         if (context.UrgentWindow is { } window)
         {
             var from = RomeCalendar.ToUtc(day, window.FromMinute);
@@ -183,10 +173,6 @@ public static class SupplierSlotPlanner
         return joined;
     }
 
-    /// <summary>
-    /// True when the slot <c>[start, end)</c> can take one more job: at no instant of it are there as many widened stretches
-    /// as the supplier can do at once. With a capacity of 1 that is "no stretch overlaps it". Internal for the conflict detector.
-    /// </summary>
     internal static bool HasRoom(DateTime start, DateTime end, IReadOnlyList<SupplierInterval> widened, int capacity)
     {
         var slot = new SupplierInterval(start, end);
@@ -194,8 +180,6 @@ public static class SupplierSlotPlanner
         if (overlapping.Count < capacity)
             return true;
 
-        // The number of stretches that overlap a given instant only goes up where one starts: look at the start of the slot
-        // and at the start of every stretch inside it.
         foreach (var instant in overlapping.Select(interval => interval.StartUtc > start ? interval.StartUtc : start).Distinct())
         {
             var concurrent = overlapping.Count(interval => interval.StartUtc <= instant && instant < interval.EndUtc);
@@ -206,11 +190,6 @@ public static class SupplierSlotPlanner
         return true;
     }
 
-    /// <summary>
-    /// The input of a plan, indexed once for all its days. Internal: the conflict detector builds the same context (the supplier's
-    /// rules, hours, time off, closed days and what takes the time, with the same pause and the same lapsed holds) and asks it the
-    /// same questions, so the two read the agenda the same way.
-    /// </summary>
     internal sealed class PlanningContext
     {
         private readonly ILookup<DayOfWeek, SupplierWeeklyBand> _weekly;
@@ -229,9 +208,6 @@ public static class SupplierSlotPlanner
             var nowUtc = UtcDateTime.Normalize(input.NowUtc);
             Today = DateOnly.FromDateTime(RomeCalendar.TodayAt(new DateTimeOffset(nowUtc)));
 
-            // An urgent plan (SP-04c): the supplier's urgent window in place of its hours, a fixed notice of 30 minutes (not the
-            // supplier's or the service's), today and tomorrow only. A supplier that does not accept urgent requests, or whose window
-            // has no length, has no urgent slot: every day is closed (UrgentNotOffered).
             IsUrgent = query.Urgent;
             if (IsUrgent)
             {
@@ -256,7 +232,6 @@ public static class SupplierSlotPlanner
             var widened = new List<SupplierInterval>();
             foreach (var occupancy in input.Occupancies)
             {
-                // A hold that lapsed no longer holds a place (the planner is given the instant it is judged at).
                 if (!occupancy.IsLive(nowUtc))
                     continue;
 
@@ -283,31 +258,22 @@ public static class SupplierSlotPlanner
 
         public IReadOnlySet<DateOnly> ClosedDays { get; }
 
-        /// <summary>The pause kept before and after everything that takes the supplier's time (never negative).</summary>
         public TimeSpan Buffer { get; }
 
-        /// <summary>How many jobs the supplier can do at once (at least 1).</summary>
         public int Capacity { get; }
 
-        /// <summary>Today in Europe/Rome.</summary>
         public DateOnly Today { get; }
 
-        /// <summary>The earliest instant a slot may start: now plus the notice (30 minutes for an urgent plan).</summary>
         public DateTime EarliestStartUtc { get; }
 
-        /// <summary>True for a plan of urgent slots (<see cref="SupplierSlotQuery.Urgent"/>).</summary>
         public bool IsUrgent { get; }
 
-        /// <summary>The urgent window of the supplier, when the plan is urgent and the supplier accepts urgent requests; else <c>null</c>.</summary>
         public SupplierUrgentSettings? UrgentWindow { get; }
 
-        /// <summary>True for a plan of urgent slots of a supplier that does not accept urgent requests: no day has a slot.</summary>
         public bool UrgentNotOffered => IsUrgent && UrgentWindow is null;
 
-        /// <summary>How many days after today a day can still be booked: the supplier's horizon, and today plus one for an urgent plan.</summary>
         public int HorizonDays { get; }
 
-        /// <summary>What takes the supplier's time, each stretch widened by the buffer on both sides.</summary>
         public IReadOnlyList<SupplierInterval> Widened { get; }
 
         public IEnumerable<SupplierWeeklyBand> WeeklyBands(DayOfWeek weekday) => _weekly[weekday];
@@ -319,13 +285,10 @@ public static class SupplierSlotPlanner
 
         public int JobsOn(DateOnly day) => _jobsByDay.GetValueOrDefault(day);
 
-        /// <summary>True when the day already holds as many jobs as the supplier takes at most in a day (<c>MaxJobsPerDay</c>).</summary>
         public bool IsDayFull(DateOnly day) => JobsOn(day) >= Rules.MaxJobsPerDay;
 
-        /// <summary>True when the supplier is off that day (a time off covers it).</summary>
         public bool IsOnTimeOff(DateOnly day) => TimeOff.Any(range => range.From <= day && day <= range.To);
 
-        /// <summary>True when the day is closed by hand or by the calendar feed.</summary>
         public bool IsClosedDay(DateOnly day) => ClosedDays.Contains(day);
     }
 }

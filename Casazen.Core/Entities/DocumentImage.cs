@@ -16,7 +16,6 @@ public class DocumentImage : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key (AC2). Inherited from the booking's property; never client-supplied.</summary>
     public Guid OrgId { get; set; }
     public virtual Org Org { get; set; } = null!;
 
@@ -36,16 +35,10 @@ public class DocumentImage : ITenantOwned
     [Required]
     public string FrontImageUrl { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Encrypted URL to the back of the identity document in private storage (ADR-009-R21).
-    /// Nullable for documents with single-sided content. Encrypted at rest with purpose DocumentImagePurpose.
-    /// </summary>
     public string? BackImageUrl { get; set; }
 
-    /// <summary>When the document images were uploaded by the guest (UTC).</summary>
     public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>When OCR/MRZ extraction completed (UTC). Null while processing or never processed.</summary>
     public DateTime? ProcessedAt { get; set; }
 
     /// <summary>

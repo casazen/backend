@@ -48,8 +48,6 @@ public sealed class HostServiceRequestReader(
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        // A page that is not full is the last one and says how many there are: no second statement. A full page, or one past the
-        // end, does not, and the count is asked.
         var isLastPage = items.Count < pageSize && (items.Count > 0 || skipped == 0);
         var total = isLastPage ? skipped + items.Count : await rows.CountAsync(cancellationToken);
 
@@ -64,7 +62,6 @@ public sealed class HostServiceRequestReader(
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(query);
 
-        // One group for the whole set: COUNT(*) and a COUNT(*) FILTER per chip, the chips being the very predicates of the list.
         var counts = await Filter(Rows(scope), query)
             .GroupBy(_ => 1)
             .Select(CountsSelector())
@@ -79,17 +76,12 @@ public sealed class HostServiceRequestReader(
     {
         ArgumentNullException.ThrowIfNull(requests);
 
-        // The org is a predicate of the reads below; here a request of another org, or one of a showcase, is dropped from the answer.
         var own = requests
             .Where(r => r.OrgId == hostOrgId && r.RentalContext == ServiceRequestRentalContext.ShortRent)
             .ToList();
         return DescribeCoreAsync(hostOrgId, own, cancellationToken);
     }
 
-    /// <summary>
-    /// The short-rent requests of the host org that are on a property of the scope. A request of a showcase has none. Never a backup supplier's
-    /// request of a group (SP-BKP): the host follows the request it made, or the backup that took the job, and the group is inside it.
-    /// </summary>
     private IQueryable<ServiceRequest> Rows(HostScope scope) =>
         db.ServiceRequests
             .AsNoTracking()
@@ -98,7 +90,6 @@ public sealed class HostServiceRequestReader(
             .OnlyVisibleToHost()
             .InScope(scope);
 
-    // The filters of the query but the chip, which the list adds and the counters of the chips replace.
     private static IQueryable<ServiceRequest> Filter(IQueryable<ServiceRequest> rows, HostServiceRequestQuery query)
     {
         if (query.Status is { } status)
@@ -112,8 +103,6 @@ public sealed class HostServiceRequestReader(
         if (query.Category is { } category)
             rows = rows.Where(r => r.Category == category);
 
-        // The day of the work: its scheduled time or, for a request that has none, the day it was made. Europe/Rome days, both ends
-        // included; the last day the calendar has is no upper bound (the day after it cannot be written).
         if (query.From is { } from)
         {
             var first = RomeCalendar.StartOfDayUtc(from);
@@ -129,8 +118,6 @@ public sealed class HostServiceRequestReader(
         return query.Text is { Length: > 0 } text ? Match(rows, text) : rows;
     }
 
-    // The text of the search: the name of the property, the supplier, the service, or the category (its code or its label in Italian and
-    // in English). Not the notes, not the guest.
     private static IQueryable<ServiceRequest> Match(IQueryable<ServiceRequest> rows, string text)
     {
         var term = text.ToLowerInvariant();
@@ -143,15 +130,12 @@ public sealed class HostServiceRequestReader(
             || categories.Contains(r.Category));
     }
 
-    // The orders of the list. Without one: the newest request first, as the list always was. The id closes every order, so a page
-    // boundary never repeats or skips a request.
     private static IOrderedQueryable<ServiceRequest> Order(IQueryable<ServiceRequest> rows, HostServiceRequestSort? sort)
     {
         var descending = sort?.Descending ?? true;
         switch (sort?.Key ?? HostServiceRequestSortKey.Created)
         {
             case HostServiceRequestSortKey.Scheduled:
-                // The requests with no time are last in either direction.
                 var byTime = rows.OrderBy(r => r.ScheduledStartUtc == null);
                 return (descending
                         ? byTime.ThenByDescending(r => r.ScheduledStartUtc)
@@ -160,7 +144,6 @@ public sealed class HostServiceRequestReader(
                     .ThenBy(r => r.Id);
 
             case HostServiceRequestSortKey.Status:
-                // What asks something of the host comes first (last when reversed), then the status in the order of the work.
                 var needsHost = HostServiceRequestTodoRules.NeedTheHost();
                 var rank = HostServiceRequestListRules.StatusRank();
                 var byStatus = descending
@@ -180,8 +163,6 @@ public sealed class HostServiceRequestReader(
         }
     }
 
-    // g => new HostServiceRequestCounts(g.Count(), g.Count(chip 1), ...): built from the predicates of the chips, so the counters and the
-    // lists of the chips cannot disagree. EF turns each Count(predicate) into a COUNT(*) FILTER (WHERE ...).
     private static Expression<Func<IGrouping<int, ServiceRequest>, HostServiceRequestCounts>> CountsSelector()
     {
         var group = Expression.Parameter(typeof(IGrouping<int, ServiceRequest>), "g");
@@ -207,7 +188,6 @@ public sealed class HostServiceRequestReader(
         return Expression.Lambda<Func<IGrouping<int, ServiceRequest>, HostServiceRequestCounts>>(body, group);
     }
 
-    // The extras of requests already read: the stays and the contacts of the supplier, one statement each for all of them.
     private async Task<IReadOnlyDictionary<Guid, HostServiceRequestExtras>> DescribeCoreAsync(
         Guid hostOrgId,
         IReadOnlyCollection<ServiceRequest> requests,
@@ -226,7 +206,6 @@ public sealed class HostServiceRequestReader(
             r => new HostServiceRequestExtras(
                 string.IsNullOrWhiteSpace(r.Property?.City) ? null : r.Property.City,
                 r.BookingId is { } bookingId && stays.TryGetValue(bookingId, out var stay) ? stay : null,
-                // The contact is given from the moment the supplier took the request, and never before.
                 r.TakenAt is not null && contacts.TryGetValue(r.SupplierOrgId, out var contact) ? contact : null,
                 HostServiceRequestActions.Of(
                     new HostRequestFacts(r.Status, r.ProposedStartUtc != null, r.FinalAmountNeedsConfirmation, r.PaymentMode, r.LastRemindedAt),
@@ -234,7 +213,6 @@ public sealed class HostServiceRequestReader(
                     remindIntervalHours)));
     }
 
-    // The stays of the requests, in the host org only. Bookings and guests are tenant-filtered; the explicit org is the predicate here.
     private async Task<Dictionary<Guid, HostRequestStay>> StaysAsync(
         Guid hostOrgId,
         IReadOnlyCollection<ServiceRequest> requests,
@@ -260,8 +238,6 @@ public sealed class HostServiceRequestReader(
                 DateOnly.FromDateTime(b.CheckOutDate)));
     }
 
-    // The phone and the e-mail of the suppliers that took a request of the page. SupplierProfile is keyed by the supplier org and not
-    // tenant-filtered; only the requests that were taken ask for it, and only these two columns are read.
     private async Task<Dictionary<Guid, HostRequestSupplierContact>> ContactsAsync(
         IReadOnlyCollection<ServiceRequest> requests,
         CancellationToken cancellationToken)
@@ -304,7 +280,6 @@ internal static class ServiceCategoryText
             .ToArray(),
         LazyThreadSafetyMode.PublicationOnly);
 
-    /// <summary>The codes of the categories one of whose words contains <paramref name="lowerTerm"/> (already lower case).</summary>
     public static string[] CodesMatching(string lowerTerm) =>
         Words.Value
             .Where(category => category.Words.Any(word => word.Contains(lowerTerm, StringComparison.Ordinal)))

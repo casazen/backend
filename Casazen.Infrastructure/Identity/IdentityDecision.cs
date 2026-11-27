@@ -6,26 +6,20 @@ namespace Casazen.Infrastructure.Identity;
 // E73/F01/US01/T01 (NF-194, ADR-013-R18, R19, decision D8): what the decision engine answers. There is NO reject: the outcomes of the policy are the automatic approval, one guided
 // retry for a correctable defect, or the review of a person with the reasons. The defaults of both enums are the review, so a decision that was never filled in fails closed.
 
-/// <summary>The outcome of an attempt (D8). There is no rejection: what the policy cannot approve goes to a person.</summary>
 public enum IdentityFinalDecision
 {
-    /// <summary>A person reviews the verification with the reasons of the decision. The default: a decision never filled in is a review.</summary>
     Review = 0,
 
     /// <summary>Every failure is correctable and the guided retry of the policy is still available: the guest records again, guided by the codes of the decision.</summary>
     GuidedRetry = 1,
 
-    /// <summary>Every check passed and the segment allows the automatic approval: the guest is approved.</summary>
     AutoApproved = 2,
 }
 
-/// <summary>What the policy would have decided, recorded as the shadow outcome of the log row while a person decides (observation, ADR-013-R19). No rejection either.</summary>
 public enum IdentityShadowDecision
 {
-    /// <summary>The policy would not approve. The default.</summary>
     Review = 0,
 
-    /// <summary>The policy would approve: every check passed and the similarity reaches the acceptance of the policy.</summary>
     Approve = 1,
 }
 

@@ -8,11 +8,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.External;
 
-/// <summary>
-/// Web search through the DeepSeek Anthropic-compatible endpoint (AI supplier discovery, behind
-/// <c>Features:AiSupplierDiscovery</c>). Every call goes through the platform AI budget: reserved before the request
-/// (<see cref="AiBudgetExceededException"/> when it does not fit), settled with the reported <c>usage</c>.
-/// </summary>
 public class DeepSeekWebSearchClient(
     IHttpClientFactory httpClientFactory,
     IAiRuntimeSettings settings,
@@ -22,7 +17,6 @@ public class DeepSeekWebSearchClient(
     public async Task<string?> SearchAsync(string query, CancellationToken cancellationToken = default)
     {
         var config = await settings.GetEffectiveAsync(cancellationToken);
-        // The web search speaks DeepSeek's Anthropic-compatible endpoint only. Another chat provider does not receive it.
         if (!string.Equals(config.Provider, AiOptions.DeepSeekProvider, StringComparison.OrdinalIgnoreCase)
             || string.IsNullOrWhiteSpace(config.ApiKey))
         {
@@ -30,7 +24,6 @@ public class DeepSeekWebSearchClient(
             return null;
         }
 
-        // FD-21 (PO 2026-10-08): scrub PII from every query before sending to DeepSeek web search.
         query = PiiScrubber.Scrub(query);
 
         var baseUrl = config.AnthropicBaseUrl.TrimEnd('/');
@@ -42,7 +35,6 @@ public class DeepSeekWebSearchClient(
             tools = new[] { new { type = "web_search_20250305", name = "web_search" } },
         };
 
-        // Before the request: a search that does not fit the monthly budget is never sent.
         var reservation = await budget.ReserveAsync(
             AiTokenEstimator.EstimateCall(query, config.WebSearchMaxTokens),
             cancellationToken);
@@ -72,7 +64,6 @@ public class DeepSeekWebSearchClient(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The query is built from the property's city and a fixed category: no personal data in this log.
             logger.LogWarning(ex, "DeepSeek web search failed for query {Query}", query);
             return null;
         }
@@ -82,7 +73,6 @@ public class DeepSeekWebSearchClient(
         }
     }
 
-    /// <summary><c>usage.input_tokens</c> / <c>usage.output_tokens</c> of an Anthropic-format response, (0, 0) when absent.</summary>
     public static (int InputTokens, int OutputTokens) ExtractUsage(string json)
     {
         using var doc = JsonDocument.Parse(json);

@@ -36,7 +36,6 @@ public partial class ServiceRequestService : IServiceRequestThreadActions
     {
         var text = ShowcaseInquiryRules.Message(body, [], minLength: 1) ?? throw ServiceRequestThreadErrors.InvalidMessage();
 
-        // The same 404 for a request of another supplier, a host's request, a booking and one that does not exist.
         var isCustomOfSupplier = await db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -69,7 +68,6 @@ public partial class ServiceRequestService : IServiceRequestThreadActions
     {
         var text = ShowcaseInquiryRules.Message(body, [], minLength: 1) ?? throw ServiceRequestThreadErrors.InvalidMessage();
 
-        // The caller has proved who is asking; a request that is not a request on measure of that supplier is the 404 of the customer's area.
         var request = await repository.GetByIdAsync(id, cancellationToken);
         if (request is null
             || request.RentalContext != ServiceRequestRentalContext.Showcase
@@ -82,7 +80,6 @@ public partial class ServiceRequestService : IServiceRequestThreadActions
         if (!ServiceRequestThreadRules.IsOpen(request.Status))
             throw ServiceRequestThreadErrors.ThreadClosed();
 
-        // A supplier that is not active answers nobody: the customer is told so, as for every other action on its request.
         if (await ReadSupplierStatusAsync(supplierOrgId, cancellationToken) != SupplierStatus.Active)
             throw ShowcaseBookingErrors.InactiveSupplier();
 
@@ -97,11 +94,6 @@ public partial class ServiceRequestService : IServiceRequestThreadActions
         return ToMessageView(message);
     }
 
-    /// <summary>
-    /// The thread of a request on measure as <paramref name="reader"/> reads it. The messages the other parties wrote and the reader had not
-    /// read are marked read; the answer shows each message as it was before this reading, so the screen can tell the new ones, and the next
-    /// reading shows them read. <paramref name="notFound"/> makes the exception for a request that is not a request on measure of this supplier.
-    /// </summary>
     private async Task<ServiceRequestThread> ReadThreadAsync(
         Guid id,
         Guid supplierOrgId,
@@ -109,8 +101,6 @@ public partial class ServiceRequestService : IServiceRequestThreadActions
         Func<Exception> notFound,
         CancellationToken cancellationToken)
     {
-        // The columns of the offer and the trace of the quotes are read for the supplier only: the customer reads its offer in its own area, with
-        // the statement that keeps these columns out of it (ShowcaseBookingManager.RowsOf).
         var forSupplier = reader == ServiceRequestMessageAuthor.Supplier;
         var request = await db.ServiceRequests
             .IgnoreQueryFilters()
@@ -136,7 +126,6 @@ public partial class ServiceRequestService : IServiceRequestThreadActions
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw notFound();
 
-        // Tracked: what the others wrote and the reader had not read is marked read below, on these rows.
         var messages = await db.ServiceRequestMessages
             .Where(m => m.OrgId == supplierOrgId && m.ServiceRequestId == id)
             .OrderBy(m => m.CreatedAt)
@@ -157,7 +146,6 @@ public partial class ServiceRequestService : IServiceRequestThreadActions
         var supplierActive = await ReadSupplierStatusAsync(supplierOrgId, cancellationToken) == SupplierStatus.Active;
         var canWrite = ServiceRequestThreadRules.IsOpen(request.Status) && supplierActive;
 
-        // What only the supplier's reading adds (SP-10b-b): the offer that waits, where the negotiation is, and whether it may send an offer.
         ServiceRequestOffer? offer = null;
         string? negotiation = null;
         if (forSupplier)
@@ -225,8 +213,6 @@ public partial class ServiceRequestService : IServiceRequestThreadActions
 
         request.UpdatedAt = now;
 
-        // The first reply of the supplier stops the hour it has to answer. While an offer waits the clock is the customer's (the time it has to
-        // answer the offer, SP-10b-b): a line the supplier writes beside its offer must not stop it, or the offer would never lapse.
         if (author == ServiceRequestMessageAuthor.Supplier && request.Status == ServiceRequestStatus.Richiesto && request.QuoteSentAt is null)
             request.ResponseDueAt = null;
 
@@ -237,10 +223,6 @@ public partial class ServiceRequestService : IServiceRequestThreadActions
     private static ServiceRequestMessageView ToMessageView(ServiceRequestMessage message) =>
         new(message.Id, message.Author, message.Body, message.CreatedAt, message.ReadAt);
 
-    /// <summary>
-    /// A request on measure is taken by accepting an offer, never by taking it or proposing a time on it: 422
-    /// <see cref="ServiceRequestThreadErrors.OfferNeeded"/> (SP-10b). The work, its price and its time are agreed inside CasaZen.
-    /// </summary>
     private static void EnsureNotOnMeasure(ServiceRequest request)
     {
         if (request.Kind == ServiceRequestKind.Custom)

@@ -2,10 +2,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Condominium;
 
-/// <summary>
-/// Default recoverability: ordinary is recoverable, extraordinary and unknown need review.
-/// Nothing in review, and nothing with confidence under 0.85, becomes a tenant charge.
-/// </summary>
 public static class ExpenseClassification
 {
     public const decimal ChargeConfidence = 0.85m;
@@ -55,10 +51,6 @@ public static class ExpenseClassification
             ? TenantRecoverability.Recoverable
             : TenantRecoverability.NeedsReview;
 
-    /// <summary>
-    /// A stored line becomes a tenant charge only when a person has accepted it, it is recoverable, and it is not an
-    /// uncertain extraordinary. <see cref="TenantRecoverability.NeedsReview"/> and confidence under 0.85 never charge.
-    /// </summary>
     public static bool ChargesStored(
         CondominiumExpenseNature nature,
         TenantRecoverability recoverability,

@@ -15,10 +15,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Platform admin management of suppliers and supplier invites (SU-12, A4-29). Every change and its audit entry are
-/// saved together. Who may call it is decided by the web layer (<c>AdminOnly</c>); the actor is only recorded.
-/// </summary>
 public sealed class SupplierAdminService(
     AppDbContext db,
     IEmailQueue emailQueue,
@@ -30,7 +26,6 @@ public sealed class SupplierAdminService(
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
-    /// <summary>Requests of a supplier that still wait for its work: the ones that count when suspending it.</summary>
     private static readonly ServiceRequestStatus[] OpenStatuses =
     [
         ServiceRequestStatus.Richiesto,
@@ -45,8 +40,6 @@ public sealed class SupplierAdminService(
         var page = Math.Max(query.Page, 1);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
 
-        // SupplierProfile is listed across every supplier org on purpose: this is the platform admin's view (the
-        // endpoint is AdminOnly), and the profile has no tenant filter (see the TN-2 allow-list).
         var profiles = db.SupplierProfiles.AsNoTracking().AsQueryable();
 
         if (query.Status is { } status)
@@ -90,7 +83,6 @@ public sealed class SupplierAdminService(
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(actorUserId);
-        // The API requires a reason of at most 500 characters (400 validation_error): a blank one is a bug here.
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
 
         var profile = await GetProfileOrThrowAsync(orgId, cancellationToken);
@@ -181,7 +173,6 @@ public sealed class SupplierAdminService(
             .Take(Math.Clamp(limit, 1, 200))
             .ToListAsync(cancellationToken);
 
-        // User is not tenant-filtered (identity table): the admin's name is read by the actor's own id.
         var actorIds = entries.Select(e => e.ActorUserId).Distinct().ToList();
         var actors = await db.Users.AsNoTracking()
             .Where(u => actorIds.Contains(u.Id))
@@ -211,7 +202,6 @@ public sealed class SupplierAdminService(
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
         var now = Now();
 
-        // Invites have no org: the admin lists them all (the endpoint is AdminOnly).
         var invites = db.SupplierInviteRecords.AsNoTracking().Where(i => i.IdentityReviewJson == null);
 
         if (query.State is { } state)
@@ -246,7 +236,6 @@ public sealed class SupplierAdminService(
                 SupplierAdminErrorCodes.InviteNotResendable, SupplierAdminErrorCodes.InviteNotResendableMessageKey);
         }
 
-        // Another pending invite for the email would leave two working links: the admin revokes or waits for it.
         var anotherPending = await db.SupplierInviteRecords.AsNoTracking()
             .Where(StatePredicate(SupplierInviteState.Pending, now))
             .AnyAsync(i => i.Id != inviteId && i.Email == invite.Email, cancellationToken);
@@ -264,12 +253,10 @@ public sealed class SupplierAdminService(
             throw new DomainConflictException("supplier_email_taken", "SupplierEmailTaken");
         }
 
-        // A new token: the one of the first email is only a hash, and the old link must stop working.
         var token = SupplierInviteTokens.Generate();
         invite.TokenHash = SupplierInviteTokens.Hash(token);
         invite.ExpiresAt = now.Add(SupplierInviteTokens.Validity);
 
-        // Rendered before saving: a missing App:PublicSiteBaseUrl is a configuration error, not an invite with a wrong link.
         var comuneName = await SupplierInviteEmails.ResolveComuneNameAsync(pilotComuni, comuneDirectory, invite.ComuneCode, cancellationToken);
         var email = SupplierInviteEmails.Build(publicSiteLinks, invite, token, comuneName);
 
@@ -320,8 +307,6 @@ public sealed class SupplierAdminService(
             "Supplier invite {InviteId} for {MaskedEmail} revoked by admin {ActorUserId}",
             invite.Id, LogRedaction.MaskEmail(invite.Email), actorUserId);
     }
-
-    // ─── helpers ───
 
     private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
 
@@ -386,7 +371,6 @@ public sealed class SupplierAdminService(
         invite.ExpiresAt,
         invite.RevokedAt);
 
-    /// <summary>The state of an invite at <paramref name="now"/>: the in-memory twin of <see cref="StatePredicate"/>.</summary>
     private static SupplierInviteState ToState(SupplierInviteRecord invite, DateTime now)
     {
         if (invite.IsUsed) return SupplierInviteState.Used;
@@ -394,10 +378,6 @@ public sealed class SupplierAdminService(
         return invite.TokenHash is null || invite.ExpiresAt <= now ? SupplierInviteState.Expired : SupplierInviteState.Pending;
     }
 
-    /// <summary>
-    /// The SQL form of <see cref="ToState"/>: an invite created before SU-01 has no token hash and can no longer be
-    /// accepted, so it counts as expired (it can be sent again).
-    /// </summary>
     private static Expression<Func<SupplierInviteRecord, bool>> StatePredicate(SupplierInviteState state, DateTime now) =>
         state switch
         {
@@ -409,10 +389,6 @@ public sealed class SupplierAdminService(
 
     internal const string LikeEscape = "\\";
 
-    /// <summary>
-    /// <c>%text%</c> with the LIKE wildcards of the text escaped, or null for no search: a search for <c>50%</c> or
-    /// <c>a_b</c> finds those characters, not everything.
-    /// </summary>
     internal static string? LikePattern(string? search)
     {
         var text = search?.Trim();

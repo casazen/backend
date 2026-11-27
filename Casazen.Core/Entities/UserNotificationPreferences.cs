@@ -25,24 +25,19 @@ public class UserNotificationPreferences : ITenantOwned
     /// <summary>The quiet hours end at 08:00 (Europe/Rome) unless the user chose otherwise.</summary>
     public static readonly TimeOnly DefaultQuietHoursEnd = new(8, 0);
 
-    /// <summary>Name of the unique index on <c>(OrgId, UserId)</c>: a 23505 on it means the row already exists.</summary>
     public const string OncePerUserIndexName = "UIX_UserNotificationPreferences_OrgId_UserId";
 
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row: the host org of the user. Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The user the preferences belong to (<c>User.Id</c>, the Auth0 subject). Foreign key with <c>ON DELETE CASCADE</c>.</summary>
     [Required, MaxLength(PopupAlert.UserIdMaxLength)]
     public string UserId { get; set; } = string.Empty;
 
-    /// <summary>When the quiet hours start, on the clock of Europe/Rome. Default 22:00.</summary>
     public TimeOnly QuietHoursStart { get; set; } = DefaultQuietHoursStart;
 
-    /// <summary>When the quiet hours end, on the clock of Europe/Rome. Default 08:00.</summary>
     public TimeOnly QuietHoursEnd { get; set; } = DefaultQuietHoursEnd;
 
     /// <summary>

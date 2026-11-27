@@ -22,15 +22,12 @@ namespace Casazen.Core.Entities;
 [Table("PropertyPois")]
 public class PropertyPoi : ITenantOwned
 {
-    /// <summary>At most this many points a property can list.</summary>
     public const int MaxPerProperty = 12;
 
     public const int NameMaxLength = 80;
 
-    /// <summary>Closest a point is stored and shown: nearer is stored as this.</summary>
     public const int MinDistanceMeters = 200;
 
-    /// <summary>Farthest a point is stored and shown (an airport two hours away is still «far»).</summary>
     public const int MaxDistanceMeters = 200_000;
 
     public const int MinMinutes = 1;
@@ -46,32 +43,24 @@ public class PropertyPoi : ITenantOwned
 
     public virtual Property Property { get; set; } = null!;
 
-    /// <summary>Tenant of the row, copied from <see cref="Property"/> when it is created (TN-2).</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>Order in the list of the page, 0 first; the host reorders them.</summary>
     public int Position { get; set; }
 
     public PoiKind Kind { get; set; }
 
-    /// <summary>What the guest reads, in Italian: «Spiaggia di Costa Merlata».</summary>
     [Required, MaxLength(NameMaxLength)]
     public string NameIt { get; set; } = string.Empty;
 
-    /// <summary>The same in English; null = the host wrote none and the page shows <see cref="NameIt"/>.</summary>
     [MaxLength(NameMaxLength)]
     public string? NameEn { get; set; }
 
-    /// <summary>How the <see cref="Minutes"/> are travelled.</summary>
     public PoiTravelMode Mode { get; set; }
 
-    /// <summary>Minutes to get there, <see cref="MinMinutes"/> to <see cref="MaxMinutes"/>.</summary>
     public int Minutes { get; set; }
 
-    /// <summary>Side of the compass the point lies on, seen from the house (never a bearing in degrees).</summary>
     public CompassPoint Direction { get; set; }
 
-    /// <summary>Distance in metres, already rounded when stored, <see cref="MinDistanceMeters"/> to <see cref="MaxDistanceMeters"/>.</summary>
     public int DistanceMeters { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

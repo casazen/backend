@@ -24,80 +24,54 @@ namespace Casazen.Core.Entities;
 [Table("AccountantPackageSettings")]
 public class AccountantPackageSettings : ITenantOwned
 {
-    /// <summary>Name of the unique index on <see cref="OrgId"/>: one row for each organization.</summary>
     public const string OrgIndexName = "UIX_AccountantPackageSettings_OrgId";
 
-    /// <summary>The longest address accepted (RFC 5321): the column is encrypted and has no length, so it is checked on input.</summary>
     public const int EmailMaxLength = 254;
 
-    /// <summary>Length of a period of the sends: <c>yyyy-MM</c>.</summary>
     public const int PeriodLength = 7;
 
-    /// <summary>Longest code of <see cref="LastSendError"/>.</summary>
     public const int SendErrorMaxLength = 60;
 
     public const int UpdatedByUserIdMaxLength = 255;
 
-    /// <summary>The first day of the month the package can be sent on.</summary>
     public const int MinSendDay = 1;
 
-    /// <summary>The last day of the month the package can be sent on: 28, so every month has the day.</summary>
     public const int MaxSendDay = 28;
 
-    /// <summary>The day of the month the package is sent on when the organization does not choose one.</summary>
     public const int DefaultSendDay = 3;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key (TN-2): the organization the settings are of. Unique.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>
-    /// The address the package is sent to (lower case, trimmed), encrypted at rest; <c>null</c> when the organization has none. Never <c>""</c>: an empty address is stored as <c>null</c>, so a query that asks
-    /// for a stored address asks for <c>IS NOT NULL</c> and never compares an encrypted column with a text.
-    /// </summary>
     public string? AccountantEmail { get; set; }
 
-    /// <summary>True when the package of the previous month is sent every month, from <see cref="SendDayOfMonth"/>. Off by default: nothing is sent to a third party until the organization says so.</summary>
     public bool MonthlySendEnabled { get; set; }
 
-    /// <summary>
-    /// The day of the month the send is due, <see cref="MinSendDay"/> to <see cref="MaxSendDay"/> (Europe/Rome). The job sends the previous month on the first run from that day on, until it is sent: a run that failed
-    /// or a service that was down on the day does not lose the month.
-    /// </summary>
     public int SendDayOfMonth { get; set; } = DefaultSendDay;
 
-    /// <summary>The folders of the package that is sent (<see cref="AccountantPackageFolders.All"/> by default; never empty). What the screens download does not depend on it.</summary>
     public AccountantPackageFolders Contents { get; set; } = AccountantPackageFolders.All;
 
-    /// <summary>The month (<c>yyyy-MM</c>) of the last send attempt; <c>null</c> before the first.</summary>
     [MaxLength(PeriodLength)]
     public string? LastSendPeriod { get; set; }
 
-    /// <summary>When the last attempt ended (UTC); <c>null</c> before the first.</summary>
     public DateTime? LastSendAt { get; set; }
 
-    /// <summary>What the last attempt ended in; <c>null</c> before the first.</summary>
     public AccountantPackageSendResult? LastSendResult { get; set; }
 
-    /// <summary>The stable code of why the last attempt failed (<c>package_too_large</c>, <c>link_not_configured</c>, <c>email_not_queued</c>...): never a message, an address or a name. <c>null</c> after a send.</summary>
     [MaxLength(SendErrorMaxLength)]
     public string? LastSendError { get; set; }
 
-    /// <summary>The month (<c>yyyy-MM</c>) of the package that waits in the private storage for the link of its e-mail; <c>null</c> when none does.</summary>
     [MaxLength(PeriodLength)]
     public string? StoredPackagePeriod { get; set; }
 
-    /// <summary>When that package was stored (UTC); the nightly run deletes it once its link has expired.</summary>
     public DateTime? StoredPackageAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>When the settings were last saved by a person (UTC); a send does not change it.</summary>
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>The user who saved the settings last (an id, never a name).</summary>
     [MaxLength(UpdatedByUserIdMaxLength)]
     public string? UpdatedByUserId { get; set; }
 }

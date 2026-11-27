@@ -27,10 +27,8 @@ public class Auth0ManagementService(
     IMemoryCache memoryCache,
     ILogger<Auth0ManagementService> logger) : IAuth0ManagementService
 {
-    /// <summary>How long the Auth0 role name → id map stays cached.</summary>
     public static readonly TimeSpan RoleIdCacheDuration = TimeSpan.FromHours(1);
 
-    // Map C# enum values to Auth0 role names that match the Auth0 Action output.
     private static readonly Dictionary<UserRole, string> RoleNames = new()
     {
         { UserRole.Admin,            "Admin" },
@@ -68,7 +66,6 @@ public class Auth0ManagementService(
         CancellationToken cancellationToken = default) =>
         ChangeRolesAsync(userId, roles, remove: true, cancellationToken);
 
-    /// <inheritdoc />
     public Task<Auth0SyncResult> SetBlockedAsync(
         string userId,
         bool blocked,
@@ -81,7 +78,6 @@ public class Auth0ManagementService(
                 ct),
             cancellationToken);
 
-    /// <inheritdoc />
     public Task<Auth0SyncResult> SetOwnerPortalClaimsAsync(
         string userId,
         Guid ownerUserId,
@@ -89,7 +85,6 @@ public class Auth0ManagementService(
         IReadOnlyCollection<Guid> propertyIds,
         CancellationToken cancellationToken = default)
     {
-        // app_metadata is merged key by key: the whole owner_portal object is replaced, nothing else of the account is touched.
         var claims = new Dictionary<string, object>
         {
             ["owner_portal"] = new Dictionary<string, object>
@@ -108,7 +103,6 @@ public class Auth0ManagementService(
             cancellationToken);
     }
 
-    /// <inheritdoc />
     public async Task<Auth0SyncResult> DeleteUserAsync(string userId, CancellationToken cancellationToken = default)
     {
         if (!tokenProvider.IsConfigured)
@@ -154,7 +148,6 @@ public class Auth0ManagementService(
         }
     }
 
-    /// <inheritdoc />
     public async Task<Auth0UserRolesResult> GetUserRolesAsync(string userId, CancellationToken cancellationToken = default)
     {
         var roles = new List<UserRole>();
@@ -189,7 +182,6 @@ public class Auth0ManagementService(
             : Auth0UserRolesResult.Failed(sync);
     }
 
-    /// <inheritdoc />
     public async Task<Auth0UserProfile?> GetUserProfileAsync(string userId)
     {
         if (!tokenProvider.IsConfigured)
@@ -303,10 +295,6 @@ public class Auth0ManagementService(
         }
     }
 
-    /// <summary>
-    /// Runs one Management API <paramref name="call"/> for <paramref name="userId"/> and maps its outcome like the role
-    /// sync: not configured, token failure, rate limit or API error are logged and returned, never thrown.
-    /// </summary>
     private async Task<Auth0SyncResult> CallAsync(
         string operation,
         string userId,
@@ -347,10 +335,6 @@ public class Auth0ManagementService(
         }
     }
 
-    /// <summary>
-    /// Returns the Auth0 ids of <paramref name="roleNames"/>, or null when any of them does not exist.
-    /// The full name → id map is cached; a miss triggers one refresh before giving up.
-    /// </summary>
     private async Task<string[]?> ResolveRoleIdsAsync(
         IReadOnlyList<string> roleNames,
         CancellationToken cancellationToken)
@@ -409,10 +393,6 @@ public class Auth0ManagementService(
         return map;
     }
 
-    /// <summary>
-    /// Runs <paramref name="call"/> with a fresh client. On HTTP 401 the cached token is dropped and
-    /// the call is retried once with a new token.
-    /// </summary>
     private async Task<T> ExecuteAsync<T>(Func<ManagementApiClient, Task<T>> call, CancellationToken cancellationToken)
     {
         for (var attempt = 0; ; attempt++)

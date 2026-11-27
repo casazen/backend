@@ -39,11 +39,9 @@ public sealed class GuestDataRetentionService(
     ILogger<GuestDataRetentionService> logger) : IGuestDataRetentionService
 {
     private const int ChunkSize = 100;
-    /// <summary>The bookings whose stay is not over: no retention applies to their guests' data (also read by the retention of the OTA conversations).</summary>
     internal static readonly BookingStatus[] OpenBookingStatuses =
         [BookingStatus.Pending, BookingStatus.Confirmed, BookingStatus.CheckedIn];
 
-    /// <summary>Reference date of the stay-based categories: the latest check-out, or the creation date without bookings.</summary>
     public static DateTime StayReferenceDate(DateTime? latestCheckout, DateTime createdAt) => (latestCheckout ?? createdAt).Date;
 
     public async Task<GuestRetentionRunResult> ApplyAsync(CancellationToken cancellationToken = default)
@@ -70,8 +68,6 @@ public sealed class GuestDataRetentionService(
                 GuestDataCategory.DocumentScans => await ApplyDocumentScansAsync(period, today, cancellationToken),
                 GuestDataCategory.AlloggiatiData => await ApplyAlloggiatiDataAsync(period, today, cancellationToken),
                 GuestDataCategory.Marketing => await ApplyMarketingAsync(period, today, cancellationToken),
-                // PO 2026-10-08: guest cards are not anonymized automatically. FiscalData still needs a period in
-                // config for the runbook, but the job never erases names or contacts on its own.
                 GuestDataCategory.FiscalData => SkipAutomaticFiscalAnonymization(period),
                 _ => throw new ArgumentOutOfRangeException(nameof(category), category, null),
             };
@@ -124,7 +120,6 @@ public sealed class GuestDataRetentionService(
         DateTime today,
         CancellationToken cancellationToken)
     {
-        // 1. Every guest of each stay whose check-out is past the period.
         var candidateStartBefore = period.CandidateStartBefore(today);
         var stays = await db.StayGuests
             .Where(s => s.AnonymizedAt == null
@@ -149,7 +144,6 @@ public sealed class GuestDataRetentionService(
             await db.SaveChangesAsync(cancellationToken);
         }
 
-        // 2. The Alloggiati data kept on the booker's own record.
         var dueIds = await DueGuestIdsAsync(db.Guests.Where(g => g.AlloggiatiDataErasedAt == null), period, today, cancellationToken);
         int guests = 0, files = 0;
         foreach (var chunk in dueIds.Chunk(ChunkSize))
@@ -214,9 +208,6 @@ public sealed class GuestDataRetentionService(
                 guests++;
             }
 
-            // E07/F06/US02/T01 (AC-NF95-7): the consent of a contact ends with the consent of its guest. An expiry is not an opt-out: the
-            // contact goes back to service only (what a stay needs) and is NOT suppressed, so a new consent can be given. A soft opt-in, a
-            // suppression and the evidence of the consent that ended stay as they are.
             var consentContacts = await db.GuestContacts
                 .Where(c => c.GuestId != null && chunk.Contains(c.GuestId.Value) && c.LegalBasis == GuestContactLegalBasis.Consent)
                 .ToListAsync(cancellationToken);
@@ -260,10 +251,6 @@ public sealed class GuestDataRetentionService(
         return new GuestRetentionCategoryResult(GuestDataCategory.FiscalData, true, guests, stayGuests, files);
     }
 
-    /// <summary>
-    /// Ids of the guests of <paramref name="query"/> whose stay reference date (<see cref="StayReferenceDate"/>) plus the
-    /// period ended before today: coarse filter in SQL, exact check in memory.
-    /// </summary>
     private async Task<List<Guid>> DueGuestIdsAsync(
         IQueryable<Guest> query,
         RetentionPeriodOptions period,

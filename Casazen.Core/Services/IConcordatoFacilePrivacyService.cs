@@ -8,11 +8,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IConcordatoFacilePrivacyService
 {
-    /// <summary>
-    /// What the lease of the org has on the privacy notice and on the form: whether the current version of the notice is accepted and
-    /// when, and when the signed link was last made. A lease that does not exist or is another org's has nothing: no error is raised and
-    /// nothing about it is revealed.
-    /// </summary>
     Task<CfPrivacyState> GetStateAsync(Guid leaseId, Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -22,11 +17,6 @@ public interface IConcordatoFacilePrivacyService
     /// </summary>
     Task<CfPrivacyState> AcceptAsync(Guid leaseId, Guid orgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Refuses with 409 <c>concordatofacile_privacy_not_accepted</c> when the lease has no acceptance of the current version of the
-    /// notice. Nothing is written. Asked before the signed link is made, for everyone: the bypass of the platform admin is about the
-    /// payment, not about the privacy.
-    /// </summary>
     Task EnsureAcceptedAsync(Guid leaseId, CancellationToken cancellationToken = default);
 }
 
@@ -38,6 +28,5 @@ public interface IConcordatoFacilePrivacyService
 /// <param name="LinkOpenedAt">When the signed link of the form was last made, that is when the form was last opened (UTC); null when never.</param>
 public sealed record CfPrivacyState(bool Accepted, DateTime? AcceptedAt, DateTime? LinkOpenedAt)
 {
-    /// <summary>Nothing accepted, nothing opened.</summary>
     public static CfPrivacyState None { get; } = new(false, null, null);
 }

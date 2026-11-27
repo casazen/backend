@@ -12,10 +12,6 @@ public static class ConnectAccountCountries
     public const string Italy = "IT";
     public const string Switzerland = "CH";
 
-    /// <summary>
-    /// The countries an org's own data can choose: the two the product supports (the Italian and the Swiss fiscal profiles, the
-    /// EUR and CHF stays). An org of another country keeps the platform default, as before.
-    /// </summary>
     public static IReadOnlyList<string> OrgCountries { get; } = [Italy, Switzerland];
 
     /// <summary>
@@ -26,7 +22,6 @@ public static class ConnectAccountCountries
     public static string Resolve(string? platformDefault, string? fiscalProfileCountry, string? billingCountry) =>
         OfOrg(fiscalProfileCountry) ?? OfOrg(billingCountry) ?? Normalize(platformDefault) ?? Italy;
 
-    /// <summary>Whether two country codes are the same country, ignoring case and spaces. A blank one is a country that is not known: never the same.</summary>
     public static bool SameCountry(string? first, string? second) =>
         Normalize(first) is { } left && string.Equals(left, Normalize(second), StringComparison.Ordinal);
 

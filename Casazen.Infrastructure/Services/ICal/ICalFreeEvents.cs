@@ -35,26 +35,10 @@ public sealed record FreeEventPlan(
     IReadOnlyList<ICalOccurrence> Blocking,
     int OverCap);
 
-/// <summary>
-/// Free-looking events of a supplier's calendar. Google writes every all-day event as "Available" (<c>TRANSP:TRANSPARENT</c>),
-/// and the supplier does not notice that the day stays bookable. So an event of this kind <b>occupies</b> its days or hours until
-/// the supplier says it is available; the answer is remembered per event (one per series).
-/// </summary>
 public static class ICalFreeEvents
 {
-    /// <summary>
-    /// Most occurrences of unanswered free-looking events taken into account at one sync, the nearest first. It bounds the rows
-    /// and what a feed full of "Available" events (a holidays or birthdays calendar) can close; the rest is logged and ignored.
-    /// </summary>
     public const int MaxPendingOccurrences = 200;
 
-    /// <summary>
-    /// Groups the transparent occurrences into events and decides what stays occupied.
-    /// </summary>
-    /// <param name="transparent">The transparent occurrences from today on (<see cref="ICalFeedParseResult.TransparentOccurrences"/>).</param>
-    /// <param name="decisions">The answers already stored, by decision key.</param>
-    /// <param name="nowUtc">To pick the nearest occurrence that has not ended.</param>
-    /// <param name="blockUndecided">False: unanswered events occupy nothing (operational switch, <see cref="ICalImportOptions.BlockUndecidedFreeEvents"/>).</param>
     public static FreeEventPlan Plan(
         IEnumerable<ICalOccurrence> transparent,
         IReadOnlyDictionary<string, SupplierFreeEventDecision> decisions,
@@ -69,7 +53,6 @@ public static class ICalFreeEvents
 
         var seen = groups.Select(g => g.Key).ToHashSet(StringComparer.Ordinal);
 
-        // Within the cap: the nearest occurrences of the events that are still unanswered.
         var pendingTaken = groups
             .Where(g => !IsDecided(decisions, g.Key))
             .SelectMany(g => g.Select(x => (g.Key, x.Occurrence)))
@@ -115,10 +98,6 @@ public static class ICalFreeEvents
     private static bool IsDecided(IReadOnlyDictionary<string, SupplierFreeEventDecision> decisions, string key) =>
         decisions.TryGetValue(key, out var decision) && decision != SupplierFreeEventDecision.Pending;
 
-    /// <summary>
-    /// The key of an occurrence: the UID alone for a series (one answer for all its occurrences), the UID and the start for a single
-    /// event (a single event that moves is asked again). An event without UID is identified by its content, as the other imports do.
-    /// </summary>
     internal static (string DecisionKey, string UidHash) KeyOf(ICalOccurrence occurrence)
     {
         var identity = occurrence.Uid is not null

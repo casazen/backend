@@ -4,10 +4,6 @@ using Casazen.Core.Models;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Whether an action of a routine can run, and why not when it cannot (<see cref="RoutineActionCatalog"/>).</summary>
-/// <param name="Type">The action.</param>
-/// <param name="Available">It runs and does what it says.</param>
-/// <param name="Code">The stable code of its unavailability (<see cref="RoutineCodes.ActionNotAvailable"/>); <c>null</c> when it is available.</param>
 public sealed record RoutineActionAvailability(RoutineActionType Type, bool Available, string? Code);
 
 /// <summary>
@@ -37,7 +33,6 @@ public static class RoutineActionCatalog
             [nameof(RoutineActionType.AddTag)] = static flags => flags.IsEnabled(FeatureFlags.CrmMarketing),
         };
 
-    /// <summary>Every action of <see cref="RoutineActionType"/>, in the order of the enum, with whether it is available with <paramref name="featureFlags"/>.</summary>
     public static IReadOnlyList<RoutineActionAvailability> All(IFeatureFlags featureFlags)
     {
         ArgumentNullException.ThrowIfNull(featureFlags);
@@ -45,7 +40,6 @@ public static class RoutineActionCatalog
         return [.. Enum.GetValues<RoutineActionType>().Select(type => Of(type, featureFlags))];
     }
 
-    /// <summary>Whether <paramref name="type"/> is available with <paramref name="featureFlags"/>, and the code that says why not.</summary>
     public static RoutineActionAvailability Of(RoutineActionType type, IFeatureFlags featureFlags)
     {
         ArgumentNullException.ThrowIfNull(featureFlags);
@@ -54,6 +48,5 @@ public static class RoutineActionCatalog
         return new RoutineActionAvailability(type, available, available ? null : RoutineCodes.ActionNotAvailable);
     }
 
-    /// <summary><see cref="Of"/> as a yes or no.</summary>
     public static bool IsAvailable(RoutineActionType type, IFeatureFlags featureFlags) => Of(type, featureFlags).Available;
 }

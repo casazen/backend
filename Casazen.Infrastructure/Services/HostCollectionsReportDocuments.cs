@@ -5,28 +5,14 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// The titles, the CSV files and the Excel files of the collections report (NF-97, NF-101), in Italian like the other host reports (<see cref="HostReportDocuments"/>):
-/// the CSV for a spreadsheet set to Italian (<see cref="CsvWriter"/>). Every table carries a title row that says what its numbers are (by cash, net of refunds) and the
-/// days, so no figure travels without its label. Nothing about a guest: dates, properties, channels, counts and amounts only. The CSV has the tables one under the other;
-/// the Excel file has a sheet for each of them, with the same columns and the same numbers.
-/// </summary>
 public static class HostCollectionsReportDocuments
 {
-    /// <summary>Title of the money collected: by cash, net of what was refunded, as the Home's "incassato".</summary>
     public const string CollectionsTitle = "Incassato, per cassa";
 
-    /// <summary>Title of the balances still to collect.</summary>
     public const string BalancesTitle = "Saldi da incassare";
 
     private const string Total = "Totale";
 
-    // ---------------------------------------------------------------- files
-
-    /// <summary>
-    /// The collections as tables: the three cuts, each under its own title row with the days of the report, its header and its total. The credits are not in the file:
-    /// they are not a table of the same money.
-    /// </summary>
     public static IReadOnlyList<ReportTable> Tables(HostCollectionsReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -54,13 +40,8 @@ public static class HostCollectionsReportDocuments
         return [byDate, byMethod, byChannel];
     }
 
-    /// <summary>
-    /// The collections as a file: the three cuts one under the other, each under its own title row with the days of the report, its header and its total, and
-    /// an empty row between them.
-    /// </summary>
     public static byte[] Csv(HostCollectionsReport report) => CsvWriter.Write(Tables(report));
 
-    /// <summary>The collections as a workbook: a sheet for each of the three cuts, with the same title row, header and rows as the CSV.</summary>
     public static byte[] Xlsx(HostCollectionsReport report)
     {
         var tables = Tables(report);
@@ -72,10 +53,6 @@ public static class HostCollectionsReportDocuments
         ]);
     }
 
-    /// <summary>
-    /// The balances to collect as a table: the title with the day they are read on, the header, a row for each stay and a total for each currency (amounts of
-    /// different currencies are never added together). A figure the channel manager did not give is an empty cell, never a zero.
-    /// </summary>
     public static ReportTable Table(HostBalancesToCollect report)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -134,7 +111,6 @@ public static class HostCollectionsReportDocuments
 
     public static byte[] Xlsx(HostBalancesToCollect report) => XlsxWriter.Write([new ReportSheet("Saldi da incassare", Table(report))]);
 
-    /// <summary>The file name of the balances: <c>casazen-saldi-da-incassare-20261112.csv</c>, with the day they are read on; <paramref name="extension"/> is <c>csv</c> or <c>xlsx</c>.</summary>
     public static string BalancesFileName(DateOnly asOf, string extension = "csv")
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(extension);
@@ -142,7 +118,6 @@ public static class HostCollectionsReportDocuments
         return $"casazen-saldi-da-incassare-{asOf.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}.{extension}";
     }
 
-    /// <summary>How a payment method is written in the file.</summary>
     public static string MethodLabel(PaymentMethod method) => method switch
     {
         PaymentMethod.CreditCard => "Carta",
@@ -153,8 +128,6 @@ public static class HostCollectionsReportDocuments
         PaymentMethod.CashOnArrival => "Contanti all'arrivo",
         _ => method.ToString(),
     };
-
-    // ---------------------------------------------------------------- shared
 
     private static string Title(string title, HostDashboardPeriod period) =>
         $"{title}, per cassa, dal {Date(DateOnly.FromDateTime(period.From))} al {Date(DateOnly.FromDateTime(period.To.AddDays(-1)))}";

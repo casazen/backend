@@ -57,8 +57,6 @@ internal static class BudgetRentAdvanceUpdater
         foreach (var budget in budgets.OrderBy(b => b.Period.StartDate))
         {
             var previous = carry.Where(s => s.PeriodEnd.AddDays(1) == budget.Period.StartDate).ToList();
-            // A manually agreed advance continues throughout its first year. Only a settled final
-            // statement permits changing it for the following year.
             if (terms.AdvanceMode == CondominiumAdvanceMode.FixedContractAmount && previous.Count == 0) continue;
             var unitIds = units.Where(u => u.CondominiumId == budget.Period.CondominiumId).Select(u => u.Id).ToHashSet();
             var count = await db.CondominiumUnits.CountAsync(u => u.CondominiumId == budget.Period.CondominiumId, ct);
@@ -66,7 +64,6 @@ internal static class BudgetRentAdvanceUpdater
                 && ExpenseClassification.ChargesStored(l.ExpenseNature, l.TenantRecoverability, l.ReviewStatus, l.RecoverableAmount, l.Confidence))
                 .Sum(l => l.RecoverableAmount);
             annual += previous.Sum(s => s.SettlementAmount);
-            // A credit can cover the full advance. Its unused remainder is carried by the next settlement.
             annual = Math.Max(0m, annual);
             var monthly = RentLedgerMoney.SplitRemainderOnLast(annual, 12);
             foreach (var entry in entries.Where(e => e.PeriodStart >= budget.Period.StartDate && e.PeriodStart <= budget.Period.EndDate))

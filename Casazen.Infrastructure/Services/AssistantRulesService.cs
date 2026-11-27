@@ -35,7 +35,6 @@ public sealed class AssistantRulesService(
         ArgumentNullException.ThrowIfNull(rules);
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        // Everything is checked before the database is touched.
         var (hoursFrom, hoursTo) = AssistantRulesValidator.CleanHours(rules.HoursFrom, rules.HoursTo);
         var wanted = new EffectiveAssistantRules(
             Enabled: rules.Enabled ?? false,
@@ -116,7 +115,6 @@ public sealed class AssistantRulesService(
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        // Everything is checked before the database is touched. A field not given is «as the organization»: null, never a value.
         var (hoursFrom, hoursTo) = AssistantRulesValidator.CleanHours(settings.HoursFrom, settings.HoursTo);
         var wanted = new PropertyAssistantSettings
         {
@@ -133,7 +131,6 @@ public sealed class AssistantRulesService(
         var row = db.PropertyAssistantSettings.Local.FirstOrDefault(s => s.OrgId == orgId && s.PropertyId == propertyId)
                   ?? await db.PropertyAssistantSettings.FirstOrDefaultAsync(s => s.OrgId == orgId && s.PropertyId == propertyId, ct);
 
-        // Nothing to say differently is no exception at all: no row is made, and the one that exists goes (the property follows the organization again).
         if (!HasExceptions(wanted))
         {
             if (row is not null)
@@ -200,7 +197,6 @@ public sealed class AssistantRulesService(
         var row = await FindRulesAsync(orgId, ct);
         if (row is null)
         {
-            // An organization that never saved its rules has the defaults, at version 1: the first change takes it to 2.
             row = new OrgAssistantRules { OrgId = orgId, UpdatedAt = Now() };
             db.OrgAssistantRules.Add(row);
         }
@@ -208,14 +204,12 @@ public sealed class AssistantRulesService(
         row.InstructionVersion = checked(row.InstructionVersion + 1);
     }
 
-    /// <summary>The rules row of the organization: the one this unit of work already tracks (an added row is not in the database yet), else the stored one.</summary>
     private async Task<OrgAssistantRules?> FindRulesAsync(Guid orgId, CancellationToken ct) =>
         db.OrgAssistantRules.Local.FirstOrDefault(r => r.OrgId == orgId)
         ?? await db.OrgAssistantRules.FirstOrDefaultAsync(r => r.OrgId == orgId, ct);
 
     private DateTime Now() => _clock.GetUtcNow().UtcDateTime;
 
-    /// <summary>The tone as a request gives it: none is neutral, a value no member declares is 422 <c>assistant_rules_invalid</c>.</summary>
     private static AssistantTone ToneOf(AssistantTone? tone) => tone switch
     {
         null => AssistantTone.Neutral,

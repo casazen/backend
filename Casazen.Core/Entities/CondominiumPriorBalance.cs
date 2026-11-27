@@ -5,10 +5,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// The balance brought into this fiscal year from the previous one (CondoLedger <c>prior_balances</c>).
-/// One row per year. Positive is a debit, negative a credit. It is not folded into the ordinary quota.
-/// </summary>
 [Table("CondominiumPriorBalances")]
 public class CondominiumPriorBalance : ITenantOwned
 {

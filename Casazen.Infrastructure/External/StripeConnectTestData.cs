@@ -37,10 +37,8 @@ internal sealed record StripeConnectTestData(
     string Currency,
     string? IdNumber)
 {
-    /// <summary>The address line that matches in Stripe's test verification.</summary>
     public const string MatchingAddressLine = "address_full_match";
 
-    /// <summary>Merchant category code of the account: real estate agents and managers, rentals.</summary>
     public const string MerchantCategoryCode = "6513";
 
     public const string ProductDescription = "Short-term rentals of apartments (CasaZen test account)";
@@ -68,7 +66,6 @@ internal sealed record StripeConnectTestData(
         Currency: "chf",
         IdNumber: null);
 
-    /// <summary>The test data of <paramref name="country"/> (ISO 3166-1 alpha-2, upper case); <c>null</c> for a country without any: its test account then keeps the empty hosted onboarding.</summary>
     public static StripeConnectTestData? ForCountry(string? country) => country switch
     {
         "IT" => Italy,
@@ -76,10 +73,6 @@ internal sealed record StripeConnectTestData(
         _ => null,
     };
 
-    /// <summary>
-    /// The one update that fills a new Express account: an individual with the matching test identity and a test bank account.
-    /// <paramref name="email"/> is the one the account was created with.
-    /// </summary>
     public AccountUpdateOptions ToUpdateOptions(string? email)
     {
         var individual = new AccountIndividualOptions
@@ -113,7 +106,6 @@ internal sealed record StripeConnectTestData(
             Individual = individual,
         };
 
-        // A bank account given as a dictionary, as the Stripe API documents it (the typed option only takes a token).
         options.AddExtraParam("external_account[object]", "bank_account");
         options.AddExtraParam("external_account[country]", Country);
         options.AddExtraParam("external_account[currency]", Currency);

@@ -54,7 +54,6 @@ public sealed class PortalAccountSettingsService(
 
         if (profile is null)
         {
-            // An organization that never opened the wizard gets a draft profile: everything else stays empty until the wizard says it.
             profile = new OrgFiscalIssuerProfile { OrgId = orgId };
             db.OrgFiscalIssuerProfiles.Add(profile);
         }
@@ -66,7 +65,6 @@ public sealed class PortalAccountSettingsService(
         profile.UpdatedAt = time.GetUtcNow().UtcDateTime;
         profile.UpdatedByUserId = userId;
 
-        // Who acknowledged the waiver and when: the actor and the instant of the line, written in the same save as the change (a change rolled back leaves no line).
         if (startsWaiver)
             RecordWaiver(orgId, userId);
 
@@ -80,10 +78,6 @@ public sealed class PortalAccountSettingsService(
         return new PortalAccountSettings(profile.PortalAccountHolder, profile.RechargePortalCommissions);
     }
 
-    /// <summary>
-    /// True when the save starts the waiver of the recharge: after it the recharge is off and the agency holds at least one portal account (the default of the organization or the
-    /// holder of a listing), and before it the recharge was on or the agency held none. A save that keeps a waiver already in place (or extends it to the default) starts nothing.
-    /// </summary>
     private async Task<bool> StartsRechargeWaiverAsync(Guid orgId, OrgFiscalIssuerProfile? profile, PortalAccountSettingsCommand command, CancellationToken ct)
     {
         var holderBefore = profile?.PortalAccountHolder ?? PortalAccountHolders.Defaults.Default;
@@ -98,10 +92,6 @@ public sealed class PortalAccountSettingsService(
         return Waived(rechargeAfter, holderAfter, listingOfTheAgency) && !Waived(rechargeBefore, holderBefore, listingOfTheAgency);
     }
 
-    /// <summary>
-    /// True when the bulk write of the holders starts the waiver of the recharge: the recharge is off, the agency is not the default holder and holds no listing yet, and the
-    /// write gives it one. The same effect as a save of the defaults that makes the agency the default holder, so the same acknowledgement.
-    /// </summary>
     private async Task<bool> StartsRechargeWaiverAsync(Guid orgId, IReadOnlyList<ChannelAccountHolderCommand> commands, CancellationToken ct)
     {
         var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().OfOrganization(orgId).FirstOrDefaultAsync(ct);
@@ -110,20 +100,14 @@ public sealed class PortalAccountSettingsService(
         if (recharge || holder == PortalAccountHolder.Agency || !commands.Any(c => c.Holder == PortalAccountHolder.Agency))
             return false;
 
-        // Before the write, as stored; after it, a listing of the agency at least (the one the write names).
         var listingBefore = await db.PropertyChannelAccountHolders.AsNoTracking()
             .AnyAsync(h => h.OrgId == orgId && h.Holder == PortalAccountHolder.Agency, ct);
         return Waived(recharge, holder, listingOfTheAgency: true) && !Waived(recharge, holder, listingBefore);
     }
 
-    /// <summary>The waiver of the recharge is in place: the recharge off while the agency holds at least one portal account, its default or the one of a listing.</summary>
     private static bool Waived(bool recharge, PortalAccountHolder defaultHolder, bool listingOfTheAgency) =>
         !recharge && (defaultHolder == PortalAccountHolder.Agency || listingOfTheAgency);
 
-    /// <summary>
-    /// Who acknowledged the waiver and when: a line <see cref="OrgActivityType.OrgSettingsChanged"/> with the part <see cref="PortalAccountErrors.RechargeWaiverActivityPart"/>,
-    /// whose actor and instant are the person and the moment, added to the save of the change.
-    /// </summary>
     private void RecordWaiver(Guid orgId, string? userId)
     {
         activityLog?.Record(OrgActivity.Of(
@@ -163,7 +147,6 @@ public sealed class PortalAccountSettingsService(
         bool acknowledgeRechargeWaiver = false,
         CancellationToken ct = default)
     {
-        // An empty list is never «all the listings», and never «none» either: it is refused.
         if (commands is null || commands.Count == 0 || commands.Count > PortalAccountErrors.MaxAccountHolders)
             throw Invalid(null, "items");
 
@@ -181,7 +164,6 @@ public sealed class PortalAccountSettingsService(
                 throw Invalid(i, "channel");
         }
 
-        // Every property named is one of the org (a property of another org, or one that does not exist, is refused with its index: nothing is written).
         var propertyIds = commands.Select(c => c.PropertyId).Distinct().ToList();
         var known = (await db.Properties.AsNoTracking()
                 .Where(p => p.OrgId == orgId && propertyIds.Contains(p.Id))
@@ -194,8 +176,6 @@ public sealed class PortalAccountSettingsService(
                 throw Invalid(i, "propertyId");
         }
 
-        // The waiver of the recharge (decision 1 of 20/11/2026): with the recharge off, the first listing of the agency makes the commissions of its account a cost of the agency,
-        // as making the agency the default holder does, so the write needs the same explicit acknowledgement, checked before anything is written.
         var startsWaiver = await StartsRechargeWaiverAsync(orgId, commands, ct);
         if (startsWaiver && !acknowledgeRechargeWaiver)
             throw new DomainRuleException(PortalAccountErrors.RechargeWaiverNotAcknowledged, "RechargeWaiverNotAcknowledged");
@@ -242,7 +222,6 @@ public sealed class PortalAccountSettingsService(
             }
         }
 
-        // Who acknowledged the waiver and when, in the same save as the holders (a write refused or rolled back leaves no line).
         if (startsWaiver)
             RecordWaiver(orgId, userId);
 
@@ -252,7 +231,6 @@ public sealed class PortalAccountSettingsService(
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, PropertyChannelAccountHolder.PropertyChannelIndexName))
         {
-            // Another save of the same listing and portal came first: nothing of this one is written, the caller reads the list again.
             throw new DomainConflictException(PortalAccountErrors.AccountHoldersConflict, "ChannelAccountHoldersConflict");
         }
 

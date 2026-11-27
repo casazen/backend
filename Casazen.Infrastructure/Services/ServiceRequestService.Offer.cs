@@ -25,22 +25,17 @@ public partial class ServiceRequestService : IServiceRequestOfferActions, IServi
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        // The same 404 for a request of another supplier, a host's request, a booking and one that does not exist.
         await RequireRequestOnMeasureOfSupplierAsync(id, supplierOrgId, cancellationToken);
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
 
-        // The offer answers a request nobody took, refused or cancelled; the conversation is not closed.
         if (!ServiceRequestOfferRules.CanSend(request.Kind, request.Status, supplierActive: true))
             throw ServiceRequestOfferErrors.CannotSendOffer();
 
-        // The lines, the total and the note are judged before anything is read or locked; a time that is missing is the plain 422 of a time.
         var (lines, total) = ServiceRequestOfferRules.Normalize(command.Lines);
         var note = ServiceRequestQuoteRules.NormalizeNote(command.Note);
         if (command.StartUtc == default)
             throw TimeInvalid();
 
-        // The time is judged by the planner under the supplier's calendar lock, exactly as the time of a take or a proposal (409
-        // supplier_slot_unavailable / supplier_commitment_conflict); the offer holds no slot, so it is judged again when the customer accepts.
         return await PublishQuoteAsync(
             request, supplierOrgId, userId, lines, total, note, command.StartUtc, command.EndUtc, cancellationToken);
     }
@@ -55,7 +50,6 @@ public partial class ServiceRequestService : IServiceRequestOfferActions, IServi
         if (ServiceRequestOfferRules.PendingOf(request) is null)
             throw ServiceRequestOfferErrors.NothingToWithdraw();
 
-        // Taking an offer back is taking a quote back: the request is new again and, being a conversation, no clock runs on the supplier.
         return await WithdrawQuoteAsync(id, supplierOrgId, cancellationToken);
     }
 
@@ -72,8 +66,6 @@ public partial class ServiceRequestService : IServiceRequestOfferActions, IServi
 
         try
         {
-            // The supplier org keys the lock; the request has two parties and is read by its id (the allow-list of its table) with the context
-            // and the kind as predicates, so only a request on measure from a showcase is ever completed this way.
             var supplierOrgId = await db.ServiceRequests
                 .IgnoreQueryFilters()
                 .AsNoTracking()
@@ -112,7 +104,6 @@ public partial class ServiceRequestService : IServiceRequestOfferActions, IServi
                     || !supplierActive
                     || !ServiceRequestOfferRules.IsPaymentOfOffer(held.CreatedAt, held.AmountCents, standing.SentAt, standing.TotalCents))
                 {
-                    // The offer is gone, replaced or lapsed, or the supplier is not active: a card blocked for it is released, never charged.
                     staleBlock = true;
                 }
                 else
@@ -131,14 +122,11 @@ public partial class ServiceRequestService : IServiceRequestOfferActions, IServi
             }
             catch (DomainConflictException ex) when (ex.Code is ServiceRequestErrorCodes.SlotUnavailable or ServiceRequestErrorCodes.CommitmentConflict)
             {
-                // The time of the offer is gone: the card is released and the customer is told that nothing was charged. The offer stays.
                 staleBlock = true;
                 notCompleted = NotCompletedBecauseOfTheTime;
             }
             catch (DomainConflictException ex) when (ex.Code is ServicePaymentErrors.AuthorizationExpired or ServicePaymentErrors.CaptureFailed)
             {
-                // The card could not be charged (the block lapsed, the bank refused, Stripe did not answer): whatever is left of the block is
-                // released, so what the customer is told is true — nothing was charged, the block is gone — and it starts again from a clean card.
                 staleBlock = true;
                 notCompleted = NotCompletedBecauseOfThePayment;
             }
@@ -159,8 +147,6 @@ public partial class ServiceRequestService : IServiceRequestOfferActions, IServi
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Never an error for the webhook: the event is committed. The customer's next acceptance finds the card and takes the request, and the
-            // request closes (and the card with it) when the offer lapses.
             db.ChangeTracker.Clear();
             logger.LogError(ex, "ServiceRequest {Id}: the acceptance of the offer could not be completed after the card was blocked", requestId);
         }

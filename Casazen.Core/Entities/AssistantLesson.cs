@@ -18,7 +18,6 @@ namespace Casazen.Core.Entities;
 [Table("AssistantLessons")]
 public class AssistantLesson : ITenantOwned
 {
-    /// <summary>Longest <see cref="ProposedText"/>, in characters of the clear text.</summary>
     public const int ProposedTextMaxLength = 500;
 
     public const int ThreadKeyMaxLength = 80;
@@ -28,38 +27,30 @@ public class AssistantLesson : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row. Never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The property of the conversation the lesson came from; <c>null</c> when it has none.</summary>
     public Guid? PropertyId { get; set; }
 
-    /// <summary>The conversation the lesson came from: <c>ota:{guid}</c> or <c>direct:{guid}</c> (<c>MessageThreadKey</c>).</summary>
     [Required, MaxLength(ThreadKeyMaxLength)]
     public string ThreadKey { get; set; } = string.Empty;
 
-    /// <summary>The item of the approval queue (the draft that was corrected or rejected) the lesson came from; <c>null</c> when there is none. No foreign key.</summary>
     public Guid? ApprovalItemId { get; set; }
 
     public LessonKind Kind { get; set; }
 
     public KnowledgeTopic Topic { get; set; }
 
-    /// <summary>What the assistant proposes to learn. <b>Encrypted at rest</b>; 1 to <see cref="ProposedTextMaxLength"/> characters.</summary>
     public string ProposedText { get; set; } = string.Empty;
 
     public LessonStatus Status { get; set; } = LessonStatus.Proposed;
 
-    /// <summary>Where the approved lesson applies; <c>null</c> until a person decides.</summary>
     public LessonScope? Scope { get; set; }
 
-    /// <summary>The user who approved or rejected it (<c>User.Id</c>), an opaque id with no foreign key.</summary>
     [MaxLength(DecidedByUserIdMaxLength)]
     public string? DecidedByUserId { get; set; }
 
     public DateTime? DecidedAt { get; set; }
 
-    /// <summary>The entry of the knowledge base the approval created (<see cref="PropertyKnowledgeEntry.LessonId"/> points back); <c>null</c> until then. No foreign key.</summary>
     public Guid? AppliedEntryId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

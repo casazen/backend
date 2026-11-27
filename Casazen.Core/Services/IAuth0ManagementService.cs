@@ -11,31 +11,22 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IAuth0ManagementService
 {
-    /// <summary>True when a Management API credential (M2M client or legacy token) is configured.</summary>
     bool IsConfigured { get; }
 
-    /// <summary>Adds <paramref name="role"/> to the user without touching any other role.</summary>
     Task<Auth0SyncResult> AssignRoleAsync(string userId, UserRole role, CancellationToken cancellationToken = default);
 
-    /// <summary>Adds all <paramref name="roles"/> to the user without touching any other role.</summary>
     Task<Auth0SyncResult> AssignRolesAsync(
         string userId,
         IReadOnlyCollection<UserRole> roles,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Removes exactly <paramref name="role"/> from the user (admin role changes).</summary>
     Task<Auth0SyncResult> RemoveRoleAsync(string userId, UserRole role, CancellationToken cancellationToken = default);
 
-    /// <summary>Removes exactly the listed <paramref name="roles"/> from the user.</summary>
     Task<Auth0SyncResult> RemoveRolesAsync(
         string userId,
         IReadOnlyCollection<UserRole> roles,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Blocks or unblocks the Auth0 account (<c>PATCH /users/{id}</c> with <c>blocked</c>, scope <c>update:users</c>).
-    /// A blocked user cannot log in and gets no new access token, not even through a refresh token (PL-03).
-    /// </summary>
     Task<Auth0SyncResult> SetBlockedAsync(string userId, bool blocked, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -63,10 +54,6 @@ public interface IAuth0ManagementService
         IReadOnlyCollection<Guid> propertyIds,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Fetches email, name and <c>email_verified</c> from Auth0 (not cached). Returns null when Management API is not
-    /// configured or the call fails.
-    /// </summary>
     Task<Auth0UserProfile?> GetUserProfileAsync(string userId);
 }
 

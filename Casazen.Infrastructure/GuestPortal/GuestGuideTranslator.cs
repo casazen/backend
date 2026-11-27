@@ -13,8 +13,6 @@ namespace Casazen.Infrastructure.GuestPortal;
 
 public sealed class GuestGuideTranslator(IAiProvider ai, IAiResponseCache cache, ILogger<GuestGuideTranslator> logger)
 {
-    // Only the prose that a host publishes on the public welcome page can enter the translation request.
-    // Access instructions, credentials, contacts, private guest information and assistant settings stay local.
     public async Task<GuestHouseGuide> TranslateAsync(Guid orgId, GuestHouseGuide guide, string? requested, CancellationToken ct)
     {
         var language = GuestLanguages.Normalize(requested);

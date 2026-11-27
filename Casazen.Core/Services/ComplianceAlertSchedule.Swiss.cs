@@ -22,10 +22,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static partial class ComplianceAlertSchedule
 {
-    /// <summary>
-    /// The <see cref="ComplianceAlertState.ReferenceKey"/> of the alerts of an arrival day: <c>yyyy-MM-dd</c>, the key of the Ticino alerts (the type of the row tells the two apart; the
-    /// property is the other column of the unique index).
-    /// </summary>
     public static string SwissReferenceKey(DateOnly arrivalDay) => TicinoReferenceKey(arrivalDay);
 
     /// <summary>

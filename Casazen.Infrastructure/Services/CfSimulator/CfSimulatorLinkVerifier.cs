@@ -6,7 +6,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services.CfSimulator;
 
-/// <summary>The outcome of verifying a link to the simulated module: good (with the lease it names) or not good, and why.</summary>
 public sealed record CfSimulatorLinkCheck(bool Valid, string? Reason, Guid? LeaseId);
 
 /// <summary>
@@ -25,13 +24,10 @@ public sealed record CfSimulatorLinkCheck(bool Valid, string? Reason, Guid? Leas
 /// </summary>
 public static partial class CfSimulatorLinkVerifier
 {
-    /// <summary>The only partner of the module.</summary>
     public const string Partner = "casazen";
 
-    /// <summary>How long after its <c>expiresAt</c> a link is still accepted, for the clocks.</summary>
     public static readonly TimeSpan ClockMargin = TimeSpan.FromMinutes(2);
 
-    /// <summary>How far from the moment it is opened a link may expire.</summary>
     public static readonly TimeSpan MaxValidity = TimeSpan.FromMinutes(60);
 
     [GeneratedRegex(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,7})?Z$", RegexOptions.CultureInvariant, 2000)]

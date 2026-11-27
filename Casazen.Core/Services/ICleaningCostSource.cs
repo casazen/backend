@@ -17,27 +17,20 @@ public enum CleaningAmountVat
     /// <summary>A staff cost: an internal rate of the org, which has no VAT of a supplier.</summary>
     NotApplicable = 3,
 
-    /// <summary>The model does not say (for example a cleaning completed with no amount at all): the invoicing decides, nothing is assumed.</summary>
     Unknown = 4,
 }
 
-/// <summary>Who did a <see cref="CompletedCleaning"/>.</summary>
 public enum CleaningKind
 {
-    /// <summary>A supplier of the marketplace: the source is a service request.</summary>
     Supplier = 1,
 
-    /// <summary>A member of the org's staff: the source is a staff activity.</summary>
     Staff = 2,
 }
 
-/// <summary>Where the cost of a <see cref="CompletedCleaning"/> was read.</summary>
 public enum CleaningSourceKind
 {
-    /// <summary>A <c>ServiceRequest</c> of category cleaning, completed or paid.</summary>
     ServiceRequest = 1,
 
-    /// <summary>An <c>InternalActivity</c> of type Cleaning, completed.</summary>
     InternalActivity = 2,
 }
 

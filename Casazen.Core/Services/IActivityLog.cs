@@ -21,7 +21,6 @@ public sealed record OrgActivity(
     IReadOnlyDictionary<string, string>? Details = null,
     OrgActivityArea? Area = null)
 {
-    /// <summary>An event with its details written as pairs, to keep the call sites to one line.</summary>
     public static OrgActivity Of(
         Guid orgId,
         OrgActivityType type,
@@ -46,7 +45,5 @@ public sealed record OrgActivity(
 /// </remarks>
 public interface IActivityLog
 {
-    /// <summary>Stages the event in the current unit of work; the caller saves.</summary>
-    /// <exception cref="ArgumentException">The event, its subject or one of its details breaks the rules of the catalog.</exception>
     void Record(OrgActivity activity);
 }

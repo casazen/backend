@@ -3,10 +3,6 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// Audit log for OTA booking synchronization operations
-/// Tracks which bookings were created/updated/cancelled during each sync
-/// </summary>
 [Table("OtaSyncLogs")]
 public class OtaSyncLog
 {

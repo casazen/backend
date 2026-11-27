@@ -27,16 +27,13 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, ILogger<GuestDataEraser> logger)
 {
-    /// <summary>Placeholder of the names of an anonymized guest.</summary>
     public const string AnonymizedName = "ANONYMIZED";
 
-    /// <summary>Prefix of the private storage keys of the document scans (<see cref="StorageKeys.GuestDocument"/>).</summary>
     private const string GuestDocumentKeyPrefix = "guest-documents/";
 
     private static readonly GuestCheckInSessionStatus[] OpenSessionStatuses =
         [GuestCheckInSessionStatus.Inviato, GuestCheckInSessionStatus.InCompilazione];
 
-    /// <summary>The anonymized e-mail of a guest: unique per record, never deliverable.</summary>
     public static string AnonymizedEmail(Guid guestId) => $"ANON-{guestId:N}@deleted.local";
 
     /// <summary>
@@ -114,10 +111,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         var orgId = guest.OrgId;
         var profileId = guest.GuestCrmProfileId;
 
-        // The profile of the guest is not alone in the CRM: the merges of duplicates (E07/F01/US03/T02) keep the profile that goes as a tombstone, with all
-        // it held, and move its guests and contacts to the survivor. The profiles of the guest are the survivor and every tombstone that leads to it, chains
-        // included (a link kept from before a merge may still point to a tombstone): the erasure covers all of them, or a tombstone would keep the tags, the
-        // country, the language and the keyed hashes of the guest.
         var family = new List<Guid>();
         if (profileId is { } linkedId)
             family = (await CrmProfileFamily.OfAsync(db, orgId, linkedId, cancellationToken)).ProfileIds;
@@ -154,7 +147,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         int removed = 0, kept = 0;
         foreach (var contact in contacts)
         {
-            // Already taken out by an earlier guest of the same unit of work: not counted twice.
             if (db.Entry(contact).State == EntityState.Deleted)
                 continue;
 
@@ -175,7 +167,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         var mergedProfiles = 0;
         if (profileId is not null)
         {
-            // Unlinked first: the foreign key of the guest must not point at a profile that goes in the same save.
             guest.GuestCrmProfileId = null;
             profileTouched = true;
 
@@ -185,7 +176,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
             mergedProfiles = profiles.Count(p => p.MergedIntoProfileId is not null);
             if (alone)
             {
-                // The survivor goes, and with it every tombstone that leads to it and every proposal of merge that involves one of them.
                 var proposals = await db.GuestMergeCandidates
                     .Where(m => m.OrgId == orgId && (family.Contains(m.ProfileAId) || family.Contains(m.ProfileBId)))
                     .ToListAsync(cancellationToken);
@@ -219,10 +209,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         return new CrmErasureOutcome(removed, kept, profileRemoved, removed > 0 || kept > 0 || profileTouched);
     }
 
-    /// <summary>
-    /// The profile that other guests are still linked to loses what may be the erased guest's: the keyed hashes, the tags, the country and, when it was
-    /// the erased guest, its primary guest. The language and the aggregates stay (the next sync of a guest of the profile calculates the aggregates again).
-    /// </summary>
     private static void ClearSharedProfile(GuestCrmProfile profile, Guid guestId, DateTime now)
     {
         profile.PhoneKeyHash = null;
@@ -235,11 +221,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         profile.UpdatedAt = now;
     }
 
-    /// <summary>
-    /// A tombstone of a merged profile (<see cref="GuestCrmProfile.MergedIntoProfileId"/>) of a survivor that stays: whatever it held cannot be told
-    /// from the data of the other guests of the survivor, so it is emptied (tags, country, language, every keyed hash, the primary guest, the consent
-    /// flags and the aggregates of its stays). What stays is the technical pointer to the profile that took its place, and the ids and times of the row.
-    /// </summary>
     private static void ClearTombstone(GuestCrmProfile profile, DateTime now)
     {
         profile.CompositeKeyHash = string.Empty;
@@ -260,11 +241,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         profile.UpdatedAt = now;
     }
 
-    /// <summary>
-    /// Takes a contact that carries a suppression down to what the opt-out needs: the keyed hash of the value (with the org and the channel, the
-    /// key of the row), the flag, its date and its source. No value, no name, no IP, no guest, no profile, no language, and no basis, evidence or
-    /// confirmation of a consent that is gone. False when it already was a marker.
-    /// </summary>
     private static bool StripToOptOutMarker(GuestContact contact, DateTime now)
     {
         var before = Fingerprint(contact);
@@ -332,7 +308,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
             return 0;
         }
 
-        // IgnoreQueryFilters: whichever org the caller works in, any other record pointing to the object keeps it alive.
         var sharedWithAnotherRecord = await db.Guests.IgnoreQueryFilters()
             .AnyAsync(g => g.Id != guest.Id && g.DocumentScanUrl == key, cancellationToken);
         if (sharedWithAnotherRecord)
@@ -358,7 +333,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
     {
         ArgumentNullException.ThrowIfNull(guest);
 
-        // IgnoreQueryFilters: whichever org the caller works in, the guest's own photos go; the org of the guest is named.
         var images = await db.DocumentImages
             .IgnoreQueryFilters()
             .Where(i => i.OrgId == guest.OrgId && i.GuestId == guest.Id)
@@ -380,7 +354,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
     {
         ArgumentNullException.ThrowIfNull(guest);
 
-        // IgnoreQueryFilters: whichever org the caller works in, the evidence of the guest goes; the org of the guest is named.
         var bookings = db.Bookings.IgnoreQueryFilters().Where(b => b.OrgId == guest.OrgId && b.GuestId == guest.Id).Select(b => b.Id);
         var evidence = await db.IdentityReviewEvidences
             .IgnoreQueryFilters()
@@ -394,10 +367,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         return deleted;
     }
 
-    /// <summary>
-    /// Anonymizes the guests of the stays of the given bookings (retention <c>AlloggiatiData</c>, every kind of guest).
-    /// Rows already anonymized are left alone. Returns the rows changed per booker (<see cref="Booking.GuestId"/>).
-    /// </summary>
     public async Task<Dictionary<(Guid OrgId, Guid GuestId), int>> AnonymizeStayGuestsOfBookingsAsync(
         IReadOnlyCollection<Guid> bookingIds,
         DateTime now,
@@ -469,7 +438,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         return rows.Count(row => AnonymizeStayGuest(row, now));
     }
 
-    /// <summary>Clears every personal field of a guest of a stay; kind and position stay. False when nothing changed.</summary>
     public static bool AnonymizeStayGuest(StayGuest row, DateTime now)
     {
         var before = Fingerprint(row);
@@ -491,8 +459,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         row.DocumentIssuePlaceCode = null;
         row.DocumentIssuePlaceName = string.Empty;
 
-        // NF-40, NF-46: the document dates, the residence, the statistical fields and the tourist tax exemption (whose reason can reveal
-        // a health condition) go with the guest too.
         row.DocumentIssuedOn = null;
         row.DocumentExpiresOn = null;
         row.ResidenceInItaly = null;
@@ -506,7 +472,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         row.EducationLevel = null;
         row.TaxExemptionCode = null;
 
-        // NF-132: the home of the guest (the Ticino police file) goes too.
         row.ResidenceStreet = null;
         row.ResidencePostalCode = null;
         row.ResidenceCityName = null;
@@ -545,7 +510,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         guest.ConsentIpAddress = string.Empty;
     }
 
-    /// <summary>IP and note of the consent events: the events themselves stay as proof, without personal data.</summary>
     private async Task<int> ClearConsentEvidenceAsync(Guid guestId, CancellationToken cancellationToken)
     {
         var records = await db.GuestConsentRecords
@@ -560,11 +524,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         return records.Count;
     }
 
-    /// <summary>
-    /// The per-channel marketing consents of the check-in (NF-05, <see cref="MarketingConsentRecord"/>): the marketing e-mail
-    /// and the IP go, and the consent ends with them (no channel, e-mail not confirmed, so nothing can be sent). Time, version
-    /// of the text and booking stay as the proof that a consent was given. Returns the rows changed (none when already clear).
-    /// </summary>
     private async Task<int> ClearMarketingConsentRecordsAsync(Guid guestId, CancellationToken cancellationToken)
     {
         var records = await db.MarketingConsentRecords
@@ -610,7 +569,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
             booking.AttributionCampaign = null;
             booking.AttributionReferrerHost = null;
 
-            // NF-132: the plate of the car of the stay, typed at the check-in with the guests' data.
             booking.VehiclePlate = null;
             booking.UpdatedAt = now;
         }
@@ -640,10 +598,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         return bookings.Count;
     }
 
-    /// <summary>
-    /// The first name the public reads on the reviews of the guest's stays (DB-12a) goes back to «Ospite»; the mark and the text of the
-    /// review stay, with no name: they are the host's reputation and the guest's own words, not an identity.
-    /// </summary>
     private async Task<int> AnonymizeReviewsAsync(Guid guestId, CancellationToken cancellationToken)
     {
         var reviews = await db.Reviews
@@ -656,12 +610,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         return reviews.Count;
     }
 
-    /// <summary>
-    /// What the guest wrote in the review of a channel (E05/F06/US01/T02, NF-69): the text the channel manager reported is free text and can name a person, so it is emptied
-    /// for the reviews of the guest's bookings. The mark, the categories and the state stay (the host's reputation, not an identity), and so do the host's own words, the reply
-    /// and the host's review of the guest. The next read of the channel manager does not bring it back: the sync stores no text for a booking whose guest was erased. Stages the
-    /// change without saving; returns the reviews that changed (a second run finds none).
-    /// </summary>
     private async Task<int> ClearOtaReviewTextsAsync(Guid guestId, DateTime now, CancellationToken cancellationToken)
     {
         var reviews = await db.OtaReviews
@@ -676,10 +624,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         return reviews.Count;
     }
 
-    /// <summary>
-    /// The messages of the guest with the host (DB-14a) are free text written by the guest and can hold anything: the threads of the
-    /// guest's bookings are deleted, with their messages (the foreign key cascades). The host keeps the bookings, not the conversations.
-    /// </summary>
     private async Task<int> DeleteMessageThreadsAsync(Guid guestId, CancellationToken cancellationToken)
     {
         var threads = await db.GuestThreads
@@ -689,12 +633,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         return threads.Count;
     }
 
-    /// <summary>
-    /// The copy of the OTA conversations of the guest (E05/F01/US01/T03, ADR-032-R13): the threads of the guest's bookings lose the words and the
-    /// names, see <see cref="AnonymizeOtaThreadsAsync"/>. The threads stay with the booking and the dates of their messages, so the host still sees
-    /// that a conversation took place, and no more. A conversation with no booking (an inquiry) has no guest record to be erased with: the retention
-    /// takes care of it.
-    /// </summary>
     public async Task<OtaAnonymizationOutcome> AnonymizeOtaThreadsOfGuestAsync(Guid guestId, DateTime now, CancellationToken cancellationToken)
     {
         var ofGuest = db.OtaMessageThreads.Where(t => t.BookingId != null && db.Bookings.Any(b => b.Id == t.BookingId && b.GuestId == guestId));
@@ -816,7 +754,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
             .Select(b => b.Id)
             .ToListAsync(cancellationToken);
 
-        // The draft of a reply to a review of the guest (E05/F06/US01/T03) is about the review, which has a key of its own: the reviews of the guest's stays, of a channel and of the booking site.
         var channelReviews = await db.OtaReviews
             .Where(r => db.Bookings.Any(b => b.Id == r.BookingId && b.GuestId == guestId))
             .Select(r => r.Id)
@@ -858,7 +795,6 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         return changed;
     }
 
-    /// <summary>An open check-in link would let someone enter personal data again for an anonymized guest.</summary>
     private async Task ExpireOpenCheckInLinksAsync(Guid guestId, DateTime now, CancellationToken cancellationToken)
     {
         var sessions = await db.GuestCheckInSessions
@@ -915,5 +851,4 @@ public sealed record GuestErasureOutcome(
 /// <param name="Changed">Anything was staged, the unlink of the guest from its profile included.</param>
 public sealed record CrmErasureOutcome(int ContactsRemoved, int OptOutsKept, bool ProfileRemoved, bool Changed);
 
-/// <summary>What the anonymization of OTA conversations changed: the threads, and the messages that lost their words.</summary>
 public sealed record OtaAnonymizationOutcome(int Threads, int Messages);

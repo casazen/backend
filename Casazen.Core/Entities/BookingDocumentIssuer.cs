@@ -19,24 +19,18 @@ namespace Casazen.Core.Entities;
 [Table("BookingDocumentIssuers")]
 public class BookingDocumentIssuer : ITenantOwned
 {
-    /// <summary>Name of the unique index on <see cref="LockedByDocumentId"/> where it is set: one row for each document.</summary>
     public const string DocumentIndexName = "UIX_BookingDocumentIssuers_LockedByDocumentId";
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key (TN-2). Inherited from the booking; never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The booking (indexed, not unique: one row for each of its documents). The row goes with the booking (cascade).</summary>
     public Guid BookingId { get; set; }
 
-    /// <summary>Who issues the documents of the booking.</summary>
     public BookingDocumentIssuerKind Issuer { get; set; }
 
-    /// <summary>When the issuer was locked (UTC).</summary>
     public DateTime LockedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>The document of the row (the one issued); <c>null</c> for a legacy row made before any document.</summary>
     public Guid? LockedByDocumentId { get; set; }
 }

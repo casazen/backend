@@ -30,7 +30,6 @@ public class ServiceCustomer
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The supplier org (<see cref="SupplierProfile.OrgId"/>) the customer booked.</summary>
     [Required]
     public Guid OrgId { get; set; }
 
@@ -42,31 +41,23 @@ public class ServiceCustomer
     [Required, MaxLength(64)]
     public string EmailHash { get; set; } = string.Empty;
 
-    /// <summary>Full name as the customer wrote it. Encrypted at rest; the supplier sees "Nome C." until it takes the request (D9).</summary>
     public string FullName { get; set; } = string.Empty;
 
-    /// <summary>E-mail address (the one the booking was verified with). Encrypted at rest.</summary>
     public string Email { get; set; } = string.Empty;
 
-    /// <summary>Phone number. Encrypted at rest; <c>null</c> once anonymized.</summary>
     public string? Phone { get; set; }
 
-    /// <summary>Language of the e-mails to the customer (<see cref="ServiceCustomerLocales"/>).</summary>
     [Required, MaxLength(ShowcaseBookingLimits.LocaleLength)]
     public string Locale { get; set; } = ServiceCustomerLocales.Default;
 
-    /// <summary>Version of the privacy notice the customer accepted at the latest booking (<c>Suppliers:Showcase:PrivacyNoticeVersion</c>).</summary>
     [MaxLength(ShowcaseBookingLimits.PrivacyNoticeVersionMaxLength)]
     public string PrivacyNoticeVersion { get; set; } = string.Empty;
 
-    /// <summary>When the customer accepted it (the latest booking).</summary>
     public DateTime PrivacyAcceptedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>Client address of that acceptance, consent evidence (like <c>Guest.ConsentIpAddress</c>); empty once anonymized.</summary>
     [MaxLength(ShowcaseBookingLimits.ConsentIpMaxLength)]
     public string ConsentIp { get; set; } = string.Empty;
 
-    /// <summary>When the personal data were anonymized by the retention job; <c>null</c> while they are not.</summary>
     public DateTime? AnonymizedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

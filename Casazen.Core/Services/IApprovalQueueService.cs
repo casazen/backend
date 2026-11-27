@@ -63,12 +63,6 @@ public interface IApprovalQueueService
         string? threadKey = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Edit the text of a pending item (the original is kept: <see cref="ApprovalQueueItem.EditedContentText"/>, <see cref="ApprovalQueueItem.EditedByUserId"/>,
-    /// <see cref="ApprovalQueueItem.EditedAt"/>). An edit that gives back the original text is no edit: the fields are cleared and the message goes out as the
-    /// assistant's. 422 <c>approval_edit_invalid</c> for a text that is empty, a message longer than <see cref="GuestMessageRules.TextMaxLength"/>, or a campaign text
-    /// that is not a subject line, a blank line and a body; 404 <c>approval_item_not_found</c>; 409 <c>approval_item_not_pending</c>.
-    /// </summary>
     Task<ApprovalQueueItem> EditAsync(
         HostScope scope,
         Guid itemId,
@@ -90,11 +84,6 @@ public interface IApprovalQueueService
         string userId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Reject a pending item. The reason is mandatory (422 <c>approval_rejection_reason_required</c>, at most
-    /// <see cref="ApprovalQueueItem.RejectionReasonMaxLength"/> characters) and is saved; the rejection hook of the type runs (a campaign goes back to a draft); the
-    /// "To do" of the item is closed. 404 <c>approval_item_not_found</c>; 409 <c>approval_item_not_pending</c>.
-    /// </summary>
     Task<ApprovalQueueItem> RejectAsync(
         HostScope scope,
         Guid itemId,
@@ -102,13 +91,6 @@ public interface IApprovalQueueService
         string? reason,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Get pending approval items for the org of <paramref name="scope"/>, oldest first, narrowed to the properties the scope reaches: an item with a property
-    /// is listed to a caller who reaches it, one with no property to a caller who reaches every property. They carry the confidence score and the thread key.
-    /// </summary>
-    /// <param name="scope">The caller's reach (its org and its properties).</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>List of pending items.</returns>
     Task<List<ApprovalQueueItem>> GetPendingAsync(
         HostScope scope,
         CancellationToken cancellationToken = default);
@@ -129,13 +111,6 @@ public interface IApprovalQueueService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// The outcome of <see cref="IApprovalQueueService.ApproveAsync"/>: the item as it is now and, for the action that ran, how far it went
-/// (<see cref="ApprovalActionResult.State"/>: <c>Sent</c>, <c>Created</c>, <c>WaitingAuthorization</c> or <c>ManualVerify</c> for a message, <c>Scheduled</c> or
-/// <c>Approved</c> for a campaign). <paramref name="ActionState"/> is <c>null</c> for a pure decision and for an item that was already approved. The same record tells the
-/// <see cref="IApprovalDecisionObserver"/> about every decision (E05/F05/US02/T01): <paramref name="Kind"/> (an approval, a rejection, an edit) and the person who decided
-/// (<paramref name="UserId"/>).
-/// </summary>
 public sealed record ApprovalDecision(
     ApprovalQueueItem Item,
     string? ActionState,

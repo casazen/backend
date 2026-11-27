@@ -36,14 +36,10 @@ public sealed class ConcordatoFacileStatusCacheService(
     private static readonly TimeSpan RealBriefRefreshExpiry = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan BriefRefreshWindow = TimeSpan.FromHours(1);
 
-    // CF-FIX2: after a failed read the stale snapshot is served for this long before ConcordatoFacile is asked again. CF-BE: the same
-    // five minutes for the outcome "not available" when there is no snapshot.
     private static readonly TimeSpan RealAfterErrorExpiry = TimeSpan.FromMinutes(5);
 
-    // CF-FIX2: a practice ConcordatoFacile does not know yet (the form was sent seconds ago) is asked again soon, not in 15 minutes.
     private static readonly TimeSpan RealPracticeNotFoundExpiry = TimeSpan.FromMinutes(1);
 
-    // CF-SIM: the one time of the simulated module, null with the real one.
     private readonly TimeSpan? _simulatedExpiry = options?.Value is { FormMode: ConcordatoFacileFormMode.Simulated } simulated
         ? TimeSpan.FromSeconds(simulated.Simulator.StatusTtlSeconds)
         : null;
@@ -69,16 +65,13 @@ public sealed class ConcordatoFacileStatusCacheService(
 
         var cacheKey = BuildCacheKey(leaseId, orgId);
 
-        // Check cache: if valid (not expired) and tenant matches, return cached
         if (memoryCache.TryGetValue(cacheKey, out CfStatusSnapshot? snapshot) && snapshot is not null)
         {
-            // ADR-008-R10: tenant isolation - verify orgId matches
             if (snapshot.OrgId != orgId)
             {
                 logger.LogWarning(
                     "Cached snapshot for lease {LeaseId} belongs to different org {CachedOrgId}, expected {OrgId}",
                     leaseId, snapshot.OrgId, orgId);
-                // Fall through to fetch fresh data
             }
             else if (DateTime.UtcNow < snapshot.ExpiresAt)
             {
@@ -86,12 +79,10 @@ public sealed class ConcordatoFacileStatusCacheService(
             }
         }
 
-        // Request coalescing: use SemaphoreSlim per leaseId to prevent duplicate API calls
         var lockObj = _locks.GetOrAdd(leaseId, _ => new SemaphoreSlim(1, 1));
         await lockObj.WaitAsync(cancellationToken);
         try
         {
-            // Double-check cache after acquiring lock (another request might have fetched it)
             if (memoryCache.TryGetValue(cacheKey, out snapshot) && snapshot is not null &&
                 snapshot.OrgId == orgId && DateTime.UtcNow < snapshot.ExpiresAt)
             {
@@ -110,15 +101,12 @@ public sealed class ConcordatoFacileStatusCacheService(
                 return RememberUnavailable(cacheKey, orgId, snapshot, "status API key not configured");
             }
 
-            // Fetch fresh data from API
             try
             {
                 var practices = await apiClient.GetPracticesByLeaseIdAsync(leaseId, cancellationToken);
 
-                // ADR-008-R9: Brief refresh window - 5-min expiry for 60 min after link emission when practices.Count == 0
                 var expiry = await DetermineExpiryAsync(leaseId, practices.Count, cancellationToken);
 
-                // ADR-008-R14: Handle older status - don't overwrite if new data has older statusChangedAt
                 if (snapshot is { IsAvailable: true } && practices.Count > 0)
                 {
                     var newLatestStatusChangedAt = practices.Max(p => p.StatusChangedAt);
@@ -130,7 +118,6 @@ public sealed class ConcordatoFacileStatusCacheService(
                             "New data for lease {LeaseId} has older statusChangedAt {NewLatest} than cached {CachedLatest}; keeping cached data",
                             leaseId, newLatestStatusChangedAt, cachedLatestStatusChangedAt.Value);
 
-                        // Refresh expiry but keep the old data
                         snapshot = snapshot with
                         {
                             ExpiresAt = DateTime.UtcNow.Add(expiry),
@@ -146,7 +133,6 @@ public sealed class ConcordatoFacileStatusCacheService(
                     }
                 }
 
-                // Cache with 15-min (or 5-min) sliding expiration
                 var newSnapshot = new CfStatusSnapshot
                 {
                     OrgId = orgId,
@@ -218,11 +204,9 @@ public sealed class ConcordatoFacileStatusCacheService(
 
     private string BuildCacheKey(Guid leaseId, Guid orgId)
     {
-        // ADR-008-R10: Cache key = {env}:{orgId}:{leaseId} for tenant isolation
         return $"{environment.EnvironmentName}:{orgId}:{leaseId}";
     }
 
-    /// <summary>What ConcordatoFacile answered for a practice number: the practice, or null when it does not know it.</summary>
     private sealed record CachedPractice(PracticeDto? Practice);
 
     /// <summary>
@@ -237,8 +221,6 @@ public sealed class ConcordatoFacileStatusCacheService(
 
         if (previous is { IsAvailable: true })
         {
-            // CF-FIX2: without the new expiry the stale snapshot would keep its own in the past and every opening of the page would ask
-            // ConcordatoFacile again at once; the old data is served as stale until then.
             var stale = previous with
             {
                 IsStale = true,
@@ -277,7 +259,6 @@ public sealed class ConcordatoFacileStatusCacheService(
 
     private async Task<TimeSpan> DetermineExpiryAsync(Guid leaseId, int practiceCount, CancellationToken cancellationToken)
     {
-        // ADR-008-R9: Brief refresh window - 5-min for 60 min after link emission when practices.Count == 0
         if (practiceCount > 0)
         {
             return NormalExpiry;

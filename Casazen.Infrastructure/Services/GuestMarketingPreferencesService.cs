@@ -37,7 +37,6 @@ public class GuestMarketingPreferencesService(
     TimeProvider timeProvider,
     ILogger<GuestMarketingPreferencesService> logger) : IGuestMarketingPreferencesService, IPortalMarketingPreferences
 {
-    /// <summary>How an opt-out of the guest page is written on the contact and on the suppression list (the person unsubscribed).</summary>
     private const string WithdrawalSource = "unsubscribe";
 
     public async Task<GuestMarketingPreferences> GetAsync(
@@ -58,7 +57,6 @@ public class GuestMarketingPreferencesService(
     {
         ArgumentNullException.ThrowIfNull(change);
 
-        // The uniform 404 comes first: nothing in the body can tell a booking of another guest from one that does not exist.
         var booking = await sessions.FindBookingAsync(ticket, bookingCode, cancellationToken);
         return await UpdateAsync(booking, change, ipAddress, cancellationToken);
     }
@@ -80,7 +78,6 @@ public class GuestMarketingPreferencesService(
         if (!enableEmail && !enableWhatsApp && !disableEmail && !disableWhatsApp)
             return await ViewAsync(booking, cancellationToken);
 
-        // A consent needs the text it rests on, and the version the page showed must be the one in force. Withdrawing needs neither.
         var version = GdprOptions.Normalize(gdprOptions.Value.MarketingConsentVersion);
         if (enableEmail || enableWhatsApp)
         {
@@ -95,7 +92,6 @@ public class GuestMarketingPreferencesService(
         if (!contactIndex.IsConfigured)
             throw new DomainRuleException(GuestMarketingErrorCodes.ConsentUnavailable, "GuestMarketingConsentUnavailable");
 
-        // Everything the request needs is worked out and checked before the first write.
         var address = enableEmail ? ResolveAddress(booking, change.Email?.Address) : null;
         var phone = enableWhatsApp ? ResolvePhone(booking, change.WhatsApp?.Phone) : null;
 
@@ -103,7 +99,6 @@ public class GuestMarketingPreferencesService(
         var language = LanguageOf(booking, change.Language);
         var displayName = $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim();
 
-        // Withdrawing first: a request that turns a channel off and on again ends with the consent stored on a contact that stays suppressed.
         if (disableEmail)
             await WithdrawAsync(booking, GuestContactChannel.Email, displayName, language, cancellationToken);
 
@@ -151,8 +146,6 @@ public class GuestMarketingPreferencesService(
             : await confirmation.SendConfirmationAsync(booking.OrgId, pending.Id, cancellationToken);
     }
 
-    // ---- reading ------------------------------------------------------------------------------------------------------------------
-
     private async Task<GuestMarketingPreferences> ViewAsync(Booking booking, CancellationToken cancellationToken)
     {
         var channels = await ReadAsync(booking, cancellationToken);
@@ -180,10 +173,6 @@ public class GuestMarketingPreferencesService(
             new GuestMarketingWhatsAppChoice(StateOf(whatsApp), maskedPhone));
     }
 
-    /// <summary>
-    /// The contacts of the guest of the booking, per channel: the ones given by the guest's record of the booking and the ones with the keyed
-    /// hash of its address or of its phone number. Every query names the org of the booking.
-    /// </summary>
     private async Task<GuestChannels> ReadAsync(Booking booking, CancellationToken cancellationToken)
     {
         var guest = booking.Guest;
@@ -212,10 +201,6 @@ public class GuestMarketingPreferencesService(
         return new GuestChannels(email, whatsApp, address, addressIsReal, phone);
     }
 
-    /// <summary>
-    /// The contact the guest acted on: an active consent first, then an active soft opt-in, then an opt-out (a suppressed contact, whatever it
-    /// holds), then the rest (service only); the latest changed among equals.
-    /// </summary>
     private static GuestContact? Pick(IReadOnlyList<GuestContact> candidates) =>
         candidates.OrderBy(Rank).ThenByDescending(contact => contact.UpdatedAt).FirstOrDefault();
 
@@ -232,7 +217,6 @@ public class GuestMarketingPreferencesService(
         };
     }
 
-    /// <summary>The state of a channel (<see cref="GuestMarketingStates"/>): an opt-out wins over everything, then the basis the contact holds.</summary>
     private static string StateOf(GuestContact? contact)
     {
         if (contact is null)
@@ -252,13 +236,6 @@ public class GuestMarketingPreferencesService(
         };
     }
 
-    // ---- writing ------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// The address to consent with: the address of the booking when it is a real one, and then the one the guest typed is not looked at (a
-    /// session proves the booking, not the ownership of another address, and the confirmation e-mail goes to the address named here). Only when
-    /// the booking has an OTA forward, or no usable address, the guest types one, a plain address that is not a relay of an OTA.
-    /// </summary>
     private string ResolveAddress(Booking booking, string? typed)
     {
         var settings = crmOptions.Value;
@@ -278,7 +255,6 @@ public class GuestMarketingPreferencesService(
         throw new DomainRuleException(GuestMarketingErrorCodes.EmailInvalid, "GuestMarketingEmailInvalid");
     }
 
-    /// <summary>The number to consent with: the one the guest typed, else the phone of the booking; it must be a number the CRM can store.</summary>
     private string ResolvePhone(Booking booking, string? typed)
     {
         var source = string.IsNullOrWhiteSpace(typed) ? booking.Guest.PhoneNumber : typed;
@@ -286,9 +262,6 @@ public class GuestMarketingPreferencesService(
             ?? throw new DomainRuleException(GuestMarketingErrorCodes.PhoneInvalid, "GuestMarketingPhoneInvalid");
     }
 
-    /// <summary>
-    /// The language of the contact: the one of the page (<c>it</c> or <c>en</c>), else the default language of the org of the booking.
-    /// </summary>
     private static string LanguageOf(Booking booking, string? requested)
     {
         var language = requested?.Trim().ToLowerInvariant();
@@ -298,10 +271,6 @@ public class GuestMarketingPreferencesService(
         return string.Equals(booking.Org?.DefaultLanguage, "en", StringComparison.OrdinalIgnoreCase) ? "en" : "it";
     }
 
-    /// <summary>
-    /// Records the consent of the guest on a channel as a contact (origin and source <c>GuestPage</c>, the version, the IP, the time, the
-    /// language and the guest) and, for e-mail, queues the double opt-in message. The same consent again, on the same text, is left as it is.
-    /// </summary>
     private async Task ConsentAsync(
         Booking booking,
         GuestContactChannel channel,
@@ -344,7 +313,6 @@ public class GuestMarketingPreferencesService(
                 cancellationToken);
         }
 
-        // A consent that was already there is mailed again only if no message was ever sent for it: the rest is the job of the resend.
         var send = !repeated || (existing!.ConfirmationSentCount == 0 && existing.Confirmation != GuestContactConfirmation.Confirmed);
         if (channel == GuestContactChannel.Email && contact is not null && send)
             await confirmation.SendConfirmationAsync(booking.OrgId, contact.Id, cancellationToken);
@@ -393,7 +361,6 @@ public class GuestMarketingPreferencesService(
         }
     }
 
-    /// <summary>The contacts of the guest on each channel, and the address and the phone of the booking in the form the CRM keys them by.</summary>
     private sealed record GuestChannels(
         IReadOnlyList<GuestContact> Email,
         IReadOnlyList<GuestContact> WhatsApp,

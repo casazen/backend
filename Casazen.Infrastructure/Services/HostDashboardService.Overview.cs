@@ -17,7 +17,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed partial class HostDashboardService
 {
-    /// <summary>Arrivals listed as "the next ones" (the Home shows three).</summary>
     public const int NextArrivalsSize = 3;
 
     public async Task<HostOverview> GetOverviewAsync(
@@ -35,7 +34,6 @@ public sealed partial class HostDashboardService
         var period = PeriodOf(periodQuery, today);
         var previousPeriod = period.Previous();
 
-        // One 404 for a property that is missing, another org's or not reached by the caller: nothing tells them apart.
         if (query.PropertyId is { } filtered && !await IsPropertyInScopeAsync(scope, filtered, cancellationToken))
             throw new NotFoundException($"Property {filtered} not found") { MessageKey = "PropertyNotFound" };
 
@@ -79,8 +77,6 @@ public sealed partial class HostDashboardService
             series);
     }
 
-    // The stays that arrive in the period and in the one before: confirmed stays, and the "pay at the property" requests the host has
-    // still to answer (which StayKpiRules leaves out of every KPI). Bounded by the two periods; counted here, by the Rome day.
     private async Task<HostOverviewUpcoming> GetUpcomingAsync(
         HostScope scope,
         Guid? propertyId,
@@ -105,7 +101,6 @@ public sealed partial class HostDashboardService
             inPeriod.Count(a => a.Awaiting));
     }
 
-    // The next arrivals from today on, whatever the period: the soonest confirmed stays and requests waiting for the host.
     private async Task<IReadOnlyList<HostDashboardStay>> GetNextArrivalsAsync(
         HostScope scope,
         Guid? propertyId,

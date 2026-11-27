@@ -29,20 +29,17 @@ public class ServiceRequestPaymentRefund
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The payment that is refunded. A payment with refunds is never deleted (restrict).</summary>
     public Guid ServiceRequestPaymentId { get; set; }
 
     /// <summary>1, 2, 3… within the payment, in the order the refunds were recorded: the <c>n</c> of the idempotency key.</summary>
     public int Sequence { get; set; }
 
-    /// <summary>The amount refunded to the payer, in cents of euro (what Stripe reports once it knows it).</summary>
     public int AmountCents { get; set; }
 
     public ServicePaymentRefundStatus Status { get; set; } = ServicePaymentRefundStatus.Pending;
 
     public ServicePaymentRefundOrigin Origin { get; set; } = ServicePaymentRefundOrigin.Admin;
 
-    /// <summary>The Stripe refund (<c>re_…</c>), known once Stripe answered or a webhook linked it. Unique.</summary>
     [MaxLength(255)]
     public string? StripeRefundId { get; set; }
 
@@ -53,7 +50,6 @@ public class ServiceRequestPaymentRefund
     [MaxLength(255)]
     public string? IdempotencyKey { get; set; }
 
-    /// <summary>The Stripe error code or the failure reason when the refund failed or was canceled; no personal data.</summary>
     [MaxLength(100)]
     public string? FailureCode { get; set; }
 
@@ -61,7 +57,6 @@ public class ServiceRequestPaymentRefund
     [MaxLength(ServicePaymentLimits.OfflineNoteMaxLength)]
     public string? Reason { get; set; }
 
-    /// <summary>The Auth0 subject of the admin who asked for the refund; null for a refund made outside CasaZen.</summary>
     [MaxLength(255)]
     public string? RequestedByUserId { get; set; }
 
@@ -77,7 +72,6 @@ public class ServiceRequestPaymentRefund
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>When the refund became <see cref="ServicePaymentRefundStatus.Succeeded"/>.</summary>
     public DateTime? CompletedAt { get; set; }
 
     [ForeignKey(nameof(ServiceRequestPaymentId))]

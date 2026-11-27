@@ -10,25 +10,17 @@ namespace Casazen.Core.Leases;
 /// </summary>
 public static class LongRentTenantRules
 {
-    /// <summary>Configuration key of the number of days after its due date a payment still counts as made on time.</summary>
     public const string OnTimeDaysKey = "LongRentTenants:OnTimeDays";
 
-    /// <summary>Days after the due date a payment is still on time when nothing is configured (the five days of the prototype).</summary>
     public const int DefaultOnTimeDays = 5;
 
-    /// <summary>The longest grace period the configuration may ask for.</summary>
     public const int MaxOnTimeDays = 60;
 
-    /// <summary>
-    /// The grace period from the configured text: the default for anything that is not a whole number between 0 and
-    /// <see cref="MaxOnTimeDays"/> (a typo in the environment must not turn the page into an error).
-    /// </summary>
     public static int OnTimeDays(string? configured) =>
         int.TryParse(configured, NumberStyles.Integer, CultureInfo.InvariantCulture, out var days) && days is >= 0 and <= MaxOnTimeDays
             ? days
             : DefaultOnTimeDays;
 
-    /// <summary>The fiscal code as it is compared: trimmed and upper case, the form the privacy service matches in SQL.</summary>
     public static string NormalizeFiscalCode(string? fiscalCode) => (fiscalCode ?? string.Empty).Trim().ToUpperInvariant();
 
     /// <summary>
@@ -42,14 +34,9 @@ public static class LongRentTenantRules
         return code.Length > 0 ? code : $"party:{partyId:N}";
     }
 
-    /// <summary>A person is a former tenant when every lease they are on has concluded (at least one, and none still in preparation or running).</summary>
     public static bool IsFormer(IReadOnlyCollection<LeaseStage?> stages) =>
         stages.Count > 0 && stages.All(stage => stage == LeaseStage.Concluded);
 
-    /// <summary>
-    /// Paid, and no later than <paramref name="onTimeDays"/> days after the due date. The punctuality counts the installments due on or
-    /// before today and not cancelled: one still to come says nothing about the tenant yet, and one past due and not paid is not on time.
-    /// </summary>
     public static bool IsOnTime(RentLedgerStatus status, DateOnly dueDate, DateOnly? paidOn, int onTimeDays) =>
         status == RentLedgerStatus.Paid && paidOn is { } paid && paid.DayNumber - dueDate.DayNumber <= onTimeDays;
 }

@@ -2,7 +2,6 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.Regulatory;
 
-/// <summary>How an item of the safety checklist applies to the unit, given its declared facts.</summary>
 public enum SafetyItemRequirement
 {
     /// <summary>Required by art. 13-ter c. 7: it blocks the activation until it is present.</summary>
@@ -11,29 +10,23 @@ public enum SafetyItemRequirement
     /// <summary>Recommended, not required by art. 13-ter (smoke detector, emergency instructions): never blocks.</summary>
     Optional,
 
-    /// <summary>Not applicable to this unit, with a <see cref="SafetyNotApplicableReason"/>.</summary>
     NotApplicable,
 
-    /// <summary>Depends on a fact the host has not declared yet; the question blocks, not the item.</summary>
     Undetermined,
 }
 
-/// <summary>Effective state of an item: the stored answer, or "not applicable" computed from the facts.</summary>
 public enum SafetyItemStatus
 {
     Present,
     Missing,
     NotAnswered,
 
-    /// <summary>Answer imported from the old checklist: the host must answer again.</summary>
     ToReview,
     NotApplicable,
 }
 
-/// <summary>Closed list of the reasons for "not applicable" (sicurezza.md, «Proposta di checklist per CO-07»).</summary>
 public enum SafetyNotApplicableReason
 {
-    /// <summary><c>no_gas_no_combustione</c>: no gas system and no combustion appliance (FAQ of the Ministero del Turismo).</summary>
     NoGasNoCombustion = 1,
 
     /// <summary><c>non_imprenditoriale</c>: the rentals are not run as a business (art. 13-ter c. 7, first sentence).</summary>
@@ -80,14 +73,12 @@ public sealed record SafetyChecklistEvaluation(
 /// </summary>
 public static class SafetyChecklistRules
 {
-    /// <summary>Version of these rules (sicurezza.md principle 5); 1 is the old checklist imported by the migration.</summary>
     public const int SchemaVersion = 2;
 
     public const int LegacySchemaVersion = 1;
 
     public const string LegalBasis = "DL145/2023 art.13-ter, RS-3 2026-09";
 
-    /// <summary>Version of the confirmation text shown to the host (SC-08): a new text asks for a new confirmation.</summary>
     public const string DeclarationTextVersion = "2026-09-v1";
 
     /// <summary>Art. 13-ter c. 7: one extinguisher every 200 m² of floor or fraction, at least one per floor.</summary>
@@ -97,7 +88,6 @@ public static class SafetyChecklistRules
     public const decimal MaxFloorAreaSqm = 10_000m;
     public const int MaxQuantity = 100;
 
-    /// <summary>Items in display order.</summary>
     public static readonly IReadOnlyList<SafetyItemCode> Items =
     [
         SafetyItemCode.FireExtinguishers,
@@ -112,18 +102,9 @@ public static class SafetyChecklistRules
     public static bool IsDetector(SafetyItemCode code) =>
         code is SafetyItemCode.GasDetector or SafetyItemCode.CoDetector or SafetyItemCode.SmokeDetector;
 
-    /// <summary>
-    /// Exemption from the gas and CO detectors (SC-03): no gas system or supply <b>and</b> no combustion appliance. A
-    /// fireplace or a wood stove without gas keeps both detectors required (sicurezza.md, doubt 1).
-    /// </summary>
     public static bool IsDetectorExempt(bool? hasGasSupply, IReadOnlyCollection<CombustionAppliance>? appliances) =>
         hasGasSupply == false && appliances is { Count: 0 };
 
-    /// <summary>
-    /// Minimum number of extinguishers (prudent proposal of RS-3, sicurezza.md doubt 4): <c>max(1, ceil(m² / 200))</c>
-    /// for each floor of the unit, summed; 200 m² give 1, 201 m² give 2. Without the areas the minimum is one per floor
-    /// (and <see cref="Evaluate"/> warns). Null when the number of floors is unknown.
-    /// </summary>
     public static int? MinimumExtinguishers(int? floorCount, IReadOnlyList<decimal>? floorAreasSqm)
     {
         if (floorCount is not > 0)
@@ -166,7 +147,6 @@ public static class SafetyChecklistRules
         }
     }
 
-    /// <summary>Item states, minimum extinguishers, blockers and warnings of a checklist (null: none saved yet).</summary>
     public static SafetyChecklistEvaluation Evaluate(PropertySafetyChecklist? checklist)
     {
         var blockers = new List<SafetyChecklistIssue>();

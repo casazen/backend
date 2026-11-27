@@ -9,12 +9,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Deletes a lease draft with everything tied to it (LR-12): its parties, signers, events, registration and authorizations, and the
-/// files in the private bucket. The one place that knows what a draft is made of, used by the deletion the landlord asks for
-/// (<see cref="LeaseDraftService"/>) and by the retention job (<see cref="LeaseDraftRetentionService"/>), so they cannot disagree
-/// about what may be deleted.
-/// </summary>
 public sealed class LeaseDraftDeleter(
     AppDbContext db,
     IFileStorage storage,
@@ -23,7 +17,6 @@ public sealed class LeaseDraftDeleter(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>The lease with every child the delete has to take with it (EF cascades what is loaded; the database cascades the rest).</summary>
     public IQueryable<LeaseContract> WithChildren() =>
         db.LeaseContracts
             .Include(l => l.Parties)
@@ -32,7 +25,6 @@ public sealed class LeaseDraftDeleter(
             .Include(l => l.Registration)
             .Include(l => l.RentSchedule);
 
-    /// <summary>A draft with nothing that makes it a contract: not a draft any more, a signed copy, or a rent plan keep it.</summary>
     public static bool IsDeletable(LeaseContract lease) =>
         lease.Status == LeaseStatus.Draft
         && string.IsNullOrWhiteSpace(lease.SignedPdfStoragePath)
@@ -59,11 +51,6 @@ public sealed class LeaseDraftDeleter(
         return !hasOpenPurchase;
     }
 
-    /// <summary>
-    /// Removes the lease (loaded with <see cref="WithChildren"/>) and saves; returns the keys of its files in the private bucket,
-    /// which the caller deletes after the commit with <see cref="DeleteFilesAsync"/>. 409 <c>lease_not_deletable</c> when the lease
-    /// is not <see cref="IsDeletableAsync"/>, or when a record that refers to it (added after this code was written) stops the delete.
-    /// </summary>
     public async Task<IReadOnlyList<string>> DeleteAsync(LeaseContract lease, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(lease);
@@ -75,8 +62,6 @@ public sealed class LeaseDraftDeleter(
             .Select(key => key!)
             .ToList();
 
-        // The documents the owner uploaded to the draft (NL-DOCS): the contract itself, with names, fiscal codes and addresses. The rows go
-        // with the lease; the files in the private bucket would stay for ever if they were not listed here.
         var documents = await db.LeaseDocuments.Where(d => d.LeaseContractId == lease.Id).ToListAsync(cancellationToken);
         files.AddRange(documents.Select(d => d.StorageKey).Where(StorageKeys.IsValid));
         db.LeaseDocuments.RemoveRange(documents);
@@ -112,7 +97,6 @@ public sealed class LeaseDraftDeleter(
         return files;
     }
 
-    /// <summary>Deletes the files (a missing one is not an error); one that cannot be deleted is logged without any personal data and left.</summary>
     public async Task DeleteFilesAsync(IEnumerable<string> keys)
     {
         foreach (var key in keys)

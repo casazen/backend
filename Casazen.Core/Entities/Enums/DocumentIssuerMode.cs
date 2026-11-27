@@ -12,10 +12,8 @@ public enum DocumentIssuerMode
     [Obsolete("Retired 2026-11-14, kept for stored rows: CasaZen is always the issuer.")]
     Octorate = 1,
 
-    /// <summary>CasaZen issues the documents of every booking, whatever its source (formerly «direct bookings only», the same number).</summary>
     CasaZen = 2,
 
-    /// <summary>Nobody issued in CasaZen and the accountant took care of the documents. Retired: the accountant only receives the exports.</summary>
     [Obsolete("Retired 2026-11-14, kept for stored rows: the accountant only receives the exports.")]
     Accountant = 3,
 }

@@ -38,12 +38,9 @@ public sealed class OnboardingBulkService(
     ILogger<OnboardingBulkService> logger,
     IOrgGuestAutoSendSetting? autoSendSetting = null) : IOnboardingBulkService
 {
-    // The org-wide setting of the guests written to the channel manager on their own (E20/F01/US01/T01): the container gives the service; built by hand
-    // without it, one on the same context writes the same column.
     private readonly IOrgGuestAutoSendSetting _autoSend = autoSendSetting
         ?? new OrgGuestAutoSendSetting(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<OrgGuestAutoSendSetting>.Instance, timeProvider);
 
-    /// <summary>The most values a list of a filter may hold (a code of a comune, a region or a channel).</summary>
     public const int MaxFilterValues = 500;
 
     private static readonly OnboardingFlow[] AllFlows = [.. Enum.GetValues<OnboardingFlow>().OrderBy(flow => (int)flow)];
@@ -72,7 +69,6 @@ public sealed class OnboardingBulkService(
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentException.ThrowIfNullOrWhiteSpace(actorUserId);
 
-        // The one choice of this version is the sender; a missing or unknown one never means «the default».
         if (choice?.ComplianceSender is not { } sender || !Enum.IsDefined(sender))
             throw new DomainRuleException(OnboardingBulkCodes.ChoiceInvalid, "OnboardingChoiceInvalid");
 
@@ -81,7 +77,6 @@ public sealed class OnboardingBulkService(
         if (selected.Properties.Count > cap)
             throw new DomainRuleException(OnboardingBulkCodes.SelectionTooLarge, "OnboardingSelectionTooLarge", cap);
 
-        // Without the confirmation nothing is written, whatever else was asked.
         var writeNothing = dryRun || !confirmed;
         var before = selected.Properties.Count == 0
             ? new Dictionary<Guid, PropertySenderInfo>()
@@ -96,8 +91,6 @@ public sealed class OnboardingBulkService(
 
         items.AddRange(selected.NotFound.Select(id => new BulkApplyItem(id, null, null, BulkApplyOutcomes.Refused, OnboardingBulkCodes.PropertyNotFound)));
 
-        // The org-wide setting rides on the same confirmed apply (E20/F01/US01/T01): written once for the org, never for each property, and never by a
-        // look (a dry run, or no confirmation). The policy of the endpoint is the organization administrator's.
         if (!writeNothing && choice.AutoSendGuestsToOctorate is { } autoSend)
             await _autoSend.SetAsync(scope.OrgId, autoSend, actorUserId, ct);
 
@@ -164,7 +157,6 @@ public sealed class OnboardingBulkService(
         if (actorUserId.Length > OnboardingPilotMember.UserIdMaxLength)
             throw new ArgumentException("Not a user id.", nameof(actorUserId));
 
-        // An empty list never means «no pilot group»: the pilot is replaced by a group or kept.
         var wanted = (propertyIds ?? []).Distinct().ToList();
         if (wanted.Count == 0)
             throw new DomainRuleException(OnboardingActivationCodes.PropertyIdsEmpty, "OnboardingPropertyIdsEmpty");
@@ -173,8 +165,6 @@ public sealed class OnboardingBulkService(
         if (wanted.Count > maxSize)
             throw new DomainRuleException(OnboardingBulkCodes.PilotGroupTooLarge, "OnboardingPilotGroupTooLarge", maxSize);
 
-        // Every member is a property of the scope the flows apply to; one that is not (another org, deleted, outside the reach, long-term or
-        // switched off) is the 404 of an id that does not exist, and nothing is written.
         var found = await Universe(scope).Where(p => wanted.Contains(p.Id)).Select(p => p.Id).ToListAsync(ct);
         if (found.Count != wanted.Count)
             throw OnboardingReach.PropertyNotFound();
@@ -188,7 +178,6 @@ public sealed class OnboardingBulkService(
             }
             catch (DbUpdateException ex) when (attempt == 1 && OrgTeamAccess.IsUniqueViolation(ex, OnboardingPilotMember.PropertyIndexName))
             {
-                // A parallel call put the same property in the group first: nothing of this one was saved, and it decides again from what is stored.
                 db.ChangeTracker.Clear();
             }
         }
@@ -220,7 +209,6 @@ public sealed class OnboardingBulkService(
 
         if (kind == BulkCohorts.Pilot)
         {
-            // The pilot group is never «all»: with none set there is nothing to activate.
             if (memberIds.Count == 0)
                 throw new DomainRuleException(OnboardingBulkCodes.PilotGroupEmpty, "OnboardingPilotGroupEmpty");
 
@@ -237,7 +225,6 @@ public sealed class OnboardingBulkService(
             var others = universe.Where(id => !inPilot.Contains(id)).ToList();
             foreach (var flow in wantedFlows)
             {
-                // The activation service takes at most the cap in one call: a large portfolio goes through it in chunks, in the same order.
                 var outcomes = new List<FlowActivationOutcome>(others.Count);
                 foreach (var chunk in others.Chunk(Cap()))
                     outcomes.AddRange(await activation.ActivateAsync(scope, actorUserId, flow, chunk, ct));
@@ -260,12 +247,6 @@ public sealed class OnboardingBulkService(
         return new BulkActivationResult(kind, result);
     }
 
-    // ---------------------------------------------------------------- selection
-
-    /// <summary>
-    /// The properties a bulk call may touch: the org of the scope, then what the caller reaches, short-rent and active. The one place the
-    /// reach of this feature is decided.
-    /// </summary>
     private IQueryable<Property> Universe(HostScope scope) =>
         db.Properties
             .AsNoTracking()
@@ -286,7 +267,6 @@ public sealed class OnboardingBulkService(
         ArgumentNullException.ThrowIfNull(scope);
         var kind = BulkSelectionKinds.Parse(selection?.Kind) ?? throw SelectionInvalid();
 
-        // What the kind does not use is not silently ignored: a client that names a filter and says «all» gets an error, not the whole portfolio.
         var hasIds = selection!.PropertyIds is not null;
         var hasFilter = selection.Filter is not null;
         if ((kind == BulkSelectionKinds.All && (hasIds || hasFilter))
@@ -312,7 +292,6 @@ public sealed class OnboardingBulkService(
 
     private async Task<Selected> ResolveIdsAsync(IQueryable<Property> universe, IReadOnlyList<Guid>? propertyIds, CancellationToken ct)
     {
-        // An empty list never means «all».
         var ids = (propertyIds ?? []).Distinct().ToList();
         if (ids.Count == 0)
             throw new DomainRuleException(OnboardingActivationCodes.PropertyIdsEmpty, "OnboardingPropertyIdsEmpty");
@@ -346,7 +325,6 @@ public sealed class OnboardingBulkService(
         if (criteria.MissingFlow is null && criteria.FlowState is null)
             return new Selected(candidates, []);
 
-        // The state of a flow is derived, never stored: the flow status judges the properties that are left.
         var flows = new[] { criteria.MissingFlow, criteria.FlowState?.Flow }.OfType<OnboardingFlow>().Distinct().ToList();
         var statuses = candidates.Count == 0
             ? []
@@ -368,10 +346,6 @@ public sealed class OnboardingBulkService(
         return new Selected([.. candidates.Where(Matches)], []);
     }
 
-    /// <summary>
-    /// The filter in the form the query uses, or 422: at least one criterion, and a list that is given is not empty (an empty list never means
-    /// «everything»), holds at most <see cref="MaxFilterValues"/> values and only well-formed codes.
-    /// </summary>
     private static NormalizedFilter ValidateFilter(BulkFilter? filter)
     {
         if (filter is null)
@@ -422,7 +396,6 @@ public sealed class OnboardingBulkService(
             flowState = new BulkFlowStateFilter(rawState.Flow, state);
         }
 
-        // «No criterion» would be everything: that is the kind «all», asked for by name.
         if (comunes is null && regions is null && channels is null && filter.MissingFlow is null && flowState is null)
             throw SelectionInvalid();
 
@@ -431,12 +404,6 @@ public sealed class OnboardingBulkService(
 
     private static DomainRuleException SelectionInvalid() => new(OnboardingBulkCodes.SelectionInvalid, "OnboardingSelectionInvalid");
 
-    // ---------------------------------------------------------------- apply
-
-    /// <summary>
-    /// One property: judged by the sender service without writing anything when <paramref name="writeNothing"/>, else switched through it. A rule
-    /// of the service that refuses is the outcome; the sender in effect before decides between <c>applied</c> and <c>unchanged</c>.
-    /// </summary>
     private async Task<BulkApplyItem> ApplyOneAsync(
         SelectedProperty property,
         ComplianceSenderType? current,
@@ -474,30 +441,17 @@ public sealed class OnboardingBulkService(
 
     private static int Count(IReadOnlyList<BulkApplyItem> items, string outcome) => items.Count(item => item.Outcome == outcome);
 
-    // ---------------------------------------------------------------- progress
-
     private static bool IsActive(FlowPropertyStatus status) => status.State == OnboardingFlowStates.Active;
 
-    /// <summary>
-    /// The flow waits only for the activation: every prerequisite holds (the sole reason it is not active is
-    /// <see cref="OnboardingFlowReasons.FlowNotActivated"/>, the rule the activation service applies).
-    /// </summary>
     private static bool IsReadyToActivate(FlowPropertyStatus status) =>
         status.State == OnboardingFlowStates.ToComplete && status.Reason == OnboardingFlowReasons.FlowNotActivated;
 
-    /// <summary>
-    /// Ready: at least one flow applies to the property, and every flow that does is active or has all its prerequisites met. A property no flow
-    /// applies to is not ready: there is nothing to run for it.
-    /// </summary>
     private static bool IsReady(IEnumerable<FlowPropertyStatus> statuses)
     {
         var available = statuses.Where(status => status.State != OnboardingFlowStates.NotAvailable).ToList();
         return available.Count > 0 && available.All(status => IsActive(status) || IsReadyToActivate(status));
     }
 
-    // ---------------------------------------------------------------- pilot group
-
-    /// <summary>The members of the pilot group the scope reaches (any state of the property), by name.</summary>
     private async Task<List<BulkPilotMember>> PilotMembersAsync(HostScope scope, CancellationToken ct)
     {
         var reachable = db.Properties.AsNoTracking().Where(p => p.OrgId == scope.OrgId).InScope(scope);
@@ -536,8 +490,6 @@ public sealed class OnboardingBulkService(
 
     private async Task ReplacePilotAsync(HostScope scope, string actorUserId, IReadOnlyList<Guid> wanted, CancellationToken ct)
     {
-        // The members the caller reaches are the ones it replaces; a member it does not reach is neither seen nor touched. The reach is the one of
-        // every read here (the org, then InScope); it is not AsNoTracking, which inside this tracked query would make the whole query untracked.
         var reachableIds = db.Properties.Where(p => p.OrgId == scope.OrgId).InScope(scope).Select(p => p.Id);
         var existing = await db.OnboardingPilotMembers
             .Where(m => m.OrgId == scope.OrgId && reachableIds.Contains(m.PropertyId))
@@ -550,7 +502,6 @@ public sealed class OnboardingBulkService(
         var now = UtcDateTime.TruncateToMicroseconds(timeProvider.GetUtcNow().UtcDateTime);
         foreach (var propertyId in wanted.Where(id => !present.Contains(id)))
         {
-            // Added through the DbSet: the Guid of the row is preset, so adding it to a collection would track it as modified.
             db.OnboardingPilotMembers.Add(new OnboardingPilotMember
             {
                 OrgId = scope.OrgId,
@@ -564,10 +515,6 @@ public sealed class OnboardingBulkService(
             await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>
-    /// The pilot group is set and active in every flow asked, or 409: nothing is written. A flow is active on the pilot when it has at least one
-    /// member it is available for and every such member has it active.
-    /// </summary>
     private async Task RequirePilotActiveAsync(
         HostScope scope,
         IReadOnlyList<Guid> memberIds,

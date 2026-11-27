@@ -33,10 +33,6 @@ internal sealed class OctorateInventoryIntentConfiguration : IEntityTypeConfigur
     }
 }
 
-/// <summary>
-/// An import of existing OTA inventory (E02/F01/US03): carries the org (TN-2, restrict); the list of properties it is about is JSON (jsonb).
-/// Its channels go with it (cascade).
-/// </summary>
 internal sealed class OctorateInventoryImportBatchConfiguration : IEntityTypeConfiguration<OctorateInventoryImportBatch>
 {
     public void Configure(EntityTypeBuilder<OctorateInventoryImportBatch> entity)

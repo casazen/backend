@@ -58,27 +58,20 @@ public sealed class ScheduledMessageDispatcher(
     ICheckInLinkDeliveryService? linkDeliveries = null,
     AgencyDomainLinks? agencyLinks = null) : IScheduledMessageDispatcher
 {
-    /// <summary>The code recorded on a row whose send failed in a way nobody expected (the database, a call that is not an answer of the channel).</summary>
     internal const string UnexpectedErrorCode = "scheduled_message_error";
 
-    /// <summary>The code of a message whose template is gone or off, with no text of the host to replace it.</summary>
     internal const string TemplateMissingCode = "template_missing";
 
-    /// <summary>The code of a text the renderer refuses (empty, too long, a name that is not a variable).</summary>
     internal const string TextInvalidCode = "message_text_invalid";
 
-    /// <summary>The code of a message whose outcome nobody knows: it may have left. It is never written again (the key of the row finds it); the row waits, tried again, for the message layer to know.</summary>
     internal const string ManualVerifyCode = "manual_verify";
 
-    /// <summary>The code of a message the channel manager holds and has not accepted (created, waiting for the authorization of the channel): not a message that went out. Same as the routine's <c>routine_message_unconfirmed</c>.</summary>
     internal const string UnconfirmedCode = "message_unconfirmed";
 
-    /// <summary>A message planned for a moment that passed more than this long ago is not sent late by the sweep: it expires.</summary>
     internal static readonly TimeSpan MaxLateness = TimeSpan.FromHours(24);
 
     private const string Tenant = AppDbContext.TenantQueryFilter;
 
-    // The messages are the work of the routines: with the module of the routines closed nothing is sent, whatever the flag of the messages says.
     private bool Enabled => featureFlags.IsEnabled(FeatureFlags.ScheduledMessages) && featureFlags.IsEnabled(FeatureFlags.Routines);
 
     public async Task<ScheduledMessageDispatchResult> TryDispatchAsync(
@@ -98,16 +91,12 @@ public sealed class ScheduledMessageDispatcher(
         if (!row.IsOpen)
             return new ScheduledMessageDispatchResult(ScheduledMessageDispatchOutcome.NothingToDo, row.Status, null);
 
-        // Nothing goes out before its time but by the hand of the host: the routine fires at the moment of the plan (a message planned for later, the send window, is left to the sweep), and a blocked or failed
-        // message that is tried again waits for its time too (the booking moved to later after it was blocked).
         if (mode != ScheduledMessageDispatchMode.SendNow && nowUtc < row.PlannedAtUtc)
             return new ScheduledMessageDispatchResult(ScheduledMessageDispatchOutcome.NotDue, row.Status, null);
 
-        // A send under way holds the row: nobody sends it a second time while the lease lasts.
         if (row.LastCheckedAt is { } held && nowUtc - held < ScheduledMessageRules.ClaimLease)
             return new ScheduledMessageDispatchResult(ScheduledMessageDispatchOutcome.InProgress, row.Status, null);
 
-        // The claim counts nothing: what is counted is the tries that reached the channel (Attempts), so a message that waited blocked for days has all its tries left when it goes out.
         row.LastCheckedAt = nowUtc;
         row.UpdatedAt = nowUtc;
         try
@@ -116,7 +105,6 @@ public sealed class ScheduledMessageDispatcher(
         }
         catch (DbUpdateConcurrencyException)
         {
-            // Another actor changed the row between the read and the claim: it won, this one does nothing.
             db.ChangeTracker.Clear();
             logger.LogInformation("Scheduled message {MessageId}: another actor claimed it first, nothing is sent", id);
             return new ScheduledMessageDispatchResult(ScheduledMessageDispatchOutcome.InProgress, row.Status, null);
@@ -170,7 +158,6 @@ public sealed class ScheduledMessageDispatcher(
         {
             ct.ThrowIfCancellationRequested();
 
-            // One row at a time: nothing of the previous row stays in the change tracker.
             db.ChangeTracker.Clear();
             try
             {
@@ -223,10 +210,6 @@ public sealed class ScheduledMessageDispatcher(
         }
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // One send
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
     private async Task<ScheduledMessageDispatchResult> DispatchClaimedAsync(
         ScheduledMessage row,
         DateTime now,
@@ -245,16 +228,12 @@ public sealed class ScheduledMessageDispatcher(
         if (held is null)
             return await EndAsync(row, ScheduledMessageStatus.Cancelled, ScheduledMessageReasons.RoutineInactive, now, ct);
 
-        // The condition of the routine, as the engine reads it when the routine fires: a stay that does not (or no longer does) meet it is not for this message. «Send now» is the host's own decision.
         if (mode != ScheduledMessageDispatchMode.SendNow
             && !await ScheduledMessageConditions.HoldsAsync(conditions, row.OrgId, held.RoutineId, held.ConditionJson, facts.ConditionFacts(), logger, ct))
         {
             return await EndAsync(row, ScheduledMessageStatus.Cancelled, ScheduledMessageReasons.ConditionNotMet, now, ct);
         }
 
-        // A campaign goes only to a guest who gave the marketing consent (ADR-022-R11), read as the engine reads it (CampaignConsent). The engine reads it when the routine fires, but the sweep sends what the
-        // routine did not: a row the engine blocked is still planned, so the consent is read here too, whoever asks (the routine, the sweep, «Send now»: a guest who withdrew the consent is not written to).
-        // Nothing reached the channel and it is the expected end of a campaign for a guest who said no: no count of a try, no alert.
         if (held.IsCampaign && !await CampaignConsent.IsGrantedAsync(db, row.OrgId, facts.GuestId, ct))
             return await SkipBySystemAsync(row, ScheduledMessageReasons.CampaignNeedsConsent, now, ct, alert: false, counted: false);
 
@@ -264,7 +243,6 @@ public sealed class ScheduledMessageDispatcher(
         if (body is null)
             return await BlockAsync(row, TemplateMissingCode, wasBlocked, previousReason, now, ct);
 
-        // The values the booking has: the same ones the composer of the hub fills a template with, and the three the plan adds.
         var conversation = await MessageConversationLookup.FindAsync(db, scope, MessageThreadKey.ForDirect(row.BookingId), ct);
         var values = ValuesOf(conversation, facts, language);
 
@@ -293,7 +271,6 @@ public sealed class ScheduledMessageDispatcher(
         }
         catch (Exception ex) when (ex is OctorateException or DomainException or NotFoundException)
         {
-            // The way to the guest could not be read (a limit, an outage): nothing reached the channel, so it counts as no try, and it is tried again.
             return await FailAsync(row, CodeOf(ex), now, userId, ct, counted: false);
         }
 
@@ -308,13 +285,9 @@ public sealed class ScheduledMessageDispatcher(
                 return await SkipBySystemAsync(row, ScheduledMessageReasons.ChannelRule, now, ct);
         }
 
-        // A message that is already there (a send that went out and was never saved, or one the message layer still holds): the row is brought up to date with what the message layer says of it, and nothing is
-        // released, issued or sent again.
         if (await WrittenStateAsync(row, channel, ct) is { } written)
             return await EndOfSendAsync(row, now, channel.ThreadKey, written, mode, userId, facts, ct);
 
-        // What can refuse the message is checked before the first thing that has a side effect (a code released is logged, a link issued ends the session of the guest). The link: the public address,
-        // and the check-in of the stay (IssueLinkAsync refuses nothing, so the rules of the other senders of a link are applied here).
         var usesLink = used.Contains(MessageTemplateRenderer.CheckInLinkVariable);
         if (usesLink)
         {
@@ -347,8 +320,6 @@ public sealed class ScheduledMessageDispatcher(
             accessCode = taken.Code;
         }
 
-        // The text is tried with the rules of the message layer before the link exists: a stand-in of the length of a real link takes its place. A text that cannot go out never costs the guest the link it holds.
-        // E40/F01/US01/T03: the stand-in and the real link are built by the same decision (checkInLinks), so the length tried is the length sent.
         var reviewLink = used.Contains(MessageTemplateRenderer.ReviewLinkVariable) ? ReviewLinkOf(facts, conversation) : null;
         var standIn = checkInLinks?.GuestCheckIn(new string('0', CheckInTokenLength));
         var trial = RenderOrReason(body, values with { CheckInLink = standIn, AccessCode = accessCode, ReviewLink = reviewLink }, out var trialReason);
@@ -363,7 +334,6 @@ public sealed class ScheduledMessageDispatcher(
                 return await BlockAsync(row, invalid == MessageChannelRules.TextInvalidCode ? TextInvalidCode : invalid, wasBlocked, previousReason, now, ct);
         }
 
-        // The link is issued now, right before the send: this is the last step that can still stop the message, and the one that replaces the link the guest holds.
         string? checkInLink = null;
         if (usesLink)
         {
@@ -379,10 +349,8 @@ public sealed class ScheduledMessageDispatcher(
         return await SendAsync(row, scope, channel, text, codeChannel, now, mode, userId, facts, ct);
     }
 
-    /// <summary>The length of the token of a check-in link (64 hexadecimal characters, <c>GuestCheckInService</c>): the stand-in the text is tried with has the length of a real link.</summary>
     private const int CheckInTokenLength = 64;
 
-    /// <summary>The text of the template filled with <paramref name="values"/>; <c>null</c> with the reason the message is held back when the renderer refuses it (a variable with no value, a text that is not valid).</summary>
     private static string? RenderOrReason(Body body, MessageTemplateValues values, out string? reason)
     {
         try
@@ -399,10 +367,6 @@ public sealed class ScheduledMessageDispatcher(
         }
     }
 
-    /// <summary>
-    /// What the message layer would refuse in <paramref name="text"/> for this way to the guest, answered before anything is issued: a code of <see cref="MessageChannelRules"/> (<see cref="MessageChannelRules.TextInvalidCode"/>,
-    /// <see cref="MessageChannelRules.ContactDetailsCode"/> for a portal whose rules do not take a link), or <c>null</c> when it would take it. The same rule, with the same inputs, as <c>MessageReplyService</c>.
-    /// </summary>
     private static string? TextRefusalOf(MessageContactOptions channel, OtaThreadFacts? thread, string text)
     {
         if (channel.Channel == MessageContactChannel.Ota && thread is { } ota)
@@ -451,24 +415,20 @@ public sealed class ScheduledMessageDispatcher(
         }
         catch (NotFoundException)
         {
-            // The conversation went between the choice of the channel and the send (a new mapping moved it, the guest was erased): there is none now.
             return await SkipBySystemAsync(row, ScheduledMessageReasons.ContactUnavailable, now, ct);
         }
         catch (OctorateException ex) when (ex.Code == OctorateAuthException.NotConnectedCode)
         {
-            // The connector is off: there is no way to a guest of a portal now.
             return await SkipBySystemAsync(row, ScheduledMessageReasons.ContactUnavailable, now, ct);
         }
         catch (OctorateException ex)
         {
-            // A limit, an outage, a refusal that is not an answer of the message layer: nothing is known to have left, the row failed with its code and the sweep tries again.
             return await FailAsync(row, ex.Code, now, userId, ct);
         }
 
         if (result.State == OtaMessageDeliveryState.Error)
             return await FailAsync(row, result.ErrorCode ?? "message_not_sent", now, userId, ct);
 
-        // The message is in the hands of the message layer: the code it carries has gone, or may have: this is the moment the release is written (once: a message found again under its key is not a second release).
         if (codeChannel is not null && !result.Replayed)
             await accessCodes.RecordReleaseAsync(row.BookingId, codeChannel, ct);
 
@@ -498,10 +458,6 @@ public sealed class ScheduledMessageDispatcher(
             _ => FailAsync(row, UnconfirmedCode, now, userId, ct),
         };
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // How a send ends
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
     private async Task<ScheduledMessageDispatchResult> SentAsync(
         ScheduledMessage row,
         DateTime now,
@@ -515,8 +471,6 @@ public sealed class ScheduledMessageDispatcher(
         var outside = !ScheduledMessagePlanner.IsInsideWindow(now, RomeCalendar.ZoneOf(facts.Timezone), from, to);
         var key = threadKey?.ToString();
 
-        // The facts of the send are the row's whatever happened to it meanwhile: the message is out. Its status is another matter: a skip of the host that landed while the message was on its way (the lease of the claim
-        // had lapsed, so the host was not held off) is not undone, so the row stays skipped with the time and the place of the send beside it; only a row that is still open becomes sent.
         await SaveFinalAsync(
             row,
             r =>
@@ -615,7 +569,6 @@ public sealed class ScheduledMessageDispatcher(
 
         logger.LogWarning("Scheduled message {MessageId} of org {OrgId} failed ({Code}), attempt {Attempts}", row.Id, row.OrgId, code, row.Attempts);
 
-        // The sweep tries again; the host is told when the tries are used (or asked for it: the person who pressed «Send now» sees the answer itself).
         if (counted && row.Attempts >= ScheduledMessageRules.MaxSendAttempts && userId is null)
         {
             await RaiseTodoAsync(row, code, ct);
@@ -625,10 +578,6 @@ public sealed class ScheduledMessageDispatcher(
         return new ScheduledMessageDispatchResult(ScheduledMessageDispatchOutcome.Failed, ScheduledMessageStatus.Failed, code);
     }
 
-    /// <summary>
-    /// The system decided the message does not go out. <paramref name="alert"/>: the people who reach the property are told, as for a message the channel refused; a skip that is the normal course of a message
-    /// (a campaign for a guest who did not consent, a link for a check-in that is done) tells nobody. <paramref name="counted"/>: it counts as a try; a decision made before the channel was reached does not.
-    /// </summary>
     private async Task<ScheduledMessageDispatchResult> SkipBySystemAsync(ScheduledMessage row, string reason, DateTime now, CancellationToken ct, bool alert = true, bool counted = true)
     {
         var applied = await SaveFinalAsync(
@@ -682,12 +631,6 @@ public sealed class ScheduledMessageDispatcher(
         return new ScheduledMessageDispatchResult(ScheduledMessageDispatchOutcome.Cancelled, status, reason);
     }
 
-    /// <summary>
-    /// Saves what a send decided, on what the row says NOW and not on what it said at the claim: the row is read again first, and a change somebody made after the claim (the host skipped it when the lease had
-    /// lapsed, the booking was cancelled) is seen before the outcome is applied; one that lands between the read and the save fails the save on the <c>xmin</c> and the row is read again. A decision of the system
-    /// (<paramref name="onlyIfStillOpen"/>) is written only if the row is still open (a skip of the host is not undone); the outcome of a message that went out is applied to the facts of the row (when, where) in
-    /// any case, but its <see cref="ScheduledMessage.Status"/> is only the caller's to change on a row that is still open.
-    /// </summary>
     private async Task<bool> SaveFinalAsync(ScheduledMessage row, Action<ScheduledMessage> apply, bool onlyIfStillOpen, CancellationToken ct)
     {
         await db.Entry(row).ReloadAsync(ct);
@@ -712,10 +655,6 @@ public sealed class ScheduledMessageDispatcher(
         }
     }
 
-    /// <summary>
-    /// A failure nobody expected (the database, a call that is not an answer of the channel): the row is read again from what the database says and closed as <c>Failed</c> with a code, so the claim does not stay
-    /// held and the host sees it; if even this cannot be saved it is logged and the original error goes on.
-    /// </summary>
     private async Task RecordUnexpectedFailureAsync(Guid id, DateTime now)
     {
         try
@@ -725,7 +664,6 @@ public sealed class ScheduledMessageDispatcher(
             if (row is not { IsOpen: true })
                 return;
 
-            // It counts as a try, so a failure that keeps coming (a bug, a database that is down) is not tried again by the sweep for ever.
             row.Status = ScheduledMessageStatus.Failed;
             row.Attempts++;
             row.BlockedReason = UnexpectedErrorCode;
@@ -739,10 +677,6 @@ public sealed class ScheduledMessageDispatcher(
         }
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The host: the «To do» and the alert
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
     private async Task RaiseTodoAsync(ScheduledMessage row, string reason, CancellationToken ct)
     {
         try
@@ -755,7 +689,6 @@ public sealed class ScheduledMessageDispatcher(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The row says why it is held back: the «To do» is the second signal, and the sweep raises it again at the next pass of a row that stays blocked after a change.
             db.ChangeTracker.Clear();
             logger.LogError(ex, "The To do of scheduled message {MessageId} of org {OrgId} could not be raised", row.Id, row.OrgId);
         }
@@ -785,11 +718,6 @@ public sealed class ScheduledMessageDispatcher(
         }
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // What the text needs
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>What the dispatch reads of the booking, its property and its org, in one query in the org of the row.</summary>
     private sealed record BookingFacts(
         BookingStatus Status,
         bool NoShow,
@@ -808,10 +736,8 @@ public sealed class ScheduledMessageDispatcher(
         DateTime CreatedAt,
         Guid GuestId)
     {
-        /// <summary>A stay that happens: confirmed, checked in or checked out, not a no-show (the one definition of the time triggers).</summary>
         public bool Happens => !NoShow && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(Status);
 
-        /// <summary>The facts a condition of a routine reads, taken from the booking as the engine takes them.</summary>
         public RoutineConditionFacts ConditionFacts() => RoutineConditionFacts.OfBooking(PropertyId, Source, CheckInDate, CheckOutDate, NumberOfGuests, CreatedAt);
     }
 
@@ -839,7 +765,6 @@ public sealed class ScheduledMessageDispatcher(
                 b.GuestId))
             .FirstOrDefaultAsync(ct);
 
-    /// <summary>The routine a row stands for, when it is still active, not in test mode, and still holds a <c>MessageToGuest</c> at the place of the row: its id, its condition and whether the action is a campaign.</summary>
     private sealed record HeldAction(Guid RoutineId, string ConditionJson, bool IsCampaign);
 
     /// <summary>The routine of the row with its condition, when the routine is still active, not in test mode, and still holds a <c>MessageToGuest</c> at that place; <c>null</c> otherwise.</summary>
@@ -862,7 +787,6 @@ public sealed class ScheduledMessageDispatcher(
             : null;
     }
 
-    /// <summary>The language of the guest: the one it chose on the page of the check-in, else the one of its country, else Italian.</summary>
     private async Task<string> GuestLanguageAsync(ScheduledMessage row, BookingFacts facts, CancellationToken ct)
     {
         var chosen = await db.GuestCheckInSessions
@@ -875,13 +799,8 @@ public sealed class ScheduledMessageDispatcher(
         return GuestLanguages.Normalize(chosen) ?? GuestLanguages.OfCountry(facts.GuestCountry) ?? "it";
     }
 
-    /// <summary>The text and the culture of its language.</summary>
     private sealed record Body(string Text, CultureInfo Culture);
 
-    /// <summary>
-    /// The text of the message: the edit of the host for this booking, else the template the action names in the language of the guest, Italian when it has none, the template itself when it has neither. <c>null</c>
-    /// when the template is gone or off and the host wrote nothing.
-    /// </summary>
     private async Task<Body?> BodyOfAsync(ScheduledMessage row, string language, CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(row.TextOverride))
@@ -934,7 +853,6 @@ public sealed class ScheduledMessageDispatcher(
         _ => null,
     };
 
-    /// <summary>The check-in method of the property in the language of the guest: the text of that language, else the English one for English, else the Italian one the host always writes.</summary>
     private static string? CheckInMethodOf(string? siteProfileJson, string language)
     {
         var text = SitePropertyProfileJson.Parse(siteProfileJson).CheckInMethod;
@@ -958,7 +876,6 @@ public sealed class ScheduledMessageDispatcher(
 
     private bool CanMakeReviewLink(BookingFacts facts) => facts.Source == BookingSource.Direct && links.IsConfigured;
 
-    /// <summary>The link where the guest of a direct booking writes the review: the signed link of the review invitation, valid until the end of the review window.</summary>
     private string? ReviewLinkOf(BookingFacts facts, ConversationFacts conversation)
     {
         if (!CanMakeReviewLink(facts) || conversation.BookingId is not { } bookingId || conversation.CheckOutDate is not { } checkOut)
@@ -968,16 +885,10 @@ public sealed class ScheduledMessageDispatcher(
         return links.GuestReview(facts.OrgSlug, bookingId, reviewTokens.Create(bookingId, new DateTimeOffset(DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc))));
     }
 
-    /// <summary>The result of the release of the access code: the code, or the reason it cannot be given.</summary>
     private sealed record Release(string? Code, string? Reason);
 
-    /// <summary>
-    /// Takes the code for the message through the gate of the release (verification of the guest, the stay, the hold of the tourist tax: <see cref="IAccessCodeService.GetReleasableCodeAsync"/>, ADR-022-R11) and
-    /// writes nothing: the line of the release log is written after the send (<see cref="IAccessCodeService.RecordReleaseAsync"/>).
-    /// </summary>
     private async Task<Release> TakeAccessCodeAsync(ScheduledMessage row, string codeChannel, CancellationToken ct)
     {
-        // A property with no code set is a thing the host fills in; a stay whose guest is not verified is a thing the guest does: two different reasons.
         var hasCode = await db.PropertyAccessCodes
             .IgnoreQueryFilters([Tenant])
             .AsNoTracking()
@@ -992,7 +903,6 @@ public sealed class ScheduledMessageDispatcher(
         return new Release(null, await accessCodes.GetHoldReasonAsync(row.BookingId, ct) is not null ? ScheduledMessageReasons.AccessCodeHeld : ScheduledMessageReasons.IdNotVerified);
     }
 
-    /// <summary>Why a message that names the check-in link does not go: the reason, and whether it waits (<c>Blocked</c>, tried again) or ends (<c>Skipped</c>).</summary>
     private sealed record CheckInLinkRefusal(string Reason, bool Waits);
 
     /// <summary>
@@ -1007,7 +917,6 @@ public sealed class ScheduledMessageDispatcher(
     {
         var instant = new DateTimeOffset(DateTime.SpecifyKind(now, DateTimeKind.Utc));
 
-        // The window of days before the arrival is the daily job's own: a host who plans a message earlier chose it, so only «done» and «not applicable» refuse here.
         var access = await GuestCheckInAccessRules.ReadAsync(
             db,
             row.BookingId,
@@ -1076,14 +985,8 @@ public sealed class ScheduledMessageDispatcher(
         return checkInLinks.GuestCheckIn(issued.Token);
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The conversation
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>The portal and the kind of a conversation of a channel: what the rules of the channel read (<see cref="MessageChannelRules.CheckOutgoing"/>).</summary>
     private sealed record OtaThreadFacts(OtaChannel Source, OtaThreadKind Kind);
 
-    /// <summary>The conversation of the channel the message would go to, in the org of the row; <c>null</c> when it is not there. A scheduled message is for the conversation of a reservation, never for a request that has no booking behind it.</summary>
     private async Task<OtaThreadFacts?> OtaThreadOfAsync(ScheduledMessage row, MessageThreadKey threadKey, CancellationToken ct) =>
         await db.OtaMessageThreads
             .IgnoreQueryFilters([Tenant])
@@ -1092,11 +995,6 @@ public sealed class ScheduledMessageDispatcher(
             .Select(t => new OtaThreadFacts(t.ChannelSource, t.Kind))
             .FirstOrDefaultAsync(ct);
 
-    /// <summary>
-    /// What the message layer says of a message it already holds for this row (a message that did not fail: one refused by the channel has the key of the next attempt), or <c>null</c> when it holds none. The
-    /// state is the message layer's own: <see cref="OtaMessageDeliveryState.Sent"/> when the channel took it, <see cref="OtaMessageDeliveryState.ManualVerify"/> when nobody knows whether it left,
-    /// <see cref="OtaMessageDeliveryState.Created"/> or <see cref="OtaMessageDeliveryState.WaitingAuthorization"/> when it waits. A message of a direct conversation is in the guest area as soon as it is written: sent.
-    /// </summary>
     private async Task<OtaMessageDeliveryState?> WrittenStateAsync(ScheduledMessage row, MessageContactOptions channel, CancellationToken ct)
     {
         var prefix = ScheduledMessageRules.SendKeyOf(row.Id);
@@ -1116,7 +1014,6 @@ public sealed class ScheduledMessageDispatcher(
             if (states.Count == 0)
                 return null;
 
-            // More than one is not expected; if there is, what the channel took counts, then what nobody knows, then what waits.
             return states.Contains(OtaMessageDeliveryState.Sent)
                 ? OtaMessageDeliveryState.Sent
                 : states.Contains(OtaMessageDeliveryState.ManualVerify) ? OtaMessageDeliveryState.ManualVerify : states[0];
@@ -1134,10 +1031,6 @@ public sealed class ScheduledMessageDispatcher(
         return null;
     }
 
-    /// <summary>
-    /// The number of the attempt the next send uses: after a message the channel manager refused (<see cref="OtaMessageDeliveryState.Error"/>: it did not go out) the same key would replay the refusal for ever, so the
-    /// key of the next attempt is used; any other state of a message of this row is the one to use again (the message layer finds it and sends nothing).
-    /// </summary>
     private async Task<int> NextKeyAttemptAsync(ScheduledMessage row, MessageContactOptions channel, CancellationToken ct)
     {
         if (channel.Channel != MessageContactChannel.Ota || channel.ThreadKey is not { } ota)
@@ -1157,14 +1050,6 @@ public sealed class ScheduledMessageDispatcher(
         return refused + 1;
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The sweep: what has passed for good
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// What has passed for good ends without a send: a planned message overdue by more than a day (it is never sent days late), and a blocked or failed one whose planned time and whose stay are over by more than a day
-    /// (the day after the check-out), with its «To do» closed. Returns how many rows ended.
-    /// </summary>
     private async Task<int> ExpireAsync(DateTime nowUtc, DateTime tooLate, CancellationToken ct)
     {
         var scheduled = ScheduledMessageStatus.Scheduled;
@@ -1172,7 +1057,6 @@ public sealed class ScheduledMessageDispatcher(
         var failed = ScheduledMessageStatus.Failed;
         var checkedOutBefore = RomeCalendar.TodayAt(new DateTimeOffset(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc))).AddDays(-1);
 
-        // A message that never reached the channel (planned, or failed before it: the way to the guest could not be read) is not sent days late; a blocked one, or one the channel had, waits for the check-out.
         var stale = await db.ScheduledMessages
             .IgnoreQueryFilters([Tenant])
             .Where(m => ((m.Status == scheduled || (m.Status == failed && m.Attempts == 0)) && m.PlannedAtUtc <= tooLate)
@@ -1201,7 +1085,6 @@ public sealed class ScheduledMessageDispatcher(
         }
         catch (DbUpdateConcurrencyException)
         {
-            // Somebody changed one of them meanwhile: the next pass looks again.
             db.ChangeTracker.Clear();
             return 0;
         }
@@ -1212,8 +1095,6 @@ public sealed class ScheduledMessageDispatcher(
         db.ChangeTracker.Clear();
         return stale.Count;
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     private static string SkipReasonOf(string? reason) => reason switch
     {

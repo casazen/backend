@@ -36,10 +36,8 @@ public sealed class OrgInvitationMaintenanceService(
     ILogger<OrgInvitationMaintenanceService> logger,
     TimeProvider? timeProvider = null) : IOrgInvitationMaintenanceService
 {
-    /// <summary>The key of the session lock of a run (<see cref="PostgresAdvisoryLocks.Scope.OrgInvitationMaintenance"/>).</summary>
     internal const string RunLockKey = "org-invitation-maintenance";
 
-    /// <summary>Invitations handled per step and per run: the next run takes the rest.</summary>
     private const int BatchSize = 200;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -69,8 +67,6 @@ public sealed class OrgInvitationMaintenanceService(
 
         return new OrgInvitationMaintenanceResult(false, reminded, expired, purged);
     }
-
-    // ─── Expiry ─────────────────────────────────────────────────────────────────────────────────────────
 
     private async Task<int> ExpireAsync(DateTime now, CancellationToken cancellationToken)
     {
@@ -107,7 +103,6 @@ public sealed class OrgInvitationMaintenanceService(
         return expired;
     }
 
-    /// <summary>The invitation, expired now; <c>null</c> when it is no longer pending (accepted, revoked or sent again meanwhile).</summary>
     private async Task<OrgInvitation?> ExpireOneAsync(Guid id, Guid orgId, DateTime now, CancellationToken cancellationToken)
     {
         await using var transaction = await OrgTeamAccess.BeginSeatsTransactionAsync(db, orgId, cancellationToken);
@@ -162,11 +157,8 @@ public sealed class OrgInvitationMaintenanceService(
             logger.LogWarning("The expiry note of org invitation {InvitationId} was not queued", invitation.Id);
     }
 
-    // ─── Reminder ───────────────────────────────────────────────────────────────────────────────────────
-
     private async Task<int> RemindAsync(DateTime now, CancellationToken cancellationToken)
     {
-        // Three days after it was sent = four days before it expires (a week of validity).
         var dueUntil = now + (OrgInvitationRules.Validity - OrgInvitationRules.ReminderAfter);
         var due = await db.OrgInvitations.IgnoreQueryFilters().AsNoTracking()
             .Where(i => i.Status == OrgInvitationStatus.Pending
@@ -222,7 +214,6 @@ public sealed class OrgInvitationMaintenanceService(
         if (org is null)
             return false;
 
-        // The link of the first email stops working with the new token: queue the email first, rotate only if it is queued.
         var token = OrgInvitationTokens.Generate();
         var content = OrgInvitationEmails.Reminder(
             publicSiteLinks, invitation, token, string.IsNullOrWhiteSpace(org.DisplayName) ? org.Name : org.DisplayName);
@@ -242,8 +233,6 @@ public sealed class OrgInvitationMaintenanceService(
 
         return true;
     }
-
-    // ─── Retention ──────────────────────────────────────────────────────────────────────────────────────
 
     private async Task<int> PurgeAsync(DateTime now, CancellationToken cancellationToken)
     {
@@ -278,7 +267,6 @@ public sealed class OrgInvitationMaintenanceService(
         return purged;
     }
 
-    /// <summary>Deletes the org's closed invitations older than the cutoff, under its seats lock (a send-again of an old one cannot meet the delete).</summary>
     private async Task<int> PurgeOrgAsync(Guid orgId, DateTime cutoff, CancellationToken cancellationToken)
     {
         await using var transaction = await OrgTeamAccess.BeginSeatsTransactionAsync(db, orgId, cancellationToken);

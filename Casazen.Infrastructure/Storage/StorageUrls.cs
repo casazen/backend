@@ -3,7 +3,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Storage;
 
-/// <summary>Public URL mapping shared by the storage providers: <c>{publicBaseUrl}/{key}</c>.</summary>
 internal static class PublicUrls
 {
     public static string Build(string publicBaseUrl, string key) =>
@@ -25,7 +24,6 @@ internal static class PublicUrls
 
 internal static class ContentDisposition
 {
-    /// <summary><c>attachment</c> header value with an ASCII fallback and the RFC 5987 UTF-8 file name.</summary>
     public static string Attachment(string fileName)
     {
         var header = new ContentDispositionHeaderValue("attachment")

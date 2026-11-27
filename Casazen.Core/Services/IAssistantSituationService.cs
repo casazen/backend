@@ -21,18 +21,8 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IAssistantSituationService
 {
-    /// <summary>
-    /// The 15 situations with their effective value for the organization (<paramref name="propertyId"/> null) or for a property: the property's row over the organization's over the
-    /// default. The template is returned in clear (the web layer shows it only to the caller who may edit). 404 <c>property_not_found</c>.
-    /// </summary>
     Task<IReadOnlyList<EffectiveSituation>> ListEffectiveAsync(Guid orgId, Guid? propertyId, CancellationToken ct = default);
 
-    /// <summary>
-    /// Saves a situation for the organization (<paramref name="propertyId"/> null) or as the exception of a property: the mode (422 <c>assistant_mode_not_allowed</c> when the situation
-    /// does not allow it), the text of the answer, with variables that <c>MessageTemplateRenderer</c> knows (422 <c>assistant_template_invalid</c> naming the variable it does not,
-    /// or for a text that is too long), and the topic the answer comes from when there is no template. <c>ModeSince</c> becomes now when the row is new or the mode changed, and is
-    /// not moved by a change of the template. Returns the value as it stands for that scope.
-    /// </summary>
     Task<EffectiveSituation> SaveAsync(
         Guid orgId,
         Guid? propertyId,
@@ -43,7 +33,6 @@ public interface IAssistantSituationService
         string userId,
         CancellationToken ct = default);
 
-    /// <summary>Removes the exception of a property for a situation: the property goes back to the organization's value. Nothing to remove is not an error. 404 <c>property_not_found</c>.</summary>
     Task DeleteExceptionAsync(Guid orgId, Guid propertyId, AssistantSituation situation, CancellationToken ct = default);
 
     /// <summary>
@@ -55,7 +44,6 @@ public interface IAssistantSituationService
     Task<ResolvedSituation> ResolveAsync(Guid orgId, Guid? propertyId, AssistantSituation situation, CancellationToken ct = default);
 }
 
-/// <summary>Where the value of a situation comes from: the catalog's default, the organization's row, or the exception of the property.</summary>
 public enum AssistantSettingOrigin
 {
     Default = 0,

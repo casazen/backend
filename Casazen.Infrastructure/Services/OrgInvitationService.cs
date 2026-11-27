@@ -47,7 +47,6 @@ public sealed partial class OrgInvitationService(
 
     private DateTime Now => _clock.GetUtcNow().UtcDateTime;
 
-    /// <summary>Minutes between two «reinvia» of one invitation (<c>OrgTeam:ResendMinutes</c>, AM-D15); a value that is not a positive number is ignored.</summary>
     private TimeSpan ResendWait => TimeSpan.FromMinutes(ReadPositive(OrgInvitationRules.ResendMinutesConfigKey, OrgInvitationRules.DefaultResendMinutes));
 
     private int ReadPositive(string key, int fallback) =>
@@ -61,8 +60,6 @@ public sealed partial class OrgInvitationService(
         if (request.Role == OrgRole.Owner)
             throw new DomainRuleException(OrgMembershipErrors.OwnerNotAssignable, "OrgMemberOwnerNotAssignable");
 
-        // «Solo alcuni» (AM-03) and the properties it carries (AM-02c) are the collaborator's alone: refused here, not at the
-        // acceptance, where the inviter is gone.
         var propertyIds = (request.PropertyIds ?? []).Distinct().Order().ToList();
         if ((request.PropertyScope == PropertyScope.Selected && request.Role != OrgRole.Collaborator)
             || (propertyIds.Count > 0 && request.PropertyScope != PropertyScope.Selected))
@@ -83,8 +80,6 @@ public sealed partial class OrgInvitationService(
         if (!OrgTeamRules.CanAssign(actor.Role, request.Role))
             throw new DomainForbiddenException(OrgInvitationErrors.OwnerRequired, "OrgOwnerRequired");
 
-        // Every property is a live property of the org, and the inviter reaches it: the owner and the administrators, who are
-        // the only ones who invite (RequireManagerAsync), reach every property of their org (HostScopeResolver).
         if (propertyIds.Count > 0)
         {
             var propertyCount = await PropertiesInAreas(request.OrgId, areas).CountAsync(p => propertyIds.Contains(p.Id), cancellationToken);
@@ -92,10 +87,8 @@ public sealed partial class OrgInvitationService(
                 throw new DomainRuleException(OrgMembershipErrors.PropertyUnknown, "OrgMemberPropertyUnknown");
         }
 
-        // A missing public URL is a configuration error, found before anything is saved.
         publicSiteLinks.EnsureConfigured();
 
-        // An invitation that names no language goes out in the language of the account (AM-08b-b, the settings of the org).
         var language = string.IsNullOrWhiteSpace(request.Language)
             ? await db.Orgs.AsNoTracking().Where(o => o.Id == request.OrgId).Select(o => o.DefaultLanguage).FirstOrDefaultAsync(cancellationToken)
             : request.Language;
@@ -121,7 +114,6 @@ public sealed partial class OrgInvitationService(
 
         await using (var transaction = await OrgTeamAccess.BeginSeatsTransactionAsync(db, request.OrgId, cancellationToken))
         {
-            // A pending row of this email that is past its expiry would still hold the unique index.
             await CloseOverdueOfEmailAsync(request.OrgId, email, now, cancellationToken);
 
             if (await IsMemberByEmailAsync(request.OrgId, email, cancellationToken))
@@ -129,11 +121,8 @@ public sealed partial class OrgInvitationService(
             if (await HasOpenInvitationAsync(request.OrgId, email, exceptId: null, now, cancellationToken))
                 throw new DomainConflictException(OrgInvitationErrors.AlreadyPending, "OrgInvitationAlreadyPending");
 
-            // Agency invitations and collaborators have no count limit.
             await seats.EnsureSeatAvailableAsync(request.OrgId, cancellationToken);
 
-            // The line of the activity log goes in the same save as the invitation: no invitation without its line, no line without it.
-            // The properties it carries go in the same save too (AM-02c).
             RecordSend(invitation, now);
             db.OrgInvitations.Add(invitation);
             db.OrgInvitationProperties.AddRange(propertyIds.Select(id => new OrgInvitationProperty
@@ -174,7 +163,6 @@ public sealed partial class OrgInvitationService(
             .OrderByDescending(i => i.CreatedAt)
             .ToListAsync(cancellationToken);
 
-        // The properties they carry (AM-02c), in one more query for all of them.
         var propertiesOf = new Dictionary<Guid, IReadOnlyList<Guid>>();
         var invitationIds = rows.Select(i => i.Id).ToList();
         if (invitationIds.Count > 0)
@@ -209,16 +197,12 @@ public sealed partial class OrgInvitationService(
         await using (var transaction = await OrgTeamAccess.BeginSeatsTransactionAsync(db, orgId, cancellationToken))
         {
             invitation = await FindAsync(orgId, invitationId, cancellationToken);
-            // Sending again gives the role once more (an expired one is revived): the same rule as creating it.
             EnsureMayHandle(actor, invitation, assigning: true);
             if (invitation.Status is OrgInvitationStatus.Accepted or OrgInvitationStatus.Revoked)
                 throw new DomainConflictException(OrgInvitationErrors.NotPending, "OrgInvitationNotPending");
 
-            // Avoid repeated email delivery of the same invitation within the resend interval.
             EnsureResendIsNotTooSoon(invitation, now);
 
-            // An expired invitation holds no seat: bringing it back takes one again, and must not collide with a newer
-            // invitation of the same person or with the person having joined meanwhile.
             if (!OrgInvitationRules.IsOpen(invitation.Status, invitation.ExpiresAt, now))
             {
                 if (await IsMemberByEmailAsync(orgId, invitation.Email, cancellationToken))
@@ -277,7 +261,6 @@ public sealed partial class OrgInvitationService(
         switch (invitation.Status)
         {
             case OrgInvitationStatus.Revoked:
-                // A second click on "Revoke" finds the work done.
                 return;
             case OrgInvitationStatus.Accepted:
                 throw new DomainConflictException(OrgInvitationErrors.NotPending, "OrgInvitationNotPending");
@@ -323,8 +306,6 @@ public sealed partial class OrgInvitationService(
             if (!OrgInvitationRules.IsOpen(invitation.Status, invitation.ExpiresAt, now))
                 throw new DomainConflictException(OrgInvitationErrors.NotPending, "OrgInvitationNotPending");
 
-            // Only the hash is stored, so a link to hand out is a new token: the previous link, the one of the email
-            // included, stops working. The expiry and the reminder are left as they are, and nothing is sent.
             invitation.TokenHash = OrgInvitationTokens.Hash(token);
             invitation.UpdatedAt = now;
             await db.SaveChangesAsync(cancellationToken);
@@ -348,7 +329,6 @@ public sealed partial class OrgInvitationService(
         var hash = OrgInvitationTokens.Hash(normalized);
         var now = Now;
 
-        // IgnoreQueryFilters: anonymous, there is no tenant.
         var row = await (
                 from i in db.OrgInvitations.IgnoreQueryFilters().AsNoTracking()
                 join o in db.Orgs.AsNoTracking() on i.OrgId equals o.Id
@@ -370,8 +350,6 @@ public sealed partial class OrgInvitationService(
                 })
             .FirstOrDefaultAsync(cancellationToken);
 
-        // Malformed, unknown, replaced by a newer link, expired, used, revoked, of an org that no longer exists: the same
-        // answer, so a stranger learns nothing.
         if (row is null
             || !OrgInvitationTokens.Matches(row.TokenHash, normalized)
             || !OrgInvitationRules.IsOpen(row.Status, row.ExpiresAt, now)
@@ -392,10 +370,6 @@ public sealed partial class OrgInvitationService(
             row.ExpiresAt);
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────────
-
-    // Onboarding projects the agency's rental choice into the owner's context memberships. An administrator
-    // sending an invitation can have different memberships from the owner.
     private async Task<List<string>> ActiveInvitationAreasAsync(Guid orgId, IEnumerable<string>? requested, CancellationToken cancellationToken)
     {
         var active = await (
@@ -425,7 +399,6 @@ public sealed partial class OrgInvitationService(
             throw new DomainForbiddenException(OrgInvitationErrors.OwnerRequired, "OrgOwnerRequired");
     }
 
-    /// <summary>The invitation of the org, tracked, or 404 <see cref="OrgInvitationErrors.NotFound"/>.</summary>
     private async Task<OrgInvitation> FindAsync(Guid orgId, Guid invitationId, CancellationToken cancellationToken) =>
         await db.OrgInvitations.IgnoreQueryFilters()
             .FirstOrDefaultAsync(i => i.Id == invitationId && i.OrgId == orgId, cancellationToken)
@@ -435,7 +408,6 @@ public sealed partial class OrgInvitationService(
             MessageKey = "OrgInvitationNotFound",
         };
 
-    /// <summary>Marks as expired the invitations of this email that are pending in the table but past their expiry.</summary>
     private async Task CloseOverdueOfEmailAsync(Guid orgId, string email, DateTime now, CancellationToken cancellationToken)
     {
         var overdue = await db.OrgInvitations.IgnoreQueryFilters()
@@ -453,7 +425,6 @@ public sealed partial class OrgInvitationService(
         }
     }
 
-    /// <summary>True when somebody with this email already is a member of the org (active or deactivated).</summary>
     private async Task<bool> IsMemberByEmailAsync(Guid orgId, string email, CancellationToken cancellationToken) =>
         await (
                 from m in db.OrgMembers.IgnoreQueryFilters().AsNoTracking()
@@ -514,10 +485,6 @@ public sealed partial class OrgInvitationService(
         propertyIds,
         invitation.LastSentAt);
 
-    /// <summary>
-    /// The properties an invitation carries (AM-02c), sorted; none for an ordinary one. Sorted here and not by the database, so the
-    /// order is the one of the creation and of the list (PostgreSQL orders a uuid byte by byte, .NET does not).
-    /// </summary>
     private async Task<IReadOnlyList<Guid>> PropertyIdsOfAsync(Guid orgId, Guid invitationId, CancellationToken cancellationToken) =>
         (await db.OrgInvitationProperties.IgnoreQueryFilters().AsNoTracking()
             .Where(p => p.OrgId == orgId && p.InvitationId == invitationId)
@@ -526,21 +493,12 @@ public sealed partial class OrgInvitationService(
         .Order()
         .ToList();
 
-    /// <summary>
-    /// Live properties of the destination agency in the rental areas covered by the invitation.
-    /// </summary>
     private IQueryable<Property> PropertiesInAreas(Guid orgId, IReadOnlyCollection<string> areas)
     {
         var properties = db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking().Where(p => p.OrgId == orgId);
         return OrgRoleCatalog.SingleModeOf(areas) is { } mode ? properties.Where(p => p.RentalMode == mode) : properties;
     }
 
-    // ─── The cap on the emails (AM-02c, decision AM-D15) ────────────────────────────────────────────────
-
-    /// <summary>
-    /// Marks an email of the invitation as sent by a person's action at <paramref name="now"/> (the creation, «reinvia»): the last
-    /// send, and the list the cap of the org counts, kept to the last 24 hours. Staged; the caller saves.
-    /// </summary>
     private static void RecordSend(OrgInvitation invitation, DateTime now)
     {
         var cutoff = now - OrgInvitationRules.DailyWindow;
@@ -548,7 +506,6 @@ public sealed partial class OrgInvitationService(
         invitation.SendLog = [.. invitation.SendLog.Where(sent => sent > cutoff), now];
     }
 
-    /// <summary>Only agency administrators manage collaborators; private owners have no team.</summary>
     private async Task RequireAgencyAsync(Guid orgId, CancellationToken cancellationToken)
     {
         if (!await db.Orgs.AsNoTracking().AnyAsync(o => o.Id == orgId && o.IsActive
@@ -595,7 +552,6 @@ public sealed partial class OrgInvitationService(
         }
     }
 
-    /// <summary>Renders and queues the invitation email (after the commit). False when it could not be queued.</summary>
     private async Task<bool> QueueInvitationAsync(OrgInvitation invitation, string token, CancellationToken cancellationToken)
     {
         var (orgName, inviterName) = await LoadSenderNamesAsync(invitation.OrgId, invitation.InvitedByUserId, cancellationToken);
@@ -612,7 +568,6 @@ public sealed partial class OrgInvitationService(
         return queued;
     }
 
-    /// <summary>The org's display name and the inviter's name (the org's name when the inviter has none or is gone).</summary>
     private async Task<(string OrgName, string InviterName)> LoadSenderNamesAsync(
         Guid orgId,
         string inviterUserId,

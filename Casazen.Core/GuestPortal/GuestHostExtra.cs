@@ -12,7 +12,6 @@ public sealed class GuestHostExtra : ITenantOwned
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid OrgId { get; set; }
-    // A single organization catalog, with publication selected independently on each property.
     public Guid[] PropertyIds { get; set; } = [];
     [MaxLength(120)] public string Name { get; set; } = "";
     [MaxLength(2000)] public string Description { get; set; } = "";

@@ -4,10 +4,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Casazen.Infrastructure.Data.Configurations;
 
-/// <summary>
-/// The one-time codes of the connection of a site (S022, PLG-BE-CONNECT): they go with their org (cascade, like the invitations of an org), the hash is
-/// unique (the exchange finds the code by it) and the expiry is indexed for the deletion of the old ones.
-/// </summary>
 internal sealed class SiteConnectionCodeConfiguration : IEntityTypeConfiguration<SiteConnectionCode>
 {
     public void Configure(EntityTypeBuilder<SiteConnectionCode> entity)

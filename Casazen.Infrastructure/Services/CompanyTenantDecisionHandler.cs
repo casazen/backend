@@ -30,7 +30,6 @@ public sealed class CompanyTenantDecisionHandler(IOwnerTaxChecks taxChecks) : IE
     {
         ArgumentNullException.ThrowIfNull(domainEvent);
 
-        // About the booking (EntityId), for the two events: the data saved, and the stay that becomes active after the data was saved.
         if (domainEvent.Type is not (DomainEventType.InvoiceDataSaved or DomainEventType.BookingConfirmed) || domainEvent.EntityId == Guid.Empty)
             return;
 

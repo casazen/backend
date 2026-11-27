@@ -10,10 +10,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// What the path of one lease needs, as read in the statement of a lease list (LR-01b): scalars of the lease and the three aggregates of
-/// its rent. Dates are stored values (midnight UTC of the Europe/Rome day), instants where the column is one.
-/// </summary>
 internal sealed record LeaseFlowRow(
     Guid Id,
     Guid PropertyId,
@@ -90,7 +86,6 @@ internal static class LeaseFlowReader
         SentForSignatureOn = Day(row.SentForSignatureAt),
         ReviewConfirmed = row.ReviewConfirmedAt is not null,
         Draft = draft,
-        // The draft of the guided service waits for the service's contract, never for data typed in the wizard (CF-DONE).
         AwaitsPartnerContract = row.IsConcordatoFacileSource && row.Status == LeaseStatus.Draft,
         HasActiveRentPlan = hasActivePlan,
         OverdueRentCount = row.OverdueRentCount,
@@ -101,7 +96,6 @@ internal static class LeaseFlowReader
 
     private static DateOnly? Day(DateTime? value) => value is { } instant ? RomeCalendar.DateInRome(instant) : null;
 
-    /// <summary>The registered leases that have a rent plan that is active (the others cannot ask for one: they are not running yet or are over).</summary>
     private static async Task<HashSet<Guid>> ActivePlansAsync(
         AppDbContext db, IReadOnlyCollection<LeaseFlowRow> rows, CancellationToken cancellationToken)
     {
@@ -117,7 +111,6 @@ internal static class LeaseFlowReader
         return [.. planned];
     }
 
-    /// <summary>The steps of every draft of the list, from the values it keeps and the facts of its property.</summary>
     private static async Task<Dictionary<Guid, LeaseDraftFlow>> DraftFlowsAsync(
         AppDbContext db, IReadOnlyCollection<LeaseFlowRow> rows, DateOnly today, CancellationToken cancellationToken)
     {
@@ -140,8 +133,6 @@ internal static class LeaseFlowReader
                 .ToListAsync(cancellationToken))
             .ToDictionary(p => p.Id);
 
-        // Like the guided draft, the existence of the certificate is enough here: the one that was uploaded was recognised as official.
-        // And, as in the draft, one of them must have its code and energy class: the contract prints them (LR-APE).
         var apes = await db.PropertyDocuments
             .AsNoTracking()
             .Where(d => d.DocumentType == DocumentType.Ape && propertyIds.Contains(d.PropertyId))

@@ -79,7 +79,6 @@ public sealed class DocumentPlanService(AppDbContext db, IFiscalTaxRuleResolver 
         }
         else if (!ready || FiscalDocumentRules.IsSwiss(profile!.CountryCode))
         {
-            // The stay of an Italian property is issued with the Italian rules: a Swiss profile (made for ⚖ C1) does not issue it, the owner needs an Italian one.
             return new DocumentPlan(booking.Id, [], [signatoryOwnerId]);
         }
 
@@ -96,14 +95,12 @@ public sealed class DocumentPlanService(AppDbContext db, IFiscalTaxRuleResolver 
             : new DocumentPlan(booking.Id, [stay], []);
     }
 
-    /// <summary>The profile has everything an issue on <paramref name="day"/> needs (the regime code of the rule in force then when it has none of its own).</summary>
     private bool CanIssue(OrgFiscalIssuerProfile profile, DateOnly day)
     {
         var rule = taxRules.TryResolve(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, profile.CleaningFeeTreatment, day);
         return OwnerIssuerProfileRules.MissingFields(profile, rule?.FatturaPaRegimeCode).Count == 0;
     }
 
-    /// <summary>The co-owners as the document prints them: the legal name, else «First Last», with the share; the largest share first.</summary>
     private async Task<IReadOnlyList<PlannedCoOwner>> CoOwnersAsync(Guid orgId, IReadOnlyList<(Guid OwnerId, decimal Share)> shares, CancellationToken ct)
     {
         var ids = shares.Select(s => s.OwnerId).Distinct().ToList();

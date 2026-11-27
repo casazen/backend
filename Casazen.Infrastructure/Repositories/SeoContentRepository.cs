@@ -49,7 +49,6 @@ public class SeoContentRepository(AppDbContext context, ISeoComuneCatalog comune
         return comune is null ? null : await GetPublishedAsync(SeoPageType.TouristTaxCalc, comune.Code, cancellationToken);
     }
 
-    /// <summary>SE-01 (A8-05): the public sees the approved revision only, never the latest one.</summary>
     private async Task<SeoContentPage?> GetPublishedAsync(
         SeoPageType pageType,
         string comuneCode,
@@ -142,8 +141,6 @@ public class SeoContentRepository(AppDbContext context, ISeoComuneCatalog comune
     public async Task<IReadOnlyList<SeoContentPage>> GetPublishedPagesForSitemapAsync(
         CancellationToken cancellationToken = default)
     {
-        // SE-02 (A8-02) + SE-01: only published pages, with the text of their approved revision. Bodies are sanitized and
-        // trimmed when stored (FD-15) and an approval requires a body, so the check is only a safety net.
         return await context.SeoContentPages
             .AsNoTracking()
             .Include(p => p.PublishedRevision)
@@ -227,11 +224,9 @@ public class SeoContentRepository(AppDbContext context, ISeoComuneCatalog comune
 
     public async Task AddRevisionAsync(SeoContentRevision revision, CancellationToken cancellationToken = default)
     {
-        // Every stored revision goes through the allowlist, whoever writes it (AI generation or manual edit).
         revision.BodyHtml = SeoHtmlSanitizer.Sanitize(revision.BodyHtml);
 
         await using var transaction = await BeginTransactionAsync(cancellationToken);
-        // Under the page lock an approval cannot run between the new text and the Draft state (A8-05).
         await LockPageAsync(revision.PageId, cancellationToken);
         var page = await LoadPageForUpdateAsync(revision.PageId, cancellationToken)
             ?? throw new InvalidOperationException($"SEO page {revision.PageId} not found");
@@ -296,7 +291,6 @@ public class SeoContentRepository(AppDbContext context, ISeoComuneCatalog comune
         if (revision is null)
             return SeoApprovalOutcome.RevisionNotFound;
 
-        // The admin approves the text they read: a newer revision (generated after they opened it) is never approved blind.
         var latest = await GetLatestRevisionAsync(page.Id, cancellationToken);
         if (latest?.Id != revision.Id)
             return SeoApprovalOutcome.RevisionOutdated;
@@ -355,7 +349,6 @@ public class SeoContentRepository(AppDbContext context, ISeoComuneCatalog comune
         return await context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
     }
 
-    /// <summary>Row lock on the page until the end of the transaction: new revisions, approvals and withdrawals of a page run one after the other.</summary>
     private async Task LockPageAsync(Guid pageId, CancellationToken cancellationToken)
     {
         if (!context.Database.IsNpgsql())
@@ -366,7 +359,6 @@ public class SeoContentRepository(AppDbContext context, ISeoComuneCatalog comune
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>The page as stored now: a tracked instance is refreshed, its values may predate the lock.</summary>
     private async Task<SeoContentPage?> LoadPageForUpdateAsync(Guid pageId, CancellationToken cancellationToken)
     {
         var page = await context.SeoContentPages.FirstOrDefaultAsync(p => p.Id == pageId, cancellationToken);

@@ -4,14 +4,9 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// Supplier professional profile linked 1-to-1 to an <see cref="Org"/> with
-/// <c>OrgType = Supplier</c>. Stores identity, service categories, and activation state (US-022 / #292).
-/// </summary>
 [Table("SupplierProfiles")]
 public class SupplierProfile
 {
-    /// <summary>Primary key — same as the owning <see cref="Org.Id"/>.</summary>
     [Key]
     public Guid OrgId { get; set; }
 
@@ -30,15 +25,9 @@ public class SupplierProfile
     [Required, MaxLength(255)]
     public string Email { get; set; } = string.Empty;
 
-    /// <summary>JSON array of service category codes (e.g. ["cleaning","maintenance"]).</summary>
     [Column(TypeName = "jsonb")]
     public string CategoriesJson { get; set; } = "[]";
 
-    /// <summary>
-    /// JSON array of the comuni where the supplier operates as the supplier or an admin wrote them: free text or old codes
-    /// (<c>H501</c>, <c>Roma</c>). Kept for what was typed before the official list (SU-04); the comuni chosen from it are in
-    /// <see cref="ComuneIstatCodesJson"/>. A supplier covers the union of the two.
-    /// </summary>
     [Column(TypeName = "jsonb")]
     public string ComuniJson { get; set; } = "[]";
 
@@ -52,18 +41,11 @@ public class SupplierProfile
     [MaxLength(2000)]
     public string? Bio { get; set; }
 
-    /// <summary>JSON array of photo URLs.</summary>
     [Column(TypeName = "jsonb")]
     public string PhotoUrlsJson { get; set; } = "[]";
 
     public DateTime? TosAcceptedAt { get; set; }
 
-    /// <summary>
-    /// Version of the Terms of Service (<c>Legal:Documents:Tos:Version</c>) the supplier accepted at <see cref="TosAcceptedAt"/>
-    /// (SU-05, A4-31). Null for a supplier that accepted before the version was recorded: it accepted a text it could not
-    /// read, so the console asks it to accept the current version (without blocking its work, see the runbook). The full
-    /// history is in the <c>ConsentRecords</c> of the supplier org.
-    /// </summary>
     [MaxLength(100)]
     public string? TosVersion { get; set; }
 
@@ -73,17 +55,11 @@ public class SupplierProfile
     /// </summary>
     public int? ActivationStep { get; set; }
 
-    /// <summary>UTC moment a platform admin suspended the profile (SU-12); null while it is not suspended.</summary>
     public DateTime? SuspendedAt { get; set; }
 
-    /// <summary>
-    /// Why the admin suspended the profile (SU-12): an internal note, shown to admins only. Null while it is not
-    /// suspended; the full history is in <see cref="SupplierAdminAuditEntry"/>.
-    /// </summary>
     [MaxLength(500)]
     public string? SuspensionReason { get; set; }
 
-    // Calendar sync
     public CalendarSyncType CalendarSyncType { get; set; } = CalendarSyncType.None;
 
     [MaxLength(2048)]
@@ -97,10 +73,8 @@ public class SupplierProfile
     [MaxLength(500)]
     public string? CalendarSyncError { get; set; }
 
-    /// <summary>State of the iCal sync (SU-15): <c>Syncing</c> while its Hangfire job is queued or running.</summary>
     public SupplierCalendarSyncStatus CalendarSyncStatus { get; set; } = SupplierCalendarSyncStatus.None;
 
-    /// <summary>URL-friendly slug for the public showcase page at /s/{slug}.</summary>
     [MaxLength(100)]
     public string? ShowcaseSlug { get; set; }
 
@@ -113,7 +87,6 @@ public class SupplierProfile
     [MaxLength(64)]
     public string? ClaimTokenHash { get; set; }
 
-    /// <summary>UTC expiry of <see cref="ClaimTokenHash"/>.</summary>
     public DateTime? ClaimTokenExpiresAt { get; set; }
 
     /// <summary>
@@ -125,18 +98,10 @@ public class SupplierProfile
     [Column(TypeName = "numeric(5,2)")]
     public decimal? CommissionPercentOverride { get; set; }
 
-    /// <summary>
-    /// When the override stops (SP-15b, the "periodo gratuito" of decision D3): the override applies to the payments created
-    /// before this instant, and from then on the platform percentage applies again without anybody having to remember to take it
-    /// off. Null = no end (the override stays until an admin removes it). Only meaningful together with
-    /// <see cref="CommissionPercentOverride"/>.
-    /// </summary>
     public DateTime? CommissionOverrideUntil { get; set; }
 
-    /// <summary>CasaZen partnership for the guest marketplace. Managed by platform staff independently of the supplier showcase.</summary>
     public bool GuestPortalMarketplaceEnabled { get; set; }
 
-    /// <summary>First marketplace publication, retained on unpublish for existing host relationships.</summary>
     public DateTime? GuestPortalMarketplaceFirstPublishedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

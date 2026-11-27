@@ -20,10 +20,8 @@ namespace Casazen.Core.Entities;
 [Table("OctorateBookingSyncs")]
 public class OctorateBookingSync : ITenantOwned
 {
-    /// <summary>Name of the unique index on <see cref="BookingId"/>: one mirror per booking.</summary>
     public const string BookingIndexName = "UIX_OctorateBookingSyncs_BookingId";
 
-    /// <summary>Longest <see cref="ErrorCode"/> (varchar 64).</summary>
     public const int ErrorCodeMaxLength = 64;
 
     /// <summary>
@@ -35,13 +33,10 @@ public class OctorateBookingSync : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant: the org of the booking.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The booking mirrored (FK, CASCADE: the row goes with its booking).</summary>
     public Guid BookingId { get; set; }
 
-    /// <summary>The property of the booking when the operation was sent: the listing of Octorate it was sent to.</summary>
     public Guid PropertyId { get; set; }
 
     public OctorateSyncState State { get; set; } = OctorateSyncState.Pending;
@@ -51,17 +46,14 @@ public class OctorateBookingSync : ITenantOwned
     /// <summary>How many times an operation was sent for the booking (every attempt counts, retries included).</summary>
     public int Attempts { get; set; }
 
-    /// <summary>When the last operation was started (UTC).</summary>
     public DateTime? LastAttemptAt { get; set; }
 
-    /// <summary>When Octorate last confirmed an operation (UTC); <c>null</c> until it did.</summary>
     public DateTime? LastSyncedAt { get; set; }
 
     /// <summary>Why the last operation failed: a stable code of CasaZen (<c>octorate_dates_unavailable</c>, ...); <c>null</c> otherwise.</summary>
     [MaxLength(ErrorCodeMaxLength)]
     public string? ErrorCode { get; set; }
 
-    /// <summary>The <c>updateTime</c> of the reservation in Octorate's last answer (UTC), when it gave one.</summary>
     public DateTime? OctorateUpdateTime { get; set; }
 
     /// <summary>

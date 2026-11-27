@@ -11,10 +11,8 @@ namespace Casazen.Core.Events;
 /// <param name="Author"><see cref="StayGuestsChangedAuthors.Guest"/> or <see cref="StayGuestsChangedAuthors.Host"/>.</param>
 public sealed record StayGuestsChangedPayload(Guid BookingId, Guid PropertyId, string Author);
 
-/// <summary>The words of <see cref="StayGuestsChangedPayload.Author"/>: who saved the guests.</summary>
 public static class StayGuestsChangedAuthors
 {
-    /// <summary>The guest, on the online check-in page.</summary>
     public const string Guest = "guest";
 
     /// <summary>A person of the host, in the check-in wizard or on the Alloggiati page.</summary>
@@ -33,12 +31,9 @@ public static class StayGuestsChangedAuthors
 /// <param name="IdVerified">Always <c>true</c>.</param>
 public sealed record IdVerificationCompletedPayload(Guid BookingId, Guid PropertyId, string Method, bool IdVerified = true);
 
-/// <summary>The words of <see cref="IdVerificationCompletedPayload.Method"/>.</summary>
 public static class IdVerificationMethods
 {
-    /// <summary>The face comparison passed on its own.</summary>
     public const string Biometric = "biometric";
 
-    /// <summary>An operator approved it.</summary>
     public const string Operator = "operator";
 }

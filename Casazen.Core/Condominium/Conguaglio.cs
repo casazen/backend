@@ -1,10 +1,5 @@
 namespace Casazen.Core.Condominium;
 
-/// <summary>
-/// What is left to settle when the year closes (CondoLedger <c>computeConguaglio</c>):
-/// consuntivo + straordinari + saldo riportato − versato.
-/// Positive is a debit, negative a credit. It is not the gap between budget and final.
-/// </summary>
 public static class Conguaglio
 {
     public enum Direction

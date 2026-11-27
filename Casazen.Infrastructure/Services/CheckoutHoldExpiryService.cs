@@ -40,11 +40,9 @@ public sealed class CheckoutHoldExpiryService(
     private const string PaymentIntentUnexpectedStateCode = "payment_intent_unexpected_state";
     private const string SetupIntentUnexpectedStateCode = "setup_intent_unexpected_state";
 
-    /// <summary>The guest has completed the payment step: the webhook confirms the booking (or BK-04 handles it).</summary>
     private static readonly HashSet<string> PaymentInFlightStatuses =
         new(StringComparer.Ordinal) { "succeeded", "processing", "requires_capture" };
 
-    /// <summary>The card is saved or being verified: the <c>setup_intent.succeeded</c> webhook confirms the booking.</summary>
     private static readonly HashSet<string> SetupInFlightStatuses = new(StringComparer.Ordinal) { "succeeded", "processing" };
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -175,7 +173,6 @@ public sealed class CheckoutHoldExpiryService(
         return outcome.Outcome;
     }
 
-    /// <summary>One hold under its row lock; the email of an expired "pay at the property" request is sent after the commit.</summary>
     private async Task<(HoldOutcome Outcome, bool NotifyGuestOfExpiredRequest)> ExpireHoldLockedAsync(
         Guid bookingId,
         HoldExpiryCutoff cutoff,
@@ -200,7 +197,6 @@ public sealed class CheckoutHoldExpiryService(
             if (booking is null)
                 return (HoldOutcome.Skipped, false);
 
-            // Fallback for payment rows recorded before BK-02 stored the account of their intent.
             var orgAccountId = await db.Orgs
                 .Where(o => o.Id == booking.OrgId)
                 .Select(o => o.StripeConnectedAccountId)
@@ -214,7 +210,6 @@ public sealed class CheckoutHoldExpiryService(
                         ? OnSiteRequests.ExpiryReason(booking)
                         : BookingCancellationReason.CheckoutHoldExpired;
                     ExpireBooking(booking, reason);
-                    // The hold, or the request, ended by the rules of the checkout: the cancellation is the system's, saved with it.
                     await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingCancelled, booking, BookingEventOrigin.System, cancellationToken);
                     await db.SaveChangesAsync(cancellationToken);
                     if (transaction is not null)
@@ -274,7 +269,6 @@ public sealed class CheckoutHoldExpiryService(
             if (booking is null || !booking.Payments.Any(p => p.Status is PaymentStatus.Pending or PaymentStatus.Failed))
                 return ClosePaymentsOutcome.Skipped;
 
-            // Fallback for payment rows recorded before BK-02 stored the account of their intent.
             var orgAccountId = await db.Orgs
                 .Where(o => o.Id == booking.OrgId)
                 .Select(o => o.StripeConnectedAccountId)
@@ -299,7 +293,6 @@ public sealed class CheckoutHoldExpiryService(
                         await transaction.CommitAsync(cancellationToken);
                     if (inFlightPaymentIntentIds.Count > 0)
                     {
-                        // Recorded as Processing: logged once, the next run no longer finds the payment open.
                         logger.LogWarning(
                             "Cancelled booking {BookingId} keeps an open payment: Stripe says the guest has paid or is paying ({PaymentIntentIds}); a person has to settle it",
                             booking.Id,
@@ -307,7 +300,6 @@ public sealed class CheckoutHoldExpiryService(
                     }
                     else
                     {
-                        // A saved card (SetupIntent) already saved or being verified: nothing to record, read again by the next run.
                         logger.LogInformation(
                             "Cancelled booking {BookingId}: its saved card is already saved or being verified on Stripe; the payment row is left open", booking.Id);
                     }
@@ -431,13 +423,11 @@ public sealed class CheckoutHoldExpiryService(
         }
         catch (StripeException ex) when (ex.StripeError?.Code == PaymentIntentUnexpectedStateCode)
         {
-            // The guest paid between the read and the cancellation: read the final state again.
             var current = await stripeService.GetPaymentIntentAsync(paymentIntentId, connectedAccountId, cancellationToken);
             return ClassifyPaymentIntent(bookingId, current) ?? IntentRelease.Failed;
         }
     }
 
-    /// <summary>Released when already canceled, InFlight when the guest has paid or is paying, null when it can be cancelled.</summary>
     private IntentRelease? ClassifyPaymentIntent(Guid bookingId, PaymentIntent intent)
     {
         if (string.Equals(intent.Status, CanceledStatus, StringComparison.Ordinal))
@@ -541,10 +531,6 @@ public sealed class CheckoutHoldExpiryService(
         CancelUncollectedPayments(booking, now);
     }
 
-    /// <summary>
-    /// Never collected: same state as a host cancellation (BK-02) and the payment_intent.canceled webhook. One definition, for the
-    /// expiry of a hold and for the payments a cancelled booking left open.
-    /// </summary>
     private static void CancelUncollectedPayments(Booking booking, DateTime now)
     {
         foreach (var payment in booking.Payments.Where(p => p.Status is PaymentStatus.Pending or PaymentStatus.Failed))
@@ -554,10 +540,6 @@ public sealed class CheckoutHoldExpiryService(
         }
     }
 
-    /// <summary>
-    /// Records Stripe's answer on the payment rows (<see cref="PaymentStatus.Processing"/>): the hold then keeps its dates
-    /// (<see cref="CheckoutHolds.IsExpired"/>) until the webhook completes it (confirmed) or fails it (expired again).
-    /// </summary>
     private void MarkPaymentsInFlight(Booking booking, IReadOnlyCollection<string> paymentIntentIds)
     {
         var now = UtcNow();
@@ -571,7 +553,6 @@ public sealed class CheckoutHoldExpiryService(
         }
     }
 
-    /// <summary>Changes of a hold that failed to save must not be written later by another save of the same context.</summary>
     private void ForgetChanges(Booking? booking)
     {
         if (booking is null)
@@ -581,7 +562,6 @@ public sealed class CheckoutHoldExpiryService(
             db.Entry(payment).State = EntityState.Detached;
         db.Entry(booking).State = EntityState.Detached;
 
-        // Nor the event of the cancellation that did not happen (ADR-022-R1).
         BookingEvents.Withdraw(db, booking.Id);
     }
 
@@ -593,7 +573,6 @@ public sealed class CheckoutHoldExpiryService(
         return await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
     }
 
-    /// <summary>Row lock on the booking for the rest of the transaction; false when another transaction holds it.</summary>
     private async Task<bool> TryLockBookingAsync(Guid bookingId, CancellationToken cancellationToken)
     {
         if (!db.Database.IsNpgsql())

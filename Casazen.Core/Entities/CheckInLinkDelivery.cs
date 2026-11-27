@@ -24,7 +24,6 @@ namespace Casazen.Core.Entities;
 [Table("CheckInLinkDeliveries")]
 public class CheckInLinkDelivery : ITenantOwned
 {
-    /// <summary>Name of the unique index on <see cref="BookingId"/>.</summary>
     public const string BookingIndexName = "UIX_CheckInLinkDeliveries_BookingId";
 
     public const int ErrorCodeMaxLength = 64;
@@ -34,13 +33,10 @@ public class CheckInLinkDelivery : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant: the org of the booking. Never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The booking the link is for. FK, CASCADE. Unique.</summary>
     public Guid BookingId { get; set; }
 
-    /// <summary>The check-in session (the link) being delivered. FK, SET NULL.</summary>
     public Guid? SessionId { get; set; }
 
     public CheckInLinkChannel Channel { get; set; }
@@ -54,38 +50,24 @@ public class CheckInLinkDelivery : ITenantOwned
     /// </summary>
     public int Attempts { get; set; }
 
-    /// <summary>The stable code of the last thing that went wrong (<c>chat_not_licensed</c>, <c>octorate_unavailable</c>, ...); <c>null</c> when nothing did.</summary>
     [MaxLength(ErrorCodeMaxLength)]
     public string? LastErrorCode { get; set; }
 
-    /// <summary>When the link was handed over (UTC); <c>null</c> until then.</summary>
     public DateTime? SentAt { get; set; }
 
-    /// <summary>The message CasaZen wrote in the thread of the portal, when the link went by chat. FK, SET NULL.</summary>
     public Guid? OtaMessageId { get; set; }
 
-    /// <summary>
-    /// The raw token of the link, <b>encrypted at rest</b> (purpose <c>Casazen.CheckInLink.Token</c>; the column holds the payload only, so it has no length).
-    /// <c>null</c> when nobody may need it any more. See the remarks of the class.
-    /// </summary>
     public string? LinkToken { get; set; }
 
     /// <summary>When the last automatic attempt was made (UTC): the retries keep their distance from it.</summary>
     public DateTime? LastAttemptAt { get; set; }
 
-    /// <summary>
-    /// When the contact of the guest was last asked of the channel manager for this booking (UTC), always for the check-in link and nothing else (T02): once for the
-    /// booking, and again only after a refusal, at most once a day. <c>null</c> while it was never asked.
-    /// </summary>
     public DateTime? ContactReadAt { get; set; }
 
-    /// <summary>The last read of the contact was refused (401 or 403, the static IP addresses): the only answer that lets the read be repeated.</summary>
     public bool ContactRefused { get; set; }
 
-    /// <summary>When the row ended (UTC); <c>null</c> while the link is still being delivered or waits.</summary>
     public DateTime? EndedAt { get; set; }
 
-    /// <summary>Why it ended: a code of <c>CheckInLinkEndReasons</c>.</summary>
     [MaxLength(EndedReasonMaxLength)]
     public string? EndedReason { get; set; }
 

@@ -10,16 +10,10 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static partial class GtmContainerIds
 {
-    /// <summary>Longest valid id: <c>GTM-</c> and 12 letters or digits.</summary>
     public const int MaxLength = 16;
 
-    /// <summary>The stable code of a refused id (400).</summary>
     public const string InvalidCode = "gtm_container_id_invalid";
 
-    /// <summary>
-    /// The id to store for <paramref name="input"/>: <c>true</c> with the upper-case id, or with <c>null</c> for an empty value (the id is cleared);
-    /// <c>false</c> for anything that is not a container id (then <paramref name="normalized"/> is <c>null</c>).
-    /// </summary>
     public static bool TryNormalize(string? input, out string? normalized)
     {
         normalized = null;
@@ -27,7 +21,6 @@ public static partial class GtmContainerIds
         if (string.IsNullOrEmpty(trimmed))
             return true;
 
-        // ASCII only before the upper-casing: a letter of another alphabet must not turn into a Latin one (the Turkish dotless i becomes I).
         if (trimmed.Length > MaxLength || !trimmed.All(char.IsAscii))
             return false;
 

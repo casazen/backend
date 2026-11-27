@@ -31,10 +31,8 @@ public sealed class ChannelManagerAvailabilityService(
     IMemoryCache cache,
     ILogger<ChannelManagerAvailabilityService> logger) : IChannelManagerAvailability
 {
-    /// <summary>How long an answer of Octorate is remembered for a property, a room and some dates.</summary>
     public static readonly TimeSpan AnswerMemory = TimeSpan.FromSeconds(60);
 
-    /// <summary>The longest the lookup of the target and the call take together: past it the answer is "could not be asked".</summary>
     public static readonly TimeSpan Budget = TimeSpan.FromSeconds(10);
 
     public async Task<ChannelManagerAvailability> CheckAsync(
@@ -45,7 +43,6 @@ public sealed class ChannelManagerAvailabilityService(
         int guests,
         CancellationToken ct)
     {
-        // Dates that are not a stay have nothing to ask; the connector off asks nothing, as everything else of the connector.
         if (to <= from || !featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
             return ChannelManagerAvailability.NotMirrored;
 
@@ -56,7 +53,6 @@ public sealed class ChannelManagerAvailabilityService(
             var lookup = await targets.LookupAsync(propertyId, budget.Token);
             if (lookup.Target is not { } target)
             {
-                // Not mirrored: nothing to ask. Mirrored with no room chosen: nothing can be asked until the host chooses it.
                 return lookup.Gap == OctorateTargetGap.NotMirrored
                     ? ChannelManagerAvailability.NotMirrored
                     : ChannelManagerAvailability.Unanswered;
@@ -92,7 +88,6 @@ public sealed class ChannelManagerAvailabilityService(
         }
         catch (ArgumentException ex)
         {
-            // An id of the mapping the client refuses to put in an address: nothing can be asked for this property.
             logger.LogWarning(ex, "Availability of property {PropertyId} on the channel manager cannot be asked: advice only", propertyId);
             return ChannelManagerAvailability.Unanswered;
         }

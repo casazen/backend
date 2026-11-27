@@ -5,11 +5,6 @@ using Property = Casazen.Core.Entities.Property;
 
 namespace Casazen.Infrastructure.Data.Configurations;
 
-/// <summary>
-/// The state of a property on one channel of the channel manager (NF-27, NF-38, ADR-034): rows follow their property (cascade) and carry its
-/// org (TN-2, restrict like every other <c>OrgId</c> foreign key). A property has one row for each channel: the unique index is what lets two
-/// publications of the same property end on one row, whichever of them writes first.
-/// </summary>
 internal sealed class ListingChannelStateConfiguration : IEntityTypeConfiguration<ListingChannelState>
 {
     public void Configure(EntityTypeBuilder<ListingChannelState> entity)
@@ -27,10 +22,6 @@ internal sealed class ListingChannelStateConfiguration : IEntityTypeConfiguratio
     }
 }
 
-/// <summary>
-/// The sending of one photo of a property to the channel manager (NF-32, ADR-036-R3): same ownership as the state of a channel. A photo is its
-/// address, so the unique index on the property and the address is what keeps one photo from being sent twice.
-/// </summary>
 internal sealed class PhotoUploadTaskConfiguration : IEntityTypeConfiguration<PhotoUploadTask>
 {
     public void Configure(EntityTypeBuilder<PhotoUploadTask> entity)

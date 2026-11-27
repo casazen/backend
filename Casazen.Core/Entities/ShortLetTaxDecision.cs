@@ -23,35 +23,26 @@ namespace Casazen.Core.Entities;
 [Table("ShortLetTaxDecisions")]
 public class ShortLetTaxDecision : ITenantOwned
 {
-    /// <summary>The non-unique index on the org and the booking: the decisions of a stay, found by the withholding facts.</summary>
     public const string BookingIndexName = "IX_ShortLetTaxDecisions_OrgId_BookingId";
 
-    /// <summary>The longest <see cref="Reason"/>.</summary>
     public const int ReasonMaxLength = 500;
 
-    /// <summary>The longest <see cref="DecidedByUserId"/>.</summary>
     public const int UserIdMaxLength = 255;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key: the org of the booking, set by the service and never taken from a client.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The stay the decision is about. Not a foreign key: the decision outlives the booking.</summary>
     public Guid BookingId { get; set; }
 
-    /// <summary>The regime applied to the stay: still a short let (withholding) or not.</summary>
     public ShortLetTaxRegime Regime { get; set; }
 
-    /// <summary>Why the person decided so: a note of the agency, 1 to <see cref="ReasonMaxLength"/> characters.</summary>
     [Required, MaxLength(ReasonMaxLength)]
     public string Reason { get; set; } = string.Empty;
 
-    /// <summary>When it was decided (UTC).</summary>
     public DateTime DecidedAt { get; set; }
 
-    /// <summary>Who decided it (the Auth0 subject of the person).</summary>
     [Required, MaxLength(UserIdMaxLength)]
     public string DecidedByUserId { get; set; } = string.Empty;
 }

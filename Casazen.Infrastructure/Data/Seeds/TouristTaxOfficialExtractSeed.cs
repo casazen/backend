@@ -4,11 +4,6 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Casazen.Infrastructure.Data.Seeds;
 
-/// <summary>
-/// RS-7 amounts read from institutional documents on 2026-10-09. The frozen seed of the applied CO-03 / BK-03
-/// migrations is unchanged; this data is applied by a later migration and kept current by the daily job when the
-/// same documents can still be parsed.
-/// </summary>
 public static class TouristTaxOfficialExtractSeed
 {
     public static readonly DateTime RetrievedAt = new(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc);
@@ -32,7 +27,6 @@ public static class TouristTaxOfficialExtractSeed
     public const string CesanoMadernoUrl =
         "https://www.comune.cesano-maderno.mb.it/amministrazione/unita-organizzative/risorse-tributarie/";
 
-    /// <summary>New rows that the frozen CO-03 / BK-03 seed never inserted (Torino, Bologna, Roma locazione breve, Venezia Gruppo 3 alta).</summary>
     public static IReadOnlyList<TouristTaxRate> NewRates() =>
     [
         Rate(

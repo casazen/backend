@@ -7,10 +7,8 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum LeaseContractType
 {
-    /// <summary>Canone libero, L. 431/1998 art. 2 c. 1 ("4+4"): at least 4 years.</summary>
     Libero = 0,
 
-    /// <summary>Canone concordato, L. 431/1998 art. 2 c. 3 ("3+2"): at least 3 years, rent within the agreement's band.</summary>
     Concordato = 1,
 
     /// <summary>

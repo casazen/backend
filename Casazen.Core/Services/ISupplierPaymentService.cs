@@ -4,19 +4,15 @@ using Casazen.Core.Suppliers;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Where a payment link stands for the payer who opens it (<see cref="ISupplierPaymentService.GetPublicAsync"/>). Serialized by name.</summary>
 public enum PublicServicePaymentState
 {
-    /// <summary>Nothing was collected and the supplier can be paid: the payer can start the payment.</summary>
     Payable,
 
     /// <summary>Stripe is processing a payment (or it needs to be checked): the payer must not pay again.</summary>
     Processing,
 
-    /// <summary>Paid (a refund does not make it payable again).</summary>
     Paid,
 
-    /// <summary>Not payable now: withdrawn, or the supplier cannot be paid through CasaZen at the moment.</summary>
     Unavailable,
 }
 
@@ -57,13 +53,6 @@ public sealed record ServicePaymentSession(
     int AmountCents,
     string Currency);
 
-/// <summary>
-/// What <see cref="ISupplierPaymentService.PlanAsync"/> decided at the moment a request is completed (or its amount confirmed):
-/// the mode the request keeps, and the payment to save together with the request, if any.
-/// </summary>
-/// <param name="Mode">The mode of the request from now on (a request that cannot be charged online falls back to <see cref="ServiceRequestPaymentMode.Manual"/>).</param>
-/// <param name="Payment">The new payment, added to the context but not saved: the caller saves it with the request. Null when none is created.</param>
-/// <param name="Token">The raw token of the payment link to send; null when the link cannot be sent now (pending). Only its hash is stored.</param>
 public sealed record ServicePaymentPlan(ServiceRequestPaymentMode Mode, ServiceRequestPayment? Payment, string? Token);
 
 /// <summary>
@@ -107,19 +96,10 @@ public interface ISupplierPaymentService
         bool needsConfirmation,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// After the request was saved: sends the payment link to the payer when the plan has one. A link that cannot be queued is
-    /// taken back (the payment stays pending, the supplier asks again); never an error for the caller, the request is already saved.
-    /// </summary>
     Task AnnounceAsync(ServicePaymentPlan plan, ServiceRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>The caller could not save the request: forget the payment that <see cref="PlanAsync"/> added to the context.</summary>
     void Discard(ServicePaymentPlan plan);
 
-    /// <summary>
-    /// The payment page of a link (anonymous: the token is the only access check). A wrong id, a wrong token and a link past its
-    /// validity answer the same 404 <see cref="ServicePaymentErrors.LinkInvalid"/>.
-    /// </summary>
     Task<PublicServicePayment> GetPublicAsync(Guid paymentId, string token, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -130,17 +110,8 @@ public interface ISupplierPaymentService
     /// </summary>
     Task<ServicePaymentSession> CreatePublicSessionAsync(Guid paymentId, string token, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The same session for the signed-in host that owns the request (<paramref name="hostOrgId"/>), without the link. 404
-    /// <see cref="ServicePaymentErrors.NotFound"/> when the request has no payment of that host.
-    /// </summary>
     Task<ServicePaymentSession> CreateHostSessionAsync(Guid requestId, Guid hostOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The supplier sends the payment request of a completed request paid inside CasaZen, or reminds the payer (at most once a day).
-    /// Creates the payment when it does not exist yet (the request was completed while the supplier could not be paid, or with the
-    /// flag off). The caller has already checked that the supplier owns the request and is active.
-    /// </summary>
     Task<ServiceRequestPayment> RequestPaymentAsync(ServiceRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>

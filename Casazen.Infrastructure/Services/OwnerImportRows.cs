@@ -4,11 +4,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// The facts about an owner that a row of the file gives, or that are stored, in the form they are compared and stored in (upper case and no
-/// spaces for the identifiers, the country and the currency in ISO). <c>null</c> = not given. A class: it holds identifiers and bank data, and
-/// nothing prints a class that does not say how.
-/// </summary>
 internal sealed class OwnerValues
 {
     public string? Key { get; set; }
@@ -44,25 +39,19 @@ internal sealed class OwnerValues
     public string? Bic { get; set; }
 }
 
-/// <summary>One distinct owner of the file: an owner of the registry that rows name, or one that the file would create.</summary>
 internal sealed class OwnerPlan(Guid id, PropertyOwner? existing)
 {
-    /// <summary>The id of the owner; for one the file would create, the id it will have.</summary>
     public Guid Id { get; } = id;
 
-    /// <summary>The owner as it is stored (no tracking); <c>null</c> for one the file would create.</summary>
     public PropertyOwner? Existing { get; } = existing;
 
     public bool IsNew => Existing is null;
 
-    /// <summary>The identity the file gave this owner so far (a new owner is found again by it in a later row).</summary>
     public OwnerValues Given { get; } = new();
 
-    /// <summary>The first row that named it: the one that creates it.</summary>
     public int FirstRow { get; set; }
 }
 
-/// <summary>A row of the file while it is judged and applied.</summary>
 internal sealed class OwnerRowState(ParsedOwnerRow source)
 {
     public ParsedOwnerRow Source { get; } = source;
@@ -96,7 +85,6 @@ internal sealed class OwnerRowState(ParsedOwnerRow source)
 
     public string? OwnershipAction { get; set; }
 
-    /// <summary>The stored period this row is the same period as (same property, owner and first day).</summary>
     public Guid? ExistingPeriodId { get; set; }
 
     public bool Applied { get; set; }
@@ -110,7 +98,6 @@ internal sealed class OwnerRowState(ParsedOwnerRow source)
     }
 }
 
-/// <summary>The rules of one row of the owner file that need no database: what a cell means, and how an owner's values merge and conflict.</summary>
 internal static class OwnerRowRules
 {
     private const string KeySymbols = "._:/#-";
@@ -172,8 +159,6 @@ internal static class OwnerRowRules
         if (row.VatNumber is not null)
             values.Vat = OwnerFieldRules.NormalizeVat(row.VatNumber);
 
-        // The structured address (columns indirizzo_via, indirizzo_civico, cap, localita, paese of the template, E13/F01/US01/T01), stored encrypted: the
-        // limits are the ones of the clear text, the same as PUT api/owners/{id}/address.
         Address(state, row.BillingStreet, PropertyOwner.BillingStreetMaxLength, OwnerImportColumns.BillingStreet, v => values.Street = v);
         Address(state, row.BillingCivic, PropertyOwner.BillingCivicMaxLength, OwnerImportColumns.BillingCivic, v => values.Civic = v);
         Address(state, row.BillingPostalCode, PropertyOwner.BillingPostalCodeMaxLength, OwnerImportColumns.BillingPostalCode, v => values.PostalCode = v);
@@ -236,7 +221,6 @@ internal static class OwnerRowRules
         }
     }
 
-    /// <summary>The values a stored owner holds, in the form they are compared in; what is empty is <c>null</c>.</summary>
     public static OwnerValues ValuesOf(PropertyOwner owner) => new()
     {
         Key = Blank(owner.ExternalKey),
@@ -257,10 +241,6 @@ internal static class OwnerRowRules
         Bic = Blank(OwnerFieldRules.NormalizeBic(owner.Bic)),
     };
 
-    /// <summary>
-    /// What <paramref name="given"/> says that differs from <paramref name="held"/> (both non-empty and not equal): the import fills what is
-    /// empty and never overwrites a value. The identifiers are conflicts of identity, the rest conflicts of a field.
-    /// </summary>
     public static IEnumerable<(string Column, string Code)> Conflicts(OwnerValues held, OwnerValues given)
     {
         if (Differs(held.Key, given.Key))
@@ -312,7 +292,6 @@ internal static class OwnerRowRules
             yield return (OwnerImportColumns.Bic, OwnerImportRowCodes.OwnerFieldConflict);
     }
 
-    /// <summary>Adds to <paramref name="target"/> what <paramref name="given"/> says and it does not hold yet; true when something was added.</summary>
     public static bool Fill(OwnerValues target, OwnerValues given)
     {
         var changed = false;
@@ -340,10 +319,6 @@ internal static class OwnerRowRules
         return changed;
     }
 
-    /// <summary>
-    /// Writes into <paramref name="owner"/> what <paramref name="values"/> holds and the owner does not hold yet (nothing is overwritten); true
-    /// when a field was written. For an owner the import creates, the first and the last name are made from the legal name, as a display name.
-    /// </summary>
     public static bool FillEntity(PropertyOwner owner, OwnerValues values, bool creating)
     {
         var changed = false;
@@ -383,7 +358,6 @@ internal static class OwnerRowRules
         var row = state.Source;
         if (!row.NamesProperty)
         {
-            // A share or a day with no property to put it on.
             if (row.HasOwnershipFacts)
                 state.Fail(row.PropertyId is not null || row.Cin is null ? OwnerImportColumns.PropertyId : OwnerImportColumns.CinCode, OwnerImportRowCodes.PropertyNotFound);
 
@@ -439,7 +413,6 @@ internal static class OwnerRowRules
             state.Fail(column, OwnerImportRowCodes.AddressInvalid);
     }
 
-    /// <summary>1 to 64 letters, digits and <c>. _ : / # -</c>, starting with a letter or a digit: an agency code such as <c>PRO-0042</c>.</summary>
     private static bool IsKey(string key) =>
         key.Length is >= 1 and <= PropertyOwner.ExternalKeyMaxLength
         && char.IsAsciiLetterOrDigit(key[0])

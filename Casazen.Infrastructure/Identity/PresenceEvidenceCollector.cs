@@ -25,7 +25,6 @@ public sealed record PresenceEvidence(
     MatchReport? Match,
     SelectedFrames? Selection = null)
 {
-    /// <summary>The checks of the validation, in its order: the liveness comes after them (<see cref="IdentityEvidenceBundle.PresenceChecks"/>).</summary>
     private static readonly string[] ValidationChecks =
     [
         VerificationReasons.Checks.PresenceTiming,
@@ -140,7 +139,6 @@ public sealed class PresenceEvidenceCollector(
         if (!validation.Passed)
             return new PresenceEvidence(validation, null, null, null);
 
-        // The server chooses the frames from the validated sequence: the client never picks which of its frames decide.
         var selection = selector.Select(sequence, validation, policy);
         if (!selection.IsSelected)
             return new PresenceEvidence(validation, selection.Failure, null, null);
@@ -157,7 +155,6 @@ public sealed class PresenceEvidenceCollector(
         }
         catch (InvalidDataException)
         {
-            // The kept picture of the document cannot be decoded any more: nothing can be compared, a person decides (never a match).
             return new PresenceEvidence(validation, null, live, MatchReport.NotAvailable(), chosen);
         }
 

@@ -22,21 +22,16 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class OpenAccess
 {
-    /// <summary>Configuration key of the switch.</summary>
     public const string EnabledSetting = "Entitlement:OpenAccess:Enabled";
 
-    /// <summary>Configuration key of the tier every org gets at least.</summary>
     public const string TierSetting = "Entitlement:OpenAccess:Tier";
 
-    /// <summary>Environment variable of <see cref="EnabledSetting"/> (Railway).</summary>
     public const string EnabledVariable = "Entitlement__OpenAccess__Enabled";
 
-    /// <summary>Environment variable of <see cref="TierSetting"/> (Railway).</summary>
     public const string TierVariable = "Entitlement__OpenAccess__Tier";
 
     public const string Runbook = "docs/runbooks/open-access.md";
 
-    /// <summary>The tier used when the switch is on and no tier is set: the top plan (decision D33).</summary>
     public const PlanTier DefaultTier = PlanTier.Scale;
 
     /// <summary>
@@ -45,10 +40,6 @@ public static class OpenAccess
     /// </summary>
     public static OpenAccessSetting Read(IConfiguration configuration) => Parse(configuration, out _);
 
-    /// <summary>
-    /// Configuration errors naming the variables and never their values, empty when the settings are valid (also when they
-    /// are missing: the defaults are valid). Run at startup by <c>OpenAccessConfiguration</c> (Web).
-    /// </summary>
     public static IReadOnlyList<string> GetErrors(IConfiguration configuration)
     {
         Parse(configuration, out var errors);
@@ -82,12 +73,8 @@ public static class OpenAccess
     }
 }
 
-/// <summary>The open access of this deployment: whether it is on, and the tier every org gets at least (<see cref="OpenAccess"/>).</summary>
-/// <param name="Enabled"><c>true</c> when <c>Entitlement:OpenAccess:Enabled</c> is on.</param>
-/// <param name="Tier">The tier every org gets at least while <paramref name="Enabled"/>; meaningless when it is off.</param>
 public readonly record struct OpenAccessSetting(bool Enabled, PlanTier Tier)
 {
-    /// <summary>No open access: every org keeps the tier its subscription pays for.</summary>
     public static OpenAccessSetting Off => new(false, OpenAccess.DefaultTier);
 
     /// <summary>

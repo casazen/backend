@@ -6,7 +6,6 @@ using Casazen.Core.Regulatory;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Validation of the verified 61-field service, including conditional groups from its validation expression.</summary>
 public static class OpenapiRegistrationValidation
 {
     public static IReadOnlyList<OpenapiRegistrationIssue> Validate(OpenapiRegistrationData data, bool signedPdf)

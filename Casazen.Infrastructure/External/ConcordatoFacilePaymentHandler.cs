@@ -19,26 +19,18 @@ public class ConcordatoFacilePaymentHandler(
     ILogger<ConcordatoFacilePaymentHandler> logger,
     IStripeClient? stripeClient = null)
 {
-    /// <summary>The price of the service: EUR 119,00 (ADR-005-R4).</summary>
     public const long PriceCents = 11900;
 
-    /// <summary>The only currency of the service (ADR-005-R4).</summary>
     public const string Currency = "eur";
 
     private IStripeClient Client => stripeClient ?? StripeConfiguration.StripeClient;
 
-    /// <summary>
-    /// <c>payment_intent.succeeded</c> of a CF purchase (ADR-005-R4, R5): the payment grants access only when it is exactly
-    /// <see cref="PriceCents"/> in <see cref="Currency"/>. <paramref name="paidAt"/> is the time of the event (an async
-    /// payment method settles days after the PaymentIntent was created); without it the PaymentIntent's own time is used.
-    /// </summary>
     public async Task HandlePaymentIntentSucceededAsync(PaymentIntent paymentIntent, DateTime? paidAt = null)
     {
         var metadata = paymentIntent.Metadata;
         var leaseRaw = metadata is not null && metadata.TryGetValue("leaseId", out var leaseValue) ? leaseValue : null;
         var orgRaw = metadata is not null && metadata.TryGetValue("orgId", out var orgValue) ? orgValue : null;
 
-        // ADR-005-R4: the amount and the currency are checked before anything is granted; a mismatch is an error for the operators.
         if (paymentIntent.Amount != PriceCents || !string.Equals(paymentIntent.Currency, Currency, StringComparison.OrdinalIgnoreCase))
         {
             logger.LogError(
@@ -69,7 +61,6 @@ public class ConcordatoFacilePaymentHandler(
             return;
         }
 
-        // The tenant of the payment (when the checkout wrote it) must be the tenant of the purchase.
         if (Guid.TryParse(orgRaw, out var orgId) && orgId != purchase.OrgId)
         {
             logger.LogError(
@@ -90,7 +81,6 @@ public class ConcordatoFacilePaymentHandler(
             return;
         }
 
-        // ADR-005-R5: Completed, PaidAt, and the PaymentIntent that the purchase did not know until now.
         purchase.Status = ConcordatoFacilePurchaseStatus.Completed;
         purchase.PaidAt = ToUtc(paidAt ?? paymentIntent.Created);
         purchase.StripePaymentIntentId = paymentIntent.Id;
@@ -119,7 +109,6 @@ public class ConcordatoFacilePaymentHandler(
         var metadata = paymentIntent.Metadata;
         var orgRaw = metadata is not null && metadata.TryGetValue("orgId", out var orgValue) ? orgValue : null;
 
-        // The Session of this PaymentIntent, from Stripe: the event does not say whether the customer can still try again.
         var sessions = await new SessionService(Client).ListAsync(
             new SessionListOptions { PaymentIntent = paymentIntent.Id, Limit = 1 });
         var session = sessions.Data.FirstOrDefault();
@@ -144,7 +133,6 @@ public class ConcordatoFacilePaymentHandler(
             return;
         }
 
-        // The tenant of the payment (when the checkout wrote it) must be the tenant of the purchase.
         if (Guid.TryParse(orgRaw, out var orgId) && orgId != purchase.OrgId)
         {
             logger.LogError(
@@ -190,11 +178,6 @@ public class ConcordatoFacilePaymentHandler(
             session.Status);
     }
 
-    /// <summary>
-    /// Whether a Checkout Session can no longer lead to a payment: it expired, or it was completed but not paid (a delayed payment
-    /// method whose payment failed or was canceled: a completed Session cannot be tried again). An open Session can: the customer can
-    /// try another card. A paid one is paid.
-    /// </summary>
     internal static bool CanNoLongerSucceed(Session session) => session.Status switch
     {
         "expired" => true,
@@ -203,10 +186,6 @@ public class ConcordatoFacilePaymentHandler(
         _ => false,
     };
 
-    /// <summary>
-    /// <c>charge.refunded</c> of a CF purchase (ADR-005-R7): a full refund marks the purchase Refunded. The practice and the
-    /// documents of the lease are never touched here, and a partial refund leaves the status alone.
-    /// </summary>
     public async Task HandleRefundAsync(Charge charge)
     {
         if (string.IsNullOrWhiteSpace(charge.PaymentIntentId))

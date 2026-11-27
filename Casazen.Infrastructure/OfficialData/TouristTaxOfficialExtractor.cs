@@ -6,10 +6,6 @@ using UglyToad.PdfPig;
 
 namespace Casazen.Infrastructure.OfficialData;
 
-/// <summary>
-/// Deterministic tourist-tax amounts from an institutional HTML page or a textual PDF of a pilot comune (RS-7).
-/// A scan, an empty file or a page without a locazioni-brevi tariff is a failure: the caller must not invent an amount.
-/// </summary>
 public static partial class TouristTaxOfficialExtractor
 {
     public static TouristTaxExtraction TryExtract(string istatCode, ReadOnlySpan<byte> bytes)
@@ -126,7 +122,6 @@ public static partial class TouristTaxOfficialExtractor
         if (!match.Success || !TryEuro(match.Groups[1].Value, out var first))
             return TouristTaxExtraction.Failed("napoli_locazioni_brevi_amount_not_found");
 
-        // Two columns (01/01/2026 then 01/05/2026): the in-force rate is the last one.
         var amount = match.Groups[2].Success && TryEuro(match.Groups[2].Value, out var second) ? second : first;
         return TouristTaxExtraction.Ok(
             [Fixed("063049", "Napoli", "CAM", amount, maxNights: 14, category: null,

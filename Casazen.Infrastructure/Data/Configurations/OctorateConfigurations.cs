@@ -66,7 +66,6 @@ internal sealed class OctorateOAuthStateConfiguration : IEntityTypeConfiguration
 {
     public void Configure(EntityTypeBuilder<OctorateOAuthState> entity)
     {
-        // The OAuth state of a consent: only its SHA-256 is stored (char 64, unique); the expired rows are deleted by ExpiresAt.
         entity.Property(s => s.StateHash).IsFixedLength();
         entity.HasIndex(s => s.StateHash)
             .IsUnique()
@@ -79,8 +78,6 @@ internal sealed class OctorateBookingSyncConfiguration : IEntityTypeConfiguratio
 {
     public void Configure(EntityTypeBuilder<OctorateBookingSync> entity)
     {
-        // The mirror of a CasaZen booking on Octorate (E08/F01/US01/T01, ADR-031): one row per booking, gone with its booking (CASCADE);
-        // the list of the failures of an org reads (OrgId, State). The dates Octorate holds after a 409 are jsonb.
         entity.HasOne<Booking>()
             .WithMany()
             .HasForeignKey(s => s.BookingId)

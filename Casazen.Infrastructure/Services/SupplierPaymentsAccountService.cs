@@ -73,8 +73,6 @@ public sealed class SupplierPaymentsAccountService(
         }
         catch (StripeConnectException ex) when (ex.Failure == StripeConnectFailure.Rejected)
         {
-            // Stripe only gives a login link to an account that finished the onboarding: the supplier has to complete it
-            // first (onboarding link). Not a server fault, so not a 502; the gateway already logged the refusal.
             logger.LogWarning(
                 "Stripe refused the dashboard login link of supplier org {OrgId} (Stripe code {StripeErrorCode}): onboarding not complete",
                 supplierOrgId,
@@ -83,10 +81,6 @@ public sealed class SupplierPaymentsAccountService(
         }
     }
 
-    /// <summary>
-    /// The facts of the profile the state depends on. A supplier org always has a profile; an org without one (a host org, a
-    /// deleted profile) never gets a Connect account through the supplier's routes.
-    /// </summary>
     private async Task<ProfileFacts> RequireProfileAsync(Guid supplierOrgId, CancellationToken cancellationToken) =>
         await db.SupplierProfiles.AsNoTracking()
             .Where(sp => sp.OrgId == supplierOrgId)

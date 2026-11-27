@@ -25,13 +25,8 @@ public sealed class SupplierTodayService(
     IFeatureFlags? features = null,
     ISupplierShowcaseContentService? showcase = null) : ISupplierTodayService
 {
-    /// <summary>
-    /// Jobs listed: far above the daily maximum a supplier can set (50), so it never bites for one day; a week can pass it, which is
-    /// why the answer also carries how many jobs there are (<see cref="SupplierToday.JobsTotal"/>).
-    /// </summary>
     private const int MaxJobsListed = 50;
 
-    /// <summary>New requests listed on the home (the console shows the first three); the total is given apart.</summary>
     private const int MaxNewRequestsListed = 10;
 
     private static readonly ServiceRequestStatus[] JobStatuses =
@@ -54,7 +49,6 @@ public sealed class SupplierTodayService(
 
         var today = _clock.TodayInRomeAsDateOnly();
 
-        // The jobs of today and of the days after it, in one read: the first in time first.
         var (jobs, jobsTotal) = await requests.ListAsync(
             supplierOrgId,
             new SupplierInboxQuery(

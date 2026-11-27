@@ -33,10 +33,6 @@ public interface IOtaBookingCancellationService
     Task<Booking> CancelAsync(Guid bookingId, string? reason, CancellationToken ct);
 }
 
-/// <summary>
-/// Octorate could not be reached to cancel the reservation of a channel booking (it did not answer, or answered 429 or 5xx): the booking is
-/// unchanged, and the API answers 503 with the sentence that tells how to ask on the channel (E08/F02/US02/T02).
-/// </summary>
 public sealed class OtaCancellationUnavailableException : Exception
 {
     public OtaCancellationUnavailableException(BookingSource source, string guidanceKey, Exception? innerException = null)
@@ -47,9 +43,7 @@ public sealed class OtaCancellationUnavailableException : Exception
         GuidanceKey = guidanceKey;
     }
 
-    /// <summary>The channel of the booking (<c>BookingCom</c>).</summary>
     public string Channel { get; }
 
-    /// <summary>The key of <c>SharedResources</c> of the sentence that tells how to ask the guest or the channel.</summary>
     public string GuidanceKey { get; }
 }

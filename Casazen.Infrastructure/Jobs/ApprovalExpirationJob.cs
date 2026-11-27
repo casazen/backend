@@ -9,12 +9,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Jobs;
 
-/// <summary>
-/// Daily job to expire approval queue items older than 7 days (NF-06, AC-NF06-5).
-/// Moves items from Pending to Expired status, and (E05/F04/US01/T02) closes the "To do" raised for each: an item nobody can decide any more leaves the queue, and a "To do"
-/// that leads to an item that is not there is worse than none, and runs the rejection hook of its type (a campaign goes back to a draft). It also empties the words of the items that were decided or expired a while ago
-/// (<see cref="ApprovalQueueRules.TextRetentionDays"/>): the text of a message to a guest, the host's edit of it and the reason of a rejection do not stay for ever.
-/// </summary>
 [DisableConcurrentExecution(timeoutInSeconds: 600)]
 public class ApprovalExpirationJob(
     AppDbContext db,
@@ -25,11 +19,8 @@ public class ApprovalExpirationJob(
 {
     public const int MaxAttempts = 3;
     public const string RecurringJobId = "approval-expiration";
-    public const string Cron = "0 4 * * *"; // Daily at 04:00 UTC
+    public const string Cron = "0 4 * * *";
 
-    /// <summary>
-    /// Process pending approval items and expire those past their expiration date, then empty the words of the old decided ones.
-    /// </summary>
     [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     public async Task ProcessExpirationsAsync(CancellationToken cancellationToken = default)
     {
@@ -51,7 +42,6 @@ public class ApprovalExpirationJob(
         if (activities is null)
             return;
 
-        // The items as a query of their own: a collection expression cannot be in an expression tree, so the filter is ignored outside the predicate.
         var items = db.ApprovalQueueItems.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]);
         var stale = await db.InternalActivities
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -81,7 +71,6 @@ public class ApprovalExpirationJob(
 
     private async Task ExpirePendingItemsAsync(DateTime now, CancellationToken cancellationToken)
     {
-        // IgnoreQueryFilters: job runs without tenant context, processes all orgs
         var expiredItems = await db.ApprovalQueueItems
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(i => i.Status == ApprovalStatus.Pending && i.ExpiresAt <= now)
@@ -144,7 +133,6 @@ public class ApprovalExpirationJob(
     {
         var cutoff = now.AddDays(-ApprovalQueueRules.TextRetentionDays);
 
-        // The time of the decision: when the item was approved or rejected, and, for an expired one, its time limit.
         var old = db.ApprovalQueueItems
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(i => i.Status != ApprovalStatus.Pending
@@ -154,7 +142,6 @@ public class ApprovalExpirationJob(
         int emptied;
         if (db.Database.IsRelational())
         {
-            // One statement: the words are never read (and decrypted) to be thrown away.
             emptied = await old.ExecuteUpdateAsync(
                 set => set
                     .SetProperty(i => i.ContentText, string.Empty)
@@ -164,7 +151,6 @@ public class ApprovalExpirationJob(
         }
         else
         {
-            // EF InMemory (unit tests) has no set-based update: the rows are changed and saved.
             var rows = await old.ToListAsync(cancellationToken);
             foreach (var row in rows)
             {

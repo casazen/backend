@@ -8,13 +8,10 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum DocumentRegime
 {
-    /// <summary>Italy: a private person with no VAT number.</summary>
     PrivatePerson = 1,
 
-    /// <summary>Italy: a VAT number in the ordinary regime.</summary>
     VatOrdinary = 2,
 
-    /// <summary>Italy: a VAT number in the flat-rate regime (forfettario).</summary>
     VatFlatRate = 3,
 
     /// <summary>Switzerland: registered for the VAT (MWST), with its UID number and the suffix «IVA».</summary>

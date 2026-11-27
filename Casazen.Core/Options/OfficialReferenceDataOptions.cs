@@ -29,22 +29,14 @@ public class OfficialReferenceDataOptions
     public const string DefaultMefNuovaAtCatalogUrl =
         "https://www.finanze.gov.it/it/fiscalita/fiscalita-regionale-e-locale/TARI-Imposta-di-soggiorno-e-altri-tributi-comunali/imposta-di-soggiorno/index.html";
 
-    /// <summary>
-    /// Fallback CSV URL when the catalog page does not expose a <c>nuova_at</c> permalink. Never a blog URL.
-    /// </summary>
     public const string DefaultMefNuovaAtCsvUrl =
         "https://www1.finanze.gov.it/finanze/dipartimentopolitichefiscali/fiscalitalocale/nuova_at/file/ElencoAtti.csv";
 
-    /// <summary>When false the Hangfire job is a no-op (tests). On by default.</summary>
     public bool Enabled { get; set; } = true;
 
     /// <summary>Load the embedded Alloggiati tables at startup when the database has none. On by default.</summary>
     public bool SeedAlloggiatiOnStartup { get; set; } = true;
 
-    /// <summary>
-    /// Load the embedded Swiss localities and municipalities (swisstopo directory, E29/F01/US01/T01) at startup when the database does not have
-    /// this file yet. On by default; off, the two tables keep what they have.
-    /// </summary>
     public bool SeedSwissPlacesOnStartup { get; set; } = true;
 
     public string IstatCatalogUrl { get; set; } = DefaultIstatCatalogUrl;
@@ -62,10 +54,6 @@ public class OfficialReferenceDataOptions
     /// <summary>Reuse a current profile for this many days unless the MEF act hash changed.</summary>
     public int ComuneProfileReuseDays { get; set; } = 30;
 
-    /// <summary>
-    /// Institutional tourist-tax pages of the pilot comuni already in the product. Never a national invented list.
-    /// A row without a HTTPS URL of an allowed host is ignored.
-    /// </summary>
     public List<OfficialTouristTaxSourceOptions> TouristTaxSources { get; set; } = [];
 
     public string AlloggiatiDownloadUrl(AlloggiatiCodeTable table)
@@ -82,7 +70,6 @@ public class OfficialReferenceDataOptions
     }
 }
 
-/// <summary>One comune whose tourist-tax page the job re-reads. Amounts are written only when extracted deterministically.</summary>
 public class OfficialTouristTaxSourceOptions
 {
     public string IstatCode { get; set; } = string.Empty;

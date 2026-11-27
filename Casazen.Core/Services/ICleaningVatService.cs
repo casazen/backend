@@ -18,16 +18,8 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface ICleaningVatService
 {
-    /// <summary>The question of a cleaning request of the scope: the country and the rate of «Sì», the answer, the company's remembered answer, what the invoice uses.</summary>
     Task<CleaningVatQuestion> GetAsync(HostScope scope, Guid requestId, CancellationToken ct = default);
 
-    /// <summary>
-    /// Stores the answer of <paramref name="userId"/> for a completed cleaning request of the scope and, with <paramref name="remember"/>, the company's answer for the
-    /// organization; closes the «Da fare» of the request (and of the other requests of the company the remembered answer now covers). The same answer again changes
-    /// nothing; another answer replaces it. 422 <c>cleaning_vat_answer_invalid</c> (no answer, or one no member declares), <c>cleaning_vat_not_completed</c> (the
-    /// cleaning is not completed or paid), <c>cleaning_vat_rate_unknown</c> («Sì» on a day the table has no rate for), <c>cleaning_vat_remember_unknown</c> («Non lo
-    /// so» cannot be remembered); 409 <c>service_request_state_changed</c> when another operation changed the request meanwhile.
-    /// </summary>
     Task<CleaningVatQuestion> AnswerAsync(
         HostScope scope,
         Guid requestId,
@@ -89,7 +81,6 @@ public sealed record CleaningRechargeVat(decimal Percent, string? NatureCode, bo
 /// <summary>The rules of the VAT of a cleaning recharged to the owner (FIX/BE-CLEANING-VAT), pure.</summary>
 public static class CleaningVatRules
 {
-    /// <summary>The entity type of the «Da fare» of the question: the cleaning request.</summary>
     public const string TodoEntityType = nameof(ServiceRequest);
 
     /// <summary>
@@ -161,36 +152,25 @@ public static class CleaningVatRules
         rule is not null && ChargesVatOnRecharge(rule) && string.Equals(country?.Trim(), rule.Jurisdiction, StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>The stable codes and the message keys (<c>SharedResources</c>, Italian and English) of the refusals of <see cref="ICleaningVatService"/>.</summary>
 public static class CleaningVatErrors
 {
-    /// <summary>422: no answer, or one no member of <see cref="CleaningSupplierVat"/> declares.</summary>
     public const string AnswerInvalid = "cleaning_vat_answer_invalid";
 
-    /// <summary>The message key of <see cref="AnswerInvalid"/>.</summary>
     public const string AnswerInvalidMessageKey = "CleaningVatAnswerInvalid";
 
-    /// <summary>422: the cleaning is not completed or paid: there is no invoice of the company to answer about yet.</summary>
     public const string NotCompleted = "cleaning_vat_not_completed";
 
-    /// <summary>The message key of <see cref="NotCompleted"/>.</summary>
     public const string NotCompletedMessageKey = "CleaningVatNotCompleted";
 
-    /// <summary>422: «Sì» on a day the table of the rates has no standard rate for (a country it does not know, a day before 2024): never a rate of its own.</summary>
     public const string RateUnknown = "cleaning_vat_rate_unknown";
 
-    /// <summary>The message key of <see cref="RateUnknown"/>.</summary>
     public const string RateUnknownMessageKey = "CleaningVatRateUnknown";
 
-    /// <summary>422: «Non lo so» cannot be remembered for the company (it would keep the question from every cleaning of it).</summary>
     public const string RememberUnknown = "cleaning_vat_remember_unknown";
 
-    /// <summary>The message key of <see cref="RememberUnknown"/>.</summary>
     public const string RememberUnknownMessageKey = "CleaningVatRememberUnknown";
 
-    /// <summary>403: only a caller of the whole organization remembers an answer for the company (it decides the cleanings of every property).</summary>
     public const string RememberForbidden = "cleaning_vat_remember_forbidden";
 
-    /// <summary>The message key of <see cref="RememberForbidden"/>.</summary>
     public const string RememberForbiddenMessageKey = "CleaningVatRememberForbidden";
 }

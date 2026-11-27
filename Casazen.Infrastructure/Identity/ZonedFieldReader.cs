@@ -54,13 +54,8 @@ public sealed class ZonedFieldReader(
     IOptions<MrzOcrOptions>? options = null,
     TimeProvider? timeProvider = null) : IZonedFieldReader
 {
-    /// <summary>
-    /// How far a crop reaches around the zone of the layout, as a share of the shorter side of the card: the layout is calibrated on a dataset and a line of print
-    /// can start a few pixels outside the zone. A reading tolerance, not a decision: it never decides anything about a person.
-    /// </summary>
     private const double ZoneMarginShare = 0.015;
 
-    /// <summary>The ways a zone is read, in this order: the page reader as the document reader uses it, then the layout reader for a single block of text.</summary>
     private const int ReadingAttempts = 2;
 
     private static readonly string[] FiscalCodeLabels = ["CODICE FISCALE", "FISCAL CODE", "TAX CODE"];
@@ -89,7 +84,6 @@ public sealed class ZonedFieldReader(
             deadline.CancelAfter(TimeSpan.FromSeconds(settings.TimeoutSeconds));
             var token = deadline.Token;
 
-            // The MRZ first: it is the reading the check digits protect, so it gets the time before the zones that are only printed.
             if (string.Equals(format.Mrz.Side, sideCode, StringComparison.Ordinal))
                 mrzFields = await ReadMrzAsync(canonicalCard, side, settings, fields, token);
 
@@ -107,14 +101,12 @@ public sealed class ZonedFieldReader(
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException and not DocumentReaderUnavailableException)
                 {
-                    // One zone that breaks costs that zone only. The type only: a message could carry what was being read.
                     logger.LogWarning("Zoned reading: a zone could not be read ({ErrorType})", ex.GetType().Name);
                 }
             }
         }
         catch (OperationCanceledException)
         {
-            // The time of MrzOcr:TimeoutSeconds ran out, or the caller gave up: the fields read until now are the answer.
             logger.LogWarning(
                 "Zoned reading stopped before the end ({Reason}) with {Fields} fields read",
                 cancellationToken.IsCancellationRequested ? "cancelled" : "timeout",
@@ -126,7 +118,6 @@ public sealed class ZonedFieldReader(
         }
         catch (Exception ex)
         {
-            // The type only: a message could carry what was being read.
             logger.LogError("Zoned reading failed ({ErrorType}); the fields read until then are returned", ex.GetType().Name);
         }
         finally
@@ -180,7 +171,6 @@ public sealed class ZonedFieldReader(
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not DocumentReaderUnavailableException)
         {
-            // The type only: a message could carry what was being read.
             logger.LogWarning("Zoned reading: the MRZ could not be read ({ErrorType})", ex.GetType().Name);
             return 0;
         }
@@ -197,10 +187,6 @@ public sealed class ZonedFieldReader(
             fields.Add(new ZonedField(name, value, side, ZonedFieldZones.Mrz, confidence, ZonedFieldSources.Mrz));
     }
 
-    /// <summary>
-    /// The value of one field of the visual zone: its zone is cut from the card and read (once, even when two fields share it), and the text is parsed with the label
-    /// rule of the document reader; when the page reader finds nothing the same crop is read once more as a block of text.
-    /// </summary>
     private async Task<string?> ReadFieldAsync(
         RasterImage card, DocumentFormatField field, Dictionary<DocumentFormatRegion, ZoneCrop> zones, DateOnly today, CancellationToken token)
     {
@@ -224,7 +210,6 @@ public sealed class ZonedFieldReader(
         return null;
     }
 
-    /// <summary>The zone with its margin, cut from the card and turned to gray (the colour copy is zeroed at once); null when nothing of it is on the card.</summary>
     private static GrayBitmap? Crop(RasterImage card, DocumentFormatRegion zone)
     {
         var margin = ZoneMarginShare * Math.Min(card.Width, card.Height);
@@ -239,7 +224,6 @@ public sealed class ZonedFieldReader(
         return colour.ToGray();
     }
 
-    /// <summary>The value of the field in the text of its zone, or null when the text has no value next to its label.</summary>
     private static string? Extract(string name, string? text, DateOnly today)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -299,7 +283,6 @@ public sealed class ZonedFieldReader(
         return null;
     }
 
-    /// <summary>Upper case, no diacritics, one space between words.</summary>
     private static string Plain(string line)
     {
         var decomposed = line.ToUpperInvariant().Normalize(NormalizationForm.FormD);
@@ -315,7 +298,6 @@ public sealed class ZonedFieldReader(
 
     private static string? Day(DateTime? date) => date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    /// <summary>One zone cut from the card, and what the reader said of it (once per way of reading): zeroed when the reading is over.</summary>
     private sealed class ZoneCrop(GrayBitmap image) : IDisposable
     {
         private readonly string?[] _texts = new string?[ReadingAttempts];

@@ -2,12 +2,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Core.Options;
 
-/// <summary>
-/// Parameters of the long-term lease tax advisory (LT-08, A7-09), section <c>CedolareAdvisory</c>. Every rate, minimum and
-/// threshold is configuration with the source it was verified on (<c>.claude/context/regulations/fiscale.md</c>, rules
-/// L5-L12 and C11-C12, research RS-5): none is written in code, and the startup fails when one is missing or out of range
-/// (<see cref="CedolareAdvisoryOptionsValidator"/>). Runbook: <c>docs/runbooks/rli.md</c> § "Tax advisory (LT-08)".
-/// </summary>
 public sealed class CedolareAdvisoryOptions
 {
     public const string SectionName = "CedolareAdvisory";
@@ -18,32 +12,24 @@ public sealed class CedolareAdvisoryOptions
 
     public StampDutyOptions Bollo { get; set; } = new();
 
-    /// <summary>Optional: without brackets the IRPEF comparison is not computed (left to the accountant).</summary>
     public IrpefComparisonOptions Irpef { get; set; } = new();
 }
 
-/// <summary>Cedolare secca rates (fiscale.md L11-L12).</summary>
 public sealed class CedolareRateOptions
 {
-    /// <summary>Rate on residential leases (21%).</summary>
     public decimal StandardRate { get; set; }
 
-    /// <summary>Rate of a canone concordato lease in a verified ATA comune (10%).</summary>
     public decimal ConcordatoAtaRate { get; set; }
 
     public string Source { get; set; } = string.Empty;
 }
 
-/// <summary>Registration tax of the ordinary regime (fiscale.md L5, L6, L8).</summary>
 public sealed class RegistroTaxOptions
 {
-    /// <summary>Rate on the annual rent of an urban residential unit (2%).</summary>
     public decimal Rate { get; set; }
 
-    /// <summary>Minimum of the first annuity (67 €); the later annuities have none.</summary>
     public decimal FirstYearMinimumEur { get; set; }
 
-    /// <summary>Share of the annual rent taxed for a canone concordato lease in a verified ATA comune (70%).</summary>
     public decimal ConcordatoAtaBaseShare { get; set; }
 
     public string Source { get; set; } = string.Empty;
@@ -75,19 +61,13 @@ public sealed class StampDutyOptions
 /// </summary>
 public sealed class IrpefComparisonOptions
 {
-    /// <summary>Tax year of the brackets: from the next year on the comparison is not computed until they are updated.</summary>
     public int TaxYear { get; set; }
 
     /// <summary>Flat reduction of the rent for the landlord's income (5%, art. 37 c. 4-bis TUIR).</summary>
     public decimal RentFlatReduction { get; set; }
 
-    /// <summary>
-    /// Total income above which the brackets alone are not the tax (the 33% is neutralized above 200.000 €): the
-    /// comparison is not computed.
-    /// </summary>
     public decimal ComputationIncomeLimitEur { get; set; }
 
-    /// <summary>Ascending brackets; the last one has no upper limit.</summary>
     public List<IrpefBracketOptions> Brackets { get; set; } = [];
 
     public string Source { get; set; } = string.Empty;
@@ -97,16 +77,11 @@ public sealed class IrpefComparisonOptions
 
 public sealed class IrpefBracketOptions
 {
-    /// <summary>Upper limit of the bracket in euros; null for the last, open bracket.</summary>
     public decimal? UpToEur { get; set; }
 
     public decimal Rate { get; set; }
 }
 
-/// <summary>
-/// Rejects a missing or impossible advisory parameter at startup, so a typo in the configuration never shows a wrong
-/// tax figure to a landlord.
-/// </summary>
 public sealed class CedolareAdvisoryOptionsValidator : IValidateOptions<CedolareAdvisoryOptions>
 {
     private const string Prefix = CedolareAdvisoryOptions.SectionName + "__";

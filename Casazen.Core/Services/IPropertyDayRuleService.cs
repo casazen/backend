@@ -83,27 +83,13 @@ public interface IPropertyDayRuleService
         string? userId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Forgets the rules <see cref="ApplyAsync"/> staged and the caller did not save, so the change can be staged again.</summary>
     void DiscardStaged();
 
-    /// <summary>
-    /// True when <paramref name="exception"/>, raised by the save of the rules staged by <see cref="ApplyAsync"/>, is the database refusing a second row
-    /// for a night that has one: another change inserted it first.
-    /// </summary>
     bool IsDateConflict(Exception exception);
 }
 
-/// <param name="From">First day of the range.</param>
-/// <param name="To">Last day of the range, included.</param>
-/// <param name="PropertyIds">
-/// Only these properties of the caller's reach (the ones it does not reach are left out, as if they did not exist); null or empty = the first
-/// <see cref="HostCalendarLimits.MaxProperties"/> by name.
-/// </param>
 public sealed record CalendarDaysQuery(DateOnly From, DateOnly To, IReadOnlyCollection<Guid>? PropertyIds = null);
 
-/// <summary>The days of the properties a caller reaches, as the calendar screens read them.</summary>
-/// <param name="Today">Today in Europe/Rome, as in <see cref="HostCalendar.Today"/>; each property carries its own time zone.</param>
-/// <param name="Properties">The properties, by name.</param>
 public sealed record CalendarDays(DateOnly Today, IReadOnlyList<CalendarDaysProperty> Properties);
 
 /// <summary>One property of <see cref="CalendarDays"/> with its nights.</summary>
@@ -144,8 +130,4 @@ public sealed record CalendarDay(
     bool HasRule,
     bool Taken);
 
-/// <summary>What <see cref="IPropertyDayRuleService.ApplyAsync"/> staged.</summary>
-/// <param name="Changed">The nights whose row was added, changed or deleted.</param>
-/// <param name="Unchanged">The nights the patch leaves as they are.</param>
-/// <param name="SkippedPast">The nights before today of the property, left alone.</param>
 public sealed record DayRuleApplyResult(int Changed, int Unchanged, int SkippedPast);

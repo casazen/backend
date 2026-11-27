@@ -57,7 +57,6 @@ public sealed class WizardDraftService(AppDbContext db, TimeProvider timeProvide
                 .OrderByDescending(d => d.Version)
                 .FirstOrDefaultAsync(ct);
 
-            // The client is behind the server: nothing is written, the client chooses between its copy and the server's.
             if (existing is not null && existing.ExpiresAt > now && existing.Version > request.ClientVersion)
                 return new WizardDraftResult(DraftStatus.Conflict, existing.Version, ToDto(existing));
 
@@ -86,7 +85,6 @@ public sealed class WizardDraftService(AppDbContext db, TimeProvider timeProvide
             }
             catch (DbUpdateException ex) when (ex is DbUpdateConcurrencyException || IsUniqueViolation(ex))
             {
-                // A parallel save of the same person won. Nothing of ours was written: the client is shown what is there now.
                 db.ChangeTracker.Clear();
                 var current = await FindLiveAsync(orgId, userId, request.Type, request.EntityId, ct);
                 if (current is not null)
@@ -128,13 +126,11 @@ public sealed class WizardDraftService(AppDbContext db, TimeProvider timeProvide
             }
             catch (DbUpdateConcurrencyException) when (attempt < MaxDeleteAttempts)
             {
-                // The same person saved the draft at the same moment: read it again and discard that one.
                 db.ChangeTracker.Clear();
             }
         }
     }
 
-    /// <summary>The draft of the person that has not expired, as the database holds it (not tracked).</summary>
     private Task<WizardDraft?> FindLiveAsync(Guid orgId, string userId, WizardType type, Guid? entityId, CancellationToken ct)
     {
         var now = Now();
@@ -146,10 +142,6 @@ public sealed class WizardDraftService(AppDbContext db, TimeProvider timeProvide
             .FirstOrDefaultAsync(ct);
     }
 
-    /// <summary>
-    /// The one draft of this person, in this org, for this wizard and entity. The org and the user are the ones the web layer resolved,
-    /// never a value of the request body; the tenant query filter says the same about the org.
-    /// </summary>
     private static Expression<Func<WizardDraft, bool>> Key(Guid orgId, string userId, WizardType type, Guid? entityId) =>
         d => d.OrgId == orgId && d.UserId == userId && d.WizardType == type && d.EntityId == entityId;
 
@@ -161,10 +153,6 @@ public sealed class WizardDraftService(AppDbContext db, TimeProvider timeProvide
             WizardDraftPii.Merge(draft.DraftJson, draft.EncryptedFieldsJson),
             draft.LastSavedAt);
 
-    /// <summary>
-    /// A caller with no user id would match the anonymized rows (they have the empty one): the web layer never lets it through, and
-    /// this service refuses it as well.
-    /// </summary>
     private static void RequireUser(string userId)
     {
         if (string.IsNullOrWhiteSpace(userId))
@@ -174,6 +162,5 @@ public sealed class WizardDraftService(AppDbContext db, TimeProvider timeProvide
     private static bool IsUniqueViolation(DbUpdateException ex) =>
         ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
-    /// <summary>Now, cut to the microsecond PostgreSQL keeps, so what is written and what is read back compare equal.</summary>
     private DateTime Now() => UtcDateTime.TruncateToMicroseconds(timeProvider.GetUtcNow().UtcDateTime);
 }

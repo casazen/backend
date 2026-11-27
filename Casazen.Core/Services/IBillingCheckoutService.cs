@@ -2,9 +2,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Starts the Stripe Checkout of a paid plan without ever creating a second subscription for the same org (A1-10).
-/// </summary>
 public interface IBillingCheckoutService
 {
     /// <summary>

@@ -3,11 +3,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.External;
 
-/// <summary>
-/// Keeps the existing provider for every submit (concordato included) and, when that provider is not configured,
-/// reads status and receipts from DocuEngine so a non-concordato filing can finish. Submits of non-concordato
-/// contracts go through <see cref="IOpenapiDocuEngineClient"/> from <see cref="RliRegistrationService"/>, not from here.
-/// </summary>
 public sealed class OpenapiAwareLeaseRegistrationProvider(
     ILeaseRegistrationProvider inner,
     IOpenapiDocuEngineClient openapi) : ILeaseRegistrationProvider

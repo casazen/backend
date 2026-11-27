@@ -19,7 +19,6 @@ internal static class AssistantStore
     /// <summary>The 409 of a change that lost the race with another one.</summary>
     public const string ConcurrentChangeCode = "assistant_concurrent_change";
 
-    /// <summary>The 404 of a property that is not the organization's, is deleted or does not exist.</summary>
     public const string PropertyNotFoundCode = "property_not_found";
 
     /// <summary>Writes everything the context tracks; the lost race is the conflict above, and the tracker is cleared so the caller reads the state that won.</summary>

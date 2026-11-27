@@ -27,7 +27,6 @@ namespace Casazen.Infrastructure.Documents;
 /// </remarks>
 public sealed partial class MigraDocPdfDocumentRenderer : IPdfDocumentRenderer
 {
-    /// <summary>A4 in millimetres (ISO 216): 595 × 842 points.</summary>
     public const double PageWidthMm = 210;
     public const double PageHeightMm = 297;
 
@@ -48,10 +47,8 @@ public sealed partial class MigraDocPdfDocumentRenderer : IPdfDocumentRenderer
     private static readonly Color TableBorder = new(160, 160, 160);
     private static readonly Color TableHeaderShading = new(235, 235, 235);
 
-    /// <summary>Light grey without transparency: PDF/A-1 forbids transparency, and it stays readable behind the text.</summary>
     private static readonly XColor WatermarkColor = XColor.FromArgb(222, 222, 222);
 
-    /// <summary>Heading styles by level (1 = document title): font size and spacing in points, bold.</summary>
     private static readonly (string Name, double Size, double SpaceBefore, double SpaceAfter)[] HeadingStyles =
     [
         (StyleNames.Heading1, 15, 0, 12),
@@ -69,7 +66,6 @@ public sealed partial class MigraDocPdfDocumentRenderer : IPdfDocumentRenderer
             return RenderCore(content);
     }
 
-    /// <summary>Everything that touches PDFsharp or MigraDoc, from the font resolver to the saved bytes: call it with <see cref="RenderGate"/> held.</summary>
     private static byte[] RenderCore(PdfDocumentContent content)
     {
         EmbeddedFontResolver.EnsureRegistered();
@@ -86,7 +82,6 @@ public sealed partial class MigraDocPdfDocumentRenderer : IPdfDocumentRenderer
         pdf.Info.Creator = "CasaZen";
         pdf.Language = content.Language;
 
-        // The payment part of a Swiss QR-bill (E14/F01/US01/T02) is drawn on a page of its own at the end, under the same lock and with the same font.
         if (content.QrBill is { } qrBill)
             Services.SwissQrBillRenderer.AddPaymentPart(pdf, qrBill);
 
@@ -240,11 +235,9 @@ public sealed partial class MigraDocPdfDocumentRenderer : IPdfDocumentRenderer
                 AddText(row.Cells[i].AddParagraph(), words.Break(CleanText(values[i]), textWidths[i], TableFontSize, bold: false));
         }
 
-        // Space between the table and the next block.
         section.AddParagraph().Format.SpaceAfter = Unit.FromPoint(2);
     }
 
-    /// <summary>Text with its line breaks and tabs (<paramref name="text"/> is already cleaned).</summary>
     private static void AddText(Paragraph paragraph, string text)
     {
         var lines = text.Split('\n');
@@ -264,7 +257,6 @@ public sealed partial class MigraDocPdfDocumentRenderer : IPdfDocumentRenderer
         }
     }
 
-    /// <summary>No <c>\r</c>; control characters other than line break and tab become spaces.</summary>
     private static string CleanText(string? text)
     {
         if (string.IsNullOrEmpty(text))
@@ -301,14 +293,8 @@ public sealed partial class MigraDocPdfDocumentRenderer : IPdfDocumentRenderer
     [GeneratedRegex(@"[^ \n\t]+")]
     private static partial Regex WordPattern();
 
-    /// <summary>
-    /// MigraDoc breaks lines only at blanks: a word wider than the line (a long URL, an IBAN in a narrow column) would
-    /// be drawn past the margin and cut off. Such a word is split into pieces that fit, one per line; nothing is
-    /// added or dropped. One instance per rendering (measuring is not thread-safe).
-    /// </summary>
     private sealed class LongWordBreaker : IDisposable
     {
-        /// <summary>Margin for rounding and for the tolerance MigraDoc applies when it fits words.</summary>
         private const double Safety = 0.97;
 
         private readonly PdfDocument _scratch = new();

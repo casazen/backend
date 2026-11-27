@@ -9,26 +9,19 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 internal sealed class PackageTexts(IDocumentTexts texts, string language)
 {
-    /// <summary>The language of the package: Italian, as the host reports are.</summary>
     public const string PackageLanguage = DocumentLanguages.Italian;
 
-    /// <summary>The language the words are read in.</summary>
     public string Language { get; } = language;
 
-    /// <summary>The source of the words, for the builders that read them by themselves (the word of a kind of document).</summary>
     public IDocumentTexts Source => texts;
 
-    /// <summary>The words of <paramref name="key"/> with <paramref name="args"/> put in its placeholders.</summary>
     public string Get(string key, params object[] args) => texts.Get(key, Language, args);
 
-    /// <summary>The words of <paramref name="key"/>.</summary>
     public string this[string key] => texts.Get(key, Language);
 }
 
-/// <summary>The keys of the resource files the accountant package reads, every one in both languages (a test keeps the two files and this list together).</summary>
 internal static class PackageLabels
 {
-    // Registers and rates.
     public const string GuestRegisterTitle = "AccPkgGuestRegisterTitle";
     public const string OwnerRegisterTitle = "AccPkgOwnerRegisterTitle";
     public const string RateDetailTitle = "AccPkgRateDetailTitle";
@@ -47,7 +40,6 @@ internal static class PackageLabels
     public const string ChannelUnknown = "AccPkgChannelUnknown";
     public const string RateUnknown = "AccPkgRateUnknown";
 
-    // VAT.
     public const string VatSwissTitle = "AccPkgVatSwissTitle";
     public const string VatOutsideTitle = "AccPkgVatOutsideTitle";
     public const string VatPortalTitle = "AccPkgVatPortalTitle";
@@ -64,7 +56,6 @@ internal static class PackageLabels
     public const string OutsideExpenses = "AccPkgOutsideExpenses";
     public const string OutsideOther = "AccPkgOutsideOther";
 
-    // The self-billed invoices (TD17) and the portal commissions of the accounts the agency holds (V2): the files of a period that has them (FIX/BE-ACCOUNTANT-GAPS).
     public const string SelfBilledRegisterTitle = "AccPkgSelfBilledRegisterTitle";
     public const string ColSupplier = "AccPkgColSupplier";
     public const string ColSupplierCountry = "AccPkgColSupplierCountry";
@@ -80,7 +71,6 @@ internal static class PackageLabels
     public const string TreatmentRecharged = "AccPkgTreatmentRecharged";
     public const string TreatmentBorne = "AccPkgTreatmentBorne";
 
-    // The register of the unused numbers of the self-billed invoices (TD17): the numbers of replacement drafts closed as «non più dovuta» (FIX/BE-TD17-JOB-EXIT).
     public const string UnusedNumbersTitle = "AccPkgUnusedNumbersTitle";
     public const string ColRejectedOn = "AccPkgColRejectedOn";
     public const string ColClosedOn = "AccPkgColClosedOn";
@@ -94,7 +84,6 @@ internal static class PackageLabels
     public const string CloseReasonHolderNoLongerSubject = "AccPkgCloseReasonHolderNoLongerSubject";
     public const string CloseReasonDuplicateOrError = "AccPkgCloseReasonDuplicateOrError";
 
-    // Statements.
     public const string StatementsTitle = "AccPkgStatementsTitle";
     public const string ColOwner = "AccPkgColOwner";
     public const string ColVersion = "AccPkgColVersion";
@@ -107,7 +96,6 @@ internal static class PackageLabels
     public const string ColClosingBalance = "AccPkgColClosingBalance";
     public const string ColSha = "AccPkgColSha";
 
-    // Withholding.
     public const string WithholdingTitle = "AccPkgWithholdingTitle";
     public const string F24Title = "AccPkgF24Title";
     public const string CuTitle = "AccPkgCuTitle";
@@ -121,13 +109,11 @@ internal static class PackageLabels
     public const string ColRuleVersion = "AccPkgColRuleVersion";
     public const string ColEvidence = "AccPkgColEvidence";
 
-    // Tourist tax.
     public const string SwissTouristTaxTitle = "AccPkgSwissTouristTaxTitle";
     public const string ColCanton = "AccPkgColCanton";
     public const string ColCollected = "AccPkgColCollected";
     public const string CantonUnknown = "AccPkgCantonUnknown";
 
-    // The index.
     public const string IndexTitle = "AccPkgIndexTitle";
     public const string IndexColDescription = "AccPkgIndexColDescription";
     public const string IndexColRows = "AccPkgIndexColRows";
@@ -137,7 +123,6 @@ internal static class PackageLabels
     public const string OmittedOwnerAccounting = "AccPkgOmittedOwnerAccounting";
     public const string OmittedNotSelected = "AccPkgOmittedNotSelected";
 
-    // The agency summary.
     public const string SummaryTitle = "AccPkgSummaryTitle";
     public const string SumStaysTitle = "AccPkgSumStaysTitle";
     public const string SumOccupiedNights = "AccPkgSumOccupiedNights";
@@ -201,19 +186,16 @@ internal static class PackageLabels
     public const string SumProperties = "AccPkgSumProperties";
     public const string SumOwnerAccountingOmitted = "AccPkgSumOwnerAccountingOmitted";
 
-    // The documents issued in the name of an owner, for its accountant (E17/F02/US01/T01).
     public const string OwnDocsTotalsTitle = "AccPkgOwnDocsTotalsTitle";
     public const string OwnDocsSummaryTitle = "AccPkgOwnDocsSummaryTitle";
     public const string OwnDocsAgencyInvoicesTitle = "AccPkgOwnDocsAgencyInvoicesTitle";
     public const string OwnDocsAgencyInvoiceDetailTitle = "AccPkgOwnDocsAgencyInvoiceDetailTitle";
 
-    // Errors.
     public const string TooLargeMessage = "AccountantPackageTooLarge";
     public const string InvalidPeriodMessage = "AccountantPackageInvalidPeriod";
     public const string OwnerIssuedDocumentNotFoundMessage = "OwnerIssuedDocumentNotFound";
     public const string OwnerIssuedDocumentsNotAvailableMessage = "OwnerIssuedDocumentsNotAvailable";
 
-    /// <summary>Every key above: the test that reads the two resource files asks for each of them.</summary>
     public static IReadOnlyList<string> All { get; } =
         [.. typeof(PackageLabels)
             .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.DeclaredOnly)

@@ -69,7 +69,6 @@ public sealed class FiscalDocumentEmailHandler(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // A queue that refused (document_email_not_sent) is here too: nothing was queued, so the event is delivered again without sending anything twice.
             logger.LogError(
                 "Event {EventId} ({EventType}): fiscal document {DocumentId} of org {OrgId} could not be sent to the guest ({Error}): the event is delivered again",
                 domainEvent.Id,

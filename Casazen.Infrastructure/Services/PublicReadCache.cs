@@ -31,7 +31,6 @@ public sealed class PublicReadCache : IDisposable
         _lifetime = TimeSpan.FromSeconds(Math.Max(0, configuration.GetValue(SecondsSetting, DefaultSeconds)));
     }
 
-    /// <summary>The answer kept under <paramref name="key"/>, or the one <paramref name="factory"/> works out (and keeps).</summary>
     public Task<T> GetOrCreateAsync<T>(string key, Func<Task<T>> factory)
         where T : class
     {
@@ -51,7 +50,6 @@ public sealed class PublicReadCache : IDisposable
         var task = entry.Value;
         if (!task.IsCompletedSuccessfully)
         {
-            // A failed or cancelled computation must not be served for the rest of the lifetime.
             _ = task.ContinueWith(
                 _ => _cache.Remove(key),
                 CancellationToken.None,

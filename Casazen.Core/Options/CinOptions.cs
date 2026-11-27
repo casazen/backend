@@ -11,10 +11,8 @@ public class CinOptions
 {
     public const string SectionName = "Cin";
 
-    /// <summary>Format of <see cref="ExposureDeadline"/>.</summary>
     public const string DateFormat = "yyyy-MM-dd";
 
-    /// <summary>Default <see cref="AlertDaysBefore"/>: 30, 7 and 1 day before the deadline.</summary>
     public static readonly IReadOnlyList<int> DefaultAlertDaysBefore = [30, 7, 1];
 
     /// <summary>
@@ -34,10 +32,6 @@ public class CinOptions
     /// </summary>
     public int[]? AlertDaysBefore { get; set; }
 
-    /// <summary>
-    /// <see cref="ExposureDeadline"/> as a date: null when it is not set. False when it is set but is not a
-    /// <c>yyyy-MM-dd</c> date (the startup validation refuses it).
-    /// </summary>
     public bool TryGetExposureDeadline(out DateOnly? deadline)
     {
         deadline = null;
@@ -52,17 +46,14 @@ public class CinOptions
         return true;
     }
 
-    /// <summary>The configured deadline, or null when it is not set (or not a valid date: refused at startup).</summary>
     public DateOnly? GetExposureDeadline() => TryGetExposureDeadline(out var deadline) ? deadline : null;
 
-    /// <summary>The alert thresholds in days, distinct and from the farthest to the nearest.</summary>
     public IReadOnlyList<int> GetAlertDaysBefore()
     {
         var configured = AlertDaysBefore is { Length: > 0 } ? AlertDaysBefore : DefaultAlertDaysBefore;
         return configured.Distinct().OrderDescending().ToList();
     }
 
-    /// <summary>Configuration errors, empty when the section is valid.</summary>
     public IReadOnlyList<string> Validate()
     {
         var failures = new List<string>();

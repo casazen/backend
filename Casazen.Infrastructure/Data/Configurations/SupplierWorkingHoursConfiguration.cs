@@ -15,8 +15,6 @@ internal sealed class SupplierWorkingHoursConfiguration : IEntityTypeConfigurati
             .HasForeignKey(h => h.OrgId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // One band per weekday and start: the same band twice is never meant. The overlap of two bands and the limit of
-        // three a day need more than a unique index: the service decides both under the agenda lock.
         entity.HasIndex(h => new { h.OrgId, h.Weekday, h.StartMinute })
             .IsUnique()
             .HasDatabaseName("UIX_SupplierWorkingHours_OrgId_Weekday_StartMinute");

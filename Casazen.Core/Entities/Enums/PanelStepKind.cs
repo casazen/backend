@@ -7,12 +7,9 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum PanelStepKind
 {
-    /// <summary>The connection of the police (Alloggiati Web) in the Octorate panel.</summary>
     PoliceConnection = 1,
 
-    /// <summary>The connection of the regional ISTAT portal in the Octorate panel.</summary>
     IstatConnection = 2,
 
-    /// <summary>The access of CasaZen to a channel, given in the Octorate panel (the channel is in <c>ChannelCode</c>).</summary>
     ChannelAccess = 3,
 }

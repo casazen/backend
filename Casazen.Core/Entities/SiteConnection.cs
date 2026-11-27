@@ -19,19 +19,15 @@ namespace Casazen.Core.Entities;
 [Table("SiteConnections")]
 public class SiteConnection : ITenantOwned
 {
-    /// <summary>Name of the unique index on <see cref="TokenHash"/>.</summary>
     public const string TokenHashIndexName = "UIX_SiteConnections_TokenHash";
 
-    /// <summary>Name of the unique index on (org, site) of the active rows (<see cref="RevokedAt"/> null).</summary>
     public const string ActiveSiteIndexName = "UIX_SiteConnections_OrgId_SiteUrl_Active";
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The org of the credential (TN-2): the only org it acts on.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The origin of the site (<c>https://www.example.com</c>), as the code had it.</summary>
     [Required, MaxLength(SiteConnectionRules.SiteUrlMaxLength)]
     public string SiteUrl { get; set; } = string.Empty;
 
@@ -39,15 +35,12 @@ public class SiteConnection : ITenantOwned
     [Required, MaxLength(SiteConnectionTokens.HashLength)]
     public string TokenHash { get; set; } = string.Empty;
 
-    /// <summary>The billing administrator who confirmed the connection: the opaque id of the account.</summary>
     [Required, MaxLength(SiteConnectionRules.UserIdMaxLength)]
     public string CreatedByUserId { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>UTC of the last call of the plugin, kept to <see cref="SiteConnectionRules.LastUsedResolution"/>; <c>null</c> until the first.</summary>
     public DateTime? LastUsedAt { get; set; }
 
-    /// <summary>UTC when the credential stopped working (console, plugin or a newer connection of the same site); <c>null</c> while active.</summary>
     public DateTime? RevokedAt { get; set; }
 }

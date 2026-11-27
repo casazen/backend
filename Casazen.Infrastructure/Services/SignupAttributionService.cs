@@ -10,7 +10,6 @@ using Npgsql;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc />
 public sealed class SignupAttributionService(
     AppDbContext db,
     ISeoComuneCatalog comuneCatalog,
@@ -29,7 +28,6 @@ public sealed class SignupAttributionService(
             .Select(u => new { u.OrgId, u.OnboardingCompletedAt })
             .FirstOrDefaultAsync(cancellationToken);
 
-        // The attribution belongs to the org created by the first onboarding: none before it.
         if (user?.OrgId is not Guid orgId || user.OnboardingCompletedAt is null)
         {
             throw new DomainRuleException(
@@ -41,7 +39,6 @@ public sealed class SignupAttributionService(
         var comuneInfo = comune is null ? null : await comuneCatalog.ResolveSlugOrCodeAsync(comune, cancellationToken);
         if (comune is not null && comuneInfo is null)
         {
-            // Refused, not dropped: the rule is "invalid values are rejected", the web app then forgets the values.
             throw new DomainRuleException(
                 ISignupAttributionService.UnknownComuneCode,
                 SignupAttributionRules.UnknownComuneKey);
@@ -72,7 +69,6 @@ public sealed class SignupAttributionService(
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            // A parallel request (two tabs finishing the onboarding) stored the first attribution: keep that one.
             db.Entry(attribution).State = EntityState.Detached;
             logger.LogInformation("Signup attribution of org {OrgId} already recorded by a parallel request", orgId);
             return false;
@@ -96,7 +92,6 @@ public sealed class SignupAttributionService(
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        // Platform report of the AdminOnly endpoint: the attributions of every org, not only the caller's.
         var query = db.SignupAttributions.IgnoreQueryFilters().AsNoTracking();
         if (recordedFromUtc is DateTime from)
             query = query.Where(a => a.RecordedAt >= from);

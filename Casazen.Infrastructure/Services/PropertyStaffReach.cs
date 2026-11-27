@@ -13,11 +13,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 internal static class PropertyStaffReach
 {
-    /// <summary>
-    /// True when <paramref name="userId"/> is an active member of <paramref name="orgId"/> with an active account and reaches the property
-    /// <paramref name="propertyId"/> (of rental mode <paramref name="propertyMode"/>). Every read names the org: the caller is a request of the org or a handler of
-    /// the bus working for it, and the tables are read with the filters lifted to name it explicitly.
-    /// </summary>
     public static async Task<bool> CanBeGivenWorkAsync(
         AppDbContext db,
         Guid orgId,

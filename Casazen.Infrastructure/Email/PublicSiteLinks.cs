@@ -11,27 +11,18 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
 {
     public bool IsConfigured => PublicSiteOptions.TryGetBaseUri(options.Value.PublicSiteBaseUrl, out _);
 
-    /// <summary>Throws <see cref="EmailConfigurationException"/> when links cannot be built.</summary>
     public void EnsureConfigured() => _ = BaseUrl();
 
-    /// <summary>Supplier console inbox.</summary>
     public string SupplierInbox() => Build("/app/supplier/inbox");
 
-    /// <summary>A request in the supplier console (SP-16d, the reminder of the day before). Only the id of the request is in the link, no personal data.</summary>
     public string SupplierRequest(Guid serviceRequestId) => Build($"/app/supplier/inbox/{serviceRequestId:D}");
 
-    /// <summary>Guest self check-in page for a raw session token.</summary>
     public string GuestCheckIn(string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
         return Build($"/checkin/{Uri.EscapeDataString(token)}");
     }
 
-    /// <summary>
-    /// The door page of a property, the address behind the QR code printed for the door (route <c>/checkin/porta/{doorToken}</c>, E22/F01/US02/T01; the page is a
-    /// frontend task): the guest who arrives types the booking code (or the surname) and the arrival date and is taken to the identity step of its check-in. Only the
-    /// random door token of the property is in the address (<see cref="Core.Entities.PropertyDoorTokens"/>): it says which property the page is about and nothing else.
-    /// </summary>
     public string DoorCheckIn(string doorToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(doorToken);
@@ -63,32 +54,18 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return Build($"/marketing/confirm#{signedQuery}");
     }
 
-    /// <summary>
-    /// The welcome page of a property, the address behind the QR code printed in the house (route <c>/benvenuto/{token}</c>, E07/F04/US01/T03; the
-    /// page is a frontend task). Only the random token of the link is in the address: it says which property the page is about and nothing else.
-    /// </summary>
     public string Welcome(string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
         return Build($"/benvenuto/{Uri.EscapeDataString(token)}");
     }
 
-    /// <summary>
-    /// The guest portal of a stay, the personal stay link of a booking (route <c>/s/{token}</c>, E50/F01/US01/T01, NF-152; the page is a frontend task):
-    /// short, so it fits the messages of the portals and a QR code. Only the random token of the link is in the address: no name, no booking id, no
-    /// date. The address is the one public domain of the product (<c>App:PublicSiteBaseUrl</c>); the agency's own domain is
-    /// <see cref="PublicSitePaths.HostGuestPortal"/>.
-    /// </summary>
     public string GuestPortal(string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
         return Build(PublicSitePaths.HostGuestPortal(token));
     }
 
-    /// <summary>
-    /// Supplier registration page of the web app for an invite (SU-01). Only the token is in the link: the page reads
-    /// email and comune from the API, so no personal data ends up in URLs and logs.
-    /// </summary>
     public string SupplierInviteSignup(string inviteToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(inviteToken);
@@ -141,28 +118,16 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return Build($"/portale-proprietari/contatto?token={Uri.EscapeDataString(inviteToken)}");
     }
 
-    /// <summary>A conversation of the owner inbox in the owner portal (route <c>/portale-proprietari/messaggi/{id}</c>, E07/F07/US01/T02): the id only.</summary>
     public string OwnerPortalConversation(Guid conversationId) => Build($"/portale-proprietari/messaggi/{conversationId:D}");
 
-    /// <summary>The page «Contabilità» of the owner portal (route <c>/portale-proprietari/contabilita</c>, E13/F01/US02/T02): the statements and the invoices of the owner. No id, no amount.</summary>
     public string OwnerPortalAccounting() => Build("/portale-proprietari/contabilita");
 
-    /// <summary>A conversation of the owner inbox in the console of the agency (route <c>/app/owners/messages/{id}</c>, E07/F07/US01/T02): the id only.</summary>
     public string AgencyOwnerConversation(Guid conversationId) => Build($"/app/owners/messages/{conversationId:D}");
 
-    /// <summary>The people page of the account (AM-02, route <c>/app/account/people</c>, built by AM-04): who works in the org and its invitations.</summary>
     public string AccountPeople() => Build("/app/account/people");
 
-    /// <summary>
-    /// Absolute URL of a public page of the web app (<paramref name="path"/> starts with <c>/</c>), e.g. a sitemap
-    /// entry. Throws <see cref="EmailConfigurationException"/> when the public URL is not configured.
-    /// </summary>
     public string PublicPage(string path) => Build(EnsureAbsolutePath(path));
 
-    /// <summary>
-    /// Like <see cref="PublicPage"/>, but <c>null</c> when the public URL is not configured (only possible in
-    /// Development/Testing: elsewhere the startup fails). Used for the canonical URL of a page served anyway.
-    /// </summary>
     public string? TryPublicPage(string path)
     {
         var absolutePath = EnsureAbsolutePath(path);
@@ -179,10 +144,6 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
             : throw new ArgumentException("The path of a public page must start with '/'.", nameof(path));
     }
 
-    /// <summary>
-    /// Page of the booking site where the guest confirms the email of a "pay at the property" request (BK-06). Only the
-    /// booking id and the random token are in the link, no personal data.
-    /// </summary>
     public string OnSiteRequestConfirmation(string orgSlug, Guid bookingId, string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(orgSlug);
@@ -191,22 +152,12 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
             $"/book/{Uri.EscapeDataString(orgSlug)}/requests/{bookingId:D}/confirm?token={Uri.EscapeDataString(token)}");
     }
 
-    /// <summary>Host console: the "pay at the property" requests to accept or decline (BK-06).</summary>
     public string HostBookingRequests() => Build("/app/short-rent/bookings?view=requests");
 
-    /// <summary>
-    /// Payments page of the host console (route <c>/app/short-rent/settings/payments</c> of the web app), where the Stripe
-    /// Connect onboarding starts and ends (BK-09, A3-42).
-    /// </summary>
     public const string ConnectPaymentsPagePath = "/app/short-rent/settings/payments";
 
-    /// <summary><c>return_url</c> of the Connect Account Link: the payments page with <c>?stripe_return=1</c> (BK-09).</summary>
     public string ConnectOnboardingReturn() => Build(ConnectPaymentsPagePath + "?stripe_return=1");
 
-    /// <summary>
-    /// <c>refresh_url</c> of the Connect Account Link (expired or already used link): the payments page with
-    /// <c>?stripe_refresh=1</c>, from which the host starts a new link (BK-09).
-    /// </summary>
     public string ConnectOnboardingRefresh() => Build(ConnectPaymentsPagePath + "?stripe_refresh=1");
 
     /// <summary>
@@ -222,11 +173,6 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
             $"/book/{Uri.EscapeDataString(orgSlug)}/bookings/{bookingId:D}/cancel?token={Uri.EscapeDataString(token)}");
     }
 
-    /// <summary>
-    /// Page of the booking site where the guest writes the review of a stay (DB-12a, route <c>/book/:orgSlug/booking/:id/review</c>):
-    /// the page reads what it shows from <c>GET api/public/bookings/{id}/review?token=…</c> and sends the review to the same address.
-    /// Only the booking id and the signed token (no name, no address) are in the link.
-    /// </summary>
     public string GuestReview(string orgSlug, Guid bookingId, string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(orgSlug);
@@ -235,11 +181,6 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
             $"/book/{Uri.EscapeDataString(orgSlug)}/booking/{bookingId:D}/review?token={Uri.EscapeDataString(token)}");
     }
 
-    /// <summary>
-    /// Public page of the web app where the guest reads the document of the stay that was e-mailed (route <c>/documents/view/:id</c>, E12/F01/US02/T01; the page is a frontend task): it asks
-    /// <c>POST api/public/fiscal-documents/{id}</c> for the summary and <c>…/pdf</c> for the file, both with the token in the <b>body</b>. Only the document id and the signed token (no name, no
-    /// address, no amount) are in the link; the token is a time-limited Data Protection payload (<c>Casazen.FiscalDocument.Link</c>, 30 days).
-    /// </summary>
     public string FiscalDocumentView(Guid documentId, string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
@@ -253,30 +194,12 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     /// </summary>
     public const string SupplierSettingsPagePath = "/app/supplier/settings";
 
-    /// <summary>
-    /// <c>return_url</c> of the supplier's Connect Account Link: the settings page with <c>?stripe_return=1</c> (SP-14), where
-    /// the web app reads the account state again. Built by the server, like the host's, never taken from the client.
-    /// </summary>
     public string SupplierConnectOnboardingReturn() => Build(SupplierSettingsPagePath + "?stripe_return=1");
 
-    /// <summary>
-    /// <c>refresh_url</c> of the supplier's Connect Account Link (expired or already used link): the settings page with
-    /// <c>?stripe_refresh=1</c>, from which the supplier starts a new link (SP-14).
-    /// </summary>
     public string SupplierConnectOnboardingRefresh() => Build(SupplierSettingsPagePath + "?stripe_refresh=1");
 
-    /// <summary>
-    /// The supplier's settings page, where the payments account is completed (SP-15c-a: the e-mail of a payment waiting for the account links
-    /// here). Built by the server.
-    /// </summary>
     public string SupplierSettings() => Build(SupplierSettingsPagePath);
 
-    /// <summary>
-    /// "Le mie prenotazioni" of the org's booking site (BK-10, BK-11): the guest finds a booking there with its code and
-    /// email. The checkout outcome page (BK-07) needs the checkout token, which only the guest's browser has, so emails
-    /// link here. With <paramref name="bookingCode"/> the page opens with the code filled in (<c>?code=</c>) and still asks
-    /// for the email before showing anything.
-    /// </summary>
     public string GuestBookings(string orgSlug, string? bookingCode = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(orgSlug);
@@ -286,10 +209,6 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
             : Build($"{path}?code={Uri.EscapeDataString(bookingCode)}");
     }
 
-    /// <summary>
-    /// The public page of a supplier's showcase (route <c>/fornitori/:slug</c>, SU-13, SP-10): where a customer whose request
-    /// was refused, cancelled or lapsed goes to book again.
-    /// </summary>
     public string SupplierShowcase(string supplierSlug)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(supplierSlug);
@@ -326,11 +245,6 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
             $"/fornitori/{Uri.EscapeDataString(supplierSlug)}/conferma?inquiry={inquiryId:D}#token={Uri.EscapeDataString(token)}");
     }
 
-    /// <summary>
-    /// "La tua richiesta" on the supplier's showcase (route <c>/fornitori/:slug/richiesta</c>, SP-10, managed with SP-11): the
-    /// customer finds a request there with its code and e-mail. With <paramref name="publicCode"/> the page opens with the code
-    /// filled in (<c>?code=</c>, as <see cref="GuestBookings"/> does) and still asks for the e-mail before showing anything.
-    /// </summary>
     public string SupplierBookingRequest(string supplierSlug, string? publicCode = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(supplierSlug);
@@ -340,10 +254,6 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
             : Build($"{path}?code={Uri.EscapeDataString(Casazen.Core.Services.BookingCodes.Format(publicCode))}");
     }
 
-    /// <summary>
-    /// Checkout outcome page of the booking site (BK-07) with a checkout token: the guest of a failed deferred charge pays
-    /// there (BK-08). Only the booking id and the random token are in the link, no personal data.
-    /// </summary>
     public string CheckoutOutcome(string orgSlug, Guid bookingId, string checkoutToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(orgSlug);
@@ -362,68 +272,38 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         return Build($"/rent/pay/{installmentId:D}?token={Uri.EscapeDataString(token)}");
     }
 
-    /// <summary>
-    /// Public page where the payer pays a service a supplier completed (route <c>/service/pay/:paymentId</c>, SP-15a). Only the
-    /// payment id and the random token are in the link, no personal data. The page itself is a frontend task (SP-15b).
-    /// </summary>
     public string ServicePayment(Guid paymentId, string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
         return Build($"/service/pay/{paymentId:D}?token={Uri.EscapeDataString(token)}");
     }
 
-    /// <summary>Host console: detail page of one lease (route <c>/app/long-rent/leases/:id</c>, LT-06).</summary>
     public string HostLease(Guid leaseId) => Build($"/app/long-rent/leases/{leaseId:D}");
 
-    /// <summary>Host console: detail page of one booking (BK-10).</summary>
     public string HostBooking(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}");
 
-    /// <summary>Host console: the booking opened on its Messaggi tab (DB-14a), where the host reads the message of the guest and answers.</summary>
     public string HostBookingMessages(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}?tab=messages");
 
-    /// <summary>
-    /// Host console: one conversation of the hub of messages (route <c>/app/short-rent/messages/:threadKey</c>, E05/F02, NF-65), where the key is
-    /// <c>ota:{guid}</c> for a conversation of a channel. The key is only letters, digits, a colon and dashes, so it needs no escaping.
-    /// </summary>
     public string HostMessageThread(string threadKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(threadKey);
         return Build($"/app/short-rent/messages/{threadKey}");
     }
 
-    /// <summary>Host console: the approval queue (route <c>/app/short-rent/approval-queue</c>, E05/F04, NF-68), where the host reads, edits, approves or rejects an item.</summary>
     public string HostApprovalQueue() => Build("/app/short-rent/approval-queue");
 
-    /// <summary>
-    /// Host console: the page of one property in the area of its rental mode (routes <c>/app/short-rent/properties/:id</c> for
-    /// <see cref="Core.Entities.Enums.RentalMode.Short"/>, <c>/app/long-rent/properties/:id</c> for
-    /// <see cref="Core.Entities.Enums.RentalMode.Long"/>, PM-02).
-    /// </summary>
     public string HostProperty(Guid propertyId, Core.Entities.Enums.RentalMode mode) =>
         Build($"/app/{(mode == Core.Entities.Enums.RentalMode.Long ? "long-rent" : "short-rent")}/properties/{propertyId:D}");
 
-    /// <summary>Host console: activation wizard of one property (route <c>/app/short-rent/properties/:id/activation</c>, CO-06).</summary>
     public string HostPropertyActivation(Guid propertyId) => Build($"/app/short-rent/properties/{propertyId:D}/activation");
 
     /// <summary>Host console: CIN compliance page (route <c>/app/short-rent/compliance/cin</c>, CO-20).</summary>
     public string HostCinCompliance() => Build("/app/short-rent/compliance/cin");
 
-    /// <summary>
-    /// Host console: the compliance page «am I compliant?» of the short-rent area (route <c>/app/short-rent/compliance</c>, E03/F02/US02, NF-52): the
-    /// alerts about a period and the monthly summary lead to it, where the open items and the guided hand-off to the channel manager are.
-    /// </summary>
     public string HostCompliance() => Build("/app/short-rent/compliance");
 
-    /// <summary>
-    /// Plan page of the host console (route <c>/app/short-rent/settings/plan</c> of the web app): the default page Stripe
-    /// Checkout and the billing portal return to (PL-11, A1-31) when the client names no page.
-    /// </summary>
     public const string BillingPagePath = "/app/short-rent/settings/plan";
 
-    /// <summary>
-    /// Billing page of the account area (route <c>/app/account/billing</c> of the web app, AM-08a): the one page that holds the
-    /// plan and the billing of the org for the people of the account, so Stripe can bring them back to it (AM-08a-FU1).
-    /// </summary>
     public const string AccountBillingPagePath = "/app/account/billing";
 
     /// <summary>
@@ -441,20 +321,13 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         "/onboarding",
     };
 
-    /// <summary>True when <paramref name="path"/> is exactly one of <see cref="BillingReturnPagePaths"/>.</summary>
     public static bool IsBillingReturnPagePath(string? path) =>
         path is not null && BillingReturnPagePaths.Contains(path);
 
-    /// <summary>
-    /// Return page of a paid Stripe Checkout: <paramref name="returnPath"/> (one of <see cref="BillingReturnPagePaths"/>)
-    /// or the default plan page, with <c>?checkout=success</c>.
-    /// </summary>
     public string BillingCheckoutSuccess(string? returnPath = null) => Build(BillingPage(returnPath) + "?checkout=success");
 
-    /// <summary>Return page of an abandoned Stripe Checkout, like <see cref="BillingCheckoutSuccess"/> with <c>?checkout=cancel</c>.</summary>
     public string BillingCheckoutCancel(string? returnPath = null) => Build(BillingPage(returnPath) + "?checkout=cancel");
 
-    /// <summary>Return page of the Stripe billing portal: <paramref name="returnPath"/> or the default plan page.</summary>
     public string BillingPortalReturn(string? returnPath = null) => Build(BillingPage(returnPath));
 
     /// <summary>
@@ -496,11 +369,6 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
             && string.IsNullOrEmpty(candidate.UserInfo);
     }
 
-    /// <summary>
-    /// True when <paramref name="host"/> (a host name without scheme, port optional) is the host of
-    /// <c>App:PublicSiteBaseUrl</c>: the web app's own domain, as opposed to an org subdomain or custom domain (BK-15).
-    /// False when the public URL is not configured.
-    /// </summary>
     public bool IsPublicSiteHost(string? host)
     {
         if (string.IsNullOrWhiteSpace(host)

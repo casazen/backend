@@ -26,7 +26,6 @@ public class OwnerCharge : ITenantOwned
 
     public Guid PropertyId { get; set; }
 
-    /// <summary>The one owner it is debited to; <c>null</c> = split among the owners of the property by their shares on the day.</summary>
     public Guid? PropertyOwnerId { get; set; }
 
     public OwnerChargeKind Kind { get; set; }
@@ -37,7 +36,6 @@ public class OwnerCharge : ITenantOwned
     [MaxLength(DescriptionMaxLength)]
     public string Description { get; set; } = string.Empty;
 
-    /// <summary>The amount of each occurrence, positive (debited).</summary>
     [Precision(18, 2)]
     public decimal Amount { get; set; }
 

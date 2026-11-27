@@ -4,7 +4,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Infrastructure.Email.Templates;
 
-/// <summary>The emails of the org invitations (AM-02): the invitation, the reminder of the third day and the note of the expiry.</summary>
 public static partial class EmailTemplates
 {
     public static partial class Names
@@ -14,14 +13,11 @@ public static partial class EmailTemplates
         public const string OrgInvitationExpired = "org-invitation-expired";
     }
 
-    /// <summary>EmailTexts key of the name of an <see cref="OrgRole"/>.</summary>
     public static string OrgRoleKey(OrgRole role) => $"OrgRole_{role}";
 
-    /// <summary>EmailTexts key of the name of an area (<c>short-rent</c>, <c>long-rent</c>).</summary>
     public static string OrgAreaKey(string area) =>
         string.Equals(area, OrgRoleCatalog.LongRent, StringComparison.OrdinalIgnoreCase) ? "OrgArea_LongRent" : "OrgArea_ShortRent";
 
-    /// <summary>Name of a role in <paramref name="culture"/> (Titolare, Amministratore, Property manager, Collaboratore, Contabile).</summary>
     public static string OrgRoleLabel(CultureInfo culture, OrgRole role) => EmailTexts.Get(OrgRoleKey(role), culture);
 
     /// <summary>
@@ -55,10 +51,6 @@ public static partial class EmailTemplates
         };
     }
 
-    /// <summary>
-    /// The reminder of the third day, to the invited person. Its link replaces the one of the first email (the token is
-    /// rotated: only the hash is stored), and the email says so.
-    /// </summary>
     public static EmailContent OrgInvitationReminder(
         CultureInfo culture,
         string inviteeName,
@@ -81,10 +73,6 @@ public static partial class EmailTemplates
         };
     }
 
-    /// <summary>
-    /// The note of the expiry, to the person who invited: nobody accepted, the seat is free again, a new invitation can go
-    /// out. Names the invitee and its address (the inviter wrote them), and links the people page of the account.
-    /// </summary>
     public static EmailContent OrgInvitationExpired(
         CultureInfo culture,
         string inviterName,

@@ -24,21 +24,15 @@ public sealed record ListingPublishedEvent : DomainEvent
         AccommodationId = payload.AccommodationId;
     }
 
-    /// <summary>The property that was published.</summary>
     public Guid PropertyId { get; }
 
-    /// <summary>The accommodation it is on Octorate, when the payload says it.</summary>
     public string? AccommodationId { get; }
 }
 
-/// <summary>The stored payload of <see cref="DomainEventType.ListingPublished"/>: ids only, no text of the listing (ADR-022-R21).</summary>
-/// <param name="PropertyId">The property.</param>
-/// <param name="AccommodationId">The accommodation on Octorate.</param>
 public sealed record ListingPublishedPayload(Guid PropertyId, string? AccommodationId)
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
 
-    /// <summary>The payload of a stored event; a payload that cannot be read (an anonymized dead letter keeps <c>{}</c>) gives no ids.</summary>
     public static ListingPublishedPayload Parse(string? payloadJson)
     {
         if (string.IsNullOrWhiteSpace(payloadJson))

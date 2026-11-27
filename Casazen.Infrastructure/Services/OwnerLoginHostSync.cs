@@ -35,14 +35,9 @@ public sealed class OwnerLoginHostSync(
     TimeProvider timeProvider,
     ILogger<OwnerLoginHostSync> logger)
 {
-    /// <summary>The registration in Auth0 is automatic: both flags are on.</summary>
     public bool IsAutomatic =>
         featureFlags.IsEnabled(FeatureFlags.WhiteLabelHost) && featureFlags.IsEnabled(FeatureFlags.Auth0HostSync);
 
-    /// <summary>
-    /// The custom domain of <paramref name="org"/> has just become verified (<c>DomainVerificationService.VerifyAsync</c>, after the save): its administrators are told,
-    /// and with both flags on the domain is registered in Auth0. A check that finds the domain verified again does not come here.
-    /// </summary>
     public async Task DomainVerifiedAsync(Org org, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(org);
@@ -60,10 +55,6 @@ public sealed class OwnerLoginHostSync(
             await RegisterAsync(org, cancellationToken);
     }
 
-    /// <summary>
-    /// The owner portal of <paramref name="org"/> was just saved on, its state before the save being <paramref name="stateBefore"/>: with both flags on, a verified domain
-    /// whose registration was never asked (NotRequested) or failed is registered now. A registration that waits (Pending) or is done (Ready) is left alone.
-    /// </summary>
     public async Task OwnerPortalSavedOnAsync(Org org, OwnerLoginHostState stateBefore, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(org);
@@ -93,10 +84,6 @@ public sealed class OwnerLoginHostSync(
             await ApplyAsync(org, OwnerLoginHostState.Pending, cancellationToken);
     }
 
-    /// <summary>
-    /// Sets the state of <paramref name="org"/> (tracked by the same context) and saves it when it changes; the cached <c>resolve-host</c> answer of its domain is
-    /// dropped either way. A change to Ready or Failed tells the administrators of the org (with <c>WhiteLabelHost</c> on). True when the state changed.
-    /// </summary>
     public async Task<bool> ApplyAsync(Org org, OwnerLoginHostState state, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(org);
@@ -110,7 +97,6 @@ public sealed class OwnerLoginHostSync(
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        // resolve-host carries ownerLoginReady: the next read of the domain sees the new state at once.
         if (!string.IsNullOrEmpty(org.CustomDomain))
             publicHostResolver.InvalidateCacheForHost(org.CustomDomain);
 
@@ -164,7 +150,6 @@ public sealed class OwnerLoginHostSync(
         && !string.IsNullOrEmpty(org.CustomDomain)
         && org.DomainVerificationStatus == DomainVerificationStatus.Verified;
 
-    /// <summary>The bell, the pop-up and the live refresh of the administrators of the org (no push on a phone: <c>HangfirePushQueue</c>).</summary>
     private void Tell(Guid orgId, string type, string deliveryKey, PushText text) =>
         pushNotifications.Enqueue(
             deliveryKey,

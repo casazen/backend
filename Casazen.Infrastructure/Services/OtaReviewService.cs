@@ -43,26 +43,17 @@ public sealed partial class OtaReviewService(
     TimeProvider? timeProvider = null,
     IPushNotificationService? push = null) : IOtaReviewService
 {
-    /// <summary>The most ratings a host's review carries.</summary>
     internal const int MaxHostReviewRatings = 12;
 
     private const int MaxCategoryLength = 64;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>The rows of the mapping of each org, read once for the life of the service (a request, or a run of the job): the listing of a property does not change within it.</summary>
     private readonly Dictionary<Guid, IReadOnlyList<ChannelMappingRow>> _mappings = [];
-
-    // ─── The read ───
 
     public Task<OtaReviewSyncResult> SyncBookingAsync(Guid bookingId, CancellationToken ct = default) =>
         ReadBookingAsync(bookingId, rethrowFailure: false, ct);
 
-    /// <summary>
-    /// The read of one booking. <paramref name="rethrowFailure"/> is for a person who asked for it now (<see cref="RefreshAsync"/>): a read the channel manager refused is stored on the row
-    /// (its code and the time of the next read) and then raised as what it is (409 <c>review_not_available</c>, 502 <c>octorate_unavailable</c>, ...), so the answer is an error with its code
-    /// and not a 200 that hides it in <c>lastSyncError</c>. The sync of the job gets the failure as a result and goes on with the next booking.
-    /// </summary>
     private async Task<OtaReviewSyncResult> ReadBookingAsync(Guid bookingId, bool rethrowFailure, CancellationToken ct)
     {
         var orgId = orgScope.OrgId;
@@ -85,19 +76,15 @@ public sealed partial class OtaReviewService(
         if (booking is null)
             return new OtaReviewSyncResult(OtaReviewSyncOutcome.BookingNotFound);
 
-        // A channel with no integration for reviews is never read and never gets a row (OCT-12, S6).
         if (OtaChannelMapper.Of(booking.Source) is not { } channel || !OtaReviewCapabilities.For(channel).CanRead)
             return new OtaReviewSyncResult(OtaReviewSyncOutcome.ChannelNotIntegrated);
 
-        // A stay that does not happen (a request, a cancelled one, a no-show) has nothing to review, and one with no reservation on the channel manager has nothing to ask for: the one
-        // definition of an active stay.
         if (!AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status) || booking.NoShow
             || string.IsNullOrWhiteSpace(booking.OctorateReservationId))
         {
             return new OtaReviewSyncResult(OtaReviewSyncOutcome.NotReviewable);
         }
 
-        // The listing of the property is the one nobody confirmed: nothing can be read for it (OCT-04).
         var accommodation = await AccommodationOfAsync(orgId, booking.PropertyId, ct);
         if (accommodation is null)
             return new OtaReviewSyncResult(OtaReviewSyncOutcome.NotReadable);
@@ -111,7 +98,6 @@ public sealed partial class OtaReviewService(
         }
         catch (OctorateRateLimitException)
         {
-            // The calls of the org are used up: nothing was read and nothing is stored; the caller stops and the booking is read at the next run.
             throw;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -128,7 +114,6 @@ public sealed partial class OtaReviewService(
         }
         catch (ArgumentException)
         {
-            // A reference or an accommodation the client could not take: nothing left CasaZen. For a person it is a booking with no usable reference on the channel manager.
             var failed = await StoreFailureAsync(orgId, booking, channel, refer, OctorateRequestRejectedException.RejectedCode, ct);
             if (rethrowFailure)
                 throw new DomainRuleException(OtaReviewErrorCodes.BookingNotReviewable, "OtaReviewBookingNotReviewable");
@@ -155,7 +140,6 @@ public sealed partial class OtaReviewService(
             row = await LoadOrCreateAsync(orgId, booking, channel, refer, now, ct);
             applied = OtaReviewMapper.Apply(row, answer, booking.CheckOutDate, booking.GuestErased, now);
 
-            // The first time the guest's review is out: one event for each review, in the same save, ids only (ADR-022-R21). The routines of the host that wait for a review start from it.
             if (applied.NewlyPublished)
             {
                 domainEvents.Record(
@@ -205,7 +189,6 @@ public sealed partial class OtaReviewService(
                 await transaction.CommitAsync(ct);
         }
 
-        // A code and the ids, never what the channel manager said: the host sees the state on the booking, and the next read tries again.
         logger.LogWarning("Reviews of booking {BookingId} (org {OrgId}) could not be read: {Code}", booking.Id, orgId, code);
         return new OtaReviewSyncResult(OtaReviewSyncOutcome.Failed, code);
     }
@@ -227,7 +210,6 @@ public sealed partial class OtaReviewService(
         return await db.OtaReviews.FirstOrDefaultAsync(r => r.OrgId == orgId && r.Id == reviewId, ct);
     }
 
-    /// <summary>The row of the booking and channel under the lock the caller holds, or a new one added to the context (never added through a collection of a parent).</summary>
     private async Task<OtaReview> LoadOrCreateAsync(Guid orgId, BookingFacts booking, OtaChannel channel, string refer, DateTime now, CancellationToken ct)
     {
         var row = db.OtaReviews.Local.FirstOrDefault(r => r.OrgId == orgId && r.BookingId == booking.Id && r.Channel == channel);
@@ -254,8 +236,6 @@ public sealed partial class OtaReviewService(
         return row;
     }
 
-    // ─── What the host reads ───
-
     public async Task<BookingReviewsView> ListForBookingAsync(HostScope scope, Guid bookingId, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
@@ -269,7 +249,6 @@ public sealed partial class OtaReviewService(
 
         var items = new List<BookingReviewItem>();
 
-        // The review of the booking site: the host reads it and answers it once, as it always could.
         var direct = await db.Reviews
             .AsNoTracking()
             .Where(r => r.OrgId == scope.OrgId && r.BookingId == bookingId && r.Status != ReviewStatus.Removed)
@@ -288,7 +267,6 @@ public sealed partial class OtaReviewService(
                 DirectCapabilities(direct.Answered)));
         }
 
-        // The review of a channel: only a published one is a review (the row of a booking that was read and has none is the state of the read, not an item).
         var rows = await db.OtaReviews
             .AsNoTracking()
             .Where(r => r.OrgId == scope.OrgId && r.BookingId == bookingId)
@@ -325,7 +303,6 @@ public sealed partial class OtaReviewService(
         ArgumentNullException.ThrowIfNull(scope);
         var booking = await ReachableBookingAsync(scope, bookingId, ct);
 
-        // Only a booking of a channel the channel manager integrates for reviews is read: the others have nothing to refresh.
         if (booking.Source != BookingSource.Airbnb)
             throw new DomainRuleException(OtaReviewErrorCodes.ChannelNotIntegrated, "OtaReviewChannelNotIntegrated");
 
@@ -345,8 +322,6 @@ public sealed partial class OtaReviewService(
             };
         }
 
-        // What came of the read is what the answer says: a read the channel manager refused is raised by ReadBookingAsync with its own code (it is stored on the row first, so the ten minutes
-        // count and the state is there), and a booking that cannot be read is an error of its own, never a 200 with an empty list.
         var result = await ReadBookingAsync(bookingId, rethrowFailure: true, ct);
         switch (result.Outcome)
         {
@@ -361,7 +336,6 @@ public sealed partial class OtaReviewService(
             case OtaReviewSyncOutcome.NotReadable:
                 throw new DomainConflictException(OtaReviewErrorCodes.MappingNotConfirmed, "MessageMappingNotConfirmed");
             case OtaReviewSyncOutcome.Failed:
-                // Raised by ReadBookingAsync already; a result that says so and no exception would be a read that failed and was told as a success.
                 throw new OctorateServerException(null);
         }
 
@@ -391,8 +365,6 @@ public sealed partial class OtaReviewService(
             .Select(r => (Guid?)r.PropertyId)
             .FirstOrDefaultAsync(ct);
     }
-
-    // ─── What the host sends ───
 
     public async Task<OtaReviewActionResult> ReplyAsync(Guid reviewId, string? text, string? idempotencyKey, string? userId, CancellationToken ct = default)
     {
@@ -433,14 +405,12 @@ public sealed partial class OtaReviewService(
             .FirstOrDefaultAsync(ct)
             ?? throw ReviewNotFound();
 
-        // One: the row, the checks and the save of the request, under the lock of the booking, committed before anything leaves.
         string accommodation;
         string refer;
         await using (var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct, (PostgresAdvisoryLocks.Scope.OtaReview, LockKey(orgId, bookingId))))
         {
             var row = await FreshRowAsync(orgId, reviewId, ct) ?? throw ReviewNotFound();
 
-            // The same key is the same action: what was stored is the answer, and nothing is sent again, whatever the text of this request says.
             if (string.Equals(KeyOf(row, kind), key, StringComparison.Ordinal))
             {
                 if (transaction is not null)
@@ -466,11 +436,9 @@ public sealed partial class OtaReviewService(
                     throw new DomainConflictException(OtaReviewErrorCodes.ActionUnconfirmed, "OtaReviewActionUnconfirmed");
             }
 
-            // The host's own review is written while the window of the channel is open: once it was sent the window is over, and that is «already sent» (the state above), not «closed».
             if (kind == ActionKind.HostReview && row.HostReviewWindow != HostReviewWindow.Open)
                 throw new DomainConflictException(OtaReviewErrorCodes.WindowClosed, "OtaReviewWindowClosed");
 
-            // OCT-04: nothing is written to a channel for a property whose listing nobody decided, and nothing is sent when the connector is off.
             accommodation = await AccommodationOfAsync(orgId, row.PropertyId, ct) ?? string.Empty;
             if (accommodation.Length == 0 || await channelMapping.IsWriteBlockedAsync(row.PropertyId, ct))
                 throw new DomainConflictException(OtaReviewErrorCodes.MappingNotConfirmed, "MessageMappingNotConfirmed");
@@ -478,7 +446,6 @@ public sealed partial class OtaReviewService(
             if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
                 throw OctorateAuthException.NotConnected();
 
-            // The text and the key first, as an outcome that is not known: a process that dies from here on leaves exactly what it should (it may or may not have left).
             var now = Now();
             Begin(row, kind, payload, key, now);
             await db.SaveChangesAsync(ct);
@@ -488,7 +455,6 @@ public sealed partial class OtaReviewService(
             refer = row.OctorateRefer;
         }
 
-        // Two: the call, with no lock and no transaction held. Never repeated here (OCT-13).
         OtaReviewActionState outcome;
         string? errorCode = null;
         DomainConflictException? refused = null;
@@ -513,7 +479,6 @@ public sealed partial class OtaReviewService(
         }
         catch (OctorateServerException ex)
         {
-            // No answer, a 5xx, or an answer that cannot be read: the action may have left. It is not sent again here (OCT-13).
             logger.LogWarning(
                 "Review {ReviewId} (org {OrgId}): the outcome of the {Action} is not known ({Code}); it waits for the next read of the channel",
                 reviewId, orgId, kind, ex.Code);
@@ -521,13 +486,11 @@ public sealed partial class OtaReviewService(
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // The caller left while the action was on its way: just as unknown, and it stays as it was saved.
             await SettleAsync(orgId, reviewId, bookingId, kind, key, OtaReviewActionState.ManualVerify, null, discard: false, CancellationToken.None);
             throw;
         }
         catch (OctorateReviewActionNotAllowedException ex)
         {
-            // Not allowed, or already done: the channel manager says no. The next read of the booking shows which of the two it was.
             logger.LogWarning("Review {ReviewId} (org {OrgId}): the {Action} was refused as not allowed or already done", reviewId, orgId, kind);
             outcome = OtaReviewActionState.Error;
             errorCode = ex.Code;
@@ -535,14 +498,12 @@ public sealed partial class OtaReviewService(
         }
         catch (OctorateException ex)
         {
-            // A typed refusal: not taken by the channel manager. The state says so, with the code.
             logger.LogWarning("Review {ReviewId} (org {OrgId}): the {Action} was not taken ({Code}, HTTP {Status})", reviewId, orgId, kind, ex.Code, ex.OctorateStatusCode);
             outcome = OtaReviewActionState.Error;
             errorCode = ex.Code;
         }
         catch (ArgumentException)
         {
-            // An id or a rating the client could not take: nothing left CasaZen.
             logger.LogWarning("Review {ReviewId} (org {OrgId}): the {Action} was not sent, the data of the request is not valid", reviewId, orgId, kind);
             outcome = OtaReviewActionState.Error;
             errorCode = OctorateRequestRejectedException.RejectedCode;
@@ -557,10 +518,6 @@ public sealed partial class OtaReviewService(
         return await ResultOfAsync(settled, kind, replayed: false, ct);
     }
 
-    /// <summary>
-    /// Stores what came of the call under the lock of the booking: the row is read again, and only the attempt that this key opened is settled (a row another key took over is
-    /// left as it is). <paramref name="discard"/> takes the attempt back (a 429): no text, no key, as if nothing was asked.
-    /// </summary>
     private async Task<OtaReview> SettleAsync(
         Guid orgId,
         Guid reviewId,
@@ -608,8 +565,6 @@ public sealed partial class OtaReviewService(
             kind == ActionKind.Reply ? row.HostReplyError : row.HostReviewError);
     }
 
-    // ─── The view of a row ───
-
     private async Task<OtaReviewView> ViewOfAsync(OtaReview row, string? propertyName, CancellationToken ct)
     {
         var hostReview = ReadHostReview(row);
@@ -639,10 +594,6 @@ public sealed partial class OtaReviewService(
             await CapabilitiesOfAsync(row, ct));
     }
 
-    /// <summary>
-    /// What a review allows its host now: the table of its channel, narrowed by the connector and the listing of its property (nothing is written to a channel for a property whose listing
-    /// nobody decided, OCT-04) and by what the review is (published, not answered yet, the window open, the last attempt not waiting for a check).
-    /// </summary>
     private async Task<OtaReviewCapabilitiesView> CapabilitiesOfAsync(OtaReview row, CancellationToken ct)
     {
         var channel = OtaReviewCapabilities.For(row.Channel);
@@ -688,11 +639,8 @@ public sealed partial class OtaReviewService(
             reason is null ? hostReviewReason : null);
     }
 
-    /// <summary>The reply of a review of the booking site: allowed once, until the host answers; no host's review exists for it.</summary>
     internal static OtaReviewCapabilitiesView DirectCapabilities(bool answered) =>
         new(true, !answered, false, null, answered ? "review_reply_already_sent" : null, "host_review_not_supported");
-
-    // ─── Small things ───
 
     private async Task<BookingFacts> ReachableBookingAsync(HostScope scope, Guid bookingId, CancellationToken ct) =>
         await db.Bookings
@@ -714,7 +662,6 @@ public sealed partial class OtaReviewService(
     private static NotFoundException BookingNotFound(Guid bookingId) =>
         new($"Booking {bookingId} not found") { Code = OtaReviewErrorCodes.BookingNotFound, MessageKey = "BookingNotFound" };
 
-    /// <summary>The accommodation of the confirmed listing of a property; <c>null</c> while the property has none.</summary>
     private async Task<string?> AccommodationOfAsync(Guid orgId, Guid propertyId, CancellationToken ct)
     {
         if (!_mappings.TryGetValue(orgId, out var rows))
@@ -750,8 +697,6 @@ public sealed partial class OtaReviewService(
         return new DateTime(utc.Ticks - (utc.Ticks % 10), DateTimeKind.Utc);
     }
 
-    // ─── The two actions, one after the other ───
-
     private enum ActionKind
     {
         Reply,
@@ -762,7 +707,6 @@ public sealed partial class OtaReviewService(
 
     private static string? KeyOf(OtaReview row, ActionKind kind) => kind == ActionKind.Reply ? row.HostReplyIdempotencyKey : row.HostReviewIdempotencyKey;
 
-    /// <summary>The attempt, saved before it leaves: its words and its key, as an outcome that is not known.</summary>
     private static void Begin(OtaReview row, ActionKind kind, string payload, string key, DateTime now)
     {
         if (kind == ActionKind.Reply)
@@ -784,7 +728,6 @@ public sealed partial class OtaReviewService(
             row.HostReviewError = null;
         }
 
-        // The next read of the booking comes at the next run, whatever the cadence said: it is how the attempt ends.
         row.NextPollAt = now;
         row.UpdatedAt = now;
     }
@@ -807,13 +750,11 @@ public sealed partial class OtaReviewService(
                 row.HostReviewWindow = HostReviewWindow.Sent;
         }
 
-        // A refusal as «not allowed» is read again at the next run, which shows whether it was already done; an unknown outcome too. A settled one follows its cadence.
         row.NextPollAt = outcome is OtaReviewActionState.Error or OtaReviewActionState.ManualVerify
             ? now
             : row.NextPollAt;
     }
 
-    /// <summary>Takes the attempt back: no text, no key, no state, as if nothing was asked (the call did not happen).</summary>
     private static void Revert(OtaReview row, ActionKind kind)
     {
         if (kind == ActionKind.Reply)
@@ -833,8 +774,6 @@ public sealed partial class OtaReviewService(
             row.HostReviewError = null;
         }
     }
-
-    // ─── The host's review ───
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -899,15 +838,8 @@ public sealed partial class OtaReviewService(
         }
     }
 
-    /// <summary>What a row keeps of the host's review (encrypted in the column).</summary>
     private sealed record StoredHostReview(IReadOnlyList<ReviewCategoryRating> Ratings, string? Text, string? PrivateText);
 
-    // ─── The hosts are told ───
-
-    /// <summary>
-    /// The hosts of the booking learn, live, what the read found that needs them (best effort, after the save: whatever goes wrong here is logged and never undoes the read): a
-    /// review that appeared, a reply or a host's review that did not reach the channel.
-    /// </summary>
     private async Task TellHostsAsync(OtaReview row, OtaReviewApplyResult applied, CancellationToken ct)
     {
         if (push is null || !(applied.NewlyPublished || applied.ReplyFailed || applied.HostReviewFailed))

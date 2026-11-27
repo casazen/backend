@@ -9,7 +9,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface ISupplierServiceRequestReader
 {
-    /// <summary>The requests of <paramref name="supplierOrgId"/> matching <paramref name="query"/>, and their total.</summary>
     Task<(IReadOnlyList<SupplierServiceRequestView> Items, int Total)> ListAsync(
         Guid supplierOrgId,
         SupplierInboxQuery query,
@@ -35,24 +34,12 @@ public interface ISupplierServiceRequestReader
         DateOnly to,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The same requests as <see cref="ListForAgendaAsync"/>, with the titles the console's calendar shows (SP-03b): the service name,
-    /// who asks, the comune, where it comes from and whether a proposed time waits for an answer. <b>Only</b> what the supplier may
-    /// know before taking the request (decision D9): the name of a private customer is "Nome C." until the take, and no property
-    /// name, street address, contact or note is ever read. For the calendar only; the slot planner reads the lighter
-    /// <see cref="ListForAgendaAsync"/> (no join on the host, the property or the customer).
-    /// </summary>
     Task<IReadOnlyList<SupplierAgendaRequest>> ListForCalendarAsync(
         Guid supplierOrgId,
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// How many requests of <paramref name="supplierOrgId"/> each tab of the inbox holds, and how many payments are late (SP-04e,
-    /// <c>GET api/supplier/inbox/counts</c>): the numbers on the chips of the list and on the menu, computed in one place so they
-    /// agree with the lists. Read-only, scoped by the supplier org.
-    /// </summary>
     Task<SupplierInboxCounts> GetInboxCountsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 }
 

@@ -5,26 +5,14 @@ using Casazen.Infrastructure.Services;
 
 namespace Casazen.Infrastructure.Documents;
 
-/// <summary>
-/// Turns a PDF that carries its text into the PDF of a <b>scan</b>: every page a picture in gray and nothing else, no text, no font, as the
-/// scanner of a copier or the photos of a contract make it (CF-DOCS-REAL). The simulated module of the guided service delivers its sample
-/// contract this way, so the whole round on the test environment reads the same kind of file the real service sends — by OCR, not by the text
-/// a PDF carries. The tools are those of the OCR (<c>pdftoppm</c>, run under <c>prlimit</c>): where they are not installed nothing is made
-/// and the caller keeps the PDF with its text.
-/// </summary>
 internal static class ScannedPdf
 {
-    /// <summary>200 dots per inch: the text of a page of 10 points stays as clear to the OCR as in the pages of a real scan.</summary>
     private const int Dpi = 200;
 
     private const double PageWidthPoints = 595.28;
 
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(60);
 
-    /// <summary>
-    /// Whether the host can read a scan back: the tools that make the pictures AND the OCR that reads them are both installed. Asked once per
-    /// process. A scan that nobody can read would stop the round on the test environment, so where the OCR is missing the PDF keeps its text.
-    /// </summary>
     private static readonly Lazy<Task<bool>> ToolsInstalled = new(ProbeToolsAsync);
 
     private static async Task<bool> ProbeToolsAsync()
@@ -42,7 +30,6 @@ internal static class ScannedPdf
         }
     }
 
-    /// <summary>The scan of <paramref name="digitalPdf"/>, or <c>null</c> when the tools to make it and to read it are not here (or the PDF is not one).</summary>
     public static async Task<byte[]?> FromAsync(byte[] digitalPdf, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(digitalPdf);
@@ -79,14 +66,12 @@ internal static class ScannedPdf
         }
     }
 
-    /// <summary>"page-1.pgm", "page-02.pgm": the pages in the order of their number.</summary>
     private static int PageNumber(string path)
     {
         var name = Path.GetFileNameWithoutExtension(path);
         return int.TryParse(name[(name.LastIndexOf('-') + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out var number) ? number : int.MaxValue;
     }
 
-    /// <summary>A PDF of A4-wide pages whose only content is each image, 8-bit gray, deflated.</summary>
     public static byte[] Build(IReadOnlyList<GrayImage> pages)
     {
         ArgumentNullException.ThrowIfNull(pages);

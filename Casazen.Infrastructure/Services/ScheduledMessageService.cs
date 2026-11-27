@@ -46,7 +46,6 @@ public sealed class ScheduledMessageService(
 
     private const string DefaultZone = "Europe/Rome";
 
-    // The messages are the work of the routines: with the module of the routines closed nothing is planned or sent, whatever the flag of the messages says.
     private bool Enabled => featureFlags.IsEnabled(FeatureFlags.ScheduledMessages) && featureFlags.IsEnabled(FeatureFlags.Routines);
 
     public async Task<int> PlanBookingAsync(Guid bookingId, CancellationToken ct = default)
@@ -85,7 +84,6 @@ public sealed class ScheduledMessageService(
             if (plan.Count == 0)
                 continue;
 
-            // The condition of the routine, read as the engine reads it when the routine fires: a stay that does not meet it gets no message, and one that stopped meeting it loses the ones it had.
             if (!await ScheduledMessageConditions.HoldsAsync(conditions, stay.OrgId, routine.Id, entry.ConditionJson, facts, logger, ct))
             {
                 notMet.Add(routine.Id);
@@ -94,7 +92,6 @@ public sealed class ScheduledMessageService(
 
             foreach (var planned in plan)
             {
-                // A campaign goes only to a guest who gave the marketing consent (ADR-022-R11), read as the engine reads it: a stay whose guest has none gets no row, and a row it had is cancelled below.
                 if (planned.IsCampaign)
                 {
                     consent ??= await CampaignConsent.IsGrantedAsync(db, stay.OrgId, stay.GuestId, ct);
@@ -109,11 +106,9 @@ public sealed class ScheduledMessageService(
                 var row = rows.FirstOrDefault(r => r.RoutineId == routine.Id && r.ActionIndex == planned.ActionIndex);
                 if (row is null)
                 {
-                    // Its moment passed before it was planned (the routine was activated after it, the booking was confirmed after it): it is not sent late.
                     if (planned.PlannedAtUtc < gone)
                         continue;
 
-                    // DbSet.Add: the row carries its own Guid, so only Add tracks it as new.
                     db.ScheduledMessages.Add(NewRow(stay, routine, planned, now));
                     changed++;
                     continue;
@@ -123,13 +118,10 @@ public sealed class ScheduledMessageService(
             }
         }
 
-        // What no routine plans any more (switched off, deleted, the action gone, a stay that does not happen, or one that does not meet the condition of the routine) does not go out.
         var stayHappens = stay.Planning.Status is not BookingStatus.Cancelled && !stay.Planning.NoShow && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(stay.Planning.Status);
         var routinesById = routines.ToDictionary(r => r.Planning.Id, r => r.Planning);
         foreach (var row in rows.Where(r => r.IsOpen && !(r.RoutineId is { } routineId && kept.Contains((routineId, r.ActionIndex)))))
         {
-            // The row of a message the engine decides (an event that cannot be foreseen, an agent objective, a condition the AI judges) is not one the plan writes, so it is not one the plan
-            // closes for being «no longer planned»: the dispatch checks the stay, the routine and the condition when it sends. It is closed only with its stay.
             if (stayHappens && row.RoutineId is { } owner && routinesById.TryGetValue(owner, out var ownerRoutine) && ScheduledMessagePlanner.IsEngineOwned(ownerRoutine, row.ActionIndex))
                 continue;
 
@@ -151,7 +143,6 @@ public sealed class ScheduledMessageService(
         }
         catch (DbUpdateException ex) when (IsPlanConflict(ex))
         {
-            // Another planner wrote the same row at the same moment: the database kept the first one, and the next pass looks again.
             db.ChangeTracker.Clear();
             logger.LogInformation("Scheduled messages of booking {BookingId} (org {OrgId}): another run planned them at the same moment", bookingId, stay.OrgId);
             return 0;
@@ -191,7 +182,6 @@ public sealed class ScheduledMessageService(
         }
         catch (DbUpdateConcurrencyException)
         {
-            // A message was claimed by a send meanwhile: the dispatch checks the booking before it sends, and the next event looks again.
             db.ChangeTracker.Clear();
             return 0;
         }
@@ -213,7 +203,6 @@ public sealed class ScheduledMessageService(
         var active = AlloggiatiStatusRules.ActiveBookingStatuses;
         var open = new[] { ScheduledMessageStatus.Scheduled, ScheduledMessageStatus.Blocked, ScheduledMessageStatus.Failed };
 
-        // The stays that are close, and the stays that still have a message to settle (a cancelled one has its messages cancelled by the plan).
         var near = await db.Bookings
             .IgnoreQueryFilters([Tenant])
             .AsNoTracking()
@@ -234,7 +223,6 @@ public sealed class ScheduledMessageService(
         {
             ct.ThrowIfCancellationRequested();
 
-            // One booking at a time: nothing of the previous one stays in the change tracker.
             db.ChangeTracker.Clear();
             try
             {
@@ -259,7 +247,6 @@ public sealed class ScheduledMessageService(
     {
         var open = new[] { ScheduledMessageStatus.Scheduled, ScheduledMessageStatus.Blocked, ScheduledMessageStatus.Failed };
 
-        // An organization with an active routine that sends a message; and one that still has an open message, so a routine switched off or deleted cancels what it planned.
         var withRoutines = await db.Routines
             .IgnoreQueryFilters([Tenant])
             .AsNoTracking()
@@ -276,10 +263,6 @@ public sealed class ScheduledMessageService(
             .ToListAsync(ct);
         return [.. withRoutines.Union(withMessages)];
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The timeline and what the host does with it
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     public async Task<IReadOnlyList<ScheduledMessageView>> ListForBookingAsync(HostScope scope, Guid bookingId, CancellationToken ct = default)
     {
@@ -309,7 +292,6 @@ public sealed class ScheduledMessageService(
 
         RefuseWhileASendHoldsIt(row);
 
-        // The same rules as the composer of the hub: an empty text goes back to the template; a text that is too long is 422; a name that is not a variable is 422.
         string? clean = null;
         if (!string.IsNullOrWhiteSpace(text))
         {
@@ -352,7 +334,6 @@ public sealed class ScheduledMessageService(
         logger.LogInformation("Scheduled message {MessageId} of org {OrgId} skipped by a person", id, scope.OrgId);
         await CloseTodoIfIdleAsync(row.OrgId, row.BookingId, row.Id, ct);
 
-        // Nobody needs an alert about their own action: the OTHER people who reach the property are told (AC-NF71-3).
         try
         {
             await alerts.AlertOrRetryAsync(new ScheduledMessageAlert(row.OrgId, row.PropertyId, row.BookingId, row.Id, ScheduledMessageAlertKinds.Skipped, userId, now), CancellationToken.None);
@@ -429,8 +410,6 @@ public sealed class ScheduledMessageService(
             .FirstOrDefaultAsync(m => m.BookingId == bookingId && m.OrgId == orgId && m.RoutineId == routineId && m.ActionIndex == actionIndex, ct);
         if (row is null)
         {
-            // The routine fires for a message the plan has not written: an event it could not foresee (a payment, a message), or a booking the plan has not reached yet. The row is written now, for the moment
-            // the plan gives it (the send window waits) or, with none, for now inside the window.
             var (from, to) = options.Value.EffectiveSendWindow;
             var planned = ScheduledMessagePlanner.Plan(routine, stay.Planning, options.Value).FirstOrDefault(p => p.ActionIndex == actionIndex)?.PlannedAtUtc
                           ?? ScheduledMessagePlanner.IntoWindow(now, RomeCalendar.ZoneOf(stay.Planning.Timezone), from, to);
@@ -443,7 +422,6 @@ public sealed class ScheduledMessageService(
             }
             catch (DbUpdateException ex) when (IsPlanConflict(ex))
             {
-                // The plan wrote it at the same moment: that row is the one.
                 db.Entry(fresh).State = EntityState.Detached;
                 row = await db.ScheduledMessages
                     .IgnoreQueryFilters([Tenant])
@@ -468,21 +446,14 @@ public sealed class ScheduledMessageService(
             ScheduledMessageDispatchOutcome.Failed => RoutineActionResult.Failed(actionIndex, type, result.Code ?? DispatcherUnexpected),
             ScheduledMessageDispatchOutcome.Skipped or ScheduledMessageDispatchOutcome.Cancelled => RoutineActionResult.Skipped(actionIndex, type, result.Code ?? "scheduled_message_ended"),
 
-            // Sent, waiting for its time in the send window, already handled by another actor: the message is in hand.
             _ => RoutineActionResult.Done(actionIndex, type),
         };
     }
 
     private const string DispatcherUnexpected = ScheduledMessageDispatcher.UnexpectedErrorCode;
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The rows
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>What the plan reads of a booking: its org and property, the facts the planner needs, and the two more the condition of a routine can read (where it comes from, how many guests).</summary>
     private sealed record Stay(Guid OrgId, Guid PropertyId, BookingSource Source, int NumberOfGuests, PlanningBooking Planning, Guid GuestId);
 
-    /// <summary>A routine as the plan reads it: what the planner needs, and its condition (read by the evaluator of the engine).</summary>
     private sealed record RoutineRow(PlanningRoutine Planning, string ConditionJson);
 
     private Task<Stay?> LoadStayAsync(Guid bookingId, CancellationToken ct) =>
@@ -559,7 +530,6 @@ public sealed class ScheduledMessageService(
         row.UpdatedAt = now;
         if (moved)
         {
-            // A planned message that moves into the past missed its moment; one that is blocked or failed was already due and keeps waiting for the host or the sweep.
             if (row.Status == ScheduledMessageStatus.Scheduled && planned.PlannedAtUtc < gone)
             {
                 row.Status = ScheduledMessageStatus.Expired;
@@ -584,7 +554,6 @@ public sealed class ScheduledMessageService(
         row.UpdatedAt = now;
     }
 
-    /// <summary>The row of the scope, tracked for a change: the org of the scope and the properties it reaches are in the SQL, so a row of another org or out of the reach is the 404 of one that does not exist.</summary>
     private async Task<ScheduledMessage> OwnRowAsync(HostScope scope, Guid id, CancellationToken ct) =>
         await db.ScheduledMessages
             .Where(m => m.OrgId == scope.OrgId && m.Id == id)
@@ -596,11 +565,6 @@ public sealed class ScheduledMessageService(
             MessageKey = ScheduledMessageErrors.NotFoundMessageKey,
         };
 
-    /// <summary>
-    /// A row a send holds (claimed less than <see cref="ScheduledMessageRules.ClaimLease"/> ago) is on its way: the text was read when the send began and the message may be in the channel already, so
-    /// an edit would not be the one that goes and a skip would answer «skipped» for a message that goes out. 409 <c>scheduled_message_in_progress</c>, as for «Send now»; the claim of a process that
-    /// died has lapsed after the lease and does not hold the host off.
-    /// </summary>
     private void RefuseWhileASendHoldsIt(ScheduledMessage row)
     {
         if (row.LastCheckedAt is { } held && Now() - held < ScheduledMessageRules.ClaimLease)
@@ -615,7 +579,6 @@ public sealed class ScheduledMessageService(
         }
         catch (DbUpdateConcurrencyException)
         {
-            // Somebody else changed the message (or a send claimed it) while the caller was changing it: the one that lost reads it again.
             db.ChangeTracker.Clear();
             throw new DomainConflictException(ScheduledMessageErrors.Changed, ScheduledMessageErrors.ChangedMessageKey);
         }
@@ -632,10 +595,6 @@ public sealed class ScheduledMessageService(
             logger.LogError(ex, "The To do of the scheduled messages of booking {BookingId} (org {OrgId}) could not be closed", bookingId, orgId);
         }
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The views
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     private async Task<IReadOnlyList<ScheduledMessageView>> ViewsAsync(HostScope scope, Guid bookingId, Guid? onlyId, CancellationToken ct)
     {
@@ -658,7 +617,6 @@ public sealed class ScheduledMessageService(
         if (list.Count == 0)
             return [];
 
-        // How the guest is reached now, read once for the booking and without side effects; a channel manager that cannot be asked is no way to the guest for the moment.
         var channel = new MessageContactOptions(MessageContactChannel.None, null, null, false, false);
         if (list.Any(m => m.IsOpen))
         {
@@ -704,8 +662,6 @@ public sealed class ScheduledMessageService(
 
         return views;
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
 

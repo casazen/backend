@@ -80,10 +80,6 @@ public static class TenantSettlementMath
         public List<Guid> PriorSettlementIds { get; init; } = [];
     }
 
-    /// <summary>
-    /// Names the rule written on the lease. An empty clause is daily proration. A clause this version does not know
-    /// is <see cref="TenantAllocationRule.ContractSpecific"/> and is not charged.
-    /// </summary>
     public static TenantAllocationRule RuleFromContract(string? prorationRule)
     {
         if (string.IsNullOrWhiteSpace(prorationRule))
@@ -161,7 +157,6 @@ public static class TenantSettlementMath
         return allocated;
     }
 
-    /// <summary>Recoverable + prior − advances. The absolute value under <see cref="EvenThreshold"/> is even.</summary>
     public static Totals Settle(decimal recoverable, decimal prior, decimal advances)
     {
         var raw = recoverable + prior - advances;
@@ -177,7 +172,6 @@ public static class TenantSettlementMath
 
     public static string Serialize(Snapshot snapshot) => JsonSerializer.Serialize(snapshot, JsonOptions);
 
-    /// <summary>Recomputes the settlement from the stored inputs. A snapshot that does not replay is refused.</summary>
     public static Snapshot Replay(string json)
     {
         var snapshot = JsonSerializer.Deserialize<Snapshot>(json, JsonOptions)

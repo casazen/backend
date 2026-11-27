@@ -78,10 +78,8 @@ public sealed class CalendarChangeRecorder(
         var stamp = now.UtcDateTime;
         var settings = options.Value;
 
-        // The summary first: an invalid one is the caller's bug, found before anything is looked up or added.
         var summary = CalendarChangeSummary.Build(windows, summaryJson);
 
-        // The days before today of each property are never sent: a window starts today, one that is over is dropped.
         var planned = new List<CalendarWindow>();
         foreach (var window in windows)
         {
@@ -90,8 +88,6 @@ public sealed class CalendarChangeRecorder(
                 planned.Add(new CalendarWindow(window.PropertyId, cut.From, cut.To));
         }
 
-        // Every lookup before anything is added: one that stores the only room of a mapping saves the unit of work (see the remarks of the interface). A property the
-        // caller already asked about (before its lock or its transaction) is not asked again.
         var outcomes = new Dictionary<Guid, CalendarSendOutcome>();
         foreach (var propertyId in planned.Select(w => w.PropertyId).Distinct())
         {
@@ -146,7 +142,6 @@ public sealed class CalendarChangeRecorder(
             NextAttemptAt = state == CalendarChangeState.Queued ? stamp : null,
         };
 
-        // Added through the sets: rows with a preset id added any other way are tracked as modified and fail to save.
         db.CalendarChangeProcesses.Add(process);
         foreach (var chunk in chunks)
             db.CalendarChangeChunks.Add(chunk);
@@ -164,7 +159,6 @@ public sealed class CalendarChangeRecorder(
 
     public async Task<CalendarSendOutcome> ResolveAsync(Guid propertyId, CancellationToken cancellationToken = default)
     {
-        // The connector off asks nothing, as everything else of the connector: no property is on the channel manager.
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
             return CalendarSendOutcome.NotMirrored;
 
@@ -180,7 +174,6 @@ public sealed class CalendarChangeRecorder(
         }
         catch (OctorateException ex)
         {
-            // Only a property with a confirmed mapping reads its rooms from the channel manager: it is on it, and the push asks again.
             logger.LogWarning(
                 "The channel manager could not be asked about property {PropertyId} ({Code}, HTTP {Status}): its change is recorded to be sent",
                 propertyId,
@@ -190,7 +183,6 @@ public sealed class CalendarChangeRecorder(
         }
         catch (ArgumentException ex)
         {
-            // An id of the mapping the client refuses to put in an address: nothing can be sent for this property.
             logger.LogWarning(ex, "The channel manager cannot be asked about property {PropertyId}: its change is not sent", propertyId);
             return CalendarSendOutcome.NotMirrored;
         }

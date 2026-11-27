@@ -38,7 +38,6 @@ public sealed partial class OwnerAccountingService
         EnsureBulkRequest(action, period);
         if (ownerIds is not null)
         {
-            // An empty list is never «every owner»: the owners are asked for by omitting the list.
             if (ownerIds.Count == 0)
                 throw new DomainRuleException(OwnerAccountingErrors.BulkOwnersEmpty, "OwnerBulkOwnersEmpty");
             if (ownerIds.Count > OwnerBulk.MaxListedOwners)
@@ -66,7 +65,6 @@ public sealed partial class OwnerAccountingService
         if (ownerIds.Count == 0)
             throw new DomainRuleException(OwnerAccountingErrors.BulkOwnersEmpty, "OwnerBulkOwnersEmpty");
 
-        // The owners of this org only: an id of another org is the same row as an id that does not exist, and no step is run for it.
         var owners = ownerIds.Distinct().ToList();
         var known = (await db.PropertyOwners.AsNoTracking()
                 .Where(o => o.OrgId == orgId && owners.Contains(o.Id))
@@ -106,13 +104,11 @@ public sealed partial class OwnerAccountingService
         return rows;
     }
 
-    /// <summary>The checks of a bulk request that hold for every owner: a known step, and a month that is over for the close (never one refusal per owner).</summary>
     private void EnsureBulkRequest(OwnerBulkAction action, Period period)
     {
         if (!Enum.IsDefined(action))
             throw new DomainRuleException(OwnerAccountingErrors.BulkActionInvalid, "OwnerBulkActionInvalid");
 
-        // A month is closed once it is over, as the close of one owner says.
         if (action == OwnerBulkAction.Close && period.Last >= time.TodayInRomeAsDateOnly())
             throw new DomainConflictException(OwnerAccountingErrors.PeriodNotEnded, "OwnerPeriodNotEnded");
     }
@@ -157,7 +153,6 @@ public sealed partial class OwnerAccountingService
         return rows;
     }
 
-    /// <summary>One owner's step (generate, approve, publish or close), its own transaction and its own result: a refusal is its code, anything else is logged and answered as a failure.</summary>
     private async Task<OwnerBulkOwnerResult> BulkOwnerAsync(
         Guid orgId,
         Period period,
@@ -171,8 +166,6 @@ public sealed partial class OwnerAccountingService
         if (!known)
             return Failed(owner, OwnerFiscalErrors.OwnerNotFound);
 
-        // A closed month went through the way up to its close: the generation, the approval and the close are already done for it. The publication is not: a month closes on an
-        // approved version too, so its statement may still wait to be published (the owner portal and the accountant read only the published ones).
         if (closed && action != OwnerBulkAction.Publish)
             return Unchanged(owner, OwnerAccountingErrors.PeriodClosed);
 
@@ -197,8 +190,6 @@ public sealed partial class OwnerAccountingService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Not a rule of the domain (the database, a file): the owner is not done and the run goes on; the next run finds it where it is. The exception is logged with the ids, so
-            // its cause and its stack stay for whoever looks at a row that says only owner_bulk_failed.
             logger.LogError(
                 ex,
                 "Bulk {Action} of {Year}-{Month} of org {OrgId}: owner {OwnerId} not done",
@@ -207,7 +198,6 @@ public sealed partial class OwnerAccountingService
         }
         finally
         {
-            // What a failed step left half-done in the context (a version marked published whose file was not stored) must never be saved by the next owner's step.
             db.ChangeTracker.Clear();
         }
     }
@@ -226,7 +216,6 @@ public sealed partial class OwnerAccountingService
         return outcome.Created ? Done(owner) : Unchanged(owner, OwnerAccountingErrors.VersionUnchanged);
     }
 
-    /// <summary>The approval of the version in force: never a flagged one (its blocking issues are the reason), nothing to do for one already approved or published.</summary>
     private async Task<OwnerBulkOwnerResult> ApproveForBulkAsync(Guid orgId, Period period, Guid owner, string? userId, CancellationToken ct)
     {
         var version = await CurrentVersionAsync(orgId, owner, period, ct);
@@ -245,10 +234,6 @@ public sealed partial class OwnerAccountingService
         }
     }
 
-    /// <summary>
-    /// The publication of the approved version in force (its file, its PDF and the notice to the owner, as the single publication does them); nothing to do for one already published.
-    /// A month closed on a version that is only approved (the close accepts one) is not done for the publication: the version is published, as the single publication does after the close.
-    /// </summary>
     private async Task<OwnerBulkOwnerResult> PublishForBulkAsync(Guid orgId, Period period, Guid owner, bool closed, string? userId, CancellationToken ct)
     {
         var version = await CurrentVersionAsync(orgId, owner, period, ct);
@@ -269,7 +254,6 @@ public sealed partial class OwnerAccountingService
         }
     }
 
-    /// <summary>The close of the month on the approved version: reconciled to the confirmed payouts or the paid wires, and never with a waiver (a difference or a negative balance is a row that fails).</summary>
     private async Task<OwnerBulkOwnerResult> CloseForBulkAsync(Guid orgId, Period period, Guid owner, string? userId, CancellationToken ct)
     {
         try
@@ -284,7 +268,6 @@ public sealed partial class OwnerAccountingService
         }
     }
 
-    /// <summary>The version in force of the owner's month: the newest that is not superseded.</summary>
     private Task<OwnerStatementVersion?> CurrentVersionAsync(Guid orgId, Guid ownerId, Period period, CancellationToken ct) =>
         db.OwnerStatementVersions.AsNoTracking()
             .Where(v => v.OrgId == orgId && v.PropertyOwnerId == ownerId && v.PeriodYear == period.Year && v.PeriodMonth == period.Month
@@ -298,7 +281,6 @@ public sealed partial class OwnerAccountingService
 
     private static OwnerBulkOwnerResult Failed(Guid owner, string code, IReadOnlyList<string>? issues = null) => new(owner, false, code, false, issues);
 
-    /// <summary>A refusal of the domain as a row: its code, the blocking issues it names and the facts that go with it (never a message, never a name).</summary>
     private static OwnerBulkOwnerResult FailedFrom(Guid owner, DomainException ex)
     {
         IReadOnlyList<string>? issues = null;

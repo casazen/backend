@@ -46,8 +46,6 @@ public class AdminService(
         // IgnoreQueryFilters() — audited here as privileged cross-org access (#202 F-H1).
         LogPrivilegedCrossOrgRead(nameof(GetStatsAsync));
 
-        // Properties (tenant filter bypassed — platform-wide): counted in SQL, never materialized in full (A1-27).
-        // Soft-deleted ones stay out (PC-05): only the tenant filter is bypassed.
         var propertiesQuery = dbContext.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]);
         var totalProperties = await propertiesQuery.CountAsync();
         var activeProperties = await propertiesQuery.CountAsync(p => p.IsActive);
@@ -65,15 +63,12 @@ public class AdminService(
         var cinMissing = await cinQuery.CountAsync(p => p.CinCode == null || p.CinCode == "");
         var cinInvalid = cinTotal - cinValid - cinMissing;
 
-        // Bookings — server-side aggregates to avoid loading full table (filter bypassed — platform-wide)
         var totalBookings = await dbContext.Bookings.IgnoreQueryFilters().CountAsync();
         var bookingsThisMonth = await dbContext.Bookings.IgnoreQueryFilters().CountAsync(b => b.CreatedAt >= startOfMonth);
-        // Check-in is date-only: compared with today's date in Europe/Rome, not with the UTC instant (QA-CLOCK).
         var today = _clock.TodayInRome();
         var upcomingCheckIns = await dbContext.Bookings.IgnoreQueryFilters().CountAsync(b =>
             b.Status == BookingStatus.Confirmed && b.CheckInDate > today);
 
-        // Revenue — sum of completed payments (filter bypassed — platform-wide)
         var totalRevenue = await dbContext.Payments
             .IgnoreQueryFilters()
             .Where(p => p.Status == PaymentStatus.Completed)
@@ -132,14 +127,12 @@ public class AdminService(
     public async Task<(IEnumerable<CinComplianceItem> Items, int TotalCount)> GetCinComplianceAsync(
         string? cinStatus, int page, int pageSize)
     {
-        // Validate cinStatus
         if (!string.IsNullOrWhiteSpace(cinStatus) &&
             cinStatus != "valid" && cinStatus != "missing" && cinStatus != "invalid")
         {
             throw new ArgumentException($"Unknown cinStatus value '{cinStatus}'", nameof(cinStatus));
         }
 
-        // A page below 1 would turn into a negative OFFSET, which Postgres rejects with a 500 (A1-26).
         page = Math.Max(page, 1);
 
         // Platform-wide admin read (AdminOnly): the CIN-compliance (D.L. 145/2023) report covers
@@ -178,8 +171,6 @@ public class AdminService(
             .Select(p => new { p.Id, p.Name, p.OwnerId, p.CinCode, p.City })
             .ToListAsync();
 
-        // Owner emails resolved only for this page (best-effort; user may not exist in DB yet), not for every
-        // property on the platform.
         var ownerIds = pageItems.Select(p => p.OwnerId).Distinct().ToList();
         var userMap = (await dbContext.Users
                 .Where(u => ownerIds.Contains(u.Id))
@@ -227,7 +218,6 @@ public class AdminService(
                     }
                     catch (Exception ex)
                     {
-                        // A single job's detail lookup failing does not invalidate the whole listing.
                         logger.LogDebug(ex, "Could not retrieve job details for {JobId}", job.LastJobId);
                     }
                 }

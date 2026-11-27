@@ -7,16 +7,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Events;
 
-/// <summary>
-/// What the handlers of the booking events (E08/F06/US01/T02) share when they raise a "To do" about a booking: the question "was this
-/// item raised for this booking already?" and the one-line reason, which names the fact and nobody (ADR-026-R3).
-/// </summary>
 internal static class BookingTodoItems
 {
-    /// <summary>Key of the reason of the cleaning "To do" in <see cref="EmailTexts"/> (Italian and English).</summary>
     public const string CleaningDueReason = "TodoReason_CleaningDue";
 
-    /// <summary>Key of the reason of the special-request "To do" in <see cref="EmailTexts"/> (Italian and English).</summary>
     public const string SpecialRequestReason = "TodoReason_BookingSpecialRequest";
 
     /// <summary>
@@ -39,10 +33,6 @@ internal static class BookingTodoItems
                 cancellationToken);
     }
 
-    /// <summary>
-    /// The text of a reason in the language of the org (<c>Org.DefaultLanguage</c>, the language of what the org sends to its team,
-    /// Italian when it has none): a fixed sentence about the fact, with no name, contact or text of the guest.
-    /// </summary>
     public static async Task<string> ReasonAsync(AppDbContext db, Guid orgId, string key, CancellationToken cancellationToken)
     {
         var language = await db.Orgs

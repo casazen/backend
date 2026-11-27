@@ -16,10 +16,8 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface ICheckoutPaymentReconciliationService
 {
-    /// <summary>A payment in flight is read again from Stripe only after this long (the webhook normally arrives in seconds).</summary>
     const int GraceMinutes = 10;
 
-    /// <summary>Most payments handled by one run; the rest waits for the next one.</summary>
     const int BatchSize = 50;
 
     Task<CheckoutPaymentReconciliationRun> ReconcileInFlightPaymentsAsync(CancellationToken cancellationToken = default);

@@ -29,7 +29,6 @@ public class OwnerPayout : ITenantOwned
 
     public Guid PropertyOwnerId { get; set; }
 
-    /// <summary>The approved or published statement version the payout pays.</summary>
     public Guid OwnerStatementVersionId { get; set; }
 
     /// <summary>The key of the caller: the same key is the same payout (a retry), never a second one.</summary>
@@ -37,7 +36,6 @@ public class OwnerPayout : ITenantOwned
     [MaxLength(KeyMaxLength)]
     public string IdempotencyKey { get; set; } = string.Empty;
 
-    /// <summary>The reference of the transfer (the wire, the bank reference).</summary>
     [MaxLength(ReferenceMaxLength)]
     public string? Reference { get; set; }
 
@@ -48,28 +46,21 @@ public class OwnerPayout : ITenantOwned
     [MaxLength(CurrencyMaxLength)]
     public string Currency { get; set; } = string.Empty;
 
-    /// <summary>What the agency owed the owner and settles with this payout, before the withholding.</summary>
     [Precision(18, 2)]
     public decimal GrossAmount { get; set; }
 
-    /// <summary>The withholding decided at the payment (zero when the decision is not applicable).</summary>
     [Precision(18, 2)]
     public decimal WithholdingAmount { get; set; }
 
-    /// <summary>What was transferred: the gross minus the withholding.</summary>
     [Precision(18, 2)]
     public decimal NetAmount { get; set; }
 
-    /// <summary>Whether the agency collected the rent or intervened in its payment; <c>null</c> = not known.</summary>
     public bool? AgencyCollected { get; set; }
 
-    /// <summary>Whether the stays are under a qualifying short-let contract; <c>null</c> = not known.</summary>
     public bool? QualifyingShortLet { get; set; }
 
-    /// <summary>The gross components of the payout as the agency stated them (JSON object of code to amount).</summary>
     public string? ComponentsJson { get; set; }
 
-    /// <summary>The bookings (stays) the payout covers (JSON array of ids).</summary>
     public string? StayIdsJson { get; set; }
 
     public OwnerPayoutStatus Status { get; set; } = OwnerPayoutStatus.Confirmed;
@@ -87,6 +78,5 @@ public class OwnerPayout : ITenantOwned
     [MaxLength(ReasonMaxLength)]
     public string? ReversalReason { get; set; }
 
-    /// <summary>The PostgreSQL <c>xmin</c> of the row.</summary>
     public uint RowVersion { get; set; }
 }

@@ -56,7 +56,6 @@ public sealed class WhatsAppCloudSender(HttpClient httpClient, IOptions<WhatsApp
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
         {
-            // A timeout or a success body that is not JSON is a failed send, not an exception that drops the lease lock's record.
             logger.LogWarning("WhatsApp template send failed ({ExceptionType})", ex.GetType().Name);
             return new WhatsAppSendResult(false);
         }

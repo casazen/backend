@@ -83,9 +83,7 @@ public sealed class GuestBookingCancellationService(
             return;
         }
 
-        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
         var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
-        // E50/F01/US03/T02: with the guest portal on, in the language of the guest (the check-in page, the country, the account of the host); without it, in Italian as ever.
         var culture = await emailLanguage.CultureOrAsync(booking.OrgId, booking.Id, EmailTemplates.DefaultCulture, cancellationToken: cancellationToken);
         var content = EmailTemplates.GuestCancelLink(
             culture,
@@ -156,11 +154,6 @@ public sealed class GuestBookingCancellationService(
         return await CancelAsync(booking, GuestCancellationChannel.SignedLink, expectedRefundAmount, cancellationToken);
     }
 
-    /// <summary>
-    /// The cancellation of <paramref name="booking"/> for the refund its preview says (and, when the guest was shown one,
-    /// <paramref name="expectedRefundAmount"/>). A cancelled booking answers with the outcome of its cancellation and refunds nothing again,
-    /// whoever cancelled it: it is the cancelled state, not the link or a key, that stops a second refund.
-    /// </summary>
     private async Task<GuestCancellationResult> CancelAsync(
         Booking booking,
         GuestCancellationChannel channel,
@@ -171,25 +164,17 @@ public sealed class GuestBookingCancellationService(
         if (booking.Status == BookingStatus.Cancelled)
             return await AlreadyCancelledAsync(booking, cancellationToken);
 
-        // The refund from the property policy alone (no FreeRefundDeadline floor), the base price and the tourist tax, capped at what is
-        // refundable: the one calculation, in Core, that the cancellation checks again under its lock.
         var preview = await BuildPreviewAsync(booking, channel, cancellationToken);
         if (!preview.Cancellable)
             throw NotCancellable(preview.Reason);
 
-        // The guest confirms the figure they saw. If it is not that any more (a threshold of the policy was crossed, a payment changed)
-        // nothing is cancelled and the new figure goes back to them.
         if (expectedRefundAmount is { } expected && expected != preview.RefundAmount)
             throw new GuestRefundChangedException(preview);
 
-        // Logged before the cancellation: if it is refused (a rule, a payment in progress, Stripe) this is what was asked. Ids and
-        // amounts only: nothing that names the guest.
         logger.LogInformation(
             "Guest self-cancellation of booking {BookingId} from the {Channel}: policy {PolicyPercent}%, refund {RefundAmount} {Currency}",
             bookingId, channel, preview.RefundPercent, preview.RefundAmount, preview.Currency);
 
-        // The cancellation spends the link (if the guest has one) in its own transaction, and only when it succeeds: any error leaves
-        // the link usable until it expires.
         BookingCancellationResult result;
         try
         {
@@ -206,7 +191,6 @@ public sealed class GuestBookingCancellationService(
         }
         catch (DomainConflictException ex) when (ex.Code == BookingErrorCodes.AlreadyCancelled)
         {
-            // Two clicks at once: the other one cancelled while this one waited for the lock. It refunded once.
             return await AlreadyCancelledAsync(await LoadBookingAsync(bookingId, cancellationToken), cancellationToken);
         }
         catch (DomainRuleException ex) when (MovedUnderTheLock(ex.Code))
@@ -222,7 +206,6 @@ public sealed class GuestBookingCancellationService(
         return new GuestCancellationResult(result.Booking, result.Refunds, preview.RefundAmount);
     }
 
-    /// <summary>The refusals of the cancellation that mean "the refund is not what you asked for any more", not "you cannot cancel".</summary>
     private static bool MovedUnderTheLock(string code) =>
         code is "booking_cancel_refund_below_minimum"
             or "booking_cancel_refund_required"
@@ -247,17 +230,12 @@ public sealed class GuestBookingCancellationService(
             throw new DomainRuleException("guest_cancel_token_expired", "GuestCancelTokenExpired");
     }
 
-    /// <summary>
-    /// What cancelling <paramref name="booking"/> would do now from <paramref name="channel"/>: whether it can be cancelled, why not, and
-    /// the refund. Needs the booking with its property and policy, guest and payments (<see cref="LoadBookingAsync"/>).
-    /// </summary>
     private async Task<GuestCancellationPreview> BuildPreviewAsync(
         Booking booking,
         GuestCancellationChannel channel,
         CancellationToken cancellationToken)
     {
         var now = _clock.GetUtcNow();
-        // The amounts of the preview are in the currency of the charge, which is the one of the property (CHF-MONEY).
         var currency = StayCurrency.ForProperty(booking.Property);
         var catalog = booking.Property.CancellationPolicy;
         var policy = CancellationRefundPolicy.EffectivePolicy(booking);
@@ -331,11 +309,6 @@ public sealed class GuestBookingCancellationService(
             now.UtcDateTime);
     }
 
-    /// <summary>
-    /// Why the guest cannot cancel <paramref name="booking"/> from <paramref name="channel"/> now, or <c>null</c> when they can. From the
-    /// guest area a stay that has started is not cancelled (the guest writes to the host, DB-D3): the check-in day began or the host
-    /// registered the arrival. The link the host sent also works for a stay in progress.
-    /// </summary>
     private static string? ReasonNotCancellable(Booking booking, DateTimeOffset now, GuestCancellationChannel channel)
     {
         if (booking.Status == BookingStatus.Cancelled)
@@ -351,16 +324,11 @@ public sealed class GuestBookingCancellationService(
         if (booking.Status == BookingStatus.CheckedOut)
             return GuestCancellationReasons.NotCancellableStatus;
 
-        // A payment that is settling (SEPA, a late webhook): cancelling now would leave it to confirm the booking again (BK-04).
         return booking.Payments.Any(p => p.Status == PaymentStatus.Processing)
             ? GuestCancellationReasons.PaymentInProgress
             : null;
     }
 
-    /// <summary>
-    /// What cancelling means to the guest: withdrawing a request to pay at the property that the host has not accepted, releasing a
-    /// saved card that was never charged, or the plain cancellation of a booking.
-    /// </summary>
     private static string KindOf(Booking booking, BookingCancellationQuote quote)
     {
         if (booking.Status == BookingStatus.Pending && booking.PaymentOption == PaymentOption.OnSite)
@@ -380,10 +348,6 @@ public sealed class GuestBookingCancellationService(
         _ => new DomainRuleException("booking_not_cancellable_by_guest", "BookingNotCancellableByGuest"),
     };
 
-    /// <summary>
-    /// The outcome of the cancellation that a repeated click finds: the booking as it is and the refunds that cancellation
-    /// reserved, as Stripe left them.
-    /// </summary>
     private async Task<GuestCancellationResult> AlreadyCancelledAsync(Booking booking, CancellationToken cancellationToken)
     {
         var refunds = await CancellationRefundsAsync(booking.Id, cancellationToken);

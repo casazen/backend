@@ -2,9 +2,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// One rating of a review: the category as the channel names it (<c>cleanliness</c>, <c>communication</c>, ...) and the value it gives (1 to 5).
-/// </summary>
 public sealed record OctorateReviewRating(string Category, decimal Value);
 
 /// <summary>
@@ -14,33 +11,21 @@ public sealed record OctorateReviewRating(string Category, decimal Value);
 /// </summary>
 public sealed record OctorateGuestReview
 {
-    /// <summary>The channel published the review (<c>REVIEW_PUBLISHED</c>). Anything the channel manager says that is not that is «not published»: it is never guessed.</summary>
     public bool Published { get; init; }
 
-    /// <summary>When the channel published it (UTC), when the answer says.</summary>
     public DateTime? PublishedAt { get; init; }
 
-    /// <summary>The overall rating, 1 to 5, when the answer gives one.</summary>
     public decimal? Rating { get; init; }
 
-    /// <summary>The rating categories as the channel reports them; empty when it reports none.</summary>
     public IReadOnlyList<OctorateReviewRating> Ratings { get; init; } = [];
 
-    /// <summary>What the guest wrote. Personal data; <c>null</c> when the guest wrote nothing.</summary>
     public string? Text { get; init; }
 
-    /// <summary>The reply of the host the channel holds for this review; <c>null</c> when it holds none. Personal data.</summary>
     public string? HostReply { get; init; }
 
-    /// <summary>When the channel published the reply of the host (UTC), when the answer says.</summary>
     public DateTime? HostRepliedAt { get; init; }
 }
 
-/// <summary>
-/// Where the host's own review of the guest stands on the channel (E05/F06/US01/T02): the window the host may write it in, as the channel manager says it.
-/// </summary>
-/// <param name="Window"><see cref="HostReviewWindow.Open"/>, <see cref="HostReviewWindow.Sent"/>, <see cref="HostReviewWindow.Closed"/>; <see cref="HostReviewWindow.Unknown"/> when the answer does not say.</param>
-/// <param name="SentAt">When the host's review was published (UTC), when the answer says.</param>
 public sealed record OctorateHostReviewInfo(HostReviewWindow Window, DateTime? SentAt);
 
 /// <summary>
@@ -50,7 +35,6 @@ public sealed record OctorateHostReviewInfo(HostReviewWindow Window, DateTime? S
 /// </summary>
 public sealed record OctorateReview(OctorateGuestReview? Guest, OctorateHostReviewInfo? Host)
 {
-    /// <summary>The answer holds neither review.</summary>
     public bool IsEmpty => Guest is null && Host is null;
 }
 

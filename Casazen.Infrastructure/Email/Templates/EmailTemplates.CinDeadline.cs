@@ -3,7 +3,6 @@ using Casazen.Core.Regulatory;
 
 namespace Casazen.Infrastructure.Email.Templates;
 
-/// <summary>Host alert about properties without a valid CIN (CO-20, A5-31).</summary>
 public static partial class EmailTemplates
 {
     public static partial class Names

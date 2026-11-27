@@ -11,13 +11,8 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class ManualBookingRules
 {
-    /// <summary>Longest note on the price the host agreed, in characters.</summary>
     public const int PriceNoteMaxLength = 80;
 
-    /// <summary>
-    /// Highest lodging price (cleaning included, tourist tax excluded) the host may agree: <see cref="Booking.BasePrice"/> is the
-    /// figure the Home and the fiscal reports read, so a typing mistake must not reach them.
-    /// </summary>
     public const decimal MaxAgreedBasePrice = 100_000m;
 
     /// <summary>
@@ -75,7 +70,6 @@ public sealed record ManualBookingPrice(
     bool Overridden,
     string? Note);
 
-/// <summary>The guest of a manual booking: the first name and the email are required, the rest is what the host knows.</summary>
 public sealed record ManualBookingGuest(string FirstName, string? LastName, string Email, string? Phone, string? Country);
 
 /// <summary>
@@ -126,12 +120,6 @@ public sealed record ManualBookingResult(
     string? PaymentLinkUrl = null,
     string? PaymentLinkError = null);
 
-/// <summary>
-/// The booking the host enters by hand with only what it needs (SR-06a). A direct-contact booking is created
-/// <see cref="BookingStatus.Confirmed"/> with the source <see cref="BookingSource.Manual"/>, priced by the quote of the host; a
-/// booking that completes a portal's block becomes the OTA stay of that block (<see cref="IOtaStayService"/>), with no price made up
-/// and no payment: the portal collects. Nothing is sent to the guest.
-/// </summary>
 public interface IManualBookingService
 {
     /// <summary>Creates the booking; the final check on the dates runs inside the transaction that writes it.</summary>

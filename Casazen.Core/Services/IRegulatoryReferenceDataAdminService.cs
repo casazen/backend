@@ -3,7 +3,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Reasons an admin write on regulatory reference data is refused (LT-13, A7-22).</summary>
 public static class RegulatoryReferenceDataErrorCodes
 {
     public const string AgreementNotFound = "ltr_agreement_not_found";
@@ -26,7 +25,6 @@ public sealed record ConcordatoRentBandDto(
     decimal SubFascia3MinEurSqmYear,
     decimal SubFascia3MaxEurSqmYear);
 
-/// <summary>Every threshold and percentage of the rent calculation, stored on the agreement (A7-22): never a literal.</summary>
 public sealed record AgreementRulesDto(
     int RequiredTypeACount,
     int SubFascia2MinTypeBCount,
@@ -79,7 +77,6 @@ public sealed record AdminAgreementDetailDto(
     IReadOnlyList<ConcordatoRentBandDto> Bands,
     IReadOnlyList<AdminSignatoryDto> Signatories);
 
-/// <summary>Body of <c>PUT .../agreements/{id}</c>: status, source, expiry and every rule. Never the verification date.</summary>
 public sealed record UpdateAgreementInput(
     DataCompleteness DataCompleteness,
     string? SourceUrl,
@@ -111,7 +108,6 @@ public sealed record UpdateAgreementInput(
     decimal Duration5UpliftPercent,
     decimal Duration6UpliftPercent);
 
-/// <summary>Body of <c>PUT .../agreements/{id}/bands/{bandId}</c>.</summary>
 public sealed record UpdateRentBandInput(
     string ZoneName,
     string? CadastralSheets,
@@ -145,7 +141,6 @@ public sealed record AdminImuChannelDto(
     string? VerificationSource,
     DateTime? UpdatedAt);
 
-/// <summary>Body of <c>PUT .../imu-channels/{id}</c>: comune, region and verification are not editable here.</summary>
 public sealed record UpdateImuChannelInput(
     string RecipientOffice,
     string? Email,
@@ -161,7 +156,6 @@ public sealed record UpdateImuChannelInput(
     string? SourceUrl,
     DataCompleteness DataCompleteness);
 
-/// <summary>Body of <c>POST .../verify</c>: the date of the check (not in the future) and what it was checked against.</summary>
 public sealed record MarkVerifiedInput(DateOnly VerifiedAt, string Source);
 
 public sealed record RegulatoryAuditEntryDto(
@@ -172,11 +166,6 @@ public sealed record RegulatoryAuditEntryDto(
     DateTime OccurredAt,
     string Changes);
 
-/// <summary>
-/// Admin CRUD of the LTR regulatory reference data (LT-13, A7-22): territorial agreements (status, expiry, rules and
-/// bands) and the comune offices receiving the IMU communication. Every write is recorded in the audit log with the
-/// admin's user id. Returns null when the id does not exist; the controller answers 404.
-/// </summary>
 public interface IRegulatoryReferenceDataAdminService
 {
     Task<IReadOnlyList<AdminAgreementSummaryDto>> GetAgreementsAsync(CancellationToken cancellationToken = default);

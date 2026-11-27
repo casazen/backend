@@ -61,7 +61,6 @@ internal sealed class RentLedgerEntryConfiguration : IEntityTypeConfiguration<Re
 
     internal static void ConfigureOrgIdIndex(EntityTypeBuilder<RentLedgerEntry> entity)
     {
-        // The rent register of the long-term area (LR-01): the installments of an org by month of due date, in due date order.
         entity.HasIndex(e => new { e.OrgId, e.DueDate });
     }
 }
@@ -104,7 +103,6 @@ internal sealed class RentLedgerComponentConfiguration : IEntityTypeConfiguratio
 {
     public void Configure(EntityTypeBuilder<RentLedgerComponent> entity)
     {
-        // CondoLedger phase 1: the parts of an installment. They go with the installment; AmountDue stays the total.
         entity.HasOne(c => c.RentLedgerEntry)
             .WithMany(e => e.Components)
             .HasForeignKey(c => c.RentLedgerEntryId)
@@ -160,8 +158,6 @@ internal sealed class RentBankMovementConfiguration : IEntityTypeConfiguration<R
 {
     public void Configure(EntityTypeBuilder<RentBankMovement> entity)
     {
-        // The credits of a bank statement confirmed as rent payments (import of the statement of the Canoni page): the fingerprint is
-        // unique per org, so the same movement is imported once; the payer hashes are looked up per org to recognize who paid before.
         entity.HasOne(m => m.LeaseContract)
             .WithMany()
             .HasForeignKey(m => m.LeaseContractId)

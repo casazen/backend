@@ -38,13 +38,9 @@ public sealed partial class OwnerCollaborationService(
     ILogger<OwnerCollaborationService> logger,
     AgencyDomainLinks? agencyLinks = null) : IOwnerCollaborationService
 {
-    /// <summary>The entity type of the «To do» about a document that lapses.</summary>
     public const string DocumentVersionEntityType = "OwnerDocumentVersion";
 
-    /// <summary>The line of a «To do» about a document that lapses: a code, never a title.</summary>
     public const string ExpiringReason = "owner_document_expiring";
-
-    // ---------------------------------------------------------------- documents: owner portal
 
     public async Task<OwnerPortalDocuments> ListDocumentsForOwnerAsync(OwnerPortalAccess access, CancellationToken cancellationToken = default)
     {
@@ -64,7 +60,6 @@ public sealed partial class OwnerCollaborationService(
         var statements = new List<OwnerStatementReferenceView>();
         if (readsAccounting)
         {
-            // The statements of the owner accounting (E06), referenced where they are: the published versions and the ones a later version superseded.
             var versions = await db.OwnerStatementVersions
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
                 .AsNoTracking()
@@ -92,7 +87,6 @@ public sealed partial class OwnerCollaborationService(
         ArgumentNullException.ThrowIfNull(access);
         access.Require(OwnerPortalPermission.DocumentsRead);
 
-        // Withdrawn, of another owner or agency, outside the property the caller reaches, a statement without accounting.read, missing: the same 404.
         var document = await Documents().AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId && d.RevokedAt == null, cancellationToken);
         if (document is null || !CanRead(access, document))
             throw DocumentNotFound(documentId);
@@ -101,17 +95,12 @@ public sealed partial class OwnerCollaborationService(
         return await HandOutAsync(document, version, access.OwnerUserId, null, cancellationToken);
     }
 
-    // ---------------------------------------------------------------- documents: agency
-
     public async Task<IReadOnlyList<OwnerDocumentAdminView>> ListDocumentsForAgencyAsync(Guid orgId, Guid? propertyOwnerId, CancellationToken cancellationToken = default)
     {
         var query = Documents().AsNoTracking().Where(d => d.OrgId == orgId);
         if (propertyOwnerId is { } ownerId)
             query = query.Where(d => d.PropertyOwnerId == ownerId);
 
-        // The PDF of a published statement is a document of the portal too (its id is the id of the version), but the agency reads it with the statement, not among the
-        // documents it shares: one for each owner and month would push the mandates and the insurances out of a list that stops at MaxList. It is still reachable by its
-        // id (its downloads, its withdrawal). The subquery is built outside the predicate: an expression tree cannot hold the list of the filters to ignore.
         var statementFiles = db.OwnerStatementVersions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).Where(v => v.OrgId == orgId).Select(v => v.Id);
         query = query.Where(d => d.Type != OwnerDocumentType.Statement || !statementFiles.Contains(d.Id));
 
@@ -177,7 +166,6 @@ public sealed partial class OwnerCollaborationService(
         var document = await Documents().FirstOrDefaultAsync(d => d.Id == documentId && d.OrgId == orgId, cancellationToken)
             ?? throw DocumentNotFound(documentId);
 
-        // The PDF of a published statement is the file that was published (the id of the document is the id of the version): it keeps that file for good, whoever asks.
         if (document.Type == OwnerDocumentType.Statement
             && await db.OwnerStatementVersions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AnyAsync(v => v.Id == document.Id && v.OrgId == orgId, cancellationToken))
         {
@@ -210,7 +198,6 @@ public sealed partial class OwnerCollaborationService(
         var document = await Documents().FirstOrDefaultAsync(d => d.Id == documentId && d.OrgId == orgId, cancellationToken)
             ?? throw DocumentNotFound(documentId);
 
-        // A repeat changes nothing and writes no line.
         if (visible == (document.RevokedAt is null))
             return (await AdminViewsAsync([document], cancellationToken))[0];
 
@@ -264,10 +251,8 @@ public sealed partial class OwnerCollaborationService(
         return await HandOutAsync(document, version, null, actorUserId, cancellationToken);
     }
 
-    /// <summary>The documents one page of the expiry alerts looks at.</summary>
     private const int AlertPageSize = 200;
 
-    /// <summary>The most pages one run reads (200,000 documents): a guard, never reached by a real portfolio.</summary>
     private const int MaxAlertPages = 1_000;
 
     public async Task<OwnerDocumentAlertResult> RaiseExpiryAlertsAsync(CancellationToken cancellationToken = default)
@@ -276,9 +261,6 @@ public sealed partial class OwnerCollaborationService(
         var horizon = today.AddDays(OwnerCollaborationRules.ExpiryAlertDays);
         var typeName = nameof(ActivityType.OwnerDocumentExpiring);
 
-        // The versions in force that lapse within the window: in force today (no start date, or one that has come) and not replaced by a later version that is in force
-        // too. The subqueries are built outside the predicates: an expression tree cannot hold the list of the filters to ignore. The soft delete filter of the
-        // properties stays on: a document of a deleted property has no property to raise the item on.
         var inForce = Versions().Where(v => v.EffectiveFrom == null || v.EffectiveFrom <= today);
         var lapsing = inForce.Where(v => v.ExpiresOn != null
                                          && v.ExpiresOn <= horizon
@@ -292,8 +274,6 @@ public sealed partial class OwnerCollaborationService(
             .Select(a => new { a.Id, VersionId = a.EntityId!.Value })
             .ToListAsync(cancellationToken);
 
-        // Every one of them, soonest first, a page at a time: nothing is left unread however many documents lapse (the first 500 of a list without an order used to
-        // be the only ones ever looked at). One document that cannot be raised never stops the others: it is logged, the run goes on and ends in error.
         var alerting = new HashSet<Guid>();
         var raised = 0;
         Exception? firstFailure = null;
@@ -356,7 +336,6 @@ public sealed partial class OwnerCollaborationService(
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    // Not swallowed: the run ends in error once the rest is done, and the next run tries again.
                     logger.LogError(ex, "Owner document {DocumentId}: the expiry To do of its version {VersionId} could not be raised", document.Id, row.Id);
                     firstFailure ??= ex;
                     db.ChangeTracker.Clear();
@@ -364,7 +343,6 @@ public sealed partial class OwnerCollaborationService(
             }
         }
 
-        // An alert whose version is no longer in force, is renewed beyond the window, whose document was withdrawn or whose property is gone: closed by the system.
         var closed = 0;
         foreach (var item in open.Where(a => !alerting.Contains(a.VersionId)))
         {
@@ -387,8 +365,6 @@ public sealed partial class OwnerCollaborationService(
         return new OwnerDocumentAlertResult(raised, closed);
     }
 
-    // ---------------------------------------------------------------- shared
-
     private DateTime Now() => UtcDateTime.TruncateToMicroseconds(timeProvider.GetUtcNow().UtcDateTime);
 
     private DateOnly Today() => timeProvider.TodayInRomeAsDateOnly();
@@ -397,10 +373,6 @@ public sealed partial class OwnerCollaborationService(
 
     private IQueryable<OwnerDocumentVersion> Versions() => db.OwnerDocumentVersions.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]);
 
-    /// <summary>
-    /// The caller reads the document: it holds <c>documents.read</c> (and <c>accounting.read</c> for a statement or an invoice) on the owner profile of the
-    /// document and, for a document of a property, on that property.
-    /// </summary>
     private static bool CanRead(OwnerPortalAccess access, OwnerDocument document)
     {
         var needed = document.Type is OwnerDocumentType.Statement or OwnerDocumentType.Invoice
@@ -412,7 +384,6 @@ public sealed partial class OwnerCollaborationService(
                                       && g.Permissions.HasFlag(needed));
     }
 
-    /// <summary>The version in force on <paramref name="today"/>: the highest number already effective; the highest one when none is effective yet.</summary>
     private static OwnerDocumentVersion? CurrentOf(IReadOnlyCollection<OwnerDocumentVersion> versions, DateOnly today) =>
         versions.Where(v => v.EffectiveFrom is null || v.EffectiveFrom <= today).MaxBy(v => v.VersionNumber)
         ?? versions.MaxBy(v => v.VersionNumber);
@@ -423,7 +394,6 @@ public sealed partial class OwnerCollaborationService(
         return versionId is { } wanted ? versions.FirstOrDefault(v => v.Id == wanted) : CurrentOf(versions, Today());
     }
 
-    /// <summary>Writes the download (the audit) and hands the file out; a file missing from the storage is a 404 and writes nothing.</summary>
     private async Task<OwnerFileContent> HandOutAsync(
         OwnerDocument document,
         OwnerDocumentVersion version,
@@ -540,7 +510,6 @@ public sealed partial class OwnerCollaborationService(
         return expires <= today.AddDays(OwnerCollaborationRules.ExpiryAlertDays) ? "expiring" : "valid";
     }
 
-    /// <summary>The owner profile is of the org and not anonymized; the property, when named, is one it holds (or held) in the org.</summary>
     private async Task EnsureOwnerTargetAsync(Guid orgId, Guid propertyOwnerId, Guid? propertyId, CancellationToken cancellationToken)
     {
         var ownerOfOrg = await db.PropertyOwners
@@ -610,7 +579,6 @@ public sealed partial class OwnerCollaborationService(
         await storage.PutAsync(StorageBucket.Private, StorageKeys.EnsureValid(key), stream, contentType, cancellationToken);
     }
 
-    /// <summary>Saves the unit of work; when the save fails, the file stored for it is removed again and the failure goes up.</summary>
     private async Task SaveOrForgetFileAsync(string key, CancellationToken cancellationToken)
     {
         try
@@ -624,7 +592,6 @@ public sealed partial class OwnerCollaborationService(
         }
     }
 
-    /// <summary>The display names of owner profiles (never a fiscal or bank value of them).</summary>
     private async Task<Dictionary<Guid, string>> OwnerNamesAsync(IEnumerable<Guid> ownerIds, CancellationToken cancellationToken)
     {
         var ids = ownerIds.Distinct().ToList();
@@ -639,7 +606,6 @@ public sealed partial class OwnerCollaborationService(
             o => OwnerFieldRules.DisplayName(new PropertyOwner { FirstName = o.FirstName, LastName = o.LastName, LegalName = o.LegalName }));
     }
 
-    /// <summary>The names of people of the portal (<c>OwnerUser</c>).</summary>
     private async Task<Dictionary<Guid, string>> OwnerUserNamesAsync(IEnumerable<Guid> ownerUserIds, CancellationToken cancellationToken)
     {
         var ids = ownerUserIds.Distinct().ToList();
@@ -650,7 +616,6 @@ public sealed partial class OwnerCollaborationService(
         return people.ToDictionary(p => p.Id, p => $"{p.FirstName} {p.LastName}".Trim());
     }
 
-    /// <summary>Stages the line of the activity log of a change, in the unit of work of the change. Codes only.</summary>
     private void Audit(Guid orgId, Guid subjectId, string part, string status, string? actor) =>
         activityLog.Record(OrgActivity.Of(
             orgId,

@@ -70,7 +70,6 @@ public interface IOctorateTokenService
 /// <param name="ExpiresAt">When the access token expires (UTC), read from <c>expires_in</c> or <c>expireDate</c>; <c>null</c> when neither says it.</param>
 public sealed record OctorateTokenResponse(string? AccessToken, string? RefreshToken, DateTime? ExpiresAt)
 {
-    /// <summary>Never prints the tokens (a record would by default): the log of an exception or of a variable must not leak them.</summary>
     public override string ToString() =>
         $"{nameof(OctorateTokenResponse)} {{ AccessToken = {(AccessToken is null ? "none" : "***")}, " +
         $"RefreshToken = {(RefreshToken is null ? "none" : "***")}, ExpiresAt = {ExpiresAt:O} }}";

@@ -25,7 +25,6 @@ public class ScheduledMessageSweepJob(
 {
     public const string RecurringJobId = "scheduled-message-sweep";
 
-    /// <summary>Every 15 minutes (UTC).</summary>
     public const string Cron = "*/15 * * * *";
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]

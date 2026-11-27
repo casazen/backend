@@ -10,12 +10,10 @@ namespace Casazen.Core.Entities.Enums;
 /// </remarks>
 public enum TextOrigin
 {
-    /// <summary>A person wrote it.</summary>
     UserWritten = 0,
 
     /// <summary>A machine translated it from the Italian text and nobody has touched it since.</summary>
     AutoTranslated = 1,
 
-    /// <summary>A person changed a text that was machine translated.</summary>
     ModifiedAfterTranslation = 2,
 }

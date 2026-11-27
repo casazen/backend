@@ -108,7 +108,6 @@ public sealed class CinDeadlineAlertService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // At most once: the stage stays claimed, the next run does not send it again.
                 logger.LogError(
                     ex,
                     "CIN alert (stage {Stage}) of org {OrgId} claimed for {PropertyCount} properties but not delivered",

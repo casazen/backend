@@ -19,7 +19,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class OtaAttachmentFetcher(HttpClient http, ILogger<OtaAttachmentFetcher> logger) : IOtaAttachmentFetcher
 {
-    /// <summary>How many redirects of the first address are followed.</summary>
     public const int MaxRedirects = 3;
 
     private const int BufferSize = 81920;
@@ -66,17 +65,11 @@ public sealed class OtaAttachmentFetcher(HttpClient http, ILogger<OtaAttachmentF
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or InvalidOperationException or UriFormatException)
         {
-            // The deadline, an address that did not answer, a name that resolves to a private address, a TLS error: the file is not available. Only
-            // the kind of error is logged, never the exception itself, whose message may name the host.
             logger.LogWarning("An attachment could not be fetched ({Reason})", ex.GetType().Name);
             return null;
         }
     }
 
-    /// <summary>
-    /// The handler of the client: no automatic redirect (each hop is checked by <see cref="FetchAsync"/>), no cookies, a connect timeout, and a
-    /// connection that goes only to public addresses.
-    /// </summary>
     public static SocketsHttpHandler CreateHandler() => new()
     {
         AllowAutoRedirect = false,
@@ -85,11 +78,6 @@ public sealed class OtaAttachmentFetcher(HttpClient http, ILogger<OtaAttachmentF
         ConnectCallback = ConnectToPublicAddressAsync,
     };
 
-    /// <summary>
-    /// The public addresses of <paramref name="host"/>: what its name resolves to, without the loopback, private, link-local and other special
-    /// addresses. <see cref="HttpRequestException"/> when none is left, so a name that points at the machine itself or at the private network is
-    /// refused where the socket would be opened.
-    /// </summary>
     internal static async Task<IPAddress[]> ResolvePublicAddressesAsync(string host, CancellationToken cancellationToken)
     {
         IPAddress[] addresses;
@@ -99,7 +87,6 @@ public sealed class OtaAttachmentFetcher(HttpClient http, ILogger<OtaAttachmentF
         }
         catch (Exception ex) when (ex is ArgumentException or SocketException)
         {
-            // An unspecified address (0.0.0.0, ::) is refused by the resolver itself; a name that does not resolve is the same to a caller.
             throw new HttpRequestException("The host could not be resolved to an address.", ex);
         }
 
@@ -114,7 +101,6 @@ public sealed class OtaAttachmentFetcher(HttpClient http, ILogger<OtaAttachmentF
     {
         if (!response.IsSuccessStatusCode)
         {
-            // 403, 404 and 410 are how an expired address answers; whatever the status, there is no file.
             logger.LogInformation("An attachment answered with status {Status}", (int)response.StatusCode);
             return null;
         }
@@ -154,11 +140,6 @@ public sealed class OtaAttachmentFetcher(HttpClient http, ILogger<OtaAttachmentF
         status is HttpStatusCode.MovedPermanently or HttpStatusCode.Found or HttpStatusCode.SeeOther
             or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect;
 
-    /// <summary>
-    /// Opens the socket of a connection to a public address of the host and to no other: the name is resolved here, the private and special
-    /// addresses are dropped, and the connection goes to what is left. The TLS handshake is made by the handler on the stream this returns, for the
-    /// host name of the request.
-    /// </summary>
     private static async ValueTask<Stream> ConnectToPublicAddressAsync(SocketsHttpConnectionContext context, CancellationToken cancellationToken)
     {
         var allowed = await ResolvePublicAddressesAsync(context.DnsEndPoint.Host, cancellationToken);

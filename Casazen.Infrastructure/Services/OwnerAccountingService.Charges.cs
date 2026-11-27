@@ -8,10 +8,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>The charges and expenses, the exchange rates and the manual corrections.</summary>
 public sealed partial class OwnerAccountingService
 {
-    /// <summary>The largest amount a charge, a rate or a correction may carry.</summary>
     private const decimal MaxAmount = 100_000_000m;
 
     public async Task<OwnerCharge> CreateChargeAsync(Guid orgId, OwnerChargeCommand command, string? userId, CancellationToken ct = default)
@@ -82,7 +80,6 @@ public sealed partial class OwnerAccountingService
         if (charge.Status == OwnerChargeStatus.Cancelled)
             throw new DomainConflictException(OwnerAccountingErrors.ChargeNotPending, "OwnerChargeNotPending");
 
-        // What the charge posted is reversed in its open months; a closed month keeps its lines (a correction of a later month fixes it).
         var now = time.GetUtcNow().UtcDateTime;
         var posted = await db.OwnerLedgerEntries.AsNoTracking()
             .Where(e => e.OrgId == orgId && e.SourceType == OwnerLedgerSourceType.OwnerCharge && e.SourceId == chargeId && e.ReversesEntryId == null)
@@ -170,7 +167,6 @@ public sealed partial class OwnerAccountingService
         if (closed.Contains((command.OwnerId, period.Year, period.Month)))
             throw new DomainConflictException(OwnerAccountingErrors.PeriodClosed, "OwnerPeriodClosed");
 
-        // Only a manual line is replaced by hand: a line of a source changes with its source (the posting reverses and replaces it).
         OwnerLedgerEntry? replaced = null;
         if (command.ReplacesEntryId is { } replacesId)
         {
@@ -219,7 +215,6 @@ public sealed partial class OwnerAccountingService
         return correction;
     }
 
-    /// <summary>The closed months of the owners, as (owner, year, month).</summary>
     private async Task<HashSet<(Guid, int, int)>> ClosedMonthsAsync(Guid orgId, List<Guid> owners, CancellationToken ct)
     {
         var rows = await db.OwnerClosePeriods.AsNoTracking()
@@ -239,7 +234,6 @@ public sealed partial class OwnerAccountingService
             throw new NotFoundException($"Property {propertyId} was not found") { Code = "property_not_found", MessageKey = "PropertyNotFound" };
     }
 
-    /// <summary>At most two decimals and below the largest amount.</summary>
     private static bool IsMoney(decimal amount) => Math.Abs(amount) < MaxAmount && Math.Round(amount, 2) == amount;
 
     private static void RequireCharge(bool valid, string field) => Require(valid, OwnerAccountingErrors.ChargeInvalid, "OwnerChargeInvalid", field);

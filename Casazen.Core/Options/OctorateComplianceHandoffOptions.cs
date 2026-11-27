@@ -21,32 +21,21 @@ public sealed class OctorateComplianceHandoffOptions
 {
     public const string SectionName = "Octorate:ComplianceHandoff";
 
-    /// <summary>Minutes a handoff id is valid when the setting is not given.</summary>
     public const int DefaultLifetimeMinutes = 60;
 
-    /// <summary>The longest life a handoff id may be given.</summary>
     public const int MaxLifetimeMinutes = 1440;
 
-    /// <summary>Minutes the client may keep the context of a handoff (1 to <see cref="MaxLifetimeMinutes"/>; out of range: the default).</summary>
     public int LifetimeMinutes { get; set; } = DefaultLifetimeMinutes;
 
-    /// <summary>
-    /// Host names a deep link may point to besides the host of <c>Octorate:FrontendBaseUrl</c>, separated by commas, semicolons or spaces
-    /// (exact names, ASCII: an internationalized name is written in punycode). Empty: only the host of the panel.
-    /// </summary>
     public string? AllowedHosts { get; set; }
 
-    /// <summary>The deep link for the Alloggiati outcome.</summary>
     public OctorateHandoffLinkOptions Alloggiati { get; set; } = new();
 
-    /// <summary>The deep link for the ISTAT outcome.</summary>
     public OctorateHandoffLinkOptions Istat { get; set; } = new();
 
-    /// <summary>The life of a handoff id, brought into 1 to <see cref="MaxLifetimeMinutes"/> minutes.</summary>
     public TimeSpan Lifetime =>
         TimeSpan.FromMinutes(LifetimeMinutes is >= 1 and <= MaxLifetimeMinutes ? LifetimeMinutes : DefaultLifetimeMinutes);
 
-    /// <summary>The deep link configured for <paramref name="topic"/>.</summary>
     public OctorateHandoffLinkOptions LinkOf(OctorateHandoffTopic topic) => topic switch
     {
         OctorateHandoffTopic.Alloggiati => Alloggiati,
@@ -118,12 +107,9 @@ public sealed class OctorateComplianceHandoffOptions
     }
 }
 
-/// <summary>A deep link of the Octorate panel for one topic, used only once a person verified it (<c>Verified</c>).</summary>
 public sealed class OctorateHandoffLinkOptions
 {
-    /// <summary>The address, absolute https on an allowlisted host. Empty: the topic has no deep link.</summary>
     public string? Url { get; set; }
 
-    /// <summary>A person opened the address in the real panel and it lands on the right section. Off: the address is ignored.</summary>
     public bool Verified { get; set; }
 }

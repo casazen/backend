@@ -14,21 +14,10 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IAlloggiatiDelegationService
 {
-    /// <summary>The delegation of the org. Throws <c>NotFoundException</c> (<c>org_not_found</c>) for an org that does not exist.</summary>
     Task<AlloggiatiDelegationInfo> GetAsync(Guid orgId, CancellationToken ct = default);
 
-    /// <summary>
-    /// Grants the delegation with the version of the text <paramref name="userId"/> accepted, and records
-    /// <c>AlloggiatiDelegationGranted</c>; a grant after a revocation clears the revocation. Granting again the version that is
-    /// already valid changes and records nothing. A version that is not a code of at most 40 characters is refused with
-    /// <c>DomainRuleException</c> <c>alloggiati_delegation_version_invalid</c>.
-    /// </summary>
     Task<AlloggiatiDelegationInfo> GrantAsync(Guid orgId, string userId, string textVersion, CancellationToken ct = default);
 
-    /// <summary>
-    /// Revokes the delegation and records <c>AlloggiatiDelegationRevoked</c>; the grant (who, when, which version) stays as it was.
-    /// Revoking a delegation that is not valid (never granted, already revoked) changes and records nothing.
-    /// </summary>
     Task<AlloggiatiDelegationInfo> RevokeAsync(Guid orgId, string userId, CancellationToken ct = default);
 }
 

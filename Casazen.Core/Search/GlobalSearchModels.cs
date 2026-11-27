@@ -3,45 +3,28 @@ using Casazen.Core.Authorization;
 
 namespace Casazen.Core.Search;
 
-/// <summary>
-/// The kinds of result of the global search (UI-13a), in the order the answer lists its groups. A kind is the stable
-/// <c>type</c> of a result and of its group; the clients translate it for the heading of the group.
-/// </summary>
 public static class SearchTypes
 {
-    /// <summary>A property of the org (name, city, CIN).</summary>
     public const string Property = "property";
 
-    /// <summary>A booking (its code, or the name of its guest).</summary>
     public const string Booking = "booking";
 
-    /// <summary>A guest of the org (name, e-mail): the e-mail is returned masked, never the phone or the document.</summary>
     public const string Guest = "guest";
 
-    /// <summary>A lease (the name of a tenant).</summary>
     public const string Lease = "lease";
 
-    /// <summary>A request to a supplier made by the host (the name of the service).</summary>
     public const string ServiceRequest = "service-request";
 
-    /// <summary>A supplier the org already works with (it received at least one request of the org).</summary>
     public const string Supplier = "supplier";
 
-    /// <summary>A request in the inbox of the supplier (the caller works as a supplier).</summary>
     public const string SupplierRequest = "supplier-request";
 
-    /// <summary>Every kind, in the order of the groups of the answer.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
         Property, Booking, Guest, Lease, ServiceRequest, Supplier, SupplierRequest,
     ];
 }
 
-/// <summary>
-/// Where a result opens, as a key and not as a URL: <c>{area}.{kind}</c>, the area being the context of the caller the object
-/// belongs to (<c>short-rent</c>, <c>long-rent</c>, <c>supplier</c>). The client owns the routes and maps each key to its
-/// route with the <c>id</c> of the result, so a route can change without the API changing.
-/// </summary>
 public static class SearchDestinations
 {
     public const string ShortRentProperty = "short-rent.property";
@@ -55,29 +38,21 @@ public static class SearchDestinations
     public const string SupplierRequest = "supplier.request";
 }
 
-/// <summary>Limits of the term and of the answer of <c>GET /api/search</c>.</summary>
 public static class SearchLimits
 {
-    /// <summary>Results per group when the client does not say.</summary>
     public const int DefaultLimit = 5;
 
-    /// <summary>The most results per group.</summary>
     public const int MaxLimit = 20;
 }
 
-/// <summary>Stable error codes of the search (UI-13a), with the key of their message in the resources.</summary>
 public static class SearchErrorCodes
 {
-    /// <summary>400: the term has fewer than <see cref="SearchText.MinQueryLength"/> characters.</summary>
     public const string QueryTooShort = "search_query_too_short";
 
-    /// <summary>SharedResources key of the message of <see cref="QueryTooShort"/> ({0} = the minimum).</summary>
     public const string QueryTooShortMessageKey = "SearchQueryTooShort";
 
-    /// <summary>400: the term has more than <see cref="SearchText.MaxQueryLength"/> characters.</summary>
     public const string QueryTooLong = "search_query_too_long";
 
-    /// <summary>SharedResources key of the message of <see cref="QueryTooLong"/> ({0} = the maximum).</summary>
     public const string QueryTooLongMessageKey = "SearchQueryTooLong";
 }
 
@@ -89,13 +64,10 @@ public static class SearchErrorCodes
 /// <param name="Destination">The destination key (<see cref="SearchDestinations"/>).</param>
 public sealed record SearchHit(string Type, Guid Id, string Title, string? Subtitle, string Destination);
 
-/// <summary>The results of one kind. <paramref name="HasMore"/> says there are more than the limit asked for.</summary>
 public sealed record SearchGroup(string Type, IReadOnlyList<SearchHit> Items, bool HasMore);
 
-/// <summary>The answer of the search: the groups that have at least one result, in the order of <see cref="SearchTypes.All"/>.</summary>
 public sealed record GlobalSearchResult(IReadOnlyList<SearchGroup> Groups)
 {
-    /// <summary>Nothing found (or nothing the caller may search).</summary>
     public static GlobalSearchResult Empty { get; } = new([]);
 }
 

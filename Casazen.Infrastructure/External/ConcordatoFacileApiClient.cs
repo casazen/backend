@@ -90,11 +90,6 @@ public class ConcordatoFacileApiClient(HttpClient httpClient, ILogger<Concordato
         }
     }
 
-    /// <summary>
-    /// Throws for any answer that is not a success, naming the <c>code</c> of its <c>application/problem+json</c> body (v0.2 §4:
-    /// unauthorized, rate_limited, invalid_lease_id...). A 401 means the key is missing, wrong, revoked or of the other environment, which
-    /// only the operators can fix: it is logged as an error.
-    /// </summary>
     private async Task EnsureSuccessAsync(HttpResponseMessage response, string what, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode)
@@ -154,7 +149,6 @@ public class ConcordatoFacileApiClient(HttpClient httpClient, ILogger<Concordato
             return response;
         }
 
-        // Read Retry-After header
         var retryAfter = GetRetryAfterDelay(response);
 
         if (retryAfter is null || retryAfter.Value.TotalSeconds > 30)
@@ -166,7 +160,6 @@ public class ConcordatoFacileApiClient(HttpClient httpClient, ILogger<Concordato
                 $"ConcordatoFacile API rate limit exceeded. Retry-After: {retryAfterValue}");
         }
 
-        // Wait and retry once
         logger.LogInformation("CF API rate limit exceeded; waiting {Seconds}s before retry", retryAfter.Value.TotalSeconds);
         await Task.Delay(retryAfter.Value, cancellationToken);
         response.Dispose();
@@ -184,13 +177,11 @@ public class ConcordatoFacileApiClient(HttpClient httpClient, ILogger<Concordato
             return null;
         }
 
-        // Retry-After: <seconds>
         if (response.Headers.RetryAfter.Delta.HasValue)
         {
             return response.Headers.RetryAfter.Delta.Value;
         }
 
-        // Retry-After: <HTTP-date>
         if (response.Headers.RetryAfter.Date.HasValue)
         {
             var delay = response.Headers.RetryAfter.Date.Value - DateTimeOffset.UtcNow;

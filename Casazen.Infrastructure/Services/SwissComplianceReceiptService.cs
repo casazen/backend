@@ -10,11 +10,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Receipts of the Swiss compliance files (NF-15, ADR-016): the host records what the cantonal portal gave back after a
-/// police notification or an OTR report was submitted. New originals are encrypted in the private bucket;
-/// old metadata-only receipts remain distinguishable from downloadable evidence.
-/// </summary>
 public sealed class SwissComplianceReceiptService(
     AppDbContext db,
     ITicinoNotificationService ticinoNotifications,
@@ -24,7 +19,6 @@ public sealed class SwissComplianceReceiptService(
     TimeProvider? timeProvider = null) : ISwissComplianceReceiptService
 {
     public const string FileProtectionPurpose = "Casazen.SwissCompliance.Receipt";
-    // The sealed payload also contains JSON metadata and base64-encoded receipt bytes.
     private const int MaxProtectedBytes = (int)(SwissComplianceReceipts.MaxFileBytes * 2);
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private readonly IDataProtector _protector = dataProtection.CreateProtector(FileProtectionPurpose);
@@ -44,7 +38,6 @@ public sealed class SwissComplianceReceiptService(
         ArgumentException.ThrowIfNullOrWhiteSpace(reference);
         ArgumentNullException.ThrowIfNull(receipt);
 
-        // The property decides the tenant (tenant query filter): the receipt takes its OrgId, never one the client names (AC2).
         var property = await PropertyAsync(propertyId, cancellationToken);
 
         if (!await ticinoNotifications.IsPropertyInTicinoAsync(propertyId))

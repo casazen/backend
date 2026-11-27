@@ -9,16 +9,12 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>What the supplier does with the payment of a request: asks for it (or reminds), and records one received outside CasaZen.</summary>
 public sealed partial class SupplierPaymentService
 {
-    // ─── Ask for the payment ─────────────────────────────────────────────────────────────────────────────────────────
-
     public async Task<ServiceRequestPayment> RequestPaymentAsync(ServiceRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        // The state of the request is checked before the lock (cheap, and the usual refusals) and again after it.
         EnsureRequestable(request);
         var minimum = options.Value.MinAmountCents;
         if (request.FinalAmountCents is not { } amount || amount < minimum)
@@ -40,7 +36,6 @@ public sealed partial class SupplierPaymentService
         bool reminder;
         await using (var transaction = await LockAsync(request.Id, cancellationToken))
         {
-            // Read again under the lock: the request may have been paid or cancelled, the payment sent or paid, meanwhile.
             await db.Entry(request).ReloadAsync(cancellationToken);
             EnsureRequestable(request);
 
@@ -49,8 +44,6 @@ public sealed partial class SupplierPaymentService
                 ?? await NewPaymentAsync(request, amount, ServiceRequestJson.ReadPriceLines(request.PriceLinesJson), now, cancellationToken);
             var isNew = db.Entry(payment).State == EntityState.Detached;
 
-            // The money CasaZen holds (SP-15c-a) is neither asked for nor reminded once the payer has paid it: it is charged and held, or a
-            // block the payer made. A host's payment that is still to be made (SP-15c-b) is asked for and reminded like any other.
             if (payment.FundsModel == ServiceFundsModel.PlatformHeld && !IsOpen(payment.Status))
                 throw payment.Status == ServicePaymentStatus.Released ? AlreadyPaid() : HeldByCasaZen();
 
@@ -99,7 +92,6 @@ public sealed partial class SupplierPaymentService
 
         if (!queued)
         {
-            // Nothing was sent: the link that was issued is taken back, so the payer's previous link (if any) works as before.
             RevokeLink(payment, previousHash, previousRequestedAt, previousSentAt, previousSentCount, Now());
             await db.SaveChangesAsync(CancellationToken.None);
             throw new DomainRuleException(ServicePaymentErrors.RequestNotSent, ServicePaymentErrors.RequestNotSentMessageKey);
@@ -111,7 +103,6 @@ public sealed partial class SupplierPaymentService
         return payment;
     }
 
-    /// <summary>The request can have its payment asked for: paid inside CasaZen, completed, with an amount nobody still has to confirm.</summary>
     private static void EnsureRequestable(ServiceRequest request)
     {
         if (request.PaymentMode != ServiceRequestPaymentMode.Online)
@@ -121,8 +112,6 @@ public sealed partial class SupplierPaymentService
         if (request.FinalAmountNeedsConfirmation)
             throw new DomainRuleException(ServicePaymentErrors.AmountUnconfirmed, ServicePaymentErrors.AmountUnconfirmedMessageKey);
     }
-
-    // ─── Paid outside CasaZen ────────────────────────────────────────────────────────────────────────────────────────
 
     public async Task<ServiceRequestPayment> RecordOfflineAsync(
         ServiceRequest request,
@@ -136,7 +125,6 @@ public sealed partial class SupplierPaymentService
         var note = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
         ArgumentOutOfRangeException.ThrowIfGreaterThan(note?.Length ?? 0, ServicePaymentLimits.OfflineNoteMaxLength, nameof(reason));
 
-        // Decision D5: a request paid inside CasaZen is recorded as paid outside only as a traced exception.
         var wasOnline = request.PaymentMode == ServiceRequestPaymentMode.Online;
         if (wasOnline && note is null)
             throw new DomainRuleException(ServicePaymentErrors.OfflineReasonRequired, ServicePaymentErrors.OfflineReasonRequiredMessageKey);
@@ -156,8 +144,6 @@ public sealed partial class SupplierPaymentService
             var live = await LivePaymentOf(request.Id).ToListAsync(cancellationToken);
             foreach (var open in live)
             {
-                // The money CasaZen holds (SP-15c-a) reaches the supplier by the release; once the payer has paid it cannot be declared received
-                // from elsewhere. A host's payment that is still to be made (SP-15c-b) can, as a traced exception, like any other.
                 if (open.FundsModel == ServiceFundsModel.PlatformHeld && !IsOpen(open.Status))
                     throw open.Status == ServicePaymentStatus.Released ? AlreadyPaid() : HeldByCasaZen();
 
@@ -174,7 +160,6 @@ public sealed partial class SupplierPaymentService
                 // as processing and the declaration is refused, so the same money is never counted twice.
                 if (open.FundsModel == ServiceFundsModel.PlatformHeld && open.StripePaymentIntentId is { } heldIntentId)
                 {
-                    // On the platform (SP-15c-b), not on the supplier's account.
                     var heldCurrent = await ReadPlatformIntentAsync(heldIntentId, cancellationToken);
                     if (heldCurrent is not null && ServiceCharges.IsPayable(heldCurrent.Status))
                     {
@@ -200,7 +185,6 @@ public sealed partial class SupplierPaymentService
                             intentId, account, ServiceCharges.CancellationIdempotencyKey(open.Id, intentId), cancellationToken);
                     }
 
-                    // A PaymentIntent that is gone (with its account) cannot be paid: there is nothing to wait for.
                     if (current is not null && current.Status != "canceled")
                     {
                         open.Status = ServicePaymentStatus.Processing;
@@ -216,8 +200,6 @@ public sealed partial class SupplierPaymentService
                 open.UpdatedAt = now;
             }
 
-            // The request becomes paid in the same save as the withdrawn payments; the new row follows in a second save of the same
-            // transaction: the unique index "one live payment per request" would refuse it before the old ones are canceled.
             request.Status = ServiceRequestStatus.Pagato;
             request.PaidAt = now;
             request.PaidBy = ServiceRequestActorParty.Supplier;
@@ -233,7 +215,6 @@ public sealed partial class SupplierPaymentService
                 AmountCents = amount,
                 Currency = ServiceCharges.Currency,
 
-                // No money went through CasaZen, so no commission (decision D5).
                 CommissionPercent = 0m,
                 ApplicationFeeCents = 0,
                 NetCents = amount,
@@ -262,7 +243,6 @@ public sealed partial class SupplierPaymentService
             logger.LogInformation("Request {RequestId} was recorded as paid outside CasaZen", request.Id);
         }
 
-        // Best effort after the commit, whether or not the caller is still there.
         await NotifyHostOfflineRecordedAsync(request, recorded, note, CancellationToken.None);
         return recorded;
     }
@@ -276,7 +256,6 @@ public sealed partial class SupplierPaymentService
         }
     }
 
-    /// <summary>Tells the host org that the supplier recorded a payment received outside CasaZen. A failure is logged: the payment is already recorded.</summary>
     private async Task NotifyHostOfflineRecordedAsync(
         ServiceRequest request,
         ServiceRequestPayment payment,
@@ -302,9 +281,6 @@ public sealed partial class SupplierPaymentService
         }
     }
 
-    // ─── Queries ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The payment of a request that is not canceled (at most one: the unique index), tracked.</summary>
     private IQueryable<ServiceRequestPayment> LivePaymentOf(Guid requestId) =>
         db.ServiceRequestPayments.Where(p => p.ServiceRequestId == requestId && p.Status != ServicePaymentStatus.Canceled);
 }

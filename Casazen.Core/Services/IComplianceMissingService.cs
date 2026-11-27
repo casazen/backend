@@ -16,52 +16,37 @@ namespace Casazen.Core.Services;
 /// <param name="Count">Guests of the stay that lack the <paramref name="Field"/>; null when it does not apply.</param>
 public sealed record ComplianceMissing(string Code, string? Field = null, int? Count = null);
 
-/// <summary>The codes of <see cref="ComplianceMissing"/> that are not the blockers of the activation wizard (SR-03): part of the API contract.</summary>
 public static class ComplianceMissingCodes
 {
-    /// <summary>A property to activate whose blockers were not worked out (see <see cref="IComplianceMissingService"/>): open the wizard.</summary>
     public const string ActivationIncomplete = "activation_incomplete";
 
-    /// <summary>A property whose requirements are all met: only the confirmation of the activation (the terms) is left.</summary>
     public const string ActivationNotConfirmed = "activation_not_confirmed";
 
     /// <summary>One field of the Alloggiati record that some guests of the stay lack: <see cref="ComplianceMissing.Field"/> names it.</summary>
     public const string GuestFieldMissing = "guest_field_missing";
 
-    /// <summary>The guests of the stay are in an order the record does not accept (a head without members, a member without its head).</summary>
     public const string GuestCompositionInvalid = "guest_composition_invalid";
 
-    /// <summary>The guest data are incomplete but the stay could not be read again (it changed meanwhile): open the stay.</summary>
     public const string GuestDataIncomplete = "guest_data_incomplete";
 
-    /// <summary>The departure of the stay was not closed.</summary>
     public const string CheckoutNotClosed = "checkout_not_closed";
 
-    /// <summary>The Alloggiati communication was not sent on the portal.</summary>
     public const string AlloggiatiNotSent = "alloggiati_not_sent";
 
-    /// <summary>The Alloggiati communication failed or was rejected.</summary>
     public const string AlloggiatiFailed = "alloggiati_failed";
 
-    /// <summary>The host did not declare the property ready after the check-out.</summary>
     public const string PropertyReadyNotConfirmed = "property_ready_not_confirmed";
 
-    /// <summary>A request to answer: the host has not accepted or declined it yet (<c>GET /api/dashboard/today</c>).</summary>
     public const string ApprovalNotAnswered = "approval_not_answered";
 
-    /// <summary>The payment of a confirmed stay failed and nothing else paid it (<c>GET /api/dashboard/today</c>).</summary>
     public const string PaymentFailed = "payment_failed";
 
-    /// <summary>A supplier proposed another time for a service request and the host has not answered (SR-03b, <c>GET /api/dashboard/today</c>).</summary>
     public const string ProposalNotAnswered = "proposal_not_answered";
 
-    /// <summary>The final amount of a finished job is above the quote and the host has not confirmed it (SR-03b, <c>GET /api/dashboard/today</c>).</summary>
     public const string FinalAmountNotConfirmed = "final_amount_not_confirmed";
 
-    /// <summary>A finished job has not been paid (SR-03b, <c>GET /api/dashboard/today</c>).</summary>
     public const string ServiceNotPaid = "service_not_paid";
 
-    /// <summary>Two stays or blocks of a property take the same night (SR-02a, <c>GET /api/dashboard/today</c>).</summary>
     public const string CalendarConflict = "calendar_conflict";
 }
 
@@ -72,14 +57,7 @@ public static class ComplianceMissingCodes
 /// </summary>
 public interface IComplianceMissingService
 {
-    /// <summary>
-    /// <paramref name="summary"/> with <see cref="ComplianceSummaryItem.Missing"/> filled on every item; the sections, their
-    /// counts and the items themselves are not changed. The blockers of a property take a few queries each, so they are worked
-    /// out for the first <see cref="MaxDetailedProperties"/> only (the others get
-    /// <see cref="ComplianceMissingCodes.ActivationIncomplete"/>); the guests of the stays are read in one go.
-    /// </summary>
     Task<ComplianceSummaryResult> DescribeAsync(ComplianceSummaryResult summary, CancellationToken cancellationToken = default);
 
-    /// <summary>Properties whose blockers are worked out in one call of <see cref="DescribeAsync"/>.</summary>
     const int MaxDetailedProperties = 10;
 }

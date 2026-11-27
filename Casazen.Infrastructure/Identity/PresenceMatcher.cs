@@ -33,11 +33,6 @@ public sealed class PresenceMatcher(
     IOptions<BiometricModelOptions> biometricOptions,
     ILogger<PresenceMatcher> logger)
 {
-    /// <summary>
-    /// Compares <paramref name="documentFront"/> with the frames of <paramref name="sequence"/> at <paramref name="matchIndices"/> (the <c>MatchIndices</c> the server chose) with
-    /// <paramref name="policy"/>. A <c>null</c> policy is <see cref="MatchState.Unavailable"/>.
-    /// </summary>
-    /// <exception cref="ArgumentException">An index that is not a frame of the sequence or named twice, or a number of frames that is not <c>match.frames</c>.</exception>
     public Task<MatchReport> MatchAsync(
         RasterImage documentFront,
         FrameSequence sequence,
@@ -57,7 +52,6 @@ public sealed class PresenceMatcher(
             return Task.FromResult(MatchReport.NotAvailable());
         }
 
-        // The frozen rule is over the frames of the policy: a different number would be another rule.
         if (matchIndices.Count != policy.Match.Frames)
             throw new ArgumentException("The number of frames is not the one of the policy.", nameof(matchIndices));
 
@@ -86,7 +80,6 @@ public sealed class PresenceMatcher(
         {
             var report = Compare(documentFront, sequence, indices, rules, settings, budget.Token);
 
-            // The state and the number of frames only: never a similarity.
             logger.LogInformation("Presence match: state={State}, {Frames} frames", report.State, indices.Count);
             return report;
         }
@@ -106,7 +99,6 @@ public sealed class PresenceMatcher(
         }
         catch (Exception ex)
         {
-            // The type only: a message could carry what was being read.
             logger.LogError("The match could not be made ({ErrorType}); a person decides", ex.GetType().Name);
             return MatchReport.NotAvailable();
         }
@@ -145,10 +137,8 @@ public sealed class PresenceMatcher(
         return Report(similarities, rules);
     }
 
-    /// <summary>The similarity of the portrait and the face of one frame, in the scale of the check-in; 0 when the frame has no face. The vector of the frame is zeroed before this returns.</summary>
     private double Similarity(float[] portraitVector, RasterImage frame, BiometricModelOptions settings, CancellationToken token)
     {
-        // The largest face of the frame (the detector gives the largest first): the validation already found one face in it.
         var faces = detector.Detect(frame, settings.DetectionScoreThreshold, token);
         if (faces.Count == 0)
             return 0;
@@ -165,7 +155,6 @@ public sealed class PresenceMatcher(
         }
     }
 
-    /// <summary>The report of the similarities of the chosen frames under the rules of the policy.</summary>
     private static MatchReport Report(List<double> similarities, IdentityMatchPolicy rules)
     {
         var aggregate = rules.Aggregation switch
@@ -176,7 +165,6 @@ public sealed class PresenceMatcher(
         };
         var min = similarities.Min();
 
-        // Both conditions of an acceptance; the band is the aggregate alone, and apart.
         var acceptPassed = aggregate >= rules.Accept && min >= rules.MinEachFrame;
         var inReviewBand = aggregate >= rules.ReviewFloor && aggregate < rules.Accept;
         return new MatchReport(MatchState.Ok, aggregate, min, similarities.Count, acceptPassed, inReviewBand);
@@ -189,7 +177,6 @@ public sealed class PresenceMatcher(
         return sorted.Count % 2 == 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
     }
 
-    /// <summary>The indices name frames of the sequence, each once, and there is at least one: comparing nothing is not a match.</summary>
     private static void RequireFrames(FrameSequence sequence, IReadOnlyList<int> indices)
     {
         if (indices.Count == 0)

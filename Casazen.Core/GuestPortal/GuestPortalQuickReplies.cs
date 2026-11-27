@@ -2,7 +2,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.GuestPortal;
 
-/// <summary>Recognizes a complete practical question. Free text stays with the host.</summary>
 public static class GuestPortalQuickReplies
 {
     public static GuestPortalQuickReply? Answer(GuestHouseGuide guide, string? question, string language, bool canSeeReserved)

@@ -22,17 +22,11 @@ namespace Casazen.Infrastructure.External;
 /// </summary>
 public static partial class PiiScrubber
 {
-    /// <summary>
-    /// Returns a copy of <paramref name="text"/> with email addresses, Italian fiscal codes, and phone numbers
-    /// replaced by their respective placeholders (<c>[email]</c>, <c>[cf]</c>, <c>[tel]</c>).
-    /// Returns <see cref="string.Empty"/> when <paramref name="text"/> is null or empty.
-    /// </summary>
     public static string Scrub(string? text)
     {
         if (string.IsNullOrEmpty(text))
             return string.Empty;
 
-        // Fiscal codes first: a CF-like sequence could be partially consumed by other patterns.
         text = FiscalCodeRegex().Replace(text, "[cf]");
         text = EmailRegex().Replace(text, "[email]");
         text = PhoneRegex().Replace(text, "[tel]");
@@ -46,9 +40,6 @@ public static partial class PiiScrubber
     [GeneratedRegex(@"\b[A-Za-z]{6}\d{2}[A-Za-z]\d{2}[A-Za-z]\d{3}[A-Za-z]\b")]
     private static partial Regex FiscalCodeRegex();
 
-    /// <summary>
-    /// RFC-5321-ish email address. Matches user@domain.tld patterns including sub-domains, dots, plus-tags, etc.
-    /// </summary>
     [GeneratedRegex(@"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", RegexOptions.IgnoreCase)]
     private static partial Regex EmailRegex();
 

@@ -13,23 +13,13 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface ILeasePartyPrivacyService
 {
-    /// <summary>
-    /// Records the erasure request of the lease's parties (flag and <c>ErasureRequested</c> event, once) and, when the lease
-    /// has already ended, anonymizes them now. A lease of another org raises <c>NotFoundException</c> (tenant filter).
-    /// </summary>
     Task<LeaseErasureResult> RequestErasureAsync(Guid leaseId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Nightly run over every org: anonymizes the parties of the ended leases with an erasure request and of the leases
-    /// whose retention period ended.
-    /// </summary>
     Task<LeasePartyRetentionRunResult> ApplyRetentionAsync(CancellationToken cancellationToken = default);
 }
 
-/// <summary>Where an erasure request of a lease stands.</summary>
 public enum LeaseErasureStatus
 {
-    /// <summary>Every party of the lease is anonymized.</summary>
     Anonymized,
 
     /// <summary>
@@ -38,7 +28,6 @@ public enum LeaseErasureStatus
     /// </summary>
     PartiallyAnonymized,
 
-    /// <summary>The lease has not ended: the parties are anonymized from <see cref="LeaseErasureResult.AnonymizationFrom"/>.</summary>
     Scheduled,
 }
 

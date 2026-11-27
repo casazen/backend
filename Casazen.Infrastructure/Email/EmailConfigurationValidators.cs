@@ -15,10 +15,8 @@ public static class EmailConfigurationPolicy
         !environment.IsDevelopment() && !environment.IsEnvironment("Testing");
 }
 
-/// <summary>Validates <see cref="EmailOptions"/> where the configuration must be complete.</summary>
 public sealed class EmailOptionsValidator : IValidateOptions<EmailOptions>
 {
-    /// <summary>Resend's shared test domain: it delivers only to the owner of the Resend account.</summary>
     public const string ResendTestDomain = "resend.dev";
 
     public ValidateOptionsResult Validate(string? name, EmailOptions options)
@@ -59,7 +57,6 @@ public sealed class EmailOptionsValidator : IValidateOptions<EmailOptions>
     }
 }
 
-/// <summary>Validates <see cref="PublicSiteOptions"/> where the configuration must be complete.</summary>
 public sealed class PublicSiteOptionsValidator : IValidateOptions<PublicSiteOptions>
 {
     public ValidateOptionsResult Validate(string? name, PublicSiteOptions options)
@@ -74,7 +71,6 @@ public sealed class PublicSiteOptionsValidator : IValidateOptions<PublicSiteOpti
         if (baseUri.Scheme != Uri.UriSchemeHttps)
             return ValidateOptionsResult.Fail("App__PublicSiteBaseUrl must use https.");
 
-        // SE-02 (A8-02): one public domain. The Seo__PublicBaseUrl alias may repeat it, never point elsewhere.
         if (!string.IsNullOrWhiteSpace(options.SeoPublicBaseUrl)
             && PublicSiteOptions.Normalize(options.SeoPublicBaseUrl) != PublicSiteOptions.Normalize(options.PublicSiteBaseUrl))
         {

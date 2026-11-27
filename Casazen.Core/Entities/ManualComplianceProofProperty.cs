@@ -27,14 +27,12 @@ public class ManualComplianceProofProperty : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the proof (TN-2).</summary>
     public Guid OrgId { get; set; }
 
     [ForeignKey(nameof(Proof))]
     public Guid ProofId { get; set; }
     public virtual ManualComplianceProof Proof { get; set; } = null!;
 
-    /// <summary>The flat the receipt covers.</summary>
     [ForeignKey(nameof(Property))]
     public Guid PropertyId { get; set; }
     public virtual Property Property { get; set; } = null!;

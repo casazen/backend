@@ -67,7 +67,6 @@ public sealed class ContentPushService(
     TimeProvider timeProvider,
     ILogger<ContentPushService> logger) : IContentPushService
 {
-    /// <summary>Name of the unique index on the property and the channel of a state row.</summary>
     internal const string ChannelRowIndexName = "UIX_ListingChannelStates_PropertyId_ChannelCode";
 
     private static readonly IReadOnlySet<string> NoTokenRoles = new HashSet<string>(StringComparer.Ordinal);
@@ -85,7 +84,6 @@ public sealed class ContentPushService(
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentNullException.ThrowIfNull(channels);
 
-        // The tenant filter hides another org's property in a request; the reach of the person decides for the properties of the org.
         var roles = tokenRoles ?? NoTokenRoles;
         var property = await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == propertyId, ct);
         if (property is null || !await hostScopeResolver.CanReachPropertyAsync(userId, roles, property.OrgId, property.Id, property.OwnerId, ct))
@@ -93,7 +91,6 @@ public sealed class ContentPushService(
 
         var codes = ValidChannels(channels);
 
-        // Nothing is written for a property that may already exist on Octorate and was not confirmed or rejected yet (OCT-04).
         if (await mappings.IsWriteBlockedAsync(propertyId, ct))
             throw new DomainConflictException("octorate_mapping_unconfirmed", "OctorateMappingUnconfirmed");
 
@@ -187,14 +184,12 @@ public sealed class ContentPushService(
             {
                 await FailAsync(property, rows.Where(r => r.Status == ChannelPublishStatus.Sending).ToList(), ex, ct);
 
-                // What the person can fix is on the rows and in their «To do»; anything else is a failure of the job too.
                 if (ex is not (DomainException or OctoratePropertyRejectedException or OctorateRequestRejectedException))
                     throw;
             }
         }
     }
 
-    /// <summary>The run itself, with the rows of the requested channels put in <c>Sending</c> by <see cref="RowsForRunAsync"/>.</summary>
     private async Task PushAsync(Property property, List<ListingChannelState> rows, string userId, IReadOnlySet<string>? roles, CancellationToken ct)
     {
         var orgId = property.OrgId;
@@ -202,7 +197,6 @@ public sealed class ContentPushService(
         var photoUrls = publicPhotos.ListingPhotoUrls(property);
         var cinValid = !CinFormat.IsRequiredForCountry(property.Country) || CinFormat.IsValid(property.CinCode);
 
-        // The rule of each channel, before anything is sent: a channel that cannot be published is left to fix, the others go on.
         var ready = new List<(ListingChannelState Row, ListingChannelRule Rule)>();
         var blocked = new List<ListingChannelState>();
         foreach (var row in rows.Where(r => r.Status == ChannelPublishStatus.Sending))
@@ -236,7 +230,6 @@ public sealed class ContentPushService(
 
         var (accommodation, product) = await EnsureListingAsync(property, document, userId, roles, ct);
 
-        // The channels the property is connected to: a content channel with no connection cannot be pushed to, one with no rule is managed on the channel.
         var connections = await client.GetConnectionsAsync(accommodation, ct);
         var disconnected = new List<ListingChannelState>();
         var targets = new List<(ListingChannelState Row, ListingChannelRule Rule, string? ConnectionId)>();
@@ -264,7 +257,6 @@ public sealed class ContentPushService(
         await PushGroupsAsync(property, document, accommodation, product, ct);
         await photoSync.SendAsync(property, accommodation, ct);
 
-        // Each channel on its own: a failure stores its code and the others go on (AC-NF29-3).
         var accepted = new List<(ListingChannelState Row, string? ProcessId)>();
         var failed = new List<ListingChannelState>();
         foreach (var (row, rule, connectionId) in targets)
@@ -294,7 +286,6 @@ public sealed class ContentPushService(
         if (accepted.Count == 0)
             return;
 
-        // The groups as the channel manager holds them now are the baseline of the changes made outside CasaZen.
         IReadOnlyDictionary<string, string> hashes = new Dictionary<string, string>();
         Exception? readFailure = null;
         try
@@ -324,12 +315,9 @@ public sealed class ContentPushService(
             row.ContentHashesJson = new ListingChannelBaseline(hashes, processId, []).ToJson();
         }
 
-        // The groups are shared by the channels of the property: what was just written and read back is what every other pushed channel has on Octorate
-        // now. Their baseline is moved to it, or a change CasaZen made itself would be found «outside» on a channel it was not pushed to this time.
         if (hashes.Count > 0)
             await AlignOtherBaselinesAsync(property.Id, accepted.Select(a => a.Row.Id).ToList(), hashes, ct);
 
-        // The event in the same save as the state it describes (the outbox, ADR-022): once for the property, the first time the structure is accepted.
         var dedupKey = $"listing-published:{property.Id:N}";
         if (firstPublication && !await db.OutboxEvents.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AnyAsync(e => e.OrgId == orgId && e.DedupKey == dedupKey, ct))
         {
@@ -376,11 +364,6 @@ public sealed class ContentPushService(
         }
     }
 
-    /// <summary>
-    /// The accommodation and the unit of the property on Octorate. A property with no confirmed mapping is created (the creator refuses existing
-    /// inventory); a mapping with no room is given one: the unit an earlier run made (found by its name), else a new one for a property declared new,
-    /// else the only room of the listing. A listing with several rooms and no choice is left to the person (<c>octorate_room_required</c>).
-    /// </summary>
     private async Task<(string Accommodation, string Product)> EnsureListingAsync(
         Property property,
         SitePropertyProfileDocument document,
@@ -426,7 +409,6 @@ public sealed class ContentPushService(
         return (accommodation, product);
     }
 
-    /// <summary>The groups of the content of the unit, one operation each. The first refusal stops the run: the content is shared by the channels.</summary>
     private async Task PushGroupsAsync(Property property, SitePropertyProfileDocument document, string accommodation, string product, CancellationToken ct)
     {
         await client.UpdatePropertyAsync(accommodation, OctorateContentMapper.PropertyUpdate(property), ct);
@@ -439,7 +421,6 @@ public sealed class ContentPushService(
         var rooms = OctorateContentMapper.Rooms(storedRooms);
         if (rooms.Count > 0)
         {
-            // POST adds a room: rooms already on the unit as they should be are not sent again.
             var existing = await client.GetContentRoomsAsync(accommodation, product, ct);
             if (OctorateContentReader.RoomsForm(existing) != OctorateContentReader.RoomsForm(rooms))
                 await client.UpdateRoomsAsync(accommodation, product, rooms, ct);
@@ -460,7 +441,6 @@ public sealed class ContentPushService(
             await client.UpdateCancellationPolicyAsync(accommodation, product, policy, ct);
     }
 
-    /// <summary>The channels the property is connected to that no content rule covers are managed on the channel itself: their row says so and nothing is sent.</summary>
     private async Task UpsertManagedRowsAsync(Property property, IReadOnlyList<OctorateChannelConnection> connections, CancellationToken ct)
     {
         foreach (var connection in connections)
@@ -492,7 +472,6 @@ public sealed class ContentPushService(
         }
     }
 
-    /// <summary>The code of a managed channel: its name in lower case with letters and digits only (<c>expedia</c>); its id when it has no name.</summary>
     internal static string? ManagedChannelCode(OctorateChannelConnection connection)
     {
         var builder = new StringBuilder();
@@ -514,7 +493,6 @@ public sealed class ContentPushService(
         return code.Length <= ListingChannelState.ChannelCodeMaxLength ? code : code[..ListingChannelState.ChannelCodeMaxLength];
     }
 
-    /// <summary>A failure that stopped the run: the rows still waiting are left to fix with the code of the error, and the person is told.</summary>
     private async Task FailAsync(Property property, List<ListingChannelState> waiting, Exception error, CancellationToken ct)
     {
         if (waiting.Count == 0)
@@ -588,7 +566,6 @@ public sealed class ContentPushService(
         return rows;
     }
 
-    /// <summary>Puts the requested channels in <c>Sending</c> in one save; two publications of the same property end on one row each, whichever writes first.</summary>
     private async Task<IReadOnlyList<ListingChannelResult>> MarkSendingAsync(Property property, IReadOnlyList<string> codes, CancellationToken ct)
     {
         for (var attempt = 0; ; attempt++)
@@ -616,14 +593,12 @@ public sealed class ContentPushService(
             }
             catch (DbUpdateException ex) when (attempt == 0 && OrgTeamAccess.IsUniqueViolation(ex, ChannelRowIndexName))
             {
-                // Another publication made the same row first: forget the rows this one added and update the existing ones.
                 foreach (var entry in db.ChangeTracker.Entries<ListingChannelState>().Where(e => e.State == EntityState.Added).ToList())
                     entry.State = EntityState.Detached;
             }
         }
     }
 
-    /// <summary>The accommodation and the room of the confirmed mapping of the property (in any environment of the org), if there is one.</summary>
     private async Task<(string Accommodation, string? Product)?> ConfirmedMappingAsync(Guid orgId, Guid propertyId, CancellationToken ct)
     {
         var row = await db.OctorateListingMappings
@@ -635,7 +610,6 @@ public sealed class ContentPushService(
         return row is null ? null : (row.OctorateAccommodationId, row.OctorateProductId);
     }
 
-    /// <summary>The channels of a request: trimmed, lower case, distinct, each a content channel of <see cref="ListingChannelOptions"/>; none is a 422, never «all».</summary>
     private List<string> ValidChannels(IReadOnlyList<string> channels)
     {
         var codes = channels

@@ -37,12 +37,6 @@ namespace Casazen.Core.Suppliers;
 /// </remarks>
 public static class SupplierQuoteCalculator
 {
-    /// <summary>
-    /// Checks <paramref name="request"/> against <paramref name="service"/> and returns the choices ready to be priced. Every
-    /// value that is not valid is collected and refused together (422 <see cref="SupplierQuoteErrors.Invalid"/> naming all the
-    /// fields). The checks do not depend on the outcome: a request that is wrong is wrong also for a service on quote.
-    /// </summary>
-    /// <exception cref="SupplierQuoteRuleException">The fields that are not valid.</exception>
     public static SupplierQuoteChoices Validate(SupplierPublicService service, SupplierQuoteRequest request)
     {
         ArgumentNullException.ThrowIfNull(service);
@@ -62,11 +56,6 @@ public static class SupplierQuoteCalculator
         return new SupplierQuoteChoices(quantity, surface, picks, place, postalCode, urgent);
     }
 
-    /// <summary>
-    /// The estimate. <paramref name="insideArea"/> is the answer of the zones check: <c>false</c> outside, <c>true</c> inside,
-    /// <c>null</c> when no place was given (nothing is known, so nothing is refused). Order of the answers: outside the
-    /// supplier's zones, service on quote, service without a price, then the sum.
-    /// </summary>
     public static SupplierQuote Calculate(SupplierPublicService service, SupplierQuoteChoices choices, bool? insideArea)
     {
         ArgumentNullException.ThrowIfNull(service);
@@ -99,8 +88,6 @@ public static class SupplierQuoteCalculator
             lines.Add((SupplierQuoteLineKind.Supplement, supplement.Code, supplement.Label, supplement.Per, units, supplement.AmountCents, (long)supplement.AmountCents * units));
         }
 
-        // An urgent request pays the surcharge once, as its own last line (nothing for a request that is not urgent, and nothing when
-        // the service asks no surcharge).
         if (UrgentSurchargeOf(service, choices) is { } surcharge)
             lines.Add((SupplierQuoteLineKind.Urgent, null, SupplierQuoteLabels.Urgent, null, 1, surcharge, surcharge));
 
@@ -108,7 +95,6 @@ public static class SupplierQuoteCalculator
         if (total > SupplierServiceCatalogLimits.MaxAmountCents)
             return Declined(SupplierQuoteOutcome.OnQuote, SupplierQuoteReason.AmountOverLimit, vat);
 
-        // Every line is at most the total, which is within the limit: the amounts fit an int.
         return new SupplierQuote(
             SupplierQuoteOutcome.Estimate,
             null,
@@ -117,29 +103,17 @@ public static class SupplierQuoteCalculator
             vat);
     }
 
-    /// <summary>
-    /// The 30 m² blocks a surface adds to the price: none up to <see cref="PublicShowcaseLimits.QuoteIncludedSurfaceSqm"/> m²,
-    /// then one for every started block of <see cref="PublicShowcaseLimits.QuoteSurfaceStepSqm"/> m² (rounded up).
-    /// </summary>
     public static int SurfaceBlocks(int surfaceSqm)
     {
         var above = surfaceSqm - PublicShowcaseLimits.QuoteIncludedSurfaceSqm;
         return above <= 0 ? 0 : (above + PublicShowcaseLimits.QuoteSurfaceStepSqm - 1) / PublicShowcaseLimits.QuoteSurfaceStepSqm;
     }
 
-    /// <summary>The hours of a price per hour when the customer says none: the indicative duration rounded up to whole hours, at least one.</summary>
     public static int DefaultHours(int? durationMinutes) =>
         durationMinutes is > 0
             ? Math.Clamp((durationMinutes.Value + 59) / 60, 1, PublicShowcaseLimits.QuoteMaxQuantity)
             : 1;
 
-    /// <summary>
-    /// What a booking keeps of the customer's choices on its request (<c>ServiceRequest.OptionsJson</c>, SP-10): a snapshot, so a
-    /// later change of the price list does not rewrite what was booked. Independent of the outcome of the estimate: a service on
-    /// quote has no total, but the customer still chose its options. First the quantity of a price per hour, set or square meter
-    /// (<see cref="ServiceRequestOptionCodes.Quantity"/>), then every supplement that has units (the picked ones and the 30 m²
-    /// blocks of the surface), in the order of the price list.
-    /// </summary>
     public static IReadOnlyList<ServiceRequestOption> SnapshotOptions(SupplierPublicService service, SupplierQuoteChoices choices)
     {
         ArgumentNullException.ThrowIfNull(service);
@@ -168,7 +142,6 @@ public static class SupplierQuoteCalculator
                 options.Add(new ServiceRequestOption(supplement.Code, supplement.Label, supplement.AmountCents, supplement.Per, units));
         }
 
-        // The surcharge of an urgent request is a choice of the customer too: it stays on the request as the line the estimate had.
         if (UrgentSurchargeOf(service, choices) is { } surcharge)
         {
             options.Add(new ServiceRequestOption(
@@ -178,11 +151,6 @@ public static class SupplierQuoteCalculator
         return options;
     }
 
-    /// <summary>
-    /// The surcharge an urgent request adds to the estimate: the service's urgent terms when the customer chose an urgent slot and
-    /// the service offers it; <c>null</c> for a request that is not urgent and for a surcharge of zero (an urgency for free has no line).
-    /// One definition, so the estimate and the snapshot of the booking cannot disagree.
-    /// </summary>
     private static int? UrgentSurchargeOf(SupplierPublicService service, SupplierQuoteChoices choices) =>
         choices.Urgent && service.Urgent is { Enabled: true, SurchargeCents: > 0 } terms ? terms.SurchargeCents : null;
 
@@ -198,7 +166,6 @@ public static class SupplierQuoteCalculator
             _ => 1,
         };
 
-    /// <summary>The units a supplement adds: the surface's blocks for <c>sqm30</c>, what the customer picked for the others.</summary>
     private static int UnitsOf(SupplierServiceSupplement supplement, SupplierQuoteChoices choices)
     {
         if (supplement.Per == SupplierServiceSupplementUnits.Sqm30)
@@ -208,21 +175,16 @@ public static class SupplierQuoteCalculator
         return pick?.Quantity ?? 0;
     }
 
-    // ─── Reading the request ─────────────────────────────────────────────────────
-
     private static int? ReadQuantity(SupplierPublicService service, int? requested, List<string> invalid)
     {
         switch (service.PriceUnit)
         {
             case SupplierServicePriceUnit.PerJob:
-                // A price per job has no quantity to choose: leaving it out and saying 1 are the same thing.
                 if (requested is not null and not 1)
                     AddOnce(invalid, SupplierQuoteFields.Quantity);
                 return null;
 
             case SupplierServicePriceUnit.PerSquareMeter:
-                // The surface to price is the quantity: it has to be said, and it may be as large as a surface can be (a big
-                // villa is an estimate or "on quote", not a refusal).
                 if (requested is not { } surface || surface is < 1 or > PublicShowcaseLimits.QuoteMaxSurfaceSqm)
                     AddOnce(invalid, SupplierQuoteFields.Quantity);
                 return requested;
@@ -304,7 +266,6 @@ public static class SupplierQuoteCalculator
         return ComuneTarget.FromInput(text);
     }
 
-    /// <summary>An urgent slot is for a service that offers urgent requests (its own switch and the supplier's, <see cref="SupplierPublicService.Urgent"/>).</summary>
     private static bool ReadUrgent(SupplierPublicService service, bool requested, List<string> invalid)
     {
         if (!requested)

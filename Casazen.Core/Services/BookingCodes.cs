@@ -12,13 +12,11 @@ namespace Casazen.Core.Services;
 /// <remarks>Frontend mirror: <c>src/lib/booking-code.ts</c>.</remarks>
 public static class BookingCodes
 {
-    /// <summary>Characters of a stored code.</summary>
     public const int Length = 10;
 
     /// <summary>Crockford base32: digits and letters without I, L, O and U, so that no two characters look alike.</summary>
     public const string Alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
-    /// <summary>New random code, in the stored form (no separator).</summary>
     public static string New()
     {
         Span<byte> bytes = stackalloc byte[Length];
@@ -29,17 +27,12 @@ public static class BookingCodes
         return new string(chars);
     }
 
-    /// <summary>The code as shown to people: <c>XXXXX-XXXXX</c>.</summary>
     public static string Format(string code)
     {
         ArgumentNullException.ThrowIfNull(code);
         return code.Length == Length ? $"{code[..5]}-{code[5..]}" : code;
     }
 
-    /// <summary>
-    /// The stored form of what a guest typed or pasted: spaces and dashes removed, upper case, and the characters a
-    /// person may read for others (O as 0, I and L as 1). False when the result is not a code.
-    /// </summary>
     public static bool TryNormalize(string? input, [NotNullWhen(true)] out string? code)
     {
         code = null;

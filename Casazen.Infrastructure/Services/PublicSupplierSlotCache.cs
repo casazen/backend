@@ -4,12 +4,6 @@ using Casazen.Core.Suppliers;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// The slots of a service from today to the supplier's horizon, as the public sees them, computed once (SP-09): what
-/// <see cref="PublicSupplierSlotCache"/> keeps. No reason of closure, no kind, no label: only the days and their free slots.
-/// </summary>
-/// <param name="BookableUntil">The last Europe/Rome day that can be booked (today plus the supplier's horizon).</param>
-/// <param name="Days">Every day from today to <paramref name="BookableUntil"/>, in date order.</param>
 public sealed record PublicSlotPlan(DateOnly BookableUntil, IReadOnlyList<PublicSlotDay> Days);
 
 /// <summary>
@@ -32,10 +26,8 @@ public sealed class PublicSupplierSlotCache(TimeProvider timeProvider, TimeSpan?
     private readonly int _capacity = capacity ?? PublicShowcaseLimits.SlotsCacheCapacity;
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.Ordinal);
 
-    /// <summary>Entries held, expired ones not yet purged included (diagnostics and tests).</summary>
     public int Count => _entries.Count;
 
-    /// <summary>The plan under <paramref name="key"/> when it is still fresh.</summary>
     public bool TryGet(string key, out PublicSlotPlan plan)
     {
         if (_entries.TryGetValue(key, out var entry))
@@ -46,7 +38,6 @@ public sealed class PublicSupplierSlotCache(TimeProvider timeProvider, TimeSpan?
                 return true;
             }
 
-            // Only this very entry: a fresher one written meanwhile stays.
             _entries.TryRemove(new KeyValuePair<string, Entry>(key, entry));
         }
 
@@ -63,7 +54,6 @@ public sealed class PublicSupplierSlotCache(TimeProvider timeProvider, TimeSpan?
         if (_entries.Count >= _capacity)
             PurgeExpired(now);
 
-        // Full of fresh plans: this one is not remembered (a replacement of an existing key is always fine).
         if (_entries.Count >= _capacity && !_entries.ContainsKey(key))
             return;
 

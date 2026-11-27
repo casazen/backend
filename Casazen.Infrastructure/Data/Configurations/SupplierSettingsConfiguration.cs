@@ -10,7 +10,6 @@ internal sealed class SupplierSettingsConfiguration : IEntityTypeConfiguration<S
 {
     public void Configure(EntityTypeBuilder<SupplierSettings> entity)
     {
-        // One row per supplier: the key is the supplier org, which is also the foreign key.
         entity.HasOne(s => s.SupplierProfile)
             .WithOne()
             .HasForeignKey<SupplierSettings>(s => s.OrgId)
@@ -22,7 +21,6 @@ internal sealed class SupplierSettingsConfiguration : IEntityTypeConfiguration<S
         entity.Property(s => s.UrgentFromMinute).HasDefaultValue(SupplierAgendaDefaults.UrgentFromMinute).HasSentinel(-1);
         entity.Property(s => s.UrgentToMinute).HasDefaultValue(SupplierAgendaDefaults.UrgentToMinute).HasSentinel(-1);
 
-        // The bounds are the ones of SupplierAgendaLimits (a constant, so the rules and the database cannot drift).
         entity.ToTable(t =>
         {
             t.HasCheckConstraint(

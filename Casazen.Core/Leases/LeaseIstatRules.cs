@@ -25,12 +25,10 @@ public sealed record LeaseIstatCalculation(
 public sealed record LeaseIstatFacts(
     bool Available, decimal CurrentRent, decimal DefaultSharePercent, decimal MaxSharePercent, DateOnly MinEffectiveOn, DateOnly MaxEffectiveOn);
 
-/// <summary>Why a pair of percentages cannot be calculated (<see cref="LeaseIstatRules.Check"/>).</summary>
 public enum LeaseIstatProblem
 {
     None = 0,
 
-    /// <summary>A percentage is not a number between zero (excluded) and its maximum, or has more than two decimals.</summary>
     PercentInvalid = 1,
 }
 
@@ -47,13 +45,10 @@ public enum LeaseIstatProblem
 /// </remarks>
 public static class LeaseIstatRules
 {
-    /// <summary>The share suggested in the window: 75 % of the variation (the reference agreement and the sample draft; to confirm per contract).</summary>
     public const decimal DefaultSharePercent = 75m;
 
-    /// <summary>The most a share can be: the whole variation of the index.</summary>
     public const decimal MaxSharePercent = 100m;
 
-    /// <summary>A sanity bound for the variation of the index typed by the landlord, a guard against a typo and not a figure of law.</summary>
     public const decimal MaxFoiPercent = 100m;
 
     /// <summary>The cedolare secca suspends the right to ask for any update, the ISTAT one included, for as long as the option lasts.</summary>
@@ -63,7 +58,6 @@ public static class LeaseIstatRules
         return lease.TaxRegime == LeaseTaxRegime.CedolareSecca;
     }
 
-    /// <summary>Whether the update can be calculated for this lease today, with the figures and the days the window needs.</summary>
     public static LeaseIstatFacts Facts(LeaseContract lease, DateOnly today)
     {
         ArgumentNullException.ThrowIfNull(lease);
@@ -76,12 +70,10 @@ public static class LeaseIstatRules
                         && lease.MonthlyRent > 0
                         && periodEnd >= today;
 
-        // Not retroactive: an update starts from the day it is asked for, never from a day that has passed.
         var earliest = today > start ? today : start;
         return new LeaseIstatFacts(available, lease.MonthlyRent, DefaultSharePercent, MaxSharePercent, earliest, periodEnd);
     }
 
-    /// <summary>Whether the two percentages typed can be calculated: both above zero, the share not above the whole variation, at most two decimals each.</summary>
     public static LeaseIstatProblem Check(decimal foiPercent, decimal sharePercent) =>
         IsPercent(foiPercent, MaxFoiPercent) && IsPercent(sharePercent, MaxSharePercent) ? LeaseIstatProblem.None : LeaseIstatProblem.PercentInvalid;
 

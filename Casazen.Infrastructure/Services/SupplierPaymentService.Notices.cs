@@ -44,7 +44,6 @@ public sealed partial class SupplierPaymentService
                 break;
 
             case ServicePaymentNoticeKind.FailedInFlight:
-                // A new link for the payer: the same way the first one is issued, under the lock and only if it is still due.
                 await IssueAndSendLinkAsync(payment.Id, payment.ServiceRequestId, LinkKind.Retry, cancellationToken);
                 break;
 
@@ -57,7 +56,6 @@ public sealed partial class SupplierPaymentService
                 await SendRefundNoticesAsync(payment, refundId, cancellationToken);
                 break;
 
-            // The money CasaZen holds (SP-15c-a). The supplier's receipt of a release is the one of a payment received: the same split.
             case ServicePaymentNoticeKind.Released:
                 await SendReceiptAsync(payment, cancellationToken);
                 break;
@@ -70,7 +68,6 @@ public sealed partial class SupplierPaymentService
                 await SendFundsAlertAsync(payment, notice.Detail, cancellationToken);
                 break;
 
-            // The complaint about the job and its dispute (SP-15c-c): their e-mails are in .DisputesNotices.cs.
             case ServicePaymentNoticeKind.DisputeOpened
                 or ServicePaymentNoticeKind.DisputeReplied
                 or ServicePaymentNoticeKind.DisputeResolved
@@ -102,10 +99,8 @@ public sealed partial class SupplierPaymentService
             logger.LogWarning("The account notice of held payment {PaymentId} was not queued", payment.Id);
     }
 
-    /// <summary>The alert to every active platform admin about the money CasaZen holds (SP-15c-a): ids, amounts and a code, no personal data.</summary>
     private async Task SendFundsAlertAsync(ServiceRequestPayment payment, string? detail, CancellationToken cancellationToken)
     {
-        // Users are not tenant-filtered; the platform admins are the ones with the Admin role who can still sign in.
         var admins = await db.Users
             .AsNoTracking()
             .Where(u => u.IsActive && u.Role == UserRole.Admin && u.Email != string.Empty)
@@ -146,7 +141,6 @@ public sealed partial class SupplierPaymentService
         if (customerReader is null)
             return null;
 
-        // The customer of the request, whose supplier is the payment's supplier; the request has two parties and is scoped by its id.
         var customerId = await db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -202,10 +196,8 @@ public sealed partial class SupplierPaymentService
             new PushNotificationPayload(push.Title, push.Body, PushTypes.ServicePaymentReceived, BookingId: null, PushRoutes.SupplierRequest(payment.ServiceRequestId), payment.ServiceRequestId));
     }
 
-    /// <summary>The alert to every active platform admin: a payment to review, or a dispute to answer. Ids and codes only.</summary>
     private async Task SendAdminAlertAsync(ServiceRequestPayment payment, bool dispute, string? detail, CancellationToken cancellationToken)
     {
-        // Users are not tenant-filtered; the platform admins are the ones with the Admin role who can still sign in.
         var admins = await db.Users
             .AsNoTracking()
             .Where(u => u.IsActive && u.Role == UserRole.Admin && u.Email != string.Empty)
@@ -230,7 +222,6 @@ public sealed partial class SupplierPaymentService
         }
     }
 
-    /// <summary>The refund that succeeded, to the payer (the host org) and to the supplier.</summary>
     private async Task SendRefundNoticesAsync(ServiceRequestPayment payment, Guid refundId, CancellationToken cancellationToken)
     {
         var refund = await db.ServiceRequestPaymentRefunds.AsNoTracking().Where(r => r.Id == refundId).FirstOrDefaultAsync(cancellationToken);
@@ -239,7 +230,6 @@ public sealed partial class SupplierPaymentService
 
         var context = await ReadContextAsync(payment, cancellationToken);
 
-        // The payer: the host org, or the private customer of a showcase in the language it chose (SP-15c-a).
         var payer = await ReadPayerContactAsync(payment, cancellationToken);
         if (payer is { } contact)
         {
@@ -271,10 +261,8 @@ public sealed partial class SupplierPaymentService
         }
     }
 
-    /// <summary>The supplier's address: its profile's, else its org's contact address.</summary>
     private async Task<string?> ReadSupplierEmailAsync(Guid supplierOrgId, CancellationToken cancellationToken)
     {
-        // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the supplier org id.
         var email = await db.SupplierProfiles
             .AsNoTracking()
             .Where(sp => sp.OrgId == supplierOrgId)

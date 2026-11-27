@@ -11,13 +11,10 @@ namespace Casazen.Core.Suppliers;
 /// </summary>
 public static class SupplierVerification
 {
-    /// <summary>The profile is not <see cref="SupplierStatus.Active"/> (still pending the activation wizard, or suspended).</summary>
     public const string ProfileNotActive = "profile_not_active";
 
-    /// <summary>No Connect account yet, or Stripe has not enabled charges and payouts on it.</summary>
     public const string PaymentsNotEnabled = "payments_not_enabled";
 
-    /// <summary>The profile has no VAT number.</summary>
     public const string VatNumberMissing = "vat_number_missing";
 
     /// <summary>
@@ -28,10 +25,6 @@ public static class SupplierVerification
     public static bool CanReceivePayments(string? connectedAccountId, bool chargesEnabled, bool payoutsEnabled) =>
         !string.IsNullOrWhiteSpace(connectedAccountId) && chargesEnabled && payoutsEnabled;
 
-    /// <summary>
-    /// What the supplier still lacks to be verified, in a stable order (<see cref="ProfileNotActive"/>,
-    /// <see cref="PaymentsNotEnabled"/>, <see cref="VatNumberMissing"/>); empty when it is verified.
-    /// </summary>
     public static IReadOnlyList<string> Missing(SupplierStatus status, bool canReceivePayments, string? vatNumber)
     {
         var missing = new List<string>(3);

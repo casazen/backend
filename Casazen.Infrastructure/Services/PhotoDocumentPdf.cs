@@ -5,7 +5,6 @@ using PdfSharp.Pdf;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Single-image clients also persist a PDF; the browser combines and rotates multi-page selections before upload.</summary>
 internal static class PhotoDocumentPdf
 {
     internal static async Task<IFormFile> NormalizeAsync(IFormFile file)

@@ -21,17 +21,8 @@ public sealed record LocalizedText(string It, string? En = null)
     public IReadOnlyDictionary<string, string>? Others { get; init; }
 }
 
-/// <summary>One of the (at most three) highlights of the page: an icon of the fixed list, a short title and an optional line.</summary>
-/// <param name="Icon">One of <see cref="SitePropertyProfileLimits.HighlightIcons"/>.</param>
-/// <param name="Title">The headline, e.g. «Piscina privata».</param>
-/// <param name="Text">A line that completes it; <c>null</c> = none.</param>
 public sealed record SiteHighlight(string Icon, LocalizedText Title, LocalizedText? Text = null);
 
-/// <summary>
-/// The texts of a listing in one language other than Italian (NF-31, ADR-035): the seven fields of the channel manager, plain strings. A field
-/// that is <c>null</c> was not written in that language. Italian is not kept here (it is in the columns of the property and in the
-/// <see cref="LocalizedText.It"/> part of the profile texts), but for <see cref="Transport"/>, which has no other place.
-/// </summary>
 public sealed record ListingTexts(
     string? Title = null,
     string? Description = null,
@@ -41,7 +32,6 @@ public sealed record ListingTexts(
     string? Transport = null,
     string? Rules = null)
 {
-    /// <summary>Nothing is written in any field.</summary>
     [JsonIgnore]
     public bool IsEmpty => ListingTextResolver.Fields.All(candidate => string.IsNullOrWhiteSpace(Get(candidate)));
 
@@ -57,7 +47,6 @@ public sealed record ListingTexts(
         _ => null,
     };
 
-    /// <summary>The same texts with <paramref name="field"/> set to <paramref name="value"/> (<c>null</c> clears it).</summary>
     public ListingTexts With(ListingTextField field, string? value) => field switch
     {
         ListingTextField.Title => this with { Title = value },
@@ -83,7 +72,6 @@ public sealed record ListingTexts(
 /// </remarks>
 public sealed record SitePropertyProfileDocument
 {
-    /// <summary>Version of the format; a change that older code cannot read gets a new number.</summary>
     public const int CurrentVersion = 1;
 
     private static readonly IReadOnlyDictionary<string, ListingTexts> NoTranslations = new Dictionary<string, ListingTexts>(StringComparer.Ordinal);
@@ -92,31 +80,22 @@ public sealed record SitePropertyProfileDocument
 
     public int V { get; init; } = CurrentVersion;
 
-    /// <summary>The zone of the house: «Campagna di Ostuni, Valle d'Itria».</summary>
     public LocalizedText? Zone { get; init; }
 
-    /// <summary>What is near: «10 minuti da Ostuni, 20 dal mare».</summary>
     public LocalizedText? Near { get; init; }
 
-    /// <summary>A note about the floor: «Piano terra, senza scale».</summary>
     public LocalizedText? FloorNote { get; init; }
 
-    /// <summary>A note about the outdoor spaces: «2.000 m² di giardino con uliveto».</summary>
     public LocalizedText? OutdoorNote { get; init; }
 
-    /// <summary>How check-in works: «In autonomia, con cassetta a codice».</summary>
     public LocalizedText? CheckInMethod { get; init; }
 
-    /// <summary>A note the host adds to the house rules.</summary>
     public LocalizedText? RulesNote { get; init; }
 
-    /// <summary>Up to <see cref="SitePropertyProfileLimits.MaxHighlights"/> highlights.</summary>
     public IReadOnlyList<SiteHighlight> Highlights { get; init => field = value ?? []; } = [];
 
-    /// <summary>Up to <see cref="SitePropertyProfileLimits.MaxSafetyNotes"/> notes: «La piscina non è sorvegliata».</summary>
     public IReadOnlyList<LocalizedText> SafetyNotes { get; init => field = value ?? []; } = [];
 
-    /// <summary>The labels the host chose, ids of <see cref="SitePropertyProfileLimits.Tags"/>.</summary>
     public IReadOnlyList<string> Tags { get; init => field = value ?? []; } = [];
 
     /// <summary>
@@ -126,22 +105,13 @@ public sealed record SitePropertyProfileDocument
     /// </summary>
     public IReadOnlyDictionary<string, ListingTexts> Translations { get; init => field = value ?? NoTranslations; } = NoTranslations;
 
-    /// <summary>
-    /// Who wrote each text of <see cref="Translations"/> (<see cref="TextOrigin"/>): key <c>"&lt;language&gt;.&lt;field&gt;"</c> (<c>fr.title</c>,
-    /// <c>en.neighborhood</c>). A text with no entry was written by a person.
-    /// </summary>
     public IReadOnlyDictionary<string, TextOrigin> Origins { get; init => field = value ?? NoOrigins; } = NoOrigins;
 
-    /// <summary>Nothing is written.</summary>
     [JsonIgnore]
     public bool IsEmpty =>
         Zone is null && Near is null && FloorNote is null && OutdoorNote is null && CheckInMethod is null && RulesNote is null
         && Highlights.Count == 0 && SafetyNotes.Count == 0 && Tags.Count == 0 && Translations.Count == 0;
 
-    /// <summary>
-    /// The document as the public pages read it: the texts in Italian and English only (the booking site reads nothing else), with no
-    /// translation and no origin. Every public reader goes through here, so a language added for the channels never reaches a page.
-    /// </summary>
     public SitePropertyProfileDocument ForPublicPage() => this with
     {
         Zone = WithoutOthers(Zone),
@@ -159,7 +129,6 @@ public sealed record SitePropertyProfileDocument
     private static LocalizedText? WithoutOthers(LocalizedText? text) => text?.Others is null ? text : text with { Others = null };
 }
 
-/// <summary>Reads and writes the <c>Properties.SiteProfileJson</c> column.</summary>
 public static class SitePropertyProfileJson
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
@@ -167,7 +136,6 @@ public static class SitePropertyProfileJson
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    /// <summary>The profile that holds nothing: what a property that never had one has.</summary>
     public static SitePropertyProfileDocument Empty { get; } = new();
 
     /// <summary>
@@ -189,7 +157,6 @@ public static class SitePropertyProfileJson
         }
     }
 
-    /// <summary>The profile stored in a column, as a public page reads it (<see cref="SitePropertyProfileDocument.ForPublicPage"/>).</summary>
     public static SitePropertyProfileDocument ParseForPublicPage(string? json) => Parse(json).ForPublicPage();
 
     // A text without its Italian part is not a text (a hand-edited column, a bug of an older release): left out rather than shown half.
@@ -225,7 +192,6 @@ public static class SitePropertyProfileJson
             ? null
             : text with { En = string.IsNullOrWhiteSpace(text.En) ? null : text.En, Others = CleanOthers(text.Others) };
 
-    // Only the languages of the listing other than Italian and English, each with a text.
     private static Dictionary<string, string>? CleanOthers(IReadOnlyDictionary<string, string>? others)
     {
         if (others is null)
@@ -244,7 +210,6 @@ public static class SitePropertyProfileJson
         return clean.Count == 0 ? null : clean;
     }
 
-    // Italian is kept only for the transport (its other texts are in the columns); a language without a text is left out.
     private static SortedDictionary<string, ListingTexts> CleanTranslations(IReadOnlyDictionary<string, ListingTexts> translations)
     {
         var clean = new SortedDictionary<string, ListingTexts>(StringComparer.Ordinal);
@@ -272,7 +237,6 @@ public static class SitePropertyProfileJson
         return clean;
     }
 
-    // An origin of a text that does not exist is left out, and so is one that is not a member of the enum.
     private static SortedDictionary<string, TextOrigin> CleanOrigins(
         IReadOnlyDictionary<string, TextOrigin> origins,
         IReadOnlyDictionary<string, ListingTexts> translations)
@@ -292,7 +256,6 @@ public static class SitePropertyProfileJson
         return clean;
     }
 
-    /// <summary>The text to store: <c>null</c> for a profile that holds nothing, so the column stays empty.</summary>
     public static string? Serialize(SitePropertyProfileDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);

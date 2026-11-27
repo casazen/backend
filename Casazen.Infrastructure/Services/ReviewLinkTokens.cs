@@ -12,7 +12,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed class ReviewLinkTokens
 {
-    /// <summary>The Data Protection purpose: a token made for another purpose does not open here.</summary>
     public const string Purpose = "Casazen.Reviews.InviteLink.v1";
 
     private const int MaxTokenLength = 1024;
@@ -25,14 +24,9 @@ public sealed class ReviewLinkTokens
         _protector = provider.CreateProtector(Purpose).ToTimeLimitedDataProtector();
     }
 
-    /// <summary>The token of <paramref name="bookingId"/>, valid until <paramref name="expiresAt"/>.</summary>
     public string Create(Guid bookingId, DateTimeOffset expiresAt) =>
         _protector.Protect(bookingId.ToString("N"), expiresAt);
 
-    /// <summary>
-    /// The booking a token was made for. False for anything that is not a token of ours: empty, too long, changed by a single character,
-    /// made with another key or purpose, or expired.
-    /// </summary>
     public bool TryRead(string? token, out Guid bookingId)
     {
         bookingId = Guid.Empty;

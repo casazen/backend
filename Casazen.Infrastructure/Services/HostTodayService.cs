@@ -31,22 +31,14 @@ public sealed class HostTodayService(
     TimeProvider? timeProvider = null,
     IHostCalendarService? calendar = null) : IHostTodayService
 {
-    /// <summary>Requests listed (the count covers all of them).</summary>
     public const int ApprovalListSize = 10;
 
-    /// <summary>Things to do listed (the count covers all of them).</summary>
     public const int TodoListSize = 20;
 
-    /// <summary>Interventions of the day listed (the count covers all of them; SR-03b).</summary>
     public const int ServiceListSize = 20;
 
-    /// <summary>
-    /// Things to do about an intervention listed (the count covers all of them; SR-03b): a backlog of finished jobs that nobody
-    /// marked paid must not push every other thing to do out of the list, so they never take more than half of it.
-    /// </summary>
     public const int ServiceTodoListSize = 10;
 
-    /// <summary>Things to do the calendar finds listed (the count covers all of them; SR-02a), by the same rule as the interventions.</summary>
     public const int CalendarTodoListSize = 10;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -162,8 +154,6 @@ public sealed class HostTodayService(
             : new HostTodayAlloggiati(status, AlloggiatiStatusRules.IsSent(status) ? null : AlloggiatiTerms.DeadlineUtc(booking));
     }
 
-    // The latest cleaning request tied to each leaving stay, whatever made it (the check-out wizard, the interventions page): one
-    // read for the departures of the day.
     internal async Task<IReadOnlyDictionary<Guid, HostTodayCleaning>> GetCleaningAsync(
         HostScope scope,
         IEnumerable<HostDashboardStay> departures,
@@ -233,21 +223,16 @@ public sealed class HostTodayService(
                 r.BookingId))
             .ToListAsync(cancellationToken);
 
-        // Fewer than the page: that is all of them, no second query for the count.
         var count = items.Count < ServiceListSize ? items.Count : await ofTheDay.CountAsync(cancellationToken);
         return new HostTodayList<HostTodayServiceRequest>(count, items);
     }
 
-    // The short-rent service requests of the properties of the scope (the org, and for a restricted scope the properties it reaches).
-    // A request with no property is nobody's here.
     private IQueryable<ServiceRequest> HostServiceRequestsInScope(HostScope scope) => db.ServiceRequests
         .AsNoTracking()
         .OnlyVisibleToHost()
         .Where(r => r.OrgId == scope.OrgId && r.RentalContext == ServiceRequestRentalContext.ShortRent && r.Property != null)
         .InScope(scope);
 
-    // The requests that wait for the host (HostServiceRequestTodoRules): a proposed time to answer, an amount to confirm, a job to
-    // pay. The first ones (ServiceTodoListSize), in the order of the things to do among the requests, and the count of them all.
     private async Task<ServiceRequestTodos> GetServiceRequestsToAnswerAsync(HostScope scope, CancellationToken cancellationToken)
     {
         var waiting = HostServiceRequestsInScope(scope).Where(HostServiceRequestTodoRules.NeedTheHost());
@@ -288,7 +273,6 @@ public sealed class HostTodayService(
         return latest.EffectiveStatus(nowUtc) switch
         {
             GuestCheckInSessionStatus.InCompilazione => HostTodayCheckInState.InProgress,
-            // The link exists, but an email that failed left the guest with nothing to open (the host can send it again).
             GuestCheckInSessionStatus.Inviato => latest.LinkEmailStatus == GuestCheckInLinkEmailStatus.Failed
                 ? HostTodayCheckInState.NotSent
                 : HostTodayCheckInState.Sent,
@@ -296,8 +280,6 @@ public sealed class HostTodayService(
         };
     }
 
-    // The confirmed stays whose payment failed and nothing else paid: the guest has to be followed up (a deferred charge
-    // that was declined, a card that needs another authentication). One item per stay.
     private async Task<FailedPayments> GetFailedPaymentsAsync(HostScope scope, CancellationToken cancellationToken)
     {
         var failed = db.Bookings
@@ -327,14 +309,10 @@ public sealed class HostTodayService(
                     .FirstOrDefault()))
             .ToListAsync(cancellationToken);
 
-        // Fewer than the page: that is all of them, no second query for the count.
         var count = items.Count < TodoListSize ? items.Count : await failed.CountAsync(cancellationToken);
         return new FailedPayments(count, items);
     }
 
-    // What the calendar finds that waits for the host (SR-02a): the nights taken twice, from the same calculation as the alerts of
-    // the calendar, for today and the 29 days after it. The first CalendarTodoListSize, and the count of them all. Nothing without
-    // the calendar service.
     private async Task<CalendarTodos> GetCalendarAlertsAsync(HostScope scope, DateTime todayInRome, CancellationToken cancellationToken)
     {
         if (calendar is null)
@@ -356,7 +334,6 @@ public sealed class HostTodayService(
     {
         var items = new List<HostTodoItem>();
 
-        // Requests first: the host's answer is due by RespondBy, then the request is cancelled.
         foreach (var booking in approvals)
         {
             items.Add(new HostTodoItem(
@@ -393,7 +370,6 @@ public sealed class HostTodayService(
                 DueAt(action, stay),
                 item.Label,
                 item.PropertyId ?? stay?.PropertyId,
-                // The label of a property to activate is its name.
                 item.PropertyId is not null ? item.Label : stay?.PropertyName,
                 item.BookingId,
                 null,
@@ -414,7 +390,6 @@ public sealed class HostTodayService(
                 [new ComplianceMissing(ComplianceMissingCodes.PaymentFailed, "payment")]));
         }
 
-        // The interventions that wait for the host (SR-03b): the label is the supplier, the target the request.
         foreach (var request in serviceRequests.Items)
         {
             var action = HostServiceRequestTodoRules.ActionOf(request.Status, request.HasProposal, request.FinalAmountNeedsConfirmation);
@@ -434,8 +409,6 @@ public sealed class HostTodayService(
                 request.Id));
         }
 
-        // A night taken twice (SR-02a): the label is the property, the target the first stay of the two (if one is a stay) and the
-        // property; it is due from the first night they share.
         foreach (var alert in calendarAlerts.Items)
         {
             items.Add(new HostTodoItem(
@@ -450,7 +423,6 @@ public sealed class HostTodayService(
                 [new ComplianceMissing(ComplianceMissingCodes.CalendarConflict, "dates")]));
         }
 
-        // The count covers every thing to do, the cockpit's sections that list only their latest items included.
         var total = approvals.Count + sections.Sum(section => section.Count) + failedPayments.Count + serviceRequests.Count
             + calendarAlerts.Count;
 
@@ -465,7 +437,6 @@ public sealed class HostTodayService(
         return new HostTodayList<HostTodoItem>(Math.Max(total, ordered.Count), ordered);
     }
 
-    // The property and the dates of the stays of the cockpit, in one read: what a stay's term is worked out from.
     private async Task<Dictionary<Guid, StayFacts>> GetBookingFactsAsync(
         IReadOnlyList<ComplianceSummaryItem> cockpitItems,
         CancellationToken cancellationToken)

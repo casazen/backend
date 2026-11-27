@@ -2,10 +2,6 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
 
-/// <param name="ConfirmationNumber">Reference of the real receipt; only with <see cref="AlloggiatiWebStatus.Inviato"/>.</param>
-/// <param name="ErrorCode">Stable error code; only with <see cref="AlloggiatiWebStatus.Errore"/> or <see cref="AlloggiatiWebStatus.Rifiutato"/>.</param>
-/// <param name="ReportedAt">When it was sent (receipt) or declared sent by the host; null while not sent.</param>
-/// <param name="DeadlineAt">Legal deadline (UTC): arrival + 24 hours, or + 6 hours for a short stay.</param>
 public record AlloggiatiStatusInfo(
     Guid BookingId,
     AlloggiatiWebStatus Status,
@@ -126,27 +122,19 @@ public record AlloggiatiReportReservation(
     DateTime RunAtUtc,
     string? PreviousJobId);
 
-/// <summary>What the arrival-day job did with a report.</summary>
 public enum AlloggiatiProcessOutcome
 {
-    /// <summary>Report moved to <see cref="AlloggiatiWebStatus.DaInviareManualmente"/>: the host must send it.</summary>
     MarkedForManualSubmission,
 
-    /// <summary>The report is past the arrival-day step (manual, sent, rejected): nothing to do.</summary>
     AlreadyHandled,
 
-    /// <summary>The arrival day has not started yet in Europe/Rome (the check-in date moved): schedule again.</summary>
     NotYetDue,
 
-    /// <summary>No report for this booking and guest (job queued before CO-11): reserve and schedule one.</summary>
     NotReserved,
 
-    /// <summary>The booking now points at another guest record: the job of that guest handles it.</summary>
     Superseded,
 
-    /// <summary>The booking is pending or cancelled: nothing is due.</summary>
     BookingInactive,
 
-    /// <summary>The booking no longer exists.</summary>
     BookingNotFound,
 }

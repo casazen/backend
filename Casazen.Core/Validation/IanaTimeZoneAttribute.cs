@@ -21,7 +21,6 @@ public sealed class IanaTimeZoneAttribute : RegularExpressionAttribute
 
     public override bool IsValid(object? value) => value is null || IsKnownIanaId(value.ToString()?.Trim());
 
-    /// <summary>True for an IANA id the server can resolve; false for blanks, Windows ids and unknown names.</summary>
     public static bool IsKnownIanaId(string? id) =>
         !string.IsNullOrWhiteSpace(id)
         && TimeZoneInfo.TryFindSystemTimeZoneById(id, out var zone)

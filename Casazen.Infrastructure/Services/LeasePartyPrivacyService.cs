@@ -40,16 +40,12 @@ public sealed class LeasePartyPrivacyService(
 {
     private const int ChunkSize = 100;
 
-    /// <summary>Placeholder of the names and fiscal code of an anonymized party (same as the guests, CO-15).</summary>
     public const string AnonymizedValue = GuestDataEraser.AnonymizedName;
 
-    /// <summary>The anonymized e-mail of a party: unique per row, never deliverable.</summary>
     public static string AnonymizedEmail(Guid partyId) => $"ANON-{partyId:N}@deleted.local";
 
-    /// <summary>True from the calendar day after <paramref name="endDate"/> (the last day of the lease).</summary>
     public static bool HasEnded(DateTime endDate, DateTime todayInRome) => endDate.Date < todayInRome.Date;
 
-    /// <summary>First day on which the lease has ended: the day after its end date.</summary>
     public static DateTime EndedFrom(DateTime endDate) =>
         DateTime.SpecifyKind(endDate.Date.AddDays(1), DateTimeKind.Utc);
 
@@ -113,7 +109,6 @@ public sealed class LeasePartyPrivacyService(
         var today = timeProvider.TodayInRome();
         var candidateEndBefore = configured ? period.CandidateStartBefore(today) : DateTime.MinValue;
 
-        // Coarse filter in SQL, exact check in memory (month ends, RetentionPeriodOptions.CandidateStartBefore).
         var candidates = await db.LeaseContracts
             .Where(l => l.PartiesAnonymizedAt == null
                 && ((l.ErasureRequested && l.CurrentTermEndDate < today) || (configured && l.CurrentTermEndDate < candidateEndBefore)))
@@ -150,10 +145,6 @@ public sealed class LeasePartyPrivacyService(
         return new LeasePartyRetentionRunResult(configured, leases, parties, kept);
     }
 
-    /// <summary>
-    /// Anonymizes the parties of <paramref name="lease"/> (loaded with its parties) that are not parties of another lease
-    /// of the same org that has not ended; marks the lease when none is left. Stages the changes without saving.
-    /// </summary>
     private async Task<(int Anonymized, int Kept)> AnonymizePartiesAsync(
         LeaseContract lease,
         DateTime today,
@@ -163,7 +154,6 @@ public sealed class LeasePartyPrivacyService(
         var pending = lease.Parties.Where(p => p.AnonymizedAt is null).ToList();
         var codes = pending.Select(p => NormalizeFiscalCode(p.FiscalCode)).Where(c => c.Length > 0).Distinct().ToList();
 
-        // Same person (fiscal code) in another lease of the org still in force: keep the data until that one ends too.
         var activeCodes = codes.Count == 0
             ? []
             : await db.Parties
@@ -189,7 +179,6 @@ public sealed class LeasePartyPrivacyService(
 
         if (anonymizedIds.Count > 0)
         {
-            // The values typed in the wizard repeat the data of the parties: they go with them (LR-12).
             lease.DraftData = null;
             lease.OpenapiRegistrationData = null;
 
@@ -204,8 +193,6 @@ public sealed class LeasePartyPrivacyService(
                 signer.UpdatedAt = now;
             }
 
-            // What the import of a bank statement remembers of who paid (hashes of the payer's name and IBAN) is about the tenants: it goes with them.
-            // The rows stay, they only say that a credit paid an installment.
             var payments = await db.RentBankMovements
                 .Where(m => m.LeaseContractId == lease.Id && (m.PayerIbanHash != null || m.PayerNameHash != null))
                 .ToListAsync(cancellationToken);
@@ -221,13 +208,9 @@ public sealed class LeasePartyPrivacyService(
         {
             lease.PartiesAnonymizedAt = now;
 
-            // Every party is anonymized (or the lease never had one: a draft whose entries are all incomplete lives in DraftData only):
-            // the typed state goes too, whatever it holds for entries that never became a party (LR-12).
             lease.DraftData = null;
             lease.OpenapiRegistrationData = null;
 
-            // The need of a transitory contract and the documents that prove it are free text that can say why a person lives where
-            // they live: they go with the parties (TR).
             lease.TransitoryNeed = null;
             lease.TransitoryDocumentation = null;
         }
@@ -255,10 +238,6 @@ public sealed class LeasePartyPrivacyService(
         return (anonymizedIds.Count, kept);
     }
 
-    /// <summary>
-    /// Replaces every personal field of <paramref name="party"/> (names, fiscal code, citizenship, e-mail) and clears the residence
-    /// and the day the documents were checked (LR-12); role and extra-EU flag stay.
-    /// </summary>
     public static void AnonymizeParty(Party party, DateTime now)
     {
         party.FirstName = AnonymizedValue;

@@ -35,7 +35,6 @@ namespace Casazen.Infrastructure.Identity;
 /// </remarks>
 public sealed class IdentityDecisionEngine
 {
-    /// <summary>Decides <paramref name="bundle"/>. Never throws for a bundle that is not null; a value that is not one of its enum is never a pass.</summary>
     public IdentityDecision Decide(IdentityEvidenceBundle bundle)
     {
         ArgumentNullException.ThrowIfNull(bundle);
@@ -46,11 +45,9 @@ public sealed class IdentityDecisionEngine
         var assurancePassed = AssuranceSatisfied(bundle);
         var reasons = Reasons(bundle, presence, assurancePassed);
 
-        // a. The policy or the models are not there: a person decides, never an approval.
         if (bundle.PolicyState != IdentityPolicyState.Ready || bundle.ModelsFault == IdentityModelsFault.NotReady)
             return Review([.. reasons, Processing(VerificationReasons.Results.Unavailable)], IdentityOutcomeCodes.Unavailable, mode);
 
-        // a. A model failed or the time was over, or a check or the match could not be made: a person decides, never an approval.
         if (bundle.ModelsFault != IdentityModelsFault.None
             || presence.Any(check => check.Status == IdentityCheckStatus.Unavailable)
             || bundle.Match?.State == MatchState.Unavailable)
@@ -78,23 +75,18 @@ public sealed class IdentityDecisionEngine
             return Review(reasons, IdentityOutcomeCodes.Review, mode);
         }
 
-        // c. The document: an identifying conflict, an invalid MRZ, an expired document, a coherence that could not be told, a document not complete.
         if (!documentPassed)
             return Review(reasons, IdentityOutcomeCodes.Review, mode);
 
-        // d. The similarity: in the review band, under the floor, a weak frame, no portrait, or no comparison at all.
         if (bundle.Match is not { State: MatchState.Ok, AcceptPassed: true })
             return Review(reasons, IdentityOutcomeCodes.Review, mode);
 
-        // e. No format, or a format that does not give the assurance the segment requires on the channel.
         if (!assurancePassed)
             return Review(reasons, IdentityOutcomeCodes.Review, mode);
 
-        // f. Every check of the presence passed: a check that was not run, or whose status is not a pass, never approves.
         if (presence.Any(check => check.Status != IdentityCheckStatus.Passed))
             return Review(reasons, IdentityOutcomeCodes.Review, mode);
 
-        // f. The policy would approve. The approval is the outcome only where the segment allows it; elsewhere it is the shadow decision and a person decides.
         if (bundle.Segment is { AutoApprovalAllowed: true })
             return new IdentityDecision(IdentityFinalDecision.AutoApproved, IdentityShadowDecision.Approve, reasons, [], IdentityOutcomeCodes.AutoApproved, IdentityDecisionMode.Automatic);
 
@@ -118,11 +110,6 @@ public sealed class IdentityDecisionEngine
         return new VerificationReason(VerificationReasons.Checks.Processing, result);
     }
 
-    /// <summary>
-    /// The checks of the presence the decision reads: every check of <see cref="IdentityEvidenceBundle.PresenceChecks"/> in its order (one that is missing is
-    /// <see cref="IdentityCheckStatus.NotRun"/>), then any other check the bundle carries, in its order. A check given more than once is its worst entry (unavailable, then failed,
-    /// then not run, then passed), and its failure is correctable only when every failed entry is.
-    /// </summary>
     private static List<CheckOutcome> PresenceOf(IdentityEvidenceBundle bundle)
     {
         var given = bundle.Presence ?? [];
@@ -152,7 +139,6 @@ public sealed class IdentityDecisionEngine
         return checks;
     }
 
-    /// <summary>How bad a status is, to keep the worst entry of a check: a value that is not one of the enum counts as unavailable.</summary>
     private static int Severity(IdentityCheckStatus status)
     {
         return status switch
@@ -164,10 +150,6 @@ public sealed class IdentityDecisionEngine
         };
     }
 
-    /// <summary>
-    /// The format gives, on the channel, at least the assurance the segment requires: no format, a level the registry does not give, a level that is not one, or a segment that
-    /// says <c>assurance_requires_chip</c> is not satisfied. Without a segment the level required is <c>consistency</c>, the level of a segment created with no qualification.
-    /// </summary>
     private static bool AssuranceSatisfied(IdentityEvidenceBundle bundle)
     {
         if (string.IsNullOrWhiteSpace(bundle.FormatId))
@@ -180,7 +162,6 @@ public sealed class IdentityDecisionEngine
         return required >= 0 && RankOf(bundle.ProvidedAssurance) >= required;
     }
 
-    /// <summary>The order of the levels of assurance (the one of <c>IdentitySegmentService</c>): <c>consistency</c> below <c>cryptographic</c>; -1 for a code that is not a level.</summary>
     private static int RankOf(string? level)
     {
         return level switch
@@ -191,7 +172,6 @@ public sealed class IdentityDecisionEngine
         };
     }
 
-    /// <summary>The reasons of the decision, one per check in a fixed order: the presence, the coherence of the document, the similarity, the format when there is none, the assurance.</summary>
     private static List<VerificationReason> Reasons(IdentityEvidenceBundle bundle, List<CheckOutcome> presence, bool assurancePassed)
     {
         var reasons = new List<VerificationReason>(presence.Count + 5);
@@ -220,7 +200,6 @@ public sealed class IdentityDecisionEngine
         };
     }
 
-    /// <summary>The result of the coherence of the document: a coherence that could not be told, or a document not complete, is <c>not_run</c> (never a pass).</summary>
     private static string CoherenceResult(IdentityEvidenceBundle bundle)
     {
         if (!bundle.DocumentComplete)
@@ -236,11 +215,6 @@ public sealed class IdentityDecisionEngine
         };
     }
 
-    /// <summary>
-    /// The reason of the similarity with the number the reviewer needs: the aggregate against <c>match.accept</c> when it passed or is in the review band, the weakest frame against
-    /// <c>match.minEachFrame</c> when the aggregate reached the acceptance but a frame did not, the aggregate against <c>match.reviewFloor</c> under the floor. The verdicts are the
-    /// matcher's (<see cref="MatchSummary.AcceptPassed"/>, <see cref="MatchSummary.InReviewBand"/>); the comparison below only chooses which number to show.
-    /// </summary>
     private static VerificationReason SimilarityReason(MatchSummary? match)
     {
         const string check = VerificationReasons.Checks.Similarity;

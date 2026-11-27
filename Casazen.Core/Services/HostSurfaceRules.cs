@@ -15,10 +15,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static class HostSurfaceRules
 {
-    /// <param name="org">The org, with its stored choices (<see cref="Org.GuestAreaOnOwnDomain"/>, <see cref="Org.OwnerPortalOnOwnDomain"/>, <see cref="Org.UseOwnDomainForLinks"/>, <see cref="Org.OwnerLoginHostState"/>).</param>
-    /// <param name="servedMode">How the org's host is really served: <see cref="PublicHostMode.CustomDomain"/> only for a verified custom domain that is paid for.</param>
-    /// <param name="whiteLabelHost">The flag <c>WhiteLabelHost</c>.</param>
-    /// <param name="siteEmbed">The flag <c>SiteEmbed</c>.</param>
     public static HostSurfaces Evaluate(Org org, PublicHostMode servedMode, bool whiteLabelHost, bool siteEmbed)
     {
         ArgumentNullException.ThrowIfNull(org);
@@ -29,7 +25,6 @@ public static class HostSurfaceRules
         var ownerLoginReady = ownerPortal && org.OwnerLoginHostState == OwnerLoginHostState.Ready;
         var useOwnDomainForLinks = ownDomain && org.UseOwnDomainForLinks;
 
-        // An owner link moves only where the owner can sign in: never to a page that says «not yet enabled».
         return new HostSurfaces(
             GuestArea: guestArea,
             OwnerPortal: ownerPortal,

@@ -6,7 +6,6 @@ using Stripe;
 
 namespace Casazen.Infrastructure.GuestPortal;
 
-/// <summary>Platform-account card holds for guest supplier orders in a dedicated Stripe test environment.</summary>
 public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider clock, IConfiguration configuration)
 {
     public const string Section = "GuestPortal:SupplierStripeSandbox";
@@ -119,7 +118,6 @@ public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider 
             if (!await PrepareSupplierDecisionAsync(order, action, ct)) return false;
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
-            // Never confirm a PaymentIntent until its ID and the supplier decision have committed.
             if (action == "accept" && order.State == GuestSupplierOrderState.PaymentProcessing)
             {
                 await transaction.DisposeAsync();
@@ -168,7 +166,6 @@ public sealed partial class GuestSupplierCheckout(AppDbContext db, TimeProvider 
 
     private async Task LockAsync(GuestSupplierOrder order, CancellationToken ct)
     {
-        // Serialize capture, cancellation and asynchronous callbacks, including requests from different application nodes.
         await db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"GuestSupplierOrders\" WHERE \"Id\" = {order.Id} FOR UPDATE", ct);
         await db.Entry(order).ReloadAsync(ct);
     }

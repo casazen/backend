@@ -53,13 +53,10 @@ public sealed class ChannelMappingService(
     IAiProvider? ai = null,
     IBackgroundJobClient? jobs = null) : IChannelMappingService
 {
-    /// <summary>The entity type of the "To do" about a mapping.</summary>
     public const string MappingEntityType = "OctorateListingMapping";
 
-    /// <summary>The entity type of the "To do" about an imported property.</summary>
     public const string PropertyEntityType = "Property";
 
-    /// <summary>Calls of the org's bucket a refresh leaves to the person's own actions when it reads the rooms.</summary>
     public const int RoomReadReserve = 20;
 
     private static readonly IReadOnlySet<string> NoTokenRoles = new HashSet<string>(StringComparer.Ordinal);
@@ -107,7 +104,6 @@ public sealed class ChannelMappingService(
             open.Add((row, listing));
         }
 
-        // The rooms (one call per listing), while the org has calls to spare: the listings without rooms first.
         var roomsLeft = 0;
         foreach (var (row, _) in open.OrderBy(entry => entry.Row.SnapshotRoomsJson == OctorateListingMapping.EmptyJsonArray ? 0 : 1))
         {
@@ -144,7 +140,6 @@ public sealed class ChannelMappingService(
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, OctorateListingMapping.AccommodationIndexName))
         {
-            // Another refresh of the org inserted the same listing first.
             throw new DomainConflictException("octorate_mapping_refresh_conflict", "OctorateMappingRefreshConflict");
         }
 
@@ -217,9 +212,6 @@ public sealed class ChannelMappingService(
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         var row = await RowAsync(orgId, octorateAccommodationId, ct);
 
-        // The property the listing is proposed or confirmed to is the decision of whoever reaches it, not only the new property's:
-        // reaching the new one alone does not take the listing over, and a confirmed listing is not moved at all (it is rejected first).
-        // A property that was deleted is no property.
         var linked = row.PropertyId is { } linkedId && linkedId != propertyId ? await FindPropertyAsync(orgId, linkedId, ct) : null;
         if (linked is not null && !await CanReachAsync(orgId, linked, userId, tokenRoles, ct))
             throw PropertyNotFound();
@@ -301,7 +293,6 @@ public sealed class ChannelMappingService(
         }
         else if (await hostScopeResolver.ResolveAsync(userId, tokenRoles ?? NoTokenRoles, orgId, ct) is not { IsOrgWide: true })
         {
-            // A listing with no property is an org-level decision.
             throw MappingNotFound();
         }
 
@@ -352,7 +343,6 @@ public sealed class ChannelMappingService(
         MarkConfirmed(row, created.Id, userId);
         await SaveConfirmedAsync(ct);
 
-        // Inactive until a person checks what was imported (LST-03).
         await activities.CreateAsync(
             new CreateTodoRequest
             {
@@ -374,7 +364,6 @@ public sealed class ChannelMappingService(
 
     public async Task<bool> IsWriteBlockedAsync(Guid propertyId, CancellationToken ct)
     {
-        // Called by the content push and the booking actions, also from jobs: the property's own org, read across orgs.
         var property = await db.Properties
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter, AppDbContext.SoftDeleteQueryFilter])
             .AsNoTracking()
@@ -394,7 +383,6 @@ public sealed class ChannelMappingService(
         return undecided.Any(m => m.PropertyId == propertyId || CandidatesOf(m.CandidatePropertyIdsJson).Contains(propertyId));
     }
 
-    /// <summary>The room of a confirmed listing: the one asked (it must be a room of the listing), else the only room, else none.</summary>
     internal static string? ChooseRoom(IReadOnlyList<OctorateRoom> rooms, string? requested)
     {
         var units = rooms.Where(room => room.IsRoom).ToList();
@@ -407,7 +395,6 @@ public sealed class ChannelMappingService(
         return units.Count == 1 ? units[0].Id : null;
     }
 
-    /// <summary>Channel code to the id of the listing on the channel, exactly as Octorate gives them (D6); the first of a channel wins.</summary>
     internal static string ChannelIdsJsonOf(IReadOnlyList<OctorateChannelConnection> connections)
     {
         var ids = new SortedDictionary<string, string>(StringComparer.Ordinal);
@@ -428,7 +415,6 @@ public sealed class ChannelMappingService(
         {
             OrgId = orgId,
             OwnerId = userId,
-            // A listing with no name gets a neutral one: the host sees it, and the product says «channel manager», never the supplier's name.
             Name = Cut(listing.Name, 100) ?? $"Annuncio {listing.Id}",
             Address = Cut(listing.Address, 500) ?? string.Empty,
             City = Cut(listing.City, 50) ?? string.Empty,
@@ -485,10 +471,6 @@ public sealed class ChannelMappingService(
         row.UpdatedAt = now;
     }
 
-    /// <summary>
-    /// A property confirmed to one listing is no longer the proposal or a candidate of the other open listings of the org: they would
-    /// block its writes for nothing. An ambiguous listing left without candidates is offered for import.
-    /// </summary>
     private async Task ReleaseFromOtherRowsAsync(Guid orgId, Guid propertyId, Guid confirmedRowId, CancellationToken ct)
     {
         var open = await db.OctorateListingMappings
@@ -531,12 +513,10 @@ public sealed class ChannelMappingService(
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, OctorateListingMapping.ConfirmedPropertyIndexName))
         {
-            // Confirmed to another listing by a parallel request: the index is the guarantee.
             throw PropertyTaken();
         }
     }
 
-    /// <summary>The row of the listing in the org's connection of this environment.</summary>
     private async Task<OctorateListingMapping> RowAsync(Guid orgId, string octorateAccommodationId, CancellationToken ct)
     {
         var accommodationId = octorateAccommodationId?.Trim();
@@ -567,7 +547,6 @@ public sealed class ChannelMappingService(
             throw PropertyNotFound();
     }
 
-    /// <summary>A property of the org with the creator the reach of an account in no org team depends on; <c>null</c> when it is not the org's or was deleted.</summary>
     private Task<PropertyRef?> FindPropertyAsync(Guid orgId, Guid propertyId, CancellationToken ct) =>
         db.Properties
             .AsNoTracking()
@@ -578,7 +557,6 @@ public sealed class ChannelMappingService(
     private Task<bool> CanReachAsync(Guid orgId, PropertyRef property, string userId, IReadOnlySet<string>? tokenRoles, CancellationToken ct) =>
         hostScopeResolver.CanReachPropertyAsync(userId, tokenRoles ?? NoTokenRoles, orgId, property.Id, property.OwnerId, ct);
 
-    /// <summary>The properties of the org a listing can be proposed for: not deleted, and not confirmed to another listing already.</summary>
     private async Task<IReadOnlyList<MatchProperty>> CandidatesAsync(Guid orgId, CancellationToken ct)
     {
         var confirmed = await db.OctorateListingMappings
@@ -695,6 +673,5 @@ public sealed class ChannelMappingService(
 
     private static DomainConflictException PlanLimitReached() => new("plan_limit_reached", "PlanLimitReached");
 
-    /// <summary>A property of the org and the user who created it, which decides the reach of an account in no org team.</summary>
     private sealed record PropertyRef(Guid Id, string OwnerId);
 }

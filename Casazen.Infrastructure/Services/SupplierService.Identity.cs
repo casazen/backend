@@ -55,7 +55,6 @@ public partial class SupplierService
                     false, false, false)).ToListAsync(ct);
 
         var vat = supplied.VatNumber;
-        // Only Italy's eleven-digit number is equivalent with and without the IT prefix.
         var italianVat = vat is null ? null : Regex.Match(vat, "^(?:IT)?([0-9]{11})$");
         var vatForms = italianVat?.Success == true ? new[] { italianVat.Groups[1].Value, "IT" + italianVat.Groups[1].Value }
             : vat is null ? Array.Empty<string>() : [vat];
@@ -64,7 +63,6 @@ public partial class SupplierService
             ? new[] { phone, "00" + phone[1..], phone[3..] } : [phone, "00" + phone[1..]];
         var fiscal = supplied.FiscalCode;
 
-        // Filter at the database. Unmatched profiles, phone numbers and tax identifiers never leave it.
         var matches = from profile in db.SupplierProfiles.AsNoTracking()
                       let vat1 = (profile.VatNumber ?? "").Trim().ToUpper().Replace(" ", "").Replace(".", "").Replace("-", "")
                       let vat2 = (profile.Org.VatId ?? "").Trim().ToUpper().Replace(" ", "").Replace(".", "").Replace("-", "")
@@ -118,7 +116,6 @@ public partial class SupplierService
                 .Select(p => p.Email).SingleOrDefaultAsync(ct);
             if (recipient is null)
                 throw new DomainRuleException("supplier_identity_choice_invalid", "SupplierIdentityChoiceInvalid");
-            // The invitation travels only to the profile owner. Acceptance still checks account, token and the same org.
             invite.Email = recipient;
             invite.IdentifiedSupplierOrgId = id;
             invite.HostOriginAtInvitation = !match!.Published;

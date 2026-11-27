@@ -5,13 +5,8 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>The columns the header of a file names, by position; <c>null</c> when the file has no such column.</summary>
 internal sealed record ImportColumns(int? PropertyId, int? CinCode, int? Comune, int? Region, int? Rooms, int? LockCode);
 
-/// <summary>
-/// One row of data of a file, read: each field is the trimmed text of its cell, or <c>null</c> when the column is not in the file or the cell is
-/// empty. A class, not a record, and the lock code is held here only for as long as the call lasts: nothing prints it.
-/// </summary>
 internal sealed class ParsedImportRow(int number)
 {
     public int Number { get; } = number;
@@ -29,7 +24,6 @@ internal sealed class ParsedImportRow(int number)
     public string? LockCode { get; init; }
 }
 
-/// <summary>A file read and understood: where its columns are, its rows of data, and the header cells that name nothing the import knows.</summary>
 internal sealed record ParsedImport(ImportColumns Columns, IReadOnlyList<ParsedImportRow> Rows, IReadOnlyList<string> UnknownColumns);
 
 /// <summary>
@@ -50,7 +44,6 @@ internal static class OnboardingBulkImportParser
 
     private static readonly Dictionary<string, string> Aliases = BuildAliases();
 
-    /// <summary>True for a text file that is binary in disguise: a zip signature or a NUL byte in its first kilobytes.</summary>
     public static bool LooksBinary(byte[] content)
     {
         if (OnboardingXlsxReader.LooksLikeZip(content))
@@ -59,9 +52,6 @@ internal static class OnboardingBulkImportParser
         return content.AsSpan(0, Math.Min(content.Length, 4096)).Contains((byte)0);
     }
 
-    // ---------------------------------------------------------------- CSV
-
-    /// <summary>The non-blank rows of a CSV, in order, with their row numbers.</summary>
     public static List<ImportTableRow> ReadCsv(byte[] content)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -101,7 +91,6 @@ internal static class OnboardingBulkImportParser
         void Append(char ch)
         {
             fieldStarted = true;
-            // A field is never longer than the import keeps; the rest of a runaway cell is read and dropped.
             if (field.Length < BulkImportLimits.MaxCellLength)
                 field.Append(ch);
         }
@@ -150,7 +139,6 @@ internal static class OnboardingBulkImportParser
             }
         }
 
-        // A quote that never closes would swallow the rest of the file into one cell: the file is not a CSV.
         if (inQuotes)
             throw new DomainRuleException(BulkImportCodes.FileUnreadable, "OnboardingImportFileUnreadable");
 
@@ -176,7 +164,6 @@ internal static class OnboardingBulkImportParser
         }
     }
 
-    /// <summary>The delimiter of the header line: <c>;</c> when it has more of them than commas outside quotes, else <c>,</c>.</summary>
     private static char DetectDelimiter(string text)
     {
         var inQuotes = false;
@@ -192,7 +179,6 @@ internal static class OnboardingBulkImportParser
             }
             else if (!inQuotes && (ch == '\r' || ch == '\n'))
             {
-                // The first line that has something in it is the header.
                 if (seenContent)
                     break;
             }
@@ -215,13 +201,6 @@ internal static class OnboardingBulkImportParser
         return semicolons > commas ? ';' : ',';
     }
 
-    // ---------------------------------------------------------------- header and rows
-
-    /// <summary>
-    /// Understands a table: the first row is the header. 422 <see cref="BulkImportCodes.FileEmpty"/> for a table with no row, with only the header or with
-    /// no row of data; <see cref="BulkImportCodes.ColumnsUnrecognized"/> without a column that names the property or without one that holds data to
-    /// import; <see cref="BulkImportCodes.TooManyRows"/> past 1,000 rows of data.
-    /// </summary>
     public static ParsedImport Parse(IReadOnlyList<ImportTableRow> table)
     {
         ArgumentNullException.ThrowIfNull(table);
@@ -237,7 +216,6 @@ internal static class OnboardingBulkImportParser
             if (title.Length == 0)
                 continue;
 
-            // The first column of a name wins; a repeat is reported as unknown, once, like a column the import does not know.
             if (Aliases.TryGetValue(Key(title), out var name) && found.TryAdd(name, column))
                 continue;
 
@@ -290,7 +268,6 @@ internal static class OnboardingBulkImportParser
         return text.Length == 0 ? null : text;
     }
 
-    /// <summary>A header cell in the form compared: lower case, no accents, only letters and digits (so <c>Property ID</c>, <c>property_id</c> and <c>propertyId</c> are one name).</summary>
     internal static string Key(string title)
     {
         var decomposed = title.Normalize(NormalizationForm.FormD);
@@ -307,7 +284,6 @@ internal static class OnboardingBulkImportParser
         return key.ToString();
     }
 
-    /// <summary>The names a column goes by, in Italian and in English, each in the form of <see cref="Key"/>.</summary>
     private static Dictionary<string, string> BuildAliases()
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);

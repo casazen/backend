@@ -84,11 +84,9 @@ public sealed class GuestPortalOverviewService(
             features);
     }
 
-    /// <summary>A day of the stay as <c>yyyy-MM-dd</c>: the date of the stored day, never a time.</summary>
     internal static string IsoDay(DateTime day) =>
         DateOnly.FromDateTime(day).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    /// <summary>The word of the status of the stay: <c>confirmed</c>, <c>checkedIn</c>, <c>checkedOut</c>, <c>cancelled</c>.</summary>
     internal static string StatusWord(BookingStatus status) => status switch
     {
         BookingStatus.Confirmed => "confirmed",
@@ -98,8 +96,6 @@ public sealed class GuestPortalOverviewService(
         _ => "pending",
     };
 
-    // A channel account link is offered for the synced thread of this stay only.
-    // The impersonation-free guest action is to open the channel as themselves.
     private async Task<bool> HasSyncedChannelConversationAsync(PortalContext context, CancellationToken ct)
     {
         if (!context.IsOta || !featureFlags.IsEnabled(FeatureFlags.OctorateConnector)
@@ -176,7 +172,6 @@ public sealed class GuestPortalOverviewService(
                 continue;
             }
 
-            // A step always opens a section the guest sees.
             if (step is not null && views.Any(v => string.Equals(v.Key, step.Section, StringComparison.Ordinal)))
                 return step;
         }

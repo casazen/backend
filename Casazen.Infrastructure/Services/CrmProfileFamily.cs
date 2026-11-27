@@ -3,18 +3,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// The profiles that belong together after the merges of duplicates (E07/F01/US03/T02): the living profile (the survivor) and every tombstone that
-/// leads to it, chains of merges included. A merge keeps the profile that goes as a tombstone (<c>MergedIntoProfileId</c>) with all it held, and moves
-/// its guests and its contacts to the survivor; the rights of a guest (export, erasure, retention: E07/F06/US02/T01) cover the whole family, or a
-/// tombstone would keep the tags, the country, the language and the keyed hashes of a guest that was erased.
-/// </summary>
 internal static class CrmProfileFamily
 {
-    /// <summary>The most hops followed from a profile to its survivor, as the matching and the merge service follow them.</summary>
     internal const int MaxMergeHops = 10;
 
-    /// <summary>The deepest level of tombstones read below a survivor: a bound against a loop, far beyond any chain of merges.</summary>
     internal const int MaxDepth = 50;
 
     /// <summary>
@@ -28,7 +20,6 @@ internal static class CrmProfileFamily
         Guid profileId,
         CancellationToken cancellationToken)
     {
-        // Up: the living profile at the end of the merges that start at the profile of the guest.
         var survivorId = profileId;
         var visited = new HashSet<Guid> { profileId };
         for (var hop = 0; hop < MaxMergeHops; hop++)
@@ -44,7 +35,6 @@ internal static class CrmProfileFamily
             survivorId = target;
         }
 
-        // Down: every tombstone that points to the survivor, and every tombstone that points to one of them.
         var ids = new List<Guid> { survivorId };
         var seen = new HashSet<Guid> { survivorId };
         var level = new List<Guid> { survivorId };

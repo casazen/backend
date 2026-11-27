@@ -9,9 +9,5 @@ namespace Casazen.Infrastructure.Data.Encryption;
 /// </summary>
 public static class PropertyOwnerEncryptionPurpose
 {
-    /// <summary>
-    /// Data Protection purpose for property owner financial data (IBAN and fiscal code).
-    /// NEVER change it: stored encrypted values could not be decrypted.
-    /// </summary>
     public const string Purpose = "Casazen.PropertyOwner.Financial";
 }

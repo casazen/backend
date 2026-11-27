@@ -22,7 +22,6 @@ public sealed partial class AlloggiatiDelegationService(
     IActivityLog activityLog,
     TimeProvider? timeProvider = null) : IAlloggiatiDelegationService
 {
-    /// <summary>The error code of a version of the delegation text that is not a code of at most 40 characters.</summary>
     public const string VersionInvalidCode = "alloggiati_delegation_version_invalid";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -39,9 +38,8 @@ public sealed partial class AlloggiatiDelegationService(
         var version = Version(textVersion);
         var org = await db.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, ct) ?? throw OrgNotFound(orgId);
         if (IsValid(org) && string.Equals(org.AlloggiatiDelegationTextVersion, version, StringComparison.Ordinal))
-            return Info(org); // The version already granted, once more: nothing changes, nothing is recorded.
+            return Info(org);
 
-        // A new grant, or a new version of the text: who, when and which version; a revocation before it is over.
         var now = Now();
         org.AlloggiatiDelegationGrantedAt = now;
         org.AlloggiatiDelegationGrantedByUserId = userId;
@@ -60,9 +58,8 @@ public sealed partial class AlloggiatiDelegationService(
         RequireUser(userId);
         var org = await db.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, ct) ?? throw OrgNotFound(orgId);
         if (!IsValid(org))
-            return Info(org); // Never granted, or already revoked: nothing changes, nothing is recorded.
+            return Info(org);
 
-        // The grant stays as it was (who, when, which version): the revocation is added to it.
         var now = Now();
         org.AlloggiatiDelegationRevokedAt = now;
         org.AlloggiatiDelegationRevokedByUserId = userId;
@@ -72,7 +69,6 @@ public sealed partial class AlloggiatiDelegationService(
         return Info(org);
     }
 
-    /// <summary>Granted and not revoked.</summary>
     private static bool IsValid(Org org) =>
         org.AlloggiatiDelegationGrantedAt is not null && org.AlloggiatiDelegationRevokedAt is null;
 
@@ -84,7 +80,6 @@ public sealed partial class AlloggiatiDelegationService(
             org.AlloggiatiDelegationTextVersion,
             org.AlloggiatiDelegationRevokedAt);
 
-    /// <summary>The version of the delegation text, trimmed: a code of at most 40 characters, or a 422.</summary>
     private static string Version(string? textVersion)
     {
         var version = textVersion?.Trim();
@@ -105,7 +100,6 @@ public sealed partial class AlloggiatiDelegationService(
     private static NotFoundException OrgNotFound(Guid orgId) =>
         new($"Org {orgId} not found.") { Code = "org_not_found", MessageKey = "OrganizationNotFound" };
 
-    /// <summary>Now, cut to the microsecond PostgreSQL keeps, so what is written and what is read back compare equal.</summary>
     private DateTime Now() => UtcDateTime.TruncateToMicroseconds(_clock.GetUtcNow().UtcDateTime);
 
     /// <summary>

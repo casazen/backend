@@ -9,10 +9,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>The decisions of the agency on the owner stays and the rules it gives them (E07/F07/US01/T01).</summary>
 public sealed partial class OwnerStayService
 {
-    /// <summary>The most stays a list of the console answers.</summary>
     private const int MaxAgencyList = 500;
 
     public async Task<IReadOnlyList<OwnerStayAdminView>> ListForAgencyAsync(
@@ -108,7 +106,6 @@ public sealed partial class OwnerStayService
                 Audit(stay, actorUserId, OwnerPortalAuditStatuses.Cancelled);
             }
 
-            // Its own block, and only that one, is given back now (also the one a withdrawal of the owner left to the background work).
             if (stay.CalendarBlockId is not null && stay.BlockReleasedAt is null)
                 await ReleaseCoreAsync(stay, actorUserId, cancellationToken);
 
@@ -156,7 +153,6 @@ public sealed partial class OwnerStayService
                 Audit(stay, actorUserId, OwnerPortalAuditStatuses.SyncRetried);
             }
 
-            // Nothing failed: nothing is sent, the stay answers as it is (a repeat is harmless).
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
@@ -238,12 +234,6 @@ public sealed partial class OwnerStayService
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    // ---------------------------------------------------------------- shared by the agency and the background work
-
-    /// <summary>
-    /// Approves a request that is still one: the owner profile still holds the property, the arrival is not past, the dates are still free, and the block is
-    /// created with the id of the stay (in the transaction of the caller, when it has one). False when the stay is already approved with its block.
-    /// </summary>
     private async Task<bool> ApproveCoreAsync(OwnerStayRequest stay, string? actorUserId, bool automatic, CancellationToken cancellationToken)
     {
         if (stay.Status == OwnerStayStatus.Approved && stay.CalendarBlockId is not null)
@@ -265,7 +255,6 @@ public sealed partial class OwnerStayService
             .FirstOrDefaultAsync(b => b.Id == stay.Id, cancellationToken);
         if (existing is not null)
         {
-            // The block of this stay is there already (written by an approval that did not finish): it is linked, never created twice.
             block = new ManualBlockChange(existing, null, null);
         }
         else
@@ -299,7 +288,6 @@ public sealed partial class OwnerStayService
         return true;
     }
 
-    /// <summary>Gives back the block of a withdrawn or cancelled stay, and only that one, with the change that opens its nights again.</summary>
     private async Task ReleaseCoreAsync(OwnerStayRequest stay, string? actor, CancellationToken cancellationToken)
     {
         var change = await calendarBlocks.ReleaseOwnerStayBlockAsync(stay.CalendarBlockId!.Value, cancellationToken);
@@ -318,7 +306,6 @@ public sealed partial class OwnerStayService
         logger.LogInformation("Owner stay {StayId}: its block was given back", stay.Id);
     }
 
-    /// <summary>The property of a stay of the org (the key of its lock); 404 for a stay of another org or a missing one.</summary>
     private async Task<Guid> PropertyOfAsync(Guid orgId, Guid stayId, CancellationToken cancellationToken) =>
         await Stays()
             .AsNoTracking()
@@ -327,7 +314,6 @@ public sealed partial class OwnerStayService
             .FirstOrDefaultAsync(cancellationToken)
         ?? throw StayNotFound(stayId);
 
-    /// <summary>The stays as the console reads them: the stay and the name of its owner profile (never a fiscal or bank value of it).</summary>
     private async Task<List<OwnerStayAdminView>> AdminViewsAsync(IReadOnlyCollection<OwnerStayRequest> stays, CancellationToken cancellationToken)
     {
         var views = await ViewsAsync(stays, cancellationToken);

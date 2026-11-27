@@ -19,7 +19,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class HostCalendarRange
 {
-    /// <summary>A booking of <paramref name="propertyId"/> with a day from <paramref name="firstDay"/> to <paramref name="lastDay"/>.</summary>
     public static Expression<Func<Booking, bool>> BookingShownIn(Guid propertyId, DateTime firstDay, DateTime lastDay)
     {
         var from = StartOfDay(firstDay);
@@ -27,10 +26,6 @@ public static class HostCalendarRange
         return b => b.PropertyId == propertyId && b.CheckInDate < toExclusive && b.CheckOutDate >= from;
     }
 
-    /// <summary>
-    /// A calendar block of <paramref name="propertyId"/> (iCal import or manual) with a day from
-    /// <paramref name="firstDay"/> to <paramref name="lastDay"/>.
-    /// </summary>
     public static Expression<Func<CalendarBlock, bool>> BlockShownIn(Guid propertyId, DateTime firstDay, DateTime lastDay)
     {
         var from = StartOfDay(firstDay);
@@ -38,11 +33,6 @@ public static class HostCalendarRange
         return b => b.PropertyId == propertyId && b.StartUtc < toExclusive && b.EndUtc >= from;
     }
 
-    /// <summary>
-    /// A booking of any property with a day from <paramref name="firstDay"/> to <paramref name="lastDay"/>: the same rule as
-    /// <see cref="BookingShownIn(Guid, DateTime, DateTime)"/>, for the calendar of several properties (SR-02a), which narrows the
-    /// properties itself.
-    /// </summary>
     public static Expression<Func<Booking, bool>> BookingShownIn(DateTime firstDay, DateTime lastDay)
     {
         var from = StartOfDay(firstDay);
@@ -50,10 +40,6 @@ public static class HostCalendarRange
         return b => b.CheckInDate < toExclusive && b.CheckOutDate >= from;
     }
 
-    /// <summary>
-    /// A calendar block of any property with a day from <paramref name="firstDay"/> to <paramref name="lastDay"/>: the same rule
-    /// as <see cref="BlockShownIn(Guid, DateTime, DateTime)"/>, for the calendar of several properties (SR-02a).
-    /// </summary>
     public static Expression<Func<CalendarBlock, bool>> BlockShownIn(DateTime firstDay, DateTime lastDay)
     {
         var from = StartOfDay(firstDay);
@@ -61,10 +47,6 @@ public static class HostCalendarRange
         return b => b.StartUtc < toExclusive && b.EndUtc >= from;
     }
 
-    /// <summary>
-    /// The day of a stored stay or block date (midnight UTC of that day) as a date without time zone: it is written as
-    /// <c>2026-09-30T00:00:00</c>, the same day for every client whatever its time zone.
-    /// </summary>
     public static DateTime StayDate(DateTime stored) => DateTime.SpecifyKind(stored.Date, DateTimeKind.Unspecified);
 
     private static DateTime StartOfDay(DateTime day) => DateTime.SpecifyKind(day.Date, DateTimeKind.Utc);

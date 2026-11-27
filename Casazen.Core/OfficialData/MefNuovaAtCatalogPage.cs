@@ -3,10 +3,6 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.OfficialData;
 
-/// <summary>
-/// Reads the MEF tourist-tax catalog page for the permalink of the daily <c>nuova_at</c> CSV. If the wording
-/// changes, parsing fails and the caller uses the configured fallback URL — nothing is invented.
-/// </summary>
 public static partial class MefNuovaAtCatalogPage
 {
     public const string Authority = "MEF — archivio atti nuova_at";
@@ -30,7 +26,6 @@ public static partial class MefNuovaAtCatalogPage
     private static partial Regex CsvPermalinkRegex();
 }
 
-/// <summary>Dataset keys used by the comune official-profile agent (MEF <c>nuova_at</c>).</summary>
 public static class MefOfficialSource
 {
     public const string Authority = MefNuovaAtCatalogPage.Authority;

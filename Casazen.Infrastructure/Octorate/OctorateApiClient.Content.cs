@@ -3,14 +3,8 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Octorate;
 
-/// <summary>
-/// The content operations of <see cref="IOctorateApiClient"/> (E02/F03/US01/T02, T06, T07): the creation of an accommodation and of its unit, the
-/// groups of the content of a unit, the push to a channel, the photos and the result of a publication. One method for each operation, with the
-/// same token, rate-limit gate, error mapping and logs as the rest of the client: no body, token or address of a photo is ever logged.
-/// </summary>
 public sealed partial class OctorateApiClient
 {
-    /// <summary>The longest address of a photo CasaZen sends (the column of <c>PhotoUploadTask</c>).</summary>
     private const int MaxPhotoUrlLength = 1000;
 
     public async Task<OctoratePropertyCreated> CreatePropertyAsync(OctoratePropertyCreate request, CancellationToken ct)
@@ -18,7 +12,6 @@ public sealed partial class OctorateApiClient
         ArgumentNullException.ThrowIfNull(request);
         var json = OctorateContentRequests.PropertyCreateBody(request);
 
-        // The accommodation does not exist yet, so the partner token is the one that can create it; the answer carries the refresh token, once.
         var answer = await SendAsPlatformAsync(
             () => new HttpRequestMessage(HttpMethod.Post, Address("/rest/v2/accommodation")) { Content = JsonContent(json) },
             "accommodation-create",
@@ -68,7 +61,6 @@ public sealed partial class OctorateApiClient
     {
         ArgumentNullException.ThrowIfNull(rooms);
 
-        // One call for each room: the room number tells them apart.
         foreach (var room in rooms)
             await PostContentAsync(accommodationId, productId, "rooms", OctorateContentRequests.RoomBody(room), "content-rooms", ct);
     }
@@ -147,7 +139,6 @@ public sealed partial class OctorateApiClient
             throw new ArgumentException("A photo is sent by its absolute https address.", nameof(photoUrl));
         }
 
-        // The address goes in a form body: in the query the sandbox answered 500 (S25). The answer is 202 with the entry of the queue.
         var answer = await SendAsync(
             () => new HttpRequestMessage(HttpMethod.Post, Address($"/rest/v1/accommodation/{Uri.EscapeDataString(accommodation)}/photos"))
             {
@@ -173,7 +164,6 @@ public sealed partial class OctorateApiClient
         }
         catch (OctorateNotFoundException)
         {
-            // The photo is not there any more: what was asked is done.
         }
     }
 
@@ -214,7 +204,6 @@ public sealed partial class OctorateApiClient
 
     private static StringContent JsonContent(string json) => new(json, Encoding.UTF8, "application/json");
 
-    /// <summary>A write of one part of the content of a unit: <c>POST /rest/v1/content/products/{acc}/{pid}/{part}</c> with a JSON body.</summary>
     private Task PostContentAsync(string accommodationId, string productId, string part, string json, string operation, CancellationToken ct)
     {
         var accommodation = CheckedAccommodationId(accommodationId);
@@ -230,7 +219,6 @@ public sealed partial class OctorateApiClient
             ct);
     }
 
-    /// <summary>A read of one part of the content of a unit; <c>null</c> when Octorate holds nothing there yet (404: <c>ApiResourceEmpty</c>, <c>ApiResourceMissing</c>).</summary>
     private async Task<OctorateAnswer?> GetContentAsync(string accommodationId, string productId, string part, string operation, CancellationToken ct)
     {
         var accommodation = CheckedAccommodationId(accommodationId);

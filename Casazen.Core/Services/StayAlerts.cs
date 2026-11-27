@@ -5,33 +5,24 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Services;
 
-/// <summary>What a stay alert tells the host (one email plus one push each).</summary>
 public enum StayAlertKind
 {
     /// <summary>Guest data for the Alloggiati communication still missing, the day before arrival.</summary>
     GuestDataMissing,
 
-    /// <summary>Alloggiati communication to send: the deadline is approaching.</summary>
     AlloggiatiDeadlineApproaching,
 
     /// <summary>Alloggiati deadline passed without the communication (first alert, then the daily reminders).</summary>
     AlloggiatiOverdue,
 
-    /// <summary>Alloggiati communication rejected by the portal or failed.</summary>
     AlloggiatiFailed,
 
-    /// <summary>Check-out day: complete the check-out.</summary>
     CheckoutReminder,
 
-    // E03/F02/US02/T01 (NF-52, CHK-12): the kinds below are appended, never renumbered.
-
-    /// <summary>The communication was sent, entrusted to the channel manager or declared sent, and no receipt is archived the day after.</summary>
     ReceiptMissing,
 
-    /// <summary>A stay of at most one night (the 6-hour term) that is not entrusted to the channel manager arrives within a few hours.</summary>
     ShortStayAtRisk,
 
-    /// <summary>A stay over 30 nights, which the channel manager does not send by itself, arrives tomorrow.</summary>
     OverThirtyNights,
 }
 
@@ -50,18 +41,15 @@ public sealed record StayAlert(
     int ReminderNumber = 0,
     int MaxReminders = 0);
 
-/// <summary>Stages of <see cref="StayAlertType.AlloggiatiDeadline"/>: each one is sent at most once per check-in date.</summary>
 public static class AlloggiatiAlertStage
 {
     public const int GuestDataMissing = 1;
     public const int DeadlineApproaching = 2;
     public const int Overdue = 3;
 
-    /// <summary>Stage of the <paramref name="number"/>-th daily reminder after <see cref="Overdue"/> (1-based).</summary>
     public static int OverdueReminder(int number) => Overdue + number;
 }
 
-/// <summary>Stage due now for a stay, with the alert to send when the stage is claimed.</summary>
 public sealed record StayAlertStep(StayAlertType Type, DateTime ReferenceDate, int Stage, StayAlert Alert);
 
 /// <summary>
@@ -88,16 +76,11 @@ public sealed record StayAlertStep(StayAlertType Type, DateTime ReferenceDate, i
 /// </remarks>
 public static class StayAlertSchedule
 {
-    /// <summary>A check-out reminder not sent within this time of its hour (job down) is dropped.</summary>
     public static readonly TimeSpan CheckoutReminderLateWindow = TimeSpan.FromHours(12);
 
     /// <summary>How long the last stage of the Alloggiati sequence stays due after its time.</summary>
     public static readonly TimeSpan LastStageValidity = TimeSpan.FromHours(24);
 
-    /// <summary>
-    /// The only stage of <see cref="StayAlertType.ReceiptMissing"/>, <see cref="StayAlertType.ShortStayAtRisk"/> and
-    /// <see cref="StayAlertType.OverThirtyNights"/> (E03/F02/US02/T01): each is sent once for a check-in date.
-    /// </summary>
     public const int SingleStage = 1;
 
     /// <summary>
@@ -127,8 +110,6 @@ public static class StayAlertSchedule
             stage,
             new StayAlert(booking.Id, kind, legalDeadline, shortStay, reminder, options.MaxOverdueReminders));
 
-        // The last stage of the sequence is dropped a day after its time: a stay that enters the job's window late
-        // (outage, first deploy) gets no stale message.
         var reminders = Math.Max(0, options.MaxOverdueReminders);
         for (var reminder = reminders; reminder >= 1; reminder--)
         {
@@ -211,11 +192,6 @@ public static class StayAlertSchedule
             : null;
     }
 
-    /// <summary>
-    /// The «over 30 nights» stage (E03/F02/US02/T01, CHK-12): the portal takes at most <see cref="AlloggiatiTerms.MaxStayDaysPerSchedina"/> days
-    /// on one record and the channel manager does not send a longer stay by itself. One alert the day before the arrival at
-    /// <see cref="StayAlertOptions.OverThirtyNightsHourLocal"/> (Europe/Rome), dropped <see cref="SingleStageValidity"/> later.
-    /// </summary>
     public static StayAlertStep? DueOverThirtyNightsStep(Booking booking, StayAlertOptions options, DateTime nowUtc)
     {
         ArgumentNullException.ThrowIfNull(booking);
@@ -238,7 +214,6 @@ public static class StayAlertSchedule
     private static StayAlertStep SingleStageStep(Booking booking, StayAlertType type, StayAlertKind kind, DateTime? deadlineUtc, bool shortStay) =>
         new(type, booking.CheckInDate.Date, SingleStage, new StayAlert(booking.Id, kind, deadlineUtc, shortStay));
 
-    /// <summary>From <paramref name="dueAt"/> until <see cref="SingleStageValidity"/> later.</summary>
     private static bool IsDueOnce(DateTime nowUtc, DateTime dueAt) => nowUtc >= dueAt && nowUtc < dueAt + SingleStageValidity;
 
     private static DateTime AsUtc(DateTime value) => value.Kind switch
@@ -257,11 +232,9 @@ public static class StayAlertSchedule
             ? RomeCalendar.StartOfDayUtc(booking.CheckInDate.Date.AddDays(1))
             : AlloggiatiTerms.DeadlineUtc(booking);
 
-    /// <summary>The day before the check-in date at <paramref name="hourLocal"/>, Europe/Rome, as UTC.</summary>
     public static DateTime GuestDataReminderAtUtc(DateTime checkInDate, int hourLocal) =>
         RomeAt(checkInDate.Date.AddDays(-1), hourLocal);
 
-    /// <summary><paramref name="warningHours"/> before the alert deadline, never before the arrival day starts (Europe/Rome).</summary>
     public static DateTime DeadlineWarningAtUtc(DateTime checkInDate, DateTime alertDeadlineUtc, int warningHours)
     {
         var warning = alertDeadlineUtc.AddHours(-Math.Max(0, warningHours));
@@ -269,20 +242,12 @@ public static class StayAlertSchedule
         return warning < arrivalDayStart ? arrivalDayStart : warning;
     }
 
-    /// <summary>
-    /// The <paramref name="number"/>-th daily reminder: <paramref name="hourLocal"/> (Europe/Rome) of the
-    /// <paramref name="number"/>-th day after the day of the alert deadline.
-    /// </summary>
     public static DateTime OverdueReminderAtUtc(DateTime alertDeadlineUtc, int number, int hourLocal)
     {
         var deadlineDay = RomeCalendar.TodayAt(new DateTimeOffset(DateTime.SpecifyKind(alertDeadlineUtc, DateTimeKind.Utc)));
         return RomeAt(deadlineDay.AddDays(number), hourLocal);
     }
 
-    /// <summary>
-    /// The check-out day at <paramref name="hourLocal"/> in the property's time zone (Europe/Rome when it has none or
-    /// an unknown one), as UTC.
-    /// </summary>
     public static DateTime CheckoutReminderAtUtc(DateTime checkOutDate, string? propertyTimeZone, int hourLocal) =>
         LocalToUtc(checkOutDate, hourLocal, ResolveZone(propertyTimeZone));
 
@@ -313,7 +278,6 @@ public static class StayAlertSchedule
     {
         var local = new DateTime(
             calendarDate.Year, calendarDate.Month, calendarDate.Day, Math.Clamp(hourLocal, 0, 23), 0, 0, DateTimeKind.Unspecified);
-        // A wall-clock time skipped by the daylight saving change: one hour later.
         if (zone.IsInvalidTime(local))
             local = local.AddHours(1);
         return TimeZoneInfo.ConvertTimeToUtc(local, zone);

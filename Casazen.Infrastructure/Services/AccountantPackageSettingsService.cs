@@ -44,8 +44,6 @@ public sealed class AccountantPackageSettingsService(
         ArgumentNullException.ThrowIfNull(change);
         var (enabled, email, day, contents) = Validate(change);
 
-        // The owner accounting is the agency's: whoever chooses the folders that carry it for the package sent to a third party must hold agency.statement.view (the web layer says so in the change). The plan is read here, so an
-        // organization that is not on the agency plan (whose package holds no owner accounting) is never refused.
         if (!change.OwnerAccounting && (contents & AccountantPackageFolderRules.OwnerAccountingCarriers) != 0 && await HoldsOwnerAccountingAsync(orgId, cancellationToken))
             throw new DomainRuleException(AccountantPackageErrors.OwnerAccountingRequired, "AccountantPackageOwnerAccountingRequired");
 
@@ -79,21 +77,18 @@ public sealed class AccountantPackageSettingsService(
         return ViewOf(row);
     }
 
-    /// <summary>True when the organization is on the agency plan (<see cref="AccountantPackageFolderRules.PlanHoldsOwnerAccounting"/>): the package it sends holds the owner accounting.</summary>
     private async Task<bool> HoldsOwnerAccountingAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var plan = await db.Orgs.AsNoTracking().Where(o => o.Id == orgId).Select(o => new { o.PlanTier, o.IsAgencyTierDowngraded }).FirstOrDefaultAsync(cancellationToken);
         return plan is not null && AccountantPackageFolderRules.PlanHoldsOwnerAccounting(plan.PlanTier, plan.IsAgencyTierDowngraded);
     }
 
-    /// <summary>The id of the user as the column keeps it: trimmed and at most the length of the column; <c>null</c> for none.</summary>
     private static string? UserOf(string? userId)
     {
         var user = string.IsNullOrWhiteSpace(userId) ? null : userId.Trim();
         return user is { Length: > AccountantPackageSettings.UpdatedByUserIdMaxLength } ? user[..AccountantPackageSettings.UpdatedByUserIdMaxLength] : user;
     }
 
-    /// <summary>The settings as a view; the defaults of an org that has none.</summary>
     internal static AccountantPackageSettingsView ViewOf(AccountantPackageSettings? row)
     {
         if (row is null)
@@ -119,9 +114,6 @@ public sealed class AccountantPackageSettingsService(
             DateTime.SpecifyKind(row.UpdatedAt, DateTimeKind.Utc));
     }
 
-    /// <summary>
-    /// The change as the row stores it, or a 422. The order is the order a person fixes them: what is missing, the address, the send without an address, the day, the folders. A refused change saves nothing.
-    /// </summary>
     private static (bool Enabled, string? Email, int Day, AccountantPackageFolders Contents) Validate(AccountantPackageSettingsChange change)
     {
         if (change.Enabled is not { } enabled || change.SendDay is not { } day || change.Contents is null)
@@ -140,10 +132,6 @@ public sealed class AccountantPackageSettingsService(
         return (enabled, email, day, contents);
     }
 
-    /// <summary>
-    /// The plain address (<see cref="CrmNormalizer.TryNormalizeEmail"/>: trimmed, lower case, no name, no spaces, a host with a dot) of at most 254 characters, or <c>null</c> for none. An empty address is never stored as
-    /// <c>""</c>. The address is not in the message of the refusal.
-    /// </summary>
     internal static string? NormalizeEmail(string? email)
     {
         if (string.IsNullOrWhiteSpace(email))

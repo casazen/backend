@@ -32,16 +32,10 @@ namespace Casazen.Infrastructure.Octorate;
 /// </remarks>
 public sealed class ICalMigrationService(AppDbContext db, TimeProvider timeProvider, ILogger<ICalMigrationService> logger)
 {
-    /// <summary>The Octorate portal code of Airbnb.</summary>
     public const string AirbnbPortal = "274";
 
-    /// <summary>The Octorate portal code of Booking.com.</summary>
     public const string BookingComPortal = "142";
 
-    /// <summary>
-    /// Deprecates the iCal feeds of <paramref name="propertyId"/> that the Octorate listing makes redundant; returns the ids of the feeds
-    /// deprecated now (none when there is nothing to do).
-    /// </summary>
     public async Task<IReadOnlyList<Guid>> DeprecateCoveredFeedsAsync(Guid propertyId, CancellationToken ct)
     {
         var mapping = await db.OctorateListingMappings
@@ -62,7 +56,6 @@ public sealed class ICalMigrationService(AppDbContext db, TimeProvider timeProvi
         if (covered.Count == 0)
             return [];
 
-        // Most runs find nothing left to do (the job calls this after every successful read): look before taking the lock.
         var pending = await db.PropertyICalFeeds
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -70,11 +63,9 @@ public sealed class ICalMigrationService(AppDbContext db, TimeProvider timeProvi
         if (!pending)
             return [];
 
-        // The iCal lock of the property: a sync of a feed that is running finishes before the feed is marked, and the next one skips it.
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, ct, (PostgresAdvisoryLocks.Scope.PropertyICalSync, propertyId.ToString()));
 
-        // Loaded and saved like every other write to a feed; nothing here reads the address of a feed, and nothing logs it.
         var feeds = await db.PropertyICalFeeds
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(f => f.OrgId == mapping.OrgId && f.PropertyId == propertyId && !f.Deprecated && covered.Contains(f.Channel))
@@ -113,7 +104,6 @@ public sealed class ICalMigrationService(AppDbContext db, TimeProvider timeProvi
     {
         ArgumentNullException.ThrowIfNull(readPropertyIds);
 
-        // Most runs find nothing left to do: look before taking any lock.
         var read = readPropertyIds.ToList();
         var pending = await db.PropertyICalFeeds
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -126,7 +116,6 @@ public sealed class ICalMigrationService(AppDbContext db, TimeProvider timeProvi
         var returned = new List<Guid>();
         foreach (var target in pending)
         {
-            // The iCal lock of the property, like the hand-over itself: a sync of a feed that is running finishes before the feed is given back.
             await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
                 db, ct, (PostgresAdvisoryLocks.Scope.PropertyICalSync, target.PropertyId.ToString()));
 
@@ -161,7 +150,6 @@ public sealed class ICalMigrationService(AppDbContext db, TimeProvider timeProvi
         return returned;
     }
 
-    /// <summary>The portal codes of the listing: the keys of <c>{ "142": "1234567" }</c>; none for a column that is empty or not an object.</summary>
     internal static HashSet<string> PortalCodesOf(string? channelIdsJson)
     {
         var codes = new HashSet<string>(StringComparer.Ordinal);
@@ -179,7 +167,6 @@ public sealed class ICalMigrationService(AppDbContext db, TimeProvider timeProvi
         }
         catch (JsonException)
         {
-            // A column CasaZen did not write: no portal is read from it.
         }
 
         return codes;

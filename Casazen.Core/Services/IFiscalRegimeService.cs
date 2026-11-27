@@ -11,7 +11,6 @@ public static class FiscalCopy
     public const string PackLabel =
         "Pacchetto dati per il commercialista — non è una dichiarazione, F24 o Certificazione Unica ufficiale";
 
-    /// <summary>Tourist tax report (CO-19): a basis for the comune's statement and payments, not the statement.</summary>
     public const string TouristTaxDisclaimer =
         "Riepilogo per il versamento e la dichiarazione al comune (per esempio il Modello 21): non è la dichiarazione. Scadenze, modalità di versamento ed esenzioni dipendono dal regolamento di ciascun comune.";
 
@@ -24,7 +23,6 @@ public static class FiscalCopy
             or BookingSource.Agoda
             or BookingSource.OtherChannel;
 
-    /// <summary>OTA withholding on <paramref name="gross"/> at <paramref name="rate"/> (<c>ShortStayFiscal:OtaWithholdingRate</c>).</summary>
     public static decimal CalculateOtaWithholding(decimal gross, decimal rate) =>
         decimal.Round(gross * rate, 2, MidpointRounding.AwayFromZero);
 
@@ -32,27 +30,18 @@ public static class FiscalCopy
     public static bool IsImpresaRegime(StrFiscalRegime regime) =>
         regime is StrFiscalRegime.RegimeOrdinario or StrFiscalRegime.RegimeForfettario;
 
-    /// <summary>Regimes reserved to taxpayers within the short-rental threshold (fiscale.md C2, C3, C11).</summary>
     public static bool IsShortRentalRegime(StrFiscalRegime regime) =>
         regime is StrFiscalRegime.CedolareSecca21 or StrFiscalRegime.CedolareSecca26 or StrFiscalRegime.IrpefOrdinaria;
 }
 
-/// <summary>Stable codes of <see cref="FiscalPropertyRow.TaxNote"/>, translated by the frontend.</summary>
 public static class FiscalTaxNotes
 {
-    /// <summary>Ordinary IRPEF: CasaZen does not compute it; the taxpayer or the accountant does (fiscale.md C11).</summary>
     public const string IrpefOrdinariaNotComputed = "irpef_ordinaria_not_computed";
 
-    /// <summary>The taxpayer is over the threshold: business activity presumed, check with the accountant (fiscale.md C3).</summary>
     public const string ThresholdExceeded = "short_stay_threshold_exceeded";
 
-    /// <summary>Report only: no regime assigned to the property for the tax year, so no tax is estimated (CO-19).</summary>
     public const string RegimeNotAssigned = "regime_not_assigned";
 
-    /// <summary>
-    /// Report only: business (impresa) regime, ordinario or forfettario. The income depends on costs and on the forfettario
-    /// coefficient, which CasaZen does not have (fiscale.md "Punti che richiedono il commercialista" 5): not estimated (CO-19).
-    /// </summary>
     public const string ImpresaNotComputed = "impresa_not_computed";
 }
 
@@ -73,7 +62,6 @@ public static class FiscalTaxNotes
 /// (<see cref="AssignedRegime"/> is set); false when only the auto-detected <see cref="RecommendedRegime"/> is available
 /// and the user has not yet confirmed it (CO-18, PO 2026-10-08: the regime is never applied silently).
 /// </param>
-// CO-18: CasaZen considers a single owner; co-ownership quota is not calculated (PO 2026-10-08)
 public record FiscalPropertyRow(
     Guid PropertyId,
     string Name,
@@ -149,10 +137,6 @@ public interface IFiscalRegimeService
         CancellationToken cancellationToken = default);
     Task<FiscalTaxProfile> GetTaxProfileAsync(Guid orgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Changes only the fields of <paramref name="update"/> that are set (CO-19): a null field keeps the saved value, so a
-    /// form sending only what the host changed never overwrites the rest with defaults.
-    /// </summary>
     Task<FiscalTaxProfile> UpdateTaxProfileAsync(
         Guid orgId,
         FiscalTaxProfileUpdate update,
@@ -177,12 +161,6 @@ public interface IFiscalRegimeService
     Task ApplyWithholdingOnCreateAsync(Payment payment, Booking booking, bool? applyOtaWithholding, decimal? manualWithholdingTax);
 }
 
-/// <summary>
-/// Reports of the fiscal area for the accountant (CO-19, A5-23): summary per property and taxpayer, withholding detail,
-/// tourist tax per comune and month. Every list is limited to <see cref="Casazen.Core.Authorization.HostScope"/> (the org,
-/// and only the caller's own properties for a caller without org-wide access). PDF (via <c>IPdfDocumentRenderer</c>) and
-/// CSV in Italian.
-/// </summary>
 public interface IFiscalReportingService
 {
     Task<AnnualIncomeReport> GetAnnualReportAsync(
@@ -210,10 +188,6 @@ public interface IFiscalReportingService
     byte[] ToPdf(TouristTaxReport report);
 }
 
-/// <summary>
-/// Invalid input of the fiscal area, answered 400 with the stable <see cref="Code"/> and the localized
-/// <see cref="MessageKey"/> of <c>SharedResources</c> (IT/EN).
-/// </summary>
 public sealed class FiscalValidationException(string code, string messageKey, params object[] messageArgs) : Exception(code)
 {
     public string Code { get; } = code;

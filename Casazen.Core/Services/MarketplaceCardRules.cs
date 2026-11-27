@@ -3,7 +3,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>What a person can do with a card: whether it can be activated now and, when not, the code of why (<see cref="MarketplaceReasons"/>).</summary>
 public readonly record struct MarketplaceAction(bool CanActivate, string? Reason);
 
 /// <summary>
@@ -12,7 +11,6 @@ public readonly record struct MarketplaceAction(bool CanActivate, string? Reason
 /// </summary>
 public static class MarketplaceCardRules
 {
-    /// <summary>The longest portal code CasaZen sends to the channel manager as the number it calls <c>channelId</c>.</summary>
     public const int MaxPortalCodeDigits = 18;
 
     /// <summary>
@@ -40,16 +38,9 @@ public static class MarketplaceCardRules
                && IsNumericPortalCode(portal.PortalCode);
     }
 
-    /// <summary>
-    /// A portal code the channel manager takes as the number it calls <c>channelId</c>: 1 to <see cref="MaxPortalCodeDigits"/> ASCII digits, nothing
-    /// else (no sign, no space). Only such a code may name a portal in a call or in the address of its page on the panel.
-    /// </summary>
     public static bool IsNumericPortalCode(string? portalCode) =>
         portalCode is { Length: > 0 and <= MaxPortalCodeDigits } && portalCode.All(char.IsAsciiDigit);
 
-    /// <summary>
-    /// How the card shows an activation: Active as Active, Requested and Pending as Pending, To fix as To fix, and Deactivated as Not active.
-    /// </summary>
     public static MarketplaceCardStatus CardStatusOf(MarketplaceActivationStatus status) => status switch
     {
         MarketplaceActivationStatus.Active => MarketplaceCardStatus.Active,
@@ -98,14 +89,8 @@ public static class MarketplaceCardRules
     }
 }
 
-/// <summary>
-/// The functions of the channel manager's license the marketplace offers, a fixed list (the codes are the modules of the license). Their
-/// names and one-line benefits are texts of the resource files, <c>Marketplace.Licensed.{code}.Name</c> and <c>.Benefit</c>, in Italian and
-/// English; the cost of none of them is specified.
-/// </summary>
 public static class MarketplaceLicensedFunctions
 {
-    /// <summary>The codes, in the order the catalog lists them.</summary>
     public static IReadOnlyList<string> Codes { get; } =
     [
         "chat",
@@ -122,11 +107,9 @@ public static class MarketplaceLicensedFunctions
         "rateChecker",
     ];
 
-    /// <summary>True for a code of the list (exact, case-sensitive).</summary>
     public static bool IsKnown(string? code) => code is not null && Codes.Contains(code, StringComparer.Ordinal);
 }
 
-/// <summary>The two languages of the marketplace texts.</summary>
 public static class MarketplaceLanguages
 {
     public const string Italian = "it";

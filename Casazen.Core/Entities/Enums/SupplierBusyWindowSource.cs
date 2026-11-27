@@ -8,9 +8,7 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum SupplierBusyWindowSource
 {
-    /// <summary>Set by the supplier. The only windows the console API creates and deletes.</summary>
     Manual = 0,
 
-    /// <summary>Written by the sync of the supplier's iCal feed (SP-05).</summary>
     ICalFeed = 1,
 }

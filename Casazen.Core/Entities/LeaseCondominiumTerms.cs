@@ -5,10 +5,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// Condominium terms of one lease (CondoLedger phase 1): the advance the contract states, whether a settlement is due,
-/// and who confirmed the values. There is one current row per lease. Periods, statements and allocations are a later module.
-/// </summary>
 [Table("LeaseCondominiumTerms")]
 public class LeaseCondominiumTerms : ITenantOwned
 {
@@ -24,11 +20,9 @@ public class LeaseCondominiumTerms : ITenantOwned
 
     public CondominiumAdvanceMode AdvanceMode { get; set; }
 
-    /// <summary>Advance of one period of <see cref="Cadence"/>. Required when <see cref="AdvanceMode"/> is the fixed contractual amount.</summary>
     [Column(TypeName = "decimal(18,2)")]
     public decimal? AdvanceAmount { get; set; }
 
-    /// <summary>How often <see cref="AdvanceAmount"/> is due. The rent plan scales it onto its own cadence when the two divide evenly.</summary>
     public RentCadence? Cadence { get; set; }
 
     public bool SettlementRequired { get; set; }
@@ -40,10 +34,8 @@ public class LeaseCondominiumTerms : ITenantOwned
 
     public DateOnly? EffectiveTo { get; set; }
 
-    /// <summary>The lease document the values were read from. Cleared if that document is deleted.</summary>
     public Guid? SourceDocumentId { get; set; }
 
-    /// <summary>Confidence of the extraction, from 0 to 1. Below 0.85 nothing is proposed as a charge until a person confirms.</summary>
     [Column(TypeName = "decimal(5,4)")]
     public decimal? ExtractionConfidence { get; set; }
 

@@ -6,11 +6,6 @@ using Casazen.Core.Exceptions;
 
 namespace Casazen.Core.BankStatements;
 
-/// <summary>
-/// Reads an ISO 20022 <c>camt.053</c> statement (bank to customer statement), whatever its version: the elements are found by their local
-/// names, one entry at a time, so a year of a busy account does not sit in memory as one tree. The file comes from outside: DTDs and external
-/// entities are refused.
-/// </summary>
 internal static class Camt053StatementReader
 {
     private const long MaxCharacters = 96L * 1024 * 1024;
@@ -63,12 +58,10 @@ internal static class Camt053StatementReader
         return new ParsedBankStatement(BankStatementFormat.Camt053, credits, movements);
     }
 
-    /// <summary>One movement of an entry: a credit with its data, or null for a debit (counted, not kept).</summary>
     private readonly record struct EntryLine(BankMovement? Credit);
 
     private static IEnumerable<EntryLine> ReadEntry(XElement entry)
     {
-        // Entries that are not booked yet (pending, information only) are not money in the account.
         var status = Child(entry, "Sts")?.Value.Trim();
         if (!string.IsNullOrEmpty(status) && !string.Equals(status, "BOOK", StringComparison.OrdinalIgnoreCase))
             yield break;
@@ -80,15 +73,11 @@ internal static class Camt053StatementReader
         var bookingDate = booking ?? value!.Value;
         var valueDate = value ?? bookingDate;
 
-        // «CdtDbtInd» is the direction on the account. «RvslInd» says the entry cancels an earlier one: a payment the bank returns is a debit that
-        // reverses a credit, an outgoing payment that comes back a credit that reverses a debit. Either way it is not a tenant paying.
         var indicator = Child(entry, "CdtDbtInd")?.Value.Trim();
         var reversed = string.Equals(Child(entry, "RvslInd")?.Value.Trim(), "true", StringComparison.OrdinalIgnoreCase);
         var isCredit = string.Equals(indicator, "CRDT", StringComparison.OrdinalIgnoreCase) && !reversed;
         var reference = Reference(entry);
 
-        // What the bank says about the whole entry goes with each of its lines and is read once: an entry of thousands of lines must not
-        // copy it thousands of times.
         var entryInformation = Children(entry, "AddtlNtryInf").Select(e => BankValues.Clip(e.Value)).ToList();
 
         var details = entry.Descendants().Where(e => e.Name.LocalName == "TxDtls").ToList();
@@ -122,7 +111,6 @@ internal static class Camt053StatementReader
             reference);
     }
 
-    /// <param name="describe">The reason of the payment, worked out only for a credit: a debit is counted and nothing else is read of it.</param>
     private static EntryLine Line(
         bool isCredit,
         DateOnly bookingDate,
@@ -165,7 +153,6 @@ internal static class Camt053StatementReader
             .Where(e => e.Name.LocalName is "Ustrd" or "AddtlTxInf")
             .Select(e => e.Value)
             .ToList();
-        // The reference the payer wrote for the creditor (a structured remittance) and what the bank adds to the entry are part of the reason too.
         parts.AddRange(scope.Descendants().Where(e => e.Name.LocalName == "CdtrRefInf").SelectMany(e => e.Descendants()).Where(e => e.Name.LocalName == "Ref").Select(e => e.Value));
         parts.AddRange(entryInformation);
         return BankValues.JoinDistinct(parts);
@@ -200,7 +187,6 @@ internal static class Camt053StatementReader
 
     private static string? Reference(XElement entry)
     {
-        // The bank's own reference tells two entries apart; an end-to-end id the payer chose ("NOTPROVIDED") does not.
         var text = Child(entry, "AcctSvcrRef")?.Value
             ?? entry.Descendants().FirstOrDefault(e => e.Name.LocalName == "AcctSvcrRef")?.Value
             ?? Child(entry, "NtryRef")?.Value;
@@ -219,15 +205,10 @@ internal static class Camt053StatementReader
     private static IEnumerable<XElement> Children(XElement parent, string name) => parent.Elements().Where(e => e.Name.LocalName == name);
 }
 
-/// <summary>
-/// Reads a SWIFT MT940 statement: the statement lines (<c>:61:</c>) with the information the bank adds to them (<c>:86:</c>), in the three
-/// ways banks write it: the German-style <c>?20</c>…<c>?33</c> subfields, the <c>/NAME/…/REMI/…</c> tags, or free text.
-/// </summary>
 internal static partial class Mt940StatementReader
 {
     private const int RegexTimeoutMs = 1000;
 
-    /// <summary>Longest information (<c>:86:</c>) read for a line: the standard allows 390 characters, banks write a few times that.</summary>
     private const int MaxInformationLength = 4_000;
 
     [GeneratedRegex(@"^(?<vd>\d{6})(?<ed>\d{4})?(?<mark>RC|RD|C|D)(?<fund>[A-Z])?(?<amt>\d+,\d*)(?<type>[NFS][A-Z0-9]{3})(?<rest>.*)$", RegexOptions.CultureInvariant, RegexTimeoutMs)]
@@ -258,7 +239,6 @@ internal static partial class Mt940StatementReader
         var currency = "EUR";
         for (var index = 0; index < fields.Count; index++)
         {
-            // The currency of the lines is the one of the opening balance of their statement (:60F: first, :60M: of a following page).
             if (fields[index].Tag is "60F" or "60M")
             {
                 currency = ReadCurrency(fields[index].Value) ?? currency;
@@ -287,7 +267,6 @@ internal static partial class Mt940StatementReader
         return new ParsedBankStatement(BankStatementFormat.Mt940, credits, movements);
     }
 
-    /// <summary>The tagged fields of the message, each with the lines that continue it.</summary>
     private static List<(string Tag, string Value)> Split(string text)
     {
         var fields = new List<(string Tag, List<string> Lines)>();
@@ -298,7 +277,6 @@ internal static partial class Mt940StatementReader
             if (tag.Success)
             {
                 fields.Add((tag.Groups["tag"].Value, new List<string> { tag.Groups["value"].Value }));
-                // A statement line comes with its information: twice the rows is room for both and for the balances.
                 if (fields.Count > BankStatementLimits.MaxRows * 2)
                     throw new DomainRuleException(BankStatementErrorCodes.TooManyRows, "BankStatementTooManyRows", BankStatementLimits.MaxCredits);
             }
@@ -309,7 +287,6 @@ internal static partial class Mt940StatementReader
         return fields.Select(field => (field.Tag, string.Join("\n", field.Lines))).ToList();
     }
 
-    /// <summary>The currency of a statement from its opening balance («C261001EUR1000,00»: mark, date, currency, amount); null when it does not read so.</summary>
     private static string? ReadCurrency(string balance)
     {
         var text = balance.Trim();
@@ -345,8 +322,6 @@ internal static partial class Mt940StatementReader
         if (!isCredit || amount <= 0m)
             return true;
 
-        // «customer reference//bank reference» and the supplementary line that may follow. What the bank adds is cut to a size no real
-        // statement reaches before it is searched, so a file made of nothing else cannot keep the reader busy.
         var rest = match.Groups["rest"].Value;
         var split = rest.IndexOf("//", StringComparison.Ordinal);
         var bankReference = split >= 0 ? BankValues.Clip(rest[(split + 2)..], 100) : string.Empty;
@@ -373,7 +348,6 @@ internal static partial class Mt940StatementReader
         var subfields = Subfield().Matches(text).Select(m => (Number: m.Groups["n"].Value, Value: m.Groups["v"].Value.Trim())).ToList();
         if (subfields.Count > 0)
         {
-            // «?00» is the kind of transaction, «?20» to «?29» and «?60» to «?63» the reason of the payment.
             var reason = subfields
                 .Where(s => s.Number == "00"
                     || (string.CompareOrdinal(s.Number, "20") >= 0 && string.CompareOrdinal(s.Number, "29") <= 0)
@@ -386,7 +360,6 @@ internal static partial class Mt940StatementReader
         var tags = SlashTag().Matches(text).Select(m => (Tag: m.Groups["tag"].Value, Value: m.Groups["v"].Value.Trim())).ToList();
         if (tags.Count > 0)
         {
-            // «/ORDP//NAME/Mario Rossi/REMI/affitto»: the payer is the first non-empty name, the reason the remittance information.
             var name = tags.Where(t => t.Tag is "NAME" or "ORDP" or "ORDPNAME" && t.Value.Length > 0).Select(t => t.Value).FirstOrDefault();
             var reason = tags.Where(t => t.Tag == "REMI").Select(t => t.Value);
             var described = BankValues.JoinDistinct(reason.Append(supplementary));
@@ -396,7 +369,6 @@ internal static partial class Mt940StatementReader
         return (BankValues.JoinDistinct([text, supplementary]), null);
     }
 
-    /// <summary>A <c>YYMMDD</c> date (or <c>YYMMDD</c> built from the year of the value date and a <c>MMDD</c> booking date, moved to the right year around New Year).</summary>
     private static DateOnly? ShortDate(string yymmdd, DateOnly? valueDate)
     {
         if (yymmdd.Length != 6
@@ -412,7 +384,6 @@ internal static partial class Mt940StatementReader
             var date = new DateOnly(2000 + year, month, day);
             if (valueDate is { } reference)
             {
-                // A booking date six months or more away from the value date belongs to the next or the previous year.
                 if (date.DayNumber - reference.DayNumber > 183)
                     date = date.AddYears(-1);
                 else if (reference.DayNumber - date.DayNumber > 183)

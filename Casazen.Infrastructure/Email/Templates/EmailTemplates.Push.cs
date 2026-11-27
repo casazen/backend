@@ -12,32 +12,15 @@ namespace Casazen.Infrastructure.Email.Templates;
 /// </summary>
 public static partial class EmailTemplates
 {
-    /// <summary>
-    /// A step of a stay CasaZen did in the host's place (casazen/backend#978): the arrival, the departure or the property ready, to the hosts of the booking. The property
-    /// only, never the guest.
-    /// </summary>
     public static PushText BookingFlowStepPush(CultureInfo culture, Casazen.Core.Services.BookingFlowAutomaticStep step, string propertyName) =>
         Push(culture, $"Push_BookingFlow{step}", propertyName);
 
-    /// <summary>
-    /// New service request, to the supplier. It names the comune, not the property: before the take the supplier does not know
-    /// the property (decision D9, SP-04).
-    /// </summary>
     public static PushText ServiceRequestCreatedPush(CultureInfo culture, string category, string comune) =>
         Push(culture, "Push_ServiceRequestCreated", ServiceCategoryLabel(culture, category), comune);
 
-    /// <summary>
-    /// A new service request that was accepted automatically for a regular host (SP-04d), to the supplier: it takes the place of
-    /// <see cref="ServiceRequestCreatedPush"/>. It names the comune, never the property or the host.
-    /// </summary>
     public static PushText ServiceRequestAutoAcceptedPush(CultureInfo culture, string category, string comune) =>
         Push(culture, "Push_ServiceRequestAutoAccepted", ServiceCategoryLabel(culture, category), comune);
 
-    /// <summary>
-    /// What happened to a service request, to the host: taken, started, completed, rejected by the supplier, or cancelled by the
-    /// supplier or by CasaZen (no answer in time). <c>null</c> for a status that has no push to the host (the caller then sends
-    /// nothing): see <see cref="ServiceRequestStatusChanged"/>.
-    /// </summary>
     public static PushText? ServiceRequestStatusPush(
         CultureInfo culture,
         ServiceRequestStatus status,
@@ -58,7 +41,6 @@ public static partial class EmailTemplates
         return prefix is null ? null : Push(culture, prefix, ServiceCategoryLabel(culture, category), propertyName);
     }
 
-    /// <summary>A request cancelled by the host, or by CasaZen when nobody answered in time, to the supplier (comune only).</summary>
     public static PushText ServiceRequestCancelledToSupplierPush(
         CultureInfo culture,
         string category,
@@ -70,15 +52,12 @@ public static partial class EmailTemplates
             ServiceCategoryLabel(culture, category),
             comune);
 
-    /// <summary>The host reminds the supplier to answer (SP-04), to the supplier.</summary>
     public static PushText ServiceRequestReminderPush(CultureInfo culture, string category, string comune) =>
         Push(culture, "Push_ServiceRequestReminder", ServiceCategoryLabel(culture, category), comune);
 
-    /// <summary>The supplier proposes another time (SP-04), to the host.</summary>
     public static PushText ServiceRequestTimeProposedPush(CultureInfo culture, string category, string propertyName) =>
         Push(culture, "Push_ServiceRequestTimeProposed", ServiceCategoryLabel(culture, category), propertyName);
 
-    /// <summary>The host accepted or declined the proposed time (SP-04), to the supplier.</summary>
     public static PushText ServiceRequestProposalAnsweredPush(CultureInfo culture, string category, string comune, bool accepted) =>
         Push(
             culture,
@@ -86,11 +65,9 @@ public static partial class EmailTemplates
             ServiceCategoryLabel(culture, category),
             comune);
 
-    /// <summary>The supplier sent a quote (SP-04b), to the host.</summary>
     public static PushText ServiceRequestQuoteSentPush(CultureInfo culture, string category, string propertyName) =>
         Push(culture, "Push_ServiceRequestQuoteSent", ServiceCategoryLabel(culture, category), propertyName);
 
-    /// <summary>The customer (the host, or the customer of a showcase request) accepted or turned down the quote (SP-04b), to the supplier (comune only).</summary>
     public static PushText ServiceRequestQuoteAnsweredPush(CultureInfo culture, string category, string comune, bool accepted) =>
         Push(
             culture,
@@ -98,19 +75,15 @@ public static partial class EmailTemplates
             ServiceCategoryLabel(culture, category),
             comune);
 
-    /// <summary>The customer of the public showcase did not answer the quote and the request was cancelled (SP-04b), to the supplier (comune only).</summary>
     public static PushText ServiceRequestQuoteExpiredPush(CultureInfo culture, string category, string comune) =>
         Push(culture, "Push_ServiceRequestQuoteExpired", ServiceCategoryLabel(culture, category), comune);
 
-    /// <summary>The customer of the public showcase cancelled its request (SP-11), to the supplier (comune only).</summary>
     public static PushText ShowcaseCancelledByCustomerPush(CultureInfo culture, string category, string comune) =>
         Push(culture, "Push_ShowcaseCancelledByCustomer", ServiceCategoryLabel(culture, category), comune);
 
-    /// <summary>The customer of the public showcase moved a new request to another time (SP-11), to the supplier (comune only).</summary>
     public static PushText ShowcaseRescheduledByCustomerPush(CultureInfo culture, string category, string comune) =>
         Push(culture, "Push_ShowcaseRescheduledByCustomer", ServiceCategoryLabel(culture, category), comune);
 
-    /// <summary>The customer of the public showcase accepted or turned down the proposed time (SP-11), to the supplier (comune only).</summary>
     public static PushText ShowcaseProposalAnsweredPush(CultureInfo culture, string category, string comune, bool accepted) =>
         Push(
             culture,
@@ -118,14 +91,9 @@ public static partial class EmailTemplates
             ServiceCategoryLabel(culture, category),
             comune);
 
-    /// <summary>The customer of the public showcase did not answer the proposed time and the request was cancelled (SP-11), to the supplier.</summary>
     public static PushText ShowcaseProposalLapsedPush(CultureInfo culture, string category, string comune) =>
         Push(culture, "Push_ShowcaseProposalLapsed", ServiceCategoryLabel(culture, category), comune);
 
-    /// <summary>
-    /// A request on measure of the public showcase waits for the supplier's answer (SP-10c), to the supplier (comune only): at half of the time it has
-    /// (<paramref name="lastCall"/> false) and ten minutes before the deadline (true), with the time to answer by in Italian time.
-    /// </summary>
     public static PushText ShowcaseReplyReminderPush(CultureInfo culture, string category, string comune, DateTime respondByUtc, bool lastCall) =>
         Push(
             culture,
@@ -134,11 +102,9 @@ public static partial class EmailTemplates
             comune,
             RomeCalendar.ToRome(respondByUtc).ToString("HH:mm", culture));
 
-    /// <summary>Service request marked as paid by the host, to the supplier (SU-09).</summary>
     public static PushText ServiceRequestPaidPush(CultureInfo culture, string category, string propertyName) =>
         Push(culture, "Push_ServiceRequestPaid", ServiceCategoryLabel(culture, category), propertyName);
 
-    /// <summary>A booking confirmed without the host's action (payment, saved card), to the host.</summary>
     public static PushText NewBookingPush(
         CultureInfo culture,
         string propertyName,
@@ -180,63 +146,30 @@ public static partial class EmailTemplates
                 guests.ToString(culture)));
     }
 
-    /// <summary>
-    /// A message from the guest of a direct booking, to the host: the property only. Neither the guest's name nor the text of
-    /// the message reach the lock screen.
-    /// </summary>
     public static PushText GuestMessagePush(CultureInfo culture, string propertyName) =>
         Push(culture, "Push_GuestMessage", propertyName);
 
-    /// <summary>
-    /// The guest completed the online check-in of a stay, to the host: the property only, never the guest's name or any of the
-    /// data typed in the form.
-    /// </summary>
     public static PushText GuestCheckInCompletedPush(CultureInfo culture, string propertyName) =>
         Push(culture, "Push_GuestCheckInCompleted", propertyName);
 
-    /// <summary>
-    /// The automatic delivery of the check-in link of a stay failed for good (E23/F01/US01/T01, NF-122), to the host: the property only, never the guest, the link or the
-    /// reason; the host opens the booking and copies the link from there.
-    /// </summary>
     public static PushText CheckInLinkFailedPush(CultureInfo culture, string propertyName) =>
         Push(culture, "Push_CheckInLinkFailed", propertyName);
 
-    /// <summary>
-    /// A guest left a review on a channel (E05/F06/US01/T02, NF-69), to the host: the property only, never the guest, the mark or a word of the review; the host opens the booking
-    /// and reads it there.
-    /// </summary>
     public static PushText OtaReviewReceivedPush(CultureInfo culture, string propertyName) =>
         Push(culture, "Push_OtaReviewReceived", propertyName);
 
-    /// <summary>
-    /// A reply to a review, or the host's own review, did not reach the channel (E05/F06/US01/T02), to the host: the property only; the host opens the booking and tries again.
-    /// </summary>
     public static PushText OtaReviewActionFailedPush(CultureInfo culture, string propertyName) =>
         Push(culture, "Push_OtaReviewActionFailed", propertyName);
 
-    /// <summary>Check-out day of a stay, to the host (CO-10 stay alert).</summary>
     public static PushText CheckoutReminderPush(CultureInfo culture, string propertyName) =>
         Push(culture, "Push_CheckoutReminder", propertyName);
 
-    /// <summary>
-    /// Support marked a «Fallo per me» request done and CasaZen read the result on the panel (E20/F03/US01/T02), to the administrators of the org: «Il
-    /// collegamento è attivo». No supplier, no property, no person.
-    /// </summary>
     public static PushText AssistVerifiedPush(CultureInfo culture) => Push(culture, "Push_AssistVerified");
 
-    /// <summary>
-    /// Support marked a «Fallo per me» request done and the panel could not be read (E20/F03/US01/T02), to the administrators of the org: support declares
-    /// it did the connection, and the host can reopen the request.
-    /// </summary>
     public static PushText AssistDeclaredPush(CultureInfo culture) => Push(culture, "Push_AssistDeclared");
 
-    /// <summary>
-    /// The custom domain of the org became verified (E40/F01/US02/T01), to the administrators of the org: the bell and its live update only (the app has no screen of
-    /// the domain). Never the name of the domain, nothing of a person.
-    /// </summary>
     public static PushText DomainVerifiedPush(CultureInfo culture) => Push(culture, "Push_DomainVerified");
 
-    /// <summary>The owner sign-in on the org's domain is enabled (E40/F01/US02/T01, NF-141), to the administrators of the org. No domain name.</summary>
     public static PushText OwnerLoginReadyPush(CultureInfo culture) => Push(culture, "Push_OwnerLoginReady");
 
     /// <summary>The owner sign-in on the org's domain could not be enabled (E40/F01/US02/T01, NF-141), to the administrators of the org: they can retry. No domain name.</summary>

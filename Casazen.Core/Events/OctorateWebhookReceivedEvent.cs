@@ -31,16 +31,12 @@ public sealed record OctorateWebhookReceivedEvent : DomainEvent
         ReceivedAt = payload.ReceivedAt == default ? occurredAt : payload.ReceivedAt;
     }
 
-    /// <summary>The Octorate event name (<see cref="OctorateWebhookEvents"/>).</summary>
     public string WebhookType { get; }
 
-    /// <summary>The accommodation the notification is about.</summary>
     public string AccommodationId { get; }
 
-    /// <summary>The reservation, thread or content id the notification names, when it names one.</summary>
     public string? ObjectId { get; }
 
-    /// <summary>When CasaZen received the call (UTC).</summary>
     public DateTime ReceivedAt { get; }
 }
 
@@ -54,7 +50,6 @@ public sealed record OctorateWebhookReceivedEvent : DomainEvent
 /// <param name="ReceivedAt">When the call arrived (UTC).</param>
 public sealed record OctorateWebhookPayload(string WebhookType, string AccommodationId, string? ObjectId, DateTime ReceivedAt)
 {
-    /// <summary>The payload of a stored event; the members it lacks are empty (an anonymized dead letter keeps <c>{}</c>).</summary>
     public static OctorateWebhookPayload Parse(string? payloadJson)
     {
         if (string.IsNullOrWhiteSpace(payloadJson))
@@ -106,10 +101,6 @@ public sealed record OctorateWebhookPayload(string WebhookType, string Accommoda
     }
 }
 
-/// <summary>
-/// The events Octorate can notify (<c>GET /rest/v1/subscription/list</c>, S24): reservations, chat and content. There is no event for
-/// the check-in, the police, the invoices or the payments. Names spelled as Octorate spells them; no other name is invented.
-/// </summary>
 public static class OctorateWebhookEvents
 {
     public const string ReservationCreated = "RESERVATION_CREATED";
@@ -121,7 +112,6 @@ public static class OctorateWebhookEvents
     public const string ContentPush = "CONTENT_PUSH";
     public const string PortalSubscriptionCalendar = "PORTAL_SUBSCRIPTION_CALENDAR";
 
-    /// <summary>Every event name.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
         ReservationCreated,
@@ -134,7 +124,6 @@ public static class OctorateWebhookEvents
         PortalSubscriptionCalendar,
     ];
 
-    /// <summary>The event name as Octorate spells it, or <c>null</c> for a name that is not one of <see cref="All"/>.</summary>
     public static string? Normalize(string? name)
     {
         var candidate = name?.Trim().ToUpperInvariant();

@@ -16,10 +16,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// MEF <c>nuova_at</c> profile of a comune: download the official CSV and PDF, extract deterministically then with
-/// DeepSeek, version the result and project onto <c>TouristTaxRates</c> by insert + period close. Never invents amounts.
-/// </summary>
 public class ComuneOfficialProfileService(
     AppDbContext db,
     IComuneDirectory comuni,

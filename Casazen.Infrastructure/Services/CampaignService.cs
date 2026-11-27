@@ -16,7 +16,6 @@ using System.Text.Json;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="ICampaignService"/>
 public class CampaignService(
     AppDbContext db,
     IConditionEvaluator conditionEvaluator,
@@ -41,7 +40,6 @@ public class CampaignService(
         ArgumentNullException.ThrowIfNull(subject);
         ArgumentNullException.ThrowIfNull(body);
 
-        // Verify segment exists and belongs to org
         var segment = await db.GuestSegments
             .Where(s => s.Id == segmentId && s.OrgId == orgId)
             .FirstOrDefaultAsync(cancellationToken);
@@ -125,7 +123,6 @@ public class CampaignService(
 
         await db.SaveChangesAsync(cancellationToken);
 
-        // Schedule Hangfire job for the specified time (AC-NF24-6)
         try
         {
             backgroundJobClient.Schedule<Jobs.CampaignSendJob>(job => job.SendCampaignAsync(campaignId, CancellationToken.None), scheduledAt);
@@ -187,7 +184,6 @@ public class CampaignService(
             campaign.Body = body;
         }
 
-        // The time asked for has passed while the campaign waited for the decision: it is approved and not scheduled, for the host to pick another time.
         if (campaign.ScheduledAt is { } scheduledAt && scheduledAt <= timeProvider.GetUtcNow().UtcDateTime)
             campaign.ScheduledAt = null;
 
@@ -221,8 +217,6 @@ public class CampaignService(
             return;
         }
 
-        // An approval that went halfway (the campaign approved or scheduled while its item was still waiting) is undone with its time: a rejected campaign is never left approved or
-        // scheduled, and a send job that is still waiting finds a draft and sends nothing.
         if (campaign.Status is CampaignStatus.Approved or CampaignStatus.Scheduled)
             campaign.ScheduledAt = null;
 
@@ -352,7 +346,6 @@ public class CampaignService(
 
     public async Task SendCampaignAsync(Guid campaignId, CancellationToken cancellationToken = default)
     {
-        // Re-fetch campaign inside the job (may run hours later)
         var campaign = await db.Campaigns
             .Include(c => c.Segment)
             .Where(c => c.Id == campaignId)
@@ -396,8 +389,6 @@ public class CampaignService(
         var org = await db.Orgs.AsNoTracking().SingleOrDefaultAsync(o => o.Id == campaign.OrgId, cancellationToken);
         if (org == null || !CommercialSignup.HasCrmMarketing(org)) return;
 
-        // DEB-01: a marketing e-mail leaves only with its signed unsubscribe link. Without the secret or the public URL of the web app
-        // nothing is sent and the job fails, so the error shows and the job is retried.
         if (!unsubscribeLinks.IsConfigured)
         {
             throw new EmailConfigurationException(
@@ -405,7 +396,6 @@ public class CampaignService(
                 "so the unsubscribe link cannot be built.");
         }
 
-        // Re-evaluate segment recipients at send time (AC-NF24-2)
         var recipients = await ResolveAudienceAsync(campaign.SegmentId, campaign.OrgId, new HostScope(campaign.OrgId),
             campaign.PropertyId, cancellationToken);
         var limit = await db.Set<MarketingStudioSettings>().Where(s => s.OrgId == campaign.OrgId)
@@ -470,10 +460,6 @@ public class CampaignService(
         return recipients.Count;
     }
 
-    /// <summary>
-    /// <c>List-Unsubscribe</c> and <c>List-Unsubscribe-Post</c> (RFC 2369, RFC 8058): the mail client offers the unsubscribe itself and
-    /// posts to the one-click endpoint. None when the API has no public https URL: the link in the body is still there.
-    /// </summary>
     internal static IReadOnlyDictionary<string, string> UnsubscribeHeaders(MarketingUnsubscribeLink link) =>
         link.OneClickUrl is { } oneClick
             ? new Dictionary<string, string>
@@ -483,20 +469,13 @@ public class CampaignService(
             }
             : new Dictionary<string, string>();
 
-    /// <summary>
-    /// Enriches email body with UTM params and the signed one-click unsubscribe link (AC-NF24-7, AC-NF24-9, DEB-01): the link is the page
-    /// of the web app (<see cref="MarketingUnsubscribeLinks"/>), with the SHA-256 index of the address and never the address.
-    /// </summary>
     private static string EnrichEmailBody(string body, Guid campaignId, string unsubscribeUrl)
     {
-        // Add UTM parameters to links (AC-NF24-9)
         var utmParams = $"utm_source=campaign&utm_medium=email&utm_campaign={campaignId}";
         body = AddUtmParametersToLinks(body, utmParams);
 
-        // One-click unsubscribe link (AC-NF24-7), added after the UTM parameters so it carries none.
         var unsubscribeLink = WebUtility.HtmlEncode(unsubscribeUrl);
 
-        // Append unsubscribe footer
         var footer = $@"
 <hr style=""margin-top: 40px; border: none; border-top: 1px solid #e0e0e0;"">
 <p style=""font-size: 12px; color: #666; text-align: center;"">
@@ -504,18 +483,11 @@ public class CampaignService(
     <a href=""{unsubscribeLink}"" style=""color: #666; text-decoration: underline;"">Unsubscribe</a>
 </p>";
 
-        // No tracking pixel (AC-NF24-8)
         return body + footer;
     }
 
-    /// <summary>
-    /// Adds UTM parameters to anchor tag href attributes in HTML content (AC-NF24-9).
-    /// Uses regex to find and modify links. Preserves existing query parameters.
-    /// </summary>
     private static string AddUtmParametersToLinks(string html, string utmParams)
     {
-        // Pattern matches <a href="URL"> where URL doesn't already contain utm_source
-        // This prevents double-adding UTM params and handles both " and ' quotes
         var pattern = @"<a\s+([^>]*\s+)?href\s*=\s*[""']([^""']+?)[""']";
 
         return System.Text.RegularExpressions.Regex.Replace(html, pattern, match =>
@@ -523,7 +495,6 @@ public class CampaignService(
             var fullMatch = match.Value;
             var url = match.Groups[2].Value;
 
-            // Skip if already has UTM params or is not an HTTP(S) link
             if (url.Contains("utm_source=") ||
                 !(url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
                   url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
@@ -535,7 +506,6 @@ public class CampaignService(
             var separator = url.Contains('?') ? "&" : "?";
             var enrichedUrl = url + separator + utmParams;
 
-            // Replace the URL in the original match
             return fullMatch.Replace($"\"{url}\"", $"\"{enrichedUrl}\"")
                             .Replace($"'{url}'", $"'{enrichedUrl}'");
         });

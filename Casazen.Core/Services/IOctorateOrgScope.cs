@@ -12,15 +12,7 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IOctorateOrgScope
 {
-    /// <summary>The org of the current call.</summary>
-    /// <exception cref="InvalidOperationException">There is no org: no <see cref="Use"/> open and no authenticated request with an org.</exception>
     Guid OrgId { get; }
 
-    /// <summary>
-    /// Makes <paramref name="orgId"/> the org of the calls until the returned handle is disposed, which restores the previous one.
-    /// Inside an authenticated request only the request's own org can be used.
-    /// </summary>
-    /// <exception cref="ArgumentException"><paramref name="orgId"/> is empty.</exception>
-    /// <exception cref="InvalidOperationException">An authenticated request asks for another org.</exception>
     IDisposable Use(Guid orgId);
 }

@@ -3,7 +3,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>How the tax of a lease is estimated in the fiscal report of the long-term area (LR-11b).</summary>
 public enum LongRentFiscalTaxStatus
 {
     /// <summary>Cedolare secca: the rate of the tax advisory of the lease (LT-08) on the rent accrued in the year.</summary>
@@ -19,11 +18,6 @@ public enum LongRentFiscalTaxStatus
     RegimeUnknown = 2,
 }
 
-/// <summary>
-/// The tax estimated for one lease. <c>Rate</c>, <c>RateBasis</c> and <c>AmountEur</c> only for
-/// <see cref="LongRentFiscalTaxStatus.CedolareEstimated"/>: the rate and its basis are the ones of the tax advisory of the lease, the
-/// amount is the rent accrued in the year (<see cref="LongRentFiscalRow.AccrualEur"/>) times that rate.
-/// </summary>
 public sealed record LongRentFiscalTax(
     LongRentFiscalTaxStatus Status,
     decimal? Rate,
@@ -72,17 +66,12 @@ public sealed record LongRentFiscalTotals(
     int CedolareLeases,
     int NotEstimatedLeases);
 
-/// <summary>The fiscal report of a year, for the leases the caller reaches. <c>GeneratedOn</c> is today's Europe/Rome day.</summary>
 public sealed record LongRentFiscalReport(
     int Year,
     DateOnly GeneratedOn,
     IReadOnlyList<LongRentFiscalRow> Rows,
     LongRentFiscalTotals Totals);
 
-/// <summary>
-/// The fiscal report of the long-term area, per lease, for the accountant (LR-11b): read side only, for the leases the caller reaches
-/// (<see cref="HostScope"/>, TN-3). It is an <b>estimate</b> and says so; every number declares its base (accrual or cash).
-/// </summary>
 public interface ILongRentFiscalReportService
 {
     /// <summary>
@@ -93,12 +82,9 @@ public interface ILongRentFiscalReportService
     Task<LongRentFiscalReport> GetAsync(HostScope scope, int year, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Stable codes of the fiscal report (LR-11b): answered as 400.</summary>
 public static class LongRentFiscalErrorCodes
 {
-    /// <summary>The year is not between <see cref="Leases.LongRentFiscalRules.FirstYear"/> and the current year.</summary>
     public const string YearInvalid = "long_rent_fiscal_year_invalid";
 
-    /// <summary>The export was asked in a format that is not <c>csv</c>.</summary>
     public const string FormatInvalid = "long_rent_fiscal_format_invalid";
 }

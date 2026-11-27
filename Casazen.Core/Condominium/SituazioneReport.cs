@@ -1,9 +1,5 @@
 namespace Casazen.Core.Condominium;
 
-/// <summary>
-/// The year as CondoLedger shows it: what was budgeted, what was spent, what was paid, and what is still open.
-/// Paid and still-to-pay are two views of the same numbers.
-/// </summary>
 public static class SituazioneReport
 {
     public sealed record InstallmentLine(
@@ -41,11 +37,6 @@ public static class SituazioneReport
         IReadOnlyList<InstallmentLine> Installments,
         IReadOnlyList<PaymentLine> Payments);
 
-    /// <summary>
-    /// What each rate has received. A payment tied to a rate stays there. A year-level payment (no rate) is applied
-    /// first to the ordinary rate whose window contains <c>PaidOn</c>. A separate conguaglio that shares that window
-    /// does not take the payment: only the remainder reaches it, in due order. The id is not a tie-break.
-    /// </summary>
     public static IReadOnlyDictionary<Guid, decimal> Allocate(
         IReadOnlyList<(Guid Id, DateOnly PeriodStart, DateOnly DueDate, decimal Due, bool PriorOnly)> installments,
         IReadOnlyList<(Guid? InstallmentId, DateOnly PaidOn, decimal Amount)> payments)

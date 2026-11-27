@@ -17,7 +17,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class OrgActivityService(AppDbContext db) : IOrgActivityService
 {
-    /// <summary>The page the arithmetic of the offset cannot overflow past: far beyond any real log, answered as an empty page.</summary>
     private const int LastPage = int.MaxValue / OrgActivityRules.MaxPageSize;
 
     public async Task<OrgActivityPage> ListAsync(
@@ -97,7 +96,6 @@ public sealed class OrgActivityService(AppDbContext db) : IOrgActivityService
         }
         else if (filter.PeopleOnly)
         {
-            // Whatever person: the lines with an actor (AM-02c, the home of the account shows no «Sistema»).
             query = query.Where(e => e.ActorUserId != null);
         }
 

@@ -16,40 +16,31 @@ namespace Casazen.Core.Entities;
 [Table("SupportVaultAccesses")]
 public class SupportVaultAccess : ITenantOwned
 {
-    /// <summary>Shortest <see cref="Reason"/>, once trimmed.</summary>
     public const int ReasonMinLength = 10;
 
-    /// <summary>Longest <see cref="Reason"/>, once trimmed.</summary>
     public const int ReasonMaxLength = 300;
 
-    /// <summary>Longest user id: the column length of <c>User.Id</c>, the Auth0 subject.</summary>
     public const int UserIdMaxLength = 255;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row (TN-2): the org of the request, never the support person's.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The «Do it for me» request the credential was opened for (FK, CASCADE).</summary>
     public Guid RequestId { get; set; }
 
-    /// <summary>The property of the request when it has one (a copy, not a foreign key).</summary>
     public Guid? PropertyId { get; set; }
 
     public SupportVaultCredentialKind Kind { get; set; }
 
-    /// <summary>Why the support person opened it (10 to 300 characters), as it wrote it. Never shown to the host and never logged.</summary>
     [Required]
     [MaxLength(ReasonMaxLength)]
     public string Reason { get; set; } = string.Empty;
 
-    /// <summary>Who opened it: the Auth0 subject of the support person.</summary>
     [Required]
     [MaxLength(UserIdMaxLength)]
     public string AccessedByUserId { get; set; } = string.Empty;
 
-    /// <summary>When it was opened (UTC).</summary>
     public DateTime AccessedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -59,12 +50,9 @@ public class SupportVaultAccess : ITenantOwned
 /// </summary>
 public enum SupportVaultCredentialKind
 {
-    /// <summary>The user of the channel manager panel of the structure (<see cref="SupportVaultSecretKind.OctoratePanel"/>).</summary>
     OctoratePanel = 1,
 
-    /// <summary>The Alloggiati Web credentials of the property (<see cref="PropertyQuesturaCredentials"/>).</summary>
     Police = 2,
 
-    /// <summary>The regional ISTAT credentials of the property (<see cref="PropertyIstatCredentials"/>, else <see cref="SupportVaultSecretKind.RegionalIstat"/>).</summary>
     RegionalIstat = 3,
 }

@@ -15,13 +15,8 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public static partial class SeoGeneratedContent
 {
-    /// <summary>
-    /// Minimum characters of visible text of a publishable page. The prompt asks for 300-600 words (about 2,000-4,000
-    /// characters): this floor only rejects one-line or truncated answers ("thin content").
-    /// </summary>
     public const int MinimumTextLength = 600;
 
-    /// <summary>Status and body to store: the body is empty for an answer that is not text at all.</summary>
     public static (SeoContentStatus Status, string BodyHtml) Evaluate(AiGenerationResult result)
     {
         if (!result.ProviderConfigured)
@@ -33,17 +28,12 @@ public static partial class SeoGeneratedContent
         if (text.Length == 0)
             return (SeoContentStatus.EmptyOutput, string.Empty);
 
-        // Kept (sanitized) so the admin can see what the provider answered; it can never be approved.
         if (LooksLikeMarkdown(raw) || !HasRequiredStructure(body) || text.Length < MinimumTextLength)
             return (SeoContentStatus.InvalidOutput, body);
 
         return (SeoContentStatus.Generated, body);
     }
 
-    /// <summary>
-    /// Text an admin wrote. Plain text becomes a heading plus paragraphs; HTML is kept and sanitized. The result is
-    /// publishable only with the same structure and length as a generated page, and it is not an AI answer.
-    /// </summary>
     public static string EvaluateManual(string raw, string heading)
     {
         var prepared = NormalizeManualInput(raw, heading);
@@ -56,7 +46,6 @@ public static partial class SeoGeneratedContent
         return body;
     }
 
-    /// <summary>Plain text becomes HTML; a fragment that already has tags is left for the sanitizer.</summary>
     public static string NormalizeManualInput(string? raw, string heading)
     {
         var trimmed = (raw ?? string.Empty).Trim();
@@ -80,7 +69,6 @@ public static partial class SeoGeneratedContent
         return builder.ToString();
     }
 
-    /// <summary>Text of a sanitized HTML fragment, entities decoded and whitespace collapsed.</summary>
     public static string VisibleText(string html)
     {
         if (string.IsNullOrWhiteSpace(html))
@@ -90,7 +78,6 @@ public static partial class SeoGeneratedContent
         return WhitespacePattern().Replace(text, " ").Trim();
     }
 
-    /// <summary>An answer wrapped in a single <c>```html … ```</c> block is unwrapped; any other fence stays (and fails).</summary>
     private static string StripOuterCodeFence(string content)
     {
         var match = OuterFencePattern().Match(content.Trim());

@@ -23,12 +23,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IMarketplaceChannelActivationService
 {
-    /// <summary>
-    /// What the portal asks of the person (from its flags in the portal cache) and the link state of the property. A property that is not linked is
-    /// answered as such, not refused: the wizard leads to the connect wizard first. The plan carries no address of the channel manager's panel.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><c>marketplace_portal_unknown</c>, <c>marketplace_property_not_found</c>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException"><c>marketplace_octorate_not_connected</c>.</exception>
     Task<MarketplaceActivationPlan> GetPlanAsync(
         Guid orgId,
         HostScope scope,
@@ -53,29 +47,12 @@ public interface IMarketplaceChannelActivationService
         MarketplaceActivationStart request,
         CancellationToken ct = default);
 
-    /// <summary>
-    /// Reads the connection from the channel manager and answers the status, whether the access on the panel is done (so the wizard continues after the
-    /// person came back), the last sync and the last error code. Changes nothing.
-    /// </summary>
     Task<MarketplaceActivationState> GetStateAsync(Guid orgId, HostScope scope, Guid activationId, CancellationToken ct = default);
 
-    /// <summary>
-    /// Requests the verified room import for the channel and returns the connection state.
-    /// A channel that requires authorization waits for provider evidence before any import.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
-    /// <c>d6_operation_unverified</c>, <c>marketplace_panel_access_pending</c>, <c>marketplace_connection_missing</c> (the connection is no longer on the
-    /// channel manager: the activation was freed and a new start makes a connection).
-    /// </exception>
     Task<MarketplaceActivationState> ImportAsync(Guid orgId, HostScope scope, Guid activationId, CancellationToken ct = default);
 
-    /// <summary>The rooms of the channel and the products of the listing, with the proposals of CasaZen (the same normalised name, else none).</summary>
     Task<MarketplaceActivationMapping> GetMappingAsync(Guid orgId, HostScope scope, Guid activationId, CancellationToken ct = default);
 
-    /// <summary>
-    /// Saves and verifies the selected mapping. Channels that require a separate completion action run it after verification.
-    /// A choice must contain at least one pair of valid channel and listing products.
-    /// </summary>
     Task<MarketplaceActivationState> SaveMappingAsync(
         Guid orgId,
         HostScope scope,
@@ -83,12 +60,5 @@ public interface IMarketplaceChannelActivationService
         IReadOnlyList<MarketplaceRoomChoice> choices,
         CancellationToken ct = default);
 
-    /// <summary>
-    /// For booking channels, checks the mapping, imports the reservations and verifies the calendar before marking the connection ready.
-    /// Enables synchronization for the verified profile and only reports Active once the provider confirms both settings on read-back.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
-    /// <c>d6_operation_unverified</c>, <c>marketplace_panel_access_pending</c>, <c>marketplace_connection_missing</c>.
-    /// </exception>
     Task<MarketplaceActivationState> ActivateAsync(Guid orgId, HostScope scope, Guid activationId, CancellationToken ct = default);
 }

@@ -39,7 +39,6 @@ public sealed class PaymentRefundService(
     IDomainEventRecorder? domainEvents = null,
     IGuestEmailBrandingProvider? emailBranding = null) : IPaymentRefundService
 {
-    /// <summary>Metadata key that links a Stripe refund to its <see cref="PaymentRefund"/> row.</summary>
     internal const string RefundIdMetadataKey = "paymentRefundId";
 
     internal const string RefundKind = "booking-refund";
@@ -70,7 +69,6 @@ public sealed class PaymentRefundService(
             var payment = await db.Payments.FirstOrDefaultAsync(p => p.Id == request.PaymentId, cancellationToken)
                 ?? throw PaymentNotFound(request.PaymentId);
 
-            // A key the caller decided (the refund of a booking edit): a refund of this payment that has it is the answer, not a second refund.
             PaymentRefund? known = null;
             if (!string.IsNullOrWhiteSpace(request.IdempotencyKey))
             {
@@ -148,7 +146,6 @@ public sealed class PaymentRefundService(
                 var refund = await FindRefundAsync(payment, snapshot, cancellationToken);
                 if (refund is null)
                 {
-                    // Made outside CasaZen (Stripe Dashboard or API): recorded so the payment reflects it (A3-05).
                     refund = new PaymentRefund
                     {
                         PaymentId = payment.Id,
@@ -182,7 +179,6 @@ public sealed class PaymentRefundService(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(paymentIntentId);
 
-        // Only PaymentIntents of our payments: Stripe is not called for charges CasaZen does not know.
         if (await FindPaymentForStripeEventAsync(paymentIntentId, connectedAccountId, cancellationToken) is null)
             return [];
 
@@ -217,11 +213,8 @@ public sealed class PaymentRefundService(
             if (details is null)
                 return;
 
-            // The automatic refund of a late payment tells the guest why the booking was not confirmed (BK-04). The amount is in the
-            // currency of the charge, which is the one of the property (CHF-MONEY).
             var currency = StayCurrency.Normalize(details.PropertyCurrency);
             var latePayment = details.IdempotencyKey.StartsWith(LatePaymentRefundKeyPrefix, StringComparison.Ordinal);
-            // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
             var branding = await emailBranding.ForOrgOrNullAsync(details.OrgId, cancellationToken);
             var email = latePayment
                 ? EmailTemplates.GuestPaymentRefundedDatesUnavailable(
@@ -408,7 +401,6 @@ public sealed class PaymentRefundService(
     internal static bool IsInProgress(PaymentRefund refund) =>
         refund.Status is PaymentRefundStatus.Pending or PaymentRefundStatus.RequiresAction;
 
-    /// <summary>The PaymentIntent of a payment: the stored id, or the transaction id when it is one.</summary>
     internal static string? PaymentIntentIdOf(Payment payment)
     {
         if (!string.IsNullOrWhiteSpace(payment.StripePaymentIntentId))
@@ -417,10 +409,6 @@ public sealed class PaymentRefundService(
         return payment.TransactionId.StartsWith("pi_", StringComparison.Ordinal) ? payment.TransactionId : null;
     }
 
-    /// <summary>
-    /// The connected account of the payment's intent: the stored one, else the org's current account; null for a
-    /// PaymentIntent of the platform account (<see cref="Payment.StripeIntentOnPlatform"/>, no <c>Stripe-Account</c>).
-    /// </summary>
     internal Task<string?> ResolveAccountAsync(Payment payment, CancellationToken cancellationToken) =>
         ResolveStripeAccountAsync(db, payment, cancellationToken);
 
@@ -445,7 +433,6 @@ public sealed class PaymentRefundService(
 
     internal static long ToCents(decimal amount) => (long)Math.Round(amount * 100m, MidpointRounding.AwayFromZero);
 
-    /// <summary>The amount of <paramref name="cents"/> minor units (both currencies of a stay have two decimals, <c>StayCurrency</c>).</summary>
     internal static decimal FromCents(long cents) => Math.Round(cents / 100m, 2);
 
     internal static StripeRefundSnapshot ToSnapshot(Refund refund) => new(
@@ -456,7 +443,6 @@ public sealed class PaymentRefundService(
         refund.FailureReason,
         refund.Metadata is null ? null : new Dictionary<string, string>(refund.Metadata));
 
-    /// <summary>Applies a Stripe refund to its row; true when the row has just become succeeded.</summary>
     private bool Apply(PaymentRefund refund, StripeRefundSnapshot snapshot)
     {
         var wasSucceeded = refund.Status == PaymentRefundStatus.Succeeded;
@@ -494,7 +480,6 @@ public sealed class PaymentRefundService(
         _ => PaymentRefundStatus.Pending,
     };
 
-    /// <summary>Refunded amount and status of the payment from its succeeded refunds only.</summary>
     internal async Task RecomputePaymentAsync(Payment payment, CancellationToken cancellationToken)
     {
         var refunds = await LoadRefundsAsync(payment.Id, cancellationToken);
@@ -511,13 +496,10 @@ public sealed class PaymentRefundService(
 
         payment.UpdatedAt = UtcNow;
 
-        // More was refunded than before (E12/F01/US01/T03): saved with the payment, once for each amount refunded in all, so the fiscal documents of the booking can follow
-        // (the credit note of a cancelled booking is the amount refunded).
         if (refunded > previouslyRefunded)
             await PaymentEvents.RecordRefundedAsync(domainEvents, db, payment, refunded, cancellationToken);
     }
 
-    /// <summary>Refunds of the payment, including the ones added to this context and not saved yet.</summary>
     private async Task<List<PaymentRefund>> LoadRefundsAsync(Guid paymentId, CancellationToken cancellationToken)
     {
         var stored = await db.PaymentRefunds.Where(r => r.PaymentId == paymentId).ToListAsync(cancellationToken);
@@ -535,7 +517,6 @@ public sealed class PaymentRefundService(
         if (byStripeId is not null)
             return byStripeId;
 
-        // Created by CasaZen but the response never came back (timeout): linked through the metadata.
         if (snapshot.Metadata?.TryGetValue(RefundIdMetadataKey, out var raw) == true && Guid.TryParse(raw, out var refundId))
         {
             return await db.PaymentRefunds.FirstOrDefaultAsync(
@@ -546,11 +527,6 @@ public sealed class PaymentRefundService(
         return null;
     }
 
-    /// <summary>
-    /// The payment of a PaymentIntent reported by a webhook, when the event comes from the account the intent was
-    /// created on: the Connect endpoint for payments of a connected account (<paramref name="connectedAccountId"/> =
-    /// the event's <c>account</c>), the platform endpoint only for payments without one.
-    /// </summary>
     private async Task<Payment?> FindPaymentForStripeEventAsync(
         string paymentIntentId,
         string? connectedAccountId,
@@ -586,10 +562,6 @@ public sealed class PaymentRefundService(
         return null;
     }
 
-    /// <summary>
-    /// Marks a succeeded refund as told to the guest, once: false when it is not succeeded or was already claimed (by the
-    /// synchronous answer, the webhook or a host cancellation email).
-    /// </summary>
     internal async Task<bool> ClaimGuestNotificationAsync(Guid refundId, CancellationToken cancellationToken)
     {
         var now = UtcNow;
@@ -613,7 +585,6 @@ public sealed class PaymentRefundService(
         return true;
     }
 
-    /// <summary>Stripe answered and did not create the refund (4xx other than 429).</summary>
     private static bool IsRejected(StripeException ex)
     {
         var status = (int)ex.HttpStatusCode;

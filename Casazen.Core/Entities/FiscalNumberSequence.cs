@@ -13,25 +13,18 @@ namespace Casazen.Core.Entities;
 [Table("FiscalNumberSequences")]
 public class FiscalNumberSequence : ITenantOwned
 {
-    /// <summary>Unique (<see cref="OrgId"/>, <see cref="IssuerProfileId"/>, <see cref="Series"/>).</summary>
     public const string IssuerSeriesIndexName = "UIX_FiscalNumberSequences_OrgId_IssuerProfileId_Series";
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key: the organization of the issuer.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>
-    /// The issuer whose numbers these are (<see cref="OrgFiscalIssuerProfile"/>): the profile of the organization or of an owner. A plain key, no foreign key: a
-    /// counter only remembers the last number, and the documents (with their foreign key) are what keeps an issuer that issued.
-    /// </summary>
     public Guid IssuerProfileId { get; set; }
 
     [Required, MaxLength(FiscalDocument.SeriesMaxLength)]
     public string Series { get; set; } = string.Empty;
 
-    /// <summary>The last number given in the series (0 before the first).</summary>
     public int LastNumber { get; set; }
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

@@ -17,17 +17,11 @@ public class BiometricSettings : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key (ITenantOwned). One row per org.</summary>
     public Guid OrgId { get; set; }
     public virtual Org Org { get; set; } = null!;
 
-    /// <summary>Whether biometric verification is enabled for this org (ADR-013-R13).</summary>
     public bool Enabled { get; set; }
 
-    /// <summary>
-    /// Similarity threshold above which the comparison is accepted (ADR-013-R4).
-    /// Value between 0 and 1 (inclusive).
-    /// </summary>
     [Column(TypeName = "decimal(5,4)")]
     public decimal AcceptThreshold { get; set; }
 
@@ -40,13 +34,8 @@ public class BiometricSettings : ITenantOwned
     [Column(TypeName = "decimal(5,4)")]
     public decimal EscalateThreshold { get; set; }
 
-    /// <summary>Maximum biometric verification attempts before auto-escalation (ADR-013-R5).</summary>
     public int MaxAttempts { get; set; } = 3;
 
-    /// <summary>
-    /// When the thresholds were calibrated on real data (E03/F04/US02/T01). Null means they are provisional: every outcome says so and the
-    /// operator console shows it (AC-NF51 point 7).
-    /// </summary>
     public DateTime? CalibratedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -29,7 +29,6 @@ public sealed record LongRentDeadline(
     Guid? InstallmentId,
     decimal? Amount);
 
-/// <summary>The deadlines of a window, in date order. <c>Truncated</c>: more installments were due than the answer carries.</summary>
 public sealed record LongRentDeadlines(DateOnly From, DateOnly To, IReadOnlyList<LongRentDeadline> Items, bool Truncated);
 
 /// <summary>The leases of the area counted by where they stand (the views of the lease list, plus what waits for the landlord).</summary>
@@ -41,26 +40,18 @@ public sealed record LongRentDeadlines(DateOnly From, DateOnly To, IReadOnlyList
 /// <param name="Ended">Registered and ended, or rejected.</param>
 public sealed record LongRentLeaseCounters(int Active, int Expiring, int InPreparation, int ToSign, int ToRegister, int Ended);
 
-/// <summary>What waits for the landlord, in the order of urgency.</summary>
 public enum LongRentChecklistKind
 {
-    /// <summary>Rent installments past due and not paid. <c>Date</c>: the oldest due date; <c>LeaseId</c>: its lease; <c>Amount</c>: all of them.</summary>
     RentOverdue = 0,
 
-    /// <summary>Leases signed and not registered. <c>Date</c>: the nearest registration deadline; <c>LeaseId</c>: its lease.</summary>
     RliRegistration = 1,
 
     /// <summary>Questura communications of extra-EU tenants not declared. <c>Date</c>: the nearest deadline; <c>LeaseId</c>: its lease.</summary>
     Questura = 2,
 
-    /// <summary>Leases not signed yet. <c>Date</c>: the nearest start date; <c>LeaseId</c>: its lease.</summary>
     LeaseToSign = 3,
 }
 
-/// <summary>
-/// One line of the checklist: <c>Count</c> things of this kind wait; <c>Date</c> and <c>LeaseId</c> point at the most pressing
-/// one. <c>IsOverdue</c>: that date has passed. <c>Amount</c> only for <see cref="LongRentChecklistKind.RentOverdue"/>.
-/// </summary>
 public sealed record LongRentChecklistItem(
     LongRentChecklistKind Kind,
     int Count,
@@ -98,10 +89,6 @@ public sealed record LongRentOverview(
     LongRentDeadline? NextDeadline,
     LongRentNow? Now = null);
 
-/// <summary>
-/// The agenda and the overview of the long-term area (LR-01, B2): read side only, for the leases the caller reaches
-/// (<see cref="HostScope"/>, TN-3), computed on today's date in Europe/Rome.
-/// </summary>
 public interface ILongRentAgendaService
 {
     /// <summary>
@@ -114,12 +101,9 @@ public interface ILongRentAgendaService
     Task<LongRentOverview> GetOverviewAsync(HostScope scope, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Stable codes of the agenda (LR-01, B2): answered as 400.</summary>
 public static class LongRentAgendaErrorCodes
 {
-    /// <summary>The window is not made of two valid dates, <c>to</c> is before <c>from</c>, or it is longer than <see cref="LongRentDeadlineRules.MaxWindowDays"/> days.</summary>
     public const string RangeInvalid = "long_rent_deadlines_range_invalid";
 
-    /// <summary>The type is not one of <see cref="LongRentDeadlineType"/>.</summary>
     public const string TypeUnknown = "long_rent_deadlines_type_unknown";
 }

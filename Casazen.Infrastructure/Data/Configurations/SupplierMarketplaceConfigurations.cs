@@ -10,7 +10,6 @@ internal sealed class SupplierProfileConfiguration : IEntityTypeConfiguration<Su
 {
     public void Configure(EntityTypeBuilder<SupplierProfile> entity)
     {
-        // ─── Supplier console (US-022 / #292) ────────────────────────────────────
         entity.HasOne(sp => sp.Org)
             .WithOne()
             .HasForeignKey<SupplierProfile>(sp => sp.OrgId)
@@ -18,8 +17,6 @@ internal sealed class SupplierProfileConfiguration : IEntityTypeConfiguration<Su
 
         entity.HasIndex(sp => sp.Status);
 
-        // SU-04: comuni chosen from the official list. A column added to a table with rows: the profiles that exist start
-        // with none (nothing is inferred from the free-text ComuniJson).
         entity.Property(sp => sp.ComuneIstatCodesJson)
             .HasDefaultValueSql("'[]'::jsonb");
 
@@ -27,7 +24,6 @@ internal sealed class SupplierProfileConfiguration : IEntityTypeConfiguration<Su
             .IsUnique()
             .HasDatabaseName("UIX_SupplierProfiles_ClaimTokenHash");
 
-        // SU-13: the slug of the public showcase is unique (profiles without one are not constrained).
         entity.HasIndex(sp => sp.ShowcaseSlug)
             .IsUnique()
             .HasFilter("\"ShowcaseSlug\" IS NOT NULL")
@@ -46,8 +42,6 @@ internal sealed class SupplierProfileConfiguration : IEntityTypeConfiguration<Su
 
     internal static void ConfigureTable2(EntityTypeBuilder<SupplierProfile> entity)
     {
-        // ─── Refunds of the service payments and the commission period (SP-15b) ─────────────
-        // The end of a commission period only makes sense with the percentage it ends.
         entity.ToTable(t =>
             t.HasCheckConstraint(
                 "CK_SupplierProfiles_CommissionOverrideUntil",
@@ -87,8 +81,6 @@ internal sealed class SupplierAdminAuditEntryConfiguration : IEntityTypeConfigur
 {
     public void Configure(EntityTypeBuilder<SupplierAdminAuditEntry> entity)
     {
-        // Audit trail of the admin actions on suppliers and invites (SU-12): read per supplier, newest first. No foreign
-        // key: the trail outlives a supplier org deleted by the fix-orphaned repair.
         entity.HasIndex(e => new { e.SupplierOrgId, e.OccurredAt });
     }
 }
@@ -97,7 +89,6 @@ internal sealed class ServiceRequestConfiguration : IEntityTypeConfiguration<Ser
 {
     public void Configure(EntityTypeBuilder<ServiceRequest> entity)
     {
-        // ─── Micro-marketplace v0 (US-021 / #293) ────────────────────────────────
         entity.HasOne(sr => sr.Org)
             .WithMany()
             .HasForeignKey(sr => sr.OrgId)
@@ -127,9 +118,6 @@ internal sealed class ServiceRequestConfiguration : IEntityTypeConfiguration<Ser
         entity.Property(sr => sr.Version)
             .IsRowVersion();
 
-        // SP-04: a request has an optional catalog service (set to null if the service is ever removed for good; the catalog
-        // deletes softly and the request keeps its own copy of the name), and the planner and the console read a supplier's
-        // requests by the time of the work.
         entity.HasOne<SupplierServiceListing>()
             .WithMany()
             .HasForeignKey(sr => sr.ServiceListingId)
@@ -140,8 +128,6 @@ internal sealed class ServiceRequestConfiguration : IEntityTypeConfiguration<Ser
 
     internal static void ConfigureChecksMirrorServiceRequestLimits(EntityTypeBuilder<ServiceRequest> entity)
     {
-        // The checks mirror ServiceRequestLimits and the rules of the service: a bad row is refused by the database too. A
-        // time has both ends or none, a proposal has its start, end and instant or none, an amount is from 1 cent to the bound.
         entity.ToTable(t =>
         {
             t.HasCheckConstraint(

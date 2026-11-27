@@ -59,9 +59,6 @@ public class AlloggiatiWebClient(
         return token;
     }
 
-    /// <summary>
-    /// Test authentication with the Questura portal (does not validate records).
-    /// </summary>
     public async Task<bool> AuthenticationTestAsync(Guid credentialId, CancellationToken ct = default)
     {
         var credential = await db.PropertyQuesturaCredentials
@@ -84,9 +81,6 @@ public class AlloggiatiWebClient(
         return result == "OK";
     }
 
-    /// <summary>
-    /// Test rows before sending (returns per-row errors with TipoErrore codes).
-    /// </summary>
     public async Task<AlloggiatiTestResult> TestAsync(
         Guid credentialId,
         IReadOnlyList<string> rows,
@@ -177,9 +171,6 @@ public class AlloggiatiWebClient(
         };
     }
 
-    /// <summary>
-    /// Retrieve receipts for a date range (daily job retrieves last 30 days per credential).
-    /// </summary>
     public async Task<IReadOnlyList<AlloggiatiReceipt>> RicevutaAsync(
         Guid credentialId,
         DateTime fromDate,
@@ -227,12 +218,8 @@ public class AlloggiatiWebClient(
         return receipts;
     }
 
-    /// <summary>
-    /// Retrieve official code tables (comuni, province, stati, etc.) from Alloggiati Web.
-    /// </summary>
     public async Task<string> TabellaAsync(string tableName, CancellationToken ct = default)
     {
-        // For phase 1, returns empty - code tables are already imported via AlloggiatiCodeTableService
         await Task.CompletedTask;
         logger.LogDebug("Tabella operation called for {TableName} (not implemented in phase 1)", tableName);
         return string.Empty;
@@ -273,14 +260,12 @@ public class AlloggiatiWebClient(
     }
 }
 
-/// <summary>Result of Test operation with per-row errors.</summary>
 public sealed record AlloggiatiTestResult
 {
     public bool Success { get; init; }
     public List<AlloggiatiRowError> Errors { get; init; } = [];
 }
 
-/// <summary>Per-row error from Test operation.</summary>
 public sealed record AlloggiatiRowError
 {
     public int RowNumber { get; init; }
@@ -288,14 +273,12 @@ public sealed record AlloggiatiRowError
     public string Description { get; init; } = string.Empty;
 }
 
-/// <summary>Result of Send operation.</summary>
 public sealed record AlloggiatiSendResult
 {
     public bool Success { get; init; }
     public string ConfirmationNumber { get; init; } = string.Empty;
 }
 
-/// <summary>Receipt retrieved from Ricevuta operation.</summary>
 public sealed record AlloggiatiReceipt
 {
     public string ConfirmationNumber { get; init; } = string.Empty;

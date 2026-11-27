@@ -8,8 +8,6 @@ internal sealed class PopupAlertConfiguration : IEntityTypeConfiguration<PopupAl
 {
     public void Configure(EntityTypeBuilder<PopupAlert> entity)
     {
-        // The alerts of an org go with it (the one place an org is deleted, the merge of two duplicate supplier orgs, must not be
-        // stopped by them), and the ones of a person go with the account (erasure): the row is a user id and a reference.
         entity.HasOne<Org>()
             .WithMany()
             .HasForeignKey(a => a.OrgId)
@@ -19,18 +17,13 @@ internal sealed class PopupAlertConfiguration : IEntityTypeConfiguration<PopupAl
             .HasForeignKey(a => a.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // By name, so a member appended later never changes the meaning of the rows already written. The urgency stays a number: the
-        // list is sorted by it in SQL, highest first (AlertUrgency.High = 3).
         entity.Property(a => a.AlertType)
             .HasConversion<string>()
             .HasMaxLength(PopupAlert.AlertTypeMaxLength);
 
-        // The pending alerts of a user: not dismissed, snoozed until an instant that has passed (GET /api/me/alerts/pending).
         entity.HasIndex(a => new { a.UserId, a.DismissedAt, a.RemindAt })
             .HasDatabaseName(PopupAlert.PendingIndexName);
 
-        // The job that pushes the deferred and snoozed alerts when they fall due reads across every org, every minute: only the rows
-        // still waiting for their push.
         entity.HasIndex(a => a.RemindAt)
             .HasFilter("\"RemindAt\" IS NOT NULL AND \"DismissedAt\" IS NULL AND \"DeliveredAt\" IS NULL")
             .HasDatabaseName(PopupAlert.DueIndexName);
@@ -41,7 +34,6 @@ internal sealed class UserNotificationPreferencesConfiguration : IEntityTypeConf
 {
     public void Configure(EntityTypeBuilder<UserNotificationPreferences> entity)
     {
-        // Same as the alerts: the preferences of a person go with the account and with the org.
         entity.HasOne<Org>()
             .WithMany()
             .HasForeignKey(p => p.OrgId)

@@ -4,21 +4,11 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Leases;
 
-/// <summary>
-/// Stable code of the rule that keeps one property from having two leases on the same days (LR-OVERLAP). A code is never renamed: add
-/// a new one. The runbook <c>docs/runbooks/long-rent-lease-draft.md</c> lists it with its status and the members of the problem.
-/// </summary>
 public static class LeasePeriodCodes
 {
-    /// <summary>
-    /// 409: another lease of the same property covers some of the same days, so this one cannot become a contract (review confirmed,
-    /// handed out or sent for signature, signed copy or imported contract recorded). Nothing was written. The problem carries
-    /// <c>conflictingLeaseId</c>, <c>conflictingFrom</c> and <c>conflictingTo</c> (<c>yyyy-MM-dd</c>) and no name of a person.
-    /// </summary>
     public const string Overlaps = "lease_period_overlaps";
 }
 
-/// <summary>The lease that is in the way of another one on the same property: its id and the first and last day it covers (Europe/Rome days).</summary>
 public sealed record LeasePeriodConflict(Guid ConflictingLeaseId, DateOnly ConflictingFrom, DateOnly ConflictingTo);
 
 /// <summary>
@@ -40,24 +30,15 @@ public static class LeasePeriodRules
     /// <summary>The last day of the lease: the day it was ended, otherwise the end of the period it is in now.</summary>
     public static DateTime EffectiveEnd(DateTime? terminatedOn, DateTime currentTermEndDate) => terminatedOn ?? currentTermEndDate;
 
-    /// <summary>The last day of <paramref name="lease"/> (<see cref="EffectiveEnd(DateTime?, DateTime)"/>).</summary>
     public static DateTime EffectiveEnd(LeaseContract lease)
     {
         ArgumentNullException.ThrowIfNull(lease);
         return EffectiveEnd(lease.TerminatedOn, lease.CurrentTermEndDate);
     }
 
-    /// <summary>
-    /// True when the two periods (first and last day included) share at least one day. A period whose end is before its start covers no
-    /// day and overlaps nothing.
-    /// </summary>
     public static bool Overlaps(DateTime firstStart, DateTime firstEnd, DateTime secondStart, DateTime secondEnd) =>
         firstStart <= firstEnd && secondStart <= secondEnd && firstStart <= secondEnd && secondStart <= firstEnd;
 
-    /// <summary>
-    /// True when both dates are real days and the period is not empty: a draft that was not given both its dates (the starting value of the
-    /// column is <see cref="LeaseDraftDefaults.PlaceholderDate"/>) has no period to protect or to check.
-    /// </summary>
     public static bool HasPeriod(DateTime start, DateTime end) =>
         !LeaseDraftDefaults.IsPlaceholder(start) && !LeaseDraftDefaults.IsPlaceholder(end) && start <= end;
 

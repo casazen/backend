@@ -28,12 +28,10 @@ public sealed record LeaseMaintenanceDecisionCommand(LeaseMaintenanceDecision De
 
 public sealed record LeaseMaintenancePaymentCommand(long AmountCents);
 
-/// <summary>The lease as the controller needs it to authorize the property. Null when it is not in the caller's org.</summary>
 public sealed record LeaseMaintenanceAccess(Guid LeaseId, Guid OrgId, Guid PropertyId, string? PropertyOwnerId);
 
 public sealed record LeaseMaintenancePhotoView(Guid Id, string FileName, string ContentType);
 
-/// <summary>A private photo. The bytes are served by the authenticated endpoint. There is no public URL.</summary>
 public sealed record LeaseMaintenancePhotoFile(string FileName, string ContentType, byte[] Content);
 
 public sealed record LeaseMaintenanceRequestView(
@@ -53,10 +51,6 @@ public sealed record LeaseMaintenanceRequestView(
 
 public sealed record LeaseMaintenanceListView(IReadOnlyList<LeaseMaintenanceRequestView> Items);
 
-/// <summary>
-/// A debit that was started, or the one already started. <see cref="Paid"/> is true only after Stripe reports
-/// the PaymentIntent succeeded. Starting it, and declaring a manual transfer, do not set it.
-/// </summary>
 public sealed record LeaseMaintenancePaymentView(
     Guid RequestId,
     LeaseMaintenanceStatus Status,
@@ -68,10 +62,6 @@ public sealed record LeaseMaintenancePaymentView(
     string Currency,
     string PaymentStatus);
 
-/// <summary>
-/// Tenant maintenance on a lease: the tenant opens and reads, the landlord or the agency of the same org decides
-/// and pays with the euro bank-link debit. Another org sees nothing.
-/// </summary>
 public interface ILeaseMaintenanceService : ILeaseMaintenancePaymentApplier
 {
     Task<LeaseMaintenanceAccess?> FindLeaseAsync(Guid orgId, Guid leaseId, CancellationToken cancellationToken = default);
@@ -82,7 +72,6 @@ public interface ILeaseMaintenanceService : ILeaseMaintenancePaymentApplier
     Task<LeaseMaintenanceListView> ListAsync(
         LeaseMaintenanceCaller caller, Guid leaseId, CancellationToken cancellationToken = default);
 
-    /// <summary>The photo bytes for the tenant of the lease or anyone who may read it. Missing and other-org photos are not found.</summary>
     Task<LeaseMaintenancePhotoFile> ReadPhotoAsync(
         LeaseMaintenanceCaller caller, Guid leaseId, Guid requestId, Guid photoId, CancellationToken cancellationToken = default);
 
@@ -98,7 +87,6 @@ public interface ILeaseMaintenanceService : ILeaseMaintenancePaymentApplier
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>What the bank-link webhook calls when a maintenance debit succeeds. Not a manual payment.</summary>
 public interface ILeaseMaintenancePaymentApplier
 {
     Task MarkPaidFromBankAsync(Guid orgId, Guid requestId, long amountCents, CancellationToken cancellationToken = default);

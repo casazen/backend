@@ -18,13 +18,11 @@ internal sealed class ServiceRequestShowcaseConfiguration : IEntityTypeConfigura
 
         entity.HasIndex(sr => sr.CustomerId).HasDatabaseName("IX_ServiceRequests_CustomerId");
 
-        // The code is unique for the supplier among its showcase requests (the host requests have none).
         entity.HasIndex(sr => new { sr.SupplierOrgId, sr.PublicCode })
             .IsUnique()
             .HasFilter("\"PublicCode\" IS NOT NULL")
             .HasDatabaseName("UIX_ServiceRequests_SupplierOrgId_PublicCode");
 
-        // A request on measure (SP-10b) exists only in the showcase context.
         entity.ToTable(t => t.HasCheckConstraint(
             "CK_ServiceRequests_Kind",
             $"\"Kind\" = {(int)ServiceRequestKind.Standard} "

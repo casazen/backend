@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="IPropertySwissPlaceResolver" />
 public class PropertySwissPlaceResolver(AppDbContext db) : IPropertySwissPlaceResolver
 {
     public async Task<SwissPlace?> ResolveAsync(Property property, CancellationToken cancellationToken = default)
@@ -29,7 +28,6 @@ public class PropertySwissPlaceResolver(AppDbContext db) : IPropertySwissPlaceRe
         if (swiss.Count == 0)
             return places;
 
-        // The municipality stored on the property, when the directory has it: the host confirmed it, it wins.
         var storedCodes = swiss
             .Select(p => SwissPlaceCodes.NormalizeMunicipalityCode(p.SwissMunicipalityCode))
             .OfType<string>()

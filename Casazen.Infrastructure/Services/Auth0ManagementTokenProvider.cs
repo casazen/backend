@@ -17,22 +17,15 @@ public sealed class Auth0ManagementTokenException(
     public string ErrorCode { get; } = errorCode ?? Auth0SyncResult.TokenFailedCode;
 }
 
-/// <summary>
-/// Supplies access tokens for the Auth0 Management API.
-/// </summary>
 public interface IAuth0ManagementTokenProvider
 {
-    /// <summary>True when an M2M client (or the deprecated static token) is configured.</summary>
     bool IsConfigured { get; }
 
     /// <summary>Management API tenant domain (e.g. <c>tenant.eu.auth0.com</c>), or null when missing.</summary>
     string? Domain { get; }
 
-    /// <summary>Returns a valid token, fetching a new one via client credentials when the cached one expires.</summary>
-    /// <exception cref="Auth0ManagementTokenException">The token endpoint failed or nothing is configured.</exception>
     Task<string> GetTokenAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Drops the cached token (e.g. after the Management API answered 401).</summary>
     void Invalidate();
 }
 
@@ -51,7 +44,6 @@ public sealed class Auth0ManagementTokenProvider(
 {
     public const string HttpClientName = "Auth0Management";
 
-    /// <summary>Tokens are renewed this long before Auth0 says they expire.</summary>
     public static readonly TimeSpan ExpirySafetyMargin = TimeSpan.FromSeconds(60);
 
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
@@ -175,7 +167,6 @@ public sealed class Auth0ManagementTokenProvider(
         {
             if (!response.IsSuccessStatusCode)
             {
-                // Do not log the body: it may echo request details.
                 throw new Auth0ManagementTokenException(
                     $"Auth0 token endpoint returned HTTP {(int)response.StatusCode}.",
                     errorCode: response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden

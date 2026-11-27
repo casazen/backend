@@ -23,9 +23,6 @@ public interface IGuestPortalEmailService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>What <see cref="IGuestPortalEmailService.ResendPrepareArrivalAsync"/> did.</summary>
-/// <param name="Outcome">Whether the e-mail was queued and, when it was not, why.</param>
-/// <param name="Link">The active stay link of the booking, when the e-mail was queued.</param>
 public sealed record GuestPortalResendResult(GuestPortalResendOutcome Outcome, GuestPortalLink? Link = null)
 {
     public static GuestPortalResendResult Queued(GuestPortalLink link) => new(GuestPortalResendOutcome.Queued, link);
@@ -33,18 +30,13 @@ public sealed record GuestPortalResendResult(GuestPortalResendOutcome Outcome, G
     public static GuestPortalResendResult Refused(GuestPortalResendOutcome outcome) => new(outcome);
 }
 
-/// <summary>The answer of <see cref="IGuestPortalEmailService.ResendPrepareArrivalAsync"/>.</summary>
 public enum GuestPortalResendOutcome
 {
-    /// <summary>The e-mail is with the queue of the e-mails.</summary>
     Queued,
 
-    /// <summary>The guest has no address to write to (an OTA booking without one, an erased guest, a guest of the demo): the host copies the link.</summary>
     NoGuestEmail,
 
-    /// <summary>The booking may not have a stay link (a request, a cancelled booking, a no-show, a stay over by 30 days).</summary>
     NotEligible,
 
-    /// <summary>The queue of the e-mails did not take it (no provider configured, a queue that refused it).</summary>
     NotQueued,
 }

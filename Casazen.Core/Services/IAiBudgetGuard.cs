@@ -18,29 +18,15 @@ public interface IAiBudgetGuard
     /// </summary>
     Task<AiBudgetReservation> ReserveAsync(long estimatedTokens, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Replaces the reservation with <paramref name="usedTokens"/> (prompt + completion; <c>0</c> for a cache hit or a
-    /// call that did not reach the provider).
-    /// </summary>
     Task SettleAsync(AiBudgetReservation reservation, long usedTokens, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Tokens held on the budget row <paramref name="BudgetId"/> until the call is settled.</summary>
 public sealed record AiBudgetReservation(Guid BudgetId, long ReservedTokens);
 
-/// <summary>
-/// Token estimates for the budget when the real figure is not known yet (before the call) or not reported by the
-/// provider (A8-07: the DeepSeek integration used to report 0 tokens, so the budget never moved).
-/// </summary>
 public static class AiTokenEstimator
 {
-    /// <summary>
-    /// One token every 3 characters: a deliberately high estimate for Italian/English text, so the budget errs on the
-    /// side of stopping early.
-    /// </summary>
     public const int CharactersPerToken = 3;
 
-    /// <summary>Estimated tokens of <paramref name="text"/>.</summary>
     public static long Estimate(string? text) =>
         string.IsNullOrEmpty(text) ? 0 : (text.Length + CharactersPerToken - 1) / CharactersPerToken;
 
@@ -50,11 +36,9 @@ public static class AiTokenEstimator
     /// </summary>
     public const int TokensPerImage = 1_400;
 
-    /// <summary>Worst case of a call: the prompt plus the completion limit sent to the provider.</summary>
     public static long EstimateCall(string prompt, int maxCompletionTokens) =>
         Estimate(prompt) + Math.Max(0, maxCompletionTokens);
 
-    /// <summary>Worst case of a call with instructions and images: the texts, the images and the completion limit.</summary>
     public static long EstimateCall(AiRequest request, int maxCompletionTokens)
     {
         ArgumentNullException.ThrowIfNull(request);

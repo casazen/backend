@@ -59,30 +59,17 @@ internal sealed class ParsedOwnerRow(int number)
 
     public string? Bic { get; init; }
 
-    /// <summary>True when the row names a property (by id or by CIN).</summary>
     public bool NamesProperty => PropertyId is not null || Cin is not null;
 
-    /// <summary>True when the row says anything about an ownership: a share, a first or a last day.</summary>
     public bool HasOwnershipFacts => SharePercent is not null || OwnershipStart is not null || OwnershipEnd is not null;
 }
 
-/// <summary>A file read and understood: its rows of data, and the header cells that name nothing the import knows.</summary>
 internal sealed record ParsedOwnerImport(IReadOnlyList<ParsedOwnerRow> Rows, IReadOnlyList<string> UnknownColumns);
 
-/// <summary>
-/// Understands the header of an owner file (a CSV or an Excel sheet, already read into rows of text by the reader of the bulk import) and turns
-/// every row of data into a <see cref="ParsedOwnerRow"/>: the same safe reading, the same limits (2 MB, 1,000 rows, 100 columns, 1,000 characters
-/// a cell). Columns are named in Italian or English; a column that is not known is reported once, not on every row.
-/// </summary>
 internal static class OwnerImportParser
 {
     private static readonly Dictionary<string, string> Aliases = BuildAliases();
 
-    /// <summary>
-    /// Understands a table: the first row is the header. 422 <see cref="BulkImportCodes.FileEmpty"/> for a table with no row or no row of data;
-    /// <see cref="BulkImportCodes.ColumnsUnrecognized"/> without a column that identifies the owner (<c>ownerId</c>, <c>ownerKey</c>,
-    /// <c>fiscalCode</c> or <c>vatNumber</c>: an e-mail address alone identifies nobody); <see cref="BulkImportCodes.TooManyRows"/> past 1,000 rows.
-    /// </summary>
     public static ParsedOwnerImport Parse(IReadOnlyList<ImportTableRow> table)
     {
         ArgumentNullException.ThrowIfNull(table);
@@ -98,7 +85,6 @@ internal static class OwnerImportParser
             if (title.Length == 0)
                 continue;
 
-            // The first column of a name wins; a repeat is reported as unknown, once, like a column the import does not know.
             if (Aliases.TryGetValue(OwnerFieldRules.Key(title), out var name) && found.TryAdd(name, column))
                 continue;
 
@@ -159,11 +145,6 @@ internal static class OwnerImportParser
         return new ParsedOwnerImport(rows, unknown);
     }
 
-    /// <summary>
-    /// The fingerprint of an import: SHA-256 of the org and of the normalized content of the rows (the cells trimmed, the columns in a fixed order,
-    /// the order of the rows), as lower case hex. A sheet saved again, with other column titles or other empty columns, is the same import. It is a
-    /// hash of the file and says nothing of what the file holds.
-    /// </summary>
     public static string Fingerprint(Guid orgId, IReadOnlyList<ParsedOwnerRow> rows)
     {
         var text = new StringBuilder();
@@ -208,12 +189,6 @@ internal static class OwnerImportParser
         yield return (OwnerImportColumns.Bic, row.Bic);
     }
 
-    // ---------------------------------------------------------------- the values of the cells
-
-    /// <summary>
-    /// A share of a property: 0.01 to 100.00 with at most two decimals, a point or a comma as the separator, a trailing <c>%</c> allowed.
-    /// Anything else (text, zero, a negative, more than 100, three decimals) is not a share.
-    /// </summary>
     public static bool TryParseShare(string? text, out decimal share)
     {
         share = 0m;
@@ -249,7 +224,6 @@ internal static class OwnerImportParser
 
         if (value.All(char.IsAsciiDigit) && value.Length is >= 4 and <= 6 && int.TryParse(value, CultureInfo.InvariantCulture, out var serial))
         {
-            // A plain number is the serial of an Excel date (a year such as 2026 is 4 digits but is far below the first serial worth reading).
             if (serial is < 1 or > 109_000 || serial < 5_000)
                 return false;
 
@@ -264,9 +238,6 @@ internal static class OwnerImportParser
         return date.Year is >= 1900 and <= 2200;
     }
 
-    // ---------------------------------------------------------------- aliases
-
-    /// <summary>The names a column goes by, in Italian and in English, each in the form of <see cref="OwnerFieldRules.Key"/>.</summary>
     private static Dictionary<string, string> BuildAliases()
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -327,8 +298,6 @@ internal static class OwnerImportParser
             "nazione residenza fiscale");
         Add(OwnerImportColumns.FiscalCode, "fiscalCode", "fiscal code", "codice fiscale", "cf", "c.f.", "tax id", "taxId", "tax code");
         Add(OwnerImportColumns.VatNumber, "vatNumber", "vat number", "vat id", "vat", "partita iva", "p.iva", "piva", "p iva");
-        // The structured address of the owner (E13/F01/US01/T01: the columns of the import template are indirizzo_via, indirizzo_civico, cap, localita, paese;
-        // the header is compared without spaces, underscores and accents, so «indirizzo_via» and «Indirizzo via» are one column).
         Add(
             OwnerImportColumns.BillingStreet,
             "billingStreet",

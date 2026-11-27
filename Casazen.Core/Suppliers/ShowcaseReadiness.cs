@@ -1,34 +1,20 @@
 namespace Casazen.Core.Suppliers;
 
-/// <summary>How an item of the readiness stands: done, advised, or still to do.</summary>
 public enum ShowcaseReadinessLevel
 {
-    /// <summary>Done.</summary>
     Ok = 0,
 
-    /// <summary>Not done, and the showcase can be published without it (a piece of advice).</summary>
     Warn = 1,
 
-    /// <summary>Not done, and the showcase cannot be published without it.</summary>
     Todo = 2,
 }
 
-/// <summary>
-/// One line of the "what is missing" list of the editor (SP-13a).
-/// </summary>
-/// <param name="Code">Stable identifier (<see cref="ShowcaseReadiness.Services"/> and the others): the editor writes the text.</param>
-/// <param name="Level">Done, advised, or still to do.</param>
-/// <param name="Required">True when a <see cref="ShowcaseReadinessLevel.Todo"/> blocks the publication.</param>
-/// <param name="Target">Where in the app the supplier fixes it (a path of the web app).</param>
 public sealed record ShowcaseReadinessItem(string Code, ShowcaseReadinessLevel Level, bool Required, string Target);
 
-/// <summary>What the readiness of a showcase says: every item, and whether the showcase can be published.</summary>
 public sealed record ShowcaseReadinessResult(IReadOnlyList<ShowcaseReadinessItem> Items)
 {
-    /// <summary>No required item is still to do.</summary>
     public bool CanPublish => Items.All(item => !item.Required || item.Level != ShowcaseReadinessLevel.Todo);
 
-    /// <summary>The codes of the required items that are still to do: what a publication is refused for.</summary>
     public IReadOnlyList<string> Missing { get; } =
         Items.Where(item => item.Required && item.Level == ShowcaseReadinessLevel.Todo).Select(item => item.Code).ToList();
 }
@@ -62,7 +48,6 @@ public static class ShowcaseReadiness
     public const string Faq = "faq";
     public const string Verified = "verified";
 
-    /// <summary>Where the supplier fixes each item (paths of the web app; the editor steps are <c>?step=</c> of the showcase page).</summary>
     private const string ServicesPath = "/app/supplier/services";
     private const string ProfilePath = "/app/supplier/profile";
     private const string AvailabilityPath = "/app/supplier/availability";
@@ -71,7 +56,6 @@ public static class ShowcaseReadiness
     private const string WorksPath = "/app/supplier/showcase?step=works";
     private const string TextsPath = "/app/supplier/showcase?step=texts";
 
-    /// <summary>The readiness of the draft (cleaned of empty items) for a supplier with these facts.</summary>
     public static ShowcaseReadinessResult Evaluate(ShowcaseContentDocument draft, ShowcaseReadinessFacts facts)
     {
         ArgumentNullException.ThrowIfNull(draft);
@@ -105,36 +89,21 @@ public static class ShowcaseReadiness
         new(code, done ? ShowcaseReadinessLevel.Ok : ShowcaseReadinessLevel.Warn, false, target);
 }
 
-/// <summary>Why the bookings of a showcase are closed: the codes of <see cref="ShowcaseBookings.BlockedBy"/>.</summary>
 public static class ShowcaseBookingBlocks
 {
-    /// <summary>Nothing is published yet.</summary>
     public const string NotPublished = "not_published";
 
-    /// <summary>The supplier paused the showcase.</summary>
     public const string Paused = "paused";
 
-    /// <summary>Payments inside CasaZen are not on (the flag <c>SupplierOnlinePayments</c>): the bookings open only with the payment.</summary>
     public const string PaymentsOff = "payments_off";
 
-    /// <summary>The supplier's account for the payments cannot take charges and payouts yet.</summary>
     public const string AccountNotReady = "payments_account_not_ready";
 
-    /// <summary>
-    /// Everything is ready, but the switch is off: the account became ready after the publication. "Riattiva" (resume) turns it on.
-    /// </summary>
     public const string SwitchOff = "bookings_off";
 }
 
-/// <summary>
-/// Whether the showcase takes bookings, and if not why (SP-13a, decision VT-D7: the bookings open only with the payment, and until then
-/// the showcase is read-only). <c>open = published ∧ not paused ∧ OnlineBookingEnabled ∧ payments account ready ∧ payments flag on</c>.
-/// </summary>
-/// <param name="Open">The showcase takes bookings now.</param>
-/// <param name="BlockedBy">The reasons it does not, in a stable order; empty when it does.</param>
 public sealed record ShowcaseBookings(bool Open, IReadOnlyList<string> BlockedBy)
 {
-    /// <summary>The derived rule.</summary>
     public static ShowcaseBookings Evaluate(
         bool published,
         bool paused,
@@ -157,10 +126,6 @@ public sealed record ShowcaseBookings(bool Open, IReadOnlyList<string> BlockedBy
         return new ShowcaseBookings(blocked.Count == 0, blocked);
     }
 
-    /// <summary>
-    /// The value <c>OnlineBookingEnabled</c> gets when the showcase is published or reopened: on only when it is published, not paused,
-    /// the payments are on and the account is ready.
-    /// </summary>
     public static bool SwitchValue(bool published, bool paused, bool paymentsFlagOn, bool accountReady) =>
         published && !paused && paymentsFlagOn && accountReady;
 }

@@ -21,7 +21,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IDocumentIssuerService
 {
-    /// <summary>The setting of the organization, or the empty setting of one that has saved nothing yet (no mode).</summary>
     Task<IssuerSettingsView> GetSettingsAsync(Guid orgId, CancellationToken ct = default);
 
     /// <summary>
@@ -53,71 +52,50 @@ public interface IDocumentIssuerService
     Task<IssuerLock> LockIssuerAsync(Guid bookingId, BookingDocumentIssuerKind kind, Guid? documentId, bool save = true, CancellationToken ct = default);
 }
 
-/// <summary>The kind of issuer a booking resolves to (<see cref="IssuerDecision"/>).</summary>
 public enum IssuerDecisionKind
 {
-    /// <summary>Nobody issues: the issuance is switched off.</summary>
     None = 0,
 
     /// <summary>Octorate issued for the booking before the decision of 2026-11-14 (a legacy lock): CasaZen does not issue it again.</summary>
     Octorate = 1,
 
-    /// <summary>CasaZen issues.</summary>
     CasaZen = 2,
 }
 
-/// <summary>Who would issue the documents of a booking, and the stable code of why.</summary>
-/// <param name="Kind">The issuer.</param>
-/// <param name="Reason">One of <see cref="IssuerReasons"/>.</param>
 public sealed record IssuerDecision(IssuerDecisionKind Kind, string Reason);
 
-/// <summary>The stable reason codes of an <see cref="IssuerDecision"/>.</summary>
 public static class IssuerReasons
 {
-    /// <summary>CasaZen issues the documents of the booking.</summary>
     public const string IssuerCasazen = "issuer_casazen";
 
     /// <summary>The booking was locked to Octorate before the decision of 2026-11-14: it issued, and CasaZen does not issue the booking again.</summary>
     public const string IssuerLockedOctorate = "issuer_locked_octorate";
 
-    /// <summary>Issuance by CasaZen is switched off (<c>Features:FiscalDocumentIssuance</c>).</summary>
     public const string IssuanceOff = "issuance_off";
 }
 
-/// <summary>The issuer a booking is locked to (<see cref="IDocumentIssuerService.LockIssuerAsync"/>).</summary>
 public sealed record IssuerLock(BookingDocumentIssuerKind Issuer, DateTime LockedAt, Guid? LockedByDocumentId);
 
-/// <summary>The stable codes of the errors of the issuer setting, with the keys of their messages in <c>SharedResources</c>.</summary>
 public static class DocumentIssuerErrorCodes
 {
-    /// <summary>422: issuance by CasaZen is switched off.</summary>
     public const string IssuanceNotAvailable = "document_issuance_not_available";
 
-    /// <summary>422: the profile of the issuer is not complete; the <c>fields</c> that are missing are in the answer.</summary>
     public const string ProfileIncomplete = "issuer_profile_incomplete";
 
-    /// <summary>422: a document can be made only for a booking (the code of a document without one).</summary>
     public const string BookingNotDirect = "document_booking_not_direct";
 
-    /// <summary>409: the booking was locked to another issuer before the decision of 2026-11-14.</summary>
     public const string IssuerConflict = "document_issuer_conflict";
 
-    /// <summary>422: no tax rule applies (nothing is issued with a rate nobody approved).</summary>
     public const string RuleNotConfigured = "document_rule_not_configured";
 
-    /// <summary>422: a value of the setting is not valid or is too long; the <c>field</c> is in the answer.</summary>
     public const string FieldInvalid = "issuer_field_invalid";
 
-    /// <summary>422: the mode Octorate or accountant, retired on 2026-11-14: CasaZen is the only issuer.</summary>
     public const string ModeRetired = "issuer_mode_retired";
 
-    /// <summary>422: the regime belongs to another country than the one of the issuer (a Swiss regime in Italy, an Italian one in Switzerland).</summary>
     public const string RegimeCountryMismatch = "issuer_regime_country_mismatch";
 
-    /// <summary>403: the setting belongs to the whole organization, not to some of its properties.</summary>
     public const string NeedsWholeOrg = "fiscal_settings_need_whole_org";
 
-    /// <summary>The key in <c>SharedResources</c> of the message of <paramref name="code"/>.</summary>
     public static string MessageKeyOf(string code) => code switch
     {
         IssuanceNotAvailable => "DocumentIssuanceNotAvailable",
@@ -133,7 +111,6 @@ public static class DocumentIssuerErrorCodes
     };
 }
 
-/// <summary>The names of the fields of the issuer setting as the API says them (camel case), in <c>issuer_field_invalid</c> and in the list of what is missing.</summary>
 public static class IssuerFields
 {
     public const string Mode = "mode";
@@ -162,7 +139,6 @@ public static class IssuerFields
     /// <summary>The VAT number of the organization (on <c>Org</c>, edited in the tax profile).</summary>
     public const string VatNumber = "vatNumber";
 
-    /// <summary>The fiscal code of the organization (on <c>Org</c>, edited in the tax profile).</summary>
     public const string FiscalCode = "fiscalCode";
 }
 
@@ -191,33 +167,26 @@ public sealed record IssuerData(
     string? IssuerPec,
     string? GuestDocumentSeries)
 {
-    /// <summary>The data of an issuer that has entered nothing.</summary>
     public static IssuerData Empty { get; } = new(null, null, null, null, null, null, "IT", null, null, null, null);
 
-    /// <summary>The issuer is registered for the VAT.</summary>
     public bool VatRegistered { get; init; }
 
-    /// <summary>The Swiss VAT number (UID), <c>CHE-123.456.789</c>.</summary>
     public string? SwissVatNumber { get; init; }
 
-    /// <summary>The IBAN the issuer is paid on.</summary>
     public string? Iban { get; init; }
 
-    /// <summary>The QR-IBAN of a Swiss issuer.</summary>
     public string? QrIban { get; init; }
 
     public StayVatTreatment StayVatTreatment { get; init; } = StayVatTreatment.Standard;
 
     public CleaningFeeTreatment CleaningFeeTreatment { get; init; } = CleaningFeeTreatment.FollowsStay;
 
-    /// <summary>The series pattern of the invoices to the owners; <c>null</c> for the default (<c>PM{year}</c>).</summary>
     public string? OwnerInvoiceSeries { get; init; }
 
     public bool AutoIssueGuestDocuments { get; init; }
 
     public bool EmailGuestDocuments { get; init; }
 
-    /// <summary>The channels whose portal collects the tourist tax itself.</summary>
     public IReadOnlyList<BookingSource> PlatformCollectedTouristTaxChannels { get; init; } = [];
 
     /// <summary>
@@ -226,7 +195,6 @@ public sealed record IssuerData(
     /// </summary>
     public bool PlatformCollectedTouristTaxChannelsConfirmed { get; init; }
 
-    /// <summary>The authorization of the virtual stamp duty or the number of the physical stamp (Italy).</summary>
     public string? StampDutyReference { get; init; }
 
     public bool ConservationAgreementConfirmed { get; init; }
@@ -262,14 +230,8 @@ public sealed record IssuerSettingsView(
     IReadOnlyList<string> MissingFields,
     FiscalTaxRule? Rule);
 
-/// <summary>
-/// The answers of the wizard. A save replaces the setting as a whole: a text that is left out (<c>null</c> or blank) is cleared, and
-/// <see cref="Confirmed"/> is the wizard being completed (it sets <c>ConfirmedAt</c> when nothing is missing; <c>false</c> keeps the time already
-/// there while the profile stays complete).
-/// </summary>
 public sealed record SaveIssuerSettingsCommand
 {
-    /// <summary>Who issues the documents: <see cref="DocumentIssuerMode.CasaZen"/> (the default); the retired modes are refused.</summary>
     public DocumentIssuerMode Mode { get; init; } = DocumentIssuerMode.CasaZen;
 
     public DocumentRegime? Regime { get; init; }
@@ -303,10 +265,8 @@ public sealed record SaveIssuerSettingsCommand
 
     public string? QrIban { get; init; }
 
-    /// <summary>The VAT of the stay; <c>null</c> = <see cref="StayVatTreatment.Standard"/>.</summary>
     public StayVatTreatment? StayVatTreatment { get; init; }
 
-    /// <summary>The VAT of the cleaning; <c>null</c> = <see cref="CleaningFeeTreatment.FollowsStay"/>.</summary>
     public CleaningFeeTreatment? CleaningFeeTreatment { get; init; }
 
     public string? GuestDocumentSeries { get; init; }
@@ -317,10 +277,6 @@ public sealed record SaveIssuerSettingsCommand
 
     public bool EmailGuestDocuments { get; init; }
 
-    /// <summary>
-    /// The names of the <see cref="BookingSource"/> whose portal collects the tourist tax. <c>null</c> = not given: the choice already saved stays as it
-    /// is (the one exception to «a save replaces the setting as a whole», E11/F01/US01/T04); an empty list is given and confirms that no portal collects it.
-    /// </summary>
     public IReadOnlyList<string>? PlatformCollectedTouristTaxChannels { get; init; }
 
     public string? StampDutyReference { get; init; }

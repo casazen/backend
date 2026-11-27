@@ -9,7 +9,6 @@ public sealed class MarketplaceHealthOptions
 {
     public const string SectionName = "Marketplace:Health";
 
-    /// <summary>The share of the quota, in percent, from which the panel warns when nothing is configured.</summary>
     public const int DefaultQuotaWarnPercent = 80;
 
     /// <summary>

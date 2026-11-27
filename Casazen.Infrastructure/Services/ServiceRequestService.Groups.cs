@@ -22,15 +22,8 @@ namespace Casazen.Infrastructure.Services;
 // at all. Notifications go out after the commit, by the winner only.
 public partial class ServiceRequestService
 {
-    /// <summary>The user recorded as having taken a job when a backup that accepted gets it and no member is known (never in practice).</summary>
     private const string GroupSystemUser = "system";
 
-    // ─── Creation ────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The backup suppliers of a new request, none when the rule is off (the flag <c>SupplierRequestBackups</c>, the org's choice, the request's
-    /// own) or nobody else covers the comune at that time. A failure to choose never stops the request: it goes to the chosen supplier alone.
-    /// </summary>
     private async Task<IReadOnlyList<SupplierProfile>> SelectBackupsAsync(
         CreateServiceRequestCommand command,
         Property property,
@@ -66,11 +59,6 @@ public partial class ServiceRequestService
         }
     }
 
-    /// <summary>
-    /// Ties the new <paramref name="primary"/> to a group and adds the group and one request per backup to the context, to be saved with it in
-    /// one go. A backup request has the same data as the primary's (host, property, lease, stay, category, notes, time, price) and is waiting
-    /// (<c>Richiesto</c>); it has no catalog service of its own (the primary's service is another supplier's), only the name the host saw.
-    /// </summary>
     private IReadOnlyList<(ServiceRequest Request, SupplierProfile Supplier)> AttachBackupGroup(
         ServiceRequest primary,
         IReadOnlyList<SupplierProfile> suppliers,
@@ -123,29 +111,21 @@ public partial class ServiceRequestService
         return backups;
     }
 
-    // ─── Locks and reads ─────────────────────────────────────────────────────────────────────────────────────────────
-
     private static (PostgresAdvisoryLocks.Scope Scope, string Key) GroupLock(Guid groupId) =>
         (PostgresAdvisoryLocks.Scope.ServiceRequestGroup, groupId.ToString("N"));
 
-    /// <summary>
-    /// The supplier's calendar lock, preceded by the lock of the request's group when it has one: always in this order, so a take and the
-    /// pass that promotes a backup never wait for each other.
-    /// </summary>
     private Task<IDbContextTransaction?> LockSupplierCalendarAsync(Guid supplierOrgId, Guid? groupId, CancellationToken cancellationToken) =>
         groupId is { } id
             ? PostgresAdvisoryLocks.BeginLockedTransactionAsync(
                 db, cancellationToken, GroupLock(id), CalendarSyncService.AvailabilityLock(supplierOrgId))
             : LockSupplierCalendarAsync(supplierOrgId, cancellationToken);
 
-    /// <summary>A group and its requests, as committed when they were read (<see cref="LoadGroupAsync"/>).</summary>
     private sealed class GroupState(ServiceRequestGroup group, IReadOnlyList<ServiceRequest> members)
     {
         public ServiceRequestGroup Group { get; } = group;
 
         public IReadOnlyList<ServiceRequest> Members { get; } = members;
 
-        /// <summary>The request the host follows: the primary, or the backup that replaced it. Null only for a group in a state that cannot be.</summary>
         public ServiceRequest? Head => Members.FirstOrDefault(m => m.GroupRole is ServiceRequestGroupRole.Primary or ServiceRequestGroupRole.PromotedBackup);
 
         public IEnumerable<ServiceRequest> Backups => Members.Where(m => m.GroupRole == ServiceRequestGroupRole.Backup);
@@ -186,13 +166,8 @@ public partial class ServiceRequestService
         HasPendingProposal: HasPendingOffer(request),
         request.CancelledBy);
 
-    /// <summary>
-    /// The supplier made the host an offer that waits for its answer: a time proposed (SP-04) or a quote (SP-04b). The supplier did answer, so
-    /// the host is the one that is waited for and the group does not move.
-    /// </summary>
     private static bool HasPendingOffer(ServiceRequest request) => request.ProposedStartUtc is not null || request.QuoteSentAt is not null;
 
-    /// <summary>Closes a request of a group on behalf of CasaZen: <c>Richiesto → Annullato</c> with a code the client translates.</summary>
     private static void CloseBySystem(ServiceRequest request, string reason, DateTime now)
     {
         request.Status = ServiceRequestStatus.Annullato;
@@ -201,21 +176,13 @@ public partial class ServiceRequestService
         request.CancellationReason = reason;
         request.ResponseDueAt = null;
 
-        // The database refuses an offer on a request that is not new: the primary closed in the second window may have one waiting.
         ClearProposal(request);
         ClearQuote(request);
         request.UpdatedAt = now;
     }
 
-    // ─── The take of a request of a group ────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The group a request is taken in, and the request as committed now (<see cref="RequireGroupTakeAsync"/>).</summary>
     private sealed record GroupTake(GroupState State, ServiceRequest Request);
 
-    /// <summary>
-    /// What closing a group after a take changed, to tell the people it concerns after the commit. <paramref name="PrimaryDueAt"/> is the end
-    /// of the primary's window, which the primary that was replaced did not meet.
-    /// </summary>
     private sealed record GroupClosure(
         bool WinnerIsBackup,
         ServiceRequest? ReplacedPrimary,
@@ -242,22 +209,15 @@ public partial class ServiceRequestService
         }
     }
 
-    /// <summary>
-    /// The deadline a reply of the supplier is judged against for its reliability (SP-REL): the <c>ResponseDueAt</c> the request has, except
-    /// for the primary of a group, whose deadline is the end of its own window whatever the second window says (an answer in the second
-    /// window is late for the primary). Read before the answer, which clears <c>ResponseDueAt</c>.
-    /// </summary>
     private async Task<DateTime?> ReplyDeadlineAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         if (request is not { GroupRole: ServiceRequestGroupRole.Primary, GroupId: { } groupId })
             return request.ResponseDueAt;
 
-        // The group has no tenant filter (TN-2 allow-list): the id is the predicate.
         var group = await db.ServiceRequestGroups.FirstOrDefaultAsync(g => g.Id == groupId, cancellationToken);
         return group?.PrimaryDueAt ?? request.ResponseDueAt;
     }
 
-    /// <summary>When the primary began to wait for the group's first window to end: the creation, or the start of the last window when the host's answer to a proposal restarted it.</summary>
     private DateTime PrimaryWindowStart(ServiceRequestGroup group, ServiceRequest primary)
     {
         var start = group.PrimaryDueAt.AddMinutes(-options.Value.PrimaryResponseMinutes);
@@ -335,11 +295,6 @@ public partial class ServiceRequestService
         }
     }
 
-    /// <summary>
-    /// Closes the group around the request that is being taken: the group is over, the backups still waiting are closed (the primary took the
-    /// job, or a backup did first), and when the winner is a backup it replaces the primary in the host's lists and the primary, which did not
-    /// answer in time, is cancelled. Only <b>changes the tracked entities</b>: the caller saves them together with the take.
-    /// </summary>
     private static GroupClosure CloseGroupAfterTake(GroupTake take, DateTime now)
     {
         var group = take.State.Group;
@@ -353,7 +308,6 @@ public partial class ServiceRequestService
         ServiceRequest? replaced = null;
         if (winnerIsBackup)
         {
-            // The backups still waiting are the others: the winner is the one being taken.
             winner.GroupRole = ServiceRequestGroupRole.PromotedBackup;
             if (head.Status == ServiceRequestStatus.Richiesto)
             {
@@ -367,8 +321,6 @@ public partial class ServiceRequestService
         var closed = new List<(ServiceRequest Request, ServiceRequestBackupClosedKind Kind)>();
         foreach (var backup in take.State.Backups.Where(b => b.Id != winner.Id && b.Status == ServiceRequestStatus.Richiesto).ToList())
         {
-            // The primary took the job: a backup that had accepted is released (and told its time is free again), the others are told the job
-            // is taken. Neither loses anything.
             var (reason, kind) = winnerIsBackup
                 ? (ServiceRequestCancellationReasons.TakenByBackup, ServiceRequestBackupClosedKind.TakenByBackup)
                 : (ServiceRequestCancellationReasons.PrimaryTookIt, PrimaryTookItKind(backup));
@@ -420,8 +372,6 @@ public partial class ServiceRequestService
         var dueBeforeAnswer = request.ResponseDueAt;
         IReadOnlyList<ServiceRequest> closedByTheRace = [];
 
-        // The group's lock first, then the supplier's calendar lock: the acceptance holds the supplier's slot, so it is judged under both,
-        // like the time of any take.
         IDbContextTransaction? transaction = await LockSupplierCalendarAsync(supplierOrgId, groupId, cancellationToken);
         await using (transaction)
         {
@@ -431,7 +381,6 @@ public partial class ServiceRequestService
             // Another backup accepted while this call waited for the lock: this request was closed with the race.
             ThrowIfRaceClosed(request);
 
-            // Closed meanwhile (the primary took the job, someone else did, the host cancelled): nothing to accept anymore.
             if (state.Group.Phase == ServiceRequestGroupPhase.Closed || request.Status != ServiceRequestStatus.Richiesto)
             {
                 throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
@@ -443,7 +392,6 @@ public partial class ServiceRequestService
                     ServiceRequestGroupErrorCodes.BackupAlreadyActive, ServiceRequestGroupErrorCodes.BackupAlreadyActiveMessageKey);
             }
 
-            // Accepting twice is not an error and changes nothing.
             if (request.BackupAcceptedAt is not null)
                 return request;
 
@@ -455,8 +403,6 @@ public partial class ServiceRequestService
                     ServiceRequestGroupErrorCodes.BackupRaceClosed, ServiceRequestGroupErrorCodes.BackupRaceClosedMessageKey);
             }
 
-            // It says it will take the job at that time, and from now on its agenda holds the time: the time must be free for it, judged here
-            // under the supplier's lock like the time of any take (409 supplier_slot_unavailable), and again when the job is assigned.
             if (backupSelector is not null
                 && request is { ScheduledStartUtc: { } start, ScheduledEndUtc: { } end }
                 && !await backupSelector.IsFreeAsync(supplierOrgId, start, end, state.Group.SlotPlanned, cancellationToken))
@@ -483,17 +429,13 @@ public partial class ServiceRequestService
             "ServiceRequest {Id}: the backup supplier {SupplierOrgId} accepted as a backup and closed the race for {Closed} other backups",
             id, supplierOrgId, closedByTheRace.Count);
 
-        // After the commit, by the winner only: the answer counts for the supplier's reliability, the ones left behind are told.
         await RecordReplyAsync(request, dueBeforeAnswer, asBackup: true, cancellationToken);
         foreach (var other in closedByTheRace)
             await notifier.NotifyBackupClosedAsync(other, ServiceRequestBackupClosedKind.RaceClosed, cancellationToken);
 
-        // The primary's hour may be over already (the job had not looked at the group yet): then the backup that accepted has the job at once.
         await ResolveGroupAfterChangeAsync(groupId, cancellationToken);
         return await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
     }
-
-    // ─── The pass over a group ───────────────────────────────────────────────────────────────────────────────────────
 
     public async Task<ServiceRequestGroupResolution> ResolveGroupAsync(Guid groupId, CancellationToken cancellationToken = default)
     {
@@ -511,7 +453,6 @@ public partial class ServiceRequestService
         catch (Exception ex) when (ex is DbUpdateConcurrencyException
             or DomainConflictException { Code: ServiceRequestErrorCodes.StateChanged })
         {
-            // Another call got there first: nothing of this pass was saved, the next one looks again.
             db.ChangeTracker.Clear();
             logger.LogInformation("Group {GroupId} changed under the pass, left as it is", groupId);
             return ServiceRequestGroupResolution.Conflict;
@@ -532,10 +473,6 @@ public partial class ServiceRequestService
         return outcome;
     }
 
-    /// <summary>
-    /// The pass, with the group's lock held: reads the group, decides from the rules and the clock what is due, does it in one save, and leaves
-    /// the people to tell in <paramref name="notices"/> for after the commit.
-    /// </summary>
     private async Task<ServiceRequestGroupResolution> ResolveLockedAsync(
         Guid groupId,
         List<Func<Task>> notices,
@@ -554,7 +491,6 @@ public partial class ServiceRequestService
             return ServiceRequestGroupResolution.NothingToDo;
         }
 
-        // 1. The primary (or the backup that replaced it) took the job: the backups that still wait are closed.
         if (head.Status is ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso
             or ServiceRequestStatus.Completato or ServiceRequestStatus.Pagato)
         {
@@ -563,7 +499,6 @@ public partial class ServiceRequestService
                 ServiceRequestGroupResolution.ClosedPrimaryTook, now, notices, cancellationToken);
         }
 
-        // 2. The host cancelled the request: there is no job to take.
         if (head is { Status: ServiceRequestStatus.Annullato, CancelledBy: ServiceRequestActorParty.Host })
         {
             return await CloseWaitingBackupsAsync(
@@ -577,7 +512,6 @@ public partial class ServiceRequestService
             if (!primaryOut)
                 return ServiceRequestGroupResolution.NothingToDo;
 
-            // 3. The primary is out: the earliest backup that accepted takes the job, and the next one when its time is not free.
             foreach (var candidate in ServiceRequestGroupRules.PreApprovedInOrder(state.Backups.Select(MemberOf)))
             {
                 var row = state.Find(candidate.RequestId)!;
@@ -594,7 +528,6 @@ public partial class ServiceRequestService
                         "ServiceRequest {Id}: the backup could not take the job when it was assigned to it ({Reason})",
                         row.Id, (ex as DomainException)?.Code);
 
-                    // TakeAsync cleared the tracker: read the group again, and close the one that could not.
                     state = await LoadGroupAsync(groupId, cancellationToken) ?? throw new DomainConflictException(
                         ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
                     var dropped = state.Find(row.Id);
@@ -607,13 +540,11 @@ public partial class ServiceRequestService
                 }
             }
 
-            // 4. Nobody had accepted (or none could take it): the second window opens.
             state = await LoadGroupAsync(groupId, cancellationToken) ?? throw new DomainConflictException(
                 ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
             return await OpenBackupWindowAsync(state, now, notices, cancellationToken);
         }
 
-        // The second window.
         var waiting = state.Backups.Where(b => b.Status == ServiceRequestStatus.Richiesto).ToList();
         var headLive = head.Status == ServiceRequestStatus.Richiesto;
         if (headLive && HasPendingOffer(head))
@@ -621,17 +552,12 @@ public partial class ServiceRequestService
 
         if ((!headLive && waiting.Count == 0) || (group.BackupDueAt is { } end && now >= end))
         {
-            // 5. Nobody took the job: what still waits lapses, as a single request does.
             return await LapseGroupAsync(state, now, notices, cancellationToken);
         }
 
         return ServiceRequestGroupResolution.NothingToDo;
     }
 
-    /// <summary>
-    /// Closes the backups that still wait for <paramref name="reason"/> and ends the group: the primary took the job, or the host cancelled.
-    /// One save; the backups are told after the commit.
-    /// </summary>
     private async Task<ServiceRequestGroupResolution> CloseWaitingBackupsAsync(
         GroupState state,
         string reason,
@@ -661,10 +587,6 @@ public partial class ServiceRequestService
         return outcome;
     }
 
-    /// <summary>
-    /// The second window: every supplier of the group that still waits can take the job until <see cref="ServiceRequestOptions.BackupResponseMinutes"/>
-    /// from now, and the first to do so has it. The backups that did not accept are told. With nobody left to take it the group ends at once.
-    /// </summary>
     private async Task<ServiceRequestGroupResolution> OpenBackupWindowAsync(
         GroupState state,
         DateTime now,
@@ -765,10 +687,6 @@ public partial class ServiceRequestService
         return ServiceRequestGroupResolution.ClosedLapsed;
     }
 
-    /// <summary>
-    /// True for the refusals that mean "this backup cannot take the job": its time is not free, it is suspended or has to accept new Terms.
-    /// Anything else is not the backup's doing and is not turned into a drop.
-    /// </summary>
     private static bool IsBackupRefusal(Exception ex) => ex is
         DomainConflictException { Code: ServiceRequestErrorCodes.SlotUnavailable or ServiceRequestErrorCodes.CommitmentConflict }
         or DomainRuleException
@@ -777,10 +695,6 @@ public partial class ServiceRequestService
                 or SupplierActivation.TosReacceptanceRequiredCode,
         };
 
-    /// <summary>
-    /// A member of a group changed (refused, cancelled by its supplier or by the host, a proposed time turned down): the group is looked at right
-    /// away, so the host does not wait for the next run of the job. Best effort: the job does the same, so a failure here is only logged.
-    /// </summary>
     private async Task ResolveGroupAfterChangeAsync(Guid? groupId, CancellationToken cancellationToken)
     {
         if (groupId is not { } id)
@@ -796,10 +710,6 @@ public partial class ServiceRequestService
         }
     }
 
-    /// <summary>
-    /// The host turned a proposed time of the primary down: the window the group is in starts again if it had passed while the host was
-    /// deciding, as for a single request, and the requests of the group carry the same deadline.
-    /// </summary>
     private async Task ReopenGroupWindowAsync(Guid groupId, CancellationToken cancellationToken)
     {
         IDbContextTransaction? transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken, GroupLock(groupId));
@@ -837,8 +747,6 @@ public partial class ServiceRequestService
         }
     }
 
-    // ─── What the host sees ──────────────────────────────────────────────────────────────────────────────────────────
-
     public async Task<IReadOnlyDictionary<Guid, ServiceRequestGroupView>> GetGroupViewsAsync(
         Guid hostOrgId,
         IReadOnlyCollection<Guid> groupIds,
@@ -847,7 +755,6 @@ public partial class ServiceRequestService
         if (groupIds.Count == 0)
             return new Dictionary<Guid, ServiceRequestGroupView>();
 
-        // The groups of the host org only (TN-2 allow-list: the org is an explicit predicate), and their requests the same way.
         var groups = await db.ServiceRequestGroups
             .AsNoTracking()
             .Where(g => g.OrgId == hostOrgId && groupIds.Contains(g.Id))
@@ -901,7 +808,6 @@ public partial class ServiceRequestService
                         m.CancellationReason))]));
     }
 
-    /// <summary>The order the host reads a group in: who it follows, who replaced or was replaced, then the backups.</summary>
     private static int RoleOrder(ServiceRequestGroupRole role) => role switch
     {
         ServiceRequestGroupRole.PromotedBackup => 0,

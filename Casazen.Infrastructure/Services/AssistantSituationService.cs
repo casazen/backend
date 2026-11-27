@@ -27,19 +27,12 @@ public sealed class AssistantSituationService(
     ILogger<AssistantSituationService> logger,
     TimeProvider? timeProvider = null) : IAssistantSituationService
 {
-    /// <summary>Stable code of the 422 of a template that is too long, or breaks when it is filled in, or uses a variable that does not exist.</summary>
     public const string TemplateInvalidCode = "assistant_template_invalid";
 
-    /// <summary>Stable code of the 422 of a source topic that is none of the topics.</summary>
     public const string SourceInvalidCode = "assistant_situation_invalid";
 
-    /// <summary>Stable code of the 404 of a situation that is none of the 15.</summary>
     public const string SituationNotFoundCode = "assistant_situation_not_found";
 
-    /// <summary>
-    /// The values a template is filled in with to check it: a stay with every date and time, and the names of a guest, a property and a host. The simulator of the drafts
-    /// (E05/F05/US02/T01) fills a template with the same values.
-    /// </summary>
     internal static readonly MessageTemplateValues SampleValues = new(
         GuestName: "Maria",
         PropertyName: "Casa Esempio",
@@ -73,7 +66,6 @@ public sealed class AssistantSituationService(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        // Everything is checked before the database is touched.
         if (!Enum.IsDefined(situation))
             throw SituationNotFound();
 
@@ -91,7 +83,6 @@ public sealed class AssistantSituationService(
         bool changed;
         if (row is null)
         {
-            // A new row starts its trust period now (PO-08: two weeks of draft only, measured from here).
             row = new AssistantSituationSetting
             {
                 OrgId = orgId,
@@ -112,7 +103,6 @@ public sealed class AssistantSituationService(
             changed = row.Mode != mode || row.ResponseTemplate != cleanTemplate || row.ResponseSource != source;
             if (changed)
             {
-                // The trust period moves only with the mode: a new text for the answer does not start it again.
                 if (row.Mode != mode)
                     row.ModeSince = now;
 
@@ -164,10 +154,6 @@ public sealed class AssistantSituationService(
         return new ResolvedSituation(effective.Mode, effective.Template, effective.Source, effective.ModeSince);
     }
 
-    /// <summary>
-    /// The rows that can matter for the organization (<paramref name="propertyId"/> null) or for a property: the organization's, and the property's own. Never another property's, never
-    /// another organization's.
-    /// </summary>
     private async Task<List<AssistantSituationSetting>> RowsAsync(Guid orgId, Guid? propertyId, AssistantSituation? situation, CancellationToken ct)
     {
         var query = db.AssistantSituationSettings.AsNoTracking().Where(s => s.OrgId == orgId);
@@ -180,7 +166,6 @@ public sealed class AssistantSituationService(
         return await query.ToListAsync(ct);
     }
 
-    /// <summary>The row of this exact scope and situation, tracked: the one this unit of work already tracks (an added row is not in the database yet), else the stored one.</summary>
     private async Task<AssistantSituationSetting?> FindRowAsync(Guid orgId, Guid? propertyId, AssistantSituation situation, CancellationToken ct)
     {
         var tracked = db.AssistantSituationSettings.Local
@@ -220,10 +205,6 @@ public sealed class AssistantSituationService(
             info.AllowedModes);
     }
 
-    /// <summary>
-    /// The template to save: normalized like a message, <c>null</c> when empty (no template), at most 1,000 characters, only variables that <see cref="MessageTemplateRenderer"/> knows, and
-    /// still a valid message once filled in with <see cref="SampleValues"/>. 422 <see cref="TemplateInvalidCode"/>: with the text of the unknown variable when it is one.
-    /// </summary>
     private static string? CleanTemplate(string? template)
     {
         var text = GuestMessageRules.NormalizeText(template);
@@ -240,7 +221,6 @@ public sealed class AssistantSituationService(
         }
         catch (DomainRuleException ex) when (ex.Code == MessageTemplateRenderer.UnknownCode)
         {
-            // The same message as the templates of the composer: it names the variable and lists the valid ones.
             throw new DomainRuleException(TemplateInvalidCode, ex.MessageKey, [.. ex.MessageArgs]);
         }
         catch (DomainRuleException)

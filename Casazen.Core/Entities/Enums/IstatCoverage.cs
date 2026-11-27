@@ -7,12 +7,10 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum IstatCoverage
 {
-    /// <summary>Not verified («da verificare»): never shown as covered and never as not covered. The default of every row.</summary>
     Unknown = 0,
 
     /// <summary>The channel manager sends the ISTAT communication of the region once the host connects it in the panel.</summary>
     Covered = 1,
 
-    /// <summary>The channel manager does not send it: the host uses the portal of the region and archives the monthly proof.</summary>
     NotCovered = 2,
 }

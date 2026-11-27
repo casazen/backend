@@ -22,29 +22,20 @@ namespace Casazen.Core.Entities;
 [Index(nameof(OrgId), nameof(PropertyId), nameof(Kind), nameof(Day))]
 public class ManualComplianceProof : ITenantOwned
 {
-    /// <summary>Longest <see cref="FileKey"/>.</summary>
     public const int FileKeyMaxLength = 500;
 
-    /// <summary>Longest <see cref="ContentType"/>.</summary>
     public const int ContentTypeMaxLength = 100;
 
-    /// <summary>Longest <see cref="UploadedByUserId"/> (the one of <c>User.Id</c>).</summary>
     public const int UserIdMaxLength = 255;
 
-    /// <summary>How long a proof is kept (CHK-08, AC-NF52-12).</summary>
     public const int RetentionYears = 5;
 
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the property (TN-2).</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>
-    /// The flat the proof was filed under: the one of the page it was uploaded from. It is always one of the flats the proof covers
-    /// (<see cref="CoveredProperties"/>) and what the scope of a collaborator and the cascade of a deleted property look at first.
-    /// </summary>
     [ForeignKey(nameof(Property))]
     public Guid PropertyId { get; set; }
     public virtual Property Property { get; set; } = null!;
@@ -63,36 +54,27 @@ public class ManualComplianceProof : ITenantOwned
     /// </summary>
     public DateOnly Day { get; set; }
 
-    /// <summary>The key of the encrypted file in the private bucket.</summary>
     [Required, MaxLength(FileKeyMaxLength)]
     public string FileKey { get; set; } = string.Empty;
 
-    /// <summary>What the file really is, read from its content (<c>application/pdf</c>, <c>image/jpeg</c>, <c>image/png</c>).</summary>
     [Required, MaxLength(ContentTypeMaxLength)]
     public string ContentType { get; set; } = string.Empty;
 
-    /// <summary>The person who uploaded it (<c>User.Id</c>, the Auth0 subject).</summary>
     [Required, MaxLength(UserIdMaxLength)]
     public string UploadedByUserId { get; set; } = string.Empty;
 
-    /// <summary>When it was uploaded (UTC).</summary>
     public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>Until when the proof is kept (UTC): <see cref="RetentionYears"/> years from the upload. Computed, not stored.</summary>
     [NotMapped]
     public DateTime RetainUntil => UploadedAt.AddYears(RetentionYears);
 }
 
-/// <summary>What a manual proof proves (stored as an integer, never renumbered).</summary>
 public enum ManualProofKind
 {
-    /// <summary>The receipt of the Alloggiati Web communication of a day.</summary>
     AlloggiatiReceipt = 1,
 
-    /// <summary>The receipt of the tourist tax declaration of a period.</summary>
     TouristTaxDeclaration = 2,
 
-    /// <summary>The receipt of the tourist tax payment of a period.</summary>
     TouristTaxPayment = 3,
 
     /// <summary>

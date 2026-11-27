@@ -24,11 +24,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static class OnboardingFlowStatusRules
 {
-    /// <summary>
-    /// True when a property in <paramref name="mode"/> behaves as a short-rent one: the in-memory form of
-    /// <see cref="PropertyRentalModeRules.IsShortRent"/> (the facts of a property are read without loading it). A test keeps the two together,
-    /// so when <see cref="RentalMode"/> gains a member the definition is revisited in one place.
-    /// </summary>
     public static bool IsShortRent(RentalMode mode) => mode == RentalMode.Short;
 
     /// <summary>
@@ -67,7 +62,6 @@ public static class OnboardingFlowStatusRules
         var firstUnmet = prerequisites.FirstOrDefault(prerequisite => !prerequisite.Met);
         if (firstUnmet is not null)
         {
-            // A provider that forgot the reason of an unmet prerequisite does not turn it into a met one: the reason of its key stands.
             var reason = firstUnmet.Reason ?? OnboardingPrerequisiteKeys.DefaultReasonOf(firstUnmet.Key) ?? OnboardingFlowReasons.NotProvided;
             return Build(property, flow, OnboardingFlowStates.ToComplete, reason, OnboardingFlowActions.ForReason(reason), prerequisites);
         }

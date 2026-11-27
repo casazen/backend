@@ -16,51 +16,31 @@ namespace Casazen.Core.Entities;
 /// </remarks>
 public static class PropertyHouseRules
 {
-    /// <summary>Fewest beds a host can state.</summary>
     public const int MinBeds = 1;
 
-    /// <summary>Most beds a host can state: the same ceiling as the bedrooms.</summary>
     public const int MaxBeds = 100;
 
-    /// <summary>Smallest living area a host can state, in square metres.</summary>
     public const int MinAreaSqm = 1;
 
-    /// <summary>Largest living area a host can state, in square metres: four digits, the width of the field.</summary>
     public const int MaxAreaSqm = 9999;
 
-    /// <summary>Longest headline of the listing, in characters (the column is <c>character varying(60)</c>).</summary>
     public const int ListingTitleMaxLength = 60;
 
-    /// <summary>Highest fee per extra guest and night, in euros: above it is a typing mistake.</summary>
     public const decimal MaxExtraGuestFeePerNight = 1000m;
 
-    /// <summary>Decimals kept for the fee (the column is <c>numeric(18,2)</c>).</summary>
     public const int ExtraGuestFeeScale = 2;
 
-    /// <summary>
-    /// 422 (service level, behind the 400 of the forms): only one end of the quiet hours is set. They are a pair: «dalle 22:00»
-    /// without «fino alle» says nothing to a guest.
-    /// </summary>
     public const string QuietHoursIncompleteCode = "property_quiet_hours_incomplete";
 
-    /// <summary>The headline as stored: trimmed, and null when it is blank (the listing then uses the name of the property).</summary>
     public static string? NormalizeListingTitle(string? title) => string.IsNullOrWhiteSpace(title) ? null : title.Trim();
 
-    /// <summary>A time of the day as stored: whole minutes (a clock time on a house rule has no seconds), null stays null.</summary>
     public static TimeOnly? ToWholeMinutes(TimeOnly? time) => time is { } value ? new TimeOnly(value.Hour, value.Minute) : null;
 
-    /// <summary>The fee with the stored precision (<see cref="ExtraGuestFeeScale"/> decimals, half away from zero), null stays null.</summary>
     public static decimal? NormalizeExtraGuestFee(decimal? fee) =>
         fee is { } value ? Math.Round(value, ExtraGuestFeeScale, MidpointRounding.AwayFromZero) : null;
 
-    /// <summary>True when both ends of the quiet hours are set or neither is.</summary>
     public static bool AreQuietHoursComplete(TimeOnly? from, TimeOnly? to) => (from is null) == (to is null);
 
-    /// <summary>
-    /// The fields of the wizard as they are stored: headline trimmed, times in whole minutes, fee rounded to the cent, and the
-    /// two amenities that follow the structured rules (<see cref="SyncAmenities"/>). Run on every create and update.
-    /// </summary>
-    /// <exception cref="DomainRuleException"><see cref="QuietHoursIncompleteCode"/> (422): one end of the quiet hours is set.</exception>
     public static void Normalize(Property property)
     {
         ArgumentNullException.ThrowIfNull(property);

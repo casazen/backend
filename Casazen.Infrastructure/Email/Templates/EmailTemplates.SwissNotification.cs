@@ -18,11 +18,6 @@ public static partial class EmailTemplates
         public const string SwissNotificationAlert = "swiss-notification-alert";
     }
 
-    /// <summary>
-    /// An arrival day of a property in a canton other than Ticino still to notify, to the host (<see cref="ComplianceAlertKind.SwissNotificationToPrepare"/>: the day of the arrival;
-    /// <see cref="ComplianceAlertKind.SwissNotificationApproaching"/>: the deadline is near; <see cref="ComplianceAlertKind.SwissNotificationOverdue"/>: it is over, with the number of the
-    /// reminder). The button leads to the compliance page of the console when its link is known.
-    /// </summary>
     public static EmailContent SwissNotificationAlert(CultureInfo culture, ComplianceAlert alert, string propertyName, string? complianceUrl = null)
     {
         ArgumentNullException.ThrowIfNull(alert);
@@ -43,10 +38,6 @@ public static partial class EmailTemplates
         return WithComplianceLink(builder, complianceUrl).Build($"SwissNotificationAlert_{phase}_Subject", propertyName, day);
     }
 
-    /// <summary>
-    /// Push text of an arrival day of a canton other than Ticino (E31/F02/US01/T01): the property and the day, the deadline while it is ahead, and the types of field that are missing.
-    /// Plain text on a lock screen, no guest data.
-    /// </summary>
     public static PushText SwissNotificationPush(CultureInfo culture, ComplianceAlert alert, string propertyName)
     {
         ArgumentNullException.ThrowIfNull(alert);
@@ -65,10 +56,6 @@ public static partial class EmailTemplates
         return new PushText(EmailTexts.Get($"{prefix}_Title", culture), body);
     }
 
-    /// <summary>
-    /// Push text of the declaration of an arrival day of a canton other than Ticino as notified to the authority, or of its undo (E31/F02/US01/T01, NF-131): the property and the arrival day.
-    /// Plain text on a lock screen: never a guest, a value, a document or the person who did it (the cockpit shows who).
-    /// </summary>
     public static PushText SwissNotificationDeclaredPush(CultureInfo culture, string propertyName, DateOnly day, bool declared)
     {
         var date = day.ToDateTime(TimeOnly.MinValue).ToString(EmailTexts.Get("Format_Date", culture), culture);

@@ -26,7 +26,6 @@ public sealed partial class OrgMembershipService(
     ILogger<OrgMembershipService> logger,
     TimeProvider? timeProvider = null) : IOrgMembershipService
 {
-    /// <summary>The contexts whose memberships an org role decides: the account and the two rental contexts.</summary>
     private static readonly string[] ManagedContexts =
         [AccountContext.Key, OrgRoleCatalog.ShortRent, OrgRoleCatalog.LongRent];
 
@@ -53,8 +52,6 @@ public sealed partial class OrgMembershipService(
         var created = member is null;
         if (member is null)
         {
-            // A removed member no longer has a row, and the org still has its owner (the owner cannot be removed).
-            // Creating another Owner here is how that person would take the org over.
             if (await db.OrgMembers.IgnoreQueryFilters().AnyAsync(
                     m => m.OrgId == orgId && m.Role == OrgRole.Owner, cancellationToken))
             {
@@ -95,7 +92,6 @@ public sealed partial class OrgMembershipService(
         if (role == OrgRole.Owner)
             throw new DomainRuleException(OrgMembershipErrors.OwnerNotAssignable, "OrgMemberOwnerNotAssignable");
 
-        // «Solo alcuni» is the collaborator's (AM-03): everybody else reaches every property of the org.
         if (propertyScope == PropertyScope.Selected && role != OrgRole.Collaborator)
             throw new DomainRuleException(OrgMembershipErrors.ScopeNotSupported, "OrgMemberScopeNotSupported");
 
@@ -152,13 +148,9 @@ public sealed partial class OrgMembershipService(
         var previous = member.Role;
         member.Role = role;
 
-        // Only the collaborator can be limited to some properties (AM-03): another role reaches the whole org, and the
-        // grants of the former role must not wait to come back to life if the person is made a collaborator again.
         if (role != OrgRole.Collaborator)
             await ClearPropertyAccessAsync(member, cancellationToken);
 
-        // The areas are the rental contexts the person already works in; the role decides the key of each and the
-        // account membership.
         var areas = await RentalContextsOfAsync(userId, cancellationToken);
         await ProjectAsync(
             userId,
@@ -185,7 +177,6 @@ public sealed partial class OrgMembershipService(
         var (transaction, member) = await LockMemberAsync(userId, cancellationToken);
         await using var memberLock = transaction;
 
-        // The owner's rental contexts are the onboarding's (the rental type it chose), not the team's to change.
         if (member.Role == OrgRole.Owner)
             throw new DomainConflictException(OrgMembershipErrors.LastOwner, "OrgLastOwner");
 
@@ -217,7 +208,6 @@ public sealed partial class OrgMembershipService(
         if (OrgRoleCatalog.SingleModeOf(areas) is not { } mode)
             return 0;
 
-        // IgnoreQueryFilters: the member's own grants, scoped to its org explicitly (the writer may be a request of another tenant).
         var reached = await db.PropertyMemberAccesses.IgnoreQueryFilters().AsNoTracking()
             .Where(a => a.UserId == member.UserId && a.OrgId == member.OrgId && a.Property.RentalMode == mode)
             .Select(a => a.PropertyId)
@@ -227,7 +217,6 @@ public sealed partial class OrgMembershipService(
         return released.Count;
     }
 
-    /// <summary>The rental contexts among <paramref name="contexts"/>, lowercase and without repeats.</summary>
     private static List<string> NormalizeAreas(IReadOnlyCollection<string>? contexts) =>
         (contexts ?? [])
             .Where(c => c is not null && OrgRoleCatalog.IsRentalContext(c.Trim()))
@@ -281,8 +270,6 @@ public sealed partial class OrgMembershipService(
         // EnsureOwnerAsync would insert a second Owner beside the one that cannot be removed (UnlinkOrgAsync).
         await ClearPropertyAccessAsync(member, cancellationToken);
 
-        // A person who leaves reaches nothing of the org, so it is in charge of nothing (AM-03b): the name goes in the same save,
-        // and does not wait for the person to come back with another invitation to be in charge again.
         var released = await PropertyResponsibility.ReleaseAsync(
             db, member.OrgId, userId, keep: [], _clock.GetUtcNow().UtcDateTime, cancellationToken);
         db.OrgMembers.Remove(member);
@@ -299,8 +286,6 @@ public sealed partial class OrgMembershipService(
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, cancellationToken, OrgLock(orgId));
 
-        // The owner row, when there is one: a legacy owner that never got it (the backfill leaves an org with several
-        // candidates without a member) has only its memberships, which go the same way.
         var member = await db.OrgMembers.IgnoreQueryFilters().FirstOrDefaultAsync(m => m.UserId == userId, cancellationToken);
         if (member is not null && (member.OrgId != orgId || member.Role != OrgRole.Owner))
             throw new DomainConflictException(OrgMembershipErrors.OtherOrg, "OrgMemberOtherOrg");
@@ -334,11 +319,6 @@ public sealed partial class OrgMembershipService(
         member.PropertyScope = PropertyScope.All;
     }
 
-    /// <summary>
-    /// Stages the end of the account's link to <paramref name="orgId"/> (AM-02): <c>User.OrgId</c> is cleared, and so is the
-    /// last used context when it belongs to an org (the account and the rental contexts; a supplier or staff context is
-    /// not the org's). A user whose <c>OrgId</c> is another org is left alone. The caller saves.
-    /// </summary>
     private async Task UnlinkOrgAsync(string userId, Guid orgId, CancellationToken cancellationToken)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
@@ -367,10 +347,6 @@ public sealed partial class OrgMembershipService(
             CreatedByUserId = createdByUserId,
         };
 
-    /// <summary>
-    /// Finds the member's org, takes that org's lock and reads the member again under it (tracked): what was read before
-    /// the lock may have changed while waiting for it.
-    /// </summary>
     private async Task<(IDbContextTransaction? Transaction, OrgMember Member)> LockMemberAsync(
         string userId,
         CancellationToken cancellationToken)
@@ -415,7 +391,6 @@ public sealed partial class OrgMembershipService(
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            // Two orgs adding (or onboarding) the same user at once: the unique index on UserId lets one through.
             db.ChangeTracker.Clear();
             throw new DomainConflictException(OrgMembershipErrors.AlreadyMember, "OrgMemberAlreadyMember");
         }
@@ -426,7 +401,6 @@ public sealed partial class OrgMembershipService(
         authorizationCache.Invalidate(userId);
     }
 
-    /// <summary>The lock of the people of an org: taken by every write of this service, and by the callers that decide on rows these writes change.</summary>
     internal static (PostgresAdvisoryLocks.Scope Scope, string Key) OrgLock(Guid orgId) =>
         (PostgresAdvisoryLocks.Scope.OrgMembership, orgId.ToString("N"));
 
@@ -441,7 +415,6 @@ public sealed partial class OrgMembershipService(
         return rows.ToDictionary(r => (r.ContextKey, r.RoleKey), r => r.Id);
     }
 
-    /// <summary>What a projection run did to one membership row.</summary>
     private sealed record ProjectionChange(ProjectionChangeKind Kind, string ContextKey, string RoleKey);
 
     private enum ProjectionChangeKind

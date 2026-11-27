@@ -13,7 +13,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Original PDFs in the private bucket, metadata owned by the lease and its tenant.</summary>
 public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, ILogger<LeaseDocumentService> logger) : ILeaseDocumentService
 {
     public const long MaxBytes = 20 * 1024 * 1024;
@@ -25,7 +24,6 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
             .Select(d => new { d.Id, d.LeaseContractId, d.Kind, d.FileName, d.SizeBytes, d.UploadedAt, d.ExtractionResult })
             .ToListAsync(ct);
 
-        // What the reading found of the pages of a contract: the sections only (the attestation inside the file is not asked for again).
         return rows
             .Select(d =>
             {
@@ -37,7 +35,6 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
             .ToList();
     }
 
-    /// <summary>The sections and the warnings found in the result kept with a document; nothing when the result is not one that has them.</summary>
     private sealed record SectionsRead(
         IReadOnlyList<LeaseDocumentSectionDto> Sections,
         bool ContainsAttestation,
@@ -93,15 +90,12 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
         }
         catch (JsonException)
         {
-            // A result written by the first pipeline, or by hand: there is nothing in it for the screen.
             return SectionsRead.None;
         }
     }
 
     public async Task<LeaseDocumentDto> UploadAsync(Guid leaseId, IFormFile file, LeaseDocumentKind kind, string uploadedBy, CancellationToken ct = default)
     {
-        // A single photo (JPEG, PNG) of a page is kept as the one-page PDF it becomes, as for the documents of a property: the browser
-        // joins several photos in one PDF before it sends them, so the reader of the contracts only ever meets PDFs.
         file = await PhotoDocumentPdf.NormalizeAsync(file);
         var lease = await db.LeaseContracts.AsNoTracking().SingleOrDefaultAsync(l => l.Id == leaseId, ct)
             ?? throw new NotFoundException("Lease not found") { Code = "lease_not_found", MessageKey = "LeaseNotFound" };
@@ -111,7 +105,6 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
             !string.Equals(Path.GetExtension(fileName), ".pdf", StringComparison.OrdinalIgnoreCase))
             throw InvalidPdf();
 
-        // Copy at most MaxBytes+1: neither the multipart length nor the MIME label is trusted.
         await using var input = file.OpenReadStream();
         using var content = new MemoryStream();
         var buffer = new byte[81920];
@@ -125,7 +118,6 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
             throw InvalidPdf();
         content.Position = 0;
 
-        // Calculate SHA-256 hash for duplicate detection (ADR-009-R7)
         string documentHash;
         using (var sha256 = SHA256.Create())
         {
@@ -134,7 +126,6 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
         }
         content.Position = 0;
 
-        // Check for duplicate document (ADR-009-R7)
         var existingDocument = await db.LeaseDocuments
             .AsNoTracking()
             .FirstOrDefaultAsync(d => d.DocumentHash == documentHash && d.LeaseContractId == lease.Id, ct);
@@ -147,7 +138,6 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
                 existingDocument.Id,
                 lease.Id);
 
-            // Create a new document entry but mark it as skipped
             content.Position = 0;
             var key = StorageKeys.LeaseAttachment(lease.OrgId, lease.Id, StorageKeys.NewFileName(".pdf"));
             await storage.PutAsync(StorageBucket.Private, key, content, "application/pdf", ct);
@@ -177,7 +167,6 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
             return new LeaseDocumentDto(duplicateDocument.Id, lease.Id, kind, duplicateDocument.FileName, duplicateDocument.SizeBytes, duplicateDocument.UploadedAt);
         }
 
-        // Upload new document
         content.Position = 0;
         var storageKey = StorageKeys.LeaseAttachment(lease.OrgId, lease.Id, StorageKeys.NewFileName(".pdf"));
         await storage.PutAsync(StorageBucket.Private, storageKey, content, "application/pdf", ct);
@@ -198,7 +187,6 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
             db.LeaseDocuments.Add(document);
             await db.SaveChangesAsync(ct);
 
-            // Enqueue extraction job (ADR-009-R1)
             if (kind != LeaseDocumentKind.RegistrationIdentity)
             {
                 ExtractLeaseDocumentDataJob.EnqueueAsync(document.Id);
@@ -228,8 +216,6 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
         if (document is null)
             return false;
 
-        // The row is what the list and the download read. It goes first, as for a property document: a save that fails
-        // leaves the file where it is, and a storage delete that fails can only leave an orphan blob.
         var storageKey = document.StorageKey;
         db.LeaseDocuments.Remove(document);
         await db.SaveChangesAsync(ct);
@@ -255,7 +241,6 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
                     ? LeaseReadingStates.Done
                     : LeaseReadingStates.Failed;
 
-        // One entry per field and person; a value in conflict in any document is the one to show, then one that was read.
         var fields = new Dictionary<(string Field, Guid? PartyId), LeaseReadingFieldDto>();
         string? stipulaDate = null;
         foreach (var document in documents.Where(d => d.ExtractionResult is not null))
@@ -287,7 +272,6 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
             }
             catch (JsonException)
             {
-                // A result written by the first pipeline, or by hand: there is nothing in it for the screen.
             }
         }
 

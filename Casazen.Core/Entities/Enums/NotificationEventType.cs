@@ -7,28 +7,21 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum NotificationEventType
 {
-    /// <summary>A guest wrote in a conversation of the hub of messages (a channel or the guest area of a direct booking).</summary>
     NewGuestMessage = 1,
 
-    /// <summary>The assistant flagged a message of a guest as urgent (E05/F05).</summary>
     UrgentGuestMessage = 2,
 
-    /// <summary>A draft of the assistant waits for the approval of a person (E05/F04, F05).</summary>
     AiDraftToApprove = 3,
 
-    /// <summary>A booking was made, from a channel or by a guest.</summary>
     NewBooking = 4,
 
-    /// <summary>A booking was cancelled.</summary>
     BookingCancelled = 5,
 
     /// <summary>A legal deadline is near or missed (Alloggiati Web, ISTAT): it can never be fully switched off.</summary>
     LegalDeadline = 6,
 
-    /// <summary>A synchronization with a channel failed.</summary>
     SyncError = 7,
 
-    /// <summary>A message scheduled for a guest could not be sent.</summary>
     ScheduledMessageIssue = 8,
 }
 

@@ -20,10 +20,6 @@ public sealed record HostUsedSupplier(
     DateTime LastRequestAt,
     string LastCategory);
 
-/// <summary>
-/// The suppliers the host's org already asked for a job (MKT, SR-09c), read from its short-rent requests: a view derived from them,
-/// not a relationship of its own (the trusted suppliers of the account, AM-10, are another thing).
-/// </summary>
 public interface IHostSupplierUsageReader
 {
     /// <summary>

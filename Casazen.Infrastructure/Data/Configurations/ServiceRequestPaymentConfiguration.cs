@@ -29,19 +29,16 @@ internal sealed class ServiceRequestPaymentConfiguration : IEntityTypeConfigurat
             .HasDatabaseName(ServiceCharges.LivePaymentIndexName)
             .HasFilter($"\"Status\" <> {(int)ServicePaymentStatus.Canceled}");
 
-        // A PaymentIntent belongs to one payment: the webhook finds its payment by it (SP-15b).
         entity.HasIndex(p => p.StripePaymentIntentId)
             .IsUnique()
             .HasDatabaseName("UIX_ServiceRequestPayments_StripePaymentIntentId")
             .HasFilter("\"StripePaymentIntentId\" IS NOT NULL");
 
-        // SP-15c-a: a transfer pays one payment and a payment has one transfer, so the release can never pay a supplier twice.
         entity.HasIndex(p => p.StripeTransferId)
             .IsUnique()
             .HasDatabaseName("UIX_ServiceRequestPayments_StripeTransferId")
             .HasFilter("\"StripeTransferId\" IS NOT NULL");
 
-        // The funds job reads the payments held by CasaZen by state and by the time they are due.
         entity.HasIndex(p => new { p.Status, p.ReleaseAt })
             .HasDatabaseName("IX_ServiceRequestPayments_Held_Status_ReleaseAt")
             .HasFilter($"\"FundsModel\" = {(int)ServiceFundsModel.PlatformHeld}");
@@ -49,12 +46,8 @@ internal sealed class ServiceRequestPaymentConfiguration : IEntityTypeConfigurat
         entity.HasIndex(p => new { p.SupplierOrgId, p.Status });
         entity.HasIndex(p => p.PayerOrgId);
 
-        // The JSON column is added to no existing rows, but the database gives it the empty list like the other jsonb columns.
         entity.Property(p => p.LineItemsJson).HasDefaultValue("[]");
 
-        // The checks mirror the rules of the service: a bad row is refused by the database too. The amounts follow
-        // SupplierCommission (the fee is strictly below the amount, or 0 for none, and the net is what is left), the percentage
-        // is the one of the options, a host payer has its org, and a payment that was paid says when and how.
         entity.ToTable(t =>
         {
             t.HasCheckConstraint(
@@ -77,15 +70,12 @@ internal sealed class ServiceRequestPaymentConfiguration : IEntityTypeConfigurat
                 $"\"Status\" NOT IN ({(int)ServicePaymentStatus.Paid}, {(int)ServicePaymentStatus.PartiallyRefunded}, {(int)ServicePaymentStatus.Refunded}) "
                 + "OR (\"PaidAt\" IS NOT NULL AND \"PaidVia\" IS NOT NULL)");
 
-            // SP-15c-a, the payment held by CasaZen. The states of the held cycle exist only for it, and its PaymentIntent is on the
-            // platform, never on a supplier's account.
             t.HasCheckConstraint(
                 "CK_ServiceRequestPayments_Funds",
                 $"\"FundsModel\" IN ({(int)ServiceFundsModel.DirectCharge}, {(int)ServiceFundsModel.PlatformHeld}) "
                 + $"AND (\"Status\" < {(int)ServicePaymentStatus.Authorized} OR \"FundsModel\" = {(int)ServiceFundsModel.PlatformHeld}) "
                 + $"AND (\"FundsModel\" = {(int)ServiceFundsModel.DirectCharge} OR \"ConnectedAccountId\" IS NULL)");
 
-            // Money held says when the card was charged; a released payment says which transfer paid the supplier and when.
             t.HasCheckConstraint(
                 "CK_ServiceRequestPayments_Held",
                 $"(\"Status\" NOT IN ({(int)ServicePaymentStatus.Held}, {(int)ServicePaymentStatus.Released}, {(int)ServicePaymentStatus.Disputed}, {(int)ServicePaymentStatus.TransferFailed}) "

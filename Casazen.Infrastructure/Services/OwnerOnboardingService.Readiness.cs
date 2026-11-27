@@ -15,7 +15,6 @@ public sealed partial class OwnerOnboardingService
         var today = Today();
         var now = timeProvider.GetUtcNow().UtcDateTime;
 
-        // The properties inside the reach, then what hangs on them: the periods, the owners of the org that hold one, the mandates, the invitations.
         var properties = await db.Properties
             .AsNoTracking()
             .Where(p => p.OrgId == scope.OrgId && (propertyId == null || p.Id == propertyId))
@@ -31,8 +30,6 @@ public sealed partial class OwnerOnboardingService
             owners = owners.Where(owner => scopedOwnerIds.Contains(owner.Id)).ToList();
         }
 
-        // The mandates of each owner: those of its ownerships in reach (the shape of before E13) and its own, which cover all its properties
-        // (E13/F01/US01/T01). An owner is only ever judged on its own mandates.
         var ownerOfPeriod = periods.ToDictionary(p => p.Id, p => p.OwnerId);
         var mandatesByOwner = (await db.OwnerMandates
                 .AsNoTracking()
@@ -50,7 +47,6 @@ public sealed partial class OwnerOnboardingService
                 .ToListAsync(ct))
             .ToLookup(i => i.PropertyOwnerId, i => new OwnerInvitationFact(i.Id, i.Status, i.ExpiresAt, i.CreatedAt));
 
-        // The shares of every property, once: the same rule the import applies before it writes.
         var issuesByProperty = new Dictionary<Guid, IReadOnlyList<OwnershipIssue>>();
         foreach (var group in periods.GroupBy(p => p.PropertyId))
         {
@@ -62,9 +58,6 @@ public sealed partial class OwnerOnboardingService
 
         var periodsByOwner = periods.ToLookup(p => p.OwnerId);
 
-        // An owner whose every period is over (it sold, the agency was handed over) is history, not a person to complete: out of the lists, the
-        // counts, the financial readiness and the invitations, as its past stays in the registry and in the periods. An owner with no period at all
-        // is still to complete.
         var current = owners.Where(o => !periodsByOwner[o.Id].Any() || periodsByOwner[o.Id].Any(p => IsLive(p, today))).ToList();
 
         // The warnings of the UI (E18/F01/US03/T01, behind Features:TaxReportingExports): an owner past the limit of units is presumed a business. The units are the owner's
@@ -93,19 +86,16 @@ public sealed partial class OwnerOnboardingService
                     p.SharePercent))
                 .ToList();
 
-            // The overlap of another owner with itself is that owner's: only this owner's own is its reason.
             var ownIssues = issuesByProperty.ToDictionary(
                 pair => pair.Key,
                 pair => (IReadOnlyList<OwnershipIssue>)[.. pair.Value.Where(i => i.Kind != OwnershipIssueKind.OwnerOverlap || i.OwnerId == owner.Id)]);
 
             var registry = OwnerReadinessRules.Registry(owner);
 
-            // Only the periods that are not over are the owner's today: the shares of a property it left are not its reason to complete.
             var ownership = OwnerReadinessRules.Ownership([.. facts.Where(f => f.End is not { } last || last >= today)], ownIssues);
             var mandate = OwnerReadinessRules.Mandate(facts, [.. mandatesByOwner[owner.Id]], today);
             var fiscal = OwnerReadinessRules.FiscalProfile(owner);
             var payment = OwnerReadinessRules.Payment(owner);
-            // The portal needs a name to greet the owner by, not the whole registry: the kind of the owner can wait.
             var named = registry.All(r => r.Code != OwnerReadinessReasons.LegalNameMissing);
             var portal = OwnerReadinessRules.Portal(owner, named, ownership.Count == 0);
 
@@ -178,7 +168,6 @@ public sealed partial class OwnerOnboardingService
         var ownerCap = listEveryOwner ? int.MaxValue : OwnerOnboardingLimits.MaxListed;
         var truncated = orderedOwners.Count > ownerCap || orderedProperties.Count > OwnerOnboardingLimits.MaxListed;
 
-        // Counts only: no name, no identifier, no address.
         logger.LogInformation(
             "Owner readiness for org {OrgId}: {Owners} owners, {Properties} properties, {AccountingReady} ready for the accounting, {PropertiesToComplete} properties to complete",
             scope.OrgId,
@@ -214,7 +203,6 @@ public sealed partial class OwnerOnboardingService
         ];
     }
 
-    /// <summary>The code of a kind in the API: <c>person</c> or <c>company</c>.</summary>
     internal static string KindCode(OwnerEntityKind kind) => kind == OwnerEntityKind.LegalEntity ? "company" : "person";
 
     private static OwnerReadinessCount Count(IReadOnlyCollection<OwnerReadinessOwner> owners, Func<OwnerReadinessOwner, bool> ready)

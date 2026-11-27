@@ -26,19 +26,14 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class FatturaPaXmlBuilder(FatturaPaSchemaProvider schemas, ILogger<FatturaPaXmlBuilder> logger) : IFatturaPaXmlBuilder
 {
-    /// <summary>The transmission format of the documents to private parties.</summary>
     public const string TransmissionFormat = "FPR12";
 
-    /// <summary>The destination code without a channel: the PEC, or the fiscal drawer of the recipient.</summary>
     public const string NoChannelCode = "0000000";
 
-    /// <summary>The destination code of a recipient outside Italy.</summary>
     public const string ForeignRecipientCode = "XXXXXXX";
 
-    /// <summary>The value of <c>SoggettoEmittente</c> for a third party that issues on behalf of the cedente.</summary>
     public const string ThirdPartyIssuerCode = "TZ";
 
-    /// <summary>The value of <c>SoggettoEmittente</c> for a document the recipient issues (self-billing).</summary>
     public const string RecipientIssuerCode = "CC";
 
     private static readonly XNamespace P = FatturaPaSchemaProvider.FatturaPaNamespace;
@@ -63,7 +58,6 @@ public sealed class FatturaPaXmlBuilder(FatturaPaSchemaProvider schemas, ILogger
         throw new DomainRuleException(FatturaPaErrors.XmlInvalid, "FatturaPaXmlInvalid", errors.Count, positions);
     }
 
-    /// <summary>The XML of <paramref name="input"/>, not validated (the validation is <see cref="Build"/>'s).</summary>
     internal static string Write(FatturaPaInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -88,7 +82,6 @@ public sealed class FatturaPaXmlBuilder(FatturaPaSchemaProvider schemas, ILogger
         return text.ToString();
     }
 
-    /// <summary>The destination code of the recipient (see the remarks).</summary>
     public static string DestinationCode(string? recipientCountry, string? recipientCode)
     {
         if (!IsItaly(recipientCountry))
@@ -189,7 +182,6 @@ public sealed class FatturaPaXmlBuilder(FatturaPaSchemaProvider schemas, ILogger
             ? new XElement("Anagrafica", new XElement("Denominazione", party.Denomination))
             : new XElement("Anagrafica", new XElement("Nome", party.FirstName), new XElement("Cognome", party.LastName));
 
-    /// <summary>A <c>Sede</c>: abroad the <c>CAP</c> is <c>00000</c> (the foreign postal code is not an Italian CAP) and there is no <c>Provincia</c>.</summary>
     private static XElement Address(FatturaPaAddress address)
     {
         var italian = IsItaly(address.CountryCode);
@@ -209,10 +201,8 @@ public sealed class FatturaPaXmlBuilder(FatturaPaSchemaProvider schemas, ILogger
     /// <summary>An amount with the two decimals of the schema, in invariant culture.</summary>
     private static string Amount(decimal value) => value.ToString("0.00", CultureInfo.InvariantCulture);
 
-    /// <summary>A quantity or a unit price: two to eight decimals.</summary>
     private static string Precise(decimal value) => value.ToString("0.00######", CultureInfo.InvariantCulture);
 
-    /// <summary>A calendar day as the schema writes it.</summary>
     private static string Day(DateOnly day) => day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private sealed class Utf8StringWriter : StringWriter

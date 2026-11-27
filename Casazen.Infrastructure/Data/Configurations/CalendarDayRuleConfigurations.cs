@@ -26,7 +26,6 @@ internal sealed class PropertyDayRuleConfiguration : IEntityTypeConfiguration<Pr
         entity.ToTable(t => t.HasCheckConstraint(PropertyDayRule.ValuesCheckName, ValuesCheck()));
     }
 
-    // "Price" is null or a price; each stay and advance value is null or inside its bounds; a maximum is not below its minimum when both are set.
     private static string ValuesCheck()
     {
         var minPrice = PropertyDayRule.MinPrice.ToString(CultureInfo.InvariantCulture);
@@ -46,10 +45,6 @@ internal sealed class PropertyDayRuleConfiguration : IEntityTypeConfiguration<Pr
     }
 }
 
-/// <summary>
-/// A change of the calendar the host asked for (E08/F05/US01/T01, NF-36): carrying its org (restrict). The list of the changes of an org reads
-/// (<c>OrgId</c>, <c>CreatedAt</c>); the job that sends them reads (<c>State</c>, <c>NextAttemptAt</c>). The summary is jsonb.
-/// </summary>
 internal sealed class CalendarChangeProcessConfiguration : IEntityTypeConfiguration<CalendarChangeProcess>
 {
     public void Configure(EntityTypeBuilder<CalendarChangeProcess> entity)
@@ -61,11 +56,6 @@ internal sealed class CalendarChangeProcessConfiguration : IEntityTypeConfigurat
     }
 }
 
-/// <summary>
-/// One range of dates of one property that a change sends to the channel manager (E08/F05/US01/T01, NF-36): going with its process and with its
-/// property (cascade) and carrying its org (restrict). The process reads its chunks by <c>ProcessId</c>; the calendar of a property reads the
-/// chunks still on their way by (<c>OrgId</c>, <c>PropertyId</c>, <c>State</c>).
-/// </summary>
 internal sealed class CalendarChangeChunkConfiguration : IEntityTypeConfiguration<CalendarChangeChunk>
 {
     public void Configure(EntityTypeBuilder<CalendarChangeChunk> entity)

@@ -54,7 +54,6 @@ public sealed class MessageDraftApprovalAction(IMessageReplyService replies, ILo
             {
                 var result = await replies.ReplyAsync(scope, key, finalText, ApprovalQueueRules.SendKeyOf(item.Id, finalText, attempt), userId, origin, ruleCode, ct);
 
-                // The same key found a message of this item that the channel refused: it did not go out, and the next key sends it again.
                 if (result is { Replayed: true, State: OtaMessageDeliveryState.Error })
                     continue;
 
@@ -94,6 +93,5 @@ public sealed class MessageDraftApprovalAction(IMessageReplyService replies, ILo
         return ApprovalActionResult.Failed(ApprovalQueueRules.SendAttemptsExhaustedCode);
     }
 
-    /// <summary>A message needs no undoing when its draft is rejected: nothing was sent.</summary>
     public Task OnRejectedAsync(ApprovalQueueItem item, string reason, string userId, CancellationToken ct) => Task.CompletedTask;
 }

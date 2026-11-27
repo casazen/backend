@@ -4,10 +4,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// CNAME and A record lookups backed by <c>DnsClient</c> (BK-17), behind <see cref="IDnsRecordLookup"/> so the domain check
-/// is tested without real DNS traffic. A failed lookup is an empty answer (the check then says "not pointing yet").
-/// </summary>
 public sealed class DnsClientRecordLookup(ILogger<DnsClientRecordLookup> logger) : IDnsRecordLookup
 {
     private readonly LookupClient _lookupClient = new();

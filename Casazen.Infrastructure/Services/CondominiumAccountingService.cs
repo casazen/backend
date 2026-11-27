@@ -12,10 +12,6 @@ using UglyToad.PdfPig;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// CondoLedger's year, adapted to CasaZen: preventivo and consuntivo, rates left as issued, extraordinary kept apart,
-/// and the prior-year balance settled only the way the owner chooses.
-/// </summary>
 public sealed partial class CondominiumAccountingService(
     AppDbContext db,
     IPdfDocumentRenderer pdfRenderer,
@@ -694,7 +690,6 @@ public sealed partial class CondominiumAccountingService(
         var active = new List<CondominiumInstallment>(updated.Count);
         foreach (var installment in existing.Where(installment => !kept.Contains(installment.SlotIndex)))
         {
-            // A paid rate stays, including a paid separate conguaglio. Cancelling it would bill the balance again.
             if (installment.Status == CondominiumInstallmentStatus.Paid)
             {
                 active.Add(installment);

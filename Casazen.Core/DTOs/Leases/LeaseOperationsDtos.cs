@@ -3,14 +3,6 @@ using Casazen.Core.Leases;
 
 namespace Casazen.Core.DTOs.Leases;
 
-// API contract of the operations of a lease in force (LR-OPS-1, GET api/leases/{id}/operations): what the landlord can do about the end of
-// the lease today, computed on the server. A client shows it and does not work it out: no month or day of law is written in the
-// interface (the rules are GET api/long-rent/rules), and no name or address of a person is in these types.
-
-/// <summary>
-/// The operations of one lease. <c>Letters</c> has one entry per letter kind CasaZen can prepare, with whether its text is approved (a
-/// draft that is not approved is printed with a watermark) and when the landlord marked it as sent.
-/// </summary>
 public sealed record LeaseOperationsDto(
     LeaseDisdettaOperationDto Disdetta,
     LeaseWithdrawalOperationDto Withdrawal,
@@ -22,18 +14,10 @@ public sealed record LeaseOperationsDto(
     LeaseHandoverOperationDto Handover,
     LeaseDepositOperationDto Deposit);
 
-/// <summary>The state of a letter kind: its text is approved or still a draft, and the last time the landlord marked it as sent.</summary>
 public sealed record LeaseLetterStateDto(LeaseLetterKind Kind, bool Approved, LeaseLetterSentDto? Sent);
 
-/// <summary>The day the landlord marked a letter as sent and how.</summary>
 public sealed record LeaseLetterSentDto(DateOnly On, LeaseLetterMeans Means);
 
-/// <summary>
-/// The notice of non-renewal. <c>Available</c>: a letter can be prepared. <c>PeriodEnd</c> is the day the lease ends if the notice is given;
-/// <c>LastDayToGiveNotice</c> the last day by which it is on time (<c>null</c> for a type that does not renew) and <c>Late</c> says today is
-/// after it. <c>FirstPeriod</c>: the lease is in its first period, so the letter must state one of <c>Reasons</c> (the closed list of the law);
-/// later periods have none.
-/// </summary>
 public sealed record LeaseDisdettaOperationDto(
     bool Available,
     bool FirstPeriod,
@@ -54,16 +38,8 @@ public sealed record LeaseWithdrawalOperationDto(
     int MaxContractualNoticeMonths,
     LeaseWithdrawalRecordDto? Recorded);
 
-/// <summary>A withdrawal that was recorded: the day it was received, why, the last day of the lease and the months of notice used.</summary>
 public sealed record LeaseWithdrawalRecordDto(DateOnly ReceivedOn, TenantWithdrawalReason Reason, DateOnly EffectiveOn, int NoticeMonths);
 
-/// <summary>
-/// The renewal of the lease. <c>Available</c>: it can be recorded now (from <c>OpensOn</c>, the last day to give notice, to the end of the period;
-/// recording one moves the end forward and closes the window until the next period's). The standard renewal starts on <c>StartsOn</c> and ends on
-/// <c>StandardEnd</c> (<c>StandardMonths</c> months); an extension the parties agreed on can end on any later day up to <c>LatestAgreedEnd</c>.
-/// <c>Conflict</c> is the lease of the same property that already covers some of the days of the standard renewal (it would be refused with
-/// 409 <c>lease_period_overlaps</c>), <c>Recorded</c> the renewal recorded for the period the lease is in now (null once the lease has moved on).
-/// </summary>
 public sealed record LeaseRenewalOperationDto(
     bool Available,
     DateOnly OpensOn,
@@ -74,17 +50,11 @@ public sealed record LeaseRenewalOperationDto(
     LeasePeriodConflictDto? Conflict,
     LeaseRenewalRecordDto? Recorded);
 
-/// <summary>The lease that is in the way of a period: its id (not a person) and the first and last day it covers.</summary>
 public sealed record LeasePeriodConflictDto(Guid LeaseId, DateOnly From, DateOnly To);
 
 /// <summary>A renewal that was recorded: whether it was agreed on a day (otherwise the standard one) and the period it added.</summary>
 public sealed record LeaseRenewalRecordDto(bool Agreed, DateOnly From, DateOnly To);
 
-/// <summary>
-/// The confirmation of the need of a transitory lease. <c>Applies</c>: it is a transitory lease in force and the need has to be confirmed in
-/// writing before the end (<c>ConfirmBy</c>, its last day). <c>Available</c>: the need is the landlord's, so CasaZen prepares the letter;
-/// <c>Holder</c> says whose it is (<c>Landlord</c> or <c>Tenant</c>, or none when the contract does not say).
-/// </summary>
 public sealed record LeaseTransitoryConfirmationDto(bool Applies, bool Available, PartyRole? Holder, DateOnly ConfirmBy);
 
 /// <summary>
@@ -107,11 +77,6 @@ public sealed record LeaseIstatOperationDto(
 /// </summary>
 public sealed record LeaseCedolareNoticeDto(bool Available, DateOnly MinEffectiveOn, DateOnly MaxEffectiveOn);
 
-/// <summary>
-/// The handover of the property at the end of the lease. <c>Available</c>: the lease is ending (a notice is recorded, it was ended early, or it
-/// is of a type that ends by itself), so the minutes can be prepared; they can be dated from <c>MinOn</c> to <c>MaxOn</c>, and the window
-/// suggests <c>SuggestedOn</c>, the last day of the lease.
-/// </summary>
 public sealed record LeaseHandoverOperationDto(bool Available, DateOnly MinOn, DateOnly MaxOn, DateOnly SuggestedOn);
 
 /// <summary>
@@ -130,19 +95,12 @@ public sealed record LeaseDepositOperationDto(
     int MaxDeductions,
     LeaseDepositRecordDto? Recorded);
 
-/// <summary>A return of the deposit the landlord recorded: the day, the deposit, the interest that was due, the sums kept and what was returned.</summary>
 public sealed record LeaseDepositRecordDto(DateOnly ReturnedOn, decimal Deposit, decimal InterestDue, decimal Deductions, decimal Returned);
 
-/// <summary>The interest of one calendar year of the statement: the rate, the days the deposit was held in it, the days of the year and the interest.</summary>
 public sealed record LeaseDepositYearDto(int Year, decimal RatePercent, int Days, int DaysInYear, decimal Interest);
 
-/// <summary>A sum kept from the deposit and why.</summary>
 public sealed record LeaseDepositDeductionDto(string Reason, decimal Amount);
 
-/// <summary>
-/// The statement of the return of the deposit worked out by the server (<c>POST api/leases/{id}/deposit/calculate</c>): the deposit, the interest
-/// year by year and in total, the interest already paid and still due, the sums kept and what is returned, all to the cent. Nothing is written.
-/// </summary>
 public sealed record LeaseDepositCalculationDto(
     decimal Deposit,
     DateOnly From,

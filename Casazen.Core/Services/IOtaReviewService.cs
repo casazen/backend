@@ -41,11 +41,6 @@ public interface IOtaReviewService : IOtaReviewReader
     /// </summary>
     Task<OtaReviewSyncResult> SyncBookingAsync(Guid bookingId, CancellationToken ct = default);
 
-    /// <summary>
-    /// The reviews of one booking within the reach of <paramref name="scope"/>, direct (the review of the booking site) and of the channel, each with what it allows, and what
-    /// the channel of the booking allows even when there is no review yet (AC-NF69-1). <see cref="Exceptions.NotFoundException"/> <c>booking_not_found</c> (404) for a booking of
-    /// another org or out of the reach.
-    /// </summary>
     Task<BookingReviewsView> ListForBookingAsync(HostScope scope, Guid bookingId, CancellationToken ct = default);
 
     /// <summary>
@@ -58,7 +53,6 @@ public interface IOtaReviewService : IOtaReviewReader
     /// </summary>
     Task<BookingReviewsView> RefreshAsync(HostScope scope, Guid bookingId, CancellationToken ct = default);
 
-    /// <summary>The property of a review of the caller's org, for the authorization of the action; <c>null</c> when there is none.</summary>
     Task<Guid?> FindPropertyIdAsync(Guid reviewId, CancellationToken ct = default);
 
     /// <summary>
@@ -71,109 +65,74 @@ public interface IOtaReviewService : IOtaReviewReader
     /// </summary>
     Task<OtaReviewActionResult> ReplyAsync(Guid reviewId, string? text, string? idempotencyKey, string? userId, CancellationToken ct = default);
 
-    /// <summary>
-    /// The host's own review of the guest, once (Airbnb only, the window <see cref="HostReviewWindow.Open"/>: else 409 <c>ota_review_window_closed</c>), with the same safe send as
-    /// <see cref="ReplyAsync"/>. At least one rating from 1 to 5 and a public text: 422 <c>ota_review_host_review_invalid</c>.
-    /// </summary>
     Task<OtaReviewActionResult> SendHostReviewAsync(Guid reviewId, OtaHostReviewCommand? command, string? idempotencyKey, string? userId, CancellationToken ct = default);
 }
 
-/// <summary>The stable codes of the reviews of the channels: what the API answers with and what a row stores (never a text).</summary>
 public static class OtaReviewErrorCodes
 {
-    /// <summary>The channel has no integration for reviews (the same code as <see cref="OtaReviewCapabilities.ChannelNotIntegrated"/>).</summary>
     public const string ChannelNotIntegrated = OtaReviewCapabilities.ChannelNotIntegrated;
 
-    /// <summary>The review of a channel that is not Airbnb cannot be answered or written (422).</summary>
     public const string ChannelNotSupported = "ota_review_channel_not_supported";
 
-    /// <summary>The guest's review is not published yet: nothing to answer (422).</summary>
     public const string NotPublished = "ota_review_not_published";
 
-    /// <summary>The window of the host's review is not open (409).</summary>
     public const string WindowClosed = "ota_review_window_closed";
 
-    /// <summary>The channel manager answered 409 to a reply or a host's review: not allowed, or already sent (409). The next read shows which.</summary>
     public const string ActionNotAllowed = "ota_review_action_not_allowed";
 
-    /// <summary>The reply is on the channel already (409).</summary>
     public const string ReplyAlreadySent = "ota_review_reply_already_sent";
 
-    /// <summary>The host's review is on the channel already (409).</summary>
     public const string HostReviewAlreadySent = "ota_review_host_review_already_sent";
 
-    /// <summary>An earlier attempt whose outcome is not known has to be confirmed (or turn into an error) before another one is made (409).</summary>
     public const string ActionUnconfirmed = "ota_review_action_unconfirmed";
 
-    /// <summary>The ratings or the text of the host's review are not usable (422).</summary>
     public const string HostReviewInvalid = "ota_review_host_review_invalid";
 
-    /// <summary>The reply is empty or longer than <see cref="ReviewRules.ReplyMaxLength"/> (422): the code the reply to a review of the booking site has always had.</summary>
     public const string ReplyInvalid = "review_reply_invalid";
 
-    /// <summary>The key of the send is missing or not 8 to 64 letters, digits, dashes or underscores (422).</summary>
     public const string IdempotencyKeyInvalid = "idempotency_key_invalid";
 
-    /// <summary>The listing of the property has no confirmed mapping: nothing is written to the channel (409, OCT-04).</summary>
     public const string MappingNotConfirmed = "mapping_not_confirmed";
 
-    /// <summary>The review is not there, is of another org or is out of the reach of the caller (404).</summary>
     public const string NotFound = "ota_review_not_found";
 
     /// <summary>The channel manager does not give the reviews of the accommodation (no permission, or the channel is not connected there): a state of the read, not a failure to retry soon.</summary>
     public const string ReviewNotAvailable = "review_not_available";
 
-    /// <summary>A reply whose outcome nobody confirmed within the hour: it did not reach the channel; the host may try again with a new key.</summary>
     public const string ReplyNotDelivered = "reply_not_delivered";
 
-    /// <summary>The same for the host's own review.</summary>
     public const string ReviewNotDelivered = "review_not_delivered";
 
-    /// <summary>The booking was read less than ten minutes ago (429).</summary>
     public const string RefreshTooSoon = "ota_review_refresh_too_soon";
 
-    /// <summary>The booking is not there, is of another org or is out of the reach of the caller (404).</summary>
     public const string BookingNotFound = "booking_not_found";
 
-    /// <summary>The stay has no reviews to read: it did not happen (a request, a cancelled booking, a no-show) or it has no usable reference on the channel manager (422).</summary>
     public const string BookingNotReviewable = "ota_review_booking_not_reviewable";
 }
 
-/// <summary>How a read of one booking ended.</summary>
 public enum OtaReviewSyncOutcome
 {
-    /// <summary>The channel manager answered and the row was updated (or made).</summary>
     Synced = 0,
 
-    /// <summary><c>Features:OctorateConnector</c> is off: nothing was read and nothing was written.</summary>
     ConnectorOff = 1,
 
-    /// <summary>The booking is not there for this org: nothing was read.</summary>
     BookingNotFound = 2,
 
-    /// <summary>The channel of the booking has no integration for reviews: nothing was read, and no row was made.</summary>
     ChannelNotIntegrated = 3,
 
-    /// <summary>The property of the booking has no confirmed listing (nobody decided it, OCT-04): nothing can be read for it.</summary>
     NotReadable = 4,
 
-    /// <summary>The channel manager did not give the reviews (<see cref="OtaReviewSyncResult.ErrorCode"/> says why); the row stores the code and waits for the next read.</summary>
     Failed = 5,
 
-    /// <summary>The stay has no reviews to read: it did not happen (a request, a cancelled booking, a no-show) or it has no reservation on the channel manager. Nothing was read, and no row was made.</summary>
     NotReviewable = 6,
 }
 
-/// <summary>What <see cref="IOtaReviewService.SyncBookingAsync"/> did for one booking: how it ended, the code of a failure, and whether the guest's review became published now.</summary>
 public sealed record OtaReviewSyncResult(OtaReviewSyncOutcome Outcome, string? ErrorCode = null, bool NewlyPublished = false);
 
-/// <summary>One rating category of a review, with the value it was given.</summary>
 public sealed record ReviewCategoryRating(string Category, decimal Value);
 
-/// <summary>The host's reply to a review of a channel: where it stands, its text (the host's own), when the channel took it and the code of the last failure.</summary>
 public sealed record ReviewReplyView(OtaReviewActionState State, string? Text, DateTime? SentAt, string? ErrorCode);
 
-/// <summary>The host's own review of a guest: the window, where the send stands, what was sent (the host's own words) and the code of the last failure.</summary>
 public sealed record OtaHostReviewView(
     HostReviewWindow Window,
     OtaReviewActionState State,
@@ -183,11 +142,6 @@ public sealed record OtaHostReviewView(
     DateTime? SentAt,
     string? ErrorCode);
 
-/// <summary>
-/// What a review allows its host now: the three capabilities of the channel (<see cref="OtaReviewCapabilities"/>) narrowed by what the review is. <paramref name="Reason"/> is
-/// the reason of the channel or of the property (<c>channel_not_integrated</c>, <c>mapping_not_confirmed</c>), <c>null</c> while the channel allows; <paramref name="ReplyReason"/>
-/// and <paramref name="HostReviewReason"/> say why one action is closed while the other may be open (already answered, window closed, the last attempt waits for a check).
-/// </summary>
 public sealed record OtaReviewCapabilitiesView(
     bool CanRead,
     bool CanReply,
@@ -196,10 +150,6 @@ public sealed record OtaReviewCapabilitiesView(
     string? ReplyReason = null,
     string? HostReviewReason = null);
 
-/// <summary>
-/// One review of a channel as the host reads it (the personal words are the host's to read): the guest's review, the reply and the host's own review, with the state of the
-/// read. The key <c>otareview:{id}</c> is the one of the hub of messages.
-/// </summary>
 public sealed record OtaReviewView(
     Guid Id,
     MessageThreadKey Key,
@@ -218,10 +168,6 @@ public sealed record OtaReviewView(
     string? LastSyncError,
     OtaReviewCapabilitiesView Capabilities);
 
-/// <summary>
-/// One review in the list of a booking: where it is kept (<see cref="MessageThreadSource.Review"/> for the review of the booking site, <see cref="MessageThreadSource.OtaReview"/>
-/// for the one of a channel), the stars, the first words, and what the host may do with it.
-/// </summary>
 public sealed record BookingReviewItem(
     MessageThreadKey Key,
     MessageThreadSource Source,
@@ -232,10 +178,6 @@ public sealed record BookingReviewItem(
     OtaReviewActionState ReplyState,
     OtaReviewCapabilitiesView Capabilities);
 
-/// <summary>
-/// The reviews of one booking: what the channel of the booking allows even when there is no review yet (<paramref name="ChannelCapabilities"/>), the reviews there are, and the
-/// state of the read. <paramref name="CanRefreshAt"/> is the instant the booking may be read again from the channel manager (<c>null</c>: now).
-/// </summary>
 public sealed record BookingReviewsView(
     Guid BookingId,
     MessageHubChannel Channel,
@@ -245,11 +187,6 @@ public sealed record BookingReviewsView(
     string? LastSyncError,
     DateTime? CanRefreshAt);
 
-/// <summary>The host's own review as the request carries it: the ratings, the public text and the private text.</summary>
 public sealed record OtaHostReviewCommand(IReadOnlyList<ReviewCategoryRating> Ratings, string? Text, string? PrivateText);
 
-/// <summary>
-/// How a reply or a host's review ended, for the answer of the API: the review as it is now, the state of the action, whether the key had been seen before (nothing was sent
-/// again) and the code of a refusal (<see cref="OtaReviewActionState.Error"/>).
-/// </summary>
 public sealed record OtaReviewActionResult(OtaReviewView Review, OtaReviewActionState State, bool Replayed, string? ErrorCode);

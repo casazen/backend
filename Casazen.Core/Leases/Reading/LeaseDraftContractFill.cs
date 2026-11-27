@@ -5,19 +5,14 @@ using Casazen.Core.Regulatory;
 
 namespace Casazen.Core.Leases.Reading;
 
-/// <summary>What became of a value the contract states, for the person who looks at the draft afterwards.</summary>
 public enum FieldReadingState
 {
-    /// <summary>The draft had nothing there: the value was written, and the screen says "read from the contract — check it".</summary>
     Read,
 
-    /// <summary>The draft already had the same value (typed by the person, or chosen at the start): nothing to say.</summary>
     Agrees,
 
-    /// <summary>The draft has another value, typed by the person: it stays, the contract says something else, and the screen says so.</summary>
     Conflict,
 
-    /// <summary>The contract states it but the rules of the draft refuse it (a deposit above three rents, a term the type does not allow): it was not written and the field is asked.</summary>
     Unusable,
 }
 
@@ -31,7 +26,6 @@ public enum FieldReadingState
 public sealed record FieldReading(
     string Field, FieldReadingState State, int Confidence, bool Derived = false, Guid? PartyId = null, PartyRole? Role = null);
 
-/// <summary>The values of the draft once the contract is read into them, and what became of each value read.</summary>
 public sealed record LeaseDraftFill(LeaseDraftValues Values, IReadOnlyList<FieldReading> Fields, bool Changed);
 
 /// <summary>
@@ -78,7 +72,6 @@ public static class LeaseDraftContractFill
         return new LeaseDraftFill(run.Values, run.Fields, run.Changed);
     }
 
-    /// <summary>The values being filled, what was written and what became of each value read.</summary>
     private sealed class Run(LeaseDraftValues start)
     {
         public LeaseDraftValues Values { get; set; } = start;
@@ -92,8 +85,6 @@ public static class LeaseDraftContractFill
     }
 
     private static string Day(DateOnly date) => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
-    // ---- the conditions ------------------------------------------------------------------------------------------------
 
     private static LeaseContractType? FillType(Run run, LeaseContractReading reading, LeaseOrigin origin)
     {
@@ -164,7 +155,6 @@ public static class LeaseDraftContractFill
         if (reading.SecurityDeposit is not { IsAccepted: true } read)
             return;
 
-        // The same limit the flow applies (deposit_too_high): more than three rents is far more likely a misreading than a deposit.
         var tooHigh = rent is { } monthly && read.Value > monthly * LongRentRules.DepositMaxRents;
         if (!LeaseDraftRules.IsValidDeposit(read.Value) || tooHigh)
         {
@@ -182,8 +172,6 @@ public static class LeaseDraftContractFill
 
         run.Add("securityDeposit", run.Values.SecurityDeposit == read.Value ? FieldReadingState.Agrees : FieldReadingState.Conflict, read.Confidence, read.Derived);
     }
-
-    // ---- the dates -----------------------------------------------------------------------------------------------------
 
     private static DateOnly? FillStart(Run run, LeaseContractReading reading)
     {
@@ -209,10 +197,6 @@ public static class LeaseDraftContractFill
         return typed;
     }
 
-    /// <summary>
-    /// The last day of the first period, for a contract already signed. A term that follows its type needs no end in the draft (the draft
-    /// computes it): the end is written when the contract states another one, or when the type has none of its own (the transitory one).
-    /// </summary>
     private static void FillEnd(Run run, LeaseContractReading reading, LeaseOrigin origin, LeaseContractType? type, DateOnly? start)
     {
         if (origin != LeaseOrigin.Imported || reading.EndDate is not { IsAccepted: true } read)
@@ -255,8 +239,6 @@ public static class LeaseDraftContractFill
             run.Add("property", read.Value == PropertyAddressMatch.Match ? FieldReadingState.Agrees : FieldReadingState.Conflict, read.Confidence);
     }
 
-    // ---- the people ------------------------------------------------------------------------------------------------------
-
     private static List<LeaseDraftParty> FillRole(
         Run run,
         PartyRole role,
@@ -278,7 +260,6 @@ public static class LeaseDraftContractFill
 
             var code = ItalianFiscalCode.Normalize(read.FiscalCode);
 
-            // The same person cannot be on both sides of the contract: the flow would refuse the code twice (party_fiscal_code_duplicate).
             if (otherRole.Any(o => ItalianFiscalCode.Normalize(o.FiscalCode) == code))
             {
                 run.Add("party", FieldReadingState.Unusable, read.FiscalCodeConfidence, role: role);
@@ -310,13 +291,8 @@ public static class LeaseDraftContractFill
         return list;
     }
 
-    /// <summary>The citizenship a landlord born in Italy is given when the contract of the service does not state it.</summary>
     private const string DerivedCitizenship = "IT";
 
-    /// <summary>
-    /// True when the role already holds a person this contract does not name. The people the contract does name may be completed,
-    /// and the co-tenants it also names may be added; a stranger stays as typed and nobody is added beside them.
-    /// </summary>
     private static bool TypedByHand(IReadOnlyList<LeaseDraftParty> existing, LeaseContractReading reading, PartyRole role)
     {
         bool Named(LeaseDraftParty entry) => reading.Parties.Any(read =>
@@ -371,8 +347,6 @@ public static class LeaseDraftContractFill
         Field("residence", entry.Residence, read.Residence, read.ResidenceConfidence, (e, v) => e with { Residence = v }, usable: read.Residence is { Length: <= Party.ResidenceMaxLength });
         Field("citizenship", entry.Citizenship, read.Citizenship, read.CitizenshipConfidence, (e, v) => e with { Citizenship = v }, usable: read.Citizenship is { Length: 2 });
 
-        // CF-DONE: the contract of the guided service does not state the landlord's citizenship. A person born in Italy is taken as Italian,
-        // and said to be derived (the screen asks to check it); anybody else stays empty, and is asked.
         if (deriveCitizenship && LeaseDraftRules.Clean(next.Citizenship) is null && ItalianFiscalCode.IsPersonBornInItaly(next.FiscalCode))
         {
             next = next with { Citizenship = DerivedCitizenship };

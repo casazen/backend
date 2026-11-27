@@ -27,10 +27,6 @@ public sealed record TouristTaxGuestStay(
     public int Nights => CheckOut.DayNumber - CheckIn.DayNumber;
 }
 
-/// <summary>The tax of one guest on one night of the stay.</summary>
-/// <param name="Date">The night (Europe/Rome calendar date).</param>
-/// <param name="Amount">Tax of the guest on that night, rounded to the cent; 0 beyond the cap of nights or for an exempt guest.</param>
-/// <param name="RateId">The rate of that night.</param>
 public sealed record TouristTaxNightAmount(DateOnly Date, decimal Amount, Guid RateId);
 
 /// <summary>The tax of one guest of the stay.</summary>

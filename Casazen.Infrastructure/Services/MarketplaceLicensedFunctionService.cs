@@ -43,10 +43,8 @@ public sealed class MarketplaceLicensedFunctionService(
     TimeProvider timeProvider,
     ILogger<MarketplaceLicensedFunctionService> logger) : IMarketplaceLicensedFunctionService
 {
-    /// <summary>The resource key of what the host asks its channel manager for a function: <c>{0}</c> is the name of the function, <c>{1}</c> the name of the property.</summary>
     internal const string RequestGuidanceKey = "Marketplace.Function.RequestGuidance";
 
-    /// <summary>How long the plan and the room limit of a read are kept in memory.</summary>
     private static readonly TimeSpan SnapshotLifetime = TimeSpan.FromDays(7);
 
     public async Task<MarketplaceFunctionList> ListAsync(
@@ -95,7 +93,6 @@ public sealed class MarketplaceLicensedFunctionService(
         MarketplaceReads.EnsureSameOrg(orgId, scope);
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        // The code is checked before anything is read: it does not depend on a tenant, and an unknown code is the same answer for everybody.
         var code = moduleCode?.Trim();
         if (code is null || !MarketplaceLicensedFunctions.IsKnown(code))
             throw FunctionUnknown();
@@ -113,9 +110,6 @@ public sealed class MarketplaceLicensedFunctionService(
         }
         catch (OctorateException ex) when (ex is OctorateRateLimitException or OctorateServerException)
         {
-            // Asking again gives the same request (AC-NF56-3), also while the channel manager cannot be read (no answer, a 5xx, the quota used): the
-            // request under way is returned as it is, nothing is changed, and the next check applies the license. With no request under way there is
-            // nothing to return: the error is raised as it is and nothing is recorded. Any other refusal (the token, an unknown accommodation) is raised too.
             var waiting = await RequestUnderWayAsync(orgId, propertyId, code, ct);
             if (waiting is null)
                 throw;
@@ -141,7 +135,6 @@ public sealed class MarketplaceLicensedFunctionService(
         if (orgId == Guid.Empty)
             throw new ArgumentException("A reconciliation is for an organization.", nameof(orgId));
 
-        // No caller, so no scope: the property must be the org's, and a property that is not is the 404 of every other answer.
         var belongs = await db.Properties.AsNoTracking().AnyAsync(p => p.OrgId == orgId && p.Id == propertyId, ct);
         if (!belongs)
             throw MarketplaceReads.PropertyNotFound();
@@ -150,15 +143,8 @@ public sealed class MarketplaceLicensedFunctionService(
         await ReadAndApplyAsync(orgId, propertyId, link, ct);
     }
 
-    // ─── The checks every method shares ──────────────────────────────────────────────────────────────────────
-
-    /// <summary>The listing a property is confirmed to: the accommodation id, which is the <c>acc</c> of the call.</summary>
     private sealed record Link(string AccommodationId);
 
-    /// <summary>
-    /// The name of a property of the org inside the caller's scope, for the guidance. Another org's property, one outside the scope and one that
-    /// does not exist (or was deleted) are the same 404: <c>marketplace_property_not_found</c>.
-    /// </summary>
     private async Task<string> PropertyNameAsync(Guid orgId, HostScope scope, Guid propertyId, CancellationToken ct)
     {
         var found = await db.Properties.AsNoTracking()
@@ -169,7 +155,6 @@ public sealed class MarketplaceLicensedFunctionService(
         return found?.Name ?? throw MarketplaceReads.PropertyNotFound();
     }
 
-    /// <summary>The org is connected (the connector is on and it has a connected account in this environment) and the property has its confirmed listing.</summary>
     private async Task<Link> RequireLinkAsync(Guid orgId, Guid propertyId, CancellationToken ct) =>
         new Link(await MarketplaceReads.RequireLinkedAccommodationAsync(db, featureFlags, hostEnvironment, orgId, propertyId, ct));
 
@@ -178,9 +163,6 @@ public sealed class MarketplaceLicensedFunctionService(
             .Where(a => a.OrgId == orgId && a.PropertyId == propertyId && a.Kind == MarketplaceActivationKind.LicensedFunction)
             .ToListAsync(ct);
 
-    // ─── The live read and what it changes ───────────────────────────────────────────────────────────────────
-
-    /// <summary>Reads the license of the property from Octorate, once, brings the rows in line with it and keeps the plan and the room limit.</summary>
     private async Task<OctorateLicense> ReadAndApplyAsync(Guid orgId, Guid propertyId, Link link, CancellationToken ct)
     {
         OctorateLicense license;
@@ -195,11 +177,6 @@ public sealed class MarketplaceLicensedFunctionService(
         return license;
     }
 
-    /// <summary>
-    /// Applies the license to the rows of the property and saves. Another request that wrote the same rows first (the daily check and a click on
-    /// «Check now» together: the same row changed, or the same row created) is read again and the license applied once more on top of it; a second
-    /// failure is raised.
-    /// </summary>
     private async Task ApplyAsync(Guid orgId, Guid propertyId, OctorateLicense license, CancellationToken ct)
     {
         for (var attempt = 1; ; attempt++)
@@ -227,12 +204,6 @@ public sealed class MarketplaceLicensedFunctionService(
         }
     }
 
-    /// <summary>
-    /// The rules of the reconciliation, on the tracked rows of the property. A module the license does not state is skipped (an absent flag is not
-    /// «off»). On: a row that is not Active becomes Active and verified, a missing row is created Active and verified, an Active row is stamped.
-    /// Off: a verified Active row becomes To fix with <see cref="MarketplaceFunctionErrorCodes.LicenseModuleOff"/>; a request waits (stamped only).
-    /// A row whose status changes closes its open change request: the license has answered it.
-    /// </summary>
     private async Task<Reconciled> ReconcileRowsAsync(Guid orgId, Guid propertyId, OctorateLicense license, CancellationToken ct)
     {
         var now = Now();
@@ -252,7 +223,6 @@ public sealed class MarketplaceLicensedFunctionService(
             {
                 if (row is null)
                 {
-                    // The collection of the DbSet, not the navigation of another entity: a row with an id of its own is added, never attached as modified.
                     db.MarketplaceActivations.Add(new MarketplaceActivation
                     {
                         OrgId = orgId,
@@ -303,7 +273,6 @@ public sealed class MarketplaceLicensedFunctionService(
                 }
                 else
                 {
-                    // A request waits, and anything else stays as it is: the license answered, and the answer changes nothing for this row.
                     row.LastSyncedAt = now;
                     row.UpdatedAt = now;
                 }
@@ -371,13 +340,11 @@ public sealed class MarketplaceLicensedFunctionService(
             }
             catch (DbUpdateException) when (attempt < 2)
             {
-                // Two requests for the same module at once: the other one wrote the row first. Read it again; it is returned as it is.
                 ForgetTrackedRows();
             }
         }
     }
 
-    /// <summary>The request of the module under way for the property (Requested, or Pending), as it is stored; <c>null</c> when there is none. Nothing is tracked.</summary>
     private async Task<MarketplaceActivation?> RequestUnderWayAsync(Guid orgId, Guid propertyId, string code, CancellationToken ct)
     {
         return await db.MarketplaceActivations.AsNoTracking().FirstOrDefaultAsync(
@@ -389,7 +356,6 @@ public sealed class MarketplaceLicensedFunctionService(
             ct);
     }
 
-    /// <summary>The rows are read again after a failed save: nothing tracked from the failed attempt may be kept.</summary>
     private void ForgetTrackedRows()
     {
         foreach (var entry in db.ChangeTracker.Entries<MarketplaceActivation>().ToList())
@@ -398,15 +364,11 @@ public sealed class MarketplaceLicensedFunctionService(
 
     private sealed record Reconciled(int Activated, int Flagged);
 
-    // ─── What the page shows ─────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The plan and the room limit of a read, as kept in memory.</summary>
     private sealed record LicenseSnapshot(string? Tier, int? RoomsLimit, DateTime ReadAt);
 
     private LicenseSnapshot? SnapshotOf(Guid orgId, Guid propertyId, Link link) =>
         cache.TryGetValue(SnapshotKey(orgId, propertyId, link), out LicenseSnapshot? snapshot) ? snapshot : null;
 
-    /// <summary>The org is in the key: the same property id of two orgs can never meet. The accommodation is in it too: a property linked to another one starts again.</summary>
     private static string SnapshotKey(Guid orgId, Guid propertyId, Link link) =>
         $"marketplace-license:{orgId:N}:{propertyId:N}:{link.AccommodationId}";
 
@@ -447,7 +409,6 @@ public sealed class MarketplaceLicensedFunctionService(
             status == MarketplaceFunctionStatus.Active ? null : texts.Get(RequestGuidanceKey, language, name, propertyName));
     }
 
-    /// <summary>No row, and a turned off one, is not active; a request under way (Requested, or Pending) is Requested.</summary>
     private static MarketplaceFunctionStatus StatusOf(MarketplaceActivation? row) => row?.Status switch
     {
         MarketplaceActivationStatus.Active => MarketplaceFunctionStatus.Active,

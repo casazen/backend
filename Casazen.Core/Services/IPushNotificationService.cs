@@ -25,22 +25,14 @@ public sealed record PushNotificationPayload(
     Guid? ApprovalItemId = null,
     string? CategoryId = null);
 
-/// <summary>Who receives a push. Resolved into devices by the delivery job at send time, never inside the request.</summary>
 public enum PushAudienceKind
 {
-    /// <summary>Hosts of the booking's property: its owner and the org-wide roles (Admin, PropertyManager) of its org.</summary>
     BookingHosts = 1,
 
-    /// <summary>Hosts of the property: its owner and the org-wide roles (Admin, PropertyManager) of its org.</summary>
     PropertyHosts = 2,
 
-    /// <summary>Active users of the supplier org (linked by <c>User.SupplierOrgId</c> or <c>User.OrgId</c>).</summary>
     SupplierOrg = 3,
 
-    /// <summary>
-    /// The users who decide the identity verification of the booking's guest (E03/F04/US02/T03): they hold <c>verification.decision</c> and
-    /// reach the booking's property. The id is the booking. An explicit value, never renumbered.
-    /// </summary>
     VerificationOperators = 10,
 
     /// <summary>
@@ -80,7 +72,6 @@ public enum PushAudienceKind
 /// </param>
 public sealed record PushAudience(PushAudienceKind Kind, Guid Id, string? UserId = null, NotificationPermission? RequiredPermission = null)
 {
-    /// <summary>The devices of one user of a host org (NF-65): the user is one of the recipients <c>INotificationPreferenceService</c> selected.</summary>
     public static PushAudience User(Guid orgId, string userId) => new(PushAudienceKind.User, orgId, userId);
 
     public static PushAudience BookingHosts(Guid bookingId) => new(PushAudienceKind.BookingHosts, bookingId);
@@ -98,10 +89,8 @@ public sealed record PushAudience(PushAudienceKind Kind, Guid Id, string? UserId
 
     public static PushAudience VerificationOperators(Guid bookingId) => new(PushAudienceKind.VerificationOperators, bookingId);
 
-    /// <summary>The platform administrators, told about <paramref name="subjectId"/> (the «Fallo per me» request): the bell and its live update only.</summary>
     public static PushAudience PlatformStaff(Guid subjectId) => new(PushAudienceKind.PlatformStaff, subjectId);
 
-    /// <summary>The administrators of the host org <paramref name="orgId"/>, told about the org's own domain (E40/F01/US02/T01): the bell and its live update only.</summary>
     public static PushAudience OrgAdmins(Guid orgId) => new(PushAudienceKind.OrgAdmins, orgId);
 }
 
@@ -126,22 +115,14 @@ public interface IPushNotificationService
 /// <summary>Delivery keys of <see cref="IPushNotificationService.Enqueue"/>: one per event, stable across retries.</summary>
 public static class PushDeliveryKeys
 {
-    /// <summary>A new service request, to the supplier.</summary>
     public static string ServiceRequestCreated(Guid serviceRequestId) => $"service-request:{serviceRequestId:N}:created";
 
-    /// <summary>A new service request accepted automatically for a regular host (SP-04d), to the supplier: it replaces the push of the new request.</summary>
     public static string ServiceRequestAutoAccepted(Guid serviceRequestId) => $"service-request:{serviceRequestId:N}:auto-accepted";
 
-    /// <summary>The reminder of the day before the work (SP-16d), to the supplier: one per request, whatever the number of runs of the job.</summary>
     public static string ServiceRequestDayBefore(Guid serviceRequestId) => $"service-request:{serviceRequestId:N}:day-before";
 
-    /// <summary>The payment of a job made through CasaZen (SP-16d), to the supplier: one per payment.</summary>
     public static string ServicePaymentReceived(Guid paymentId) => $"service-payment:{paymentId:N}:received";
 
-    /// <summary>
-    /// A service request reached <paramref name="status"/>, to the host (or, for a cancellation, to the other party). The
-    /// state machine reaches every status at most once (SU-10), so the key identifies the transition.
-    /// </summary>
     public static string ServiceRequestStatus(Guid serviceRequestId, ServiceRequestStatus status) =>
         $"service-request:{serviceRequestId:N}:{status}";
 
@@ -152,11 +133,9 @@ public static class PushDeliveryKeys
     public static string ServiceRequestReminder(Guid serviceRequestId, DateTime remindedAtUtc) =>
         $"service-request:{serviceRequestId:N}:reminder:{remindedAtUtc:yyyyMMddHHmmss}";
 
-    /// <summary>A time proposed by the supplier, to the host (SP-04); a new proposal has its own instant, so its own key.</summary>
     public static string ServiceRequestTimeProposed(Guid serviceRequestId, DateTime proposedAtUtc) =>
         $"service-request:{serviceRequestId:N}:proposed:{proposedAtUtc:yyyyMMddHHmmss}";
 
-    /// <summary>The host's answer to the proposal made at <paramref name="proposedAtUtc"/>, to the supplier (SP-04).</summary>
     public static string ServiceRequestProposalAnswered(Guid serviceRequestId, DateTime proposedAtUtc, bool accepted) =>
         $"service-request:{serviceRequestId:N}:proposal-{(accepted ? "accepted" : "rejected")}:{proposedAtUtc:yyyyMMddHHmmss}";
 
@@ -175,19 +154,10 @@ public static class PushDeliveryKeys
     public static string ServiceRequestRescheduled(Guid serviceRequestId, DateTime rescheduledAtUtc) =>
         $"service-request:{serviceRequestId:N}:rescheduled:{rescheduledAtUtc:yyyyMMddHHmmss}";
 
-    /// <summary>
-    /// What happened to a backup supplier's request (SP-BKP): <paramref name="kind"/> is one of <c>invited</c>, <c>active</c>, <c>won</c>,
-    /// <c>closed</c>. A request of a group moves through each of them at most once, so the key identifies the event.
-    /// </summary>
     public static string ServiceRequestBackup(Guid serviceRequestId, string kind) => $"service-request:{serviceRequestId:N}:backup-{kind}";
 
-    /// <summary>
-    /// A reminder to answer a request on measure of a public showcase (SP-10c), to the supplier: <paramref name="kind"/> is <c>half</c> or <c>last</c>.
-    /// Each is sent at most once per request, so the key identifies the reminder.
-    /// </summary>
     public static string ServiceRequestReplyReminder(Guid serviceRequestId, string kind) => $"service-request:{serviceRequestId:N}:reply-reminder-{kind}";
 
-    /// <summary>A message the guest of a direct booking wrote, to the host: one per message, so every message is one push.</summary>
     public static string GuestMessage(Guid messageId) => $"booking-message:{messageId:N}";
 
     /// <summary>
@@ -203,11 +173,6 @@ public static class PushDeliveryKeys
             : $"ota-msg:{messageId:N}:{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(userId)))}";
     }
 
-    /// <summary>
-    /// A message of a guest the assistant judged urgent (E05/F05/US02/T01, NF-67), to one host user: one per message and user, and not the key of the alert of the new message
-    /// (<see cref="OtaMessage"/>, <see cref="GuestMessage"/>), which the same person had already: the urgent alert is one more push and one more notification. A user id too long for the
-    /// 200 characters of a key is replaced by its SHA-256.
-    /// </summary>
     public static string UrgentGuestMessage(Guid messageId, string userId)
     {
         var key = $"urgent-msg:{messageId:N}:{userId}";
@@ -237,16 +202,10 @@ public static class PushDeliveryKeys
     /// </summary>
     public static string GuestCheckInCompleted(Guid sessionId) => $"guest-checkin:{sessionId:N}:completed";
 
-    /// <summary>A step of a stay CasaZen did in the host's place (casazen/backend#978), to the hosts of the booking: one per stay and step.</summary>
     public static string BookingFlowStep(Guid bookingId, BookingFlowAutomaticStep step) => $"booking-flow:{bookingId:N}:{step.ToString().ToLowerInvariant()}";
 
-    /// <summary>A booking confirmed without the host's action (payment, saved card), to the host.</summary>
     public static string NewBooking(Guid bookingId) => $"booking:{bookingId:N}:new";
 
-    /// <summary>
-    /// One stage of a stay alert (CO-10): the kind, the date it refers to (check-in, or check-out for the reminder) and the
-    /// number of the daily reminder. A changed date starts a new sequence, so it is part of the key.
-    /// </summary>
     public static string StayAlert(Guid bookingId, StayAlertKind kind, DateTime referenceDate, int reminderNumber) =>
         $"stay-alert:{bookingId:N}:{kind}:{referenceDate:yyyyMMdd}:{reminderNumber}";
 
@@ -278,10 +237,6 @@ public static class PushDeliveryKeys
             System.Globalization.CultureInfo.InvariantCulture,
             $"swiss-declaration:{propertyId:N}:{day:yyyyMMdd}:{(declared ? "declared" : "undone")}:{atUtc:yyyyMMddHHmmssfff}");
 
-    /// <summary>
-    /// An OTA stay "da verificare" (CO-21): the reason and, for <c>BlockDatesChanged</c>, the channel's dates, so a host
-    /// already pushed for the same unresolved dates is not pushed again, while dates that changed once more start a new key.
-    /// </summary>
     public static string OtaStayReview(Guid bookingId, OtaStayReviewReason reason, DateTime? channelCheckIn, DateTime? channelCheckOut) =>
         $"ota-stay-review:{bookingId:N}:{reason}:{channelCheckIn:yyyyMMdd}:{channelCheckOut:yyyyMMdd}";
 
@@ -291,27 +246,14 @@ public static class PushDeliveryKeys
     /// </summary>
     public static string VerificationRequired(Guid bookingId) => $"verification-required:{bookingId:N}";
 
-    /// <summary>
-    /// The identity of a guest went to the operators (E03/F04/US02/T03) for <paramref name="reasonCode"/>: one per check-in session and reason, so
-    /// a repeated request of the guest is one push, and a new link of the same booking is another event.
-    /// </summary>
     public static string VerificationOperatorAlert(Guid sessionId, string reasonCode) => $"verification-operator:{sessionId:N}:{reasonCode}";
 
     /// <summary>A host asked CasaZen support for «Fallo per me», to the platform staff: one per request, stable across retries.</summary>
     public static string AssistRequested(Guid requestId) => $"assist-request:{requestId:N}:requested";
 
-    /// <summary>
-    /// The host reopened a «Fallo per me» request («Non funziona», E20/F03/US01/T02), to the platform staff: a request can be reopened more than once, so
-    /// the instant of the reopening is part of the key.
-    /// </summary>
     public static string AssistReopened(Guid requestId, DateTime reopenedAtUtc) =>
         $"assist-request:{requestId:N}:reopened:{reopenedAtUtc.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture)}";
 
-    /// <summary>
-    /// Support marked a «Fallo per me» request done (E20/F03/US01/T02), to one administrator of the org: one per «Fatto» and person (a request reopened and
-    /// done again is another event, so the instant is part of the key). The key is also the delivery key of the in-app notification. A user id too long
-    /// for the 200 characters of a key is replaced by its SHA-256, so the key is stable and never refused.
-    /// </summary>
     public static string AssistOutcome(Guid requestId, DateTime doneAtUtc, string userId)
     {
         var prefix = $"assist-request:{requestId:N}:done:{doneAtUtc.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture)}:";
@@ -345,16 +287,8 @@ public static class PushDeliveryKeys
     /// </summary>
     public static string CheckInLinkFailed(Guid sessionId) => $"checkin-link:{sessionId:N}:failed";
 
-    /// <summary>
-    /// The review of a guest of a channel appeared (E05/F06/US01/T02, NF-69), to the hosts of the booking: one per review (the first time the channel manager shows it published),
-    /// stable across the reads, so the bell and the open pages are told once.
-    /// </summary>
     public static string OtaReviewReceived(Guid otaReviewId) => $"ota-review:{otaReviewId:N}:received";
 
-    /// <summary>
-    /// A reply to a review, or the host's own review, did not reach the channel (E05/F06/US01/T02): nobody confirmed it within the hour, so it became an error the host can act on. One
-    /// per attempt (<paramref name="requestedAtUtc"/> is the time the attempt was saved), stable across the reads; <paramref name="action"/> is <c>reply</c> or <c>host-review</c>.
-    /// </summary>
     public static string OtaReviewActionFailed(Guid otaReviewId, string action, DateTime requestedAtUtc) =>
         $"ota-review:{otaReviewId:N}:{action}-failed:{requestedAtUtc.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture)}";
 
@@ -373,23 +307,15 @@ public static class PushDeliveryKeys
             : prefix + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(userId)));
     }
 
-    /// <summary>
-    /// The custom domain of an org became verified (E40/F01/US02/T01), to the administrators of the org: one per verification. <paramref name="verifiedAtUtc"/> is
-    /// <c>Org.DomainVerifiedAt</c>, so a check that finds the domain verified again tells nobody, and a domain verified again after a demotion is another event.
-    /// </summary>
     public static string DomainVerified(Guid orgId, DateTime verifiedAtUtc) => $"domain-verified:{orgId:N}:{Stamp(verifiedAtUtc)}";
 
-    /// <summary>The owner sign-in on the org's domain became ready (E40/F01/US02/T01), to the administrators of the org: one per change of the state, at <paramref name="changedAtUtc"/>.</summary>
     public static string OwnerLoginReady(Guid orgId, DateTime changedAtUtc) => $"owner-login:{orgId:N}:ready:{Stamp(changedAtUtc)}";
 
-    /// <summary>The registration of the owner sign-in on the org's domain failed (E40/F01/US02/T01), to the administrators of the org: one per change of the state.</summary>
     public static string OwnerLoginFailed(Guid orgId, DateTime changedAtUtc) => $"owner-login:{orgId:N}:failed:{Stamp(changedAtUtc)}";
 
-    /// <summary>A UTC instant to the millisecond, the same whatever the culture of the thread.</summary>
     private static string Stamp(DateTime utc) => utc.ToString("yyyyMMddHHmmssfff", System.Globalization.CultureInfo.InvariantCulture);
 }
 
-/// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
 public static class PushTypes
 {
     public const string RoutineOwner = "routine-notify-owner";
@@ -404,72 +330,48 @@ public static class PushTypes
     public const string ServiceRequestCompleted = "service-request-completed";
     public const string ServiceRequestRejected = "service-request-rejected";
 
-    /// <summary>The host marked a completed service request as paid: pushed to the supplier org (SU-09).</summary>
     public const string ServiceRequestPaid = "service-request-paid";
 
-    /// <summary>The supplier started the work (SP-04): pushed to the host.</summary>
     public const string ServiceRequestStarted = "service-request-started";
 
-    /// <summary>The request was cancelled (SP-04): pushed to the other party, and to the supplier too when nobody answered in time.</summary>
     public const string ServiceRequestCancelled = "service-request-cancelled";
 
-    /// <summary>The host reminds the supplier to answer (SP-04): pushed to the supplier org.</summary>
     public const string ServiceRequestReminder = "service-request-reminder";
 
-    /// <summary>CasaZen reminds the supplier that a request on measure of its showcase waits for its answer and will close (SP-10c): pushed to the supplier org.</summary>
     public const string ServiceRequestReplyReminder = "service-request-reply-reminder";
 
-    /// <summary>The supplier proposes another time (SP-04): pushed to the host.</summary>
     public const string ServiceRequestTimeProposed = "service-request-time-proposed";
 
-    /// <summary>The host (SP-04), or the customer of a showcase request (SP-11), accepted the proposed time: pushed to the supplier org.</summary>
     public const string ServiceRequestProposalAccepted = "service-request-proposal-accepted";
 
-    /// <summary>The host (SP-04), or the customer of a showcase request (SP-11), turned the proposed time down: pushed to the supplier org.</summary>
     public const string ServiceRequestProposalRejected = "service-request-proposal-rejected";
 
-    /// <summary>The customer of the public showcase moved a new request to another time (SP-11): pushed to the supplier org.</summary>
     public const string ServiceRequestRescheduled = "service-request-rescheduled";
 
-    /// <summary>A request was also sent to this supplier as a backup (SP-BKP): the job is its only if the primary does not take it. Pushed to the supplier org.</summary>
     public const string ServiceRequestBackupInvited = "service-request-backup-invited";
 
-    /// <summary>The second window opened (SP-BKP): the primary did not take the job (or refused it), the backup can take it now. Pushed to the supplier org.</summary>
     public const string ServiceRequestBackupActive = "service-request-backup-active";
 
-    /// <summary>The job of a request went to this backup, which had accepted (SP-BKP). Pushed to the supplier org.</summary>
     public const string ServiceRequestBackupWon = "service-request-backup-won";
 
-    /// <summary>A backup request was closed (SP-BKP): the primary or another backup took the job, the host cancelled, or its time was no longer free. Pushed to the supplier org.</summary>
     public const string ServiceRequestBackupClosed = "service-request-backup-closed";
 
-    /// <summary>The supplier sent a quote (SP-04b): pushed to the hosts of the property (a showcase customer has no app: it gets an e-mail).</summary>
     public const string ServiceRequestQuoteSent = "service-request-quote-sent";
 
-    /// <summary>The host, or the customer of a showcase request, accepted the quote (SP-04b): pushed to the supplier org.</summary>
     public const string ServiceRequestQuoteAccepted = "service-request-quote-accepted";
 
-    /// <summary>The host, or the customer of a showcase request, turned the quote down (SP-04b): pushed to the supplier org.</summary>
     public const string ServiceRequestQuoteRejected = "service-request-quote-rejected";
 
-    /// <summary>The customer of a showcase request did not answer the quote in time and the request was cancelled (SP-04b): pushed to the supplier org.</summary>
     public const string ServiceRequestQuoteExpired = "service-request-quote-expired";
 
-    /// <summary>The job of tomorrow, at 18:00 of the day before (SP-16d): pushed to the supplier org, for a request of any context. No address in it.</summary>
     public const string ServiceRequestDayBefore = "service-request-day-before";
 
-    /// <summary>A payment made through CasaZen arrived (SP-16d): pushed to the supplier org with the net; <c>entityId</c> is the service request.</summary>
     public const string ServicePaymentReceived = "service-payment-received";
 
     public const string NewBooking = "new-booking";
 
-    /// <summary>The guest of a direct booking wrote a message: pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its thread.</summary>
     public const string GuestMessage = "guest-message";
 
-    /// <summary>
-    /// A guest wrote in a conversation of a channel (E05/F03, NF-65): pushed to the one user the preferences selected and written to the bell;
-    /// <c>entityId</c> is the thread, the route <c>/messages/{threadKey}</c>. Neither the text nor the name of the guest is ever in it.
-    /// </summary>
     public const string OtaMessage = "ota-message";
 
     /// <summary>
@@ -479,13 +381,8 @@ public static class PushTypes
     /// </summary>
     public const string ApprovalQueueItem = "approval-queue-item";
 
-    /// <summary>The guest completed the online check-in (US-020): pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its detail.</summary>
     public const string GuestCheckInCompleted = "guest-checkin-completed";
 
-    /// <summary>
-    /// CasaZen did a step of a stay in the host's place (casazen/backend#978): registered the arrival or the departure, or declared the property ready once the cleaning was
-    /// done. Pushed to the hosts of the booking and written to the bell; <c>entityId</c> is the booking, the route its detail. The property only, never the guest.
-    /// </summary>
     public const string BookingFlowStep = "booking-flow-step";
     public const string GuestDataMissing = "guest-data-missing";
     public const string AlloggiatiDeadline = "alloggiati-deadline";
@@ -493,7 +390,6 @@ public static class PushTypes
     public const string AlloggiatiFailed = "alloggiati-failed";
     public const string CheckoutReminder = "checkout-reminder";
 
-    // E03/F02/US02/T01 (NF-52, CHK-12): the new stay stages and the alerts about a period and the connection of a property.
     public const string ReceiptMissing = "receipt-missing";
     public const string ShortStayAtRisk = "short-stay-at-risk";
     public const string OverThirtyNights = "over-thirty-nights";
@@ -501,41 +397,18 @@ public static class PushTypes
     public const string TouristTaxDeadline = "tourist-tax-deadline";
     public const string ConnectionInactive = "connection-inactive";
 
-    /// <summary>An OTA stay created from an iCal block is "da verificare" (CO-21): the app opens the booking from the route.</summary>
     public const string OtaStayReview = "ota-stay-review";
 
-    /// <summary>Biometric verification requires operator decision (NF-12, ADR-013): pushed to property hosts.</summary>
     public const string VerificationRequired = "verification-required";
 
-    /// <summary>
-    /// A host asked CasaZen support for «Fallo per me» (a new request of the staff queue): written to the bell of the platform staff
-    /// (<see cref="PushAudienceKind.PlatformStaff"/>) and published live; <c>entityId</c> is the request. No push on a phone, and nothing of the
-    /// org, the property or the person in it: the staff queue shows the request.
-    /// </summary>
     public const string AssistRequested = "assist-requested";
 
-    /// <summary>
-    /// The host reopened a «Fallo per me» request that support had marked done («Non funziona», E20/F03/US01/T02): written to the bell of the platform
-    /// staff and published live, like <see cref="AssistRequested"/>; <c>entityId</c> is the request. Nothing of the org, the property, the person or the note.
-    /// </summary>
     public const string AssistReopened = "assist-reopened";
 
-    /// <summary>
-    /// Support marked a «Fallo per me» request done and CasaZen read the result on the panel (E20/F03/US01/T02): «Il collegamento è attivo». Pushed to each
-    /// administrator of the org, written to their bell and published live; <c>entityId</c> is the request. No supplier, no property, no person.
-    /// </summary>
     public const string AssistVerified = "assist-verified";
 
-    /// <summary>
-    /// Support marked a «Fallo per me» request done and the panel could not be read: «Il supporto dichiara di aver collegato …» (E20/F03/US01/T02). The same
-    /// audience and channels as <see cref="AssistVerified"/>.
-    /// </summary>
     public const string AssistDeclared = "assist-declared";
 
-    /// <summary>
-    /// A fiscal document of a booking was issued (E12/F01/US01/T02): pushed to the hosts of the booking, written to the bell and published live; <c>entityId</c> is the booking, the
-    /// route its detail. The web client reads again the list of the documents and the booking when it arrives. Neither the guest nor an amount is ever in it.
-    /// </summary>
     public const string FiscalDocumentIssued = "fiscal-document-issued";
 
     /// <summary>
@@ -544,35 +417,14 @@ public static class PushTypes
     /// </summary>
     public const string FiscalDocumentSdiRejected = "fiscal-document-sdi-rejected";
 
-    /// <summary>
-    /// The guest paid the tourist tax of a stay online (E25/F01/US01/T01): pushed to the hosts of the booking, written to the bell and published live; <c>entityId</c> is the
-    /// booking, the route its detail, which the open pages read again. Neither the guest nor an amount is ever in it.
-    /// </summary>
     public const string TouristTaxPaid = "tourist-tax-paid";
 
-    /// <summary>
-    /// The automatic delivery of the check-in link of a booking failed for good (E23/F01/US01/T01, NF-122): pushed to the hosts of the booking, written to the bell and published
-    /// live; <c>entityId</c> is the booking, the route its detail. The web client reads again the booking and its link delivery when it arrives. Neither the guest nor the link is
-    /// ever in it: the host opens the booking and copies the link from there.
-    /// </summary>
     public const string CheckInLinkFailed = "checkin-link-failed";
 
-    /// <summary>
-    /// A guest left a review on a channel and the channel manager shows it published (E05/F06/US01/T02): pushed to the hosts of the booking, written to the bell and published
-    /// live; <c>entityId</c> is the booking, the route its detail, where the reviews of the stay are. Neither the guest, nor the mark, nor a word of the review is ever in it.
-    /// </summary>
     public const string OtaReviewReceived = "ota-review-received";
 
-    /// <summary>
-    /// A reply to a review, or the host's own review, did not reach the channel (E05/F06/US01/T02): pushed to the hosts of the booking, written to the bell and published live;
-    /// <c>entityId</c> is the booking, the route its detail. The host tries again from the review. No text is ever in it.
-    /// </summary>
     public const string OtaReviewActionFailed = "ota-review-action-failed";
 
-    /// <summary>
-    /// A scheduled message of a booking was held back, failed, was skipped by the system or went out outside the send window (E05/F07/US01, NF-71): pushed to the one user the preferences selected and
-    /// written to the bell; <c>entityId</c> is the booking, the route its detail, which the open pages read again. Neither the words of the message, nor the guest, nor the link or the code is ever in it.
-    /// </summary>
     public const string ScheduledMessageIssue = "scheduled-message-issue";
 
     /// <summary>
@@ -585,10 +437,6 @@ public static class PushTypes
     /// </summary>
     public const string TicinoNotificationDue = "ticino-notification-due";
 
-    /// <summary>
-    /// The deadline of the notification of a Ticino arrival day is over and nothing says it was made (E30/F02/US01/T01, NF-127, D9): the first alert and the at most two
-    /// reminders. Same audience, channels, route, privacy and <c>entityId</c> (the property) as <see cref="TicinoNotificationDue"/>.
-    /// </summary>
     public const string TicinoNotificationOverdue = "ticino-notification-overdue";
 
     /// <summary>
@@ -598,7 +446,6 @@ public static class PushTypes
     /// </summary>
     public const string DomainVerified = "domain-verified";
 
-    /// <summary>The owner sign-in on the org's domain is enabled (E40/F01/US02/T01, NF-141): the same audience, channels and route as <see cref="DomainVerified"/>.</summary>
     public const string OwnerLoginReady = "owner-login-ready";
 
     /// <summary>
@@ -616,11 +463,6 @@ public static class PushTypes
     /// </summary>
     public const string TicinoNotificationDeclared = "ticino-notification-declared";
 
-    /// <summary>
-    /// True for the types about the notification of the guests of a Ticino arrival day to the cantonal police: the alerts about its 24 hours (<see cref="TicinoNotificationDue"/>,
-    /// <see cref="TicinoNotificationOverdue"/>) and the declaration of the day (<see cref="TicinoNotificationDeclared"/>). Their bell entry is about a <b>property</b>, not a booking:
-    /// <c>QueuedInAppNotification.From</c> gives it the id of the property (the audience of the push) as <c>entityId</c>, so the bell can open the Ticino page of that property.
-    /// </summary>
     public static bool IsTicinoNotification(string? type) => type is TicinoNotificationDue or TicinoNotificationOverdue or TicinoNotificationDeclared;
 
     /// <summary>
@@ -631,17 +473,8 @@ public static class PushTypes
     /// </summary>
     public const string SwissNotificationDue = "swiss-notification-due";
 
-    /// <summary>
-    /// The deadline of the notification of an arrival day of a canton other than Ticino is over and the day is not declared (E31/F02/US01/T01): the first alert and the at most two reminders.
-    /// Same audience, channels, route, privacy and <c>entityId</c> (the property) as <see cref="SwissNotificationDue"/>.
-    /// </summary>
     public const string SwissNotificationOverdue = "swiss-notification-overdue";
 
-    /// <summary>
-    /// A person of the org declared an arrival day of a property in a canton other than Ticino as notified to the authority, or undid that declaration (E31/F02/US01/T01, NF-131): the other hosts
-    /// of the property learn it live, so their cockpit stops (or starts again) listing the day without a refresh. Same audience, route and <c>entityId</c> as <see cref="TicinoNotificationDeclared"/>;
-    /// one type for both, the text of the push tells them apart. The text names the property and the day: never a guest, a value, a document or the person who did it.
-    /// </summary>
     public const string SwissNotificationDeclared = "swiss-notification-declared";
 
     /// <summary>
@@ -651,10 +484,6 @@ public static class PushTypes
     /// </summary>
     public static bool IsSwissNotification(string? type) => type is SwissNotificationDue or SwissNotificationOverdue or SwissNotificationDeclared;
 
-    /// <summary>
-    /// Type of the push to the host when a service request reaches <paramref name="status"/>; <c>null</c> for a status that has
-    /// no push (a new request and a paid one are the host's own doing): the caller then sends nothing.
-    /// </summary>
     public static string? ForServiceRequestStatus(ServiceRequestStatus status) => status switch
     {
         ServiceRequestStatus.PresoInCarico => ServiceRequestTaken,
@@ -665,7 +494,6 @@ public static class PushTypes
         _ => null,
     };
 
-    /// <summary>Type of the push of a stay alert.</summary>
     public static string ForStayAlert(StayAlertKind kind) => kind switch
     {
         StayAlertKind.GuestDataMissing => GuestDataMissing,
@@ -679,7 +507,6 @@ public static class PushTypes
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "No push type for this alert."),
     };
 
-    /// <summary>Type of the push of an alert about a period or the connection of a property (E03/F02/US02/T01).</summary>
     public static string ForComplianceAlert(Casazen.Core.Entities.ComplianceAlertType type) => type switch
     {
         Casazen.Core.Entities.ComplianceAlertType.IstatPeriod => IstatDeadline,
@@ -690,11 +517,6 @@ public static class PushTypes
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "No push type for this alert."),
     };
 
-    /// <summary>
-    /// Type of the push of <paramref name="alert"/> (E30/F02/US01/T01): the one of its <see cref="ComplianceAlert.Type"/>, and for a Ticino notification
-    /// <see cref="TicinoNotificationOverdue"/> once the deadline is over, <see cref="TicinoNotificationDue"/> before; likewise for a canton other than Ticino
-    /// (<see cref="SwissNotificationOverdue"/>, <see cref="SwissNotificationDue"/>, E31/F02/US01/T01).
-    /// </summary>
     public static string ForComplianceAlert(ComplianceAlert alert)
     {
         ArgumentNullException.ThrowIfNull(alert);

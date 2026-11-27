@@ -7,12 +7,9 @@ namespace Casazen.Core.Leases.Reading;
 
 public static partial class LeaseContractTextParser
 {
-    // ---- the type ----------------------------------------------------------------------------------------------------------
-
     [GeneratedRegex(@"transitori[oa]|esigenze\s+transitorie", Options, Timeout)]
     private static partial Regex TransitorySignal();
 
-    // "non ha natura transitoria": the word is there to say it is not.
     [GeneratedRegex(@"\bnon\b(?:\W+\w+){0,3}?\W+transitori", Options, Timeout)]
     private static partial Regex NotTransitory();
 
@@ -28,7 +25,6 @@ public static partial class LeaseContractTextParser
         Timeout)]
     private static partial Regex LiberoSignal();
 
-    // The student lease is not a type of CasaZen: nothing is read, the person chooses.
     [GeneratedRegex(@"studenti\s+universitari|art\.?\s*5\s*,?\s*(?:comma|c\.)\s*2\b", Options, Timeout)]
     private static partial Regex StudentSignal();
 
@@ -84,8 +80,6 @@ public static partial class LeaseContractTextParser
             _ => null,
         };
     }
-
-    // ---- the tax regime ----------------------------------------------------------------------------------------------------
 
     private const string ChoiceVerbs = @"opt\w*|avval\w+|intend\w+|applic\w+|ader\w+|scelt\w+|esercit\w+|soggett\w+|usufru\w+|beneficia\w*";
 
@@ -150,8 +144,6 @@ public static partial class LeaseContractTextParser
         return null;
     }
 
-    // ---- rent and deposit --------------------------------------------------------------------------------------------------
-
     private readonly record struct Amount(decimal Value, int Index, int End);
 
     [GeneratedRegex(@"(?:\u20ac|\beuro\b|\beur\b\.?)\s*(?<n>\d{1,3}(?:[. ]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)(?!\d)", Options, Timeout)]
@@ -166,7 +158,6 @@ public static partial class LeaseContractTextParser
     [GeneratedRegex(@"^\d+\.\d{1,2}$", RegexOptions.CultureInvariant, Timeout)]
     private static partial Regex CentsOnly();
 
-    /// <summary>An amount as an Italian contract writes it ("1.200,00", "800,00", "800") or as an OCR leaves it ("800.00", "1 200,00"); <c>null</c> if it is not one.</summary>
     internal static decimal? ParseAmount(string raw)
     {
         var text = raw.Replace(" ", string.Empty, StringComparison.Ordinal);
@@ -230,14 +221,12 @@ public static partial class LeaseContractTextParser
         Timeout)]
     private static partial Regex RentLabel();
 
-    // "il canone annuo di locazione, … è convenuto in EUR 7.140,00": the label, whatever clause comes next, and "convenuto in" before the amount.
     [GeneratedRegex(
         @"\b(?<label>canone(?:\s+(?:mensile|annuo|annuale|di\s+locazione|locativo|iniziale|pattuito|convenuto|concordato))*)\b(?:(?!\bcanone\b)[^.;]){0,300}?\b(?:\p{L}{1,5}\s+){0,2}(?:convenut[oa]|pattuit[oa]|stabilit[oa]|determinat[oa]|fissat[oa])\s+(?:in|di|nella\s+misura\s+di|pari\s+a)\s+(?:\p{Sc}|\beuro\b|\beur\b\.?)\s*(?<n>\d{1,3}(?:[. ]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)(?!\d)",
         Options,
         Timeout)]
     private static partial Regex RentConvened();
 
-    // "in n. 12 (dodici) rate eguali anticipate di EUR 595,00 (cinquecentonovantacinque/00) ciascuna"
     [GeneratedRegex(
         @"(?<![\p{L}\d])(?<count>\d{1,2})\s*(?:\([^)]{0,25}\)\s*)?rate\b[^.;]{0,60}?\bdi\s+(?:\p{Sc}|\beuro\b|\beur\b\.?)\s*(?<n>\d{1,3}(?:[. ]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)(?!\d)",
         Options,
@@ -247,14 +236,12 @@ public static partial class LeaseContractTextParser
     [GeneratedRegex(@"\b(?:deposito\s+cauzionale|deposito\s+di\s+garanzia|deposito\s+infruttifero|cauzione)\b", Options, Timeout)]
     private static partial Regex DepositLabel();
 
-    // What, between the label and the amount, says the amount is not the rent.
     [GeneratedRegex(
         @"\b(?:deposito|cauzion\w*|spese|oneri|imposta|registro|bollo|istat|aggiornament\w*|mora|interess\w*|penale|caparra|condominial\w*|utenze|acconto)\b",
         Options,
         Timeout)]
     private static partial Regex RentStopWords();
 
-    // ... and not the deposit ("canone": an amount after "tre mensilita del canone" is the rent).
     [GeneratedRegex(
         @"\b(?:spese|oneri|imposta|registro|bollo|istat|aggiornament\w*|mora|interess\w*|penale|caparra|condominial\w*|utenze|acconto|canone)\b",
         Options,
@@ -264,7 +251,6 @@ public static partial class LeaseContractTextParser
     [GeneratedRegex(@"\([^)]*\)", RegexOptions.CultureInvariant, Timeout)]
     private static partial Regex Parenthetical();
 
-    // The end of a sentence: a full stop, a space and a capital.
     [GeneratedRegex(@"\.\s+\p{Lu}", RegexOptions.CultureInvariant, Timeout)]
     private static partial Regex SentenceEnd();
 
@@ -274,7 +260,6 @@ public static partial class LeaseContractTextParser
     [GeneratedRegex(@"mensil\w*|\bmese\b|\bmesi\b", Options, Timeout)]
     private static partial Regex MonthlyWord();
 
-    // The period named right after the amount: "800,00 mensili", "800,00 (ottocento/00) al mese", "9.600,00 annui".
     [GeneratedRegex(@"^\W{0,3}(?:\([^)]{0,40}\)\W{0,3})?(?<p>al\s+mese|mensil\w*|all'anno|annu\w*|annual\w*|per\s+anno|ogni\s+anno|l'anno)", Options, Timeout)]
     private static partial Regex PeriodAfter();
 
@@ -332,15 +317,12 @@ public static partial class LeaseContractTextParser
             if (isAnnual is not { } yearly)
                 continue;
 
-            // Rents that cannot be one (a registration tax of 67 euro, a million): the label was another sum's.
             if (yearly ? amount.Value is < 360m or > 360_000m : amount.Value is < 30m or > 30_000m)
                 continue;
 
             (yearly ? annual : monthly).Add(amount.Value);
         }
 
-        // "Il canone annuo di locazione, secondo quanto stabilito dall'Accordo … del 20/05/2025 …, è convenuto in EUR 7.140,00": the sentence
-        // of the real contracts puts a long clause, with a date, between the label and the amount; "convenuto in" says it is the rent.
         foreach (Match convened in RentConvened().Matches(flat))
         {
             if (ParseAmount(convened.Groups["n"].Value) is not { } value)
@@ -360,7 +342,6 @@ public static partial class LeaseContractTextParser
             (isYearly ? annual : monthly).Add(value);
         }
 
-        // "in n. 12 (dodici) rate eguali anticipate di EUR 595,00 ciascuna": twelve installments are twelve months.
         foreach (Match installments in Installments().Matches(flat))
         {
             if (installments.Groups["count"].Value == "12" && ParseAmount(installments.Groups["n"].Value) is { } value && value is >= 30m and <= 30_000m)
@@ -371,7 +352,6 @@ public static partial class LeaseContractTextParser
         var years = annual.Distinct().ToList();
         if (months.Count == 1)
         {
-            // The year's rent and the month's agree (up to the cents a division leaves): both are read, and certainly.
             var agrees = years.Count == 1 && Math.Abs(years[0] - (months[0] * 12m)) <= 6m;
             return new ReadValue<decimal>(months[0], agrees ? 95 : years.Count == 0 ? 88 : 75);
         }
@@ -382,10 +362,6 @@ public static partial class LeaseContractTextParser
         return null;
     }
 
-    /// <summary>
-    /// The security deposit: an amount after "deposito cauzionale" (or "cauzione") before any "N mensilita", else N times the rent — the
-    /// rent the contract names after the months, or the one read — marked as worked out. Two different deposits are not read.
-    /// </summary>
     private static ReadValue<decimal>? ReadDeposit(string flat, List<Amount> amounts, ReadValue<decimal>? rent)
     {
         var explicitValues = new HashSet<decimal>();
@@ -409,7 +385,6 @@ public static partial class LeaseContractTextParser
             if (count is not { } number || number is < 1 or > 12)
                 continue;
 
-            // "tre mensilita del canone di euro 800,00": the amount that comes after the months, with "canone" between, is the rent.
             if (amount is { } later && later.Index > months.Index && flat[months.Index..later.Index].Contains("canone", StringComparison.OrdinalIgnoreCase))
                 workedOut.Add(number * later.Value);
             else if (rent is not null)
@@ -426,17 +401,12 @@ public static partial class LeaseContractTextParser
     private static bool IsDepositGap(string gap) =>
         gap.Length <= 100 && !DepositStopWords().IsMatch(gap) && !HasDigitsOutsideParentheses(gap);
 
-    // "Deposito cauzionale e altre forme di garanzia. A garanzia delle obbligazioni assunte col presente contratto, il conduttore versa alla
-    // locatrice (…) una somma di EUR 1.785,00": a long sentence that says in the end that the amount is a sum paid.
     [GeneratedRegex(@"\b(?:somma|importo|cifra)\s+(?:complessiva\s+)?(?:di|pari\s+a)\s*$", Options, Timeout)]
     private static partial Regex SumOf();
 
     private static bool IsSumGap(string gap) =>
         gap.Length <= 330 && SumOf().IsMatch(gap) && !DepositStopWords().IsMatch(gap) && !HasDigitsOutsideParentheses(gap);
 
-    // ---- the property ----------------------------------------------------------------------------------------------------
-
-    // "l'immobile ad uso abitativo sito in Bari, Via Sparano n. 12, piano 2": the clause that says where the property is.
     [GeneratedRegex(
         @"\b(?:immobile|unit[\u00e0a]\s+immobiliare|appartamento|alloggio|abitazione|locali?)\b[^.;]{0,100}?\b(?:sit[oa]|ubicat[oa]|post[oa]|situat[oa])\s+(?:in|a|nel\s+comune\s+di|presso)\s+(?<addr>[^;]{5,170})",
         Options,
@@ -449,7 +419,6 @@ public static partial class LeaseContractTextParser
         "CIVICO", "SNC", "INT", "INTERNO", "SCALA", "PIANO", "DEL", "DELLA", "DELLO", "DEI", "DEGLI", "DELLE", "ITALIA",
     };
 
-    /// <summary>The words that say where a place is, without the generic ones (via, viale...): the street's name and the number, upper case, no accents.</summary>
     private static HashSet<string> AddressWords(string address)
     {
         var builder = new StringBuilder(address.Length);

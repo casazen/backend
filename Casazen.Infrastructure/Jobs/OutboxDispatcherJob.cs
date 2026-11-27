@@ -37,16 +37,12 @@ public class OutboxDispatcherJob(
     public const string RecurringJobId = "outbox-dispatcher";
     public const string Cron = "*/1 * * * *";
 
-    /// <summary>Events read at a time (ADR-022-R18).</summary>
     public const int BatchSize = 100;
 
-    /// <summary>Failed deliveries after which an event is dead-lettered (ADR-022-R5).</summary>
     public const int MaxAttempts = 5;
 
-    /// <summary>A run starts no new batch after this time, so it ends before the next run is due.</summary>
     public static readonly TimeSpan RunBudget = TimeSpan.FromSeconds(40);
 
-    // The next run comes a minute later and delivers what is left: a failed run is not retried.
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     public async Task ExecuteAsync(CancellationToken cancellationToken)
     {
@@ -80,7 +76,6 @@ public class OutboxDispatcherJob(
                         deadLettered++;
                 }
 
-                // One commit per event: a crash after this point never delivers this event again.
                 await db.SaveChangesAsync(cancellationToken);
             }
 
@@ -99,7 +94,6 @@ public class OutboxDispatcherJob(
         }
     }
 
-    /// <summary>Publishes one event; true when every handler returned. A failure is recorded on the row.</summary>
     private async Task<bool> DispatchAsync(OutboxEvent row, CancellationToken cancellationToken)
     {
         try

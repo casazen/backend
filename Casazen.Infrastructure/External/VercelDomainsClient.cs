@@ -41,7 +41,6 @@ public sealed class VercelDomainsClient(
     public Task<VercelCallResult<bool>> RemoveDomainAsync(string domain, CancellationToken cancellationToken = default) =>
         SendAsync<bool>(HttpMethod.Delete, $"v9/projects/{Project}/domains/{Encode(domain)}", null, (_, _) => Task.FromResult(true), cancellationToken);
 
-    // Empty when not configured: SendAsync answers NotConfigured before any request is built from it.
     private string Project => Uri.EscapeDataString(options.Value.ProjectId?.Trim() ?? string.Empty);
 
     private static string Encode(string domain) => Uri.EscapeDataString(domain);
@@ -82,7 +81,6 @@ public sealed class VercelDomainsClient(
                 return new VercelCallResult<T>(status, await readValue(response, timeout.Token), (int)response.StatusCode);
 
             var errorCode = await ReadErrorCodeAsync(response, timeout.Token);
-            // Status and error code only: never the token, never the provider's message.
             logger.LogWarning(
                 "Vercel Domains API {Method} {Path} answered {Status} ({ErrorCode})",
                 method.Method, path, (int)response.StatusCode, errorCode ?? "no code");
@@ -130,7 +128,6 @@ public sealed class VercelDomainsClient(
             }
         }
 
-        // Only an explicit true is "verified": an answer without the field proves nothing.
         var verified = root.TryGetProperty("verified", out var flag) && flag.ValueKind == JsonValueKind.True;
         return new VercelDomain(Text(root, "name") ?? string.Empty, verified, challenges);
     }
@@ -152,7 +149,6 @@ public sealed class VercelDomainsClient(
         }
         catch (Exception ex) when (ex is JsonException or HttpRequestException or InvalidOperationException)
         {
-            // An answer that is not the documented error object has no code.
         }
 
         return null;

@@ -14,12 +14,7 @@ public interface IConcordatoFacileApiClient
     /// </summary>
     bool IsConfigured { get; }
 
-    /// <summary>
-    /// The practices of a lease, newest first and at most 20 (<c>GET /v1/leases/{leaseId}/practices</c>); an empty list for a lease with
-    /// no practice. Any other answer throws: the caller keeps its last valid snapshot as stale and must not take an error for an empty list.
-    /// </summary>
     Task<List<PracticeDto>> GetPracticesByLeaseIdAsync(Guid leaseId, CancellationToken cancellationToken = default);
 
-    /// <summary>A practice by its number (<c>GET /v1/practices/{practiceId}</c>), with its <c>leaseId</c>; null when it is not known.</summary>
     Task<PracticeDto?> GetPracticeAsync(string practiceId, CancellationToken cancellationToken = default);
 }

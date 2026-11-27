@@ -12,8 +12,6 @@ public sealed class ActivePoseVerificationService(
     IOptions<BiometricModelOptions> options,
     ILogger<ActivePoseVerificationService> logger) : IActivePoseVerificationService
 {
-    // OpenCV Zoo's SFace reference publishes this cosine threshold for same-person comparisons.
-    // Bind it to the exact model and preprocessing; replacement models retain the caller's threshold.
     private const string SFace2021DecSha256 = "0BA9FBFA01B5270C96627C4EF784DA859931E02F04419C829E83484087C34E79";
     private const double SFacePoseSimilarity = 0.363;
 
@@ -91,7 +89,6 @@ public sealed class ActivePoseVerificationService(
 
     internal static bool IsRequestedTurn(DetectedFace first, DetectedFace second, bool noseToRight)
     {
-        // The weak-perspective estimate is a guide to a deliberate turn, not a calibrated anatomical measurement.
         var frontal = FacePose.YawDegrees(first.Landmarks);
         var turned = FacePose.YawDegrees(second.Landmarks);
         var direction = noseToRight ? 1 : -1;
