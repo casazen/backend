@@ -136,6 +136,12 @@ public static class RateLimitingServiceCollectionExtensions
 
         // The agency's retry of the owner sign-in on its own domain (E40/F01/US02/T01): per signed-in person, since each call may read and write the Auth0 tenant that every host shares.
         new(RateLimitPolicies.OwnerLoginRetry, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
+
+        // The connection of a site to the org (S022, site integration plan §10.4): the confirmation per signed-in person, the exchange of the code per client IP,
+        // the calls of the plugin per credential.
+        new(RateLimitPolicies.SiteConnectAuthorize, 10, TimeSpan.FromMinutes(10), PartitionByUser: true),
+        new(RateLimitPolicies.SiteConnectToken, 20, TimeSpan.FromMinutes(10)),
+        new(RateLimitPolicies.SiteApi, 120, OneMinute, PartitionBySiteConnection: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)
@@ -187,9 +193,10 @@ public static class RateLimitingServiceCollectionExtensions
                     var partitionByToken = definition.PartitionByToken;
                     var partitionByUser = definition.PartitionByUser;
                     var tokenRouteValue = definition.TokenRouteValue;
+                    var partitionBySiteConnection = definition.PartitionBySiteConnection;
                     options.AddPolicy(definition.Name, httpContext =>
                         RateLimitPartition.GetFixedWindowLimiter(
-                            GetPartitionKey(httpContext, partitionByToken, partitionByUser, tokenRouteValue),
+                            GetPartitionKey(httpContext, partitionByToken, partitionByUser, tokenRouteValue, partitionBySiteConnection),
                             _ => limiterOptions));
                 }
 
@@ -229,14 +236,20 @@ public static class RateLimitingServiceCollectionExtensions
     /// <summary>
     /// Client IP partition, plus a hash of the <c>{token}</c> route value (the one named by <paramref name="tokenRouteValue"/>) when the policy asks for it. A
     /// policy partitioned by person (<paramref name="partitionByUser"/>) counts the signed-in account instead, whatever the network it comes from;
-    /// a caller with no account falls back to its IP.
+    /// a caller with no account falls back to its IP. A policy partitioned by site (<paramref name="partitionBySiteConnection"/>, the plugin's calls) counts
+    /// the connection of the credential of the scheme <c>SiteToken</c>, which the limiter sees after authorization; without one it falls back to the IP too.
     /// </summary>
     public static string GetPartitionKey(
         HttpContext httpContext,
         bool partitionByToken,
         bool partitionByUser = false,
-        string tokenRouteValue = DefaultTokenRouteValue)
+        string tokenRouteValue = DefaultTokenRouteValue,
+        bool partitionBySiteConnection = false)
     {
+        // The id of a connection is no secret and no personal data; it is the credential's own budget.
+        if (partitionBySiteConnection && httpContext.User.GetSiteConnection() is { } site)
+            return "site:" + site.ConnectionId.ToString("N");
+
         if (partitionByUser && httpContext.User.GetUserId() is { Length: > 0 } userId)
         {
             // Hash, so the partition table never holds the account id.
@@ -309,6 +322,7 @@ public static class RateLimitingServiceCollectionExtensions
 /// <param name="PartitionByToken">Also partition by the hash of the <c>{token}</c> route value.</param>
 /// <param name="PartitionByUser">Partition by the signed-in account instead of the client IP (a signed-in endpoint only).</param>
 /// <param name="TokenRouteValue">The route value <paramref name="PartitionByToken"/> hashes: <c>token</c>, or <c>doorToken</c> for the door of a property.</param>
+/// <param name="PartitionBySiteConnection">Partition by the connected site of the credential (the plugin's calls, scheme <c>SiteToken</c>) instead of the client IP.</param>
 public sealed record RateLimitPolicyDefinition(
     string Name,
     int DefaultPermitLimit,
@@ -316,4 +330,5 @@ public sealed record RateLimitPolicyDefinition(
     string? LegacyPermitLimitKey = null,
     bool PartitionByToken = false,
     bool PartitionByUser = false,
-    string TokenRouteValue = RateLimitingServiceCollectionExtensions.DefaultTokenRouteValue);
+    string TokenRouteValue = RateLimitingServiceCollectionExtensions.DefaultTokenRouteValue,
+    bool PartitionBySiteConnection = false);

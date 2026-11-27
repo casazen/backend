@@ -30,6 +30,8 @@ public sealed class CommercialAccessMiddleware(RequestDelegate next)
         if (controller == "Compliance" && action == "GetSummary") module = null;
         if (controller == "ServiceRequests" && (action == "GetById" ||
             string.Equals(context.Request.Query["view"], "supplier", StringComparison.OrdinalIgnoreCase))) module = null;
+        // Connected sites (S022): only a new connection needs the module; listing and revoking never do, so a site stays revocable without it.
+        if (controller == "SiteConnections" && (action is "List" or "Revoke")) module = null;
         hostOperation |= controller is "OrgInvitations" or "OrgMembers";
         if ((hostOperation || module is not null) && context.User.Identity?.IsAuthenticated == true && tenant.OrgId is Guid orgId)
         {
@@ -61,7 +63,7 @@ public sealed class CommercialAccessMiddleware(RequestDelegate next)
         "Routines" => "ai-agents",
         "Verification" => "identification",
         "Compliance" or "ComplianceAutopilot" or "ComplianceArchive" or "ComplianceConnectionHealth" or "OrgComplianceSender" or "PropertyIstatCredentials" or "Alloggiati" or "Istat" or "OctorateComplianceHandoff" => "compliance",
-        "Connect" or "OrgDomain" or "OrgSiteDocuments" or "OrgBranding" => "direct-booking",
+        "Connect" or "OrgDomain" or "OrgSiteDocuments" or "OrgBranding" or "SiteConnections" => "direct-booking",
         "AssistantRules" or "AssistantDrafts" or "AssistantKnowledge" or "AssistantSituations" => "messages-ai",
         "ServiceRequests" or "ServiceRequestSuppliers" or "ServiceRequestAssist" or "LongRentServiceRequests" => "operations",
         "FiscalDocuments" or "FiscalDocumentSettings" or "FiscalDocumentSdi" or "FiscalDocumentExports" or "OctorateDocuments" or "LongRentFiscal" => "fiscal",

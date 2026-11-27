@@ -38,6 +38,10 @@ public class OrgBillingAdminPolicyCoverageTests
         // E40/F01/US01: the surfaces of the agency's own domain and the tracking of its pages.
         "OrgDomainController.SetSurfaces",
         "OrgDomainController.SetTracking",
+        // S022 (PLG-BE-CONNECT): the connection of a site, the list and the revocation of the connected sites.
+        "SiteConnectionsController.Authorize",
+        "SiteConnectionsController.List",
+        "SiteConnectionsController.Revoke",
     ];
 
     /// <summary>
