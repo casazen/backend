@@ -134,7 +134,10 @@ public static class DocumentFormatChecks
     /// <summary>The two sides agree with each other.</summary>
     public const string SideConsistency = "side_consistency";
 
-    /// <summary>The fields read by zone agree with the MRZ and with each other.</summary>
+    /// <summary>
+    /// The dates are possible (a birth neither in the future nor too far back, an issue not after the expiry) and what the card prints a second time agrees with the
+    /// MRZ: the expiry, the sex and the nationality, each when both were read. The fields that identify the holder are compared in <see cref="SideConsistency"/>.
+    /// </summary>
     public const string FieldCoherence = "field_coherence";
 
     /// <summary>The document agrees with the data of the booking.</summary>
