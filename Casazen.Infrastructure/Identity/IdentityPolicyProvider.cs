@@ -86,7 +86,7 @@ public sealed class IdentityPolicyProvider
 {
     /// <summary>
     /// The fewest bits of entropy a presence challenge must have, whatever the policy says (NF-192, AC-NF192-1): "more than one bit" means at least two, so a
-    /// challenge of two moves out of two, or of one move out of three, is refused.
+    /// challenge of one move out of three, or of any number of moves out of two that never repeat in a row, is refused.
     /// </summary>
     public const double MinChallengeEntropyBits = 2.0;
 
