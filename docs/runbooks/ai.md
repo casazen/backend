@@ -21,7 +21,9 @@ Task FD-21 (defects A8-01, A8-07, A8-14, A8-15, A4-26, A8-26, A8-16 AI part; dec
 its check digits, then the printed fields of the visual zone with Tesseract), whatever provider is configured here or in «Configurazione AI»: the AI
 reader (`CheckInDocumentAiReader`, cache key `checkin-document`) is removed, and no flag or setting sends the photo out again. Where a provider that
 reads images was configured, the prefill is now the local one (the guest confirms the fields, as with every local reading); rollback is a revert of
-the change.
+the change. The architecture tests `IdentityPathEgressArchitectureTests` (E70/F02/US02/T02) forbid AI providers, HTTP clients and the types of
+`Casazen.Infrastructure.External` in the whole identity path (every class of `Casazen.Infrastructure.Identity`, plus the flow, the pipeline and the
+readers), and pictures or vectors in the alerts, the lock code, the push and the e-mail queue it calls: a new caller of the AI must stay out of it.
 
 Never put in a prompt sent to an external provider: the notes of a request, a stay or a guest, guest data (names, phone numbers,
 documents, dates of stay), supplier or host names, e-mails, addresses of a person. The only free text that goes is what a person types
