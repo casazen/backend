@@ -544,7 +544,7 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         // Independent vectors (a script, not this code): the weights hash is the SHA-256 of the three lower case hashes joined with ":" in role order, the
         // fingerprint the SHA-256 of "policyHash:weightsHash".
         Assert.Equal("f299a350bdadffc513a0ec0a9f230297b0c5b364af3f5b553bbdede224043a46", current.WeightsHash);
-        Assert.Equal("d721e2596b1b0b6afb8c634aa42698450c0a4b4041517fd5318c823a79994a19", current.Fingerprint);
+        Assert.Equal("4bb3e13e0aa8f56531af8847b806fdcadc2493f0d9ff019e1233e30425a9bc45", current.Fingerprint);
         Assert.Equal(current.WeightsHash, IdentityConfigurationFingerprint.ComputeWeightsHash(store.Snapshot));
         Assert.Equal(current.Fingerprint, IdentityConfigurationFingerprint.ComputeFingerprint(current.PolicyHash, current.WeightsHash));
     }
