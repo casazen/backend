@@ -8,6 +8,7 @@ using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.SiteConnections;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Events;
@@ -114,9 +115,12 @@ public static class ServiceCollectionExtensions
                         }
 
                         // The token of a guest session (DB-06a) is not a JWT: only the GuestSession scheme reads it. The sign-in
-                        // of the hosts leaves it alone, so it neither tries to validate it nor logs a failure at every call.
-                        if (context.Request.Headers.Authorization.ToString()
-                            .StartsWith("Bearer " + GuestSessionTokens.Prefix, StringComparison.OrdinalIgnoreCase))
+                        // of the hosts leaves it alone, so it neither tries to validate it nor logs a failure at every call. The same for
+                        // the credential of a connected site (czs_…, S022): only the SiteToken scheme reads it, so on a console endpoint
+                        // the request is anonymous (401).
+                        var authorization = context.Request.Headers.Authorization.ToString();
+                        if (authorization.StartsWith("Bearer " + GuestSessionTokens.Prefix, StringComparison.OrdinalIgnoreCase)
+                            || authorization.StartsWith("Bearer " + SiteConnectionTokens.CredentialPrefix, StringComparison.OrdinalIgnoreCase))
                         {
                             context.NoResult();
                         }
@@ -207,6 +211,10 @@ public static class ServiceCollectionExtensions
             // The guest of a booking site with no account (DB-06a): its own scheme, used only by the policy GuestSession.
             .AddScheme<AuthenticationSchemeOptions, GuestSessionAuthenticationHandler>(
                 GuestSessionDefaults.AuthenticationScheme,
+                _ => { })
+            // The plugin of a site connected to the org (S022): its own scheme, never the default, used only by the policy SiteConnection.
+            .AddScheme<AuthenticationSchemeOptions, SiteTokenAuthenticationHandler>(
+                SiteTokenDefaults.AuthenticationScheme,
                 _ => { });
 
         return services;
@@ -251,6 +259,13 @@ public static class ServiceCollectionExtensions
                 .AddAuthenticationSchemes(GuestSessionDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
                 .RequireClaim(GuestSessionDefaults.OrgIdClaim))
+            // The plugin of a site connected to the org (S022): the SiteToken scheme only, its connection, its org and the scope of the domain.
+            .AddPolicy(CasazenPolicies.SiteConnection, policy => policy
+                .AddAuthenticationSchemes(SiteTokenDefaults.AuthenticationScheme)
+                .RequireAuthenticatedUser()
+                .RequireClaim(SiteTokenDefaults.ConnectionIdClaim)
+                .RequireClaim(SiteTokenDefaults.OrgIdClaim)
+                .RequireClaim(SiteTokenDefaults.ScopeClaim, SiteTokenDefaults.DomainScope))
             // The person who books as a guest with a CasaZen account (the mobile app's guest area): a signed-in account with a subject
             // and nothing else, since a guest has no host org, no supplier link and no role. The actions check the verified email.
             .AddPolicy(CasazenPolicies.GuestAccount, policy => policy
@@ -645,6 +660,8 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<Casazen.Infrastructure.Jobs.AgencyUsageJob>();
         services.AddScoped<IOrgDomainService, OrgDomainService>();
+        // The connection of a site to the org (S022): the one-time code, its exchange for the plugin's credential, the checks of the SiteToken scheme.
+        services.AddScoped<ISiteConnectionService, SiteConnectionService>();
         // The owner sign-in on an agency's own domain (E40/F01/US02/T01, NF-141): the registrar of the hosts in the shared Auth0 tenant (Auth0:HostSync,
         // nothing is called without its client id or while Auth0HostSync is off) and the one place that moves the state and tells the org's administrators.
         services.AddOptions<Auth0HostSyncOptions>().BindConfiguration(Auth0HostSyncOptions.SectionName);

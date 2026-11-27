@@ -3334,6 +3334,15 @@
   <data name="OwnerLoginStateInvalid" xml:space="preserve">
     <value>Invalid state: use NotRequested, Pending, Ready or Failed.</value>
   </data>
+  <data name="SiteConnectionInvalidRequest" xml:space="preserve">
+    <value>The site connection request is not valid: try «Connect to CasaZen» again from the plugin of the site.</value>
+  </data>
+  <data name="SiteConnectionInvalidGrant" xml:space="preserve">
+    <value>The connection code is not valid or has expired: try «Connect to CasaZen» again from the plugin of the site.</value>
+  </data>
+  <data name="SiteConnectionNotFound" xml:space="preserve">
+    <value>The connected site was not found.</value>
+  </data>
   <data name="OrgAccessDenied" xml:space="preserve">
     <value>Access denied for this organization.</value>
   </data>

@@ -61,7 +61,7 @@ public sealed class CommercialAccessMiddleware(RequestDelegate next)
         "Routines" => "ai-agents",
         "Verification" => "identification",
         "Compliance" or "ComplianceAutopilot" or "ComplianceArchive" or "ComplianceConnectionHealth" or "OrgComplianceSender" or "PropertyIstatCredentials" or "Alloggiati" or "Istat" or "OctorateComplianceHandoff" => "compliance",
-        "Connect" or "OrgDomain" or "OrgSiteDocuments" or "OrgBranding" => "direct-booking",
+        "Connect" or "OrgDomain" or "OrgSiteDocuments" or "OrgBranding" or "SiteConnections" => "direct-booking",
         "AssistantRules" or "AssistantDrafts" or "AssistantKnowledge" or "AssistantSituations" => "messages-ai",
         "ServiceRequests" or "ServiceRequestSuppliers" or "ServiceRequestAssist" or "LongRentServiceRequests" => "operations",
         "FiscalDocuments" or "FiscalDocumentSettings" or "FiscalDocumentSdi" or "FiscalDocumentExports" or "OctorateDocuments" or "LongRentFiscal" => "fiscal",
