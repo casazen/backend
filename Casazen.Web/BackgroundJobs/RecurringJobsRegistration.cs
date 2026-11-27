@@ -206,6 +206,12 @@ public static class RecurringJobsRegistration
             GuestDocumentPurgeJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // E73/F01/US02/T03 (NF-195, D9): the evidence of the reviewers of the identity verification past its time, the abandoned sessions, the checks of the document and the
+        // verification logs past their retention, every hour at minute 40 UTC, only while the self-hosted verification or its evidence is on (read again at every run).
+        ConfigureIdentityRetention(
+            recurringJobManager,
+            featureFlags.IsEnabled(FeatureFlags.CheckInIdentitySelfHosted) || featureFlags.IsEnabled(FeatureFlags.CheckInIdentityReviewEvidence));
+
         // NF-128 (casazen/backend#979, decisions D10, D11): the receipts of the Ticino police notifications, the group sheets and the parents' authorizations are kept
         // five years from their date; the file and the row of those whose time is over are deleted every day at 03:55 UTC, counts only in the log, never an OTR report.
         // Always registered: a file that exists costs money whatever a flag says, and with nothing past its time a run finds nothing.
@@ -434,6 +440,25 @@ public static class RecurringJobsRegistration
             ScheduledMessageSweepJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             ScheduledMessageSweepJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The hourly retention of the self-hosted identity verification (E73/F01/US02/T03): scheduled only while <paramref name="enabled"/> (<c>Features:CheckInIdentitySelfHosted</c> or
+    /// <c>Features:CheckInIdentityReviewEvidence</c> on); otherwise the schedule of an earlier deploy is removed. The job takes no argument but the token Hangfire gives.
+    /// </summary>
+    private static void ConfigureIdentityRetention(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(IdentityEvidencePurgeJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<IdentityEvidencePurgeJob>(
+            IdentityEvidencePurgeJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            IdentityEvidencePurgeJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
