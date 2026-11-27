@@ -79,7 +79,9 @@ public sealed class DocumentFormatRegistry
     /// <summary>
     /// The format of a document from the codes of its MRZ, never from its data: the document code (the first two characters of the first line, for example
     /// <c>I&lt;</c> or <c>ID</c>), the issuing state (<c>ITA</c>) and the type of MRZ (<c>TD1</c>, <c>TD2</c> or <c>TD3</c>); the filler <c>&lt;</c>, spaces and the
-    /// case do not matter. A format matches when it has this MRZ type and issuing state and a document code prefix the code starts with; of several formats the one with the
+    /// case do not matter. A format matches when it has this MRZ type and issuing state and a document code prefix the code starts with, and the code does not start
+    /// with one of its <see cref="DocumentFormat.ExcludedDocumentCodes"/> (the Italian card claims the codes that start with <c>I</c> and excludes <c>IR</c>, the
+    /// residence permit: <c>MrzExtractionService</c> reads it as such); of several formats the one with the
     /// longest prefix wins, and a tie between two formats is no match (which of them is meant cannot be told). <b>Null when nothing matches: the flow answers
     /// <c>format_unsupported</c> and a person decides.</b> A new format file is found here without any change of code.
     /// </summary>
@@ -97,6 +99,11 @@ public sealed class DocumentFormatRegistry
         foreach (var format in All)
         {
             if (!string.Equals(format.Mrz.Type, type, StringComparison.Ordinal) || !string.Equals(format.Mrz.IssuingState, state, StringComparison.Ordinal))
+                continue;
+
+            // A code the format excludes is not of this format although a prefix of the format matches it (the Italian card claims the codes that start with I, and IR
+            // is the residence permit): the format is out for this document, and with no other format that claims the code the answer is null.
+            if (format.ExcludedDocumentCodes is { } excluded && excluded.Any(prefix => code.StartsWith(prefix, StringComparison.Ordinal)))
                 continue;
 
             foreach (var prefix in format.DocumentCodes)
@@ -155,6 +162,9 @@ public sealed class DocumentFormatRegistry
             return DocumentFormatReasonCodes.FormatDocumentCodesInvalid;
         }
 
+        if (format.ExcludedDocumentCodes is { } excluded && !AreValidExcludedCodes(excluded, format.DocumentCodes))
+            return DocumentFormatReasonCodes.FormatDocumentCodesInvalid;
+
         var mrz = format.Mrz;
         if (!DocumentFormatMrzTypes.All.Contains(mrz.Type)
             || mrz.IssuingState.Length is 0 or > 3 || !mrz.IssuingState.All(char.IsAsciiLetterUpper)
@@ -188,6 +198,22 @@ public sealed class DocumentFormatRegistry
         }
 
         return DocumentFormatStatuses.All.Contains(format.Status) ? null : DocumentFormatReasonCodes.FormatStatusInvalid;
+    }
+
+    /// <summary>
+    /// The excluded codes of a format are valid when none is repeated, each is one or two capital letters, each starts with one of the document codes (else it would
+    /// exclude nothing) and none is a document code itself (else it would exclude what the format claims). An empty list is valid and excludes nothing.
+    /// </summary>
+    private static bool AreValidExcludedCodes(IReadOnlyList<string> excluded, IReadOnlyList<string> documentCodes)
+    {
+        if (excluded.Count > 8 || excluded.Distinct(StringComparer.Ordinal).Count() != excluded.Count)
+            return false;
+
+        return excluded.All(code => code is not null
+            && code.Length is > 0 and <= 2
+            && code.All(char.IsAsciiLetterUpper)
+            && !documentCodes.Contains(code, StringComparer.Ordinal)
+            && documentCodes.Any(prefix => code.StartsWith(prefix, StringComparison.Ordinal)));
     }
 
     private static string? ValidateLayout(DocumentFormat format)

@@ -18,6 +18,7 @@ namespace Casazen.Core.Identity;
 /// <param name="DocumentCodes">
 /// The prefixes of the MRZ document code (the first characters of the first line, without the filler <c>&lt;</c>) a document of this format may have, for example
 /// <c>I</c> and <c>C</c> (ICAO identity cards start with <c>I</c>, <c>A</c> or <c>C</c>). The longest matching prefix wins when two formats of one country share a code.
+/// A prefix that is too wide for the cards of the format is narrowed by <paramref name="ExcludedDocumentCodes"/>.
 /// </param>
 /// <param name="Mrz">How the MRZ of the format is laid out.</param>
 /// <param name="Sides">The sides to capture: <c>front</c> and <c>back</c> (in this order), or <c>single</c> for one page that holds everything.</param>
@@ -28,6 +29,12 @@ namespace Casazen.Core.Identity;
 /// this format. A kind that is not listed is not admitted: that combination always goes to a person. A browser gives <c>consistency</c> only.
 /// </param>
 /// <param name="Status">A code of <see cref="DocumentFormatStatuses"/>: <c>provisional</c> until the format is qualified.</param>
+/// <param name="ExcludedDocumentCodes">
+/// Optional. Prefixes of the MRZ document code that are NOT of this format although they start with one of <paramref name="DocumentCodes"/>: the Italian card claims
+/// every code that starts with <c>I</c>, and <c>IR</c> is the residence permit (the code base reads it as such, <c>MrzExtractionService</c>), so the file excludes
+/// <c>IR</c> and <c>DetectFromMrz</c> answers null for it (the flow says <c>format_unsupported</c> and a person decides) unless another format claims it. Each
+/// code is one or two capital letters, starts with one of the document codes and is not one of them; none repeated. Absent or empty: nothing is excluded.
+/// </param>
 public sealed record DocumentFormat(
     string Id,
     string Country,
@@ -38,7 +45,8 @@ public sealed record DocumentFormat(
     DocumentFormatLayout Layout,
     IReadOnlyList<string> RequiredChecks,
     IReadOnlyDictionary<string, string> Assurance,
-    string Status);
+    string Status,
+    IReadOnlyList<string>? ExcludedDocumentCodes = null);
 
 /// <summary>How the MRZ of a format is laid out (ICAO 9303).</summary>
 /// <param name="Type">The type of MRZ, a code of <see cref="DocumentFormatMrzTypes"/>: <c>TD1</c> (cards, three lines), <c>TD2</c> or <c>TD3</c> (passports, two lines).</param>
@@ -194,7 +202,7 @@ public static class DocumentFormatReasonCodes
     /// <summary>The label is empty or longer than 100 characters.</summary>
     public const string FormatLabelInvalid = "format_label_invalid";
 
-    /// <summary>The document codes are missing, repeated, or not one or two capital letters.</summary>
+    /// <summary>The document codes are missing, repeated, or not one or two capital letters; or an excluded code is repeated, is not one or two capital letters, is one of the document codes or does not start with one.</summary>
     public const string FormatDocumentCodesInvalid = "format_document_codes_invalid";
 
     /// <summary>The MRZ type, side or issuing state is not valid.</summary>

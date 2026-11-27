@@ -3,6 +3,7 @@ using System.Text;
 using Casazen.Core.Identity;
 using Casazen.Core.Options;
 using Casazen.Infrastructure.Identity;
+using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Infrastructure.Storage;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Extensions;
@@ -95,6 +96,12 @@ public sealed class DocumentFormatRegistryTests : IDisposable
         Add("codes-lower-case", DocumentFormatReasonCodes.FormatDocumentCodesInvalid, ("documentCodes", "[\"i\"]"));
         Add("codes-three-letters", DocumentFormatReasonCodes.FormatDocumentCodesInvalid, ("documentCodes", "[\"IDX\"]"));
         Add("codes-repeated", DocumentFormatReasonCodes.FormatDocumentCodesInvalid, ("documentCodes", "[\"I\",\"I\"]"));
+        Add("excluded-lower-case", DocumentFormatReasonCodes.FormatDocumentCodesInvalid, ("excludedDocumentCodes", "[\"ir\"]"));
+        Add("excluded-three-letters", DocumentFormatReasonCodes.FormatDocumentCodesInvalid, ("excludedDocumentCodes", "[\"IRX\"]"));
+        Add("excluded-repeated", DocumentFormatReasonCodes.FormatDocumentCodesInvalid, ("excludedDocumentCodes", "[\"IR\",\"IR\"]"));
+        Add("excluded-is-a-document-code", DocumentFormatReasonCodes.FormatDocumentCodesInvalid, ("excludedDocumentCodes", "[\"I\"]"));
+        Add("excluded-not-under-a-document-code", DocumentFormatReasonCodes.FormatDocumentCodesInvalid, ("excludedDocumentCodes", "[\"PD\"]"));
+        Add("excluded-null-item", DocumentFormatReasonCodes.FormatDocumentCodesInvalid, ("excludedDocumentCodes", "[null]"));
         Add("mrz-type", DocumentFormatReasonCodes.FormatMrzInvalid, ("mrz.type", "\"TD4\""));
         Add("mrz-state", DocumentFormatReasonCodes.FormatMrzInvalid, ("mrz.issuingState", "\"ITAL\""));
         Add("mrz-side", DocumentFormatReasonCodes.FormatMrzInvalid, ("mrz.side", "\"top\""));
@@ -148,6 +155,8 @@ public sealed class DocumentFormatRegistryTests : IDisposable
         Assert.Equal(("it-cie-3.0", "ITA", DocumentFormatStatuses.Provisional), (cie.Id, cie.Country, cie.Status));
         Assert.Equal(["front", "back"], cie.Sides);
         Assert.Equal(("TD1", "back", "ITA"), (cie.Mrz.Type, cie.Mrz.Side, cie.Mrz.IssuingState));
+        Assert.Equal(["I", "C"], cie.DocumentCodes);
+        Assert.Equal(["IR"], cie.ExcludedDocumentCodes);
         Assert.Equal(new KeyValuePair<string, string>("web", IdentityAssuranceLevels.Consistency), Assert.Single(cie.Assurance));
         Assert.Equal(DocumentFormatChecks.All, cie.RequiredChecks);
         Assert.Equal((1.586, 0.06), (cie.Layout.AspectRatio, cie.Layout.AspectTolerance));
@@ -225,6 +234,10 @@ public sealed class DocumentFormatRegistryTests : IDisposable
     [InlineData("ZZ", "ITA", "TD1")]
     [InlineData("PA", "ITA", "TD1")]
     [InlineData("A<", "ITA", "TD1")]
+    [InlineData("AR", "ITA", "TD1")]
+    [InlineData("IR", "ITA", "TD1")]
+    [InlineData(" ir ", "ita", "td1")]
+    [InlineData("I R", "ITA", "TD1")]
     [InlineData("I<", "UTO", "TD1")]
     [InlineData("I<", "ITA", "TD2")]
     [InlineData("I<", "ITA", "TD3")]
@@ -254,6 +267,48 @@ public sealed class DocumentFormatRegistryTests : IDisposable
         Assert.Equal("I<", documentCode);
         Assert.Null(registry.DetectFromMrz(documentCode, specimenState, "TD1"));
         Assert.Equal("it-cie-3.0", registry.DetectFromMrz(documentCode, "ITA", "TD1")?.Id);
+    }
+
+    [Theory]
+    [InlineData("I<", "IdCard", true)]
+    [InlineData("ID", "IdCard", true)]
+    [InlineData("CI", "IdCard", true)]
+    [InlineData("C<", "IdCard", true)]
+    [InlineData("IR", "ResidencePermit", false)]
+    [InlineData("AR", "ResidencePermit", false)]
+    [InlineData("A<", "ResidencePermit", false)]
+    public void DetectFromMrz_AgreesWithTheMrzReader_OnWhatIsAnIdCardAndWhatIsAResidencePermit(string documentCode, string readerType, bool isTheCie)
+    {
+        // The reader of the MRZ and the registry must not disagree: a code that MrzExtractionService reads as a residence permit (IR, and A...) is never the Italian
+        // electronic identity card, whatever prefix of the file it starts with; it has no format, the flow says format_unsupported and a person decides.
+        var result = MrzExtractionService.ParseTd1Mrz(documentCode + MrzSpecimens.Td1Line1[2..], MrzSpecimens.Td1Line2, MrzSpecimens.Td1Line3, new DateOnly(2026, 11, 5));
+
+        Assert.NotNull(result);
+        Assert.Equal(readerType, result.DocumentType);
+        Assert.Equal(isTheCie ? "it-cie-3.0" : null, ShippedRegistry().DetectFromMrz(documentCode, "ITA", "TD1")?.Id);
+    }
+
+    [Fact]
+    public void DetectFromMrz_ACodeAFormatExcludes_IsNotOfThatFormat_ByConfigurationOnly()
+    {
+        // The exclusion is data, like the format: a format claims P and excludes PD; another format claims PD itself. An empty list excludes nothing.
+        Write("alone", "a.json", Passport(("id", "\"it-a\""), ("documentCodes", "[\"P\"]"), ("excludedDocumentCodes", "[\"PD\"]")));
+        Write("both", "a.json", Passport(("id", "\"it-a\""), ("documentCodes", "[\"P\"]"), ("excludedDocumentCodes", "[\"PD\"]")));
+        Write("both", "b.json", Passport(("id", "\"it-b\""), ("documentCodes", "[\"PD\"]")));
+        Write("empty", "a.json", Passport(("id", "\"it-a\""), ("documentCodes", "[\"P\"]"), ("excludedDocumentCodes", "[]")));
+        var alone = Create("alone");
+        var both = Create("both");
+        var empty = Create("empty");
+
+        Assert.Empty(alone.Rejected);
+        Assert.Empty(both.Rejected);
+        Assert.Empty(empty.Rejected);
+        Assert.Equal("it-a", alone.DetectFromMrz("P<", "ITA", "TD3")?.Id);
+        Assert.Equal("it-a", alone.DetectFromMrz("PA", "ITA", "TD3")?.Id);
+        Assert.Null(alone.DetectFromMrz("PD", "ITA", "TD3"));
+        Assert.Equal("it-a", both.DetectFromMrz("P<", "ITA", "TD3")?.Id);
+        Assert.Equal("it-b", both.DetectFromMrz("PD", "ITA", "TD3")?.Id);
+        Assert.Equal("it-a", empty.DetectFromMrz("PD", "ITA", "TD3")?.Id);
     }
 
     [Fact]

@@ -3,6 +3,7 @@
   "country": "ITA",
   "label": "Carta d'identità elettronica italiana (CIE 3.0)",
   "documentCodes": ["I", "C"],
+  "excludedDocumentCodes": ["IR"],
   "mrz": {
     "type": "TD1",
     "side": "back",
