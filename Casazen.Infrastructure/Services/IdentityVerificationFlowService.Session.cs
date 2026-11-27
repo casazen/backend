@@ -90,11 +90,19 @@ public sealed partial class IdentityVerificationFlowService
         };
     }
 
-    /// <summary>What the guest sees of a closed verification: <c>ok</c> for an automatic approval, <c>operator</c> for any other terminal code.</summary>
-    internal static string GuestOutcomeOf(string? outcomeCode)
+    /// <summary>
+    /// What the guest sees of a closed verification: <c>ok</c> for an automatic approval, <c>operator</c> for any other terminal code, which handed the verification to a person.
+    /// Nothing for a verification the retention closed as <c>abandoned</c> (E73/F01/US02/T03) while nobody has it (<paramref name="handedToAPerson"/> false): no operator was told, so
+    /// the state must not say that a person has it, only that it is closed (the page shows a verification closed with no positive outcome). When the guest then asks for a person the
+    /// hand-off is real and the outcome is <c>operator</c>.
+    /// </summary>
+    internal static string? GuestOutcomeOf(string? outcomeCode, bool handedToAPerson)
     {
-        return string.Equals(outcomeCode, IdentityOutcomeCodes.AutoApproved, StringComparison.Ordinal)
-            ? IdentityVerificationGuestResults.Ok
+        if (string.Equals(outcomeCode, IdentityOutcomeCodes.AutoApproved, StringComparison.Ordinal))
+            return IdentityVerificationGuestResults.Ok;
+
+        return string.Equals(outcomeCode, IdentityOutcomeCodes.Abandoned, StringComparison.Ordinal) && !handedToAPerson
+            ? null
             : IdentityVerificationGuestResults.Operator;
     }
 

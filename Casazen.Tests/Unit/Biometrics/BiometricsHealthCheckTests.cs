@@ -228,7 +228,9 @@ public sealed class BiometricsHealthCheckTests : IDisposable
         Assert.DoesNotContain(PinnedHash, json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(DownloadAddress, json);
         using var document = JsonDocument.Parse(json);
-        Assert.Equal(["enabled", "models", "reasonCode", "state"], document.RootElement.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+
+        // E73/F01/US02/T03: the status also says what of the retention of the identity verification is overdue (counts and a time only, null here: no reading of it).
+        Assert.Equal(["enabled", "models", "reasonCode", "retention", "state"], document.RootElement.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
         foreach (var model in document.RootElement.GetProperty("models").EnumerateArray())
         {
             Assert.Equal(

@@ -61,6 +61,17 @@ public sealed class IdentityVerificationOptions
         CheckRange(failures, "Evidence:MaxFrames", Evidence.MaxFrames, 0, 5);
         CheckRange(failures, "Evidence:MaxSide", Evidence.MaxSide, 64, 1_920);
 
+        failures.AddRange(ValidateRetention());
+        return failures;
+    }
+
+    /// <summary>
+    /// The configuration errors of the three periods of <see cref="Retention"/> alone, in the same words as <see cref="Validate"/>, empty when they are usable. The retention of what the
+    /// verification keeps (E73/F01/US02/T03) needs only these: a limit of the capture or of the evidence that is out of its range must not stop it from deleting what is past its time.
+    /// </summary>
+    public IReadOnlyList<string> ValidateRetention()
+    {
+        var failures = new List<string>();
         CheckRange(failures, "Retention:AbandonedAfterHours", Retention.AbandonedAfterHours, 1, 168);
         CheckRange(failures, "Retention:DocumentCheckDays", Retention.DocumentCheckDays, 1, 365);
         CheckRange(failures, "Retention:VerificationLogMonths", Retention.VerificationLogMonths, 1, 120);

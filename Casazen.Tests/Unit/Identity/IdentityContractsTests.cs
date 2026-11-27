@@ -53,7 +53,7 @@ public class IdentityContractsTests
             ],
             IdentityApiErrors.All);
         Assert.Equal(["consistency", "cryptographic"], IdentityAssuranceLevels.All);
-        Assert.Equal(["decided", "expired", "abandoned", "erased"], IdentityEvidenceDeletionReasons.All);
+        Assert.Equal(["decided", "expired", "abandoned", "erased", "replaced"], IdentityEvidenceDeletionReasons.All);
         Assert.Equal("Idempotency-Key", IdentityHeaders.IdempotencyKey);
         Assert.Equal("^[A-Za-z0-9-]{8,64}$", IdentityHeaders.IdempotencyKeyPattern);
         Assert.Equal("presence", IdentityVerificationSteps.Presence);

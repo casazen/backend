@@ -1,5 +1,6 @@
 using Casazen.Core.Features;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Identity;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Admin;
@@ -31,14 +32,19 @@ public sealed class AdminBiometricsController(
 {
     /// <summary>
     /// Per model: name, version, licence, state, failure code and whether its SHA-256 is pinned. No path, no hash, no address. The same reading the
-    /// <c>biometrics</c> entry of <c>/api/health/ready</c> is made of.
+    /// <c>biometrics</c> entry of <c>/api/health/ready</c> is made of. Since E73/F01/US02/T03 (NF-195) also <c>retention</c>: the evidence of the reviewers past its time and the
+    /// kept pictures of documents nobody uses any more (the first should always be 0, the second while one of the two flags of the self-hosted verification is on: the hourly purge deletes them), and the last run of the purge: counts and a time only.
     /// </summary>
-    /// <response code="200">The state of the set and of each model.</response>
+    /// <response code="200">The state of the set and of each model, and of the retention.</response>
     [HttpGet("status")]
     [ProducesResponseType(typeof(BiometricsStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public ActionResult<BiometricsStatusDto> GetStatus() => Ok(BiometricsStatusDto.From(statusReader.Read()));
+    public async Task<ActionResult<BiometricsStatusDto>> GetStatus([FromServices] IdentityRetentionService retention, CancellationToken cancellationToken)
+    {
+        var models = statusReader.Read();
+        return Ok(BiometricsStatusDto.From(models, await retention.StatusAsync(cancellationToken)));
+    }
 
     /// <summary>
     /// Marks the thresholds of an organization as calibrated now, after a calibration on real data: <c>calibratedAt</c> is written and the outcomes stop being

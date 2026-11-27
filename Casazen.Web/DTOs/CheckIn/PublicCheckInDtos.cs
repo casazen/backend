@@ -176,7 +176,10 @@ public sealed class PublicIdentityVerificationStateDto
     /// <summary>The verification is closed: no document or presence step is accepted any more, the request for a person stays open.</summary>
     public bool Closed { get; set; }
 
-    /// <summary>What the guest sees of the closed verification: <c>ok</c>, <c>retry</c> or <c>operator</c>; null before it is decided.</summary>
+    /// <summary>
+    /// What the guest sees of the closed verification: <c>ok</c>, <c>retry</c> or <c>operator</c>; null before it is decided, and for a verification the retention closed as
+    /// abandoned while nobody has it (<see cref="Closed"/> with no outcome: closed with no positive outcome, no operator was told; the guest can still ask for a person).
+    /// </summary>
     public string? Outcome { get; set; }
 
     public static PublicIdentityVerificationStateDto From(IdentityVerificationState state) => new()

@@ -67,6 +67,12 @@ public partial class VerificationController(
             RaisedAt = p.RaisedAt,
             Reasons = p.Reasons.Select(VerificationReasonDto.From).ToList(),
             Provisional = p.Provisional,
+            DecisionMode = PendingVerificationDto.DecisionModeCode(p.DecisionMode),
+            ShadowOutcome = PendingVerificationDto.ShadowOutcomeCode(p.ShadowOutcome),
+            PolicyVersion = p.PolicyVersion,
+            FormatId = p.FormatId,
+            Channel = p.Channel,
+            Evidence = PendingEvidenceDto.From(p.Evidence),
         }).ToList());
     }
 

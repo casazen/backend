@@ -213,6 +213,9 @@ public static class IdentityEvidenceDeletionReasons
     /// <summary>The data of the guest was erased (GDPR art. 17).</summary>
     public const string Erased = "erased";
 
+    /// <summary>A later review of the same booking kept its own evidence: one set per booking (E73/F01/US02/T01).</summary>
+    public const string Replaced = "replaced";
+
     /// <summary>Every code, in this order.</summary>
-    public static IReadOnlyList<string> All { get; } = [Decided, Expired, Abandoned, Erased];
+    public static IReadOnlyList<string> All { get; } = [Decided, Expired, Abandoned, Erased, Replaced];
 }

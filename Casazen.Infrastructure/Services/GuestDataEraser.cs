@@ -1,7 +1,9 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Identity;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -51,6 +53,7 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         var before = Fingerprint(guest);
         var filesDeleted = await DeleteDocumentScanAsync(guest, cancellationToken);
         filesDeleted += await DeleteVerificationDocumentImagesAsync(guest, cancellationToken);
+        filesDeleted += await DeleteReviewEvidenceAsync(guest, now, cancellationToken);
         EraseAlloggiatiFields(guest);
         EraseIdentity(guest);
         guest.MarketingConsent = false;
@@ -296,6 +299,7 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         var before = Fingerprint(guest);
         var filesDeleted = await DeleteDocumentScanAsync(guest, cancellationToken);
         filesDeleted += await DeleteVerificationDocumentImagesAsync(guest, cancellationToken);
+        filesDeleted += await DeleteReviewEvidenceAsync(guest, now, cancellationToken);
         EraseAlloggiatiFields(guest);
         var changed = Fingerprint(guest) != before || filesDeleted > 0;
         guest.AlloggiatiDataErasedAt ??= now;
@@ -365,6 +369,29 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         await DocumentImageCleaner.DeleteAsync(db, fileStorage, logger, images, cancellationToken);
         logger.LogInformation("{Count} document photo(s) of guest {GuestId} deleted from the private storage", images.Count, guest.Id);
         return images.Count;
+    }
+
+    /// <summary>
+    /// Deletes the evidence kept for the reviewer of an identity verification of the bookings of <paramref name="guest"/> (E73/F01/US02/T03, NF-195, art. 17 GDPR): the crop of the
+    /// portrait and the frames, encrypted in the private bucket, whoever of the stay was verified. The objects go at once, before the caller saves; the rows stay as the trace of the
+    /// deletion, marked deleted with the reason <c>erased</c> (staged). Whatever the flags say. Returns the pictures deleted (none when there were none, or all were deleted already).
+    /// </summary>
+    public async Task<int> DeleteReviewEvidenceAsync(Guest guest, DateTime now, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(guest);
+
+        // IgnoreQueryFilters: whichever org the caller works in, the evidence of the guest goes; the org of the guest is named.
+        var bookings = db.Bookings.IgnoreQueryFilters().Where(b => b.OrgId == guest.OrgId && b.GuestId == guest.Id).Select(b => b.Id);
+        var evidence = await db.IdentityReviewEvidences
+            .IgnoreQueryFilters()
+            .Where(e => e.OrgId == guest.OrgId && e.DeletedAt == null && (e.GuestId == guest.Id || bookings.Contains(e.BookingId)))
+            .ToListAsync(cancellationToken);
+        if (evidence.Count == 0)
+            return 0;
+
+        var deleted = await IdentityReviewEvidenceCleaner.DeleteAsync(fileStorage, evidence, IdentityEvidenceDeletionReasons.Erased, now, cancellationToken);
+        logger.LogInformation("{Count} review evidence picture(s) of guest {GuestId} deleted from the private storage", deleted, guest.Id);
+        return deleted;
     }
 
     /// <summary>

@@ -206,6 +206,16 @@ public static class RecurringJobsRegistration
             GuestDocumentPurgeJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // E73/F01/US02/T03 (NF-195, D9): the retention of what the identity verification keeps, every hour at minute 40 UTC: the evidence of the reviewers past its time, the abandoned
+        // sessions, the kept pictures and the checks of the document and the verification logs past their retention. Always registered: the service reads the flags at each run, and with
+        // both Features:CheckInIdentitySelfHosted and Features:CheckInIdentityReviewEvidence off it deletes only the evidence past its time (a flag switched off must never leave a
+        // biometric picture with no expiry); the other categories wait for a flag.
+        recurringJobManager.AddOrUpdate<IdentityEvidencePurgeJob>(
+            IdentityEvidencePurgeJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            IdentityEvidencePurgeJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // NF-128 (casazen/backend#979, decisions D10, D11): the receipts of the Ticino police notifications, the group sheets and the parents' authorizations are kept
         // five years from their date; the file and the row of those whose time is over are deleted every day at 03:55 UTC, counts only in the log, never an OTR report.
         // Always registered: a file that exists costs money whatever a flag says, and with nothing past its time a run finds nothing.

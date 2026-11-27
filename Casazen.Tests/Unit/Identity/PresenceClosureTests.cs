@@ -570,6 +570,10 @@ public sealed class PresenceClosureTests
         services.AddSingleton<IBiometricModelStore>(new FakeBiometricModelStore());
         services.AddSingleton<IFeatureFlags>(new TestFeatureFlags());
         services.AddSingleton(TimeProvider.System);
+
+        // E73/F01/US02/T01: the store of the evidence of the reviewer the flow takes writes to the private bucket with Data Protection.
+        services.AddSingleton(Mock.Of<IFileStorage>());
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         services.AddScoped(_ => Mock.Of<IAntiSpoofingService>());
         services.AddScoped(_ => Mock.Of<IMrzExtractionService>());
         services.AddScoped(_ => Mock.Of<IDocumentOcrService>());

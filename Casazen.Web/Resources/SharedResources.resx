@@ -9127,4 +9127,6 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="CheckInPresenceSequenceInvalid" xml:space="preserve"><value>La registrazione non è valida. Ripeti la prova di presenza.</value></data>
   <data name="CheckInPresenceSequenceTooLarge" xml:space="preserve"><value>La registrazione è troppo grande. Ripeti la prova di presenza.</value></data>
   <data name="CheckInPresenceProcessingFailed" xml:space="preserve"><value>Non è stato possibile elaborare la prova di presenza. Riprova tra poco: puoi sempre chiedere l’aiuto di una persona.</value></data>
+  <!-- E73/F01/US02/T02 (NF-195): the evidence of the reviewer of an identity verification. One title for every case, so it never says whether an evidence exists. -->
+  <data name="IdentityEvidenceNotFound" xml:space="preserve"><value>Evidenza della verifica non trovata o non più disponibile.</value></data>
 </root>
