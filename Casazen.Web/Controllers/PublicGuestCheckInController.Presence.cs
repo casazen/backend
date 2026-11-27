@@ -22,7 +22,8 @@ public partial class PublicGuestCheckInController
     /// anything is read, while <see cref="FeatureFlags.CheckInIdentityVerification"/> or <see cref="FeatureFlags.CheckInIdentitySelfHosted"/> is off; 409
     /// <c>identity_already_closed</c> once the verification is closed; 409 <c>presence_challenge_unavailable</c> with the <c>state</c> of the verification while the session is
     /// not ready for the presence (the identity step is not opened, the consent is not the current one, the document is not complete, a person already has the
-    /// verification), or the policy or the models are not available: the page then offers the assisted path, which is always open.
+    /// verification), or the policy, the models or the section <c>IdentityVerification</c> (a limit out of its range) are not available: the page then offers the
+    /// assisted path, which is always open.
     /// </summary>
     [HttpPost("{token}/presence-challenge")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]

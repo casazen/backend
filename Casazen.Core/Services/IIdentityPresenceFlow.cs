@@ -17,9 +17,11 @@ public interface IIdentityPresenceFlow
     /// challenge is the attempts made plus the guided retries used plus one.
     /// <para>
     /// The answer is <c>null</c>, and nothing is stored, unless: both flags are on, the identity step was opened and the verification is not closed, the guest did not choose a person (the assisted path), the biometric
-    /// consent is the current one, the document step is complete, the verification is not with a person, the decision policy is ready (its file valid and pinned) and
-    /// the models are ready. The page then offers the assisted path (409 <c>presence_challenge_unavailable</c>, or <c>identity_already_closed</c> for a closed
-    /// verification). Every number of the challenge comes from the policy and from the section <c>IdentityVerification</c>, never from the code.
+    /// consent is the current one, the document step is complete, the verification is not with a person, the decision policy is ready (its file valid and pinned), the
+    /// models are ready and the section <c>IdentityVerification</c> is valid (<c>IdentityVerificationOptions.Validate()</c> names no setting: one limit out of its range
+    /// makes the whole section not available, so nothing is announced from it). The page then offers the assisted path (409 <c>presence_challenge_unavailable</c>, or
+    /// <c>identity_already_closed</c> for a closed verification). Every number of the challenge comes from the policy and from the section <c>IdentityVerification</c>,
+    /// never from the code.
     /// </para>
     /// </summary>
     Task<PresenceChallengeIssue?> IssuePresenceChallengeAsync(GuestCheckInSession session, CancellationToken ct);

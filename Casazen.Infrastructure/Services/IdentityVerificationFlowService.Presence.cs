@@ -3,7 +3,6 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Identity;
-using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging;
@@ -29,14 +28,25 @@ public sealed partial class IdentityVerificationFlowService : IIdentityPresenceF
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        // What does not depend on the session is read before its row is locked: the flags, the policy and the models. When one of them is missing nothing is stored
-        // and no lock is taken; the page offers the assisted path.
+        // What does not depend on the session is read before its row is locked: the flags, the policy, the models and the options. When one of them is missing nothing is
+        // stored and no lock is taken; the page offers the assisted path.
         var snapshot = identityPolicy?.Snapshot;
-        if (!SelfHostedOn || presenceIssuer is null || snapshot is null || !snapshot.IsReady || biometricModels is not { IsAvailable: true })
+        var options = identityOptions?.Value;
+        if (!SelfHostedOn || presenceIssuer is null || options is null || snapshot is null || !snapshot.IsReady || biometricModels is not { IsAvailable: true })
             return Task.FromResult<PresenceChallengeIssue?>(null);
 
+        // The section IdentityVerification is valid as a whole or it is not available (IdentityVerificationOptions.Validate): a limit out of its range, a blank path or a hash
+        // that is not one means that the numbers announced to the page and applied to its frames are not those of the plan, so, like a missing policy or model, no challenge is
+        // issued and the page offers the assisted path. Validate names the setting and its bounds, never its value, and so does the log.
+        var invalid = options.Validate();
+        if (invalid.Count > 0)
+        {
+            logger.LogWarning("The presence challenge is not available: the section IdentityVerification is invalid ({Problem})", invalid[0]);
+            return Task.FromResult<PresenceChallengeIssue?>(null);
+        }
+
         var policy = snapshot.Policy;
-        var limits = identityOptions?.Value.Presence ?? new IdentityPresenceOptions();
+        var limits = options.Presence;
         return WithLockedPoseSessionAsync<PresenceChallengeIssue?>(session, null, async () =>
         {
             // Opened and not closed, and the guest did not choose a person (the assisted path is never handed an automatic challenge); then what the legacy step

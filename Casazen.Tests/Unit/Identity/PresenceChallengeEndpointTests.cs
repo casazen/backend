@@ -12,6 +12,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Identity;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Logging;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.CheckIn;
@@ -28,6 +29,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -110,6 +112,68 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
     }
 
     [Theory]
+    [InlineData(2, 160, 500, 2)]
+    [InlineData(300, 1_920, 30_000, 60)]
+    public async Task IssuePresenceChallenge_ALimitOnTheEdgeOfItsRange_StillIssuesTheChallenge(int frames, int side, int timeoutMs, int announcedFrames)
+    {
+        // The range of each limit is the one of IdentityVerificationOptions.Validate: its edges are valid, and the numbers announced to the page are still the smaller of the
+        // policy and the options (60 frames in the policy).
+        await using var world = await World.CreateAsync(_directory);
+        world.Limits.Presence.MaxFrames = frames;
+        world.Limits.Presence.MaxFrameSide = side;
+        world.Limits.Presence.SequenceTimeoutMs = timeoutMs;
+        Assert.Empty(world.Limits.Validate());
+        var session = await world.ReadyStayAsync();
+
+        var issued = await world.Flow().IssuePresenceChallengeAsync(session, CancellationToken.None);
+
+        Assert.NotNull(issued);
+        Assert.Equal((announcedFrames, side), (issued.MaxFrames, issued.MaxFrameSide));
+    }
+
+    [Theory]
+    [InlineData("MaxFrames", 1)]
+    [InlineData("MaxFrames", 301)]
+    [InlineData("MaxFrames", 100_000)]
+    [InlineData("MaxFrameBytes", 8_191)]
+    [InlineData("MaxSequenceBytes", 65_535)]
+    [InlineData("MaxFrameSide", 159)]
+    [InlineData("MaxFrameSide", 1_921)]
+    [InlineData("SequenceTimeoutMs", 499)]
+    [InlineData("SequenceTimeoutMs", 30_001)]
+    public async Task IssuePresenceChallenge_ALimitOfTheSectionOutOfItsRange_AnswersNothing_StoresNothing_AndTheLogNamesTheSettingNeverTheValue(string setting, int value)
+    {
+        // An invalid section is not available for its readers (IdentityVerificationOptions.Validate): no challenge, nothing stored, the page offers the assisted path.
+        await using var world = await World.CreateAsync(_directory);
+        var session = await world.ReadyStayAsync();
+        typeof(IdentityPresenceOptions).GetProperty(setting)!.SetValue(world.Limits.Presence, value);
+        var before = session.DocumentCheckJson;
+        var logger = new CapturingLogger<IdentityVerificationFlowService>();
+
+        var issued = await world.Flow(logger).IssuePresenceChallengeAsync(session, CancellationToken.None);
+
+        Assert.Null(issued);
+        Assert.Equal(before, session.DocumentCheckJson);
+        Assert.False(HasStoredChallenge(session));
+        var problem = Assert.Single(logger.Entries, entry => entry.Message.Contains("section IdentityVerification is invalid", StringComparison.Ordinal));
+        Assert.Contains($"Presence:{setting}", problem.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(value.ToString(CultureInfo.InvariantCulture), problem.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task IssuePresenceChallenge_ASettingOfTheSectionOutsideThePresenceThatIsInvalid_MakesTheWholeSectionNotAvailable()
+    {
+        await using var world = await World.CreateAsync(_directory);
+        var session = await world.ReadyStayAsync();
+        world.Limits.FormatsDirectory = " ";
+
+        var issued = await world.Flow().IssuePresenceChallengeAsync(session, CancellationToken.None);
+
+        Assert.Null(issued);
+        Assert.False(HasStoredChallenge(session));
+    }
+
+    [Theory]
     [InlineData("verification flag off")]
     [InlineData("self-hosted flag off")]
     [InlineData("identity step not opened")]
@@ -124,6 +188,7 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
     [InlineData("already verified")]
     [InlineData("policy hash does not match")]
     [InlineData("models not ready")]
+    [InlineData("options out of range")]
     public async Task IssuePresenceChallenge_WhileOneConditionIsMissing_AnswersNothing_AndStoresNothing(string missing)
     {
         await using var world = await World.CreateAsync(_directory, pinThePolicy: missing != "policy hash does not match", modelsReady: missing != "models not ready");
@@ -167,6 +232,9 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
                 break;
             case "already verified":
                 session.BiometricOutcome = BiometricOutcome.Accept;
+                break;
+            case "options out of range":
+                world.Limits.Presence.MaxFrames = 100_000;
                 break;
         }
 
@@ -599,7 +667,7 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
             return world;
         }
 
-        public IdentityVerificationFlowService Flow()
+        public IdentityVerificationFlowService Flow(ILogger<IdentityVerificationFlowService>? logger = null)
         {
             var file = $"policy-{_pinThePolicy}.json";
             File.WriteAllText(Path.Combine(_directory, file), IdentityPolicyTestFiles.ShippedText(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
@@ -621,7 +689,7 @@ public sealed class PresenceChallengeEndpointTests : IDisposable
                 Mock.Of<IFileStorage>(),
                 DataProtection,
                 Clock,
-                NullLogger<IdentityVerificationFlowService>.Instance,
+                logger ?? NullLogger<IdentityVerificationFlowService>.Instance,
                 legalTexts: Registry.Object,
                 featureFlags: Flags,
                 identityPolicy: policy,
