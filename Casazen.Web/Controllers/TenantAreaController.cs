@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Leases;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -14,7 +15,8 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// Self-service area of a long-rent tenant. Access is bound to a verified Auth0 email which must equal an active,
-/// non-anonymized tenant party of the lease. Queries deliberately bypass the host tenant filter and then narrow every
+/// non-anonymized tenant party of the lease, and the lease must not be a draft (<see cref="LeaseTenantAreaRules"/>: a draft
+/// answers 404 on every route). Queries deliberately bypass the host tenant filter and then narrow every
 /// row by both lease and org; a tenant never joins the landlord's organization.
 /// </summary>
 [ApiController]
@@ -266,7 +268,9 @@ public sealed partial class TenantAreaController(
 
     private async Task<List<AccessibleLease>> AccessibleLeasesAsync(string email, CancellationToken cancellationToken, Guid? leaseId = null)
     {
+        // Every action of the area reaches a lease through this query, so the rule of what a tenant may read (no drafts) lives here, once.
         var rows = await db.LeaseContracts.IgnoreQueryFilters().AsNoTracking()
+            .Where(LeaseTenantAreaRules.VisibleToTenant)
             .Where(x => leaseId == null || x.Id == leaseId)
             .Include(x => x.Property)
             .Include(x => x.Parties)
