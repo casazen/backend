@@ -20,8 +20,13 @@ public interface ICheckInDocumentReader
     /// <summary>
     /// The prefill of the self-hosted flow (<c>Features:CheckInIdentitySelfHosted</c>, E71/F01/US03/T01, NF-190): the answer of <see cref="ReadAsync"/> and, on top of it, the
     /// fields read by the zones of the card with the side, the zone and the confidence each comes from, and the fields of the check-in the guest has still to type. In the process only.
+    /// <para>
+    /// <paramref name="lookForPortrait"/>: the face of the document may be looked for, to find the portrait of the card and to turn it. The face of a document is looked for only after the
+    /// current consent of a guest the verification is offered to (not a minor, nor one who refused): the caller says so, and without it the card is read as it lies (the box of the
+    /// card and its MRZ band turn it) and no face detector is asked. The values are the same kind either way.
+    /// </para>
     /// </summary>
-    Task<CheckInZonedRead> ReadZonedAsync(Stream content, CancellationToken cancellationToken = default);
+    Task<CheckInZonedRead> ReadZonedAsync(Stream content, bool lookForPortrait, CancellationToken cancellationToken = default);
 }
 
 /// <param name="Read">True when at least one field was taken from the document.</param>

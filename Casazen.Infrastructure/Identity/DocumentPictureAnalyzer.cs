@@ -88,6 +88,15 @@ public sealed class DocumentPicture : IDisposable
     }
 
     /// <summary>
+    /// <see cref="Inspect(DocumentFormat, DocumentSide, CancellationToken)"/> that may leave the face alone: with <paramref name="lookForPortrait"/> false the detector is never asked
+    /// (<see cref="DocumentGeometryInspector.Inspect(RasterImage, DocumentFormat, DocumentSide, bool, CancellationToken)"/>), and the card is judged and turned by its box and its MRZ band.
+    /// </summary>
+    public DocumentGeometryReport Inspect(DocumentFormat format, DocumentSide declaredSide, bool lookForPortrait, CancellationToken cancellationToken)
+    {
+        return _geometry.Inspect(_image, format, declaredSide, lookForPortrait, cancellationToken);
+    }
+
+    /// <summary>
     /// Whether the card of <paramref name="report"/> can be cut out and set upright: the whole card was found, its edges are visible, it is of the layout of its format and its
     /// orientation is decided. Only then are its zones where the layout of the format puts them.
     /// </summary>

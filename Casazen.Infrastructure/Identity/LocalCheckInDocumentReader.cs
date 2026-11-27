@@ -45,7 +45,7 @@ public sealed class LocalCheckInDocumentReader(
         }
     }
 
-    public async Task<CheckInZonedRead> ReadZonedAsync(Stream content, CancellationToken cancellationToken = default)
+    public async Task<CheckInZonedRead> ReadZonedAsync(Stream content, bool lookForPortrait, CancellationToken cancellationToken = default)
     {
         byte[]? bytes = null;
         try
@@ -58,7 +58,7 @@ public sealed class LocalCheckInDocumentReader(
             var (read, machine) = await ReadLocalAsync(bytes!, cancellationToken);
 
             // Nothing was read of the document: no zone is read either, and everything is still to be typed.
-            IReadOnlyList<ZonedField> fields = read.Read ? await ReadZonesAsync(bytes!, machine, cancellationToken) : [];
+            IReadOnlyList<ZonedField> fields = read.Read ? await ReadZonesAsync(bytes!, machine, lookForPortrait, cancellationToken) : [];
             return new CheckInZonedRead(read, fields, CheckInPrefillFields.MissingFrom(read.Fields, fields));
         }
         finally
@@ -136,8 +136,12 @@ public sealed class LocalCheckInDocumentReader(
     /// The values read by the zones of the card of the photo. The format is the one the MRZ of the photo shows, or the card the registry holds when it shows none; the side is not told by
     /// the prefill, so the MRZ says the side that has it and, without one, the side with the portrait is taken, and the geometry confirms it from the picture itself. Empty when the
     /// services of the zones are not there, the card cannot be found whole and upright, or the models are not available: the reading of today stands, a guest types what is not read.
+    /// <para>
+    /// <paramref name="lookForPortrait"/> false (no current consent, a minor, a refusal): the face detector is never asked. The card is judged and turned by its box and its MRZ band, and the
+    /// side is the one the MRZ or the layout names, with nothing to confirm it from the picture: a picture of the other side has no label next to a value, so it gives nothing.
+    /// </para>
     /// </summary>
-    private async Task<IReadOnlyList<ZonedField>> ReadZonesAsync(byte[] bytes, MrzExtractionResult? machine, CancellationToken ct)
+    private async Task<IReadOnlyList<ZonedField>> ReadZonesAsync(byte[] bytes, MrzExtractionResult? machine, bool lookForPortrait, CancellationToken ct)
     {
         try
         {
@@ -172,11 +176,12 @@ public sealed class LocalCheckInDocumentReader(
 
             using (picture)
             {
-                var report = picture.Inspect(format, declared, ct);
-                if (sides.Classify(report, machine is not null, format) is not { } shown)
+                var report = picture.Inspect(format, declared, lookForPortrait, ct);
+                var shown = lookForPortrait ? sides.Classify(report, machine is not null, format) : declared;
+                if (shown is not { } side)
                     return [];
 
-                return await picture.ReadFieldsAsync(format, shown, report, ct);
+                return await picture.ReadFieldsAsync(format, side, report, ct);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

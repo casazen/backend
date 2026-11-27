@@ -181,6 +181,8 @@ public partial class PublicGuestCheckInController(
     /// also carries <c>fields</c> (<c>name</c>, <c>value</c>, <c>side</c>, <c>zone</c>, <c>confidence</c>, <c>source</c> of every value the zones of the card gave), <c>missing</c> (the
     /// fields of the check-in the guest has still to type) and <c>source</c> <c>local</c>. The values go to the guest who sent the photo, and only when the photo is of a guest of the
     /// stay (a photo of anybody else answers <c>guest_mismatch</c> with none); they are never stored, logged or put in a job. With the flow off the answer is the one of before.
+    /// The face of the document is looked for (to find the portrait and to turn the card) only for a guest the verification is offered to who gave the current consent; before the
+    /// consent, for a minor and after a refusal no face detector is asked and the card is read as it lies.
     /// </para>
     /// </summary>
     [HttpPost("{token}/read-document")]
@@ -202,7 +204,11 @@ public partial class PublicGuestCheckInController(
         CheckInDocumentRead read;
         if (zonedPrefill)
         {
-            zoned = await documentReader.ReadZonedAsync(stream, HttpContext.RequestAborted);
+            // The face of the document is looked for (to find the portrait and to turn the card) only for a guest the verification is offered to who gave the current consent: the way the
+            // document step does it. Before the consent, for a minor and after a refusal the card is read as it lies, and no face detector is asked (ADR-013, amendment 2026-11).
+            var state = await verificationFlow.GetStateAsync(session, HttpContext.RequestAborted);
+            var lookForPortrait = state is { BiometricOffered: true, ConsentRecorded: true };
+            zoned = await documentReader.ReadZonedAsync(stream, lookForPortrait, HttpContext.RequestAborted);
             read = zoned.Read;
         }
         else

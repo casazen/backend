@@ -203,6 +203,75 @@ public sealed class LocalPrefillTests
         Assert.DoesNotContain(Surname, CheckInZonedFieldDto.From(result.Fields[0]).ToString(), StringComparison.Ordinal);
     }
 
+    // ---- The face of the document is looked for only with the current consent --------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ReadZoned_WithoutTheSearchOfTheFace_ReadsTheFrontAsTheCardLies_AndNeverAsksTheFaceDetector()
+    {
+        var world = new Zones();
+        var front = Picture(DocumentSide.Front);
+        world.Ocr.Fields = new DocumentOcrResult
+        {
+            HasDocumentEvidence = true,
+            DocumentKind = "IdentityCard",
+            GivenNames = GivenNames,
+            Surname = Surname,
+            DocumentNumber = DocumentNumber,
+            BirthPlace = "ROMA",
+            BirthProvince = "RM",
+            DateOfBirth = DateTime.Parse(BirthDay, System.Globalization.CultureInfo.InvariantCulture),
+            Sex = "F",
+            Nationality = "ITA",
+        };
+        world.Zoned.Fields[DocumentSide.Front] = FrontFields();
+
+        var result = await world.Reader().ReadZonedAsync(new MemoryStream(front), lookForPortrait: false, Ct);
+
+        // The card is found by its box and read as it lies: the zones are there, and no face detector was asked.
+        Assert.True(result.Read.Read);
+        Assert.Equal(0, world.Detector.Calls);
+        Assert.Equal(7, result.Fields.Count);
+        var card = Assert.Single(world.Zoned.Cards);
+        Assert.Equal(DocumentSide.Front, card.Side);
+        Assert.InRange(card.Width, 470, 495);
+        Assert.InRange(card.Height, 295, 315);
+    }
+
+    [Fact]
+    public async Task ReadZoned_WithoutTheSearchOfTheFace_ReadsTheBackByItsMrzBand_AndNeverAsksTheFaceDetector()
+    {
+        var world = new Zones();
+        var back = Picture(DocumentSide.Back);
+        world.Mrz.Add(back, CieMrz());
+        world.Zoned.Fields[DocumentSide.Back] = [new ZonedField(ZonedFieldNames.Surname, Surname, DocumentSide.Back, ZonedFieldZones.Mrz, 0.95, ZonedFieldSources.Mrz)];
+
+        var result = await world.Reader().ReadZonedAsync(new MemoryStream(back), lookForPortrait: false, Ct);
+
+        Assert.True(result.Read.Read);
+        Assert.Equal(0, world.Detector.Calls);
+        Assert.Equal([ZonedFieldNames.Surname], result.Fields.Select(field => field.Name));
+        Assert.Equal(DocumentSide.Back, Assert.Single(world.Zoned.Cards).Side);
+    }
+
+    [Fact]
+    public async Task ReadZoned_WithoutTheSearchOfTheFace_ATurnedFrontIsNotDecided_AndGivesNoZone()
+    {
+        // Nothing turns a front that lies on its side without a face (it has no MRZ band): it is not guessed, no zone is read, and the face detector is still not asked.
+        var world = new Zones();
+        using var upright = DocumentImageFactory.Render(Cie, DocumentSide.Front, DocumentImageFactory.WholeCard);
+        using var turned = DocumentImageFactory.TurnedCounterClockwise(upright);
+        var picture = TestImages.Png(turned.Width, turned.Height, turned.Rgb);
+        world.Ocr.Fields = new DocumentOcrResult { HasDocumentEvidence = true, GivenNames = GivenNames, Surname = Surname };
+        world.Zoned.Fields[DocumentSide.Front] = FrontFields();
+
+        var result = await world.Reader().ReadZonedAsync(new MemoryStream(picture), lookForPortrait: false, Ct);
+
+        Assert.True(result.Read.Read);
+        Assert.Equal(0, world.Detector.Calls);
+        Assert.Empty(result.Fields);
+        Assert.Empty(world.Zoned.Cards);
+    }
+
     // ---- The endpoint -----------------------------------------------------------------------------------------------------------------------------------------------------
 
     [Fact]
@@ -257,7 +326,7 @@ public sealed class LocalPrefillTests
             ["confirmGuest", "guest", "guestPosition", "read", "reason", "side"],
             json.RootElement.EnumerateObject().Select(member => member.Name).Order());
         plain.Verify(reader => reader.ReadAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Once);
-        plain.Verify(reader => reader.ReadZonedAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
+        plain.Verify(reader => reader.ReadZonedAsync(It.IsAny<Stream>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -298,6 +367,30 @@ public sealed class LocalPrefillTests
         Assert.Equal("local", response.Source);
     }
 
+    /// <summary>
+    /// Proof (permission): through the endpoint the face detector is asked only for a guest the verification is offered to who gave the current consent. Before the consent, for a minor
+    /// (not offered) and after a refusal the card is read as it lies: the zones are still returned, and no face detector was asked.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true, false, true)]
+    [InlineData(true, false, false, false)]
+    [InlineData(false, true, false, false)]
+    [InlineData(false, false, true, false)]
+    public async Task ReadDocument_SelfHostedOn_LooksForTheFaceOnlyWithTheCurrentConsent(bool offered, bool consented, bool refused, bool faceSearched)
+    {
+        var world = new Zones();
+        var back = Picture(DocumentSide.Back);
+        world.Mrz.Add(back, CieMrz());
+        world.Zoned.Fields[DocumentSide.Back] = [new ZonedField(ZonedFieldNames.Surname, Surname, DocumentSide.Back, ZonedFieldZones.Mrz, 0.95, ZonedFieldSources.Mrz)];
+        var endpoint = new Endpoint(world.Reader(), selfHosted: true, Surname, GivenNames, StateOf(offered, consented, refused));
+
+        var response = await endpoint.ReadAsync(back);
+
+        Assert.True(response.Read);
+        Assert.Equal(faceSearched, world.Detector.Calls > 0);
+        Assert.Equal([ZonedFieldNames.Surname], response.Fields!.Select(field => field.Name));
+    }
+
     [Fact]
     public void CheckInPrefillFields_MissingFrom_IsWhatNeitherTheReadingNorAZoneGave()
     {
@@ -317,6 +410,10 @@ public sealed class LocalPrefillTests
     }
 
     // ---- helpers ----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    /// <summary>Where the verification of a guest stands, as far as the prefill needs it: whether it is offered (not a minor, nor a refusal) and whether the current consent is recorded.</summary>
+    private static IdentityVerificationState StateOf(bool offered, bool consented, bool refused = false) =>
+        new(IdentityVerificationSteps.Document, null, offered, consented, refused, false, 3, false, false, 0);
 
     private static void AssertNoValueIn(IEnumerable<string> lines)
     {
@@ -372,7 +469,7 @@ public sealed class LocalPrefillTests
         private readonly PublicGuestCheckInController _controller;
         private readonly Mock<IStayGuestService> _roster = new();
 
-        public Endpoint(ICheckInDocumentReader reader, bool selfHosted, string surname, string givenNames)
+        public Endpoint(ICheckInDocumentReader reader, bool selfHosted, string surname, string givenNames, IdentityVerificationState? state = null)
         {
             var booker = new Guest { Id = Guid.NewGuid(), FirstName = givenNames, LastName = surname };
             var booking = new Booking { Id = Guid.NewGuid(), GuestId = booker.Id, Guest = booker, NumberOfGuests = 1 };
@@ -381,13 +478,17 @@ public sealed class LocalPrefillTests
                 .ReturnsAsync([StayGuest.FromBooker(booking, booker)]);
             var checkIn = new Mock<IGuestCheckInService>();
             checkIn.Setup(service => service.GetSessionByTokenAsync(Token)).ReturnsAsync(session);
+
+            // Where the verification of the guest stands: by default it is offered and the current consent is recorded, as for a guest who is at the document step.
+            var flow = new Mock<IIdentityVerificationFlowService>();
+            flow.Setup(service => service.GetStateAsync(session, It.IsAny<CancellationToken>())).ReturnsAsync(state ?? StateOf(offered: true, consented: true));
             var flags = new TestFeatureFlags(selfHosted ? [FeatureFlags.CheckInIdentityVerification, FeatureFlags.CheckInIdentitySelfHosted] : [FeatureFlags.CheckInIdentityVerification]);
             _controller = new PublicGuestCheckInController(
                 checkIn.Object,
                 Mock.Of<IAlloggiatiCodeTableService>(),
                 reader,
                 Mock.Of<IAlloggiatiReportScheduler>(),
-                Mock.Of<IIdentityVerificationFlowService>(),
+                flow.Object,
                 flags,
                 Mock.Of<IStringLocalizer<SharedResources>>(),
                 new ListLogger<PublicGuestCheckInController>(Logs))
@@ -431,4 +532,11 @@ public sealed class LocalPrefillTests
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
             lines.Add(formatter(state, exception));
     }
+}
+
+/// <summary>The prefill of a guest who gave the current consent: the face of the document may be looked for, as the tests written before the consent was asked ask for it.</summary>
+internal static class LocalPrefillReaderExtensions
+{
+    public static Task<CheckInZonedRead> ReadZonedAsync(this LocalCheckInDocumentReader reader, Stream content, CancellationToken cancellationToken) =>
+        reader.ReadZonedAsync(content, true, cancellationToken);
 }
