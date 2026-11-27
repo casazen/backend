@@ -104,6 +104,39 @@ public sealed class PresenceClosureIdempotencyTests
     }
 
     [Fact]
+    public async Task PresenceClosureIdempotency_ATwinThatWritesTheRowFirst_IsAnsweredWithTheStoredOutcome()
+    {
+        // The last line (AC3, g): a twin of the attempt (another request, another process) writes the row of this key after this request read the replay again under the lock and before its
+        // save. The unique index refuses this save (emulated here, as PostgreSQL does it in PresenceClosurePostgresTests), the one save of this request is lost whole, and the answer is the
+        // outcome the twin stored, as a replay: no error, one row, nothing of the session moved.
+        var unique = new UniqueIdempotencyKeyInterceptor();
+        await using var world = await PresenceClosureWorld.CreateAsync(true, unique);
+        var session = await world.ReadyStayAsync();
+        var token = await world.IssueChallengeAsync(session);
+        var key = PresenceClosureKit.NewKey();
+        var twinRow = TwinRow(session, key);
+        world.Collector.OnCollect = async () =>
+        {
+            await using var twin = world.NewContext();
+            twin.BiometricVerificationLogs.Add(twinRow);
+            await twin.SaveChangesAsync(Ct);
+        };
+
+        var answer = await world.Flow().SubmitPresenceSequenceAsync(session, PresenceClosureKit.Submission(key, token), Ct);
+
+        Assert.Equal((PresenceStepStatus.Done, IdentityVerificationGuestResults.Operator, true), (answer.Status, answer.Result, answer.Replayed));
+        Assert.NotNull(answer.State);
+        Assert.Equal(1, unique.Refused);
+        var row = Assert.Single(await world.LogRowsAsync(session));
+        Assert.Equal(twinRow.Id, row.Id);
+        var saved = await world.ReadBackAsync(session.Id);
+        Assert.Equal((0, (DateTime?)null, (string?)null), (saved.BiometricAttempts, saved.IdentityClosedAt, saved.IdentityLastAttemptKey));
+        Assert.NotNull(PresenceClosureKit.ReadCheck(saved).Presence);
+        Assert.Empty(world.Alerts.Raised);
+        Assert.Equal(1, world.Collector.Calls);
+    }
+
+    [Fact]
     public async Task PresenceClosureIdempotency_ANewKeyAfterTheClosure_IsRefused_AsAlreadyClosed()
     {
         await using var world = await PresenceClosureWorld.CreateAsync();
@@ -185,6 +218,26 @@ public sealed class PresenceClosureIdempotencyTests
         Assert.Equal("4321", json.RootElement.GetProperty("lockCode").GetString());
         Assert.Single(await world.LogRowsAsync(session));
     }
+
+    /// <summary>The row of a twin that closed the same attempt: a review in observation with the key, as the closure writes it.</summary>
+    private static BiometricVerificationLog TwinRow(GuestCheckInSession session, string key) => new()
+    {
+        OrgId = session.OrgId,
+        BookingId = session.BookingId,
+        GuestId = session.Booking.GuestId,
+        Outcome = BiometricOutcome.Escalate,
+        Attempts = 1,
+        ModelName = "SFace",
+        ModelVersion = "2021dec",
+        PolicyVersion = "identity-policy-2026.11-1",
+        PolicyHash = new string('c', 64),
+        DecisionMode = IdentityDecisionMode.Observation,
+        ShadowOutcome = BiometricOutcome.Escalate,
+        FormatId = "it-cie-3.0",
+        Channel = IdentityChannels.AndroidChrome,
+        IdempotencyKey = key,
+        CreatedAt = PresenceClosureKit.Now.UtcDateTime,
+    };
 
     /// <summary>The state as the page reads it: a record that holds lists compares them by reference, the JSON by their content.</summary>
     private static string Json(IdentityVerificationState? state) =>

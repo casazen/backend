@@ -17,11 +17,13 @@ using Casazen.Tests.Unit.Services;
 using Casazen.Web.Extensions;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Npgsql;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
@@ -656,6 +658,9 @@ internal sealed class ScriptedEvidenceCollector : IPresenceEvidenceCollector
 
     public PresenceEvidence Default { get; set; } = PresenceClosureKit.Perfect();
 
+    /// <summary>Runs, awaited, when the pipeline is asked and before it answers: what another request does while this one is in the middle of its work (a twin that writes its row).</summary>
+    public Func<Task>? OnCollect { get; set; }
+
     public void Next(PresenceEvidence evidence) => _answers.Enqueue(_ => Task.FromResult(evidence));
 
     public void Fail(Exception error) => _answers.Enqueue(_ => Task.FromException<PresenceEvidence>(error));
@@ -666,7 +671,7 @@ internal sealed class ScriptedEvidenceCollector : IPresenceEvidenceCollector
         throw new InvalidOperationException("The time of the attempt should have been over.");
     });
 
-    public Task<PresenceEvidence> CollectAsync(FrameSequence sequence, StoredPresenceChallenge challenge, byte[] documentFront, IdentityDecisionPolicy policy, CancellationToken ct)
+    public async Task<PresenceEvidence> CollectAsync(FrameSequence sequence, StoredPresenceChallenge challenge, byte[] documentFront, IdentityDecisionPolicy policy, CancellationToken ct)
     {
         Interlocked.Increment(ref _calls);
         lock (Sequences)
@@ -675,7 +680,10 @@ internal sealed class ScriptedEvidenceCollector : IPresenceEvidenceCollector
             Documents.Add(documentFront);
         }
 
-        return _answers.TryDequeue(out var next) ? next(ct) : Task.FromResult(Default);
+        if (OnCollect is { } during)
+            await during();
+
+        return _answers.TryDequeue(out var next) ? await next(ct) : Default;
     }
 }
 
@@ -686,10 +694,25 @@ internal sealed class RecordingOperatorAlerts : IVerificationOperatorAlerts
 
     public List<(Guid OrgId, Guid BookingId)> Resolved { get; } = [];
 
+    /// <summary>The failure of the next alert (a push that is down, a database that refuses): nothing is recorded for it, the way a call that threw told nobody.</summary>
+    public Exception? FailNextRaise { get; set; }
+
+    /// <summary>The token each alert was raised with: the operators are told by the effects of a decision, which no request that drops may cancel.</summary>
+    public List<CancellationToken> RaisedWith { get; } = [];
+
     public Task RaiseAsync(Guid sessionId, string reasonCode, CancellationToken ct)
     {
+        if (FailNextRaise is { } failure)
+        {
+            FailNextRaise = null;
+            return Task.FromException(failure);
+        }
+
         lock (Raised)
+        {
             Raised.Add((sessionId, reasonCode));
+            RaisedWith.Add(ct);
+        }
 
         return Task.CompletedTask;
     }
@@ -707,6 +730,9 @@ internal sealed class RecordingOperatorAlerts : IVerificationOperatorAlerts
 internal sealed class PresenceMemoryStorage : IFileStorage
 {
     public Dictionary<string, byte[]> Objects { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>The failure of the next deletion (a storage that is down): the object stays where it was.</summary>
+    public Exception? FailNextDelete { get; set; }
 
     public async Task PutAsync(StorageBucket bucket, string key, Stream content, string contentType, CancellationToken cancellationToken = default)
     {
@@ -730,6 +756,12 @@ internal sealed class PresenceMemoryStorage : IFileStorage
 
     public Task DeleteAsync(StorageBucket bucket, string key, CancellationToken cancellationToken = default)
     {
+        if (FailNextDelete is { } failure)
+        {
+            FailNextDelete = null;
+            return Task.FromException(failure);
+        }
+
         lock (Objects)
             Objects.Remove(key);
 
@@ -754,14 +786,14 @@ internal sealed class PresenceClosureWorld : IAsyncDisposable
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "casazen-presence-closure-" + Guid.NewGuid().ToString("N"));
-    private readonly DbContextOptions<AppDbContext> _options =
-        new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"presence-closure-{Guid.NewGuid()}").Options;
+    private readonly DbContextOptions<AppDbContext> _options;
 
     private readonly IdentityPolicyProvider _policy;
     private readonly DocumentFormatRegistry _formats = PresenceClosureKit.Formats();
 
-    private PresenceClosureWorld(bool pinThePolicy)
+    private PresenceClosureWorld(bool pinThePolicy, SaveChangesInterceptor[] interceptors)
     {
+        _options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"presence-closure-{Guid.NewGuid()}").AddInterceptors(interceptors).Options;
         Directory.CreateDirectory(_directory);
         _policy = PresenceClosureKit.Policy(_directory, pinThePolicy);
         Db = NewContext();
@@ -807,9 +839,10 @@ internal sealed class PresenceClosureWorld : IAsyncDisposable
 
     public bool ModelsReady { get; set; } = true;
 
-    public static async Task<PresenceClosureWorld> CreateAsync(bool pinThePolicy = true)
+    /// <summary>The world; <paramref name="interceptors"/> sit on every context of its database (a save that is refused, the unique index of the log that the memory store has not).</summary>
+    public static async Task<PresenceClosureWorld> CreateAsync(bool pinThePolicy = true, params SaveChangesInterceptor[] interceptors)
     {
-        var world = new PresenceClosureWorld(pinThePolicy);
+        var world = new PresenceClosureWorld(pinThePolicy, interceptors);
         world.Db.Orgs.Add(new OrgEntity
         {
             Id = world.OrgId,
@@ -1014,4 +1047,60 @@ internal sealed class PresenceClosureWorld : IAsyncDisposable
     };
 
     private static string Sha256(byte[] bytes) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
+}
+
+/// <summary>
+/// The unique index of the log on (booking, key) (<see cref="BiometricVerificationLog.IdempotencyIndexName"/>) for a store that has none: a save that adds a row whose key a row of the
+/// same booking already saved through any context of the options fails the way PostgreSQL fails it, a <see cref="DbUpdateException"/> that carries the 23505 of that index. It lets the
+/// closure be tried here at the very branch that PostgreSQL feeds in <c>PresenceClosurePostgresTests</c>.
+/// </summary>
+internal sealed class UniqueIdempotencyKeyInterceptor : SaveChangesInterceptor
+{
+    private readonly object _gate = new();
+    private readonly HashSet<(Guid BookingId, string Key)> _saved = [];
+    private List<(Guid BookingId, string Key)> _pending = [];
+
+    /// <summary>The saves refused so far.</summary>
+    public int Refused { get; private set; }
+
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken cancellationToken = default)
+    {
+        var added = eventData.Context!.ChangeTracker.Entries<BiometricVerificationLog>()
+            .Where(entry => entry.State == EntityState.Added && entry.Entity.IdempotencyKey is not null)
+            .Select(entry => (entry.Entity.BookingId, entry.Entity.IdempotencyKey!))
+            .ToList();
+        lock (_gate)
+        {
+            if (added.Any(_saved.Contains))
+            {
+                Refused++;
+                throw new DbUpdateException(
+                    "save failed",
+                    new PostgresException(
+                        "duplicate key value violates unique constraint",
+                        "ERROR",
+                        "ERROR",
+                        PostgresErrorCodes.UniqueViolation,
+                        constraintName: BiometricVerificationLog.IdempotencyIndexName));
+            }
+
+            _pending = added;
+        }
+
+        return base.SavingChangesAsync(eventData, result, cancellationToken);
+    }
+
+    public override ValueTask<int> SavedChangesAsync(SaveChangesCompletedEventData eventData, int result, CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            _saved.UnionWith(_pending);
+            _pending = [];
+        }
+
+        return base.SavedChangesAsync(eventData, result, cancellationToken);
+    }
 }

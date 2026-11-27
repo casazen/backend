@@ -111,6 +111,73 @@ public sealed class PresenceClosurePostgresTests : IAsyncLifetime
         Assert.True(OrgTeamAccess.IsUniqueViolation(refused, BiometricVerificationLog.IdempotencyIndexName));
     }
 
+    /// <summary>
+    /// The last line of the idempotent closure on real PostgreSQL (AC3, g): a twin of the attempt, another request in another process, writes the row of the same key after this request read
+    /// the replay again under the lock of the session and before its save. The unique index on (booking, key) refuses the row of this request (23505), its one save is rolled back whole, and
+    /// it answers the outcome the twin stored, as a replay: no error, one row (the twin's), the session and its challenge as they were.
+    /// </summary>
+    [PostgresFact]
+    public async Task PresenceClosurePostgres_ATwinThatWritesTheRowFirst_GetsTheStoredOutcome()
+    {
+        var (sessionId, bookingId) = await SeedReadyStayAsync();
+        var collector = new ScriptedEvidenceCollector();
+        var policy = Policy();
+        var key = Guid.NewGuid().ToString();
+        string token;
+        await using (var issuing = NewContext())
+        {
+            var session = await LoadAsync(issuing, sessionId);
+            var issued = await Flow(issuing, collector, policy).IssuePresenceChallengeAsync(session, CancellationToken.None);
+            Assert.NotNull(issued);
+            token = issued.ChallengeToken;
+        }
+
+        // The twin writes its row when the pipeline of this request is asked: after the replay was read again under the lock, before the save. Its own context and connection, committed
+        // at once; the shape and the lengths of the row are the ones the closure writes (no check constraint on the table, the filtered unique index is the only one that can refuse it).
+        var twinId = Guid.Empty;
+        collector.OnCollect = async () =>
+        {
+            await using var twin = NewContext();
+            var twinSession = await LoadAsync(twin, sessionId);
+            var twinRow = new BiometricVerificationLog
+            {
+                OrgId = twinSession.OrgId,
+                BookingId = twinSession.BookingId,
+                GuestId = twinSession.Booking.GuestId,
+                Outcome = BiometricOutcome.Escalate,
+                Attempts = 1,
+                ModelName = "SFace",
+                ModelVersion = "2021dec",
+                PolicyVersion = "identity-policy-2026.11-1",
+                PolicyHash = new string('c', 64),
+                DecisionMode = IdentityDecisionMode.Observation,
+                ShadowOutcome = BiometricOutcome.Escalate,
+                FormatId = "it-cie-3.0",
+                Channel = IdentityChannels.AndroidChrome,
+                IdempotencyKey = key,
+                CreatedAt = Now.UtcDateTime,
+            };
+            twin.BiometricVerificationLogs.Add(twinRow);
+            await twin.SaveChangesAsync();
+            twinId = twinRow.Id;
+        };
+
+        await using var db = NewContext();
+        var loaded = await LoadAsync(db, sessionId);
+        var answer = await Flow(db, collector, policy).SubmitPresenceSequenceAsync(loaded, Submission(key, token), CancellationToken.None);
+
+        Assert.Equal((PresenceStepStatus.Done, IdentityVerificationGuestResults.Operator, true), (answer.Status, answer.Result, answer.Replayed));
+        Assert.NotNull(answer.State);
+        Assert.Equal(1, collector.Calls);
+
+        await using var read = NewContext();
+        var row = Assert.Single(await read.BiometricVerificationLogs.IgnoreQueryFilters().AsNoTracking().Where(l => l.BookingId == bookingId).ToListAsync());
+        Assert.Equal((twinId, key), (row.Id, row.IdempotencyKey));
+        var saved = await read.GuestCheckInSessions.IgnoreQueryFilters().AsNoTracking().SingleAsync(s => s.Id == sessionId);
+        Assert.Equal((0, (DateTime?)null, (string?)null), (saved.BiometricAttempts, saved.IdentityClosedAt, saved.IdentityLastAttemptKey));
+        Assert.NotNull(PresenceClosureKit.ReadCheck(saved).Presence);
+    }
+
     private AppDbContext NewContext() => new(_database!.CreateOptions(), null, _dataProtection);
 
     private static Task<GuestCheckInSession> LoadAsync(AppDbContext db, Guid sessionId) =>
