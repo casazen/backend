@@ -1,0 +1,90 @@
+{
+  "id": "it-cie-3.0",
+  "country": "ITA",
+  "label": "Carta d'identità elettronica italiana (CIE 3.0)",
+  "documentCodes": ["I", "C"],
+  "mrz": {
+    "type": "TD1",
+    "side": "back",
+    "issuingState": "ITA"
+  },
+  "sides": ["front", "back"],
+  "layout": {
+    "aspectRatio": 1.586,
+    "aspectTolerance": 0.06,
+    "minCardAreaShare": 0.3,
+    "marginMin": 0.01,
+    "sides": {
+      "front": {
+        "portrait": { "x": 0.03, "y": 0.22, "w": 0.3, "h": 0.62 },
+        "fields": [
+          {
+            "name": "documentNumber",
+            "zone": { "x": 0.62, "y": 0.04, "w": 0.35, "h": 0.1 },
+            "labels": ["NUMERO DOCUMENTO / DOCUMENT NUMBER"]
+          },
+          {
+            "name": "surname",
+            "zone": { "x": 0.36, "y": 0.2, "w": 0.61, "h": 0.1 },
+            "labels": ["COGNOME / SURNAME"]
+          },
+          {
+            "name": "givenNames",
+            "zone": { "x": 0.36, "y": 0.31, "w": 0.61, "h": 0.1 },
+            "labels": ["NOME / NAME"]
+          },
+          {
+            "name": "birthDate",
+            "zone": { "x": 0.36, "y": 0.42, "w": 0.61, "h": 0.1 },
+            "labels": ["LUOGO E DATA DI NASCITA / PLACE AND DATE OF BIRTH"]
+          },
+          {
+            "name": "birthPlace",
+            "zone": { "x": 0.36, "y": 0.42, "w": 0.61, "h": 0.1 },
+            "labels": ["LUOGO E DATA DI NASCITA / PLACE AND DATE OF BIRTH"]
+          },
+          {
+            "name": "sex",
+            "zone": { "x": 0.36, "y": 0.53, "w": 0.12, "h": 0.1 },
+            "labels": ["SESSO / SEX"]
+          },
+          {
+            "name": "nationality",
+            "zone": { "x": 0.5, "y": 0.53, "w": 0.2, "h": 0.1 },
+            "labels": ["CITTADINANZA / NATIONALITY"]
+          },
+          {
+            "name": "issueDate",
+            "zone": { "x": 0.36, "y": 0.66, "w": 0.28, "h": 0.1 },
+            "labels": ["EMISSIONE / ISSUING"]
+          },
+          {
+            "name": "expiryDate",
+            "zone": { "x": 0.66, "y": 0.66, "w": 0.31, "h": 0.1 },
+            "labels": ["SCADENZA / EXPIRY"]
+          }
+        ]
+      },
+      "back": {
+        "mrzRegion": { "x": 0.02, "y": 0.62, "w": 0.96, "h": 0.38 },
+        "fields": [
+          {
+            "name": "fiscalCode",
+            "zone": { "x": 0.04, "y": 0.08, "w": 0.5, "h": 0.12 },
+            "labels": ["CODICE FISCALE / FISCAL CODE"]
+          },
+          {
+            "name": "address",
+            "zone": { "x": 0.04, "y": 0.24, "w": 0.92, "h": 0.2 },
+            "labels": ["INDIRIZZO DI RESIDENZA / RESIDENCE ADDRESS"]
+          }
+        ]
+      }
+    }
+  },
+  "requiredChecks": ["layout", "portrait", "mrz_check_digits", "expiry", "side_consistency", "field_coherence", "booking_consistency"],
+  "assurance": {
+    "web": "consistency"
+  },
+  "status": "provisional"
+}

@@ -40,6 +40,11 @@
          SDK, a None item elsewhere: both are listed. -->
     <Content Update="IdentityPolicies\**\*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="IdentityPolicies\**\*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- Registry of the document formats of the self-hosted identity verification (E70/F01/US02/T02, NF-191): one JSON file per format, shipped with the API. A new
+         format or country is a new file plus a new qualification, never a change of code. The JSON is a Content item in the Web SDK, a None item elsewhere: both are
+         listed. -->
+    <Content Update="IdentityFormats\**\*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="IdentityFormats\**\*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
