@@ -7,8 +7,9 @@ public static class CheckInDocumentLimits
 }
 
 /// <summary>
-/// Reads an identity document the guest uploads at the start of check-in. The picture is not stored. When an external
-/// AI provider is configured, the picture is sent to it and the answer is a set of fields the guest still confirms.
+/// Reads an identity document the guest uploads at the start of check-in, the prefill of <c>read-document</c>: a set of fields the guest still
+/// confirms. The picture is read in the process only (the MRZ, then the visual zone), never sent to an AI provider or to any other service, whatever
+/// the configuration (E70/F02/US02/T01, NF-197, ADR-013-R21); it is not stored and not logged.
 /// </summary>
 public interface ICheckInDocumentReader
 {
@@ -17,8 +18,8 @@ public interface ICheckInDocumentReader
 
 /// <param name="Read">True when at least one field was taken from the document.</param>
 /// <param name="Reason">
-/// Why nothing was read: <c>unavailable</c> (no AI provider), <c>unreadable</c>, <c>unsupported_file</c>,
-/// <c>too_large</c>, <c>budget</c>. Null when <paramref name="Read"/> is true.
+/// Why nothing was read: <c>unavailable</c> (the local reader could not run), <c>unreadable</c>, <c>not_document</c>,
+/// <c>unsupported_file</c>, <c>too_large</c>. Null when <paramref name="Read"/> is true.
 /// </param>
 public sealed record CheckInDocumentRead(bool Read, string? Reason, CheckInDocumentFields? Fields, string? Side = null)
 {
