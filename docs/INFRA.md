@@ -1,5 +1,7 @@
 # CasaZen — Infrastructure Guide
 
+> **Stato (2026-11-27): DA RIVEDERE, NON verificato.** Il banner «Hosting in revisione» qui sotto (Railway cancellato il 2026-10-02) è contraddetto da `.github/workflows/verify-railway-deploy.yml`, da `.claude/rules/infra.md` e dalle release recenti, che usano Railway per test e produzione. Non è stato controllato sul pannello Railway: confermare con l’utente prima di usare questo file per configurare un ambiente.
+
 > Zero-cost production stack: **Supabase** (PostgreSQL) + **Railway** (.NET API) + **Vercel** (React SPA)
 
 > **Hosting in revisione (2026-10-02):** il PO ha cancellato l'abbonamento Railway e non vuole costi. Il database resta su Supabase; l'hosting gratuito del backend è in analisi (task HOSTING, `docs/runbooks/free-hosting-analysis.md`). Ogni riferimento a Railway in questo file è **storico** finché quell'analisi non è chiusa: non usarlo per configurare nuovi ambienti.

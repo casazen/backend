@@ -17,11 +17,11 @@
   - If the embedded ISTAT code differs from the property's comune, show a non-blocking warning only (`CinFormat.HasIstatComuneMismatch`): the CIN never changes after a relocation or reclassification. Needs a trusted ISTAT code on the property (not the free-text city).
   - Never derive a CIN from a regional code (CIR/CIS/CIPAT/CIU).
   - The old `IT-XXXXX-XXXXXXXXXX` format is WRONG.
-  - Details and sources: `.claude/context/regulations/cin.md` § "Formato verificato (2026-09)"; runbook `docs/runbooks/cin-format.md`
+  - Details and sources: `documentazione/03-documenti-ai/revisioni/normativa/cin.md` § "Formato verificato (2026-09)" (workspace folder, outside the repo); runbook `docs/runbooks/cin-format.md`
 - **Guest data**: GDPR-compliant, Alloggiati Web integration, data retention applies
 - **Tourist tax**: regional rates in `TaxRate` entity — NEVER hardcode
 
 ## Loading Regulatory Context (lazy — load only what you need)
-1. Read `.claude/context/regulations/_index.md` for a topic overview
+1. Read `documentazione/03-documenti-ai/revisioni/normativa/README.md` (workspace folder outside this repo; moved there on 2026-11-27 from `.claude/context/regulations/`) for a topic overview
 2. Load the **single** relevant file (e.g. `cin.md`, `gdpr.md`) — do NOT load the whole directory
 3. Load additional files only if the task explicitly spans multiple regulations

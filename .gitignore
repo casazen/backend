@@ -39,7 +39,6 @@ secrets/vercel.production.env
 ## Logs
 logs/
 *.log
-!Sessions/risanamento/stato/notes.log
 
 ## Uploaded files
 wwwroot/uploads/
@@ -51,9 +50,7 @@ App_Data/
 Thumbs.db
 
 ## Claude Code
-# .claude/ - Regulatory Intelligence system (committed to repo)
-# CLAUDE.md - Project context (local only, not committed)
-CLAUDE.md
+# .claude/ and CLAUDE.md are committed (agent rules, AGENTS.md pointer); only the local settings below are ignored
 # User-specific settings (permissions, local config)
 .claude/settings.local.json
 /get-token.sh
@@ -64,17 +61,6 @@ opencode.json
 
 ## Windows artifacts
 nul
-
-## Local session artifacts (not source of truth)
-Sessions/loop/
-Sessions/pipeline-*/
-Sessions/design-*.md
-Sessions/review-*.md
-Sessions/release-*.md
-Sessions/ops-report-*.md
-Sessions/dev-flow-verification*/
-Sessions/dev-flow-verification-*.md
-Sessions/quality/
 
 ## Editor backups
 *.bak
@@ -90,5 +76,3 @@ tmp-tourist-tax/
 /reports/rli-registration/
 /reports/verification-*/
 
-# Export HTML del business plan (scripts/business-plan/export.sh)
-docs/business-plan/out/

@@ -7,13 +7,10 @@ API .NET 10 per la gestione di immobili, prenotazioni, ospiti, organizzazioni, a
 
 ## Documentazione
 
-- [Indice tecnico e operativo](docs/index.md)
-- [Architettura e responsabilità](docs/technical/architecture.md)
-- [Sviluppo e verifica locale](docs/technical/development.md)
-- [Riferimento API e modello dati](docs/TECHNICAL.md)
-- [Runbook per argomento](docs/runbooks/index.md)
-- [Checklist di deploy](docs/runbooks/deploy-checklist.md)
-- **Guida utenti:** nella webapp, dopo il login, aprire **Guida** nell’intestazione. [Contenuti e manutenzione](https://github.com/casazen/frontend/blob/develop/docs/product/README.md).
+- [AGENTS.md](AGENTS.md): struttura, comandi, flusso di consegna e regole per chi sviluppa (anche agenti AI).
+- [Runbook per argomento](docs/runbooks/index.md), [checklist di deploy](docs/runbooks/deploy-checklist.md) e [riferimento API e modello dati](docs/TECHNICAL.md): restano in `docs/` perché i test li verificano. Il resto di `docs/` è descritto in [docs/README.md](docs/README.md).
+- Requisiti, punti aperti, decisioni, revisioni legali e fiscali, ADR e integrazioni stanno nella cartella `documentazione/` del workspace di progetto, fuori dai repository (questo è pubblico).
+- **Guida utenti:** nella webapp, dopo il login, aprire **Guida** nell’intestazione.
 
 ## Avvio rapido
 
@@ -40,7 +37,7 @@ dotnet run --project Casazen.Web
 - Liveness: `/api/health/live`
 - Readiness: `/api/health/ready` (verificare anche il contenuto della risposta)
 
-Non esiste un `docker-compose.yml` alla radice. Il `Dockerfile` descrive l’immagine dell’API; per l’infrastruttura leggere [INFRA.md](docs/INFRA.md) e le note sullo stato dell’hosting.
+Non esiste un `docker-compose.yml` alla radice. Il `Dockerfile` descrive l’immagine dell’API; per l’infrastruttura leggere [INFRA.md](docs/INFRA.md) (da rivedere: vedere [docs/README.md](docs/README.md)).
 
 ## Build e test
 
@@ -50,8 +47,8 @@ dotnet test --configuration Release --no-build
 dotnet format --verify-no-changes
 ```
 
-Per un’esecuzione riproducibile dei test di integrazione, impostare `TEST_POSTGRES_CONNECTION` verso un PostgreSQL locale dedicato ai test; le factory creano database temporanei. Dettagli e limiti nella [guida sviluppo](docs/technical/development.md).
+Per un’esecuzione riproducibile dei test di integrazione, impostare `TEST_POSTGRES_CONNECTION` verso un PostgreSQL locale dedicato ai test; le factory creano database temporanei (dettagli in [AGENTS.md](AGENTS.md) e nel [runbook CI](docs/runbooks/ci-backend.md)).
 
 ## Contribuire
 
-Il flusso è Web → Core/Infrastructure; il dominio resta in Core. Ogni modifica a un comportamento operativo deve aggiornare il relativo runbook e, se cambia il flusso visibile, la guida utenti della webapp. Pianificazione e interviste in `Sessions/` sono materiale di lavoro, non il riferimento tecnico delle funzioni consegnate.
+Il flusso è Web → Core/Infrastructure; il dominio resta in Core. Branch da `develop`, PR verso `develop`, mai push diretto su `develop` o `main` ([AGENTS.md](AGENTS.md)). Ogni modifica a un comportamento operativo aggiorna il relativo runbook, i documenti in `documentazione/` toccati e, se cambia il flusso visibile, la guida utenti della webapp.

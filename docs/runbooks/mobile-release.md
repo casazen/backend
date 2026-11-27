@@ -339,7 +339,7 @@ Without the variable and without enhanced security, pushes work as before (no he
 
 ## 10. Store requirements and the Expo SDK (upgrade 52 → 57, 2026-10-30)
 
-The app moved from Expo SDK 52 (React Native 0.76) to **SDK 57** (React Native 0.86, React 19.2, TypeScript 6) so that it can be uploaded to the stores again. Code and checks: [casazen/mobile#13](https://github.com/casazen/mobile/pull/13); toolchain table and upgrade procedure: `casazen/mobile` `docs/technical/guide.md`, section "Toolchain and SDK upgrades".
+The app moved from Expo SDK 52 (React Native 0.76) to **SDK 57** (React Native 0.86, React 19.2, TypeScript 6) so that it can be uploaded to the stores again. Code and checks: [casazen/mobile#13](https://github.com/casazen/mobile/pull/13); toolchain table and upgrade procedure: `documentazione/03-documenti-ai/runbook/mobile/guida-tecnica.md` (project documentation folder outside the repositories; formerly `casazen/mobile` `docs/technical/guide.md`), section "Toolchain and SDK upgrades".
 
 | Store rule | How the app meets it |
 |---|---|
