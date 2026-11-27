@@ -205,6 +205,72 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
         Assert.False(string.IsNullOrWhiteSpace(feed.GetProperty("lastError").GetString()));
     }
 
+    // ADR-002-R12 (backend side), E02/F02/US01/T03: the channels page tells the host that the Octorate calendar replaced the iCal import of a
+    // channel, so each feed answers whether it was replaced and when. The block it imported is still counted.
+    [Fact]
+    public async Task GetFeeds_AnswersDeprecatedAndDeprecatedAtOfEachFeed()
+    {
+        var deprecatedAt = new DateTime(2026, 11, 6, 8, 0, 0, DateTimeKind.Utc);
+        var (ownerId, propertyId, _, deprecatedFeedId) = await SeedFeedWithBlockAsync(deprecatedAt: deprecatedAt);
+        var keptFeedId = await SeedFeedAsync(propertyId, "https://example.org/other.ics");
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var response = await client.GetAsync($"/api/properties/{propertyId}/ical/feeds");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var feeds = (await response.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray().ToDictionary(f => f.GetProperty("id").GetGuid());
+        var deprecated = feeds[deprecatedFeedId];
+        Assert.True(deprecated.GetProperty("deprecated").GetBoolean());
+        Assert.Equal(deprecatedAt, deprecated.GetProperty("deprecatedAt").GetDateTime());
+        Assert.Equal(1, deprecated.GetProperty("blockCount").GetInt32());
+        Assert.False(deprecated.TryGetProperty("importUrl", out _));
+        var kept = feeds[keptFeedId];
+        Assert.False(kept.GetProperty("deprecated").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, kept.GetProperty("deprecatedAt").ValueKind);
+    }
+
+    // E02/F02/US01/T03: the nights the Octorate calendar holds closed are blocks of the property (an ical-block item without a channel, from the
+    // source "Octorate", never turned into a stay), and the export goes on for a property whose feeds are deprecated, carrying the manual
+    // blocks only: what Octorate closed is not sent back to the channels (no echo).
+    [Fact]
+    public async Task Calendar_ShowsTheOctorateBlockWithItsSourceAndNoChannel_AndItIsNotConvertible()
+    {
+        var (ownerId, propertyId, _, _) = await SeedFeedWithBlockAsync();
+        var blockId = await SeedOctorateBlockAsync(propertyId);
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var response = await client.GetAsync(
+            $"/api/bookings/calendar?propertyId={propertyId}&startDate=2026-09-01&endDate=2026-09-30");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var items = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items").EnumerateArray().ToList();
+        var item = Assert.Single(items, i => i.GetProperty("id").GetGuid() == blockId);
+        Assert.Equal("ical-block", item.GetProperty("type").GetString());
+        Assert.Equal("Octorate", item.GetProperty("blockSource").GetString());
+        Assert.Equal(JsonValueKind.Null, item.GetProperty("channel").ValueKind);
+        Assert.False(item.GetProperty("convertible").GetBoolean());
+    }
+
+    [Fact]
+    public async Task PublicExport_GoesOnForADeprecatedFeed_AndNeverCarriesTheBlocksOfTheOctorateCalendar()
+    {
+        var (_, propertyId, exportToken, _) = await SeedFeedWithBlockAsync(deprecatedAt: new DateTime(2026, 11, 6, 8, 0, 0, DateTimeKind.Utc));
+        var manualBlockId = await SeedManualBlockAsync(propertyId, "pulizie");
+        await SeedOctorateBlockAsync(propertyId);
+
+        using var client = _factory.CreateClient();
+        var response = await client.GetAsync($"/api/public/ical/{exportToken}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        var lines = body.Split("\r\n");
+        Assert.Single(lines, l => l == "BEGIN:VEVENT");
+        Assert.Contains($"UID:block-{manualBlockId}", lines);
+        Assert.DoesNotContain("DTSTART;VALUE=DATE:20260901", lines);
+        Assert.DoesNotContain("Octorate", body);
+        Assert.DoesNotContain("seed-block-1", body);
+    }
+
     // "Sync now": 202 Syncing and one job for that feed; a second click while it is pending queues nothing.
     [Fact]
     public async Task SyncFeed_Twice_QueuesOneJobForThatFeed()
@@ -307,7 +373,40 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
         return block.Id;
     }
 
-    private async Task<(string OwnerId, Guid PropertyId, Guid ExportToken, Guid FeedId)> SeedFeedWithBlockAsync(string? lastError = null)
+    private async Task<Guid> SeedOctorateBlockAsync(Guid propertyId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var orgId = await db.Properties.IgnoreQueryFilters().Where(p => p.Id == propertyId).Select(p => p.OrgId).SingleAsync();
+        var block = new CalendarBlock
+        {
+            PropertyId = propertyId,
+            OrgId = orgId,
+            Source = CalendarBlockSource.Octorate,
+            ExternalUid = "octorate:2026-09-01",
+            StartUtc = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndUtc = new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc),
+            Summary = "Octorate",
+        };
+        db.CalendarBlocks.Add(block);
+        await db.SaveChangesAsync();
+        return block.Id;
+    }
+
+    private async Task<Guid> SeedFeedAsync(Guid propertyId, string importUrl)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var orgId = await db.Properties.IgnoreQueryFilters().Where(p => p.Id == propertyId).Select(p => p.OrgId).SingleAsync();
+        var feed = new PropertyICalFeed { PropertyId = propertyId, OrgId = orgId, ImportUrl = importUrl };
+        db.PropertyICalFeeds.Add(feed);
+        await db.SaveChangesAsync();
+        return feed.Id;
+    }
+
+    private async Task<(string OwnerId, Guid PropertyId, Guid ExportToken, Guid FeedId)> SeedFeedWithBlockAsync(
+        string? lastError = null,
+        DateTime? deprecatedAt = null)
     {
         var ownerId = $"auth0|host-{Guid.NewGuid():N}";
         var property = await _factory.SeedPropertyAsync(ownerId);
@@ -323,6 +422,8 @@ public class PropertyICalIntegrationTests : IClassFixture<CasazenWebApplicationF
             ImportUrl = "https://example.com/cal.ics",
             LastError = lastError,
             LastImportStatus = lastError is null ? null : PropertyICalImportStatus.Failure,
+            Deprecated = deprecatedAt is not null,
+            DeprecatedAt = deprecatedAt,
         };
         db.PropertyICalFeeds.Add(feed);
         db.PropertyICalExports.Add(new PropertyICalExport

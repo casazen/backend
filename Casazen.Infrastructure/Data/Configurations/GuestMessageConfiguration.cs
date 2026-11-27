@@ -18,6 +18,10 @@ internal sealed class GuestMessageConfiguration : IEntityTypeConfiguration<Guest
             .WithMany()
             .HasForeignKey(m => m.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
+        // Who wrote the message (E05/F05/US01/T01, NF-67): the guest unless the writer says otherwise. It is the value the migration gave every message that existed
+        // (the messages of the host were then set to a person) and the one a row written without it reads as; the code that writes a message sets it.
+        entity.Property(m => m.Origin).HasDefaultValue(MessageOrigin.Guest);
+
         entity.ToTable(t => t.HasCheckConstraint("CK_GuestMessages_Sender", "\"Sender\" IN (0, 1)"));
     }
 }

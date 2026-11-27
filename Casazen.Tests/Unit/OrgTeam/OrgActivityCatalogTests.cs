@@ -42,6 +42,16 @@ public class OrgActivityCatalogTests
     [InlineData(OrgActivityType.TrustedSupplierAdded, 60)]
     [InlineData(OrgActivityType.TrustedSupplierRemoved, 61)]
     [InlineData(OrgActivityType.AdminGrantedConcordatoFacileGift, 70)]
+    [InlineData(OrgActivityType.PropertySenderChanged, 80)]
+    [InlineData(OrgActivityType.AlloggiatiDelegationGranted, 81)]
+    [InlineData(OrgActivityType.AlloggiatiDelegationRevoked, 82)]
+    [InlineData(OrgActivityType.OctorateComplianceHandoffStarted, 100)]
+    [InlineData(OrgActivityType.OnboardingAssistRequested, 110)]
+    [InlineData(OrgActivityType.OnboardingAssistUpdated, 111)]
+    [InlineData(OrgActivityType.ContactInfoRead, 120)]
+    [InlineData(OrgActivityType.OwnerImportApplied, 130)]
+    [InlineData(OrgActivityType.OwnerInvitationChanged, 140)]
+    [InlineData(OrgActivityType.OwnerPortalChanged, 150)]
     public void Type_TheIntegerOfEveryEvent_IsPinned(OrgActivityType type, int value)
     {
         // The value is what the database holds: reordering or reusing it would rewrite history.
@@ -51,7 +61,7 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Type_EveryEventOfTheEnum_IsPinnedAbove()
     {
-        Assert.Equal(22, Enum.GetValues<OrgActivityType>().Length);
+        Assert.Equal(32, Enum.GetValues<OrgActivityType>().Length);
     }
 
     [Fact]
@@ -61,21 +71,25 @@ public class OrgActivityCatalogTests
         Assert.Equal(
             ["Account", "ShortRent", "LongRent", "Supplier"],
             Enum.GetValues<OrgActivityArea>().Select(a => a.ToString()));
-        Assert.Equal([1, 2, 3, 4, 5], Enum.GetValues<OrgActivitySubjectType>().Select(s => (int)s));
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8], Enum.GetValues<OrgActivitySubjectType>().Select(s => (int)s));
         Assert.Equal(
-            ["Member", "Invitation", "Org", "Property", "Supplier"],
+            ["Member", "Invitation", "Org", "Property", "Supplier", "Booking", "OwnerInvitation", "OwnerPortalItem"],
             Enum.GetValues<OrgActivitySubjectType>().Select(s => s.ToString()));
     }
 
     [Fact]
-    public void Catalog_DescribesEveryEventOnce_AndTheCatalogStaysUnderTwentyFiveEvents()
+    public void Catalog_DescribesEveryEventOnce_AndTheCatalogStaysUnderThirtyTwoEvents()
     {
         var described = OrgActivityCatalog.All.Select(e => e.Type).ToList();
 
         Assert.Equal(Enum.GetValues<OrgActivityType>().Order(), described.Order());
         Assert.Equal(described.Count, described.Distinct().Count());
-        // AM-D18: the catalog is closed and grows one row at a time, to about twenty-five events in all.
-        Assert.InRange(described.Count, 1, 25);
+        // AM-D18: the catalog is closed and grows one row at a time. The cap was twenty-five events; the Octorate plan adds six more
+        // (the compliance handoff, the sender and delegation of E03/F01/US05 and the two of «Do it for me» of E10/F01/US03), so it is
+        // thirty until the PO decides otherwise; the owner portfolio of an agency (E10/F02/US02: the import and the invitations, ADR-011-R11) adds two
+        // more, thirty-two, which the PO is asked to confirm (docs/runbooks/org-team.md section 30). The owner portal operations (E07/F07/US01) take the
+        // thirty-second with ONE event for the whole feature (its part and status say what changed): the catalog is now at the cap.
+        Assert.InRange(described.Count, 1, 32);
     }
 
     [Fact]
@@ -191,8 +205,49 @@ public class OrgActivityCatalogTests
             "fiscal", "slug", "token", "password", "reason", "description",
         ];
 
-        Assert.All(OrgActivityDetailKeys.All, key =>
+        // `context` (E10/F01/US03/T01) holds the "text" of "con-text" and nothing else: it is the code of a closed list
+        // (OnboardingAssistContexts: panelPolice, panelIstat, panelChannelAccess, part), checked by the test below.
+        string[] reviewed = [OrgActivityDetailKeys.Context];
+
+        Assert.All(OrgActivityDetailKeys.All.Except(reviewed), key =>
             Assert.DoesNotContain(forbidden, fragment => key.Contains(fragment, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Fact]
+    public void DetailKeys_TheContextOfAnAssistRequest_IsACodeOfTheClosedList_NeverAText()
+    {
+        // The keys of the events of «Do it for me»: the part, the context and the status, each a short code; a staff update also says which kind of
+        // credential of the support vault was opened for the request (E20/F03/US01/T01): «panel», «police» or «regionalIstat».
+        foreach (var (type, keys) in new[]
+                 {
+                     (OrgActivityType.OnboardingAssistRequested, new[] { OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status }),
+                     (OrgActivityType.OnboardingAssistUpdated, new[]
+                     {
+                         OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status, OrgActivityDetailKeys.Credential,
+                     }),
+                 })
+        {
+            var info = OrgActivityCatalog.Describe(type);
+            Assert.Equal((OrgActivityArea.Account, OrgActivitySubjectType.Org, false), (info.DefaultArea, info.SubjectType, info.Reserved));
+            Assert.Equal(keys.Order(), info.DetailKeys.Order());
+        }
+
+        Assert.All(Enum.GetValues<SupportVaultCredentialKind>(), kind => Assert.True(OrgActivityCatalog.IsSafeDetailValue(SupportVaultRules.CodeOf(kind))));
+
+        foreach (var context in new[]
+                 {
+                     OnboardingAssistContexts.PanelPolice, OnboardingAssistContexts.PanelIstat,
+                     OnboardingAssistContexts.PanelChannelAccess, OnboardingAssistContexts.Part,
+                 })
+        {
+            Assert.True(OrgActivityCatalog.IsSafeDetailValue(context), context);
+        }
+
+        // A free text under the key is refused like under any other.
+        Assert.Throws<ArgumentException>(() => OrgActivityCatalog.Validate(OrgActivity.Of(
+            Org, OrgActivityType.OnboardingAssistUpdated, "auth0|staff", Org.ToString(), (OrgActivityDetailKeys.Context, "mario@example.com"))));
+        Assert.Throws<ArgumentException>(() => OrgActivityCatalog.Validate(OrgActivity.Of(
+            Org, OrgActivityType.OnboardingAssistUpdated, "auth0|staff", Org.ToString(), ("note", "done"))));
     }
 
     [Fact]

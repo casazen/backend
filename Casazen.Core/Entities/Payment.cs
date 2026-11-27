@@ -9,6 +9,15 @@ namespace Casazen.Core.Entities;
 [Table("Payments")]
 public class Payment : ITenantOwned
 {
+    /// <summary>Longest <see cref="OctorateTransactionId"/> (varchar 100).</summary>
+    public const int OctorateTransactionIdMaxLength = 100;
+
+    /// <summary>
+    /// Name of the unique index on (<see cref="OrgId"/>, <see cref="OctorateTransactionId"/>), filtered to the payments recorded in Octorate:
+    /// a payment is recorded on its reservation once (E08/F01/US01/T01, AC-NF74-4).
+    /// </summary>
+    public const string OctorateTransactionIndexName = "UIX_Payments_OrgId_OctorateTransactionId";
+
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -73,6 +82,52 @@ public class Payment : ITenantOwned
     public decimal NetAmountAfterWithholding { get; set; }
 
     public WithholdingSource WithholdingSource { get; set; } = WithholdingSource.None;
+
+    /// <summary>
+    /// The <c>transaction</c> this payment was recorded with on its Octorate reservation (E08/F01/US01/T04): the Stripe PaymentIntent id, or
+    /// <c>casazen-{paymentId}</c> for a payment the host recorded by hand. Unique in the org (<see cref="OctorateTransactionIndexName"/>), so
+    /// a payment is recorded in Octorate once; <c>null</c> while it is not recorded there.
+    /// </summary>
+    [MaxLength(OctorateTransactionIdMaxLength)]
+    public string? OctorateTransactionId { get; set; }
+
+    /// <summary>When Octorate confirmed the payment on the reservation (UTC); <c>null</c> while it is not recorded there.</summary>
+    public DateTime? OctorateRegisteredAt { get; set; }
+
+    // ---------------------------------------------------------------- what the payment provider kept and credited (FIS-05, NF-85)
+    // Information only, written once by the capture of E06/F04/US01/T02 (IPaymentProviderFeeService) from the balance transaction of the charge:
+    // they never change Amount, RefundedAmount or Status, and nothing computes them from another figure. Null until the capture found them.
+
+    /// <summary>Longest <see cref="ProviderBalanceCurrency"/>: an ISO 4217 code.</summary>
+    public const int ProviderBalanceCurrencyMaxLength = 3;
+
+    /// <summary>Longest <see cref="ProviderBalanceTransactionId"/>.</summary>
+    public const int ProviderBalanceTransactionIdMaxLength = 255;
+
+    /// <summary>The commission the provider kept on the charge (the <c>fee</c> of the balance transaction), in <see cref="ProviderBalanceCurrency"/>.</summary>
+    [Precision(18, 2)]
+    public decimal? ProviderFeeAmount { get; set; }
+
+    /// <summary>What was credited after the commission (the <c>net</c> of the balance transaction), in <see cref="ProviderBalanceCurrency"/>.</summary>
+    [Precision(18, 2)]
+    public decimal? ProviderNetAmount { get; set; }
+
+    /// <summary>The currency of the balance transaction (upper case), which can differ from the currency of the property.</summary>
+    [MaxLength(ProviderBalanceCurrencyMaxLength)]
+    public string? ProviderBalanceCurrency { get; set; }
+
+    /// <summary>The id of the balance transaction (<c>txn_…</c>) the figures were read from.</summary>
+    [MaxLength(ProviderBalanceTransactionIdMaxLength)]
+    public string? ProviderBalanceTransactionId { get; set; }
+
+    /// <summary>The day the funds are credited and available (UTC, the <c>available_on</c> of the balance transaction).</summary>
+    public DateTime? ProviderAvailableOn { get; set; }
+
+    /// <summary>When the figures were read (UTC); once set the capture never runs again for the payment.</summary>
+    public DateTime? ProviderFeeFetchedAt { get; set; }
+
+    /// <summary>How many reads found no balance transaction yet (or failed); the capture stops after <c>PaymentProviderFees.MaxAttempts</c>.</summary>
+    public int ProviderFeeFetchAttempts { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

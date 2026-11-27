@@ -46,7 +46,19 @@ public class Property : ITenantOwned
     [MaxLength(100)]
     public string? Slug { get; set; }
 
-    [MaxLength(2000)]
+    /// <summary>
+    /// The random token in the address of the door page of the property (E22/F01/US02/T01, NF-24, NF-50): the printed QR code points to
+    /// <c>{App:PublicSiteBaseUrl}/checkin/porta/{DoorToken}</c>, where the guest who arrives proves the stay with its booking code (or its surname) and the
+    /// arrival date and is taken to the identity step of its check-in. 32 url-safe characters (<see cref="PropertyDoorTokens"/>), unique in the table and
+    /// derived from nothing (the id of a property is enumerable, the token is not). Made the first time the host asks for the code; replaced by «Rigenera», and the
+    /// printed code of the old one stops working at once. <c>null</c> for a property whose code was never asked. Never serialized with the property: only
+    /// the host endpoint of the code returns it.
+    /// </summary>
+    [MaxLength(PropertyDoorTokens.MaxLength)]
+    [JsonIgnore]
+    public string? DoorToken { get; set; }
+
+    [MaxLength(Casazen.Core.Services.ListingTextLimits.DescriptionMaxLength)]
     public string Description { get; set; } = string.Empty;
 
     [Required, MaxLength(500)]
@@ -160,6 +172,11 @@ public class Property : ITenantOwned
     [MaxLength(1000)]
     public string HouseRules { get; set; } = string.Empty;
 
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? GuestHouseGuideJson { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? GuestPortalSetupJson { get; set; }
+
     // The fields of the wizard «Aggiungi immobile» (SR-07a). All optional: null = the host never said, which is every property
     // that existed before them, and nothing reads them to decide a booking, a price or a refund. Only PublishedOnSite changes
     // what the public site shows, and it starts true, so every property keeps the visibility it has today.
@@ -205,6 +222,12 @@ public class Property : ITenantOwned
 
     /// <summary>What the house rules say about parties and events; null = never said.</summary>
     public PartiesPolicy? PartiesPolicy { get; set; }
+
+    /// <summary>
+    /// What the house rules say about children (NF-37); null = never said. It is the structured rule the channels receive, next to pets,
+    /// smoking, parties and the quiet hours; the public page keeps reading <see cref="ChildrenWelcome"/> of the site profile.
+    /// </summary>
+    public ChildrenPolicy? ChildrenPolicy { get; set; }
 
     /// <summary>Quiet hours start, on the property's clock; null = none. Always set together with <see cref="QuietHoursTo"/>. Whole minutes.</summary>
     public TimeOnly? QuietHoursFrom { get; set; }
@@ -270,6 +293,8 @@ public class Property : ITenantOwned
     [JsonIgnore]
     [Column(TypeName = "jsonb")]
     public string? SiteProfileJson { get; set; }
+
+    public string? RequiredActivationPortalsJson { get; set; }
 
     /// <summary>
     /// The alternative text of the photos of the gallery: a JSON map from the URL of a photo to its text in Italian and English
@@ -345,6 +370,21 @@ public class Property : ITenantOwned
     /// </summary>
     [MaxLength(10)]
     public string? SwissMunicipalityCode { get; set; }
+
+    /// <summary>
+    /// The «Numero identificativo LEAR / NO-LEAR» Ticino Turismo gives the structure when it registers (casazen/backend#979), stored
+    /// normalized (<see cref="Regulatory.TicinoStructureId"/>): the first field of every row of the file for the Ticino police portal.
+    /// Null until the host enters it; meaningful only for a property in canton Ticino.
+    /// </summary>
+    [MaxLength(Regulatory.TicinoStructureId.MaxLength)]
+    public string? TicinoStructureId { get; set; }
+
+    /// <summary>
+    /// What the host decided about notifying the guests of this property to the authority of its canton (E29/F02/US01/T01, NF-125, decision D12): stored
+    /// as the number of <see cref="Enums.GuestNotificationOverride"/>; <c>null</c> = follow the regime of the place (the default, and every row that existed
+    /// before the column). Meaningful only for a property in Switzerland, and read only while <c>Features:GuestRegistrationRegimes</c> is on.
+    /// </summary>
+    public GuestNotificationOverride? GuestNotificationOverride { get; set; }
 
     [ForeignKey("CancellationPolicy")]
     public Guid? CancellationPolicyId { get; set; }

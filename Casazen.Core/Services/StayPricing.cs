@@ -21,6 +21,12 @@ namespace Casazen.Core.Services;
 /// <para><b>No surcharge, nothing changes.</b> With a surcharge of 0 (the default of every property) every night without a
 /// price of its own is an ordinary night, Friday and Saturday included, and the lodging is <c>rate x nights</c> as it was
 /// before the surcharge existed.</para>
+/// <para><b>Length-of-stay discount</b> (NF-35, ADR-028). A property can give a percentage off the lodging from a number of nights. The
+/// tier with the most nights that the stay reaches applies (a stay of 9 nights with tiers at 7 and 14 gets the one at 7), and it takes
+/// <c>round(lodging x percent / 100, 2)</c> off the whole lodging (the nights as priced above, host prices included), half away from
+/// zero: a whole number of cents. It never takes anything off the cleaning fee or the tourist tax, and the tax is still worked out from the
+/// price of each night before the discount. It belongs to the whole stay: the price of one night in the calendar is not touched. With no
+/// tier, or a stay below the lowest one, nothing changes.</para>
 /// </remarks>
 public static class StayPricing
 {
@@ -28,14 +34,17 @@ public static class StayPricing
     /// The price of <paramref name="nights"/> nights starting on <paramref name="checkIn"/> (the Europe/Rome date of the
     /// check-in) at <paramref name="nightlyRate"/>, with <paramref name="weekendSurchargePercent"/> percent more on the
     /// weekend nights. <paramref name="hostPrices"/> are the prices the host set for dates (null or empty for none): a night
-    /// on one of them costs that price and nothing else.
+    /// on one of them costs that price and nothing else. <paramref name="discountTiers"/> are the length-of-stay discounts of the
+    /// property (null or empty for none): the one that applies is on <see cref="StayLodging.Discount"/>, and the price of the
+    /// nights after it is <see cref="StayLodging.NetTotal"/>.
     /// </summary>
     public static StayLodging Lodging(
         DateOnly checkIn,
         int nights,
         decimal nightlyRate,
         decimal weekendSurchargePercent,
-        IReadOnlyDictionary<DateOnly, decimal>? hostPrices = null)
+        IReadOnlyDictionary<DateOnly, decimal>? hostPrices = null,
+        IReadOnlyList<StayDiscountTier>? discountTiers = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(nights, 1);
 
@@ -68,8 +77,39 @@ public static class StayPricing
             }
         }
 
-        var lodging = new StayLodging(weekdayNights, weekendNights, nightlyRate, weekendRate, total);
+        var lodging = new StayLodging(weekdayNights, weekendNights, nightlyRate, weekendRate, total)
+        {
+            Discount = DiscountFor(nights, total, discountTiers),
+        };
         return priced is null ? lodging : lodging with { PricedNights = priced };
+    }
+
+    /// <summary>
+    /// The length-of-stay discount a stay of <paramref name="nights"/> nights gets on a lodging of <paramref name="lodgingTotal"/> (NF-35,
+    /// ADR-028-R3, R4): the tier with the most nights that the stay reaches, taking <c>round(lodgingTotal x percent / 100, 2)</c> off, half away from
+    /// zero. <c>null</c> when no tier is reached, or the amount would be nothing. A tier that is not a discount (no night, a percentage that is not
+    /// above 0 and at most 100) is ignored: the rules refuse such a tier before it is stored.
+    /// </summary>
+    public static StayDiscount? DiscountFor(int nights, decimal lodgingTotal, IReadOnlyList<StayDiscountTier>? tiers)
+    {
+        if (tiers is null || tiers.Count == 0)
+            return null;
+
+        StayDiscountTier? reached = null;
+        foreach (var tier in tiers)
+        {
+            if (tier.MinNights < 1 || tier.MinNights > nights || tier.PercentOff <= 0m || tier.PercentOff > 100m)
+                continue;
+
+            if (reached is null || tier.MinNights > reached.MinNights)
+                reached = tier;
+        }
+
+        if (reached is null)
+            return null;
+
+        var amount = Math.Round(lodgingTotal * reached.PercentOff / 100m, 2, MidpointRounding.AwayFromZero);
+        return amount > 0m ? new StayDiscount(reached.MinNights, reached.PercentOff, amount) : null;
     }
 
     /// <summary>
@@ -115,9 +155,10 @@ public static class StayPricing
 
     /// <summary>
     /// The breakdown of a quote, in order: the ordinary nights (at the nightly rate first, then one line for each other price
-    /// the host set for dates of the stay, in the order of the nights), the weekend nights, the cleaning fee, the tourist tax
-    /// and the total. A line that does not apply is left out (no zero nights, no cleaning fee of 0, no tax that CasaZen could
-    /// not calculate: its <c>status</c> says why). The lines before the total add up to the total, to the cent.
+    /// the host set for dates of the stay, in the order of the nights), the weekend nights, the length-of-stay discount (a negative
+    /// amount, NF-35), the cleaning fee, the tourist tax and the total. A line that does not apply is left out (no zero nights, no
+    /// discount without a tier, no cleaning fee of 0, no tax that CasaZen could not calculate: its <c>status</c> says why). The lines
+    /// before the total add up to the total, to the cent.
     /// </summary>
     public static IReadOnlyList<QuoteLine> Lines(DirectBookingQuote quote)
     {
@@ -151,6 +192,9 @@ public static class StayPricing
                 Cents(lodging.WeekendNightlyRate),
                 Cents(lodging.WeekendNightlyRate * lodging.WeekendNights)));
         }
+
+        if (lodging.Discount is { } discount)
+            lines.Add(new QuoteLine(QuoteLineKind.LengthOfStayDiscount, null, null, -Cents(discount.Amount)));
 
         if (quote.CleaningFee > 0m)
             lines.Add(new QuoteLine(QuoteLineKind.CleaningFee, 1, Cents(quote.CleaningFee), Cents(quote.CleaningFee)));

@@ -28,6 +28,26 @@ public class BillingIntegrationTests : IClassFixture<CasazenWebApplicationFactor
     }
 
     [Fact]
+    public async Task CommercialCatalog_OwnerFeesAreSeparateFromAgencyAndPlanInclusions()
+    {
+        await using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Billing:OwnerAddons:revenue:PriceId"] = "price_revenue",
+                ["Billing:OwnerAddons:revenue:PriceMonthly"] = "9",
+                ["Features:OctorateConnector"] = "true",
+            })));
+        using var client = AuthenticatedClient(app, $"auth0|catalog-{Guid.NewGuid():N}");
+        var catalog = await client.GetFromJsonAsync<JsonElement[]>("/api/billing/commercial-catalog");
+        var revenue = catalog!.Single(item => item.GetProperty("code").GetString() == "revenue");
+        Assert.False(revenue.GetProperty("purchasable").GetBoolean());
+        Assert.True(revenue.GetProperty("ownerOffer").GetProperty("purchasable").GetBoolean());
+        Assert.Equal(9m, revenue.GetProperty("ownerOffer").GetProperty("priceMonthly").GetDecimal());
+        var channels = catalog!.Single(item => item.GetProperty("code").GetString() == "channels");
+        Assert.Equal(new[] { "Pro", "Scale" }, channels.GetProperty("includedInPlans").Deserialize<string[]>());
+    }
+
+    [Fact]
     public async Task GetPlans_Authenticated_ReturnsCatalog()
     {
         await _factory.SeedOrgForOwnerAsync();

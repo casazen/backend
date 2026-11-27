@@ -62,7 +62,7 @@ public class GdprControllerTests
 
         Assert.IsType<NotFoundResult>(result);
         _mockGdprService.Verify(
-            x => x.ExportGuestDataAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            x => x.ExportGuestDataAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<HostScope>(), It.IsAny<bool>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -76,7 +76,7 @@ public class GdprControllerTests
 
         Assert.IsType<ForbidResult>(result);
         _mockGdprService.Verify(
-            x => x.ExportGuestDataAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            x => x.ExportGuestDataAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<HostScope>(), It.IsAny<bool>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -90,8 +90,60 @@ public class GdprControllerTests
         Assert.IsType<OkObjectResult>(result);
         Assert.Equal("private, no-store", _controller.Response.Headers.CacheControl.ToString());
         _mockGdprService.Verify(
-            x => x.ExportGuestDataAsync(OrgId, guestId, It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            x => x.ExportGuestDataAsync(OrgId, guestId, new HostScope(OrgId), true, It.IsAny<string?>(), It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    /// <summary>
+    /// Proof test (permission rule): the messages of the export are opened by <c>booking.read</c>, not by <c>guest.read</c> alone. A caller who may read
+    /// the guest but not the bookings gets the export (200) with the service told to leave the messages out, as the message screens would refuse it.
+    /// </summary>
+    [Fact]
+    public async Task ExportGuestData_WithoutBookingRead_AsksTheServiceToLeaveTheMessagesOut()
+    {
+        var guestId = GuestAccessible(true);
+        _mockAuthorization
+            .Setup(a => a.AuthorizeAsync(
+                It.IsAny<ClaimsPrincipal>(),
+                It.IsAny<object?>(),
+                It.Is<IEnumerable<IAuthorizationRequirement>>(r => r.OfType<HostOperationRequirement>().Any(q => q.PermissionKey == BookingOperations.Read.PermissionKey))))
+            .ReturnsAsync(AuthorizationResult.Failed());
+
+        var result = await _controller.ExportGuestData(guestId);
+
+        Assert.IsType<OkObjectResult>(result);
+        _mockGdprService.Verify(
+            x => x.ExportGuestDataAsync(OrgId, guestId, new HostScope(OrgId), false, It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// Proof test (scope rule): a collaborator limited to some properties reaches the guest of a stay at one of them, and the service gets the
+    /// collaborator's own scope (never the org's) to narrow the messages by.
+    /// </summary>
+    [Fact]
+    public async Task ExportGuestData_CollaboratorWithPartialScope_PassesItsOwnScopeToTheService()
+    {
+        var restricted = new HostScope(OrgId, GrantedToUserId: "auth0|collaborator");
+        _controller.ControllerContext.HttpContext.User =
+            new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", "auth0|collaborator")], "Test"));
+        _mockScopeResolver
+            .Setup(r => r.ResolveAsync("auth0|collaborator", It.IsAny<IReadOnlySet<string>>(), OrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(restricted);
+        var guestId = Guid.NewGuid();
+        _mockGuestAccessService
+            .Setup(x => x.IsGuestAccessibleAsync(guestId, restricted, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await _controller.ExportGuestData(guestId);
+
+        Assert.IsType<OkObjectResult>(result);
+        _mockGdprService.Verify(
+            x => x.ExportGuestDataAsync(OrgId, guestId, restricted, true, It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        _mockGdprService.Verify(
+            x => x.ExportGuestDataAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), new HostScope(OrgId), It.IsAny<bool>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]

@@ -23,8 +23,12 @@ concurrency:
 jobs:
   gj-l3:
     name: Golden Journey L3
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Pinned to 24.04: `ubuntu-latest` is now 26.04 and `npx playwright install chromium` stops there with
+    # "Playwright does not support chromium on ubuntu26.04-x64" (the frontend workflows are pinned the same way).
+    runs-on: ubuntu-24.04
+    # The job takes 6-7 minutes; on 8 Nov every run hung for 32 minutes in the suite step and failed after 36: 15 minutes
+    # is a margin over a slow run and bounds what a hang costs.
+    timeout-minutes: 15
     # Throw-away service container: the password below is not a secret.
     services:
       postgres:

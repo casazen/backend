@@ -5,9 +5,10 @@ namespace Casazen.Web.DTOs;
 /// <summary>
 /// Body of "Le mie prenotazioni" (BK-11, A3-10): the booking site, the booking code of the confirmation email and the
 /// email the booking was made with. In the body, never in the URL, so neither code nor email end up in request logs.
-/// A code in a wrong format is answered like a code that does not exist.
+/// A code in a wrong format is answered like a code that does not exist. The guest session has a body of its own
+/// (<see cref="GuestSessionRequest"/>, which also takes the last four digits of the phone); this one stays the body of the lookups.
 /// </summary>
-public class GuestBookingLookupRequest : IPerEmailRateLimitedRequest
+public class GuestBookingLookupRequest : IPerEmailRateLimitedRequest, IGuestBookingCodeRequest
 {
     [Required(ErrorMessage = "GuestBookingOrgRequired")]
     [MaxLength(100, ErrorMessage = "GuestBookingOrgRequired")]

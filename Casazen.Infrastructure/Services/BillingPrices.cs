@@ -35,7 +35,7 @@ public static class BillingPrices
     /// </summary>
     public static string? Resolve(IConfiguration configuration, PlanTier tier)
     {
-        var value = configuration[$"{SectionName}:{tier}"]?.Trim();
+        var value = (configuration[$"Billing:CheckoutPrices:{tier}"] ?? configuration[$"{SectionName}:{tier}"])?.Trim();
         return IsPriceId(value) ? value : null;
     }
 
@@ -47,11 +47,13 @@ public static class BillingPrices
 
         foreach (var entry in PlanCatalog.All)
         {
-            if (string.Equals(Resolve(configuration, entry.Tier), priceId, StringComparison.Ordinal))
+            if (IsPriceId(priceId) && (string.Equals(Resolve(configuration, entry.Tier), priceId, StringComparison.Ordinal) ||
+                string.Equals(configuration[$"{SectionName}:{entry.Tier}"]?.Trim(), priceId, StringComparison.Ordinal) ||
+                configuration.GetSection($"Billing:PreviousPrices:{entry.Tier}").GetChildren().Any(previous => previous.Value == priceId)))
                 return entry.Tier;
         }
 
-        return null;
+        return AgencyUsagePricing.MatchesPriceId(configuration, AgencyUsagePricing.Base, priceId) ? PlanTier.Agency : null;
     }
 
     /// <summary>
@@ -62,7 +64,9 @@ public static class BillingPrices
     {
         var problems = new List<string>();
 
+        // Agency is a newly introduced opt-in product; existing installations keep serving their configured plans.
         var missing = PlanCatalog.All
+            .Where(e => e.Tier != PlanTier.Agency)
             .Where(e => Resolve(configuration, e.Tier) is null)
             .Select(e => VariableName(e.Tier))
             .ToList();
@@ -74,8 +78,9 @@ public static class BillingPrices
         }
 
         var shared = PlanCatalog.All
-            .Select(e => (e.Tier, PriceId: Resolve(configuration, e.Tier)))
-            .Where(p => p.PriceId is not null)
+            .SelectMany(e => new[] { Resolve(configuration, e.Tier), configuration[$"{SectionName}:{e.Tier}"]?.Trim() }
+                .Concat(configuration.GetSection($"Billing:PreviousPrices:{e.Tier}").GetChildren().Select(previous => previous.Value))
+                .Where(IsPriceId).Distinct(StringComparer.Ordinal).Select(priceId => (e.Tier, PriceId: priceId)))
             .GroupBy(p => p.PriceId, StringComparer.Ordinal)
             .Where(g => g.Count() > 1)
             .Select(g => string.Join(" and ", g.Select(p => VariableName(p.Tier))));
@@ -84,7 +89,7 @@ public static class BillingPrices
         return problems;
     }
 
-    private static bool IsPriceId(string? value) =>
+    internal static bool IsPriceId(string? value) =>
         !string.IsNullOrEmpty(value)
         && value.StartsWith(PriceIdPrefix, StringComparison.Ordinal)
         && value.Length > PriceIdPrefix.Length

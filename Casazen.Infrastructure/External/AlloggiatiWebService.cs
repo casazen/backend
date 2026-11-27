@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -29,7 +30,8 @@ public class AlloggiatiWebService(
     ILogger<AlloggiatiWebService> logger,
     TimeProvider? timeProvider = null,
     IStayGuestService? stayGuestService = null,
-    IAlloggiatiCodeTableService? codeTableService = null) : IAlloggiatiWebService
+    IAlloggiatiCodeTableService? codeTableService = null,
+    IComplianceSendLog? complianceSendLog = null, IDirectAlloggiatiRoute? directRoute = null) : IAlloggiatiWebService
 {
     /// <summary>Error code of a sent date before the check-in date.</summary>
     public const string ManualDateBeforeArrivalCode = "alloggiati_manual_date_before_arrival";
@@ -55,13 +57,6 @@ public class AlloggiatiWebService(
     /// </summary>
     public static readonly TimeSpan LostJobGrace = TimeSpan.FromHours(1);
 
-    private static readonly BookingStatus[] ActiveBookingStatuses =
-    [
-        BookingStatus.Confirmed,
-        BookingStatus.CheckedIn,
-        BookingStatus.CheckedOut,
-    ];
-
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     private readonly IAlloggiatiCodeTableService _codeTables =
@@ -69,6 +64,9 @@ public class AlloggiatiWebService(
 
     private readonly IStayGuestService _stayGuests = stayGuestService
         ?? new StayGuestService(context, codeTableService ?? new AlloggiatiCodeTableService(context, NullLogger<AlloggiatiCodeTableService>.Instance), timeProvider);
+
+    // The log of what was sent (NF-47): the one the container gives, or, built by hand without it, one on the same context.
+    private readonly IComplianceSendLog _sendLog = complianceSendLog ?? new ComplianceSendLog(context, NullLogger<ComplianceSendLog>.Instance);
 
     public async Task<bool> IsStayDataCompleteAsync(Guid bookingId)
     {
@@ -91,7 +89,10 @@ public class AlloggiatiWebService(
             .AsNoTracking()
             .Include(b => b.Guest)
             .Include(b => b.Property)
-            .Where(b => b.OrgId == scope.OrgId && ActiveBookingStatuses.Contains(b.Status))
+            // A no-show (NF-45) has nothing to send: it leaves the list of the communications.
+            .Where(b => b.OrgId == scope.OrgId && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
+            .Where(AlloggiatiStatusRules.ItalianProperties)
+            .Where(OpenableStayRules.CanShow)
             .InScope(scope);
 
         if (propertyId.HasValue)
@@ -112,6 +113,13 @@ public class AlloggiatiWebService(
         var now = UtcNow();
         var today = _clock.TodayInRome();
         return bookings
+            .Where(booking => OpenableStayRules.CanCompleteStay(
+                booking.Property?.Name,
+                booking.Guest?.FirstName,
+                booking.Guest?.LastName,
+                AlloggiatiRecordRules.IsDataComplete(guests[booking.Id]),
+                booking.CheckOutDate,
+                today))
             .Select(booking =>
             {
                 var report = SlotReport(reports[booking.Id].ToList(), booking.GuestId);
@@ -136,7 +144,7 @@ public class AlloggiatiWebService(
     {
         var booking = await LoadBookingAsync(bookingId, tracking: false);
         var report = SlotReport(await ReportsOfAsync(bookingId, tracking: false), booking.GuestId);
-        var status = AlloggiatiStatusRules.Effective(report?.Status, booking.CheckInDate, _clock.TodayInRome());
+        var status = StatusOf(booking, report);
         var stayDays = AlloggiatiTerms.StayDays(booking.CheckInDate, booking.CheckOutDate);
 
         // One line per guest of the stay, in record order: a head of family or group before its members (CO-12).
@@ -249,8 +257,8 @@ public class AlloggiatiWebService(
 
     public async Task<AlloggiatiReportReservation?> ReserveReportAsync(Guid bookingId)
     {
-        var booking = await context.Bookings.FirstOrDefaultAsync(b => b.Id == bookingId);
-        if (booking is null || !ActiveBookingStatuses.Contains(booking.Status))
+        var booking = await context.Bookings.Include(b => b.Property).FirstOrDefaultAsync(b => b.Id == bookingId);
+        if (booking is null || !TouristTaxComune.IsItalianCountry(booking.Property.Country) || !AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status))
         {
             logger.LogInformation("Alloggiati report not scheduled: booking {BookingId} missing or not active", bookingId);
             return null;
@@ -312,7 +320,7 @@ public class AlloggiatiWebService(
 
     public async Task<AlloggiatiProcessOutcome> ProcessScheduledReportAsync(Guid bookingId, Guid guestId)
     {
-        var booking = await context.Bookings.AsNoTracking().FirstOrDefaultAsync(b => b.Id == bookingId);
+        var booking = await context.Bookings.AsNoTracking().Include(b => b.Property).FirstOrDefaultAsync(b => b.Id == bookingId);
         if (booking is null)
             return AlloggiatiProcessOutcome.BookingNotFound;
 
@@ -327,7 +335,9 @@ public class AlloggiatiWebService(
         if (report.Status is not (AlloggiatiWebStatus.DaInviare or AlloggiatiWebStatus.Errore))
             return AlloggiatiProcessOutcome.AlreadyHandled;
 
-        if (!ActiveBookingStatuses.Contains(booking.Status))
+        // A no-show (NF-45) has nobody to communicate: the job leaves its report alone, and every reader derives "not due" from the no-show mark
+        // (AlloggiatiStatusRules.Effective), so it is never "to send manually" nor overdue.
+        if (!AlloggiatiStatusRules.IsDue(booking) || !TouristTaxComune.IsItalianCountry(booking.Property.Country))
             return AlloggiatiProcessOutcome.BookingInactive;
 
         if (!AlloggiatiTerms.IsArrivalDayReached(booking.CheckInDate, _clock.TodayInRome()))
@@ -346,9 +356,17 @@ public class AlloggiatiWebService(
         return AlloggiatiProcessOutcome.MarkedForManualSubmission;
     }
 
-    public async Task<AlloggiatiStatusInfo> MarkSentManuallyAsync(Guid bookingId, DateTime sentOn)
+    public async Task<AlloggiatiStatusInfo> MarkSentManuallyAsync(Guid bookingId, DateTime sentOn, string? byUserId = null)
     {
         var booking = await LoadBookingAsync(bookingId, tracking: true);
+        if (!TouristTaxComune.IsItalianCountry(booking.Property.Country))
+            return BuildStatusInfo(booking, null, await IsDataCompleteAsync(booking));
+
+        await using var tx = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(context, CancellationToken.None,
+            (PostgresAdvisoryLocks.Scope.InstitutionalSenderCutover, booking.PropertyId.ToString("N")));
+        if (directRoute != null && await directRoute.EffectiveFromAsync(booking.OrgId, booking.PropertyId, CancellationToken.None) is { } cutoff &&
+            DateOnly.FromDateTime(booking.CheckInDate) >= cutoff)
+            throw new DomainConflictException("alloggiati_direct_sender", "AlloggiatiDirectSender");
         var sentDate = sentOn.Date;
         if (sentDate < booking.CheckInDate.Date)
             throw new DomainRuleException(ManualDateBeforeArrivalCode, "AlloggiatiManualDateBeforeArrival");
@@ -358,7 +376,8 @@ public class AlloggiatiWebService(
         var now = UtcNow();
         var reports = await ReportsOfAsync(bookingId, tracking: true);
         var report = SlotReport(reports, booking.GuestId);
-        if (report is not null && AlloggiatiStatusRules.IsSent(report.Status))
+        if (report is not null && (AlloggiatiStatusRules.IsSent(report.Status) || report.Status is AlloggiatiWebStatus.Sending
+            or AlloggiatiWebStatus.ToVerify or AlloggiatiWebStatus.SentReceiptPending or AlloggiatiWebStatus.PartiallyAccepted))
             throw new DomainConflictException(AlreadySentCode, "AlloggiatiAlreadySent");
 
         if (report is null)
@@ -379,14 +398,29 @@ public class AlloggiatiWebService(
         report.ReportedAt = sentDate;
         report.ErrorMessage = null;
         report.UpdatedAt = now;
-        await context.SaveChangesAsync();
+
+        // The declaration and its line in the log of what was sent (NF-47, AC-NF47-2) are one save: the log saves the report with it, so the
+        // stay is never declared sent without the line, nor the line written for a declaration that did not go through. When is the day the host
+        // says it sent the communication, as for the report (a calendar day of Rome, midnight UTC); who is the person who declared it.
+        await _sendLog.RecordAsync(new ComplianceSendLogEntry
+        {
+            OrgId = booking.OrgId,
+            PropertyId = booking.PropertyId,
+            BookingId = bookingId,
+            Kind = ComplianceSendKind.AlloggiatiGuests,
+            Sender = ComplianceSender.Manual,
+            SentAt = DateTime.SpecifyKind(sentDate, DateTimeKind.Utc),
+            ByUserId = string.IsNullOrWhiteSpace(byUserId) ? null : byUserId,
+        });
 
         logger.LogInformation("Alloggiati report of booking {BookingId} declared sent manually by the host", bookingId);
+        if (tx != null) await tx.CommitAsync();
         return BuildStatusInfo(booking, report, await IsDataCompleteAsync(booking));
     }
 
     public bool IsOverdue(Booking booking, AlloggiatiWebStatus? reportStatus) =>
-        IsOverdue(AlloggiatiTerms.DeadlineUtc(booking), reportStatus ?? AlloggiatiWebStatus.DaInviare, UtcNow());
+        booking.NoShowAt is null
+        && IsOverdue(AlloggiatiTerms.DeadlineUtc(booking), reportStatus ?? AlloggiatiWebStatus.DaInviare, UtcNow());
 
     private async Task<AlloggiatiReportReservation?> MoveSlotToGuestAsync(
         AlloggiatiWebReport previous,
@@ -424,7 +458,7 @@ public class AlloggiatiWebService(
 
     private async Task<Booking> LoadBookingAsync(Guid bookingId, bool tracking)
     {
-        var query = context.Bookings.Include(b => b.Guest).AsQueryable();
+        var query = context.Bookings.Include(b => b.Guest).Include(b => b.Property).AsQueryable();
         if (!tracking)
             query = query.AsNoTracking();
 
@@ -444,10 +478,15 @@ public class AlloggiatiWebService(
     private static AlloggiatiWebReport? SlotReport(IReadOnlyCollection<AlloggiatiWebReport> reports, Guid guestId) =>
         AlloggiatiStatusRules.SlotReport(reports, guestId);
 
+    private AlloggiatiWebStatus StatusOf(Booking booking, AlloggiatiWebReport? report) =>
+        TouristTaxComune.IsItalianCountry(booking.Property.Country)
+            ? AlloggiatiStatusRules.Effective(report?.Status, booking.CheckInDate, _clock.TodayInRome(), booking.NoShowAt is not null)
+            : AlloggiatiWebStatus.NotDue;
+
     private AlloggiatiStatusInfo BuildStatusInfo(Booking booking, AlloggiatiWebReport? report, bool dataComplete)
     {
         var now = UtcNow();
-        var status = AlloggiatiStatusRules.Effective(report?.Status, booking.CheckInDate, _clock.TodayInRome());
+        var status = StatusOf(booking, report);
         var deadline = AlloggiatiTerms.DeadlineUtc(booking);
         return new AlloggiatiStatusInfo(
             booking.Id,
@@ -463,7 +502,7 @@ public class AlloggiatiWebService(
     }
 
     private static bool IsOverdue(DateTime deadline, AlloggiatiWebStatus status, DateTime now) =>
-        now > deadline && !AlloggiatiStatusRules.IsSent(status);
+        now > deadline && !AlloggiatiStatusRules.IsSent(status) && !AlloggiatiStatusRules.IsNotDue(status);
 
     private static double HoursUntil(DateTime deadline, DateTime now) =>
         Math.Max(0, (deadline - now).TotalHours);

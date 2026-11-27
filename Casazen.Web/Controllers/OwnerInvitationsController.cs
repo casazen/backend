@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
@@ -16,6 +17,7 @@ namespace Casazen.Web.Controllers;
 public class OwnerInvitationsController(
     IOwnerInvitationService ownerInvitationService,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     ILogger<OwnerInvitationsController> logger) : ControllerBase
 {
     /// <summary>
@@ -42,6 +44,11 @@ public class OwnerInvitationsController(
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
+        // The reach of the caller (AM-03): an owner that holds nothing inside it is the same 404 as one that does not exist.
+        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted);
+        if (scope is null)
+            return Forbid();
+
         logger.LogInformation(
             "Creating owner invitation for PropertyOwner {PropertyOwnerId} in org {OrgId}",
             propertyOwnerId, orgId.Value);
@@ -50,7 +57,8 @@ public class OwnerInvitationsController(
             orgId.Value,
             propertyOwnerId,
             userId,
-            HttpContext.RequestAborted);
+            HttpContext.RequestAborted,
+            scope);
 
         return CreatedAtAction(
             nameof(CreateInvitation),

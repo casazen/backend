@@ -8,6 +8,9 @@ namespace Casazen.Core.Services;
 /// <see cref="CheckoutHolds.OccupiesDates"/> (an expired checkout hold does not, a "pay at the property" request does) and the
 /// nights they and the calendar blocks take are <see cref="PropertyOccupancy"/>, the same as the calendar, the iCal export, the public
 /// availability and the final check that refuses a booking on taken dates. Read only: nothing is cancelled or written.
+/// For a property mirrored on the channel manager it also says what Octorate answers (<see cref="IChannelManagerAvailability"/>, E08/F01/US02/T01):
+/// "not available" there makes the stay <see cref="HostAvailabilityState.Occupied"/> with a <see cref="HostAvailabilityConflictType.ChannelManager"/>
+/// conflict, and an Octorate that cannot be asked is only said (<see cref="HostStayAvailability.ChannelManagerChecked"/>), it never blocks the host.
 /// </summary>
 public interface IHostAvailabilityService
 {
@@ -70,11 +73,20 @@ public enum HostAvailabilityConflictType
 
     /// <summary>The host's own block.</summary>
     Block,
+
+    /// <summary>
+    /// The channel manager (Octorate) says the nights cannot be booked (E08/F01/US02/T01). It has no row of CasaZen: the id is empty, the
+    /// dates are the ones asked for, and the title is the channel Octorate names, when it names one (its answer holds none today).
+    /// </summary>
+    ChannelManager,
 }
 
 /// <summary>Something that takes at least one night of the dates asked for.</summary>
-/// <param name="Title">The guest's name for a booking (the host sees it), the name of the calendar for a portal, the host's note for a block.</param>
-/// <param name="Channel">Where a booking came from, or the portal of a block of its calendar; null for the host's own block.</param>
+/// <param name="Title">
+/// The guest's name for a booking (the host sees it), the name of the calendar for a portal, the host's note for a block, the channel Octorate
+/// names for <see cref="HostAvailabilityConflictType.ChannelManager"/> (null when it names none).
+/// </param>
+/// <param name="Channel">Where a booking came from, or the portal of a block of its calendar; null for the host's own block and for the channel manager.</param>
 /// <param name="From">Arrival day.</param>
 /// <param name="To">Departure day, the first day it no longer takes a night.</param>
 public sealed record HostAvailabilityConflict(
@@ -94,6 +106,12 @@ public sealed record HostAvailabilityWindow(DateOnly From, DateOnly To);
 /// <param name="Conflicts">What takes the nights, by arrival day; empty unless <see cref="HostAvailabilityState.Occupied"/> or <see cref="HostAvailabilityState.LinkableBlock"/> (then, the block).</param>
 /// <param name="NearestFreeWindow">With <see cref="HostAvailabilityState.Occupied"/>: the free stay of the same length nearest to the arrival asked, never before today; null when there is none close by.</param>
 /// <param name="LinkableBlockId">With <see cref="HostAvailabilityState.LinkableBlock"/>: the block to complete.</param>
+/// <param name="ChannelManagerChecked">
+/// <c>null</c> when the channel manager was not asked: the property is not mirrored, the connector is off, the dates cannot be a stay, or the
+/// reservation of a portal that the host is about to complete sits on exactly these dates (that reservation is what Octorate would answer
+/// with). <c>true</c> when Octorate answered. <c>false</c> when it could not be asked (timeout, 429, 5xx, a room not chosen): advice only,
+/// the host goes on.
+/// </param>
 public sealed record HostStayAvailability(
     HostAvailabilityState State,
     HostAvailabilityInvalidReason? InvalidReason,
@@ -101,7 +119,8 @@ public sealed record HostStayAvailability(
     int? MinNights,
     IReadOnlyList<HostAvailabilityConflict> Conflicts,
     HostAvailabilityWindow? NearestFreeWindow,
-    Guid? LinkableBlockId);
+    Guid? LinkableBlockId,
+    bool? ChannelManagerChecked = null);
 
 /// <summary>The part of the availability that needs no database (SR-06a).</summary>
 public static class HostAvailabilityRules

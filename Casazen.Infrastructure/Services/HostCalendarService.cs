@@ -459,18 +459,10 @@ public sealed class HostCalendarService(
     private static List<CalendarOccupant> OccupantsOf(IReadOnlyList<BookingRow> bookings, IReadOnlyList<BlockRow> blocks)
     {
         var occupants = new List<CalendarOccupant>(bookings.Count + blocks.Count);
-        occupants.AddRange(bookings.Select(b => new CalendarOccupant(
-            b.Id,
-            CalendarItemType.Booking,
-            b.PropertyId,
-            DateOnly.FromDateTime(b.CheckInDate),
-            DateOnly.FromDateTime(b.CheckOutDate))));
-        occupants.AddRange(blocks.Where(b => !IsRepresentedByStay(b)).Select(b => new CalendarOccupant(
-            b.Id,
-            b.Source == CalendarBlockSource.ICalImport ? CalendarItemType.Ical : CalendarItemType.Block,
-            b.PropertyId,
-            DateOnly.FromDateTime(b.StartUtc),
-            DateOnly.FromDateTime(b.EndUtc))));
+        occupants.AddRange(bookings.Select(b => CalendarAlertRules.StayOccupant(b.Id, b.PropertyId, b.CheckInDate, b.CheckOutDate)));
+        occupants.AddRange(blocks
+            .Where(b => !IsRepresentedByStay(b))
+            .Select(b => CalendarAlertRules.BlockOccupant(b.Id, b.PropertyId, b.Source, b.StartUtc, b.EndUtc)));
         return occupants;
     }
 

@@ -9,7 +9,7 @@ namespace Casazen.Web.Infrastructure;
 /// Requirement of a context policy (<c>CasazenPolicies</c>): <see cref="PermissionKey"/> held in at least one of
 /// <see cref="ContextKeys"/>. A permission counts only in the context that grants it.
 /// </summary>
-public sealed record ContextPermissionRequirement(IReadOnlyList<string> ContextKeys, string PermissionKey) : IAuthorizationRequirement
+public sealed record ContextPermissionRequirement(IReadOnlyList<string> ContextKeys, string PermissionKey, IReadOnlyList<string>? OtherPermissionKeys = null) : IAuthorizationRequirement
 {
     /// <summary>A requirement on a single context.</summary>
     public ContextPermissionRequirement(string contextKey, string permissionKey)
@@ -43,10 +43,13 @@ public class ContextAuthorizationHandler(
 
         foreach (var contextKey in requirement.ContextKeys)
         {
-            if (await contextAuthorizationService.HasPermissionAsync(userId, contextKey, requirement.PermissionKey))
+            foreach (var permission in (requirement.OtherPermissionKeys ?? []).Prepend(requirement.PermissionKey))
             {
-                context.Succeed(requirement);
-                return;
+                if (await contextAuthorizationService.HasPermissionAsync(userId, contextKey, permission))
+                {
+                    context.Succeed(requirement);
+                    return;
+                }
             }
         }
 

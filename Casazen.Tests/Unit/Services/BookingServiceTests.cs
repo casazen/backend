@@ -1,3 +1,4 @@
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
@@ -60,7 +61,9 @@ public class BookingServiceTests
             _mockHoldExpiry.Object,
             new OnSiteRequestNotifier(
                 _db, _emails, EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()),
-            _mockPricing.Object);
+            _mockPricing.Object,
+            NoChannelManager.Instance,
+            NoDayRules.Instance);
         _mockPricing
             .Setup(s => s.GetAppliedNightlyPricesAsync(It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<DateOnly, decimal>());
@@ -243,6 +246,62 @@ public class BookingServiceTests
         Assert.Equal(property.OrgId, inserted.Guest.OrgId);
         _mockGuestRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
         _mockRepository.Verify(x => x.DiscardCheckoutAttemptAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    /// <summary>
+    /// PROOF TEST: privacy rule (E27/F01/US01/T01, NF-123). What the checkout sent as the attribution is stored as marketing tokens and a host name only: the
+    /// link of the agency makes the booking one of the site of the agency, an e-mail address or a query that came with it is dropped, the referrer is reduced to
+    /// its host, and the booking itself is never refused for it.
+    /// </summary>
+    [Fact]
+    public async Task CreateDirectBookingAsync_Attribution_IsStoredSanitized_NoPersonalData_AndTheBookingStaysDirect()
+    {
+        var property = ConnectReadyProperty();
+        Booking? inserted = null;
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Booking>()))
+            .Callback((Booking b) => inserted = b)
+            .ReturnsAsync((Booking b) => b);
+        _mockStripe
+            .Setup(x => x.CreateConnectedAccountPaymentIntentAsync(
+                It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
+            .ReturnsAsync(new Stripe.PaymentIntent { Id = "pi_attribution", ClientSecret = "pi_attribution_secret" });
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+        var input = DirectInput(property.Id, checkIn, checkIn.AddDays(3), PaymentOption.Immediate) with
+        {
+            Attribution = new BookingAttributionInput(
+                "Agency-Site",
+                "https://www.agenzia.it/case?nome=Mario",
+                "mario.rossi@example.com",
+                "https://www.agenzia.it:8443/case/trullo?email=mario@example.com"),
+        };
+
+        await _service.CreateDirectBookingAsync(input);
+
+        Assert.NotNull(inserted);
+        Assert.Equal(BookingSource.Direct, inserted.Source);
+        Assert.Equal(("agency-site", null, null, "www.agenzia.it"), (inserted.AttributionSource, inserted.AttributionMedium, inserted.AttributionCampaign, inserted.AttributionReferrerHost));
+        Assert.Equal(BookingOrigin.AgencySite, BookingOrigins.Of(inserted));
+    }
+
+    [Fact]
+    public async Task CreateDirectBookingAsync_WithoutAttribution_StoresNone_AndTheBookingIsOfCasaZenOwnSite()
+    {
+        var property = ConnectReadyProperty();
+        Booking? inserted = null;
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Booking>()))
+            .Callback((Booking b) => inserted = b)
+            .ReturnsAsync((Booking b) => b);
+        _mockStripe
+            .Setup(x => x.CreateConnectedAccountPaymentIntentAsync(
+                It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
+            .ReturnsAsync(new Stripe.PaymentIntent { Id = "pi_no_attribution", ClientSecret = "pi_no_attribution_secret" });
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+
+        await _service.CreateDirectBookingAsync(DirectInput(property.Id, checkIn, checkIn.AddDays(3), PaymentOption.Immediate));
+
+        Assert.NotNull(inserted);
+        Assert.Equal((null, null, null, null), (inserted.AttributionSource, inserted.AttributionMedium, inserted.AttributionCampaign, inserted.AttributionReferrerHost));
+        Assert.Equal(BookingOrigin.CasaZenSite, BookingOrigins.Of(inserted));
     }
 
     [Fact]
@@ -444,7 +503,7 @@ public class BookingServiceTests
         Assert.Equal(DirectBookingErrorCodes.MinNightsNotMet, ex.Code);
         Assert.Equal(4, Assert.Single(ex.MessageArgs));
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
-        _mockRepository.Verify(x => x.AddWithGuestConsentAsync(It.IsAny<Booking>(), It.IsAny<GuestConsentRecord>()), Times.Never);
+        _mockRepository.Verify(x => x.AddWithGuestConsentsAsync(It.IsAny<Booking>(), It.IsAny<IReadOnlyList<GuestConsentRecord>>()), Times.Never);
         _mockGuestRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
         _mockStripe.Verify(
             x => x.CreateConnectedAccountPaymentIntentAsync(
@@ -686,14 +745,14 @@ public class BookingServiceTests
         var service = NewServiceWithSettings(("Gdpr:MarketingConsentVersion", " marketing-2026-10 "));
         var property = ConnectReadyProperty();
         Booking? insertedBooking = null;
-        GuestConsentRecord? insertedConsent = null;
-        _mockRepository.Setup(x => x.AddWithGuestConsentAsync(It.IsAny<Booking>(), It.IsAny<GuestConsentRecord>()))
-            .Callback((Booking b, GuestConsentRecord c) =>
+        IReadOnlyList<GuestConsentRecord>? insertedConsents = null;
+        _mockRepository.Setup(x => x.AddWithGuestConsentsAsync(It.IsAny<Booking>(), It.IsAny<IReadOnlyList<GuestConsentRecord>>()))
+            .Callback((Booking b, IReadOnlyList<GuestConsentRecord> c) =>
             {
                 insertedBooking = b;
-                insertedConsent = c;
+                insertedConsents = c;
             })
-            .ReturnsAsync((Booking b, GuestConsentRecord _) => b);
+            .ReturnsAsync((Booking b, IReadOnlyList<GuestConsentRecord> _) => b);
         _mockStripe
             .Setup(x => x.CreateConnectedAccountPaymentIntentAsync(
                 It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
@@ -708,7 +767,8 @@ public class BookingServiceTests
         await service.CreateDirectBookingAsync(input);
 
         Assert.NotNull(insertedBooking);
-        Assert.NotNull(insertedConsent);
+        Assert.NotNull(insertedConsents);
+        var insertedConsent = Assert.Single(insertedConsents);
         var guest = insertedBooking.Guest;
         Assert.True(guest.MarketingConsent);
         Assert.NotNull(guest.MarketingConsentDate);
@@ -720,6 +780,8 @@ public class BookingServiceTests
         Assert.Equal(GuestConsentSource.BookingCheckout, insertedConsent.Source);
         Assert.Equal("203.0.113.7", insertedConsent.IpAddress);
         Assert.Equal(guest.MarketingConsentDate, insertedConsent.RecordedAt);
+        // The legacy box is the e-mail channel, and the row of the register says so.
+        Assert.Equal(GuestConsentChannelNote.Email, insertedConsent.Note);
         // The plain insert is for the checkouts without consent.
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
     }
@@ -737,7 +799,7 @@ public class BookingServiceTests
         Assert.Equal(DirectBookingErrorCodes.MarketingConsentUnavailable, ex.Code);
         Assert.Equal("DirectBookingMarketingConsentUnavailable", ex.MessageKey);
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
-        _mockRepository.Verify(x => x.AddWithGuestConsentAsync(It.IsAny<Booking>(), It.IsAny<GuestConsentRecord>()), Times.Never);
+        _mockRepository.Verify(x => x.AddWithGuestConsentsAsync(It.IsAny<Booking>(), It.IsAny<IReadOnlyList<GuestConsentRecord>>()), Times.Never);
         _mockPropertyRepository.Verify(x => x.GetByIdAsync(It.IsAny<Guid>()), Times.Never);
     }
 
@@ -765,7 +827,7 @@ public class BookingServiceTests
         Assert.NotNull(inserted);
         Assert.False(inserted.Guest.MarketingConsent);
         Assert.Null(inserted.Guest.MarketingConsentDate);
-        _mockRepository.Verify(x => x.AddWithGuestConsentAsync(It.IsAny<Booking>(), It.IsAny<GuestConsentRecord>()), Times.Never);
+        _mockRepository.Verify(x => x.AddWithGuestConsentsAsync(It.IsAny<Booking>(), It.IsAny<IReadOnlyList<GuestConsentRecord>>()), Times.Never);
     }
 
     /// <summary>A service like <c>_service</c> with more settings (same mocks), for the settings that default to none.</summary>
@@ -796,7 +858,9 @@ public class BookingServiceTests
             _mockHoldExpiry.Object,
             new OnSiteRequestNotifier(
                 _db, _emails, EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()),
-            _mockPricing.Object);
+            _mockPricing.Object,
+            NoChannelManager.Instance,
+            NoDayRules.Instance);
     }
 
     private Property ConnectReadyProperty()

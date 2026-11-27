@@ -28,7 +28,7 @@ public class TicinoFileProofTests
             OrgId = orgA,
             Name = "Property A",
             Country = "CH",
-            SwissMunicipalityCode = "5113", // Lugano
+            SwissMunicipalityCode = "5192", // Lugano
         };
 
         var propertyB = new Property
@@ -37,7 +37,7 @@ public class TicinoFileProofTests
             OrgId = orgB,
             Name = "Property B",
             Country = "CH",
-            SwissMunicipalityCode = "5113", // Lugano
+            SwissMunicipalityCode = "5192", // Lugano
         };
 
         // Arrange: Create compliance receipts for each property

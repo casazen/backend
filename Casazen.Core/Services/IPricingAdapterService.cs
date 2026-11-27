@@ -44,7 +44,11 @@ public interface IPricingAdapterService
         IReadOnlyList<SeasonalPriceApplyItem> items,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Applied nightly prices in <c>[from, to)</c>; nights without a confirmation are omitted.</summary>
+    /// <summary>
+    /// The prices the host set for dates in <c>[from, to)</c>: the seasonal prices it confirmed, overridden for a night by the price of the day rule
+    /// of that night (<see cref="DayRulePricing.HostPrices"/>, E08/F05/US01/T03); nights without either are omitted. A public read: it ignores the
+    /// tenant filter, the price of a night being public data of a property.
+    /// </summary>
     Task<IReadOnlyDictionary<DateOnly, decimal>> GetAppliedNightlyPricesAsync(
         Guid propertyId,
         DateOnly fromInclusive,

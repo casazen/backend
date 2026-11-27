@@ -3,7 +3,7 @@ namespace Casazen.Core.Entities.Enums;
 /// <summary>
 /// The stable code of what happened (<see cref="OrgActivityEntry.Type"/>, AM-02b). The list is the whole perimeter of the
 /// activity log: an event is added here, in <c>OrgActivityCatalog</c> and in the runbook <c>docs/runbooks/org-team.md</c>, never
-/// without (about 25 in the end, decision AM-D18: the catalog is closed and grows one row at a time, each written by the task that
+/// without (about 30 in the end, decision AM-D18 raised from 25: the catalog is closed and grows one row at a time, each written by the task that
 /// introduces the action). The client composes the sentence from the type and the ids; nothing here carries a name, an email,
 /// an amount or a free text. Persisted as int, explicit values in groups of ten: append-only, never reorder or reuse a
 /// value. The ones marked <i>reserved</i> have their code fixed now and are written by the task that builds the feature.
@@ -68,7 +68,11 @@ public enum OrgActivityType
     /// <summary>
     /// The data of the company was changed (AM-08b-b): the legal name or the registered office of the operator, the phone or the
     /// language of the account. Subject: the org. No details: neither what changed nor the values are recorded. The contact email
-    /// is not part of it (it has never had a line: the log would carry an address).
+    /// is not part of it (it has never had a line: the log would carry an address). It is the line of the other settings of the org
+    /// too: the supplier backups, and, since E22/F01/US01/T03, the biometric settings (a change by an administrator of the org, and
+    /// the calibration of the thresholds that a platform administrator marks, whose actor is the staff user). Since FIX/BE-V2-NO-RECHARGE
+    /// it records the acknowledged waiver of the recharge of the portal commissions too, the only line with a detail: the <c>part</c>
+    /// <c>portalCommissionRechargeWaiver</c> (the actor is who acknowledged it).
     /// </summary>
     OrgSettingsChanged = 24,
 
@@ -109,4 +113,94 @@ public enum OrgActivityType
 
     /// <summary>An admin manually granted a ConcordatoFacile gift to an org. Subject: the org. No details.</summary>
     AdminGrantedConcordatoFacileGift = 70,
+
+    // ─── Police and ISTAT communications (short rent, E03/F01/US05/T02) ───────────────────────────────
+
+    /// <summary>
+    /// Who sends the police (Alloggiati Web) and ISTAT communications of a property changed (ADR-029-R4: the audit of the switch),
+    /// written by <c>PropertySenderStore.SetAsync</c>, the one write path. Subject: the property. Details: the sender before and after
+    /// (<c>ChannelManager</c>, <c>CasaZen</c>, <c>Manual</c>); before a first choice, the sender before is the default the property had.
+    /// </summary>
+    PropertySenderChanged = 80,
+
+    /// <summary>
+    /// The org delegated the Alloggiati transmission to CasaZen, its tool (AW-R02, ADR-015-R10), written by
+    /// <c>AlloggiatiDelegationService.GrantAsync</c>. Subject: the org. Details: the version of the delegation text, never the text.
+    /// </summary>
+    AlloggiatiDelegationGranted = 81,
+
+    /// <summary>
+    /// The org revoked the delegation: no new send, the receipts already acquired stay retrievable. Written by
+    /// <c>AlloggiatiDelegationService.RevokeAsync</c>. Subject: the org. No details.
+    /// </summary>
+    AlloggiatiDelegationRevoked = 82,
+
+    // ─── Compliance handoff to the channel manager (E03/F05/US01/T01, CHK-15) ────────────────────────────
+
+    /// <summary>
+    /// A host started the guided check of an Alloggiati or ISTAT outcome in the connected area of Octorate (the «Cassetto Compliance»):
+    /// CasaZen prepared the allowlisted address and the guide. Written by <c>OctorateComplianceHandoffService</c>, in the only save of the
+    /// call; the handoff changes nothing else and records no outcome. Subject: the property. Details: the topic (<c>Alloggiati</c> or
+    /// <c>Istat</c>), the opaque handoff id, and, when the request had them, the booking id and the period. The area is short-rent.
+    /// </summary>
+    OctorateComplianceHandoffStarted = 100,
+
+    // ─── «Do it for me» (account, E10/F01/US03/T01, NF-15) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// A host asked CasaZen support to do a part, or a step of the Octorate panel, of the activation for it («Do it for me», UX-15, AC-NF15-1).
+    /// Written by <c>OnboardingAssistService.RequestAsync</c>, in the save that stores the request, and by <c>OnboardingAssistService.ReopenAsync</c> when
+    /// the host reopens a request support marked done («Non funziona», E20/F03/US01/T02). Subject: the org. Details: the part, the context of the request
+    /// and its status (<c>requested</c>), short codes only: never the draft, a note or a person. The actor is the host.
+    /// </summary>
+    OnboardingAssistRequested = 110,
+
+    /// <summary>
+    /// CasaZen staff took, completed or closed a «Do it for me» request, or changed its note (AC-NF15-3). Written by
+    /// <c>OnboardingAssistService.UpdateAsync</c> in the <b>org of the request</b>, not in the staff user's, with the staff user as the actor.
+    /// Subject: the org. Details: the part, the context and the new status (<c>inProgress</c>, <c>done</c>, <c>cancelled</c>); the note is never
+    /// recorded. Also written by <c>SupportVaultService.RevealAsync</c> (E20/F03/US01/T01) when staff opens a credential of the support vault for the
+    /// request: then the status is the request's and the detail <c>credential</c> says which kind was used (<c>panel</c>, <c>police</c>,
+    /// <c>regionalIstat</c>), never its value or the reason.
+    /// </summary>
+    OnboardingAssistUpdated = 111,
+
+    // ─── Messages to the guests (hub of messages, E05/F02/US02/T01) ──────────────────────────────────────
+
+    /// <summary>
+    /// The contact of the guest of ONE booking was read from the channel manager to write to the guest (<c>POST /rest/v2/reservation/{acc}/{refer}/contactInfo</c>:
+    /// Octorate releases the address only on request and records every read, so CasaZen records who asked as well). Written by
+    /// <c>MessageReplyService.StartConversationAsync</c>, in the save that follows the read, whether or not the guest had an address. Subject: the booking.
+    /// Details: the purpose (<c>message_to_guest</c>). The area is short-rent. Never the address, the phone number or a word of the message.
+    /// </summary>
+    ContactInfoRead = 120,
+
+    // ─── Owner onboarding of an agency (E10/F02/US02) ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// An owner file was imported and changed something (owners created or completed, ownership periods written). Written by
+    /// <c>OwnerOnboardingService.ImportAsync</c>, in the save of the import, only when something changed (an import that finds everything done
+    /// records nothing, so a second import of the same file leaves no line). Subject: the org. Details: how many rows the file had, how many it
+    /// changed and the first 32 characters of the fingerprint of the file. Never a name, an identifier or a cell of the file.
+    /// </summary>
+    OwnerImportApplied = 130,
+
+    /// <summary>
+    /// An invitation of a property owner to the owner portal changed: it was sent, sent again (which replaces the previous link), accepted, withdrawn
+    /// (ADR-011-R11). Written by <c>OwnerInvitationService</c> in the unit of work of the change. Subject: the invitation. Details: the
+    /// <c>status</c> (<c>sent</c>, <c>resent</c>, <c>accepted</c>, <c>revoked</c>). Never the address, the name of the owner or the link.
+    /// </summary>
+    OwnerInvitationChanged = 140,
+
+    // ─── Owner portal operations (E07/F07/US01, NF-111) ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Something of the owner portal operations of an agency changed (E07/F07/US01): an owner stay was requested, approved, rejected, withdrawn or
+    /// cancelled, its block was acknowledged or refused by the channel manager or sent again; a rule of the owner stays was saved or removed; and,
+    /// with the documents, the contacts and the inbox of the portal, what they record. Written by the owner portal services in the unit of work of the
+    /// change, by a person of the agency, by the owner (<c>owner:{id}</c>) or by the reconciliation (no actor). Subject: the item (the owner stay, the
+    /// rule, ...). Details: the <c>part</c> (<c>stay</c>, <c>stayRule</c>, ...) and the <c>status</c>, codes only: never a name, a date of a guest, a
+    /// text or an amount. One event for the whole feature: the catalog is closed (AM-D18).
+    /// </summary>
+    OwnerPortalChanged = 150,
 }

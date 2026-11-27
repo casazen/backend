@@ -18,6 +18,12 @@ public interface ISupplierComuneMatcher
         ComuneTarget target,
         CancellationToken cancellationToken = default);
 
+    /// <summary>The profiles that operate in any target, in the same order and without duplicates.</summary>
+    Task<IReadOnlyList<SupplierProfile>> FilterAnyAsync(
+        IReadOnlyCollection<SupplierProfile> suppliers,
+        IReadOnlyCollection<ComuneTarget> targets,
+        CancellationToken cancellationToken = default);
+
     /// <summary>True when <paramref name="supplier"/> operates in <paramref name="target"/>.</summary>
     Task<bool> CoversAsync(SupplierProfile supplier, ComuneTarget target, CancellationToken cancellationToken = default);
 }

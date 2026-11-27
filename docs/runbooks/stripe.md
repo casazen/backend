@@ -235,6 +235,54 @@ the Pro card shows "Piano attuale" and "Fatturazione" shows Attivo with the next
 offer "Cambia dal portale", which opens the Stripe portal. The incomplete, unpaid and past due states are covered by the
 frontend tests (`plans-page.test.tsx`, `billing-settings-page.test.tsx`).
 
+## Connect accounts: country and test onboarding (issue #1001)
+
+The host's payments run on its own Stripe **Express** account (`ConnectOnboardingService`, `StripeConnectGateway`). Issue #1001
+(the Quokka360 test org could not get through the Stripe onboarding, even in test mode) had two causes.
+
+**1. The country was always the platform default (`IT`).** Stripe fixes the country of an account when it is created and the hosted
+form then asks for the data of that country (address, tax id, IBAN, legal forms). A Swiss company cannot complete an Italian form,
+in test or in production. A new account is now created in the org's own country:
+
+| Order | Source | Used when |
+|---|---|---|
+| 1 | `OrgFiscalIssuerProfiles.CountryCode` of the org's own profile | the profile is **confirmed** (`ConfirmedAt` set; an unconfirmed one only holds the default) and the country is `IT` or `CH` |
+| 2 | `Orgs.BillingCountry` | `IT` or `CH` |
+| 3 | `Stripe__ConnectDefaultCountry` | otherwise (default `IT`): an org of another country keeps the old behaviour |
+
+An account that is of another country than the org's **and** has nothing submitted (`details_submitted`, `charges_enabled` and
+`payouts_enabled` all false) is replaced at the next "Completa la verifica" / `POST /api/connect/account`, with the idempotency key
+`connect-account:{orgId}:replaces:{oldAccountId}`; the old Express account stays on Stripe, empty, and can be deleted from the
+Dashboard. A submitted account is never swapped, whatever its country.
+
+**2. In test mode Stripe checks identities against nothing but its published test values.** A real name, birth date or address typed in
+the hosted form fails with `verification_failed_keyed_identity` (the person's `first_name`, `last_name`, `dob`, `address`, `phone`
+come back as `currently_due` with that error) and the account never leaves the onboarding. With a **test-mode** key
+(`StripeKeyModes`) a new account is therefore created and then filled, in one best-effort update, with Stripe's test data
+(`StripeConnectTestData`): `business_type` individual, date of birth `1901-01-01`, address line `address_full_match` in a real city of the
+country, test phone, test personal id (Italy), the test IBAN of the country and a product description. What is left in the
+hosted flow is the Stripe login by phone (**Use test phone number**) and the acceptance of the terms; `requirements.currently_due`
+is only `tos_acceptance.date` and `tos_acceptance.ip`. No `business_profile.url` is sent: Stripe validates it also in test mode and refuses
+reserved domains.
+
+- `Stripe__ConnectTestPrefill=false` switches the prefill off (the empty hosted form, to test it as a real host would). A live key never prefills.
+- A Stripe error on the prefill is logged (`Could not prefill Stripe test account`) and ignored: the account is created and linked
+  either way. It runs only right after the creation, before any Account Link: afterwards Stripe refuses the platform's writes on an Express account.
+- Countries other than `IT` and `CH` get no prefill. By hand, in the hosted form, the same values work for any test account:
+  date of birth `01/01/1901`, address line `address_full_match` (with a real city, province and postal code), phone `000 000 0000`
+  (or **Use test phone number**), personal id `000000000`, tax id `000000000`, IBAN `IT60X0542811101000000123456` or
+  `CH9300762011623852957` (Stripe, *Testing Connect → identity verification*).
+
+**Verification on the test environment.** Open "Pagamenti" as an org of `CH` (billing country or confirmed fiscal profile): "Collega Stripe"
+leads to a hosted page of a **Swiss** account (`connect.stripe.com/setup/e/acct_…`), already filled; after the test phone number and the
+acceptance of the terms the page is back on CasaZen with the account active (`charges_enabled`). `GET /api/connect/status` shows the
+account and the logs one `Stripe Express account created: acct_… (CH)` and one `prefilled with Stripe test data`. An Italian org gets
+an `IT` account the same way. An org that already had an unsubmitted `IT` account and is `CH` gets a new `CH` one at the next click.
+
+**Open point for production (Stripe, not code).** A Swiss account under the Italian platform is created with `card_payments` and
+`transfers` (checked on test mode); whether Stripe activates `card_payments` for it in live mode, for direct charges in CHF, depends
+on the platform's cross-border settings: confirm it with Stripe before the pilot's live onboarding.
+
 ## Refunds and booking cancellations on Stripe Connect (BK-02)
 
 Task BK-02 (audit defects A3-05 P0, A9-15 payments part; issue #51). Before it, "Rimborsa" only changed the database,
@@ -1060,6 +1108,36 @@ The EUR 119,00 payment of the ConcordatoFacile service (the process, the configu
 - **Pending that is over** (CF-BE, CF-IMPORT-FU1 and CF-FIX-FU2). The Session is created with an explicit expiry of **2 hours** (`ConcordatoFacilePurchaseRules.CheckoutSessionLifetime`; Stripe accepts 30 minutes to 24 hours and defaults to 24). A purchase still `Pending` 2 hours and 10 minutes after its creation counts as **closed** (`Failed`, "payment failed or checkout session expired": no new state, no migration): it is not "already purchased", it is not reused and it does not keep the draft from being deleted (`LeaseDraftDeleter.IsDeletableAsync`, which takes the closed purchases with the draft). The checkout still asks Stripe for the state of every `Pending` purchase before opening a new Session, so a payment made and not yet recorded is completed, never charged twice. `payment_intent.payment_failed` and `payment_intent.canceled` of the service close the purchase **only if its Session can no longer succeed** (`expired`, or `complete` and not paid: a delayed method that failed); a card declined while the Session is `open` leaves it `Pending` (the customer tries another card), and a paid or refunded purchase is never touched. Not covered: a delayed payment method (SEPA) still in flight after 2 hours 10 minutes would count as closed for the deletion of the draft; the live account has none today.
 - **Try it** (test mode): pay with `4242 4242 4242 4242`; the PaymentIntent in the Dashboard shows the three metadata keys and no `kind`; the delivery of `payment_intent.succeeded` to the platform destination answers 200; a second click on "Paga" shows "Hai già accesso" and opens no Session. In live mode the test cards do not work: a test is a real payment of 119 €, refundable from the Dashboard.
 
+## Linked bank account (Financial Connections)
+
+Optional. The landlord (org billing admin) and, with the existing rent payment-link token, the tenant of one lease can
+link a bank account. CasaZen stores the Financial Connections account id (`fca_…`) on the org or on that lease. It does
+not store an IBAN or account number. The manual bank transfer is unchanged: owner and debit IBANs, the payment reference
+in the wire file, and the landlord's offline declaration (`POST /api/leases/{leaseId}/rent/installments/{id}/mark-paid`)
+stay. A rent installment is paid only when Stripe reports `payment_intent.succeeded` for the current PaymentIntent, or
+when that offline declaration is recorded. The PaymentIntent is saved on `BankLinkPayments` before it is confirmed, with one
+idempotency key per due (`bank-link:{installmentId}`), so a retry confirms the same debit. An ad-hoc debit (no installment)
+requires the caller's `Idempotency-Key`; a missing key is refused, so a retry cannot open a second PaymentIntent. A webhook
+changes a bank-link payment only while it is still processing, and does not reopen the due. Starting the debit sets the
+installment to in flight; it does not mark it paid.
+
+The session asks Stripe for institutions in Italy (`filters[country]=IT`) and sends `Stripe-Version: 2026-10-28.endive` on that call. Stripe.net 50 otherwise pins `2025-12-15.clover`, which rejects `filters[country]` and only accepts the old `filters[countries]` list. The list is Italian banks, not US banks. The debit is a platform PaymentIntent of type `sepa_debit` in EUR. Stripe builds that PaymentMethod from the
+linked account (its `pm_…`, or the IBAN token on the account). CasaZen stores the Financial Connections id and the
+PaymentMethod id. It does not store or log a full IBAN. An EUR rent installment can be paid this way. It is marked
+paid only when Stripe confirms. With no linked account, the manual transfer remains.
+
+| Call | Who |
+|---|---|
+| `POST /api/orgs/me/bank-links/sessions` | Landlord. Returns the session client secret. |
+| `POST /api/orgs/me/bank-links` | Landlord. Body `{ "accountId": "fca_…" }`. |
+| `GET /api/orgs/me/bank-links` | Landlord. Id, institution, last4. No IBAN. |
+| `POST /api/orgs/me/bank-links/payments` | Landlord. SEPA debit in EUR, including a rent installment. An ad-hoc debit requires `Idempotency-Key`. |
+| `POST /api/public/rent-payments/{id}/bank-link/session` | Tenant of that installment, payment-link token in the body. |
+| `POST /api/public/rent-payments/{id}/bank-link` | Tenant. Stores the account id on the lease. |
+| `POST /api/public/rent-payments/{id}/bank-link/payment` | Tenant. Same debit rules, amount of the installment. |
+
+Webhook `metadata.kind = bank-link-payment` on the platform endpoint. No Dashboard change.
+
 ## Operations
 
 | Situation | What to do |
@@ -1075,3 +1153,29 @@ The EUR 119,00 payment of the ConcordatoFacile service (the process, the configu
 1. Automated: `StripeWebhookIdempotencyPostgresTests` (sequential and parallel duplicates on both endpoints, failure then retry, incomplete/unpaid without access), `BillingCheckoutPostgresTests` (repeated checkout, double click, other plan, incomplete), `StripeWebhookSubscriptionStateTests`, `WebhookSignatureTests`.
 2. Test mode: from Stripe Dashboard resend the same event twice to the platform endpoint: the second job logs `Skipping duplicate Stripe event`.
 3. Test mode: complete a checkout, then start another from the plans page: 409 `already_subscribed`, no second session in Stripe.
+
+## Commercial signup (#896)
+
+The new web signup selects one profile (agency, private owner, long-term landlord; suppliers use their existing registration), a plan and optional modules before taking a payment. Existing accounts retain their current access. Apply `20261116221500_AddCommercialSignup` before deploying the API and deploy the API before the frontend.
+
+New Agency signups use a metered Stripe subscription. The wizard's room estimate never sets a billed quantity. Stripe collects a payment method at registration and invoices at UTC month end. Existing licensed subscriptions retain their prices and quantities. Keep their `Billing__Prices__Agency` mapping available for webhooks.
+
+Apply migration `20261118200000_AgencyMeteredBilling`. Configure the environment's `Billing__AgencyUsage__Prices__base` with the monthly, tax-exclusive EUR volume price for Agency Base (LISTINO §5). For 0–9 units the flat fee is €100. For 10–49 units charge €11 per unit, 50–149 charge €9.90, 150–399 charge €8.80. The final unlimited tier is €0 with no flat fee: sales must quote 400+ separately. The calculator shows the monthly minimum and volume bands; the API validates the actual price and meter before Checkout. Set the corresponding product's tax classification and keep the platform Stripe Tax registrations current.
+
+Use meter event `casazen_agency_units_v1_base`, aggregation `last`, customer mapping `by_id` on `stripe_customer_id` and value key `value`. Enable `invoice.created` on the platform webhook. For a metered renewal the webhook waits for the usage job to finish the closing month before acknowledging the invoice. Allow sufficient finalization grace (at least one hour) for Stripe to aggregate late events. Stripe's webhook retry and finalization windows are finite; reconcile missed finalized invoices against the inventory history before manual collection.
+
+One CasaZen property represents one sellable unit (PO-13). The inventory transaction retains activation intervals, including pauses and deletions. The five-minute `agency-monthly-unit-usage` job counts distinct unit IDs with any activity during that UTC calendar month and subscription. It excludes paused, deleted, inactive and demo inventory. Reactivation, extra bedrooms and extra distribution channels do not add another unit. The job records the accepted snapshot cursor only after every meter succeeds. The `last` aggregate is safe to replay. Watch job failures and custom-quote warnings. The manual quoting queue is persisted per subscription and calendar month in `AgencyCustomQuotes`, including the unit count. Stripe accepts historical meter events only within 35 days.
+
+The base includes channels, direct booking, compliance, operations and fiscal features where enabled. Any genuinely separate per-unit monthly extra needs its own metered `Billing__AgencyUsage__Prices__<code>`, `Billing__AgencyUsage__Monthly__<code>` in euros and `casazen_agency_units_v1_<code>` last-value meter (replace hyphens with underscores). Use a volume price through 399 and a zero-amount custom-quote tier above it. For the AI Agents sandbox meter run `dotnet Casazen.Web.dll --ensure-agency-test-meter ai-agents`. Never bind monthly owner prices or per-verification prices to these slots. Configure a package as a single charge; do not bind separate prices for features sold together.
+
+Optional modules are `channels`, `direct-booking`, `compliance`, `identification`, `messages-ai`, `ai-agents`, `operations`, `fiscal`, `revenue`, `crm`. For Pro and Scale owners, channels, direct booking, compliance and operations can be selected within the base subscription; Scale also includes the AI assistant. These choices generate no extra Stripe line. The subscription webhook activates the selected modules when the paid base tier covers them. See the [approved tariff, section 4](../business-plan/LISTINO.md). To offer a separately billed module to owners alone, set `Billing__OwnerAddons__<code>__PriceId` and `Billing__OwnerAddons__<code>__PriceMonthly` for that environment; an owner offer never sets an Agency price. For a shared monthly module configure `Billing__Addons__<code>__PriceId` and `Billing__Addons__<code>__PriceMonthly`. Prices must be recurring monthly EUR prices, consistent with the base product, and exclusive of tax. Owner subscriptions use quantity 1; metered Agency subscriptions use the dedicated keys above. Missing prices are shown as unavailable, never zero-cost. Modules that depend on rollout flags must also have their existing technical feature enabled. The commercial catalog does not turn those flags on.
+
+No Stripe product or price is created automatically. Keep the existing Stripe Tax registrations and product/price tax settings consistent with the configured products. The existing Checkout tax integration remains responsible for tax calculation.
+
+The validated selection is stored on the organization. Checkout reuse matches both the configuration fingerprint and return URL. The signed subscription webhook confirms payment and records paid modules from Stripe line items, rather than accepting the browser's `checkout=success` parameter as proof. `/onboarding` is an allow-listed return page. A canceled checkout resumes the saved selection; an existing subscription is managed through the customer portal instead of creating a second subscription.
+
+The organization's owner/plan administrator can activate the second rental area from Administration → Billing and plan → Manage active areas. New signup does not offer Both. This changes rental contexts, not paid add-on prices. Further subscription adjustments use the configured Stripe customer portal; do not add paid modules by directly editing the saved draft.
+
+Agency creation asks for a required agency name and creates a distinct organization via the existing race-safe provisioning service. The founder gets the existing `OrgRole.Owner` membership, including administration and invitations; this is never the platform-wide `Admin` role. Invitations are available from Administration → People after activation. Existing-agency membership continues through the signed, expiring invitation flow, with recipient verification and acceptance; no agency lookup or public join action is added.
+
+When replacing a base tariff for new customers, set `Billing__CheckoutPrices__<Tier>` and its matching display amount. Keep `Billing__Prices__<Tier>` for existing subscriptions and webhook reconciliation. Previous open Checkout sessions are replaced on the next checkout attempt.

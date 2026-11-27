@@ -15,6 +15,9 @@
   <data name="Layout_Footer" xml:space="preserve">
     <value>CasaZen — gestione affitti brevi</value>
   </data>
+  <data name="Layout_PoweredBy" xml:space="preserve">
+    <value>Con tecnologia CasaZen</value>
+  </data>
   <data name="Format_Date" xml:space="preserve">
     <value>dd/MM/yyyy</value>
   </data>
@@ -97,6 +100,21 @@
     <value>Completa il check-in</value>
   </data>
   <data name="GuestCheckInLink_Validity" xml:space="preserve">
+    <value>Il link è valido fino al {0}.</value>
+  </data>
+  <data name="GuestCheckInReminder_Subject" xml:space="preserve">
+    <value>Promemoria: completa il check-in per il tuo soggiorno — {0}</value>
+  </data>
+  <data name="GuestCheckInReminder_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="GuestCheckInReminder_Body" xml:space="preserve">
+    <value>Il tuo soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt; inizia il &lt;strong&gt;{1}&lt;/strong&gt; e mancano ancora i dati per il check-in. Completali prima dell'arrivo con il link qui sotto: sostituisce quello che ti abbiamo inviato in precedenza, che non è più valido.</value>
+  </data>
+  <data name="GuestCheckInReminder_Cta" xml:space="preserve">
+    <value>Completa il check-in</value>
+  </data>
+  <data name="GuestCheckInReminder_Validity" xml:space="preserve">
     <value>Il link è valido fino al {0}.</value>
   </data>
   <data name="GuestCheckInIncomplete_Subject" xml:space="preserve">
@@ -185,6 +203,285 @@
   </data>
   <data name="StayAlertPush_Failed_Body" xml:space="preserve">
     <value>{0}: controlla la comunicazione per l'arrivo del {1}.</value>
+  </data>
+  <data name="ReceiptMissing_Subject" xml:space="preserve">
+    <value>Ricevuta Alloggiati Web mancante - {0} ({1})</value>
+  </data>
+  <data name="ReceiptMissing_Body" xml:space="preserve">
+    <value>La comunicazione Alloggiati Web per il soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt;, con arrivo il &lt;strong&gt;{1}&lt;/strong&gt;, risulta inviata o affidata al channel manager, ma in CasaZen non c'è ancora la ricevuta.</value>
+  </data>
+  <data name="ReceiptMissing_Action" xml:space="preserve">
+    <value>Scarica la ricevuta dal portale Alloggiati Web e caricala nella pagina Adempimenti di CasaZen: finché manca, l'adempimento non risulta in regola.</value>
+  </data>
+  <data name="ShortStayAtRisk_Subject" xml:space="preserve">
+    <value>Soggiorno breve: comunicazione Alloggiati Web entro 6 ore - {0} ({1})</value>
+  </data>
+  <data name="ShortStayAtRisk_Body" xml:space="preserve">
+    <value>Il soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt;, con arrivo il &lt;strong&gt;{1}&lt;/strong&gt;, dura al massimo una notte: la comunicazione Alloggiati Web va inviata entro 6 ore dall'arrivo. Gli ospiti non risultano affidati al channel manager, che invia le comunicazioni una volta al giorno.</value>
+  </data>
+  <data name="ShortStayAtRisk_Action" xml:space="preserve">
+    <value>Invia la comunicazione sul portale Alloggiati Web appena l'ospite arriva, poi segnala l'invio nella scheda Alloggiati della prenotazione («Segna come inviato manualmente»).</value>
+  </data>
+  <data name="OverThirtyNights_Subject" xml:space="preserve">
+    <value>Soggiorno oltre 30 notti: comunicazione Alloggiati Web a mano - {0} ({1})</value>
+  </data>
+  <data name="OverThirtyNights_Body" xml:space="preserve">
+    <value>Il soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt;, con arrivo il &lt;strong&gt;{1}&lt;/strong&gt;, supera 30 notti: il channel manager non lo invia in automatico e il portale Alloggiati Web accetta al massimo 30 giorni di soggiorno per scheda.</value>
+  </data>
+  <data name="OverThirtyNights_Action" xml:space="preserve">
+    <value>Il giorno dell'arrivo invia la comunicazione sul portale Alloggiati Web, poi segnala l'invio nella scheda Alloggiati della prenotazione («Segna come inviato manualmente»).</value>
+  </data>
+  <data name="StayAlertPush_ReceiptMissing_Title" xml:space="preserve">
+    <value>Ricevuta Alloggiati Web mancante</value>
+  </data>
+  <data name="StayAlertPush_ReceiptMissing_Body" xml:space="preserve">
+    <value>{0}: carica la ricevuta dell'arrivo del {1}.</value>
+  </data>
+  <data name="StayAlertPush_ShortStayAtRisk_Title" xml:space="preserve">
+    <value>Soggiorno breve da comunicare</value>
+  </data>
+  <data name="StayAlertPush_ShortStayAtRisk_Body" xml:space="preserve">
+    <value>{0}: invia la comunicazione entro 6 ore dall'arrivo del {1}.</value>
+  </data>
+  <data name="StayAlertPush_OverThirtyNights_Title" xml:space="preserve">
+    <value>Soggiorno oltre 30 notti</value>
+  </data>
+  <data name="StayAlertPush_OverThirtyNights_Body" xml:space="preserve">
+    <value>{0}: invia a mano la comunicazione per l'arrivo del {1}.</value>
+  </data>
+  <data name="ComplianceAlert_Cta" xml:space="preserve">
+    <value>Apri gli adempimenti</value>
+  </data>
+  <data name="ComplianceAlertIstat_Approaching_Subject" xml:space="preserve">
+    <value>ISTAT in scadenza - {0} ({1})</value>
+  </data>
+  <data name="ComplianceAlertIstat_Approaching_Body" xml:space="preserve">
+    <value>La comunicazione ISTAT di &lt;strong&gt;{1}&lt;/strong&gt; per &lt;strong&gt;{0}&lt;/strong&gt; non risulta ancora fatta: scade il &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ComplianceAlertIstat_Overdue_Subject" xml:space="preserve">
+    <value>ISTAT scaduta - {0} ({1})</value>
+  </data>
+  <data name="ComplianceAlertIstat_Overdue_Body" xml:space="preserve">
+    <value>Il termine per la comunicazione ISTAT di &lt;strong&gt;{1}&lt;/strong&gt; per &lt;strong&gt;{0}&lt;/strong&gt; era il &lt;strong&gt;{2}&lt;/strong&gt; e in CasaZen non c'è la prova che sia stata fatta.</value>
+  </data>
+  <data name="ComplianceAlertIstat_Action" xml:space="preserve">
+    <value>Se l'hai già fatta, carica la prova nella pagina Adempimenti di CasaZen; se la invia il channel manager, controlla l'esito nel suo pannello. Altrimenti falla il prima possibile.</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Approaching_Subject" xml:space="preserve">
+    <value>Imposta di soggiorno in scadenza - {0} ({1})</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Approaching_Body" xml:space="preserve">
+    <value>La dichiarazione e il pagamento dell'imposta di soggiorno di &lt;strong&gt;{1}&lt;/strong&gt; per &lt;strong&gt;{0}&lt;/strong&gt; non risultano ancora fatti: scadono il &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Overdue_Subject" xml:space="preserve">
+    <value>Imposta di soggiorno scaduta - {0} ({1})</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Overdue_Body" xml:space="preserve">
+    <value>Il termine per dichiarare e pagare l'imposta di soggiorno di &lt;strong&gt;{1}&lt;/strong&gt; per &lt;strong&gt;{0}&lt;/strong&gt; era il &lt;strong&gt;{2}&lt;/strong&gt; e in CasaZen non ci sono le ricevute della dichiarazione e del pagamento.</value>
+  </data>
+  <data name="ComplianceAlertTouristTax_Action" xml:space="preserve">
+    <value>Se li hai già fatti, carica le ricevute nella pagina Adempimenti di CasaZen; altrimenti dichiara e paga il prima possibile.</value>
+  </data>
+  <data name="ComplianceAlertConnection_Subject" xml:space="preserve">
+    <value>Invio automatico non attivo - {0}</value>
+  </data>
+  <data name="ComplianceAlertConnection_Body" xml:space="preserve">
+    <value>Il channel manager non risulta attivo per l'invio automatico delle comunicazioni Alloggiati Web e ISTAT di &lt;strong&gt;{0}&lt;/strong&gt;, e nei prossimi giorni arriva un ospite.</value>
+  </data>
+  <data name="ComplianceAlertConnection_Reminder" xml:space="preserve">
+    <value>Secondo e ultimo avviso: l'invio automatico non risulta ancora attivo.</value>
+  </data>
+  <data name="ComplianceAlertConnection_Action" xml:space="preserve">
+    <value>Attivalo o ricollegalo dal pannello del channel manager. Finché non è attivo, le comunicazioni vanno inviate a mano.</value>
+  </data>
+  <data name="CompliancePush_Istat_Approaching_Title" xml:space="preserve">
+    <value>ISTAT in scadenza</value>
+  </data>
+  <data name="CompliancePush_Istat_Approaching_Body" xml:space="preserve">
+    <value>{0}: comunicazione ISTAT di {1} da fare entro il {2}.</value>
+  </data>
+  <data name="CompliancePush_Istat_Overdue_Title" xml:space="preserve">
+    <value>ISTAT scaduta</value>
+  </data>
+  <data name="CompliancePush_Istat_Overdue_Body" xml:space="preserve">
+    <value>{0}: la comunicazione ISTAT di {1} non risulta fatta.</value>
+  </data>
+  <data name="CompliancePush_TouristTax_Approaching_Title" xml:space="preserve">
+    <value>Imposta di soggiorno in scadenza</value>
+  </data>
+  <data name="CompliancePush_TouristTax_Approaching_Body" xml:space="preserve">
+    <value>{0}: imposta di soggiorno di {1} da dichiarare e pagare entro il {2}.</value>
+  </data>
+  <data name="CompliancePush_TouristTax_Overdue_Title" xml:space="preserve">
+    <value>Imposta di soggiorno scaduta</value>
+  </data>
+  <data name="CompliancePush_TouristTax_Overdue_Body" xml:space="preserve">
+    <value>{0}: l'imposta di soggiorno di {1} non risulta pagata.</value>
+  </data>
+  <data name="CompliancePush_Connection_Title" xml:space="preserve">
+    <value>Invio automatico non attivo</value>
+  </data>
+  <data name="CompliancePush_Connection_Body" xml:space="preserve">
+    <value>{0}: l'invio automatico non è attivo e un ospite sta per arrivare.</value>
+  </data>
+  <data name="TicinoNotificationAlert_FileToPrepare_Subject" xml:space="preserve">
+    <value>Notifica alla polizia da preparare - {0} ({1})</value>
+  </data>
+  <data name="TicinoNotificationAlert_FileToPrepare_Body" xml:space="preserve">
+    <value>È il momento di preparare la notifica alla Polizia cantonale ticinese degli ospiti con arrivo il &lt;strong&gt;{1}&lt;/strong&gt; a &lt;strong&gt;{0}&lt;/strong&gt;: va fatta entro 24 ore dall'arrivo, per CasaZen entro il &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="TicinoNotificationAlert_Approaching_Subject" xml:space="preserve">
+    <value>Notifica alla polizia in scadenza - {0} ({1})</value>
+  </data>
+  <data name="TicinoNotificationAlert_Approaching_Body" xml:space="preserve">
+    <value>La notifica alla Polizia cantonale ticinese degli ospiti con arrivo il &lt;strong&gt;{1}&lt;/strong&gt; a &lt;strong&gt;{0}&lt;/strong&gt; scade il &lt;strong&gt;{2}&lt;/strong&gt; e in CasaZen non risulta ancora fatta.</value>
+  </data>
+  <data name="TicinoNotificationAlert_Overdue_Subject" xml:space="preserve">
+    <value>Notifica alla polizia scaduta - {0} ({1})</value>
+  </data>
+  <data name="TicinoNotificationAlert_Overdue_Body" xml:space="preserve">
+    <value>Il termine per notificare alla Polizia cantonale ticinese gli ospiti con arrivo il &lt;strong&gt;{1}&lt;/strong&gt; a &lt;strong&gt;{0}&lt;/strong&gt; era il &lt;strong&gt;{2}&lt;/strong&gt; e in CasaZen non risulta che la notifica sia stata fatta.</value>
+  </data>
+  <data name="TicinoNotificationAlert_Missing" xml:space="preserve">
+    <value>Dati ancora mancanti per il file: {0}.</value>
+  </data>
+  <data name="TicinoNotificationAlert_Action" xml:space="preserve">
+    <value>Scarica il file dalla pagina Adempimenti di CasaZen e caricalo sul portale della Polizia cantonale, poi registra in CasaZen che il giorno è stato notificato: non riceverai altri promemoria per quel giorno.</value>
+  </data>
+  <data name="TicinoNotificationPush_Due_Title" xml:space="preserve">
+    <value>Notifica alla polizia da fare</value>
+  </data>
+  <data name="TicinoNotificationPush_Due_Body" xml:space="preserve">
+    <value>{0}: gli ospiti con arrivo il {1} vanno notificati alla Polizia cantonale entro il {2}.</value>
+  </data>
+  <data name="TicinoNotificationPush_Overdue_Title" xml:space="preserve">
+    <value>Notifica alla polizia scaduta</value>
+  </data>
+  <data name="TicinoNotificationPush_Overdue_Body" xml:space="preserve">
+    <value>{0}: la notifica degli ospiti con arrivo il {1} non risulta fatta.</value>
+  </data>
+  <data name="TicinoNotificationPush_Missing" xml:space="preserve">
+    <value>Mancano: {0}.</value>
+  </data>
+  <data name="TicinoMissing_structureId" xml:space="preserve">
+    <value>numero identificativo della struttura</value>
+  </data>
+  <data name="TicinoMissing_guests" xml:space="preserve">
+    <value>ospiti non ancora registrati</value>
+  </data>
+  <data name="TicinoMissing_firstName" xml:space="preserve">
+    <value>nome</value>
+  </data>
+  <data name="TicinoMissing_lastName" xml:space="preserve">
+    <value>cognome</value>
+  </data>
+  <data name="TicinoMissing_birthDate" xml:space="preserve">
+    <value>data di nascita</value>
+  </data>
+  <data name="TicinoMissing_nationality" xml:space="preserve">
+    <value>nazionalità</value>
+  </data>
+  <data name="TicinoMissing_documentType" xml:space="preserve">
+    <value>tipo di documento</value>
+  </data>
+  <data name="TicinoMissing_other" xml:space="preserve">
+    <value>altri dati</value>
+  </data>
+  <data name="SwissNotificationAlert_ToPrepare_Subject" xml:space="preserve">
+    <value>Notifica degli ospiti all'autorità da preparare - {0} ({1})</value>
+  </data>
+  <data name="SwissNotificationAlert_ToPrepare_Body" xml:space="preserve">
+    <value>È il momento di preparare la notifica all'autorità cantonale degli ospiti con arrivo il &lt;strong&gt;{1}&lt;/strong&gt; a &lt;strong&gt;{0}&lt;/strong&gt;: per CasaZen va fatta entro &lt;strong&gt;{2}&lt;/strong&gt;. CasaZen non la trasmette: ti prepara i dati da copiare sul portale ufficiale.</value>
+  </data>
+  <data name="SwissNotificationAlert_Approaching_Subject" xml:space="preserve">
+    <value>Notifica degli ospiti all'autorità in scadenza - {0} ({1})</value>
+  </data>
+  <data name="SwissNotificationAlert_Approaching_Body" xml:space="preserve">
+    <value>La notifica all'autorità cantonale degli ospiti con arrivo il &lt;strong&gt;{1}&lt;/strong&gt; a &lt;strong&gt;{0}&lt;/strong&gt; scade il &lt;strong&gt;{2}&lt;/strong&gt; e in CasaZen non risulta ancora dichiarata.</value>
+  </data>
+  <data name="SwissNotificationAlert_Overdue_Subject" xml:space="preserve">
+    <value>Notifica degli ospiti all'autorità scaduta - {0} ({1})</value>
+  </data>
+  <data name="SwissNotificationAlert_Overdue_Body" xml:space="preserve">
+    <value>Il termine per notificare all'autorità cantonale gli ospiti con arrivo il &lt;strong&gt;{1}&lt;/strong&gt; a &lt;strong&gt;{0}&lt;/strong&gt; era il &lt;strong&gt;{2}&lt;/strong&gt; e in CasaZen non risulta che la notifica sia stata dichiarata.</value>
+  </data>
+  <data name="SwissNotificationAlert_Missing" xml:space="preserve">
+    <value>Dati ancora mancanti: {0}.</value>
+  </data>
+  <data name="SwissNotificationAlert_Action" xml:space="preserve">
+    <value>Apri la pagina Adempimenti di CasaZen: trovi i dati pronti da copiare e il link al portale ufficiale del cantone. Dopo aver fatto la notifica, dichiara in CasaZen che il giorno è stato notificato: non riceverai altri promemoria per quel giorno.</value>
+  </data>
+  <data name="SwissNotificationPush_Due_Title" xml:space="preserve">
+    <value>Notifica degli ospiti da fare</value>
+  </data>
+  <data name="SwissNotificationPush_Due_Body" xml:space="preserve">
+    <value>{0}: gli ospiti con arrivo il {1} vanno notificati all'autorità cantonale entro il {2}.</value>
+  </data>
+  <data name="SwissNotificationPush_Overdue_Title" xml:space="preserve">
+    <value>Notifica degli ospiti scaduta</value>
+  </data>
+  <data name="SwissNotificationPush_Overdue_Body" xml:space="preserve">
+    <value>{0}: la notifica degli ospiti con arrivo il {1} non risulta fatta.</value>
+  </data>
+  <data name="SwissNotificationPush_Missing" xml:space="preserve">
+    <value>Mancano: {0}.</value>
+  </data>
+  <data name="ComplianceSummary_Subject_NoStays" xml:space="preserve">
+    <value>Adempimenti di {0}: nessun soggiorno</value>
+  </data>
+  <data name="ComplianceSummary_Subject_AllCompliant" xml:space="preserve">
+    <value>Adempimenti di {0}: soggiorni {1}, tutto in regola</value>
+  </data>
+  <data name="ComplianceSummary_Subject_Open" xml:space="preserve">
+    <value>Adempimenti di {0}: soggiorni {1}, da sistemare {2}</value>
+  </data>
+  <data name="ComplianceSummary_Body_NoStays" xml:space="preserve">
+    <value>{0}: nessun soggiorno nel mese, niente da comunicare.</value>
+  </data>
+  <data name="ComplianceSummary_Body_AllCompliant" xml:space="preserve">
+    <value>{0}: soggiorni del mese &lt;strong&gt;{1}&lt;/strong&gt;. Tutto in regola: ogni adempimento ha la sua prova archiviata in CasaZen.</value>
+  </data>
+  <data name="ComplianceSummary_Body_Open" xml:space="preserve">
+    <value>{0}: soggiorni del mese &lt;strong&gt;{1}&lt;/strong&gt;. Non tutto è in regola, ecco cosa manca.</value>
+  </data>
+  <data name="ComplianceSummary_Item_SendAlloggiati" xml:space="preserve">
+    <value>Comunicazioni Alloggiati Web da inviare: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_ResolveAlloggiatiFailure" xml:space="preserve">
+    <value>Comunicazioni Alloggiati Web da correggere: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_UploadAlloggiatiReceipt" xml:space="preserve">
+    <value>Ricevute Alloggiati Web da caricare: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_SendAlloggiatiManually" xml:space="preserve">
+    <value>Comunicazioni Alloggiati Web da inviare a mano: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_UploadIstatProof" xml:space="preserve">
+    <value>Comunicazioni ISTAT da provare: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_DeclareTouristTax" xml:space="preserve">
+    <value>Imposta di soggiorno da dichiarare e pagare: {0}</value>
+  </data>
+  <data name="ComplianceSummary_Item_Other" xml:space="preserve">
+    <value>Altri adempimenti da sistemare: {0}</value>
+  </data>
+  <data name="ComplianceSummary_ExternalVerification" xml:space="preserve">
+    <value>Gli adempimenti da verificare sono quelli che invia il channel manager: CasaZen non ne vede l'esito e non lo dà per fatto. Controllalo nel suo pannello, partendo dalla pagina Adempimenti.</value>
+  </data>
+  <data name="ComplianceSummary_Totals" xml:space="preserve">
+    <value>In sintesi, gli adempimenti del mese:</value>
+  </data>
+  <data name="ComplianceSummary_State_OfficialProof" xml:space="preserve">
+    <value>Con prova archiviata: {0}</value>
+  </data>
+  <data name="ComplianceSummary_State_ExternalVerificationRequired" xml:space="preserve">
+    <value>Da verificare nel pannello del channel manager: {0}</value>
+  </data>
+  <data name="ComplianceSummary_State_Missing" xml:space="preserve">
+    <value>Senza prova: {0}</value>
+  </data>
+  <data name="ComplianceSummary_State_NotApplicable" xml:space="preserve">
+    <value>Non dovuti (gli ospiti non sono mai arrivati): {0}</value>
   </data>
   <data name="GuestRefundConfirmed_Subject" xml:space="preserve">
     <value>Rimborso confermato - {0}</value>
@@ -423,6 +720,18 @@
   <data name="GuestBookingConfirmed_NotFiscal" xml:space="preserve">
     <value>Questa email conferma la prenotazione e il pagamento ricevuto; non è un documento fiscale.</value>
   </data>
+  <data name="GuestBookingConfirmed_CheckInOpen" xml:space="preserve">
+    <value>Il check-in online è già aperto: completalo in anticipo con il pulsante qui sotto.</value>
+  </data>
+  <data name="GuestBookingConfirmed_CheckInCta" xml:space="preserve">
+    <value>Fai il check-in online</value>
+  </data>
+  <data name="GuestBookingConfirmed_CheckInOn" xml:space="preserve">
+    <value>Il link per il check-in online ti arriverà via email il &lt;strong&gt;{0}&lt;/strong&gt;. Da quel giorno puoi anche richiederlo in «Le mie prenotazioni».</value>
+  </data>
+  <data name="GuestBookingConfirmed_CheckInRequest" xml:space="preserve">
+    <value>Puoi richiedere il link per il check-in online in «Le mie prenotazioni».</value>
+  </data>
   <data name="HostBookingConfirmed_Subject" xml:space="preserve">
     <value>Nuova prenotazione confermata - {0} ({1})</value>
   </data>
@@ -588,11 +897,128 @@
   <data name="Push_NewBooking_Body" xml:space="preserve">
     <value>{0}: dal {1} al {2}, ospiti: {3}.</value>
   </data>
+  <data name="Push_ChannelBooking_Title" xml:space="preserve">
+    <value>Nuova prenotazione da {0}</value>
+  </data>
+  <data name="Push_ChannelBooking_Body" xml:space="preserve">
+    <value>{0}: dal {1} al {2}, ospiti: {3}.</value>
+  </data>
+  <data name="TodoReason_CleaningDue" xml:space="preserve">
+    <value>Check-out completato senza una pulizia richiesta</value>
+  </data>
+  <data name="TodoReason_CleaningDateChanged" xml:space="preserve">
+    <value>Le date del soggiorno sono cambiate: la pulizia è già stata presa in carico, decidi se spostarla o annullarla</value>
+  </data>
+  <data name="TodoReason_CleaningVatToState" xml:space="preserve">
+    <value>Pulizia da riaddebitare al proprietario: la ditta di pulizie ha applicato l'IVA su questa fattura?</value>
+  </data>
+  <data name="TodoReason_CleaningVatToStateAgain" xml:space="preserve">
+    <value>Il mese è chiuso e l'IVA di questa pulizia non è ancora indicata: la ditta di pulizie ha applicato l'IVA su questa fattura?</value>
+  </data>
+  <data name="OwnerLedger_CleaningRecharge" xml:space="preserve">
+    <value>Pulizia del {0}</value>
+  </data>
+  <data name="CleaningAutomation_RequestNote" xml:space="preserve">
+    <value>Pulizia automatica al check-out. Prezzo concordato.</value>
+  </data>
+  <data name="CleaningAutomation_StaffNote" xml:space="preserve">
+    <value>Pulizia automatica al check-out.</value>
+  </data>
+  <data name="CleaningAutomation_CancelReason" xml:space="preserve">
+    <value>Prenotazione annullata</value>
+  </data>
+  <data name="TodoReason_BookingSpecialRequest" xml:space="preserve">
+    <value>Nuova prenotazione con una richiesta speciale</value>
+  </data>
+  <data name="TodoReason_BookingOverlap" xml:space="preserve">
+    <value>{0}: la prenotazione arriva su notti già occupate, dal {1} al {2}</value>
+  </data>
   <data name="Push_GuestMessage_Title" xml:space="preserve">
     <value>Nuovo messaggio da un ospite</value>
   </data>
   <data name="Push_GuestMessage_Body" xml:space="preserve">
     <value>{0}: un ospite ti ha scritto.</value>
+  </data>
+  <data name="Push_OtaMessage_Title" xml:space="preserve">
+    <value>Nuovo messaggio da un ospite</value>
+  </data>
+  <data name="Push_OtaMessage_Body" xml:space="preserve">
+    <value>{0}: un ospite ti ha scritto su {1}.</value>
+  </data>
+  <data name="Push_OtaMessageUnassigned_Body" xml:space="preserve">
+    <value>Un ospite ti ha scritto su {0}.</value>
+  </data>
+  <data name="Push_ApprovalDraft_Title" xml:space="preserve">
+    <value>Bozza pronta</value>
+  </data>
+  <data name="Push_ApprovalDraft_Body" xml:space="preserve">
+    <value>Una bozza di risposta aspetta la tua approvazione.</value>
+  </data>
+  <data name="Push_ApprovalDraftProperty_Body" xml:space="preserve">
+    <value>{0}: una bozza di risposta aspetta la tua approvazione.</value>
+  </data>
+  <data name="Push_ApprovalItem_Title" xml:space="preserve">
+    <value>Da approvare</value>
+  </data>
+  <data name="Push_ApprovalItem_Body" xml:space="preserve">
+    <value>Un contenuto aspetta la tua approvazione.</value>
+  </data>
+  <data name="Push_ApprovalItemProperty_Body" xml:space="preserve">
+    <value>{0}: un contenuto aspetta la tua approvazione.</value>
+  </data>
+  <data name="Push_GuestCheckInCompleted_Title" xml:space="preserve">
+    <value>Check-in online completato</value>
+  </data>
+  <data name="Push_GuestCheckInCompleted_Body" xml:space="preserve">
+    <value>{0}: un ospite ha completato il check-in online.</value>
+  </data>
+  <data name="Push_BookingFlowArrival_Title" xml:space="preserve">
+    <value>Arrivo registrato in automatico</value>
+  </data>
+  <data name="Push_BookingFlowArrival_Body" xml:space="preserve">
+    <value>{0}: il giorno di arrivo è finito, abbiamo registrato l'arrivo dell'ospite.</value>
+  </data>
+  <data name="Push_BookingFlowDeparture_Title" xml:space="preserve">
+    <value>Partenza registrata in automatico</value>
+  </data>
+  <data name="Push_BookingFlowDeparture_Body" xml:space="preserve">
+    <value>{0}: è passata l'ora del check-out, abbiamo registrato la partenza.</value>
+  </data>
+  <data name="Push_BookingFlowPropertyReady_Title" xml:space="preserve">
+    <value>Casa pronta per il prossimo ospite</value>
+  </data>
+  <data name="Push_BookingFlowPropertyReady_Body" xml:space="preserve">
+    <value>{0}: la pulizia è fatta, la casa è pronta per il prossimo ospite.</value>
+  </data>
+  <data name="Push_AssistVerified_Title" xml:space="preserve">
+    <value>Il collegamento è attivo</value>
+  </data>
+  <data name="Push_AssistVerified_Body" xml:space="preserve">
+    <value>Il supporto CasaZen ha completato il collegamento che avevi chiesto e abbiamo verificato che è attivo.</value>
+  </data>
+  <data name="Push_AssistDeclared_Title" xml:space="preserve">
+    <value>Collegamento fatto dal supporto</value>
+  </data>
+  <data name="Push_AssistDeclared_Body" xml:space="preserve">
+    <value>Il supporto CasaZen dichiara di aver completato il collegamento che avevi chiesto. Se qualcosa non funziona, riapri la richiesta.</value>
+  </data>
+  <data name="Push_DomainVerified_Title" xml:space="preserve">
+    <value>Dominio verificato</value>
+  </data>
+  <data name="Push_DomainVerified_Body" xml:space="preserve">
+    <value>Il tuo dominio è attivo: il sito di prenotazione risponde al tuo indirizzo.</value>
+  </data>
+  <data name="Push_OwnerLoginReady_Title" xml:space="preserve">
+    <value>Accesso proprietari abilitato</value>
+  </data>
+  <data name="Push_OwnerLoginReady_Body" xml:space="preserve">
+    <value>I proprietari possono ora accedere al loro portale dal tuo dominio.</value>
+  </data>
+  <data name="Push_OwnerLoginFailed_Title" xml:space="preserve">
+    <value>Accesso proprietari non abilitato</value>
+  </data>
+  <data name="Push_OwnerLoginFailed_Body" xml:space="preserve">
+    <value>Non è stato possibile abilitare l'accesso dei proprietari dal tuo dominio. Riprova dalle impostazioni del dominio.</value>
   </data>
   <data name="Push_CheckoutReminder_Title" xml:space="preserve">
     <value>Promemoria check-out</value>
@@ -1674,6 +2100,48 @@
   <data name="HostReplyToGuest_Why" xml:space="preserve">
     <value>Ricevi questa email perché l'host ti ha risposto. Ne inviamo al massimo una ogni 10 minuti per conversazione.</value>
   </data>
+  <data name="HostMessageReceived_Subject" xml:space="preserve">
+    <value>Nuovo messaggio da un ospite - {0}</value>
+  </data>
+  <data name="HostMessageReceived_Body" xml:space="preserve">
+    <value>&lt;strong&gt;Un ospite&lt;/strong&gt; ti ha scritto su &lt;strong&gt;{0}&lt;/strong&gt; per &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostMessageReceived_BodyUnassigned" xml:space="preserve">
+    <value>&lt;strong&gt;Un ospite&lt;/strong&gt; ti ha scritto su &lt;strong&gt;{0}&lt;/strong&gt;. La conversazione non è ancora collegata a un alloggio.</value>
+  </data>
+  <data name="HostMessageReceived_How" xml:space="preserve">
+    <value>Per leggerlo e rispondere apri la conversazione in CasaZen. Per proteggere i dati dell'ospite, il testo del messaggio non è in questa email.</value>
+  </data>
+  <data name="HostMessageReceived_Cta" xml:space="preserve">
+    <value>Leggi e rispondi</value>
+  </data>
+  <data name="HostMessageReceived_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="HostMessageReceived_Why" xml:space="preserve">
+    <value>Ricevi questa email perché hai scelto di essere avvisato dei nuovi messaggi degli ospiti. Per non riempirti la posta, ne inviamo al massimo una ogni 10 minuti per conversazione. Puoi cambiare la scelta nelle preferenze di notifica del tuo profilo.</value>
+  </data>
+  <data name="HostApprovalToDecide_Subject" xml:space="preserve">
+    <value>Da approvare in CasaZen</value>
+  </data>
+  <data name="HostApprovalToDecide_Body" xml:space="preserve">
+    <value>Un contenuto aspetta la tua approvazione.</value>
+  </data>
+  <data name="HostApprovalToDecide_BodyProperty" xml:space="preserve">
+    <value>Un contenuto per &lt;strong&gt;{0}&lt;/strong&gt; aspetta la tua approvazione.</value>
+  </data>
+  <data name="HostApprovalToDecide_How" xml:space="preserve">
+    <value>Aprilo in CasaZen per leggerlo, correggerlo se serve e approvarlo o rifiutarlo. Per proteggere i dati degli ospiti, il testo non è in questa email.</value>
+  </data>
+  <data name="HostApprovalToDecide_Cta" xml:space="preserve">
+    <value>Apri le approvazioni</value>
+  </data>
+  <data name="HostApprovalToDecide_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="HostApprovalToDecide_Why" xml:space="preserve">
+    <value>Ricevi questa email perché hai scelto di essere avvisato quando una bozza o un contenuto aspetta la tua approvazione. Ne inviamo una per ogni contenuto. Puoi cambiare la scelta nelle preferenze di notifica del tuo profilo.</value>
+  </data>
   <data name="HostContact_Subject" xml:space="preserve">
     <value>Nuovo messaggio dal tuo sito di prenotazione</value>
   </data>
@@ -1703,6 +2171,24 @@
   </data>
   <data name="HostContact_Why" xml:space="preserve">
     <value>Ricevi questa email perché il tuo sito di prenotazione ha un modulo per scriverti. Il visitatore ha accettato che il messaggio e il suo indirizzo email ti vengano inviati. Se non ti sembra un contatto vero, ignoralo.</value>
+  </data>
+  <data name="HostGuestMessage_Subject" xml:space="preserve">
+    <value>Un messaggio da {0} per il tuo soggiorno</value>
+  </data>
+  <data name="HostGuestMessage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti scrive a proposito del tuo soggiorno a &lt;strong&gt;{1}&lt;/strong&gt;, dal {2} al {3}.</value>
+  </data>
+  <data name="HostGuestMessage_MessageLabel" xml:space="preserve">
+    <value>Messaggio</value>
+  </data>
+  <data name="HostGuestMessage_Reply" xml:space="preserve">
+    <value>Per rispondere, rispondi a questa email: la risposta arriva direttamente a &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostGuestMessage_NoReply" xml:space="preserve">
+    <value>Questa email è stata inviata da CasaZen per conto della struttura: per rispondere contatta direttamente la struttura.</value>
+  </data>
+  <data name="HostGuestMessage_Why" xml:space="preserve">
+    <value>Ricevi questa email perché hai una prenotazione presso questa struttura: il messaggio lo ha scritto la struttura e CasaZen lo ha inviato per suo conto. Se non riconosci la prenotazione, ignora questa email.</value>
   </data>
   <data name="GuestNewPhotoRequest_Subject" xml:space="preserve">
     <value>Nuova foto richiesta per il tuo soggiorno — {0}</value>
@@ -1736,6 +2222,96 @@
   </data>
   <data name="VerificationRequiredPush_Body" xml:space="preserve">
     <value>La prenotazione di {0} a {1} richiede verifica manuale.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Subject" xml:space="preserve">
+    <value>Verifica dell'identità da decidere — {0}</value>
+  </data>
+  <data name="VerificationOperatorAlert_Body" xml:space="preserve">
+    <value>Un ospite in arrivo a &lt;strong&gt;{0}&lt;/strong&gt; il {1} attende la verifica dell'identità da parte di un operatore.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_Review" xml:space="preserve">
+    <value>La verifica automatica chiede una revisione: la somiglianza è tra le due soglie, i dati del documento non corrispondono a quelli del check-in oppure il documento non è leggibile.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_AttemptsExhausted" xml:space="preserve">
+    <value>L'ospite ha usato tutti i tentativi della verifica automatica senza superarla.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_ConsentRefused" xml:space="preserve">
+    <value>L'ospite ha rifiutato il consenso alla verifica biometrica.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_TechnicalError" xml:space="preserve">
+    <value>La verifica automatica non è stata possibile per un problema tecnico.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_GuestRequest" xml:space="preserve">
+    <value>L'ospite ha chiesto la verifica da parte di una persona.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_BiometricsDisabled" xml:space="preserve">
+    <value>La verifica biometrica non è attiva per la tua organizzazione: l'identità va verificata da un operatore.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_MinorExcluded" xml:space="preserve">
+    <value>L'ospite da verificare è minorenne: la verifica biometrica non si applica.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_LegalTextNotApproved" xml:space="preserve">
+    <value>Il testo del consenso alla verifica biometrica non è ancora approvato dal legale: in produzione la verifica con il viso non viene offerta e l'identità va verificata da un operatore.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_Other" xml:space="preserve">
+    <value>La verifica dell'identità richiede un operatore.</value>
+  </data>
+  <data name="VerificationOperatorAlert_ReasonCode" xml:space="preserve">
+    <value>Codice del motivo: {0}</value>
+  </data>
+  <data name="VerificationOperatorAlert_Action" xml:space="preserve">
+    <value>Apri la prenotazione in CasaZen: trovi i motivi tecnici della verifica e puoi approvarla o rifiutarla. Il codice di accesso arriva all'ospite solo dopo la tua approvazione.</value>
+  </data>
+  <data name="VerificationOperatorAlertPush_Title" xml:space="preserve">
+    <value>Verifica dell'identità da decidere</value>
+  </data>
+  <data name="VerificationOperatorAlertPush_Body" xml:space="preserve">
+    <value>Un ospite di {0} attende la verifica dell'identità.</value>
+  </data>
+  <data name="TodoReason_IdentityVerification" xml:space="preserve">
+    <value>La verifica dell'identità dell'ospite attende la decisione di un operatore</value>
+  </data>
+  <data name="TodoReason_IdentityVerificationVideoCall" xml:space="preserve">
+    <value>Videochiamata proposta all'ospite: la verifica dell'identità attende la decisione di un operatore</value>
+  </data>
+  <data name="TodoReason_IdentityVerificationUseChat" xml:space="preserve">
+    <value>La verifica dell'identità attende un operatore: l'ospite non ha un indirizzo e-mail, proponi la videochiamata dalla chat del portale</value>
+  </data>
+  <data name="TodoNote_IdentityVerificationVideoCall" xml:space="preserve">
+    <value>Videochiamata proposta il {0} (UTC)</value>
+  </data>
+  <data name="GuestVideoCall_Subject" xml:space="preserve">
+    <value>Videochiamata per il check-in — {0}</value>
+  </data>
+  <data name="GuestVideoCall_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="GuestVideoCall_Body" xml:space="preserve">
+    <value>Per completare il check-in del tuo soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt; (arrivo: &lt;strong&gt;{1}&lt;/strong&gt;) l'host deve verificare la tua identità con una breve videochiamata.</value>
+  </data>
+  <data name="GuestVideoCall_Instructions" xml:space="preserve">
+    <value>Tieni a portata di mano il documento d'identità che hai indicato nel check-in e apri il link qui sotto all'orario concordato con l'host:</value>
+  </data>
+  <data name="GuestVideoCall_Cta" xml:space="preserve">
+    <value>Partecipa alla videochiamata</value>
+  </data>
+  <data name="GuestVideoCall_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="GuestVideoCall_Hint" xml:space="preserve">
+    <value>Al termine l'host conclude la verifica dell'identità. Se non ti aspettavi questa richiesta, ignora questa e-mail.</value>
+  </data>
+  <data name="GuestAccessCode_Subject" xml:space="preserve">
+    <value>Il codice di accesso per il tuo soggiorno — {0}</value>
+  </data>
+  <data name="GuestAccessCode_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="GuestAccessCode_Body" xml:space="preserve">
+    <value>la verifica della tua identità è completata. Ecco il codice di accesso di &lt;strong&gt;{0}&lt;/strong&gt; per il tuo arrivo del &lt;strong&gt;{1}&lt;/strong&gt;:</value>
+  </data>
+  <data name="GuestAccessCode_Keep" xml:space="preserve">
+    <value>Non inoltrare questa e-mail a nessuno: il codice apre l'alloggio.</value>
   </data>
   <data name="SupplierInquiryVerification_Subject" xml:space="preserve">
     <value>Conferma la tua richiesta a {0}</value>
@@ -2232,4 +2808,284 @@
   <data name="SupplierAlternative_Unit_PerSquareMeter" xml:space="preserve">
     <value>al m²</value>
   </data>
+  <data name="MarketingConfirmation_Subject" xml:space="preserve">
+    <value>Conferma l'iscrizione alle novità di {0}</value>
+  </data>
+  <data name="MarketingConfirmation_Greeting" xml:space="preserve">
+    <value>Ciao,</value>
+  </data>
+  <data name="MarketingConfirmation_Body" xml:space="preserve">
+    <value>qualcuno ha chiesto, con questo indirizzo email, di ricevere offerte e novità da &lt;strong&gt;{0}&lt;/strong&gt;. Per attivare l'iscrizione conferma che l'indirizzo è tuo: finché non lo fai non ti scriveremo nulla di promozionale.</value>
+  </data>
+  <data name="MarketingConfirmation_Cta" xml:space="preserve">
+    <value>Conferma l'iscrizione</value>
+  </data>
+  <data name="MarketingConfirmation_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="MarketingConfirmation_Validity" xml:space="preserve">
+    <value>Il link è personale e vale fino al {0} (ora italiana).</value>
+  </data>
+  <data name="MarketingConfirmation_Ignore" xml:space="preserve">
+    <value>Se non sei stato tu, ignora questo messaggio: non succede nulla e non ti verrà inviato niente. Potrai sempre cancellarti da ogni messaggio che riceverai.</value>
+  </data>
+  <data name="BookingPaymentLink_Subject" xml:space="preserve">
+    <value>Pagamento del tuo soggiorno - {0}</value>
+  </data>
+  <data name="BookingPaymentLink_Greeting" xml:space="preserve">
+    <value>Caro/a {0},</value>
+  </data>
+  <data name="BookingPaymentLink_Body" xml:space="preserve">
+    <value>ecco il link per pagare il tuo soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="BookingPaymentLink_Amount" xml:space="preserve">
+    <value>Importo da pagare: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="BookingPaymentLink_Cta" xml:space="preserve">
+    <value>Paga ora</value>
+  </data>
+  <data name="BookingPaymentLink_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="BookingPaymentLink_Secure" xml:space="preserve">
+    <value>Il pagamento avviene su una pagina sicura e va direttamente al tuo host. Se ricevi un nuovo link, usa sempre l'ultimo: quello precedente non funziona più.</value>
+  </data>
+  <!-- E50/F01/US03/T01: the sentence above as it was written before the guest portal, naming the payment provider. It is NOT a text of the guests (no guest prefix): it stays only so that the CasaZen e-mail of today (no brand of the host) is identical to the byte while Features:GuestPortal is off. The e-mail with the brand reads BookingPaymentLink_Secure. -->
+  <data name="Legacy_BookingPaymentLink_Secure" xml:space="preserve">
+    <value>Il pagamento avviene su una pagina sicura di Stripe e va direttamente al tuo host. Se ricevi un nuovo link, usa sempre l'ultimo: quello precedente non funziona più.</value>
+  </data>
+  <data name="BookingPaymentLink_NotYou" xml:space="preserve">
+    <value>Se non riconosci questa prenotazione, ignora questa email e non pagare.</value>
+  </data>
+  <data name="TodoReason_OctorateDatesTaken" xml:space="preserve">
+    <value>La prenotazione non è stata creata nel channel manager: le date sono già occupate</value>
+  </data>
+  <data name="GuestBookingModified_Subject" xml:space="preserve">
+    <value>Prenotazione modificata - {0}</value>
+  </data>
+  <data name="GuestBookingModified_Body" xml:space="preserve">
+    <value>il tuo host ha modificato la prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt;: ora il soggiorno è dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;, per &lt;strong&gt;{3}&lt;/strong&gt; ospiti.</value>
+  </data>
+  <data name="GuestBookingModified_Total" xml:space="preserve">
+    <value>Nuovo totale del soggiorno: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="GuestBookingModified_Refund" xml:space="preserve">
+    <value>Il nuovo prezzo è più basso: ti rimborsiamo &lt;strong&gt;{0}&lt;/strong&gt; sul metodo di pagamento che hai usato.</value>
+  </data>
+  <data name="GuestBookingModified_Charged" xml:space="preserve">
+    <value>Il nuovo prezzo è più alto: la differenza di &lt;strong&gt;{0}&lt;/strong&gt; è stata addebitata sulla carta che hai salvato.</value>
+  </data>
+  <data name="GuestBookingModified_PaymentLink" xml:space="preserve">
+    <value>Il nuovo prezzo è più alto: per pagare la differenza ti arriva a parte un'email con il link di pagamento.</value>
+  </data>
+  <data name="TodoReason_BookingSyncConflict" xml:space="preserve">
+    <value>La prenotazione è stata modificata nel tuo channel manager: scegli quale versione tenere</value>
+  </data>
+  <data name="TodoReason_CompanyTenantDecision" xml:space="preserve">
+    <value>Il conduttore è una società e l'immobile è di un proprietario privato: decidi se il soggiorno resta una locazione breve (con la ritenuta) oppure no. Per l'Agenzia delle Entrate (circolare 24/E del 2017) con una società come conduttore il regime delle locazioni brevi non vale; per la Cassazione (12395/2024) conta solo il locatore, se l'uso è abitativo. Sentito il commercialista, registra la decisione.</value>
+  </data>
+  <data name="TodoReason_SelfBillingRejected" xml:space="preserve">
+    <value>Il Sistema di Interscambio ha scartato un'autofattura (TD17): per il fisco non risulta emessa. Aprila tra le autofatture per vederne lo stato e decidi con il commercialista come correggerla.</value>
+  </data>
+  <data name="TodoReason_SelfBillingDraftsToReview" xml:space="preserve">
+    <value>Le autofatture (TD17) del mese sono pronte in bozza: controlla gli importi con le fatture dei portali ed emettile entro la scadenza.</value>
+  </data>
+  <data name="TodoReason_SelfBillingDraftsRefused" xml:space="preserve">
+    <value>Alcune autofatture (TD17) del mese sono pronte in bozza, ma per almeno un titolare non è stato possibile prepararla perché i dati del suo profilo emittente sono incompleti: completali e rigenera le bozze dalla pagina delle autofatture, poi controlla gli importi ed emetti tutto entro la scadenza.</value>
+  </data>
+  <data name="OwnerContactInvitation_Subject" xml:space="preserve">
+    <value>Invito al portale proprietari di {0}</value>
+  </data>
+  <data name="OwnerContactInvitation_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="OwnerContactInvitation_Body" xml:space="preserve">
+    <value>{0} ti ha invitato a seguire con il tuo account gli immobili che &lt;strong&gt;{1}&lt;/strong&gt; gestisce per suo conto su CasaZen. Potrai fare solo quello che ti ha permesso.</value>
+  </data>
+  <data name="OwnerContactInvitation_Cta" xml:space="preserve">
+    <value>Accetta l'invito</value>
+  </data>
+  <data name="OwnerContactInvitation_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="OwnerContactInvitation_Expires" xml:space="preserve">
+    <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana).</value>
+  </data>
+  <data name="OwnerInboxMessage_Subject" xml:space="preserve">
+    <value>Nuovo messaggio da {0}</value>
+  </data>
+  <data name="OwnerInboxMessage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti ha scritto nel portale proprietari di CasaZen. Per leggere il messaggio apri il portale.</value>
+  </data>
+  <data name="OwnerInboxMessage_Cta" xml:space="preserve">
+    <value>Leggi il messaggio</value>
+  </data>
+  <data name="OwnerInboxMessage_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="OwnerInboxMessage_Preferences" xml:space="preserve">
+    <value>Puoi smettere di ricevere questi avvisi dalle preferenze dei messaggi nel portale.</value>
+  </data>
+  <data name="OwnerInboxToAgency_Subject" xml:space="preserve">
+    <value>Nuovo messaggio da un proprietario</value>
+  </data>
+  <data name="OwnerInboxToAgency_Body" xml:space="preserve">
+    <value>Un proprietario ti ha scritto nei messaggi dei proprietari di CasaZen. Per leggerlo apri CasaZen.</value>
+  </data>
+  <data name="OwnerInboxToAgency_Cta" xml:space="preserve">
+    <value>Apri il messaggio</value>
+  </data>
+  <data name="OwnerInboxToAgency_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="OwnerStatementPublished_Subject" xml:space="preserve">
+    <value>Nuovo rendiconto da {0}</value>
+  </data>
+  <data name="OwnerStatementPublished_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha pubblicato un nuovo rendiconto nel portale proprietari di CasaZen. Per vederlo apri la sezione Contabilità del portale.</value>
+  </data>
+  <data name="OwnerStatementPublished_Cta" xml:space="preserve">
+    <value>Apri la Contabilità</value>
+  </data>
+  <data name="OwnerStatementPublished_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <!-- E23/F01/US01/T01 (NF-122): the one message of the chat of the portal that carries the check-in link (plain text, in the five languages of the guest page), the push to the host
+       when the automatic delivery failed, and the reason of its «To do». No supplier, no portal and no assistant is named. -->
+  <data name="GuestCheckInChat_Body" xml:space="preserve">
+    <value>Buongiorno! Il tuo soggiorno presso {0} inizia il {1}. Per velocizzare l'arrivo, completa il check-in online da questo link: {2} Il link è valido fino al {3}.</value>
+  </data>
+  <data name="Push_CheckInLinkFailed_Title" xml:space="preserve">
+    <value>Link del check-in non inviato</value>
+  </data>
+  <data name="Push_CheckInLinkFailed_Body" xml:space="preserve">
+    <value>{0}: il link del check-in non è arrivato all'ospite in automatico. Apri la prenotazione, copialo e invialo tu.</value>
+  </data>
+  <!-- E05/F06/US01/T02 (NF-69): the pushes to the host about the reviews of the channels: a review appeared, and a reply or a host review that did not reach the channel. The property
+       only: never the guest, the mark or a word of the review. No supplier is named. -->
+  <data name="Push_OtaReviewReceived_Title" xml:space="preserve">
+    <value>Nuova recensione</value>
+  </data>
+  <data name="Push_OtaReviewReceived_Body" xml:space="preserve">
+    <value>{0}: un ospite ha lasciato una recensione. Apri la prenotazione per leggerla e rispondere.</value>
+  </data>
+  <data name="Push_OtaReviewActionFailed_Title" xml:space="preserve">
+    <value>Risposta alla recensione non consegnata</value>
+  </data>
+  <data name="Push_OtaReviewActionFailed_Body" xml:space="preserve">
+    <value>{0}: la tua risposta o la tua recensione non è arrivata sul canale. Apri la prenotazione e riprova.</value>
+  </data>
+  <data name="Push_TicinoNotificationDeclared_Title" xml:space="preserve">
+    <value>Notifica alla polizia dichiarata</value>
+  </data>
+  <data name="Push_TicinoNotificationDeclared_Body" xml:space="preserve">
+    <value>{0}: la notifica degli ospiti con arrivo il {1} è stata dichiarata come caricata sul portale della Polizia cantonale.</value>
+  </data>
+  <data name="Push_TicinoNotificationUndone_Title" xml:space="preserve">
+    <value>Dichiarazione di notifica annullata</value>
+  </data>
+  <data name="Push_TicinoNotificationUndone_Body" xml:space="preserve">
+    <value>{0}: la dichiarazione della notifica degli ospiti con arrivo il {1} è stata annullata: il giorno torna da notificare.</value>
+  </data>
+  <data name="Push_SwissNotificationDeclared_Title" xml:space="preserve">
+    <value>Notifica degli ospiti dichiarata</value>
+  </data>
+  <data name="Push_SwissNotificationDeclared_Body" xml:space="preserve">
+    <value>{0}: la notifica degli ospiti con arrivo il {1} è stata dichiarata come fatta all'autorità cantonale.</value>
+  </data>
+  <data name="Push_SwissNotificationUndone_Title" xml:space="preserve">
+    <value>Dichiarazione di notifica annullata</value>
+  </data>
+  <data name="Push_SwissNotificationUndone_Body" xml:space="preserve">
+    <value>{0}: la dichiarazione della notifica degli ospiti con arrivo il {1} è stata annullata: il giorno torna da notificare.</value>
+  </data>
+  <data name="TodoReason_CheckInLinkToSend" xml:space="preserve">
+    <value>Il link del check-in non è ancora arrivato all'ospite: copialo dalla prenotazione e invialo tu.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Subject" xml:space="preserve">
+    <value>{0} n. {1} di {2}</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Greeting" xml:space="preserve">
+    <value>Ciao {0},</value>
+  </data>
+  <data name="FiscalDocumentDelivery_GreetingNoName" xml:space="preserve">
+    <value>Buongiorno,</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti ha inviato il documento &lt;strong&gt;{1} n. {2}&lt;/strong&gt; del {3}. Puoi consultarlo e scaricarlo in PDF dal link qui sotto.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Cta" xml:space="preserve">
+    <value>Vedi il documento</value>
+  </data>
+  <data name="FiscalDocumentDelivery_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Validity" xml:space="preserve">
+    <value>Il link è valido fino al {0}.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_NotYou" xml:space="preserve">
+    <value>Se non aspettavi questo messaggio, puoi ignorarlo.</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_Invoice" xml:space="preserve">
+    <value>Fattura</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_Receipt" xml:space="preserve">
+    <value>Ricevuta</value>
+  </data>
+  <data name="FiscalDocumentDelivery_Kind_CreditNote" xml:space="preserve">
+    <value>Nota di credito</value>
+  </data>
+  <data name="AccountantPackage_Subject" xml:space="preserve">
+    <value>Pacchetto per il commercialista: {0} di {1}</value>
+  </data>
+  <data name="AccountantPackage_Greeting" xml:space="preserve">
+    <value>Buongiorno,</value>
+  </data>
+  <data name="AccountantPackage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha preparato con CasaZen il pacchetto di &lt;strong&gt;{1}&lt;/strong&gt;: i documenti e i riepiloghi del mese, con un indice che elenca ogni file e la sua impronta SHA-256. Lo scarichi dal link qui sotto.</value>
+  </data>
+  <data name="AccountantPackage_Cta" xml:space="preserve">
+    <value>Scarica il pacchetto</value>
+  </data>
+  <data name="AccountantPackage_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="AccountantPackage_Validity" xml:space="preserve">
+    <value>Il link è valido fino al {0}.</value>
+  </data>
+  <data name="AccountantPackage_NoAttachment" xml:space="preserve">
+    <value>Per proteggere i dati il pacchetto non è allegato a questa e-mail: si scarica solo da questo link.</value>
+  </data>
+  <data name="AccountantPackage_NotYou" xml:space="preserve">
+    <value>Il link è personale: chi lo riceve può scaricare il pacchetto fino alla scadenza. Se non aspettavi questo messaggio, ignoralo e avvisa {0}.</value>
+  </data>
+  <data name="AgencyInvite_Subject" xml:space="preserve">
+    <value>Invito CasaZen — Crea la tua agenzia</value>
+  </data>
+  <data name="AgencyInvite_Body" xml:space="preserve">
+    <value>Il team CasaZen ti invita a creare la tua agenzia su CasaZen. Sarai l’amministratore della tua organizzazione.</value>
+  </data>
+  <data name="AgencyInvite_NextSteps" xml:space="preserve">
+    <value>Registrati con l’email invitata e completa la configurazione iniziale. Potrai poi invitare collaboratori senza limiti. L’invito non dà accesso alla console staff.</value>
+  </data>
+  <data name="Guest_InvoiceRequest" xml:space="preserve"><value>Ti serve la fattura per questo soggiorno? Richiedila alla struttura tramite i contatti della prenotazione, indicando a chi intestarla.</value></data>
+  <data name="Guest_InvoiceCta" xml:space="preserve"><value>Richiedi la fattura</value></data>
+  <!-- E50/F01/US03/T03 (NF-152): the stay link of the guest portal in the confirmation, in «Prepara il tuo arrivo» and in the message of the portal chat. -->
+  <data name="Guest_StayLinkCta" xml:space="preserve"><value>Apri il tuo soggiorno</value></data>
+  <data name="GuestBookingConfirmed_StayLink" xml:space="preserve"><value>Il tuo soggiorno ha uno spazio personale, senza password: da qui prepari l'arrivo e trovi tutto quello che ti serve.</value></data>
+  <data name="GuestPrepareArrival_Subject" xml:space="preserve"><value>Prepara il tuo arrivo — {0}</value></data>
+  <data name="GuestPrepareArrival_Heading" xml:space="preserve"><value>Prepara il tuo arrivo</value></data>
+  <data name="GuestPrepareArrival_Greeting" xml:space="preserve"><value>Gentile {0},</value></data>
+  <data name="GuestPrepareArrival_Body" xml:space="preserve"><value>Il tuo soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt; inizia il &lt;strong&gt;{1}&lt;/strong&gt;. Nel tuo spazio personale, senza password, prepari l'arrivo con calma e trovi tutto quello che ti serve.</value></data>
+  <data name="GuestCheckInChat_StayLink" xml:space="preserve"><value>Qui trovi tutto il tuo soggiorno: {0}</value></data>
+  <data name="Push_ScheduledMessageIssue_Title" xml:space="preserve"><value>Messaggio programmato da controllare</value></data>
+  <data name="Push_ScheduledMessageIssue_Body" xml:space="preserve"><value>Un messaggio programmato per un ospite non è partito o chiede la tua attenzione. Apri la prenotazione per vedere cosa è successo.</value></data>
+  <data name="Push_ScheduledMessageIssueProperty_Body" xml:space="preserve"><value>{0}: un messaggio programmato per un ospite non è partito o chiede la tua attenzione. Apri la prenotazione per vedere cosa è successo.</value></data>
+  <data name="HostScheduledMessageIssue_Subject" xml:space="preserve"><value>Un messaggio programmato chiede la tua attenzione</value></data>
+  <data name="HostScheduledMessageIssue_Body" xml:space="preserve"><value>Un messaggio programmato per un ospite non è partito o è partito fuori orario.</value></data>
+  <data name="HostScheduledMessageIssue_BodyProperty" xml:space="preserve"><value>Un messaggio programmato per un ospite di &lt;strong&gt;{0}&lt;/strong&gt; non è partito o è partito fuori orario.</value></data>
+  <data name="HostScheduledMessageIssue_How" xml:space="preserve"><value>Apri la prenotazione in CasaZen per vedere cosa è successo: puoi correggere il testo, saltare il messaggio o inviarlo subito. Per proteggere i dati degli ospiti, il testo non è in questa email.</value></data>
+  <data name="HostScheduledMessageIssue_Cta" xml:space="preserve"><value>Apri la prenotazione</value></data>
+  <data name="HostScheduledMessageIssue_LinkFallback" xml:space="preserve"><value>Se il pulsante non funziona, copia questo link nel browser:</value></data>
+  <data name="HostScheduledMessageIssue_Why" xml:space="preserve"><value>Ricevi questa email perché hai scelto di essere avvisato quando un messaggio programmato per un ospite non parte o parte fuori orario. Ne inviamo una per ogni messaggio. Puoi cambiare la scelta nelle preferenze di notifica del tuo profilo.</value></data>
 </root>

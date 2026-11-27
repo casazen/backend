@@ -1,11 +1,13 @@
 namespace Casazen.Core.Services;
 
 /// <summary>
-/// The calendar of a property on the public booking site (DB-03b): for each day, whether a stay can start that night, what that
-/// night costs and the shortest stay that can start on it. The price of a night is the one the quote adds up
-/// (<see cref="StayPricing.NightPrice"/>), the taken nights are the ones the booking checks refuse (<see cref="PropertyOccupancy"/>,
-/// <see cref="CheckoutHolds.OccupiesDates"/>): the calendar has no rule of its own. It does not tell a booking from a block of the host
-/// from an iCal block, and it never says who stays.
+/// The calendar of a property on the public booking site (DB-03b): for each day, whether the night is free, what that night costs, the
+/// stay that can start on it (the shortest and the longest) and the rules of the day (arrival and departure closed, how far ahead it can
+/// be booked, NF-36). The price of a night is the one the quote adds up (<see cref="StayPricing.NightPrice"/>, with the price the host
+/// set for the date), the taken nights are the ones the booking checks refuse (<see cref="PropertyOccupancy"/>,
+/// <see cref="CheckoutHolds.OccupiesDates"/>), the rules are the ones the checkout applies (<see cref="DayRuleStayChecks"/>): the
+/// calendar has no rule of its own. It does not tell a booking from a block of the host from an iCal block, and it never says who stays:
+/// dates, numbers and flags only.
 /// </summary>
 public interface IPublicCalendarService
 {
@@ -68,8 +70,27 @@ public sealed record PublicCalendar(
 /// What the night costs, in cents: the nightly rate, with the weekend surcharge on a Friday or a Saturday, or the price the host confirmed
 /// for that date (<see cref="StayPricing"/>). Given for a taken night too: it is the price the night would have.
 /// </param>
-/// <param name="MinNights">The fewest nights of a stay that starts on this day (1 when the property has no minimum).</param>
-public sealed record PublicCalendarDay(DateOnly Date, bool Available, long NightlyPriceCents, int MinNights);
+/// <param name="MinNights">
+/// The fewest nights of a stay that starts on this day: the rule of the day (NF-36), else the minimum of the property, else 1.
+/// </param>
+/// <param name="MaxNights">The most nights of a stay that starts on this day; <c>null</c> = no maximum (E08/F05/US01/T03).</param>
+/// <param name="ClosedToArrival">
+/// A stay cannot start on this night. <paramref name="Available"/> keeps meaning «the night is free»: a night closed to arrival is free and
+/// cannot start a stay, which this flag says.
+/// </param>
+/// <param name="ClosedToDeparture">A stay cannot end on this day (the day of the departure).</param>
+/// <param name="MinAdvanceDays">The fewest days ahead of this night a stay may be booked; <c>null</c> = no minimum.</param>
+/// <param name="MaxAdvanceDays">The most days ahead of this night a stay may be booked; <c>null</c> = no maximum.</param>
+public sealed record PublicCalendarDay(
+    DateOnly Date,
+    bool Available,
+    long NightlyPriceCents,
+    int MinNights,
+    int? MaxNights = null,
+    bool ClosedToArrival = false,
+    bool ClosedToDeparture = false,
+    int? MinAdvanceDays = null,
+    int? MaxAdvanceDays = null);
 
 /// <summary>Stable <c>code</c> values of the public calendar errors: never rename one.</summary>
 public static class PublicCalendarErrorCodes

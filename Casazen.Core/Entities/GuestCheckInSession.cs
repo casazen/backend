@@ -49,6 +49,9 @@ public class GuestCheckInSession : ITenantOwned
 
     public DateTime? CompletedAt { get; set; }
 
+    [MaxLength(64)]
+    public string? AcceptedHouseRulesVersion { get; set; }
+
     /// <summary>
     /// Number of biometric (face comparison) attempts in this session (NF-11, ADR-013-R5).
     /// Max 3 attempts per session; after max, escalates to operator verification.
@@ -60,6 +63,106 @@ public class GuestCheckInSession : ITenantOwned
     /// Null before any attempt or when biometric consent was declined.
     /// </summary>
     public BiometricOutcome? BiometricOutcome { get; set; }
+
+    /// <summary>
+    /// When the guest gave the biometric consent (ADR-013-R9: separate from the privacy notice, never mandatory, refusable); null while it was
+    /// not given or after it was refused. No selfie is processed without it (E03/F04/US02/T01, AC-NF50-7).
+    /// </summary>
+    public DateTime? BiometricConsentAt { get; set; }
+
+    /// <summary>The version of the consent text the guest accepted (<see cref="BiometricConsentAt"/>); at most 50 characters.</summary>
+    public string? BiometricConsentVersion { get; set; }
+
+    /// <summary>
+    /// The SHA-256 (hex, lower case) of the reference text, the Italian file, of the version of the registry the guest accepted (E22/F01/US02/T02,
+    /// <see cref="BiometricConsentVersion"/>): with the version it tells which text the consent was given to (GDPR art. 7(1)). Null for a consent given before the
+    /// registry existed, and while there is no consent.
+    /// </summary>
+    [MaxLength(64)]
+    public string? BiometricConsentTextHash { get; set; }
+
+    /// <summary>When the guest refused the biometric consent: the identity is then verified by an operator (ADR-013-R9).</summary>
+    public DateTime? BiometricConsentRefusedAt { get; set; }
+
+    /// <summary>
+    /// When the verification was handed to an operator: the guest asked for one, refused the consent, the automatic verification asked for a
+    /// review, used its attempts, failed for a technical reason, or was not offered (GDPR art. 22, AC-NF51-11). Null otherwise.
+    /// </summary>
+    public DateTime? OperatorRequestedAt { get; set; }
+
+    /// <summary>
+    /// The checks of the identity document the guest uploaded (E03/F04/US02/T04), as JSON: whether its MRZ was read, its check digits, its expiry,
+    /// whether the MRZ agrees with the check-in data field by field, whether its holder is a minor and the SHA-256 of the picture (to recognise it
+    /// when it is sent again with the selfie). For a document of two sides (E22/F01/US01/T02) also what each picture showed (a face found, a good
+    /// capture, the checks of the MRZ read on it) and the SHA-256 of the back. Flags and hashes only: never a value read on the document. Null before
+    /// the first upload.
+    /// </summary>
+    public string? DocumentCheckJson { get; set; }
+
+    /// <summary>
+    /// The language the guest chose on the check-in page (two letters, one of <c>GuestLanguages.Supported</c>); null until the guest
+    /// chooses. The emails of the session use it (NF-40).
+    /// </summary>
+    public string? Language { get; set; }
+
+    /// <summary>When the reminder for the data still missing before arrival was queued with this session's link (UTC); null when none.</summary>
+    public DateTime? ReminderSentAt { get; set; }
+
+    // E70/F01/US01/T02 (NF-188, NF-194, NF-196): the self-hosted identity verification of the session (Features:CheckInIdentitySelfHosted). Null, and 0 for the
+    // retries, on the legacy path and on every row written before the columns. Ids, codes, hashes and times only: never a value read on a document, a frame or a
+    // face datum.
+
+    /// <summary>
+    /// The one guest the verification is bound to when the identity step opens (NF-188); null before it. An opaque id with no foreign key: the bound person may be
+    /// the booker or a guest of the stay not registered yet.
+    /// </summary>
+    public Guid? IdentityGuestId { get; set; }
+
+    /// <summary>When the identity step was opened (UTC); null before it.</summary>
+    public DateTime? IdentityOpenedAt { get; set; }
+
+    /// <summary>The version of the notice shown at the opening; at most 50 characters.</summary>
+    [MaxLength(50)]
+    public string? IdentityNoticeVersion { get; set; }
+
+    /// <summary>The SHA-256 (hex) of the text of that notice.</summary>
+    [MaxLength(64)]
+    public string? IdentityNoticeTextHash { get; set; }
+
+    /// <summary>What the guest chose: a code of <c>IdentityChoices</c> (<c>automatic</c>, <c>assisted</c>).</summary>
+    [MaxLength(20)]
+    public string? IdentityChoice { get; set; }
+
+    /// <summary>When the guest chose (UTC).</summary>
+    public DateTime? IdentityChoiceAt { get; set; }
+
+    /// <summary>The coarse family of the browser, a code of <c>IdentityChannels</c>: never the User-Agent.</summary>
+    [MaxLength(40)]
+    public string? IdentityChannel { get; set; }
+
+    /// <summary>The id of the format of the registry the document was read as.</summary>
+    [MaxLength(40)]
+    public string? IdentityFormatId { get; set; }
+
+    /// <summary>The guided retries used for a correctable defect (the policy offers one); 0 on every row written before the column.</summary>
+    public int IdentityGuidedRetries { get; set; }
+
+    /// <summary>The idempotency key of the last attempt that did not close the verification (<c>IdentityHeaders.IdempotencyKey</c>, at most 64 characters).</summary>
+    [MaxLength(64)]
+    public string? IdentityLastAttemptKey { get; set; }
+
+    /// <summary>
+    /// The public answer of that attempt, codes only (at most 80 characters): a request that comes again with the same key gets it again, without a second attempt.
+    /// </summary>
+    [MaxLength(80)]
+    public string? IdentityLastAttemptResult { get; set; }
+
+    /// <summary>When the verification was closed (UTC): from then on no document or presence step is accepted on the session.</summary>
+    public DateTime? IdentityClosedAt { get; set; }
+
+    /// <summary>The terminal outcome of the verification, a code of <c>IdentityOutcomeCodes</c>.</summary>
+    [MaxLength(40)]
+    public string? IdentityOutcomeCode { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

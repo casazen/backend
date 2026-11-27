@@ -60,6 +60,12 @@ public class AlloggiatiWebReport : ITenantOwned
     /// <summary>UTC instant the job is scheduled for: the start of the arrival day in Europe/Rome, or later.</summary>
     public DateTime? ScheduledFor { get; set; }
 
+    /// <summary>
+    /// The daily receipt of the Questura account that covers this communication (AW-R05), once retrieved and stored; <c>null</c> until
+    /// then. FK to <see cref="AlloggiatiReceipt"/>, SET NULL: a receipt removed at the end of its retention never removes the communication.
+    /// </summary>
+    public Guid? ReceiptId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -93,4 +99,41 @@ public enum AlloggiatiWebStatus
 
     /// <summary>Transmitted via SOAP client, awaiting receipt retrieval (ADR-015). Set by <c>AlloggiatiSendJob</c> on successful send; moved to <c>Inviato</c> by <c>AlloggiatiReceiptJob</c> when the receipt is retrieved.</summary>
     SentReceiptPending = 7,
+
+    // AW-R04 (E03/F01/US05/T01): the values below are appended, never renumbered; nothing writes them yet.
+
+    /// <summary>The transmission is in progress: its attempt is reserved and the call may have reached the service.</summary>
+    Sending = 8,
+
+    /// <summary>The service acquired some of the guests and rejected the others: the stay is not complete.</summary>
+    PartiallyAccepted = 9,
+
+    /// <summary>
+    /// The outcome of the transmission is unknown (timeout, connection lost, crash after a possible acquisition): the agency checks it on
+    /// the portal; never sent again by itself.
+    /// </summary>
+    ToVerify = 10,
+
+    // E03/F01/US01 (NF-45): the value below is derived by AlloggiatiStatusRules.Effective and never stored in a report.
+
+    /// <summary>
+    /// Nothing is due: the stay is a no-show (<see cref="Booking.NoShowAt"/>), the guests never came and there is nobody to communicate. Never
+    /// stored: it is what every reader derives from the no-show mark, so the stay is neither "to send manually" nor overdue and no alert is sent.
+    /// </summary>
+    NotDue = 11,
+
+    // E20/F01/US01/T02: the two values below are derived by AlloggiatiStatusRules.WithChannelManager from the guests written to the channel manager,
+    // for a stay whose sender is the channel manager. Never stored in a report, never a sent status.
+
+    /// <summary>
+    /// Every registered guest of the stay is on the channel manager, written for good (not as a draft), and the channel manager sends them to the police
+    /// (PO-02). It is not «sent»: green exists only with an archived receipt (CHK-12), so the stay is yellow until one is archived. Derived, never stored.
+    /// </summary>
+    EntrustedToChannelManager = 12,
+
+    /// <summary>
+    /// At least one guest of the stay could not be written to the channel manager (Octorate refused or did not answer, or a place of the guest is not in
+    /// its table): the host retries or corrects the guest, and the errors per guest position say why. Derived, never stored.
+    /// </summary>
+    ChannelManagerWriteFailed = 13,
 }

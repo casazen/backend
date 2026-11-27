@@ -126,6 +126,47 @@ public class ListingPriceSuggestionServiceTests
         Assert.Contains("in inglese", SentPrompt(ai));
     }
 
+    [Fact]
+    public async Task SuggestAsync_UsesBoundedLongCall_AndPreservesSwissPropertyCurrency()
+    {
+        await using var db = CreateDb();
+        var (_, property) = await SeedHomeAsync(db);
+        property.Country = "CH";
+        property.Currency = "CHF";
+        property.City = "Lugano";
+        var ai = ProviderAnswering(GoodAnswer);
+
+        var result = await CreateService(db, ai.Object).SuggestAsync(property, PricePositioning.Market, "it");
+
+        Assert.Equal("CHF", result.Currency);
+        var request = Assert.IsType<AiRequest>(Assert.Single(ai.Invocations).Arguments[0]);
+        Assert.Empty(request.Images);
+        Assert.Equal(1024, request.MaxCompletionTokens);
+        Assert.Contains("Paese: CH", request.Prompt);
+        Assert.Contains("prezzi in CHF", request.Prompt);
+        Assert.DoesNotContain("affitti brevi in Italia", request.Prompt);
+        Assert.DoesNotContain("Lombardia", request.Prompt);
+    }
+
+    [Fact]
+    public async Task SuggestAsync_DoesNotCombineCurrenciesOrCountriesInComparableRates()
+    {
+        await using var db = CreateDb();
+        var (_, property) = await SeedHomeAsync(db);
+        var orgId = await AddOrgAsync(db);
+        await AddHomeAsync(db, orgId, 100m);
+        await AddHomeAsync(db, orgId, 120m);
+        await AddHomeAsync(db, orgId, 130m, home => home.Currency = "CHF");
+        await AddHomeAsync(db, orgId, 140m, home => home.Country = "CH");
+        var ai = ProviderAnswering(GoodAnswer);
+
+        var result = await CreateService(db, ai.Object).SuggestAsync(property, PricePositioning.Market, "it");
+
+        Assert.Equal("EUR", result.Currency);
+        Assert.Equal(0, result.BasedOn.SimilarListings);
+        Assert.DoesNotContain("mediana", SentPrompt(ai));
+    }
+
     // ─── The similar homes ───────────────────────────────────────────────────────
 
     [Fact]
@@ -243,7 +284,7 @@ public class ListingPriceSuggestionServiceTests
         await using var db = CreateDb();
         var (_, property) = await SeedHomeAsync(db);
         var ai = new Mock<IAiProvider>();
-        ai.Setup(p => p.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        ai.Setup(p => p.GenerateAsync(It.IsAny<AiRequest>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new AiBudgetExceededException());
 
         var suggestion = await CreateService(db, ai.Object).SuggestAsync(property, PricePositioning.Market, "it");
@@ -258,7 +299,7 @@ public class ListingPriceSuggestionServiceTests
         await using var db = CreateDb();
         var (_, property) = await SeedHomeAsync(db);
         var ai = new Mock<IAiProvider>();
-        ai.Setup(p => p.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        ai.Setup(p => p.GenerateAsync(It.IsAny<AiRequest>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("502"));
 
         var suggestion = await CreateService(db, ai.Object).SuggestAsync(property, PricePositioning.Market, "it");
@@ -273,7 +314,7 @@ public class ListingPriceSuggestionServiceTests
         await using var db = CreateDb();
         var (_, property) = await SeedHomeAsync(db);
         var ai = new Mock<IAiProvider>();
-        ai.Setup(p => p.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        ai.Setup(p => p.GenerateAsync(It.IsAny<AiRequest>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout"));
 
         var suggestion = await CreateService(db, ai.Object).SuggestAsync(property, PricePositioning.Market, "it");
@@ -289,8 +330,8 @@ public class ListingPriceSuggestionServiceTests
         using var cancellation = new CancellationTokenSource();
         var ai = new Mock<IAiProvider>();
         // The caller leaves while the provider is answering: the call is cancelled, not turned into «the AI is not available».
-        ai.Setup(p => p.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Returns((string _, AiModelTier _, string _, CancellationToken _) =>
+        ai.Setup(p => p.GenerateAsync(It.IsAny<AiRequest>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns((AiRequest _, AiModelTier _, string _, CancellationToken _) =>
             {
                 cancellation.Cancel();
                 throw new OperationCanceledException(cancellation.Token);
@@ -468,19 +509,18 @@ public class ListingPriceSuggestionServiceTests
     private static Mock<IAiProvider> ProviderAnswering(string content, bool providerConfigured = true)
     {
         var ai = new Mock<IAiProvider>();
-        ai.Setup(p => p.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        ai.Setup(p => p.GenerateAsync(It.IsAny<AiRequest>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AiGenerationResult(content, 120, 60, AiModelTier.Economy, FromCache: false, ProviderConfigured: providerConfigured));
         return ai;
     }
 
     private static string SentPrompt(Mock<IAiProvider> ai) =>
         Assert.Single(ai.Invocations, invocation => invocation.Method.Name == nameof(IAiProvider.GenerateAsync))
-            .Arguments[0]
-            .ToString()!;
+            .Arguments[0] is AiRequest request ? request.Prompt : throw new InvalidOperationException();
 
     private static void VerifyCalls(Mock<IAiProvider> ai, Times times) =>
         ai.Verify(
-            p => p.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            p => p.GenerateAsync(It.IsAny<AiRequest>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             times);
 
     /// <summary>The host's home: a flat in Como, 3 guests, 1 bedroom, 2 bathrooms, 75 m², with a terrace and a hot tub.</summary>

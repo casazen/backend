@@ -350,6 +350,7 @@ public class CheckoutWizardPostgresTests : IClassFixture<CheckoutWizardPostgresT
             LegalName = "Pulizie Roma Srl",
             Email = $"supplier-{Guid.NewGuid():N}@example.com",
             Phone = "+3906123456",
+            GuestPortalMarketplaceEnabled = true,
             Status = SupplierStatus.Active,
             CategoriesJson = """["cleaning"]""",
             ComuniJson = $$"""["{{comune}}"]""",

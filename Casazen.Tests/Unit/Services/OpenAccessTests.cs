@@ -175,7 +175,7 @@ public class OpenAccessTests
         var errors = OpenAccess.GetErrors(Config(Enabled("true"), Tier(tier)));
 
         var error = Assert.Single(errors);
-        Assert.Contains("Entitlement__OpenAccess__Tier must be the name of a plan (Starter, Pro, Scale)", error);
+        Assert.Contains("Entitlement__OpenAccess__Tier must be the name of a plan (Starter, Pro, Scale, Agency)", error);
         Assert.Contains("which means Scale", error);
         Assert.Contains("docs/runbooks/open-access.md", error);
         Assert.DoesNotContain("Entitlement__OpenAccess__Enabled", error);

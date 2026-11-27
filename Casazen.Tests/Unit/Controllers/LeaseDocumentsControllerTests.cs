@@ -34,6 +34,7 @@ public class LeaseDocumentsControllerTests
         Assert.IsType<ForbidResult>(await controller.GetDocuments(id, documents.Object, default));
         Assert.IsType<ForbidResult>(await controller.UploadDocument(id, new LeaseAttachmentForm(), documents.Object, default));
         Assert.IsType<ForbidResult>(await controller.DownloadDocument(id, Guid.NewGuid(), documents.Object, default));
+        Assert.IsType<ForbidResult>(await controller.DeleteDocument(id, Guid.NewGuid(), documents.Object, default));
         Assert.Empty(documents.Invocations);
     }
 }

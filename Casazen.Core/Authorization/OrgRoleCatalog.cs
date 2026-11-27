@@ -166,8 +166,16 @@ public static class OrgRoleCatalog
         new(5, AccountContext.Key, AccountContext.RoleKeys.Admin, AccountContext.Permissions.All),
         new(6, AccountContext.Key, AccountContext.RoleKeys.Accountant, [AccountContext.Permissions.BillingRead]),
 
-        // Property manager: everything operational, plus the org's trusted suppliers; no billing, no team.
-        new(7, ShortRent, PropertyManagerRoleKey, [.. ShortRentOperational, AccountContext.Permissions.SuppliersManage]),
+        // Property manager: everything operational, plus the org's trusted suppliers; no billing, no team. E03/F04/US02/T01: it decides
+        // the identity verifications of the guests too (the owner's role 1 gets it from the seed of AppDbContext; neither the
+        // collaborator nor the accountant has it). E50/F01/US01/T01: it sets up the guest portal («Portale ospiti»), like the owner.
+        new(7, ShortRent, PropertyManagerRoleKey,
+            [
+                .. ShortRentOperational,
+                HostPermissions.VerificationDecision,
+                HostPermissions.GuestPortalManage,
+                AccountContext.Permissions.SuppliersManage,
+            ]),
         new(8, LongRent, PropertyManagerRoleKey, [.. LongRentOperational, AccountContext.Permissions.SuppliersManage]),
 
         // Collaborator: reads properties and bookings, handles guests and asks the suppliers for interventions (AM-03); no

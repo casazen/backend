@@ -7,7 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Stripe.Checkout;
 using PlanTier = Casazen.Core.Entities.Enums.PlanTier;
 using StripeCustomerService = Stripe.CustomerService;
-using StripeConfiguration = Stripe.StripeConfiguration;
+
 
 namespace Casazen.Infrastructure.Services;
 
@@ -16,15 +16,28 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
     private const string SubscriptionMode = "subscription";
     private const string PlanTierMetadataKey = "planTier";
 
+    public async Task ReportAgencyUnitsAsync(string customerId, string eventName, int units, DateTime timestamp, CancellationToken ct)
+    {
+        await new Stripe.Billing.MeterEventService(CreateClient()).CreateAsync(new()
+        {
+            EventName = eventName,
+            Timestamp = timestamp,
+            Payload = new Dictionary<string, string>
+            {
+                ["stripe_customer_id"] = customerId,
+                ["value"] = units.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            },
+        }, cancellationToken: ct);
+    }
+
     public async Task<string> EnsureCustomerAsync(Org org, CancellationToken cancellationToken = default)
     {
-        ConfigureStripeApiKey();
 
         if (!string.IsNullOrWhiteSpace(org.StripeCustomerId))
             return org.StripeCustomerId;
 
         var email = string.IsNullOrWhiteSpace(org.ContactEmail) ? null : org.ContactEmail;
-        var service = new StripeCustomerService();
+        var service = new StripeCustomerService(CreateClient());
         var customer = await service.CreateAsync(new Stripe.CustomerCreateOptions
         {
             Email = email,
@@ -40,34 +53,71 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
         return customer.Id;
     }
 
-    public async Task<StripeCheckoutSession> CreateCheckoutSessionAsync(
-        Org org,
-        PlanTier planTier,
-        string successUrl,
-        string cancelUrl,
-        CancellationToken cancellationToken = default)
+    public Task<StripeCheckoutSession> CreateCheckoutSessionAsync(Org org, PlanTier planTier, string successUrl, string cancelUrl, CancellationToken cancellationToken = default) =>
+        CreateCheckoutCoreAsync(org, planTier, successUrl, cancelUrl, cancellationToken, null);
+
+    public Task<StripeCheckoutSession> CreateCommercialCheckoutSessionAsync(Org org, PlanTier planTier, string successUrl, string cancelUrl, CommercialSignup selection, CancellationToken cancellationToken = default) =>
+        CreateCheckoutCoreAsync(org, planTier, successUrl, cancelUrl, cancellationToken, selection);
+
+    private async Task<StripeCheckoutSession> CreateCheckoutCoreAsync(Org org, PlanTier planTier, string successUrl, string cancelUrl, CancellationToken cancellationToken, CommercialSignup? selection)
     {
-        ConfigureStripeApiKey();
 
         // The controller refuses the tier first (PL-11); this guard keeps a missing id a 422, never a Stripe call.
-        var priceId = BillingPrices.Resolve(configuration, planTier)
+        var metered = selection?.Profile == "agency";
+        var priceId = (metered ? AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base) : BillingPrices.Resolve(configuration, planTier))
             ?? throw new DomainRuleException(BillingPrices.PlanUnavailableCode, BillingPrices.PlanUnavailableMessageKey);
 
         var metadata = new Dictionary<string, string>
         {
             ["orgId"] = org.Id.ToString(),
             [PlanTierMetadataKey] = planTier.ToString(),
+            ["basePriceId"] = priceId,
         };
 
-        var service = new SessionService();
+        if (metered)
+        {
+            foreach (var code in selection!.Addons.Except(AgencyUsagePricing.Included).Prepend(AgencyUsagePricing.Base))
+                await AgencyUsagePricing.ValidateAsync(CreateClient(), configuration, code, cancellationToken);
+        }
+        if (selection is not null) metadata["commercialConfiguration"] = selection.Fingerprint;
+        var options = BuildCommercialCheckoutOptions(org.StripeCustomerId, priceId, successUrl, cancelUrl, metadata, selection,
+            code => metered ? AgencyUsagePricing.PriceId(configuration, code) : CommercialPricing.Price(configuration, code, planTier));
+        var service = new SessionService(CreateClient());
         var session = await service.CreateAsync(
-            BuildCheckoutSessionOptions(org.StripeCustomerId, priceId, successUrl, cancelUrl, metadata),
+            options,
             cancellationToken: cancellationToken);
 
         return new StripeCheckoutSession(
             session.Id,
             session.Url ?? throw new InvalidOperationException("Stripe checkout session URL missing"),
             planTier);
+    }
+
+    public static SessionCreateOptions BuildCommercialCheckoutOptions(string? customerId, string priceId,
+        string successUrl, string cancelUrl, Dictionary<string, string> metadata, CommercialSignup? selection,
+        Func<string, string?> addonPrice)
+    {
+        if (selection?.Validate() is not null) throw new ArgumentException("Invalid commercial selection", nameof(selection));
+        var options = BuildCheckoutSessionOptions(customerId, priceId, successUrl, cancelUrl, metadata);
+        var agency = selection?.Profile == "agency";
+        if (agency)
+        {
+            metadata[AgencyUsagePricing.MetadataKey] = AgencyUsagePricing.Version;
+            options.PaymentMethodCollection = "always";
+            options.SubscriptionData.BillingMode = new() { Type = "flexible" };
+            var now = DateTime.UtcNow;
+            options.SubscriptionData.BillingCycleAnchor = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
+            options.LineItems[0].Quantity = null;
+        }
+        PlanCatalog.TryParseTier(selection?.PlanTier, out var selectedTier);
+        foreach (var code in selection?.Addons ?? [])
+        {
+            if ((agency && AgencyUsagePricing.Included.Contains(code)) || CommercialPricing.IsIncluded(selectedTier, code)) continue;
+            var price = addonPrice(code)
+                ?? throw new DomainRuleException("commercial_addon_unavailable", BillingPrices.PlanUnavailableMessageKey);
+            options.LineItems.Add(new SessionLineItemOptions { Price = price, Quantity = agency ? null : 1 });
+        }
+        return options;
     }
 
     /// <summary>
@@ -111,9 +161,8 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
         string customerId,
         CancellationToken cancellationToken = default)
     {
-        ConfigureStripeApiKey();
 
-        var service = new SessionService();
+        var service = new SessionService(CreateClient());
         var sessions = new List<StripeCheckoutSession>();
         await foreach (var session in service.ListAutoPagingAsync(
                            new SessionListOptions { Customer = customerId, Status = "open", Limit = 100 },
@@ -127,7 +176,15 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
                              PlanCatalog.TryParseTier(raw, out var parsed)
                 ? parsed
                 : null;
-            sessions.Add(new StripeCheckoutSession(session.Id, session.Url, tier));
+            // A pre-rotation session still quotes the old base tariff. Let the checkout service expire it.
+            var metered = session.Metadata?.GetValueOrDefault(AgencyUsagePricing.MetadataKey) == AgencyUsagePricing.Version;
+            if (tier is { } quotedTier && (metered || configuration[$"Billing:CheckoutPrices:{quotedTier}"] is not null) &&
+                session.Metadata?.GetValueOrDefault("basePriceId") != (metered
+                    ? AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base)
+                    : BillingPrices.Resolve(configuration, quotedTier)))
+                tier = null;
+            sessions.Add(new StripeCheckoutSession(session.Id, session.Url, tier,
+                session.Metadata?.GetValueOrDefault("commercialConfiguration"), session.SuccessUrl, session.Metadata?.GetValueOrDefault(AgencyUsagePricing.MetadataKey)));
         }
 
         return sessions;
@@ -135,17 +192,15 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
 
     public async Task ExpireCheckoutSessionAsync(string sessionId, CancellationToken cancellationToken = default)
     {
-        ConfigureStripeApiKey();
-        await new SessionService().ExpireAsync(sessionId, cancellationToken: cancellationToken);
+        await new SessionService(CreateClient()).ExpireAsync(sessionId, cancellationToken: cancellationToken);
     }
 
     public async Task<IReadOnlyList<StripeSubscriptionSummary>> ListSubscriptionsAsync(
         string customerId,
         CancellationToken cancellationToken = default)
     {
-        ConfigureStripeApiKey();
 
-        var service = new Stripe.SubscriptionService();
+        var service = new Stripe.SubscriptionService(CreateClient());
         var subscriptions = new List<StripeSubscriptionSummary>();
         await foreach (var subscription in service.ListAutoPagingAsync(
                            new Stripe.SubscriptionListOptions { Customer = customerId, Status = "all", Limit = 100 },
@@ -162,7 +217,6 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
         string returnUrl,
         CancellationToken cancellationToken = default)
     {
-        ConfigureStripeApiKey();
 
         if (string.IsNullOrWhiteSpace(org.StripeCustomerId))
             throw new InvalidOperationException("Org has no Stripe customer id");
@@ -183,9 +237,8 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
         IReadOnlyCollection<string> taxRateIds,
         CancellationToken cancellationToken = default)
     {
-        ConfigureStripeApiKey();
 
-        var service = new Stripe.TaxRateService();
+        var service = new Stripe.TaxRateService(CreateClient());
         var rates = new List<StripeTaxRateSummary>();
         foreach (var id in taxRateIds.Distinct(StringComparer.Ordinal))
         {
@@ -200,9 +253,8 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
         string customerId,
         CancellationToken cancellationToken = default)
     {
-        ConfigureStripeApiKey();
 
-        var service = new Stripe.CustomerTaxIdService();
+        var service = new Stripe.CustomerTaxIdService(CreateClient());
         var taxIds = new List<StripeCustomerTaxId>();
         await foreach (var taxId in service.ListAutoPagingAsync(
                            customerId,
@@ -220,10 +272,5 @@ public class StripeBillingService(IConfiguration configuration) : IStripeBilling
     private static string ShortHash(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))[..16];
 
-    private void ConfigureStripeApiKey()
-    {
-        var secretKey = configuration["Stripe:SecretKey"];
-        if (!string.IsNullOrWhiteSpace(secretKey))
-            StripeConfiguration.ApiKey = secretKey;
-    }
+    private Stripe.StripeClient CreateClient() => new(configuration["Stripe:SecretKey"]);
 }

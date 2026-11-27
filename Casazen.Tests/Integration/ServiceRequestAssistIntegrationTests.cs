@@ -123,6 +123,7 @@ public class ServiceRequestAssistIntegrationTests(RequestAssistFactory factory) 
         Assert.Contains("rubinetto della cucina", prompt);
         Assert.DoesNotContain("338", prompt);
         Assert.DoesNotContain("Via Test", prompt);
+        Assert.DoesNotContain(property.Address.Split(' ')[^1], prompt);
         Assert.DoesNotContain(property.Name, prompt);
         Assert.DoesNotContain(property.City, prompt);
     }
@@ -258,6 +259,7 @@ public class ServiceRequestAssistIntegrationTests(RequestAssistFactory factory) 
         db.Orgs.Add(supplierOrg);
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = supplierOrg.Id,
             Status = SupplierStatus.Active,
             LegalName = $"Idraulica Bianchi {suffix}",

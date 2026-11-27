@@ -1,7 +1,7 @@
 # Runbook: AI provider, budget, rate limits, GDPR
 
 Task FD-21 (defects A8-01, A8-07, A8-14, A8-15, A4-26, A8-26, A8-16 AI part; decision D11). Related:
-[`feature-flags.md`](feature-flags.md) (flag `AiSupplierDiscovery`), [`hangfire.md`](hangfire.md) (SEO jobs).
+[`feature-flags.md`](feature-flags.md) (flags `AiSupplierDiscovery`, `MessageTranslationAi`), [`hangfire.md`](hangfire.md) (SEO jobs).
 
 ## What calls an AI provider
 
@@ -13,12 +13,36 @@ Task FD-21 (defects A8-01, A8-07, A8-14, A8-15, A4-26, A8-26, A8-16 AI part; dec
 | AI supplier match `POST /api/service-requests/match-supplier` (reason sentence, web search, LLM extraction) | Category code, urgency, open requests count; for the web search the property's city and a fixed category term | **Behind `Features:AiSupplierDiscovery`, off (D11).** When on: category allowlist, per-user and per-org rate limit, platform budget. |
 | Listing text of the wizard «Aggiungi immobile» (`POST /api/properties/{id}/listing-text/suggestion`, button «Suggerisci con l'AI», `PropertyListingTextService`, versioned prompt `ListingTextPrompt`) | The kind of place, guests, rooms, beds, bathrooms, area, amenities and house rules of the property (never its name, address, unit or anything about the host); the comune, its province and region; the public data of up to 5 listings published on CasaZen in the same comune (headline, kind, spaces, amenities); up to 6 photos of the gallery, reduced by the browser to 1,024 px. The photos go only to providers that read images (OpenAI, Anthropic, compatible services); DeepSeek gets the text alone, and a compatible service that refuses the images gets the call again without them. | `[AiRateLimit]` per user and per org, platform budget (each image reserved as 1,400 tokens), cache per org (`listing-text:<hash of prompt and photos>`; «Rigenera» skips it). The answer is a **suggestion** the host reads and edits before saving it with the step: nothing is published by the AI. Without an active provider, with the budget used up or when the provider fails, the answer is `aiUsed: false` with the `reason` and the wizard composes the text from the data as before. |
 | «Descrivi di cosa hai bisogno» of the guided request «Richiedi un intervento» (`POST /api/service-requests/assist`, `GET` on the same address says whether an AI is in effect; `ServiceRequestAssistService`, versioned prompt `ServiceRequestAssistPrompt`), WIZ-AI-REQUEST | **Only what the host typed for the AI** (8 to 600 characters), cleaned by `ServiceRequestAssistPrompt.CleanText`: e-mails, phones and fiscal codes taken out by `PiiScrubber`, street addresses by a pattern of its own, the markers of the text block removed. Never the property (name, address, comune), a stay, a guest, a supplier or the notes of a request. The rules of the prompt carry the list of the categories (what each covers) and the three urgencies. | `[AiRateLimit]` per user and per org, platform budget, Economy tier, cache per org (`request-assist:<prompt version>:<hash of the prompt>`, only an answer that passed the checks; the channel is read live each time). The answer is one JSON object checked by `ServiceRequestAssistRules` (reasoning and drafts before it are skipped): a category of `ServiceCategories` (never invented), an urgency by name (else `Normal`), a summary for the supplier and a sentence for the host, each on one line, cut at 300 and 160 characters and scrubbed again; nothing of the answer reaches a log. **Who to ask is not the AI's call**: `channel` is `casazen` whenever an active CasaZen supplier covers the comune of the property (the one chosen from the official list) for the category, with the same lookup the proposals of the wizard make, and `external` (the partners) otherwise. A suggestion the host reads and changes: nothing is created. Without an AI it is still `200`, with `aiUsed` false and the `reason` (`ai_not_configured`, `ai_budget_exhausted`, `ai_unavailable`, `ai_invalid_answer`, `ai_not_understood`: the AI could not tell the job). |
+| Translation of a message of the hub: `POST /api/messages/translate` (E05/F02/US02/T02, NF-63, **AI-06**; `MessageTranslationService`, versioned prompt `MessageTranslationPrompt`) | **The words of a message of a conversation, written by a guest or by the host** (a message of the hub, or the draft the host is writing), and the target language (one of the 14). Before the call: `PiiScrubber` takes out e-mails, phones and fiscal codes, and the names the conversation knows (the guest's, the host's) become tokens `[[N1]]…` that are put back in the translation, so the provider never reads them; a short name («Li Wu», «Xu Ma») is replaced as a whole name, the particles (de, da, di, van, von, al, el…) are left alone. **Not recognized: the number of a document, an IBAN, a street address, the name of anyone the conversation does not know, a date of stay.** Never the booking, the property, the stay or the guest's data as such | **Behind `Features:MessageTranslationAi`, off by default** (the only exception to the rule below, decision AI-06 of the product owner: translation in both directions). Off: the provider is never asked and nothing of the text leaves; the translation is the channel manager's, asked for the message by its id, or 422 `translation_unavailable`. On: Economy tier, platform budget, `[AiRateLimit]`, answer kept per org in the cache (`message-translation:<version>:<hash of the prompt>`), nothing stored in the conversation and nothing of the text or of the answer in a log. Needs a provider in effect; with the budget used up or a provider that fails the answer falls back to the channel manager. [`guest-messages.md`](guest-messages.md) § The hub, write side. |
+| The drafts of the assistant of the guests' messages (E05/F05/US02/T01, NF-67, **PO-09**; `AssistantDraftService`, versioned prompts `AssistantPromptBuilder`): the job of a new message, `POST /api/assistant/threads/{threadKey}/draft` and the simulator `POST /api/assistant/simulate` | **The last eight messages of a conversation and the facts of the knowledge base of the property**, each minimized before the call by `AssistantPromptBuilder.Minimize`: `PiiScrubber` takes out e-mails, phones and fiscal codes, the names of the guest and of the host become `[guest]` and `[host]`, the codes of the booking `[booking]`, any run of six or more digits `[code]`. The model never sees the name of the guest (it writes `{{guest_name}}`, the server fills it in). **Not recognized: other people's names, a street address, an IBAN with spaces.** Two calls: the classification (Economy) and the draft (Standard, skipped when the template of the situation fills in) | **Behind `Features:MessageAssistant`, off by default, and the switch of each organization** (section below). Platform budget; `[AiRateLimit]` on the two endpoints, plus `AssistantSimulate` (20 / h per person) on the simulator; nothing cached; a budget used up or a failing provider is a decision `NotHandled` (`ai_budget_exceeded`, `ai_provider_error`). The draft goes to the approval queue: **nothing is sent to a guest without a person** until the gate of E05/F05/US03. The decision log keeps ids, codes and scores, never text. [`message-assistant.md`](message-assistant.md) |
+
+**Not an AI use case: the identity document of the check-in.** Since E70/F02/US02/T01 (NF-197, ADR-013-R21) the prefill of the guest check-in,
+`POST /api/public/checkin/{token}/read-document`, reads the photo of the document **in the process only** (`LocalCheckInDocumentReader`: the MRZ with
+its check digits, then the printed fields of the visual zone with Tesseract), whatever provider is configured here or in «Configurazione AI»: the AI
+reader of the document is removed with its prompt and its cache entry, and no flag or setting sends the photo out again. Where a provider that
+reads images was configured, the prefill is now the local one (the guest confirms the fields, as with every local reading); rollback is a revert of
+the change. The architecture tests `IdentityPathEgressArchitectureTests` (E70/F02/US02/T02) forbid AI providers, HTTP clients and the types of
+`Casazen.Infrastructure.External` in the whole identity path (every class of `Casazen.Infrastructure.Identity`, plus the flow, the pipeline and the
+readers), with one exception, written in ADR-013-R21: the two Tesseract readers (`TesseractMrzTextReader`, `TesseractPageTextReader`) may hold the HTTP
+client factory of the model files, only to download their language files (public data with a pinned SHA-256; `DownloadUrl` is empty by default, so nothing
+is downloaded unless it is configured); no picture, crop or OCR text ever reaches that client, and the tests prove that the exception stays that narrow.
+They also forbid pictures or vectors in the alerts, the lock code, the push and the e-mail queue it calls: a new caller of the AI must stay out of it.
+No image goes to an AI provider or to an HttpClient; the encrypted picture of the flow stays in the private storage (`IFileStorage`, Supabase Storage,
+outside Ticino), which the tests do not guard.
 
 Never put in a prompt sent to an external provider: the notes of a request, a stay or a guest, guest data (names, phone numbers,
 documents, dates of stay), supplier or host names, e-mails, addresses of a person. The only free text that goes is what a person types
 **for the AI itself**, in a box made for it (what a supplier tells about itself in the showcase editor, what a host describes in
 «Descrivi di cosa hai bisogno»): scrubbed of e-mails, phones and fiscal codes (and of street addresses, for the host's description) before
 the call, with a line on the screen that asks not to write the names or the documents of guests, which no pattern can find.
+
+**The one exception: the translation of a message (AI-06).** The product owner asked for the translation of the messages of the hub in both
+directions, and the text of a message is what a guest wrote, not what a person typed for the AI. It is therefore allowed **only** behind
+`Features:MessageTranslationAi`, which is off by default and stays off until the product owner has decided the transfer to the sub-processor
+(below: with DeepSeek the data are processed in China and the basis of the transfer is still «a decision of the product owner»); and it sends
+the scrubbed text of one message, never the conversation. The scrub is a best effort (e-mails, phones, fiscal codes, the names of the guest and of
+the host): **documents, IBANs, street addresses and other people's names are not recognized**, so the guests' privacy notice has to say that a
+message can be sent to an automatic translator before the flag is turned on.
 `ISupplierMatchService.MatchAsync`
 does not even take the notes, and `match-supplier` ignores a `notes` field in the body. The photos of a listing are
 sent only by the listing text above: they are the pictures the host publishes on the site, reduced, and the prompt asks
@@ -111,9 +135,19 @@ Change the cap (test first, then production), in the SQL editor of Supabase, on 
 UPDATE "PlatformAiBudgets" SET "MonthlyTokenCap" = 1000000, "UpdatedAt" = now();
 ```
 
+## The assistant of the guests' messages (E05/F05/US02/T01, PO-09)
+
+The second exception to the rule above, after the translation: the assistant reads what guests wrote to propose an answer the host
+approves. It is allowed **only** behind `Features:MessageAssistant` (off by default) and the switch of each organization, and only once the
+activation checklist of [`message-assistant.md`](message-assistant.md) is done: the privacy notice of the guests says that an automatic
+assistant prepares answers, the processing agreement covers the provider, the `Ai:Subprocessor` details of the provider in effect are set
+(`detailsPending: false`), and `Ai:Provider` is not `Stub`. What goes is minimized (the table above); names the conversation does not know,
+street addresses and IBANs with spaces are not recognized, which the privacy notice has to say. The answer of the model is a **draft**: it
+reaches a guest only after a person approves it (the default gate never sends by itself).
+
 ## Rate limits of the AI endpoints (A8-01)
 
-`[AiRateLimit]` on `match-supplier`, `POST /api/admin/seo/generate`, `POST /api/supplier/showcase/texts/suggestion` and `POST /api/service-requests/assist`: a fixed window per user **and** one per
+`[AiRateLimit]` on `match-supplier`, `POST /api/admin/seo/generate`, `POST /api/supplier/showcase/texts/suggestion`, `POST /api/service-requests/assist`, `POST /api/assistant/threads/{threadKey}/draft` and `POST /api/assistant/simulate`: a fixed window per user **and** one per
 organization; over either one the API answers 429 `rate_limited` with `Retry-After`, and the provider is not reached.
 Counters are in memory, per replica.
 
@@ -155,6 +189,12 @@ consumer service, not necessarily the paid API, which is exactly what needs a le
    optionally `__Website`, `__Purpose`) on Railway, and update the privacy notice / DPA texts (provided by the product
    owner, D14).
 3. Check `GET /api/legal/subprocessors` on test: the provider is listed, `detailsPending` is `false`.
+4. **Before setting `Features__MessageTranslationAi=true`** (the translation of the messages of the guests, AI-06): the steps above are done for the
+   provider in effect, the privacy notice and the DPA texts of the guests say that a message can be sent to an automatic translator, and the product
+   owner accepts that documents, IBANs and street addresses written in a message are not recognized by the scrub. Until then the flag stays unset.
+5. **Before setting `Features__MessageAssistant=true`** (the drafts of the assistant, PO-09): the activation checklist of
+   [`message-assistant.md`](message-assistant.md) (privacy notice of the guests, processing agreement, `Ai:Subprocessor` details, a provider
+   that is not `Stub`). Until then the flag stays unset in production.
 
 ## SEO bootstrap (A8-26)
 

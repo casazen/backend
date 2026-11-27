@@ -51,6 +51,8 @@ public class NormalizeServiceCategoriesPostgresTests : IAsyncLifetime
         await using var after = _database.CreateContext();
         // The comune is matched by its ISTAT code through the official list (SU-04).
         await ComuneTestData.ImportSampleAsync(after);
+        await after.SupplierProfiles.Where(p => p.OrgId == s.PulizieSupplier || p.OrgId == s.GardeningSupplier)
+            .ExecuteUpdateAsync(p => p.SetProperty(x => x.GuestPortalMarketplaceEnabled, true));
         var found = await CreateSupplierService(after).GetActiveByComuneAsync(ComuneTarget.FromInput("Roma"), ServiceCategories.Cleaning);
         Assert.Contains(found, sp => sp.OrgId == s.PulizieSupplier);
         Assert.DoesNotContain(found, sp => sp.OrgId == s.GardeningSupplier);

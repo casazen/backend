@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
@@ -45,7 +46,10 @@ public class GuestConsentRecord : ITenantOwned
     [MaxLength(50)]
     public string? IpAddress { get; set; }
 
-    /// <summary>How the guest asked the host to withdraw (date, channel): required for <see cref="GuestConsentSource.HostOnGuestRequest"/>. Cleared on anonymization.</summary>
+    /// <summary>
+    /// How the guest asked the host to withdraw (date, channel): required for <see cref="GuestConsentSource.HostOnGuestRequest"/>. On the row
+    /// of a marketing consent that is granted, the channel it was given on (<see cref="GuestConsentChannelNote"/>). Cleared on anonymization.
+    /// </summary>
     [MaxLength(500)]
     public string? Note { get; set; }
 
@@ -64,6 +68,12 @@ public enum GuestConsentPurpose
 
     /// <summary>Marketing communications: optional consent of the guest (art. 6.1.a GDPR).</summary>
     Marketing = 2,
+
+    /// <summary>
+    /// The soft opt-in notice presented to a direct customer when the contact is collected (art. 130 c. 4 Codice privacy, PO-07, NF-90): the
+    /// customer is told that the address can be used for similar services and can object in every message. The notice is presented, never a consent.
+    /// </summary>
+    SoftOptInNotice = 3,
 }
 
 /// <summary>What happened. Stored as an integer: never renumber.</summary>
@@ -80,6 +90,8 @@ public enum GuestConsentAction
 
     /// <summary>The consent ended with the configured retention period (<c>Gdpr:Retention:Marketing</c>).</summary>
     Expired = 4,
+
+    NoticeAcknowledged = 5,
 }
 
 /// <summary>Who recorded the row. Stored as an integer: never renumber.</summary>
@@ -99,4 +111,35 @@ public enum GuestConsentSource
     /// with the booking and never preselected.
     /// </summary>
     BookingCheckout = 4,
+
+    /// <summary>The guest, on the welcome page of a property reached with its QR code (NF-90).</summary>
+    WelcomePage = 5,
+
+    /// <summary>The guest, on the guest page of a stay (NF-90).</summary>
+    GuestPage = 6,
+
+    /// <summary>Existing evidence declared by the host when importing historical contacts.</summary>
+    HistoricalImport = 7,
+}
+
+/// <summary>
+/// The channel a marketing consent was given on, as the row that grants it states it in <see cref="GuestConsentRecord.Note"/>
+/// (<c>channel=email</c>, <c>channel=whatsapp</c>). The register has no column for it, and a guest who ticks two channels at once leaves two rows
+/// that would otherwise be the same: the register is the proof of the act, so it names the channel. Nothing is written for a notice.
+/// </summary>
+public static class GuestConsentChannelNote
+{
+    /// <summary>A consent to offers by e-mail.</summary>
+    public const string Email = "channel=email";
+
+    /// <summary>A consent to offers on WhatsApp.</summary>
+    public const string WhatsApp = "channel=whatsapp";
+
+    /// <summary>The note of a consent on <paramref name="channel"/>; <c>null</c> for a channel a marketing consent is not given on.</summary>
+    public static string? For(GuestContactChannel channel) => channel switch
+    {
+        GuestContactChannel.Email => Email,
+        GuestContactChannel.WhatsApp => WhatsApp,
+        _ => null,
+    };
 }

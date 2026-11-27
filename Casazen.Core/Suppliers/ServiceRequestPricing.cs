@@ -79,6 +79,9 @@ public static class ServiceRequestPriceLineKinds
     /// <summary>The agreed price of the work (the quote, else the estimate).</summary>
     public const string Base = "base";
 
+    /// <summary>Platform commission added to the host payment for a marketplace supplier.</summary>
+    public const string PlatformFee = "platformFee";
+
     /// <summary>An extra the supplier added when it completed the work (a bathroom more, extra linen).</summary>
     public const string Extra = "extra";
 

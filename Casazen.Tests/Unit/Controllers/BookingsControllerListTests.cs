@@ -1,4 +1,5 @@
 using Casazen.Core.Authorization;
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -49,7 +50,9 @@ public class BookingsControllerListTests
             ICalTestServices.PropertySync(db, Mock.Of<ISafeExternalHttpClient>(), configuration),
             Mock.Of<IOtaStayService>(),
             Mock.Of<ILogger<BookingsController>>(),
-            Options.Create(new BookingsOptions { DefaultPageSize = 10 }))
+            Options.Create(new BookingsOptions { DefaultPageSize = 10 }),
+            Mock.Of<IBookingOctorateSyncReader>(),
+            OtaChannelActionPolicy.Closed)
         {
             ControllerContext = new ControllerContext
             {
@@ -80,6 +83,7 @@ public class BookingsControllerListTests
         string[]? channel = null,
         string[]? checkInStatus = null,
         string? sort = null,
+        string[]? origin = null,
         bool canReadPayments = true,
         Guid? orgId = null,
         Guid? propertyId = null,
@@ -98,7 +102,8 @@ public class BookingsControllerListTests
             view: view,
             channel: channel,
             checkInStatus: checkInStatus,
-            sort: sort);
+            sort: sort,
+            origin: origin);
 
     private Task<ActionResult<BookingCountsDto>> CountsAsync(
         BookingsController controller,
@@ -109,6 +114,7 @@ public class BookingsControllerListTests
         DateOnly? arrivalTo = null,
         string[]? channel = null,
         string[]? checkInStatus = null,
+        string[]? origin = null,
         Guid? orgId = null) =>
         controller.Counts(
             _search.Object,
@@ -121,7 +127,8 @@ public class BookingsControllerListTests
             arrivalFrom: arrivalFrom,
             arrivalTo: arrivalTo,
             channel: channel,
-            checkInStatus: checkInStatus);
+            checkInStatus: checkInStatus,
+            origin: origin);
 
     private static Booking MakeBooking(BookingSource source = BookingSource.Direct, BookingStatus status = BookingStatus.Confirmed) => new()
     {
@@ -152,12 +159,15 @@ public class BookingsControllerListTests
     [InlineData("view", "done", BookingsController.InvalidViewCode)]
     [InlineData("view", "1", BookingsController.InvalidViewCode)]
     [InlineData("view", "upcoming,completed", BookingsController.InvalidViewCode)]
-    [InlineData("channel", "Expedia", BookingsController.InvalidChannelCode)]
+    [InlineData("channel", "Pinterest", BookingsController.InvalidChannelCode)]
     [InlineData("channel", "Airbnb,Foo", BookingsController.InvalidChannelCode)]
     [InlineData("checkInStatus", "Done", BookingsController.InvalidCheckInStatusCode)]
     [InlineData("checkInStatus", "3", BookingsController.InvalidCheckInStatusCode)]
     [InlineData("sort", "price", BookingsController.InvalidSortCode)]
     [InlineData("sort", "checkIn:up", BookingsController.InvalidSortCode)]
+    [InlineData("origin", "Pinterest", BookingsController.InvalidOriginCode)]
+    [InlineData("origin", "AgencySite,Foo", BookingsController.InvalidOriginCode)]
+    [InlineData("origin", "2", BookingsController.InvalidOriginCode)]
     public async Task Search_AWordTheListDoesNotKnow_Is400WithItsOwnCode_AndSearchesNothing(string parameter, string value, string code)
     {
         var result = await SearchAsync(
@@ -165,7 +175,8 @@ public class BookingsControllerListTests
             view: parameter == "view" ? value : null,
             channel: parameter == "channel" ? [value] : null,
             checkInStatus: parameter == "checkInStatus" ? [value] : null,
-            sort: parameter == "sort" ? value : null);
+            sort: parameter == "sort" ? value : null,
+            origin: parameter == "origin" ? [value] : null);
 
         var problem = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status400BadRequest, problem.StatusCode);
@@ -216,6 +227,48 @@ public class BookingsControllerListTests
                     && c.PageSize == 25),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task Search_TheOriginsArePassedToTheSearch_InAnyCase_RepeatedOrWithCommas_AndNoneIsNoFilter()
+    {
+        SearchAnswers(new BookingSearchPage([], 0, 1, 10));
+
+        await SearchAsync(CreateController(), origin: ["portal", "AgencySite,MANUAL", "Portal"]);
+        await SearchAsync(CreateController());
+
+        _search.Verify(
+            s => s.SearchAsync(
+                It.IsAny<HostScope>(),
+                It.Is<BookingSearchCriteria>(c =>
+                    c.Origins != null && c.Origins.SequenceEqual(new[] { BookingOrigin.Portal, BookingOrigin.AgencySite, BookingOrigin.Manual })),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+        _search.Verify(
+            s => s.SearchAsync(
+                It.IsAny<HostScope>(), It.Is<BookingSearchCriteria>(c => c.Origins != null && c.Origins.Count == 0), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Counts_TheOriginsFilterTheCountersToo_AndAWordTheyDoNotKnowIs400()
+    {
+        _search
+            .Setup(s => s.CountAsync(It.IsAny<HostScope>(), It.IsAny<BookingSearchCriteria>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BookingCounts(3, 0, 1, 0, 2, 0));
+
+        await CountsAsync(CreateController(), origin: ["CasaZenSite"]);
+        var invalid = await CountsAsync(CreateController(), origin: ["Octorate"]);
+
+        _search.Verify(
+            s => s.CountAsync(
+                It.IsAny<HostScope>(),
+                It.Is<BookingSearchCriteria>(c => c.Origins != null && c.Origins.SequenceEqual(new[] { BookingOrigin.CasaZenSite })),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+        var problem = Assert.IsType<ObjectResult>(invalid.Result);
+        Assert.Equal(StatusCodes.Status400BadRequest, problem.StatusCode);
+        Assert.Equal(BookingsController.InvalidOriginCode, Assert.IsAssignableFrom<ProblemDetails>(problem.Value).Extensions["code"]);
     }
 
     [Fact]
@@ -297,7 +350,7 @@ public class BookingsControllerListTests
         var rows = page.Items.ToList();
         Assert.Equal(("Airbnb", "Partial", 120m, "DaInviareManualmente"), (rows[0].Channel, rows[0].PaymentState, rows[0].PaidAmount, rows[0].AlloggiatiStatus));
         // The exact source stays; the channel is the group the filter speaks of.
-        Assert.Equal(("Expedia", "Other", "Paid", (decimal?)null, (string?)null), (rows[1].Source, rows[1].Channel, rows[1].PaymentState, rows[1].PaidAmount, rows[1].AlloggiatiStatus));
+        Assert.Equal(("Expedia", "Expedia", "Paid", (decimal?)null, (string?)null), (rows[1].Source, rows[1].Channel, rows[1].PaymentState, rows[1].PaidAmount, rows[1].AlloggiatiStatus));
         Assert.Equal(("Manual", "None", (decimal?)null, (string?)null), (rows[2].Channel, rows[2].PaymentState, rows[2].PaidAmount, rows[2].AlloggiatiStatus));
         // Still the booking, as everywhere.
         Assert.Equal("ABCDE-FGHJK", rows[0].BookingCode);
@@ -375,7 +428,7 @@ public class BookingsControllerListTests
     public async Task Counts_TheSameWordsAreRefusedAsInTheSearch()
     {
         var invalidStatus = await CountsAsync(CreateController(), status: ["Done"]);
-        var invalidChannel = await CountsAsync(CreateController(), channel: ["Expedia"]);
+        var invalidChannel = await CountsAsync(CreateController(), channel: ["Pinterest"]);
         var invalidCheckIn = await CountsAsync(CreateController(), checkInStatus: ["Done"]);
         var invalidRange = await CountsAsync(CreateController(), arrivalFrom: new DateOnly(2026, 11, 1), arrivalTo: new DateOnly(2026, 10, 1));
 

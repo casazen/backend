@@ -147,8 +147,14 @@ public static class HostOverviewSeriesRules
     public const int MaxWeeklyDays = 62;
 
     /// <summary>The unit of the bars for the period: weeks up to <see cref="MaxWeeklyDays"/> days, months beyond.</summary>
-    public static HostOverviewSeriesUnit UnitFor(HostDashboardPeriod period) =>
-        period.Nights <= MaxWeeklyDays ? HostOverviewSeriesUnit.Week : HostOverviewSeriesUnit.Month;
+    public static HostOverviewSeriesUnit UnitFor(HostDashboardPeriod period) => UnitFor(period, MaxWeeklyDays);
+
+    /// <summary>
+    /// The unit of the bars for the period: weeks up to <paramref name="maxWeeklyDays"/> days, months beyond. The trend of the reports
+    /// (NF-96) cuts by the same rule with a longer limit (<see cref="HostReportRules.MaxWeeklyTrendDays"/>).
+    /// </summary>
+    public static HostOverviewSeriesUnit UnitFor(HostDashboardPeriod period, int maxWeeklyDays) =>
+        period.Nights <= maxWeeklyDays ? HostOverviewSeriesUnit.Week : HostOverviewSeriesUnit.Month;
 
     /// <summary>
     /// The bars of the period, in order, each from its first night to the day after its last. They cover the period exactly: the

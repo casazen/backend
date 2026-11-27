@@ -19,6 +19,8 @@ public class Campaign : ITenantOwned
     public Guid OrgId { get; set; }
 
     /// <summary>Segment that defines campaign recipients (ADR-014-R3).</summary>
+    public Guid? PropertyId { get; set; }
+
     public Guid SegmentId { get; set; }
     public virtual GuestSegment? Segment { get; set; }
 

@@ -374,6 +374,7 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
 
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = supplierOrg.Id,
             Email = supplierOrg.ContactEmail,
             LegalName = "SR Supplier Srl",

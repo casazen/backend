@@ -159,6 +159,24 @@ public class PropertyListingTextServiceTests
         Assert.Equal(AiSuggestionFallbackReasons.AiInvalidAnswer, suggestion.Reason);
     }
 
+    [Fact]
+    public async Task SuggestFieldsAsync_CachesEachLanguageSeparately_AndReturnsAllFieldsWithoutSaving()
+    {
+        await using var db = Database(nameof(SuggestFieldsAsync_CachesEachLanguageSeparately_AndReturnsAllFieldsWithoutSaving));
+        var property = await SeedAsync(db);
+        property.HouseRules = "Non fumare";
+        _provider.Setup(p => p.GenerateAsync(It.IsAny<AiRequest>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AiGenerationResult("{\"title\":\"Maison\",\"description\":\"Un logement.\",\"spaces\":\"Deux chambres\",\"access\":\"\",\"neighborhood\":\"Como\",\"transport\":\"\",\"rules\":\"Non fumeur\"}", 100, 100, AiModelTier.Standard, false));
+        var service = Service(db);
+        var suggestion = await service.SuggestFieldsAsync(property, [], "fr", false);
+        await service.SuggestFieldsAsync(property, [], "fr", false);
+        await service.SuggestFieldsAsync(property, [], "de", false);
+        Assert.True(suggestion.AiUsed);
+        Assert.Equal(7, suggestion.Fields!.Count);
+        Assert.Equal("Non fumare", property.HouseRules);
+        _provider.Verify(p => p.GenerateAsync(It.IsAny<AiRequest>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
     private PropertyListingTextService Service(AppDbContext db)
     {
         var comuni = new Mock<IComuneDirectory>();

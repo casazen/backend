@@ -5,8 +5,9 @@ using Microsoft.Extensions.Options;
 namespace Casazen.Web.Configuration;
 
 /// <summary>
-/// Browser origins allowed to call the API, from the <c>Cors</c> section (FD-17, A3-29 / A9-28). No origin is written in
-/// code (decision D3). Runbook: <c>docs/runbooks/cors-security-headers.md</c>.
+/// Browser origins allowed to call the API, from the <c>Cors</c> section (FD-17, A3-29 / A9-28). The public site domain
+/// is never written in code (decision D3). The Vercel project that serves the web app is recognized separately
+/// (<see cref="CorsOriginAllowList"/>): its hosts are not a wildcard. Runbook: <c>docs/runbooks/cors-security-headers.md</c>.
 /// </summary>
 public sealed class CorsOriginOptions
 {
@@ -65,13 +66,35 @@ public sealed class CorsOriginOptions
 public sealed class CorsOriginAllowList
 {
     private const string VercelSuffix = ".vercel.app";
+
+    /// <summary>
+    /// Vercel project that deploys github.com/casazen/frontend. The public deployment hostnames are
+    /// <c>casazen.vercel.app</c>, <c>casazen-&lt;team&gt;.vercel.app</c>, <c>casazen-&lt;hash&gt;-&lt;team&gt;.vercel.app</c>
+    /// and <c>casazen-git-&lt;branch&gt;-&lt;team&gt;.vercel.app</c>. The team slug is part of those hostnames; it is not a secret.
+    /// </summary>
+    private const string FrontendProject = "casazen";
+
+    private const string FrontendTeam = "lucalamalfa91s-projects";
+
     private static readonly TimeSpan PatternTimeout = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>One deployment: <c>casazen-&lt;9 chars&gt;-lucalamalfa91s-projects</c>.</summary>
+    private static readonly Regex FrontendDeploymentLabel = new(
+        $"^{FrontendProject}-[a-z0-9]{{9}}-{FrontendTeam}$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled,
+        PatternTimeout);
+
+    /// <summary>A branch deployment: <c>casazen-git-&lt;branch&gt;-lucalamalfa91s-projects</c>.</summary>
+    private static readonly Regex FrontendBranchLabel = new(
+        $"^{FrontendProject}-git-[a-z0-9-]+-{FrontendTeam}$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled,
+        PatternTimeout);
 
     private readonly HashSet<string> _origins;
     private readonly Regex? _vercelPreviewLabel;
 
     public CorsOriginAllowList(IOptions<CorsOriginOptions> options, IHostEnvironment environment)
-        : this(options.Value, environment.IsDevelopment())
+        : this(options.Value, environment.IsDevelopment(), !environment.IsProduction())
     {
     }
 
@@ -79,7 +102,11 @@ public sealed class CorsOriginAllowList
     /// <param name="allowLoopback">
     /// Development only: any <c>http://localhost:port</c> (or loopback IP) origin, for the Vite dev server.
     /// </param>
-    public CorsOriginAllowList(CorsOriginOptions options, bool allowLoopback)
+    /// <param name="allowFrontendPreviews">
+    /// Every environment except Production: the branch and deployment hostnames of the frontend Vercel project.
+    /// Those builds call the test API. Production keeps only the two stable project hosts.
+    /// </param>
+    public CorsOriginAllowList(CorsOriginOptions options, bool allowLoopback, bool allowFrontendPreviews = false)
     {
         var (origins, pattern, errors) = Parse(options);
         if (errors.Count > 0)
@@ -88,6 +115,7 @@ public sealed class CorsOriginAllowList
         _origins = origins;
         _vercelPreviewLabel = pattern;
         AllowsLoopback = allowLoopback;
+        AllowsFrontendPreviews = allowFrontendPreviews;
     }
 
     /// <summary>The configured origins, normalized (<c>scheme://host[:port]</c>, lower case).</summary>
@@ -96,6 +124,9 @@ public sealed class CorsOriginAllowList
     public bool AllowsVercelPreviews => _vercelPreviewLabel is not null;
 
     public bool AllowsLoopback { get; }
+
+    /// <summary>Branch and per-deployment hosts of the frontend project. Off in Production.</summary>
+    public bool AllowsFrontendPreviews { get; }
 
     public bool IsOriginAllowed(string? origin)
     {
@@ -111,7 +142,7 @@ public sealed class CorsOriginAllowList
         if (AllowsLoopback && uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback)
             return true;
 
-        return IsOwnVercelPreview(uri);
+        return IsOwnVercelPreview(uri) || IsFrontendProject(uri);
     }
 
     /// <summary>Configuration errors (malformed origin, invalid pattern); empty when the section is valid.</summary>
@@ -134,6 +165,41 @@ public sealed class CorsOriginAllowList
         try
         {
             return _vercelPreviewLabel.IsMatch(label);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Hosts of the Vercel project that serves the web app. Not every <c>*.vercel.app</c> name: the project label and,
+    /// for a deployment, the team slug have to match. Stable hosts are allowed in every environment; branch and
+    /// deployment hosts only outside Production, because those builds call the test API.
+    /// </summary>
+    private bool IsFrontendProject(Uri uri)
+    {
+        if (uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort)
+            return false;
+
+        var host = uri.IdnHost;
+        if (!host.EndsWith(VercelSuffix, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var label = host[..^VercelSuffix.Length];
+        if (label.Length == 0 || label.Contains('.'))
+            return false;
+
+        if (label.Equals(FrontendProject, StringComparison.OrdinalIgnoreCase)
+            || label.Equals($"{FrontendProject}-{FrontendTeam}", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!AllowsFrontendPreviews)
+            return false;
+
+        try
+        {
+            return FrontendDeploymentLabel.IsMatch(label) || FrontendBranchLabel.IsMatch(label);
         }
         catch (RegexMatchTimeoutException)
         {

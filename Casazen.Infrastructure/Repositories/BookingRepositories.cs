@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -81,20 +82,23 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         return !conflicting;
     }
 
-    public Task<Booking> AddAsync(Booking booking) => AddCoreAsync(booking, guestConsent: null);
+    public Task<Booking> AddAsync(Booking booking) => AddCoreAsync(booking, guestConsents: null);
 
-    public Task<Booking> AddWithGuestConsentAsync(Booking booking, GuestConsentRecord consent)
+    public Task<Booking> AddWithGuestConsentsAsync(Booking booking, IReadOnlyList<GuestConsentRecord> consents)
     {
         ArgumentNullException.ThrowIfNull(booking);
-        ArgumentNullException.ThrowIfNull(consent);
-        // The record belongs to the guest snapshot written with the booking: a consent of another guest is a bug, not a row.
-        if (consent.GuestId != booking.GuestId)
-            throw new ArgumentException("The consent must belong to the guest of the booking.", nameof(consent));
+        ArgumentNullException.ThrowIfNull(consents);
+        if (consents.Count == 0)
+            throw new ArgumentException("At least one record of the privacy history is expected.", nameof(consents));
 
-        return AddCoreAsync(booking, consent);
+        // The records belong to the guest snapshot written with the booking: a record of another guest is a bug, not a row.
+        if (consents.Any(consent => consent.GuestId != booking.GuestId))
+            throw new ArgumentException("Every record must belong to the guest of the booking.", nameof(consents));
+
+        return AddCoreAsync(booking, consents);
     }
 
-    private async Task<Booking> AddCoreAsync(Booking booking, GuestConsentRecord? guestConsent)
+    private async Task<Booking> AddCoreAsync(Booking booking, IReadOnlyList<GuestConsentRecord>? guestConsents)
     {
         await using var transaction = await BeginPropertyGuardTransactionAsync(booking.PropertyId);
 
@@ -102,12 +106,14 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             (await HasActiveOverlapAsync(booking.PropertyId, booking.CheckInDate.Date, booking.CheckOutDate.Date) ||
              await HasBlockingCalendarBlockAsync(booking)))
         {
+            // The booking is refused: the events its caller recorded for it go with it, not into the next save of this context.
+            BookingEvents.Withdraw(context, booking.Id);
             throw new InvalidOperationException(PropertyUnavailableMessage);
         }
 
         context.Bookings.Add(booking);
-        if (guestConsent is not null)
-            context.GuestConsentRecords.Add(guestConsent);
+        if (guestConsents is not null)
+            context.GuestConsentRecords.AddRange(guestConsents);
         await context.SaveChangesAsync();
 
         if (transaction is not null)
@@ -128,6 +134,7 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
                 pendingCutoff: null,
                 excludeBookingId: booking.Id))
         {
+            BookingEvents.Withdraw(context, booking.Id);
             throw new InvalidOperationException(PropertyUnavailableMessage);
         }
 
@@ -171,8 +178,15 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             return;
 
         var guestId = booking.GuestId;
+        context.GuestHostExtraOrders.RemoveRange(await context.GuestHostExtraOrders.Where(x =>
+            x.OrgId == booking.OrgId && x.BookingId == booking.Id).ToListAsync());
         context.Payments.RemoveRange(booking.Payments);
         context.Bookings.Remove(booking);
+        // The attempt was never a booking (BK-18): the events of its creation, not published yet, go with it.
+        context.OutboxEvents.RemoveRange(await context.OutboxEvents
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(e => e.OrgId == booking.OrgId && e.EntityId == bookingId && e.DispatchedAt == null)
+            .ToListAsync());
         await context.SaveChangesAsync();
 
         // IgnoreQueryFilters: a reference from any org keeps the guest, as the Restrict foreign keys count every row.
@@ -226,6 +240,30 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         HoldExpiryCutoff? pendingCutoff = null,
         Guid? excludeBookingId = null)
     {
+        return await BookingsTakingNights(context, propertyId, checkInDate, checkOutDate, pendingCutoff, excludeBookingId).AnyAsync();
+    }
+
+    /// <summary>
+    /// Whether a booking other than <paramref name="bookingId"/> takes a night of the stay: the check <see cref="UpdateAsync"/> makes under the
+    /// property lock, readable before it, so the edit of a booking can refuse dates that are taken before any money moves (E08/F02/US01/T01).
+    /// </summary>
+    internal static Task<bool> TakesNightsOfAnotherBookingAsync(
+        AppDbContext context,
+        Guid bookingId,
+        Guid propertyId,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        CancellationToken cancellationToken) =>
+        BookingsTakingNights(context, propertyId, checkInDate.Date, checkOutDate.Date, pendingCutoff: null, bookingId).AnyAsync(cancellationToken);
+
+    private static IQueryable<Booking> BookingsTakingNights(
+        AppDbContext context,
+        Guid propertyId,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        HoldExpiryCutoff? pendingCutoff,
+        Guid? excludeBookingId)
+    {
         // With a cutoff, expired checkout holds do not count (availability); without one (the final check under the
         // property lock before an insert or update) every booking that is not cancelled does. The nights are those of the
         // public availability (PropertyOccupancy, BK-05).
@@ -236,7 +274,7 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         if (excludeBookingId.HasValue)
             query = query.Where(b => b.Id != excludeBookingId.Value);
 
-        return await query.AnyAsync();
+        return query;
     }
 
     /// <summary>

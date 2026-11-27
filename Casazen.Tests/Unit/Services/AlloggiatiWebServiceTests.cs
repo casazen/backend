@@ -363,6 +363,51 @@ public class AlloggiatiWebServiceTests
             CreateService(db, CheckIn).GetStatusAsync(Guid.NewGuid()));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(AlloggiatiWebStatus.DaInviare)]
+    [InlineData(AlloggiatiWebStatus.DaInviareManualmente)]
+    [InlineData(AlloggiatiWebStatus.Errore)]
+    public async Task GetStatus_NoShowPastTheLegalTerm_IsNotDueNeverToSendManuallyNorOverdue(AlloggiatiWebStatus? stored)
+    {
+        // NF-45: the guests never came. Whatever the report says (none, waiting, already marked "to send manually" by the job before the host
+        // marked the no-show, or failed), the status and the guest summary read "not due", and a stay past its term is not overdue.
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db);
+        if (stored is { } status)
+            await AddReportAsync(db, booking, status);
+        booking.NoShowAt = RomeMidnightOfCheckIn.AddHours(14);
+        await db.SaveChangesAsync();
+        var service = CreateService(db, RomeMidnightOfCheckIn.AddHours(48));
+
+        var info = await service.GetStatusAsync(booking.Id);
+        var summary = await service.GetGuestSummaryAsync(booking.Id);
+
+        Assert.Equal(AlloggiatiWebStatus.NotDue, info.Status);
+        Assert.False(info.IsOverdue);
+        Assert.Null(info.ReportedAt);
+        Assert.Equal(AlloggiatiWebStatus.NotDue, summary.Status);
+        Assert.False(service.IsOverdue(booking, stored));
+    }
+
+    [Fact]
+    public async Task GetStatus_NoShowWhoseCommunicationWasDeclaredSent_StillReadsSent()
+    {
+        // A communication sent or declared sent is never hidden by the no-show mark.
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db);
+        await AddReportAsync(db, booking, AlloggiatiWebStatus.InviatoManualmente, reportedAt: CheckIn);
+        booking.NoShowAt = RomeMidnightOfCheckIn.AddHours(14);
+        await db.SaveChangesAsync();
+        var service = CreateService(db, RomeMidnightOfCheckIn.AddHours(48));
+
+        var info = await service.GetStatusAsync(booking.Id);
+
+        Assert.Equal(AlloggiatiWebStatus.InviatoManualmente, info.Status);
+        Assert.Equal(CheckIn, info.ReportedAt);
+        Assert.Equal(AlloggiatiWebStatus.InviatoManualmente, (await service.GetGuestSummaryAsync(booking.Id)).Status);
+    }
+
     [Fact]
     public async Task MarkSentManually_DateOnArrivalDay_RecordsDeclarationNotReceipt()
     {
@@ -437,6 +482,38 @@ public class AlloggiatiWebServiceTests
             CreateService(db, RomeMidnightOfCheckIn.AddHours(30)).MarkSentManuallyAsync(booking.Id, CheckIn));
 
         Assert.Equal(AlloggiatiWebService.AlreadySentCode, ex.Code);
+    }
+
+    /// <summary>
+    /// NF-47, AC-NF47-2 (E03/F02/US03/T01): the host's declaration that it sent the communication on the portal writes one line of the log of what
+    /// was sent, in the same save as the declaration: sender «Manual», the day it declared, the person, no reference (CasaZen holds no receipt) and no
+    /// guest. A declaration that is refused, or that finds the communication already sent, writes none.
+    /// </summary>
+    [Fact]
+    public async Task MarkSentManually_WritesOneLineOfTheSendLog_ARefusedDeclarationWritesNone()
+    {
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db);
+
+        await Assert.ThrowsAsync<DomainRuleException>(() =>
+            CreateService(db, RomeMidnightOfCheckIn.AddHours(10)).MarkSentManuallyAsync(booking.Id, CheckIn.AddDays(-1), "auth0|host"));
+        await Assert.ThrowsAsync<DomainRuleException>(() =>
+            CreateService(db, RomeMidnightOfCheckIn.AddHours(10)).MarkSentManuallyAsync(booking.Id, CheckIn.AddDays(1), "auth0|host"));
+        Assert.Empty(db.ComplianceSendLogEntries);
+
+        await CreateService(db, RomeMidnightOfCheckIn.AddHours(30)).MarkSentManuallyAsync(booking.Id, CheckIn, "auth0|host");
+
+        var line = Assert.Single(db.ComplianceSendLogEntries);
+        Assert.Equal((booking.OrgId, booking.PropertyId, booking.Id), (line.OrgId, line.PropertyId, line.BookingId));
+        Assert.Equal((ComplianceSendKind.AlloggiatiGuests, ComplianceSender.Manual), (line.Kind, line.Sender));
+        Assert.Equal(CheckIn, line.SentAt);
+        Assert.Equal("auth0|host", line.ByUserId);
+        Assert.Null(line.Reference);
+        Assert.Equal(AlloggiatiWebStatus.InviatoManualmente, (await db.AlloggiatiWebReports.SingleAsync()).Status);
+
+        await Assert.ThrowsAsync<DomainConflictException>(() =>
+            CreateService(db, RomeMidnightOfCheckIn.AddHours(30)).MarkSentManuallyAsync(booking.Id, CheckIn, "auth0|host"));
+        Assert.Single(db.ComplianceSendLogEntries);
     }
 
     [Fact]
@@ -731,6 +808,26 @@ public class AlloggiatiWebServiceTests
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
             CreateService(db, CheckIn).BuildRecordFileAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task SwissStay_IsNotDue_NotListed_AndNeverCreatesItalianReport()
+    {
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db);
+        var property = await db.Properties.SingleAsync();
+        property.Country = "CH";
+        await db.SaveChangesAsync();
+        var service = CreateService(db, CheckIn.AddDays(2));
+
+        var status = await service.GetStatusAsync(booking.Id);
+        Assert.Equal(AlloggiatiWebStatus.NotDue, status.Status);
+        Assert.False(status.IsOverdue);
+        Assert.Empty(await service.GetSummaryAsync(new HostScope(booking.OrgId), null));
+        Assert.Null(await service.ReserveReportAsync(booking.Id));
+        var manual = await service.MarkSentManuallyAsync(booking.Id, CheckIn);
+        Assert.Equal(AlloggiatiWebStatus.NotDue, manual.Status);
+        Assert.Empty(db.AlloggiatiWebReports);
     }
 
     private static async Task SeedSyntheticCodeTablesAsync(AppDbContext db)

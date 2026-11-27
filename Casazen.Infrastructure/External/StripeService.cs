@@ -26,6 +26,13 @@ public interface IStripeService
         string? description,
         CancellationToken cancellationToken = default);
 
+    Task<PaymentIntent> CreateConnectedAuthorizationAsync(string connectedAccountId, long amountCents,
+        string currency, Dictionary<string, string> metadata, string idempotencyKey, string description, CancellationToken ct) =>
+        throw new NotSupportedException();
+
+    Task<PaymentIntent> CaptureConnectedAuthorizationAsync(string connectedAccountId, string paymentIntentId,
+        string idempotencyKey, CancellationToken ct) => throw new NotSupportedException();
+
     /// <summary>
     /// Creates a refund of a PaymentIntent (BK-02). Direct charges live on the connected account, so the request carries
     /// its <c>Stripe-Account</c> header (<see cref="StripeRefundCreateRequest.ConnectedAccountId"/>); null only for a
@@ -110,7 +117,26 @@ public interface IStripeService
         string customerId,
         string connectedAccountId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The balance transaction of the latest charge of a PaymentIntent (FIS-05, E06/F04/US01/T02): the commission Stripe kept, the net credited, the
+    /// currency of the balance and the day the funds are available. The intent is read with <c>latest_charge.balance_transaction</c> expanded, with the
+    /// <c>Stripe-Account</c> header of a direct charge (<paramref name="connectedAccountId"/>) and without it for an intent on the platform (null), as the
+    /// refunds choose. <c>null</c> while the charge has no balance transaction yet (or the intent has no charge).
+    /// </summary>
+    Task<StripeBalanceTransactionInfo?> GetChargeBalanceTransactionAsync(
+        string paymentIntentId,
+        string? connectedAccountId,
+        CancellationToken cancellationToken = default);
 }
+
+/// <summary>The figures of a Stripe balance transaction, in minor units of <paramref name="Currency"/>.</summary>
+/// <param name="Id">The balance transaction (<c>txn_…</c>).</param>
+/// <param name="FeeMinor">The fees Stripe kept.</param>
+/// <param name="NetMinor">What was credited after the fees.</param>
+/// <param name="Currency">The currency of the balance (lower case, as Stripe writes it).</param>
+/// <param name="AvailableOnUtc">The day the funds become available.</param>
+public sealed record StripeBalanceTransactionInfo(string Id, long FeeMinor, long NetMinor, string Currency, DateTime AvailableOnUtc);
 
 /// <summary>Refund of <paramref name="AmountCents"/> of <paramref name="PaymentIntentId"/>.</summary>
 /// <param name="PaymentIntentId">PaymentIntent to refund.</param>
@@ -301,6 +327,23 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
             RequestOptionsFor(connectedAccountId),
             cancellationToken);
 
+    public Task<PaymentIntent> CreateConnectedAuthorizationAsync(string connectedAccountId, long amountCents,
+        string currency, Dictionary<string, string> metadata, string idempotencyKey, string description, CancellationToken ct) =>
+        new PaymentIntentService(Client).CreateAsync(new PaymentIntentCreateOptions
+        {
+            Amount = amountCents,
+            Currency = currency,
+            Metadata = metadata,
+            Description = description,
+            CaptureMethod = "manual",
+            AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions { Enabled = true, AllowRedirects = "never" },
+        }, RequestOptionsFor(connectedAccountId, idempotencyKey), ct);
+
+    public Task<PaymentIntent> CaptureConnectedAuthorizationAsync(string connectedAccountId, string paymentIntentId,
+        string idempotencyKey, CancellationToken ct) =>
+        new PaymentIntentService(Client).CaptureAsync(paymentIntentId, new PaymentIntentCaptureOptions(),
+            RequestOptionsFor(connectedAccountId, idempotencyKey), ct);
+
     public async Task<PaymentIntent> CancelPaymentIntentAsync(
         string paymentIntentId,
         string? connectedAccountId,
@@ -355,6 +398,31 @@ public class StripeService(ILogger<StripeService> logger, IStripeClient? stripeC
             RequestOptionsFor(connectedAccountId),
             cancellationToken);
         logger.LogInformation("Payment method {PaymentMethodId} detached on {AccountId}", paymentMethodId, connectedAccountId);
+    }
+
+    public async Task<StripeBalanceTransactionInfo?> GetChargeBalanceTransactionAsync(
+        string paymentIntentId,
+        string? connectedAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(paymentIntentId);
+
+        var intent = await new PaymentIntentService(Client).GetAsync(
+            paymentIntentId,
+            new PaymentIntentGetOptions { Expand = ["latest_charge.balance_transaction"] },
+            RequestOptionsFor(connectedAccountId),
+            cancellationToken);
+
+        var transaction = intent.LatestCharge?.BalanceTransaction;
+        if (transaction is null || string.IsNullOrWhiteSpace(transaction.Id) || string.IsNullOrWhiteSpace(transaction.Currency))
+            return null;
+
+        return new StripeBalanceTransactionInfo(
+            transaction.Id,
+            transaction.Fee,
+            transaction.Net,
+            transaction.Currency,
+            DateTime.SpecifyKind(transaction.AvailableOn, DateTimeKind.Utc));
     }
 
     private static RequestOptions RequestOptionsFor(string? connectedAccountId, string? idempotencyKey = null) => new()

@@ -21,7 +21,8 @@ public static class FiscalCopy
             or BookingSource.Expedia
             or BookingSource.Vrbo
             or BookingSource.TripAdvisor
-            or BookingSource.Agoda;
+            or BookingSource.Agoda
+            or BookingSource.OtherChannel;
 
     /// <summary>OTA withholding on <paramref name="gross"/> at <paramref name="rate"/> (<c>ShortStayFiscal:OtaWithholdingRate</c>).</summary>
     public static decimal CalculateOtaWithholding(decimal gross, decimal rate) =>

@@ -10,6 +10,14 @@ namespace Casazen.Tests.Unit.Regulatory;
 /// </summary>
 public class CinFormatTests
 {
+    [Theory]
+    [InlineData("CH", false)]
+    [InlineData("ch", false)]
+    [InlineData("IT", true)]
+    [InlineData(null, true)]
+    public void ItalianCin_AppliesByCountry(string? country, bool expected) =>
+        Assert.Equal(expected, CinFormat.IsRequiredForCountry(country));
+
     public static TheoryData<string> RealCins => new()
     {
         "IT058091C27G5FFZDZ", // Roma, apartment

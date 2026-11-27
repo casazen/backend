@@ -1,0 +1,131 @@
+namespace Casazen.Core.Entities.Enums;
+
+/// <summary>
+/// Where the "Do now" button of a "To do" item leads (ADR-026-R6): the frontend maps every member to a route in its
+/// <c>ACTION_ROUTE_MAP</c> (<c>src/features/todo/</c>), the single registry of the routes. Stored by name in
+/// <see cref="InternalActivity.Action"/> and written by name in the API.
+/// </summary>
+/// <remarks>
+/// The task that creates the first "To do" of a new action appends the member here and its entry in
+/// <c>ACTION_ROUTE_MAP</c> in the same change (for example <c>ConfirmChannelMapping</c>, <c>CorrectInvoice</c>,
+/// <c>ReviewFiscalDocument</c>). A member is never renamed: the rows keep its name.
+/// </remarks>
+public enum ActivityAction
+{
+    /// <summary>The booking: <c>/app/short-rent/bookings/{id}</c>.</summary>
+    ReviewBooking = 1,
+
+    /// <summary>The check-in of the booking: <c>/app/short-rent/bookings/{id}/check-in</c>.</summary>
+    StartCheckIn = 2,
+
+    /// <summary>The check-out of the booking: <c>/app/short-rent/bookings/{id}/check-out</c>.</summary>
+    CompleteCheckOut = 3,
+
+    /// <summary>The identity verification of the guests of the booking.</summary>
+    VerifyIdentity = 4,
+
+    /// <summary>The Alloggiati Web page of the compliance area.</summary>
+    UploadAlloggiatiProof = 5,
+
+    /// <summary>The ISTAT page of the compliance area.</summary>
+    UploadIstatProof = 6,
+
+    /// <summary>The listing to fix: <c>/app/short-rent/listings/{id}</c>.</summary>
+    FixListingError = 7,
+
+    /// <summary>The message thread to answer: <c>/app/short-rent/messages/{threadId}</c>.</summary>
+    ReplyToMessage = 8,
+
+    /// <summary>The AI draft to approve in its message thread.</summary>
+    ApproveAiDraft = 9,
+
+    /// <summary>The wizard to resume.</summary>
+    ResumeWizard = 10,
+
+    /// <summary>The channel settings: <c>/app/short-rent/settings/channels</c>.</summary>
+    ReconnectChannel = 11,
+
+    /// <summary>The mapping of the listings found on the channel manager (the connect wizard, E02/F01/US02/T05), at the listing to decide.</summary>
+    ConfirmChannelMapping = 12,
+
+    /// <summary>The «Check imported listing» wizard of the property created from the channel manager (LST-03).</summary>
+    CheckImportedListing = 13,
+
+    // E03/F02/US01/T03 (NF-52, CHK-12): the cockpit actions that feed the To do list under the same name, so the action and the id of an item
+    // are the ones of the compliance cockpit (ComplianceCockpitAction). The numbers leave room for the values other tasks append after 13.
+
+    /// <summary>
+    /// A stay the channel manager does not send by itself (over 30 nights, a short stay not entrusted, a connection not active): the booking's
+    /// Alloggiati tab, where the host sends it by hand. About the booking.
+    /// </summary>
+    SendAlloggiatiManually = 20,
+
+    /// <summary>The police send of the channel manager of the property is not active or cannot be verified: the sender page of the property. About the property.</summary>
+    ActivateOctorateSend = 21,
+
+    /// <summary>The tourist tax rate of the property's comune is not known: where the host enters it. About the property.</summary>
+    EnterMunicipalityTaxRate = 22,
+
+    /// <summary>The tourist tax of a closed month is not declared and paid with its receipts archived: the proof archive of the period. About the property and the month.</summary>
+    DeclareTouristTax = 23,
+
+    /// <summary>The police credentials kept in CasaZen were refused: the Alloggiati dashboard, where the host sets them again. About the property.</summary>
+    RenewPoliceCredentials = 24,
+
+    /// <summary>
+    /// A fiscal document that needs the host (E06/F03/US02/T01, NF-84): the documents of the booking (a document Octorate issued and the SDI rejected,
+    /// one still to collect, a booking with documents of two issuers). About the document, or the booking for the two issuers. The numbers 30 to 39
+    /// are the fiscal documents (epic E06), so the tasks of the waves that run in parallel never pick the same number.
+    /// </summary>
+    ReviewFiscalDocument = 30,
+
+    /// <summary>
+    /// The SDI rejected an electronic invoice of CasaZen (E17/F01/US02/T03, NF-86): the guided correction of the document, <c>/app/short-rent/fiscal/documents?document={id}&amp;step=correct</c>
+    /// (the frontend adds the entry to its <c>ACTION_ROUTE_MAP</c>). About the rejected document; the reason code is <c>sdi_rejected</c>. Closes by itself when the correction starts.
+    /// </summary>
+    CorrectInvoice = 31,
+
+    /// <summary>
+    /// A self-billed invoice (TD17) waits for the agency (FIX/BE-TD17-ALERTS): the self-billed invoices, <c>/app/account/self-billing</c> (the frontend adds the entry to its
+    /// <c>ACTION_ROUTE_MAP</c>). For <see cref="ActivityType.SelfBillingRejected"/> the entity is the rejected document (the item carries its id, <c>FiscalDocument</c>); for
+    /// <see cref="ActivityType.SelfBillingDraftsToReview"/> it is the month (<c>SelfBillingPeriod:yyyy-MM</c>, the id is the organization's). Organization-level: no property.
+    /// </summary>
+    ReviewSelfBilling = 32,
+
+    /// <summary>
+    /// An owner stay waits for the agency (E07/F07/US01/T01, NF-111): a request to approve or reject, or a block the channel manager refused, to send again
+    /// or to cancel. Leads to the owner stays of the console. About the owner stay. The numbers 40 to 49 are the owner portal operations (epic E07/F07).
+    /// </summary>
+    ReviewOwnerStay = 40,
+
+    /// <summary>A document shared with an owner lapses: the documents of the owner in the console, where a new version is uploaded. About the version in force.</summary>
+    RenewOwnerDocument = 41,
+
+    /// <summary>
+    /// A statement of an owner waits for the agency (E13/F01/US02/T02): the owner could not be told that it was published, so the agency opens the statement and tells the
+    /// owner by hand. About the statement version. The numbers from 50 are the owner ledger (epic E13), apart from the owner portal operations of 40 to 49.
+    /// </summary>
+    ReviewOwnerStatement = 50,
+
+    /// <summary>
+    /// The check-in link of a booking waits for the host (E23/F01/US01/T01, NF-122): the booking, where <c>GET api/bookings/{id}/checkin/link-delivery</c> gives the link to copy
+    /// («Copia link») and the reason it has not gone by itself. About the booking. The numbers from 110 are the check-in link and the chat of the portal (epic E23).
+    /// </summary>
+    CopyCheckInLink = 110,
+
+    /// <summary>
+    /// A scheduled message of a booking is held back or failed (E05/F07/US01/T03, NF-71): the booking, <c>/app/short-rent/bookings/{id}</c>, where its timeline lists the messages with
+    /// «Edit», «Skip» and «Send now» (the web app adds the entry to its <c>ACTION_ROUTE_MAP</c> in E05/F07/US02/T01). About the booking. The numbers from 120 are the scheduled
+    /// messages (feature E05/F07).
+    /// </summary>
+    FixScheduledMessage = 120,
+
+    /// <summary>
+    /// The question of the VAT of a cleaning recharged to the owner (FIX/BE-CLEANING-VAT): «La ditta di pulizie ha applicato l'IVA su questa fattura?», answered with
+    /// <c>POST api/service-requests/{id}/cleaning-vat</c> (the question itself is <c>GET</c> of the same route). About the cleaning request (entity type <c>ServiceRequest</c>,
+    /// the id is the request's) of <see cref="ActivityType.CleaningVatToState"/>; the items raised before it are about the stay and keep <see cref="ReviewBooking"/>. The number
+    /// is the one of its type (140, the cleaning recharge of E14), clear of the values the tasks that run in parallel append after 50 and 120.
+    /// </summary>
+    StateCleaningVat = 140,
+    ReviewImportedProperty = 150,
+}

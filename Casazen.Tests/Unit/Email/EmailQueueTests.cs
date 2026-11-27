@@ -40,6 +40,49 @@ public class EmailQueueTests
     }
 
     [Fact]
+    public void Enqueue_EmailThatCarriesACheckInLink_CreatesTheJobThatRecordsItsOutcome()
+    {
+        var client = new Mock<IBackgroundJobClient>();
+        client.Setup(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>())).Returns("job-1");
+        var queue = new HangfireEmailQueue(client.Object, EmailTestHelpers.ConfiguredEmail(), NullLogger<HangfireEmailQueue>.Instance);
+        var bookingId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var withLink = Content with
+        {
+            CheckInLink = new CheckInLinkEmail(bookingId, sessionId),
+        };
+
+        var queued = queue.Enqueue(" guest@example.com ", withLink, "template-x");
+
+        Assert.True(queued);
+        client.Verify(
+            c => c.Create(
+                It.Is<Job>(job =>
+                    job.Type == typeof(BookingConfirmationEmailJob)
+                    && job.Method.Name == nameof(BookingConfirmationEmailJob.SendAsync)
+                    && (string)job.Args[0] == "guest@example.com"
+                    && (string)job.Args[1] == Content.Subject
+                    && (string)job.Args[2] == Content.HtmlBody
+                    && (string)job.Args[3] == "template-x"
+                    && (Guid)job.Args[4] == bookingId
+                    && (Guid)job.Args[5] == sessionId
+                    && (int)job.Args[6] == 1),
+                It.IsAny<EnqueuedState>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public void ConfirmationJob_RetryPolicy_DeletesJobAfterLastAttemptSoTheLinkIsNotKept()
+    {
+        var retry = typeof(BookingConfirmationEmailJob)
+            .GetMethod(nameof(BookingConfirmationEmailJob.SendAsync))!
+            .GetCustomAttribute<AutomaticRetryAttribute>();
+
+        Assert.NotNull(retry);
+        Assert.Equal(AttemptsExceededAction.Delete, retry.OnAttemptsExceeded);
+    }
+
+    [Fact]
     public void Enqueue_ProviderNotConfigured_SkipsWithoutCreatingJob()
     {
         var client = new Mock<IBackgroundJobClient>(MockBehavior.Strict);

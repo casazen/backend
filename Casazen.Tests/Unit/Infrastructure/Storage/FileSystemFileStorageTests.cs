@@ -58,6 +58,37 @@ public class FileSystemFileStorageTests : IDisposable
         Assert.False(File.Exists(Path.Combine(Path.GetTempPath(), "outside.pdf")));
     }
 
+    /// <summary>
+    /// PROOF TEST: privacy rule (E20/F02/US01/T02, NF-121). The provider that really deletes writes the key of a guest's document (<c>guest-documents/{org}/{guest}/…</c>, the
+    /// ids of the org and of the guest) in no line of its log, at no level: it says that an object of the guests' documents was deleted; the key of another object is logged as before.
+    /// </summary>
+    [Fact]
+    public async Task DeleteAsync_TheKeyOfAGuestDocument_IsNeverWrittenInTheLog_Test()
+    {
+        var log = new CapturingLogger<FileSystemFileStorage>();
+        var storage = new FileSystemFileStorage(
+            Options.Create(new StorageOptions
+            {
+                Provider = StorageOptions.FileSystemProvider,
+                PublicBaseUrl = "http://localhost:5100/storage/public",
+                FileSystem = new FileSystemStorageOptions { RootPath = _root },
+            }),
+            log);
+        var guestKey = StorageKeys.GuestDocument(Guid.NewGuid(), Guid.NewGuid(), $"{Guid.NewGuid():N}.bin");
+        await storage.PutAsync(StorageBucket.Private, guestKey, new MemoryStream([1, 2]), "application/octet-stream");
+        await storage.PutAsync(StorageBucket.Private, "properties/p/documents/a.pdf", new MemoryStream([3]), "application/pdf");
+        log.Lines.Clear();
+
+        await storage.DeleteAsync(StorageBucket.Private, guestKey);
+        await storage.DeleteAsync(StorageBucket.Private, "properties/p/documents/a.pdf");
+
+        Assert.False(await storage.ExistsAsync(StorageBucket.Private, guestKey));
+        Assert.NotEmpty(log.Lines);
+        Assert.DoesNotContain(log.Lines, line => line.Contains(StorageKeys.GuestDocumentPrefix, StringComparison.Ordinal) || line.Contains(guestKey, StringComparison.Ordinal));
+        Assert.Contains(log.Lines, line => line.Contains("guests' documents", StringComparison.Ordinal));
+        Assert.Contains(log.Lines, line => line.Contains("properties/p/documents/a.pdf", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task GetSignedReadUrlAsync_IsNotSupported_ReturnsNull()
     {

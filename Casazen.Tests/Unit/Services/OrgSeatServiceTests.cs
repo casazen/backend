@@ -12,7 +12,7 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class OrgSeatServiceTests
 {
-    private readonly OrgInvitationTestKit _kit = new();
+    private readonly OrgInvitationTestKit _kit = new() { SeedAsAgency = false };
 
     private async Task<OrgSeatUsage> UsageAsync(Guid orgId)
     {

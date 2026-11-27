@@ -391,6 +391,22 @@ public class UserServiceTests
         _repoMock.Verify(r => r.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Theory]
+    [InlineData(Auth0SyncResult.CredentialsRejectedCode)]
+    [InlineData(Auth0SyncResult.DeleteNotAllowedCode)]
+    public async Task DeleteRegisteredUserAsync_ConfigurationOrGrantRejected_PreservesLocalAccount(string code)
+    {
+        var user = new User { Id = "auth0|blocked-removal", Role = UserRole.Guest };
+        _repoMock.Setup(r => r.GetByIdAsync(user.Id)).ReturnsAsync(user);
+        _auth0Mock.Setup(a => a.DeleteUserAsync(user.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Auth0SyncResult.Failed(code));
+
+        var result = await _service.DeleteRegisteredUserAsync(user.Id, "auth0|admin");
+
+        Assert.Equal(code, result.ErrorCode);
+        _repoMock.Verify(r => r.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Fact]
     public async Task DeleteRegisteredUserAsync_Self_ThrowsWithoutAuth0Calls()
     {

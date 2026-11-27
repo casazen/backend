@@ -25,7 +25,20 @@ service (BookingNotifier, ServiceRequestNotifier, ShowcaseBookingNotifier, Notif
 * **Who is told** is the same rule as the push (`HostNotificationAudience` for the hosts of a booking or a property: the member in
   charge and the org's administrators, active and not deactivated; the active users linked to the supplier org
   for the supplier's inbox). An audience with nobody in it (a booking that is gone, every member deactivated) writes nothing and is
-  not an error.
+  not an error. The audience of the hosts of a property can be **narrowed to a permission** (`PushAudience.PropertyHosts(propertyId, permission)`, `QueuedInAppNotification.AudiencePermissionContext` and
+  `AudiencePermissionKey`; the alerts of the notification of the guests to the police use `alloggiati.submit`, `ComplianceAlertAudience`): the job keeps the people the reach rule gives and drops
+  the ones who do not hold the permission, with the one evaluation of a permission of the policies (`HostNotificationAudience.HoldingAsync`), the same as `PushDeliveryJob` does for the devices. A
+  job built without that evaluation tells nobody for such an audience (it says so in the log); a job queued before the field existed has no permission and tells the hosts as before.
+* **The platform staff** (`PushAudience.PlatformStaff(subjectId)`, `PushAudienceKind.PlatformStaff` = 12, 14/11/2026) is the active
+  accounts whose `User.Role` is `Admin` or that hold a `UserContextMemberships` row with `ContextKey` `admin` (`PlatformAdministrators`, the
+  same query the acceptance of an invitation uses to keep staff out of a customer's org). Each row carries the staff member's **own** org
+  (`User.OrgId`, else `User.SupplierOrgId`), the one its bell reads (`OwnNotifications`), never the org of the event; a staff account in no
+  org is not told. The app has no screen of the staff, so `HangfirePushQueue` queues **no push to a phone** for this audience (it answers
+  `false`, with an information line) and `PushDeliveryJob` resolves no device for it: the bell and its live update (§ 9) are the channel.
+* **The administrators of an org** (`PushAudience.OrgAdmins(orgId)`, `PushAudienceKind.OrgAdmins` = 13, E40/F01/US02/T01) are its active owner and
+  `Admin`s (`HostNotificationAudience.AdministratorsToTell`: an `OrgMember` Owner or Admin of the org, never a deactivated member, nobody of another org),
+  the people `OrgBillingAdminAuthorizationHandler` lets into the domain settings. Each row is under that org, the one their bell reads; `entityId` is the
+  org. The app has no screen of the domain, so, like the platform staff, this audience gets **no push on a phone**: the bell and its live update.
 * **The notification does not depend on the push being queued**: a push refused for its route, or a Hangfire that took one job and
   failed the other, leave the other alone. The answer of `Enqueue` is always the push's.
 
@@ -36,7 +49,7 @@ service (BookingNotifier, ServiceRequestNotifier, ShowcaseBookingNotifier, Notif
 | `Id`, `UserId` | The notification and the user who is told (`Users.Id`, the Auth0 subject). **Foreign key to `Users` `ON DELETE CASCADE`** |
 | `OrgId` | The org the event belongs to: the host org of the booking or property, or the **supplier org** for the supplier's inbox. `ITenantOwned`. **Foreign key to `Orgs` `ON DELETE CASCADE`** |
 | `Type` | A value of `PushTypes` (`new-booking`, `service-request-completed`, …), at most 64 characters |
-| `EntityId` | The **service request** for the `service-request-*` types, the **booking** for every other one; `null` if the event names none. Not a foreign key |
+| `EntityId` | The **service request** for the `service-request-*` types, the **«Fallo per me» request** for `assist-requested`, the **property** for the three Ticino types, `ticino-notification-due`, `ticino-notification-overdue` and `ticino-notification-declared`, and for their three twins of the other cantons, `swiss-notification-due`, `swiss-notification-overdue` and `swiss-notification-declared` (E31/F02/US01/T01) (the id of the audience, `PushAudience.PropertyHosts`: `QueuedInAppNotification.From`), the **org** for `domain-verified`, `owner-login-ready` and `owner-login-failed` (the id of the audience, `PushAudience.OrgAdmins`), the **booking** for every other one; `null` if the event names none. Not a foreign key |
 | `DeliveryKey` | The key of the push of the same event (`PushDeliveryKeys`), at most 200 characters. Never sent to a client |
 | `CreatedAt`, `ReadAt` | UTC instants (whole microseconds). `CreatedAt` is the instant of the event (taken when the push was queued, so a late run or a retry does not move it); `ReadAt` is `NULL` while unread |
 
@@ -58,11 +71,30 @@ and write what is still missing (at most three rounds, then Hangfire retries). R
 | `Type` | Told | `EntityId` |
 |---|---|---|
 | `new-booking`, `ota-stay-review` | hosts of the booking | booking |
-| `guest-message` | hosts of the booking (every message of the guest) | booking |
+| `guest-message` | the hosts the notification preferences select for a message of the guest of a direct booking (the person in charge and the administrators who reach the property and hold `booking.read`, who chose the counter: the default; written by `HostMessageAlertDelivery`, NF-65, § 10) | booking |
+| `ota-message` | the same, for a message of a guest on a channel (OTA); an unmapped conversation goes to the administrators | thread |
+| `approval-queue-item` | an item of the approval queue waits for a decision (E05/F04, NF-68): the people the preferences select for `AiDraftToApprove` who hold `approval.decide` and reach the property (the administrators for an item with none), who chose the counter: the default; written by `ApprovalAlertDelivery`, once for each alert and person. The push is `approval-queue-item` too, with the route of the conversation for a draft of a message or `/approvals`, `data.approvalItemId` and the category `draft-ready` | approval queue item |
+| `guest-checkin-completed` | hosts of the booking (the guest completed the online check-in, § 10) | booking |
+| `fiscal-document-issued` | hosts of the booking (E12/F01/US01/T02: a fiscal document was issued by the host asking for one document, a credit note, or the correction an event prepared with the automatic issue; delivery key `fiscal-document:{documentId:N}:issued`, one per document; **not** by the bulk issue (`POST api/fiscal/documents/issue-batch`) and not by the daily run `fiscal-documents-due`, which would be a message for each of hundreds of documents). The text is *Documento fiscale emesso* / *È stato emesso un documento fiscale per una prenotazione.* (`FiscalDocPushIssued*` in `SharedResources`), no guest and no amount; best effort after the issue is committed. The web client reads again the list of the documents and the booking on it (`use-notifications-realtime.ts`) | booking |
+| `checkin-link-failed` | hosts of the booking (E23/F01/US01/T01, NF-122: the automatic delivery of the check-in link of a stay with no e-mail address failed for good, after the retries of a limit or an outage or at once for a refusal; delivery key `checkin-link:{sessionId:N}:failed`, once per link; text *Link del check-in non inviato*, the property only, never the guest or the link; only while `Features__PortalChatCheckInLink` or `Features__GuestContactInfo` is on, [octorate-webhooks.md](octorate-webhooks.md) § 4d) | booking |
+| `ota-review-received` | hosts of the booking (E05/F06/US01/T02, NF-69: the channel manager shows the review a guest left on a channel as published, the first time; delivery key `ota-review:{id:N}:received`, once per review; text *Nuova recensione*, the property only, never the guest, the mark or a word of the review; only while `Features__OctorateConnector` is on, [ota-reviews.md](ota-reviews.md)) | booking |
+| `ota-review-action-failed` | hosts of the booking (E05/F06/US01/T02: a reply to a review, or the host's own review, was not confirmed by the channel within the hour and became an error the host can try again; delivery key `ota-review:{id:N}:reply-failed:{requestedAt}` or `:host-review-failed:{requestedAt}`, once per attempt; text *Risposta alla recensione non consegnata*, the property only) | booking |
+| `fiscal-document-sdi-rejected` | hosts of the booking (E17/F01/US02/T03: the SDI rejected an electronic invoice, raised by the consumer of the event `FiscalDocumentSdiRejected` (`FiscalDocumentRejectionHandler`) next to the «Da fare» «Correggi la fattura»; delivery key `fiscal-document:{documentId:N}:sdi-rejected`, one per document, whatever the redeliveries of the event; nothing for an invoice without a booking (an owner invoice): its «Da fare» tells). The text is *Fattura scartata dallo SDI* / *Lo SDI ha scartato una fattura: correggila e reinviala.* (`FiscalDocPushSdiRejected*` in `SharedResources`), no reason, no code, no guest and no amount (the reason in plain words is read from `GET api/fiscal/documents/{id}/sdi`); best effort after the «Da fare» is saved. The web client has to read again the documents of the booking and the «Da fare» on it (`use-notifications-realtime.ts`: the frontend follow-up of the slice) | booking |
 | `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed`, `checkout-reminder` | hosts of the booking | booking |
+| `receipt-missing`, `short-stay-at-risk`, `over-thirty-nights` | hosts of the booking (the stages of CHK-12 of the hourly `stay-alerts` job, E03/F02/US02/T01: the receipt that is missing the day after the communication, a short stay not entrusted to the channel manager, a stay over 30 nights; only with `Features__ComplianceTrafficLight` on) | booking |
+| `istat-deadline`, `tourist-tax-deadline`, `connection-inactive` | hosts of the property (the alerts about an ISTAT or tourist tax period and about the connection to the channel manager, same job and flag; `PushAudience.PropertyHosts`) | none: the alert is about a property and a month, so `entityId` is empty |
+| `ticino-notification-due`, `ticino-notification-overdue` | hosts of the property **who hold `alloggiati.submit`** (E30/F02/US01/T01, NF-127, D9: the 24 hours of the notification of the guests of a Ticino property to the cantonal police, in the hourly `stay-alerts` job and only with `Features__TicinoNotificationAlerts` on; `PushAudience.PropertyHosts(propertyId, permission)`: the person in charge and the administrators, narrowed by `PushDeliveryJob` and `InAppNotificationJob` to the ones who can act on the alert, with the one evaluation of a permission of the policies; a collaborator without the permission is told neither on the phone nor in the bell). `due` is the first stage of the arrival day («prepare the file») and the one six hours before the deadline, `overdue` the first alert after it and its at most two reminders; the delivery key is the one of the compliance alerts (`compliance-alert:{propertyId}:TicinoNotification:{yyyy-MM-dd}:{stage}:{instant}`), so each stage of an arrival day is one push and one bell entry per person. The text names the property, the day and the types of field that miss (never a guest, a value or a document); the live message is `notificationsChanged` with this `type` and the property as `entityId`, on which the open pages are to read the section of the days to notify again (the frontend slice E30/F02/US03/T01 maps the types; until then the client shows its generic sentence) | the **property** (the id of the audience, `QueuedInAppNotification.From`): an arrival day is not an entity, so the entry names the property and not the day |
+| `ticino-notification-declared` | hosts of the property (E30/F02/US02/T01, NF-128, D10: a person of the org **declared** an arrival day of a Ticino property as uploaded to the police portal, or **undid** that declaration, `TicinoNotificationService.DeclareDayAsync` / `UndeclareDayAsync` through `TicinoDeclarationLiveRefresh`, outside the eight kinds of event of NF-65 like the other live refreshes; no flag; `PushAudience.PropertyHosts`, the person who acted is one of them). One type for both: the push text tells them apart (`Push_TicinoNotificationDeclared_*` / `Push_TicinoNotificationUndone_*`, the property and the day, never a guest, a value or the person), the bell and the open pages only read the cockpit and the day again. Delivery key `ticino-declaration:{propertyId:N}:{yyyyMMdd}:{declared\|undone}:{yyyyMMddHHmmssfff}`, so a day declared, undone and declared again is three events; nothing for a repeated declaration. Best effort after the row is saved: a failure is logged with ids and never fails the declaration. [guest-notification-switzerland.md](guest-notification-switzerland.md) § 18 | the **property**, like the two alerts |
+| `swiss-notification-due`, `swiss-notification-overdue` | hosts of the property **who hold `alloggiati.submit`** (E31/F02/US01/T01, NF-131: the notification of the guests of an arrival day of a property in a canton **other than Ticino** to the cantonal authority, in the hourly `stay-alerts` job and only with `Features__TicinoNotificationAlerts` **and** `Features__GuestRegistrationRegimes` on, for a canton the assisted notification covers and a duty that is `Required`; `PushAudience.PropertyHosts(propertyId, permission)`, the same narrowing as the Ticino alerts). The same three stages as the Ticino alerts against the deadline of the regime: `due` is the first stage of the arrival day and the one before the deadline, `overdue` the first alert after it and its at most two reminders; a regime with no deadline has no alert. The delivery key is the one of the compliance alerts (`compliance-alert:{propertyId}:SwissNotification:{yyyy-MM-dd}:{stage}:{instant}`). The text names the property, the day and the types of field that miss (never a guest, a value or a document); the live message is `notificationsChanged` with this `type` and the property as `entityId`, on which the open pages read the section `swissNotifications` of the cockpit again. [guest-notification-switzerland.md](guest-notification-switzerland.md) § 26 | the **property**, like the Ticino alerts |
+| `swiss-notification-declared` | hosts of the property (E31/F02/US01/T01, NF-131, D10: a person of the org **declared** an arrival day of a property of another canton as notified, or **undid** that declaration, `SwissNotificationService.DeclareDayAsync` / `UndeclareDayAsync` through `TicinoDeclarationLiveRefresh.TellSwiss`, outside the eight kinds of event of NF-65 like the Ticino one; behind `Features__GuestRegistrationRegimes`; `PushAudience.PropertyHosts`, the person who acted is one of them). One type for both: the push text tells them apart (`Push_SwissNotificationDeclared_*` / `Push_SwissNotificationUndone_*`, the property and the day, never a guest, a value or the person), the bell and the open pages only read the cockpit and the day again. Delivery key `swiss-declaration:{propertyId:N}:{yyyyMMdd}:{declared\|undone}:{yyyyMMddHHmmssfff}`; nothing for a repeated declaration. Best effort after the row is saved. [guest-notification-switzerland.md](guest-notification-switzerland.md) § 26 | the **property**, like the Ticino ones |
 | `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed` | hosts of the property | service request |
 | `service-request-cancelled` | the other party: the hosts of the property when the supplier cancels, the supplier org when the host or the customer of its showcase cancels; both when nobody answered in time | service request |
 | `service-request-created`, `-paid`, `-reminder`, `-proposal-accepted`, `-proposal-rejected`, `-rescheduled` | the supplier org | service request |
+| `assist-requested` | the platform staff (`PushAudience.PlatformStaff`, see § 1), each under its own org: a host asked «Fallo per me» (`OnboardingAssistService.RequestAsync`, a new request only, § 10). Bell and live update only, no push on a phone | the «Fallo per me» request |
+| `assist-reopened` | the platform staff, as `assist-requested`: the host reopened a request support had marked done («Non funziona», `OnboardingAssistService.ReopenAsync`, E20/F03/US01/T02; key `assist-request:{id:N}:reopened:{instant}`) | the «Fallo per me» request |
+| `assist-verified`, `assist-declared` | each administrator of the org of the request (the owner and the `Admin`s, `HostNotificationAudience.AdministratorsToTell`): support marked the request done and CasaZen read it on the panel (`verified`: «Il collegamento è attivo») or the panel could not be read (`declared`: «Il supporto dichiara di aver collegato …»). A push to the phone of each (`PushAudience.User`, text `Push_AssistVerified_*` / `Push_AssistDeclared_*`, route `/properties`) and the entry of the bell written with it and published live by `OnboardingAssistOutcomeNotice` (E20/F03/US01/T02; key `assist-request:{id:N}:done:{instant}:{user}`, one per «Fatto» and person) | the «Fallo per me» request |
+| `domain-verified` | the administrators of the org (`PushAudience.OrgAdmins`, § 1), only with `Features__WhiteLabelHost` on: the custom domain of the org **became** verified (`DomainVerificationService`, «Verifica ora» or the periodic check; E40/F01/US02/T01). Delivery key `domain-verified:{orgId:N}:{DomainVerifiedAt, yyyyMMddHHmmssfff}`: once per verification, a later check that finds it verified again tells nobody, a domain verified again after a demotion is another event. Text `Push_DomainVerified_*` (*Dominio verificato*), never the name of the domain. Bell and live update only, no push on a phone | the org |
+| `owner-login-ready`, `owner-login-failed` | the administrators of the org, only with `Features__WhiteLabelHost` on: the state of the owner sign-in on the org's domain changed to `Ready` or `Failed`, by the automatic registration in Auth0 or by a platform administrator (`OwnerLoginHostSync`, [auth0.md](auth0.md) § 13; E40/F01/US02/T01). Delivery key `owner-login:{orgId:N}:ready:{instant}` / `…:failed:{instant}` (the instant of the change, to the millisecond): one per change. Texts `Push_OwnerLoginReady_*` / `Push_OwnerLoginFailed_*`, no domain name. Bell and live update only | the org |
 
 A new value of `PushTypes` gives a notification with no change here; the client shows a generic sentence for a type it does not know.
 
@@ -105,7 +137,7 @@ read again` when it lost a race. **No user id and no push text** in any of them.
 
 ## 5. GDPR
 
-A row is a user id, a kind of event and the id of a booking or service request: no name, no text, no address. It is still data about a
+A row is a user id, a kind of event and the id of a booking, service request or property: no name, no text, no address. It is still data about a
 person, so:
 
 * **Retention**: 90 days from the event (`InAppNotificationLimits.RetentionDays`), read or not, by the nightly job above.
@@ -156,7 +188,7 @@ WHERE invocationdata ->> 'Type' LIKE 'Casazen.Infrastructure.Push.InAppNotificat
 * Poll `GET …/unread-count` with `refetchInterval` (the answer is small and cheap); fetch the list when the drawer opens; after
   `POST …/read` or `…/read-all` invalidate both. A `404` on `read` means the retention or another tab got there first: refetch.
 * The text comes from `type` (i18n keys per type, plus a generic one for a type the client does not know), the link from `type` and
-  `entityId` (a booking for the stay types, a service request for the `service-request-*` ones). Dates are UTC; `readAt: null` is unread.
+  `entityId` (a booking for the stay types, a service request for the `service-request-*` ones, a property for the two Ticino alerts). Dates are UTC; `readAt: null` is unread.
 * The list is paged by `page`/`pageSize` (newest first). New notifications shift the pages: ask for page 1 again after a poll that
   shows a higher count rather than extending the old pages.
 
@@ -168,11 +200,23 @@ route of the same screen (the links the e-mails use are built in `PublicSiteLink
 
 | `type` | `entityId` is | Mobile route (`data.route`) | Web route |
 |---|---|---|---|
-| `new-booking`, `ota-stay-review`, `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}` |
+| `new-booking`, `ota-stay-review`, `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed`, `receipt-missing`, `short-stay-at-risk`, `over-thirty-nights` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}` |
+| `istat-deadline`, `tourist-tax-deadline`, `connection-inactive` | none (a property and a month, not an entity) | `/properties` | none: no entity to open; the e-mail of the same alert leads to `/app/short-rent/compliance` |
+| `ticino-notification-due`, `ticino-notification-overdue`, `ticino-notification-declared` | property (an arrival day is not an entity: the row names the property, never the day) | `/properties` | the Ticino page of that property on its first day to notify (the client picks the day, which is not in the row; E30/F02/US03/T01); the e-mail of the same alert leads to `/app/short-rent/compliance`, where the section `ticinoNotifications` lists the days to notify (the client is to read the cockpit summary again on this `type`) |
+| `swiss-notification-due`, `swiss-notification-overdue`, `swiss-notification-declared` | property (the row names the property, never the day) | `/properties` | the page of that property on its first day to notify (the client picks the day, which is not in the row; E31/F02/US02/T02); the e-mail of the same alert leads to `/app/short-rent/compliance`, where the section `swissNotifications` lists the days to notify (the client is to read the cockpit summary again on this `type`) |
 | `checkout-reminder` | booking | `/bookings/{bookingId}/checkout` | `/app/short-rent/bookings/{bookingId}` |
 | `guest-message` | booking | `/bookings/{bookingId}/messages` | `/app/short-rent/bookings/{bookingId}?tab=messages` |
+| `fiscal-document-issued` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}` (the documents of the booking come from `GET api/bookings/{id}/fiscal-documents`) |
+| `fiscal-document-sdi-rejected` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}` (the invoice to correct is among the documents of the booking, `GET api/bookings/{id}/fiscal-documents`; its reason is `GET api/fiscal/documents/{id}/sdi`) |
+| `guest-checkin-completed` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}?tab=guest` |
+| `checkin-link-failed` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}?tab=guest` (the state and the link to copy come from `GET api/bookings/{id}/checkin/link-delivery`) |
+| `ota-review-received`, `ota-review-action-failed` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}` (the reviews of the stay are `GET api/bookings/{id}/reviews`) |
 | `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed`, `-cancelled` (host side) | service request | `/bookings/{bookingId}` when the request has a booking, else `/properties` | the service request of the host (by `entityId`) |
 | `service-request-created`, `-auto-accepted`, `-paid`, `-reminder`, `-proposal-accepted`, `-proposal-rejected`, `-rescheduled`, `-cancelled` (supplier side) | service request | `/properties` | supplier inbox, `/app/supplier/inbox` (the request by `entityId`) |
+| `assist-requested` | «Fallo per me» request | none: no push on a phone (the app has no screen of the staff) | the staff queue, `/app/admin/onboarding-assist` (the request by `entityId`) |
+| `assist-reopened` | «Fallo per me» request | none: no push on a phone (the app has no screen of the staff) | the staff queue, `/app/admin/onboarding-assist` (the request by `entityId`) |
+| `assist-verified`, `assist-declared` | «Fallo per me» request | `/properties` | the activation of the host, where its «Fallo per me» requests are listed (the request by `entityId`); the page reads the requests and the panel steps again |
+| `domain-verified`, `owner-login-ready`, `owner-login-failed` | org | none: no push on a phone (the app has no screen of the domain) | the domain settings, `/app/short-rent/settings/domain`; the open page reads the domain configuration again (`GET api/orgs/{orgId}/domain`, `surfaces.ownerLoginHostState`) |
 
 Notes: an in-app row has no booking id for the `service-request-*` types (its `entityId` is the **service request**); the booking
 of the request is only in the push. A client that needs it reads the request. A type the client does not know opens the list of
@@ -190,6 +234,7 @@ The bell no longer has to poll: the server tells the open sessions of a user whe
 | Auth | `[Authorize(Policy = Authenticated)]`, the same Auth0 JWT as the API. Browsers cannot set a header on a WebSocket or SSE request, so for paths under `/hubs` the token is also read from `?access_token=` (`JwtBearerEvents.OnMessageReceived`, `HubAccessToken`); anywhere else a token in the query is ignored. Without a token the negotiate request is **401** |
 | Group | one per user: `user:{sub}`, with `sub` as `User.GetUserId()` in `MeNotificationsController`. A connection joins its own group only; the hub has no method a client can call |
 | Server → client | method **`notificationsChanged`**, one argument, camelCase JSON: `{ "unreadCount": 3, "type": "guest-message", "entityId": "<guid>" }`. `type` and `entityId` are `null` when only the count changed (read, read all). No text, no name |
+| Server → client, popup alerts | method **`alertReceived`** on the same connection and the same group (ADR-025, NF-08), one argument, camelCase JSON: `{ "alertId": "<guid>", "alertType": "AlloggiatiDeadline", "entityType": "Booking", "entityId": "<guid>", "urgency": "High" }`, the two enums by name (`PopupAlertMessage`). References only: no name, no text; the client reads the detail from the API of the entity and the queue from `GET /api/me/alerts/pending`. Published by `SignalRPopupAlertPublisher` (`IPopupAlertPublisher`, also never throws) for the alerts `IAlertRouter` writes and, when they fall due, for the alerts the quiet hours held back or the user snoozed (job `popup-alert-due`, [hangfire.md](hangfire.md)). There is no second hub |
 | CORS | the configured origins, now with `Access-Control-Allow-Credentials: true` **for the paths under `/hubs` only** (the SignalR client negotiates with credentials), and the header `X-SignalR-User-Agent` allowed. The API stays without credentials |
 | Caching, compression, rate limit | None is registered for the app (the rate limiter has named per-endpoint policies only, and the hub has none), and the hub answers set no `Cache-Control` of their own, so nothing breaks the WebSocket |
 
@@ -201,7 +246,9 @@ the truth). Keep a slow poll as a fallback.
 **Who publishes** (`IInAppNotificationPublisher`, `Casazen.Core/Services`; the implementation is `SignalRInAppNotificationPublisher` in
 `Casazen.Web`, the default is a no-op for tests and other hosts):
 
-* `InAppNotificationJob`, for every user whose row it has just written (`type` and `entityId` of the event);
+* `InAppNotificationJob`, for every user whose row it has just written (`type` and `entityId` of the event); for `domain-verified`,
+  `owner-login-ready` and `owner-login-failed` (E40/F01/US02/T01) that is each administrator of the org, `entityId` the org: the open domain settings
+  read `GET api/orgs/{orgId}/domain` again on it, with no reload;
 * `POST /api/me/notifications/{id}/read` and `read-all` (`type` and `entityId` `null`);
 * reading a guest thread (§ 10), `type` `guest-message` and `entityId` the booking.
 
@@ -215,20 +262,42 @@ needs a backplane (for example the Redis backplane of SignalR, or Azure SignalR 
 clients (skip negotiation). Until then keep the web service at one replica; a client that misses a message catches up with the
 refetch on reconnect and the slow poll.
 
-## 10. Messages of the guest
+## 10. Messages and check-in of the guest
 
-A message of the guest of a direct booking (`GuestMessageService.SendAsGuestAsync`, after it is saved, never on a replayed send) queues
-a push to `PushAudience.BookingHosts(bookingId)`: type `guest-message`, delivery key `booking-message:{messageId:N}` (**one push and
-one bell entry for every message**; the e-mail stays throttled to one every ten minutes), route `/bookings/{id}/messages`. The
-lock-screen text is the property only: *Nuovo messaggio da un ospite* / *«{property}»: un ospite ti ha scritto.* (`Push_GuestMessage_*`
-in `EmailTexts.resx` and `.en.resx`); **no guest name and no text of the message**. It is best effort like the other pushes: a failure
-is logged with the ids and never fails the send.
+**Online check-in.** The guest who completes the check-in on the public page (`GuestCheckInService.SubmitAsync`, after the data and the
+session are saved, never on a refused or repeated submit) queues a push to `PushAudience.BookingHosts(bookingId)`: type
+`guest-checkin-completed`, delivery key `guest-checkin:{sessionId:N}:completed` (one per completed session), route `/bookings/{id}`.
+The lock-screen text is the property only: *Check-in online completato* / *«{property}»: un ospite ha completato il check-in online.*
+(`Push_GuestCheckInCompleted_*` in `EmailTexts.resx` and `.en.resx`); **no guest name and nothing typed in the form**. Through the
+decorator this is also the entry of the bell and the live `notificationsChanged` message (§ 9) of every host of the booking. Best
+effort like the other pushes: a failure is logged with the ids and never fails the guest's submit. The web client opens the booking on
+the *Documenti* tab (`?tab=guest`) and, on this message, reads again what the check-in changes (the booking and its check-in link, the
+guests, Alloggiati Web, the cockpit and the Home) so the page open in front of the host updates without a reload.
+
+**Messages.** A message of the guest of a direct booking (`GuestMessageService.SendAsGuestAsync`, after it is saved, never on a replayed send) is
+alerted through the notification preferences (NF-65, `HostMessageAlertDelivery`, [guest-messages.md](guest-messages.md)), not through the decorator:
+to each person `INotificationPreferenceService` selects, a push to that one user (`PushAudience.User`: type `guest-message`, delivery key
+`booking-message:{messageId:N}`, route `/bookings/{id}/messages`, **one push for every message**), the bell entry (type `guest-message`, entity the
+booking, the same key per person, written by the delivery itself and published live: the decorator writes no entry for a push to one user) and,
+only if the person chose it, an email to its own address at most once every ten minutes per conversation. The lock-screen text is the property only:
+*Nuovo messaggio da un ospite* / *«{property}»: un ospite ti ha scritto.* (`Push_GuestMessage_*` in `EmailTexts.resx` and `.en.resx`); **no guest
+name and no text of the message**. A failure never fails the send: the alert is delivered again by a job (`HostMessageAlertDueJob.RetryAsync`),
+and nobody is told twice.
 
 **Reading clears the notification.** `POST /api/bookings/{id}/messages/read` and the host's reply
 (`POST /api/bookings/{id}/messages`, answering is reading) mark the caller's unread `guest-message` notifications of that booking as read
 (`IInAppNotificationService.MarkEntityReadAsync`: one `ExecuteUpdate` through `OwnNotifications`, conditioned on `ReadAt IS NULL`, so
 the same ownership rules as the bell) and, when some changed, publish the new count (§ 9). Only the caller's rows: a colleague keeps
 theirs until they read the thread themselves.
+
+**«Fallo per me» to the staff** (14/11/2026). A host who asks CasaZen support for help (`OnboardingAssistService.RequestAsync`, after the new
+request is saved, never when the request of the same part, property and channel is open already: that is the 409 and tells nobody again)
+queues `IPushNotificationService.Enqueue` with type `assist-requested`, delivery key `assist-request:{requestId:N}:requested` (one per
+request) and `PushAudience.PlatformStaff(requestId)`. The payload carries no text, no route and no id but the request: nothing of the org,
+the property or the person (the privacy rule of the staff view). Through the decorator it is the entry of the bell of every platform
+administrator, under its own org, and the live `notificationsChanged` (§ 9) of its open sessions, so the staff queue
+(`/app/admin/onboarding-assist`) can refresh without a reload. Best effort: a failure is logged with the ids of the request and never fails
+the host's request.
 
 **Badges per booking.** `GET /api/messages/unread` (same policy `booking.read` and host scope as `GET /api/messages`):
 `{ "items": [ { "bookingId": "<guid>", "unreadCount": 2 } ] }`, only open threads with something unread, the latest guest message first,
@@ -243,11 +312,16 @@ at most 200 (`GuestMessageRules.UnreadThreadsMax`). Never any text. Use it for t
 `Casazen.Web/BackgroundJobs/InAppNotificationRetentionJob.cs`, migration `AddInAppNotifications`; real time:
 `Casazen.Core/Services/IInAppNotificationPublisher.cs`, `Casazen.Web/Hubs/NotificationsHub.cs`,
 `Casazen.Web/Infrastructure/{SignalRInAppNotificationPublisher,HubAccessToken}.cs`; guest messages:
-`Casazen.Infrastructure/Services/GuestMessageService.cs`, `Casazen.Web/Controllers/HostMessagesController.cs`.
+`Casazen.Infrastructure/Services/GuestMessageService.cs`, `Casazen.Web/Controllers/HostMessagesController.cs`; online check-in:
+`Casazen.Infrastructure/Services/GuestCheckInService.cs` (`PushToHosts`); «Fallo per me» to the staff:
+`Casazen.Infrastructure/Services/OnboardingAssistService.cs` (`TellStaff`), `Casazen.Infrastructure/Services/PlatformAdministrators.cs`; the domain of an
+org (E40/F01/US02/T01): `Casazen.Infrastructure/Services/OwnerLoginHostSync.cs` (tests `DomainNotificationsTests`, `OwnerLoginHostSyncTests`).
 Tests: `InAppNotificationPushDecoratorTests`, `InAppNotificationJobTests`, `InAppNotificationServiceTests`,
 `MeNotificationsControllerTests`, `InAppNotificationRetentionJobTests`,
 `InAppNotificationSqlShapeTests`, `InAppNotificationsIntegrationTests` (HTTP, the chain from a push to the
 notification), and on PostgreSQL `InAppNotificationsPostgresTests` (schema, the race on the unique index, the single-statement
 updates and the retention, whose rows a user reaches, the cascades), `InAppNotificationJobPublishTests`, `NotificationsHubTests`,
-`GuestMessagePushTests`, `HostMessagesControllerTests`, `CorsPolicyTests` (hub), and on PostgreSQL `GuestMessageNotificationsPostgresTests`. The architecture tests list the entity
+`GuestMessagePushTests`, `HostMessagesControllerTests`, `GuestCheckInCompletedPushTests`, `GuestCheckInServiceTests` (the hosts are told),
+`GuestCheckInNotificationIntegrationTests` (from the guest's submit to the bell), `CorsPolicyTests` (hub), `OnboardingAssistServiceTests`
+(the staff is told once per new request, a failure never fails the request), and on PostgreSQL `GuestMessageNotificationsPostgresTests`. The architecture tests list the entity
 (`TenantQueryFilterArchitectureTests`) and the four actions (`EndpointAuthorizationArchitectureTests`).

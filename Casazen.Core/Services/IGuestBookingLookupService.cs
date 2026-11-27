@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
@@ -6,7 +7,9 @@ namespace Casazen.Core.Services;
 /// "Le mie prenotazioni" of a booking site (BK-11, A3-10, R-06): the guest finds one booking of that site with its booking
 /// code and the email the booking was made with. A code that does not exist, a code of another site and an email that
 /// does not match get the same <see cref="Exceptions.NotFoundException"/> (<see cref="GuestBookingLookupErrorCodes.NotFound"/>),
-/// so the answer never tells which bookings exist. The endpoints are rate limited per client IP and per email.
+/// so the answer never tells which bookings exist. The endpoints are rate limited per client IP and per email. The last four digits of the
+/// phone (<see cref="GuestBookingPhoneCredentials"/>, NF-143) prove a booking only for the guest session (<see cref="IGuestSessionService"/>),
+/// never for this lookup.
 /// </summary>
 public interface IGuestBookingLookupService
 {
@@ -26,6 +29,76 @@ public interface IGuestBookingLookupService
 
 /// <summary>What the guest types: the site (org slug), the booking code as written in the email, the email address.</summary>
 public sealed record GuestBookingCredentials(string OrgSlug, string BookingCode, string Email);
+
+/// <summary>
+/// What the guest types to open the guest session without the e-mail (NF-143, flag <c>WhiteLabelHost</c>): the site (org slug), the booking code as
+/// written in the e-mail, and the last four digits of the phone the guest gave when booking (<see cref="GuestPhoneDigits"/>).
+/// </summary>
+public sealed record GuestBookingPhoneCredentials(string OrgSlug, string BookingCode, string PhoneLast4)
+{
+    /// <summary>The name of the type only: neither the code nor the digits, should the record ever reach a log.</summary>
+    public override string ToString() => nameof(GuestBookingPhoneCredentials);
+}
+
+/// <summary>
+/// The last four digits of the guest's phone, the proof of the guest session that takes the place of the e-mail (NF-143): what the guest may type
+/// and how it is compared with the phone of the booking. The one rule of the body of the request and of the lookup.
+/// </summary>
+public static class GuestPhoneDigits
+{
+    /// <summary>How many digits the guest types: the last four of the phone.</summary>
+    public const int Count = 4;
+
+    // Stands in for a phone the booking does not have, so the comparison does the same work; a match against it never counts.
+    private const string Placeholder = "0000";
+
+    /// <summary>True when <paramref name="typed"/> is what the guest may type: exactly four ASCII digits, nothing else (no space, no sign).</summary>
+    public static bool IsValidTyped(string? typed) => typed is { Length: Count } && typed.All(char.IsAsciiDigit);
+
+    /// <summary>
+    /// The last four ASCII digits of <paramref name="phone"/> as stored (spaces, <c>+</c>, dashes and brackets ignored), or <c>null</c> when it has
+    /// fewer than four: a booking without a phone has nothing to compare.
+    /// </summary>
+    public static string? LastFourOf(string? phone)
+    {
+        if (string.IsNullOrEmpty(phone))
+            return null;
+
+        Span<char> digits = stackalloc char[Count];
+        var found = 0;
+        for (var i = phone.Length - 1; i >= 0 && found < Count; i--)
+        {
+            if (char.IsAsciiDigit(phone[i]))
+                digits[Count - 1 - found++] = phone[i];
+        }
+
+        return found == Count ? new string(digits) : null;
+    }
+
+    /// <summary>
+    /// True when <paramref name="typed"/> are the last four digits of <paramref name="storedPhone"/>, compared in constant time
+    /// (<see cref="CryptographicOperations.FixedTimeEquals"/> on equal-length bytes). The work is the same whether the booking has a phone or not and
+    /// whether the typed value is valid or not (a placeholder takes the place of what is missing, and never matches), so the time tells nothing.
+    /// </summary>
+    public static bool Matches(string? storedPhone, string? typed)
+    {
+        var stored = LastFourOf(storedPhone);
+        var typedIsValid = IsValidTyped(typed);
+        Span<byte> expected = stackalloc byte[Count];
+        Span<byte> actual = stackalloc byte[Count];
+        CopyAscii(stored ?? Placeholder, expected);
+        CopyAscii(typedIsValid ? typed! : Placeholder, actual);
+
+        // Non-short-circuit: every operand is evaluated whatever the outcome.
+        return CryptographicOperations.FixedTimeEquals(expected, actual) & stored is not null & typedIsValid;
+    }
+
+    private static void CopyAscii(string fourDigits, Span<byte> target)
+    {
+        for (var i = 0; i < Count; i++)
+            target[i] = (byte)fourDigits[i];
+    }
+}
 
 /// <summary>
 /// One booking as its guest sees it in "Le mie prenotazioni": state, stay, amounts as recorded on the booking, in the currency of its

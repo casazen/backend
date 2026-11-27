@@ -23,7 +23,11 @@ public sealed class SetQuesturaCredentialsRequest
     [MaxLength(PropertyQuesturaCredentials.MaxWsKeyLength, ErrorMessage = "QuesturaCredentialsWsKeyTooLong")]
     public string WsKey { get; set; } = string.Empty;
 
-    public QuesturaCredentialsInput ToInput() => new(Username, Password, WsKey);
+    // Missing preserves existing configuration; zero explicitly selects the single-structure profile.
+    [Range(0, int.MaxValue)]
+    public int? ApartmentId { get; set; }
+
+    public QuesturaCredentialsInput ToInput() => new(Username, Password, WsKey, ApartmentId);
 
     /// <summary>Hides the values from logs and debugger output.</summary>
     public override string ToString() => nameof(SetQuesturaCredentialsRequest) + " { *** }";

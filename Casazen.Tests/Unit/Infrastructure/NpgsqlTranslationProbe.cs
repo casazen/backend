@@ -15,14 +15,19 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// that follow the first one in a service method. Used by the tests that run the services of the host lists, whose result sets
 /// are asserted elsewhere (InMemory, and PostgreSQL in CI).
 /// </summary>
+/// <remarks>
+/// A call that asks for a count first and sends the next query only when the count is not zero (a page) stops at the count: pass
+/// <c>count</c> to have it answered with that number. A call that needs a row of an earlier query to send the later ones passes
+/// <c>rows</c>, which is asked first for every statement and answers a table for the ones it knows (<c>null</c>: the default answer).
+/// </remarks>
 internal static class NpgsqlTranslationProbe
 {
-    public static AppDbContext NewContext(List<string>? statements = null) => new(
+    public static AppDbContext NewContext(List<string>? statements = null, int count = 0, Func<string, DataTable?>? rows = null) => new(
         new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql(
                 "Host=localhost;Port=1;Database=casazen_probe;Username=probe;Password=probe",
                 npgsql => npgsql.MigrationsAssembly("Casazen.Infrastructure"))
-            .AddInterceptors(new NoConnection(), new FewRows(statements))
+            .AddInterceptors(new NoConnection(), new FewRows(statements, count, rows))
             .Options);
 
     /// <summary>
@@ -52,15 +57,15 @@ internal static class NpgsqlTranslationProbe
         return false;
     }
 
-    /// <summary>The one row some statements must answer with: 0 of a count, false of an exists, 0 of a sum, the org of a report.</summary>
-    private static DataTable? RowFor(string sql)
+    /// <summary>The one row some statements must answer with: <paramref name="count"/> (0) of a count, false of an exists, 0 of a sum, the org of a report.</summary>
+    private static DataTable? RowFor(string sql, int count)
     {
         var text = sql.TrimStart();
         const RegexOptions Ci = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
         if (Regex.IsMatch(text, @"^SELECT\s+COUNT\(\*\)::int\b", Ci))
-            return Single(typeof(int), 0);
+            return Single(typeof(int), count);
         if (Regex.IsMatch(text, @"^SELECT\s+COUNT\(", Ci))
-            return Single(typeof(long), 0L);
+            return Single(typeof(long), (long)count);
         if (Regex.IsMatch(text, @"^SELECT\s+EXISTS\b", Ci))
             return Single(typeof(bool), false);
         if (Regex.IsMatch(text, @"^SELECT\s+(COALESCE\()?sum\(", Ci))
@@ -86,8 +91,8 @@ internal static class NpgsqlTranslationProbe
         return table;
     }
 
-    private static DbDataReader ReaderFor(DbCommand command) =>
-        (RowFor(command.CommandText) ?? new DataTable()).CreateDataReader();
+    private static DbDataReader ReaderFor(DbCommand command, int count, Func<string, DataTable?>? rows) =>
+        (rows?.Invoke(command.CommandText) ?? RowFor(command.CommandText, count) ?? new DataTable()).CreateDataReader();
 
     private sealed class NoConnection : DbConnectionInterceptor
     {
@@ -99,13 +104,13 @@ internal static class NpgsqlTranslationProbe
             ValueTask.FromResult(InterceptionResult.Suppress());
     }
 
-    private sealed class FewRows(List<string>? statements) : DbCommandInterceptor
+    private sealed class FewRows(List<string>? statements, int count, Func<string, DataTable?>? rows) : DbCommandInterceptor
     {
         private DbDataReader Answer(DbCommand command)
         {
             statements?.Add(command.CommandText);
 
-            return ReaderFor(command);
+            return ReaderFor(command, count, rows);
         }
 
         public override InterceptionResult<DbDataReader> ReaderExecuting(

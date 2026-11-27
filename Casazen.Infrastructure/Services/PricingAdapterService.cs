@@ -195,7 +195,7 @@ public class PricingAdapterService(
     {
         // The price of a night is public data of a property (the quote and the calendar of the booking site read it): it names the
         // property, so a signed-in host of another org who looks at the site sees the same price as everybody else.
-        return await db.SeasonalPriceSuggestions
+        var seasonal = await db.SeasonalPriceSuggestions
             .AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(s => s.PropertyId == propertyId
@@ -203,5 +203,22 @@ public class PricingAdapterService(
                 && s.StayDate >= fromInclusive
                 && s.StayDate < toExclusive)
             .ToDictionaryAsync(s => s.StayDate, s => s.AppliedPrice!.Value, cancellationToken);
+
+        // E08/F05/US01/T03 (NF-36): the price the host set for a night in the calendar (a day rule) is the last and most specific thing it said
+        // about that night, so it overrides the seasonal price it confirmed; clearing it gives the seasonal price, or the rate, back. The quote,
+        // the checkout, the public calendar and the host's own quote all take their prices from here.
+        var dayPrices = await db.PropertyDayRules
+            .AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(r => r.PropertyId == propertyId
+                && r.Price != null
+                && r.StayDate >= fromInclusive
+                && r.StayDate < toExclusive)
+            .Select(r => new { r.StayDate, Price = r.Price!.Value })
+            .ToListAsync(cancellationToken);
+
+        return DayRulePricing.HostPrices(
+            seasonal,
+            dayPrices.ToDictionary(row => row.StayDate, row => new DayRuleValues(Price: row.Price)));
     }
 }

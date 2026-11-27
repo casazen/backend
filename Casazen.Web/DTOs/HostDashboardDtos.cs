@@ -278,4 +278,10 @@ public sealed class HostDashboardIcalFeedDto
 
     /// <summary>Localized message of <see cref="LastErrorCode"/>, never an exception message.</summary>
     public string? LastError { get; init; }
+
+    /// <summary>
+    /// The Octorate calendar of the channel replaced this import (<see cref="PropertyIcalFeedDto.Deprecated"/>): the feed is no longer synced,
+    /// so a last try that gets older is expected.
+    /// </summary>
+    public bool Deprecated { get; init; }
 }

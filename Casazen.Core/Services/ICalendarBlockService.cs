@@ -9,12 +9,23 @@ namespace Casazen.Core.Services;
 /// <see cref="PropertyOccupancy"/>), both stay dates without time.
 /// </summary>
 /// <param name="Note">Optional text for the host only (at most <see cref="CalendarBlock.ManualNoteMaxLength"/> characters).</param>
+/// <param name="BlockId">
+/// The id the block takes; a new one when <c>null</c>. An owner stay gives its own id (E07/F07/US01/T01), so the block of a stay is found again by it and a
+/// second approval never creates a second block.
+/// </param>
 public sealed record ManualBlockRequest(
     Guid PropertyId,
     DateTime StartDate,
     DateTime EndDate,
     CalendarBlockReason Reason,
-    string? Note = null);
+    string? Note = null,
+    Guid? BlockId = null);
+
+/// <summary>A manual block created or removed, with the calendar change that tells the channel manager about it.</summary>
+/// <param name="Block">The block.</param>
+/// <param name="ChangeProcessId">The process of the change (<c>CalendarChangeProcess.Id</c>); <c>null</c> when nothing records the changes.</param>
+/// <param name="ChangeState">Its state right after the save: <c>Queued</c> when something is sent, <c>Applied</c> when it stays in CasaZen.</param>
+public sealed record ManualBlockChange(CalendarBlock Block, Guid? ChangeProcessId, CalendarChangeState? ChangeState);
 
 /// <summary>
 /// Manual calendar blocks (<see cref="CalendarBlockSource.Manual"/>, PC-09). A manual block is an ordinary
@@ -50,6 +61,12 @@ public interface ICalendarBlockService
     /// </exception>
     Task<CalendarBlock> CreateAsync(ManualBlockRequest request, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// <see cref="CreateAsync"/>, answering also the calendar change recorded with the block (E07/F07/US01/T01): an owner stay keeps it to know when the
+    /// channel manager has the block. Same rules, same lock, same errors. In an open transaction of the caller the block joins it and is committed with it.
+    /// </summary>
+    Task<ManualBlockChange> CreateTrackedAsync(ManualBlockRequest request, CancellationToken cancellationToken = default);
+
     /// <summary>The block, or null when it does not exist or belongs to another org (tenant filter). Read only.</summary>
     Task<CalendarBlock?> FindAsync(Guid blockId, CancellationToken cancellationToken = default);
 
@@ -59,8 +76,17 @@ public interface ICalendarBlockService
     /// <see cref="ManualBlockErrorCodes.NotManual"/>: an imported block goes away with its feed, never by hand.
     /// <see cref="ManualBlockErrorCodes.HeldByModeChange"/>: the block of a property that went long-term goes away with the
     /// return to short stays (PM-02), never by hand.
+    /// <see cref="ManualBlockErrorCodes.HeldByOwnerStay"/>: the block of an owner stay goes away with the withdrawal or the cancellation of the stay
+    /// (E07/F07/US01/T01), never by hand.
     /// </exception>
     Task DeleteAsync(Guid blockId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes the block of an owner stay that was withdrawn or cancelled (E07/F07/US01/T01), with the calendar change that opens its nights again on the
+    /// channel manager, in one save. Only the owner stays call it, for the block of the stay and nothing else. <c>null</c> when the block is already gone
+    /// (a repeat): nothing is recorded.
+    /// </summary>
+    Task<ManualBlockChange?> ReleaseOwnerStayBlockAsync(Guid blockId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Rules of the manual blocks (PC-09).</summary>
@@ -113,6 +139,12 @@ public static class ManualBlockErrorCodes
     /// </summary>
     public const string HeldByModeChange = "calendar_block_held_by_mode_change";
 
+    /// <summary>
+    /// 422: the block holds the dates of an owner stay (E07/F07/US01/T01): it is removed when the stay is withdrawn or cancelled, never by hand, so the
+    /// stay never says «confirmed» for dates that are open again.
+    /// </summary>
+    public const string HeldByOwnerStay = "calendar_block_held_by_owner_stay";
+
     public const string PropertyNotFoundMessageKey = "PropertyNotFound";
     public const string NotFoundMessageKey = "CalendarBlockNotFound";
     public const string InvalidRangeMessageKey = "CalendarBlockInvalidRange";
@@ -124,4 +156,5 @@ public static class ManualBlockErrorCodes
     public const string OverlapsBlockMessageKey = "CalendarBlockOverlapsBlock";
     public const string NotManualMessageKey = "CalendarBlockNotManual";
     public const string HeldByModeChangeMessageKey = "CalendarBlockHeldByModeChange";
+    public const string HeldByOwnerStayMessageKey = "CalendarBlockHeldByOwnerStay";
 }

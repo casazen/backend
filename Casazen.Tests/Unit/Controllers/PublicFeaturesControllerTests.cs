@@ -33,4 +33,60 @@ public class PublicFeaturesControllerTests
             features.Keys.Order());
         Assert.All(features, feature => Assert.False(feature.Value, $"{feature.Key} must be off by default"));
     }
+
+    /// <summary>
+    /// E29/F02/US01/T01 (NF-125): the regimes of the registration of the guests are off by default and follow <c>Features:GuestRegistrationRegimes</c> alone; the
+    /// frontend reads them under <c>guestRegistrationRegimes</c>.
+    /// </summary>
+    [Fact]
+    public void Get_GuestRegistrationRegimes_IsOffByDefault_AndFollowsItsConfigurationAlone()
+    {
+        Assert.False(Get(new Dictionary<string, string?>())["guestRegistrationRegimes"]);
+
+        var on = Get(new Dictionary<string, string?> { [$"{FeatureFlags.SectionName}:{FeatureFlags.GuestRegistrationRegimes}"] = "true" });
+
+        Assert.True(on["guestRegistrationRegimes"]);
+        Assert.Single(on, feature => feature.Value);
+    }
+
+    [Fact]
+    public void Get_SiteIntegrationFlags_AreExposedUnderTheirCamelCaseKeys()
+    {
+        // E40/F01/US01/T01: the frontend reads whiteLabelHost, auth0HostSync and siteEmbed (off by default, on only when set).
+        var off = Get(new Dictionary<string, string?>());
+        var on = Get(new Dictionary<string, string?>
+        {
+            ["Features:WhiteLabelHost"] = "true",
+            ["Features:Auth0HostSync"] = "true",
+            ["Features:SiteEmbed"] = "true",
+        });
+
+        foreach (var key in new[] { "whiteLabelHost", "auth0HostSync", "siteEmbed" })
+        {
+            Assert.False(off[key]);
+            Assert.True(on[key]);
+        }
+    }
+
+    /// <summary>
+    /// E70/F01/US01/T01 (D3, data: production stays closed): the frontend reads the three flags of the self-hosted identity verification under their camelCase keys,
+    /// off by default and on only when their own key is set.
+    /// </summary>
+    [Fact]
+    public void Get_SelfHostedIdentityFlags_AreExposedOffByDefault_UnderTheirCamelCaseKeys()
+    {
+        var keys = new[] { "checkInIdentitySelfHosted", "checkInIdentityAutoApproval", "checkInIdentityReviewEvidence" };
+        var off = Get(new Dictionary<string, string?>());
+        var on = Get(new Dictionary<string, string?>
+        {
+            [$"{FeatureFlags.SectionName}:{FeatureFlags.CheckInIdentitySelfHosted}"] = "true",
+            [$"{FeatureFlags.SectionName}:{FeatureFlags.CheckInIdentityAutoApproval}"] = "true",
+            [$"{FeatureFlags.SectionName}:{FeatureFlags.CheckInIdentityReviewEvidence}"] = "true",
+        });
+
+        Assert.All(keys, key => Assert.False(off[key], $"{key} must be off by default"));
+        Assert.All(keys, key => Assert.True(on[key]));
+        Assert.False(on["checkInIdentityVerification"]);
+        Assert.Equal(keys.Order(), on.Where(feature => feature.Value).Select(feature => feature.Key).Order());
+    }
 }

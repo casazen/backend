@@ -1,4 +1,7 @@
+using Casazen.Core.GuestPortal;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -13,13 +16,15 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// Anonymous: the tenant filter is off, so every query names the org. A link that cannot be read, that is for another booking, that is
 /// expired or whose booking is gone gets the same answer (422 <c>review_link_invalid</c>): the page does not tell a stranger which one it
-/// was. The review is published when it is saved; nothing else is written, and nothing is sent to the guest.
+/// was. The review is published when it is saved, and <see cref="DomainEventType.ReviewReceived"/> is recorded in the same save (E26/F01/US01/T01, once for
+/// each review, ids only: the routines of the host that wait for a review start from it); nothing is sent to the guest.
 /// </remarks>
 public sealed class PublicReviewService(
     AppDbContext db,
     ReviewLinkTokens tokens,
     ILogger<PublicReviewService> logger,
-    TimeProvider? timeProvider = null) : IPublicReviewService
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null) : IPublicReviewService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -66,16 +71,24 @@ public sealed class PublicReviewService(
     public async Task<ReviewLinkInfo> GetLinkInfoAsync(Guid bookingId, string token, CancellationToken cancellationToken = default)
     {
         var booking = await LoadBookingOfLinkAsync(bookingId, token, cancellationToken);
+        return await ReviewInfoAsync(booking, guestPortal: false, cancellationToken);
+    }
+
+    public async Task<ReviewLinkInfo> GetPortalReviewAsync(PortalContext portal, CancellationToken ct = default) =>
+        await ReviewInfoAsync(await LoadBookingOfPortalAsync(portal, ct), guestPortal: true, ct);
+
+    private async Task<ReviewLinkInfo> ReviewInfoAsync(LinkBooking booking, bool guestPortal, CancellationToken cancellationToken)
+    {
 
         var existing = await db.Reviews
             .AsNoTracking()
-            .Where(r => r.BookingId == bookingId)
+            .Where(r => r.BookingId == booking.Id && r.OrgId == booking.OrgId)
             .Select(ProjectPublic)
             .FirstOrDefaultAsync(cancellationToken);
         if (existing is not null)
             return new ReviewLinkInfo(booking.PropertyName, booking.CheckInDate, booking.CheckOutDate, ToPublic(existing));
 
-        EnsureCanBeReviewed(booking);
+        EnsureCanBeReviewed(booking, guestPortal);
         return new ReviewLinkInfo(booking.PropertyName, booking.CheckInDate, booking.CheckOutDate, null);
     }
 
@@ -87,6 +100,14 @@ public sealed class PublicReviewService(
     {
         ArgumentNullException.ThrowIfNull(command);
         var booking = await LoadBookingOfLinkAsync(bookingId, token, cancellationToken);
+        return await SubmitAsync(booking, command, guestPortal: false, cancellationToken);
+    }
+
+    public async Task<PublicReview> SubmitPortalReviewAsync(PortalContext portal, SubmitReviewCommand command, CancellationToken ct = default) =>
+        await SubmitAsync(await LoadBookingOfPortalAsync(portal, ct), command, guestPortal: true, ct);
+
+    private async Task<PublicReview> SubmitAsync(LinkBooking booking, SubmitReviewCommand command, bool guestPortal, CancellationToken cancellationToken)
+    {
 
         if (command.Rating is < ReviewRules.MinRating or > ReviewRules.MaxRating)
             throw new DomainRuleException("review_rating_invalid", "ReviewRatingInvalid");
@@ -95,10 +116,10 @@ public sealed class PublicReviewService(
         if (text is not null && text.Length > ReviewRules.TextMaxLength)
             throw new DomainRuleException("review_text_too_long", "ReviewTextTooLong");
 
-        if (await db.Reviews.AnyAsync(r => r.BookingId == bookingId, cancellationToken))
+        if (await db.Reviews.AnyAsync(r => r.BookingId == booking.Id && r.OrgId == booking.OrgId, cancellationToken))
             throw AlreadySubmitted();
 
-        EnsureCanBeReviewed(booking);
+        EnsureCanBeReviewed(booking, guestPortal);
 
         var now = _clock.GetUtcNow().UtcDateTime;
         var review = new Review
@@ -115,18 +136,29 @@ public sealed class PublicReviewService(
         };
 
         db.Reviews.Add(review);
+
+        // In the unit of work of the review, so a review that is refused leaves no event and one that is saved leaves exactly one: ids only (ADR-022-R21).
+        domainEvents?.Record(
+            DomainEventType.ReviewReceived,
+            review.Id,
+            new ReviewReceivedPayload(review.Id, booking.Id, booking.PropertyId),
+            ReviewReceivedPayload.DedupKeyOf(review.Id),
+            booking.OrgId);
         try
         {
             await db.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            // The same link opened twice: the other submission committed first.
+            // The same link opened twice: the other submission committed first. Neither the review nor its event stays in the unit of work.
             db.Entry(review).State = EntityState.Detached;
+            foreach (var entry in db.ChangeTracker.Entries<OutboxEvent>().Where(e => e.State == EntityState.Added && e.Entity.EntityId == review.Id).ToList())
+                entry.State = EntityState.Detached;
+
             throw AlreadySubmitted();
         }
 
-        logger.LogInformation("Review {ReviewId} of booking {BookingId} published, rating {Rating}", review.Id, bookingId, review.Rating);
+        logger.LogInformation("Review {ReviewId} of booking {BookingId} published, rating {Rating}", review.Id, booking.Id, review.Rating);
 
         return new PublicReview(
             review.Id, review.Rating, review.Text, review.AuthorName, ReviewRules.StayMonthOf(review.StayEndedOn),
@@ -171,9 +203,17 @@ public sealed class PublicReviewService(
         return booking ?? throw InvalidLink();
     }
 
-    private void EnsureCanBeReviewed(LinkBooking booking)
+    private async Task<LinkBooking> LoadBookingOfPortalAsync(PortalContext portal, CancellationToken ct) =>
+        await db.Bookings.AsNoTracking()
+            .Where(b => b.Id == portal.BookingId && b.OrgId == portal.OrgId && b.PropertyId == portal.PropertyId
+                && b.NoShowAt == null && b.Guest.DataAnonymizedDate == null)
+            .Select(b => new LinkBooking(b.Id, b.OrgId, b.PropertyId, b.Property.Name, b.CheckInDate,
+                b.CheckOutDate, b.Status, b.Source, b.Guest.FirstName))
+            .SingleOrDefaultAsync(ct) ?? throw InvalidLink();
+
+    private void EnsureCanBeReviewed(LinkBooking booking, bool guestPortal)
     {
-        var eligibility = ReviewRules.Evaluate(booking.Source, booking.Status, booking.CheckOutDate, _clock.TodayInRomeAsDateOnly());
+        var eligibility = ReviewRules.Evaluate(booking.Source, booking.Status, booking.CheckOutDate, _clock.TodayInRomeAsDateOnly(), guestPortal);
         if (eligibility != ReviewEligibility.Eligible)
             throw new DomainConflictException("review_not_available", "ReviewNotAvailable");
     }

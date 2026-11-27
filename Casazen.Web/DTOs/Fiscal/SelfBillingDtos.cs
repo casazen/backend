@@ -1,0 +1,201 @@
+using Casazen.Core.Entities;
+using Casazen.Core.Services;
+
+namespace Casazen.Web.DTOs.Fiscal;
+
+/// <summary>
+/// One self-billed invoice (TD17) of the list (<c>GET api/fiscal/self-billing</c>, E17/F01/US03/T01): stable codes (never a display text), the stored amounts in
+/// <see cref="Currency"/>, the holder it is made for (<c>Agency</c> or <c>Owner</c>), the foreign portal (the cedente), the month of the commissions and the day it is to be
+/// issued by, and the state towards the SDI. The fiscal data of the holder and of the portal are on the document, <c>GET api/fiscal/documents/{id}</c>, and its PDF and XML.
+/// The correction of a TD17 the SDI rejected (FIX/BE-TD17-CORRECTION, <c>POST api/fiscal/self-billing/{id}/correct</c>) is told by three fields: <see cref="CanCorrect"/> (the button «Correggi e rimanda»
+/// is offered: the document is issued and rejected, with its number and no issued credit note), <see cref="ReplacesDocumentId"/> (this draft, or this TD17 issued after it, replaces that rejected one
+/// and holds its number) and <see cref="ReplacedByDocumentId"/> (this one is the rejected original the correction discarded: its <c>Status</c> is <c>Discarded</c>, it keeps its number and its
+/// <c>SdiStatus</c> <c>rejected</c> for the history, and the draft that replaces it is that id). <see cref="KeptReason"/> is set only on a draft that holds the number of a rejected TD17 and that the drafts of
+/// its month would keep, because nothing gives it a TD17 now: a stable code (<c>portal_not_configured</c>, <c>issuer_profile_incomplete</c>, <c>owner_issuer_missing</c>, <c>ledger_gives_no_td17</c>) the frontend
+/// translates; such a draft can be neither issued nor discarded, and the host is told so instead of being offered «issue» or «discard»: it leaves by <c>POST api/fiscal/self-billing/{id}/close-not-due</c>
+/// (FIX/BE-TD17-JOB-EXIT). A draft that was closed that way is listed with the history of its number: its <c>Status</c> is <c>Discarded</c>, it keeps its <c>Number</c> (reserved, never given again),
+/// <see cref="ReplacesDocumentId"/> names the rejected original, and four fields say how it was closed: <see cref="ClosedReason"/> (<c>portal_credit_note</c>, <c>holder_no_longer_subject</c> or
+/// <c>duplicate_or_error</c>, the frontend translates it: the outcome «Chiusa, non più dovuta»), <see cref="ClosedAt"/> (UTC), <see cref="ClosedBy"/> (the name of the person; <c>null</c> when it is not known
+/// any more) and <see cref="ClosedNote"/> (the free note, when there is one); all four are <c>null</c> on every other row.
+/// </summary>
+public sealed record SelfBillingListItemDto(
+    Guid Id,
+    string HolderKind,
+    Guid? HolderOwnerId,
+    string HolderName,
+    string PortalName,
+    string PortalCountry,
+    int PeriodYear,
+    int PeriodMonth,
+    DateOnly DueDate,
+    string? Number,
+    DateOnly? IssueDate,
+    string Status,
+    decimal TaxableBase,
+    decimal VatAmount,
+    decimal Total,
+    string Currency,
+    string SdiStatus,
+    bool CanCorrect,
+    Guid? ReplacesDocumentId,
+    Guid? ReplacedByDocumentId,
+    string? KeptReason,
+    string? ClosedReason,
+    DateTime? ClosedAt,
+    string? ClosedBy,
+    string? ClosedNote)
+{
+    public static SelfBillingListItemDto From(SelfBillingRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return new SelfBillingListItemDto(
+            row.Id,
+            row.HolderKind.ToString(),
+            row.HolderOwnerId,
+            row.HolderName,
+            row.PortalName,
+            row.PortalCountry,
+            row.PeriodYear,
+            row.PeriodMonth,
+            row.DueDate,
+            row.Number,
+            row.IssueDate,
+            row.Status.ToString(),
+            row.TaxableBase,
+            row.VatAmount,
+            row.Total,
+            row.Currency,
+            row.SdiStatus,
+            row.CanCorrect,
+            row.ReplacesDocumentId,
+            row.ReplacedByDocumentId,
+            row.KeptReason,
+            row.ClosedReason,
+            row.ClosedAt,
+            row.ClosedBy,
+            row.ClosedNote);
+    }
+}
+
+/// <summary>
+/// A TD17 with its lines (one for each property): the row, the version of the settings it was made with, the rate of the VAT integrated, whether the XML exists and, for a draft, the
+/// part of its taxable amount that is an estimate (<see cref="EstimatedAmount"/>: a rule of the agency or the default of the channel, not the figure of the portal; the issue asks to accept it).
+/// </summary>
+public sealed record SelfBillingDto(
+    SelfBillingListItemDto Invoice,
+    string? RuleVersion,
+    decimal? VatRatePercent,
+    bool HasXml,
+    decimal EstimatedAmount,
+    IReadOnlyList<SelfBillingLineDto> Lines)
+{
+    public static SelfBillingDto From(SelfBillingDetail detail)
+    {
+        ArgumentNullException.ThrowIfNull(detail);
+        var document = detail.Document;
+        return new SelfBillingDto(
+            SelfBillingListItemDto.From(detail.Row),
+            document.RuleVersion,
+            document.VatRatePercent,
+            !string.IsNullOrEmpty(document.FatturaPaXml),
+            detail.EstimatedAmount,
+            document.Lines.OrderBy(l => l.LineNumber).Select(SelfBillingLineDto.From).ToList());
+    }
+}
+
+/// <summary>A line of a TD17: the commission of one property, its net, the rate and the VAT integrated on it.</summary>
+public sealed record SelfBillingLineDto(int LineNumber, string Description, decimal TotalPrice, decimal VatRatePercent, decimal? VatAmount)
+{
+    public static SelfBillingLineDto From(FiscalDocumentLine line) =>
+        new(line.LineNumber, line.Description, line.TotalPrice, line.VatRatePercent, line.VatAmount);
+}
+
+/// <summary>
+/// <c>POST api/fiscal/self-billing/{id}/issue</c>: the host confirms the issue (<see cref="Confirm"/>) and, when part of the amount is an estimate (a rule of the agency or the default of the
+/// channel, <c>estimatedAmount</c> of the detail), accepts it (<see cref="AcceptEstimate"/>); without it the issue is 422 <c>self_billing_estimate_unconfirmed</c> and nothing is numbered.
+/// </summary>
+public sealed record IssueSelfBillingRequest
+{
+    public bool Confirm { get; init; }
+
+    public bool AcceptEstimate { get; init; }
+}
+
+/// <summary>
+/// <c>POST api/fiscal/self-billing/{id}/close-not-due</c> (FIX/BE-TD17-JOB-EXIT): why the replacement draft of a rejected TD17 is closed as «non più dovuta». <see cref="Reason"/> is mandatory and is one of
+/// <c>portal_credit_note</c>, <c>holder_no_longer_subject</c> or <c>duplicate_or_error</c> (422 <c>close_reason_required</c> otherwise); <see cref="Note"/> is optional free text, at most 500 characters
+/// (422 <c>close_note_too_long</c>), stored encrypted and never logged. The user and the day are the caller's and the server's, never a value of the request.
+/// </summary>
+public sealed record CloseSelfBillingNotDueRequest
+{
+    public string? Reason { get; init; }
+
+    public string? Note { get; init; }
+}
+
+/// <summary><c>POST api/fiscal/self-billing/drafts</c>: the month (<c>yyyy-MM</c>) whose drafts are made.</summary>
+public sealed record GenerateSelfBillingRequest
+{
+    public string? Period { get; init; }
+}
+
+/// <summary>
+/// What the drafts of a month did: how many were made, made again, left alone because they were issued already and dropped because the ledger no longer supports them, one row for
+/// each TD17 (with what it is and the estimated part of its amount), the holders that need one and cannot get one yet, the commissions that are not self-billed with the reason, and whether
+/// the owner ledger of the month is posted (<see cref="LedgerPosted"/> false: the drafts read the ledger, so the month has to be posted by the owner accounting first). <see cref="Kept"/> lists the drafts
+/// that hold the number of a rejected TD17 (FIX/BE-TD17-CORRECTION) and that nothing gives now: they are never dropped, and each says why it cannot be issued.
+/// </summary>
+public sealed record SelfBillingGenerationDto(
+    int Year,
+    int Month,
+    int Created,
+    int Updated,
+    int AlreadyIssued,
+    int Discarded,
+    IReadOnlyList<SelfBillingOutcomeDto> Drafts,
+    IReadOnlyList<SelfBillingFailureDto> Failed,
+    IReadOnlyList<SelfBillingNotDueDto> NotDue,
+    bool LedgerPosted,
+    IReadOnlyList<SelfBillingKeptDto> Kept)
+{
+    public static SelfBillingGenerationDto From(SelfBillingGeneration generation)
+    {
+        ArgumentNullException.ThrowIfNull(generation);
+        return new SelfBillingGenerationDto(
+            generation.Year,
+            generation.Month,
+            generation.Created,
+            generation.Updated,
+            generation.AlreadyIssued,
+            generation.Discarded,
+            generation.Drafts.Select(d => new SelfBillingOutcomeDto(d.DocumentId, d.HolderKind.ToString(), d.HolderOwnerId, d.PortalName, d.Result, d.TaxableBase, d.EstimatedAmount, d.ChangedSinceIssue)).ToList(),
+            generation.Failed.Select(f => new SelfBillingFailureDto(f.HolderKind.ToString(), f.HolderOwnerId, f.PortalName, f.Code, f.Fields)).ToList(),
+            generation.NotDue.Select(n => new SelfBillingNotDueDto(n.Reason, n.Channel, n.Stays, n.Amount, n.Currency)).ToList(),
+            generation.LedgerPosted,
+            (generation.Kept ?? []).Select(k => new SelfBillingKeptDto(k.DocumentId, k.HolderKind.ToString(), k.HolderOwnerId, k.PortalName, k.Number, k.Reason)).ToList());
+    }
+}
+
+/// <summary>
+/// A draft that holds the number of a rejected TD17 and that nothing gives now: kept, never dropped. <c>reason</c> is <c>portal_not_configured</c> (its portal is not in the settings: put it right there),
+/// <c>issuer_profile_incomplete</c> or <c>owner_issuer_missing</c> (its holder cannot issue: complete the profile), or <c>ledger_gives_no_td17</c> (the month gives this holder no TD17 for this portal: the
+/// commissions were reversed, the stays are no longer active, or the holder is no longer subject). It can be neither issued nor discarded: what its number is for is the accountant's decision.
+/// </summary>
+public sealed record SelfBillingKeptDto(Guid DocumentId, string HolderKind, Guid? HolderOwnerId, string PortalName, string? Number, string Reason);
+
+/// <summary>One TD17 of a generation: <c>result</c> is <c>created</c>, <c>updated</c> or <c>already_issued</c>.</summary>
+public sealed record SelfBillingOutcomeDto(
+    Guid DocumentId,
+    string HolderKind,
+    Guid? HolderOwnerId,
+    string PortalName,
+    string Result,
+    decimal TaxableBase,
+    decimal EstimatedAmount,
+    bool ChangedSinceIssue);
+
+/// <summary>A holder that needs a TD17 and cannot get one: the code of the reason and the fields its issuer profile misses.</summary>
+public sealed record SelfBillingFailureDto(string HolderKind, Guid? HolderOwnerId, string PortalName, string Code, IReadOnlyList<string> Fields);
+
+/// <summary>Commissions of the month that are not self-billed: the reason, the channel, the number of stays and their commission.</summary>
+public sealed record SelfBillingNotDueDto(string Reason, string Channel, int Stays, decimal Amount, string Currency);

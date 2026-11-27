@@ -266,6 +266,36 @@ public class Auth0ManagementServiceTests
         Assert.Empty(result.Roles);
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.NoContent, null)]
+    [InlineData(HttpStatusCode.NotFound, null)]
+    [InlineData(HttpStatusCode.Forbidden, Auth0SyncResult.DeleteNotAllowedCode)]
+    [InlineData(HttpStatusCode.InternalServerError, Auth0SyncResult.ApiErrorCode)]
+    public async Task DeleteUserAsync_UsesEncodedSubject_AndClassifiesResult(HttpStatusCode status, string? expectedError)
+    {
+        RespondToUserRoles(status);
+
+        var result = await CreateService().DeleteUserAsync(DualRoleUser);
+
+        var request = Assert.Single(_requests);
+        Assert.Equal(HttpMethod.Delete, request.Method);
+        Assert.EndsWith("/users/auth0%7Chost-and-supplier", request.Path);
+        Assert.Equal(expectedError is null, result.Succeeded);
+        Assert.Equal(expectedError, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task DeleteUserAsync_TokenConfigurationRejected_PreservesStableCodeWithoutCallingDelete()
+    {
+        _tokenProvider.Setup(p => p.GetTokenAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Auth0ManagementTokenException("Auth0 token endpoint returned HTTP 403.", errorCode: Auth0SyncResult.CredentialsRejectedCode));
+
+        var result = await CreateService().DeleteUserAsync(DualRoleUser);
+
+        Assert.Equal(Auth0SyncResult.CredentialsRejectedCode, result.ErrorCode);
+        Assert.Empty(_requests);
+    }
+
     private Auth0ManagementService CreateService(IMemoryCache? cache = null)
     {
         var factory = new Mock<IHttpClientFactory>();

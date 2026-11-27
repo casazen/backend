@@ -77,7 +77,8 @@ internal static class PublicShowcaseTestData
         CasazenWebApplicationFactory factory,
         SupplierStatus status = SupplierStatus.Active,
         bool withHours = true,
-        string comuni = """["H501"]""")
+        string comuni = """["H501"]""",
+        bool marketplace = false)
     {
         var suffix = Guid.NewGuid().ToString("N")[..10];
         var slug = $"vetrina-{suffix}";
@@ -99,6 +100,7 @@ internal static class PublicShowcaseTestData
         db.Orgs.Add(org);
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = marketplace,
             OrgId = org.Id,
             Email = email,
             LegalName = $"Vetrina {suffix} Srl",

@@ -65,6 +65,9 @@ public static class EncryptedColumns
     /// <summary>Purpose of the AI provider key saved from the admin panel. Never change it: stored keys would become unreadable.</summary>
     public const string PlatformAiSettingsPurpose = "Casazen.PlatformAiSettings";
 
+    /// <summary>Purpose of the personal data and bank details collected for a provider registration. Never change it.</summary>
+    public const string OpenapiRegistrationPurpose = "Casazen.LeaseContract.OpenapiRegistration";
+
     /// <summary>
     /// Purpose of the typed state of a lease draft (LR-12): <see cref="LeaseContract.DraftData"/>, the JSON with the names, fiscal codes and
     /// residences the landlord typed in the wizard, kept until the data of the draft is complete. Nothing is searched in it. Never change it.
@@ -90,6 +93,137 @@ public static class EncryptedColumns
     /// <see cref="DocumentImage.BackImageUrl"/>. Never stored for Ticino properties per ADR-013-R6. Never change it.
     /// </summary>
     public const string DocumentImagePurpose = "Casazen.DocumentImage";
+
+    /// <summary>
+    /// Purpose of the personal half of a wizard draft (ADR-024-R2): <see cref="WizardDraft.EncryptedFieldsJson"/>, the JSON with the fields that
+    /// name a person (guest name, e-mail, phone, fiscal code, document, birth, address...) split off the data the person typed. Nothing is
+    /// searched in it. Never change it: stored drafts would become unreadable.
+    /// </summary>
+    public const string WizardDraftPiiPurpose = "Casazen.WizardDraft.PII";
+
+    /// <summary>
+    /// Purpose of the OAuth tokens of the connection of an organization to Octorate (ADR-023-R1): the access and the refresh token of
+    /// <see cref="OctorateConnection"/>. Their own purpose: a payload of another column never reads as a token. Never change it: the
+    /// stored refresh tokens, which Octorate gives once, would become unreadable and every host would have to connect again.
+    /// </summary>
+    public const string OctorateOAuthPurpose = "Casazen.Octorate.OAuth";
+
+    /// <summary>
+    /// Purpose of the CRM contacts (NF-89, E07/F01/US01/T01): <see cref="GuestContact.Value"/>, the e-mail address or the phone number of a
+    /// guest or of a lead, and <see cref="GuestContact.DisplayName"/>. Nothing is searched in them: a contact is found by its keyed hash
+    /// (<see cref="GuestContact.ValueHash"/>, HMAC-SHA256 keyed by <c>Crm:ContactIndexKey</c>). Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string GuestContactPurpose = "Casazen.GuestContact";
+
+    /// <summary>
+    /// Purpose of the invoice data of a booking (FIS-01, NF-81, E06/F02/US01/T01): the name, the fiscal code, the VAT number, the address and the PEC
+    /// of <see cref="BookingInvoiceData"/>, who an invoice is made out to. Personal data of a guest or of a company's contact; nothing is searched in
+    /// it. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string BookingInvoiceDataPurpose = "Casazen.BookingInvoiceData";
+
+    /// <summary>
+    /// Purpose of the words of the OTA conversations (ADR-032-R3, E05/F01/US01/T01): <see cref="OtaMessage.Text"/>, free text a guest or a
+    /// host wrote on a channel, copied from the channel manager. Read by the hosts who reach the property of the thread and by nobody else,
+    /// never searched, never logged. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string OtaMessageTextPurpose = "Casazen.Message.Content";
+
+    /// <summary>
+    /// Purpose of the words of the reviews of the channels (NF-69, E05/F06/US01/T01): <see cref="OtaReview.GuestReviewText"/>, what a guest wrote about the stay,
+    /// <see cref="OtaReview.HostReplyText"/>, the reply of the host, and <see cref="OtaReview.HostReviewJson"/>, the host's own review of the guest (the ratings, the public
+    /// text and the private text). Free text that can name a person or say anything; read by the hosts who reach the property of the booking, never searched and never
+    /// logged. Its own purpose, apart from the words of the conversations. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string ReviewContentPurpose = "Casazen.Review.Content";
+
+    /// <summary>
+    /// Purpose of the fiscal documents (NF-83, E06/F01/US02/T01, E11/F01/US01/T01): the recipient snapshot of <see cref="FiscalDocument"/> (name, fiscal
+    /// code, VAT number, address, recipient code, PEC), the snapshot of its issuer, its FatturaPA XML, which repeats them, and the note of the closing of a replacement
+    /// draft as «non più dovuta» (FIX/BE-TD17-JOB-EXIT). Kept ten years for the legal retention; nothing is searched in them. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string FiscalDocumentPurpose = "Casazen.FiscalDocument";
+
+    /// <summary>
+    /// Purpose of the profiles of the issuers (E11/F01/US01/T01, E17/F01/US01/T01): the bank accounts (IBAN, QR-IBAN) and the personal data of
+    /// <see cref="OrgFiscalIssuerProfile"/> (the legal name, the fiscal code, the VAT number, the street, the house number, the postal code, the city and the
+    /// PEC), since an owner who issues is often a private person; the profile of an organization gets the same treatment. Read by the settings and by the
+    /// documents that print them; never searched or logged. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string OrgFiscalIssuerPurpose = "Casazen.OrgFiscalIssuerProfile";
+
+    /// <summary>
+    /// Purpose of the fiscal profiles of the owners (ADR-012, NF-109, E06/F05/US02/T01): the legal name, the legal address, the fiscal code, the VAT number,
+    /// the foreign tax id and the bank account of <see cref="OwnerFiscalProfile"/>. Read in full only with <c>agency.owner.financial.manage</c>; never
+    /// searched. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string OwnerFiscalProfilePurpose = "Casazen.OwnerFiscalProfile";
+
+    /// <summary>
+    /// Purpose of the free text a host writes for the assistant (NF-66, PO-09, E05/F05/US01/T01): <see cref="PropertyKnowledgeEntry.Text"/> (a fact, a rule or the answer
+    /// of a FAQ), <see cref="AssistantLesson.ProposedText"/> (what the assistant proposes to learn from a correction) and
+    /// <see cref="AssistantSituationSetting.ResponseTemplate"/> (the text of an answer with its variables). Any of them can hold a Wi-Fi password, a code or a note
+    /// about a person. Its own purpose, apart from the words of the conversations: it is read by the hosts who reach the property it is about, and by the draft
+    /// pipeline, and never searched or logged. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string AssistantContentPurpose = "Casazen.Assistant.Content";
+
+    /// <summary>
+    /// Purpose of the words of the owner inbox (E07/F07/US01/T02, NF-111): <see cref="OwnerMessage.Body"/> and <see cref="OwnerMessage.AttachmentFileName"/>, and the
+    /// subject of the conversation (<see cref="OwnerConversation.Subject"/>). Free text an owner or the agency wrote, read by the two parties of the conversation
+    /// and by nobody else, never searched, never put in an e-mail or a log. Its own purpose, apart from the words of the channels. Never change it.
+    /// </summary>
+    public const string OwnerPortalMessagePurpose = "Casazen.OwnerPortal.Message";
+
+    /// <summary>
+    /// Purpose of the delegated contacts of an owner (E07/F07/US01/T02, AC-NF111-4): the address and the name of <see cref="OwnerPortalContact"/>, a person the owner
+    /// lets into the portal. Nothing is searched in them: an address is found by its keyed hash (<see cref="OwnerPortalContact.EmailHash"/>, HMAC-SHA256 keyed by
+    /// <c>OwnerPortal:ContactIndexKey</c>). Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string OwnerPortalContactPurpose = "Casazen.OwnerPortal.Contact";
+
+    /// <summary>
+    /// Purpose of the wire files of the agency (NF-25, NF-113, E16/F01/US01/T01): <see cref="WireBatch.XmlContent"/>, the bank file with the IBAN, the name and the
+    /// address of every owner, and <see cref="WireBatch.DebitAccount"/>, the IBAN of the agency that pays. Read to give the file back to the agency and by nobody
+    /// else, never searched, never listed, never logged. Its own purpose, apart from the owner registry. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string WireBatchFilePurpose = "Casazen.WireBatch.File";
+
+    /// <summary>
+    /// Purpose of the support vault (E20/F03/US01/T01, decision O5, PO-19): the user name, the password and the further code of
+    /// <see cref="SupportVaultSecret"/>, the credentials CasaZen support keeps for a host (the user of the panel of a structure CasaZen created, regional
+    /// ISTAT credentials). Opened only on an open «Do it for me» request, with a reason and an audit line; never searched, never listed, never logged.
+    /// Its own purpose: a payload of another column never reads as a credential of the vault. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string SupportVaultPurpose = "Casazen.SupportVault";
+
+    /// <summary>
+    /// Purpose of the regional ISTAT credentials of a property (E20/F03/US01/T01): the user name, the password and the code of the structure of
+    /// <see cref="PropertyIstatCredentials"/>, write-only like the Alloggiati Web credentials and read only by the controlled opening of the support vault.
+    /// Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string IstatCredentialsPurpose = "Casazen.PropertyIstatCredentials";
+
+    /// <summary>
+    /// Purpose of the raw token of a check-in link kept while its delivery waits (E23/F01/US01/T01, NF-122): <see cref="CheckInLinkDelivery.LinkToken"/>, the secret that
+    /// opens the guest page of a booking, which the system otherwise stores only as a hash. Kept only while the host may need it to carry the link (the «Copia link» of the
+    /// «To do», the retry that sends the same link), cleared when the link is sent or the row ends, never logged and never returned to a caller who cannot copy a link.
+    /// Its own purpose: a payload of another column never reads as a token. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string CheckInLinkTokenPurpose = "Casazen.CheckInLink.Token";
+
+    /// <summary>
+    /// Purpose of the address of the accountant of an organization (NF-101, E15/F01/US02/T01): <see cref="AccountantPackageSettings.AccountantEmail"/>, the address the package is sent to every month. Personal data of a
+    /// third party; read by the settings of the organization and by the send, never searched (the job asks only whether there is one) and never logged. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string AccountantPackagePurpose = "Casazen.AccountantPackage.Settings";
+
+    /// <summary>
+    /// Purpose of the annual tax data of the owners (NF-117, E18/F01/US02/T01): <see cref="TaxReportingDataset.PayloadJson"/>, the Certificazione Unica data of a year with the name, the fiscal code
+    /// and the address of every recipient and the property and the period of every stay. Read to make the exports for the accountant and the view of the owner (its own record only), never searched
+    /// and never logged. Data stored in clear before (the totals of each owner) is read as it is and rewritten at startup. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string TaxReportingDatasetPurpose = "Casazen.TaxReportingDataset";
 
     /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
@@ -119,20 +253,46 @@ public static class EncryptedColumns
             GuestDocumentPurpose,
             nameof(Guest.DocumentNumber),
             nameof(Guest.DocumentIssuingCountry)),
+        // NF-46: the tourist tax exemption the host chose travels with the document, under the same purpose: its reason can reveal a
+        // health condition (art. 9 GDPR). NF-132 (casazen/backend#979): the home address of the guest (street, postal code, town), personal data of a
+        // person that is never searched, gets the treatment of every address added since E06 (the invoice data, the residence of a lease party).
         new EncryptedEntity<StayGuest>(
             GuestDocumentPurpose,
             nameof(StayGuest.DocumentNumber),
-            nameof(StayGuest.DocumentIssuePlaceName)),
+            nameof(StayGuest.DocumentIssuePlaceName),
+            nameof(StayGuest.TaxExemptionCode),
+            nameof(StayGuest.ResidenceStreet),
+            nameof(StayGuest.ResidencePostalCode),
+            nameof(StayGuest.ResidenceCityName)),
+        // NF-132: the plate of the car of the stay, typed at the check-in with the guests' data and never searched: the same purpose as them.
+        new EncryptedEntity<Booking>(
+            GuestDocumentPurpose,
+            nameof(Booking.VehiclePlate)),
+        // NF-46: the same reason on the confirmed tax of the stay, kept 10 years for the comune's checks: encrypted too (art. 9 GDPR), and
+        // cleared with the guest's data; only the kind of the exemption and the amount stay for the fiscal retention.
+        new EncryptedEntity<StayTouristTaxGuest>(
+            GuestDocumentPurpose,
+            nameof(StayTouristTaxGuest.ExemptionCode)),
         new EncryptedEntity<PropertyQuesturaCredentials>(
             QuesturaCredentialsPurpose,
             nameof(PropertyQuesturaCredentials.Username),
             nameof(PropertyQuesturaCredentials.Password),
             nameof(PropertyQuesturaCredentials.WsKey)),
-        // ADR-012: property owner financial data (IBAN and fiscal code).
+        // ADR-012: property owner financial data (IBAN and fiscal code) and, since the owner import (E10/F02/US02/T01), the VAT number and the BIC
+        // of the owner profile: the same purpose, never shared with the guests' or the channels'. Since E13/F01/US01/T01 the structured billing address
+        // too (personal data of a person, the same treatment for a company): the recipient of the owner invoice, the QR-bill and the pain.001.09 transfer.
         new EncryptedEntity<PropertyOwner>(
             PropertyOwnerEncryptionPurpose.Purpose,
             nameof(PropertyOwner.Iban),
-            nameof(PropertyOwner.FiscalCode)),
+            nameof(PropertyOwner.FiscalCode),
+            nameof(PropertyOwner.VatNumber),
+            nameof(PropertyOwner.Bic),
+            nameof(PropertyOwner.BillingStreet),
+            nameof(PropertyOwner.BillingCivic),
+            nameof(PropertyOwner.BillingPostalCode),
+            nameof(PropertyOwner.BillingCity),
+            nameof(PropertyOwner.BillingProvince),
+            nameof(PropertyOwner.BillingCountry)),
         // SP-10: the private customers of the suppliers and the booking that waits for their e-mail check.
         new EncryptedEntity<ServiceCustomer>(
             ServiceCustomerPurpose,
@@ -167,9 +327,13 @@ public static class EncryptedColumns
         new EncryptedEntity<LeaseContract>(
             LeaseDraftPurpose,
             nameof(LeaseContract.DraftData)),
+        new EncryptedEntity<LeaseContract>(
+            OpenapiRegistrationPurpose,
+            nameof(LeaseContract.OpenapiRegistrationData)),
         new EncryptedEntity<Party>(
             LeasePartyPurpose,
-            nameof(Party.Residence)),
+            nameof(Party.Residence),
+            nameof(Party.ContactPhone)),
         // TR: the need of a transitory lease and its documentation.
         new EncryptedEntity<LeaseContract>(
             LeaseTransitoryNeedPurpose,
@@ -184,6 +348,162 @@ public static class EncryptedColumns
         new EncryptedEntity<PropertyAccessCode>(
             PropertyAccessCodeEncryptionPurpose.Purpose,
             nameof(PropertyAccessCode.EncryptedCode)),
+        // ADR-024: the personal half of a wizard draft (E01/F02/US01/T02).
+        new EncryptedEntity<WizardDraft>(
+            WizardDraftPiiPurpose,
+            nameof(WizardDraft.EncryptedFieldsJson)),
+        // ADR-023-R1: the OAuth tokens of the Octorate connection of an organization (E02/F01/US01/T01).
+        new EncryptedEntity<OctorateConnection>(
+            OctorateOAuthPurpose,
+            nameof(OctorateConnection.EncryptedAccessToken),
+            nameof(OctorateConnection.EncryptedRefreshToken)),
+        new EncryptedEntity<OctoratePreparation>(
+            "Casazen.Octorate.Preparation",
+            nameof(OctoratePreparation.EncryptedRefreshToken)),
+        new EncryptedEntity<PropertyActivationCredential>(
+            "Casazen.PropertyActivation.Credential",
+            nameof(PropertyActivationCredential.Username),
+            nameof(PropertyActivationCredential.Password),
+            nameof(PropertyActivationCredential.WebServiceKey)),
+        new EncryptedEntity<PropertyActivationCredentialAssignment>(
+            "Casazen.PropertyActivation.Assignment",
+            nameof(PropertyActivationCredentialAssignment.UnitCode)),
+        // NF-89: the value and the display name of a CRM contact (E07/F01/US01/T01).
+        new EncryptedEntity<GuestContact>(
+            GuestContactPurpose,
+            nameof(GuestContact.Value),
+            nameof(GuestContact.DisplayName)),
+        // NF-81: who an invoice of a booking is made out to (E06/F02/US01/T01); the code of the SDI and the province are not personal data.
+        new EncryptedEntity<BookingInvoiceData>(
+            BookingInvoiceDataPurpose,
+            nameof(BookingInvoiceData.Name),
+            nameof(BookingInvoiceData.FiscalCode),
+            nameof(BookingInvoiceData.VatNumber),
+            nameof(BookingInvoiceData.AddressStreet),
+            nameof(BookingInvoiceData.AddressCivic),
+            nameof(BookingInvoiceData.PostalCode),
+            nameof(BookingInvoiceData.City),
+            nameof(BookingInvoiceData.Pec),
+            // E06/F02/US01/T04: the hash of the billing data last written to Octorate is a hash of the personal data above.
+            nameof(BookingInvoiceData.OctorateBillingHash)),
+        // ADR-032-R3: the words of the OTA conversations of the guests (E05/F01/US01/T01).
+        new EncryptedEntity<OtaMessage>(
+            OtaMessageTextPurpose,
+            nameof(OtaMessage.Text)),
+        // NF-69: the words of the reviews of the channels: what the guest wrote, the reply of the host and the host's own review of the guest (E05/F06/US01/T01).
+        new EncryptedEntity<OtaReview>(
+            ReviewContentPurpose,
+            nameof(OtaReview.GuestReviewText),
+            nameof(OtaReview.HostReplyText),
+            nameof(OtaReview.HostReviewJson)),
+        new EncryptedEntity<StorefrontChatThread>("Casazen.StorefrontChat.Contact", nameof(StorefrontChatThread.VisitorEmail)),
+        new EncryptedEntity<StorefrontChatMessage>("Casazen.StorefrontChat.Text", nameof(StorefrontChatMessage.Text)),
+        // NF-83: the recipient snapshot of a fiscal document and its XML (E06/F01/US02/T01), and the snapshot of its issuer (E11/F01/US01/T01).
+        new EncryptedEntity<FiscalDocument>(
+            FiscalDocumentPurpose,
+            nameof(FiscalDocument.RecipientName),
+            nameof(FiscalDocument.RecipientFiscalCode),
+            nameof(FiscalDocument.RecipientVatNumber),
+            nameof(FiscalDocument.RecipientAddressStreet),
+            nameof(FiscalDocument.RecipientAddressCivic),
+            nameof(FiscalDocument.RecipientPostalCode),
+            nameof(FiscalDocument.RecipientCity),
+            nameof(FiscalDocument.RecipientProvince),
+            nameof(FiscalDocument.RecipientCountryCode),
+            nameof(FiscalDocument.RecipientSdiCode),
+            nameof(FiscalDocument.RecipientPec),
+            nameof(FiscalDocument.FatturaPaXml),
+            nameof(FiscalDocument.IssuerSnapshot),
+            // FIX/BE-TD17-JOB-EXIT: the free note of the closing of a replacement draft as «non più dovuta» (it can name a person or a portal document): the same purpose, no length.
+            nameof(FiscalDocument.ClosedNotDueNote)),
+        // E11/F01/US01/T01: the bank accounts of the issuer of an organization; E17/F01/US01/T01: the personal data of an issuer (an owner who issues is often a
+        // private person: the same treatment for every profile). The province, the country and the SDI code are no personal data.
+        new EncryptedEntity<OrgFiscalIssuerProfile>(
+            OrgFiscalIssuerPurpose,
+            nameof(OrgFiscalIssuerProfile.Iban),
+            nameof(OrgFiscalIssuerProfile.QrIban),
+            nameof(OrgFiscalIssuerProfile.LegalName),
+            nameof(OrgFiscalIssuerProfile.FiscalCode),
+            nameof(OrgFiscalIssuerProfile.VatNumber),
+            nameof(OrgFiscalIssuerProfile.AddressStreet),
+            nameof(OrgFiscalIssuerProfile.AddressCivic),
+            nameof(OrgFiscalIssuerProfile.PostalCode),
+            nameof(OrgFiscalIssuerProfile.City),
+            nameof(OrgFiscalIssuerProfile.IssuerPec)),
+        // ADR-012, NF-109: the identifiers, the address and the bank account of the fiscal profile of an owner (E06/F05/US02/T01).
+        new EncryptedEntity<OwnerFiscalProfile>(
+            OwnerFiscalProfilePurpose,
+            nameof(OwnerFiscalProfile.LegalName),
+            nameof(OwnerFiscalProfile.LegalAddress),
+            nameof(OwnerFiscalProfile.FiscalCode),
+            nameof(OwnerFiscalProfile.VatNumber),
+            nameof(OwnerFiscalProfile.ForeignTaxId),
+            nameof(OwnerFiscalProfile.BankAccountReference)),
+        // ADR-032-R3: the text of an item of the approval queue is the text of a message to a guest (or of a mailing) before it is sent, and the one the host
+        // edited: the same purpose as the words of the conversations, so a draft is never in clear where the message it becomes is not (E05/F04/US01/T01).
+        // The reason of a rejection is the host's own note, a column of its own with a length, and stays in clear.
+        new EncryptedEntity<ApprovalQueueItem>(
+            OtaMessageTextPurpose,
+            nameof(ApprovalQueueItem.ContentText),
+            nameof(ApprovalQueueItem.EditedContentText)),
+        // NF-66, PO-09: the free text a host writes for the assistant (the knowledge base, the lessons, the response templates of the situations): a Wi-Fi password or a
+        // note of the host can be in it (E05/F05/US01/T01). The decision log keeps no text at all.
+        new EncryptedEntity<PropertyKnowledgeEntry>(
+            AssistantContentPurpose,
+            nameof(PropertyKnowledgeEntry.Text)),
+        new EncryptedEntity<AssistantLesson>(
+            AssistantContentPurpose,
+            nameof(AssistantLesson.ProposedText)),
+        new EncryptedEntity<AssistantSituationSetting>(
+            AssistantContentPurpose,
+            nameof(AssistantSituationSetting.ResponseTemplate)),
+        // NF-111: the words of the owner inbox (the message, the name of its file, the subject of the conversation) and the address and name of the
+        // delegated contacts of an owner (E07/F07/US01/T02). The contact is found by OwnerPortalContact.EmailHash, never by the address.
+        new EncryptedEntity<OwnerMessage>(
+            OwnerPortalMessagePurpose,
+            nameof(OwnerMessage.Body),
+            nameof(OwnerMessage.AttachmentFileName)),
+        new EncryptedEntity<OwnerConversation>(
+            OwnerPortalMessagePurpose,
+            nameof(OwnerConversation.Subject)),
+        new EncryptedEntity<OwnerPortalContact>(
+            OwnerPortalContactPurpose,
+            nameof(OwnerPortalContact.Email),
+            nameof(OwnerPortalContact.FirstName),
+            nameof(OwnerPortalContact.LastName)),
+        // NF-25, NF-113: the wire file of the agency, with the IBAN, the name and the address of every owner, and the IBAN of the agency that pays (E16/F01/US01/T01).
+        // The columns are text, they have no length: the converter writes a longer text in them.
+        new EncryptedEntity<WireBatch>(
+            WireBatchFilePurpose,
+            nameof(WireBatch.XmlContent),
+            nameof(WireBatch.DebitAccount)),
+        // E20/F03/US01/T01 (decision O5, PO-19): the credentials of the support vault, and the regional ISTAT credentials the host enters (write-only).
+        new EncryptedEntity<SupportVaultSecret>(
+            SupportVaultPurpose,
+            nameof(SupportVaultSecret.Username),
+            nameof(SupportVaultSecret.Password),
+            nameof(SupportVaultSecret.ExtraCode)),
+        new EncryptedEntity<PropertyIstatCredentials>(
+            IstatCredentialsPurpose,
+            nameof(PropertyIstatCredentials.Username),
+            nameof(PropertyIstatCredentials.Password),
+            nameof(PropertyIstatCredentials.StructureCode)),
+        // E23/F01/US01/T01 (NF-122): the raw token of a check-in link whose delivery waits, so the host can copy the link and a retry sends the same one.
+        new EncryptedEntity<CheckInLinkDelivery>(
+            CheckInLinkTokenPurpose,
+            nameof(CheckInLinkDelivery.LinkToken)),
+        // NF-71: the host's edit of the text of a scheduled message for one booking (E05/F07/US01/T01): a text written for a guest, the same purpose as the words of the conversations.
+        new EncryptedEntity<ScheduledMessage>(
+            OtaMessageTextPurpose,
+            nameof(ScheduledMessage.TextOverride)),
+        // NF-101: the address the package of the accountant is sent to every month (E15/F01/US02/T01); the job asks only whether there is one (IS NOT NULL).
+        new EncryptedEntity<AccountantPackageSettings>(
+            AccountantPackagePurpose,
+            nameof(AccountantPackageSettings.AccountantEmail)),
+        // NF-117: the annual tax data of the owners, with the recipients of the Certificazione Unica and their stays (E18/F01/US02/T01). The column is text, it has no length.
+        new EncryptedEntity<TaxReportingDataset>(
+            TaxReportingDatasetPurpose,
+            nameof(TaxReportingDataset.PayloadJson)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

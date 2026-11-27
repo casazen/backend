@@ -20,9 +20,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed partial class OrgInvitationService
 {
-    /// <summary>Context key of the staff console: whoever has a membership of it is a platform admin.</summary>
-    private const string PlatformAdminContext = "admin";
-
     /// <summary>
     /// The Auth0 roles the onboarding gives an owner by rental type; a person who leaves its empty org for another loses them,
     /// whatever the rental type it chose (only the roles it can hold are removed, the others are left alone).
@@ -71,6 +68,7 @@ public sealed partial class OrgInvitationService
         var targetOrg = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == seen.OrgId, cancellationToken);
         if (targetOrg is not { IsActive: true, OrgType: OrgType.Host })
             throw Gone(OrgInvitationErrors.Invalid, "InvitationInvalid");
+        await RequireAgencyAsync(seen.OrgId, cancellationToken);
 
         // What the account is in an org today decides: join, leave an empty org of its own for this one, or refuse.
         AcceptPlan plan;
@@ -111,6 +109,10 @@ public sealed partial class OrgInvitationService
                 throw new DomainConflictException(OrgInvitationErrors.UserHasOrganization, "InvitationUserHasOrganization");
             await EnsureOldOrgIsEmptyAsync(lockedPlan, request.UserId, cancellationToken);
 
+            invitation.Areas = await ActiveInvitationAreasAsync(invitation.OrgId, invitation.Areas, cancellationToken);
+            if (invitation.Areas.Count == 0)
+                throw Gone(OrgInvitationErrors.Invalid, "InvitationInvalid");
+
             var user = await db.Users.FirstAsync(u => u.Id == request.UserId, cancellationToken);
             await LeaveTheOldOrgAsync(user, lockedPlan, now, cancellationToken);
 
@@ -141,8 +143,9 @@ public sealed partial class OrgInvitationService
             // in the save below. One deleted since the invitation was written is skipped without an error.
             if (propertyScope == PropertyScope.Selected)
             {
+                var allowedProperties = PropertiesInAreas(invitation.OrgId, invitation.Areas).Select(p => p.Id);
                 var carried = await db.OrgInvitationProperties.IgnoreQueryFilters().AsNoTracking()
-                    .Where(p => p.OrgId == invitation.OrgId && p.InvitationId == invitation.Id)
+                    .Where(p => p.OrgId == invitation.OrgId && p.InvitationId == invitation.Id && allowedProperties.Contains(p.PropertyId))
                     .Select(p => p.PropertyId)
                     .ToListAsync(cancellationToken);
                 if (carried.Count > 0)
@@ -394,11 +397,10 @@ public sealed partial class OrgInvitationService
         return new OrgInvitationAccepted(invitation.OrgId, OrgName(org), invitation.Role, invitation.Areas.ToList(), LeftEmptyOrg: false);
     }
 
+    /// <summary>The token says the caller is staff, or the account is a platform administrator (<see cref="PlatformAdministrators"/>).</summary>
     private async Task<bool> IsPlatformAdminAsync(bool tokenSaysAdmin, User account, CancellationToken cancellationToken) =>
         tokenSaysAdmin
-        || account.Role == UserRole.Admin
-        || await db.UserContextMemberships.AsNoTracking()
-            .AnyAsync(m => m.UserId == account.Id && m.ContextKey == PlatformAdminContext, cancellationToken);
+        || await PlatformAdministrators.Of(db).AsNoTracking().AnyAsync(u => u.Id == account.Id, cancellationToken);
 
     private static string OrgName(Org org) => string.IsNullOrWhiteSpace(org.DisplayName) ? org.Name : org.DisplayName;
 

@@ -322,7 +322,10 @@ public static partial class EmailTemplates
             .Button("SupplierInvite_Cta", signupUrl)
             .LinkFallback("SupplierInvite_LinkFallback", signupUrl)
             .Muted("SupplierInvite_Expires", builder.FormatInstant(expiresAtUtc))
-            .Build("SupplierInvite_Subject");
+            .Build("SupplierInvite_Subject") with
+        {
+            AccountInvitation = new("supplier", signupUrl, expiresAtUtc),
+        };
     }
 
     /// <summary>
@@ -336,43 +339,80 @@ public static partial class EmailTemplates
         string? inviterName,
         string? message,
         string signupUrl,
-        DateTime expiresAtUtc)
+        DateTime expiresAtUtc,
+        bool isAgency = false)
     {
         var builder = new EmailHtmlBuilder(culture);
         builder.Heading("HostInvite_Title");
         if (string.IsNullOrWhiteSpace(inviterName))
-            builder.Paragraph("HostInvite_BodyFromTeam");
+            builder.Paragraph(isAgency ? "AgencyInvite_Body" : "HostInvite_BodyFromTeam");
         else
             builder.Paragraph("HostInvite_BodyFromHost", inviterName);
 
         return builder
             .Muted("HostInvite_EmailHint", email)
-            .Paragraph("HostInvite_NextSteps")
+            .Paragraph(isAgency ? "AgencyInvite_NextSteps" : "HostInvite_NextSteps")
             .Quote("HostInvite_MessageLabel", message)
             .Button("HostInvite_Cta", signupUrl)
             .LinkFallback("HostInvite_LinkFallback", signupUrl)
             .Muted("HostInvite_Expires", builder.FormatInstant(expiresAtUtc))
-            .Build("HostInvite_Subject");
+            .Build(isAgency ? "AgencyInvite_Subject" : "HostInvite_Subject") with
+        {
+            AccountInvitation = new("host", signupUrl, expiresAtUtc),
+        };
     }
+
+    private static string InvoiceLink(string checkInUrl) =>
+        Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(checkInUrl, "invoice", "1");
 
     /// <summary>Tokenized self check-in link, to the guest.</summary>
     /// <param name="expiresAtUtc">End of validity of the link (CO-09: configurable lifetime), shown in Italian time.</param>
+    /// <param name="branding">The brand of the host (E50/F01/US03/T01): logo, color and name, sent in its name; <c>null</c> = the CasaZen e-mail, as ever.</param>
     public static EmailContent GuestCheckInLink(
         CultureInfo culture,
         string guestName,
         string propertyName,
         DateTime checkInDate,
         string checkInUrl,
-        DateTime expiresAtUtc)
+        DateTime expiresAtUtc,
+        GuestEmailBranding? branding = null)
     {
-        var builder = new EmailHtmlBuilder(culture);
+        var builder = new EmailHtmlBuilder(culture, branding);
         return builder
             .Paragraph("GuestCheckInLink_Greeting", guestName)
             .Paragraph("GuestCheckInLink_Body", propertyName, checkInDate)
             .Paragraph("GuestCheckInLink_Instructions")
+            .Paragraph("Guest_InvoiceRequest")
             .Button("GuestCheckInLink_Cta", checkInUrl)
+            .Button("Guest_InvoiceCta", InvoiceLink(checkInUrl))
             .Muted("GuestCheckInLink_Validity", builder.FormatInstant(expiresAtUtc))
             .Build("GuestCheckInLink_Subject", propertyName);
+    }
+
+    /// <summary>
+    /// The one reminder of the check-in data still missing just before arrival, to the booker (NF-40, AC-NF40-3), in the language of the
+    /// guest page (Italian, English, German, French or Spanish). Transactional: the booker's contact e-mail only, no promotion, no marketing
+    /// consent needed. It carries a new link and says that it replaces the one sent before (the answers are not kept on the server before the
+    /// submit, so nothing is lost).
+    /// </summary>
+    public static EmailContent GuestCheckInReminder(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        string checkInUrl,
+        DateTime expiresAtUtc,
+        GuestEmailBranding? branding = null)
+    {
+        var builder = new EmailHtmlBuilder(culture, branding);
+        return builder
+            .Paragraph("GuestCheckInReminder_Greeting", guestName)
+            .Paragraph("GuestCheckInReminder_Body", propertyName, checkInDate)
+            .Paragraph("Guest_InvoiceRequest")
+            .Button("GuestCheckInReminder_Cta", checkInUrl)
+            .Button("Guest_InvoiceCta", InvoiceLink(checkInUrl))
+            .Muted("GuestCheckInReminder_Validity", builder.FormatInstant(expiresAtUtc))
+            .Build("GuestCheckInReminder_Subject", propertyName);
     }
 
     /// <summary>
@@ -426,8 +466,9 @@ public static partial class EmailTemplates
         string propertyName,
         DateTime checkInDate,
         decimal amountEur,
-        string currency = Casazen.Core.Services.StayCurrency.Default) =>
-        new EmailHtmlBuilder(culture)
+        string currency = Casazen.Core.Services.StayCurrency.Default,
+        GuestEmailBranding? branding = null) =>
+        new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph("GuestRefundConfirmed_Body", Money(amountEur, currency, culture), propertyName, checkInDate)
             .Paragraph("GuestRefundConfirmed_Method")
@@ -445,8 +486,9 @@ public static partial class EmailTemplates
         DateTime checkInDate,
         DateTime checkOutDate,
         decimal amountEur,
-        string currency = Casazen.Core.Services.StayCurrency.Default) =>
-        new EmailHtmlBuilder(culture)
+        string currency = Casazen.Core.Services.StayCurrency.Default,
+        GuestEmailBranding? branding = null) =>
+        new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph("GuestPaymentRefundedDatesUnavailable_Body", propertyName, checkInDate, checkOutDate)
             .Paragraph("GuestPaymentRefundedDatesUnavailable_Refund", Money(amountEur, currency, culture))
@@ -477,10 +519,11 @@ public static partial class EmailTemplates
         BookingHostContact hostContact,
         BookingCancellationEmailCause cause = BookingCancellationEmailCause.Host,
         decimal retainedEur = 0m,
-        string currency = Casazen.Core.Services.StayCurrency.Default)
+        string currency = Casazen.Core.Services.StayCurrency.Default,
+        GuestEmailBranding? branding = null)
     {
         var byGuest = cause == BookingCancellationEmailCause.Guest;
-        var builder = new EmailHtmlBuilder(culture)
+        var builder = new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph(
                 cause switch
@@ -550,10 +593,13 @@ public static partial class EmailTemplates
 
     /// <summary>
     /// The booking is confirmed, to the guest (BK-10, A3-11, #58): booking code, stay, amounts with the tourist tax
-    /// (BK-03), what was paid or how it will be paid, link to "Le mie prenotazioni" and the host's public contact.
+    /// (BK-03), what was paid or how it will be paid, link to "Le mie prenotazioni" and the host's public contact. With
+    /// <paramref name="stayUrl"/> (E50/F01/US03/T03, only while the guest portal is on) the stay link is its first button.
     /// One template for every way a booking becomes confirmed (<paramref name="kind"/>): it replaces the BK-04 late
     /// payment and the BK-06 "request accepted" emails. <paramref name="paidEur"/> is what Stripe collected;
-    /// <paramref name="deferredChargeDate"/> the day of the deferred charge, when known.
+    /// <paramref name="deferredChargeDate"/> the day of the deferred charge, when known. <paramref name="checkIn"/> is what the email
+    /// says about the online check-in (E23/F02/US01/T01): the link itself when the check-in is already open, the day the link arrives, or
+    /// where to request it; <c>null</c> says nothing about it (the check-in is not needed or already done).
     /// </summary>
     public static EmailContent GuestBookingConfirmed(
         CultureInfo culture,
@@ -563,10 +609,13 @@ public static partial class EmailTemplates
         decimal paidEur,
         DateTime? deferredChargeDate,
         BookingHostContact hostContact,
-        string myBookingsUrl)
+        string myBookingsUrl,
+        BookingCheckInNotice? checkIn = null,
+        GuestEmailBranding? branding = null,
+        string? stayUrl = null)
     {
         ArgumentNullException.ThrowIfNull(booking);
-        var builder = new EmailHtmlBuilder(culture)
+        var builder = new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph(
                 kind == BookingConfirmationKind.OnSite ? "GuestBookingConfirmed_BodyOnSite" : "GuestBookingConfirmed_Body",
@@ -594,6 +643,20 @@ public static partial class EmailTemplates
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown confirmation kind.");
         }
 
+        // E50/F01/US03/T03: the stay link of the guest portal is the first button, with its fallback link; the notice of the check-in below stays as it is. The address is made by the link
+        // service of the portal and handed in: a template never builds it. Without it (the portal off, a booking that may not have a link) the e-mail is the one of today.
+        if (stayUrl is not null)
+        {
+            builder
+                .Paragraph("GuestBookingConfirmed_StayLink")
+                .Button("Guest_StayLinkCta", stayUrl)
+                .LinkFallback("Booking_LinkFallback", stayUrl);
+        }
+
+        CheckInBlock(builder, checkIn);
+        builder.Paragraph("Guest_InvoiceRequest");
+        if (checkIn?.LinkUrl is { } invoiceLink)
+            builder.Button("Guest_InvoiceCta", InvoiceLink(invoiceLink));
         builder
             .Button("Booking_MyBookingsCta", myBookingsUrl)
             .LinkFallback("Booking_LinkFallback", myBookingsUrl)
@@ -603,6 +666,34 @@ public static partial class EmailTemplates
             builder.Muted("GuestBookingConfirmed_NotFiscal");
 
         return builder.Build("GuestBookingConfirmed_Subject", booking.PropertyName);
+    }
+
+    /// <summary>
+    /// What the confirmation says about the online check-in (E23/F02/US01/T01): with the link, a button «Fai il check-in online», the usual fallback link and until when the link is valid;
+    /// without it, the day the link arrives by email (the day is formatted like the other dates of the email) and where to request it, or only where to request it. Nothing when there
+    /// is no notice. The link is an absolute http(s) URL: the builder refuses any other, and encodes it.
+    /// </summary>
+    private static void CheckInBlock(EmailHtmlBuilder builder, BookingCheckInNotice? checkIn)
+    {
+        if (checkIn is null)
+            return;
+
+        if (checkIn.LinkUrl is { } link)
+        {
+            builder
+                .Paragraph("GuestBookingConfirmed_CheckInOpen")
+                .Button("GuestBookingConfirmed_CheckInCta", link)
+                .LinkFallback("Booking_LinkFallback", link);
+            if (checkIn.LinkExpiresAtUtc is { } expiresAtUtc)
+                builder.Muted("GuestCheckInLink_Validity", builder.FormatInstant(expiresAtUtc));
+
+            return;
+        }
+
+        if (checkIn.LinkArrivesOn is { } day)
+            builder.Paragraph("GuestBookingConfirmed_CheckInOn", day);
+        else
+            builder.Paragraph("GuestBookingConfirmed_CheckInRequest");
     }
 
     /// <summary>
@@ -785,10 +876,11 @@ public static partial class EmailTemplates
         BookingEmailSummary booking,
         string payUrl,
         DateTime? payByDay,
-        BookingHostContact hostContact)
+        BookingHostContact hostContact,
+        GuestEmailBranding? branding = null)
     {
         ArgumentNullException.ThrowIfNull(booking);
-        var builder = new EmailHtmlBuilder(culture)
+        var builder = new EmailHtmlBuilder(culture, branding)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph(
                 "GuestDeferredChargeFailed_Body",
@@ -946,18 +1038,20 @@ public static partial class EmailTemplates
     /// <summary>
     /// An amount of a booking as the guest or the host reads it, with its currency (CHF-MONEY): <c>1.262,00 €</c> in Italian and
     /// <c>€1,262.00</c> in English for the euro (as the texts have always written it), <c>CHF 1.262,00</c> and <c>CHF 1,262.00</c> for
-    /// the franc. The texts of the booking emails carry no symbol of their own: the amount they are given has it.
+    /// the franc. English is the only language that puts the euro in front of the number; Italian and the languages of the guest portal (German, French,
+    /// Spanish) write it after it, with the separators of their own language (<c>1.262,00 €</c>, <c>1 262,00 €</c>), and the franc is written <c>CHF</c> in front of the number in
+    /// every language. The texts of the booking emails carry no symbol of their own: the amount they are given has it.
     /// </summary>
-    private static string Money(decimal amount, string? currency, CultureInfo culture)
+    internal static string Money(decimal amount, string? currency, CultureInfo culture)
     {
         var number = amount.ToString("N2", culture);
         var code = Casazen.Core.Services.StayCurrency.Normalize(currency);
         if (code != Casazen.Core.Services.StayCurrency.Euro)
             return $"{code} {number}";
 
-        return string.Equals(culture.TwoLetterISOLanguageName, "it", StringComparison.OrdinalIgnoreCase)
-            ? $"{number} €"
-            : $"€{number}";
+        return string.Equals(culture.TwoLetterISOLanguageName, "en", StringComparison.OrdinalIgnoreCase)
+            ? $"€{number}"
+            : $"{number} €";
     }
 }
 
@@ -1017,4 +1111,38 @@ public sealed record BookingEmailSummary(
 public sealed record BookingHostContact(string? Name, string? Email)
 {
     public static BookingHostContact None { get; } = new(null, null);
+}
+
+/// <summary>
+/// What the e-mail that confirms a direct booking says about the online check-in (E23/F02/US01/T01, <see cref="EmailTemplates.GuestBookingConfirmed"/>). Three ways, one factory
+/// each: <see cref="WithLink"/> (the check-in is already open and the link is issued: the e-mail carries it), <see cref="OnDay"/> (the link arrives by e-mail on a day) and
+/// <see cref="RequestOnly"/> (the link can be requested in «Le mie prenotazioni» and no day is promised). No notice at all (<c>null</c>) says nothing about the link.
+/// </summary>
+public sealed record BookingCheckInNotice
+{
+    private BookingCheckInNotice()
+    {
+    }
+
+    /// <summary>The check-in link, an absolute URL, when the e-mail carries it.</summary>
+    public string? LinkUrl { get; private init; }
+
+    /// <summary>The end of validity of <see cref="LinkUrl"/> (UTC), shown in Italian time.</summary>
+    public DateTime? LinkExpiresAtUtc { get; private init; }
+
+    /// <summary>The day the link arrives by e-mail (a date, midnight UTC of the Europe/Rome day: it is formatted like the other dates of the e-mail).</summary>
+    public DateTime? LinkArrivesOn { get; private init; }
+
+    /// <summary>The check-in is open and the e-mail carries the link (a button, the fallback link and its validity).</summary>
+    public static BookingCheckInNotice WithLink(string linkUrl, DateTime expiresAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(linkUrl);
+        return new BookingCheckInNotice { LinkUrl = linkUrl, LinkExpiresAtUtc = expiresAtUtc };
+    }
+
+    /// <summary>The link arrives by e-mail on <paramref name="day"/>, and from then it can also be requested in «Le mie prenotazioni».</summary>
+    public static BookingCheckInNotice OnDay(DateTime day) => new() { LinkArrivesOn = day };
+
+    /// <summary>No day is promised: the link can be requested in «Le mie prenotazioni».</summary>
+    public static BookingCheckInNotice RequestOnly { get; } = new();
 }

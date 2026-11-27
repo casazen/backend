@@ -34,7 +34,7 @@ public sealed class OrgSeatService(
 
         var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
         var tier = org is null ? PlanTier.Starter : entitlement.ResolveEffectiveTier(org);
-        var max = entitlement.ResolveMaxSeats(tier);
+        var max = org is { IsAgency: true } || org?.PlanTier == PlanTier.Agency ? int.MaxValue : entitlement.ResolveMaxSeats(tier);
 
         var activeMembers = await db.OrgMembers.IgnoreQueryFilters().AsNoTracking()
             .CountAsync(m => m.OrgId == orgId && m.Status == OrgMemberStatus.Active, cancellationToken);

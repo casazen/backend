@@ -82,6 +82,33 @@ public class Auth0ManagementService(
             cancellationToken);
 
     /// <inheritdoc />
+    public Task<Auth0SyncResult> SetOwnerPortalClaimsAsync(
+        string userId,
+        Guid ownerUserId,
+        IReadOnlyCollection<Guid> agencyIds,
+        IReadOnlyCollection<Guid> propertyIds,
+        CancellationToken cancellationToken = default)
+    {
+        // app_metadata is merged key by key: the whole owner_portal object is replaced, nothing else of the account is touched.
+        var claims = new Dictionary<string, object>
+        {
+            ["owner_portal"] = new Dictionary<string, object>
+            {
+                ["owner_id"] = ownerUserId.ToString("D"),
+                ["agency_ids"] = agencyIds.Select(id => id.ToString("D")).ToArray(),
+                ["owned_property_ids"] = propertyIds.Select(id => id.ToString("D")).ToArray(),
+            },
+        };
+        return CallAsync(
+            "write the owner portal claims of",
+            userId,
+            ct => ExecuteAsync(
+                client => client.Users.UpdateAsync(userId, new UserUpdateRequest { AppMetadata = claims }, ct),
+                ct),
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
     public async Task<Auth0SyncResult> DeleteUserAsync(string userId, CancellationToken cancellationToken = default)
     {
         if (!tokenProvider.IsConfigured)
@@ -102,10 +129,16 @@ public class Auth0ManagementService(
             logger.LogInformation("Auth0ManagementService: Auth0 user {UserId} is already gone", userId);
             return Auth0SyncResult.Synced;
         }
+        catch (ErrorApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            // A retry cannot add a missing grant. Keep this distinct from outages and never remove the local user.
+            logger.LogWarning("Auth0ManagementService: delete refused (403); verify delete:users grant for user {UserId}", userId);
+            return Auth0SyncResult.Failed(Auth0SyncResult.DeleteNotAllowedCode);
+        }
         catch (Auth0ManagementTokenException ex)
         {
             logger.LogError(ex, "Auth0ManagementService: No Management API token — cannot delete user {UserId}", userId);
-            return Auth0SyncResult.Failed(Auth0SyncResult.TokenFailedCode);
+            return Auth0SyncResult.Failed(ex.ErrorCode);
         }
         catch (RateLimitApiException ex)
         {
@@ -252,7 +285,7 @@ public class Auth0ManagementService(
             logger.LogError(ex,
                 "Auth0ManagementService: No Management API token — cannot {Operation} roles [{Roles}] for user {UserId}",
                 operation, string.Join(", ", roleNames), userId);
-            return Auth0SyncResult.Failed(Auth0SyncResult.TokenFailedCode);
+            return Auth0SyncResult.Failed(ex.ErrorCode);
         }
         catch (RateLimitApiException ex)
         {
@@ -297,7 +330,7 @@ public class Auth0ManagementService(
         {
             logger.LogError(ex,
                 "Auth0ManagementService: No Management API token — cannot {Operation} {UserId}", operation, userId);
-            return Auth0SyncResult.Failed(Auth0SyncResult.TokenFailedCode);
+            return Auth0SyncResult.Failed(ex.ErrorCode);
         }
         catch (RateLimitApiException ex)
         {

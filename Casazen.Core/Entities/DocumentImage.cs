@@ -30,7 +30,8 @@ public class DocumentImage : ITenantOwned
 
     /// <summary>
     /// Encrypted URL to the front of the identity document in private storage (ADR-009-R21).
-    /// Encrypted at rest with purpose DocumentImagePurpose.
+    /// Encrypted at rest with purpose DocumentImagePurpose. Empty only while the back of a two-sided document (the Italian electronic identity
+    /// card, a TD1 card) was sent before its front (E22/F01/US01/T02): the cleaners skip a blank address.
     /// </summary>
     [Required]
     public string FrontImageUrl { get; set; } = string.Empty;

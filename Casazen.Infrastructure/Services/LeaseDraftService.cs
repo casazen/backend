@@ -467,7 +467,7 @@ public sealed class LeaseDraftService(
     // ---- filled from the contract the owner uploaded (NL-DOCS) ----------------------------------------------------
 
     public async Task<LeaseDraftFillResult> ApplyContractReadingAsync(
-        Guid leaseId, LeaseContractReading reading, CancellationToken cancellationToken = default)
+        Guid leaseId, LeaseContractReading reading, Guid documentId, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reading);
 
@@ -478,6 +478,11 @@ public sealed class LeaseDraftService(
         EnsureDraftForUpdate(lease);
         if (lease.Origin != LeaseOrigin.Imported)
             return new LeaseDraftFillResult(false, false, lease.DraftVersion, []);
+
+        // Deleted while the file was being read: the row is locked until this transaction ends, so the delete either
+        // committed already (nothing is written) or waits until this fill does. A later upload can still fill what is empty.
+        if (!await SourceDocumentStillThereAsync(documentId, lease.Id, cancellationToken))
+            throw DocumentNotFound(documentId);
 
         // The draft of the guided service (CF-DONE): the landlord's citizenship, which its contract does not state, is derived (and marked so).
         var fill = LeaseDraftContractFill.Merge(
@@ -717,6 +722,24 @@ public sealed class LeaseDraftService(
     }
 
     private DateTime UtcNow() => _clock.GetUtcNow().UtcDateTime;
+
+    /// <summary>
+    /// The document must still be on the lease. On PostgreSQL the row is locked (<c>SELECT … FOR UPDATE</c>) until the fill commits,
+    /// so a delete cannot remove it between this check and the write. Elsewhere there is no lock (EF InMemory).
+    /// </summary>
+    private async Task<bool> SourceDocumentStillThereAsync(Guid documentId, Guid leaseId, CancellationToken cancellationToken)
+    {
+        if (!db.Database.IsNpgsql())
+            return await db.LeaseDocuments.AnyAsync(d => d.Id == documentId && d.LeaseContractId == leaseId, cancellationToken);
+
+        var locked = await db.Database
+            .SqlQuery<Guid>($"""SELECT "Id" AS "Value" FROM "LeaseDocuments" WHERE "Id" = {documentId} AND "LeaseContractId" = {leaseId} FOR UPDATE""")
+            .ToListAsync(cancellationToken);
+        return locked.Count > 0;
+    }
+
+    private static NotFoundException DocumentNotFound(Guid documentId) =>
+        new($"Document {documentId} not found.") { Code = "document_not_found", MessageKey = "DocumentNotFound" };
 
     private static NotFoundException LeaseNotFound(Guid leaseId) =>
         new($"Lease {leaseId} not found.") { Code = "lease_not_found", MessageKey = "LeaseNotFound" };

@@ -51,7 +51,7 @@ public static partial class ServiceRequestAssistPrompt
     /// What the host typed as the prompt carries it: contact data and street addresses taken out, white space made single, the markers of the
     /// text block removed, cut at <see cref="ServiceRequestAssistLimits.MaxTextLength"/>. Empty when nothing is left.
     /// </summary>
-    public static string CleanText(string? text)
+    public static string CleanText(string? text, int maxLength = ServiceRequestAssistLimits.MaxTextLength)
     {
         if (string.IsNullOrWhiteSpace(text))
             return string.Empty;
@@ -59,7 +59,7 @@ public static partial class ServiceRequestAssistPrompt
         var cleaned = Placeholder().Replace(PiiScrubber.Scrub(text), " ");
         cleaned = StreetAddress().Replace(cleaned, " ");
         cleaned = cleaned.Replace("<<<", " ", StringComparison.Ordinal).Replace(">>>", " ", StringComparison.Ordinal);
-        cleaned = ServiceRequestAssistRules.OneLine(cleaned, ServiceRequestAssistLimits.MaxTextLength) ?? string.Empty;
+        cleaned = ServiceRequestAssistRules.OneLine(cleaned, maxLength) ?? string.Empty;
         return cleaned;
     }
 

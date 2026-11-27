@@ -1,7 +1,12 @@
 namespace Casazen.Core.Services;
 
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.TouristTax;
+
+public sealed record DirectCheckoutExtra(Guid Id, int Quantity, decimal ExpectedUnitPrice);
+public sealed record DirectCheckoutExtraOffer(Guid Id, string Name, string Description, decimal UnitPrice,
+    string Currency, bool ByQuantity, bool RequiresApproval);
 
 public record DirectBookingGuestInput(
     string FirstName,
@@ -19,6 +24,23 @@ public record DirectBookingGuestInput(
 /// When the guest thinks they will arrive (DB-03b): <c>HH:mm</c> or <c>late</c> (after the check-in window), <c>null</c> when they
 /// do not say. Only a note for the host (<see cref="ArrivalTimeRules"/>): it changes no price, no availability and no check.
 /// </param>
+/// <param name="MarketingConsentEmail">
+/// The guest ticked the optional box for offers by e-mail (E07/F04/US01/T02, NF-90): never preselected, never required. The legacy
+/// <paramref name="MarketingConsent"/> counts as this channel. Like every consent it needs the version of its text.
+/// </param>
+/// <param name="MarketingConsentWhatsApp">
+/// The guest ticked the optional box for offers on WhatsApp: never preselected, never required. Needs a phone number that can be reached, else
+/// 422 <see cref="DirectBookingErrorCodes.WhatsAppRequiresPhone"/>.
+/// </param>
+/// <param name="SoftOptInNoticeVersion">
+/// The version of the soft opt-in notice (art. 130 c. 4 Codice privacy) the checkout showed, <c>null</c> when it showed none. The booking
+/// records that the notice was presented only when it is the configured one (<c>Gdpr:SoftOptInNoticeVersion</c>); any other is 409
+/// <see cref="DirectBookingErrorCodes.SoftOptInNoticeOutdated"/>.
+/// </param>
+/// <param name="Attribution">
+/// Where the guest came from (E27/F01/US01/T01, NF-123): the <c>utm_*</c> of the link and the page the guest came from, as the checkout sent them, <c>null</c> when
+/// it sent none. The service keeps only what passes <see cref="BookingAttribution.Sanitize"/>; a value that does not is dropped, and the booking never fails for it.
+/// </param>
 public record DirectBookingCreateInput(
     Guid PropertyId,
     DateTime CheckInDate,
@@ -32,7 +54,12 @@ public record DirectBookingCreateInput(
     PaymentOption PaymentOption = PaymentOption.Immediate,
     IReadOnlyList<int>? ChildrenAges = null,
     bool MarketingConsent = false,
-    string? ExpectedArrivalTime = null);
+    string? ExpectedArrivalTime = null,
+    bool MarketingConsentEmail = false,
+    bool MarketingConsentWhatsApp = false,
+    string? SoftOptInNoticeVersion = null,
+    BookingAttributionInput? Attribution = null,
+    IReadOnlyList<DirectCheckoutExtra>? Extras = null);
 
 /// <summary>Stay to price before booking (checkout quote).</summary>
 /// <param name="ChildrenAges">Age of each minor at check-in, needed when the tourist tax depends on it.</param>
@@ -57,8 +84,9 @@ public record DirectBookingQuoteInput(
 /// <param name="PaymentOptions">Which payment options the checkout may offer for this stay (A3-16).</param>
 /// <param name="Lodging">
 /// How the nights of the stay are priced (DB-03): the nights at the nightly rate and the weekend nights with the property's
-/// surcharge. <c>BasePrice = Lodging.Total + CleaningFee</c>; with no surcharge (the default) <c>Lodging.Total</c> is
-/// <c>NightlyRate x Nights</c>, as it has always been.
+/// surcharge, less the length-of-stay discount when a tier of the property applies (NF-35). <c>BasePrice = Lodging.NetTotal + CleaningFee</c>;
+/// with no surcharge and no discount (the default) <c>Lodging.Total</c> is <c>NightlyRate x Nights</c> and equals <c>Lodging.NetTotal</c>, as
+/// it has always been.
 /// </param>
 /// <param name="Cancellation">
 /// What cancelling costs for this stay (DB-03b): the last days of the full and of the partial refund, on the policy of the stay, Europe/Rome
@@ -78,7 +106,10 @@ public record DirectBookingQuote(
     DateTime FreeRefundDeadline,
     DirectBookingPaymentOptions PaymentOptions,
     StayLodging Lodging,
-    StayCancellation? Cancellation = null);
+    StayCancellation? Cancellation = null)
+{
+    public IReadOnlyList<DirectCheckoutExtraOffer> ExtraOffers { get; init; } = [];
+}
 
 /// <summary>
 /// The lodging part of a quote (DB-03, D20): <see cref="WeekdayNights"/> nights at <see cref="NightlyRate"/> and
@@ -91,7 +122,10 @@ public record DirectBookingQuote(
 /// <param name="WeekendNights">Friday and Saturday nights charged at <paramref name="WeekendNightlyRate"/>; 0 without a surcharge.</param>
 /// <param name="NightlyRate">The property's nightly rate.</param>
 /// <param name="WeekendNightlyRate">The nightly rate plus the weekend surcharge, rounded to the cent (the rate itself when there is none).</param>
-/// <param name="Total">The price of all the nights, an exact number of cents.</param>
+/// <param name="Total">
+/// The price of all the nights, an exact number of cents, <b>before</b> the length-of-stay discount (<see cref="Discount"/>): what the guest pays
+/// for the nights is <see cref="NetTotal"/>.
+/// </param>
 public sealed record StayLodging(
     int WeekdayNights,
     int WeekendNights,
@@ -99,6 +133,15 @@ public sealed record StayLodging(
     decimal WeekendNightlyRate,
     decimal Total)
 {
+    /// <summary>
+    /// The length-of-stay discount taken off the nights (NF-35, ADR-028): the tier of the property that the stay reaches and the amount it takes
+    /// off <see cref="Total"/>. <c>null</c> = none applies, which is every stay of a property with no tier.
+    /// </summary>
+    public StayDiscount? Discount { get; init; }
+
+    /// <summary>What the guest pays for the nights: <see cref="Total"/> less the discount; the cleaning fee and the tourist tax are not in it.</summary>
+    public decimal NetTotal => Total - (Discount?.Amount ?? 0m);
+
     /// <summary>
     /// The nights of the stay whose price the host set for their date (a seasonal price the host confirmed, PC-15), in date
     /// order. Each costs that price: the weekend surcharge is not added to it, and these nights are in neither
@@ -113,6 +156,20 @@ public sealed record StayLodging(
 /// <summary>One night whose price the host set for its date: the Europe/Rome calendar date the night starts and its price.</summary>
 public sealed record PricedNight(DateOnly Date, decimal Price);
 
+/// <summary>
+/// One tier of the length-of-stay discount of a property (NF-35): from <paramref name="MinNights"/> nights the lodging costs
+/// <paramref name="PercentOff"/> percent less. The rule that picks the tier and rounds the amount is <see cref="StayPricing.DiscountFor"/>.
+/// </summary>
+public sealed record StayDiscountTier(int MinNights, decimal PercentOff);
+
+/// <summary>
+/// The length-of-stay discount a stay got (NF-35, ADR-028-R3, R4): the tier that applied and what it took off the nights.
+/// </summary>
+/// <param name="MinNights">The nights of the tier that applied.</param>
+/// <param name="PercentOff">Its percentage.</param>
+/// <param name="Amount">What it takes off the price of the nights: <c>round(total x percent / 100, 2)</c>, half away from zero, an exact number of cents.</param>
+public sealed record StayDiscount(int MinNights, decimal PercentOff, decimal Amount);
+
 /// <summary>What a line of the quote is. Serialized by name: never rename or reorder a member the frontend reads.</summary>
 public enum QuoteLineKind
 {
@@ -125,6 +182,13 @@ public enum QuoteLineKind
 
     /// <summary>Friday and Saturday nights at the rate with the weekend surcharge; present only when there are such nights.</summary>
     WeekendNights = 1,
+
+    /// <summary>
+    /// The length-of-stay discount (NF-35): a negative amount, taken off the nights only, never off the cleaning fee or the tourist tax; present
+    /// only when a tier of the property applies. It comes after the night lines and before the cleaning fee; its number is the next free one, the
+    /// other members keep theirs.
+    /// </summary>
+    LengthOfStayDiscount = 5,
 
     /// <summary>The cleaning fee, once; present only when it is not zero.</summary>
     CleaningFee = 2,
@@ -140,9 +204,9 @@ public enum QuoteLineKind
 /// One line of the price breakdown of a quote (DB-03), in cents so the frontend never adds euros with decimals.
 /// </summary>
 /// <param name="Kind">What the line is.</param>
-/// <param name="Quantity">Number of nights for the night lines, 1 for the cleaning fee, <c>null</c> for the tax and the total.</param>
+/// <param name="Quantity">Number of nights for the night lines, 1 for the cleaning fee, <c>null</c> for the discount, the tax and the total.</param>
 /// <param name="UnitAmountCents">Price of one night for the night lines, the fee for the cleaning fee; <c>null</c> otherwise.</param>
-/// <param name="AmountCents">Amount of the line (quantity x unit for the night lines); the total for <see cref="QuoteLineKind.Total"/>.</param>
+/// <param name="AmountCents">Amount of the line (quantity x unit for the night lines, negative for the length-of-stay discount); the total for <see cref="QuoteLineKind.Total"/>.</param>
 public sealed record QuoteLine(QuoteLineKind Kind, int? Quantity, long? UnitAmountCents, long AmountCents);
 
 /// <summary>Payment options of a stay, decided by the backend so the checkout never offers or promises what does not apply.</summary>
@@ -211,10 +275,26 @@ public static class DirectBookingErrorCodes
     public const string ChildAgesRequired = "tourist_tax_child_ages_required";
 
     /// <summary>
-    /// 422: the stay is shorter than the minimum stay of the property (<c>Property.MinNights</c>, DB-03), in the quote and in
-    /// the checkout. The message says the minimum. The host can still enter a shorter stay by hand.
+    /// 422: the stay is shorter than the minimum stay of its arrival date, in the quote and in the checkout: the minimum stay of that night
+    /// (<see cref="PropertyDayRule.MinNights"/>, NF-36) or, when the night has none, the one of the property (<c>Property.MinNights</c>, DB-03).
+    /// The message says the minimum. The host can still enter a shorter stay by hand.
     /// </summary>
     public const string MinNightsNotMet = "direct_booking_min_nights_not_met";
+
+    /// <summary>422: the stay arrives on a night that is closed to arrival (<see cref="PropertyDayRule.ClosedToArrival"/>, NF-36), in the quote and in the checkout.</summary>
+    public const string ArrivalClosed = "direct_booking_arrival_closed";
+
+    /// <summary>422: the stay leaves on a day that is closed to departure (<see cref="PropertyDayRule.ClosedToDeparture"/>, NF-36), in the quote and in the checkout.</summary>
+    public const string DepartureClosed = "direct_booking_departure_closed";
+
+    /// <summary>422: the stay is longer than the maximum stay of its arrival date (<see cref="PropertyDayRule.MaxNights"/>, NF-36). The message says the maximum.</summary>
+    public const string MaxNightsExceeded = "direct_booking_max_nights_exceeded";
+
+    /// <summary>422: the stay is booked closer to its arrival than the minimum advance of its arrival date (<see cref="PropertyDayRule.MinAdvanceDays"/>, NF-36). The message says the minimum.</summary>
+    public const string AdvanceTooShort = "direct_booking_advance_too_short";
+
+    /// <summary>422: the stay is booked further ahead of its arrival than the maximum advance of its arrival date (<see cref="PropertyDayRule.MaxAdvanceDays"/>, NF-36). The message says the maximum.</summary>
+    public const string AdvanceTooLong = "direct_booking_advance_too_long";
 
     /// <summary>
     /// 422: the checkout carries <c>marketingConsent: true</c> but the marketing consent text has no version
@@ -222,6 +302,18 @@ public static class DirectBookingErrorCodes
     /// so it is not offered (<c>marketingConsentVersion</c> of the public org is null) and not accepted either.
     /// </summary>
     public const string MarketingConsentUnavailable = "direct_booking_marketing_consent_unavailable";
+
+    /// <summary>
+    /// 422: the checkout ticks the WhatsApp consent but the guest left no phone number that can be reached (E07/F04/US01/T02, NF-90): a consent
+    /// on a channel needs the address of that channel.
+    /// </summary>
+    public const string WhatsAppRequiresPhone = "direct_booking_whatsapp_requires_phone";
+
+    /// <summary>
+    /// 409: the checkout carries a <c>softOptInNoticeVersion</c> that is not the current one (<c>Gdpr:SoftOptInNoticeVersion</c>, or none is
+    /// configured any more): the notice the guest read is not the notice in force, so it is never recorded as presented.
+    /// </summary>
+    public const string SoftOptInNoticeOutdated = "direct_booking_soft_opt_in_notice_outdated";
 
     /// <summary>
     /// 422: the checkout carries an <c>expectedArrivalTime</c> that is neither <c>HH:mm</c> nor <c>late</c> (DB-03b,

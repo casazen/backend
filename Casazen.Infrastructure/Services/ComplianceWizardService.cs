@@ -1,10 +1,13 @@
+using System.Globalization;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -20,8 +23,17 @@ public class ComplianceWizardService(
     ITouristTaxQuoteService touristTaxQuoteService,
     IPropertyComplianceStatusService complianceStatus,
     ILogger<ComplianceWizardService> logger,
-    TimeProvider? timeProvider = null) : IComplianceWizardService
+    TimeProvider? timeProvider = null,
+    IComplianceStatusService? statusService = null,
+    IComplianceActivityFeeder? activityFeeder = null,
+    IFeatureFlags? featureFlags = null,
+    IBookingFlowSettingsService? flowSettings = null,
+    ITicinoNotificationService? ticinoNotifications = null,
+    ISwissNotificationService? swissNotifications = null) : IComplianceWizardService
 {
+    /// <summary>The most items listed in each section of the compliance status (the count covers all of the ones that need attention).</summary>
+    internal const int StatusSectionMaxItems = 50;
+
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public async Task<(Property Property, IReadOnlyList<ComplianceActivationStep> Steps)> GetActivationWizardAsync(
@@ -77,6 +89,10 @@ public class ComplianceWizardService(
             .AsNoTracking()
             .Where(PropertyRentalModeRules.IsShortRent)
             .Where(p => p.OrgId == orgId && p.ComplianceStatus != PropertyComplianceStatus.Active)
+            // The essentials are entered: the CIN for an Italian property, which a Swiss one never has (E29/F02/US01/T02, NF-129: it is listed with what
+            // its activation still lacks, the municipality and the structure number of Ticino, in the Missing of the item).
+            .Where(p => p.Name != "" && p.Address != "" && p.City != ""
+                        && ((p.CinCode != null && p.CinCode != "") || p.Country.Trim().ToUpper() == "CH"))
             .InScope(scope)
             .OrderBy(p => p.Name)
             .Select(p => new { p.Id, p.Name })
@@ -87,27 +103,35 @@ public class ComplianceWizardService(
             .Include(b => b.Guest)
             .Where(b => b.OrgId == orgId)
             .InScope(scope)
+            .Where(OpenableStayRules.CanShow)
             .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn)
+            .Where(AlloggiatiStatusRules.ItalianProperties) // casazen/backend#979: Alloggiati data, an Italian duty; Ticino has its own section
+            .Where(b => b.NoShowAt == null) // NF-45: the guests of a no-show never came, there is no data to complete
             .Where(b => b.CheckInDate.Date <= today.AddDays(1))
             .ToListAsync(cancellationToken);
 
+        var checkInDecisions = await ListedStays.OfAsync(
+            db, checkInCandidates.Select(b => b.Id).ToList(), today, cancellationToken);
         var incompleteCheckIns = new List<ComplianceSummaryItem>();
         foreach (var booking in checkInCandidates)
         {
-            // Every guest of the stay, not only the booker (CO-12).
-            var dataComplete = await alloggiatiWebService.IsStayDataCompleteAsync(booking.Id);
-            if (!dataComplete)
+            // A current stay with unfinished guest data stays: the Alloggiati screen is where the host completes it.
+            // One that has ended, or that the screen cannot name, does not.
+            if (!checkInDecisions.TryGetValue(booking.Id, out var decision) || !decision.Listed || decision.DataComplete)
+                continue;
+
+            incompleteCheckIns.Add(ComplianceSummaryItem.ForBooking(
+                ComplianceCockpitAction.CompleteGuestCheckIn,
+                booking.Id,
+                $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim()) with
             {
-                incompleteCheckIns.Add(ComplianceSummaryItem.ForBooking(
-                    ComplianceCockpitAction.CompleteGuestCheckIn,
-                    booking.Id,
-                    $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim()) with
-                {
-                    DueAt = ComplianceDeadlines.Of(
-                        ComplianceCockpitAction.CompleteGuestCheckIn, booking.CheckInDate, booking.CheckOutDate, booking.ArrivedAt),
-                });
-            }
+                DueAt = ComplianceDeadlines.Of(
+                    ComplianceCockpitAction.CompleteGuestCheckIn, booking.CheckInDate, booking.CheckOutDate, booking.ArrivedAt),
+            });
         }
+
+        // casazen/backend#978: the booking flow of the org says which steps CasaZen does by itself; those are not the host's to do.
+        var flow = flowSettings is null ? null : await flowSettings.GetAsync(orgId, cancellationToken);
 
         // Departures of today (Europe/Rome), with or without the arrival registered, and checked-in stays not closed
         // (CO-08, A5-08): until then only checked-in stays counted and none could be checked in from the apps.
@@ -115,31 +139,243 @@ public class ComplianceWizardService(
                 .AsNoTracking()
                 .Where(b => b.OrgId == orgId)
                 .InScope(scope)
+                .Where(OpenableStayRules.CanShow)
                 .Where(StayLifecycleRules.CheckOutDue(today))
                 .OrderBy(b => b.CheckOutDate)
-                .Select(b => new { b.Id, b.CheckInDate, b.CheckOutDate, b.ArrivedAt, GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim() })
+                .Select(b => new
+                {
+                    b.Id,
+                    b.Status,
+                    b.CheckInDate,
+                    b.CheckOutDate,
+                    b.ArrivedAt,
+                    b.NoShowAt,
+                    b.CheckoutWizardStartedAt,
+                    GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim(),
+                })
                 .ToListAsync(cancellationToken))
+            // A departure of today that the flow registers by itself at the check-out time is not a thing to do; one of an earlier day (the flow did not close it) is.
+            .Where(b => !(flow is { RegistersDeparture: true }
+                          && b.CheckOutDate.Date == today.Date
+                          && b.NoShowAt is null
+                          && b.CheckoutWizardStartedAt is null
+                          && (b.Status == BookingStatus.CheckedIn || flow.RegistersArrival)))
             .Select(b => ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.CheckOut, b.Id, b.GuestName) with
             {
                 DueAt = ComplianceDeadlines.Of(ComplianceCockpitAction.CheckOut, b.CheckInDate, b.CheckOutDate, b.ArrivedAt),
             })
             .ToList();
 
-        var (alloggiatiFailures, alloggiatiManualRequired) = await GetAlloggiatiSectionsAsync(scope, today, cancellationToken);
-        var turnoversPending = await GetTurnoversPendingAsync(scope, cancellationToken);
+        // E03/F02/US01/T03 (NF-52): the traffic light of every item, from the one rule class, and the feed of the «Da fare» list. Behind
+        // Features:ComplianceTrafficLight, OFF by default (nothing in the application writes the proofs that turn an item green yet, so on it would
+        // give every stay of the last 90 days a red To do nobody can close). Off, the status is not even evaluated and the cockpit is what it was
+        // before: the items carry no light, the new sections are empty, the "to send by hand" section keeps every stay and nothing is written.
+        var lights = statusService is not null && featureFlags is not null && featureFlags.IsEnabled(FeatureFlags.ComplianceTrafficLight);
+        var status = lights ? await statusService!.EvaluateAsync(scope, cancellationToken) : null;
+        var statusOfStay = (status?.Items ?? [])
+            .Where(i => i.Kind == ComplianceItemKind.Alloggiati && i.BookingId is not null)
+            .ToDictionary(i => i.BookingId!.Value);
+        var supersededByStatus = statusOfStay.Values
+            .Where(i => i.Action is ComplianceCockpitAction.UploadAlloggiatiReceipt or ComplianceCockpitAction.SendAlloggiatiManually)
+            .Select(i => i.BookingId!.Value)
+            .ToHashSet();
 
-        return new ComplianceSummaryResult(
+        var (alloggiatiFailures, alloggiatiManualRequired) =
+            await GetAlloggiatiSectionsAsync(scope, today, status is null ? null : statusOfStay, supersededByStatus, cancellationToken);
+        var turnoversPending = await GetTurnoversPendingAsync(scope, flow, cancellationToken);
+        var ticinoDays = await GetTicinoNotificationsAsync(scope, cancellationToken);
+        var swissDays = await GetSwissNotificationsAsync(scope, cancellationToken);
+
+        // An item of the sections that existed: red with the code of its action when the traffic light is on, as it was (no light) when it is off.
+        ComplianceSummaryItem Lit(ComplianceSummaryItem item) => status is null ? item : WithOpenVerdict(item);
+
+        var summary = new ComplianceSummaryResult(
             new ComplianceSummarySection(
                 pendingProperties.Count,
                 // Pending and suspended alike: the activation wizard opens on the first blocking step still open.
-                pendingProperties.Select(p => ComplianceSummaryItem.ForProperty(
-                    ComplianceCockpitAction.ActivateProperty, p.Id, p.Name)).ToList()),
-            new ComplianceSummarySection(incompleteCheckIns.Count, incompleteCheckIns),
-            new ComplianceSummarySection(checkoutDue.Count, checkoutDue),
+                pendingProperties.Select(p => Lit(ComplianceSummaryItem.ForProperty(
+                    ComplianceCockpitAction.ActivateProperty, p.Id, p.Name))).ToList()),
+            new ComplianceSummarySection(incompleteCheckIns.Count, incompleteCheckIns.Select(Lit).ToList()),
+            new ComplianceSummarySection(checkoutDue.Count, checkoutDue.Select(Lit).ToList()),
             alloggiatiFailures,
             alloggiatiManualRequired,
-            turnoversPending);
+            new ComplianceSummarySection(
+                turnoversPending.Count,
+                turnoversPending.Items.Select(Lit).ToList()))
+        {
+            IdentityPending = StatusSection(status, i => i.Kind == ComplianceItemKind.Identity),
+            ReceiptsToUpload = StatusSection(status, i => i.Kind == ComplianceItemKind.Alloggiati && i.Action == ComplianceCockpitAction.UploadAlloggiatiReceipt),
+            ManualSendsRequired = StatusSection(status, i => i.Kind == ComplianceItemKind.Alloggiati && i.Action == ComplianceCockpitAction.SendAlloggiatiManually),
+            ConnectionsToFix = StatusSection(status, i => i.Kind is ComplianceItemKind.Connection or ComplianceItemKind.Credentials),
+            PeriodItems = StatusSection(
+                status, i => i.Kind is ComplianceItemKind.Istat or ComplianceItemKind.TouristTax or ComplianceItemKind.MunicipalityRate),
+            TicinoNotifications = new ComplianceSummarySection(
+                ticinoDays.Count,
+                ticinoDays.Take(StatusSectionMaxItems)
+                    .Select(item => status is null ? item : WithVerdict(item, ComplianceLightRules.OpenAction(item.Action), item.Period))
+                    .ToList()),
+            SwissNotifications = new ComplianceSummarySection(
+                swissDays.Count,
+                swissDays.Take(StatusSectionMaxItems)
+                    .Select(item => status is null ? item : WithVerdict(item, ComplianceLightRules.OpenAction(item.Action), item.Period))
+                    .ToList()),
+        };
+
+        // AC-NF52-13: the red and yellow items feed the unified "To do". The summary is the cockpit of the host: if the list cannot be
+        // kept in step it must still be answered, and the next read tries again.
+        if (activityFeeder is not null && status is not null)
+        {
+            try
+            {
+                await activityFeeder.FeedAsync(scope, status, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "The To do list of org {OrgId} could not be kept in step with the compliance cockpit", scope.OrgId);
+            }
+        }
+
+        return summary;
     }
+
+    /// <summary>
+    /// casazen/backend#979: the arrival days of the Ticino properties of the caller's reach whose guests are not notified to the cantonal police
+    /// yet, oldest first: one item per property and day, the day in <c>Period</c> (<c>yyyy-MM-dd</c>), due 24 hours from the arrival.
+    /// </summary>
+    private async Task<List<ComplianceSummaryItem>> GetTicinoNotificationsAsync(HostScope scope, CancellationToken cancellationToken)
+    {
+        if (ticinoNotifications is null)
+            return [];
+
+        var propertyIds = await db.Properties
+            .AsNoTracking()
+            .Where(PropertyRentalModeRules.IsShortRent)
+            .Where(p => p.OrgId == scope.OrgId)
+            .InScope(scope)
+            .Select(p => p.Id)
+            .ToListAsync(cancellationToken);
+        if (propertyIds.Count == 0)
+            return [];
+
+        var days = await ticinoNotifications.ListPendingDaysAsync(scope.OrgId, propertyIds, _clock.TodayInRomeAsDateOnly(), cancellationToken);
+        return days
+            .Select(d => ComplianceSummaryItem.ForProperty(ComplianceCockpitAction.NotifyTicinoPolice, d.PropertyId, d.PropertyName) with
+            {
+                DueAt = d.DueAtUtc,
+                Period = d.Day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// E31/F02/US01/T01: the arrival days of the properties of the caller's reach in a canton other than Ticino whose guests are not notified to the cantonal authority yet, oldest first:
+    /// one item per property and day, the day in <c>Period</c> (<c>yyyy-MM-dd</c>), due at the deadline of the regime (<c>null</c> where it has none). Only where the duty is <c>Required</c>
+    /// and while <c>Features:GuestRegistrationRegimes</c> is on: both are decided by <see cref="ISwissNotificationService.ListPendingDaysAsync"/>, the one place that lists them.
+    /// </summary>
+    private async Task<List<ComplianceSummaryItem>> GetSwissNotificationsAsync(HostScope scope, CancellationToken cancellationToken)
+    {
+        if (swissNotifications is null)
+            return [];
+
+        var propertyIds = await db.Properties
+            .AsNoTracking()
+            .Where(PropertyRentalModeRules.IsShortRent)
+            .Where(p => p.OrgId == scope.OrgId)
+            .InScope(scope)
+            .Select(p => p.Id)
+            .ToListAsync(cancellationToken);
+        if (propertyIds.Count == 0)
+            return [];
+
+        var days = await swissNotifications.ListPendingDaysAsync(scope.OrgId, propertyIds, _clock.TodayInRomeAsDateOnly(), cancellationToken);
+        return days
+            .Select(d => ComplianceSummaryItem.ForProperty(ComplianceCockpitAction.NotifyGuestsAuthority, d.PropertyId, d.PropertyName) with
+            {
+                DueAt = d.DueAtUtc,
+                Period = d.Day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// An item of the cockpit that exists today and is not computed from a proof (a property to activate, guest data to complete, a
+    /// check-out, a turnover): the host has something to do, so it is red with the code that says what (<see cref="ComplianceLightRules.OpenAction"/>).
+    /// </summary>
+    private static ComplianceSummaryItem WithOpenVerdict(ComplianceSummaryItem item) =>
+        WithVerdict(item, ComplianceLightRules.OpenAction(item.Action), null);
+
+    /// <summary>
+    /// An Alloggiati item of the cockpit that exists today (to send, to resolve) with the light the status gives its stay when the status asks
+    /// for the same action; otherwise the light of an item the host has to act on.
+    /// </summary>
+    private static ComplianceSummaryItem WithStayVerdict(
+        ComplianceSummaryItem item,
+        IReadOnlyDictionary<Guid, ComplianceStatusItem>? statusOfStay) =>
+        statusOfStay is null
+            ? item // the traffic light is off: the item is what it was
+            : item.BookingId is { } bookingId && statusOfStay.TryGetValue(bookingId, out var stayStatus) && stayStatus.Action == item.Action
+                ? WithVerdict(item, stayStatus.Verdict, null)
+                : WithOpenVerdict(item);
+
+    private static ComplianceSummaryItem WithVerdict(ComplianceSummaryItem item, ComplianceVerdict verdict, string? period) =>
+        item with
+        {
+            Light = verdict.Light,
+            Reason = verdict.Reason,
+            Period = period,
+            EvidenceClass = verdict.EvidenceClass,
+            EvidenceSource = verdict.EvidenceSource,
+            LastVerifiedAt = verdict.LastVerifiedAt,
+            HandoffTopic = verdict.HandoffTopic,
+        };
+
+    /// <summary>
+    /// A new section of the cockpit (CHK-12): the items of the status that <paramref name="belongs"/> says, the red ones first, then the
+    /// yellow, then the green, each group by its deadline. The count is the number that need attention (not green); the list is capped at
+    /// <see cref="StatusSectionMaxItems"/>. Empty when the status was not asked for.
+    /// </summary>
+    private static ComplianceSummarySection StatusSection(ComplianceStatusResult? status, Func<ComplianceStatusItem, bool> belongs)
+    {
+        if (status is null)
+            return ComplianceSummarySection.Empty;
+
+        var matching = status.Items
+            .Where(belongs)
+            .OrderByDescending(i => i.Verdict.Light)
+            .ThenBy(i => i.DueAt ?? DateTime.MaxValue)
+            .ThenBy(i => i.Label, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(i => i.Period, StringComparer.Ordinal)
+            .ToList();
+
+        return new ComplianceSummarySection(
+            matching.Count(i => i.Verdict.NeedsAttention),
+            matching.Take(StatusSectionMaxItems).Select(ToSummaryItem).ToList());
+    }
+
+    private static ComplianceSummaryItem ToSummaryItem(ComplianceStatusItem item)
+    {
+        var summaryItem = item.BookingId is { } bookingId
+            ? ComplianceSummaryItem.ForBooking(item.Action, bookingId, item.Label)
+            : ComplianceSummaryItem.ForProperty(item.Action, item.PropertyId, item.Label);
+
+        // What the item still lacks: the reason, under the field it is about (nothing for a green item).
+        IReadOnlyList<ComplianceMissing> missing = item.Verdict.NeedsAttention
+            ? [new ComplianceMissing(item.Verdict.Reason, MissingFieldOf(item.Kind))]
+            : [];
+        return WithVerdict(summaryItem with { DueAt = item.DueAt, Missing = missing }, item.Verdict, item.Period);
+    }
+
+    private static string MissingFieldOf(ComplianceItemKind kind) => kind switch
+    {
+        ComplianceItemKind.Alloggiati => "alloggiati",
+        ComplianceItemKind.Identity => "identity",
+        ComplianceItemKind.Connection => "connection",
+        ComplianceItemKind.Credentials => "credentials",
+        ComplianceItemKind.Istat => "istat",
+        ComplianceItemKind.TouristTax => "touristTax",
+        ComplianceItemKind.MunicipalityRate => "municipalityRate",
+        _ => "compliance",
+    };
 
     /// <summary>Most recent turnovers listed; the count covers all of them.</summary>
     internal const int TurnoverSectionMaxItems = 10;
@@ -149,13 +385,38 @@ public class ComplianceWizardService(
     /// (a stay closed before CO-17 has none and is not listed). A later stay of the same property whose arrival is
     /// registered closes it: the property was obviously ready for it.
     /// </summary>
-    private async Task<ComplianceSummarySection> GetTurnoversPendingAsync(HostScope scope, CancellationToken cancellationToken)
+    private async Task<ComplianceSummarySection> GetTurnoversPendingAsync(
+        HostScope scope,
+        BookingFlowSettingsView? flow,
+        CancellationToken cancellationToken)
     {
         var pending = db.StayCheckouts
             .AsNoTracking()
             .Where(c => c.OrgId == scope.OrgId && c.CompletedAt != null && c.PropertyReadyAt == null)
             .InScope(scope)
-            .Where(c => c.Booking.Status == BookingStatus.CheckedOut)
+            .Where(c => c.Booking.Status == BookingStatus.CheckedOut);
+
+        // casazen/backend#978: the flow declares the property ready by itself when its cleaning is done, so a stay whose cleaning is planned waits for it, not for the host.
+        // A stay with no cleaning planned, or whose property the host said was not ready yet, stays the host's to declare (nobody else will).
+        if (flow is { DeclaresReadyWhenCleaningDone: true })
+        {
+            pending = pending.Where(c => c.PropertyReady == false
+                || !(db.ServiceRequests.Any(r => r.OrgId == c.OrgId
+                                                 && r.BookingId == c.BookingId
+                                                 && r.Category == ServiceCategories.Cleaning
+                                                 && r.Status != ServiceRequestStatus.Annullato
+                                                 && r.Status != ServiceRequestStatus.Rifiutato)
+                     || db.InternalActivities.Any(a => a.OrgId == c.OrgId
+                                                       && a.BookingId == c.BookingId
+                                                       && a.Action == null
+                                                       && a.ActivityType == InternalActivity.CleaningActivityType
+                                                       && a.Status != InternalActivity.StatusCancelled)));
+        }
+
+        pending = pending
+            // The check-out page of a stay whose property or guest is gone answers 404: it is not a thing to close.
+            .Where(c => c.Booking.Property != null && c.Booking.Guest != null && !c.Booking.Guest.IsDeleted
+                && c.Booking.Property.Name != "" && c.Booking.Guest.FirstName != "" && c.Booking.Guest.LastName != "")
             .Where(c => !db.Bookings.Any(next =>
                 next.PropertyId == c.Booking.PropertyId
                 && next.Id != c.BookingId
@@ -188,20 +449,23 @@ public class ComplianceWizardService(
     /// <summary>
     /// Alloggiati sections of the cockpit (CO-11): errors/rejections, and communications the host must send on the
     /// portal. Every stay whose arrival day has come is counted until it is sent with a receipt or declared sent by
-    /// the host, with or without a report row: CasaZen does not transmit, so nothing turns "done" on its own.
+    /// the host, with or without a report row: CasaZen does not transmit, so nothing turns "done" on its own. A no-show (NF-45)
+    /// owes no communication and is never listed.
     /// </summary>
     private async Task<(ComplianceSummarySection Failures, ComplianceSummarySection ManualRequired)> GetAlloggiatiSectionsAsync(
         HostScope scope,
         DateTime today,
+        IReadOnlyDictionary<Guid, ComplianceStatusItem>? statusOfStay,
+        IReadOnlySet<Guid> supersededByStatus,
         CancellationToken cancellationToken)
     {
         var stays = await db.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == scope.OrgId)
             .InScope(scope)
-            .Where(b => b.Status == BookingStatus.Confirmed
-                || b.Status == BookingStatus.CheckedIn
-                || b.Status == BookingStatus.CheckedOut)
+            .Where(OpenableStayRules.CanShow)
+            .Where(AlloggiatiStatusRules.ItalianProperties)
+            .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
             .Where(b => b.CheckInDate <= today)
             .Select(b => new
             {
@@ -213,6 +477,9 @@ public class ComplianceWizardService(
                 GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim(),
             })
             .ToListAsync(cancellationToken);
+
+        var listed = await ListedStays.OfAsync(db, stays.Select(b => b.Id).ToList(), today, cancellationToken);
+        stays = stays.Where(b => listed.TryGetValue(b.Id, out var decision) && decision.Listed).ToList();
 
         var stayIds = stays.Select(b => b.Id).ToList();
         var reports = (await db.AlloggiatiWebReports
@@ -232,21 +499,24 @@ public class ComplianceWizardService(
             var status = AlloggiatiStatusRules.Effective(report?.Status, stay.CheckInDate, today);
             if (AlloggiatiStatusRules.IsFailure(status))
             {
-                failures.Add((stay.CheckInDate, ComplianceSummaryItem.ForBooking(
-                    ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.Id, stay.GuestName) with
-                {
-                    DueAt = ComplianceDeadlines.Of(
-                        ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.CheckInDate, stay.CheckOutDate, stay.ArrivedAt),
-                }));
+                failures.Add((stay.CheckInDate, WithStayVerdict(
+                    ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.Id, stay.GuestName) with
+                    {
+                        DueAt = ComplianceDeadlines.Of(
+                            ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.CheckInDate, stay.CheckOutDate, stay.ArrivedAt),
+                    },
+                    statusOfStay)));
             }
-            else if (status == AlloggiatiWebStatus.DaInviareManualmente)
+            else if (status == AlloggiatiWebStatus.DaInviareManualmente && !supersededByStatus.Contains(stay.Id))
             {
-                manual.Add((stay.CheckInDate, ComplianceSummaryItem.ForBooking(
-                    ComplianceCockpitAction.SendAlloggiati, stay.Id, stay.GuestName) with
-                {
-                    DueAt = ComplianceDeadlines.Of(
-                        ComplianceCockpitAction.SendAlloggiati, stay.CheckInDate, stay.CheckOutDate, stay.ArrivedAt),
-                }));
+                // A stay the status lists elsewhere (entrusted to the channel manager, sent by hand, with its receipt) is not one the host sends by hand.
+                manual.Add((stay.CheckInDate, WithStayVerdict(
+                    ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.SendAlloggiati, stay.Id, stay.GuestName) with
+                    {
+                        DueAt = ComplianceDeadlines.Of(
+                            ComplianceCockpitAction.SendAlloggiati, stay.CheckInDate, stay.CheckOutDate, stay.ArrivedAt),
+                    },
+                    statusOfStay)));
             }
         }
 
@@ -531,14 +801,15 @@ public class ComplianceWizardService(
             true)
         { LabelKey = "CheckoutStepStaySummary" };
 
+        var policeComplete = alloggiati.Sent || AlloggiatiStatusRules.IsNotDue(alloggiati.Status);
         var alloggiatiStep = new ComplianceActivationStep(
             CheckoutWizardSteps.Alloggiati,
             "Alloggiati Web",
-            alloggiati.Sent ? "complete" : "warning",
+            policeComplete ? "complete" : "warning",
             false)
         {
             LabelKey = "CheckoutStepAlloggiati",
-            MessageKey = alloggiati.Sent
+            MessageKey = policeComplete
                 ? null
                 : AlloggiatiStatusRules.IsFailure(alloggiati.Status)
                     ? "CheckoutAlloggiatiFailed"

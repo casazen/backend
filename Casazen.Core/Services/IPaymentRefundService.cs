@@ -59,11 +59,26 @@ public interface IPaymentRefundService
     Task NotifyGuestAsync(Guid refundId, CancellationToken cancellationToken = default);
 }
 
+/// <param name="PaymentId">The payment to refund.</param>
+/// <param name="Amount">How much; everything still refundable when <c>null</c>.</param>
+/// <param name="Reason">The host's note, never sent to Stripe.</param>
+/// <param name="RequestedByUserId">The Auth0 subject of the host who asked.</param>
+/// <param name="IdempotencyKey">
+/// The key of the refund when the caller decides it (the refund of a booking edit, <c>booking-edit-refund:...</c>, E08/F02/US01/T01): sent to Stripe as it
+/// is, and a refund of the payment that already has it is returned, not made again. <c>null</c>: the key is made from the refund row.
+/// </param>
+/// <param name="NotifyGuest">
+/// <c>true</c> (the default): the guest gets the "refund confirmed" email as soon as Stripe confirms the refund. <c>false</c>: the caller tells the guest itself,
+/// in one email (the refund of a booking edit, E08/F02/US01/T01), so a refund Stripe confirms at once has its own notification claimed and sends none; a
+/// refund still pending is confirmed to the guest by the later email, as always.
+/// </param>
 public sealed record PaymentRefundRequest(
     Guid PaymentId,
     decimal? Amount,
     string? Reason,
-    string? RequestedByUserId);
+    string? RequestedByUserId,
+    string? IdempotencyKey = null,
+    bool NotifyGuest = true);
 
 /// <param name="PaidAmount">Amount of the payment.</param>
 /// <param name="RefundedAmount">Refunds confirmed by Stripe.</param>

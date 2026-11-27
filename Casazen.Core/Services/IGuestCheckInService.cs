@@ -13,7 +13,8 @@ public interface IGuestCheckInService
     /// <summary>
     /// What the public check-in portal may show for the raw token, or null if the token is unknown, expired or
     /// its booking is no longer eligible. A completed session exposes only its status (no booking data, no guest
-    /// PII); an open one the booking context and a guest prefill whose document number is masked.
+    /// PII); an open one the booking context and a guest prefill whose document number is masked. Both carry the slug
+    /// of the org that owns the stay (<see cref="GuestCheckInPublicView.OrgSlug"/>, public data).
     /// </summary>
     Task<GuestCheckInPublicView?> GetPublicViewAsync(string token);
 
@@ -30,8 +31,19 @@ public interface IGuestCheckInService
     /// </summary>
     Task<IssuedCheckInLink> IssueLinkAsync(Guid bookingId, Guid orgId);
 
+    /// <summary>
+    /// A new link for the booking that keeps what the guest already did (the guest at the door, E22/F01/US02). When the booking has an open link (<see cref="GuestCheckInSession.IsOpen"/>
+    /// and not past its expiry) that very session gets a new token and a new expiry: the old link stops working at once, and the consent to the biometric verification, the document
+    /// read, the language and the attempts of the face check already spent stay on it (a new session starts with none, so a guest could have the attempts again at every opening). Any other
+    /// open link of the booking is expired. A booking with no open link gets a new session, as <see cref="IssueLinkAsync"/> makes it. In both cases the delivery of the previous link,
+    /// if the booking had one that waited, ends (the link it carried is dead).
+    /// </summary>
+    Task<IssuedCheckInLink> ReissueLinkAsync(Guid bookingId, Guid orgId);
+
     /// <summary>Marks <see cref="GuestCheckInSessionStatus.Scaduto"/> the open sessions whose expiry has passed (A5-27). Returns how many.</summary>
     Task<int> ExpireStaleSessionsAsync(CancellationToken cancellationToken = default);
+
+    Task<bool> RequestInvoiceAsync(string token, GuestCheckInInvoice invoice, CancellationToken ct);
 
     /// <summary>Submit guest data. Returns result indicating success or duplicate.</summary>
     Task<GuestCheckInSubmitResult> SubmitAsync(string token, GuestCheckInSubmitRequest request);
@@ -44,6 +56,29 @@ public interface IGuestCheckInService
 
     /// <summary>Expires active sessions for the booking except the session matching the raw token.</summary>
     Task ExpireOtherActiveSessionsAsync(Guid bookingId, string tokenToKeep);
+
+    /// <summary>
+    /// Saves the language the guest chose on the check-in page (NF-40, one of <c>GuestLanguages.Supported</c>) on the session of the raw
+    /// token: the page and the emails of the session use it. Refused for a language that is not supported, an unknown or expired token and a
+    /// check-in already completed.
+    /// </summary>
+    Task<GuestCheckInLanguageOutcome> SetLanguageAsync(string token, string language);
+}
+
+/// <summary>Outcome of <see cref="IGuestCheckInService.SetLanguageAsync"/>.</summary>
+public enum GuestCheckInLanguageOutcome
+{
+    /// <summary>The language is saved on the session.</summary>
+    Saved = 0,
+
+    /// <summary>Not one of the supported languages (400 <c>language_unsupported</c>).</summary>
+    Unsupported = 1,
+
+    /// <summary>The token is unknown or expired, or the booking no longer takes a check-in (404).</summary>
+    NotFound = 2,
+
+    /// <summary>The guest already completed the check-in (409 <c>checkin_already_completed</c>).</summary>
+    Completed = 3,
 }
 
 /// <summary>A link just issued: the raw token exists only here (the session stores its hash).</summary>
@@ -62,6 +97,10 @@ public class GuestCheckInSubmitRequest
     /// </summary>
     public bool MarketingConsent { get; set; }
 
+    public bool? PrivacyNoticeAcknowledged { get; set; }
+
+    public string? HouseRulesVersion { get; set; }
+
     /// <summary>The guest ticked the e-mail channel of the per-channel marketing consent (NF-05).</summary>
     public bool MarketingConsentEmail { get; set; }
 
@@ -76,6 +115,32 @@ public class GuestCheckInSubmitRequest
 
     /// <summary>Client IP recorded with the notice presented and the consent given (proof, art. 7.1 GDPR).</summary>
     public string ConsentIpAddress { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The optional answer to «Ti serve la fattura?» (FIS-01, E06/F02/US01/T03): <c>null</c> when the guest did not answer. Never required and
+    /// never a reason to refuse the check-in for what it does not say: only data that is not valid is refused (422).
+    /// </summary>
+    public GuestCheckInInvoice? Invoice { get; set; }
+
+    /// <summary>
+    /// The plate of the car (NF-132), asked where <see cref="GuestCheckInPublicView.AskVehiclePlate"/>: <c>null</c> keeps what is stored, an empty
+    /// text clears it (see <see cref="IStayGuestService.ReplaceAsync"/>). Optional.
+    /// </summary>
+    public string? VehiclePlate { get; set; }
+}
+
+/// <summary>
+/// The guest's answer to «Ti serve la fattura?» at the check-in (FIS-01, NF-81, E06/F02/US01/T03). <see cref="NeedInvoice"/> <c>false</c> changes
+/// nothing, whatever else is sent. <c>true</c> records the «yes» and, when <see cref="Data"/> says anything about the recipient, saves it as the
+/// invoice data of the booking with the source <see cref="Casazen.Core.Entities.Enums.InvoiceDataSource.CheckIn"/>: it fills what the host did not
+/// write and never overwrites what the host wrote.
+/// </summary>
+public sealed class GuestCheckInInvoice
+{
+    public bool NeedInvoice { get; set; }
+
+    /// <summary>What the guest typed about the recipient; a member that is <c>null</c> was left blank.</summary>
+    public SaveInvoiceDataCommand Data { get; set; } = new();
 }
 
 /// <summary>
@@ -101,6 +166,21 @@ public static class CheckInValidationKeys
     public const string CodeInvalid = "CheckInCodeInvalid";
     public const string CodeUnknown = "CheckInCodeUnknown";
     public const string DocumentNumberInvalid = "CheckInDocumentNumberInvalid";
+
+    /// <summary>The document issue day is after today (Europe/Rome) or before 1900 (NF-40).</summary>
+    public const string DocumentIssuedOnInvalid = "CheckInDocumentIssuedOnInvalid";
+
+    /// <summary>The document expires before the day it was issued (NF-40).</summary>
+    public const string DocumentExpiresBeforeIssue = "CheckInDocumentExpiresBeforeIssue";
+
+    /// <summary>A statistical field holds a value outside its closed list (NF-40, <c>IstatGuestFieldLists</c>).</summary>
+    public const string StatisticalValueInvalid = "CheckInStatisticalValueInvalid";
+
+    /// <summary>The tourist tax exemption is not an active reason the host may choose (NF-46).</summary>
+    public const string TaxExemptionInvalid = "CheckInTaxExemptionInvalid";
+
+    /// <summary>The plate of the car is not one: letters, digits and hyphens, at most 20 once the spaces are removed (NF-132).</summary>
+    public const string VehiclePlateInvalid = "CheckInVehiclePlateInvalid";
 }
 
 public class GuestCheckInSubmitResult
@@ -120,8 +200,16 @@ public sealed class GuestCheckInPublicView
 {
     public required GuestCheckInSessionStatus Status { get; init; }
 
-    /// <summary>True once the guest has submitted the data: then every other property is null.</summary>
+    /// <summary>True once the guest has submitted the data: then every other property is null, but <see cref="OrgSlug"/>.</summary>
     public bool IsCompleted { get; init; }
+
+    /// <summary>
+    /// The slug of the org that owns the stay (NF-140), filled for every usable link, a completed one included. It is public data (it is in every public address of the org), not personal
+    /// data, so the rule that a completed link shows only that the check-in is done (A5-28) does not hide it. The page on an agency's own domain compares it with the org of the domain,
+    /// so the check-in of another agency never opens there under the domain's name. Unlike <see cref="PrivacyNoticeOrgSlug"/> it does not depend on a published privacy notice.
+    /// Null only when the org cannot be read, which the foreign key of the booking does not allow.
+    /// </summary>
+    public string? OrgSlug { get; init; }
 
     public Guid? SessionId { get; init; }
     public string? PropertyName { get; init; }
@@ -140,8 +228,33 @@ public sealed class GuestCheckInPublicView
     /// <summary>Version of the privacy notice the portal shows (<c>Gdpr:PrivacyNoticeVersion</c>), or null when not configured.</summary>
     public string? PrivacyNoticeVersion { get; init; }
 
+    public string? PrivacyNoticeOrgSlug { get; init; }
+
     /// <summary>Version of the marketing consent text; null when not configured, and then the consent is not offered.</summary>
     public string? MarketingConsentVersion { get; init; }
+
+    /// <summary>
+    /// The guest (or the host) already said that an invoice is needed (E06/F02/US01/T03). Only this and <see cref="HasInvoiceData"/> reach the public
+    /// page: the link is anonymous, so the stored fiscal code, VAT number, address and PEC are never returned by it.
+    /// </summary>
+    public bool InvoiceRequested { get; init; }
+
+    /// <summary>The booking already has the data of an invoice recipient (the page can say so); its content is never given.</summary>
+    public bool HasInvoiceData { get; init; }
+
+    /// <summary>
+    /// The guest fields the regime of the property requires, so the page asks nothing more than it needs (data minimization, ADR-030-R1): the
+    /// statistical fields (<c>IstatGuestFieldLists</c> names) the region requires, empty when the comune is unknown, the region has no verified row in
+    /// the ISTAT region table (E21/F01/US01/T01) or it requires none; and, for a property in canton Ticino (NF-132), the names of
+    /// <see cref="Regulatory.TicinoCheckInFields.Required"/> (the document of every adult, the home address and the state of residence).
+    /// </summary>
+    public IReadOnlyList<string>? RequiredGuestFields { get; init; }
+
+    /// <summary>The page asks the plate of the car, once for the stay and optional: the property is in canton Ticino (NF-132).</summary>
+    public bool AskVehiclePlate { get; init; }
+
+    /// <summary>The language the guest saved on the session (NF-40); null until the guest chooses one.</summary>
+    public string? Language { get; init; }
 }
 
 /// <summary>A guest already on file, shown to prefill the portal form before completion.</summary>
@@ -168,4 +281,21 @@ public sealed class StayGuestPrefill
 
     public string? DocumentIssuePlaceCode { get; init; }
     public string DocumentIssuePlaceName { get; init; } = string.Empty;
+
+    public DateOnly? DocumentIssuedOn { get; init; }
+    public DateOnly? DocumentExpiresOn { get; init; }
+    public bool? ResidenceInItaly { get; init; }
+    public string? ResidenceComuneCode { get; init; }
+    public string? ResidenceComuneName { get; init; }
+    public string? ResidenceProvince { get; init; }
+    public string? ResidenceCountryCode { get; init; }
+    public string? ResidenceCountryName { get; init; }
+    public string? ResidenceStreet { get; init; }
+    public string? ResidencePostalCode { get; init; }
+    public string? ResidenceCityName { get; init; }
+    public string? TourismType { get; init; }
+    public string? TravelWay { get; init; }
+    public string? EducationLevel { get; init; }
+
+    // No tourist tax exemption: it is the host's decision and never shown on the guest page.
 }

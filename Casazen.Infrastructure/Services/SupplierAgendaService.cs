@@ -383,6 +383,15 @@ public class SupplierAgendaService(
         // With the titles (SP-03b): who asks, the service, the comune. The planner reads the lighter ListForAgendaAsync below.
         var agendaRequests = await requests.ListForCalendarAsync(supplierOrgId, from, to, cancellationToken);
 
+        var guestOrders = await db.GuestSupplierOrders.AsNoTracking()
+            .Where(o => o.SupplierOrgId == supplierOrgId && o.StripeSandbox && o.StripePaymentIntentId != null &&
+                o.RequestedFor >= startUtc && o.RequestedFor < endUtc &&
+                (o.State == GuestSupplierOrderState.Accepted || o.State == GuestSupplierOrderState.Completed ||
+                 o.State == GuestSupplierOrderState.Disputed || o.State == GuestSupplierOrderState.Resolved ||
+                 o.State == GuestSupplierOrderState.Released))
+            .OrderBy(o => o.RequestedFor).ThenBy(o => o.Id)
+            .Select(o => new SupplierGuestOrderAppointment(o.Id, o.RequestedFor, o.ServiceName)).ToListAsync(cancellationToken);
+
         return new SupplierCalendar(
             from,
             to,
@@ -390,7 +399,8 @@ public class SupplierAgendaService(
             closedDays.Select(day => new SupplierClosedDay(day.Date, day.Source)).ToList(),
             timeOff,
             windows,
-            agendaRequests);
+            agendaRequests)
+        { GuestOrders = guestOrders };
     }
 
     public Task<SupplierPlanningInput> BuildPlanningInputAsync(

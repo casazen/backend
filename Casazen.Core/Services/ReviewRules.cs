@@ -1,5 +1,6 @@
 using System.Text;
 using Casazen.Core.Entities;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Services;
@@ -20,6 +21,8 @@ public enum ReviewEligibility
 
     /// <summary>The 14 days after the check-out are gone.</summary>
     WindowClosed = 4,
+    ReviewsDisabled = 5,
+    NoShow = 6,
 }
 
 /// <summary>
@@ -45,6 +48,9 @@ public static class ReviewRules
     public const int DefaultPageSize = 10;
     public const int MaxPageSize = 50;
 
+    /// <summary>How many characters of a review the hub shows as its preview, to the host only (E05/F06/US01/T03).</summary>
+    public const int PreviewLength = 120;
+
     /// <summary>The stored placeholder of an erased name (<c>GuestDataEraser.AnonymizedName</c>).</summary>
     private const string ErasedName = "ANONYMIZED";
 
@@ -53,12 +59,13 @@ public static class ReviewRules
     /// is the Europe/Rome day; the check-out day itself is not over yet, the day after is the first day to review, and the last is the
     /// check-out day plus <see cref="WindowDays"/>. It does not prove that the guest arrived, and the page that explains «verified» says so.
     /// </summary>
-    public static ReviewEligibility Evaluate(BookingSource source, BookingStatus status, DateTime checkOutDate, DateOnly today)
+    public static ReviewEligibility Evaluate(BookingSource source, BookingStatus status, DateTime checkOutDate, DateOnly today, bool guestPortal = false)
     {
-        if (source != BookingSource.Direct)
+        if (source != BookingSource.Direct && !guestPortal)
             return ReviewEligibility.NotDirectBooking;
 
-        if (status is not (BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut))
+        // The statuses of a stay that happens are the one definition of the product (a request, a hold and a cancelled booking are not): never a list of its own.
+        if (!AlloggiatiStatusRules.ActiveBookingStatuses.Contains(status))
             return ReviewEligibility.BookingNotConfirmed;
 
         var checkOutDay = RomeCalendar.DateInRome(checkOutDate);
@@ -125,6 +132,19 @@ public static class ReviewRules
 
         var normalized = builder.ToString().Trim();
         return normalized.Length == 0 ? null : normalized;
+    }
+
+    /// <summary>
+    /// The first <see cref="PreviewLength"/> characters of a review on one line, with «…» when it was cut; <c>null</c> for a review with no text. For the host only: it is
+    /// read from the text of a review, which is personal data.
+    /// </summary>
+    public static string? Preview(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var line = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        return line.Length <= PreviewLength ? line : line[..PreviewLength].TrimEnd() + "…";
     }
 
     /// <summary>The month of a stay as the public reads it, <c>yyyy-MM</c>.</summary>

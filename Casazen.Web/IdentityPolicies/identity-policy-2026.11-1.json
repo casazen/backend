@@ -1,0 +1,59 @@
+{
+  "version": "identity-policy-2026.11-1",
+  "provisional": true,
+  "captureRules": "capture-2026.11-1",
+  "document": {
+    "maxRecapturesPerSide": 3,
+    "identifyingFields": ["surname", "givenNames", "birthDate", "documentNumber"],
+    "perceptualDuplicateMaxDistance": 6
+  },
+  "presence": {
+    "challenge": {
+      "steps": 3,
+      "actions": ["turn_left", "turn_right", "look_up", "look_down"],
+      "noImmediateRepeat": true,
+      "lifetimeSeconds": 90,
+      "stepMs": 1500,
+      "leadInMs": 1000
+    },
+    "sequence": {
+      "targetFps": 8,
+      "minFrames": 20,
+      "maxFrames": 60,
+      "minDurationMs": 3000,
+      "maxDurationMs": 12000,
+      "maxGapMs": 400,
+      "maxShareWithoutFace": 0.1,
+      "detectorMaxSide": 320
+    },
+    "continuity": {
+      "maxCenterJump": 0.35,
+      "maxSizeChange": 0.3,
+      "minPairSimilarity": 0.5,
+      "pairSamples": 5,
+      "minPixelDifference": 1
+    },
+    "pose": {
+      "turnMinYawDegrees": 20,
+      "lookMinPitchDegrees": 12,
+      "neutralMaxDegrees": 15
+    },
+    "liveness": {
+      "frames": 5,
+      "minScore": 0.7,
+      "rule": "all"
+    }
+  },
+  "match": {
+    "frames": 3,
+    "minFrameGapMs": 300,
+    "randomizeAmongTop": 2,
+    "aggregation": "median",
+    "accept": 0.85,
+    "reviewFloor": 0.7,
+    "minEachFrame": 0.7
+  },
+  "closure": {
+    "guidedRetries": 1
+  }
+}

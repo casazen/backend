@@ -27,7 +27,8 @@ public class BookingCancellationController(
     IGuestBookingCancellationService guestCancellationService,
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
-    ILogger<BookingCancellationController> logger) : ControllerBase
+    ILogger<BookingCancellationController> logger,
+    IOtaBookingCancellationService? otaCancellationService = null) : ControllerBase
 {
     /// <summary>
     /// What cancelling now would do: paid and refundable amounts, the minimum refund of the rule that applies (free
@@ -54,6 +55,14 @@ public class BookingCancellationController(
     /// refunded on the host's connected account. The answer lists the refunds as Stripe left them (succeeded,
     /// pending or failed): a refund is never shown as done before Stripe confirms it.
     /// </summary>
+    /// <remarks>
+    /// A booking that came from a channel through the channel manager (a channel source and an Octorate reservation) takes the other path,
+    /// Octorate first (E08/F02/US02/T02, D8, NF-76): 200 only after Octorate confirmed the cancellation of its reservation, with no refund (the
+    /// channel collects its own bookings); 422 <c>ota_booking_cancel_not_allowed</c> where the channel is closed (every channel unless the
+    /// configuration opens it) and 422 <c>octorate_cancel_failed</c> when Octorate refuses; 503 <c>octorate_unavailable</c> when it does not
+    /// answer. In all three the booking is unchanged and <c>detail</c> is the one sentence that says how to ask the guest or the channel
+    /// (<c>guidanceKey</c> and <c>channel</c> travel with the problem).
+    /// </remarks>
     [HttpPost("cancel")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     public async Task<ActionResult<CancelBookingResponse>> Cancel(
@@ -65,6 +74,9 @@ public class BookingCancellationController(
         if (booking is null || resource is null ||
             !await authorizationService.IsAuthorizedAsync(User, resource, BookingOperations.Write))
             return NotFound();
+
+        if (OtaChannelActionPolicy.IsChannelBooking(booking))
+            return await CancelChannelBookingAsync(booking, request?.Reason);
 
         var quote = await cancellationService.GetQuoteAsync(id, HttpContext.RequestAborted);
 
@@ -116,6 +128,35 @@ public class BookingCancellationController(
         catch (DomainRuleException ex)
         {
             return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, ex.Code, ex.MessageKey);
+        }
+    }
+
+    /// <summary>
+    /// The cancellation of a booking of a channel: Octorate is asked first and the booking is cancelled in CasaZen only when it confirms (see
+    /// <see cref="IOtaBookingCancellationService"/>). It moves no money, so it needs no <c>payment.write</c>: the channel collects its own bookings.
+    /// </summary>
+    private async Task<ActionResult<CancelBookingResponse>> CancelChannelBookingAsync(Booking booking, string? reason)
+    {
+        var service = otaCancellationService
+            ?? throw new InvalidOperationException("IOtaBookingCancellationService is not registered: a booking of a channel cannot be cancelled.");
+
+        try
+        {
+            logger.LogInformation("Cancelling booking {BookingId} of a channel by host: Octorate first", booking.Id);
+            var cancelled = await service.CancelAsync(booking.Id, reason, HttpContext.RequestAborted);
+            return Ok(new CancelBookingResponse(cancelled.Id, cancelled.Status, [], 0));
+        }
+        catch (OtaCancellationUnavailableException ex)
+        {
+            // Octorate did not answer: the booking is as it was, and the host is told so, with the sentence that says how to ask on the channel.
+            var problem = ApiProblemDetails.Create(HttpContext, StatusCodes.Status503ServiceUnavailable, OctorateSyncErrorCodes.Unavailable, ex.GuidanceKey);
+            problem.Extensions[OtaChannelActionPolicy.GuidanceKeyExtension] = ex.GuidanceKey;
+            problem.Extensions[OtaChannelActionPolicy.ChannelExtension] = ex.Channel;
+            return new ObjectResult(problem)
+            {
+                StatusCode = StatusCodes.Status503ServiceUnavailable,
+                ContentTypes = { ApiProblemDetails.ContentType },
+            };
         }
     }
 

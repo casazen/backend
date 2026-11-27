@@ -79,7 +79,7 @@ public class HostInviteEndpointsTests
 
         Assert.DoesNotContain("Email", members);
         Assert.Contains("MaskedEmail", members);
-        Assert.Equal(new[] { "InviterName", "MaskedEmail", "State", "Valid" }, members.Order().ToArray());
+        Assert.Equal(new[] { "InviterName", "IsAgency", "MaskedEmail", "State", "Valid" }, members.Order().ToArray());
     }
 
     [Fact]

@@ -78,10 +78,11 @@ public class CalendarController(
             calendar, from, to, zone, TimezoneHelper.GetUtcOffsetMinutes(zone, timeProvider.GetUtcNow().UtcDateTime)));
     }
 
-    private static bool InBounds(DateOnly? day) => day is null || day.Value.Year is >= MinYear and <= MaxYear;
+    // Also the rule of the days of the calendar (CalendarDaysController): one definition of the bounds and of the list of ids.
+    internal static bool InBounds(DateOnly? day) => day is null || day.Value.Year is >= MinYear and <= MaxYear;
 
     // The ids of the request, repeated or separated by commas; false for anything that is not an id.
-    private static bool TryParseIds(string[]? values, out List<Guid> ids)
+    internal static bool TryParseIds(string[]? values, out List<Guid> ids)
     {
         ids = [];
         foreach (var token in (values ?? []).SelectMany(

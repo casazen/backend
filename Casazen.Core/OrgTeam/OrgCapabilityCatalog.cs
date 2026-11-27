@@ -81,15 +81,30 @@ public static class OrgCapabilityCatalog
         new("booking", OrgCapabilityGroups.ShortRent,
             Full: [P(Short, "booking.write")],
             ReadOnly: [P(Short, "booking.read")],
-            Related: [P(Short, "ota.read"), P(Short, "ota.write")]),
+            Related:
+            [
+                P(Short, "ota.read"),
+                P(Short, "ota.write"),
+                // E05/F04/US01/T01: the decision on the items of the approval queue (a draft of a message, a campaign): owner, administrators, property managers.
+                P(Short, HostPermissions.ApprovalDecide),
+            ]),
         new("prices", OrgCapabilityGroups.ShortRent,
             Full: [P(Short, "property.write")],
             ReadOnly: [P(Short, "property.read")],
             Related: []),
+        new("marketing", OrgCapabilityGroups.ShortRent, Full: [P(Short, HostPermissions.Marketing)], ReadOnly: [], Related: []),
         new("guests", OrgCapabilityGroups.ShortRent,
             Full: [P(Short, "guest.write")],
             ReadOnly: [P(Short, "guest.read")],
-            Related: [P(Short, HostPermissions.GuestManage), P(Short, HostPermissions.AlloggiatiSubmit)]),
+            Related:
+            [
+                P(Short, HostPermissions.GuestManage),
+                P(Short, HostPermissions.AlloggiatiSubmit),
+                // E03/F04/US02/T01: the decision on the identity verification of a guest (owner, administrators, property managers).
+                P(Short, HostPermissions.VerificationDecision),
+                // E50/F01/US01/T01: «Portale ospiti», the set-up of the guest portal (owner, administrators, property managers).
+                P(Short, HostPermissions.GuestPortalManage),
+            ]),
         new("money", OrgCapabilityGroups.ShortRent,
             Full: [P(Short, "payment.write")],
             ReadOnly: [P(Short, "payment.read")],

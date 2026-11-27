@@ -9,6 +9,7 @@ public static class PersonalDataMasking
 {
     private const char MaskChar = '*';
     private const int FiscalCodeVisibleChars = 4;
+    private const int PhoneVisibleDigits = 3;
 
     /// <summary>
     /// Keeps the last four characters of a codice fiscale (or partita IVA): <c>RSSMRA80A01H501Z</c> becomes
@@ -41,5 +42,21 @@ public static class PersonalDataMasking
             return new string(MaskChar, 3);
 
         return $"{value[0]}{new string(MaskChar, 3)}{value[at..]}";
+    }
+
+    /// <summary>
+    /// The last three digits of a phone number, whatever its spaces and signs: <c>+393331234567</c> becomes <c>*********567</c>. A value with
+    /// three digits or fewer, or none, is hidden completely.
+    /// </summary>
+    public static string MaskPhone(string? phone)
+    {
+        if (string.IsNullOrWhiteSpace(phone))
+            return string.Empty;
+
+        var digits = phone.Where(char.IsAsciiDigit).ToArray();
+        if (digits.Length <= PhoneVisibleDigits)
+            return new string(MaskChar, 3);
+
+        return new string(MaskChar, digits.Length - PhoneVisibleDigits) + new string(digits[^PhoneVisibleDigits..]);
     }
 }

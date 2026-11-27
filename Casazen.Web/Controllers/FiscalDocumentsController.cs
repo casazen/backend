@@ -1,0 +1,308 @@
+using Casazen.Core.Authorization;
+using Casazen.Core.Documents;
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
+using Casazen.Core.Services;
+using Casazen.Web.Authorization;
+using Casazen.Web.DTOs.Fiscal;
+using Casazen.Web.Infrastructure;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Casazen.Web.Controllers;
+
+/// <summary>
+/// The fiscal documents of the bookings (FIS-03, FIS-04, NF-83, E06/F01/US01/T01): the list and the detail of every document of the organization (the
+/// ones imported from Octorate included), and the drafts, issue, credit notes, XML and PDF of the documents CasaZen issues for its direct bookings.
+/// Reads need <c>payment.read</c>, every change <c>payment.write</c>; a single document is authorized through its booking like the payments of a
+/// booking, a document without a booking only for a caller who reaches the whole org; a document of another org is a 404, like a missing one. The
+/// changes are behind <c>Features:FiscalDocumentIssuance</c> (404 while off); the reads are not, because they also list the documents of Octorate. The changes
+/// are those of the guest documents: an owner invoice (E14/F01/US01/T01) is read here (its PDF, its XML) but never changed (422 <c>document_owner_invoice</c>);
+/// <c>api/owner-invoices</c> makes, issues, credits and discards it, with <c>agency.statement.manage</c>. <c>send-email</c> (E12/F01/US02/T01) sends an issued guest document to the guest of its booking;
+/// the page its link opens is <see cref="PublicFiscalDocumentsController"/>.
+/// </summary>
+[ApiController]
+[Route("api/fiscal/documents")]
+[Authorize(Policy = CasazenPolicies.PaymentRead)]
+public class FiscalDocumentsController(
+    IFiscalDocumentService documents,
+    IHostResourceLookup hostResources,
+    IAuthorizationService authorizationService,
+    IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
+    ILogger<FiscalDocumentsController> logger) : ControllerBase
+{
+    /// <summary>
+    /// One page of the documents the caller reaches, newest first, narrowed in SQL to its scope. Filters: <c>bookingId</c>, <c>propertyId</c> (404 when the
+    /// caller may not read their payments), <c>from</c>/<c>to</c> (Europe/Rome days of the issue), <c>kind</c>, <c>status</c>, <c>source</c>.
+    /// </summary>
+    [HttpGet]
+    [ProducesResponseType(typeof(FiscalDocumentPageDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FiscalDocumentPageDto>> List(
+        [FromQuery] Guid? bookingId = null,
+        [FromQuery] Guid? propertyId = null,
+        [FromQuery(Name = "from")] DateOnly? fromDay = null,
+        [FromQuery(Name = "to")] DateOnly? toDay = null,
+        [FromQuery] FiscalDocumentKind? kind = null,
+        [FromQuery] FiscalDocumentStatus? status = null,
+        [FromQuery] FiscalDocumentSource? source = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = FiscalDocumentPage.DefaultPageSize)
+    {
+        var ct = HttpContext.RequestAborted;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
+        if (orgId is null || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct) is not { } scope)
+            return Unauthorized();
+
+        if (bookingId is { } booking && !await CanOnBookingAsync(booking, PaymentOperations.Read, ct))
+            return NotFound();
+        if (propertyId is { } property
+            && (await hostResources.ForPropertyAsync(property, ct) is not { } resource
+                || !await authorizationService.IsAuthorizedAsync(User, resource, PaymentOperations.Read)))
+        {
+            return NotFound();
+        }
+
+        var result = await documents.ListAsync(scope, new FiscalDocumentCriteria(bookingId, propertyId, fromDay, toDay, kind, status, source), page, pageSize, ct);
+        return Ok(new FiscalDocumentPageDto(result.Items.Select(FiscalDocumentDto.ForList).ToList(), result.TotalCount, result.Page, result.PageSize));
+    }
+
+    /// <summary>
+    /// One document with its lines (the type, the VAT rate and the VAT of each), who collected the money (<c>paymentChannel</c>) and the issuer as the document keeps it (<c>issuer</c>: name, address, country
+    /// and tax ids of the snapshot written at the issue; <c>null</c> for a draft and for a document issued before the snapshot existed). All of it is data the document already holds, for a caller who reaches
+    /// the document: a document of another org is a 404, like a missing one, and the rows of the list carry no issuer.
+    /// </summary>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(FiscalDocumentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FiscalDocumentDto>> Get(Guid id)
+    {
+        var document = await ReachableAsync(id, PaymentOperations.Read);
+        return document is null ? DocumentNotFound() : Ok(FiscalDocumentDto.From(document));
+    }
+
+    /// <summary>
+    /// The draft of a direct booking (or the one it has, made again): 422 <c>document_booking_not_direct</c>, <c>document_invoice_data_missing</c>,
+    /// <c>document_rule_not_configured</c>, <c>issuer_profile_incomplete</c>; 409 <c>document_issuer_conflict</c>, <c>document_already_issued</c>.
+    /// </summary>
+    [HttpPost]
+    [Authorize(Policy = CasazenPolicies.PaymentWrite)]
+    [FeatureGate(FeatureFlags.FiscalDocumentIssuance)]
+    [ProducesResponseType(typeof(FiscalDocumentDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<FiscalDocumentDto>> CreateDraft([FromBody] CreateFiscalDocumentRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        if (!await CanOnBookingAsync(request.BookingId, PaymentOperations.Write, ct))
+            return NotFound();
+
+        var draft = await documents.CreateDraftAsync(request.BookingId, User.FindFirst("sub")?.Value, ct);
+        logger.LogInformation("Fiscal document draft {DocumentId} of booking {BookingId}", draft.Id, request.BookingId);
+        return CreatedAtAction(nameof(Get), new { id = draft.Id }, FiscalDocumentDto.From(draft));
+    }
+
+    /// <summary>The draft made again from the current price and data of its booking. 422 <c>document_not_draft</c>, <c>document_read_only</c>.</summary>
+    [HttpPost("{id:guid}/refresh")]
+    [Authorize(Policy = CasazenPolicies.PaymentWrite)]
+    [FeatureGate(FeatureFlags.FiscalDocumentIssuance)]
+    [ProducesResponseType(typeof(FiscalDocumentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<FiscalDocumentDto>> Refresh(Guid id)
+    {
+        if (await ReachableAsync(id, PaymentOperations.Write) is null)
+            return DocumentNotFound();
+
+        return Ok(FiscalDocumentDto.From(await documents.RefreshDraftAsync(id, HttpContext.RequestAborted)));
+    }
+
+    /// <summary>
+    /// The draft issued, after the host's confirmation (<c>{ confirm: true }</c>, else 422 <c>document_confirmation_required</c>): number, validated XML,
+    /// state <c>to_send</c>. 422 <c>fatturapa_xml_invalid</c>, <c>fatturapa_schema_unavailable</c>, <c>series_too_long</c>; 409 <c>document_draft_outdated</c> when
+    /// the tax rule, the data of the issuer or (for a Swiss document or an Italian receipt) the recipient changed since the draft was made (refresh it first).
+    /// </summary>
+    [HttpPost("{id:guid}/issue")]
+    [Authorize(Policy = CasazenPolicies.PaymentWrite)]
+    [FeatureGate(FeatureFlags.FiscalDocumentIssuance)]
+    [ProducesResponseType(typeof(FiscalDocumentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<FiscalDocumentDto>> Issue(Guid id, [FromBody] IssueFiscalDocumentRequest request)
+    {
+        if (await ReachableAsync(id, PaymentOperations.Write) is null)
+            return DocumentNotFound();
+
+        return Ok(FiscalDocumentDto.From(await documents.IssueAsync(id, request.Confirm, HttpContext.RequestAborted)));
+    }
+
+    /// <summary>
+    /// A credit note of an issued CasaZen document, issued at once in its series: <c>{ amount?, reason, confirm }</c>, the whole document by default.
+    /// 422 <c>credit_amount_exceeds</c>, <c>document_not_creditable</c>, <c>document_read_only</c>, <c>document_confirmation_required</c>, <c>document_owner_invoice</c>
+    /// (an owner invoice is credited by <c>POST api/owner-invoices/{id}/credit-note</c>, with <c>agency.statement.manage</c>: its credit note writes to the owner ledger).
+    /// </summary>
+    [HttpPost("{id:guid}/credit-note")]
+    [Authorize(Policy = CasazenPolicies.PaymentWrite)]
+    [FeatureGate(FeatureFlags.FiscalDocumentIssuance)]
+    [ProducesResponseType(typeof(FiscalDocumentDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<FiscalDocumentDto>> CreditNote(Guid id, [FromBody] CreateCreditNoteRequest request)
+    {
+        if (await ReachableAsync(id, PaymentOperations.Write) is null)
+            return DocumentNotFound();
+
+        var note = await documents.CreateCreditNoteAsync(id, request.Amount, request.Reason, request.Confirm, User.FindFirst("sub")?.Value, HttpContext.RequestAborted);
+        return CreatedAtAction(nameof(Get), new { id = note.Id }, FiscalDocumentDto.From(note));
+    }
+
+    /// <summary>
+    /// The bulk issue (E12/F01/US01/T02): <c>{ documentIds?, from?, to?, propertyIds? }</c>. At most 200 documents, each draft through the issue path of the API in its own
+    /// transaction; the answer has one row per document <c>{ id, issued, number?, errorCode? }</c> and the counts, and never says «all issued» while one failed. A caller restricted
+    /// to some properties issues only the documents of the properties it reaches: any other id is a row <c>fiscal_document_not_found</c>. 422
+    /// <c>document_batch_selection_required</c> for an empty selection (never «all»), <c>document_batch_too_large</c>, <c>document_batch_period_invalid</c>.
+    /// </summary>
+    [HttpPost("issue-batch")]
+    [Authorize(Policy = CasazenPolicies.PaymentWrite)]
+    [FeatureGate(FeatureFlags.FiscalDocumentIssuance)]
+    [ProducesResponseType(typeof(FiscalDocumentBatchResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<FiscalDocumentBatchResultDto>> IssueBatch([FromBody] IssueFiscalDocumentsBatchRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
+        if (orgId is null || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct) is not { } scope)
+            return Unauthorized();
+
+        var result = await documents.IssueBatchAsync(scope, new FiscalDocumentBatchRequest(request.DocumentIds, request.From, request.To, request.PropertyIds), ct);
+        return Ok(FiscalDocumentBatchResultDto.From(result));
+    }
+
+    /// <summary>
+    /// The documents of a booking (E12/F01/US01/T02): number, kind, status, total, currency and the current payment state of each, newest first; a discarded draft is not one. The
+    /// booking card reads it. The booking is authorized like its payments: 404 for a booking the caller may not read.
+    /// </summary>
+    [HttpGet("~/api/bookings/{bookingId:guid}/fiscal-documents")]
+    [ProducesResponseType(typeof(IReadOnlyList<BookingFiscalDocumentDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<BookingFiscalDocumentDto>>> ForBooking(Guid bookingId)
+    {
+        var ct = HttpContext.RequestAborted;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
+        if (orgId is null || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct) is not { } scope)
+            return Unauthorized();
+
+        if (!await CanOnBookingAsync(bookingId, PaymentOperations.Read, ct))
+            return NotFound();
+
+        var page = await documents.ListAsync(scope, new FiscalDocumentCriteria(BookingId: bookingId), 1, FiscalDocumentPage.MaxPageSize, ct);
+        return Ok(page.Items.Where(d => d.Status != FiscalDocumentStatus.Discarded).Select(BookingFiscalDocumentDto.From).ToList());
+    }
+
+    /// <summary>
+    /// The draft discarded (no number consumed). 422 <c>document_not_draft</c>, <c>document_read_only</c>, <c>document_owner_invoice</c> (the draft of an owner invoice
+    /// is discarded by <c>DELETE api/owner-invoices/{id}</c>, with <c>agency.statement.manage</c>), <c>document_replacement_holds_number</c> (the replacement of an invoice the SDI
+    /// rejected holds its number: it is issued, never discarded).
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    [Authorize(Policy = CasazenPolicies.PaymentWrite)]
+    [FeatureGate(FeatureFlags.FiscalDocumentIssuance)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> Discard(Guid id)
+    {
+        if (await ReachableAsync(id, PaymentOperations.Write) is null)
+            return DocumentNotFound();
+
+        await documents.DiscardDraftAsync(id, HttpContext.RequestAborted);
+        return NoContent();
+    }
+
+    /// <summary>The FatturaPA XML of an issued CasaZen invoice or credit note. 404 <c>fiscal_document_xml_unavailable</c> for any other document.</summary>
+    [HttpGet("{id:guid}/xml")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> Xml(Guid id)
+    {
+        var document = await ReachableAsync(id, PaymentOperations.Read);
+        if (document is null)
+            return DocumentNotFound();
+
+        var xml = await documents.GetXmlAsync(id, HttpContext.RequestAborted);
+        return File(System.Text.Encoding.UTF8.GetBytes(xml), "application/xml", $"{FileNameOf(document)}.xml");
+    }
+
+    /// <summary>The PDF of a CasaZen document in the language of the request (the courtesy copy of an electronic invoice).</summary>
+    [HttpGet("{id:guid}/pdf")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> Pdf(Guid id)
+    {
+        var document = await ReachableAsync(id, PaymentOperations.Read);
+        if (document is null)
+            return DocumentNotFound();
+
+        var pdf = await documents.GetPdfAsync(id, DocumentLanguages.Current, HttpContext.RequestAborted);
+        return File(pdf, "application/pdf", $"{FileNameOf(document)}.pdf");
+    }
+
+    /// <summary>
+    /// The issued document sent to the guest of its booking by e-mail (E12/F01/US02/T01): a signed link that opens for 30 days, in an e-mail queued on Hangfire; <c>{ queued, linkExpiresAt }</c>, never
+    /// that the e-mail was delivered. The address is the one of the guest of the booking, a relay address of a portal included. 422 <c>document_not_issued</c>, <c>document_owner_invoice</c>, <c>document_self_billing</c> (a self-billed invoice, TD17, has no guest),
+    /// <c>document_read_only</c>, <c>document_recipient_email_invalid</c> (no address, an erased guest, a placeholder, a reserved domain such as <c>example.com</c> or <c>.test</c>, a guest of the demo), <c>document_email_not_sent</c>
+    /// (nothing was queued). The e-mail is sent again at every call.
+    /// The same e-mail goes by itself at the issue when the issuer has «e-mail to the guest» on.
+    /// </summary>
+    [HttpPost("{id:guid}/send-email")]
+    [Authorize(Policy = CasazenPolicies.PaymentWrite)]
+    [FeatureGate(FeatureFlags.FiscalDocumentIssuance)]
+    [ProducesResponseType(typeof(FiscalDocumentEmailQueuedDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<FiscalDocumentEmailQueuedDto>> SendEmail(Guid id, [FromServices] IFiscalDocumentDeliveryService delivery)
+    {
+        if (await ReachableAsync(id, PaymentOperations.Write) is null)
+            return DocumentNotFound();
+
+        var sent = await delivery.SendToGuestAsync(id, HttpContext.RequestAborted);
+        logger.LogInformation("Fiscal document {DocumentId} queued by e-mail to the guest at the request of the host", id);
+        return Ok(FiscalDocumentEmailQueuedDto.From(sent));
+    }
+
+    /// <summary>The document when the caller reaches it: through its booking, or the whole org for a document without a booking.</summary>
+    private async Task<FiscalDocument?> ReachableAsync(Guid id, HostOperationRequirement operation)
+    {
+        var ct = HttpContext.RequestAborted;
+        var document = await documents.GetAsync(id, ct);
+        if (document is null)
+            return null;
+
+        if (document.BookingId is { } bookingId)
+            return await CanOnBookingAsync(bookingId, operation, ct) ? document : null;
+
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
+        return orgId is not null
+               && document.OrgId == orgId.Value
+               && await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct) is { IsOrgWide: true }
+            ? document
+            : null;
+    }
+
+    private async Task<bool> CanOnBookingAsync(Guid bookingId, HostOperationRequirement operation, CancellationToken ct)
+    {
+        var booking = await hostResources.ForBookingAsync(bookingId, ct);
+        return booking is not null && await authorizationService.IsAuthorizedAsync(User, booking, operation);
+    }
+
+    private ActionResult DocumentNotFound() =>
+        this.ApiProblem(StatusCodes.Status404NotFound, FiscalDocumentErrors.NotFound, "FiscalDocumentNotFound");
+
+    private static string FileNameOf(FiscalDocument document) =>
+        "documento-" + (document.Number is { Length: > 0 } number ? number.Replace('/', '-') : document.Id.ToString("N"));
+}

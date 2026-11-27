@@ -7,6 +7,8 @@ using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -30,7 +32,19 @@ public class OwnerInvitationRateLimitTests
     private IOwnerInvitationService NewService(AppDbContext db)
     {
         var emailQueue = new FakeEmailQueue();
-        return new OwnerInvitationService(db, emailQueue, NullLogger<OwnerInvitationService>.Instance);
+        var clock = TimeProvider.System;
+
+        // The link of the e-mail comes from the one public address of the product, which the test sets.
+        var links = new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://app.example.test" }));
+        return new OwnerInvitationService(
+            db,
+            emailQueue,
+            NullLogger<OwnerInvitationService>.Instance,
+            links,
+            new ActivityLog(db, clock),
+            Mock.Of<IOwnerOnboardingService>(),
+            Mock.Of<IAuth0ManagementService>(),
+            clock);
     }
 
     private async Task<(Guid OrgId, Guid PropertyOwnerId)> SeedOrgAndOwnerAsync(string? databaseName = null)

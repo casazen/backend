@@ -56,7 +56,7 @@ public class OnboardingIntegrationTests : IClassFixture<CasazenWebApplicationFac
     }
 
     [Fact]
-    public async Task PostOnboarding_Both_ReturnsBothRoles()
+    public async Task PostOnboarding_Both_ReturnsBothHostRoles()
     {
         await AssertOnboardingSuccess("Both", ["PropertyOwner", "LongTermLandlord"]);
     }

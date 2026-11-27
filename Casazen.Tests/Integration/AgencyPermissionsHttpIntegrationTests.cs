@@ -66,6 +66,32 @@ public class AgencyPermissionsHttpIntegrationTests(CasazenWebApplicationFactory 
         Assert.Equal(statements, (await client.GetAsync("/api/statements")).StatusCode);
     }
 
+    /// <summary>
+    /// NF-16 (E06/F01/US01/T02), the cases the tests above left out: the accountant is refused the creation of a wire batch too, and neither the
+    /// collaborator nor the accountant reaches the F24 data, while the owner of the agency does. The permission of the role is checked, not only the
+    /// plan of the org.
+    /// </summary>
+    [Theory]
+    [InlineData(OrgRole.Collaborator)]
+    [InlineData(OrgRole.Accountant)]
+    public async Task Agency_CollaboratorAndAccountant_Get403OnWireBatchesAndFullIban_Test(OrgRole role)
+    {
+        var agency = await SeedAgencyAsync();
+        var member = await OrgTeamHttp.AddMemberAsync(factory, agency.OrgId, role, ["short-rent"]);
+        using var client = factory.CreateAuthenticatedClient(member);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/api/owners/{agency.PropertyOwnerId}/iban")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/api/wire-transfers/batch/{agency.BatchId}/file")).StatusCode);
+        var createBatch = await client.PostAsJsonAsync(
+            "/api/wire-transfers/batch", new { statementIds = new[] { Guid.NewGuid() }, debitAccount = Iban });
+        Assert.Equal(HttpStatusCode.Forbidden, createBatch.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/withholding/f24/pdf?month=10&year=2026")).StatusCode);
+
+        using var asOwner = factory.CreateAuthenticatedClient(agency.OwnerId, roles: "PropertyOwner");
+        Assert.Equal(HttpStatusCode.OK, (await asOwner.GetAsync($"/api/owners/{agency.PropertyOwnerId}/iban")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await asOwner.GetAsync("/api/withholding/f24/pdf?month=10&year=2026")).StatusCode);
+    }
+
     /// <summary>An org on the agency plan with its owner (member row and memberships), one property owner with an IBAN and one wire batch.</summary>
     private async Task<Agency> SeedAgencyAsync()
     {

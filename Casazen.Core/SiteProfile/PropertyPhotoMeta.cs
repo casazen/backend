@@ -6,20 +6,21 @@ namespace Casazen.Core.SiteProfile;
 
 /// <summary>
 /// What is known of one photo of the gallery besides its address (DB-11a): the text read instead of the picture (alternative text, Italian
-/// always, English if the host wrote it) and its size in pixels as the browser draws it, so the page reserves the room before the photo
-/// arrives.
+/// always, English if the host wrote it), its size in pixels as the browser draws it, so the page reserves the room before the photo
+/// arrives, and the room of the unit it shows (NF-32, NF-34).
 /// </summary>
-/// <param name="Alt">The alternative text; <c>null</c> = the host wrote none.</param>
+/// <param name="Alt">The alternative text; <c>null</c> = the host wrote none. It is also the caption of the photo: there is no other.</param>
 /// <param name="Width">Width in pixels, read from the file when it was uploaded; <c>null</c> = not known (a photo uploaded before this existed).</param>
 /// <param name="Height">Height in pixels, as above.</param>
-public sealed record PhotoMeta(LocalizedText? Alt = null, int? Width = null, int? Height = null)
+/// <param name="RoomId">The room (<c>PropertyRoom.Id</c>) the photo shows; <c>null</c> = none. It goes when the room is removed.</param>
+public sealed record PhotoMeta(LocalizedText? Alt = null, int? Width = null, int? Height = null, Guid? RoomId = null)
 {
-    public bool IsEmpty => Alt is null && Width is null && Height is null;
+    public bool IsEmpty => Alt is null && Width is null && Height is null && RoomId is null;
 }
 
 /// <summary>
 /// Reads and writes <c>Properties.PhotoAltJson</c>: a JSON object from the address of a photo to its <see cref="PhotoMeta"/>
-/// (<c>{ "https://…/a.jpg": { "it": "…", "en": "…", "w": 1600, "h": 1067 } }</c>). The map follows the gallery (<c>PhotoUrls</c>): a photo that
+/// (<c>{ "https://…/a.jpg": { "it": "…", "en": "…", "w": 1600, "h": 1067, "room": "…" } }</c>). The map follows the gallery (<c>PhotoUrls</c>): a photo that
 /// leaves it leaves the map, and a photo never listed simply has no entry. Reading is forgiving: a column that cannot be read is an empty map.
 /// </summary>
 public static class PropertyPhotoMeta
@@ -48,7 +49,7 @@ public static class PropertyPhotoMeta
                 var alt = string.IsNullOrWhiteSpace(entry.It)
                     ? null
                     : new LocalizedText(entry.It, string.IsNullOrWhiteSpace(entry.En) ? null : entry.En);
-                var meta = new PhotoMeta(alt, Positive(entry.W), Positive(entry.H));
+                var meta = new PhotoMeta(alt, Positive(entry.W), Positive(entry.H), entry.Room is { } room && room != Guid.Empty ? room : null);
                 if (!meta.IsEmpty)
                     map[url] = meta;
             }
@@ -70,7 +71,7 @@ public static class PropertyPhotoMeta
         foreach (var (url, meta) in map)
         {
             if (!meta.IsEmpty)
-                stored[url] = new Entry { It = meta.Alt?.It, En = meta.Alt?.En, W = meta.Width, H = meta.Height };
+                stored[url] = new Entry { It = meta.Alt?.It, En = meta.Alt?.En, W = meta.Width, H = meta.Height, Room = meta.RoomId };
         }
 
         return stored.Count == 0 ? null : JsonSerializer.Serialize(stored, Options);
@@ -78,9 +79,10 @@ public static class PropertyPhotoMeta
 
     /// <summary>
     /// The photos of the gallery, in its order, each with what is known of it: the form the public page and the host editor read. A photo
-    /// with no entry has no alternative text and no size.
+    /// with no entry has no alternative text and no size. The room of a photo is the host's own business: it is given only when
+    /// <paramref name="withRoom"/> is true (the host editor), never to a public page.
     /// </summary>
-    public static IReadOnlyList<PublicPropertyPhotoDto> Of(IEnumerable<string> galleryUrls, string? json)
+    public static IReadOnlyList<PublicPropertyPhotoDto> Of(IEnumerable<string> galleryUrls, string? json, bool withRoom = false)
     {
         ArgumentNullException.ThrowIfNull(galleryUrls);
 
@@ -88,7 +90,7 @@ public static class PropertyPhotoMeta
         return
         [
             .. galleryUrls.Select(url => map.TryGetValue(url, out var meta)
-                ? new PublicPropertyPhotoDto(url, meta.Alt, meta.Width, meta.Height)
+                ? new PublicPropertyPhotoDto(url, meta.Alt, meta.Width, meta.Height, withRoom ? meta.RoomId : null)
                 : new PublicPropertyPhotoDto(url, null, null, null)),
         ];
     }
@@ -113,6 +115,24 @@ public static class PropertyPhotoMeta
         return Serialize(map);
     }
 
+    /// <summary>
+    /// The stored map with the photos of the rooms in <paramref name="roomIds"/> no longer assigned to a room (NF-32, NF-34): the room went, the
+    /// assignment goes with it. Their texts and sizes stay; a photo that had nothing else leaves the map.
+    /// </summary>
+    public static string? WithoutRooms(string? json, IReadOnlyCollection<Guid> roomIds)
+    {
+        ArgumentNullException.ThrowIfNull(roomIds);
+
+        var map = new Dictionary<string, PhotoMeta>(Parse(json), StringComparer.Ordinal);
+        foreach (var (url, meta) in map.ToList())
+        {
+            if (meta.RoomId is { } room && roomIds.Contains(room))
+                map[url] = meta with { RoomId = null };
+        }
+
+        return Serialize(map);
+    }
+
     private static int? Positive(int? value) => value is > 0 ? value : null;
 
     private sealed class Entry
@@ -124,5 +144,7 @@ public static class PropertyPhotoMeta
         public int? W { get; set; }
 
         public int? H { get; set; }
+
+        public Guid? Room { get; set; }
     }
 }

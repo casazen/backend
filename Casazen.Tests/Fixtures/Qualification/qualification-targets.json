@@ -1,0 +1,12 @@
+{
+  "source": "analisi-identificazione-self-hosted.md, section 'Criteri di rilascio proposti': PROPOSED defaults, for the product owner to confirm or replace before the final test (NF-199).",
+  "fmrMax": 0.0001,
+  "confidence": 0.95,
+  "apcerUpperMax": 0.01,
+  "minAttacksPerClass": 300,
+  "automationTarget": 425,
+  "automationOf": 500,
+  "automationWilsonLowMin": 0.80,
+  "identifyingFieldExactnessMin": 0.98,
+  "criticalFalseApprovalsMax": 0
+}

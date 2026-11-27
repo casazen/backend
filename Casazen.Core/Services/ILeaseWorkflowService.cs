@@ -59,4 +59,5 @@ public record CreatePartyRequest(
     string LastName,
     string FiscalCode,
     string Citizenship,
-    string ContactEmail);
+    string ContactEmail,
+    string? ContactPhone = null);

@@ -20,6 +20,10 @@ namespace Casazen.Infrastructure.Services;
 /// never takes a verified site down; a domain Vercel refuses or that belongs to another project is <c>Failed</c>. A verified
 /// domain whose host-side records go missing is demoted after <see cref="PublicHostOptions.FailuresBeforeDemotion"/>
 /// consecutive checks (A3-25: it used to stay verified forever).</para>
+/// <para>A domain that <b>becomes</b> verified (E40/F01/US02/T01) is handed to <see cref="OwnerLoginHostSync"/> after the save: the administrators of the org
+/// are told (<c>WhiteLabelHost</c>) and, with <c>Auth0HostSync</c> on too, the domain is registered in Auth0 for the owner sign-in. A check that finds it
+/// verified again does neither, and a demotion keeps the Auth0 entries (the removal of the domain takes them away). Without <paramref name="ownerLogin"/>
+/// (a test) nothing of it happens.</para>
 /// </remarks>
 public sealed class DomainVerificationService(
     AppDbContext dbContext,
@@ -29,7 +33,8 @@ public sealed class DomainVerificationService(
     IPublicHostResolver hostResolver,
     IOptions<PublicHostOptions> options,
     TimeProvider timeProvider,
-    ILogger<DomainVerificationService> logger) : IDomainVerificationService
+    ILogger<DomainVerificationService> logger,
+    OwnerLoginHostSync? ownerLogin = null) : IDomainVerificationService
 {
     private enum Outcome
     {
@@ -79,6 +84,14 @@ public sealed class DomainVerificationService(
 
         logger.LogInformation(
             "Domain check of org {OrgId}: {Status} ({Detail})", org.Id, org.DomainVerificationStatus, org.DomainStatusDetail ?? "ok");
+
+        // E40/F01/US02/T01: once per verification, the notice to the administrators and the Auth0 registration of the owner sign-in.
+        if (ownerLogin is not null
+            && statusBefore != DomainVerificationStatus.Verified
+            && org.DomainVerificationStatus == DomainVerificationStatus.Verified)
+        {
+            await ownerLogin.DomainVerifiedAsync(org, cancellationToken);
+        }
 
         return new DomainVerificationResult(
             org.DomainVerificationStatus,

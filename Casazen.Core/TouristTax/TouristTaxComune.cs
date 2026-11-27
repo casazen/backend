@@ -23,10 +23,18 @@ public sealed record TouristTaxComune(string? IstatCode, string? Name)
 
         // The rates are those of the Italian comuni. A house in another country (CHF-MONEY: Switzerland, whose Kurtaxe is not modelled) is
         // never matched to one by a name that happens to be the same: its amount would be euros added to a total in another currency.
-        return string.IsNullOrWhiteSpace(property.Country) || string.Equals(property.Country, "IT", StringComparison.OrdinalIgnoreCase)
+        return IsItalianCountry(property.Country)
             ? new TouristTaxComune(property.ComuneIstatCode, property.City)
             : new TouristTaxComune(null, null);
     }
+
+    /// <summary>
+    /// True when a property with this country code is in Italy: no country at all (an old row) or <c>IT</c>, in any case. The one rule of the
+    /// properties whose tourist tax is looked up (<see cref="ForProperty"/>), added up per comune and paid (<c>ITouristTaxSummaryService</c>): a
+    /// house in another country is never taken for an Italian comune of the same name.
+    /// </summary>
+    public static bool IsItalianCountry(string? country) =>
+        string.IsNullOrWhiteSpace(country) || string.Equals(country, "IT", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>True when there is nothing to look up (no code and an empty name).</summary>
     public bool IsEmpty => string.IsNullOrWhiteSpace(IstatCode) && NormalizeName(Name).Length == 0;

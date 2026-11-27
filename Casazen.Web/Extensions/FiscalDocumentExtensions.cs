@@ -1,0 +1,215 @@
+using Casazen.Core.Documents;
+using Casazen.Core.Events;
+using Casazen.Core.Options;
+using Casazen.Core.Services;
+using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.External.Sdi;
+using Casazen.Infrastructure.Octorate;
+using Casazen.Infrastructure.Services;
+using Casazen.Web.BackgroundJobs;
+using Casazen.Web.Resources;
+using Microsoft.Extensions.Options;
+
+namespace Casazen.Web.Extensions;
+
+/// <summary>
+/// The one place where the fiscal documents of epic E06 are registered (NF-81, NF-82): the invoice data of a booking, the issuer of the
+/// documents and what follows from them. Every backend task of the epic adds what it registers here, none in
+/// <c>ServiceCollectionExtensions</c>, which most tasks of the plan share; <c>Program.cs</c> calls it once, next to the e-mail.
+/// </summary>
+public static class FiscalDocumentExtensions
+{
+    public static IServiceCollection AddCasazenFiscalDocuments(this IServiceCollection services, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        // Who an invoice of a booking is made out to, with the precedence of its sources (E06/F02/US01/T02).
+        services.AddScoped<IInvoiceDataService, InvoiceDataService>();
+
+        // The switches of the section FiscalDocuments (the answer to D34, the import of the Octorate documents).
+        services.AddOptions<FiscalDocumentRulesOptions>().Bind(configuration.GetSection(FiscalDocumentRulesOptions.SectionName));
+
+        // The effective-dated catalog of the tax rules, FiscalDocuments:TaxRules (E11/F01/US01/T02), validated at startup: overlapping ranges, a line type
+        // without a rate or an Italian 0% without a nature code stop the application with a clear message. An empty catalog is valid (nothing is issued).
+        services.AddOptions<FiscalTaxRulesOptions>().Bind(configuration.GetSection(FiscalTaxRulesOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<FiscalTaxRulesOptions>, FiscalTaxRulesOptionsValidator>();
+        services.AddSingleton<IFiscalTaxRuleResolver, FiscalTaxRuleResolver>();
+
+        // Who issues the documents of an organization and of each booking (E06/F02/US02/T02).
+        services.AddScoped<IDocumentIssuerService, DocumentIssuerService>();
+
+        // The whole setup of the invoicing in one place, the wizard «Fatturazione» of the onboarding guide (E11/F01/US01/T04): the sections and their missing items,
+        // and the save of one section. The missing items come from the contributors, one for each piece of the setup, in the order of the wizard; the epics that own
+        // another piece (the owner ledger: channels and mandates; the Italian owner issuers and the SDI: italy) register their own next to these, never in the service.
+        services.AddScoped<IBillingSetupService, BillingSetupService>();
+        services.AddScoped<IBillingSetupContributor, IssuerSectionContributor>();
+        services.AddScoped<IBillingSetupContributor, VatSectionContributor>();
+        services.AddScoped<IBillingSetupContributor, NumberingSectionContributor>();
+        services.AddScoped<IBillingSetupContributor, TouristTaxSectionContributor>();
+        services.AddScoped<IBillingSetupContributor, AutomationSectionContributor>();
+        services.AddScoped<IBillingSetupContributor, ItalySectionContributor>();
+
+        // The two pieces of the setup the owner ledger owns, for the agencies only (E13/F01/US02/T03): the commission rules of the channels saved once, and an
+        // active mandate for every owner. Registered like the others, never in the service.
+        services.AddScoped<IBillingSetupContributor, ChannelCommissionsSectionContributor>();
+        services.AddScoped<IBillingSetupContributor, OwnerMandatesSectionContributor>();
+
+        // The owner issuers of the section «Italia» (E17/F01/US01/T01): the owners of Italian properties still without an issuer profile that can issue.
+        services.AddScoped<IBillingSetupContributor, OwnerIssuerSetupContributor>();
+
+        // The billing data and Octorate (E06/F02/US01/T04), both behind Features:OctorateConnector and Features:OctorateBillingSync: the invoice data of a
+        // booking imported from Octorate is pre-filled from its customer record (BookingCreated), and the data saved in CasaZen is written to Octorate where
+        // Octorate is the issuer (InvoiceDataSaved). Run by the outbox dispatcher, so neither can fail an import or a host's save.
+        services.AddScoped<IEventHandler<DomainEvent>, InvoiceDataFromOctorateHandler>();
+        services.AddScoped<IEventHandler<DomainEvent>, OctorateBillingWriteBackHandler>();
+
+        // The draft of the document of a stay at its check-out (E12/F01/US01/T02), the consumer of CheckOutCompleted, run by the outbox dispatcher so it can never fail the
+        // check-out; behind Features:FiscalDocumentIssuance (the daily run fiscal-documents-due makes the drafts the event did not).
+        services.AddScoped<IEventHandler<DomainEvent>, FiscalDocumentCheckOutHandler>();
+
+        // The correction of the documents of a stay when its booking changes (E12/F01/US01/T03): the consumer of BookingModified, BookingCancelled, BookingNoShowMarked and PaymentRefunded
+        // (a credit note, or the reversal receipt of a receipt, and the new draft), also behind Features:FiscalDocumentIssuance; idempotent per event.
+        services.AddScoped<IEventHandler<DomainEvent>, FiscalDocumentBookingChangeHandler>();
+
+        // The document sent to the guest (E12/F01/US02/T01): the signed link (Data Protection, purpose Casazen.FiscalDocument.Link, 30 days, nothing but the document id), the e-mail queued on Hangfire
+        // and the two public reads that the link opens; the consumer of FiscalDocumentIssued and FiscalDocumentCreditNoteIssued sends it by itself when the profile has «e-mail to the guest» on (also
+        // behind Features:FiscalDocumentIssuance). The e-mail needs the public address of the web app (App:PublicSiteBaseUrl) and the e-mail provider; without them nothing is sent and the send says so.
+        services.AddSingleton<FiscalDocumentLinkTokens>();
+        services.AddScoped<IFiscalDocumentDeliveryService, FiscalDocumentDeliveryService>();
+        services.AddScoped<IEventHandler<DomainEvent>, FiscalDocumentEmailHandler>();
+
+        // The labels of the generated documents, read from SharedResources in the language the caller names (E06/F01/US01/T02).
+        services.AddSingleton<IDocumentTexts, ResxDocumentTexts>();
+
+        // The PDF and CSV of an owner statement and the PDF of the F24 data, built from what is stored (E06/F01/US01/T02, NF-25).
+        services.AddScoped<IStatementExportService, StatementExportService>();
+
+        // What Stripe kept and credited for a settled card payment, read by the job payment-provider-fees (E06/F04/US01/T02, NF-85).
+        services.AddScoped<IPaymentProviderFeeService, PaymentProviderFeeService>();
+
+        // The gap-free numbers of the fiscal documents, per org and series, in the transaction that saves the document (E06/F01/US02/T02, NF-83).
+        services.AddScoped<IFiscalNumberingService, FiscalNumberingService>();
+
+        // The FatturaPA XML of a guest document, validated against the official schema embedded in the build (E06/F01/US02/T03, NF-83, NF-87):
+        // the schema set is loaded once; without the files nothing is produced (fatturapa_schema_unavailable).
+        services.AddSingleton<FatturaPaSchemaProvider>();
+        services.AddSingleton<IFatturaPaXmlBuilder, FatturaPaXmlBuilder>();
+
+        // The import of the documents Octorate issued, read-only, behind Features:OctorateConnector and Features:OctorateDocumentImport
+        // (E06/F03/US02/T01, NF-84); run by the job octorate-document-import.
+        services.AddScoped<IOctorateDocumentImportService, OctorateDocumentImportService>();
+
+        // The tourist tax of the Swiss cantons and who collects it by default (E12/F01/US01/T01, ⚖ C4, C5), SwissTouristTax, validated at startup: a malformed canton, a
+        // rate that is not positive, a rule without its source, overlapping ranges or a channel that is not a portal stop the application with a clear message. Empty is
+        // valid: a Swiss booking then gets no tourist tax line of its own.
+        services.AddOptions<SwissTouristTaxOptions>().Bind(configuration.GetSection(SwissTouristTaxOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<SwissTouristTaxOptions>, SwissTouristTaxOptionsValidator>();
+
+        // Who collects the tourist tax of an Italian portal booking by default (FIX/BE-IT-TOURISTTAX-DEFAULTS, decision 2 of 2026-11-20), ItalianTouristTax: no portal by default, kept apart from the
+        // Swiss list so that an Italian organization never inherits it; a channel that is not a portal stops the application with a clear message. Empty is valid.
+        services.AddOptions<ItalianTouristTaxOptions>().Bind(configuration.GetSection(ItalianTouristTaxOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ItalianTouristTaxOptions>, ItalianTouristTaxOptionsValidator>();
+
+        // The lines of the document of a booking, whatever its source: the amounts of a portal, the tourist tax only when the host collects it, who collected the money
+        // (E12/F01/US01/T01).
+        services.AddScoped<IGuestDocumentLineBuilder, GuestDocumentLineBuilder>();
+
+        // The proposals and the data-quality hint the billing setup gives an Italian organization about the tourist tax of the portals (FIX/BE-IT-TOURISTTAX-DEFAULTS): read only.
+        services.AddScoped<IItalianTouristTaxSetup, ItalianTouristTaxSetupService>();
+
+        // The documents a booking needs and who issues each: the owner of an Italian property its stay, the agency its services (E17/F01/US01/T02).
+        services.AddScoped<IDocumentPlanService, DocumentPlanService>();
+
+        // The fiscal documents CasaZen issues for its direct bookings and the reading of every document (E06/F01/US01/T01, NF-83); the changes are
+        // behind Features:FiscalDocumentIssuance.
+        services.AddScoped<IFiscalDocumentService, FiscalDocumentService>();
+
+        // The payment ledger of a booking and of a period: card, manual and channel payments with the document of the booking (E06/F04/US01/T03, NF-85).
+        services.AddScoped<IBookingPaymentLedgerService, BookingPaymentLedgerService>();
+
+        // The owner accounting of the agencies (E06/F05/US02): the approved rule sets and the effective-dated fiscal profiles of the owners (T01).
+        services.AddScoped<IOwnerFiscalProfileService, OwnerFiscalProfileService>();
+
+        // The owner ledger, the statement versions and the month-end close (E06/F05/US02/T02, NF-110).
+        services.AddScoped<IOwnerAccountingService, OwnerAccountingService>();
+
+        // The month-end in bulk and the reconciliation of the month (E13/F01/US03): a step of the month-end for more owners than a request answers for is the Hangfire job
+        // OwnerBulkCloseJob, queued and read through IOwnerBulkJobs (its progress is a parameter of the job: no table); the reconciliation is read only.
+        services.AddScoped<IOwnerBulkJobs, HangfireOwnerBulkJobs>();
+        services.AddScoped<OwnerBulkCloseJob>();
+        services.AddScoped<IOwnerReconciliationService, OwnerReconciliationService>();
+
+        // The files of a statement version: its PDF and CSV from the lines of the version, the PDF stored at the publication as an owner document, and the e-mail that tells
+        // the owner (E13/F01/US02/T01, E13/F01/US02/T02). The accounting service takes it to publish; it takes nothing of the accounting service.
+        services.AddScoped<IOwnerStatementDocuments, OwnerStatementDocuments>();
+
+        // The payouts to the owners with their withholding evidence, the annual tax data and the filing states (E06/F05/US02/T03), and the facts of a payout read
+        // from the owner ledger, never typed (E18/F01/US01/T01).
+        services.AddScoped<IOwnerPayoutService, OwnerPayoutService>();
+        services.AddScoped<OwnerPayoutFacts>();
+
+        // The prudent defaults of the owner ledger (E13/F01/US01/T01, ⚖ R2: the channel commissions when a reservation brings none), from the section
+        // OwnerAccounting. Not validated at startup: a value that is not a portal or a percent is ignored and the stays of that channel are held back by
+        // the readiness (channel_commission_missing), never posted with a guessed commission.
+        services.AddOptions<OwnerAccountingOptions>().Bind(configuration.GetSection(OwnerAccountingOptions.SectionName));
+
+        // The versioned mandates of the owners, the standard mandate, the billing address of an owner and the channel commission rules (E13/F01/US01/T01).
+        services.AddScoped<IOwnerMandateService, OwnerMandateService>();
+        services.AddScoped<Casazen.Web.Infrastructure.OwnerMandateDocuments>();
+
+        // The list of the owners of an agency with the number of their properties, the kind and the currency of their fiscal profile and the mandate in force, in one query (FIX/RES-OWNERS).
+        services.AddScoped<IOwnerDirectoryService, OwnerDirectoryService>();
+
+        // Who holds the account of a listing on a portal (⚖ I10, I11): the reader of the other epics and the settings of the section «channels» of the billing setup
+        // with the holders of the listings; and the invoices of the property manager to the owners made from the statement versions, behind
+        // Features:OwnerInvoicing (E14/F01/US01/T01).
+        services.AddScoped<IPortalAccountHolderResolver, PortalAccountHolderResolver>();
+        services.AddScoped<IPortalAccountSettingsService, PortalAccountSettingsService>();
+        services.AddScoped<IOwnerInvoiceService, OwnerInvoiceService>();
+
+        // The issuer profiles of the owners who issue the documents of their Italian stays, with their own series and numbering (E17/F01/US01/T01).
+        services.AddScoped<IOwnerIssuerProfileService, OwnerIssuerProfileService>();
+
+        // The channel to the SDI (E17/F01/US02, NF-116): the port ISdiEInvoiceProvider is the adapter of the provider (a typed HTTP client, Sdi:Provider) when Sdi__Provider__Name is an adapter that
+        // exists and its key is set, and the unconfigured one otherwise: nothing is then ever submitted, a document stays «to send» and its issuer declares it sent by hand. The secret of the address
+        // of the provider's webhook is checked in constant time by the verifier. The submission is behind Features:SdiSubmission (and the issuance), the endpoints, the webhook and the job alike.
+        services.AddOptions<SdiProviderOptions>().Bind(configuration.GetSection(SdiProviderOptions.SectionName));
+        services.AddHttpClient<RestSdiEInvoiceProvider>((sp, client) =>
+        {
+            var settings = sp.GetRequiredService<IOptions<SdiProviderOptions>>().Value;
+            if (settings.ApiAddress is { } address)
+                client.BaseAddress = address;
+
+            client.Timeout = TimeSpan.FromSeconds(Math.Clamp(settings.TimeoutSeconds, 5, 120));
+        });
+        services.AddSingleton<SdiWebhookVerifier>();
+        services.AddScoped<ISdiEInvoiceProvider>(sp => sp.GetRequiredService<IOptions<SdiProviderOptions>>().Value.IsConfigured
+            ? sp.GetRequiredService<RestSdiEInvoiceProvider>()
+            : new UnconfiguredSdiEInvoiceProvider());
+
+        // The SDI states of the electronic invoices (submission, outcomes, declaration by hand) and the correction of a rejected one (E17/F01/US02/T01, T03); the consumer of the rejection raises
+        // the «To do» «Correggi la fattura» and closes it when the invoice is corrected or credited; the item of the billing setup says which issuers wait for their VAT number to be enabled.
+        services.AddScoped<IFiscalDocumentSdiService, FiscalDocumentSdiService>();
+        services.AddScoped<IFiscalDocumentCorrectionService, FiscalDocumentCorrectionService>();
+        services.AddScoped<IEventHandler<DomainEvent>, FiscalDocumentRejectionHandler>();
+        services.AddScoped<IBillingSetupContributor, SdiIssuerRegistrationContributor>();
+
+        // The documents issued in the name of the owners for the owner portal and for the accountant of the owner: the list, their PDF and XML and the ZIP of the month or the year
+        // (E17/F02/US01/T01). The owner portal service takes it; it takes nothing of the portal.
+        services.AddScoped<IOwnerIssuedDocumentsExport, OwnerIssuedDocumentsExport>();
+
+        // The self-billed invoices (TD17) of the commissions of the foreign portals (E17/F01/US03/T01), behind Features:FiscalDocumentIssuance, with the section SelfBilling (the legal
+        // entities of the portals, the VAT integrated, the deadline: ⚖ defaults to be confirmed by an accountant). Not validated at startup: a portal entry that is not usable is
+        // ignored and its commissions are listed as «portal not configured», an invalid VAT rate makes the generation refuse (422 self_billing_not_configured).
+        services.AddOptions<SelfBillingOptions>().Bind(configuration.GetSection(SelfBillingOptions.SectionName));
+        services.AddScoped<ISelfBillingService, SelfBillingService>();
+
+        // The checks of the limit of units of an owner and of the company tenant in the property of a private owner (E18/F01/US03/T01, NF-117, ⚖ I7 and I8): the withholding
+        // facts read them, the readiness of the owners and the statement versions carry their warnings, and the consumer of InvoiceDataSaved and BookingConfirmed raises the «Da fare» of a company
+        // tenant. The warnings and the «Da fare» are behind Features:TaxReportingExports; run by the outbox dispatcher, the consumer can never fail the save of the invoice data.
+        services.AddScoped<IOwnerTaxChecks, OwnerTaxChecks>();
+        services.AddScoped<IEventHandler<DomainEvent>, CompanyTenantDecisionHandler>();
+
+        return services;
+    }
+}

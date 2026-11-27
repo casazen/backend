@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
@@ -27,7 +28,9 @@ public class BookingsController(
     PropertyICalSyncService propertyICalSyncService,
     IOtaStayService otaStays,
     ILogger<BookingsController> logger,
-    IOptions<BookingsOptions> bookingsOptions) : ControllerBase
+    IOptions<BookingsOptions> bookingsOptions,
+    IBookingOctorateSyncReader octorateSync,
+    OtaChannelActionPolicy channelPolicy) : ControllerBase
 {
     /// <summary>Code of a <c>status</c> query value of the search that is not the name of a booking status (SR-03).</summary>
     public const string InvalidStatusCode = "booking_list_invalid_status";
@@ -45,6 +48,9 @@ public class BookingsController(
 
     /// <summary>Code of a <c>channel</c> query value of the search that is not the name of a channel (SR-03b).</summary>
     public const string InvalidChannelCode = "booking_list_invalid_channel";
+
+    /// <summary>Code of an <c>origin</c> query value of the search that is not the name of an origin (E27/F01/US01/T01, NF-123).</summary>
+    public const string InvalidOriginCode = "booking_list_invalid_origin";
 
     /// <summary>Code of a <c>checkInStatus</c> query value of the search that is not the name of a check-in state (SR-03b).</summary>
     public const string InvalidCheckInStatusCode = "booking_list_invalid_check_in_status";
@@ -102,7 +108,7 @@ public class BookingsController(
                 IncludePaidAmount: await CanReadPaymentsAsync(hostAuthorization)),
             cancellationToken);
 
-        return Ok(ToPage(result));
+        return Ok(ToPage(result, channelPolicy));
     }
 
     /// <summary>
@@ -120,16 +126,21 @@ public class BookingsController(
     /// <i>arrive</i> in the range (the check-in date: not the stays that have a day in it, which <c>from</c>/<c>to</c> do);
     /// <c>view</c> is a chip, <c>all</c> (default), <c>toConfirm</c>, <c>upcoming</c>, <c>inProgress</c>, <c>completed</c> or
     /// <c>cancelled</c> (<see cref="BookingListRules.InView"/>); <c>channel</c> one or more of <c>Direct</c>, <c>Manual</c>,
-    /// <c>Airbnb</c>, <c>BookingCom</c>, <c>Other</c>; <c>checkInStatus</c> one or more of <c>NotSent</c>, <c>Sent</c>,
+    /// <c>Airbnb</c>, <c>BookingCom</c>, <c>Expedia</c>, <c>Vrbo</c>, <c>TripAdvisor</c>, <c>Agoda</c>, <c>Other</c> (every other source: <c>Other</c> no longer returns the four portals, ask for them by name); <c>checkInStatus</c> one or more of <c>NotSent</c>, <c>Sent</c>,
     /// <c>InProgress</c>, <c>Completed</c>, <c>Expired</c> (the state of the online check-in link, as in
     /// <c>GET /api/dashboard/today</c>); <c>sort</c> is <c>checkIn</c>, <c>createdAt</c>, <c>total</c>, <c>status</c> or
     /// <c>guest</c>, then <c>:asc</c> (default) or <c>:desc</c>. Each row also says <c>channel</c>, <c>paymentState</c>,
     /// <c>paidAmount</c> (only for a caller with <c>payment.read</c>), <c>alloggiatiStatus</c> and <c>respondBy</c>.
     /// </para>
+    /// <para>
+    /// E27/F01/US01/T01 (NF-123): <c>origin</c> one or more of <c>Portal</c>, <c>AgencySite</c>, <c>CasaZenSite</c>, <c>Manual</c>, repeated or separated by
+    /// commas, keeps the bookings that came from there (<see cref="BookingOrigins.Matching"/>); every row says its <c>origin</c> and, for a portal, its
+    /// <c>originChannel</c>. 400 <c>booking_list_invalid_origin</c> for any other word.
+    /// </para>
     /// TN-3: filtered in SQL by the caller's scope; with <c>propertyId</c>: 404 when the property is not in the caller's org,
     /// 403 without <c>booking.read</c> on it. 400 <c>booking_list_invalid_status</c>, <c>booking_list_invalid_range</c> (also for
     /// <c>arrivalFrom</c> after <c>arrivalTo</c>), <c>booking_list_invalid_view</c>, <c>booking_list_invalid_channel</c>,
-    /// <c>booking_list_invalid_check_in_status</c> and <c>booking_list_invalid_sort</c>.
+    /// <c>booking_list_invalid_check_in_status</c>, <c>booking_list_invalid_sort</c> and <c>booking_list_invalid_origin</c>.
     /// </summary>
     [HttpGet("search")]
     [ProducesResponseType(typeof(PagedResultDto<BookingListItemDto>), StatusCodes.Status200OK)]
@@ -154,7 +165,8 @@ public class BookingsController(
         [FromQuery] string? view = null,
         [FromQuery(Name = "channel")] string[]? channel = null,
         [FromQuery(Name = "checkInStatus")] string[]? checkInStatus = null,
-        [FromQuery] string? sort = null)
+        [FromQuery] string? sort = null,
+        [FromQuery(Name = "origin")] string[]? origin = null)
     {
         if (GetUserId() == null)
             return Unauthorized();
@@ -163,7 +175,7 @@ public class BookingsController(
         var requestedPageSize = pageSize ?? _bookingsOptions.DefaultPageSize;
 
         if (TryReadFilters(
-                fromDay, toDay, status, q, propertyId, guestId, arrivalFrom, arrivalTo, view, channel, checkInStatus, sort, out var filters)
+                fromDay, toDay, status, q, propertyId, guestId, arrivalFrom, arrivalTo, view, channel, checkInStatus, sort, origin, out var filters)
             is { } invalid)
             return invalid;
 
@@ -190,14 +202,15 @@ public class BookingsController(
             filters with { Page = page, PageSize = requestedPageSize, IncludePaidAmount = await CanReadPaymentsAsync(hostAuthorization) },
             cancellationToken);
 
-        return Ok(ToPage(result));
+        return Ok(ToPage(result, channelPolicy));
     }
 
     /// <summary>
     /// How many bookings are in each chip of the list (SR-03b): <c>{ all, toConfirm, upcoming, inProgress, completed, cancelled }</c>
     /// for the bookings that satisfy the filters of <c>GET /api/bookings/search</c> but the chip (<c>view</c>), the page and the
     /// order. One aggregate query, filtered in SQL by the caller's scope like the list. A booking is in at most one chip, so the
-    /// counters never count it twice. Same 400s as the search for the filters it takes; same 404 and 403 for <c>propertyId</c>.
+    /// counters never count it twice. Same 400s as the search for the filters it takes (<c>origin</c> too, E27/F01/US01/T01); same 404 and 403
+    /// for <c>propertyId</c>.
     /// </summary>
     [HttpGet("counts")]
     [ProducesResponseType(typeof(BookingCountsDto), StatusCodes.Status200OK)]
@@ -218,13 +231,14 @@ public class BookingsController(
         [FromQuery] DateOnly? arrivalFrom = null,
         [FromQuery] DateOnly? arrivalTo = null,
         [FromQuery(Name = "channel")] string[]? channel = null,
-        [FromQuery(Name = "checkInStatus")] string[]? checkInStatus = null)
+        [FromQuery(Name = "checkInStatus")] string[]? checkInStatus = null,
+        [FromQuery(Name = "origin")] string[]? origin = null)
     {
         if (GetUserId() == null)
             return Unauthorized();
 
         if (TryReadFilters(
-                fromDay, toDay, status, q, propertyId, guestId, arrivalFrom, arrivalTo, null, channel, checkInStatus, null, out var filters)
+                fromDay, toDay, status, q, propertyId, guestId, arrivalFrom, arrivalTo, null, channel, checkInStatus, null, origin, out var filters)
             is { } invalid)
             return invalid;
 
@@ -255,6 +269,7 @@ public class BookingsController(
         string[]? channel,
         string[]? checkInStatus,
         string? sort,
+        string[]? origin,
         out BookingSearchCriteria filters)
     {
         filters = new BookingSearchCriteria();
@@ -274,6 +289,9 @@ public class BookingsController(
         if (!BookingListRules.TryParseNames<BookingChannel>(channel, out var channels))
             return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidChannelCode, "BookingListInvalidChannel");
 
+        if (!BookingListRules.TryParseNames<BookingOrigin>(origin, out var origins))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidOriginCode, "BookingListInvalidOrigin");
+
         if (!BookingListRules.TryParseNames<HostTodayCheckInState>(checkInStatus, out var checkInStates))
             return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidCheckInStatusCode, "BookingListInvalidCheckInStatus");
 
@@ -292,17 +310,19 @@ public class BookingsController(
             View: chip,
             Channels: channels,
             CheckInStates: checkInStates,
-            Sort: order);
+            Sort: order,
+            Origins: origins);
         return null;
     }
 
-    // The answer of the lists: each booking with what its row says besides it.
-    private static PagedResultDto<BookingListItemDto> ToPage(BookingSearchPage result)
+    // The answer of the lists: each booking with what its row says besides it. Every row says its channel (otaSource, the "OTA" badge) and what
+    // the host may do with it (changeOptions); the amounts of the channel are the detail's.
+    private static PagedResultDto<BookingListItemDto> ToPage(BookingSearchPage result, OtaChannelActionPolicy channelPolicy)
     {
         var nowUtc = DateTime.UtcNow;
         return new PagedResultDto<BookingListItemDto>
         {
-            Items = result.Items.Select(b => BookingMapper.ToListItem(b, result.Details.GetValueOrDefault(b.Id), nowUtc)).ToList(),
+            Items = result.Items.Select(b => BookingMapper.ToListItem(b, result.Details.GetValueOrDefault(b.Id), nowUtc, channelPolicy)).ToList(),
             TotalCount = result.TotalCount,
             Page = result.Page,
             PageSize = result.PageSize,
@@ -312,6 +332,20 @@ public class BookingsController(
     // Money (what came in on a booking) is payment data: it needs payment.read, which the collaborator does not hold (SR-D7).
     private async Task<bool> CanReadPaymentsAsync(IAuthorizationService hostAuthorization) =>
         (await hostAuthorization.AuthorizeAsync(User, CasazenPolicies.PaymentRead)).Succeeded;
+
+    // The mirror of the booking on Octorate as the booking answer says it (E08/F03/US03/T02): null when it is not mirrored. Asking again is a write on the
+    // booking (POST .../octorate-sync/retry needs booking.write on its property, 404 otherwise), so a caller who may only read never gets canRetry.
+    private async Task<BookingOctorateSyncDto?> OctorateSyncOfAsync(
+        Booking booking, BookingSyncStatus? status, IAuthorizationService hostAuthorization)
+    {
+        if (status is null)
+            return null;
+
+        var canRetry = status.CanRetry
+                       && booking.Property is { } property
+                       && await hostAuthorization.IsAuthorizedAsync(User, HostResource.ForProperty(property), BookingOperations.Write);
+        return BookingOctorateSyncDto.From(status, canRetry);
+    }
 
     // 404 when the property is not in the caller's org, 403 without booking.read on it; null when the filter may be used.
     private async Task<ActionResult?> DenyPropertyFilterAsync(Guid? propertyId, IAuthorizationService hostAuthorization)
@@ -360,8 +394,21 @@ public class BookingsController(
     /// One booking, with the state of what is tied to it (SR-05a): <c>paymentState</c> (<c>None</c>, <c>Partial</c>, <c>Paid</c>,
     /// <c>Refunded</c>), <c>paidAmount</c> (euros; <c>null</c> for a caller without <c>payment.read</c>, who still gets the state),
     /// <c>guestDataComplete</c> (<c>null</c> for a booking with no Alloggiati communication), and, as on every booking, the times it kept
-    /// (<c>confirmedAt</c>, <c>arrivedAt</c>, <c>checkedOutAt</c>, <c>cancelledAt</c>) and <c>canEdit</c>. Its history is
+    /// (<c>confirmedAt</c>, <c>arrivedAt</c>, <c>checkedOutAt</c>, <c>cancelledAt</c>), <c>canEdit</c> and <c>changeOptions</c>. Its history is
     /// <c>GET /api/bookings/{id}/timeline</c>.
+    /// <para>
+    /// E08/F03/US03/T02: a booking that came from a channel through the channel manager has <c>otaSource</c>, <c>otaAmounts</c> (commission, net,
+    /// paid, balance, as stored: a figure Octorate did not give is <c>null</c>, never zero) and <c>collection</c> (who collects, whether the commission
+    /// is already taken out of the payments). <c>otaAmounts</c> is also there for a reservation of the booking engine of the agency that the import made
+    /// (it counts as direct, so it has no <c>otaSource</c>, but its money is Octorate's). <c>amountSources</c> says where each figure comes from
+    /// (<c>Stripe</c>, <c>ChannelManager</c>, <c>Manual</c>). Like <c>paidAmount</c>, <c>otaAmounts</c>, <c>collection</c> and <c>amountSources</c> are
+    /// left out for a caller without <c>payment.read</c>, who still gets <c>paymentState</c>. <c>octorateSync</c> is the mirror of the booking on
+    /// Octorate (<c>null</c> when it is not mirrored) and carries no money.
+    /// </para>
+    /// <para>
+    /// E27/F01/US01/T01 (NF-123): every booking answer has its <c>origin</c> (<c>Portal</c>, <c>AgencySite</c>, <c>CasaZenSite</c> or <c>Manual</c>) and, for a
+    /// portal, its <c>originChannel</c>. The attribution it is worked out from (source, medium, campaign, referrer host) is not part of the answer.
+    /// </para>
     /// </summary>
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(BookingDetailDto), StatusCodes.Status200OK)]
@@ -379,12 +426,42 @@ public class BookingsController(
         if (!await authorizationService.CanAccessPropertyAsync(userId, booking.PropertyId, GetUserRoles()))
             return NotFound();
 
-        var response = BookingMapper.Fill(new BookingDetailDto(), booking, DateTime.UtcNow);
+        var response = BookingMapper.Fill(new BookingDetailDto(), booking, DateTime.UtcNow, channelPolicy);
+
+        // The mirror of the booking on Octorate, read once (the booking and the org together). Its row is the state the screen shows, and its very
+        // existence tells whose money the booking has: only the push of CasaZen makes the row, never the import.
+        var mirror = await octorateSync.GetAsync(booking.OrgId, booking.Id, HttpContext.RequestAborted);
+        var pushedByCasaZen = mirror is not null;
 
         // What came in: the state for everyone, the money only for a caller who may read payments (SR-D7). The payments came with the booking.
         var payments = booking.Payments.Select(p => new BookingPaymentFact(p.Status, p.Amount, p.RefundedAmount)).ToList();
         response.PaymentState = BookingListRules.PaymentStateOf(booking.TotalPrice, payments).ToString();
-        response.PaidAmount = await CanReadPaymentsAsync(hostAuthorization) ? BookingListRules.PaidAmount(payments) : null;
+        var canReadPayments = await CanReadPaymentsAsync(hostAuthorization);
+        response.PaidAmount = canReadPayments ? BookingListRules.PaidAmount(payments) : null;
+        if (canReadPayments)
+        {
+            // The amounts of the channel (E02/F02/US01/T01, ADR-033-R8): money too, so the same reach as the paid amount; read-only, exactly as
+            // stored (a figure Octorate did not give stays null, never zero). A booking of a channel has them, and so does a reservation of the
+            // booking engine of the agency that the import made (Direct, a reservation on Octorate, no row of the mirror): their money is Octorate's.
+            // One CasaZen made and sent to Octorate has a reservation there too (and a row), and its money is CasaZen's.
+            response.OtaAmounts = BookingAmountSourceRules.HoldsChannelManagerMoney(booking, pushedByCasaZen)
+                ? new OtaAmountsDto
+                {
+                    Commission = booking.OtaCommission,
+                    Net = booking.OtaNetAmount,
+                    Paid = booking.OtaPaidAmount,
+                    Balance = booking.OtaBalanceAmount,
+                    Currency = response.Currency,
+                }
+                : null;
+
+            // Who collects (E08/F03/US03/T02, NF-77) and where each figure comes from (Stripe, the channel manager, the host): money data as well.
+            response.Collection = BookingCollectionDto.From(booking);
+            response.AmountSources = BookingAmountSourcesDto.From(BookingAmountSourceRules.Of(booking, booking.Payments, pushedByCasaZen));
+        }
+
+        // The mirror of the booking on the channel manager: a state and a code, no money, so whoever reads the booking sees it.
+        response.OctorateSync = await OctorateSyncOfAsync(booking, mirror, hostAuthorization);
         // A communication exists for a stay that is confirmed or later: a request, a hold or a cancelled booking has none.
         response.GuestDataComplete = booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut
             ? await alloggiatiWebService.IsStayDataCompleteAsync(id)

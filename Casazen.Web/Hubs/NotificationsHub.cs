@@ -25,6 +25,12 @@ public sealed class NotificationsHub : Hub
     /// <summary>Name of the client method the server calls.</summary>
     public const string ChangedMethod = "notificationsChanged";
 
+    /// <summary>
+    /// Name of the second client method the server calls: a popup alert for the connected user (ADR-025), with a
+    /// <see cref="PopupAlertMessage"/>. The alert travels on the connection of the bell, to the same user group, as one more method.
+    /// </summary>
+    public const string AlertMethod = "alertReceived";
+
     /// <summary>The group of the connections of one user.</summary>
     public static string GroupFor(string userId) => $"user:{userId}";
 
@@ -42,3 +48,15 @@ public sealed class NotificationsHub : Hub
 /// <param name="Type">Type of the notification written or cleared (a value of <c>PushTypes</c>); <c>null</c> when only the count changed.</param>
 /// <param name="EntityId">The booking or service request it is about; <c>null</c> when there is none.</param>
 public sealed record NotificationsChangedMessage(int UnreadCount, string? Type, Guid? EntityId);
+
+/// <summary>
+/// The only argument of <see cref="NotificationsHub.AlertMethod"/> (camelCase JSON: <c>alertId</c>, <c>alertType</c>, <c>entityType</c>,
+/// <c>entityId</c>, <c>urgency</c>): references only, no name and no text (ADR-025-R5); the client reads the detail from the API of the
+/// entity. The two enums go by name, the names <c>GET /api/me/alerts/pending</c> writes (the SignalR JSON protocol would write numbers).
+/// </summary>
+/// <param name="AlertId">The stored alert, to dismiss it or snooze it.</param>
+/// <param name="AlertType">The name of an <see cref="Casazen.Core.Entities.Enums.AlertType"/> member.</param>
+/// <param name="EntityType">The kind of entity the alert is about (<c>Booking</c>, <c>Property</c>, ...).</param>
+/// <param name="EntityId">The entity the alert is about.</param>
+/// <param name="Urgency">The name of an <see cref="Casazen.Core.Entities.Enums.AlertUrgency"/> member.</param>
+public sealed record PopupAlertMessage(Guid AlertId, string AlertType, string EntityType, Guid EntityId, string Urgency);

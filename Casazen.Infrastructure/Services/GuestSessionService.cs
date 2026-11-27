@@ -8,7 +8,8 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// <para>The proof is the one of "Le mie prenotazioni" (<see cref="GuestBookingLookupService"/>): org of the site, booking code and
 /// email in one query, so a code that does not exist, a code of another org and a wrong email take the same path and get the same
-/// 404. Nothing the guest typed is logged.</para>
+/// 404. With the last four digits of the phone (NF-143) the proof is <see cref="GuestBookingLookupService.LoadByPhoneAsync"/>, with the same 404 and
+/// the same session. Nothing the guest typed is logged.</para>
 /// <para><b>Length of a session</b> (decision DB-D21): <c>GuestArea:SessionMinutes</c>, 120 (two hours) by default, never more than
 /// 1440 (24 hours) and never less than 5. There is no refresh: when it ends the guest proves the booking again.</para>
 /// </remarks>
@@ -34,8 +35,23 @@ public sealed class GuestSessionService(
         CancellationToken cancellationToken = default)
     {
         var booking = await lookup.LoadAsync(credentials, cancellationToken);
+        return Open(booking);
+    }
 
-        // The hash is made from the address the booking has (the one that matched), so every later check compares the same value.
+    public async Task<GuestSessionOpened> OpenAsync(
+        GuestBookingPhoneCredentials credentials,
+        CancellationToken cancellationToken = default)
+    {
+        var booking = await lookup.LoadByPhoneAsync(credentials, cancellationToken);
+        return Open(booking);
+    }
+
+    /// <summary>
+    /// The session of the guest of <paramref name="booking"/>, whichever proof matched (e-mail or the digits of the phone): the hash is made from the
+    /// address the booking has, so every later check compares the same value and the two proofs open the same session.
+    /// </summary>
+    private GuestSessionOpened Open(Booking booking)
+    {
         var expiresAt = _clock.GetUtcNow().UtcDateTime.AddMinutes(SessionMinutes());
         var token = tokens.Issue(booking.OrgId, GuestSessionTicket.HashEmail(booking.Guest.Email), expiresAt);
         return new GuestSessionOpened(token, expiresAt, BookingCodes.Format(booking.BookingCode));

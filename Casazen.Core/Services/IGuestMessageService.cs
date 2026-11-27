@@ -1,5 +1,6 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
@@ -35,6 +36,9 @@ public interface IGuestMessageService
     /// </summary>
     Task<SentGuestMessage> SendAsGuestAsync(Booking booking, string? text, string? idempotencyKey, CancellationToken cancellationToken = default);
 
+    /// <summary>Sends a portal message with its optional local house-guide answer in a single save.</summary>
+    Task<SentGuestMessage> SendFromPortalAsync(Booking booking, string? text, string? idempotencyKey, string? guideAnswer, CancellationToken cancellationToken = default, string? localDraft = null);
+
     /// <summary>The thread of a booking for its host: messages, how many the host has not read, whether the guest waits for an answer.</summary>
     /// <exception cref="Exceptions.NotFoundException">The booking is not one of the caller's org.</exception>
     Task<HostThreadView> GetForHostAsync(Guid bookingId, CancellationToken cancellationToken = default);
@@ -44,6 +48,13 @@ public interface IGuestMessageService
     /// is stored as written. Answering marks the guest's messages as read, and the caller's notifications of them too.
     /// </summary>
     Task<SentGuestMessage> ReplyAsHostAsync(Guid bookingId, string? text, string? idempotencyKey, string? userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A message of the host side that no person wrote: the one a routine planned (E05/F07/US01). The same errors, key and rules as <see cref="ReplyAsHostAsync"/>, but the message is stored with the origin
+    /// <see cref="Entities.Enums.MessageOrigin.Automation"/> and it <b>answers nobody</b>: the guest's messages stay unread and the thread still waits for its answer in «Da rispondere», as the
+    /// automatic messages of the channels do (<c>OtaMessage.Origin</c>). It is still the latest message of the thread.
+    /// </summary>
+    Task<SentGuestMessage> ReplyAsAutomationAsync(Guid bookingId, string? text, string? idempotencyKey, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Marks the guest's messages as read by the host, up to the last one written. With the caller's <paramref name="userId"/>, the
@@ -72,7 +83,10 @@ public interface IGuestMessageService
 }
 
 /// <summary>A message as the screens show it.</summary>
-public sealed record GuestThreadMessage(Guid Id, GuestMessageSender Sender, string Text, DateTime CreatedAt);
+public sealed record GuestThreadMessage(Guid Id, GuestMessageSender Sender, string Text, DateTime CreatedAt)
+{
+    public MessageOrigin? Origin { get; init; }
+}
 
 /// <summary>The guest's view of its thread: <paramref name="ClosesAt"/> is when it stops taking messages.</summary>
 public sealed record GuestThreadView(GuestThreadState State, DateTime ClosesAt, IReadOnlyList<GuestThreadMessage> Messages);

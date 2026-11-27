@@ -1,6 +1,8 @@
 ﻿using Casazen.Core.Authorization;
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Repositories;
@@ -8,6 +10,8 @@ using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Core.Validation;
+using Casazen.Infrastructure.Events;
+using Casazen.Infrastructure.GuestPortal;
 using Casazen.Infrastructure.External;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -29,7 +33,15 @@ public class BookingService(
     ICheckoutHoldExpiryService checkoutHoldExpiry,
     OnSiteRequestNotifier onSiteNotifier,
     IPricingAdapterService pricingAdapterService,
-    TimeProvider? timeProvider = null) : IBookingService
+    IChannelManagerAvailability channelManager,
+    IPropertyDayRuleService dayRules,
+    TimeProvider? timeProvider = null,
+    IStayDiscountService? stayDiscountService = null,
+    IDomainEventRecorder? domainEvents = null,
+    ICrmContactService? crmContacts = null,
+    IMarketingConfirmationService? marketingConfirmation = null,
+    ICrmContactIndex? contactIndex = null,
+    GuestHostExtraService? hostExtras = null) : IBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -84,12 +96,18 @@ public class BookingService(
             throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
 
+        // E08/F01/US02/T01 (NF-80): the channel manager is asked too, before anything is written (it may save the room of the mapping).
+        await EnsureChannelManagerAcceptsAsync(booking.OrgId, booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, booking.NumberOfGuests);
+
         // The guest snapshot is written only once the dates are known to be free, and removed again if a concurrent
         // booking takes them before the insert (the repository re-checks under the property lock).
         await guestRepository.AddAsync(guest);
         try
         {
             logger.LogInformation("Creating manual booking for property {PropertyId}", booking.PropertyId);
+            // The host entered it, confirmed from the start: created and confirmed, saved with the booking by the repository (the
+            // events of a booking the repository refuses go with it, ADR-022-R1).
+            BookingEvents.RecordCreated(domainEvents, booking, BookingEventOrigin.Host);
             return await repository.AddAsync(booking);
         }
         catch (InvalidOperationException ex) when (
@@ -116,16 +134,27 @@ public class BookingService(
             throw new DomainRuleException(DirectBookingErrorCodes.ConsentOutdated, "DirectBookingConsentOutdated");
         }
 
-        // DB-03: the optional "send me offers" box. As on the check-in portal (CO-15) it exists only with a versioned text
-        // (Gdpr:MarketingConsentVersion): the version is recorded with the consent as the proof of what the guest agreed to.
-        // Without one a consent cannot be recorded properly, so it is refused instead of silently dropped.
+        // DB-03 / NF-90: the optional "send me offers" boxes, one for each channel (e-mail, WhatsApp). As on the check-in portal (CO-15) a
+        // consent exists only with a versioned text (Gdpr:MarketingConsentVersion): the version is recorded with the consent as the proof of
+        // what the guest agreed to. Without one a consent cannot be recorded properly, so it is refused instead of silently dropped. The
+        // legacy single box counts as the e-mail channel.
         var marketingVersion = GdprOptions.Normalize(
             configuration[$"{GdprOptions.SectionName}:{nameof(GdprOptions.MarketingConsentVersion)}"]);
-        if (input.MarketingConsent && marketingVersion is null)
+        var emailConsent = input.MarketingConsent || input.MarketingConsentEmail;
+        var whatsAppConsent = input.MarketingConsentWhatsApp;
+        if ((emailConsent || whatsAppConsent) && marketingVersion is null)
         {
             throw new DomainRuleException(
                 DirectBookingErrorCodes.MarketingConsentUnavailable, "DirectBookingMarketingConsentUnavailable");
         }
+
+        // A consent on a channel needs the address of that channel: WhatsApp needs a phone number the CRM can store and reach.
+        if (whatsAppConsent && CrmNormalizer.NormalizePhone(input.Guest.Phone, DefaultCallingCode()) is null)
+            throw new DomainRuleException(DirectBookingErrorCodes.WhatsAppRequiresPhone, "DirectBookingWhatsAppRequiresPhone");
+
+        // NF-90: the soft opt-in notice (art. 130 c. 4 Codice privacy). The version the page showed must be the one in force, else the notice
+        // the guest read is not the notice we would record as presented.
+        var softOptInNoticeVersion = ResolveSoftOptInNotice(input.SoftOptInNoticeVersion);
 
         // DB-03b: the optional expected arrival time is a note for the host: only its shape is checked, before anything is written.
         if (!ArrivalTimeRules.TryNormalize(input.ExpectedArrivalTime, out var expectedArrivalTime))
@@ -140,7 +169,7 @@ public class BookingService(
         }
 
         var totalGuests = input.NumberOfAdults + input.NumberOfChildren;
-        var (checkIn, checkOut) = ValidateStay(property, input.CheckInDate, input.CheckOutDate, totalGuests);
+        var (checkIn, checkOut) = await ValidateStayAsync(property, input.CheckInDate, input.CheckOutDate, totalGuests);
 
         // A3-06: a "pay at the property" request holds its dates with no guarantee: its length is capped.
         if (input.PaymentOption == PaymentOption.OnSite)
@@ -171,11 +200,12 @@ public class BookingService(
         var guest = NewGuestSnapshotWithConsent(
             property.OrgId, input.Guest, input.ConsentVersion, input.ConsentIpAddress);
 
-        // DB-03: the optional marketing consent is recorded on the guest and in the append-only register of the privacy
-        // history (version of the text, time, source, IP), in the same insert as the booking and the guest.
-        var marketingConsent = input.MarketingConsent && marketingVersion is not null
-            ? RecordMarketingConsent(guest, marketingVersion, input.ConsentIpAddress)
-            : null;
+        // DB-03 / NF-90: the optional marketing consents (one row for each channel the guest ticked) and the soft opt-in notice that was
+        // presented are recorded in the append-only register of the privacy history (version of the text, time, source, IP), in the same
+        // insert as the booking and the guest; the e-mail consent is also recorded on the guest.
+        var consentAt = _clock.GetUtcNow().UtcDateTime;
+        var consentRecords = RecordCheckoutConsents(
+            guest, emailConsent, whatsAppConsent, marketingVersion, softOptInNoticeVersion, input.ConsentIpAddress, consentAt);
 
         var basePrice = price.BasePrice;
         var touristTaxAmount = price.TouristTax.AmountOrZero;
@@ -185,6 +215,10 @@ public class BookingService(
         // Only the guest who made the checkout reads its outcome and resumes its payment (BK-07): the token is returned
         // once, the database keeps its hash.
         var checkoutToken = CheckoutOutcomes.NewToken();
+
+        // E27/F01/US01/T01 (NF-123): where the guest came from, kept as marketing tokens only. What does not pass the rules is dropped here, never an error:
+        // a stray parameter of a link must not cost the guest the booking, and nothing personal reaches the table.
+        var attribution = BookingAttribution.Sanitize(input.Attribution);
 
         var booking = new Booking
         {
@@ -201,6 +235,10 @@ public class BookingService(
             ExpectedArrivalTime = expectedArrivalTime,
             Status = BookingStatus.Pending,
             Source = BookingSource.Direct,
+            AttributionSource = attribution.Source,
+            AttributionMedium = attribution.Medium,
+            AttributionCampaign = attribution.Campaign,
+            AttributionReferrerHost = attribution.ReferrerHost,
             BasePrice = basePrice,
             CleaningFee = price.CleaningFee,
             TouristTax = touristTaxAmount,
@@ -239,14 +277,33 @@ public class BookingService(
             throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
 
+        // E08/F01/US02/T01 (NF-80): the channel manager is asked too, before the hold is written and its event recorded (the lookup may save
+        // the room of the mapping, which must not carry the pending rows of the checkout with it).
+        await EnsureChannelManagerAcceptsAsync(property.OrgId, input.PropertyId, checkIn, checkOut, totalGuests);
+
         Booking createdBooking;
         try
         {
-            // Booking and guest snapshot (and the marketing consent, when the guest gave it) in one insert: a concurrent
+            // The hold is created (Pending): its event is saved with it, in the same insert (a checkout whose payment cannot be started
+            // is removed with its events, BK-18). The confirmation follows with the payment.
+            var selections = input.Extras ?? [];
+            if (selections.Count > 0 && hostExtras is null)
+                throw new DomainConflictException("guest_host_extra_unavailable", "GuestHostExtraUnavailable");
+            await using var extraLock = selections.Count == 0 ? null :
+                await hostExtras!.LockCheckoutAsync(selections, CancellationToken.None);
+            if (selections.Count > 0)
+            {
+                totalPrice += await hostExtras!.PrepareCheckoutAsync(booking, property, selections, CancellationToken.None);
+                booking.TotalPrice = totalPrice;
+            }
+            BookingEvents.RecordCreated(domainEvents, booking, BookingEventOrigin.Guest);
+
+            // Booking and guest snapshot (and the privacy history of the checkout, when there is some) in one insert: a concurrent
             // checkout that takes the dates first leaves none of them.
-            createdBooking = marketingConsent is null
+            createdBooking = consentRecords.Count == 0
                 ? await repository.AddAsync(booking)
-                : await repository.AddWithGuestConsentAsync(booking, marketingConsent);
+                : await repository.AddWithGuestConsentsAsync(booking, consentRecords);
+            if (extraLock is not null) await extraLock.CommitAsync();
         }
         catch (InvalidOperationException ex) when (
             ex.Message.Contains("Property not available", StringComparison.OrdinalIgnoreCase))
@@ -293,6 +350,19 @@ public class BookingService(
             throw;
         }
 
+        // NF-90: the guest has a payment to complete (or a request to confirm), so the attempt is a booking: the consents they ticked become
+        // contacts of the CRM and the double opt-in e-mail goes out. Best effort: the privacy history is already saved with the booking.
+        await RecordCrmConsentsAsync(
+            guest,
+            property.OrgId,
+            org.DefaultLanguage,
+            emailConsent,
+            whatsAppConsent,
+            marketingVersion,
+            input.ConsentIpAddress,
+            consentAt,
+            createdBooking.Id);
+
         var publishableKey = configuration["Stripe:PublishableKey"] ?? string.Empty;
         return new DirectBookingCreateResult(
             createdBooking.Id,
@@ -319,12 +389,16 @@ public class BookingService(
 
         var property = await GetBookablePropertyAsync(input.PropertyId);
 
-        var (checkIn, checkOut) = ValidateStay(
-            property, input.CheckInDate, input.CheckOutDate, input.NumberOfAdults + input.NumberOfChildren);
+        var (checkIn, checkOut) = await ValidateStayAsync(
+            property, input.CheckInDate, input.CheckOutDate, input.NumberOfAdults + input.NumberOfChildren, cancellationToken);
 
-        return await PriceStayAsync(
-            property, checkIn, checkOut, input.NumberOfAdults, input.NumberOfChildren, input.ChildrenAges,
-            cancellationToken);
+        var quote = await PriceStayAsync(
+            property, checkIn, checkOut, input.NumberOfAdults, input.NumberOfChildren, input.ChildrenAges, cancellationToken);
+        return hostExtras is null ? quote : quote with
+        {
+            ExtraOffers = await hostExtras.CheckoutOffersAsync(property,
+            checkIn, checkOut, input.NumberOfAdults + input.NumberOfChildren, System.Globalization.CultureInfo.CurrentUICulture.Name, cancellationToken)
+        };
     }
 
     /// <summary>
@@ -377,16 +451,22 @@ public class BookingService(
     }
 
     /// <summary>
-    /// Guests within the capacity and a stay of 1 to <see cref="TouristTaxCalculator.MaxNights"/> nights, not shorter than
-    /// the minimum stay of the property (DB-03, 422 <see cref="DirectBookingErrorCodes.MinNightsNotMet"/>). The minimum is a
-    /// rule of the guests' quote and checkout, the two callers of this method: the host's own prices and bookings
-    /// (<see cref="PriceHostStayAsync"/>, manual bookings) do not go through it, a stay entered by hand can be shorter.
+    /// Guests within the capacity, a stay of 1 to <see cref="TouristTaxCalculator.MaxNights"/> nights, and the rules of its nights
+    /// (E08/F05/US01/T03, NF-36): <see cref="DayRuleStayChecks.FirstViolation"/> reads the rule of the arrival night (closed arrival, minimum
+    /// stay, maximum stay, minimum and maximum advance) and of the day of the departure (closed departure), and the minimum stay of the
+    /// property (DB-03) when the arrival night has none: 422 <see cref="DirectBookingErrorCodes.MinNightsNotMet"/>,
+    /// <see cref="DirectBookingErrorCodes.ArrivalClosed"/>, <see cref="DirectBookingErrorCodes.DepartureClosed"/>,
+    /// <see cref="DirectBookingErrorCodes.MaxNightsExceeded"/>, <see cref="DirectBookingErrorCodes.AdvanceTooShort"/> or
+    /// <see cref="DirectBookingErrorCodes.AdvanceTooLong"/>. «Today» of the advance is the date in the time zone of the property. These rules are
+    /// those of the guests' quote and checkout, the two callers of this method: the host's own prices and bookings (<see cref="PriceHostStayAsync"/>,
+    /// manual bookings) do not go through it, a stay entered by hand can break them.
     /// </summary>
-    private static (DateTime CheckIn, DateTime CheckOut) ValidateStay(
+    private async Task<(DateTime CheckIn, DateTime CheckOut)> ValidateStayAsync(
         Property property,
         DateTime checkInDate,
         DateTime checkOutDate,
-        int totalGuests)
+        int totalGuests,
+        CancellationToken cancellationToken = default)
     {
         if (totalGuests > property.MaxGuests)
         {
@@ -400,9 +480,19 @@ public class BookingService(
             throw new DomainRuleException(DirectBookingErrorCodes.InvalidStay, "DirectBookingInvalidStay");
         }
 
-        if (property.MinNights is { } minNights && (checkOut - checkIn).Days < minNights)
+        // The nights are the calendar dates the stay is stored with; the rules are read once for the arrival and the departure day.
+        var arrival = RomeCalendar.DateInRome(checkIn);
+        var departure = RomeCalendar.DateInRome(checkOut);
+        var rules = DayRuleStayChecks.NoRules;
+        if ((await dayRules.GetRulesForSiteAsync([property.Id], arrival, departure.AddDays(1), cancellationToken)).TryGetValue(property.Id, out var ofProperty))
         {
-            throw new DomainRuleException(DirectBookingErrorCodes.MinNightsNotMet, "DirectBookingMinNightsNotMet", minNights);
+            rules = ofProperty;
+        }
+
+        var today = DayRuleRules.TodayOf(property.Timezone, _clock.GetUtcNow());
+        if (DayRuleStayChecks.FirstViolation(arrival, departure, today, property.MinNights, rules) is { } violation)
+        {
+            throw DayRuleStayChecks.ToException(violation);
         }
 
         return (checkIn, checkOut);
@@ -414,7 +504,9 @@ public class BookingService(
     /// be calculated. The property has no accommodation category (yet): only the rates for every accommodation of the
     /// comune apply. The night price for percentage rates is the price of that night, cleaning excluded (the nightly rate,
     /// or the rate with the surcharge on a weekend night). The payment options come from the free refund deadline of the
-    /// stay (<see cref="DirectBookingPaymentRules"/>, A3-16). With no surcharge, the default, the price is what it always was.
+    /// stay (<see cref="DirectBookingPaymentRules"/>, A3-16). The length-of-stay discount of the property (NF-35) is taken off the
+    /// lodging, and the base price is what remains plus the cleaning fee. With no surcharge and no discount, the default, the price
+    /// is what it always was.
     /// </summary>
     private async Task<DirectBookingQuote> PriceStayAsync(
         Property property,
@@ -438,8 +530,16 @@ public class BookingService(
         // of DB-03 applies to it); the nights without one cost the rate, plus the surcharge on a Friday or a Saturday.
         var hostPrices = await pricingAdapterService.GetAppliedNightlyPricesAsync(
             property.Id, checkInDate, checkInDate.AddDays(nights), cancellationToken);
-        var lodging = StayPricing.Lodging(checkInDate, nights, property.NightlyRate, property.WeekendSurchargePercent, hostPrices);
-        var basePrice = lodging.Total + property.CleaningFee;
+
+        // NF-35: the length-of-stay discounts of the property, read once for this quote. Every path that prices a stay (the guest's quote and
+        // checkout, the host's quote and manual booking) comes through here, so they all give the same price, to the cent: the discount is
+        // taken off the lodging only, never off the cleaning fee or the tourist tax.
+        IReadOnlyList<StayDiscountTier> discountTiers = [];
+        if (stayDiscountService is not null)
+            discountTiers = await stayDiscountService.GetForPricingAsync(property.Id, cancellationToken);
+
+        var lodging = StayPricing.Lodging(checkInDate, nights, property.NightlyRate, property.WeekendSurchargePercent, hostPrices, discountTiers);
+        var basePrice = lodging.NetTotal + property.CleaningFee;
         var touristTax = await touristTaxQuoteService.QuoteAsync(
             TouristTaxComune.ForProperty(property),
             new TouristTaxStay(
@@ -661,6 +761,34 @@ public class BookingService(
     private int GetPendingDirectTtlMinutes() => CheckoutHolds.GetTtlMinutes(configuration);
 
     /// <summary>
+    /// The second half of the final check on the dates (E08/F01/US02/T01, NF-74, NF-80): the channel manager is asked besides CasaZen's own
+    /// occupancy, and an Octorate that answers "not available" refuses the booking with the same 409 as a night CasaZen has taken
+    /// (<see cref="BookingErrorCodes.DatesUnavailable"/>, the same text: the guest is not told about the channel manager). A property that is
+    /// not mirrored, an Octorate that cannot be asked (timeout, 429, 5xx, a room not chosen) or the connector being off never refuses: the create
+    /// push of the booking (E08/F01/US01/T03) reports a conflict if Octorate refuses later. Called before anything of the booking is written or
+    /// recorded, because the lookup of the target may save the room of the mapping.
+    /// </summary>
+    private async Task EnsureChannelManagerAcceptsAsync(Guid orgId, Guid propertyId, DateTime checkIn, DateTime checkOut, int guests)
+    {
+        var answer = await channelManager.CheckAsync(
+            propertyId,
+            orgId,
+            DateOnly.FromDateTime(checkIn),
+            DateOnly.FromDateTime(checkOut),
+            Math.Max(1, guests),
+            CancellationToken.None);
+        if (!answer.IsNotAvailable)
+            return;
+
+        logger.LogInformation(
+            "Booking rejected: property {PropertyId} is not available on the channel manager from {CheckIn:yyyy-MM-dd} to {CheckOut:yyyy-MM-dd}",
+            propertyId,
+            checkIn,
+            checkOut);
+        throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
+    }
+
+    /// <summary>
     /// Removes a checkout whose payment could not be started (BK-18). Best effort: when the removal fails too, the attempt
     /// stays a pending hold that the checkout hold expiry cancels, and the original error is still the answer.
     /// </summary>
@@ -681,30 +809,170 @@ public class BookingService(
     }
 
     /// <summary>
-    /// The guest of the checkout agreed to receive offers (DB-03): marks the snapshot (<c>Guest.MarketingConsent</c> and its
-    /// date) and returns the row of the append-only register of the privacy history (CO-15), with the version of the text the
-    /// guest saw, the source, the time and the IP, as the check-in portal records its own. Not saved: it is written with the
-    /// booking and the guest, in one transaction.
+    /// The rows of the privacy history of the checkout (DB-03, E07/F04/US01/T02, NF-90), not saved: they are written with the booking and the
+    /// guest, in one transaction. One <see cref="GuestConsentPurpose.Marketing"/> row for each channel the guest ticked, with the version of
+    /// the text the guest saw, the source, the time and the IP as the check-in portal records its own, and, when the page showed the soft
+    /// opt-in notice in force, one <see cref="GuestConsentPurpose.SoftOptInNotice"/> row (the notice is presented, never a consent). The
+    /// e-mail consent also marks the snapshot (<c>Guest.MarketingConsent</c> and its date): the yes/no the withdrawal that a host records on a
+    /// guest's request looks at. A WhatsApp consent alone does not, because that flag is read as a consent to the e-mail address. Each consent row
+    /// names its channel (<see cref="GuestConsentChannelNote"/>): without it the rows of a guest who ticks both channels would be the same.
     /// </summary>
-    private GuestConsentRecord RecordMarketingConsent(Guest guest, string version, string consentIpAddress)
+    private static List<GuestConsentRecord> RecordCheckoutConsents(
+        Guest guest,
+        bool email,
+        bool whatsApp,
+        string? marketingVersion,
+        string? noticeVersion,
+        string consentIpAddress,
+        DateTime at)
     {
-        var now = _clock.GetUtcNow().UtcDateTime;
-        guest.MarketingConsent = true;
-        guest.MarketingConsentDate = now;
+        var records = new List<GuestConsentRecord>(3);
+        if (marketingVersion is not null)
+        {
+            if (email)
+            {
+                guest.MarketingConsent = true;
+                guest.MarketingConsentDate = at;
+                records.Add(NewCheckoutRecord(
+                    guest, GuestConsentPurpose.Marketing, GuestConsentAction.Granted, marketingVersion, consentIpAddress, at, GuestConsentChannelNote.Email));
+            }
 
+            if (whatsApp)
+            {
+                records.Add(NewCheckoutRecord(
+                    guest, GuestConsentPurpose.Marketing, GuestConsentAction.Granted, marketingVersion, consentIpAddress, at, GuestConsentChannelNote.WhatsApp));
+            }
+        }
+
+        if (noticeVersion is not null)
+        {
+            records.Add(NewCheckoutRecord(
+                guest, GuestConsentPurpose.SoftOptInNotice, GuestConsentAction.NoticePresented, noticeVersion, consentIpAddress, at, null));
+        }
+
+        return records;
+    }
+
+    private static GuestConsentRecord NewCheckoutRecord(
+        Guest guest,
+        GuestConsentPurpose purpose,
+        GuestConsentAction action,
+        string version,
+        string consentIpAddress,
+        DateTime at,
+        string? channelNote)
+    {
         return new GuestConsentRecord
         {
             OrgId = guest.OrgId,
             GuestId = guest.Id,
-            Purpose = GuestConsentPurpose.Marketing,
-            Action = GuestConsentAction.Granted,
+            Purpose = purpose,
+            Action = action,
             Version = version,
             Source = GuestConsentSource.BookingCheckout,
             IpAddress = string.IsNullOrWhiteSpace(consentIpAddress)
                 ? null
                 : (consentIpAddress.Length > 50 ? consentIpAddress[..50] : consentIpAddress),
-            RecordedAt = now,
+            Note = channelNote,
+            RecordedAt = at,
         };
+    }
+
+    /// <summary>
+    /// The version of the soft opt-in notice to record as presented, or <c>null</c> when the checkout sent none. A version that is not the
+    /// configured one (<c>Gdpr:SoftOptInNoticeVersion</c>; none configured counts) is a notice the guest read that is no longer in force:
+    /// 409, so it is never recorded as presented.
+    /// </summary>
+    private string? ResolveSoftOptInNotice(string? versionSent)
+    {
+        var sent = GdprOptions.Normalize(versionSent);
+        if (sent is null)
+            return null;
+
+        var current = GdprOptions.Normalize(
+            configuration[$"{GdprOptions.SectionName}:{nameof(GdprOptions.SoftOptInNoticeVersion)}"]);
+        if (current is null || !string.Equals(sent, current, StringComparison.Ordinal))
+            throw new DomainConflictException(DirectBookingErrorCodes.SoftOptInNoticeOutdated, "DirectBookingSoftOptInNoticeOutdated");
+
+        return current;
+    }
+
+    private string? DefaultCallingCode() =>
+        configuration[$"{CrmOptions.SectionName}:{nameof(CrmOptions.DefaultCallingCode)}"];
+
+    /// <summary>
+    /// Makes the consents the guest ticked contacts of the CRM and sends the double opt-in e-mail of the address (E07/F04/US01/T02, NF-90,
+    /// CRM-03): origin <see cref="GuestContactOrigin.DirectBooking"/>, source <see cref="GuestConsentSource.BookingCheckout"/>, with the
+    /// version, the IP, the time and the default language of the org. The privacy history is already saved with the booking, so the row is
+    /// not written twice (<see cref="CrmConsentInput.RecordHistory"/>). <b>Best effort and never fatal</b>: the checkout does not depend
+    /// on the CRM. Without the key of the contact index (the CRM is closed in this environment) nothing is made and the sync of the CRM makes
+    /// the contacts once it is open; a contact or an e-mail that fails is logged by id and error type, never by address, and the host can
+    /// send the confirmation again.
+    /// </summary>
+    private async Task RecordCrmConsentsAsync(
+        Guest guest,
+        Guid orgId,
+        string? orgLanguage,
+        bool email,
+        bool whatsApp,
+        string? marketingVersion,
+        string consentIpAddress,
+        DateTime at,
+        Guid bookingId)
+    {
+        if ((!email && !whatsApp) || marketingVersion is null || crmContacts is null || contactIndex is not { IsConfigured: true })
+            return;
+
+        try
+        {
+            var ip = string.IsNullOrWhiteSpace(consentIpAddress) ? null : consentIpAddress;
+            var displayName = $"{guest.FirstName} {guest.LastName}".Trim();
+            if (email)
+            {
+                var contact = await crmContacts.RecordConsentAsync(new CrmConsentInput(
+                    orgId,
+                    GuestContactChannel.Email,
+                    guest.Email,
+                    GuestContactOrigin.DirectBooking,
+                    marketingVersion,
+                    GuestConsentSource.BookingCheckout,
+                    ip,
+                    at,
+                    orgLanguage,
+                    displayName,
+                    GuestId: guest.Id,
+                    BookedVia: BookingSource.Direct,
+                    RecordHistory: false));
+
+                if (contact is not null && marketingConfirmation is not null)
+                    await marketingConfirmation.SendConfirmationAsync(orgId, contact.Id);
+            }
+
+            if (whatsApp)
+            {
+                await crmContacts.RecordConsentAsync(new CrmConsentInput(
+                    orgId,
+                    GuestContactChannel.WhatsApp,
+                    guest.PhoneNumber,
+                    GuestContactOrigin.DirectBooking,
+                    marketingVersion,
+                    GuestConsentSource.BookingCheckout,
+                    ip,
+                    at,
+                    orgLanguage,
+                    displayName,
+                    GuestId: guest.Id,
+                    BookedVia: BookingSource.Direct,
+                    RecordHistory: false));
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(
+                "The CRM contact of the marketing consent of checkout {BookingId} could not be made ({Error}); the privacy history has the consent and the CRM sync makes the contact",
+                bookingId,
+                CrmDatabaseErrors.Describe(ex));
+        }
     }
 
     /// <summary>The guest of a direct checkout with its consent, not saved: it is written with its booking.</summary>

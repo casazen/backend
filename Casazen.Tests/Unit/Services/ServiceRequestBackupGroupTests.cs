@@ -888,6 +888,7 @@ public class ServiceRequestBackupGroupTests
         s.Db.Orgs.Add(org);
         s.Db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = org.Id,
             Email = email,
             LegalName = legalName,

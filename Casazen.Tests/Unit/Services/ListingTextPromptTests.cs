@@ -111,6 +111,20 @@ public class ListingTextPromptTests
         Assert.EndsWith("soggiorno.", description);
     }
 
+    [Fact]
+    public void FullPrompt_LanguageAndSevenFields_KeepUnknownTransportEmpty()
+    {
+        var prompt = ListingTextPrompt.FullSystemPrompt("fr");
+        Assert.Contains("ISO fr", prompt);
+        Assert.Contains("1.300 e 1.900", prompt);
+        Assert.Contains("transport", prompt);
+        Assert.Contains("stringa vuota", prompt);
+        Assert.True(ListingTextPrompt.TryParseFields("{\"title\":\"Maison\",\"description\":\"Un logement.\",\"spaces\":\"Deux chambres\",\"access\":\"\",\"neighborhood\":\"Como\",\"transport\":\"\",\"rules\":\"\"}", out var fields));
+        Assert.Equal(7, fields!.Count);
+        Assert.Equal(string.Empty, fields["transport"]);
+        Assert.False(ListingTextPrompt.TryParseFields("{\"title\":\"Maison\",\"description\":\"Texte\"}", out _));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

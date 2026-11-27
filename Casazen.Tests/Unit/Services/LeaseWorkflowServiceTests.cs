@@ -187,6 +187,32 @@ public class LeaseWorkflowServiceTests
     }
 
     [Fact]
+    public async Task CreateDraftAsync_AFormattedPhone_IsStoredAsInternationalDigits()
+    {
+        ArrangeCreation();
+
+        var result = await _sut.CreateDraftAsync(PropertyId, WithTenantPhone("+39 333 123 4567"));
+
+        Assert.Equal("+393331234567", result.Parties.Single(p => p.Role == PartyRole.Tenant).ContactPhone);
+        Assert.Null(result.Parties.Single(p => p.Role == PartyRole.Landlord).ContactPhone);
+    }
+
+    [Theory]
+    [InlineData("+1")]
+    [InlineData("+0123456789")]
+    [InlineData("3331234567")]
+    public async Task CreateDraftAsync_APhoneThatIsNotInternational_Throws422AndStoresNothing(string phone)
+    {
+        _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(BuildProperty(hasApe: true));
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _sut.CreateDraftAsync(PropertyId, WithTenantPhone(phone)));
+
+        Assert.Equal(LeasePartyErrorCodes.PhoneInvalid, ex.Code);
+        Assert.Equal("LeasePartyPhoneInvalid", ex.MessageKey);
+        _leaseRepo.Verify(r => r.AddAsync(It.IsAny<LeaseContract>()), Times.Never);
+    }
+
+    [Fact]
     public async Task GetLeaseDetailAsync_ExistingLease_ReturnsItForTheCallerToAuthorize()
     {
         // Arrange: ownership is no longer decided here but by the controller (TN-3 HostResource check).
@@ -564,6 +590,16 @@ public class LeaseWorkflowServiceTests
         TypeBElementCount = 3,
         ZoneName = "Unica",
     };
+
+    private static CreateLeaseRequest WithTenantPhone(string? phone) =>
+        BuildCreateRequest() with
+        {
+            Parties =
+            [
+                new CreatePartyRequest(PartyRole.Landlord, "Mario", "Rossi", "RSSMRA80A01H501U", "IT", "mario@example.com"),
+                new CreatePartyRequest(PartyRole.Tenant, "John", "Doe", "DOEJHN90B02Z123Z", "IT", "john@example.com", phone),
+            ],
+        };
 
     private static CreateLeaseRequest ConcordatoRequest(decimal monthlyRent) =>
         BuildCreateRequest(monthlyRent: monthlyRent, canoneConcordatoCharacteristics: Characteristics()) with

@@ -20,6 +20,38 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class SupplierPaymentCompletionTests
 {
+    [Theory]
+    [InlineData(true, 6000, 0)]
+    [InlineData(false, 6600, 600)]
+    public async Task NewHostTerms_KeepSupplierPriceAndChargeOnlyForMarketplacePartners(
+        bool privateRelationship, int expectedTotal, int expectedFee)
+    {
+        using var s = await ServiceRequestScenario.CreateAsync(paymentOptions: new SupplierPaymentsOptions
+        {
+            CommissionPercent = 10m,
+            AddMarketplaceFeeToNewHostRequests = true
+        });
+        if (privateRelationship)
+        {
+            s.Db.TrustedSuppliers.Add(new TrustedSupplier
+            {
+                OrgId = s.HostOrgId,
+                SupplierOrgId = s.SupplierOrgId,
+                HostOrigin = true,
+                CreatedAt = s.Clock.GetUtcNow().UtcDateTime
+            });
+            await s.Db.SaveChangesAsync();
+        }
+
+        var completed = await s.CompletedOnlineAsync();
+        var payment = Assert.Single(await s.PaymentsOfAsync(completed.Id));
+        Assert.True(payment.CommissionAddedToPrice);
+        Assert.Equal(expectedTotal, payment.AmountCents);
+        Assert.Equal(expectedFee, payment.ApplicationFeeCents);
+        Assert.Equal(6000, payment.NetCents);
+        Assert.Equal(expectedTotal, ServiceRequestJson.ReadPriceLines(payment.LineItemsJson).Sum(l => l.AmountCents));
+    }
+
     // ─── The payment is born with the completion ───
 
     [Fact]

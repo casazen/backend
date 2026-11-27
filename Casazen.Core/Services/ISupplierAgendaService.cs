@@ -118,7 +118,12 @@ public sealed record SupplierCalendar(
     IReadOnlyList<SupplierClosedDay> ClosedDays,
     IReadOnlyList<SupplierTimeOff> TimeOff,
     IReadOnlyList<SupplierBusyWindow> Windows,
-    IReadOnlyList<SupplierAgendaRequest> Requests);
+    IReadOnlyList<SupplierAgendaRequest> Requests)
+{
+    public IReadOnlyList<SupplierGuestOrderAppointment> GuestOrders { get; init; } = [];
+}
+
+public sealed record SupplierGuestOrderAppointment(Guid Id, DateTime RequestedFor, string ServiceName);
 
 /// <summary>
 /// The supplier's agenda (SP-03, <c>api/supplier/availability/*</c> and <c>api/supplier/calendar</c>): weekly working

@@ -22,7 +22,7 @@ as for the host quote.
 { "propertyId": "…", "from": "2026-11-10", "to": "2026-11-13", "state": "occupied", "invalidReason": null, "nights": 3,
   "minNights": 2,
   "conflicts": [ { "id": "…", "type": "booking", "title": "Giulia Bianchi", "channel": "Direct", "from": "2026-11-11", "to": "2026-11-14" } ],
-  "nearestFreeWindow": { "from": "2026-11-14", "to": "2026-11-17" }, "linkableBlockId": null }
+  "nearestFreeWindow": { "from": "2026-11-14", "to": "2026-11-17" }, "linkableBlockId": null, "channelManagerChecked": null }
 ```
 
 | `state` | Meaning | Other fields |
@@ -34,9 +34,23 @@ as for the host quote.
 | `invalid` | `invalidReason`: `checkOutNotAfterCheckIn`, `checkInInPast` (before today in Europe/Rome), `stayTooLong` (over 366 nights) | — |
 
 `conflicts[].type` is `booking` (a stay of CasaZen: the booking site, the host, or a portal's reservation the host turned into a stay),
-`ical` (a portal's block: `title` is the name of the calendar) or `block` (the host's own block: `title` is the note, null if none);
-`channel` is `Direct`, `Manual`, `Airbnb`, `BookingCom` or `Other` (null for the host's own block). The title of a booking is the name of
-its guest: the caller has `booking.write` on the property, so they read its bookings anyway.
+`ical` (a portal's block: `title` is the name of the calendar), `block` (the host's own block: `title` is the note, null if none) or
+`channelManager` (Octorate says the nights cannot be booked, see below: the `id` is the empty id, the dates are the ones asked for and `title`
+is the channel Octorate names, null while its answer names none); `channel` is `Direct`, `Manual`, `Airbnb`, `BookingCom` or `Other` (null
+for the host's own block and for the channel manager). The title of a booking is the name of its guest: the caller has `booking.write` on
+the property, so they read its bookings anyway.
+
+**The channel manager (E08/F01/US02/T01).** For a property mirrored on Octorate (a connected account, a confirmed mapping that is not
+write-blocked, a room, `Features:OctorateConnector` on) the stay is also asked to Octorate's `availabilityCheck` of the room, after CasaZen's
+own read; a long-term property and an impossible stay never reach Octorate, and neither does a stay that is exactly the reservation of a
+portal the host is about to complete (`linkableBlock`: that reservation is what Octorate would answer with). `channelManagerChecked` says what
+happened: `null` when nothing was asked (the property is not mirrored, the connector is off, or one of the cases above), `true` when Octorate
+answered, `false` when it could not be asked (timeout, 429, 5xx, a refused token, longer than 10 seconds, a room not chosen yet). `false` is
+advice and never blocks the host, as the other advice of the wizard; Octorate saying "not available" makes the answer `occupied` with a
+`channelManager` conflict, whatever CasaZen's calendar says, and the `nearestFreeWindow` is still CasaZen's own (or null when CasaZen's calendar
+was free). The answer of Octorate is remembered for 60 seconds for the property, its room and the dates (what went wrong is not remembered,
+and each API instance has its own memory), so going back and forth over the same dates spends one call of the quota of the org (D7). The
+public calendar and the public availability read CasaZen's own data and never ask Octorate.
 
 **One definition of "taken".** The answer adds no rule of its own: a booking takes its dates as `CheckoutHolds.OccupiesDates` says (a
 cancelled booking and an expired checkout hold do not, a "pay at the property" request does) and the nights it and the calendar blocks
@@ -67,7 +81,10 @@ near, the earlier. Read from the same rows as the conflicts (two queries in all)
   than the property allows 422 `booking_too_many_guests`; the ages of the minors missing 422 `tourist_tax_child_ages_required`.
 * **Dates taken: 409 `booking_dates_unavailable`.** The preview is advice; the real check is the one inside the transaction that inserts
   the booking, under the advisory lock of the property (two requests on the same dates cannot both succeed; the guest row of the loser is
-  removed again). It looks at bookings and calendar blocks.
+  removed again). It looks at bookings and calendar blocks. Before that last check writes anything, `BookingService.CreateManualBookingAsync`
+  also asks the channel manager (§ 1): Octorate answering "not available" is the same 409, with the same text; an Octorate that cannot be
+  asked never refuses (if it refuses later, the push of the booking reports a conflict and raises a "To do"). The guest's checkout
+  (`CreateDirectBookingAsync`) asks it in the same place. A block being completed (`blockId`) is not asked.
 * **Minimum stay:** a stay shorter than `minNights` is created all the same (the host decides, as for the older endpoint) and the answer
   says `belowMinimum: true`.
 * **Agreed price (`totalPrice`, `priceNote`).** Without it, or equal to the total of the quote, the booking has the price of the quote.
@@ -103,7 +120,9 @@ with an agreed price and its note.
 ## 4. Checks after a deploy
 
 1. `GET /api/properties/{id}/availability?from=…&to=…` with dates on an existing stay answers `occupied` with its guest as `title`; on
-   free dates `ok`; with the arrival in the past `invalid`.
+   free dates `ok`; with the arrival in the past `invalid`. `channelManagerChecked` is `null` for a property that is not mirrored on Octorate
+   and `true` or `false` for one that is (with `false`, look for `Availability of property … on the channel manager could not be asked` in the
+   logs: the code and the HTTP status of Octorate are there, no body).
 2. `POST /api/bookings/manual` with only the name and the email answers 201 `guestDataComplete: false`; the same dates again, 409.
 3. With `totalPrice` below the tourist tax the answer is 422 `booking_price_override_invalid`; above it, `touristTax` in the answer is the
    one of `POST /api/bookings/quote` for the same stay.

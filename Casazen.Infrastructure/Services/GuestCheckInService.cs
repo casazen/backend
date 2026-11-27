@@ -1,13 +1,19 @@
+using Casazen.Core.GuestPortal;
+using Casazen.Core.Exceptions;
+using Casazen.Infrastructure.GuestPortal;
 using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.SiteDocuments;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -27,17 +33,39 @@ public class GuestCheckInService(
     IAlloggiatiCodeTableService? codeTableService = null,
     IOptions<GuestCheckInOptions>? options = null,
     TimeProvider? timeProvider = null,
-    IOptions<GdprOptions>? gdprOptions = null) : IGuestCheckInService
+    IOptions<GdprOptions>? gdprOptions = null,
+    IPushNotificationService? pushNotifications = null,
+    ICrmContactService? crmContacts = null,
+    IMarketingConfirmationService? marketingConfirmation = null,
+    ICrmContactIndex? contactIndex = null,
+    IOptions<CrmOptions>? crmOptions = null,
+    IInvoiceDataService? invoiceDataService = null,
+    ICheckInLinkDeliveryService? linkDeliveries = null,
+    ITicinoNotificationService? ticinoNotifications = null,
+    PortalCheckInSessions? portalSessions = null) : IGuestCheckInService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    // NF-132: whether the property is in canton Ticino, the one check of the jurisdiction (the page then asks the Swiss fields and the plate).
+    private readonly ITicinoNotificationService _ticino = ticinoNotifications ?? new TicinoNotificationService(db);
+
+    // The answer to «Ti serve la fattura?» (FIS-01): the container gives the service that records its event; built by hand it records none.
+    private readonly IInvoiceDataService _invoiceData = invoiceDataService ?? new InvoiceDataService(db, timeProvider: timeProvider);
     private readonly GuestCheckInOptions _options = options?.Value ?? new GuestCheckInOptions();
     private readonly GdprOptions _gdpr = gdprOptions?.Value ?? new GdprOptions();
+
+    // Existing deployments can supply their own text versions across guest portals.
+    private string? PrivacyVersion => GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion) ?? GdprOptions.Normalize(_options.PrivacyNoticeVersion);
+    private string? MarketingVersion => GdprOptions.Normalize(_gdpr.MarketingConsentVersion) ?? GdprOptions.Normalize(_options.MarketingConsentVersion);
 
     private readonly IAlloggiatiCodeTableService _codeTables =
         codeTableService ?? new AlloggiatiCodeTableService(db, NullLogger<AlloggiatiCodeTableService>.Instance);
 
     private readonly IStayGuestService _stayGuests = stayGuestService
-        ?? new StayGuestService(db, codeTableService ?? new AlloggiatiCodeTableService(db, NullLogger<AlloggiatiCodeTableService>.Instance));
+        ?? new StayGuestService(
+            db,
+            codeTableService ?? new AlloggiatiCodeTableService(db, NullLogger<AlloggiatiCodeTableService>.Instance),
+            ticinoNotifications: ticinoNotifications);
 
     /// <summary>Attempts of <see cref="IssueLinkAsync"/> when another link of the booking is issued at the same time.</summary>
     private const int MaxIssueAttempts = 3;
@@ -84,6 +112,52 @@ public class GuestCheckInService(
                 logger.LogInformation("Check-in link of booking {BookingId} issued concurrently, replacing it", bookingId);
             }
         }
+    }
+
+    public async Task<IssuedCheckInLink> ReissueLinkAsync(Guid bookingId, Guid orgId)
+    {
+        var now = UtcNow();
+        var open = await db.GuestCheckInSessions
+            .Where(s => s.BookingId == bookingId && s.OrgId == orgId && OpenLinkStatuses.Contains(s.Status) && s.ExpiresAt >= now)
+            .ToListAsync();
+
+        IssuedCheckInLink link;
+        if (open.Count == 0)
+        {
+            link = await IssueLinkAsync(bookingId, orgId);
+        }
+        else
+        {
+            // The session the guest is working on wins over one that was never opened; of two alike the newest.
+            var kept = open
+                .OrderByDescending(s => s.Status == GuestCheckInSessionStatus.InCompilazione)
+                .ThenByDescending(s => s.CreatedAt)
+                .First();
+
+            // Only the token and the expiry change: the consent, the document read, the language and the attempts spent stay on the session.
+            var rawToken = GenerateToken();
+            kept.TokenHash = ComputeSha256Hex(rawToken);
+            kept.ExpiresAt = now.Add(_options.SessionLifetime);
+
+            // The e-mail of the old link, if it had one, carried a link that is dead now: the new one is a link to copy.
+            kept.LinkEmailStatus = GuestCheckInLinkEmailStatus.NotRequested;
+            kept.LinkEmailError = null;
+            kept.SentAt = null;
+            kept.UpdatedAt = now;
+
+            foreach (var other in open.Where(s => s.Id != kept.Id))
+            {
+                other.Status = GuestCheckInSessionStatus.Scaduto;
+                other.UpdatedAt = now;
+            }
+
+            await db.SaveChangesAsync();
+            logger.LogInformation("Check-in link of booking {BookingId} renewed on session {SessionId}", bookingId, kept.Id);
+            link = new IssuedCheckInLink(kept.Id, rawToken, kept.ExpiresAt);
+        }
+
+        await EndLinkDeliveryAsync(orgId, bookingId, CheckInLinkEndReasons.LinkReplaced);
+        return link;
     }
 
     public async Task<int> ExpireStaleSessionsAsync(CancellationToken cancellationToken = default)
@@ -166,16 +240,32 @@ public class GuestCheckInService(
         if (session is null)
             return null;
 
-        // After submission the link (possibly forwarded) shows only that the check-in is done (A5-28).
-        if (IsCompleted(session.Status))
-            return new GuestCheckInPublicView { Status = session.Status, IsCompleted = true };
-
+        // The slug of the org that owns the stay is public data, not personal data: every usable link carries it, a completed one too, at the cost of this one lookup (NF-140).
         var booking = session.Booking;
+        var orgSlug = await GetOrgSlugAsync(booking.OrgId);
+
+        // After submission the link (possibly forwarded) shows only that the check-in is done (A5-28), and the org it belongs to.
+        if (IsCompleted(session.Status))
+            return new GuestCheckInPublicView { Status = session.Status, IsCompleted = true, OrgSlug = orgSlug };
+
         var guests = await _stayGuests.GetForBookingAsync(booking);
         var tables = await _codeTables.GetStatusAsync();
+
+        // Two booleans and nothing of the stored data: the link is anonymous, the fiscal code, the VAT number, the address and the PEC never leave.
+        var invoice = await _invoiceData.GetAsync(booking.Id);
+        var privacyNoticeOrgSlug = await db.OrgSiteDocuments
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(d => d.OrgId == booking.OrgId && d.Kind == OrgSiteDocumentKind.Privacy)
+            .OrderByDescending(d => d.Version)
+            .Select(d => d.WithdrawnAt == null ? d.Org.Slug : null)
+            .FirstOrDefaultAsync();
+        var inTicino = await _ticino.IsPropertyInTicinoAsync(booking.PropertyId);
         return new GuestCheckInPublicView
         {
+            InvoiceRequested = invoice?.InvoiceRequested ?? false,
+            HasInvoiceData = invoice?.HasRecipientData ?? false,
             Status = session.Status,
+            OrgSlug = orgSlug,
             SessionId = session.Id,
             PropertyName = booking.Property.Name,
             CheckInDate = booking.CheckInDate,
@@ -183,9 +273,57 @@ public class GuestCheckInService(
             DeclaredGuests = Math.Max(1, booking.NumberOfGuests),
             Guests = guests.Select(ToPrefill).ToList(),
             AvailableCodeTables = tables.Where(t => t.RowCount > 0).Select(t => t.Table).ToList(),
-            PrivacyNoticeVersion = GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion),
-            MarketingConsentVersion = GdprOptions.Normalize(_gdpr.MarketingConsentVersion),
+            PrivacyNoticeVersion = PrivacyVersion,
+            PrivacyNoticeOrgSlug = privacyNoticeOrgSlug,
+            MarketingConsentVersion = MarketingVersion,
+
+            // Data minimization (ADR-030-R1): the page asks a statistical field only where the region requires it, as the ISTAT region table says
+            // (E21/F01/US01/T01): none for a comune that is not in the list, for a region without a row and for a row that is not verified. A property
+            // in canton Ticino asks the fields of the police file too (NF-132): the document of every adult, the home and the plate.
+            RequiredGuestFields = TicinoCheckInFields.AskedOf(await RequiredGuestFieldsAsync(booking.Property.ComuneIstatCode), inTicino),
+            AskVehiclePlate = inTicino,
+            Language = session.Language,
         };
+    }
+
+    /// <summary>
+    /// The current slug of an org, for the anonymous check-in link (NF-140): the link carries no tenant, so the tenant filter does not apply (the same reading as the privacy notice above).
+    /// Null when the org cannot be found.
+    /// </summary>
+    private async Task<string?> GetOrgSlugAsync(Guid orgId)
+    {
+        return await db.Orgs
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(o => o.Id == orgId)
+            .Select(o => o.Slug)
+            .FirstOrDefaultAsync();
+    }
+
+    /// <summary>The statistical fields the region of the property requires of its guests: the ones its row of the region table names, none otherwise.</summary>
+    private async Task<IReadOnlyList<string>> RequiredGuestFieldsAsync(string? comuneIstatCode) =>
+        IstatRegionResolver.RequiredFields((await IstatRegionService.FindForComuneAsync(db, comuneIstatCode, CancellationToken.None))?.Rule);
+
+    public async Task<GuestCheckInLanguageOutcome> SetLanguageAsync(string token, string language)
+    {
+        var normalized = GuestLanguages.Normalize(language);
+        if (normalized is null)
+            return GuestCheckInLanguageOutcome.Unsupported;
+
+        var session = await GetUsableSessionByTokenAsync(token);
+        if (session is null)
+            return GuestCheckInLanguageOutcome.NotFound;
+        if (IsCompleted(session.Status))
+            return GuestCheckInLanguageOutcome.Completed;
+
+        if (session.Language != normalized)
+        {
+            session.Language = normalized;
+            session.UpdatedAt = UtcNow();
+            await db.SaveChangesAsync();
+        }
+
+        logger.LogInformation("Language of check-in session {SessionId} set to {Language}", session.Id, normalized);
+        return GuestCheckInLanguageOutcome.Saved;
     }
 
     private static StayGuestPrefill ToPrefill(StayGuest guest) => new()
@@ -208,6 +346,24 @@ public class GuestCheckInService(
         DocumentNumberMasked = MaskDocumentNumber(guest.DocumentNumber),
         DocumentIssuePlaceCode = guest.DocumentIssuePlaceCode,
         DocumentIssuePlaceName = guest.DocumentIssuePlaceName,
+        DocumentIssuedOn = guest.DocumentIssuedOn,
+        DocumentExpiresOn = guest.DocumentExpiresOn,
+        ResidenceInItaly = guest.ResidenceInItaly,
+        ResidenceComuneCode = guest.ResidenceComuneCode,
+        ResidenceComuneName = guest.ResidenceComuneName,
+        ResidenceProvince = guest.ResidenceProvince,
+        ResidenceCountryCode = guest.ResidenceCountryCode,
+        ResidenceCountryName = guest.ResidenceCountryName,
+
+        // NF-132: given back with the rest of the guest, so a page that sends the guests whole does not clear them.
+        ResidenceStreet = guest.ResidenceStreet,
+        ResidencePostalCode = guest.ResidencePostalCode,
+        ResidenceCityName = guest.ResidenceCityName,
+        TourismType = guest.TourismType,
+        TravelWay = guest.TravelWay,
+        EducationLevel = guest.EducationLevel,
+
+        // Never the tourist tax exemption: the host's decision, not shown on the guest page.
     };
 
     /// <summary>
@@ -233,12 +389,16 @@ public class GuestCheckInService(
     private async Task<GuestCheckInSession?> GetUsableSessionByTokenAsync(string token)
     {
         var tokenHash = ComputeSha256Hex(token);
-        var session = await db.GuestCheckInSessions
+        var sessions = db.GuestCheckInSessions.Where(s => s.TokenHash == tokenHash);
+        if (portalSessions is not null && PortalCheckInSessions.IsProof(token))
+            sessions = await portalSessions.ResolveAsync(token);
+
+        var session = await sessions
             .Include(s => s.Booking)
                 .ThenInclude(b => b.Property)
             .Include(s => s.Booking)
                 .ThenInclude(b => b.Guest)
-            .FirstOrDefaultAsync(s => s.TokenHash == tokenHash);
+            .FirstOrDefaultAsync();
 
         if (session is null)
             return null;
@@ -270,6 +430,22 @@ public class GuestCheckInService(
             .FirstOrDefaultAsync();
     }
 
+    public async Task<bool> RequestInvoiceAsync(string token, GuestCheckInInvoice invoice, CancellationToken ct)
+    {
+        var session = await GetUsableSessionByTokenAsync(token);
+        if (session is null)
+            return false;
+        if (invoice.NeedInvoice)
+        {
+            if (invoice.Data.HasContent)
+                await _invoiceData.SaveAsync(session.BookingId, invoice.Data, InvoiceDataSource.CheckIn, save: false, ct: ct);
+            await _invoiceData.MarkRequestedAsync(session.BookingId, true, save: false, ct: ct);
+            await db.SaveChangesAsync(ct);
+        }
+
+        return true;
+    }
+
     public async Task<GuestCheckInSubmitResult> SubmitAsync(string token, GuestCheckInSubmitRequest request)
     {
         var session = await GetUsableSessionByTokenAsync(token);
@@ -279,21 +455,64 @@ public class GuestCheckInService(
         if (IsCompleted(session.Status))
             return new GuestCheckInSubmitResult { Success = false, Duplicate = true, SessionId = session.Id };
 
+        var houseRulesVersion = PortalCheckInSessions.IsProof(token)
+            ? GuestHouseGuide.RulesVersion(session.Booking.Property.HouseRules) : null;
+        if (houseRulesVersion is not null && request.HouseRulesVersion != houseRulesVersion)
+            throw new DomainConflictException("guest_house_rules_acknowledgement_required", "GuestHouseRulesAcknowledgementRequired");
+
         // The marketing consent is offered only with a versioned text (Gdpr:MarketingConsentVersion, CO-15). The per-channel
         // consent (NF-05) is checked here too, and its errors come with the ones of the guests: one answer, every error.
-        var marketingVersion = GdprOptions.Normalize(_gdpr.MarketingConsentVersion);
+        var marketingVersion = MarketingVersion;
         var (consentErrors, marketingEmail) = ValidateMarketingConsent(request, marketingVersion);
 
-        // Every guest: kinds and order, document only for single guests and heads, shape of the codes.
-        var guestErrors = await _stayGuests.ValidateAsync(request.Guests);
+        // Every guest: kinds and order, document only for single guests and heads (in Ticino of every guest the police file notifies, NF-132),
+        // shape of the codes.
+        var guestErrors = (await _stayGuests.ValidateAsync(session.Booking, request.Guests)).ToList();
+        if (request.PrivacyNoticeAcknowledged == false)
+            guestErrors.Add(new(null, nameof(request.PrivacyNoticeAcknowledged), "CheckInPrivacyAcknowledgementRequired"));
+        if (IdentityVerificationFlowService.VerifiedNumberMismatch(session, request.Guests) is { } mismatch)
+            guestErrors.Add(new(mismatch, nameof(StayGuestInput.DocumentNumber), "CheckInVerifiedNumberMismatch"));
+        var capacity = Math.Max(1, session.Booking.NumberOfGuests);
+        if (request.Guests.Count > capacity)
+            guestErrors.Add(new(null, nameof(request.Guests), "CheckInBookingCapacity", capacity));
+        if (!VehiclePlates.IsValid(VehiclePlates.Normalize(request.VehiclePlate)))
+            guestErrors.Add(new(null, StayGuestService.VehiclePlateField, CheckInValidationKeys.VehiclePlateInvalid, VehiclePlates.MaxLength));
+        if (guestErrors.Count == 0)
+        {
+            var roster = await _stayGuests.GetForBookingAsync(session.Booking);
+            foreach (var booked in roster.Where(row => row.Position < capacity))
+            {
+                var entry = request.Guests.ElementAtOrDefault(booked.Position);
+                if ((!string.IsNullOrWhiteSpace(booked.FirstName) && !CheckInGuestMatch.SameName(booked.FirstName, entry?.FirstName)) ||
+                    (!string.IsNullOrWhiteSpace(booked.LastName) && !CheckInGuestMatch.SameName(booked.LastName, entry?.LastName)))
+                    guestErrors.Add(new(booked.Position, nameof(StayGuestInput.FirstName), "CheckInBookedGuestMismatch"));
+            }
+
+            var withDocument = await GuestsWithDocumentAsync(session.Booking, request.Guests);
+            for (var i = 0; i < request.Guests.Count; i++)
+            {
+                var entry = request.Guests[i];
+                var number = AlloggiatiRecordRules.NormalizeDocumentNumber(entry.DocumentNumber);
+                if (withDocument.Contains(i) && (number.Length < 4 || !number.Any(char.IsAsciiDigit)))
+                    guestErrors.Add(new(i, nameof(entry.DocumentNumber), "CheckInDocumentNumberPlausibility"));
+            }
+        }
         if (consentErrors.Count + guestErrors.Count > 0)
             return new GuestCheckInSubmitResult { Success = false, ValidationErrors = [.. consentErrors, .. guestErrors] };
+
+        // FIS-01 (E06/F02/US01/T03): the optional answer to «Ti serve la fattura?». No answer, or a «no», changes nothing and never blocks the check-in.
+        // A «yes» with data is checked now, as a whole and before anything is written: a data that is not valid is a 422 that names the field and
+        // leaves the check-in unsaved, so the guest corrects it and sends again.
+        var invoice = request.Invoice is { NeedInvoice: true } answer ? answer : null;
+        if (invoice is { Data.HasContent: true })
+            await _invoiceData.EnsureValidAsync(session.BookingId, invoice.Data, InvoiceDataSource.CheckIn);
 
         var now = UtcNow();
         var guest = await EnsureBookingOwnsMutableGuestAsync(session, now);
 
-        // Stages the rows: the session is completed in the same SaveChanges.
-        var saved = await _stayGuests.ReplaceAsync(session.Booking, request.Guests, StayGuestAuthor.GuestPortal, save: false);
+        // Stages the rows (and the plate of the stay, NF-132: null keeps the stored one): the session is completed in the same SaveChanges.
+        var saved = await _stayGuests.ReplaceAsync(
+            session.Booking, request.Guests, StayGuestAuthor.GuestPortal, save: false, vehiclePlate: request.VehiclePlate);
         if (!saved.Success)
             return new GuestCheckInSubmitResult { Success = false, ValidationErrors = saved.Errors };
 
@@ -305,8 +524,19 @@ public class GuestCheckInService(
         guest.DataProcessingPurpose = "Alloggiati Web guest registration (TULPS Art. 109)";
         guest.UpdatedAt = now;
 
+        // The «yes» and the data, staged in the unit of work of the check-in: they are saved by the same SaveChanges, with the guests and the session.
+        // The data fills what the host did not write and never overwrites it (the source CheckIn is below Host).
+        if (invoice is not null)
+        {
+            if (invoice.Data.HasContent)
+                await _invoiceData.SaveAsync(session.BookingId, invoice.Data, InvoiceDataSource.CheckIn, save: false);
+
+            await _invoiceData.MarkRequestedAsync(session.BookingId, needInvoice: true, save: false);
+        }
+
         session.Status = GuestCheckInSessionStatus.Completo;
         session.CompletedAt = now;
+        session.AcceptedHouseRulesVersion = houseRulesVersion;
         session.UpdatedAt = now;
 
         await db.SaveChangesAsync();
@@ -315,6 +545,14 @@ public class GuestCheckInService(
             "Guest check-in submitted for session {SessionId}, booking {BookingId}: {GuestCount} guests",
             session.Id, session.BookingId, saved.Guests.Count);
 
+        // NF-90: the consent the guest ticked becomes a contact of the CRM and its double opt-in e-mail goes out. After the check-in is saved
+        // and never fatal for it: the record of the consent is already in the check-in.
+        await RecordCrmConsentsAsync(session.Booking, guest, request, marketingVersion, marketingEmail, now);
+
+        PushToHosts(session);
+
+        await EndLinkDeliveryAsync(session);
+
         return new GuestCheckInSubmitResult
         {
             Success = true,
@@ -322,6 +560,72 @@ public class GuestCheckInService(
             BookingId = session.BookingId,
             GuestId = guest.Id,
         };
+    }
+
+    /// <summary>
+    /// Tells the hosts of the booking that the guest completed the online check-in: a push to their phones and, through the push
+    /// decorator, the entry of the bell and the live message of the open web sessions (<c>docs/runbooks/in-app-notifications.md</c>).
+    /// The text names the property only, never the guest or what was typed. Best effort after the check-in is saved: whatever goes
+    /// wrong here is logged and never fails the guest's submit.
+    /// </summary>
+    private void PushToHosts(GuestCheckInSession session)
+    {
+        if (pushNotifications is null)
+            return;
+
+        try
+        {
+            var booking = session.Booking;
+            var push = EmailTemplates.GuestCheckInCompletedPush(EmailTemplates.DefaultCulture, booking.Property.Name);
+            pushNotifications.Enqueue(
+                PushDeliveryKeys.GuestCheckInCompleted(session.Id),
+                PushAudience.BookingHosts(booking.Id),
+                new PushNotificationPayload(
+                    push.Title, push.Body, PushTypes.GuestCheckInCompleted, booking.Id, PushRoutes.Booking(booking.Id)));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex, "Push about the check-in of session {SessionId}, booking {BookingId} could not be prepared", session.Id, session.BookingId);
+        }
+    }
+
+    /// <summary>
+    /// The guest completed the check-in: the delivery of its link, if the booking had one that waited (E23/F01/US01/T01), is over, and the host's «To do» to carry the link is closed.
+    /// Best effort after the check-in is saved: whatever goes wrong here is logged and never fails the guest's submit.
+    /// </summary>
+    private async Task EndLinkDeliveryAsync(GuestCheckInSession session)
+    {
+        if (linkDeliveries is null)
+            return;
+
+        try
+        {
+            await linkDeliveries.EndAsync(session.OrgId, session.BookingId, CheckInLinkEndReasons.CheckInCompleted);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "The delivery of the link of session {SessionId}, booking {BookingId} could not be ended", session.Id, session.BookingId);
+        }
+    }
+
+    /// <summary>
+    /// The delivery of the link of a booking, if it had one that waited (E23/F01/US01/T01), ends because <paramref name="reason"/> (a link replaced the one it carried), and the host's «To do» to
+    /// carry the link closes. Best effort after the link is saved: whatever goes wrong here is logged and never fails the new link.
+    /// </summary>
+    private async Task EndLinkDeliveryAsync(Guid orgId, Guid bookingId, string reason)
+    {
+        if (linkDeliveries is null)
+            return;
+
+        try
+        {
+            await linkDeliveries.EndAsync(orgId, bookingId, reason);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "The delivery of the link of booking {BookingId} could not be ended ({Reason})", bookingId, reason);
+        }
     }
 
     public async Task<string> RegenerateTokenAsync(Guid bookingId, Guid orgId) =>
@@ -501,14 +805,14 @@ public class GuestCheckInService(
         var ip = request.ConsentIpAddress.Length > 50 ? request.ConsentIpAddress[..50] : request.ConsentIpAddress;
         var ipAddress = string.IsNullOrWhiteSpace(ip) ? null : ip;
 
-        if (GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion) is { } noticeVersion)
+        if (PrivacyVersion is { } noticeVersion)
         {
             db.GuestConsentRecords.Add(new GuestConsentRecord
             {
                 OrgId = guest.OrgId,
                 GuestId = guest.Id,
                 Purpose = GuestConsentPurpose.PrivacyNotice,
-                Action = GuestConsentAction.NoticePresented,
+                Action = request.PrivacyNoticeAcknowledged == true ? GuestConsentAction.NoticeAcknowledged : GuestConsentAction.NoticePresented,
                 Version = noticeVersion,
                 Source = GuestConsentSource.GuestPortal,
                 IpAddress = ipAddress,
@@ -518,7 +822,7 @@ public class GuestCheckInService(
         else
         {
             logger.LogWarning(
-                "Gdpr:PrivacyNoticeVersion is not configured: the privacy notice shown for guest {GuestId} is not recorded",
+                "No check-in privacy notice version is configured: the privacy notice shown for guest {GuestId} is not recorded",
                 guest.Id);
         }
 
@@ -556,6 +860,107 @@ public class GuestCheckInService(
                 IpAddress = ip,
             });
         }
+    }
+
+    /// <summary>
+    /// Makes the contacts of the per-channel marketing consent of the check-in and sends the double opt-in e-mail (E07/F04/US01/T02, NF-90,
+    /// CRM-03). A ticked e-mail channel makes the consent contact of the marketing address the guest typed (origin
+    /// <see cref="GuestContactOrigin.CheckIn"/>, source <see cref="GuestConsentSource.GuestPortal"/>, the version, the IP, the time and the
+    /// default language of the org) and queues its confirmation; a ticked WhatsApp channel makes a contact only when the phone number of the
+    /// booker is known: otherwise the consent stays in the <see cref="MarketingConsentRecord"/> and the CRM sync picks it up when a phone
+    /// exists. A box left unticked does nothing, not even to an earlier consent. Minors never get here: a submission whose booker is a minor
+    /// is refused before. <b>Best effort and never fatal</b>: the check-in is saved, and without the key of the contact index (the CRM is closed in
+    /// this environment) nothing is made; a failure is logged by id and error type, never by address, and the sync of the CRM makes the contact.
+    /// </summary>
+    private async Task RecordCrmConsentsAsync(
+        Booking booking,
+        Guest guest,
+        GuestCheckInSubmitRequest request,
+        string? marketingVersion,
+        string? marketingEmail,
+        DateTime now)
+    {
+        var email = request.MarketingConsentEmail && marketingEmail is not null;
+        var whatsApp = request.MarketingConsentWhatsApp;
+        if ((!email && !whatsApp) || marketingVersion is null || crmContacts is null || contactIndex is not { IsConfigured: true })
+            return;
+
+        try
+        {
+            var ip = request.ConsentIpAddress.Length > 50 ? request.ConsentIpAddress[..50] : request.ConsentIpAddress;
+            var ipAddress = string.IsNullOrWhiteSpace(ip) ? null : ip;
+            var language = await db.Orgs.AsNoTracking()
+                .Where(o => o.Id == booking.OrgId)
+                .Select(o => o.DefaultLanguage)
+                .FirstOrDefaultAsync();
+            var displayName = $"{guest.FirstName} {guest.LastName}".Trim();
+
+            if (email)
+            {
+                var contact = await crmContacts.RecordConsentAsync(new CrmConsentInput(
+                    booking.OrgId,
+                    GuestContactChannel.Email,
+                    marketingEmail,
+                    GuestContactOrigin.CheckIn,
+                    marketingVersion,
+                    GuestConsentSource.GuestPortal,
+                    ipAddress,
+                    now,
+                    language,
+                    displayName,
+                    guest.GuestCrmProfileId,
+                    guest.Id));
+
+                if (contact is not null && marketingConfirmation is not null)
+                    await marketingConfirmation.SendConfirmationAsync(booking.OrgId, contact.Id);
+            }
+
+            if (whatsApp && CrmNormalizer.NormalizePhone(guest.PhoneNumber, crmOptions?.Value.DefaultCallingCode) is { } phone)
+            {
+                await crmContacts.RecordConsentAsync(new CrmConsentInput(
+                    booking.OrgId,
+                    GuestContactChannel.WhatsApp,
+                    phone,
+                    GuestContactOrigin.CheckIn,
+                    marketingVersion,
+                    GuestConsentSource.GuestPortal,
+                    ipAddress,
+                    now,
+                    language,
+                    displayName,
+                    guest.GuestCrmProfileId,
+                    guest.Id));
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(
+                "The CRM contact of the marketing consent of the check-in of booking {BookingId} could not be made ({Error}); the check-in holds the consent and the CRM sync makes the contact",
+                booking.Id,
+                CrmDatabaseErrors.Describe(ex));
+        }
+    }
+
+    /// <summary>
+    /// The positions of the guests whose document the check-in asks: a single guest or a head (the Alloggiati record) and, in canton Ticino, every guest
+    /// the police file notifies on their own row (NF-132, <see cref="TicinoPoliceFile.NotifiedPositions"/>).
+    /// </summary>
+    private async Task<HashSet<int>> GuestsWithDocumentAsync(Booking booking, IReadOnlyList<StayGuestInput> guests)
+    {
+        var kinds = guests
+            .Select(g => Enum.TryParse<StayGuestType>(g.Type, true, out var kind) && Enum.IsDefined(kind) ? kind : (StayGuestType?)null)
+            .ToList();
+        var positions = Enumerable.Range(0, guests.Count)
+            .Where(i => kinds[i] is { } kind && AlloggiatiRecordRules.RequiresDocument(kind))
+            .ToHashSet();
+        if (await _ticino.IsPropertyInTicinoAsync(booking.PropertyId))
+        {
+            positions.UnionWith(TicinoPoliceFile.NotifiedPositions(
+                guests.Select((g, i) => (i, kinds[i] ?? StayGuestType.SingleGuest, g.DateOfBirth is { } born ? DateOnly.FromDateTime(born) : (DateOnly?)null)),
+                DateOnly.FromDateTime(booking.CheckInDate)));
+        }
+
+        return positions;
     }
 
     /// <summary>Copies the first guest's registration on the booker's record (identity and document, as before CO-12).</summary>

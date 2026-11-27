@@ -122,15 +122,340 @@ public static class FeatureFlags
     public const string ConcordatoFacile = "ConcordatoFacile";
 
     /// <summary>
-    /// DEB-01 (2026-10-31): the reading of the identity document (MRZ, OCR, NF-10) and the selfie check (liveness, face match, NF-11,
-    /// ADR-013) of the guest's check-in page, <c>POST api/public/checkin/{token}/document</c> and <c>POST …/selfie</c>. <b>Off by
-    /// default</b>: the services behind them are placeholders (MRZ and OCR never read anything, the liveness is always true, the face
-    /// similarity is a fixed 0.75), so a public endpoint would hand out made-up results. Off, both answer 404 before anything of the
-    /// request is read, so no image reaches the application. The guest's data is entered by hand (<c>POST api/public/checkin/{token}</c>,
-    /// not behind this flag). Turn it on only once real models replace the placeholders and the assessment of the biometric data
-    /// (art. 9 GDPR) is done.
+    /// DEB-01 (2026-10-31), E03/F04, E22/F01: the identity step of the guest's check-in page: the legal texts and the biometric consent, the reading of the
+    /// identity document (MRZ, OCR, NF-10, <c>POST api/public/checkin/{token}/document</c>), the selfie check (liveness, face match, NF-11, ADR-013,
+    /// <c>…/selfie-challenge</c> and <c>…/selfie</c>) and the request for a person. <b>Off by default</b>. The models run in the web process (ONNX Runtime on the
+    /// CPU: YuNet, MiniFASNetV2, SFace, and the Tesseract data of the MRZ and of the printed fields); they are bundled with the application and pinned by SHA-256
+    /// (<c>Biometrics:*:Sha256</c>, <c>MrzOcr:*:Sha256</c>): a file that is missing or has another hash is not used and every verification goes to a person
+    /// (<c>docs/runbooks/biometric-models.md</c>). Off, those endpoints answer 404 before anything of the request is read, so no image reaches the application;
+    /// the guest's data is entered by hand (<c>POST api/public/checkin/{token}</c>, not behind this flag). Turn it on only once the thresholds are calibrated on
+    /// real data, the legal texts are approved and the assessment of the biometric data (art. 9 GDPR) is done. The self-hosted flow of E70-E74
+    /// (<see cref="CheckInIdentitySelfHosted"/>) works only together with it.
     /// </summary>
     public const string CheckInIdentityVerification = "CheckInIdentityVerification";
+
+    /// <summary>
+    /// E70-E74 (NF-188..NF-199, product decisions D1-D14 of 2026-11-27): the self-hosted identity verification of the check-in, <b>off by default</b>. On, and
+    /// only together with <see cref="CheckInIdentityVerification"/> (alone it does nothing), the identity step follows the self-hosted flow: the verification is
+    /// bound to one guest of the session, the document is checked against the registry of the formats (the Italian electronic identity card first), the prefill is
+    /// read locally by zones, the presence is proven by a challenge and a sequence of frames, and a versioned policy file decides; its decision is recorded as the
+    /// shadow decision and a person decides, unless the segment (property × format × channel) is qualified and <see cref="CheckInIdentityAutoApproval"/> is on.
+    /// Off, the identity step is the one of E03/F04 and E22/F01, unchanged. E70/F01/US01/T01 owns the flag: the other tasks of E70-E74 only read it. It needs no
+    /// variable to start (the section <c>IdentityVerification</c> has committed defaults). The frontend reads the key <c>checkInIdentitySelfHosted</c>.
+    /// </summary>
+    public const string CheckInIdentitySelfHosted = "CheckInIdentitySelfHosted";
+
+    /// <summary>
+    /// E70-E74 (NF-194, D4, ADR-013-R19): the platform-wide permission to approve the identity of a guest automatically, only inside a segment (property × format ×
+    /// channel) qualified for the active policy version, policy hash and weights hash, <b>off by default</b>. Off, every attempt goes to a person (observation) even
+    /// in a qualified segment: the decision of the policy is only recorded as the shadow decision. It works only with <see cref="CheckInIdentitySelfHosted"/> and
+    /// <see cref="CheckInIdentityVerification"/> on; turning it off is the platform-wide rollback to observation. E70/F01/US01/T01 owns the flag. It needs no
+    /// variable to start. The frontend reads the key <c>checkInIdentityAutoApproval</c>.
+    /// </summary>
+    public const string CheckInIdentityAutoApproval = "CheckInIdentityAutoApproval";
+
+    /// <summary>
+    /// E70-E74 (NF-195, D9, ADR-013-R20): the minimal evidence kept for the person who reviews a verification (the crop of the portrait of the document and at
+    /// most <c>IdentityVerification:Evidence:MaxFrames</c> frames chosen by the server), encrypted, with a short time to live
+    /// (<c>IdentityVerification:Evidence:RetentionHours</c>), never an embedding and never for a property in Ticino, <b>off by default</b>. Off, nothing is kept,
+    /// as today. It works only with <see cref="CheckInIdentitySelfHosted"/> and <see cref="CheckInIdentityVerification"/> on. E70/F01/US01/T01 owns the flag. It
+    /// needs no variable to start. The frontend reads the key <c>checkInIdentityReviewEvidence</c>.
+    /// </summary>
+    public const string CheckInIdentityReviewEvidence = "CheckInIdentityReviewEvidence";
+
+    /// <summary>
+    /// E02/F01/US02/T01 (ADR-023): the Octorate connector, <b>off by default</b> until the sandbox is validated. Off, every endpoint of
+    /// the connector answers 404 before authentication: the connection and the consent (<c>api/octorate/connection</c>,
+    /// <c>api/octorate/connect/*</c>), the mapping of the listings (<c>api/octorate/properties</c>, <c>api/octorate/mapping/*</c>) and
+    /// the webhook (<c>api/webhooks/octorate/{secret}</c>). On, outside Development and Testing, the <c>Octorate</c> options of the consent
+    /// are required at startup (<c>OctorateOptionsValidator</c>). This task owns the flag: the other Octorate tasks only read it.
+    /// </summary>
+    public const string OctorateConnector = "OctorateConnector";
+
+    /// <summary>
+    /// E07/F06/US01/T01 (NF-95, CRM-08, Q1-29): the unfinished marketing module, <b>off by default</b> until it is safe to send. It closes the
+    /// CRM profiles (<c>api/crm/*</c>), the segments and the campaigns (<c>api/campaigns/*</c>), and the menu entries of the web app that open
+    /// them (the frontend reads the key <c>crmMarketing</c>). Off, every endpoint of <c>CrmController</c> and <c>CampaignsController</c> answers
+    /// 404 like a route that does not exist, before authentication, and the Hangfire job that sends a campaign scheduled before
+    /// (<c>CampaignSendJob</c>) sends nothing: it logs a warning, ends without a retry and puts the campaign back to <c>Approved</c>.
+    /// <b>Not behind it, on purpose</b>: the public consent, confirmation, unsubscribe and welcome endpoints, the GDPR endpoints, and the
+    /// collection of contacts and consents at the check-in and at the checkout: a legal record is made whatever the flag says, also without
+    /// the key (the withdrawal the host records is saved and its suppression is skipped, with an error in the log). On, outside Development and
+    /// Testing, <c>Crm:ContactIndexKey</c> is required at startup (<c>CrmOptionsValidator</c>), and only then. Runbook
+    /// <c>docs/runbooks/crm-marketing.md</c>.
+    /// </summary>
+    public const string CrmMarketing = "CrmMarketing";
+
+    /// <summary>Host-requested interest proposals from anonymous topic counts, enabled after provider/privacy review.</summary>
+    public const string MarketingGuestInterestAi = "MarketingGuestInterestAi";
+
+    /// <summary>
+    /// E10/F01/US01/T02 (NF-104..NF-107): the activation of CasaZen with Octorate, <b>off by default</b> until the plan, the flows and the
+    /// panel steps are ready to be shown. Off, every endpoint of epic E10 answers 404 before authentication
+    /// (<c>api/onboarding/flows/*</c> and the ones the later tasks of E10 add) <b>except</b> <c>GET api/onboarding/status</c>, which stays
+    /// reachable and answers exactly as before (its <c>flows</c> member is empty). On, that endpoint also gives the summary of the six
+    /// flows to a caller who passes <c>property.read</c>. This task owns the flag: the other E10 tasks only read it. It needs no variable
+    /// to start: nothing in the application is configured by it.
+    /// </summary>
+    public const string OctorateOnboarding = "OctorateOnboarding";
+
+    /// <summary>
+    /// E06/F02/US02/T02 (NF-82, FIS-02, PO-05): the issuance of fiscal documents by CasaZen, <b>off by default</b> until the accountant has approved the
+    /// rules of the documents (<c>FiscalDocuments</c> options) and the issuance (epic E06/F01) is delivered. It gates only two things: the issuance
+    /// itself, and the choice of the mode «CasaZen issues, direct bookings only» of the issuer setting (<c>PUT api/fiscal/documents/settings</c> answers
+    /// 422 <c>document_issuance_not_available</c> for it while the flag is off; a booking cannot be locked to CasaZen as its issuer either). Not behind
+    /// it: reading and saving the setting for the other two modes (Octorate, the accountant), the invoice data of a booking and the reading of the
+    /// documents Octorate issued. It needs no variable to start. This task owns the flag: the other tasks of epic E06 only read it.
+    /// </summary>
+    public const string FiscalDocumentIssuance = "FiscalDocumentIssuance";
+
+    /// <summary>
+    /// E06/F02/US01/T04 (NF-81, NF-82, FIS-01, FIS-02): the sync of the billing data with Octorate, <b>off by default</b> until the customer (address
+    /// book) endpoints are proven in the Octorate sandbox and CasaZen's outbound IPs are whitelisted (Octorate refuses the guests' sensitive data
+    /// before that). It gates two handlers and nothing else: the pre-fill of the invoice data of a booking imported from Octorate (<c>BookingCreated</c>)
+    /// and the write of the billing data saved in CasaZen to Octorate, only where Octorate is the issuer (<c>InvoiceDataSaved</c>). Both also need
+    /// <c>Features:OctorateConnector</c>. It needs no variable to start. This task owns the flag: the other tasks of epic E06 only read it.
+    /// </summary>
+    public const string OctorateBillingSync = "OctorateBillingSync";
+
+    /// <summary>
+    /// E03/F02/US01/T03 (NF-52, CHK-12): the compliance traffic light of the cockpit, <b>off by default</b> until the proofs it asks for can be
+    /// archived. It gates <c>GET api/compliance/summary</c> and the two other readers of the same summary (the Home of the day,
+    /// <c>GET api/dashboard/today</c>, and «Gestisci con AI»). Off, the summary is exactly what it was before: the items carry no light, reason or
+    /// evidence, the five new sections (<c>identityPending</c>, <c>receiptsToUpload</c>, <c>manualSendsRequired</c>, <c>connectionsToFix</c>,
+    /// <c>periodItems</c>) are empty, the section of the stays to send by hand lists every stay as before, the status is not even evaluated and the
+    /// feed of the red and yellow items into the «Da fare» list (<c>ComplianceActivityFeeder</c>) writes nothing. On, every item says whether the host
+    /// is compliant and the «Da fare» list is kept in step with the cockpit. Why it is off: nothing in the application archives the proofs that turn
+    /// an item green yet (the receipts and tax proofs of <c>ManualComplianceProof</c>, the receipt a report points to), so on, every stay of the last 90
+    /// days would get a red To do nobody can close. Also behind it (E03/F02/US03/T01): the coverage report of the proof archive (<c>GET api/compliance/report</c> and
+    /// <c>report/export</c>, 404 while off) and the coverage CSV of the ZIP of the proofs. Not behind it: <c>GET api/properties/{propertyId}/compliance/connection-health</c>,
+    /// which writes nothing, and the archive of the proofs itself (list, download, export, upload, the log of a stay). It needs no variable to start. This task owns the flag: the other tasks of epic E03 only read it.
+    /// </summary>
+    public const string ComplianceTrafficLight = "ComplianceTrafficLight";
+
+    /// <summary>
+    /// E05/F02/US02/T02 (NF-63, AI-06, FD-21): the translation of a message by CasaZen's AI, <b>off by default</b>. What a guest wrote is personal data,
+    /// and the AI provider is an external sub-processor (DeepSeek, with its seat and its archives in China, the basis of the transfer being a decision
+    /// of the product owner: <c>docs/runbooks/ai.md</c>). Off, <c>POST api/messages/translate</c> never asks the AI provider anything, not even for the text
+    /// the host is writing: it asks the channel manager to translate the message it holds (the id of its message, no word of CasaZen's leaves) and,
+    /// when that cannot be done either, answers 422 <c>translation_unavailable</c>. The endpoint itself, the templates and the reply are not behind it.
+    /// On, the text goes to the provider after the scrub of <c>MessageTranslationPrompt</c> (e-mail addresses, phone numbers, fiscal codes and the names of
+    /// the conversation; documents and addresses of a person are not recognized). It needs no variable to start; it works only with an AI provider in
+    /// effect (<c>Ai__Provider</c> and <c>Ai__ApiKey</c>). Turn it on only after the product owner has decided the transfer.
+    /// </summary>
+    public const string MessageTranslationAi = "MessageTranslationAi";
+
+    /// <summary>
+    /// E06/F03/US02/T01 (NF-84, FIS-04, D19): the import of the documents Octorate issued, <b>off by default</b> until the documents list is proven on a
+    /// structure with the invoice module: the operations are documented in the OpenAPI (S24) but the sandbox answers an empty list (S25), so the
+    /// names of the members are not verified. It gates the recurring job <c>octorate-document-import</c> (removed while off), the import service and
+    /// <c>GET api/fiscal/documents/{id}/octorate-pdf</c> (404 while off). It also needs <c>Features:OctorateConnector</c> and an org whose issuer is
+    /// Octorate with a connected connection. It needs no variable to start. This task owns the flag.
+    /// </summary>
+    public const string OctorateDocumentImport = "OctorateDocumentImport";
+
+    /// <summary>
+    /// E05/F05/US01/T01 (NF-66, NF-67, PO-08, PO-09): the assistant that answers guests' messages, <b>off by default</b>. What a guest wrote is personal data
+    /// and the AI provider is an external sub-processor: the flag stays off until the privacy notice, the processing agreement and the <c>Ai:Subprocessor</c>
+    /// details of PO-09 exist. Off, every endpoint of the assistant (<c>api/assistant/*</c>: the knowledge base, the rules, the situations and, with the later
+    /// tasks of the feature, the drafts and the lessons) answers 404 before authentication, and the assistant processes no message. The frontend reads the key
+    /// <c>messageAssistant</c> from <c>GET api/public/features</c>. This task owns the flag: the other tasks of feature E05/F05 only read it. It needs no
+    /// variable to start: nothing in the application is configured by it. Even with the flag on, no organization is served until it turns its own switch
+    /// on (<c>OrgAssistantRules.Enabled</c>, off by default).
+    /// </summary>
+    public const string MessageAssistant = "MessageAssistant";
+
+    /// <summary>
+    /// E14/F01/US01/T01 (NF-114, D9, D15): the invoices of the property manager to the owners, made by CasaZen from a version of the owner statement, <b>off by
+    /// default</b> and turned on only in the test environment until the accountant confirms the ⚖ choices (R4, I10, I11). Off, every endpoint of
+    /// <c>api/owner-invoices</c> (the list, the draft, the issue, the credit note, the discard of a draft), <c>POST api/agency-invoices/generate</c> (the drafts of a
+    /// period) and who holds the portal accounts (<c>PUT api/billing-setup/channels</c>, <c>api/billing-setup/channel-account-holders</c>, a part of the billing setup
+    /// that needs <see cref="FiscalDocumentIssuance"/> too) answer 404 before authentication, and the section <c>channels</c> of <c>GET api/billing-setup</c> shows no
+    /// values. <b>Not behind it</b>: the reading of the legacy agency invoices; the PDF and the XML of an owner invoice (reads of <c>api/fiscal/documents</c>: a
+    /// document issued stays a document). The endpoints of the guest documents refuse to change an owner invoice (422 <c>document_owner_invoice</c>). It needs no
+    /// variable to start. The frontend reads the key <c>ownerInvoicing</c>.
+    /// </summary>
+    public const string OwnerInvoicing = "OwnerInvoicing";
+
+    /// <summary>
+    /// E15/F01/US01/T01 (NF-101, NF-87, NF-115, D11, D15): the accountant package, one ZIP of a month or a year in a fixed structure and the agency summary, <b>off by
+    /// default</b> and turned on only in the test environment until the accountant confirms the ⚖ choices that shape the files (the Swiss purchase tax on the portal
+    /// commissions, the Italian register of the sales). Off, <c>GET api/accountant-package</c> and <c>GET api/accountant-package/agency-summary</c> answer 404 before
+    /// authentication. It needs no variable to start; the caps of the ZIP are the ones of the document archive (<c>DocumentArchive:MaxExportFiles</c>,
+    /// <c>DocumentArchive:MaxExportBytes</c>). The frontend reads the key <c>accountantPackage</c>.
+    /// </summary>
+    public const string AccountantPackage = "AccountantPackage";
+
+    /// <summary>
+    /// E25/F01/US01/T01 (NF-119, decision O12): the tourist tax paid online in the guest check-in, on the organization's own connected account, <b>off by
+    /// default</b> and turned on only in the test environment after the merge. Off, the endpoints of the guest (<c>GET api/public/checkin/{token}/tourist-tax</c>,
+    /// <c>POST …/tourist-tax/payment-intent</c>), the host's «Pagata in struttura» (<c>POST api/bookings/{id}/tourist-tax/paid-at-property</c>) and the setting of
+    /// the organization (<c>api/orgs/me/tourist-tax-settings</c>) answer 404 before authentication, <c>GET api/bookings/{id}/tourist-tax</c> has no
+    /// <c>collection</c> block and the consumer of the booking events (the refund of a cancelled stay, the «To do» of a difference) does nothing. On, a guest
+    /// pays only where the organization turned its own setting on and its account takes payments (409 <c>tourist_tax_payment_not_available</c> otherwise).
+    /// <b>Not behind it</b>: the Stripe webhooks of a payment already made (it is recorded). It needs no variable to start. The frontend reads the key
+    /// <c>touristTaxOnlinePayment</c>. The lock code is never held back unless the organization turns on <c>TouristTaxRequiredBeforeAccessCode</c>: then the server
+    /// holds it back (<c>IAccessCodeService.ReleaseToGuestAsync</c>, the gate of every release to a guest) while the stay owes a tax the guest can pay online and has
+    /// not paid; the selfie step answers <c>lockCodeHeld: tourist_tax_due</c> instead of the code.
+    /// </summary>
+    public const string TouristTaxOnlinePayment = "TouristTaxOnlinePayment";
+
+    /// <summary>
+    /// E01/F04/US01/T03 (NF-21, DEB-06, ADR-022): the automation routines, <b>off by default</b> until the actions a host needs are real (today the To do of
+    /// <c>CreateActivity</c> and the wait; the others are listed by <c>RoutineActionCatalog</c> as not available yet). It closes the whole module. Off, every
+    /// endpoint of <c>RoutinesController</c> (<c>api/routines</c>: the list, one routine, its changes, its log, the simulation and the catalog of the actions)
+    /// answers 404 like a route that does not exist, before authentication; no routine runs (the engine ignores the events of the bus, and a wait that
+    /// comes due changes nothing: the job reads and writes nothing and the execution stays waiting); and <c>TimeEventEmitterJob</c> writes no time trigger.
+    /// The routines already saved are kept. It needs no variable to start. The frontend reads the key <c>routines</c> (the routines page).
+    /// </summary>
+    public const string Routines = "Routines";
+
+    /// <summary>
+    /// E23/F01/US01/T01 (NF-122, NF-63, decision O10 of the operations plan of 2026-11-14): the check-in link of a booking of a portal that has no e-mail address goes to the guest
+    /// in the reservation thread of the portal chat, once, as an automatic message, and the booking shows a waiting state («in attesa del permesso chat», «in attesa della
+    /// conversazione») with a «To do» whose «Copia link» lets the host carry the link itself. <b>Off by default</b> and turned on only in the test environment: the chat of the
+    /// channel manager needs a permission of the application that Octorate has not given in the sandbox. Off, the daily job <c>guest-checkin-send</c> behaves as before (it
+    /// writes the delivery record of the booking with the state <c>WaitingContact</c>, so the host can see why, and raises no «To do»), the hourly job
+    /// <c>checkin-link-delivery-retry</c> is not scheduled and <c>GET api/bookings/{id}/checkin/link-delivery</c> only reads what was recorded. It needs no variable to start,
+    /// and works only while <see cref="OctorateConnector"/> is on too. The frontend reads the key <c>portalChatCheckInLink</c>.
+    /// </summary>
+    public const string PortalChatCheckInLink = "PortalChatCheckInLink";
+
+    /// <summary>
+    /// E23/F01/US01/T02 (NF-122, NF-63, S18, D24): for a booking of a portal that has no e-mail address, CasaZen reads the e-mail address of the guest from the channel manager
+    /// (<c>POST /rest/v2/reservation/{acc}/{refer}/contactInfo</c>), <b>once for the booking, for the check-in link only</b>, never in bulk and never into the CRM, and sends the link
+    /// by e-mail; a phone number that comes with it is kept for the host's view only. <b>Off by default</b>: Octorate releases the contact only to the static outbound IP
+    /// addresses registered with it, and the Railway plan that gives them (Pro) is not active. Off, nothing is asked. On without the registration, the read is refused (401 or
+    /// 403): the booking waits in the state <c>WaitingStaticIps</c> and the read is repeated at most once a day. It needs no variable to start, and works only while
+    /// <see cref="OctorateConnector"/> is on too. The frontend reads the key <c>guestContactInfo</c>.
+    /// </summary>
+    public const string GuestContactInfo = "GuestContactInfo";
+
+    /// <summary>
+    /// E17/F01/US02/T01 (NF-116, NF-86, D13, D15): the submission of the Italian electronic invoices to the SDI through the accredited channel (the provider adapter) and
+    /// their correction after a rejection, <b>off by default</b> and turned on only in the test environment until the accountant confirms the ⚖ choices (the provider, the
+    /// reuse of the number of a rejected document). Off, the write endpoints of <c>api/fiscal/documents/{id}/sdi</c> (<c>submit</c>, <c>declare</c>, <c>correct</c>) and the webhook
+    /// of the provider (<c>api/webhooks/sdi/{secret}</c>) answer 404 before authentication, and the recurring job <c>fiscal-sdi-status</c> is removed; the state of a document
+    /// (<c>GET api/fiscal/documents/{id}/sdi</c>) is a read and stays. They are behind <see cref="FiscalDocumentIssuance"/> too. With no provider configured
+    /// (<c>Sdi:Provider:*</c>) a submission answers <c>NotConfigured</c> and changes nothing, and the manual declaration works all the same. The frontend reads the key
+    /// <c>sdiSubmission</c>.
+    /// </summary>
+    public const string SdiSubmission = "SdiSubmission";
+
+    /// <summary>
+    /// E18/F01/US03/T01 and E18/F01/US02 (NF-117, D15): the Italian tax reporting of the owners (the checks of the limit of units and of the company tenant, and the exports of the
+    /// Certificazione Unica, the 770 and the communication of the short-let contracts, the owner's view of its withholding, and the year-end exports of the tourist tax), <b>off by default</b>
+    /// and turned on only in the test environment until the accountant confirms the ⚖ choices (I6, I7, I8, T2). Off, every endpoint of <c>OwnerTaxDecisionsController</c>
+    /// (<c>api/owner-tax-decisions</c>, <c>api/owners/{id}/tax-checks</c>, <c>api/owners/{id}/external-short-let-units</c>) answers 404 before authentication, and the warnings the UI shows are
+    /// not made: no <c>warnings</c> in the owner readiness, no non-blocking issue on the statement versions, no «Da fare» <c>company_tenant_decision</c>. The same 404 for the new exports of
+    /// <c>WithholdingController</c> (<c>api/withholding/annual/{year}/export</c>, <c>api/withholding/annual/{year}/owners/{id}/pdf</c>, <c>api/withholding/770/{year}/export</c>,
+    /// <c>api/withholding/contracts-communication/{year}/export</c>) and of <c>TouristTaxSummaryController</c> (<c>api/tourist-tax/year-end/{year}/declaration|agent-account|ticino</c>);
+    /// with it off <c>GET api/owner-portal/withholding</c> answers the empty summary it was. <b>Not behind it, on purpose</b>: the facts of the withholding
+    /// (<c>IOwnerTaxChecks.TreatmentOfStaysAsync</c>: an owner past the limit is a business whatever the screens show; a decision already recorded is followed), the field
+    /// <c>coOwnerTaxReporting</c> of the mandate, the annual data and its filing states (<c>api/withholding/annual</c>) and the F24 data. It needs no variable to start.
+    /// The frontend reads the key <c>taxReportingExports</c>.
+    /// </summary>
+    public const string TaxReportingExports = "TaxReportingExports";
+
+    /// <summary>
+    /// E20/F02/US01/T02 (NF-121, NF-16, decision O4): the deletion of the guests' documents once the stay is covered by an archived Alloggiati receipt, <b>off by default</b>: the
+    /// deletion cannot be undone, so it is turned on in the test environment after the merge and in production only after the test has shown it. Off, the daily job
+    /// <c>guest-document-purge</c> and the run queued after a receipt upload read nothing and delete nothing. On, the photos of identity documents a verification kept (the objects
+    /// and the rows) and the legacy scan of the booker of every stay that a receipt covers are deleted; the document data of the guests of the stay (<c>StayGuest</c>) are never
+    /// touched. No endpoint is behind it and it needs no variable to start. The frontend reads the key <c>purgeDocumentsAfterReceipt</c>.
+    /// </summary>
+    public const string PurgeDocumentsAfterReceipt = "PurgeDocumentsAfterReceipt";
+
+    /// <summary>
+    /// E05/F07/US01/T01 (NF-71, MSG-11, ADR-022-R11): the scheduled messages of the routines, <b>off by default</b> and turned on only in the test environment until the product owner
+    /// confirms the send window and the retry times (<c>Messaging:ScheduledMessages</c>). Off, nothing is planned (the hourly job <c>scheduled-message-plan</c> and the handler of the booking
+    /// events do nothing), the sweep <c>scheduled-message-sweep</c> is not scheduled, the three endpoints of <c>ScheduledMessagesController</c> answer 404 before authentication, and the
+    /// action <c>MessageToGuest</c> of a routine does what it did before (it writes to the conversation of the booking with the template it names, no row of the plan, no variable of the
+    /// check-in link or of the access code). On, the action goes through the plan: the message is planned for each booking, edited or skipped by the host, and sent once, whichever of the
+    /// routine, the sweep and «Send now» reaches it first. It works on the routines, so it also needs <see cref="Routines"/> on: with the module of the routines closed nothing is planned or
+    /// sent, whatever this flag says. It needs no variable to start. The frontend reads the key <c>scheduledMessages</c>.
+    /// </summary>
+    public const string ScheduledMessages = "ScheduledMessages";
+
+    /// <summary>
+    /// E40 (NF-140..NF-143, site integration plan §5.8-§5.10): the guest area, the owner portal and the links on the agency's own domain, <b>off by default</b>. Off, every org is
+    /// served exactly as before: <c>GET api/public/resolve-host</c> reports no surface (<c>surfaces</c> and <c>ownerLoginReady</c> false), <c>GET api/orgs/{orgId}/domain</c> has no
+    /// <c>surfaces</c> block and <c>PUT api/orgs/{orgId}/domain/surfaces</c> answers 404 before authentication, the links of the e-mails stay on the CasaZen domain and the CORS of a
+    /// verified domain covers <c>/api/public</c> and <c>/api/legal</c> only. On, an org with a verified custom domain it pays for chooses what its domain serves besides the
+    /// booking site (<c>HostSurfaceRules</c>); a platform subdomain never serves more. It needs no variable to start. The frontend reads the key <c>whiteLabelHost</c>.
+    /// </summary>
+    public const string WhiteLabelHost = "WhiteLabelHost";
+
+    /// <summary>
+    /// E40 (NF-141, site integration plan §5.7): the automatic registration of the callback, logout and web-origin URLs of each verified domain in the shared Auth0 tenant through
+    /// the Management API, <b>off by default</b>: it needs Management credentials with <c>update:clients</c>. Off, the owner sign-in on an agency domain waits for CasaZen (the state
+    /// <c>Pending</c>, shown as <c>ownerLoginAutomatic: false</c> in the domain settings) and the step is done by hand following the runbook. It works only with
+    /// <see cref="WhiteLabelHost"/> on. The frontend reads the key <c>auth0HostSync</c>.
+    /// </summary>
+    public const string Auth0HostSync = "Auth0HostSync";
+
+    /// <summary>
+    /// E41-E43 (NF-144..NF-149, site integration plan §5.2-§5.4): the embeddable booking pages, the page «Incorpora nel tuo sito», the WordPress plugin and the Google Tag Manager
+    /// container of the agency, <b>off by default</b>. Off, <c>GET api/public/resolve-host</c> and <c>GET api/public/orgs/{slug}</c> report <c>embedEnabled</c> false,
+    /// <c>resolve-host</c> gives no container id (<c>tracking.gtmContainerId</c> null), <c>GET api/orgs/{orgId}/domain</c> has no <c>tracking</c> block and
+    /// <c>PUT api/orgs/{orgId}/domain/tracking</c> answers 404 before authentication. It needs no variable to start. The frontend reads the key <c>siteEmbed</c>.
+    /// </summary>
+    public const string SiteEmbed = "SiteEmbed";
+
+    /// <summary>
+    /// E30/F02/US01/T01 (NF-127, D9, casazen/backend#979): the staged alerts about the 24 hours of the notification of the guests of a Ticino property to the
+    /// cantonal police, <b>off by default</b> and turned on only in the test environment until the product owner has seen them on a real arrival. Off, the hourly
+    /// <c>stay-alerts</c> job reads no Ticino day and writes no alert state, and nothing is queued: no e-mail, no push, no entry of the bell. On, every
+    /// arrival day of a Ticino property that is not closed (no receipt of the portal, and the declaration when it exists) gets three stages, each sent once:
+    /// the arrival day («prepare the file»), six hours before the deadline, and overdue followed by at most two reminders, to the contact address of the organization
+    /// (the one e-mail) and to the person in charge of the property and the administrators of the organization who also hold <c>alloggiati.submit</c>, the permission that declares the day
+    /// (push, bell and the live update of the open pages, the types <c>ticino-notification-due</c> and <c>ticino-notification-overdue</c>; <c>ComplianceAlertAudience</c>). The cockpit section of the days to notify (<c>ticinoNotifications</c>) is not behind it. Independent of
+    /// <see cref="ComplianceTrafficLight"/>. It needs no variable to start. The thresholds are <c>Compliance__Ticino*</c>. The same job and flag also run the alerts of the arrival
+    /// days of a property in another canton (E31/F02/US01/T01, <c>swiss-notification-due</c> and <c>swiss-notification-overdue</c>, the same thresholds), for the days that
+    /// <see cref="GuestRegistrationRegimes"/> lets the assisted notification list.
+    /// </summary>
+    public const string TicinoNotificationAlerts = "TicinoNotificationAlerts";
+
+    /// <summary>
+    /// E29/F02/US01/T01 (NF-125, D3, D5, D12, casazen/backend#979): the regimes of the registration of the guests of Italy and of the 26 cantons, <b>off by default</b> and
+    /// turned on only in the test environment until the product owner has read what the catalog says of a canton. Off, <c>GET</c> and <c>PUT api/properties/{id}/guest-registration</c>
+    /// answer 404 before authentication, nothing reads the host's setting of a property (<c>Properties.GuestNotificationOverride</c>: the one resolver answers as if it were
+    /// empty) and Ticino behaves exactly as before. On, the card of a property says what its place asks (obligation, channel, deadline, retention, sources and how certain they
+    /// are, and what CasaZen does) and whether CasaZen treats the duty as required, not required or left to the host (<c>Ask</c>): only a regime verified as an obligation to report
+    /// to an authority that covers private rentals is <c>Required</c> by default, any other canton is <c>Ask</c>. It also gates the assisted notification of the other cantons
+    /// (E31/F02/US01/T01, NF-131): <c>GET api/properties/{id}/swiss/notification-day</c> and <c>POST</c> and <c>DELETE …/swiss/notification-declare</c> (404 before authentication while off)
+    /// and the cockpit section <c>swissNotifications</c> (empty while off), and the guest register of any Swiss property (E31/F01/US01/T01, NF-130): <c>GET api/properties/{id}/swiss/guest-register</c>
+    /// and <c>…/guest-register/info</c> (404 before authentication while off). The readiness of a Swiss property (the municipality, the structure
+    /// number of Ticino) is <b>not</b> behind it. It needs no variable to start. The frontend reads the key <c>guestRegistrationRegimes</c>.
+    /// </summary>
+    public const string GuestRegistrationRegimes = "GuestRegistrationRegimes";
+
+    /// <summary>
+    /// E50-E60 (NF-152..NF-187, guest portal plan decision A6, casazen/backend#987): the guest portal, <b>off by default</b>. On, every booking of any source
+    /// gets its personal stay link <c>/s/{token}</c> on request (the host endpoints <c>api/bookings/{id}/guest-portal</c>) and the public portal
+    /// <c>api/public/guest-portal/{token}/…</c> answers with its sections (stay, check-in, guide, services, chat, documents, review) and the host's extras.
+    /// Off, every endpoint of the portal, of the host and of the guest, answers 404 before authentication like a route that does not exist, no link is
+    /// created and the links of today (check-in, cancellation, review, document) behave as before. It needs no variable to start. The frontend reads the
+    /// key <c>guestPortal</c>.
+    /// </summary>
+    public const string GuestPortal = "GuestPortal";
+
+    /// <summary>
+    /// E56-E58 (guest portal plan decision A6, §8 of the specification): the services of the suppliers bought by the guests in the portal (the ownership
+    /// of the suppliers, the host's percentage, the order, the card, the funds held until the service is done, the refunds and the disputes) and the
+    /// change of the CasaZen commission added on top of the price (D9, D21), <b>off by default</b> until the accountant answers. Off, the portal shows no
+    /// supplier service and the commission is computed as today. It works only with <see cref="GuestPortal"/> on. It needs no variable to start. The
+    /// frontend reads the key <c>guestPortalSupplierServices</c>.
+    /// </summary>
+    public const string GuestPortalSupplierServices = "GuestPortalSupplierServices";
+
+    /// <summary>
+    /// E52 (guest portal plan decision A6, D16): the replies the assistant sends on its own to the practical questions of the guests in the portal chat,
+    /// when it is sure and the answer is in the house guide, <b>off by default</b>. Off, every message of a guest goes to the host and nothing is sent
+    /// automatically. It works only with <see cref="GuestPortal"/> on. It needs no variable to start. The frontend reads the key
+    /// <c>guestPortalAutoReplies</c>.
+    /// </summary>
+    public const string GuestPortalAutoReplies = "GuestPortalAutoReplies";
 
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
@@ -147,5 +472,36 @@ public static class FeatureFlags
         ConcordatoFacile,
         SupplierRequestBackups,
         CheckInIdentityVerification,
+        OctorateConnector,
+        CrmMarketing,
+        OctorateOnboarding,
+        FiscalDocumentIssuance,
+        OctorateBillingSync,
+        ComplianceTrafficLight,
+        MessageTranslationAi,
+        OctorateDocumentImport,
+        MessageAssistant,
+        OwnerInvoicing,
+        AccountantPackage,
+        TouristTaxOnlinePayment,
+        Routines,
+        PortalChatCheckInLink,
+        GuestContactInfo,
+        SdiSubmission,
+        TaxReportingExports,
+        PurgeDocumentsAfterReceipt,
+        ScheduledMessages,
+        WhiteLabelHost,
+        Auth0HostSync,
+        SiteEmbed,
+        TicinoNotificationAlerts,
+        GuestRegistrationRegimes,
+        GuestPortal,
+        GuestPortalSupplierServices,
+        GuestPortalAutoReplies,
+        MarketingGuestInterestAi,
+        CheckInIdentitySelfHosted,
+        CheckInIdentityAutoApproval,
+        CheckInIdentityReviewEvidence,
     ];
 }

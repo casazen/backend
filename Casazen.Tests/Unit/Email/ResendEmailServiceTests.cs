@@ -40,6 +40,59 @@ public class ResendEmailServiceTests
         Assert.DoesNotContain("resend.dev", sent.From.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// PROOF TEST (E50/F01/US03/T01, NF-155: what a guest reads as the sender): an e-mail to a guest is sent in the name of the host, and only that: the display name is the host's,
+    /// cleaned (no quote, no bracket, no control character, no separator of an address, at most 64 characters; a name that is nothing after the cleaning leaves the configured one),
+    /// and the <b>address</b> of the sender is the configured one whatever the name says.
+    /// </summary>
+    [Fact]
+    public void BuildMessage_FromName_IsSanitizedAndAddressUnchanged()
+    {
+        var settings = new EmailOptions { ApiKey = "re_test_key", FromAddress = "noreply@casazen.app", FromName = "CasaZen" };
+        var hostile = "  \"Casa <Aurora>\"\r\nBcc: evil@x.test [VIP] " + new string('A', 100);
+
+        var message = ResendEmailService.BuildMessage(settings, "guest@example.com", "Oggetto", "<p>Ciao</p>", "host@aurora.test", headers: null, fromName: hostile);
+
+        Assert.Equal("noreply@casazen.app", message.From.Email);
+        var name = message.From.DisplayName!;
+        Assert.StartsWith("Casa Aurora Bcc evilx.test VIP ", name, StringComparison.Ordinal);
+        Assert.Equal(64, name.Length);
+        Assert.All(name, c => Assert.False(char.IsControl(c), "a control character in the display name"));
+        Assert.DoesNotContain("\"", name, StringComparison.Ordinal);
+        Assert.DoesNotContain("<", name, StringComparison.Ordinal);
+        Assert.DoesNotContain(">", name, StringComparison.Ordinal);
+        Assert.DoesNotContain("[", name, StringComparison.Ordinal);
+        Assert.DoesNotContain("@", name, StringComparison.Ordinal);
+
+        // A name that is nothing once cleaned, or none at all, leaves the configured name; the address is the same in every case.
+        var nothing = ResendEmailService.BuildMessage(settings, "guest@example.com", "Oggetto", "<p>Ciao</p>", fromName: "<>[]\r\n");
+        var none = ResendEmailService.BuildMessage(settings, "guest@example.com", "Oggetto", "<p>Ciao</p>");
+        Assert.Equal("CasaZen", nothing.From.DisplayName);
+        Assert.Equal("CasaZen", none.From.DisplayName);
+        Assert.Equal("noreply@casazen.app", nothing.From.Email);
+        Assert.Equal("noreply@casazen.app", none.From.Email);
+    }
+
+    [Fact]
+    public async Task SendEmailAsync_InTheHostsName_HandsTheProviderTheHostNameOnTheConfiguredAddress()
+    {
+        EmailMessage? sent = null;
+        var resend = new Mock<IResend>();
+        resend
+            .Setup(r => r.EmailSendAsync(It.IsAny<EmailMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<EmailMessage, CancellationToken>((message, _) => sent = message)
+            .ReturnsAsync(new ResendResponse<Guid>(Guid.NewGuid(), null));
+        var service = new ResendEmailService(
+            resend.Object, EmailTestHelpers.ConfiguredEmail("noreply@casazen.app"), NullLogger<ResendEmailService>.Instance);
+
+        var result = await service.SendEmailAsync("guest@example.com", "Oggetto", "<p>Ciao</p>", "host@aurora.test", "Casa Aurora");
+
+        Assert.True(result.Success);
+        Assert.NotNull(sent);
+        Assert.Equal("noreply@casazen.app", sent.From.Email);
+        Assert.Equal("Casa Aurora", sent.From.DisplayName);
+    }
+
     [Fact]
     public async Task SendEmailAsync_ThroughHttpApi_PostsConfiguredSenderAndApiKey()
     {

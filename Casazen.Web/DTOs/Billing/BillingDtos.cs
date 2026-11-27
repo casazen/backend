@@ -1,10 +1,16 @@
 namespace Casazen.Web.DTOs.Billing;
 
+public sealed record AgencyBandDto(int UpTo, decimal UnitPrice);
+public sealed record AgencyTariffDto(bool Purchasable, decimal Minimum, int QuoteFrom, AgencyBandDto[] Bands);
+
 public class PlanCatalogDto
 {
     public string Tier { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public decimal PriceMonthly { get; set; }
+    public bool PricesIncludeVat { get; set; }
+    public AgencyTariffDto? AgencyTariff { get; set; }
+    public string BillingUnit { get; set; } = "plan";
     public string Currency { get; set; } = "EUR";
     public int UnitAllowance { get; set; }
     public string[] Features { get; set; } = [];
@@ -19,6 +25,7 @@ public class PlanCatalogDto
 
 public class CreateCheckoutSessionRequest
 {
+    public Casazen.Core.Services.CommercialSignup? CommercialSignup { get; set; }
     public string PlanTier { get; set; } = string.Empty;
     public string BillingCountry { get; set; } = string.Empty;
     public string? VatId { get; set; }
@@ -64,6 +71,8 @@ public class PortalSessionResponse
 
 public class SubscriptionDto
 {
+    public int RoomQuantity { get; set; }
+    public string[] EnabledAddons { get; set; } = [];
     public string PlanTier { get; set; } = string.Empty;
     public string Status { get; set; } = "none";
     public DateTime? CurrentPeriodEnd { get; set; }

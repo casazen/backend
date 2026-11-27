@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.SiteProfile;
 
@@ -108,7 +109,15 @@ public sealed record PublicPropertyEmbedDto(string Url, SiteEmbedProvider Provid
 /// <param name="Alt">The alternative text; <c>null</c> = the host wrote none (the page then describes the photo by the name of the house).</param>
 /// <param name="Width">Width in pixels; <c>null</c> = not known.</param>
 /// <param name="Height">Height in pixels; <c>null</c> = not known.</param>
-public sealed record PublicPropertyPhotoDto(string Url, LocalizedText? Alt, int? Width, int? Height);
+/// <param name="RoomId">
+/// The room of the unit the photo shows (NF-32, NF-34): given to the host editor only, never to a public page; left out of the answer when <c>null</c>.
+/// </param>
+public sealed record PublicPropertyPhotoDto(
+    string Url,
+    LocalizedText? Alt,
+    int? Width,
+    int? Height,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? RoomId = null);
 
 /// <summary>One level of the floor plan of a house.</summary>
 /// <param name="Id">Identifier of the level, for the host editor.</param>

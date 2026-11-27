@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
@@ -84,6 +85,20 @@ public class AdminController(
             Page = page,
             PageSize = pageSize
         });
+    }
+
+    /// <summary>Lists the OTA connections behind a sync-health counter. Admin only.</summary>
+    [HttpGet("ota-sync")]
+    public async Task<ActionResult<PagedResultDto<OtaSyncItem>>> GetOtaSync(
+        [FromQuery, Required, RegularExpression("^(synced|failed|neverSynced)$")] string status,
+        CancellationToken cancellationToken,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        var (items, total) = await adminService.GetOtaSyncAsync(status, page, pageSize, cancellationToken);
+        return Ok(new PagedResultDto<OtaSyncItem> { Items = items, TotalCount = total, Page = page, PageSize = pageSize });
     }
 
     /// <summary>Returns the status of all registered Hangfire recurring jobs. Admin only.</summary>

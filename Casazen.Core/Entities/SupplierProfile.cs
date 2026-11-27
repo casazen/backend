@@ -133,6 +133,12 @@ public class SupplierProfile
     /// </summary>
     public DateTime? CommissionOverrideUntil { get; set; }
 
+    /// <summary>CasaZen partnership for the guest marketplace. Managed by platform staff independently of the supplier showcase.</summary>
+    public bool GuestPortalMarketplaceEnabled { get; set; }
+
+    /// <summary>First marketplace publication, retained on unpublish for existing host relationships.</summary>
+    public DateTime? GuestPortalMarketplaceFirstPublishedAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

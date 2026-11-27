@@ -58,9 +58,11 @@ public interface IAlloggiatiWebService
     /// <summary>
     /// Records that the host sent the communication on the portal on <paramref name="sentOn"/> (a date between the
     /// check-in date and today in Europe/Rome). Throws <c>DomainRuleException</c> for an invalid date,
-    /// <c>DomainConflictException</c> when already sent, <c>NotFoundException</c> for an unknown booking.
+    /// <c>DomainConflictException</c> when already sent, <c>NotFoundException</c> for an unknown booking. The declaration writes one line
+    /// of the log of what was sent (<see cref="IComplianceSendLog"/>, sender <see cref="ComplianceSender.Manual"/>, NF-47) in the same
+    /// save, naming <paramref name="byUserId"/> (the person who declared it); a declaration that is refused writes none.
     /// </summary>
-    Task<AlloggiatiStatusInfo> MarkSentManuallyAsync(Guid bookingId, DateTime sentOn);
+    Task<AlloggiatiStatusInfo> MarkSentManuallyAsync(Guid bookingId, DateTime sentOn, string? byUserId = null);
 
     /// <summary>True when the deadline has passed and the communication is not sent (nor declared sent).</summary>
     bool IsOverdue(Booking booking, AlloggiatiWebStatus? reportStatus);

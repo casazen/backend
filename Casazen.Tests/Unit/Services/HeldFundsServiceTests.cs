@@ -415,6 +415,24 @@ public class HeldFundsServiceTests
     }
 
     [Fact]
+    public async Task PartialRefundOfSurcharge_ReturnsBothSharesBeforeRelease()
+    {
+        using var w = await DueAsync();
+        var payment = await w.S.Db.ServiceRequestPayments.SingleAsync(p => p.Id == w.PaymentId);
+        payment.CommissionAddedToPrice = true;
+        payment.AmountCents = 6600;
+        payment.NetCents = 6000;
+        await w.S.Db.SaveChangesAsync();
+        w.S.Db.ChangeTracker.Clear();
+
+        await w.Payments.RefundAsync(w.PaymentId, 1100, "goodwill", "admin-1");
+        await w.Payments.RunFundsAsync();
+
+        Assert.Equal(5000, Assert.Single(w.Stripe.TransferRequests).AmountCents);
+        Assert.Equal(ServicePaymentStatus.Released, (await w.PaymentAsync()).Status);
+    }
+
+    [Fact]
     public async Task ARefundInProgress_StopsTheRelease()
     {
         using var w = await DueAsync();

@@ -1,8 +1,11 @@
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
+using Casazen.Infrastructure.Data;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Octorate;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs.Alloggiati;
 using Casazen.Web.Infrastructure;
@@ -38,10 +41,15 @@ public class AlloggiatiController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver,
     IStringLocalizer<SharedResources> localizer,
-    ILogger<AlloggiatiController> logger) : ControllerBase
+    ILogger<AlloggiatiController> logger,
+    IComplianceStatusService complianceStatus,
+    ICheckInOctorateSyncService octorateSync, IDirectAlloggiatiRoute? directRoute = null, AppDbContext? directDb = null) : ControllerBase
 {
     /// <summary>Code of a send request: CasaZen has no Alloggiati Web client (422).</summary>
     public const string TransmissionUnavailableCode = "alloggiati_transmission_unavailable";
+
+    /// <summary>Code of a retry of the write of the guests while another send of the stay is running (409).</summary>
+    public const string WriteInProgressCode = "alloggiati_write_in_progress";
 
     /// <summary>Code of a code search on an unknown list (400).</summary>
     public const string CodeListUnknownCode = "alloggiati_code_list_unknown";
@@ -67,15 +75,98 @@ public class AlloggiatiController(
         return Ok(summaries.Select(MapSummary));
     }
 
+    /// <summary>
+    /// The status of the communication of a stay. For a stay whose sender is the channel manager it knows where the guests are on Octorate (E20/F01/US01/T02):
+    /// <c>EntrustedToChannelManager</c> (yellow, never «to send manually») once every guest is on it, <c>ChannelManagerWriteFailed</c> when one could not be
+    /// written, with the sender, the state of each guest by position (state, error code, attempts, last attempt), the receipt coverage, the light of the cockpit
+    /// and the action <c>RetryOctorateWrite</c> when asking again can mend a failed write. A booking of another org, or one outside the caller's reach, answers 404.
+    /// </summary>
     [HttpGet("{bookingId:guid}/status")]
     public async Task<ActionResult<AlloggiatiStatusDto>> GetStatus(Guid bookingId)
     {
-        var (_, denied) = await AuthorizeBookingAsync(bookingId, BookingOperations.Read);
+        var (booking, denied) = await AuthorizeBookingAsync(bookingId, BookingOperations.Read);
+        if (denied is not null) return denied;
+        var status = await alloggiatiWebService.GetStatusAsync(bookingId);
+        var dto = AlloggiatiStatusDto.From(status, await GetStayStatusAsync(bookingId));
+        if (directRoute != null && directDb != null && booking != null)
+        {
+            var ct = HttpContext.RequestAborted;
+            var cutoff = await directRoute.EffectiveFromAsync(booking.OrgId, booking.PropertyId, ct);
+            var attempt = await directDb.AlloggiatiSendAttempts.AsNoTracking()
+                .Where(a => a.OrgId == booking.OrgId && a.BookingId == booking.Id && a.Mode == AlloggiatiMode.Live)
+                .OrderByDescending(a => a.ReservedAt).Select(a => new { a.Status, a.ReceiptId, a.GuestsJson }).FirstOrDefaultAsync(ct);
+            dto.DirectSubmission = attempt != null || (cutoff.HasValue && Casazen.Core.Utilities.RomeCalendar.DateInRome(booking.CheckInDate) >= cutoff);
+            dto.DirectAttempt = attempt?.Status.ToString();
+            if (attempt?.GuestsJson is { } guests)
+            {
+                using var json = System.Text.Json.JsonDocument.Parse(guests);
+                dto.DirectGuests = json.RootElement.EnumerateArray()
+                    .Where(g => g.TryGetProperty("position", out _) && g.TryGetProperty("outcome", out _))
+                    .Select(g => new DirectGuestOutcomeDto(g.GetProperty("position").GetInt32(), g.GetProperty("outcome").GetString() ?? "pending"))
+                    .Where(g => g.Outcome is "validated" or "accepted" or "rejected" or "pending").ToArray();
+            }
+            dto.CanDownloadDirectReceipt = attempt?.ReceiptId != null &&
+                (await hostScopeResolver.ResolveHostScopeAsync(User, booking.OrgId, ct))?.IsOrgWide == true;
+        }
+        return Ok(dto);
+    }
+
+    [HttpGet("{bookingId:guid}/direct-receipt")]
+    public async Task<IActionResult> DirectReceipt(Guid bookingId, [FromServices] AppDbContext db, [FromServices] IFileStorage storage)
+    {
+        var (booking, denied) = await AuthorizeBookingAsync(bookingId, BookingOperations.Read);
+        if (denied != null) return denied;
+        var ct = HttpContext.RequestAborted;
+        // A daily receipt can cover apartments outside a member's scope and records submitted on the portal itself.
+        if ((await hostScopeResolver.ResolveHostScopeAsync(User, booking!.OrgId, ct))?.IsOrgWide != true) return Forbid();
+        var receipt = await (from a in db.AlloggiatiSendAttempts
+                             join r in db.AlloggiatiReceipts on a.ReceiptId equals r.Id
+                             where a.BookingId == bookingId && a.OrgId == booking.OrgId && r.OrgId == a.OrgId &&
+                                 r.AccountKey == a.AccountKey && a.Mode == AlloggiatiMode.Live && r.Mode == AlloggiatiMode.Live
+                             select new { r.StorageKey, r.ReceiptDate }).FirstOrDefaultAsync(ct);
+        if (receipt == null) return NotFound();
+        var stream = await storage.OpenReadAsync(StorageBucket.Private, receipt.StorageKey, ct);
+        if (stream == null) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        return File(stream, "application/pdf", $"alloggiati-{receipt.ReceiptDate:yyyy-MM-dd}.pdf");
+    }
+
+    /// <summary>
+    /// The host asks to try again to write the guests of the stay to the channel manager (the action <c>RetryOctorateWrite</c> of the status): the guests whose
+    /// write failed or was left pending are sent again, attempts used up included, and the status is answered as it is afterwards, with what the retry did
+    /// (<c>retry</c>: the outcome and, when nothing was tried, why). A guest held back for a place Octorate does not know is not retried: the host corrects
+    /// the guest, which sends it. Needs <c>alloggiati.submit</c> on the booking. Another send of the stay is running: nothing was tried, 409
+    /// <c>alloggiati_write_in_progress</c>, and the host asks again in a moment.
+    /// </summary>
+    /// <response code="200">The status of the stay and what the retry did.</response>
+    /// <response code="403">The caller may not submit the Alloggiati data of the booking.</response>
+    /// <response code="404">No such booking in the caller's org.</response>
+    /// <response code="409"><c>alloggiati_write_in_progress</c>: another send of the guests of the stay is running.</response>
+    [HttpPost("{bookingId:guid}/retry-octorate-write")]
+    [Authorize(Policy = CasazenPolicies.AlloggiatiSubmit)]
+    [ProducesResponseType(typeof(AlloggiatiStatusDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<AlloggiatiStatusDto>> RetryOctorateWrite(Guid bookingId)
+    {
+        var (_, denied) = await AuthorizeBookingAsync(bookingId, AlloggiatiOperations.Submit);
         if (denied is not null)
             return denied;
 
+        var result = await octorateSync.RetryGuestsNowAsync(bookingId, HttpContext.RequestAborted);
+        logger.LogInformation(
+            "User {UserId} asked to try again the write of the guests of booking {BookingId} to the channel manager: {State} {Reason}",
+            User.GetUserId(), bookingId, result.State, result.Reason);
+
+        // Another send of the stay holds the lock: nothing was tried, and «done» is never answered for it.
+        if (result.Reason == CheckInOctorateSyncService.ReasonSendInProgress)
+            return this.ApiProblem(StatusCodes.Status409Conflict, WriteInProgressCode, "AlloggiatiChannelManagerWriteInProgress");
+
         var status = await alloggiatiWebService.GetStatusAsync(bookingId);
-        return Ok(AlloggiatiStatusDto.From(status));
+        var dto = AlloggiatiStatusDto.From(status, await GetStayStatusAsync(bookingId));
+        dto.Retry = AlloggiatiRetryResultDto.From(result);
+        return Ok(dto);
     }
 
     /// <summary>
@@ -143,6 +234,18 @@ public class AlloggiatiController(
     /// <c>guest.read</c> only; every request is logged with the user and the positions (audit), never the numbers.
     /// <paramref name="position"/> limits the answer to one guest.
     /// </summary>
+    /// <remarks>
+    /// <para><b>Whose number.</b> The single guests and the heads of the stay (<see cref="AlloggiatiRecordRules.RequiresDocument"/>) and, in a stay of a property in canton Ticino
+    /// (NF-132), every <b>adult</b> family or group member the police file notifies on their own row, whose document the Ticino check-in stores: the host's edit dialog fills each guest by
+    /// <c>position</c> from this answer, so the number of the second adult is no longer typed again (<see cref="IStayGuestService.GetDocumentNumberPositionsAsync"/>, the predicate the check-in
+    /// and the save of the guests use). Any other stay answers exactly what it always did: an Italian stay, and a stay of another canton, only its single guests and heads.</para>
+    /// <para><b>Never</b> the number of a minor family or group member, of a guest with no number stored, or of a member of a group of six or more (only its leader is a row). The same policy,
+    /// the same check of the booking and of its org (<c>AuthorizeBookingAsync</c>: a booking of another org is a 404, one the caller may not read a 403) and the same audit line as before: the
+    /// user, the booking and the <b>positions</b>, never a number.</para>
+    /// <para>The summary of the guests (<see cref="AlloggiatiGuestSummaryDto"/>) is unchanged: it asks this answer when one of its rows <c>requiresDocument</c> and has a masked number
+    /// (the head of a stay, whose number the Ticino check-in always stores); the row of a member keeps <c>requiresDocument</c> false and no masked number, and the dialog reads its kind, its place
+    /// of issue and its masked number from the guest of the check-in wizard of the same position.</para>
+    /// </remarks>
     [HttpGet("{bookingId:guid}/stay-guests/document-numbers")]
     [Authorize(Policy = CasazenPolicies.GuestRead)]
     public async Task<ActionResult<IEnumerable<StayGuestDocumentNumberDto>>> GetDocumentNumbers(
@@ -154,9 +257,10 @@ public class AlloggiatiController(
             return denied;
 
         var guests = await stayGuestService.GetForBookingAsync(booking!, HttpContext.RequestAborted);
+        var withNumber = await stayGuestService.GetDocumentNumberPositionsAsync(booking!, guests, HttpContext.RequestAborted);
         var numbers = guests
             .Where(g => position is null || g.Position == position)
-            .Where(g => AlloggiatiRecordRules.RequiresDocument(g.Type) && !string.IsNullOrWhiteSpace(g.DocumentNumber))
+            .Where(g => withNumber.Contains(g.Position) && !string.IsNullOrWhiteSpace(g.DocumentNumber))
             .Select(g => new StayGuestDocumentNumberDto
             {
                 Position = g.Position,
@@ -198,6 +302,7 @@ public class AlloggiatiController(
             booking!,
             request.Guests.Select(g => g.ToInput()).ToList(),
             StayGuestAuthor.Host(userId),
+            vehiclePlate: request.VehiclePlate,
             cancellationToken: HttpContext.RequestAborted);
         if (!result.Success)
         {
@@ -256,7 +361,8 @@ public class AlloggiatiController(
         if (denied is not null)
             return denied;
 
-        var status = await alloggiatiWebService.MarkSentManuallyAsync(bookingId, request.SentOn!.Value);
+        // The person who declares it goes in the log of what was sent (NF-47): the token's subject, never a field of the body.
+        var status = await alloggiatiWebService.MarkSentManuallyAsync(bookingId, request.SentOn!.Value, User.GetUserId());
         logger.LogInformation("Alloggiati communication of booking {BookingId} declared sent manually", bookingId);
         return Ok(AlloggiatiStatusDto.From(status));
     }
@@ -305,6 +411,22 @@ public class AlloggiatiController(
         }
 
         return (booking, null);
+    }
+
+    /// <summary>
+    /// The stay as the cockpit reads it (the guests on the channel manager, the receipt coverage, the light), by the caller's reach; <c>null</c> when the org
+    /// or the reach cannot be resolved (the status is then answered as before, without the block).
+    /// </summary>
+    private async Task<ComplianceStayStatus?> GetStayStatusAsync(Guid bookingId)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
+        {
+            return null;
+        }
+
+        return await complianceStatus.GetStayStatusAsync(scope, bookingId, HttpContext.RequestAborted);
     }
 
     private async Task<bool> CanAccessPropertyAsync(Guid propertyId)

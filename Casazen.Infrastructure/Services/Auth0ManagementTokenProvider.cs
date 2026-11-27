@@ -1,4 +1,6 @@
+using System.Net;
 using System.Net.Http.Json;
+using Casazen.Core.Services;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -8,8 +10,12 @@ namespace Casazen.Infrastructure.Services;
 /// <summary>
 /// Thrown when no Management API token can be obtained. The message never contains credentials.
 /// </summary>
-public sealed class Auth0ManagementTokenException(string message, Exception? innerException = null)
-    : Exception(message, innerException);
+public sealed class Auth0ManagementTokenException(
+    string message, Exception? innerException = null, string? errorCode = null)
+    : Exception(message, innerException)
+{
+    public string ErrorCode { get; } = errorCode ?? Auth0SyncResult.TokenFailedCode;
+}
 
 /// <summary>
 /// Supplies access tokens for the Auth0 Management API.
@@ -171,7 +177,10 @@ public sealed class Auth0ManagementTokenProvider(
             {
                 // Do not log the body: it may echo request details.
                 throw new Auth0ManagementTokenException(
-                    $"Auth0 token endpoint returned HTTP {(int)response.StatusCode}.");
+                    $"Auth0 token endpoint returned HTTP {(int)response.StatusCode}.",
+                    errorCode: response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+                        ? Auth0SyncResult.CredentialsRejectedCode
+                        : Auth0SyncResult.TokenFailedCode);
             }
 
             TokenResponse? payload;

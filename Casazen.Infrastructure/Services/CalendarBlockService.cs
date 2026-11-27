@@ -1,11 +1,14 @@
 using System.Data;
+using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Repositories;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -29,7 +32,9 @@ public sealed class CalendarBlockService(
     AppDbContext db,
     ICheckoutHoldExpiryService checkoutHoldExpiry,
     ILogger<CalendarBlockService> logger,
-    TimeProvider? timeProvider = null) : ICalendarBlockService
+    TimeProvider? timeProvider = null,
+    ICalendarChangeRecorder? changeRecorder = null,
+    IBackgroundJobClient? jobs = null) : ICalendarBlockService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -56,7 +61,10 @@ public sealed class CalendarBlockService(
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<CalendarBlock> CreateAsync(ManualBlockRequest request, CancellationToken cancellationToken = default)
+    public async Task<CalendarBlock> CreateAsync(ManualBlockRequest request, CancellationToken cancellationToken = default) =>
+        (await CreateTrackedAsync(request, cancellationToken)).Block;
+
+    public async Task<ManualBlockChange> CreateTrackedAsync(ManualBlockRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -74,6 +82,10 @@ public sealed class CalendarBlockService(
                 Code = ManualBlockErrorCodes.PropertyNotFound,
                 MessageKey = ManualBlockErrorCodes.PropertyNotFoundMessageKey,
             };
+
+        // E08/F05/US02/T02: where the property books is asked here, before the transaction and the dates lock. The lookup may call the channel manager and takes as long as it
+        // takes: no booking of the property waits for it. The answer goes to the recorder below, which does not ask again.
+        var resolved = changeRecorder is null ? (CalendarSendOutcome?)null : await changeRecorder.ResolveAsync(request.PropertyId, cancellationToken);
 
         await checkoutHoldExpiry.ExpireOverlappingHoldsAsync(request.PropertyId, start, end, cancellationToken);
 
@@ -106,8 +118,13 @@ public sealed class CalendarBlockService(
         if (takenByManualBlock)
             throw new DomainConflictException(ManualBlockErrorCodes.OverlapsBlock, ManualBlockErrorCodes.OverlapsBlockMessageKey);
 
+        // E08/F05/US02/T02 (NF-78): the change that tells the channel manager the nights are closed is recorded in this unit of work, under this lock, so the block
+        // and its process exist together or not at all. It comes before the block is staged: the lookup of where the property books may save the unit of work.
+        var change = await RecordChangeAsync(request.PropertyId, start, end, "created", request.Reason, resolved, cancellationToken);
+
         var block = new CalendarBlock
         {
+            Id = request.BlockId ?? Guid.NewGuid(),
             PropertyId = request.PropertyId,
             OrgId = orgId,
             Source = CalendarBlockSource.Manual,
@@ -123,10 +140,12 @@ public sealed class CalendarBlockService(
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
 
+        EnqueueRun(change);
+
         logger.LogInformation(
             "Manual block {BlockId} ({Reason}) created on property {PropertyId}: {Nights} nights from {Start:yyyy-MM-dd}",
             block.Id, block.ManualReason, block.PropertyId, (end - start).Days, start);
-        return block;
+        return new ManualBlockChange(block, change?.ProcessId, change?.Process.State);
     }
 
     public async Task<CalendarBlock?> FindAsync(Guid blockId, CancellationToken cancellationToken = default) =>
@@ -144,6 +163,17 @@ public sealed class CalendarBlockService(
         if (block.ManualReason == CalendarBlockReason.ModeChange)
             throw new DomainRuleException(ManualBlockErrorCodes.HeldByModeChange, ManualBlockErrorCodes.HeldByModeChangeMessageKey);
 
+        // E07/F07/US01/T01: the block of an owner stay goes away with the stay (ReleaseOwnerStayBlockAsync), never by hand: the stay would say «confirmed»
+        // for dates that are open again.
+        if (block.ManualReason == CalendarBlockReason.Owner
+            && await db.OwnerStayRequests.AnyAsync(s => s.CalendarBlockId == block.Id && s.BlockReleasedAt == null, cancellationToken))
+        {
+            throw new DomainRuleException(ManualBlockErrorCodes.HeldByOwnerStay, ManualBlockErrorCodes.HeldByOwnerStayMessageKey);
+        }
+
+        // E08/F05/US02/T02 (NF-78): the nights are open again on the channel manager: the change is recorded in the same save as the removal.
+        var change = await RecordChangeAsync(block.PropertyId, block.StartUtc.Date, block.EndUtc.Date, "removed", block.ManualReason, null, cancellationToken);
+
         db.CalendarBlocks.Remove(block);
         try
         {
@@ -155,7 +185,75 @@ public sealed class CalendarBlockService(
             throw BlockNotFound(blockId);
         }
 
+        EnqueueRun(change);
+
         logger.LogInformation("Manual block {BlockId} removed from property {PropertyId}", block.Id, block.PropertyId);
+    }
+
+    public async Task<ManualBlockChange?> ReleaseOwnerStayBlockAsync(Guid blockId, CancellationToken cancellationToken = default)
+    {
+        var block = await db.CalendarBlocks.FirstOrDefaultAsync(b => b.Id == blockId, cancellationToken);
+        if (block is null)
+            return null;
+
+        if (block.Source != CalendarBlockSource.Manual || block.ManualReason != CalendarBlockReason.Owner)
+            throw new DomainRuleException(ManualBlockErrorCodes.NotManual, ManualBlockErrorCodes.NotManualMessageKey);
+
+        // The nights are open again on the channel manager: the change is recorded in the same save as the removal (E08/F05/US02/T02).
+        var change = await RecordChangeAsync(block.PropertyId, block.StartUtc.Date, block.EndUtc.Date, "removed", block.ManualReason, null, cancellationToken);
+        db.CalendarBlocks.Remove(block);
+        await db.SaveChangesAsync(cancellationToken);
+        EnqueueRun(change);
+
+        logger.LogInformation("Owner stay block {BlockId} removed from property {PropertyId}", block.Id, block.PropertyId);
+        return new ManualBlockChange(block, change?.ProcessId, change?.Process.State);
+    }
+
+    /// <summary>
+    /// Adds to the unit of work the change that sends the nights of a block (or of its removal) to the channel manager (<see cref="ICalendarChangeRecorder"/>): the nights
+    /// from <paramref name="start"/> (included) to <paramref name="end"/> (excluded). A property that is not on the channel manager records an <c>Applied</c> process and
+    /// nothing else. <c>null</c> when no recorder is registered. The summary names the action and the reason: no note, no name.
+    /// </summary>
+    private async Task<CalendarChangeRecord?> RecordChangeAsync(
+        Guid propertyId,
+        DateTime start,
+        DateTime end,
+        string action,
+        CalendarBlockReason? reason,
+        CalendarSendOutcome? resolved,
+        CancellationToken cancellationToken)
+    {
+        if (changeRecorder is null)
+            return null;
+
+        var window = new CalendarWindow(propertyId, DateOnly.FromDateTime(start), DateOnly.FromDateTime(end).AddDays(-1));
+        return await changeRecorder.RecordAsync(
+            CalendarChangeKind.Block,
+            [window],
+            null,
+            JsonSerializer.Serialize(new { action, reason = reason?.ToString() }),
+            cancellationToken,
+            resolved: resolved is { } known ? new Dictionary<Guid, CalendarSendOutcome> { [propertyId] = known } : null);
+    }
+
+    /// <summary>
+    /// After the commit, a process that is <c>Queued</c> is enqueued once for an immediate run; the recurring job is the safety net, so a queue that cannot take it is
+    /// not a failure of the block.
+    /// </summary>
+    private void EnqueueRun(CalendarChangeRecord? change)
+    {
+        if (change is not { NeedsRun: true } || jobs is null)
+            return;
+
+        var processId = change.ProcessId;
+        try
+        {
+            jobs.Enqueue<CalendarChangeProcessJob>(job => job.RunAsync(processId, CancellationToken.None));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Calendar change {ProcessId} could not be enqueued: the recurring job sends it", processId);
+        }
     }
 
     private void Validate(DateTime start, DateTime end, CalendarBlockReason reason, string? note)

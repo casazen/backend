@@ -1,3 +1,5 @@
+using Casazen.Core.Entities.Enums;
+
 namespace Casazen.Core.Services;
 
 public enum CalendarAlertKind
@@ -81,6 +83,52 @@ public static class CalendarAlertRules
     {
         ArgumentNullException.ThrowIfNull(alerts);
         return alerts.OrderBy(a => a.Severity).ThenBy(a => a.From).ThenBy(a => a.Id, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>
+    /// A stay as an occupant of its property: the nights from the check-in date (included) to the check-out date (the day it no longer
+    /// takes a night). The one place that shapes a booking for the alerts, for the host calendar and for the event handlers alike.
+    /// </summary>
+    public static CalendarOccupant StayOccupant(Guid id, Guid propertyId, DateTime checkIn, DateTime checkOut)
+    {
+        return new CalendarOccupant(
+            id, CalendarItemType.Booking, propertyId, DateOnly.FromDateTime(checkIn), DateOnly.FromDateTime(checkOut));
+    }
+
+    /// <summary>
+    /// A calendar block as an occupant of its property: a portal's block of an iCal calendar is <see cref="CalendarItemType.Ical"/>, every
+    /// other block (the host's own, the nights the channel manager closes) <see cref="CalendarItemType.Block"/>.
+    /// </summary>
+    public static CalendarOccupant BlockOccupant(Guid id, Guid propertyId, CalendarBlockSource source, DateTime start, DateTime end)
+    {
+        return new CalendarOccupant(
+            id,
+            source == CalendarBlockSource.ICalImport ? CalendarItemType.Ical : CalendarItemType.Block,
+            propertyId,
+            DateOnly.FromDateTime(start),
+            DateOnly.FromDateTime(end));
+    }
+
+    /// <summary>
+    /// The conflicts of one item that has just arrived (E08/F01/US02/T02, NF-80): the input is framed on the nights of the stay
+    /// (<paramref name="checkIn"/> to <paramref name="checkOut"/>) of one property, with every stay and block that takes a night of them as an
+    /// occupant, the stay itself included. It is <see cref="Compute"/> that finds the conflicts, the same rule that feeds the host calendar and
+    /// the Home; this only keeps the ones the item is in, the earliest first.
+    /// </summary>
+    public static IReadOnlyList<CalendarAlert> ConflictsOfStay(
+        DateOnly today,
+        CalendarAlertProperty property,
+        Guid stayId,
+        DateOnly checkIn,
+        DateOnly checkOut,
+        IReadOnlyList<CalendarOccupant> occupants)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        ArgumentNullException.ThrowIfNull(occupants);
+
+        return Compute(new CalendarAlertInput(today, checkIn, checkOut, [property], occupants))
+            .Where(alert => alert.Refs.Any(item => item.Type == CalendarItemType.Booking && item.Id == stayId))
+            .ToList();
     }
 
     private static IEnumerable<CalendarAlert> Conflicts(

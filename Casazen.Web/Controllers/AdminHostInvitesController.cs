@@ -31,6 +31,7 @@ public class AdminHostInvitesController(IHostInviteService invites) : Controller
     {
         var sent = await invites.CreateAsync(
             new CreateHostInvite(Actor(), request.Email, request.Message, request.Locale), cancellationToken);
+        Response.Headers.CacheControl = "no-store";
         return StatusCode(StatusCodes.Status201Created, HostInviteSentDto.From(sent));
     }
 
@@ -70,8 +71,11 @@ public class AdminHostInvitesController(IHostInviteService invites) : Controller
     [ProducesResponseType(typeof(HostInviteSentDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<HostInviteSentDto>> Resend(Guid id, CancellationToken cancellationToken) =>
-        Ok(HostInviteSentDto.From(await invites.ResendAsync(Actor(), id, cancellationToken)));
+    public async Task<ActionResult<HostInviteSentDto>> Resend(Guid id, CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return Ok(HostInviteSentDto.From(await invites.ResendAsync(Actor(), id, cancellationToken)));
+    }
 
     /// <summary>Revokes a pending invite: its link no longer works. 404 <c>host_invite_not_found</c>, 409 <c>host_invite_not_pending</c>.</summary>
     [HttpDelete("{id:guid}")]

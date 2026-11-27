@@ -44,6 +44,7 @@ public sealed partial class SupplierPaymentService
         DateTime? SettledAt,
         int AmountCents,
         int NetCents,
+        bool CommissionAddedToPrice,
         int RefundedCents);
 
     // ─── The work queue ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -89,6 +90,7 @@ public sealed partial class SupplierPaymentService
                 d.SettledAt,
                 d.ServiceRequestPayment.AmountCents,
                 d.ServiceRequestPayment.NetCents,
+                d.ServiceRequestPayment.CommissionAddedToPrice,
                 d.ServiceRequestPayment.RefundedCents))
             .ToListAsync(cancellationToken);
 
@@ -106,7 +108,7 @@ public sealed partial class SupplierPaymentService
             {
                 var org = names.FirstOrDefault(n => n.Id == r.SupplierOrgId);
                 var name = org is null ? string.Empty : string.IsNullOrWhiteSpace(org.DisplayName) ? org.Name : org.DisplayName;
-                return ToAdminSummary(r, name, ServiceDisputeRules.RefundableToPayer(r.NetCents, r.RefundedCents, 0), now);
+                return ToAdminSummary(r, name, ServiceDisputeRules.RefundableToPayer(r.CommissionAddedToPrice ? r.AmountCents : r.NetCents, r.RefundedCents, 0), now);
             })
             .ToList();
         return (items, total);
@@ -136,6 +138,7 @@ public sealed partial class SupplierPaymentService
                 d.ServiceRequestPayment.AmountCents,
                 d.ServiceRequestPayment.ApplicationFeeCents,
                 d.ServiceRequestPayment.NetCents,
+                d.ServiceRequestPayment.CommissionAddedToPrice,
                 d.ServiceRequestPayment.RefundedCents,
             })
             .FirstAsync(cancellationToken);
@@ -171,10 +174,11 @@ public sealed partial class SupplierPaymentService
             dispute.SettledAt,
             payment.AmountCents,
             payment.NetCents,
+            payment.CommissionAddedToPrice,
             payment.RefundedCents);
 
         return new AdminServiceDisputeDetail(
-            ToAdminSummary(row, supplier.Name, ServiceDisputeRules.RefundableToPayer(payment.NetCents, payment.RefundedCents, inProgress), Now()),
+            ToAdminSummary(row, supplier.Name, ServiceDisputeRules.RefundableToPayer(payment.CommissionAddedToPrice ? payment.AmountCents : payment.NetCents, payment.RefundedCents, inProgress), Now()),
             payment.Status,
             payment.ApplicationFeeCents,
             !string.IsNullOrWhiteSpace(request?.ServiceNameSnapshot)
@@ -355,7 +359,7 @@ public sealed partial class SupplierPaymentService
         var refunded = (int)Math.Min(refunds.Where(r => r.Status == ServicePaymentRefundStatus.Succeeded).Sum(r => (long)r.AmountCents), int.MaxValue);
         var inProgress = (int)Math.Min(refunds.Where(IsInProgress).Sum(r => (long)r.AmountCents), int.MaxValue);
 
-        var decision = ServiceDisputeRules.DecideRefund(requestedCents, ServiceDisputeRules.RefundableToPayer(payment.NetCents, refunded, inProgress));
+        var decision = ServiceDisputeRules.DecideRefund(requestedCents, ServiceDisputeRules.RefundableToPayer(payment.CommissionAddedToPrice ? payment.AmountCents : payment.NetCents, refunded, inProgress));
         switch (decision.Kind)
         {
             case DisputeRefundKind.Invalid:

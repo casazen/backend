@@ -1,3 +1,4 @@
+using Casazen.Core.Documents;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Web.Authorization;
@@ -21,13 +22,10 @@ namespace Casazen.Web.Controllers;
 public class StatementsController(
     AppDbContext db,
     IStatementService statementService,
+    IStatementExportService statementExport,
     IOrgContextResolver orgContextResolver,
     ILogger<StatementsController> logger) : ControllerBase
 {
-    // Error codes for statement operations (snake_case, stable)
-    private const string PdfExportNotImplemented = "statement_pdf_export_not_implemented";
-    private const string CsvExportNotImplemented = "statement_csv_export_not_implemented";
-
     /// <summary>
     /// List of owner statements for the caller's agency org. Ordered by year/month descending.
     /// Optionally filtered by property owner and/or property.
@@ -183,51 +181,36 @@ public class StatementsController(
     }
 
     /// <summary>
-    /// Exports a statement as PDF (ADR-017-R7). Shows co-owner split with rounding disclosure if applicable.
+    /// Exports a statement as PDF (ADR-017-R7, NF-25): the lines, the commission and the totals as stored, every amount in the currency of the
+    /// statement, the stored payouts and withholding evidence with its rule version, and the label that it is not an invoice. Only an Approved
+    /// or Published statement is exported (422 <c>statement_not_exportable</c>); another org's statement is 404. Nothing is calculated or saved.
     /// </summary>
     [HttpGet("{id:guid}/pdf")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status501NotImplemented)]
-    public async Task<ActionResult> GetPdf(Guid id)
-    {
-        logger.LogInformation("Exporting statement {StatementId} as PDF", id);
-
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
-            return Forbid();
-
-        // TODO: Implement PDF generation (e.g., with QuestPDF)
-        // For now, return 501 Not Implemented
-        await Task.CompletedTask;
-        return this.ApiProblem(
-            StatusCodes.Status501NotImplemented,
-            PdfExportNotImplemented,
-            "StatementPdfExportNotImplemented");
-    }
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult> GetPdf(Guid id) => ExportAsync(id, StatementExportFormat.Pdf);
 
     /// <summary>
-    /// Exports a statement as CSV (ADR-017). Line-by-line breakdown with all columns.
+    /// Exports a statement as CSV (ADR-017, NF-25): one row per line with all its columns, then the totals, the payouts and the withholding
+    /// evidence, for a spreadsheet set to Italian. Same rules as the PDF.
     /// </summary>
     [HttpGet("{id:guid}/csv")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status501NotImplemented)]
-    public async Task<ActionResult> GetCsv(Guid id)
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult> GetCsv(Guid id) => ExportAsync(id, StatementExportFormat.Csv);
+
+    private async Task<ActionResult> ExportAsync(Guid id, StatementExportFormat format)
     {
-        logger.LogInformation("Exporting statement {StatementId} as CSV", id);
+        logger.LogInformation("Exporting statement {StatementId} as {Format}", id, format);
 
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
         if (orgId is null)
             return Forbid();
 
-        // TODO: Implement CSV generation
-        // For now, return 501 Not Implemented
-        await Task.CompletedTask;
-        return this.ApiProblem(
-            StatusCodes.Status501NotImplemented,
-            CsvExportNotImplemented,
-            "StatementCsvExportNotImplemented");
+        var file = await statementExport.ExportStatementAsync(id, orgId.Value, format, DocumentLanguages.Current, HttpContext.RequestAborted);
+        return File(file.Content, file.ContentType, file.FileName);
     }
 }
 

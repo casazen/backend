@@ -1,9 +1,9 @@
 # ADR-022: Event Source for Automation Routines - event bus with a transactional outbox
 
-**Status:** Accepted (amended 2026-10-25: the operator confirmed the event bus, Q-A54)  
-**Date:** 2026-10-24 (amended 2026-10-25)  
+**Status:** Accepted (amended 2026-11-03)  
+**Date:** 2026-10-24 (amended 2026-10-25, amended 2026-11-03)  
 **Issue:** none (run R20261024-1925)  
-**Informs:** NF-26, NF-22, NF-24
+**Informs:** NF-26, NF-22, NF-24, NF-17, NF-21, NF-73
 
 ## Context
 
@@ -217,3 +217,44 @@ Server-side checks (not the condition builder):
 **Feature flag:** `routines` default OFF
 
 **CI cost:** +15s for the three proof tests
+
+## Amendment 2026-11-03 (run R20261103-1506)
+
+**Why:** NF-17 (Octorate webhook integration), NF-21 (routine triggers from Octorate events), NF-73 (booking state sync) require extending the event bus to handle webhook-originated events and tenant-isolated dispatch.
+
+**Decision delta:**
+
+### Webhook Integration Pattern
+
+Webhook handlers (Octorate, Stripe, OTA) MUST follow the outbox pattern:
+1. Accept webhook, verify signature
+2. Write `OutboxEvent` row in same transaction as any domain update
+3. Return 200 within 3 seconds (no long-running work)
+4. Event handler processes the actual business logic asynchronously
+
+### Tenant Context in Dispatcher
+
+`OutboxDispatcherJob` MUST set tenant context (`ICurrentUser.OrgId`) from `OutboxEvent.OrgId` before calling handlers. Each handler runs in its own DI scope with the correct tenant filter active.
+
+### PII in Outbox Payload
+
+`PayloadJson` MUST NOT contain unencrypted PII (document numbers, full names, emails). Reference `EntityId` and fetch on handler read. Architecture test scans `PayloadJson` schemas for PII patterns.
+
+### Dead-letter Anonymization
+
+Dead-lettered events older than `EventBus:RetentionDays` MUST be anonymized (EntityId=Guid.Empty, PayloadJson='{}', OrgId kept for audit). Extends `OutboxCleanupJob`.
+
+| ID | Priority | Requirement |
+|---|---|---|
+| ADR-022-R17 | P0 | `OutboxEvent` entity MUST implement `ITenantOwned` with `OrgId`; dispatcher MUST set tenant context per event before calling handlers |
+| ADR-022-R18 | P0 | `OutboxDispatcherJob` MUST query undispatched events with `WHERE DeadLettered = false AND DispatchedAt IS NULL ORDER BY OccurredAt` in batches of 100; each batch MUST commit `DispatchedAt` only after all handlers complete |
+| ADR-022-R19 | P0 | Webhook handlers (Octorate, Stripe) MUST respond within 3s: accept webhook, write `OutboxEvent` row, return 200; actual processing via event handler |
+| ADR-022-R20 | P0 | Migration task: add `OutboxEvent` table, `OutboxDispatcherJob`, `TimeEventEmitterJob`, `OutboxCleanupJob` to `RecurringJobsRegistration`; migration order BEFORE any routine/webhook feature |
+| ADR-022-R21 | P1 | `OutboxEvent.PayloadJson` MUST NOT contain unencrypted PII; reference EntityId and fetch on handler read; dead-lettered events older than retention MUST be anonymized |
+
+**Replaces:** None (new requirements extend existing set).
+
+**Consequences delta:**
+- Migration order: ADR-022 outbox infrastructure MUST be deployed before ADR-023 (connector), ADR-031 (booking sync), ADR-032 (messages)
+- Webhook handlers depend on outbox pattern being in place
+- Test mode replay queries last 30 days; event replay for deleted entities returns partial data (acceptable for test mode)

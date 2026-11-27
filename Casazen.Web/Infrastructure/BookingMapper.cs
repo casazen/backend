@@ -1,3 +1,4 @@
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Web.DTOs;
@@ -6,19 +7,25 @@ namespace Casazen.Web.Infrastructure;
 
 public static class BookingMapper
 {
-    public static BookingResponseDto ToResponse(Booking booking) => ToResponse(booking, DateTime.UtcNow);
+    /// <param name="booking">The booking, with its property and guest when loaded.</param>
+    /// <param name="channelPolicy">Which channels let the host change or cancel a booking from CasaZen; none = every channel closed (see <see cref="Fill{T}"/>).</param>
+    public static BookingResponseDto ToResponse(Booking booking, OtaChannelActionPolicy? channelPolicy = null) =>
+        ToResponse(booking, DateTime.UtcNow, channelPolicy);
 
     /// <param name="booking">The booking, with its property and guest when loaded.</param>
     /// <param name="nowUtc">Instant that decides whether a "pay at the property" request is still open.</param>
-    public static BookingResponseDto ToResponse(Booking booking, DateTime nowUtc) => Fill(new BookingResponseDto(), booking, nowUtc);
+    /// <param name="channelPolicy">Which channels let the host change or cancel a booking from CasaZen; none = every channel closed (see <see cref="Fill{T}"/>).</param>
+    public static BookingResponseDto ToResponse(Booking booking, DateTime nowUtc, OtaChannelActionPolicy? channelPolicy = null) =>
+        Fill(new BookingResponseDto(), booking, nowUtc, channelPolicy);
 
     /// <summary>
     /// A row of the booking list (SR-03b): the booking and what the list says besides it. Without <paramref name="details"/> (a row
     /// the service did not describe) nothing has come in.
     /// </summary>
-    public static BookingListItemDto ToListItem(Booking booking, BookingRowDetails? details, DateTime nowUtc)
+    public static BookingListItemDto ToListItem(
+        Booking booking, BookingRowDetails? details, DateTime nowUtc, OtaChannelActionPolicy? channelPolicy = null)
     {
-        var item = Fill(new BookingListItemDto(), booking, nowUtc);
+        var item = Fill(new BookingListItemDto(), booking, nowUtc, channelPolicy);
         item.Channel = BookingListRules.ChannelOf(booking.Source).ToString();
         item.PaymentState = (details?.PaymentState ?? BookingPaymentState.None).ToString();
         item.PaidAmount = details?.PaidAmount;
@@ -34,7 +41,15 @@ public static class BookingMapper
     /// Fills <paramref name="response"/> (a <see cref="BookingResponseDto"/> or a response that adds fields to it, such
     /// as <see cref="ArrivalRegisteredResponse"/>) with the booking.
     /// </summary>
-    public static T Fill<T>(T response, Booking booking, DateTime nowUtc) where T : BookingResponseDto
+    /// <param name="response">The answer to fill.</param>
+    /// <param name="booking">The booking, with its property and guest when loaded.</param>
+    /// <param name="nowUtc">Instant that decides whether a "pay at the property" request is still open.</param>
+    /// <param name="channelPolicy">
+    /// Which channels let the host change or cancel a booking that came from them (D8): it decides the <c>changeOptions</c> of a booking of a channel
+    /// and nothing else. Without one every channel is closed, which is the answer of every booking that is not one of a channel, so only an answer that
+    /// can carry a booking of a channel needs to pass it.
+    /// </param>
+    public static T Fill<T>(T response, Booking booking, DateTime nowUtc, OtaChannelActionPolicy? channelPolicy = null) where T : BookingResponseDto
     {
         ArgumentNullException.ThrowIfNull(response);
         ArgumentNullException.ThrowIfNull(booking);
@@ -59,6 +74,13 @@ public static class BookingMapper
         response.Status = booking.Status.ToString();
         response.CancellationNote = booking.CancellationNote;
         response.Source = booking.Source.ToString();
+        // The channel of a booking that came from a channel through the channel manager: what tells it apart from the others (the "OTA" badge). A
+        // booking CasaZen made and sent to Octorate has a reservation there too, and is not one: the one definition of «of a channel» decides.
+        response.OtaSource = OtaChannelActionPolicy.IsChannelBooking(booking) ? booking.Source.ToString() : null;
+        // The origin the host reads (E27/F01/US01/T01, NF-123): from the source and the attribution of the booking, by the one rule of BookingOrigins. The
+        // source above is unchanged (the invoicing reasons per channel); a booking of the agency's booking engine is AgencySite and has no OtaSource.
+        response.Origin = BookingOrigins.Of(booking).ToString();
+        response.OriginChannel = BookingOrigins.PortalOf(booking);
         response.SpecialRequests = booking.SpecialRequests;
         response.ExpectedArrivalTime = booking.ExpectedArrivalTime;
         response.PaymentOption = booking.PaymentOption.ToString();
@@ -88,6 +110,8 @@ public static class BookingMapper
         response.CheckedOutAt = booking.CheckedOutAt;
         // The rule of PUT /api/bookings/{id}: the booking sheet and the calendar do not guess it (SR-05a).
         response.CanEdit = BookingEditabilityDto.From(BookingEditRules.Of(booking));
+        // What the host may do (E08/F03/US03/T02): the change and the cancellation, with the rule of the channel for a booking of a channel.
+        response.ChangeOptions = BookingChangeOptionsDto.From(BookingEditRules.ChangeOptionsOf(booking, channelPolicy));
         return response;
     }
 }

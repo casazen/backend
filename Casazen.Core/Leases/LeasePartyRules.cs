@@ -12,6 +12,9 @@ public static class LeasePartyErrorCodes
     public const string TooMany = "lease_parties_too_many";
     public const string FiscalCodeInvalid = "lease_party_fiscal_code_invalid";
     public const string FiscalCodeDuplicate = "lease_party_fiscal_code_duplicate";
+
+    /// <summary>422: a phone was given and it is not an international number (8 to 15 digits, not starting with 0).</summary>
+    public const string PhoneInvalid = "lease_party_phone_invalid";
 }
 
 /// <summary>

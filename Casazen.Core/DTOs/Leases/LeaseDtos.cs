@@ -91,7 +91,8 @@ public sealed record LeasePartyDto(
     string ContactEmailMasked,
     bool IsExtraEU,
     DateOnly? DocumentsVerifiedOn = null,
-    bool HasResidence = false);
+    bool HasResidence = false,
+    string ContactPhoneMasked = "");
 
 /// <summary>
 /// RLI registration state (LT-01). The provider id, the receipt storage path and the declaring user stay on the server:
@@ -327,7 +328,8 @@ public static class LeaseDtoMapper
             PersonalDataMasking.MaskEmail(party.ContactEmail),
             party.IsExtraEU,
             party.DocumentsVerifiedOn,
-            !string.IsNullOrWhiteSpace(party.Residence));
+            !string.IsNullOrWhiteSpace(party.Residence),
+            PersonalDataMasking.MaskPhone(party.ContactPhone));
     }
 
     public static LeaseRegistrationDto ToRegistration(LeaseRegistration registration)

@@ -23,6 +23,15 @@ public class GdprOptions
     /// </summary>
     public string? MarketingConsentVersion { get; set; }
 
+    /// <summary>
+    /// Version of the soft opt-in notice shown to a direct customer when the e-mail address is collected at the checkout (art. 130 c. 4 Codice
+    /// privacy, PO-07, E07/F04/US01/T02, NF-90): the customer is told that the address can be used for similar services and can object in
+    /// every message. <b>Unset by default and absent from <c>appsettings.json</c></b>: the text is a legal decision of the product owner and has
+    /// no default in code. While it is empty the checkout does not show the notice, the API refuses a <c>softOptInNoticeVersion</c> (409), no
+    /// notice is recorded and the customer's e-mail stays service only. Env var <c>Gdpr__SoftOptInNoticeVersion</c>.
+    /// </summary>
+    public string? SoftOptInNoticeVersion { get; set; }
+
     public GdprRetentionOptions Retention { get; set; } = new();
 
     /// <summary>The configured version, trimmed, or null when missing.</summary>

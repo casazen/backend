@@ -191,7 +191,7 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
             UploadedBy = uploadedBy,
             SizeBytes = content.Length,
             DocumentHash = documentHash,
-            ExtractionStatus = LeaseDocumentExtractionStatus.Processing, // Set to Processing per ADR-009-R1
+            ExtractionStatus = kind == LeaseDocumentKind.RegistrationIdentity ? LeaseDocumentExtractionStatus.Skipped : LeaseDocumentExtractionStatus.Processing,
         };
         try
         {
@@ -199,8 +199,11 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
             await db.SaveChangesAsync(ct);
 
             // Enqueue extraction job (ADR-009-R1)
-            ExtractLeaseDocumentDataJob.EnqueueAsync(document.Id);
-            logger.LogInformation("Extraction job enqueued for document {DocumentId}", document.Id);
+            if (kind != LeaseDocumentKind.RegistrationIdentity)
+            {
+                ExtractLeaseDocumentDataJob.EnqueueAsync(document.Id);
+                logger.LogInformation("Extraction job enqueued for document {DocumentId}", document.Id);
+            }
         }
         catch
         {
@@ -217,6 +220,23 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
         if (document is null) return null;
         var stream = await storage.OpenReadAsync(StorageBucket.Private, document.StorageKey, ct);
         return stream is null ? null : new LeaseDocumentDownload(stream, document.FileName);
+    }
+
+    public async Task<bool> DeleteAsync(Guid leaseId, Guid documentId, CancellationToken ct = default)
+    {
+        var document = await db.LeaseDocuments.SingleOrDefaultAsync(d => d.Id == documentId && d.LeaseContractId == leaseId, ct);
+        if (document is null)
+            return false;
+
+        // The row is what the list and the download read. It goes first, as for a property document: a save that fails
+        // leaves the file where it is, and a storage delete that fails can only leave an orphan blob.
+        var storageKey = document.StorageKey;
+        db.LeaseDocuments.Remove(document);
+        await db.SaveChangesAsync(ct);
+        try { await storage.DeleteAsync(StorageBucket.Private, storageKey, CancellationToken.None); }
+        catch (Exception cleanup) { logger.LogWarning(cleanup, "Could not remove orphan lease attachment {DocumentId}", documentId); }
+        logger.LogInformation("Lease document {DocumentId} of lease {LeaseId} deleted", documentId, leaseId);
+        return true;
     }
 
     public async Task<LeaseReadingDto> GetReadingAsync(Guid leaseId, CancellationToken ct = default)

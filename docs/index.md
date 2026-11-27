@@ -14,6 +14,7 @@ La documentazione tecnica e operativa condivisa vive in questa cartella. La guid
 | Configurare o diagnosticare una funzione | [Indice runbook](runbooks/index.md) |
 | Preparare un deploy | [Checklist](runbooks/deploy-checklist.md), [health check](runbooks/health-checks.md), [infrastruttura](INFRA.md) |
 | Seguire il pilota Quokka | [Planning](../Sessions/PLANNING.md), poi i [requisiti della fase 1 in sviluppo](../Sessions/prospect-quokka360/requisiti-fase1-helix.md) |
+| Collegare il sito di un’agenzia (pilota) | [Runbook di integrazione del sito](runbooks/site-integration.md) |
 | Capire, configurare o provare il servizio ConcordatoFacile | [Processo CF: unico riferimento](integrations/concordatofacile/README.md), poi i [requisiti](../Sessions/business-analysis-canone-concordato.md) |
 
 ## Struttura

@@ -60,11 +60,104 @@ public static class OrgActivityDetailKeys
     /// </summary>
     public const string Reminders = "reminders";
 
+    /// <summary>
+    /// Who sent the police and ISTAT communications of a property before a change (E03/F01/US05/T02): the name of the
+    /// <see cref="ComplianceSenderType"/> (<c>ChannelManager</c>, <c>CasaZen</c>, <c>Manual</c>).
+    /// </summary>
+    public const string FromSender = "fromSender";
+
+    /// <summary>Who sends them after the change, written like <see cref="FromSender"/>.</summary>
+    public const string ToSender = "toSender";
+
+    /// <summary>
+    /// The version of the delegation text an org accepted when it delegated the Alloggiati transmission (a code of the legal
+    /// documents, e.g. <c>2026-11-v1</c>), never the text. Always written: the delegation refuses a version of more than 40 characters.
+    /// </summary>
+    public const string DelegationVersion = "delegationVersion";
+
+    /// <summary>The compliance topic a verification handed to the channel manager is about: <c>Alloggiati</c> or <c>Istat</c> (E03/F05/US01/T01).</summary>
+    public const string Topic = "topic";
+
+    /// <summary>The id of the booking a verification was started from: a GUID, an opaque id like the subject (E03/F05/US01/T01).</summary>
+    public const string Booking = "booking";
+
+    /// <summary>The period a verification is about, a month <c>yyyy-MM</c> or a day <c>yyyy-MM-dd</c> (E03/F05/US01/T01).</summary>
+    public const string Period = "period";
+
+    /// <summary>The random id of a handoff, returned to the client and kept with the line so the two can be matched (E03/F05/US01/T01).</summary>
+    public const string Handoff = "handoff";
+
+    /// <summary>
+    /// What a read of the contact of a guest was for: a code of the closed list <see cref="ContactReadPurposes"/> (E05/F02/US02/T01). It is not called
+    /// «reason» because a free text must have no key to sit under; the value is always one of the codes of the list.
+    /// </summary>
+    public const string Purpose = "purpose";
+
+    /// <summary>
+    /// The code of the part of the activation plan a «Do it for me» request is about (<c>compliance</c>, <c>channels</c>...): a code of a closed list
+    /// (E10/F01/US03/T01); or what an item of the owner portal operations is (<c>OwnerPortalParts</c>: <c>stay</c>, <c>stayRule</c>, ..., E07/F07/US01); or, on a line
+    /// <see cref="OrgActivityType.OrgSettingsChanged"/>, the one setting it names: <c>portalCommissionRechargeWaiver</c>, the acknowledged waiver of the recharge of the portal
+    /// commissions (<c>PortalAccountErrors.RechargeWaiverActivityPart</c>, FIX/BE-V2-NO-RECHARGE).
+    /// </summary>
+    public const string Part = "part";
+
+    /// <summary>
+    /// What a «Do it for me» request asked help with (<c>panelPolice</c>, <c>panelIstat</c>, <c>panelChannelAccess</c>, <c>part</c>): a code of the closed list
+    /// <c>OnboardingAssistContexts</c>, never a text (E10/F01/US03/T01).
+    /// </summary>
+    public const string Context = "context";
+
+    /// <summary>
+    /// Where a «Do it for me» request stands after the event (<c>requested</c>, <c>inProgress</c>, <c>done</c>, <c>cancelled</c>), a code (E10/F01/US03/T01); or
+    /// what happened to an invitation of a property owner (<c>sent</c>, <c>resent</c>, <c>accepted</c>, <c>revoked</c>, E10/F02/US02); or what happened to
+    /// an item of the owner portal operations (<c>requested</c>, <c>approved</c>, <c>syncFailed</c>, ..., E07/F07/US01).
+    /// </summary>
+    public const string Status = "status";
+
+    /// <summary>How many rows an owner file had (a count, E10/F02/US02).</summary>
+    public const string Rows = "rows";
+
+    /// <summary>How many of the rows of an owner file changed something (a count, E10/F02/US02).</summary>
+    public const string Applied = "applied";
+
+    /// <summary>
+    /// The first 32 characters (lower case hex) of the fingerprint of an owner file: a hash of the org and of the normalized content, which says
+    /// nothing of what the file holds and lets two lines of the log be matched to the same file (E10/F02/US02).
+    /// </summary>
+    public const string Fingerprint = "fingerprint";
+
+    /// <summary>
+    /// The kind of credential of the support vault CasaZen staff opened for a «Do it for me» request (<c>panel</c>, <c>police</c>, <c>regionalIstat</c>,
+    /// <c>SupportVaultRules.CodeOf</c>), a code of a closed list (E20/F03/US01/T01, decision O5). The reason: the host is told, in its own log, that
+    /// support used its credentials and which ones; the catalog is at its cap, so the opening is a line of the request's own event with this one more
+    /// key instead of an event of its own. Never a value, never the reason the staff wrote.
+    /// </summary>
+    public const string Credential = "credential";
+
     public static IReadOnlyList<string> All { get; } =
     [
         Role, FromRole, ToRole, Scope, Granted, Revoked, Released, FromTier, ToTier, Source, RequestedArea, FromMode, ToMode, EffectiveOn,
-        FromAreas, ToAreas, Reminders,
+        FromAreas, ToAreas, Reminders, FromSender, ToSender, DelegationVersion,
+        Topic, Booking, Period, Handoff,
+        Part, Context, Status, Credential,
+        Purpose,
+        Rows, Applied, Fingerprint,
     ];
+}
+
+/// <summary>The purposes a read of the contact of a guest can have (the <c>purpose</c> detail of <see cref="OrgActivityType.ContactInfoRead"/>): a closed list of codes.</summary>
+public static class ContactReadPurposes
+{
+    /// <summary>The host writes to the guest of a booking that has no conversation, by e-mail (E05/F02/US02/T01).</summary>
+    public const string MessageToGuest = "message_to_guest";
+
+    /// <summary>
+    /// CasaZen reads the e-mail address of the guest of a booking of a portal, once, to send it the check-in link (E23/F01/US01/T02, <c>IGuestContactInfoService</c>): the
+    /// system does it, so the line has no actor, and it is never a read for the CRM.
+    /// </summary>
+    public const string CheckInLink = "check_in_link";
+
+    public static IReadOnlyList<string> All { get; } = [MessageToGuest, CheckInLink];
 }
 
 /// <summary>Who or what changed the plan of an org (the <c>source</c> detail of <see cref="OrgActivityType.PlanChanged"/>).</summary>
@@ -146,7 +239,9 @@ public static partial class OrgActivityCatalog
         new(OrgActivityType.OrgSlugChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
         new(OrgActivityType.TierAssigned, OrgActivityArea.Account, OrgActivitySubjectType.Org,
             [OrgActivityDetailKeys.ToTier], Reserved: true),
-        new(OrgActivityType.OrgSettingsChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
+        // The other settings of the org: the fact, never a value; the one part it names is the acknowledged waiver of the recharge of the portal commissions
+        // (FIX/BE-V2-NO-RECHARGE, a renunciation the agency has to be able to show: who and when are the line's). The catalog is at its cap: a line of this event, not a new one.
+        new(OrgActivityType.OrgSettingsChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, [OrgActivityDetailKeys.Part]),
 
         // The mode change of a property (PM-02, written by PropertyModeService since AM-02c). The area is the one of the property,
         // which the service passes (ShortRent is only the default of the catalog).
@@ -167,6 +262,42 @@ public static partial class OrgActivityCatalog
 
         // ConcordatoFacile gift.
         new(OrgActivityType.AdminGrantedConcordatoFacileGift, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
+
+        // The police and ISTAT communications (E03/F01/US05/T02): who sends them for a property (ADR-029-R4), and the delegation of the
+        // Alloggiati transmission of the org (AW-R02, ADR-015-R10).
+        new(OrgActivityType.PropertySenderChanged, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
+            [OrgActivityDetailKeys.FromSender, OrgActivityDetailKeys.ToSender]),
+        new(OrgActivityType.AlloggiatiDelegationGranted, OrgActivityArea.ShortRent, OrgActivitySubjectType.Org,
+            [OrgActivityDetailKeys.DelegationVersion]),
+        new(OrgActivityType.AlloggiatiDelegationRevoked, OrgActivityArea.ShortRent, OrgActivitySubjectType.Org, []),
+
+        // The guided passage to the Octorate Cassetto Compliance (E03/F05/US01/T01, CHK-15): the line says that it started, with the
+        // topic, the opaque handoff id and, when the request had them, the booking id and the period. Never a guest, never an outcome.
+        new(OrgActivityType.OctorateComplianceHandoffStarted, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
+            [OrgActivityDetailKeys.Topic, OrgActivityDetailKeys.Handoff, OrgActivityDetailKeys.Booking, OrgActivityDetailKeys.Period]),
+
+        // «Do it for me» (E10/F01/US03/T01, NF-15): a host asks CasaZen support to do a part or a panel step, and every staff action on the request.
+        // The line says which part, which context and where the request stands: never the draft, a note, a credential or a person. An opening of the
+        // support vault for the request (E20/F03/US01/T01) is a staff action too: its line says which kind of credential was used, never its value.
+        new(OrgActivityType.OnboardingAssistRequested, OrgActivityArea.Account, OrgActivitySubjectType.Org,
+            [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status]),
+        new(OrgActivityType.OnboardingAssistUpdated, OrgActivityArea.Account, OrgActivitySubjectType.Org,
+            [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status, OrgActivityDetailKeys.Credential]),
+
+        // The read of the contact of the guest of one booking, to write to it (E05/F02/US02/T01): Octorate records every read, so CasaZen records who
+        // asked and what for (the booking is the subject, the person is the actor). Never the address, the number or a word of the message.
+        new(OrgActivityType.ContactInfoRead, OrgActivityArea.ShortRent, OrgActivitySubjectType.Booking, [OrgActivityDetailKeys.Purpose]),
+
+        // The owner portfolio of an agency (E10/F02/US02): an owner file that changed something, and every change of an owner invitation
+        // (ADR-011-R11). Counts, a hash and a status code: never a name, an address, an identifier or a link.
+        new(OrgActivityType.OwnerImportApplied, OrgActivityArea.Account, OrgActivitySubjectType.Org,
+            [OrgActivityDetailKeys.Rows, OrgActivityDetailKeys.Applied, OrgActivityDetailKeys.Fingerprint]),
+        new(OrgActivityType.OwnerInvitationChanged, OrgActivityArea.Account, OrgActivitySubjectType.OwnerInvitation, [OrgActivityDetailKeys.Status]),
+
+        // The owner portal operations (E07/F07/US01, NF-111): one event for the owner stays, their rules and, with the collaboration of the portal, what it
+        // records; the part says what the subject id is. Codes only: never a name, a date of a guest, a text or an amount.
+        new(OrgActivityType.OwnerPortalChanged, OrgActivityArea.Account, OrgActivitySubjectType.OwnerPortalItem,
+            [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Status]),
     ];
 
     /// <summary>Every event the log can record, in the order of the runbook.</summary>

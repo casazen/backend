@@ -35,7 +35,15 @@ public class EndpointAuthorizationArchitectureTests
         ["MeNotificationsController.UnreadCount"] = "UI-12a: the number on the bell, the caller's own unread notifications (same reason as List).",
         ["MeNotificationsController.MarkRead"] = "UI-12a: the caller marks one of its own notifications as read; the id of another user's is a 404 (same reason as List).",
         ["MeNotificationsController.MarkAllRead"] = "UI-12a: the caller marks all of its own notifications as read (same reason as List).",
+        ["ActivitiesController.List"] = "ADR-026: the caller's own To do list, in every host context: the open items of the caller's org narrowed to the caller's own HostScope (IHostScopeResolver, from the membership in the database: a collaborator «Solo alcuni» sees only the items of the properties it was given, never an org-level one), answered as a DTO with no staff data.",
+        ["ActivitiesController.UrgentCount"] = "ADR-026: the number on the nav badge, the urgent items of the caller's own To do list (same scope as List).",
+        ["AlertsController.GetPending"] = "ADR-025, NF-08: the popup alerts of the caller, in every host context: its own rows by the token's sub, in the caller's org and narrowed to its own HostScope (IHostScopeResolver, from the membership in the database: a collaborator «Solo alcuni» sees only the alerts about a booking or a property it was given, never an org-level one), answered as references only (alert id, type, entity type and id, urgency), no personal data.",
+        ["AlertsController.Dismiss"] = "ADR-025: the caller dismisses one of its own popup alerts (by the token's sub and org); the id of another user's alert, of another org's or an unknown one is a 404, never a 403 (same reason as GetPending).",
+        ["AlertsController.Remind"] = "ADR-025: the caller snoozes one of its own popup alerts («Remind me later»); another user's alert is a 404, never a 403, and a snooze past the legal deadline of the alert is a 400 (same reason as GetPending).",
+        ["MeNotificationPreferencesController.Get"] = "NF-65, ADR-025: user-scoped: the caller's own notification preferences (quiet hours and the channels of each kind of event), in every host context, by the token's sub and the caller's own host org (INotificationPreferenceService); no tenant data of anybody else, nothing from the request but the token.",
+        ["MeNotificationPreferencesController.Save"] = "NF-65, ADR-025: user-scoped: the caller changes its own notification preferences, by the token's sub (never a field of the body); the legal deadline cannot be left without a channel and browser push is refused (422), and a caller with no host org is a 404 (same reason as Get).",
         ["MeController.PutLastContext"] = "UI-13a: remembers the area the caller entered last; it must be one of the contexts the caller can enter (422 otherwise) and it writes one column of the caller's own user row.",
+        ["AskNavigationController.Resolve"] = "Resolves navigation intent without reading any app data. The destination APIs enforce their own permissions.",
         ["SearchController.Search"] = "UI-13a: the palette searches every area of the caller, so no single context policy fits; each group is returned only when the caller holds the permission of that group in its context (the policies of the endpoints that list the same objects, SearchAccessResolver), in the caller's org and, for a collaborator limited to some properties, only in those (HostScope, in SQL). Behind the GlobalSearch flag and rate limited per user.",
         ["OnboardingController.GetStatus"] = "Onboarding state of the caller, needed before any context exists.",
         ["UsersController.GetMe"] = "Profile of the caller.",
@@ -47,11 +55,22 @@ public class EndpointAuthorizationArchitectureTests
         ["DevicesController.Unregister"] = "Removes the caller's own push token.",
         ["SuppliersController.Claim"] = "Links the caller's own account to the supplier profile it registered (claim token or verified email, SU-02): the Supplier role does not exist yet.",
         ["OrgInvitationAcceptanceController.Accept"] = "The invited person joins the org that invited its own email (AM-02): it has no org, role or permission yet, so no context policy can exist. What decides is the secret token, a verified account email equal to the invited one, not being a platform admin, and the consents of the org it joins.",
+        ["OwnerContactAcceptanceController.Accept"] = "A contact an owner lets into its portal accepts the invitation (E07/F07/US01/T02, NF-111, AC-NF111-4): like the owner of an invitation it has no org, role, permission or portal claim yet, so no policy can name it. What decides is the secret token (SHA-256 looked up under the lock of the org of the contact and of the account, one-time use), a VERIFIED account email equal to the invited one, and the state of the invitation; the email comes from the token or Auth0, never from the body. The account becomes an identity of the portal of its own and gets only the permissions the owner gave, on that owner profile.",
+        ["OwnerInvitationAcceptanceController.Accept"] = "The invited property owner accepts the invitation of its agency to the owner portal (E10/F02/US02/T02, NF-109, ADR-011): it has no org, role, permission or portal claim yet, so no policy can name it. What decides is the secret token (SHA-256 looked up under the lock of the org of the invitation, one-time use), a VERIFIED account email equal to the invited one, and the state of the invitation; the email comes from the token or Auth0, never from the body. Only the ownerships of that invitation (that org, that registry owner, not over) become the account's.",
         ["HostInviteLinksController.Accept"] = "The invited person takes a host invite with the account it signed up with: it has no org, role or permission yet (the invite grants none), so no context policy can exist. What decides is the secret token (SHA-256 looked up under a lock), a VERIFIED account email equal to the invited one, and single use; the email comes from the token or Auth0, never from the body.",
         ["OrgAccessRequestsController.Create"] = "A member asks the administrators of its org for access to something its role does not give it (AM-02b): by definition it lacks the permission of the thing, and any role may ask, so no context policy fits. The service decides: the caller must be an active member of the org (403 otherwise), at most three requests a day for each person, and the endpoint is rate limited per person.",
         ["OrgRolesController.Get"] = "The matrix of the five org roles (AM-02c): what each role holds in each context and how much of each capability that is. It describes the product's roles, names no person and reads no tenant data, and any active member may read it (to know what its own role can do), so no single context permission fits. The service decides: the caller must be an active member of its org (403 otherwise); behind the OrgTeam flag.",
+        ["LeaseMaintenanceRequestsController.Create"] = "The tenant of a lease opens a maintenance request. A tenant party has no lease.create permission, so no context policy fits the opener. The service decides: a verified email equal to a tenant party of that lease, in the caller's org (another org is 404). Decide and pay stay on lease.create.",
+        ["LeaseMaintenanceRequestsController.List"] = "The tenant reads their requests and the decision, and so does anyone with lease.read on the property. The tenant has no lease.read, so the class cannot require it. The service decides: the tenant party or lease.read, in the caller's org (another org is 404).",
+        ["LeaseMaintenanceRequestsController.GetPhoto"] = "The tenant or anyone with lease.read opens a private photo of a maintenance request. The file is not public. The service decides the same way as List, and another org or a missing photo is 404.",
+
+        // The caller's own work in progress: the drafts of the wizards (ADR-024).
+        ["WizardDraftsController.Get"] = "ADR-024: the caller's own draft of a wizard, in every context (host, landlord, supplier), so no single context permission fits: by the token's sub and the caller's org (IWizardDraftService); the draft of another person or another org is a 404, never a 403.",
+        ["WizardDraftsController.Save"] = "ADR-024: the caller saves its own draft, by the token's sub and the caller's org (same reason as Get); a version behind the server's is a 409 with the server's draft, and the body is bounded.",
+        ["WizardDraftsController.Delete"] = "ADR-024: the caller discards its own draft, by the token's sub and the caller's org (same reason as Get); never the draft of another person.",
 
         // Catalogs without tenant data.
+        ["CommercialCatalogController.Get"] = "Commercial add-on catalog from configuration, available before organization creation (#896).",
         ["BillingController.GetPlans"] = "Public plan catalog from configuration; every billing change is RequireOrgBillingAdmin.",
         ["TouristTaxRatesController.GetAll"] = "Platform reference data (tourist tax rates per comune), not tenant data; writes are AdminOnly.",
         ["TouristTaxRatesController.GetById"] = "Platform reference data, see GetAll.",
@@ -65,6 +84,16 @@ public class EndpointAuthorizationArchitectureTests
         ["ServiceRequestsController.Cancel"] = "SP-04: the supplier it was sent to cancels before the work starts (RequireSupplier + linked supplier org), or the host up to the work in progress (PropertyWrite + HostResource); each branch is checked with IAuthorizationService inside the action.",
         ["ServiceRequestsController.GetPhoto"] = "SP-04: a photo of the work, private file: the supplier it was sent to (RequireSupplier + linked supplier org) or the host (PropertyRead + HostScope), each checked with IAuthorizationService inside the action.",
         ["ConcordatoFacileController.CreateCheckout"] = "NF-03: programmatic OR-authorization (RequirePropertyWrite OR RequireOrgBillingWrite) checked with IAuthorizationService inside the action: the attribute would be AND-only, but a host needs only property write and an org admin only billing write.",
+    };
+
+    /// <summary>
+    /// Policies registered before the first action that asks for them, each with its reason: the task that seeds a permission creates its policy once,
+    /// and the endpoints of the later tasks of the same plan use it. Still registered (the test checks it); an entry is harmless once an action uses
+    /// the policy.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> RegisteredAheadOfTheirEndpoints = new Dictionary<string, string>
+    {
+        [CasazenPolicies.GuestPortalManage] = "E50/F01/US01/T01 (NF-152, guest portal plan decision A7) creates the «Portale ospiti» permission once, with its seed, its token fallback and its policy, for the set-up endpoints of the guest portal epics (E51-E59: house guide, extras, suppliers and percentages, automatic replies, wizard); the endpoints of the stay link of a booking ask for booking.read and booking.write.",
     };
 
     /// <summary>
@@ -447,11 +476,17 @@ public class EndpointAuthorizationArchitectureTests
         var provider = BuildPolicyProvider();
         var used = Actions().SelectMany(a => a.Policies).Where(p => p is not null).ToHashSet();
 
+        if (used.Contains(CasazenPolicies.ApprovalQueueAccess))
+            used.UnionWith(CasazenPolicies.ApprovalQueuePolicies);
         foreach (var policy in RegisteredPolicyNames())
         {
             Assert.True(await provider.GetPolicyAsync(policy) is not null, $"CasazenPolicies.{policy} is not registered.");
-            Assert.True(used.Contains(policy), $"Policy '{policy}' is registered but no action uses it: use it or remove it.");
+            Assert.True(
+                used.Contains(policy) || RegisteredAheadOfTheirEndpoints.ContainsKey(policy),
+                $"Policy '{policy}' is registered but no action uses it: use it or remove it.");
         }
+
+        Assert.All(RegisteredAheadOfTheirEndpoints, entry => Assert.True(entry.Value.Length >= 40, $"{entry.Key}: say why it comes before its endpoints"));
     }
 
     [Fact]

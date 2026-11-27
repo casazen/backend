@@ -1,13 +1,19 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.SiteDocuments;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Logging;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -24,7 +30,7 @@ public class GuestCheckInServiceTests
             .UseInMemoryDatabase($"checkin-{Guid.NewGuid()}")
             .Options);
 
-    private static async Task<Seed> SeedAsync()
+    private static async Task<Seed> SeedAsync(int capacity = 1)
     {
         var db = NewDb();
         var orgId = Guid.NewGuid();
@@ -57,6 +63,7 @@ public class GuestCheckInServiceTests
         {
             Id = bookingId,
             PropertyId = propertyId,
+            NumberOfGuests = capacity,
             GuestId = guestId,
             OrgId = orgId,
             CheckInDate = TimeProvider.System.TodayInRome().AddDays(3),
@@ -67,6 +74,186 @@ public class GuestCheckInServiceTests
 
         await db.SaveChangesAsync();
         return new Seed(db, bookingId, guestId, orgId);
+    }
+
+    [Fact]
+    public async Task PublicView_LinksOnlyTheCurrentlyPublishedPropertyPrivacyNotice()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var org = new Casazen.Core.Entities.Org { Id = seed.OrgId, Slug = "test-property", Name = "Test Property" };
+        seed.Db.Orgs.Add(org);
+        seed.Db.OrgSiteDocuments.Add(new OrgSiteDocument { Org = org, Kind = OrgSiteDocumentKind.Privacy, Version = 1 });
+        await seed.Db.SaveChangesAsync();
+
+        Assert.Equal(org.Slug, (await svc.GetPublicViewAsync(token))?.PrivacyNoticeOrgSlug);
+
+        seed.Db.OrgSiteDocuments.Add(new OrgSiteDocument
+        {
+            Org = org,
+            Kind = OrgSiteDocumentKind.Privacy,
+            Version = 2,
+            WithdrawnAt = DateTime.UtcNow,
+        });
+        await seed.Db.SaveChangesAsync();
+        Assert.Null((await svc.GetPublicViewAsync(token))?.PrivacyNoticeOrgSlug);
+    }
+
+    /// <summary>The org row of the seed (the seed has none) with the slug its links must carry (NF-140).</summary>
+    private static async Task<Casazen.Core.Entities.Org> AddOrgAsync(Seed seed, string slug)
+    {
+        var org = new Casazen.Core.Entities.Org { Id = seed.OrgId, Slug = slug, Name = slug, DisplayName = slug };
+        seed.Db.Orgs.Add(org);
+        await seed.Db.SaveChangesAsync();
+        return org;
+    }
+
+    /// <summary>A confirmed booking of another org, with its org row and its slug, in the same database as the seed.</summary>
+    private static async Task<(Guid BookingId, Guid OrgId)> AddStayOfAnotherOrgAsync(AppDbContext db, string slug)
+    {
+        var orgId = Guid.NewGuid();
+        var guestId = Guid.NewGuid();
+        var propertyId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+
+        db.Orgs.Add(new Casazen.Core.Entities.Org { Id = orgId, Slug = slug, Name = slug, DisplayName = slug });
+        db.Guests.Add(new Guest { Id = guestId, FirstName = "Anna", LastName = "Bianchi", Email = "anna@example.com" });
+        db.Properties.Add(new Property
+        {
+            Id = propertyId,
+            OrgId = orgId,
+            OwnerId = "owner-other",
+            Name = "Other Property",
+            Address = "Via Milano 2",
+            City = "Milano",
+            PostalCode = "20100",
+            NightlyRate = 100m,
+            IsActive = true,
+        });
+        db.Bookings.Add(new Booking
+        {
+            Id = bookingId,
+            PropertyId = propertyId,
+            NumberOfGuests = 1,
+            GuestId = guestId,
+            OrgId = orgId,
+            CheckInDate = TimeProvider.System.TodayInRome().AddDays(3),
+            CheckOutDate = TimeProvider.System.TodayInRome().AddDays(6),
+            Status = BookingStatus.Confirmed,
+            Source = BookingSource.Direct,
+        });
+
+        await db.SaveChangesAsync();
+        return (bookingId, orgId);
+    }
+
+    /// <summary>
+    /// NF-140: a link with a published privacy notice carries the slug of its org, and the slug the consent step links the notice through
+    /// is the same one, as it always was.
+    /// </summary>
+    [Fact]
+    public async Task GetPublicView_PublishedPrivacyNotice_ReturnsTheOrgSlugAndTheNoticeSlug()
+    {
+        await using var seed = await SeedAsync();
+        var org = await AddOrgAsync(seed, "agenzia-uno");
+        seed.Db.OrgSiteDocuments.Add(new OrgSiteDocument { Org = org, Kind = OrgSiteDocumentKind.Privacy, Version = 1 });
+        await seed.Db.SaveChangesAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.NotNull(view);
+        Assert.Equal("agenzia-uno", view.OrgSlug);
+        Assert.Equal("agenzia-uno", view.PrivacyNoticeOrgSlug);
+    }
+
+    /// <summary>NF-140: the notice was withdrawn, so the consent step has no notice to link, and the link still says which org it belongs to.</summary>
+    [Fact]
+    public async Task GetPublicView_WithdrawnPrivacyNotice_ReturnsTheOrgSlugAndNoNoticeSlug()
+    {
+        await using var seed = await SeedAsync();
+        var org = await AddOrgAsync(seed, "agenzia-uno");
+        seed.Db.OrgSiteDocuments.Add(new OrgSiteDocument
+        {
+            Org = org,
+            Kind = OrgSiteDocumentKind.Privacy,
+            Version = 1,
+            WithdrawnAt = DateTime.UtcNow,
+        });
+        await seed.Db.SaveChangesAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.NotNull(view);
+        Assert.Equal("agenzia-uno", view.OrgSlug);
+        Assert.Null(view.PrivacyNoticeOrgSlug);
+    }
+
+    /// <summary>NF-140: an org that never published a notice: the slug the consent step uses stays empty, the slug of the org does not.</summary>
+    [Fact]
+    public async Task GetPublicView_NoPrivacyNotice_ReturnsTheOrgSlugAndNoNoticeSlug()
+    {
+        await using var seed = await SeedAsync();
+        await AddOrgAsync(seed, "agenzia-uno");
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.NotNull(view);
+        Assert.False(view.IsCompleted);
+        Assert.Equal("agenzia-uno", view.OrgSlug);
+        Assert.Null(view.PrivacyNoticeOrgSlug);
+    }
+
+    /// <summary>
+    /// NF-140 and A5-28: a completed link shows that the check-in is done and the slug of its org, public data, and nothing of the booking or of the
+    /// guests, even where the org has a published notice (the notice slug is part of the consent step, which a completed link no longer has).
+    /// </summary>
+    [Fact]
+    public async Task GetPublicView_CompletedSession_ReturnsTheOrgSlugAndNothingOfTheStay()
+    {
+        await using var seed = await SeedAsync();
+        var org = await AddOrgAsync(seed, "agenzia-uno");
+        seed.Db.OrgSiteDocuments.Add(new OrgSiteDocument { Org = org, Kind = OrgSiteDocumentKind.Privacy, Version = 1 });
+        await seed.Db.SaveChangesAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        Assert.True((await svc.SubmitAsync(token, BuildValidSubmitRequest())).Success);
+
+        var view = await svc.GetPublicViewAsync(token);
+
+        Assert.NotNull(view);
+        Assert.True(view.IsCompleted);
+        Assert.Equal(GuestCheckInSessionStatus.Completo, view.Status);
+        Assert.Equal("agenzia-uno", view.OrgSlug);
+        Assert.Null(view.PrivacyNoticeOrgSlug);
+        Assert.Null(view.SessionId);
+        Assert.Null(view.PropertyName);
+        Assert.Null(view.CheckInDate);
+        Assert.Null(view.Guests);
+    }
+
+    /// <summary>
+    /// NF-140, isolation between agencies: in one database each link carries the slug of the org that owns its own stay, never the slug of another org.
+    /// The page on an agency's domain relies on it to refuse the link of another agency.
+    /// </summary>
+    [Fact]
+    public async Task GetPublicView_TwoOrgsInTheSameDatabase_EachLinkCarriesTheSlugOfItsOwnOrg()
+    {
+        await using var seed = await SeedAsync();
+        await AddOrgAsync(seed, "agenzia-uno");
+        var other = await AddStayOfAnotherOrgAsync(seed.Db, "agenzia-due");
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var ownToken = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var otherToken = await svc.CreateSessionAsync(other.BookingId, other.OrgId);
+
+        Assert.Equal("agenzia-uno", (await svc.GetPublicViewAsync(ownToken))?.OrgSlug);
+        Assert.Equal("agenzia-due", (await svc.GetPublicViewAsync(otherToken))?.OrgSlug);
     }
 
     [Fact]
@@ -163,6 +350,32 @@ public class GuestCheckInServiceTests
         Assert.Null(result);
     }
 
+    [Theory]
+    [InlineData("CheckInPrivacyAcknowledgementRequired")]
+    [InlineData("CheckInBookingCapacity")]
+    [InlineData("CheckInBookedGuestMismatch")]
+    [InlineData("CheckInDocumentNumberPlausibility")]
+    public async Task Submit_RejectsInconsistentRegistrationBeforeSaving(string reason)
+    {
+        await using var seed = await SeedAsync();
+        var service = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await service.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest(documentNumber: reason == "CheckInDocumentNumberPlausibility" ? "ASDFGH" : "AB123456");
+        if (reason == "CheckInPrivacyAcknowledgementRequired")
+            request.PrivacyNoticeAcknowledged = false;
+        if (reason == "CheckInBookingCapacity")
+            request.Guests = [request.Guests[0], request.Guests[0]];
+        if (reason == "CheckInBookedGuestMismatch")
+        {
+            var booked = (await seed.Db.Guests.FindAsync(seed.GuestId))!;
+            booked.FirstName = "Luca";
+            await seed.Db.SaveChangesAsync();
+        }
+        var result = await service.SubmitAsync(token, request);
+        Assert.Contains(result.ValidationErrors, e => e.MessageKey == reason);
+        Assert.Empty(await seed.Db.StayGuests.ToListAsync());
+    }
+
     [Fact]
     public async Task Submit_ValidDataWithConsent_ReturnsSuccess()
     {
@@ -198,7 +411,7 @@ public class GuestCheckInServiceTests
     [Fact]
     public async Task Submit_FamilyOfThree_SavesOneRowPerGuestInOrderAndDocumentOnlyForTheHead()
     {
-        await using var seed = await SeedAsync();
+        await using var seed = await SeedAsync(capacity: 3);
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
         var request = BuildValidSubmitRequest(type: "HeadOfFamily");
@@ -216,7 +429,7 @@ public class GuestCheckInServiceTests
         Assert.Equal(
             new[] { StayGuestType.HeadOfFamily, StayGuestType.FamilyMember, StayGuestType.FamilyMember },
             rows.Select(r => r.Type));
-        Assert.Equal(new[] { "Luigi", "Anna", "Luca" }, rows.Select(r => r.FirstName));
+        Assert.Equal(new[] { "Mario", "Anna", "Luca" }, rows.Select(r => r.FirstName));
         Assert.Equal("YA1234567", rows[0].DocumentNumber);
         Assert.All(rows.Skip(1), r =>
         {
@@ -229,7 +442,7 @@ public class GuestCheckInServiceTests
     [Fact]
     public async Task Submit_HeadOfFamilyWithoutDocument_ReturnsDocumentErrorsOnTheHeadOnly()
     {
-        await using var seed = await SeedAsync();
+        await using var seed = await SeedAsync(capacity: 2);
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
         var request = BuildValidSubmitRequest(type: "HeadOfFamily", documentType: "", documentNumber: "");
@@ -247,7 +460,7 @@ public class GuestCheckInServiceTests
     [Fact]
     public async Task Submit_MemberWithoutHead_ReturnsCompositionError()
     {
-        await using var seed = await SeedAsync();
+        await using var seed = await SeedAsync(capacity: 2);
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
         var request = BuildValidSubmitRequest();
@@ -352,6 +565,93 @@ public class GuestCheckInServiceTests
 
         Assert.False(secondResult.Success);
         Assert.True(secondResult.Duplicate);
+    }
+
+    // ─── The hosts are told (push, bell, live message) ───
+
+    /// <summary>What a service asks of <see cref="IPushNotificationService"/>; it can be made to fail.</summary>
+    private sealed class RecordingPush : IPushNotificationService
+    {
+        public List<(string Key, PushAudience Audience, PushNotificationPayload Payload)> Calls { get; } = [];
+
+        public Exception? Throws { get; init; }
+
+        public bool Enqueue(string deliveryKey, PushAudience audience, PushNotificationPayload payload)
+        {
+            if (Throws is not null)
+                throw Throws;
+
+            Calls.Add((deliveryKey, audience, payload));
+            return true;
+        }
+    }
+
+    [Fact]
+    public async Task Submit_ValidData_TellsTheHostsOfTheBookingOnce_NamingThePropertyOnly()
+    {
+        await using var seed = await SeedAsync();
+        var push = new RecordingPush();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance, pushNotifications: push);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+
+        Assert.True(result.Success);
+        var session = await seed.Db.GuestCheckInSessions.SingleAsync();
+        var (key, audience, payload) = Assert.Single(push.Calls);
+        Assert.Equal(PushDeliveryKeys.GuestCheckInCompleted(session.Id), key);
+        Assert.Equal(PushAudience.BookingHosts(seed.BookingId), audience);
+        Assert.Equal(PushTypes.GuestCheckInCompleted, payload.Type);
+        Assert.Equal(seed.BookingId, payload.BookingId);
+        Assert.Equal(PushRoutes.Booking(seed.BookingId), payload.Route);
+        Assert.Contains("Test Property", payload.Body);
+        // The lock screen never carries a guest's name, the booker's or one typed in the form.
+        foreach (var name in new[] { "Mario", "Rossi", "Luigi", "Verdi" })
+            Assert.DoesNotContain(name, payload.Title + payload.Body);
+    }
+
+    [Fact]
+    public async Task Submit_DataTheFormRefuses_TellsNobody()
+    {
+        await using var seed = await SeedAsync();
+        var push = new RecordingPush();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance, pushNotifications: push);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest(gender: null));
+
+        Assert.False(result.Success);
+        Assert.Empty(push.Calls);
+    }
+
+    [Fact]
+    public async Task Submit_SentTwice_TellsTheHostsForTheFirstOnly()
+    {
+        await using var seed = await SeedAsync();
+        var push = new RecordingPush();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance, pushNotifications: push);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        _ = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+        var second = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+
+        Assert.True(second.Duplicate);
+        Assert.Single(push.Calls);
+    }
+
+    [Fact]
+    public async Task Submit_TheQueueFails_TheCheckInIsStillCompleted()
+    {
+        await using var seed = await SeedAsync();
+        var push = new RecordingPush { Throws = new InvalidOperationException("hangfire is down") };
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance, pushNotifications: push);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+
+        // The guest's data is saved and the guest is told it worked: telling the hosts is best effort.
+        Assert.True(result.Success);
+        Assert.Equal(GuestCheckInSessionStatus.Completo, (await seed.Db.GuestCheckInSessions.SingleAsync()).Status);
     }
 
     [Fact]
@@ -811,6 +1111,193 @@ public class GuestCheckInServiceTests
         Assert.Single(sessions, s => s.Status == GuestCheckInSessionStatus.Inviato);
     }
 
+    // ─── NF-132: a property in canton Ticino ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetPublicView_TicinoProperty_AsksTheFieldsOfThePoliceFileAndThePlate_OtherPropertiesNot()
+    {
+        await using var ticino = await SeedTicinoAsync(capacity: 2);
+        await using var rome = await SeedAsync(capacity: 2);
+        var ticinoService = new GuestCheckInService(ticino.Db, NullLogger<GuestCheckInService>.Instance);
+        var romeService = new GuestCheckInService(rome.Db, NullLogger<GuestCheckInService>.Instance);
+
+        var ticinoView = await ticinoService.GetPublicViewAsync(await ticinoService.CreateSessionAsync(ticino.BookingId, ticino.OrgId));
+        var romeView = await romeService.GetPublicViewAsync(await romeService.CreateSessionAsync(rome.BookingId, rome.OrgId));
+
+        Assert.NotNull(ticinoView);
+        Assert.True(ticinoView.AskVehiclePlate);
+        Assert.Equal(TicinoCheckInFields.Required, ticinoView.RequiredGuestFields);
+        Assert.NotNull(romeView);
+        Assert.False(romeView.AskVehiclePlate);
+        Assert.Empty(romeView.RequiredGuestFields!);
+    }
+
+    [Fact]
+    public async Task Submit_Ticino_TheSecondAdultNeedsADocument_ThenTheDocumentTheHomeAndThePlateAreSaved()
+    {
+        await using var seed = await SeedTicinoAsync(capacity: 3);
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var child = Member("Luca", dateOfBirth: new DateTime(2019, 6, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        var refused = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest { Guests = [TicinoHead("Via Test Nassa 15"), Member("Anna"), child] });
+
+        // In Ticino the police file notifies every adult: the second adult cannot be left without a document; the child of 7 needs none.
+        Assert.False(refused.Success);
+        Assert.Equal(["1.DocumentType", "1.DocumentNumber"], refused.ValidationErrors.Select(e => $"{e.Index}.{e.Field}"));
+        Assert.Empty(seed.Db.StayGuests);
+
+        var saved = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest
+        {
+            Guests = [TicinoHead("Via Test Nassa 15"), Member("Anna", documentNumber: "AB1234567"), child],
+            VehiclePlate = " ti 123 456 ",
+        });
+
+        Assert.True(saved.Success, string.Join(", ", saved.ValidationErrors.Select(e => $"{e.Index}.{e.Field}")));
+        var rows = await seed.Db.StayGuests.AsNoTracking().OrderBy(s => s.Position).ToListAsync();
+        Assert.Equal(
+            ("Via Test Nassa 15", "CH-6900", "Bellinzona"),
+            (rows[0].ResidenceStreet, rows[0].ResidencePostalCode, rows[0].ResidenceCityName));
+        Assert.Equal((GuestDocumentType.Passport, "AB1234567"), (rows[1].DocumentType!.Value, rows[1].DocumentNumber));
+        Assert.Null(rows[2].DocumentType);
+        Assert.Equal(string.Empty, rows[2].DocumentNumber);
+        Assert.Equal("TI123456", (await seed.Db.Bookings.AsNoTracking().SingleAsync(b => b.Id == seed.BookingId)).VehiclePlate);
+    }
+
+    [Fact]
+    public async Task Submit_AnInvalidPlate_IsAFieldErrorAndNothingIsSaved()
+    {
+        await using var seed = await SeedTicinoAsync(capacity: 1);
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.VehiclePlate = "TI 12/34";
+
+        var result = await svc.SubmitAsync(token, request);
+
+        AssertSingleError(result, null, StayGuestService.VehiclePlateField, CheckInValidationKeys.VehiclePlateInvalid);
+        Assert.Empty(seed.Db.StayGuests);
+        Assert.Null((await seed.Db.Bookings.AsNoTracking().SingleAsync()).VehiclePlate);
+    }
+
+    [Fact]
+    public async Task StayGuestSwissFields_NoPersonalDataInLogs_Test()
+    {
+        await using var seed = await SeedTicinoAsync(capacity: 2);
+        var logger = new CapturingLogger<GuestCheckInService>();
+        var svc = new GuestCheckInService(seed.Db, logger);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var result = await svc.SubmitAsync(token, new GuestCheckInSubmitRequest
+        {
+            Guests = [TicinoHead("Via Test Nassa 15"), Member("Anna", documentNumber: "AB1234567")],
+            VehiclePlate = "TITEST99",
+        });
+
+        Assert.True(result.Success, string.Join(", ", result.ValidationErrors.Select(e => $"{e.Index}.{e.Field}")));
+        Assert.NotEmpty(logger.Entries);
+        foreach (var personal in new[] { "Via Test Nassa", "CH-6900", "Bellinzona", "TITEST99", "AB1234567" })
+            Assert.DoesNotContain(personal, logger.AllOutput, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void StayGuestSwissFields_AreEncryptedAtRest_LikeTheDocument()
+    {
+        using var db = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
+            tenantContext: null,
+            EncryptionProvider);
+        (Type Entity, string Property, string Value)[] columns =
+        [
+            (typeof(StayGuest), nameof(StayGuest.ResidenceStreet), "Via Test Nassa 15"),
+            (typeof(StayGuest), nameof(StayGuest.ResidencePostalCode), "CH-6900"),
+            (typeof(StayGuest), nameof(StayGuest.ResidenceCityName), "Bellinzona"),
+            (typeof(Booking), nameof(Booking.VehiclePlate), "TITEST99"),
+        ];
+
+        foreach (var (entity, property, value) in columns)
+        {
+            var column = db.Model.FindEntityType(entity)!.FindProperty(property)!;
+            var converter = Assert.IsType<EncryptedStringConverter>(column.GetValueConverter());
+            Assert.Null(column.GetMaxLength());
+
+            // Deterministic: the stored text is a Data Protection payload, not the value, and only the converter reads it back.
+            var stored = (string)converter.ConvertToProvider(value)!;
+            Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored, StringComparison.Ordinal);
+            Assert.NotEqual(value, stored);
+            Assert.Equal(value, converter.ConvertFromProvider(stored));
+            Assert.Contains(EncryptedColumns.All, c => c.EntityType == entity && c.Property == property && c.Purpose == EncryptedColumns.GuestDocumentPurpose);
+        }
+    }
+
+    [Fact]
+    public async Task StayGuestSwissFields_AreErasedWithTheGuestsOfTheStay()
+    {
+        await using var seed = await SeedTicinoAsync(capacity: 1);
+        var booking = await seed.Db.Bookings.SingleAsync();
+        booking.VehiclePlate = "TITEST99";
+        seed.Db.StayGuests.Add(new StayGuest
+        {
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            Position = 0,
+            FirstName = "Test",
+            LastName = "Bernasconi",
+            ResidenceStreet = "Via Test Nassa 15",
+            ResidencePostalCode = "CH-6900",
+            ResidenceCityName = "Bellinzona",
+        });
+        await seed.Db.SaveChangesAsync();
+        var eraser = new GuestDataEraser(seed.Db, Mock.Of<IFileStorage>(), NullLogger<GuestDataEraser>.Instance);
+
+        await eraser.AnonymizeStayGuestsOfBookingsAsync([booking.Id], DateTime.UtcNow, CancellationToken.None);
+        await seed.Db.SaveChangesAsync();
+
+        var row = await seed.Db.StayGuests.AsNoTracking().SingleAsync();
+        Assert.Null(row.ResidenceStreet);
+        Assert.Null(row.ResidencePostalCode);
+        Assert.Null(row.ResidenceCityName);
+        Assert.Null((await seed.Db.Bookings.AsNoTracking().SingleAsync()).VehiclePlate);
+    }
+
+    /// <summary>One provider for the class: EF keeps one model per provider.</summary>
+    private static readonly IDataProtectionProvider EncryptionProvider = new EphemeralDataProtectionProvider();
+
+    /// <summary>A booking of a property in canton Ticino: country CH and a municipality of canton TI the test writes itself (the seed is not read).</summary>
+    private static async Task<Seed> SeedTicinoAsync(int capacity)
+    {
+        var seed = await SeedAsync(capacity);
+        var property = await seed.Db.Properties.SingleAsync();
+        property.Country = "CH";
+        property.City = "Lugano";
+        property.PostalCode = "6900";
+        property.SwissMunicipalityCode = "5192";
+        if (!await seed.Db.SwissMunicipalities.AnyAsync(m => m.MunicipalityCode == "5192"))
+            seed.Db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5192", CantonCode = "TI", OfficialName = "Lugano (TEST)" });
+        await seed.Db.SaveChangesAsync();
+        return seed;
+    }
+
+    /// <summary>The head of the stay (the booker, Mario Rossi) with a document and, when given, the home of the Ticino file.</summary>
+    private static StayGuestInput TicinoHead(string? street) => new()
+    {
+        Type = "HeadOfFamily",
+        FirstName = "Mario",
+        LastName = "Rossi",
+        DateOfBirth = new DateTime(1990, 5, 15, 0, 0, 0, DateTimeKind.Utc),
+        Gender = Gender.Male,
+        BornInItaly = true,
+        BirthComuneName = "Roma",
+        BirthProvince = "rm",
+        CitizenshipName = "Italia",
+        DocumentType = "Passport",
+        DocumentNumber = "YA1234567",
+        DocumentIssuePlaceName = "Roma",
+        ResidenceStreet = street,
+        ResidencePostalCode = street is null ? null : " ch-6900 ",
+        ResidenceCityName = street is null ? null : "Bellinzona",
+    };
+
     private static async Task<Guid> AddBookingSharingGuestAsync(AppDbContext db, Guid guestId)
     {
         var orgId = Guid.NewGuid();
@@ -864,8 +1351,8 @@ public class GuestCheckInServiceTests
             new StayGuestInput
             {
                 Type = type,
-                FirstName = "Luigi",
-                LastName = "Verdi",
+                FirstName = "Mario",
+                LastName = "Rossi",
                 DateOfBirth = dateOfBirth ?? new DateTime(1990, 5, 15, 0, 0, 0, DateTimeKind.Utc),
                 Gender = gender,
                 BornInItaly = true,

@@ -6,8 +6,8 @@ using Xunit;
 namespace Casazen.Tests.Unit.Leases;
 
 /// <summary>
-/// The people a contract names go into the draft when their role is still empty, all of them: a contract with two co-tenants gives a draft
-/// with two tenants. A role in which somebody is already typed keeps what was typed, and the person is only told about the others.
+/// The people a contract names go into the draft: a contract with two co-tenants gives a draft with two tenants, also when one of them is
+/// already there from an earlier reading. A role in which somebody else was typed keeps what was typed, and the person is only told about the others.
 /// </summary>
 public class LeaseDraftContractFillPartiesTests
 {
@@ -39,16 +39,15 @@ public class LeaseDraftContractFillPartiesTests
     }
 
     [Fact]
-    public void ATenantTypedAndReadAgain_IsFilledNotDuplicated_AndTheOtherOneIsOnlyToldAbout()
+    public void ATenantAlreadyNamedByTheContract_DoesNotBlockTheCoTenantTheSameContractNames()
     {
         var typed = new LeaseDraftValues { Tenants = [new LeaseDraftParty { Id = Guid.NewGuid(), FiscalCode = FirstTenantCode }] };
 
         var fill = LeaseDraftContractFill.Merge(typed, Reading(), LeaseOrigin.Imported, Guid.NewGuid);
 
-        var tenant = Assert.Single(fill.Values.Tenants);
-        Assert.Equal(FirstTenantCode, tenant.FiscalCode);
-        Assert.Equal("Giulia", tenant.FirstName); // what was empty is filled
-        Assert.Equal(1, fill.Fields.Count(f => f is { Field: "party", State: FieldReadingState.Conflict }));
+        Assert.Equal([FirstTenantCode, SecondTenantCode], fill.Values.Tenants.Select(t => t.FiscalCode));
+        Assert.Equal("Giulia", fill.Values.Tenants.Single(t => t.FiscalCode == FirstTenantCode).FirstName);
+        Assert.DoesNotContain(fill.Fields, f => f is { Field: "party", State: FieldReadingState.Conflict });
     }
 
     /// <summary>A contract with a landlord and two tenants, each with a fiscal code, a name and a residence.</summary>

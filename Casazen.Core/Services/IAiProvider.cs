@@ -28,12 +28,14 @@ public sealed record AiImage(string MediaType, byte[] Data);
 /// <param name="SystemPrompt">The rules of the answer; <c>null</c> = none.</param>
 /// <param name="Temperature"><c>null</c> = the provider default of the platform (0.2 for the chat completions).</param>
 /// <param name="MaxCompletionTokens"><c>null</c> = <c>Ai:MaxCompletionTokens</c>.</param>
+/// <param name="DisableThinking">Request a direct answer when the provider supports switching reasoning off.</param>
 public sealed record AiRequest(
     string Prompt,
     IReadOnlyList<AiImage> Images,
     string? SystemPrompt = null,
     double? Temperature = null,
-    int? MaxCompletionTokens = null)
+    int? MaxCompletionTokens = null,
+    bool DisableThinking = false)
 {
     /// <summary>The instructions and the request as one text, for a provider that takes a single prompt.</summary>
     public string ToTextPrompt() =>

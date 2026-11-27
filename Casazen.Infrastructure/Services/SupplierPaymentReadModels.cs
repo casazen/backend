@@ -63,7 +63,9 @@ public sealed class SupplierPaymentReadModels(
                 p.RequestedAt,
                 p.LastSentAt,
                 p.SentCount,
-                p.LateAt))
+                p.LateAt,
+                p.CommissionAddedToPrice && p.PayerKind == ServicePayerKind.Host && p.PayerOrgId.HasValue && p.PaidVia != ServicePaymentChannel.Offline,
+                p.RefundedCents))
             .ToListAsync(cancellationToken);
         var live = rows.GroupBy(row => row.ServiceRequestId).ToDictionary(group => group.Key, group => group.First());
 
@@ -112,7 +114,13 @@ public sealed class SupplierPaymentReadModels(
                 Late: payment is { LateAt: not null } && ServicePaymentSchedule.IsOwed(payment.Status),
                 request.FinalAmountNeedsConfirmation,
                 ServicePaymentActions.CanRequest(facts, now),
-                ServicePaymentActions.CanRecordOffline(facts));
+                ServicePaymentActions.CanRecordOffline(facts))
+            {
+                HostDocuments = payment is { HostSale: true }
+                    ? new(payment.AmountCents, payment.RefundedCents, payment.ApplicationFeeCents,
+                        SupplierCommission.FeeRefundedCents(payment.ApplicationFeeCents, payment.AmountCents, payment.RefundedCents))
+                    : null
+            };
         }
 
         return summaries;
@@ -467,5 +475,7 @@ public sealed class SupplierPaymentReadModels(
         DateTime? RequestedAt,
         DateTime? LastSentAt,
         int SentCount,
-        DateTime? LateAt);
+        DateTime? LateAt,
+        bool HostSale,
+        int RefundedCents);
 }

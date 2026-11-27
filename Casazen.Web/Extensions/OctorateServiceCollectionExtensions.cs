@@ -1,0 +1,121 @@
+using Casazen.Core.Events;
+using Casazen.Core.Options;
+using Casazen.Core.Services;
+using Casazen.Infrastructure.Jobs;
+using Casazen.Infrastructure.Octorate;
+using Casazen.Infrastructure.Photos;
+using Casazen.Web.Configuration;
+using Microsoft.Extensions.Options;
+
+namespace Casazen.Web.Extensions;
+
+/// <summary>
+/// The one place where the Octorate connector of epic E02 is registered (ADR-023): its services, HTTP clients, handlers and jobs.
+/// Every Octorate task adds its registrations here, none in <c>ServiceCollectionExtensions</c>; <c>Program.cs</c> calls it once.
+/// Nothing here is conditional: what is not ready yet sits behind its feature flag where it is used, not by being left out of DI.
+/// </summary>
+public static class OctorateServiceCollectionExtensions
+{
+    public static IServiceCollection AddCasazenOctorate(this IServiceCollection services, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        // OAuth tokens of the connections (E02/F01/US01/T01): the refresh call has an HttpClient of its own (30 s, https, User-Agent).
+        services.AddHttpClient(OctorateTokenService.HttpClientName, OctorateHttp.Configure);
+        services.AddScoped<IOctorateTokenService, OctorateTokenService>();
+
+        // The token of the application itself (the partner login, E09/F01/US01/T02): one for the whole process, reused while valid.
+        services.AddSingleton<OctoratePartnerTokenCache>();
+
+        // The API client (E02/F01/US01/T02), always registered: the org of every call comes from the scope of the DI scope, the
+        // rate-limit buckets are the application's (one per org).
+        services.AddHttpClient<IOctorateApiClient, OctorateApiClient>(OctorateHttp.Configure);
+        services.AddScoped<IOctorateOrgScope, OctorateOrgScope>();
+        services.AddScoped<OctorateMasterBoundary>();
+        services.AddSingleton<OctorateRateLimiter>();
+
+        // The webhook (E02/F01/US01/T03): the secret of the address, compared in constant time; the controller needs no registration.
+        services.AddSingleton<OctorateWebhookVerifier>();
+
+        // The consent and the connection (E02/F01/US02/T01): the Octorate options, validated at startup with the flag on, the
+        // single-use states and the connect service. The code exchange uses the HttpClient of the token service.
+        services.AddOptions<OctorateOptions>()
+            .BindConfiguration(OctorateOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<OctorateOptions>, OctorateOptionsValidator>();
+        services.AddScoped<OctorateOAuthStateService>();
+        services.AddScoped<IOctorateConnectService, OctorateConnectService>();
+
+        // The mapping of the listings to the CasaZen properties and the import (E02/F01/US02/T03); thresholds in Octorate:Mapping.
+        services.AddScoped<IChannelMappingService, ChannelMappingService>();
+
+        // The bookings of the channel manager (E02/F02/US01/T01): the state mapper (no state, shared), the import service and the daily job.
+        // The job is only scheduled while Features:OctorateConnector is on (RecurringJobsRegistration).
+        services.AddSingleton<BookingStateMapper>();
+        services.AddScoped<IBookingImportService, BookingImportService>();
+        services.AddScoped<OctorateBookingImportJob>();
+
+        // The notifications and the reconciliation of the bookings (E02/F02/US01/T02): one handler for each kind of notification of a
+        // reservation (they re-read through the import service, the event bus runs each in its own scope under the org of the event), the
+        // reconciliation every six hours, and the push of the arrival and the departure CasaZen owns (a handler of the check-in and check-out
+        // events that queues the job, which sends the state).
+        services.AddScoped<IEventHandler<OctorateWebhookReceivedEvent>, BookingCreatedHandler>();
+        services.AddScoped<IEventHandler<OctorateWebhookReceivedEvent>, BookingModifiedHandler>();
+        services.AddScoped<IEventHandler<OctorateWebhookReceivedEvent>, BookingCancelledHandler>();
+        services.AddScoped<OctorateBookingSyncJob>();
+        services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingStatePushHandler>();
+        services.AddScoped<OctorateBookingStatePushJob>();
+
+        // The calendar of the listings (E02/F02/US01/T03): the hand-over of the iCal feeds of a channel to Octorate, and the job that reads the
+        // calendar every 15 minutes and calls it after a successful read (scheduled only while Features:OctorateConnector is on).
+        services.AddScoped<ICalMigrationService>();
+        services.AddScoped<CalendarSyncJob>();
+
+        // The import of the listings that already exist on OTAs (E02/F01/US03, D6): the orchestrator, the guard that keeps existing inventory
+        // from being created again (consumed by E02/F03/US01/T06) and the minimal handoff of the person to the Octorate panel for the access to a
+        // channel, which the panel steps service of E10 replaces by registering its own IChannelAccessHandoff.
+        services.AddScoped<IChannelAccessHandoff, OnboardingChannelAccessHandoff>();
+        services.AddScoped<IExistingInventoryImportService, ExistingInventoryImportService>();
+        services.AddScoped<IInventoryScenarioGuard, InventoryScenarioGuard>();
+
+        // The creation of a property on Octorate (E02/F03/US01/T06, PO-19): only for a property declared never published; it saves the refresh
+        // token Octorate gives once and confirms the new accommodation as the mapping of the property.
+        services.AddScoped<OctoratePropertyCreator>();
+        services.AddScoped<IOctoratePropertyCreator>(provider => provider.GetRequiredService<OctoratePropertyCreator>());
+        services.AddScoped<OctoratePreparationService>();
+
+        // The publication of a listing (E02/F03/US01/T02, NF-27): the content channels and their rules (ListingChannels), the public photos, the
+        // reader of the groups of the content (the baseline of the changes made outside CasaZen), the «To do» of the channels, the service and its
+        // job. The job runs only while Features:OctorateConnector is on (the service does nothing otherwise).
+        services.AddOptions<ListingChannelOptions>().BindConfiguration(ListingChannelOptions.SectionName);
+        services.AddScoped<PublicPhotoUrlService>();
+        services.AddScoped<ListingPhotoSync>();
+        services.AddScoped<OctorateContentReader>();
+        services.AddScoped<ListingTodos>();
+        services.AddScoped<IContentPushService, ContentPushService>();
+        services.AddScoped<ListingPublishJob>();
+
+        // The status of the listings, the changes made outside CasaZen and the notification of the channel manager about the content
+        // (E02/F03/US01/T07): the services, the handler of CONTENT_NOTIFICATION (each handler runs in its own scope under the org of the event)
+        // and the three jobs, scheduled only while Features:OctorateConnector is on (RecurringJobsRegistration).
+        services.AddScoped<IListingStatusService, ListingStatusService>();
+        services.AddScoped<IOutsideChangeService, OutsideChangeService>();
+        services.AddScoped<IEventHandler<OctorateWebhookReceivedEvent>, ContentNotificationHandler>();
+        services.AddScoped<ListingStatusSyncJob>();
+        services.AddScoped<ListingChannelHealthJob>();
+        services.AddScoped<ListingOutsideChangeJob>();
+
+        // The check-in of a stay (E03/F01/US01/T03): the guests sent to Octorate, the NO_SHOW (queued by the check-in endpoints; the arrival and
+        // the departure are pushed by the one handler above, never by a second one) and the retry every 15 minutes (scheduled only while
+        // Features:OctorateConnector is on). Keys Octorate:WriteCityTaxValues, CheckInMaxAttempts and SendGuestsWhenSenderIsNotChannelManager.
+        services.AddScoped<ICheckInOctorateSyncService, CheckInOctorateSyncService>();
+        services.AddScoped<OctorateStayStateJob>();
+        services.AddScoped<OctorateCheckInRetryJob>();
+
+        // The places Octorate recognizes (E20/F01/US01/T01, decision O2): its table of cities with the police codes, kept in memory for 24 hours, so the
+        // comuni of a guest go with the exact names of that table. The sync service takes it as an optional parameter: this registration is what turns it on.
+        services.AddScoped<IOctoratePlaceNames, OctoratePlaceNames>();
+
+        return services;
+    }
+}

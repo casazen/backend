@@ -151,12 +151,15 @@ public sealed class HostTodayService(
                 AlloggiatiOf(booking, reports[booking.Id].ToList(), todayInRome)));
     }
 
-    // The status the host reads (AlloggiatiStatusRules, the one of the Alloggiati page) and, until it is sent, the legal term.
-    private static HostTodayAlloggiati AlloggiatiOf(Booking booking, IReadOnlyCollection<AlloggiatiWebReport> reports, DateTime todayInRome)
+    // The status the host reads (AlloggiatiStatusRules, the one of the Alloggiati page) and, until it is sent, the legal term. A no-show owes no
+    // communication (NF-45): its row says nothing about the police, like a departure's.
+    private static HostTodayAlloggiati? AlloggiatiOf(Booking booking, IReadOnlyCollection<AlloggiatiWebReport> reports, DateTime todayInRome)
     {
         var status = AlloggiatiStatusRules.Effective(
-            AlloggiatiStatusRules.SlotReport(reports, booking.GuestId)?.Status, booking.CheckInDate, todayInRome);
-        return new HostTodayAlloggiati(status, AlloggiatiStatusRules.IsSent(status) ? null : AlloggiatiTerms.DeadlineUtc(booking));
+            AlloggiatiStatusRules.SlotReport(reports, booking.GuestId)?.Status, booking.CheckInDate, todayInRome, booking.NoShowAt is not null);
+        return AlloggiatiStatusRules.IsNotDue(status)
+            ? null
+            : new HostTodayAlloggiati(status, AlloggiatiStatusRules.IsSent(status) ? null : AlloggiatiTerms.DeadlineUtc(booking));
     }
 
     // The latest cleaning request tied to each leaving stay, whatever made it (the check-out wizard, the interventions page): one
@@ -508,7 +511,7 @@ public sealed class HostTodayService(
 
     private sealed record FailedPayments(int Count, IReadOnlyList<FailedPayment> Items);
 
-    internal sealed record ArrivingStayDetails(HostTodayCheckIn CheckIn, HostTodayAlloggiati Alloggiati);
+    internal sealed record ArrivingStayDetails(HostTodayCheckIn CheckIn, HostTodayAlloggiati? Alloggiati);
 
     private sealed record ServiceRequestToAnswer(
         Guid Id,

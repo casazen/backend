@@ -17,6 +17,12 @@ public class CalendarBlock : ITenantOwned
     /// <summary>Longest note the host may write on a manual block (PC-09), stored in <see cref="Summary"/>.</summary>
     public const int ManualNoteMaxLength = 200;
 
+    /// <summary>
+    /// Name of the unique index on (<see cref="PropertyId"/>, <see cref="ExternalUid"/>) of the blocks read from the Octorate calendar
+    /// (<see cref="CalendarBlockSource.Octorate"/>, E02/F02/US01/T03): they have no feed, so the index on (<see cref="FeedId"/>, <see cref="ExternalUid"/>) does not cover them.
+    /// </summary>
+    public const string OctorateUidIndexName = "UIX_CalendarBlocks_PropertyId_ExternalUid_Octorate";
+
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();

@@ -93,6 +93,24 @@ public class HangfirePushQueueTests
         Assert.Equal(PushRoutes.Properties, push.Route);
     }
 
+    [Fact]
+    public void Enqueue_AUserAudience_KeepsTheUserInTheJob_AndRefusesOneWithoutUser()
+    {
+        var pipeline = new PushPipeline();
+        var orgId = Guid.NewGuid();
+        var payload = new PushNotificationPayload("Titolo", "Testo", PushTypes.OtaMessage, null, PushRoutes.MessageThread($"ota:{BookingId}"));
+
+        var queued = pipeline.Queue.Enqueue("ota-msg:x:auth0|host", PushAudience.User(orgId, "auth0|host"), payload);
+        var refused = pipeline.Queue.Enqueue("ota-msg:y", new PushAudience(PushAudienceKind.User, orgId), payload);
+
+        Assert.True(queued);
+        Assert.False(refused);
+        var stored = InvocationData.SerializeJob(Assert.Single(pipeline.Jobs)).DeserializeJob();
+        var push = Assert.IsType<QueuedPush>(stored.Args[1]);
+        Assert.Equal(PushAudience.User(orgId, "auth0|host"), push.ToAudience());
+        Assert.Equal($"/messages/ota:{BookingId}", push.Route);
+    }
+
     [Theory]
     [InlineData(ServiceRequestStatus.PresoInCarico, "service-request-taken")]
     [InlineData(ServiceRequestStatus.Completato, "service-request-completed")]

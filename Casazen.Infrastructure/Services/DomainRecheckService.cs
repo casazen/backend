@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -17,6 +18,11 @@ namespace Casazen.Infrastructure.Services;
 /// domain, every <see cref="PublicHostOptions.RecheckVerifiedHours"/>. Only orgs whose effective tier allows the custom domain
 /// are checked (an unpaid one is not served anyway). At most <see cref="PublicHostOptions.RecheckBatchSize"/> domains per run,
 /// the longest-unchecked first.
+/// <para>A removed or replaced domain leaves the Vercel project and, with <c>Auth0HostSync</c> on (E40/F01/US02/T01, NF-141), the shared Auth0 tenant too
+/// (<see cref="IAuth0HostRegistrar.UnregisterAsync"/>, after the Vercel removal): the row of the queue stays, and is tried again at the next run, until
+/// <b>both</b> removals succeeded, so nothing is left half registered; its <c>LastError</c> then says <c>auth0_…</c>. With the flag off (or without
+/// <paramref name="auth0HostRegistrar"/>, a test) Auth0 is never called and the Vercel removal alone decides, as before; the entries a platform administrator
+/// added by hand are removed by hand (runbook <c>auth0.md</c> § 13).</para>
 /// </remarks>
 public sealed class DomainRecheckService(
     AppDbContext dbContext,
@@ -26,7 +32,9 @@ public sealed class DomainRecheckService(
     PublicSiteLinks publicSiteLinks,
     IOptions<PublicHostOptions> options,
     TimeProvider timeProvider,
-    ILogger<DomainRecheckService> logger) : IDomainRecheckService
+    ILogger<DomainRecheckService> logger,
+    IAuth0HostRegistrar? auth0HostRegistrar = null,
+    IFeatureFlags? featureFlags = null) : IDomainRecheckService
 {
     public async Task<DomainRecheckSummary> RunAsync(CancellationToken cancellationToken = default)
     {
@@ -78,11 +86,21 @@ public sealed class DomainRecheckService(
                 removal.Attempts++;
                 removal.LastAttemptAt = timeProvider.GetUtcNow().UtcDateTime;
 
-                // Not found = already gone from the project: done as well.
+                // Not found = already gone from the project: done as well. Then the Auth0 entries of the owner sign-in (E40/F01/US02/T01).
                 if (result.Status is VercelCallStatus.Ok or VercelCallStatus.NotFound)
                 {
-                    dbContext.PendingDomainRemovals.Remove(removal);
-                    removed++;
+                    var auth0 = await RemoveFromAuth0Async(removal.Domain, cancellationToken);
+                    if (auth0 is null or Auth0HostRegistrationResult.Removed)
+                    {
+                        dbContext.PendingDomainRemovals.Remove(removal);
+                        removed++;
+                    }
+                    else
+                    {
+                        // The domain is off Vercel and still in Auth0: the row stays, the next run removes both again (Vercel answers NotFound).
+                        removal.LastError = Auth0RemovalError(auth0.Value);
+                        failed++;
+                    }
                 }
                 else
                 {
@@ -102,6 +120,27 @@ public sealed class DomainRecheckService(
 
         return (removed, failed);
     }
+
+    /// <summary>
+    /// Takes the origin of <paramref name="domain"/> out of the shared Auth0 tenant (E40/F01/US02/T01): <c>null</c> when that is not this job's to do (the flag
+    /// <c>Auth0HostSync</c> is off, or no registrar), else the answer of the registrar. Any flag of the surfaces may be off by now: a domain the org no longer
+    /// has must not stay a callback of the sign-in.
+    /// </summary>
+    private async Task<Auth0HostRegistrationResult?> RemoveFromAuth0Async(string domain, CancellationToken cancellationToken)
+    {
+        if (auth0HostRegistrar is null || featureFlags?.IsEnabled(FeatureFlags.Auth0HostSync) != true)
+            return null;
+
+        return await auth0HostRegistrar.UnregisterAsync(domain, cancellationToken);
+    }
+
+    /// <summary>The stable code of a removal from Auth0 that did not succeed (<c>PendingDomainRemoval.LastError</c>), never a message of Auth0.</summary>
+    private static string Auth0RemovalError(Auth0HostRegistrationResult result) => result switch
+    {
+        Auth0HostRegistrationResult.NotConfigured => "auth0_not_configured",
+        Auth0HostRegistrationResult.Rejected => "auth0_rejected",
+        _ => "auth0_unavailable",
+    };
 
     /// <summary>An org that was deactivated no longer serves its domain: it leaves the Vercel project too.</summary>
     private async Task EnqueueRemovalsOfInactiveOrgsAsync(CancellationToken cancellationToken)

@@ -71,7 +71,8 @@ public sealed record OrgMemberSnapshot(
     OrgMemberStatus Status,
     PropertyScope PropertyScope = PropertyScope.All,
     IReadOnlySet<Guid>? GrantedPropertyIds = null,
-    RentalMode? GrantedMode = null);
+    RentalMode? GrantedMode = null,
+    bool MarketingGranted = false);
 
 public interface IUserAuthorizationSnapshotStore : IUserAuthorizationCache
 {
@@ -169,7 +170,7 @@ public sealed class UserAuthorizationSnapshotStore(
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(m => m.UserId == userId)
-            .Select(m => new OrgMemberSnapshot(m.OrgId, m.Role, m.Status, m.PropertyScope, null))
+            .Select(m => new OrgMemberSnapshot(m.OrgId, m.Role, m.Status, m.PropertyScope, null, null, m.MarketingGranted))
             .FirstOrDefaultAsync(cancellationToken);
 
         // AM-03: the properties of a member «Solo alcuni». Only a collaborator can be restricted (HostScopeResolver), so only

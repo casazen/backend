@@ -51,7 +51,8 @@ internal sealed class RentPaymentEventApplier(TimeProvider clock, ILogger logger
                 return new RentPaymentNotice(entry.Id, RentPaymentNoticeKind.Received);
 
             case "payment_intent.processing":
-                if (!isCurrent || entry.Status is RentLedgerStatus.Paid or RentLedgerStatus.Cancelled)
+                // A late processing event must not put a failed or finished installment back in flight.
+                if (!isCurrent || entry.Status is RentLedgerStatus.Paid or RentLedgerStatus.Cancelled or RentLedgerStatus.Failed)
                     return null;
                 entry.Status = RentLedgerStatus.Processing;
                 entry.UpdatedAt = now;

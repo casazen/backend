@@ -23,7 +23,7 @@ public class CreatePropertyRequest
     public string Name { get; set; } = string.Empty;
 
     /// <summary>Full description shown to guests.</summary>
-    [MaxLength(2000, ErrorMessage = "PropertyDescriptionTooLong")]
+    [MaxLength(Casazen.Core.Services.ListingTextLimits.DescriptionMaxLength, ErrorMessage = "PropertyDescriptionTooLong")]
     public string Description { get; set; } = string.Empty;
 
     /// <summary>Street address of the property.</summary>
@@ -55,6 +55,15 @@ public class CreatePropertyRequest
     /// </summary>
     [RegularExpression(ComuneRules.IstatCodePattern, ErrorMessage = "ComuneIstatCodeInvalid")]
     public string? ComuneIstatCode { get; set; }
+
+    /// <summary>
+    /// The Swiss municipality of the property (E29/F01/US01/T02, NF-124): its BFS number from the official directory (<c>GET /api/swiss/localities</c>),
+    /// a text of one to four digits such as <c>"5192"</c> (Lugano); 400 <c>validation_error</c> otherwise. Only for a property in Switzerland: this
+    /// request has no country, so the property it creates is Italian (a Swiss one comes from the import of a channel manager) and a value is refused
+    /// with 422 <c>swiss_municipality_not_applicable</c>. Left out, <c>null</c> or empty = none.
+    /// </summary>
+    [RegularExpression(SwissPlaceErrorCodes.CodePattern, ErrorMessage = SwissPlaceErrorCodes.InvalidFormatMessageKey)]
+    public string? SwissMunicipalityCode { get; set; }
 
     /// <summary>
     /// Geographic latitude in degrees, -90 to 90 (A2-33); more than 6 decimals (about 0.1 m) are rounded. <c>0</c> with a
@@ -169,6 +178,9 @@ public class CreatePropertyRequest
     /// <summary>Parties and events (<c>No</c>, <c>OnRequest</c>); left out = not set.</summary>
     public PartiesPolicy? PartiesPolicy { get; set; }
 
+    /// <summary>Children (<c>No</c>, <c>OnRequest</c>, <c>Yes</c>): the structured rule the channels receive (NF-37); left out = not set.</summary>
+    public ChildrenPolicy? ChildrenPolicy { get; set; }
+
     /// <summary>Quiet hours start, <c>HH:mm</c>; sent together with <see cref="QuietHoursTo"/> or not at all (422 <c>property_quiet_hours_incomplete</c>).</summary>
     public TimeOnly? QuietHoursFrom { get; set; }
 
@@ -189,6 +201,16 @@ public class CreatePropertyRequest
     [MaxLength(40, ErrorMessage = CinFormat.InvalidFormatMessageKey)]
     [CinCode]
     public string? CinCode { get; set; }
+
+    /// <summary>
+    /// The «Numero identificativo LEAR / NO-LEAR» of the structure for the Ticino police portal (E29/F02/US01/T02, NF-129, casazen/backend#979), e.g.
+    /// <c>NL-12345678</c>, with the same validation and normalisation as the update: spaces are ignored and the value is stored uppercase (see
+    /// <c>TicinoStructureId</c>); 400 <c>validation_error</c> when it is not 3 to 20 letters and digits with single hyphens; <c>null</c>, blank or left
+    /// out = none. It is meaningful only for a property in Ticino.
+    /// </summary>
+    [MaxLength(40, ErrorMessage = Casazen.Core.Regulatory.TicinoStructureId.InvalidFormatMessageKey)]
+    [TicinoStructureId]
+    public string? TicinoStructureId { get; set; }
 
     /// <summary>
     /// IANA timezone identifier used for booking date calculations
@@ -258,10 +280,12 @@ public class CreatePropertyRequest
         SmokingPolicy = SmokingPolicy,
         PetsPolicy = PetsPolicy,
         PartiesPolicy = PartiesPolicy,
+        ChildrenPolicy = ChildrenPolicy,
         QuietHoursFrom = QuietHoursFrom,
         QuietHoursTo = QuietHoursTo,
         ExtraGuestFeePerNight = ExtraGuestFeePerNight,
         CinCode = CinCode,
+        TicinoStructureId = Casazen.Core.Regulatory.TicinoStructureId.Normalize(TicinoStructureId),
         Timezone = Timezone,
         CancellationPolicyId = CancellationPolicyId,
         CancellationFullRefundHours = CancellationFullRefundHours,

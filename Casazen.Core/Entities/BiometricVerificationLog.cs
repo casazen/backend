@@ -14,6 +14,12 @@ namespace Casazen.Core.Entities;
 [Table("BiometricVerificationLogs")]
 public class BiometricVerificationLog : ITenantOwned
 {
+    /// <summary>
+    /// Name of the unique index on (<see cref="BookingId"/>, <see cref="IdempotencyKey"/>), filtered on a key: the last line of defence of the idempotent closure
+    /// (E70/F01/US01/T02, NF-194): two processes that close the same attempt write one row.
+    /// </summary>
+    public const string IdempotencyIndexName = "UIX_BiometricVerificationLogs_BookingId_IdempotencyKey";
+
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -72,6 +78,65 @@ public class BiometricVerificationLog : ITenantOwned
     /// Null for automated outcomes.
     /// </summary>
     public string? OperatorNote { get; set; }
+
+    /// <summary>
+    /// Who decided (E03/F04/US02/T01): the verification agent (<see cref="VerificationMethod.Biometric"/>, the default of the rows written before
+    /// the column) or an operator from the queue (<see cref="VerificationMethod.Operator"/>, with <see cref="OperatorUserId"/> and <see cref="OperatorNote"/>).
+    /// </summary>
+    public VerificationMethod Method { get; set; } = VerificationMethod.Biometric;
+
+    /// <summary>
+    /// The checks of the decision, a JSON array of <c>{ check, result, value?, threshold? }</c> (<c>VerificationReasons</c>, AC-NF51-8): codes,
+    /// numbers and thresholds only, never an image, a vector, a name or a document number. <c>[]</c> for the rows written before the column. An
+    /// operator row repeats the reasons of the automatic outcome it replaces.
+    /// </summary>
+    [Required]
+    [Column(TypeName = "jsonb")]
+    public string ReasonsJson { get; set; } = "[]";
+
+    /// <summary>
+    /// The thresholds in force were not calibrated when the decision was taken (<c>BiometricSettings.CalibratedAt</c> was null): the operator
+    /// console says the outcome rests on provisional thresholds (AC-NF51 point 7).
+    /// </summary>
+    public bool Provisional { get; set; }
+
+    /// <summary>How long the automatic verification took, in milliseconds; null for an operator decision and for the rows written before the column.</summary>
+    public int? DurationMs { get; set; }
+
+    // E70/F01/US01/T02 (NF-194, ADR-013-R18, R19): how the self-hosted policy decided. A row of the legacy path, and every row written before the columns, has no
+    // policy, the mode Legacy, no shadow outcome and no key. Codes and hashes only.
+
+    /// <summary>The version of the policy file that decided; null on the legacy path.</summary>
+    [MaxLength(50)]
+    public string? PolicyVersion { get; set; }
+
+    /// <summary>The canonical SHA-256 (hex) of that policy file; null on the legacy path.</summary>
+    [MaxLength(64)]
+    public string? PolicyHash { get; set; }
+
+    /// <summary>
+    /// How the decision was taken: <see cref="IdentityDecisionMode.Legacy"/> (the default, and every row written before the column), by the policy in observation,
+    /// or by the policy in a qualified segment.
+    /// </summary>
+    public IdentityDecisionMode DecisionMode { get; set; } = IdentityDecisionMode.Legacy;
+
+    /// <summary>The decision of the policy recorded as the shadow decision while a person decides (ADR-013-R19); null on the legacy path.</summary>
+    public BiometricOutcome? ShadowOutcome { get; set; }
+
+    /// <summary>The id of the format of the registry the document was read as.</summary>
+    [MaxLength(40)]
+    public string? FormatId { get; set; }
+
+    /// <summary>The coarse family of the browser, a code of <c>IdentityChannels</c>.</summary>
+    [MaxLength(40)]
+    public string? Channel { get; set; }
+
+    /// <summary>
+    /// The idempotency key of the attempt the row closes (<c>IdentityHeaders.IdempotencyKey</c>); unique per booking (<see cref="IdempotencyIndexName"/>); null on
+    /// the legacy path.
+    /// </summary>
+    [MaxLength(64)]
+    public string? IdempotencyKey { get; set; }
 
     /// <summary>When this log entry was created (UTC).</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

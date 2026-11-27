@@ -181,6 +181,47 @@ public class PushDeliveryJobTests : IDisposable
         Assert.Equal(["ExponentPushToken[supplier-host-too]", "ExponentPushToken[supplier-member]"], SentTokens());
     }
 
+    // ─── NF-65: one user, the one the preferences of notifications selected ───
+
+    [Fact]
+    public async Task SendAsync_User_SendsToThatUsersDevicesInTheOrgOnly()
+    {
+        var world = await SeedWorldAsync();
+
+        await Job().SendAsync("key-user", Push(PushAudience.User(world.OrgId, "auth0|owner-a")), CancellationToken.None);
+
+        // Not the manager, who is a host of the property too, and not the same person's phone registered under an old org.
+        Assert.Equal(["ExponentPushToken[owner-a]"], SentTokens());
+    }
+
+    [Fact]
+    public async Task SendAsync_User_ADeactivatedMemberOrAnAccountOfAnotherOrg_IsNeverTold()
+    {
+        var world = await SeedWorldAsync();
+        (await _db.OrgMembers.SingleAsync(m => m.UserId == "auth0|manager")).Status = OrgMemberStatus.Deactivated;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await Job().SendAsync("key-user-deactivated", Push(PushAudience.User(world.OrgId, "auth0|manager")), CancellationToken.None);
+        await Job().SendAsync("key-user-supplier", Push(PushAudience.User(world.OrgId, "auth0|supplier-member")), CancellationToken.None);
+        await Job().SendAsync("key-user-other-org", Push(PushAudience.User(Guid.NewGuid(), "auth0|owner-a")), CancellationToken.None);
+        await Job().SendAsync("key-user-blank", Push(PushAudience.User(world.OrgId, " ")), CancellationToken.None);
+
+        Assert.Empty(_expo.SendRequests);
+    }
+
+    [Fact]
+    public async Task SendAsync_User_TheSameKeyTwice_SendsOnce()
+    {
+        var world = await SeedWorldAsync();
+        var push = Push(PushAudience.User(world.OrgId, "auth0|owner-a"));
+
+        await Job().SendAsync("key-user-twice", push, CancellationToken.None);
+        await Job().SendAsync("key-user-twice", push, CancellationToken.None);
+
+        Assert.Equal(["ExponentPushToken[owner-a]"], SentTokens());
+    }
+
     [Fact]
     public async Task SendAsync_UnknownBooking_SendsNothing()
     {
@@ -359,6 +400,44 @@ public class PushDeliveryJobTests : IDisposable
             Assert.False(m.Data.ContainsKey("bookingId"));
             Assert.Equal(PushRoutes.Properties, m.Data["route"]);
         });
+    }
+
+    /// <summary>
+    /// E05/F04/US01/T02 (NF-68): the push about an item of the approval queue carries <c>data.approvalItemId</c> and the <c>categoryId</c> of the app (<c>draft-ready</c>: its Approve and
+    /// Edit buttons); every other push carries neither, and its message is the one it always was (no <c>categoryId</c> member at all, not a null).
+    /// </summary>
+    [Fact]
+    public async Task SendAsync_AnApprovalPush_CarriesTheItemAndTheCategory_AnyOtherPushNeither()
+    {
+        var world = await SeedWorldAsync();
+        var itemId = Guid.NewGuid();
+        var approval = QueuedPush.From(
+            PushAudience.User(world.OrgId, "auth0|owner-a"),
+            new PushNotificationPayload(
+                "Bozza pronta",
+                "Una bozza di risposta aspetta la tua approvazione.",
+                PushTypes.ApprovalQueueItem,
+                null,
+                PushRoutes.Approvals(),
+                ApprovalItemId: itemId,
+                CategoryId: ApprovalQueueRules.PushCategory));
+
+        await Job().SendAsync("key-approval", approval, CancellationToken.None);
+        await Job().SendAsync("key-other", Push(PushAudience.User(world.OrgId, "auth0|owner-a")), CancellationToken.None);
+
+        var (withItem, withoutItem) = (_expo.Messages[0], _expo.Messages[1]);
+        Assert.Equal(itemId.ToString(), withItem.Data["approvalItemId"]);
+        Assert.Equal("draft-ready", withItem.CategoryId);
+        Assert.Equal(PushTypes.ApprovalQueueItem, withItem.Data["type"]);
+        Assert.Equal(PushRoutes.Approvals(), withItem.Data["route"]);
+        Assert.False(withoutItem.Data.ContainsKey("approvalItemId"));
+        Assert.Null(withoutItem.CategoryId);
+
+        // On the wire: the category is a member of the message when there is one, and left out when there is none.
+        var json = System.Text.Json.JsonSerializer.Serialize(new[] { withItem, withoutItem }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(json, "\"categoryId\""));
+        Assert.Contains("\"categoryId\":\"draft-ready\"", json, StringComparison.Ordinal);
+        Assert.Contains($"\"approvalItemId\":\"{itemId}\"", json, StringComparison.Ordinal);
     }
 
     [Fact]

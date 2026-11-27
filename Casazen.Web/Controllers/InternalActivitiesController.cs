@@ -14,7 +14,9 @@ namespace Casazen.Web.Controllers;
 public class InternalActivitiesController(
     IInternalActivityService activityService,
     IHostScopeResolver hostScopeResolver,
-    IOrgContextResolver orgContextResolver) : ControllerBase
+    IOrgContextResolver orgContextResolver,
+    IStayLifecycleService? stayLifecycle = null,
+    ILogger<InternalActivitiesController>? logger = null) : ControllerBase
 {
     /// <summary>
     /// Creates a new internal activity (cleaning, maintenance, check-in assistance).
@@ -96,7 +98,33 @@ public class InternalActivitiesController(
             request.Status,
             request.Notes);
 
+        await FollowCleaningDoneAsync(activity);
         return Ok(activity);
+    }
+
+    /// <summary>
+    /// casazen/backend#978: the staff member completed the cleaning of a stay, so the booking flow of the org may declare the property ready now (when it says «when the
+    /// cleaning is done»). Best effort: the status is saved whatever happens here.
+    /// </summary>
+    private async Task FollowCleaningDoneAsync(InternalActivity activity)
+    {
+        if (stayLifecycle is null
+            || activity.BookingId is not { } bookingId
+            || activity.Action is not null
+            || !string.Equals(activity.ActivityType, InternalActivity.CleaningActivityType, StringComparison.Ordinal)
+            || !string.Equals(activity.Status, InternalActivity.StatusCompleted, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        try
+        {
+            await stayLifecycle.DeclarePropertyReadyAutomaticallyAsync(bookingId, HttpContext.RequestAborted);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger?.LogError(ex, "The property of booking {BookingId} could not be declared ready after its cleaning {ActivityId}", bookingId, activity.Id);
+        }
     }
 
     /// <summary>

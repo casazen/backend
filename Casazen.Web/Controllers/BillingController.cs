@@ -35,13 +35,17 @@ public class BillingController(
     public ActionResult<IEnumerable<PlanCatalogDto>> GetPlans() =>
         Ok(PlanCatalog.All.Select(e =>
         {
+            var agency = e.Tier == PlanTier.Agency;
             var priceId = BillingPrices.Resolve(configuration, e.Tier);
             return new PlanCatalogDto
             {
                 Tier = e.Tier.ToString(),
                 DisplayName = configuration[$"Billing:Display:{e.Tier}:Name"] ?? e.DisplayName,
+                AgencyTariff = agency ? new AgencyTariffDto(AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base) is not null, AgencyUsagePricing.Minimum, AgencyUsagePricing.QuoteFrom, AgencyUsagePricing.Bands.Select(b => new AgencyBandDto(b.UpTo, b.UnitPrice)).ToArray()) : null,
                 PriceMonthly = configuration.GetValue<decimal>($"Billing:Display:{e.Tier}:PriceMonthly", 0m),
+                PricesIncludeVat = configuration.GetValue<bool>("Billing:PricesIncludeVat"),
                 Currency = "EUR",
+                BillingUnit = e.Tier == PlanTier.Agency ? "room" : "plan",
                 UnitAllowance = e.MaxProperties == int.MaxValue ? -1 : e.MaxProperties,
                 Features = configuration.GetSection($"Billing:Display:{e.Tier}:Features").Get<string[]>() ?? [e.Description],
                 StripePriceId = priceId ?? string.Empty,
@@ -79,6 +83,12 @@ public class BillingController(
         if (!PlanCatalog.TryParseTier(request.PlanTier, out var planTier))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingPlanTierUnknown");
 
+        if (request.CommercialSignup is { } selected &&
+            (selected.Validate() is not null || selected.PlanTier != request.PlanTier))
+            return BadRequest(new { code = "commercial_selection_invalid" });
+        if (request.CommercialSignup?.Addons.Any(code => !(request.CommercialSignup.Profile == "agency" ? AgencyUsagePricing.Available(configuration, code) : CommercialPricing.IsAvailable(configuration, code, planTier))) == true)
+            return UnprocessableEntity(new { code = "commercial_addon_unavailable" });
+
         if (string.IsNullOrWhiteSpace(request.BillingCountry) || request.BillingCountry.Trim().Length != 2)
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingCountryInvalid");
 
@@ -97,7 +107,7 @@ public class BillingController(
         if (!IsAllowedReturnUrl(request.SuccessUrl) || !IsAllowedReturnUrl(request.CancelUrl))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "BillingReturnUrlNotAllowed");
 
-        if (BillingPrices.Resolve(configuration, planTier) is null)
+        if ((request.CommercialSignup?.Profile == "agency" ? AgencyUsagePricing.PriceId(configuration, AgencyUsagePricing.Base) : BillingPrices.Resolve(configuration, planTier)) is null)
         {
             return this.ApiProblem(
                 StatusCodes.Status422UnprocessableEntity,
@@ -121,6 +131,10 @@ public class BillingController(
         var org = await orgService.GetByIdAsync(orgId.Value, ct);
         if (org is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
+
+        var savedSelection = CommercialSignup.Read(org.CommercialSignupJson);
+        if (savedSelection is not null && request.CommercialSignup?.Fingerprint != savedSelection.Fingerprint)
+            return Conflict(new { code = "commercial_selection_changed" });
 
         // Refused before the billing profile changes; BillingCheckoutService checks again under the org lock and on Stripe.
         if (BillingSubscriptionPolicy.BlocksNewCheckout(org))
@@ -150,7 +164,9 @@ public class BillingController(
         var cancelUrl = string.IsNullOrWhiteSpace(request.CancelUrl)
             ? publicSiteLinks.BillingCheckoutCancel(returnPath)
             : request.CancelUrl.Trim();
-        var url = await billingCheckoutService.StartCheckoutAsync(org.Id, planTier, successUrl, cancelUrl, ct);
+        var url = request.CommercialSignup is { } commercialSelection
+            ? await billingCheckoutService.StartCommercialCheckoutAsync(org.Id, planTier, successUrl, cancelUrl, commercialSelection, ct)
+            : await billingCheckoutService.StartCheckoutAsync(org.Id, planTier, successUrl, cancelUrl, ct);
         return Ok(new CheckoutSessionResponse { CheckoutUrl = url });
     }
 
@@ -283,6 +299,8 @@ public class BillingController(
     private static SubscriptionDto Map(Casazen.Core.Entities.Org org) => new()
     {
         PlanTier = org.PlanTier.ToString(),
+        RoomQuantity = org.CommercialRoomAllowance,
+        EnabledAddons = System.Text.Json.JsonSerializer.Deserialize<string[]>(org.CommercialPaidAddonsJson ?? "[]") ?? [],
         Status = org.SubscriptionStatus switch
         {
             SubscriptionStatus.Trialing => "trialing",

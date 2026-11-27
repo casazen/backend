@@ -51,13 +51,48 @@ public static class HostScopeQueryExtensions
     public static IQueryable<Review> InScope(this IQueryable<Review> source, HostScope scope) =>
         source.InScope(scope, review => review.Property);
 
+    /// <summary>The reviews of the channels of the scope (those of a property it reaches, E05/F06/US01/T01, NF-69).</summary>
+    public static IQueryable<OtaReview> InScope(this IQueryable<OtaReview> source, HostScope scope) =>
+        source.InScope(scope, review => review.Property);
+
     /// <summary>The message threads of the scope (those of a property it reaches, DB-14a).</summary>
     public static IQueryable<GuestThread> InScope(this IQueryable<GuestThread> source, HostScope scope) =>
+        source.InScope(scope, thread => thread.Property);
+
+    /// <summary>
+    /// The conversations of the channels of the scope (those of a property it reaches, E05/F02/US01/T01, ADR-032-R6). A conversation whose listing has
+    /// no confirmed mapping has no property (<c>PropertyId</c> null, OCT-04): it is outside every restricted scope, and inside the org-wide one only,
+    /// so a collaborator «Solo alcuni» never sees it and it is never shown under a property it was not mapped to.
+    /// </summary>
+    public static IQueryable<OtaMessageThread> InScope(this IQueryable<OtaMessageThread> source, HostScope scope) =>
         source.InScope(scope, thread => thread.Property);
 
     /// <summary>The internal activities of the scope (those on properties it reaches, NF-22).</summary>
     public static IQueryable<InternalActivity> InScope(this IQueryable<InternalActivity> source, HostScope scope) =>
         source.InScope(scope, activity => activity.Property);
+
+    /// <summary>
+    /// The compliance proofs of the scope (E03/F02/US03/T01, NF-47): those whose every flat the scope reaches. A receipt of the Alloggiati communication
+    /// may cover several flats (E20/F02/US01/T01) and the file is about all of them (the guests of each), so a collaborator «Solo alcuni» reads it only when it
+    /// reaches the flat the proof was filed under <b>and</b> every flat it covers; one flat outside the reach keeps the whole proof out, whichever flat is
+    /// asked for. As one join and one <c>NOT EXISTS</c> in the same statement; an org-wide scope returns the query as it is.
+    /// </summary>
+    public static IQueryable<ManualComplianceProof> InScope(this IQueryable<ManualComplianceProof> source, HostScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(scope);
+
+        if (scope.IsOrgWide)
+            return source;
+
+        return source
+            .InScope(scope, proof => proof.Property)
+            .Where(EveryCoveredFlatInReach(scope));
+    }
+
+    /// <summary>The lines of the send log of the scope (those of a property it reaches, E03/F02/US03/T01, NF-47).</summary>
+    public static IQueryable<ComplianceSendLogEntry> InScope(this IQueryable<ComplianceSendLogEntry> source, HostScope scope) =>
+        source.InScope(scope, entry => entry.Property);
 
     /// <summary>
     /// The guests of the scope (SR-04b). A guest belongs to the org and to no property, so it is reached through its stays: in a
@@ -82,6 +117,26 @@ public static class HostScopeQueryExtensions
     }
 
     /// <summary>
+    /// The CRM profiles of the scope (E07/F01/US03/T01, NF-88). A profile belongs to no property, so it is reached through its guests: in a
+    /// restricted scope it is one of which a guest has a booking at a property the scope reaches (whatever the status of the booking, as for the
+    /// guests above), as one <c>EXISTS</c> in the same statement. A lead from the welcome page has no guest and so no booking: it is in an
+    /// org-wide scope only, which returns the query as it is. <paramref name="bookings"/> is where the stays are read from, as for the guests.
+    /// </summary>
+    public static IQueryable<GuestCrmProfile> InScope(this IQueryable<GuestCrmProfile> source, HostScope scope, IQueryable<Booking> bookings)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(bookings);
+
+        if (scope.IsOrgWide)
+            return source;
+
+        var orgId = scope.OrgId;
+        var stays = bookings.Where(booking => booking.OrgId == orgId).InScope(scope);
+        return source.Where(profile => stays.Any(stay => stay.Guest.GuestCrmProfileId == profile.Id));
+    }
+
+    /// <summary>
     /// The rows of <paramref name="source"/> bound to a property the scope reaches, the property being what
     /// <paramref name="property"/> selects. For an org-wide scope the query is returned as it is.
     /// </summary>
@@ -102,6 +157,29 @@ public static class HostScopeQueryExtensions
         var predicate = PropertyPredicate(scope);
         var body = new ReplaceParameter(predicate.Parameters[0], property.Body).Visit(predicate.Body)!;
         return source.Where(Expression.Lambda<Func<T, bool>>(body, property.Parameters));
+    }
+
+    /// <summary>
+    /// «Every flat the proof covers is in the scope»: the one predicate of the properties (<see cref="PropertyPredicate"/>) moved onto the flat of each line of
+    /// <see cref="ManualComplianceProof.CoveredProperties"/> and required of all of them (<c>All</c>, which Npgsql turns into <c>NOT EXISTS</c> of a line
+    /// that fails it). A proof with no line has nothing to fail: the flat it was filed under is judged by the caller.
+    /// </summary>
+    private static Expression<Func<ManualComplianceProof, bool>> EveryCoveredFlatInReach(HostScope scope)
+    {
+        var predicate = PropertyPredicate(scope);
+        var proof = Expression.Parameter(typeof(ManualComplianceProof), "proof");
+        var link = Expression.Parameter(typeof(ManualComplianceProofProperty), "link");
+        var flat = Expression.Property(link, nameof(ManualComplianceProofProperty.Property));
+        var inReach = Expression.Lambda<Func<ManualComplianceProofProperty, bool>>(
+            new ReplaceParameter(predicate.Parameters[0], flat).Visit(predicate.Body)!,
+            link);
+        var all = Expression.Call(
+            typeof(Enumerable),
+            nameof(Enumerable.All),
+            [typeof(ManualComplianceProofProperty)],
+            Expression.Property(proof, nameof(ManualComplianceProof.CoveredProperties)),
+            inReach);
+        return Expression.Lambda<Func<ManualComplianceProof, bool>>(all, proof);
     }
 
     /// <summary>The predicate a property must satisfy to be in the scope (the one rule every <c>InScope</c> applies).</summary>

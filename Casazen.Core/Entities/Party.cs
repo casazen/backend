@@ -53,6 +53,9 @@ public class Party
     [EmailAddress]
     public string ContactEmail { get; set; } = string.Empty;
 
+    /// <summary>Optional international phone number used for direct communications such as WhatsApp. Encrypted at rest.</summary>
+    public string? ContactPhone { get; set; }
+
     public bool IsExtraEU { get; set; }
 
     /// <summary>
@@ -67,8 +70,8 @@ public class Party
 
     /// <summary>
     /// The day the landlord checked the identity document (and, for a citizen of a non-EU state, the residence permit) of the
-    /// party (LR-12, decision LR-D3): "documento verificato il …". A date and nothing else: CasaZen keeps no copy of any
-    /// document. <c>null</c> when not declared, and after the anonymization.
+    /// party (LR-12, decision LR-D3): "documento verificato il …". A date and nothing else: this verification itself keeps no document copy. A separate registration preparation can collect private identity attachments
+    /// explicitly for transmission to the registration provider. <c>null</c> when not declared, and after the anonymization.
     /// </summary>
     public DateOnly? DocumentsVerifiedOn { get; set; }
 

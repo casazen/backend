@@ -1,68 +1,52 @@
+using Casazen.Core.Authorization;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
+using Casazen.Web.DTOs.Fiscal;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Agency invoices (FatturaPA) for property owners (ADR-019). Every action is scoped to the caller's
-/// agency org: an invoice of another org answers 404. Phase 1: no automatic SDI transmission,
-/// status ToBeIssuedManually, agency downloads XML/PDF and submits manually.
+/// The agency invoices for property owners (ADR-019 amended, E06/F01/US02/T05, E14/F01/US01/T01): <c>generate</c> makes the drafts of the owner invoices of a
+/// period (fiscal documents made from the statement versions, behind <c>Features:OwnerInvoicing</c>); the historical rows of the retired generator stay readable,
+/// marked <c>legacy_unverified</c>. Every action is scoped to the caller's agency org: an invoice of another org answers 404.
 /// </summary>
 [ApiController]
 [Route("api/agency-invoices")]
 [Authorize(Policy = CasazenPolicies.AgencyInvoiceManage)]
 public class AgencyInvoicesController(
     IAgencyInvoiceService invoiceService,
+    IOwnerInvoiceService ownerInvoices,
+    IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
     ILogger<AgencyInvoicesController> logger) : ControllerBase
 {
     /// <summary>
-    /// Generates a FatturaPA invoice from a monthly owner statement (ADR-019).
-    /// Validates single supplier per invoice, assigns sequential invoice number,
-    /// calculates VAT and stamp duty, generates FatturaPA XML validated against AdE XSD.
-    /// Requires <c>agency.invoice.manage</c> policy.
+    /// The drafts of the owner invoices of a period (<c>{ year, month }</c>), one for every owner with a statement version of it that is not superseded: made, or
+    /// made again, with the counts (owners, made, made again, issued already, nothing to invoice) and the owners whose draft could not be made with the code of
+    /// the reason. 404 while <c>Features:OwnerInvoicing</c> is off; 403 for a caller restricted to some properties; 422 <c>owner_period_invalid</c>,
+    /// <c>issuer_profile_incomplete</c>, <c>document_rule_not_configured</c> (nothing is written).
     /// </summary>
-    /// <param name="request">Invoice generation request with statement ID.</param>
-    /// <response code="200">Invoice generated successfully.</response>
-    /// <response code="422">
-    /// Business rule violated:
-    /// - invoice_multiple_suppliers: statement lines reference multiple property owners.
-    /// - structured_address_required: agency missing required structured address fields.
-    /// - statement_not_found: statement does not exist or not in caller's org.
-    /// - statement_not_approved: statement status is not Approved.
-    /// - invoice_already_exists: an invoice for this statement already exists.
-    /// </response>
+    /// <param name="request">The period.</param>
     [HttpPost("generate")]
-    [ProducesResponseType(typeof(InvoiceGenerationDto), StatusCodes.Status200OK)]
+    [FeatureGate(FeatureFlags.OwnerInvoicing)]
+    [ProducesResponseType(typeof(OwnerInvoiceGenerationDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
-    public async Task<ActionResult<InvoiceGenerationDto>> GenerateInvoice(
-        [FromBody] GenerateInvoiceRequest request)
+    public async Task<ActionResult<OwnerInvoiceGenerationDto>> GenerateInvoice([FromBody] GenerateOwnerInvoicesRequest request)
     {
-        logger.LogInformation(
-            "Generating invoice for statement {StatementId}",
-            request.StatementId);
+        var ct = HttpContext.RequestAborted;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
+        if (orgId is null || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct) is not { IsOrgWide: true })
+            return Forbid();
 
-        var result = await invoiceService.GenerateInvoiceAsync(
-            request.StatementId,
-            HttpContext.RequestAborted);
-
-        return Ok(new InvoiceGenerationDto
-        {
-            Id = result.Invoice.Id,
-            InvoiceNumber = result.Invoice.InvoiceNumber,
-            Series = result.Invoice.Series,
-            Month = result.Invoice.Month,
-            Year = result.Invoice.Year,
-            TaxableBase = result.Invoice.TaxableBase,
-            VatRate = result.Invoice.VatRate,
-            VatAmount = result.Invoice.VatAmount,
-            StampDuty = result.Invoice.StampDuty,
-            Total = result.Invoice.Total,
-            Status = result.Invoice.Status.ToString(),
-            CreatedAt = result.Invoice.CreatedAt,
-            Warning = result.Warning
-        });
+        logger.LogInformation("Generating the owner invoice drafts of org {OrgId} for {Year}-{Month}", orgId, request.Year, request.Month);
+        var generation = await ownerInvoices.CreateDraftsForPeriodAsync(orgId.Value, request.Year, request.Month, User.GetUserId(), ct);
+        return Ok(OwnerInvoiceGenerationDto.From(generation));
     }
 
     /// <summary>
@@ -115,29 +99,4 @@ public class AgencyInvoicesController(
 
         return File(pdf, "application/pdf", $"invoice-{id}.pdf");
     }
-}
-
-/// <summary>Request to generate an invoice from a statement.</summary>
-public sealed record GenerateInvoiceRequest
-{
-    /// <summary>ID of the approved owner statement to invoice.</summary>
-    public Guid StatementId { get; init; }
-}
-
-/// <summary>Result of invoice generation.</summary>
-public sealed record InvoiceGenerationDto
-{
-    public Guid Id { get; init; }
-    public string InvoiceNumber { get; init; } = string.Empty;
-    public string Series { get; init; } = string.Empty;
-    public int Month { get; init; }
-    public int Year { get; init; }
-    public decimal TaxableBase { get; init; }
-    public decimal VatRate { get; init; }
-    public decimal VatAmount { get; init; }
-    public decimal StampDuty { get; init; }
-    public decimal Total { get; init; }
-    public string Status { get; init; } = string.Empty;
-    public DateTime CreatedAt { get; init; }
-    public string? Warning { get; init; }
 }

@@ -129,7 +129,7 @@ public class AlloggiatiCheckInIntegrationTests : IClassFixture<CasazenWebApplica
     [Fact]
     public async Task AC5_PortalSubmitThenOwnerCheckIn_SchedulesTheAlloggiatiJobOnce()
     {
-        var seed = await _factory.SeedConfirmedBookingWithTokenAsync(completeGuestData: true);
+        var seed = await _factory.SeedConfirmedBookingWithTokenAsync();
         var token = await CreatePortalSessionAsync(seed.BookingId);
         var guestClient = _factory.CreateClient();
         var owner = _factory.CreateAuthenticatedClient(seed.OwnerId, roles: "PropertyOwner");

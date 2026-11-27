@@ -36,6 +36,7 @@ internal static class SupplierCatalogTestData
         db.Orgs.Add(org);
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = org.Id,
             Email = email,
             LegalName = "Fornitore SP-02 Srl",

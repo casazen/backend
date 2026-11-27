@@ -32,4 +32,59 @@ public enum ComplianceCockpitAction
     /// on its last step (CO-17). Target: the booking.
     /// </summary>
     ConfirmPropertyReady,
+
+    // E03/F02/US01/T03 (NF-52, CHK-12): the actions below are appended, never renamed or renumbered; the clients map them to a page
+    // (COMPLIANCE_ACTION_TARGETS) and show an item whose action they do not know without a link.
+
+    /// <summary>
+    /// The identity of the guest who leaves the document is not verified yet: their selfie is awaited before the arrival, or an operator has
+    /// to decide (CHK-11, NF-50). Target: the booking.
+    /// </summary>
+    VerifyIdentity,
+
+    /// <summary>
+    /// The Alloggiati Web communication of the stay was sent, entrusted to the channel manager or declared sent, and its receipt is not archived
+    /// yet: the host uploads it (CHK-08). Target: the booking.
+    /// </summary>
+    UploadAlloggiatiReceipt,
+
+    /// <summary>
+    /// The police send of the channel manager is not active or cannot be verified for the property: activate it or reconnect it (CHK-03, CHK-12).
+    /// Target: the property.
+    /// </summary>
+    ActivateOctorateSend,
+
+    /// <summary>
+    /// A stay the channel manager does not send by itself: one over 30 nights, or a short stay not covered by its daily run. The host sends it
+    /// by hand (CHK-12). Target: the booking.
+    /// </summary>
+    SendAlloggiatiManually,
+
+    /// <summary>The proof of the ISTAT communication of a period is not archived: the host uploads it. Target: the property, with the period (<c>yyyy-MM</c>).</summary>
+    UploadIstatProof,
+
+    /// <summary>The tourist tax rate of the property's comune is not known (never taken as zero): the host enters it. Target: the property.</summary>
+    EnterMunicipalityTaxRate,
+
+    /// <summary>The tourist tax of a closed period is not declared and paid with its receipts archived. Target: the property, with the period (<c>yyyy-MM</c>).</summary>
+    DeclareTouristTax,
+
+    /// <summary>The police (Alloggiati Web) credentials kept in CasaZen were refused: the host sets them again. Target: the property.</summary>
+    RenewPoliceCredentials,
+
+    /// <summary>
+    /// The guests who arrived at a property in canton Ticino on a day are not notified to the cantonal police yet (within 24 hours of the
+    /// arrival, notifiche.ti.ch; casazen/backend#979): the host downloads the file of the day, uploads it on the portal and records the receipt.
+    /// Target: the property, with the arrival day in <c>Period</c> (<c>yyyy-MM-dd</c>).
+    /// </summary>
+    NotifyTicinoPolice,
+
+    /// <summary>
+    /// The guests who arrived at a Swiss property on a day are not notified to the cantonal authority yet, in a canton other than Ticino that asks for an
+    /// electronic notification (E31/F02/US01/T01, NF-131, casazen/backend#979): CasaZen never transmits, the host copies the data CasaZen prepared on the
+    /// official portal of the canton and declares the day notified. Only where the duty is <c>Required</c> (the host confirmed it, or the regime is verified as
+    /// covering private rentals) and only with <c>Features:GuestRegistrationRegimes</c> on. Target: the property, with the arrival day in <c>Period</c>
+    /// (<c>yyyy-MM-dd</c>) and the deadline of the regime in <c>DueAt</c>.
+    /// </summary>
+    NotifyGuestsAuthority,
 }

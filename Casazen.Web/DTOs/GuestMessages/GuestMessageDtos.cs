@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.GuestMessages;
@@ -12,11 +13,23 @@ public sealed class SendMessageRequest
     public string Text { get; set; } = string.Empty;
 }
 
+/// <summary>A message sent from a portal stay link.</summary>
+public sealed class SendPortalMessageRequest
+{
+    [Required(ErrorMessage = "GuestMessageTextInvalid")]
+    [MaxLength(GuestMessageRules.TextMaxLength, ErrorMessage = "GuestMessageTextInvalid")]
+    public string Text { get; init; } = string.Empty;
+    [MaxLength(2)]
+    public string? Language { get; init; }
+    public bool RequestHost { get; init; }
+}
+
 /// <summary>A message of the thread. <c>Sender</c> is <c>Guest</c> or <c>Host</c>; the text is plain text, to be shown as text.</summary>
 public sealed class GuestMessageDto
 {
     public Guid Id { get; init; }
     public GuestMessageSender Sender { get; init; }
+    public MessageOrigin? Origin { get; init; }
     public string Text { get; init; } = string.Empty;
     public DateTime CreatedAt { get; init; }
 
@@ -24,6 +37,7 @@ public sealed class GuestMessageDto
     {
         Id = message.Id,
         Sender = message.Sender,
+        Origin = message.Origin,
         Text = message.Text,
         CreatedAt = message.CreatedAt,
     };

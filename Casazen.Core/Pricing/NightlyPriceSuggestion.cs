@@ -151,4 +151,8 @@ public sealed record NightlyPriceSuggestion(
     decimal? WeekendSurchargePercent,
     int? MinNights,
     string? Rationale,
-    PriceSuggestionBasis BasedOn);
+    PriceSuggestionBasis BasedOn)
+{
+    /// <summary>The configured currency of the property; no currency conversion is performed.</summary>
+    public string Currency { get; init; } = "EUR";
+}

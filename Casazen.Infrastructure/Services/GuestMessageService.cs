@@ -1,11 +1,15 @@
+using Casazen.Core.Features;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.GuestPortal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -19,26 +23,43 @@ namespace Casazen.Infrastructure.Services;
 /// controller authorized the booking, and the list also names the org of the scope. Every query of a thread names the booking or the org
 /// as well, so the tenant filter is a second wall.</para>
 /// <para><b>The text of a message is never in a log</b>: only ids and counters. It is never in an email either.</para>
-/// <para><b>The two emails</b> (<see cref="NotifyHostAsync"/>, <see cref="NotifyGuestAsync"/>) leave from the call that wrote the
-/// message and from nowhere else; the claim of the ten-minute slot is one conditional <c>UPDATE</c>, so two messages at the same
-/// moment queue one email. The message is saved before: a failed email never loses a message.</para>
+/// <para><b>The alert to the hosts</b> (<see cref="AlertHostsAsync"/>) and <b>the email to the guest</b> (<see cref="NotifyGuestAsync"/>) leave from
+/// the call that wrote the message and from nowhere else. The hosts are alerted through the decision point of the preferences
+/// (<see cref="HostMessageAlertDelivery"/>, NF-65): who is told, and through which of the counter, the push and the email, is the choice of each
+/// person who reaches the property, with the quiet hours and at most one email per conversation every ten minutes; the guest's email has its own
+/// ten-minute slot, one conditional <c>UPDATE</c>, so two messages at the same moment queue one email. The message is saved before: a failed alert
+/// or email never loses a message.</para>
+/// <para><b>The assistant</b> (E05/F05/US02/T01): a message of the guest is recorded with its event <c>GuestMessageReceived</c> (source <c>Direct</c>, key
+/// <c>direct:{booking id}</c>) in the same save, so the assistant reads the conversations of the direct bookings as it reads the channels'; an answer of the host that a person wrote
+/// tells every <see cref="IThreadReplyObserver"/> (the «To do» of an escalated message is closed). Both are optional constructor parameters at the end, so the tests that build the
+/// service are untouched; an observer that fails is logged and never fails the answer.</para>
 /// </remarks>
 public sealed class GuestMessageService(
     AppDbContext db,
     IEmailQueue emailQueue,
     PublicSiteLinks links,
-    IPushNotificationService pushNotifications,
+    HostMessageAlertDelivery hostAlerts,
     IInAppNotificationService inAppNotifications,
     IInAppNotificationPublisher notificationPublisher,
     ILogger<GuestMessageService> logger,
-    TimeProvider? timeProvider = null) : IGuestMessageService
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? events = null,
+    IEnumerable<IThreadReplyObserver>? replyObservers = null,
+    AgencyDomainLinks? agencyLinks = null,
+    IGuestEmailBrandingProvider? emailBranding = null,
+    IGuestEmailLanguageProvider? emailLanguage = null,
+    IFeatureFlags? flags = null,
+    IGuestStayLinkProvider? stayLinks = null,
+    ApprovalAlertDelivery? draftAlerts = null) : IGuestMessageService
 {
+    private bool PortalEnabled => flags?.IsEnabled(FeatureFlags.GuestPortal) == true;
+
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public async Task<GuestThreadView> GetForGuestAsync(Booking booking, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(booking);
-        var state = GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, Now());
+        var state = GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, Now(), PortalEnabled);
         if (state == GuestThreadState.Unavailable)
             throw GuestNotFound();
 
@@ -48,15 +69,35 @@ public sealed class GuestMessageService(
             await ReadMessagesAsync(booking.Id, cancellationToken));
     }
 
-    public async Task<SentGuestMessage> SendAsGuestAsync(
+    public Task<SentGuestMessage> SendAsGuestAsync(
         Booking booking,
         string? text,
         string? idempotencyKey,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        SendGuestMessageAsync(booking, text, idempotencyKey, null, queueDraft: true, cancellationToken);
+
+    public Task<SentGuestMessage> SendFromPortalAsync(
+        Booking booking,
+        string? text,
+        string? idempotencyKey,
+        string? guideAnswer,
+        CancellationToken cancellationToken = default,
+        string? localDraft = null) =>
+        // Portal chat may contain personal data. External drafting requires its own anonymization pipeline.
+        SendGuestMessageAsync(booking, text, idempotencyKey, guideAnswer, queueDraft: false, cancellationToken, localDraft);
+
+    private async Task<SentGuestMessage> SendGuestMessageAsync(
+        Booking booking,
+        string? text,
+        string? idempotencyKey,
+        string? guideAnswer,
+        bool queueDraft,
+        CancellationToken cancellationToken,
+        string? localDraft = null)
     {
         ArgumentNullException.ThrowIfNull(booking);
         var now = Now();
-        var state = GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, now);
+        var state = GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, now, PortalEnabled);
         if (state == GuestThreadState.Unavailable)
             throw GuestNotFound();
         if (state == GuestThreadState.Closed)
@@ -66,21 +107,44 @@ public sealed class GuestMessageService(
         var stored = GuestMessageRules.Redact(clean, out var redacted);
 
         var threadId = await EnsureThreadAsync(booking, now, cancellationToken);
-        var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Guest, stored, key, null, now, cancellationToken);
+        var answersFromGuide = PortalEnabled && flags?.IsEnabled(FeatureFlags.GuestPortalAutoReplies) == true
+            && !redacted && !string.IsNullOrWhiteSpace(guideAnswer);
+        var received = queueDraft ? new GuestMessageReceivedPayload(
+            MessageThreadKey.ForDirect(booking.Id).ToString(),
+            GuestMessageReceivedPayload.DirectSource,
+            booking.PropertyId,
+            booking.Id,
+            GuestMessageReceivedPayload.DirectSource) : null;
+        var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Guest, GuestMessageRules.OriginOf(GuestMessageSender.Guest), stored, key, null, now, received,
+            cancellationToken, answersFromGuide ? guideAnswer : null,
+            !answersFromGuide && localDraft is not null ? booking : null, localDraft);
         if (replayed)
             return new SentGuestMessage(message, redacted, true);
 
+        var latest = answersFromGuide ? now.AddMilliseconds(1) : now;
         await db.GuestThreads
             .Where(t => t.Id == threadId)
             .ExecuteUpdateAsync(
-                set => set
-                    .SetProperty(t => t.LastMessageAt, t => t.LastMessageAt > now ? t.LastMessageAt : now)
-                    .SetProperty(t => t.LastGuestMessageAt, t => t.LastGuestMessageAt > now ? t.LastGuestMessageAt : now),
+                set =>
+                {
+                    set.SetProperty(t => t.LastMessageAt, t => t.LastMessageAt > latest ? t.LastMessageAt : latest);
+                    set.SetProperty(t => t.LastGuestMessageAt, t => t.LastGuestMessageAt > now ? t.LastGuestMessageAt : now);
+                    if (answersFromGuide)
+                    {
+                        // Keep an earlier unanswered question in the human queue.
+                        set.SetProperty(t => t.LastHostMessageAt,
+                            t => t.LastGuestMessageAt == null || (t.LastHostMessageAt != null && t.LastGuestMessageAt <= t.LastHostMessageAt)
+                                ? (t.LastHostMessageAt > now ? t.LastHostMessageAt : now) : t.LastHostMessageAt);
+                        set.SetProperty(t => t.HostReadAt,
+                            t => t.LastGuestMessageAt == null || (t.HostReadAt != null && t.LastGuestMessageAt <= t.HostReadAt)
+                                ? (t.HostReadAt > now ? t.HostReadAt : now) : t.HostReadAt);
+                    }
+                },
                 cancellationToken);
 
         logger.LogInformation("Guest message {MessageId} written in thread {ThreadId} of booking {BookingId}", message.Id, threadId, booking.Id);
-        PushToHosts(booking, message.Id);
-        await NotifyHostAsync(booking, threadId, now, cancellationToken);
+        if (!answersFromGuide)
+            await AlertHostsAsync(booking, threadId, message.Id, now, cancellationToken);
         return new SentGuestMessage(message, redacted, false);
     }
 
@@ -93,7 +157,7 @@ public sealed class GuestMessageService(
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw new NotFoundException($"Booking {bookingId} not found");
 
-        var state = GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, Now());
+        var state = GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, Now(), PortalEnabled);
         if (state == GuestThreadState.Unavailable)
             return new HostThreadView(state, null, 0, false, []);
 
@@ -116,13 +180,34 @@ public sealed class GuestMessageService(
             messages);
     }
 
-    public async Task<SentGuestMessage> ReplyAsHostAsync(
+    public Task<SentGuestMessage> ReplyAsHostAsync(
         Guid bookingId,
         string? text,
         string? idempotencyKey,
         string? userId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ReplyOfAsync(bookingId, text, idempotencyKey, userId, MessageOrigin.Person, cancellationToken);
+
+    public Task<SentGuestMessage> ReplyAsAutomationAsync(
+        Guid bookingId,
+        string? text,
+        string? idempotencyKey,
+        CancellationToken cancellationToken = default) =>
+        ReplyOfAsync(bookingId, text, idempotencyKey, null, MessageOrigin.Automation, cancellationToken);
+
+    /// <summary>
+    /// A message of the host side. A person (or the assistant) who writes answers the guest: the thread is answered and what the guest wrote is read. A message of <see cref="MessageOrigin.Automation"/> (the
+    /// one a routine planned) answers nobody, as on the channels: it is the latest message of the thread and nothing more, so a question of the guest still waits for its answer.
+    /// </summary>
+    private async Task<SentGuestMessage> ReplyOfAsync(
+        Guid bookingId,
+        string? text,
+        string? idempotencyKey,
+        string? userId,
+        MessageOrigin origin,
+        CancellationToken cancellationToken)
     {
+        var answers = origin != MessageOrigin.Automation;
         var booking = await db.Bookings
             .AsNoTracking()
             .Include(b => b.Property)
@@ -132,29 +217,60 @@ public sealed class GuestMessageService(
             ?? throw new NotFoundException($"Booking {bookingId} not found");
 
         var now = Now();
-        if (GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, now) != GuestThreadState.Open)
+        if (GuestMessageRules.StateOf(booking.Source, booking.Status, booking.CheckOutDate, now, PortalEnabled) != GuestThreadState.Open)
             throw ThreadClosed();
 
         var (clean, key) = Validate(text, idempotencyKey);
         var threadId = await EnsureThreadAsync(booking, now, cancellationToken);
-        var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Host, clean, key, userId, now, cancellationToken);
+        var (message, replayed) = await WriteAsync(threadId, booking.OrgId, GuestMessageSender.Host, origin, clean, key, userId, now, null, cancellationToken);
         if (replayed)
+        {
+            await TellReplyObserversAsync(booking.OrgId, bookingId, userId);
             return new SentGuestMessage(message, false, true);
+        }
 
-        // Answering is reading: whatever the guest wrote up to now is no longer «unread».
+        // Answering is reading: whatever the guest wrote up to now is no longer «unread». A message nobody wrote answers nobody: it only moves the last message of the thread.
         await db.GuestThreads
             .Where(t => t.Id == threadId)
             .ExecuteUpdateAsync(
-                set => set
-                    .SetProperty(t => t.LastMessageAt, t => t.LastMessageAt > now ? t.LastMessageAt : now)
-                    .SetProperty(t => t.LastHostMessageAt, t => t.LastHostMessageAt > now ? t.LastHostMessageAt : now)
-                    .SetProperty(t => t.HostReadAt, t => t.LastGuestMessageAt),
+                set =>
+                {
+                    set.SetProperty(t => t.LastMessageAt, t => t.LastMessageAt > now ? t.LastMessageAt : now);
+                    if (!answers)
+                        return;
+
+                    set.SetProperty(t => t.LastHostMessageAt, t => t.LastHostMessageAt > now ? t.LastHostMessageAt : now);
+                    set.SetProperty(t => t.HostReadAt, t => t.LastGuestMessageAt);
+                },
                 cancellationToken);
 
         logger.LogInformation("Host message {MessageId} written in thread {ThreadId} of booking {BookingId}", message.Id, threadId, bookingId);
         await ClearNotificationsAsync(bookingId, userId, cancellationToken);
         await NotifyGuestAsync(booking, threadId, now, cancellationToken);
+        await TellReplyObserversAsync(booking.OrgId, bookingId, userId);
         return new SentGuestMessage(message, false, false);
+    }
+
+    /// <summary>
+    /// Tells every <see cref="IThreadReplyObserver"/> that a person answered the conversation of the booking (an answer with no user is not a person's: the assistant's own send closes
+    /// nothing). After the message is saved: an observer that fails is logged and never fails the answer.
+    /// </summary>
+    private async Task TellReplyObserversAsync(Guid orgId, Guid bookingId, string? userId)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+            return;
+
+        foreach (var observer in replyObservers ?? [])
+        {
+            try
+            {
+                await observer.OnHostReplyAsync(orgId, MessageThreadKey.ForDirect(bookingId), CancellationToken.None);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "An observer of the replies ({Observer}) failed on the conversation of booking {BookingId}", observer.GetType().Name, bookingId);
+            }
+        }
     }
 
     public async Task<HostThreadView> MarkReadAsync(Guid bookingId, string? userId, CancellationToken cancellationToken = default)
@@ -184,11 +300,8 @@ public sealed class GuestMessageService(
 
         var threads = db.GuestThreads
             .AsNoTracking()
-            .Where(t => t.OrgId == scope.OrgId
-                && t.Booking.Source == BookingSource.Direct
-                && (t.Booking.Status == BookingStatus.Confirmed
-                    || t.Booking.Status == BookingStatus.CheckedIn
-                    || t.Booking.Status == BookingStatus.CheckedOut))
+            .Where(t => t.OrgId == scope.OrgId)
+            .Where(GuestMessageRules.EligibleThreads(PortalEnabled))
             .InScope(scope);
         if (propertyId is { } id)
             threads = threads.Where(t => t.PropertyId == id);
@@ -267,13 +380,8 @@ public sealed class GuestMessageService(
         // Same threads as the list (direct, confirmed, in the caller's scope), only the open ones, only those with something unread.
         var rows = await db.GuestThreads
             .AsNoTracking()
-            .Where(t => t.OrgId == scope.OrgId
-                && t.LastGuestMessageAt != null
-                && t.Booking.Source == BookingSource.Direct
-                && (t.Booking.Status == BookingStatus.Confirmed
-                    || t.Booking.Status == BookingStatus.CheckedIn
-                    || t.Booking.Status == BookingStatus.CheckedOut)
-                && t.Booking.CheckOutDate >= openFrom)
+            .Where(t => t.OrgId == scope.OrgId && t.LastGuestMessageAt != null && t.Booking.CheckOutDate >= openFrom)
+            .Where(GuestMessageRules.EligibleThreads(PortalEnabled))
             .InScope(scope)
             .Select(t => new
             {
@@ -303,7 +411,7 @@ public sealed class GuestMessageService(
             .OrderByDescending(m => m.CreatedAt)
             .ThenByDescending(m => m.Id)
             .Take(GuestMessageRules.TranscriptMaxMessages)
-            .Select(m => new GuestThreadMessage(m.Id, m.Sender, m.Text, m.CreatedAt))
+            .Select(m => new GuestThreadMessage(m.Id, m.Sender, m.Text, m.CreatedAt) { Origin = m.Origin })
             .ToListAsync(cancellationToken);
         latest.Reverse();
         return latest;
@@ -349,16 +457,24 @@ public sealed class GuestMessageService(
             .Select(t => (Guid?)t.Id)
             .FirstOrDefaultAsync(cancellationToken);
 
-    /// <summary>Writes the message, or finds the one the same key wrote before (a retried send): <c>Replayed</c> is then true.</summary>
+    /// <summary>
+    /// Writes the message, or finds the one the same key wrote before (a retried send): <c>Replayed</c> is then true. <paramref name="received"/> is the event of a message of the guest,
+    /// recorded in the same save as the message (one per message: its key is the message), or <c>null</c>.
+    /// </summary>
     private async Task<(GuestThreadMessage Message, bool Replayed)> WriteAsync(
         Guid threadId,
         Guid orgId,
         GuestMessageSender sender,
+        MessageOrigin origin,
         string text,
         string key,
         string? userId,
         DateTime now,
-        CancellationToken cancellationToken)
+        GuestMessageReceivedPayload? received,
+        CancellationToken cancellationToken,
+        string? guideAnswer = null,
+        Booking? draftBooking = null,
+        string? localDraft = null)
     {
         var earlier = await FindByKeyAsync(threadId, key, cancellationToken);
         if (earlier is not null)
@@ -369,12 +485,51 @@ public sealed class GuestMessageService(
             OrgId = orgId,
             ThreadId = threadId,
             Sender = sender,
+            Origin = origin,
             Text = text,
             CreatedAt = now,
             IdempotencyKey = key,
             AuthorUserId = userId,
         };
         db.GuestMessages.Add(message);
+        if (guideAnswer is not null)
+        {
+            db.GuestMessages.Add(new GuestMessage
+            {
+                OrgId = orgId,
+                ThreadId = threadId,
+                Sender = GuestMessageSender.Host,
+                Origin = MessageOrigin.Assistant,
+                Text = guideAnswer,
+                CreatedAt = now.AddMilliseconds(1),
+                IdempotencyKey = $"guide:{message.Id:N}",
+            });
+        }
+        ApprovalQueueItem? draft = null;
+        if (draftBooking is not null && localDraft is not null)
+        {
+            // One save ties the draft to the inbound message, including competing retries.
+            draft = new ApprovalQueueItem
+            {
+                OrgId = orgId,
+                PropertyId = draftBooking.PropertyId,
+                ItemId = message.Id,
+                ItemType = ApprovalItemTypes.MessageDraft,
+                ThreadKey = MessageThreadKey.ForDirect(draftBooking.Id).ToString(),
+                ContentText = localDraft,
+                ContentVersion = ApprovalQueueRules.PortalLocalDraftVersion,
+                IsAiGenerated = false,
+                OriginAction = ApprovalOriginActions.SendGuestMessage,
+                OriginActionStatus = ApprovalOriginActionStatus.Pending,
+                Status = ApprovalStatus.Pending,
+                CreatedAt = now,
+                ExpiresAt = now.AddDays(ApprovalQueueRules.ExpirationDays),
+            };
+            db.ApprovalQueueItems.Add(draft);
+        }
+        if (received is not null)
+            events?.Record(DomainEventType.GuestMessageReceived, message.Id, received, $"direct-msg:{message.Id:N}", orgId);
+
         try
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -390,35 +545,37 @@ public sealed class GuestMessageService(
             return (winner, true);
         }
 
-        return (new GuestThreadMessage(message.Id, message.Sender, message.Text, message.CreatedAt), false);
+        if (draft is not null && draftAlerts is not null)
+            await draftAlerts.RaiseOrRetryAsync(new ApprovalAlert(orgId, draft.Id, now), cancellationToken);
+
+        return (new GuestThreadMessage(message.Id, message.Sender, message.Text, message.CreatedAt) { Origin = message.Origin }, false);
     }
 
     private Task<GuestThreadMessage?> FindByKeyAsync(Guid threadId, string key, CancellationToken cancellationToken) =>
         db.GuestMessages
             .AsNoTracking()
             .Where(m => m.ThreadId == threadId && m.IdempotencyKey == key)
-            .Select(m => new GuestThreadMessage(m.Id, m.Sender, m.Text, m.CreatedAt))
+            .Select(m => new GuestThreadMessage(m.Id, m.Sender, m.Text, m.CreatedAt) { Origin = m.Origin })
             .FirstOrDefaultAsync(cancellationToken);
 
     /// <summary>
-    /// The push (and, through the decorator, the in-app notification) to the hosts of the booking: one for every message of the guest,
-    /// unlike the email, which is throttled. The text names the property only, never the guest or the message. Best effort after the
-    /// message is saved: whatever goes wrong here is logged and never fails the send.
+    /// The alert to the hosts of the booking, through the decision point of the preferences (NF-65): the people who reach the property and chose
+    /// it get the counter, a push for every message of the guest (unlike the email, which is throttled) and an email to their own address at most
+    /// once every ten minutes. The texts name the property only, never the guest's words. After the message is saved, whatever goes wrong here
+    /// never fails the send: somebody who could not be alerted is alerted by a job that delivers the alert again
+    /// (<see cref="HostMessageAlertDelivery.DeliverOrRetryAsync"/>), and only a failure to queue that job is logged and lost.
     /// </summary>
-    private void PushToHosts(Booking booking, Guid messageId)
+    private async Task AlertHostsAsync(Booking booking, Guid threadId, Guid messageId, DateTime now, CancellationToken cancellationToken)
     {
         try
         {
-            var push = EmailTemplates.GuestMessagePush(EmailTemplates.DefaultCulture, booking.Property.Name);
-            pushNotifications.Enqueue(
-                PushDeliveryKeys.GuestMessage(messageId),
-                PushAudience.BookingHosts(booking.Id),
-                new PushNotificationPayload(
-                    push.Title, push.Body, PushTypes.GuestMessage, booking.Id, PushRoutes.BookingMessages(booking.Id)));
+            await hostAlerts.DeliverOrRetryAsync(
+                new HostMessageAlert(booking.OrgId, HostMessageSource.Direct, NotificationEventType.NewGuestMessage, threadId, messageId, now),
+                cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "Push about message {MessageId} of booking {BookingId} could not be prepared", messageId, booking.Id);
+            logger.LogError(ex, "The alert to the hosts about message {MessageId} of booking {BookingId} could not be prepared", messageId, booking.Id);
         }
     }
 
@@ -443,43 +600,7 @@ public sealed class GuestMessageService(
         }
     }
 
-    /// <summary>
-    /// The email to the host: «the guest wrote», without the text, at most one every ten minutes per thread. Best effort after the
-    /// message is saved: whatever goes wrong here is logged and never fails the send.
-    /// </summary>
-    private async Task NotifyHostAsync(Booking booking, Guid threadId, DateTime now, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var cutoff = now.AddMinutes(-GuestMessageRules.NotifyIntervalMinutes);
-            var claimed = await db.GuestThreads
-                .Where(t => t.Id == threadId && (t.HostNotifiedAt == null || t.HostNotifiedAt <= cutoff))
-                .ExecuteUpdateAsync(set => set.SetProperty(t => t.HostNotifiedAt, now), cancellationToken);
-            if (claimed == 0)
-                return;
-
-            var content = EmailTemplates.GuestMessageToHost(
-                EmailTemplates.DefaultCulture,
-                $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim(),
-                booking.Property.Name,
-                booking.CheckInDate,
-                booking.CheckOutDate,
-                links.IsConfigured ? links.HostBookingMessages(booking.Id) : null);
-            if (!emailQueue.Enqueue(booking.Org.ContactEmail, content, EmailTemplates.Names.GuestMessageToHost))
-            {
-                // Not queued (no address, provider off): give the slot back, so the next message tries again.
-                await db.GuestThreads
-                    .Where(t => t.Id == threadId && t.HostNotifiedAt == now)
-                    .ExecuteUpdateAsync(set => set.SetProperty(t => t.HostNotifiedAt, (DateTime?)null), cancellationToken);
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "The email to the host about thread {ThreadId} could not be prepared", threadId);
-        }
-    }
-
-    /// <summary>The email to the guest: «the host answered», without the text, at most one every ten minutes per thread. Best effort, like the host's.</summary>
+    /// <summary>The email to the guest: «the host answered», without the text, at most one every ten minutes per thread. Best effort, like the alert to the hosts.</summary>
     private async Task NotifyGuestAsync(Booking booking, Guid threadId, DateTime now, CancellationToken cancellationToken)
     {
         try
@@ -487,6 +608,14 @@ public sealed class GuestMessageService(
             // An erased guest keeps a placeholder address that is never deliverable (GuestDataEraser).
             if (booking.Guest.DataAnonymizedDate is not null || string.IsNullOrWhiteSpace(booking.Guest.Email))
                 return;
+
+            // E40/F01/US01/T03: the booking area of the agency's own domain when its guest area is served there. Read before the claim below, so
+            // nothing can stop between the claim and the e-mail.
+            var portalUrl = PortalEnabled && stayLinks is not null
+                ? await stayLinks.UrlAsync(booking.OrgId, booking.Id, cancellationToken) : null;
+            var bookingArea = portalUrl ?? (links.IsConfigured
+                ? (await agencyLinks.ForOrgOrPlatformAsync(links, booking.OrgId, cancellationToken)).GuestBookings(booking.Org.Slug, BookingCodes.Format(booking.BookingCode))
+                : null);
 
             var cutoff = now.AddMinutes(-GuestMessageRules.NotifyIntervalMinutes);
             var claimed = await db.GuestThreads
@@ -496,12 +625,17 @@ public sealed class GuestMessageService(
                 return;
 
             var hostName = string.IsNullOrWhiteSpace(booking.Org.DisplayName) ? booking.Property.Name : booking.Org.DisplayName.Trim();
+            // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
+            var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
+            // E50/F01/US03/T02: with the guest portal on, in the language of the guest (the check-in page, the country, the account of the host); without it, in Italian as ever.
+            var culture = await emailLanguage.CultureOrAsync(booking.OrgId, booking.Id, EmailTemplates.DefaultCulture, cancellationToken: cancellationToken);
             var content = EmailTemplates.HostReplyToGuest(
-                EmailTemplates.DefaultCulture,
+                culture,
                 booking.Guest.FirstName,
                 hostName,
                 booking.Property.Name,
-                links.IsConfigured ? links.GuestBookings(booking.Org.Slug, BookingCodes.Format(booking.BookingCode)) : null);
+                bookingArea,
+                branding);
             if (!emailQueue.Enqueue(booking.Guest.Email, content, EmailTemplates.Names.HostReplyToGuest))
             {
                 await db.GuestThreads

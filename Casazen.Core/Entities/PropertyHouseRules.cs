@@ -9,6 +9,11 @@ namespace Casazen.Core.Entities;
 /// stored, and the one link between them and the rest of the property, the two amenities the structured house rules decide.
 /// One place for the host forms, the property service and the tests.
 /// </summary>
+/// <remarks>
+/// The structured rules are smoking, pets, parties, children (<see cref="Property.ChildrenPolicy"/>, NF-37) and the quiet hours. Smoking and pets
+/// decide an amenity; children, parties and the quiet hours decide nothing else: they are stored as they are said, and
+/// <see cref="Property.ChildrenWelcome"/> of the site profile (the label of the public page) is its own answer.
+/// </remarks>
 public static class PropertyHouseRules
 {
     /// <summary>Fewest beds a host can state.</summary>

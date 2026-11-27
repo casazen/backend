@@ -37,6 +37,7 @@ public class SupplierServiceRegistrationTests
         db.Orgs.Add(org);
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = org.Id,
             Email = org.ContactEmail,
             LegalName = org.DisplayName,
@@ -211,6 +212,7 @@ public class SupplierServiceRegistrationTests
         db.Orgs.Add(org);
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = org.Id,
             Email = org.ContactEmail,
             LegalName = org.DisplayName,

@@ -190,6 +190,14 @@ public class StayLifecyclePostgresTests : IClassFixture<CasazenWebApplicationFac
     public async Task ComplianceSummary_CheckoutsDue_CountsTodaysDeparturesConfirmedOrCheckedInAndOpenStays()
     {
         var (hostId, property) = await SeedHostPropertyAsync();
+        // casazen/backend#978: the departures are the host's here; by default CasaZen registers today's departures itself and lists only the overdue ones.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.BookingFlowSettings.Add(new BookingFlowSettings { OrgId = property.OrgId, CheckInLinkDaysBefore = 3, DepartureMode = BookingFlowMode.Manual });
+            await db.SaveChangesAsync();
+        }
+
         var confirmedToday = await SeedBookingAsync(property, BookingStatus.Confirmed, Today.AddDays(-2), Today);
         var checkedInToday = await SeedBookingAsync(property, BookingStatus.CheckedIn, Today.AddDays(-3), Today);
         var checkedInOverdue = await SeedBookingAsync(property, BookingStatus.CheckedIn, Today.AddDays(-4), Today.AddDays(-1));

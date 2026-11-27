@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,15 @@ namespace Casazen.Core.Entities;
 [Table("Bookings")]
 public class Booking : ITenantOwned
 {
+    /// <summary>Longest <see cref="OctorateReservationId"/>: the column is varchar(50) (E02/F02/US01/T01, ADR-033-R1).</summary>
+    public const int OctorateReservationIdMaxLength = 50;
+
+    /// <summary>
+    /// Name of the unique index on (<see cref="OrgId"/>, <see cref="OctorateReservationId"/>), filtered to the rows that have an
+    /// Octorate id: a reservation is one booking in an org, whoever imports it and however many times.
+    /// </summary>
+    public const string OctorateReservationIndexName = "UIX_Bookings_OrgId_OctorateReservationId";
+
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -57,6 +67,12 @@ public class Booking : ITenantOwned
     /// </summary>
     public DateTime? CheckedOutAt { get; set; }
 
+    /// <summary>
+    /// When the host marked the stay as a no-show (UTC, NF-45): a confirmed booking whose guest never arrived. The status stays
+    /// <see cref="BookingStatus.Confirmed"/>; a late arrival clears it. Null for every other stay.
+    /// </summary>
+    public DateTime? NoShowAt { get; set; }
+
     public int NumberOfGuests { get; set; }
 
     [Required]
@@ -79,9 +95,34 @@ public class Booking : ITenantOwned
     /// </summary>
     public Guid? ICalFeedId { get; set; }
 
-    /// <summary>Label of that feed when the stay was created (e.g. "Booking.com - camera 2"), shown next to the source.</summary>
+    /// <summary>
+    /// Label of that feed when the stay was created (e.g. "Booking.com - camera 2"), shown next to the source; for a booking imported from the
+    /// channel manager from a portal that has no <see cref="BookingSource"/> of its own (<see cref="BookingSource.OtherChannel"/>), the name Octorate gives it.
+    /// </summary>
     [MaxLength(PropertyICalFeed.LabelMaxLength)]
     public string? ChannelLabel { get; set; }
+
+    /// <summary>
+    /// Where the guest of a booking came from (E27/F01/US01/T01, NF-123): the <c>source</c> of the link the guest booked from (<c>agency-site</c> for a link
+    /// the agency copied from CasaZen) or <c>octorate-booking-engine</c> for a reservation of the booking engine of the agency that the import made. With
+    /// <see cref="Source"/> it gives the origin of the booking (<see cref="BookingOrigins.Of(BookingSource, string?)"/>); <see cref="Source"/> itself is never
+    /// changed by it. A lower-case token, at most <see cref="BookingAttribution.MaxSourceLength"/> characters, never personal data
+    /// (<see cref="BookingAttribution.Sanitize"/>); <c>null</c> for every booking that came from no link, and for every booking made before it.
+    /// </summary>
+    [MaxLength(BookingAttribution.MaxSourceLength)]
+    public string? AttributionSource { get; set; }
+
+    /// <summary>The <c>medium</c> of the link the guest booked from (e.g. <c>link</c>); a lower-case token like <see cref="AttributionSource"/>, <c>null</c> when it had none.</summary>
+    [MaxLength(BookingAttribution.MaxMediumLength)]
+    public string? AttributionMedium { get; set; }
+
+    /// <summary>The <c>campaign</c> label of the link the guest booked from (e.g. <c>estate-2026</c>); a lower-case token like <see cref="AttributionSource"/>, <c>null</c> when it had none.</summary>
+    [MaxLength(BookingAttribution.MaxCampaignLength)]
+    public string? AttributionCampaign { get; set; }
+
+    /// <summary>The host name of the site the guest came from (e.g. <c>www.agenzia.it</c>), never the address of a page: no scheme, credentials, port, path or query.</summary>
+    [MaxLength(BookingAttribution.MaxReferrerHostLength)]
+    public string? AttributionReferrerHost { get; set; }
 
     /// <summary>
     /// OTA stay from iCal "da verificare" (CO-21): why a sync of its feed asks the host to check the reservation on the
@@ -91,6 +132,56 @@ public class Booking : ITenantOwned
 
     /// <summary>When the sync raised <see cref="OtaReviewReason"/> (UTC).</summary>
     public DateTime? OtaReviewRaisedAt { get; set; }
+
+    /// <summary>
+    /// The id of the reservation on Octorate (E02/F02/US01/T01, ADR-033-R1): the key of the import, unique within the org
+    /// (<see cref="OctorateReservationIndexName"/>). <c>null</c> for every booking that does not come from the channel manager and was
+    /// not sent to it. <see cref="ExternalId"/> keeps its own meaning (the reference on the channel) and is never used for it.
+    /// </summary>
+    [MaxLength(OctorateReservationIdMaxLength)]
+    public string? OctorateReservationId { get; set; }
+
+    /// <summary>
+    /// The <c>updateTime</c> of the Octorate reservation last applied to this booking (UTC). A read of the same reservation with an older
+    /// or equal time changes nothing, so two reads that reach the database in swapped order never undo the newer one. <c>null</c> while
+    /// the booking has no Octorate reservation, or Octorate gave no time.
+    /// </summary>
+    public DateTime? OctorateUpdatedAt { get; set; }
+
+    /// <summary>
+    /// What the channel kept as commission on an imported booking: the sum of the <c>COMMISSION</c> lines of the price breakdown of the
+    /// reservation; <c>null</c> when it has none (never derived from another figure, ADR-033-R2: a screen says "not available", not zero).
+    /// Read-only after the import (ADR-033-R3).
+    /// </summary>
+    [Precision(10, 2)]
+    public decimal? OtaCommission { get; set; }
+
+    /// <summary>The net the host receives; <c>null</c> until Octorate documents a field for it (never computed here). Read-only after the import.</summary>
+    [Precision(10, 2)]
+    public decimal? OtaNetAmount { get; set; }
+
+    /// <summary>What the guest paid (<c>totalPaid</c> of the reservation); <c>null</c> when Octorate does not say. Read-only after the import.</summary>
+    [Precision(10, 2)]
+    public decimal? OtaPaidAmount { get; set; }
+
+    /// <summary>What is still to pay; <c>null</c> until Octorate documents a field for it (never computed here). Read-only after the import.</summary>
+    [Precision(10, 2)]
+    public decimal? OtaBalanceAmount { get; set; }
+
+    /// <summary>
+    /// Who collects the payment of a booking that came from a channel (E08/F03/US03/T02, NF-77): <c>true</c> when the channel (the company) collects it,
+    /// <c>false</c> when the host does; <c>null</c> when Octorate does not say (<c>companyCollect</c> absent or <c>NONE</c>, as in the sandbox samples) and for
+    /// every booking that does not come from a channel. Read-only after the import, like the figures above (ADR-033-R3): only the import writes it.
+    /// </summary>
+    public bool? OtaCompanyCollect { get; set; }
+
+    /// <summary>
+    /// Whether the portal of a booking that came from a channel pays the host net of its commission, so the commission is already taken out of the
+    /// payments (<c>commissionIncludedInPayments</c> of the portal catalog, <c>GET /rest/v1/meta/portals</c>, kept by <see cref="MarketplacePortal"/>: it is
+    /// not a member of the reservation). <c>null</c> when the portal is not in the catalog the marketplace caches, and for every booking that does not come
+    /// from a channel. Read-only after the import (ADR-033-R3).
+    /// </summary>
+    public bool? OtaCommissionIncludedInPayments { get; set; }
 
     /// <summary>Lodging (nightly rate x nights) plus <see cref="CleaningFee"/>; tourist tax excluded.</summary>
     [Precision(18, 2)]
@@ -148,6 +239,14 @@ public class Booking : ITenantOwned
     /// </summary>
     [MaxLength(Services.ArrivalTimeRules.MaxLength)]
     public string? ExpectedArrivalTime { get; set; }
+
+    /// <summary>
+    /// Plate of the car the guests arrive with («Numero autovettura» of the Ticino police file, NF-132, casazen/backend#979); null when not given.
+    /// Optional, asked only where the property is in canton Ticino; stored upper case without spaces (<see cref="Regulatory.VehiclePlates"/>,
+    /// at most <see cref="Regulatory.VehiclePlates.MaxLength"/> characters, checked on input). Encrypted at rest (<c>EncryptedColumns</c>): the
+    /// column is <c>text</c>. Cleared with the guest's data when the guest is erased or the Alloggiati data retention runs.
+    /// </summary>
+    public string? VehiclePlate { get; set; }
 
     /// <summary>Payment option selected: Immediate (pay now), OnCancellationDeadline (pay on deadline), OnSite (pay at property).</summary>
     [Required]
@@ -234,6 +333,18 @@ public class Booking : ITenantOwned
     public string? CheckoutTokenHash { get; set; }
 
     /// <summary>
+    /// How the guest of a booking the host entered is to pay it (the payment step of the new-booking wizard, NF-74, E08/F01/US01/T05):
+    /// payment link, at the property or bank transfer. <c>null</c> for every other booking and for the host bookings made before it.
+    /// </summary>
+    public HostPaymentArrangement? HostPaymentArrangement { get; set; }
+
+    /// <summary>
+    /// When the last payment link of the balance was sent to the guest (UTC, E08/F01/US01/T05). A new link replaces the token in
+    /// <see cref="CheckoutTokenHash"/>, so the previous link stops working. <c>null</c> when no link was ever sent.
+    /// </summary>
+    public DateTime? PaymentLinkSentAt { get; set; }
+
+    /// <summary>
     /// SHA-256 (hex) of the one-time guest self-cancellation token (BK-02, BK-07): the raw token is only in the
     /// signed link emailed to the guest. Invalidated after use or when a new link is sent.
     /// </summary>
@@ -290,7 +401,13 @@ public enum BookingSource
     /// public checkout of the booking site. Created <see cref="BookingStatus.Confirmed"/>, it occupies its dates at
     /// once and is never touched by the expiry of abandoned checkout holds (PC-01, A2-01). Stored as 8.
     /// </summary>
-    Manual
+    Manual,
+
+    /// <summary>
+    /// A portal of the channel manager that has no value of its own here (E02/F02/US01/T01): the name Octorate gives it is kept in
+    /// <see cref="Booking.ChannelLabel"/>. An OTA like the others for the fiscal rules. Appended after <see cref="Manual"/>: stored as 9.
+    /// </summary>
+    OtherChannel = 9,
 }
 
 /// <summary>Reason of a cancellation made by the system (<see cref="Booking.CancellationReason"/>). Stored as an integer.</summary>

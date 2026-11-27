@@ -9,8 +9,10 @@ download of the feed (anti-SSRF client, size and time limits, error codes) is de
 [external-fetch.md](external-fetch.md) (FD-16). This page covers the import feeds of a property (many per property, URL
 encrypted), what happens after the download (how a feed is read, when it is an error), how the sync job isolates feeds,
 the export feed read by the OTAs ([Export feed](#export-feed-pc-12)), the OTA stays the host creates from imported
-blocks ([OTA stays from iCal blocks](#ota-stays-from-ical-blocks-co-21)) and the dates the host closes by hand
-([Manual blocks](#manual-blocks-pc-09), PC-09).
+blocks ([OTA stays from iCal blocks](#ota-stays-from-ical-blocks-co-21)), the dates the host closes by hand
+([Manual blocks](#manual-blocks-pc-09), PC-09) and the Octorate calendar that takes over from the feeds of the channels of a connected
+listing ([The Octorate calendar replaces the import of a channel](#the-octorate-calendar-replaces-the-import-of-a-channel-e02f02us01t03),
+E02/F02/US01/T03).
 
 Nothing has to be configured: the defaults below apply when the `ICalImport` section is missing. The encryption of the
 import URLs uses the Data Protection key ring of [storage.md](storage.md) (FD-07), already required by the OTA secrets.
@@ -28,6 +30,7 @@ import URLs uses the Data Protection key ring of [storage.md](storage.md) (FD-07
 | Export link of a property, token and its regeneration (PC-12) | entity `PropertyICalExport` (table `PropertyICalExports`), `PropertyICalSyncService.RegenerateExportTokenAsync` |
 | Supplier sync (SU-15): state, "sync now", days of the feed vs manual days; windows of hours (SP-05); unlinking (SP-03b, `DisconnectIcalFeedAsync`) | `Services/CalendarSyncService.cs`, job `Web/BackgroundJobs/IcalSupplierSyncJob.cs`, actions `calendar/*` of `Web/Controllers/SupplierProfileController.cs`; the mapping of a supplier feed to days and windows is `ICalImportService.ToSupplierBusy` |
 | OTA stay from a block (CO-21): rules, conversion, "da verificare" | `Core/Services/OtaStays.cs`, `Services/OtaStayService.cs`, `PropertyICalSyncService.ReviewOtaStaysAsync`, `Web/Controllers/OtaStaysController.cs` |
+| The Octorate calendar replaces the import of a channel (E02/F02/US01/T03): the closed nights as blocks, the hand-over of the feeds | `Infrastructure/Jobs/CalendarSyncJob.cs`, `Infrastructure/Octorate/OctorateClosedNights.cs`, `OctorateCalendarReader.cs`, `ICalMigrationService.cs`, `OctorateApiClient.GetCalendarAsync` |
 
 The former F0 spike (`Casazen.Infrastructure/ICalSpike`, `ICalImportSpike`) no longer exists.
 
@@ -418,6 +421,99 @@ manual blocks stay as blocks (nights still taken), without reason.
 2. `GET /api/public/bookings/property/{id}/availability?...` lists the two nights; the export link
    (`GET /api/properties/{id}/ical/export-url`) contains `UID:block-{id}` with `SUMMARY:Occupato` and no note.
 3. A host booking on those nights answers 409 `booking_dates_unavailable`; deleting the block frees them.
+
+## The Octorate calendar replaces the import of a channel (E02/F02/US01/T03)
+
+Behind `Features:OctorateConnector` (ADR-002 amended 2026-11-03, NF-28, NF-36). For a property with a confirmed Octorate listing, the calendar of the
+channel manager takes over from the iCal feeds of the channels the listing has. The properties without a listing are not touched, and nothing here
+needs a variable.
+
+### Job `CalendarSync` (every 15 minutes, UTC)
+
+`Casazen.Infrastructure/Jobs/CalendarSyncJob.cs`, next to `property-ical-sync` (which keeps its own schedule). For every confirmed mapping with a room
+chosen, of every org whose connection to this environment is connected, under the org of the listing (`IOctorateOrgScope`), it reads
+`GET /rest/v1/calendar/{acc}` for the room, from today on the clock of the property to 365 days later, the last day included. It only reads: the push
+of manual blocks, prices and restrictions is E08/F05/US02 (PO-16, one writer for each direction).
+
+| Octorate says | CasaZen does |
+|---|---|
+| `stopSells` | the night is closed |
+| availability 0 on a day that has a price (or whose answer carries no price) | the night is closed |
+| availability 0 and price 0 | nothing: the day was never opened (the sandbox shows a calendar that was never filled, or cannot be written for lack of a licence, like this); no channel can sell it, and reading it as closed would shut the property on the booking site |
+| neither availability nor `stopSells` (only a date, or a date and a price) | nothing: the day is no reading of the calendar, it cannot tell an open night from a closed one |
+| minimum or maximum stay, closed arrival, closed departure | nothing: they close no night, and CasaZen is the sole writer of the restrictions; the client reads them for the pricing tasks of E08/F05 |
+
+An open day needs an explicit signal: the units available or the stop flag. An answer in which **no** day has either is not understood (it is not "everything
+is open"): the run changes nothing and deprecates nothing, and the log says so (`no day of the answer says its availability or whether it is stopped`).
+
+The answer must also reach both ends of the window that was asked for: a day on the first date and one on the last. An answer that stops short (days
+left out, or a second `page` that the client does not follow) says nothing about the nights after it, and a night that is not in the answer is not known
+to be open: the run changes nothing and deprecates nothing, and the log says so (`the answer does not reach both ends of the window`). The next run
+reads the window again.
+
+A calendar in which **no** day is opened (no unit, no price and nothing stopped, on every day read) is not a live calendar of the room: the run reads
+nothing from it, the Octorate blocks stay as they were and no feed is deprecated, so the iCal feeds keep being imported until a day is opened. The log
+says so (`no day of the room has been opened`).
+
+The closed nights that nothing else takes become blocks of source `Octorate` (2): one for each run of consecutive nights, UID `octorate:{date of the
+first night}` (the same closure keeps its row from one run to the next), no feed, no currency, note "Octorate" (shown to the host only). A night that a
+booking (not cancelled: the reservation of a channel, or one CasaZen sent to Octorate), a manual block or an iCal block takes is skipped: the host sees
+one thing for one night, and a closure CasaZen made and sent to Octorate does not come back as a second block. Each run replaces the Octorate blocks of
+the property in one transaction, under the iCal lock of the property (`PropertyICalSync`): a night that was reopened leaves its block, a row that did not
+change is not written.
+
+- *Occupancy.* The blocks take their nights by the one rule of `PropertyOccupancy`: the availability of the booking site, the checks of a booking and the
+  host calendar (an `ical-block` item with `blockSource: "Octorate"` and no channel) read them like any other block. They are never exported (the export
+  carries the manual blocks only: no echo), never converted into a stay, and the host cannot remove them (422 `calendar_block_not_manual`): the nights
+  are opened in Octorate.
+- *A read that cannot be trusted changes nothing.* A failed call, an answer with no day of the room (an answer with no recognizable day at all is an
+  `OctorateServerException` of the client, never an empty calendar), an answer that stops short of the window, an answer in which no day has units or a
+  stop flag, or an error of the database leaves the blocks as they were and deprecates nothing.
+  A property that fails does not stop the others; an org whose connection is refused, in the wrong environment or over its rate limit stops until the
+  next run. No retry by Hangfire: the next run reads the same window.
+- *No longer mapped.* At the end of a run the Octorate blocks of a property with no confirmed mapping at all (the host rejected the listing or mapped
+  the property again) are removed. A property whose mapping is confirmed but whose connection is disconnected or in error keeps them: a failing
+  connection must not reopen nights the channel manager holds closed. Its deprecated feeds, like those of a property with no confirmed mapping, are given
+  back to the import (see "Hand-over of the feeds").
+- *Log.* Counts and ids, per property when something changed (`Debug` when not) and one line for the run; no address, no name, no amount.
+
+### Hand-over of the feeds (`ICalMigrationService`)
+
+After a read that worked, `DeprecateCoveredFeedsAsync(propertyId)` sets `PropertyICalFeed.Deprecated` and `DeprecatedAt` on the feeds of the property (of
+the org of the mapping, not already deprecated) whose channel is one of the portals of the confirmed listing, the keys of `ChannelIdsJson`: `274`
+Airbnb and `142` Booking.com. Until then, and after a failed read, the feeds keep being imported: no gap and no double import.
+
+- A feed of channel `Other` is never deprecated automatically: Octorate does not know its source.
+- *The hand-over is not one way.* At the end of each run `ReinstateFeedsAsync` clears `Deprecated` and `DeprecatedAt` on the deprecated feeds of every
+  property the job does not read now, that is a property whose mapping is not confirmed (the host rejected the listing or mapped the property again)
+  or whose connection is not connected (the token was refused, the host disconnected), or whose listing has no room chosen: no source would keep its
+  calendar up to date otherwise, and the feeds are imported again by `property-ical-sync`. The first read that works after the listing is back
+  deprecates them again. A read that merely failed (a call, an answer that cannot be used) changes nothing: the feeds stay deprecated and the blocks stay.
+  The log names the property and the feeds by id. With `Features:OctorateConnector` off the job is removed, so nothing gives the feeds back: after
+  turning the flag off on an environment that had handed feeds over, clear the two columns by hand
+  (`UPDATE "PropertyICalFeeds" SET "Deprecated" = false, "DeprecatedAt" = NULL WHERE "Deprecated"`) to have them imported again.
+- `PropertyICalSyncService.SyncAllFeedsAsync` skips a deprecated feed (ADR-002-R14). The feed, the blocks it imported and the export are kept
+  (ADR-002-R13). The blocks of a deprecated feed are no longer refreshed: the host removes the feed, and CasaZen's iCal link in the channel's own
+  settings, when it is no longer needed. "Sync now" of one feed stays the host's explicit choice.
+- `GET /api/properties/{id}/ical/feeds` answers `deprecated` and `deprecatedAt` for each feed (the channels page tells the host, ADR-002-R12);
+  `GET /api/dashboard/ical-feeds` and the calendar overview (`GET /api/properties/calendar-overview`) answer `deprecated`, so that a feed that is no
+  longer synced is not marked "to check" for a last try that gets old.
+- The log names the property and the feeds by id, never the address of a feed.
+
+### Migration `AddICalFeedDeprecationAndOctorateBlocks`
+
+Adds `PropertyICalFeeds.Deprecated` (boolean, default false) and `DeprecatedAt` (nullable), and the unique index
+`UIX_CalendarBlocks_PropertyId_ExternalUid_Octorate` on `(PropertyId, ExternalUid)` filtered to `"Source" = 2`; the index of the foreign key
+`IX_CalendarBlocks_PropertyId` is declared in the model so that the filtered index does not replace it. No data is changed. Rollback drops the two
+columns and the index; if the code that wrote them is rolled back too, delete the blocks of source 2 first.
+
+### Checks after a deploy
+
+1. With the flag on and a confirmed listing whose room has a closed night in Octorate: within 15 minutes `GET /api/bookings/calendar?propertyId=...`
+   shows an `ical-block` item with `blockSource: "Octorate"` on that night, and the public availability of the property lists it as taken.
+2. The Airbnb or Booking.com feed of that property now answers `deprecated: true` and a `deprecatedAt` in `GET /api/properties/{id}/ical/feeds`; a feed
+   of channel `Other` still answers `false`; `property-ical-sync` no longer downloads the deprecated one.
+3. The export link of the property still answers 200 and carries the manual blocks and the bookings of CasaZen, none of the Octorate blocks.
 
 ## When a feed is valid
 

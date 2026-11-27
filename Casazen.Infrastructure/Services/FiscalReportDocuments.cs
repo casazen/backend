@@ -441,6 +441,7 @@ public static class FiscalReportDocuments
         nameof(BookingSource.Direct) => "Sito di prenotazione",
         nameof(BookingSource.Manual) => "Inserita dall'host",
         nameof(BookingSource.Local) => "Locale",
+        nameof(BookingSource.OtherChannel) => "Altro canale",
         _ => source,
     };
 

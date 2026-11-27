@@ -1,3 +1,4 @@
+using Casazen.Core.Bookings;
 using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs;
@@ -48,6 +49,30 @@ public class BookingResponseDto
     /// <summary>Reason the host wrote when cancelling (host only).</summary>
     public string? CancellationNote { get; set; }
     public string Source { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The channel of a booking that came from a channel through the channel manager (E02/F02/US01/T01, E08/F03/US03/T02, ADR-033-R9, read-only):
+    /// <c>Airbnb</c>, <c>BookingCom</c>, <c>Expedia</c>, <c>Vrbo</c>, <c>TripAdvisor</c>, <c>Agoda</c> or <c>OtherChannel</c> (the name is in
+    /// <see cref="ChannelLabel"/>). <c>null</c> for every other booking: one the host entered, one made on the booking site (CasaZen sends it to Octorate,
+    /// where it has a reservation too, but it does not come from a channel), a stay from an iCal feed, a reservation of the booking engine of the agency
+    /// (it counts as direct). This is what the "OTA" badge reads.
+    /// </summary>
+    public string? OtaSource { get; set; }
+
+    /// <summary>
+    /// Where the booking came from, in the four words the host reads (E27/F01/US01/T01, NF-123, <see cref="BookingOrigin"/>): <c>Portal</c> (a channel of the
+    /// channel manager, named by <see cref="OriginChannel"/>), <c>AgencySite</c> (a booking of the booking site made from a link of the agency, or a reservation of
+    /// the booking engine of the agency), <c>CasaZenSite</c> (a booking of the booking site with no attribution of the agency) or <c>Manual</c> (entered by the host).
+    /// <see cref="Source"/> is unchanged: the invoicing reasons per channel.
+    /// </summary>
+    public string Origin { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The channel of a booking whose <see cref="Origin"/> is <c>Portal</c>: the name of its source (<c>Airbnb</c>, <c>BookingCom</c>, <c>Expedia</c>, <c>Vrbo</c>,
+    /// <c>TripAdvisor</c>, <c>Agoda</c> or <c>OtherChannel</c>, whose name is in <see cref="ChannelLabel"/>); <c>null</c> for every other origin.
+    /// </summary>
+    public string? OriginChannel { get; set; }
+
     public string SpecialRequests { get; set; } = string.Empty;
 
     /// <summary>
@@ -117,6 +142,13 @@ public class BookingResponseDto
     /// booking that is not cancelled can always be changed.
     /// </summary>
     public BookingEditabilityDto CanEdit { get; set; } = new();
+
+    /// <summary>
+    /// What the host may do with the booking, and when not why and how to ask for it (E08/F03/US03/T02, NF-75, NF-76): <c>BookingEditRules.ChangeOptionsOf</c>,
+    /// the rule of <c>PUT /api/bookings/{id}</c> and of the cancellation, with the rule of the channel for a booking that came from one. It is not money, so
+    /// every answer that carries a booking has it, the lists included.
+    /// </summary>
+    public BookingChangeOptionsDto ChangeOptions { get; set; } = new();
 }
 
 /// <summary>Whether the dates and guests of a booking may be changed (SR-05a), and why not.</summary>
@@ -141,7 +173,9 @@ public sealed class BookingEditabilityDto
 
 /// <summary>
 /// The booking of <c>GET /api/bookings/{id}</c> (SR-05a): the booking, as everywhere, and the state of what is tied to it. Only the detail
-/// reads these (they cost a query), so they are not on the booking of the other endpoints; the lists have their own (<see cref="BookingListItemDto"/>).
+/// reads these (they cost a query, or are money and need the permission of the caller), so they are not on the booking of the other endpoints; the
+/// lists have their own (<see cref="BookingListItemDto"/>). What every booking answer carries, the lists too, is the base: the channel
+/// (<see cref="BookingResponseDto.OtaSource"/>), <see cref="BookingResponseDto.CanEdit"/> and <see cref="BookingResponseDto.ChangeOptions"/>.
 /// </summary>
 public class BookingDetailDto : BookingResponseDto
 {
@@ -155,10 +189,60 @@ public class BookingDetailDto : BookingResponseDto
     public decimal? PaidAmount { get; set; }
 
     /// <summary>
+    /// The amounts of the channel of a booking that came from a channel (E02/F02/US01/T01, E08/F03/US03/T02, ADR-033-R8, read-only): commission, net, paid
+    /// and balance, each <c>null</c> when Octorate does not give it ("not available", never zero), exactly as stored. They are also there for a reservation
+    /// of the booking engine of the agency that the import made (it counts as direct, but its money is Octorate's). <c>null</c> for any other booking,
+    /// one CasaZen made and sent to Octorate included, and for a caller without <c>payment.read</c> (as <see cref="PaidAmount"/>).
+    /// </summary>
+    public OtaAmountsDto? OtaAmounts { get; set; }
+
+    /// <summary>
+    /// Who collects the payment of a booking that came from a channel and whether the commission is already taken out of it (E08/F03/US03/T02, NF-77); each
+    /// flag <c>null</c> when it is not known. <c>null</c> for a booking that does not come from a channel, and for a caller without <c>payment.read</c> (as
+    /// <see cref="OtaAmounts"/>).
+    /// </summary>
+    public BookingCollectionDto? Collection { get; set; }
+
+    /// <summary>
+    /// Where each figure of the booking comes from (E08/F03/US03/T02, NF-77): Stripe for a booking of the booking site, the channel manager for a booking of a
+    /// channel (or a reservation of the booking engine of the agency), the host for what was entered by hand. <c>null</c> for a caller without
+    /// <c>payment.read</c> (as <see cref="PaidAmount"/>).
+    /// </summary>
+    public BookingAmountSourcesDto? AmountSources { get; set; }
+
+    /// <summary>
+    /// The mirror of the booking on the channel manager (E08/F03/US03/T02, NF-74): the state of the last operation sent, why it failed, whether the host can ask
+    /// for it again and, in a conflict, what Octorate holds. <c>null</c> when the booking is not mirrored. It is no money, so the caller needs only to read the booking.
+    /// </summary>
+    public BookingOctorateSyncDto? OctorateSync { get; set; }
+
+    /// <summary>
     /// Every guest of the stay has every field of the Alloggiati record, whoever entered them; <c>null</c> for a booking that has no
     /// communication (a request, a hold, a cancelled booking).
     /// </summary>
     public bool? GuestDataComplete { get; set; }
+}
+
+/// <summary>
+/// The four amounts a channel manager gives for an imported booking, in <see cref="Currency"/> (the currency of the property). Each is
+/// <c>null</c> when it is not available: a screen says so and a report counts it apart, neither treats it as zero.
+/// </summary>
+public sealed class OtaAmountsDto
+{
+    /// <summary>What the channel kept: the sum of the commission lines of the reservation.</summary>
+    public decimal? Commission { get; init; }
+
+    /// <summary>What the host receives; not available until Octorate gives a field for it.</summary>
+    public decimal? Net { get; init; }
+
+    /// <summary>What the guest paid.</summary>
+    public decimal? Paid { get; init; }
+
+    /// <summary>What is still to pay; not available until Octorate gives a field for it.</summary>
+    public decimal? Balance { get; init; }
+
+    /// <summary>ISO 4217 code of the property: the amounts are in it.</summary>
+    public string Currency { get; init; } = StayCurrency.Default;
 }
 
 /// <summary>

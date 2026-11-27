@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Leases.Reading;
@@ -63,13 +64,15 @@ public sealed class CfDocsRealExtractionTests
         Assert.Contains("\"kind\":\"attestation\",\"firstPage\":7,\"lastPage\":10", stored.ExtractionResult);
 
         // DATA RULE PROOF (privacy): the attestation and the sheet name the people, the town, the organizations and the rent: none of it is kept.
+        // Remove only complete UUID values: a valid person-link id can coincidentally contain the digits of an amount.
+        var extractionWithoutIds = Regex.Replace(stored.ExtractionResult!, "\"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\"", "\"id\"");
         foreach (var personal in new[]
                  {
                      "Mario", "Rossi", "Giulia", "Verdi", RealFormatDocument.LandlordFiscalCode, RealFormatDocument.TenantFiscalCode, "Bollate",
                      "Garbagnate", "FEDERCASA", "Confproprieta", "595", "7.140", "1785", "Via Verdi",
                  })
         {
-            Assert.DoesNotContain(personal, stored.ExtractionResult);
+            Assert.DoesNotContain(personal, extractionWithoutIds);
         }
 
         // The screen of the documents is told the sections, in words of its own, from the list of the documents and from the reading of the draft.

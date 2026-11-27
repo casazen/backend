@@ -28,7 +28,7 @@ public static class LeaseDraftPatch
     private static readonly string[] Step4Keys = ["startDate", "endDate", "transitoryDocumentation"];
     private static readonly string[] Step5Keys = ["parties"];
 
-    private static readonly string[] PartyKeys = ["id", "firstName", "lastName", "fiscalCode", "citizenship", "residence", "contactEmail"];
+    private static readonly string[] PartyKeys = ["id", "firstName", "lastName", "fiscalCode", "citizenship", "residence", "contactEmail", "contactPhone"];
     private static readonly string[] DocumentsKeys = ["id", "documentsVerifiedOn"];
 
     private static readonly string[] ConcordatoKeys =
@@ -150,6 +150,7 @@ public static class LeaseDraftPatch
             Citizenship = Optional(fields, "citizenship", path),
             Residence = Optional(fields, "residence", path),
             ContactEmail = Optional(fields, "contactEmail", path),
+            ContactPhone = Optional(fields, "contactPhone", path),
         };
 
         // A row of the form nobody typed in is not an entry of the draft.

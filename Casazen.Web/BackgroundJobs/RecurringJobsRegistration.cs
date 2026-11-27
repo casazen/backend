@@ -1,6 +1,9 @@
 using Casazen.Core.Features;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Jobs;
+using Casazen.Infrastructure.Services;
 using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
@@ -16,11 +19,111 @@ public static class RecurringJobsRegistration
     public const string OtaSyncAllJobId = "ota-sync-all";
     public const string BookingPullAllJobId = "booking-pull-all";
 
-    public static void Configure(IRecurringJobManager recurringJobManager, IFeatureFlags featureFlags)
+    /// <param name="recurringJobManager">The Hangfire schedule of the environment.</param>
+    /// <param name="featureFlags">The flags that decide the jobs behind a feature.</param>
+    /// <param name="routineOptions">The interval of the time triggers of the routines (section <c>Routine</c>); the defaults when omitted.</param>
+    public static void Configure(IRecurringJobManager recurringJobManager, IFeatureFlags featureFlags, RoutineOptions? routineOptions = null)
     {
+        if (featureFlags.IsEnabled(FeatureFlags.CrmMarketing))
+            recurringJobManager.AddOrUpdate<MarketingStudioJob>("marketing-studio", job => job.DispatchAsync(CancellationToken.None),
+                Cron.Hourly(), new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+        else
+            recurringJobManager.RemoveIfExists("marketing-studio");
+
+        recurringJobManager.AddOrUpdate<AgencyUsageJob>(
+            "agency-monthly-unit-usage", job => job.ExecuteAsync(CancellationToken.None),
+            "*/5 * * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<PropertyActivationAccounts>(
+            "expire-activation-credentials", accounts => accounts.PurgeExpiredAsync(CancellationToken.None),
+            "10 3 * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         ConfigureOtaPartnerJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OtaPartnerApi));
 
+        // E02/F02: the jobs of the Octorate connector (bookings and calendar), only while the connector is on.
+        ConfigureOctorateJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
+
+        // E06/F03/US02/T01: the import of the documents Octorate issued, only while the connector and the import are both on.
+        ConfigureOctorateDocumentJobs(
+            recurringJobManager,
+            featureFlags.IsEnabled(FeatureFlags.OctorateConnector) && featureFlags.IsEnabled(FeatureFlags.OctorateDocumentImport));
+
+        // E12/F01/US01/T02: the drafts of the stays that ended and their automatic issue, only while the issuance of the fiscal documents is on.
+        ConfigureFiscalDocumentJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance));
+
+        // E17/F01/US02/T01: the status of the electronic invoices submitted to the SDI, the fallback of the provider's webhook, only while the issuance and the SDI submission are both on.
+        ConfigureSdiJobs(
+            recurringJobManager,
+            featureFlags.IsEnabled(FeatureFlags.FiscalDocumentIssuance) && featureFlags.IsEnabled(FeatureFlags.SdiSubmission));
+
+        // E15/F01/US02/T02 (NF-101): the package of the previous month goes to the accountant of every org that asked for it, only while the package of the accountant is on.
+        ConfigureAccountantPackageJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.AccountantPackage));
+
+        // E10/F01/US01/T04: the "To do" of the flows to complete and of a lost connection, only while the activation with Octorate is on.
+        ConfigureOnboardingJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateOnboarding));
+
+        // E07/F07/US01 (NF-111): the background work of the owner portal operations, only while the agency owner portal is on.
+        ConfigureOwnerPortalOperations(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.AgencyTier));
+
+        // ADR-022-R8: the time triggers of the stays ("2 days before check-in") are written to the outbox every
+        // Routine:EvaluationIntervalMinutes (default 5), whatever the flags say; an org without a time routine gets nothing.
+        recurringJobManager.AddOrUpdate<TimeEventEmitterJob>(
+            TimeEventEmitterJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            (routineOptions ?? new RoutineOptions()).EmitterCron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // ADR-022-R4: the outbox dispatcher publishes the recorded domain events on the bus every minute, whatever the flags say.
+        recurringJobManager.AddOrUpdate<OutboxDispatcherJob>(
+            OutboxDispatcherJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OutboxDispatcherJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // ADR-022-R15: the dispatched events older than EventBus:RetentionDays are deleted and the old dead letters anonymized, nightly.
+        recurringJobManager.AddOrUpdate<OutboxCleanupJob>(
+            OutboxCleanupJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OutboxCleanupJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E07/F01/US02/T03 (NF-88, NF-20): the CRM profiles and contacts of the bookers of every booking changed in the last two hours, and the
+        // guests with no profile yet (200 a run, until none is left), every 15 minutes. It guarantees what the event handler only hastens, and
+        // does nothing, with one line in the log, unless Features:CrmMarketing is on and Crm:ContactIndexKey is configured (read at every run).
+        // Always registered: nothing to remove when the module is closed.
+        recurringJobManager.AddOrUpdate<CrmProfileSyncJob>(
+            CrmProfileSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            CrmProfileSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // ADR-025-R3, R6: the popup alerts held back by the quiet hours of a user, or snoozed by the user, are pushed to its open sessions
+        // when they fall due, every minute, whatever the flags say (a user with the app open all night would never see them otherwise).
+        recurringJobManager.AddOrUpdate<PopupAlertDueJob>(
+            PopupAlertDueJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            PopupAlertDueJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<GuestSupplierAdjustmentJob>(
+            "guest-supplier-stripe-adjustments", job => job.ExecuteAsync(CancellationToken.None),
+            "*/5 * * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<GuestSupplierPayoutJob>(
+            "guest-supplier-sandbox-transfers", job => job.ExecuteAsync(CancellationToken.None),
+            "*/5 * * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<GuestSupplierStripeExpiryJob>(
+            "guest-supplier-stripe-expiry", job => job.ExecuteAsync(CancellationToken.None),
+            "*/5 * * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         ConfigureServiceRequestAutoCancel(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.SupplierRequestAutoCancel));
+
+        // E09/F01/US01/T02 (ADR-023): the cache of the portal catalog of the marketplace is refreshed every day, only while the Octorate connector is on.
+        ConfigureMarketplacePortalRefresh(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
+
+        // E09/F03/US01/T01 (ADR-023, NF-57): the health of the active integrations is read from Octorate every 30 minutes, only while the Octorate connector is on.
+        ConfigureMarketplaceConnectionSync(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
 
         // SP-BKP: the groups of backup suppliers are followed whatever the flag SupplierRequestBackups says (it only gates their creation): a
         // group that exists has its windows, and turning the flag off must not leave its requests hanging. With no group a run finds nothing.
@@ -75,6 +178,41 @@ public static class RecurringJobsRegistration
             StayAlertsJob.RecurringJobId,
             job => job.ExecuteAsync(),
             Cron.Hourly,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E03/F02/US02/T02 (NF-52, CHK-12): the monthly compliance summary of every active short-rent org, on the first of the month at 07:00 Europe/Rome.
+        // Always registered: the service reads Features:ComplianceTrafficLight at each run and sends nothing while it is off.
+        recurringJobManager.AddOrUpdate<ComplianceMonthlySummaryJob>(
+            ComplianceMonthlySummaryJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            ComplianceMonthlySummaryJob.Cron,
+            new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
+
+        // E20/F02/US01/T01 (NF-47, CHK-08, AC-NF52-12): the proofs of the compliance duties are kept five years from their upload; the file and the row of those whose
+        // time is over are deleted every day at 03:40 UTC, counts only in the log. Always registered: a file that exists costs money whatever a flag says, and with no
+        // proof past its time a run finds nothing.
+        recurringJobManager.AddOrUpdate<ComplianceProofRetentionJob>(
+            ComplianceProofRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ComplianceProofRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E20/F02/US01/T02 (NF-121, NF-16, decision O4): once a stay is covered by an archived Alloggiati receipt the photos of its guests' identity documents and the legacy scan of
+        // its booker are deleted, every day at 03:50 UTC (and by a run for the organization queued right after a receipt upload). Always registered: the service reads
+        // Features:PurgeDocumentsAfterReceipt at each run and reads and deletes nothing while it is off (the deletion cannot be undone).
+        recurringJobManager.AddOrUpdate<GuestDocumentPurgeJob>(
+            GuestDocumentPurgeJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            GuestDocumentPurgeJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // NF-128 (casazen/backend#979, decisions D10, D11): the receipts of the Ticino police notifications, the group sheets and the parents' authorizations are kept
+        // five years from their date; the file and the row of those whose time is over are deleted every day at 03:55 UTC, counts only in the log, never an OTR report.
+        // Always registered: a file that exists costs money whatever a flag says, and with nothing past its time a run finds nothing.
+        recurringJobManager.AddOrUpdate<SwissComplianceRetentionJob>(
+            SwissComplianceRetentionJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            SwissComplianceRetentionJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         // CO-20: daily CIN alert, after the nightly compliance check of CO-06.
@@ -201,6 +339,21 @@ public static class RecurringJobsRegistration
             "0 8 * * *",
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // casazen/backend#978: the arrivals and departures of the orgs whose booking flow is automatic (the default), every hour at :20 (after the stay alerts at :00).
+        recurringJobManager.AddOrUpdate<BookingFlowAutomationJob>(
+            BookingFlowAutomationJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            "20 * * * *",
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E23/F01/US01/T01, T02 (NF-122): the check-in links of the stays with no e-mail address that wait for the chat of the portal or for the contact of the guest are tried
+        // again every hour, only while the connector and one of the flags PortalChatCheckInLink and GuestContactInfo are on.
+        ConfigureCheckInLinkDeliveryJob(recurringJobManager, CheckInLinkDeliveryRetryJob.IsEnabled(featureFlags));
+
+        // E05/F07/US01/T02, T03 (NF-71): the hourly plan of the messages of the routines (minute 20) and the sweep that sends what is overdue and tries again what is blocked (every 15 minutes), only while
+        // Features:ScheduledMessages is on; otherwise the schedule of an earlier deploy is removed.
+        ConfigureScheduledMessageJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.ScheduledMessages));
+
         // MO-04: Expo receipts of the pushes (DeviceNotRegistered removes the device), purge of old delivery rows.
         recurringJobManager.AddOrUpdate<PushReceiptsJob>(
             PushReceiptsJob.RecurringJobId,
@@ -236,6 +389,14 @@ public static class RecurringJobsRegistration
             "0 5 * * 1",  // every Monday at 05:00 UTC
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // E06/F04/US01/T02 (FIS-05, NF-85): what Stripe kept and credited for the settled card payments, every 15 minutes, 50 payments a run.
+        // Always registered: without a Stripe key the job reads nothing and counts no attempt.
+        recurringJobManager.AddOrUpdate<PaymentProviderFeeJob>(
+            PaymentProviderFeeJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            PaymentProviderFeeJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // RS-6, RS-7, CO-12: daily check of the official ISTAT comuni file, the Alloggiati tables and the tourist-tax pages.
         recurringJobManager.AddOrUpdate<OfficialReferenceDataRefreshJob>(
             OfficialReferenceDataRefreshJob.RecurringJobId,
@@ -248,6 +409,263 @@ public static class RecurringJobsRegistration
             ComuneOfficialProfileRefreshJob.RecurringJobId,
             job => job.ExecuteAsync(),
             ComuneOfficialProfileRefreshJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The jobs of the scheduled messages (E05/F07/US01, NF-71): the hourly plan at minute 20 and the sweep every 15 minutes, scheduled only while <paramref name="enabled"/>
+    /// (<c>Features:ScheduledMessages</c> on); otherwise the schedule of an earlier deploy is removed (<c>RemoveIfExists</c>) and no message is planned or sent by a job.
+    /// </summary>
+    private static void ConfigureScheduledMessageJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(ScheduledMessagePlanJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(ScheduledMessageSweepJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<ScheduledMessagePlanJob>(
+            ScheduledMessagePlanJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ScheduledMessagePlanJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+        recurringJobManager.AddOrUpdate<ScheduledMessageSweepJob>(
+            ScheduledMessageSweepJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ScheduledMessageSweepJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The hourly retry of the check-in links that wait (E23/F01/US01/T01, T02): scheduled only while <paramref name="enabled"/> (the connector and at least one of the flags
+    /// <c>PortalChatCheckInLink</c> and <c>GuestContactInfo</c> on); otherwise the schedule of an earlier deploy is removed, and the daily <c>guest-checkin-send</c> alone records
+    /// where each link stands.
+    /// </summary>
+    private static void ConfigureCheckInLinkDeliveryJob(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(CheckInLinkDeliveryRetryJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<CheckInLinkDeliveryRetryJob>(
+            CheckInLinkDeliveryRetryJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            CheckInLinkDeliveryRetryJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The jobs of the Octorate connector (epic E02): only with <see cref="FeatureFlags.OctorateConnector"/> on. With the flag off no booking is
+    /// read and no calendar is synced, and the schedule of an earlier deploy is removed (<c>RemoveIfExists</c>), as for the OTA partner jobs.
+    /// <list type="bullet">
+    /// <item>the daily import of the bookings, at 02:00 Europe/Rome (E02/F02/US01/T01, ADR-033-R4);</item>
+    /// <item>the reconciliation of the bookings every six hours (E02/F02/US01/T02, ADR-031-R8);</item>
+    /// <item>the sync of the calendar every 15 minutes (E02/F02/US01/T03, ADR-002-R2, NF-36), next to the iCal sync of the feeds
+    /// (<c>property-ical-sync</c>), which stays registered as it is;</item>
+    /// <item>the retry of the check-in writes (guests and states of the stay) every 15 minutes (E03/F01/US01/T03);</item>
+    /// <item>the pass over the OTA conversations every 10 minutes and the deep pass at 02:30 UTC (epic E05, E05/F01/US01/T03, ADR-032, OCT-09).</item>
+    /// </list>
+    /// </summary>
+    private static void ConfigureOctorateJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(OctorateBookingImportJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(OctorateBookingSyncJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(CalendarSyncJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(OctorateCheckInRetryJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(OtaMessageReconcileJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(OtaMessageDeepReconcileJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(OtaReviewSyncJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(ListingStatusSyncJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(ListingChannelHealthJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(ListingOutsideChangeJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(CalendarChangeProcessJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<OctorateCheckInRetryJob>(
+            OctorateCheckInRetryJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OctorateCheckInRetryJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<OctorateBookingImportJob>(
+            OctorateBookingImportJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OctorateBookingImportJob.Cron,
+            new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
+
+        recurringJobManager.AddOrUpdate<OctorateBookingSyncJob>(
+            OctorateBookingSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OctorateBookingSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<CalendarSyncJob>(
+            CalendarSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            CalendarSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E05/F01/US01/T03 (NF-62, OCT-09): the copy of the OTA conversations, kept up to date by the webhook and recovered by these two passes.
+        recurringJobManager.AddOrUpdate<OtaMessageReconcileJob>(
+            OtaMessageReconcileJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OtaMessageReconcileJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<OtaMessageDeepReconcileJob>(
+            OtaMessageDeepReconcileJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OtaMessageDeepReconcileJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E05/F06/US01/T02 (NF-69, OCT-12): the reviews of the Airbnb bookings, read one booking at a time (the API has no list), every six hours.
+        recurringJobManager.AddOrUpdate<OtaReviewSyncJob>(
+            OtaReviewSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OtaReviewSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E02/F03/US01/T07: the follow-up of the publications of the listings (every 15 minutes), the channels that went silent (daily) and the
+        // changes made on Octorate outside CasaZen (hourly). None of them writes to Octorate but the sending of the photos a run left unsent and the removal of a photo that left the gallery.
+        recurringJobManager.AddOrUpdate<ListingStatusSyncJob>(
+            ListingStatusSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ListingStatusSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<ListingChannelHealthJob>(
+            ListingChannelHealthJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ListingChannelHealthJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<ListingOutsideChangeJob>(
+            ListingOutsideChangeJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ListingOutsideChangeJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E08/F05/US02/T02 (NF-36, NF-78): the changes of the calendar that are due (a postponement for quota, a back-off, a retry) are sent, and what the channel manager
+        // accepted is followed until it confirms it, every minute; the run enqueued right after a change is the fast path and this is the safety net.
+        recurringJobManager.AddOrUpdate<CalendarChangeProcessJob>(
+            CalendarChangeProcessJob.RecurringJobId,
+            job => job.RunDueAsync(CancellationToken.None),
+            CalendarChangeProcessJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The documents of the stays that ended (E12/F01/US01/T02, NF-83, NF-112): the drafts, and their issue when the profile issues without a person, every day at 05:10
+    /// Europe/Rome, only with <see cref="FeatureFlags.FiscalDocumentIssuance"/> on. With the flag off nothing is drafted or issued by time and the schedule of an earlier deploy is
+    /// removed (<c>RemoveIfExists</c>). The same flag schedules the drafts of the self-billed invoices (FIX/BE-TD17-ALERTS, FIX/BE-TD17-JOB-EXIT), <b>every day from the 5th to the 14th</b> at 07:30 Europe/Rome
+    /// (<see cref="SelfBillingMonthlyDraftsJob.Cron"/>: idempotent, it only makes the missing drafts and never issues), which do nothing when <c>SelfBilling:MonthlyDrafts:Enabled</c> is off (on by default,
+    /// read at each run).
+    /// </summary>
+    private static void ConfigureFiscalDocumentJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(FiscalDocumentsDueJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(SelfBillingMonthlyDraftsJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<FiscalDocumentsDueJob>(
+            FiscalDocumentsDueJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            FiscalDocumentsDueJob.Cron,
+            new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
+
+        recurringJobManager.AddOrUpdate<SelfBillingMonthlyDraftsJob>(
+            SelfBillingMonthlyDraftsJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            SelfBillingMonthlyDraftsJob.Cron,
+            new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
+    }
+
+    /// <summary>
+    /// The status of the electronic invoices submitted to the SDI (E17/F01/US02/T01, NF-116), every 30 minutes: only with <see cref="FeatureFlags.FiscalDocumentIssuance"/> and
+    /// <see cref="FeatureFlags.SdiSubmission"/> on (and the run does nothing while no provider is configured). With either off nothing is asked and the schedule of an earlier deploy is
+    /// removed (<c>RemoveIfExists</c>).
+    /// </summary>
+    private static void ConfigureSdiJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(SdiStatusPollJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<SdiStatusPollJob>(
+            SdiStatusPollJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            SdiStatusPollJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The monthly package of the accountant (E15/F01/US02/T02, NF-101): every day at 06:00 Europe/Rome, only with <see cref="FeatureFlags.AccountantPackage"/> on. Each run sends the previous month to the accountant of
+    /// every org whose monthly send is on and whose day has come, once for each org and month, and deletes the packages whose link has expired. With the flag off nothing is made or sent by time and the schedule of an
+    /// earlier deploy is removed (<c>RemoveIfExists</c>).
+    /// </summary>
+    private static void ConfigureAccountantPackageJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(AccountantPackageMonthlyJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<AccountantPackageMonthlyJob>(
+            AccountantPackageMonthlyJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            AccountantPackageMonthlyJob.Cron,
+            new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
+    }
+
+    /// <summary>
+    /// The "To do" sync of the activation of CasaZen with Octorate (E10/F01/US01/T04, NF-106, NF-108): only with
+    /// <see cref="FeatureFlags.OctorateOnboarding"/> on, hourly at minute 20 UTC. With the flag off no "To do" of a flow is raised or closed and the
+    /// schedule of an earlier deploy is removed (<c>RemoveIfExists</c>).
+    /// </summary>
+    private static void ConfigureOnboardingJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(OnboardingFlowTodoSyncJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<OnboardingFlowTodoSyncJob>(
+            OnboardingFlowTodoSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OnboardingFlowTodoSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The owner portal operations (E07/F07/US01, NF-111): the automatic approval of the owner stays, the blocks to give back, the sync results and the
+    /// «To do» of the agency, every five minutes, only with <see cref="FeatureFlags.AgencyTier"/> on. With the flag off nothing runs and the schedule of an
+    /// earlier deploy is removed (<c>RemoveIfExists</c>).
+    /// </summary>
+    private static void ConfigureOwnerPortalOperations(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(OwnerPortalOperationsJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<OwnerPortalOperationsJob>(
+            OwnerPortalOperationsJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OwnerPortalOperationsJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
@@ -268,6 +686,65 @@ public static class RecurringJobsRegistration
             ServiceRequestAutoCancelJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             ServiceRequestAutoCancelJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The daily refresh of the portal catalog cached for the marketplace (E09/F01/US01/T02): only with
+    /// <see cref="FeatureFlags.OctorateConnector"/> on. With the flag off nothing calls Octorate, and the schedule of an earlier deploy is
+    /// removed; the cache keeps what it had, and the marketplace goes on reading it.
+    /// </summary>
+    private static void ConfigureMarketplacePortalRefresh(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(MarketplacePortalRefreshJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<MarketplacePortalRefreshJob>(
+            MarketplacePortalRefreshJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            MarketplacePortalRefreshJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The import of the documents Octorate issued (E06/F03/US02/T01), every 30 minutes, only with <see cref="FeatureFlags.OctorateConnector"/> and
+    /// <see cref="FeatureFlags.OctorateDocumentImport"/> on; otherwise the schedule of an earlier deploy is removed.
+    /// </summary>
+    private static void ConfigureOctorateDocumentJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(OctorateDocumentImportJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<OctorateDocumentImportJob>(
+            OctorateDocumentImportJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OctorateDocumentImportJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The sync of the connections of the active integrations (E09/F03/US01/T01, NF-57): every 30 minutes, only with <see cref="FeatureFlags.OctorateConnector"/> on. It reads
+    /// Octorate (the connections, the license, the quota) and writes only CasaZen's own rows and the «To do» items. With the flag off nothing calls Octorate, and the schedule of an
+    /// earlier deploy is removed.
+    /// </summary>
+    private static void ConfigureMarketplaceConnectionSync(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(MarketplaceConnectionSyncJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<MarketplaceConnectionSyncJob>(
+            MarketplaceConnectionSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            MarketplaceConnectionSyncJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

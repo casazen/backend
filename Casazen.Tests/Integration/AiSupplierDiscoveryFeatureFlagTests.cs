@@ -202,6 +202,7 @@ public class AiSupplierDiscoveryFlagOnTests(AiSupplierDiscoveryEnabledFactory fa
         var legalName = $"Pulizie Bianchi {suffix}";
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = supplierOrg.Id,
             Status = SupplierStatus.Active,
             LegalName = legalName,

@@ -208,7 +208,7 @@ public class SupplierPaymentsAccountServiceTests
         await using var db = CreateDb();
         var orgId = await SeedSupplierAsync(db);
         _gateway
-            .Setup(g => g.CreateExpressAccountAsync("fornitore@example.com", $"connect-account:{orgId:N}", It.IsAny<CancellationToken>()))
+            .Setup(g => g.CreateExpressAccountAsync("fornitore@example.com", "IT", $"connect-account:{orgId:N}", It.IsAny<CancellationToken>()))
             .ReturnsAsync(Account);
         _gateway
             .Setup(g => g.GetAccountAsync(Account, It.IsAny<CancellationToken>()))
@@ -224,7 +224,7 @@ public class SupplierPaymentsAccountServiceTests
         Assert.False(second.CanReceivePayments);
         // One account for two requests: the second finds the first one's (the PostgreSQL lock covers the parallel case).
         _gateway.Verify(
-            g => g.CreateExpressAccountAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            g => g.CreateExpressAccountAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Once);
         Assert.Equal(Account, (await ReloadOrgAsync(db, orgId)).StripeConnectedAccountId);
     }
@@ -235,7 +235,7 @@ public class SupplierPaymentsAccountServiceTests
         await using var db = CreateDb();
         var orgId = await SeedSupplierAsync(db);
         _gateway
-            .Setup(g => g.CreateExpressAccountAsync("fornitore@example.com", $"connect-account:{orgId:N}", It.IsAny<CancellationToken>()))
+            .Setup(g => g.CreateExpressAccountAsync("fornitore@example.com", "IT", $"connect-account:{orgId:N}", It.IsAny<CancellationToken>()))
             .ReturnsAsync(Account);
         _gateway
             .Setup(g => g.GetAccountAsync(Account, It.IsAny<CancellationToken>()))
@@ -266,7 +266,7 @@ public class SupplierPaymentsAccountServiceTests
 
         Assert.Equal("https://connect.stripe.test/onboard/again", url);
         _gateway.Verify(
-            g => g.CreateExpressAccountAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            g => g.CreateExpressAccountAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -276,7 +276,7 @@ public class SupplierPaymentsAccountServiceTests
         await using var db = CreateDb();
         var orgId = await SeedSupplierAsync(db);
         _gateway
-            .Setup(g => g.CreateExpressAccountAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(g => g.CreateExpressAccountAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(StripeFailure(HttpStatusCode.ServiceUnavailable, null));
 
         var ex = await Assert.ThrowsAsync<StripeConnectException>(() => Service(db).CreateOnboardingLinkAsync(orgId, ReturnUrl, RefreshUrl));

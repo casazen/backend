@@ -8,9 +8,10 @@ report-only to enforced.
 
 | Concern | Behaviour | Code |
 |---|---|---|
-| CORS origins | The origin of the public web app `App__PublicSiteBaseUrl` (SE-02, always: the domain may change without touching CORS), the exact origins of `Cors__AllowedOrigins`, plus the Vercel previews matched by `Cors__VercelPreviewPattern` when it is set. No origin is written in code (decision D3). In `Development` any `http://localhost:<port>` is accepted (Vite dev server) | `Casazen.Web/Configuration/CorsOriginOptions.cs` |
+| CORS origins | The origin of the public web app `App__PublicSiteBaseUrl` (SE-02, always: the domain may change without touching CORS), the exact origins of `Cors__AllowedOrigins`, plus the Vercel previews matched by `Cors__VercelPreviewPattern` when it is set. The public domain is not written in code (decision D3). The Vercel project that deploys the frontend (`casazen`, team `lucalamalfa91s-projects`) is allowed as well: `https://casazen.vercel.app`, `https://casazen-lucalamalfa91s-projects.vercel.app`, and — outside Production — its branch and deployment hosts (`casazen-git-<branch>-lucalamalfa91s-projects.vercel.app`, `casazen-<9 chars>-lucalamalfa91s-projects.vercel.app`). Nothing else on `*.vercel.app`. In `Development` any `http://localhost:<port>` is accepted (Vite dev server) | `Casazen.Web/Configuration/CorsOriginOptions.cs` |
 | CORS policy | Methods `GET POST PUT PATCH DELETE OPTIONS`, headers `Authorization Content-Type Accept X-Requested-With Idempotency-Key` (the last one: the key of a payment the host records, SR-06b), **no credentials**: the API authenticates with a Bearer token and sets no cookie | `Casazen.Web/Infrastructure/CasazenCorsPolicyProvider.cs` |
-| Org hosts (BK-16) | `OrgHostCorsOriginSource` (an `ICorsOriginSource`, asked only about origins the configuration rejects): `https://villa.<PublicHost__BaseDomain>` of an org that chose the subdomain mode, and the **verified** custom domain of an org that pays for Pro. The decision is `IPublicHostResolver` (cached, invalidated when a domain is set or verified, a slug or the branding changes). **Public endpoints only** (`/api/public/*`, `/api/legal/*`), `https` on the default port, plain host name; the answer reflects that one origin (`Vary: Origin`), never `*`; no credentials. No wildcard on the base domain, no domain waiting for its verification, no reserved label, no IP address. Section 8 of [`seo-domain.md`](seo-domain.md) | `Casazen.Web/Infrastructure/OrgHostCorsOriginSource.cs`, `PublicHostResolver` |
+| Org hosts (BK-16) | `OrgHostCorsOriginSource` (an `ICorsOriginSource`, asked only about origins the configuration rejects): `https://villa.<PublicHost__BaseDomain>` of an org that chose the subdomain mode, and the **verified** custom domain of an org that pays for Pro. The decision is `IPublicHostResolver` (cached, invalidated when a domain is set or verified, a slug or the branding changes). **Public endpoints only** (`/api/public/*`, `/api/legal/*`), `https` on the default port, plain host name; the answer reflects that one origin (`Vary: Origin`), never `*`; no credentials. No wildcard on the base domain, no domain waiting for its verification, no reserved label, no IP address. Section 8 of [`seo-domain.md`](seo-domain.md). The **guest area** of an agency domain (`/api/public/guest/*`, `/api/public/checkin/*`) is under `/api/public` already: it needs no rule of its own (a test pins those routes there) | `Casazen.Web/Infrastructure/OrgHostCorsOriginSource.cs`, `PublicHostResolver` |
+| Owner portal on an agency domain (E40/F01/US01/T02) | With `Features__WhiteLabelHost` on, the verified custom domain of an agency whose owner portal is on (`resolve-host` → `surfaces.ownerPortal`: domain verified and paid for, the agency's setting `ownerPortalOnOwnDomain`) is also allowed on `/api/owner-portal/*` and on the two acceptance endpoints of the invitation pages, `/api/owner-invitations/accept` and `/api/owner-contacts/accept` (`OrgHostCorsOriginSource.OwnerPortalPathPrefixes`), and on nothing else: never a host-console endpoint (`/api/owner-accounting`, `/api/owner-invoices`, `/api/owners`, `/api/orgs`, `/api/admin`…), never from a platform subdomain, an unverified domain or a domain whose owner portal is off; with the flag off nothing changes. Same shape as above: one reflected origin, `Vary: Origin`, **no credentials** (the owner portal sends its Auth0 token as a Bearer header). `OwnerPortalCorsArchitectureTests` fails when a prefix reaches an action outside the `OwnerPortal` policy. **Second wall**: a preflight carries no token, so CORS cannot know whose token a call carries; the `OwnerPortal` policy has a second requirement (`OwnerPortalHostOriginRequirement`, AND-ed with the first) that, when the `Origin` of the call resolves to an org host and is not a configured platform origin, wants that org in the owner's `agency_ids` claim, else 403. No `Origin` (the mobile app, server calls) or a platform origin: unchanged. The acceptance endpoints keep their secret-token check (no `agency_ids` exists before the acceptance) | `OrgHostCorsOriginSource.cs`, `Casazen.Web/Authorization/OwnerPortalHostOriginHandler.cs` |
 | Startup check | A malformed entry (path, wildcard, no scheme) or an invalid pattern stops the startup. Outside `Development`/`Testing` it stops too when neither `Cors__AllowedOrigins` nor `App__PublicSiteBaseUrl` gives an origin (Railway keeps the previous deployment) | `CorsOriginOptionsValidator` |
 | API headers | Every response: `Content-Security-Policy: frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`. Outside `Development`/`Testing` (both Railway environments) also `Strict-Transport-Security: max-age=31536000; includeSubDomains` | `Casazen.Web/Middleware/SecurityHeadersMiddleware.cs` |
 | Web app headers | `vercel.json` → `headers`: see section 3 | frontend `vercel.json` |
@@ -26,12 +27,14 @@ report-only to enforced.
 | `Cors__VercelPreviewPattern` | Regular expression for the **label** before `.vercel.app` of our own previews. Anchored and case-insensitive; only `https` on the default port; a label with a dot never matches | no; set it on **test only**, leave production empty |
 
 Vercel preview hostnames are `<project>-<hash>-<team-slug>.vercel.app` (one deployment) and
-`<project>-git-<branch>-<team-slug>.vercel.app` (branch). Copy two real preview URLs from Vercel → Project →
-Deployments and write the tightest pattern that matches them, for example (project `casazen-app`, team slug
-`casazen-team`):
+`<project>-git-<branch>-<team-slug>.vercel.app` (branch). The frontend repository deploys as project `casazen` on team
+`lucalamalfa91s-projects`. Those hosts, and the stable `https://casazen.vercel.app`, are allowed by the API itself
+(branch and deployment hosts on the test API only). `Cors__VercelPreviewPattern` is only needed for another project.
+Copy two real preview URLs from Vercel → Project → Deployments and write the tightest pattern that matches them, for
+example:
 
 ```
-Cors__VercelPreviewPattern=casazen-app-(git-[a-z0-9-]+|[a-z0-9]{9})-casazen-team
+Cors__VercelPreviewPattern=casazen-(git-[a-z0-9-]+|[a-z0-9]{9})-lucalamalfa91s-projects
 ```
 
 Security note: the pattern is a convenience for the test environment, not a security boundary. A `*.vercel.app` name
@@ -65,16 +68,21 @@ by the API are not meant to be framed either.
 
 ## 3. Web app headers (`vercel.json`)
 
-Two disjoint rules, so a path never gets two values of the same header:
+Disjoint rules (the first one excludes the paths of the others), so a path never gets two values of the same header:
 
 | Paths | Framing (enforced) | CSP |
 |---|---|---|
-| everything except `/book/…` | `Content-Security-Policy: frame-ancestors 'none'` + `X-Frame-Options: DENY` | report-only, `frame-ancestors 'none'` |
+| everything except `/book/…`, `/fornitori/…`, `/checkin/…` and `/embed/…`: `/login`, `/app/…`, `/portale-proprietari/…`, `/my-bookings`… | `Content-Security-Policy: frame-ancestors 'none'` + `X-Frame-Options: DENY` | report-only, `frame-ancestors 'none'` |
+| `/checkin/…` (guest check-in) | the same, `frame-ancestors 'none'` + `X-Frame-Options: DENY`; a rule of its own only for the camera (below) | report-only, `frame-ancestors 'none'` |
 | `/book/…` (public booking site) | `frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN`: the "Vetrina" settings page previews the site in a same-origin iframe | report-only, `frame-ancestors 'self'` |
+| `/fornitori/…` (public site of a supplier) | as `/book/…`: `frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN` | report-only, `frame-ancestors 'self'` |
+| `/embed/…` except `/embed/v1/…`: the widget pages `/embed/booking`, `/embed/property/…`, `/embed/guest-access` (on the CasaZen domain `/embed/<orgSlug>/…`) and any other address under `/embed/` (NF-144, [`site-integration.md`](site-integration.md)) | `Content-Security-Policy: frame-ancestors https:` and **no** `X-Frame-Options`: the only pages that any https page may frame; `X-Robots-Tag: noindex, nofollow` | report-only, `frame-ancestors https:` |
+| `/embed/v1/…` (the files `embed.js`, `search.js` and `manifest.json` that other sites load, and any other address under it) | not framable: `frame-ancestors 'none'` + `X-Frame-Options: DENY`; `Cross-Origin-Resource-Policy: cross-origin` (another site loads the script), `X-Robots-Tag: noindex`, `Cache-Control: public, max-age=300, must-revalidate` | none |
 
-Both also send `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` and
-`Permissions-Policy: camera=(), microphone=(), geolocation=(self)` (geolocation stays for the supplier check-in page
-until task SU-11 removes it). Vercel adds HSTS on its domains by itself.
+Every rule sends `X-Content-Type-Options: nosniff`. All of them but `/embed/v1/…` also send `Referrer-Policy: strict-origin-when-cross-origin` and a
+`Permissions-Policy`, which is `camera=(), microphone=(), geolocation=(self)` (geolocation stays for the supplier check-in page
+until task SU-11 removes it) except on two rules: `/checkin/…` has `camera=(self)` (the selfie step of the check-in cannot start without it) and the
+widget pages of `/embed/…` have `camera=(), microphone=(), geolocation=()`. Vercel adds HSTS on its domains by itself.
 
 The CSP (`Content-Security-Policy-Report-Only`) is:
 

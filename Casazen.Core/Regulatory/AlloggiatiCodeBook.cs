@@ -124,9 +124,15 @@ public sealed class AlloggiatiCodeBook
             keys[AlloggiatiCodeTable.Comuni].Add(guest.BirthComuneCode, guest.BirthComuneName);
             keys[AlloggiatiCodeTable.Stati].Add(guest.BirthCountryCode, guest.BirthCountryName);
             keys[AlloggiatiCodeTable.Stati].Add(guest.CitizenshipCode, guest.CitizenshipName);
+            if (ItalianCitizenshipNames.OfficialNormalizedKey(guest.CitizenshipName) is { } citizenshipCountry)
+                keys[AlloggiatiCodeTable.Stati].Names.Add(citizenshipCountry);
             keys[AlloggiatiCodeTable.Documenti].Add(guest.DocumentTypeCode, null);
             keys[AlloggiatiCodeTable.Comuni].Add(guest.DocumentIssuePlaceCode, guest.DocumentIssuePlaceName);
             keys[AlloggiatiCodeTable.Stati].Add(guest.DocumentIssuePlaceCode, guest.DocumentIssuePlaceName);
+
+            // NF-40: the residence is checked against the same tables as the birth place.
+            keys[AlloggiatiCodeTable.Comuni].Add(guest.ResidenceComuneCode, guest.ResidenceComuneName);
+            keys[AlloggiatiCodeTable.Stati].Add(guest.ResidenceCountryCode, guest.ResidenceCountryName);
         }
 
         return keys;

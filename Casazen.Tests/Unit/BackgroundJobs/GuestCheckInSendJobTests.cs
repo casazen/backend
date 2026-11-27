@@ -26,6 +26,55 @@ namespace Casazen.Tests.Unit.BackgroundJobs;
 /// </summary>
 public class GuestCheckInSendJobTests
 {
+    /// <summary>casazen/backend#978: an org whose links the host sends (manual booking flow) gets no link from the daily job.</summary>
+    [Fact]
+    public async Task ExecuteAsync_OrgFlowManual_IssuesNoLink()
+    {
+        await using var db = CreateContext();
+        var booking = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 1);
+        db.BookingFlowSettings.Add(new BookingFlowSettings { OrgId = booking.OrgId, CheckInLinkMode = BookingFlowMode.Manual, CheckInLinkDaysBefore = 3 });
+        await db.SaveChangesAsync();
+        var harness = new Harness(db, EmailResult(EmailSendResult.Sent()));
+
+        await harness.RunSendJobAsync(withFlow: true);
+
+        Assert.False(await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == booking.Id));
+        Assert.Empty(harness.QueuedJobs);
+    }
+
+    /// <summary>casazen/backend#978: the days before the arrival are the org's (here 5, beyond the default window of 3), never beyond them.</summary>
+    [Fact]
+    public async Task ExecuteAsync_OrgFlowFiveDaysBefore_IssuesLinksWithinTheOrgWindowOnly()
+    {
+        await using var db = CreateContext();
+        var withinOrgWindow = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 5);
+        var beyondOrgWindow = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 6);
+        db.BookingFlowSettings.Add(new BookingFlowSettings { OrgId = withinOrgWindow.OrgId, CheckInLinkMode = BookingFlowMode.Automatic, CheckInLinkDaysBefore = 5 });
+        db.BookingFlowSettings.Add(new BookingFlowSettings { OrgId = beyondOrgWindow.OrgId, CheckInLinkMode = BookingFlowMode.Automatic, CheckInLinkDaysBefore = 5 });
+        await db.SaveChangesAsync();
+        var harness = new Harness(db, EmailResult(EmailSendResult.Sent()));
+
+        await harness.RunSendJobAsync(withFlow: true);
+
+        Assert.True(await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == withinOrgWindow.Id));
+        Assert.False(await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == beyondOrgWindow.Id));
+    }
+
+    /// <summary>casazen/backend#978: an org that never saved its flow is automatic, with the default window (3 days).</summary>
+    [Fact]
+    public async Task ExecuteAsync_OrgWithoutFlow_SendsWithTheDefaultWindow()
+    {
+        await using var db = CreateContext();
+        var lastDay = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 3);
+        var beyond = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 4);
+        var harness = new Harness(db, EmailResult(EmailSendResult.Sent()));
+
+        await harness.RunSendJobAsync(withFlow: true);
+
+        Assert.True(await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == lastDay.Id));
+        Assert.False(await db.GuestCheckInSessions.AnyAsync(s => s.BookingId == beyond.Id));
+    }
+
     [Fact]
     public async Task ExecuteAsync_EmailRejected_KeepsLinkOpenWithFailedEmailAndIssuesNoSecondLink()
     {
@@ -258,6 +307,105 @@ public class GuestCheckInSendJobTests
         Assert.Equal(GuestCheckInSessionStatus.Inviato, session.Status);
     }
 
+    /// <summary>
+    /// NF-40, AC-NF40-3: a guest who never opened the link gets ONE reminder before arrival, with a new link in the language chosen on the
+    /// page, whatever the number of runs: two runs on the same day and a run the next day queue one reminder for the stay.
+    /// </summary>
+    [Fact]
+    public async Task GuestCheckInReminder_OneReminderPerStay_Test()
+    {
+        var day = ClockAtEightUtc(daysFromToday: 0);
+        await using var db = CreateContext();
+        var booking = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 1, day.TodayInRome());
+        db.GuestCheckInSessions.Add(EarlierLink(booking, day, language: "de"));
+        await db.SaveChangesAsync();
+
+        var today = new Harness(db, EmailResult(EmailSendResult.Sent()), clock: day);
+        await today.RunSendJobAsync();
+        await today.RunSendJobAsync();
+        var tomorrow = new Harness(db, EmailResult(EmailSendResult.Sent()), clock: ClockAtEightUtc(daysFromToday: 1));
+        await tomorrow.RunSendJobAsync();
+
+        var reminder = Assert.Single(await db.GuestCheckInSessions
+            .Where(s => s.BookingId == booking.Id && s.ReminderSentAt != null)
+            .ToListAsync());
+        Assert.Equal("de", reminder.Language);
+        Assert.Single(today.QueuedJobs);
+        Assert.Empty(tomorrow.QueuedJobs);
+
+        // The email of that link is the reminder, in the guest's language.
+        await today.RunQueuedEmailJobsAsync();
+        var (_, subject, _) = Assert.Single(today.SentEmails);
+        Assert.StartsWith("Erinnerung", subject, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// NF-40, AC-NF40-3 (privacy): the reminder is transactional. It goes to the booker's contact e-mail only (never to the marketing address
+    /// the booker gave for the offers) and carries no marketing block: the check-in link is its only link, with no offer nor unsubscribe text.
+    /// </summary>
+    [Fact]
+    public async Task GuestCheckInReminder_OnlyBookerContact_NoMarketing_Test()
+    {
+        var day = ClockAtEightUtc(daysFromToday: 0);
+        await using var db = CreateContext();
+        var booking = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 1, day.TodayInRome());
+        db.GuestCheckInSessions.Add(EarlierLink(booking, day, language: null));
+        db.MarketingConsentRecords.Add(new MarketingConsentRecord
+        {
+            OrgId = booking.OrgId,
+            BookingId = booking.Id,
+            GuestId = booking.GuestId,
+            MarketingEmail = "anna.offerte@example.com",
+            ConsentEmail = true,
+            EmailConfirmed = true,
+            ConsentTextVersion = "v1",
+        });
+        await db.SaveChangesAsync();
+        var harness = new Harness(db, EmailResult(EmailSendResult.Sent()), clock: day);
+
+        await harness.RunSendJobAsync();
+        await harness.RunQueuedEmailJobsAsync();
+
+        var (to, subject, html) = Assert.Single(harness.SentEmails);
+        Assert.Equal("anna@example.com", to);
+        Assert.StartsWith("Promemoria", subject, StringComparison.Ordinal);
+        harness.Email.Verify(
+            s => s.SendEmailAsync("anna.offerte@example.com", It.IsAny<string>(), It.IsAny<string>()),
+            Times.Never);
+        var links = System.Text.RegularExpressions.Regex.Matches(html, "href=\"([^\"]+)\"").Select(m => m.Groups[1].Value).ToList();
+        var link = Assert.Single(links, url => !url.Contains('?'));
+        Assert.Matches("^https://public\\.example/checkin/[0-9a-f]{64}$", link);
+        Assert.Equal(new[] { link, link + "?invoice=1" }, links);
+        Assert.DoesNotContain("unsubscribe", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("disiscri", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("newsletter", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("offert", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 08:00 UTC of a day near today in Rome (the email job checks the link against the real clock): the time of the daily run, on the Rome
+    /// calendar date (QA-CLOCK).
+    /// </summary>
+    private static FixedTimeProvider ClockAtEightUtc(int daysFromToday) =>
+        new(new DateTimeOffset(TimeProvider.System.TodayInRome().AddDays(daysFromToday).AddHours(8), TimeSpan.Zero));
+
+    /// <summary>A link the guest received two days before the run and never opened.</summary>
+    private static GuestCheckInSession EarlierLink(Booking booking, TimeProvider clock, string? language)
+    {
+        var now = clock.GetUtcNow().UtcDateTime;
+        return new GuestCheckInSession
+        {
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            TokenHash = GuestCheckInService.HashToken("earlier-link-" + booking.Id),
+            Status = GuestCheckInSessionStatus.Inviato,
+            Language = language,
+            CreatedAt = now.AddDays(-2),
+            UpdatedAt = now.AddDays(-2),
+            ExpiresAt = now.AddDays(5),
+        };
+    }
+
     private static EmailSendResult EmailResult(EmailSendResult result) => result;
 
     private static StayGuest CompleteSingleGuest(Guid bookingId, Guid orgId) => new()
@@ -335,7 +483,7 @@ public class GuestCheckInSendJobTests
         public GuestCheckInLinkEmailJob EmailJob() =>
             new(_db, Email.Object, EmailTestHelpers.Links(_publicSiteBaseUrl), _jobs.Object, NullLogger<GuestCheckInLinkEmailJob>.Instance);
 
-        public Task RunSendJobAsync() =>
+        public Task RunSendJobAsync(bool withFlow = false) =>
             new GuestCheckInSendJob(
                 _db,
                 CheckIn,
@@ -344,7 +492,10 @@ public class GuestCheckInSendJobTests
                 EmailTestHelpers.Links(_publicSiteBaseUrl),
                 _options,
                 Mock.Of<ILogger<GuestCheckInSendJob>>(),
-                _clock).ExecuteAsync();
+                _clock,
+                flowSettings: withFlow
+                    ? new BookingFlowSettingsService(_db, _options, _clock, NullLogger<BookingFlowSettingsService>.Instance)
+                    : null).ExecuteAsync();
 
         public async Task RunQueuedEmailJobsAsync()
         {

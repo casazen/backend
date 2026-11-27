@@ -395,6 +395,7 @@ public class SupplierMatchServiceTests
         });
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = orgId,
             Status = SupplierStatus.Active,
             LegalName = legalName,
@@ -436,6 +437,7 @@ public class SupplierMatchServiceTests
         });
         db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = supplierOrgId,
             Status = SupplierStatus.Active,
             LegalName = "Clean Co Srl",

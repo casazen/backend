@@ -4,13 +4,16 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+// The receipt the SOAP client reads, not the stored daily receipt (the entity Casazen.Core.Entities.AlloggiatiReceipt, AW-R05).
+using AlloggiatiReceipt = Casazen.Infrastructure.Services.AlloggiatiReceipt;
 
 namespace Casazen.Infrastructure.Jobs;
 
 /// <summary>
 /// Daily job to retrieve Alloggiati Web receipts (ADR-015-R7). Calls Ricevuta(date) per credential,
-/// moves reports to <see cref="AlloggiatiWebStatus.Inviato"/> with ConfirmationNumber,
-/// and triggers document deletion when receipt is received. Alerts if receipt missing beyond next day.
+/// moves reports to <see cref="AlloggiatiWebStatus.Inviato"/> with ConfirmationNumber. Alerts if receipt missing beyond next day.
+/// It deletes no document: the documents of the guests of a stay go once an archived receipt covers the stay, in one place only,
+/// <see cref="Casazen.Core.Services.IGuestDocumentPurgeService"/> (E20/F02/US01/T02, behind <c>Features:PurgeDocumentsAfterReceipt</c>).
 /// </summary>
 public class AlloggiatiReceiptJob(
     AppDbContext db,
@@ -92,7 +95,7 @@ public class AlloggiatiReceiptJob(
     }
 
     /// <summary>
-    /// Process one receipt: update reports to Inviato and trigger document deletion.
+    /// Process one receipt: update reports to Inviato.
     /// </summary>
     private async Task ProcessReceiptAsync(
         Guid credentialId,
@@ -129,40 +132,8 @@ public class AlloggiatiReceiptJob(
 
         await db.SaveChangesAsync(ct);
 
-        // Trigger document deletion for each booking (ADR-015-R7, ADR-013 integration)
-        foreach (var report in reports)
-        {
-            await DeleteDocumentImagesAsync(report.BookingId, ct);
-        }
-    }
-
-    /// <summary>
-    /// Delete document images for a booking after receipt received (ADR-013 integration).
-    /// Sets DeletedAt timestamp; images remain in storage but are marked as deleted.
-    /// </summary>
-    private async Task DeleteDocumentImagesAsync(Guid bookingId, CancellationToken ct)
-    {
-        var images = await db.DocumentImages
-            .Where(i => i.BookingId == bookingId && i.DeletedAt == null)
-            .ToListAsync(ct);
-
-        if (images.Count == 0)
-        {
-            logger.LogDebug("No document images to delete for booking {BookingId}", bookingId);
-            return;
-        }
-
-        logger.LogInformation(
-            "Deleting {ImageCount} document images for booking {BookingId} (receipt received)",
-            images.Count,
-            bookingId);
-
-        foreach (var image in images)
-        {
-            image.DeletedAt = DateTime.UtcNow;
-        }
-
-        await db.SaveChangesAsync(ct);
+        // The documents of these stays are not deleted here (ADR-015-R7, ADR-013-R7): the one place that deletes them after a receipt is
+        // IGuestDocumentPurgeService (E20/F02/US01/T02), which asks for an archived receipt that covers the stay and for its flag.
     }
 
     /// <summary>

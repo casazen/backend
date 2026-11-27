@@ -120,4 +120,65 @@ public static class BookingErrorCodes
 
     /// <summary>422: the dates of a booking that completes a portal's block are not the dates of that block (SR-06a).</summary>
     public const string BlockDatesMismatch = "booking_block_dates_mismatch";
+
+    /// <summary>
+    /// 422: a change of a booking carries a commission, net, paid or balance amount of the channel that differs from the one stored
+    /// (E02/F02/US01/T01, ADR-033-R3): those figures come from the channel manager and are never edited in CasaZen.
+    /// </summary>
+    public const string OtaAmountsReadonly = "ota_amounts_readonly";
+
+    /// <summary>
+    /// 422: the cancellation of a reservation that came from a portal is asked of the channel manager from CasaZen (E02/F02/US01/T01): the
+    /// portal owns its cancellation, and a delete from here is not proven to be accepted.
+    /// </summary>
+    public const string ChannelCancelNotAllowed = "octorate_channel_cancel_not_allowed";
+
+    /// <summary>422: the booking cannot be cancelled in its state (checked out).</summary>
+    public const string NotCancellable = "booking_not_cancellable";
+
+    /// <summary>
+    /// 422: the money of an edit of a booking of the booking site could not be settled (E08/F02/US01/T01, NF-75): Stripe refused the refund or the
+    /// charge of the saved card, or the payment link for the difference could not be made. The edit and the money are one decision: nothing is
+    /// changed, nothing is saved, and asking again with the same request is safe (the idempotency key makes Stripe return what it already did).
+    /// </summary>
+    public const string SettlementFailed = "booking_settlement_failed";
+
+    /// <summary>
+    /// 409: a payment of the booking is still being processed by Stripe, or the guest is asked to pay one (a failed charge of "Paga alla scadenza"):
+    /// the price of the booking is not changed until it is settled, or the money would be counted twice.
+    /// </summary>
+    public const string EditPaymentInProgress = "booking_edit_payment_in_progress";
+
+    /// <summary>
+    /// 403: the edit of a booking of the booking site would move money (a refund, the saved card charged, a payment link), or the quote of the edit
+    /// shows it, and the caller has no <c>payment.write</c> (<c>payment.read</c> for the quote) on the property (E08/F02/US01/T01): nothing is done.
+    /// </summary>
+    public const string EditPaymentPermissionRequired = "booking_edit_payment_permission_required";
+
+    /// <summary>
+    /// 422: the new dates have no tourist tax rate (or one that cannot be worked out) and the booking already holds a tourist tax that the guest paid:
+    /// the price would drop by the tax and the money of the edit would give it back by itself (E08/F02/US01/T01). Nothing is changed.
+    /// </summary>
+    public const string TouristTaxUnavailable = "booking_tourist_tax_unavailable";
+
+    /// <summary>
+    /// 422: a booking that came from a channel is changed from CasaZen where the channel does not let the host do it (E02/F02/US02/T01, D8,
+    /// NF-75): nothing is changed. The text is the one sentence that says how to ask the guest or the channel; <c>guidanceKey</c> and
+    /// <c>channel</c> travel with the problem.
+    /// </summary>
+    public const string OtaBookingChangeNotAllowed = "ota_booking_change_not_allowed";
+
+    /// <summary>
+    /// 422: a booking that came from a channel is cancelled from CasaZen where the channel does not let the host do it (E08/F02/US02/T01, D8,
+    /// NF-76): nothing is changed, Octorate is not asked. Same members as <see cref="OtaBookingChangeNotAllowed"/>.
+    /// </summary>
+    public const string OtaBookingCancelNotAllowed = "ota_booking_cancel_not_allowed";
+
+    /// <summary>
+    /// 422: Octorate refused to cancel the reservation of a channel booking, or could not be asked (no connected account, a property that is not
+    /// mirrored, a mapping write-blocked, the flag off): the booking is as it was, in CasaZen and on the channel (E08/F02/US02/T02, NF-76). An
+    /// Octorate that does not answer is a 503 instead (<see cref="OctorateSyncErrorCodes.Unavailable"/>). Same members as
+    /// <see cref="OtaBookingChangeNotAllowed"/>.
+    /// </summary>
+    public const string OctorateCancelFailed = "octorate_cancel_failed";
 }

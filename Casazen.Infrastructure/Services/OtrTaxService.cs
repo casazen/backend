@@ -10,13 +10,12 @@ using Microsoft.EntityFrameworkCore;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// OTR (Overnight Tourist Registry) tax CSV generator for Ticino (ADR-016).
-/// Generates CSV files of overnight stays per period for cantonal tax reporting.
+/// Working CSV summary of overnight stays for the Ticino tourism organization (ADR-016).
+/// This is a count of nights, not a verified tax declaration or a submission receipt. The property is in Ticino when the one resolver of the
+/// place of a Swiss property says so (<see cref="IPropertySwissPlaceResolver"/>, E29/F01/US01/T02).
 /// </summary>
-public class OtrTaxService(AppDbContext context) : IOtrTaxService
+public class OtrTaxService(AppDbContext context, IPropertySwissPlaceResolver? placeResolver = null) : IOtrTaxService
 {
-    private const string TicinoCantonCode = "TI";
-
     public async Task<OtrTaxResult> GeneratePeriodReportAsync(
         Guid propertyId,
         DateTime startDate,
@@ -29,13 +28,8 @@ public class OtrTaxService(AppDbContext context) : IOtrTaxService
             .FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken)
             ?? throw PropertyNotFound(propertyId);
 
-        var municipality = property.SwissMunicipalityCode != null
-            ? await context.SwissMunicipalities
-                .AsNoTracking()
-                .FirstOrDefaultAsync(m => m.MunicipalityCode == property.SwissMunicipalityCode, cancellationToken)
-            : null;
-
-        if (municipality?.CantonCode != TicinoCantonCode)
+        var place = await (placeResolver ?? new PropertySwissPlaceResolver(context)).ResolveAsync(property, cancellationToken);
+        if (place?.IsInTicino != true)
             throw new DomainRuleException(
                 "property_not_in_ticino",
                 "PropertyNotInTicino",
@@ -45,13 +39,15 @@ public class OtrTaxService(AppDbContext context) : IOtrTaxService
         var stays = await context.Bookings
             .AsNoTracking()
             .Include(b => b.Guest)
-            .Where(b => b.PropertyId == propertyId
-                && b.Status == BookingStatus.Confirmed
+            .Where(b => b.OrgId == property.OrgId && b.PropertyId == propertyId
+                && (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn || b.Status == BookingStatus.CheckedOut)
                 && b.CheckInDate < endDate
                 && b.CheckOutDate > startDate)
+            .OrderBy(b => b.CheckInDate)
+            .ThenBy(b => b.Id)
             .ToListAsync(cancellationToken);
 
-        // Generate CSV in OTR format
+        // A working count of nights: acceptance by the destination portal is a separate verification.
         var csv = GenerateOtrCsv(property, stays, startDate, endDate);
         var reference = $"OTR-{property.Id:N}-{startDate:yyyyMMdd}-{endDate:yyyyMMdd}";
         var fileHash = ComputeSha256Hash(csv);

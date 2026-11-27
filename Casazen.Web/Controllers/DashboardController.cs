@@ -154,6 +154,7 @@ public class DashboardController(
                 LastImportStatus = feed.LastImportStatus?.ToString(),
                 LastErrorCode = code,
                 LastError = message,
+                Deprecated = feed.Deprecated,
             };
         }).ToList());
     }

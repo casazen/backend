@@ -334,15 +334,16 @@ public static class BookingTimeline
     }
 
     // The Alloggiati Web communication from the arrival day, as honestly as the Alloggiati page tells it: what is not sent is "to send
-    // manually" (CasaZen never transmits); sent only with a receipt or the host's declaration. Before the arrival day it is a step still to come.
+    // manually" (CasaZen never transmits); sent only with a receipt or the host's declaration. Before the arrival day it is a step still to come,
+    // and a no-show (NF-45) owes none: there is no entry.
     private static void AddAlloggiati(
         Booking booking,
         BookingTimelineAlloggiati alloggiati,
         DateTime today,
         Action<BookingTimelineKind, BookingTimelineState, DateTime?, DateTime, BookingTimelineData?> add)
     {
-        var status = AlloggiatiStatusRules.Effective(alloggiati.Stored, booking.CheckInDate, today);
-        if (status == AlloggiatiWebStatus.DaInviare)
+        var status = AlloggiatiStatusRules.Effective(alloggiati.Stored, booking.CheckInDate, today, booking.NoShowAt is not null);
+        if (status is AlloggiatiWebStatus.DaInviare or AlloggiatiWebStatus.NotDue)
             return;
 
         // The communication follows the arrival, whatever time the declaration of the host carries.

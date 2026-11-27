@@ -1,6 +1,7 @@
 using System.Net;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
@@ -886,9 +887,9 @@ public class ServiceDisputeTests
 
     private const string SupplierAccountId = ServiceRequestScenario.SupplierAccountId;
 
-    private static async Task<(ServiceRequestScenario S, ServiceRequest Request, ShowcaseBookingCredentials Credentials)> BookedAndTakenAsync()
+    private static async Task<(ServiceRequestScenario S, ServiceRequest Request, ShowcaseBookingCredentials Credentials)> BookedAndTakenAsync(bool recordEvents = false)
     {
-        var s = await ServiceRequestScenario.CreateAsync();
+        var s = await ServiceRequestScenario.CreateAsync(recordEvents: recordEvents);
         await s.EnablePaymentsAsync();
         await s.AddAdminAsync();
         var supplier = await s.EnableBookingAsync();
@@ -1106,6 +1107,49 @@ public class ServiceDisputeTests
         Assert.Equal(Net, Assert.Single(s.Kit.PlatformGateway.TransferRequests).AmountCents);
         Assert.Equal(ServiceRequestStatus.Pagato, (await s.ReadAsync(request.Id)).Status);
         Assert.Empty(s.Kit.Penalties.Recorded);
+    }
+
+    /// <summary>
+    /// E24/F01/US01/T02: the completion of a job a dispute decides for the supplier is on the event bus like the supplier's own completion: <c>ServiceRequestCompleted</c>, once, with the payload
+    /// of ids and the key of the completion of a request, written with the change; a decision for the customer completes nothing and records nothing.
+    /// </summary>
+    [Fact]
+    public async Task NoShow_DecidedForTheSupplier_RecordsServiceRequestCompleted_OnceUnderTheKeyOfTheCompletion()
+    {
+        var (s, request, _) = await BookedAndTakenAsync(recordEvents: true);
+        using var scope = s;
+        var end = (await s.ReadAsync(request.Id)).ScheduledEndUtc!.Value;
+        s.Clock.SetUtcNow(new DateTimeOffset(end.AddHours(48), TimeSpan.Zero));
+        await s.Payments.RunDisputesAsync();
+        await s.Payments.ReplyToDisputeAsync(request.Id, s.SupplierOrgId, SupplierWords);
+        var disputeId = Assert.Single(s.Db.ServicePaymentDisputes.AsNoTracking()).Id;
+        Assert.DoesNotContain(s.Db.OutboxEvents.AsNoTracking(), e => e.EventType == DomainEventType.ServiceRequestCompleted);
+
+        await s.Payments.ResolveDisputeAsync(disputeId, new ResolveServiceDisputeRequest("for_supplier", null, null), Admin);
+
+        var recorded = Assert.Single(s.Db.OutboxEvents.AsNoTracking().Where(e => e.EventType == DomainEventType.ServiceRequestCompleted).ToList());
+        Assert.Equal(
+            (request.OrgId, request.Id, ServiceRequestEventPayload.KeyOf(ServiceRequestEventPayload.CompletedKeyPrefix, request.Id)),
+            (recorded.OrgId, recorded.EntityId, recorded.DedupKey));
+        var payload = System.Text.Json.JsonSerializer.Deserialize<ServiceRequestEventPayload>(recorded.PayloadJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        Assert.Equal((request.Id, ServiceRequestStatus.Completato), (payload.ServiceRequestId, payload.Status));
+    }
+
+    [Fact]
+    public async Task NoShow_DecidedForTheCustomer_CompletesNothing_AndRecordsNoCompletion()
+    {
+        var (s, request, _) = await BookedAndTakenAsync(recordEvents: true);
+        using var scope = s;
+        var end = (await s.ReadAsync(request.Id)).ScheduledEndUtc!.Value;
+        s.Clock.SetUtcNow(new DateTimeOffset(end.AddHours(48), TimeSpan.Zero));
+        await s.Payments.RunDisputesAsync();
+        await s.Payments.ReplyToDisputeAsync(request.Id, s.SupplierOrgId, SupplierWords);
+        var disputeId = Assert.Single(s.Db.ServicePaymentDisputes.AsNoTracking()).Id;
+
+        await s.Payments.ResolveDisputeAsync(disputeId, new ResolveServiceDisputeRequest("for_customer", null, null), Admin);
+
+        Assert.DoesNotContain(s.Db.OutboxEvents.AsNoTracking(), e => e.EventType == DomainEventType.ServiceRequestCompleted);
+        Assert.NotEqual(ServiceRequestStatus.Completato, (await s.ReadAsync(request.Id)).Status);
     }
 
     [Fact]

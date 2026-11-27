@@ -1,12 +1,15 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Logging;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -30,7 +33,7 @@ public class CampaignServiceTests
     private const string Api = "https://api.casazen.test";
 
     /// <summary>The signed unsubscribe links as a configured environment builds them; no secret: not configured.</summary>
-    private static MarketingUnsubscribeLinks Links(string? secret = LinkSecret) =>
+    internal static MarketingUnsubscribeLinks Links(string? secret = LinkSecret) =>
         new(
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -38,7 +41,8 @@ public class CampaignServiceTests
                 ["App:ApiBaseUrl"] = Api,
             }).Build(),
             new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = WebApp })),
-            TimeProvider.System);
+            TimeProvider.System,
+            CrmTestIndex.Create());
 
     /// <summary>
     /// Proof test for DEB-01: the unsubscribe link of a campaign e-mail is the signed link of ADR-007-R18 on the web app (no address in
@@ -50,9 +54,9 @@ public class CampaignServiceTests
         var (options, orgId, campaignId) = await SeedApprovedCampaignAsync("Guest.Person+promo@Example.com");
         var sent = new List<(string To, string Html, IReadOnlyDictionary<string, string> Headers)>();
         var email = new Mock<IEmailService>();
-        email.Setup(e => e.SendEmailWithHeadersAsync(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, string>>()))
-            .Callback<string, string, string, IReadOnlyDictionary<string, string>>((to, _, html, headers) => sent.Add((to, html, headers)))
+        email.Setup(e => e.SendCampaignEmailAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<string>(), It.IsAny<Guid>()))
+            .Callback<string, string, string, IReadOnlyDictionary<string, string>, string, Guid>((to, _, html, headers, _, _) => sent.Add((to, html, headers)))
             .ReturnsAsync(EmailSendResult.Sent());
         var links = Links();
 
@@ -64,7 +68,9 @@ public class CampaignServiceTests
         Assert.DoesNotContain("example.com", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("%40", html);
 
-        var emailHash = SuppressionService.ComputeEmailHash(to);
+        // E07/F06/US01/T02: the hash in the link is the keyed one (HMAC of the normalized address), never the plain SHA-256.
+        var emailHash = CrmTestIndex.Create().Hash(ShowcaseBookingRules.NormalizeEmail(to));
+        Assert.NotEqual(SuppressionService.LegacyEmailHash(to), emailHash);
         var page = $"{WebApp}/unsubscribe#orgId={orgId:D}&amp;emailHash={emailHash}&amp;expiresAt=";
         Assert.Contains($"href=\"{page}", html);
 
@@ -77,14 +83,67 @@ public class CampaignServiceTests
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(oneClick.Trim('<', '>')).Query);
         var (expiresAt, signature) = (query["expiresAt"].ToString(), query["signature"].ToString());
         Assert.Equal(emailHash, query["emailHash"].ToString());
-        Assert.Equal(MarketingUnsubscribeCheck.Valid, links.Verify(emailHash, expiresAt, signature));
+        Assert.Equal(MarketingUnsubscribeCheck.Valid, links.Verify(orgId, emailHash, expiresAt, signature));
         Assert.Equal(
             MarketingUnsubscribeCheck.InvalidSignature,
-            links.Verify(SuppressionService.ComputeEmailHash("someone.else@example.com"), expiresAt, signature));
+            links.Verify(orgId, CrmTestIndex.Create().Hash("someone.else@example.com"), expiresAt, signature));
 
         await using var verify = new AppDbContext(options);
         var campaign = await verify.Campaigns.SingleAsync(c => c.Id == campaignId);
         Assert.Equal((CampaignStatus.Sent, 1, 0), (campaign.Status, campaign.SentCount, campaign.ErrorCount));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SoftOptInRequiresAConfirmedAddressForCampaigns(bool confirmed)
+    {
+        var (options, orgId, campaignId) = await SeedApprovedCampaignAsync("existing@example.com");
+        await using var db = new AppDbContext(options);
+        var contact = await db.GuestContacts.SingleAsync();
+        contact.LegalBasis = GuestContactLegalBasis.SoftOptIn;
+        contact.Confirmation = confirmed ? GuestContactConfirmation.Confirmed : GuestContactConfirmation.Unconfirmed;
+        await db.SaveChangesAsync();
+        var segmentId = await db.Campaigns.Where(c => c.Id == campaignId).Select(c => c.SegmentId).SingleAsync();
+        var service = NewService(db, Mock.Of<IEmailService>(), Links());
+        Assert.Equal(confirmed ? 1 : 0, await service.PreviewCountAsync(segmentId, orgId, new HostScope(orgId)));
+    }
+
+    [Fact]
+    public async Task WithdrawalAfterApprovalSkipsTheRecipient()
+    {
+        var (options, _, id) = await SeedApprovedCampaignAsync("withdrawn@example.com");
+        var email = new Mock<IEmailService>(MockBehavior.Strict);
+        await using var db = new AppDbContext(options);
+        var contact = await db.GuestContacts.SingleAsync();
+        contact.IsSuppressed = true;
+        await db.SaveChangesAsync();
+        await NewService(db, email.Object, Links()).SendCampaignAsync(id);
+        Assert.Empty(await db.CampaignDeliveries.ToListAsync());
+        email.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public void PermanentUnsubscribeIsBoundToTheOrganizationAndDelivery()
+    {
+        var org = Guid.NewGuid();
+        var delivery = Guid.NewGuid();
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            [MarketingUnsubscribeLinks.SecretVariable] = LinkSecret,
+            ["App:ApiBaseUrl"] = Api,
+        }).Build();
+        var links = new MarketingUnsubscribeLinks(config, new PublicSiteLinks(Options.Create(
+            new PublicSiteOptions { PublicSiteBaseUrl = WebApp })), clock, CrmTestIndex.Create());
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(links.Create(org, "guest@example.com", delivery).OneClickUrl!).Query);
+        var hash = query["emailHash"].ToString();
+        var token = query["expiresAt"].ToString();
+        var signature = query["signature"].ToString();
+        clock.Advance(TimeSpan.FromDays(3650));
+        Assert.Equal(MarketingUnsubscribeCheck.Valid, links.Verify(org, hash, token, signature));
+        Assert.Equal(MarketingUnsubscribeCheck.InvalidSignature, links.Verify(Guid.NewGuid(), hash, token, signature));
+        Assert.Equal(MarketingUnsubscribeCheck.InvalidSignature, links.Verify(org, hash, $"v2-{Guid.NewGuid():N}", signature));
     }
 
     /// <summary>DEB-01: without the secret of the signed links a campaign sends nothing (no e-mail without its unsubscribe link).</summary>
@@ -104,18 +163,91 @@ public class CampaignServiceTests
         Assert.Equal(CampaignStatus.Approved, (await verify.Campaigns.SingleAsync(c => c.Id == campaignId)).Status);
     }
 
-    private static CampaignService NewService(AppDbContext context, IEmailService email, MarketingUnsubscribeLinks links) =>
+    /// <summary>
+    /// Proof test (permission rule, E07/F06/US01/T01): the module is closed behind <c>Features:CrmMarketing</c> and the Hangfire job is the way a
+    /// campaign leaves, so a campaign scheduled before the module was closed must not send a real e-mail while the flag is off. Whatever the state
+    /// of the key and of the link secret (here both missing, so that the old code failed and the job was retried), no e-mail is attempted, the job
+    /// does not fail, one warning in the log names the campaign and the flag, and the campaign goes back to Approved with no schedule: an explicit
+    /// state the host can schedule again once the module is on, not a campaign left Scheduled for a send that will not happen.
+    /// </summary>
+    [Fact]
+    public async Task SendCampaign_WithTheModuleOff_SendsNothingAndPutsTheCampaignBackToApproved_Test()
+    {
+        var (options, orgId, campaignId) = await SeedApprovedCampaignAsync("guest.person@example.com");
+        await using (var seed = new AppDbContext(options))
+        {
+            var scheduled = await seed.Campaigns.SingleAsync(c => c.Id == campaignId);
+            scheduled.Status = CampaignStatus.Scheduled;
+            scheduled.ScheduledAt = DateTime.UtcNow.AddMinutes(-1);
+            await seed.SaveChangesAsync();
+        }
+
+        var email = new Mock<IEmailService>();
+        var log = new CapturingLogger<CampaignService>();
+        await using (var context = new AppDbContext(options))
+        {
+            var withoutTheKey = CrmTestIndex.Create(key: null);
+            var service = new CampaignService(
+                context,
+                new ConditionEvaluator(Mock.Of<ILogger<ConditionEvaluator>>()),
+                new SuppressionService(context, withoutTheKey, Mock.Of<ILogger<SuppressionService>>()),
+                email.Object,
+                Links(secret: null),
+                Mock.Of<IBackgroundJobClient>(),
+                new TestFeatureFlags(),
+                TimeProvider.System,
+                log);
+
+            await service.SendCampaignAsync(campaignId);
+        }
+
+        email.VerifyNoOtherCalls();
+        await using var verify = new AppDbContext(options);
+        var campaign = await verify.Campaigns.SingleAsync(c => c.Id == campaignId);
+        Assert.Equal(CampaignStatus.Approved, campaign.Status);
+        Assert.Null(campaign.ScheduledAt);
+        Assert.Null(campaign.SentAt);
+        Assert.Equal((0, 0), (campaign.SentCount, campaign.ErrorCount));
+
+        var warning = Assert.Single(log.Entries, entry => entry.Level == LogLevel.Warning);
+        Assert.Contains("Features:CrmMarketing is off", warning.Message);
+        Assert.Equal(campaignId, Assert.IsType<Guid>(warning.Values["CampaignId"]));
+        Assert.Equal(orgId, Assert.IsType<Guid>(warning.Values["OrgId"]));
+        Assert.DoesNotContain("example.com", log.AllOutput, StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static CampaignService NewService(AppDbContext context, IEmailService email, MarketingUnsubscribeLinks links) =>
         new(
             context,
             new ConditionEvaluator(Mock.Of<ILogger<ConditionEvaluator>>()),
-            new SuppressionService(context, Mock.Of<ILogger<SuppressionService>>()),
+            new SuppressionService(context, CrmTestIndex.Create(), Mock.Of<ILogger<SuppressionService>>()),
             email,
             links,
             Mock.Of<IBackgroundJobClient>(),
+            ModuleOn(),
             TimeProvider.System,
             Mock.Of<ILogger<CampaignService>>());
 
+    /// <summary>The flag of the marketing module as an environment that turned it on has it (E07/F06/US01/T01).</summary>
+    private static IFeatureFlags ModuleOn() => new TestFeatureFlags(FeatureFlags.CrmMarketing);
+
     /// <summary>One guest with marketing consent, a segment that takes everybody and an approved campaign to it.</summary>
+    internal static void AddContact(AppDbContext db, Guid orgId, string email, bool confirmed = true)
+    {
+        var profile = new GuestCrmProfile { OrgId = orgId, CompositeKeyHash = Guid.NewGuid().ToString("N") };
+        db.GuestCrmProfiles.Add(profile);
+        db.GuestContacts.Add(new GuestContact
+        {
+            OrgId = orgId,
+            GuestCrmProfileId = profile.Id,
+            Channel = GuestContactChannel.Email,
+            Value = email,
+            ValueHash = CrmTestIndex.Create().Hash(ShowcaseBookingRules.NormalizeEmail(email)),
+            LegalBasis = GuestContactLegalBasis.Consent,
+            Confirmation = confirmed ? GuestContactConfirmation.Confirmed : GuestContactConfirmation.Unconfirmed,
+        });
+    }
+
     private static async Task<(DbContextOptions<AppDbContext> Options, Guid OrgId, Guid CampaignId)> SeedApprovedCampaignAsync(string guestEmail)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -126,6 +258,8 @@ public class CampaignServiceTests
         var campaignId = Guid.NewGuid();
 
         await using var context = new AppDbContext(options);
+        context.Orgs.Add(new OrgEntity { Id = orgId });
+        AddContact(context, orgId, guestEmail);
         context.Guests.Add(new Guest
         {
             Id = Guid.NewGuid(),
@@ -212,6 +346,8 @@ public class CampaignServiceTests
 
         await using (var context = new AppDbContext(options))
         {
+            AddContact(context, orgId, guestWithConsent.Email);
+            AddContact(context, orgId, guestWithoutConsent.Email, false);
             context.Guests.AddRange(guestWithConsent, guestWithoutConsent);
             context.GuestSegments.Add(segment);
             await context.SaveChangesAsync();
@@ -222,7 +358,7 @@ public class CampaignServiceTests
         {
             var logger = Mock.Of<ILogger<CampaignService>>();
             var conditionEvaluator = new ConditionEvaluator(Mock.Of<ILogger<ConditionEvaluator>>());
-            var suppressionService = new SuppressionService(context, Mock.Of<ILogger<SuppressionService>>());
+            var suppressionService = new SuppressionService(context, CrmTestIndex.Create(), Mock.Of<ILogger<SuppressionService>>());
             var backgroundJobClient = Mock.Of<IBackgroundJobClient>();
             var timeProvider = TimeProvider.System;
 
@@ -233,6 +369,7 @@ public class CampaignServiceTests
                 Mock.Of<Casazen.Infrastructure.External.IEmailService>(),
                 Links(),
                 backgroundJobClient,
+                ModuleOn(),
                 timeProvider,
                 logger);
 
@@ -302,12 +439,14 @@ public class CampaignServiceTests
 
         await using (var context = new AppDbContext(options))
         {
+            AddContact(context, orgId, guestSuppressed.Email);
+            AddContact(context, orgId, guestNotSuppressed.Email);
             context.Guests.AddRange(guestSuppressed, guestNotSuppressed);
             context.GuestSegments.Add(segment);
             await context.SaveChangesAsync();
 
             // Add suppressed email to suppression list (one-click unsubscribe)
-            var suppressionService = new SuppressionService(context, Mock.Of<ILogger<SuppressionService>>());
+            var suppressionService = new SuppressionService(context, CrmTestIndex.Create(), Mock.Of<ILogger<SuppressionService>>());
             await suppressionService.AddToSuppressionListAsync(orgId, suppressedEmail, "unsubscribe");
         }
 
@@ -316,7 +455,7 @@ public class CampaignServiceTests
         {
             var logger = Mock.Of<ILogger<CampaignService>>();
             var conditionEvaluator = new ConditionEvaluator(Mock.Of<ILogger<ConditionEvaluator>>());
-            var suppressionService = new SuppressionService(context, Mock.Of<ILogger<SuppressionService>>());
+            var suppressionService = new SuppressionService(context, CrmTestIndex.Create(), Mock.Of<ILogger<SuppressionService>>());
             var backgroundJobClient = Mock.Of<IBackgroundJobClient>();
             var timeProvider = TimeProvider.System;
 
@@ -327,6 +466,7 @@ public class CampaignServiceTests
                 Mock.Of<Casazen.Infrastructure.External.IEmailService>(),
                 Links(),
                 backgroundJobClient,
+                ModuleOn(),
                 timeProvider,
                 logger);
 
@@ -372,9 +512,27 @@ public class CampaignServiceTests
         {
             var logger = Mock.Of<ILogger<CampaignService>>();
             var conditionEvaluator = new ConditionEvaluator(Mock.Of<ILogger<ConditionEvaluator>>());
-            var suppressionService = new SuppressionService(context, Mock.Of<ILogger<SuppressionService>>());
+            var suppressionService = new SuppressionService(context, CrmTestIndex.Create(), Mock.Of<ILogger<SuppressionService>>());
             var backgroundJobClient = Mock.Of<IBackgroundJobClient>();
             var timeProvider = TimeProvider.System;
+
+            // The queue creates the item of the approval (E05/F04): here a double that answers with one, so the workflow of the campaign itself is what is tested.
+            var queue = new Mock<IApprovalQueueService>();
+            queue
+                .Setup(q => q.SubmitForApprovalAsync(
+                    orgId,
+                    ApprovalItemTypes.Campaign,
+                    It.IsAny<Guid>(),
+                    It.IsAny<string>(),
+                    It.IsAny<bool>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<Guid?>(),
+                    ApprovalOriginActions.ApproveCampaign,
+                    It.IsAny<decimal?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ApprovalQueueItem { OrgId = orgId, ItemType = ApprovalItemTypes.Campaign });
 
             var service = new CampaignService(
                 context,
@@ -383,8 +541,10 @@ public class CampaignServiceTests
                 Mock.Of<Casazen.Infrastructure.External.IEmailService>(),
                 Links(),
                 backgroundJobClient,
+                ModuleOn(),
                 timeProvider,
-                logger);
+                logger,
+                queue.Object);
 
             // Act: Create draft
             var campaign = await service.CreateDraftAsync(
@@ -402,10 +562,24 @@ public class CampaignServiceTests
             var campaignAfterSubmit = await context.Campaigns.FindAsync(campaign.Id);
             Assert.NotNull(campaignAfterSubmit);
             Assert.Equal(CampaignStatus.PendingApproval, campaignAfterSubmit.Status);
+            queue.Verify(
+                q => q.SubmitForApprovalAsync(
+                    orgId,
+                    ApprovalItemTypes.Campaign,
+                    campaign.Id,
+                    "Test subject\n\n<p>Test body</p>",
+                    false,
+                    It.IsAny<string?>(),
+                    It.IsAny<Guid?>(),
+                    ApprovalOriginActions.ApproveCampaign,
+                    It.IsAny<decimal?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()),
+                Times.Once);
 
-            // Simulate approval (manually update status for this test)
-            campaignAfterSubmit.Status = CampaignStatus.Approved;
-            await context.SaveChangesAsync();
+            // Approval: the one place that sets Approved is the approval of the queue (E05/F04); before it nothing in production code did.
+            await service.MarkApprovedAsync(campaign.Id, orgId, null, null);
 
             // Act: Schedule
             var scheduledTime = DateTime.UtcNow.AddDays(1);

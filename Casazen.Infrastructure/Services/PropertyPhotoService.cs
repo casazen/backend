@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
@@ -47,6 +48,12 @@ public class PropertyPhotoService(
         foreach (var file in files)
             await ValidateAsync(file, cancellationToken);
 
+        // These addresses now go to the channel manager and the OTAs (E02/F03/US01/T02, ADR-036-R2): the position (GPS), the camera, the time and
+        // every other metadata of the photo are left out, and only the orientation stays. A file that is not a whole, plain image is refused.
+        var cleaned = new List<IFormFile>(files.Count);
+        foreach (var file in files)
+            cleaned.Add(await WithoutMetadataAsync(file, cancellationToken));
+
         // Cheap early answer before uploading anything; the limit is checked again under the lock.
         var current = await db.Properties.AsNoTracking()
             .Where(p => p.Id == propertyId)
@@ -59,7 +66,7 @@ public class PropertyPhotoService(
         var sizes = new Dictionary<string, (int Width, int Height)>(StringComparer.Ordinal);
         try
         {
-            foreach (var file in files)
+            foreach (var file in cleaned)
             {
                 var url = await images.UploadImageAsync(file, propertyId);
                 uploaded.Add(url);
@@ -105,6 +112,8 @@ public class PropertyPhotoService(
                 await DeleteObjectAsync(propertyId, photoUrl, cancellationToken);
                 // The alternative text and the size of a photo leave with it (DB-11a).
                 property.PhotoAltJson = PropertyPhotoMeta.Without(property.PhotoAltJson, photoUrl);
+                // Deleting in CasaZen removes the photo on the channels (NF-32): its sending task is marked, in the same save as the gallery.
+                await MarkPhotoTaskForRemovalAsync(propertyId, photoUrl, cancellationToken);
                 return [.. property.PhotoUrls.Where(url => !string.Equals(url, photoUrl, StringComparison.Ordinal))];
             },
             cancellationToken);
@@ -209,6 +218,48 @@ public class PropertyPhotoService(
         {
             throw InvalidType(name);
         }
+    }
+
+    /// <summary>
+    /// The same image written again without its metadata (<see cref="ShowcaseImageSanitizer"/>: JPEG, PNG and WebP; only the orientation stays).
+    /// The type is told from the content; 422 for a file that is not a whole, plain image of that type.
+    /// </summary>
+    private static async Task<IFormFile> WithoutMetadataAsync(IFormFile file, CancellationToken cancellationToken)
+    {
+        var original = new byte[file.Length];
+        await using (var input = file.OpenReadStream())
+            await input.ReadExactlyAsync(original, cancellationToken);
+
+        var type = ImageSignature.Detect(original.AsSpan(0, Math.Min(original.Length, ImageSignature.HeaderLength)));
+        var clean = type is null ? null : ShowcaseImageSanitizer.Clean(original, type);
+        if (type is null || clean is null)
+            throw InvalidType(DisplayName(file));
+
+        return new FormFile(new MemoryStream(clean, writable: false), 0, clean.Length, file.Name, file.FileName)
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = type,
+        };
+    }
+
+    /// <summary>
+    /// A photo that leaves the gallery leaves the channel manager too (NF-32): the task that sent it becomes <c>RemovePending</c>, and the next
+    /// run of the publication deletes it there. A photo that never reached the channel manager (not sent, or refused) has nothing to remove.
+    /// </summary>
+    private async Task MarkPhotoTaskForRemovalAsync(Guid propertyId, string photoUrl, CancellationToken cancellationToken)
+    {
+        var task = await db.PhotoUploadTasks.FirstOrDefaultAsync(t => t.PropertyId == propertyId && t.PhotoUrl == photoUrl, cancellationToken);
+        if (task is null || task.Status is PhotoUploadStatus.RemovePending or PhotoUploadStatus.Removed)
+            return;
+
+        if (task.Status is PhotoUploadStatus.Pending or PhotoUploadStatus.Error)
+        {
+            task.Status = PhotoUploadStatus.Removed;
+            task.CompletedAt = _clock.GetUtcNow().UtcDateTime;
+            return;
+        }
+
+        task.Status = PhotoUploadStatus.RemovePending;
     }
 
     private static bool ExtensionMatches(string extension, string contentType) =>

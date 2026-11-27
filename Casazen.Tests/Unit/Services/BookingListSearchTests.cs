@@ -324,7 +324,8 @@ public class BookingListSearchTests
     [InlineData(BookingChannel.Manual, "b3")]
     [InlineData(BookingChannel.Airbnb, "b2")]
     [InlineData(BookingChannel.BookingCom, "b4")]
-    [InlineData(BookingChannel.Other, "b5,b8")]
+    [InlineData(BookingChannel.Expedia, "b5")]
+    [InlineData(BookingChannel.Other, "b8")]
     public async Task Channel_EachChannelIsItsSources(BookingChannel channel, string expected)
     {
         var world = await SeedAsync();
@@ -540,6 +541,22 @@ public class BookingListSearchTests
         Assert.Equal(new BookingRowDetails(BookingPaymentState.None, 0m, null), Row("b6"));
         Assert.Equal(new BookingRowDetails(BookingPaymentState.None, 0m, null), Row("b7"));
         Assert.Equal(new BookingRowDetails(BookingPaymentState.None, 0m, AlloggiatiWebStatus.DaInviare), Row("b8"));
+    }
+
+    [Fact]
+    public async Task Rows_ANoShowHasNoAlloggiatiCommunication()
+    {
+        // NF-45: b2 arrives today and would be "to send on the portal"; marked as a no-show, its guests never came, so the row says nothing.
+        var world = await SeedAsync();
+        var b2 = Id(world, "b2");
+        var arrivesToday = await world.Db.Bookings.IgnoreQueryFilters().SingleAsync(b => b.Id == b2);
+        arrivesToday.NoShowAt = At(10, 9, 15);
+        await world.Db.SaveChangesAsync();
+
+        var page = await Search(world.Db).SearchAsync(world.OrgWide, new BookingSearchCriteria(PageSize: 100));
+
+        Assert.Null(page.Details[b2].AlloggiatiStatus);
+        Assert.Equal(AlloggiatiWebStatus.DaInviareManualmente, page.Details[Id(world, "b4")].AlloggiatiStatus);
     }
 
     [Fact]

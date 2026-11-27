@@ -143,6 +143,23 @@ public class StayAlertsPostgresTests : IClassFixture<CasazenWebApplicationFactor
     }
 
     [PostgresFact]
+    public async Task RunAsync_NoShowStay_SendsNoAlloggiatiAlertNorCheckoutReminder()
+    {
+        // NF-45: the guests never came. The host marked the no-show on the day of arrival: no alert about a police communication that is not
+        // due (data missing, deadline, overdue), and no reminder to check out a stay that never started.
+        var checkIn = Date(Year + 1, 5, 12);
+        var booking = await SeedStayAsync(checkIn, checkIn.AddDays(2));
+        await UpdateBookingAsync(booking.Id, b => b.NoShowAt = RomeToUtc(checkIn, 10));
+        var alerts = NewHarness(RomeToUtc(checkIn.AddDays(-1), 0));
+
+        await alerts.RunHourlyAsync(5 * 24);
+
+        Assert.Empty(alerts.Emails.Queued);
+        Assert.Empty(alerts.Push.Sent);
+        Assert.False(await HasStateAsync(booking.Id));
+    }
+
+    [PostgresFact]
     public async Task ManualBooking_ConfirmedAtCreationNeverCheckedIn_RemindsOnCheckOutDayAt20ByEmailAndPush()
     {
         var (host, propertyId) = await HostWithPropertyAsync(timeZone: string.Empty);

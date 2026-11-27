@@ -42,6 +42,11 @@ public static class PushServiceCollectionExtensions
         services.AddSignalR();
         services.TryAddSingleton<IInAppNotificationPublisher, NoOpInAppNotificationPublisher>();
         services.Replace(ServiceDescriptor.Singleton<IInAppNotificationPublisher, SignalRInAppNotificationPublisher>());
+
+        // The popup alerts of the users (ADR-025) travel on the same hub and the same connection, as one more client method
+        // (`alertReceived`): no second hub, no second AddSignalR. A host without the hub keeps the no-op and still starts.
+        services.TryAddSingleton<IPopupAlertPublisher, NoOpPopupAlertPublisher>();
+        services.Replace(ServiceDescriptor.Singleton<IPopupAlertPublisher, SignalRPopupAlertPublisher>());
         return services;
     }
 }

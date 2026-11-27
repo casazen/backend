@@ -27,6 +27,9 @@ public static partial class EmailTemplates
             .Button("OwnerInvitation_Cta", acceptUrl)
             .LinkFallback("OwnerInvitation_LinkFallback", acceptUrl)
             .Muted("OwnerInvitation_Expires", builder.FormatInstant(expiresAtUtc))
-            .Build("OwnerInvitation_Subject", agencyName);
+            .Build("OwnerInvitation_Subject", agencyName) with
+        {
+            AccountInvitation = new("owner", acceptUrl, expiresAtUtc),
+        };
     }
 }

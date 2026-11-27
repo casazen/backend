@@ -45,6 +45,13 @@ public class ComplianceController(
         AlloggiatiFailures = MapSection(summary.AlloggiatiFailures),
         AlloggiatiManualRequired = MapSection(summary.AlloggiatiManualRequired),
         TurnoversPending = MapSection(summary.TurnoversPending),
+        IdentityPending = MapSection(summary.IdentityPending),
+        ReceiptsToUpload = MapSection(summary.ReceiptsToUpload),
+        ManualSendsRequired = MapSection(summary.ManualSendsRequired),
+        ConnectionsToFix = MapSection(summary.ConnectionsToFix),
+        PeriodItems = MapSection(summary.PeriodItems),
+        TicinoNotifications = MapSection(summary.TicinoNotifications),
+        SwissNotifications = MapSection(summary.SwissNotifications),
     };
 
     private static ComplianceSummarySectionDto MapSection(ComplianceSummarySection section) => new()
@@ -59,6 +66,13 @@ public class ComplianceController(
             BookingId = i.BookingId,
             Missing = i.Missing.Select(ComplianceMissingDto.From).ToList(),
             DueAt = i.DueAt,
+            Light = i.Light,
+            Reason = i.Reason,
+            Period = i.Period,
+            EvidenceClass = i.EvidenceClass,
+            EvidenceSource = i.EvidenceSource,
+            LastVerifiedAt = i.LastVerifiedAt,
+            HandoffTopic = i.HandoffTopic,
         }),
     };
 }

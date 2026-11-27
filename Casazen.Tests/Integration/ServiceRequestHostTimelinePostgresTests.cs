@@ -375,6 +375,7 @@ public class ServiceRequestHostTimelinePostgresTests(ServiceRequestHostTimelineP
             },
             new SupplierProfile
             {
+                GuestPortalMarketplaceEnabled = true,
                 OrgId = supplierOrg.Id,
                 Email = email,
                 LegalName = legalName,

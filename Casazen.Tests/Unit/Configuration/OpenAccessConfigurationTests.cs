@@ -105,7 +105,7 @@ public class OpenAccessConfigurationTests
         var ex = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IStartupValidator>().Validate());
 
         var failure = Assert.Single(ex.Failures);
-        Assert.Contains("Entitlement__OpenAccess__Tier must be the name of a plan (Starter, Pro, Scale)", failure);
+        Assert.Contains("Entitlement__OpenAccess__Tier must be the name of a plan (Starter, Pro, Scale, Agency)", failure);
         Assert.Contains("docs/runbooks/open-access.md", failure);
     }
 

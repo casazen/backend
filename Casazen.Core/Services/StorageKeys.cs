@@ -14,14 +14,25 @@ namespace Casazen.Core.Services;
 /// <item><c>guest-documents/{orgId}/{guestId}/{file}</c> — private bucket</item>
 /// <item><c>orgs/{orgId}/branding/{logo|hero}/{file}</c> — public bucket (BK-12)</item>
 /// <item><c>service-requests/{requestId}/photos/{file}</c> — private bucket (photos of a supplier's work, SP-04)</item>
+/// <item><c>orgs/{orgId}/leases/{leaseId}/maintenance/{requestId}/{file}</c> — private bucket (photos of a tenant maintenance request)</item>
+/// <item><c>tourist-tax/{orgId}/{remittanceId}/{file}</c> — private bucket (the receipt of a tourist tax payment, NF-100)</item>
+/// <item><c>accountant-packages/{orgId}/{yyyy-MM}.zip</c> — private bucket (the package of a month that waits for the link of its e-mail to the accountant, E15/F01/US02/T02)</item>
 /// </list>
 /// Private keys are what the database stores for private files (<c>PropertyDocument.StorageUrl</c>,
 /// <c>Guest.DocumentScanUrl</c>); public files are stored as their absolute public URL.
 /// </summary>
 public static partial class StorageKeys
 {
+    /// <summary>A signed management mandate in private storage; generated names never expose the uploaded filename.</summary>
+    public static string OwnerMandate(Guid orgId, Guid ownerId, string fileName) =>
+        $"orgs/{orgId}/owners/{ownerId}/mandates/{fileName}";
+
     public static string LeaseAttachment(Guid orgId, Guid leaseId, string fileName) =>
         $"orgs/{orgId}/leases/{leaseId}/documents/{fileName}";
+
+    /// <summary>A photo the tenant attached to a maintenance request (private bucket).</summary>
+    public static string MaintenancePhoto(Guid orgId, Guid leaseId, Guid requestId, string fileName) =>
+        EnsureValid($"orgs/{orgId}/leases/{leaseId}/maintenance/{requestId}/{fileName}");
 
     public static string PropertyPhoto(Guid propertyId, string fileName) =>
         $"properties/{propertyId}/photos/{fileName}";
@@ -55,8 +66,22 @@ public static partial class StorageKeys
     public static string PropertyDocument(Guid propertyId, string fileName) =>
         $"properties/{propertyId}/documents/{fileName}";
 
+    /// <summary>An encrypted Swiss receipt; private bucket, never a public URL or an uploaded filename.</summary>
+    public static string SwissComplianceReceipt(Guid orgId, Guid propertyId, Guid receiptId) =>
+        $"orgs/{orgId}/properties/{propertyId}/swiss-receipts/{receiptId}.bin";
+
+    /// <summary>The start of the key of every guest's document (<see cref="GuestDocument"/>): the photos of identity documents a verification kept and the legacy scans.</summary>
+    public const string GuestDocumentPrefix = "guest-documents/";
+
     public static string GuestDocument(Guid orgId, Guid guestId, string fileName) =>
-        $"guest-documents/{orgId}/{guestId}/{fileName}";
+        $"{GuestDocumentPrefix}{orgId}/{guestId}/{fileName}";
+
+    /// <summary>
+    /// True for the key of a guest's document. Such a key names the org and the guest, so what deletes the object never writes it in a log line (E20/F02/US01/T02, NF-121):
+    /// the storage says that an object of the guests' documents was deleted, and nothing else.
+    /// </summary>
+    public static bool IsGuestDocument(string? key) =>
+        key is not null && key.StartsWith(GuestDocumentPrefix, StringComparison.Ordinal);
 
     /// <summary>Logo or hero image of the org's public booking site (public bucket, BK-12).</summary>
     public static string OrgBrandingImage(Guid orgId, BrandingImageKind kind, string fileName) =>
@@ -80,6 +105,40 @@ public static partial class StorageKeys
     /// </summary>
     public static string ServiceRequestPhoto(Guid serviceRequestId, string fileName) =>
         $"service-requests/{serviceRequestId}/photos/{fileName}";
+
+    /// <summary>
+    /// The receipt of a tourist tax payment (private bucket, NF-100): shown to the people of the org that made the payment through an
+    /// authenticated endpoint, never by a public URL. <paramref name="fileName"/> is made by the server, never the one the host sent.
+    /// </summary>
+    public static string TouristTaxReceipt(Guid orgId, Guid remittanceId, string fileName) =>
+        $"tourist-tax/{orgId}/{remittanceId}/{fileName}";
+
+    /// <summary>
+    /// The file of a proof the host uploaded for the compliance traffic light (private bucket, E03/F02/US01, NF-47, NF-52): the receipt of an Alloggiati,
+    /// ISTAT or tourist tax communication. Never reached by a public URL. <paramref name="fileName"/> is made by the server, never the one the host sent.
+    /// </summary>
+    public static string ManualComplianceProof(Guid orgId, Guid proofId, string fileName) =>
+        $"compliance-proofs/{orgId}/{proofId}/{fileName}";
+
+    /// <summary>
+    /// A file of a document an agency shares with one of its owners (private bucket, E07/F07/US01/T02): read only through the endpoints that check the owner,
+    /// the agency and the permission, never by a public URL. <paramref name="fileName"/> is made by the server (the id of the version and the extension the
+    /// scan recognised), never the name sent.
+    /// </summary>
+    public static string OwnerDocumentFile(Guid orgId, Guid documentId, string fileName) =>
+        $"owner-documents/{orgId}/{documentId}/{fileName}";
+
+    /// <summary>The file attached to a message of the owner inbox (private bucket, E07/F07/US01/T02); the name is made by the server.</summary>
+    public static string OwnerMessageAttachment(Guid orgId, Guid conversationId, string fileName) =>
+        $"owner-messages/{orgId}/{conversationId}/{fileName}";
+
+    /// <summary>
+    /// The package of the accountant of one month (private bucket, E15/F01/US02/T02, NF-101): kept until the link of the e-mail that names it has expired, and opened only through
+    /// <c>GET api/public/accountant-package/{orgId}/{period}</c> with a signed link, never by a public URL. The key is made of the org and the month and nothing else, so one org has at most one
+    /// object for a month and the next send of the same month replaces it. <paramref name="period"/> is <c>yyyy-MM</c> (anything else is refused).
+    /// </summary>
+    public static string AccountantPackage(Guid orgId, string period) =>
+        EnsureValid($"accountant-packages/{orgId:D}/{period}.zip");
 
     /// <summary>A new random file name that keeps only the (lower-cased) extension of the upload.</summary>
     public static string NewFileName(string? originalFileName) =>

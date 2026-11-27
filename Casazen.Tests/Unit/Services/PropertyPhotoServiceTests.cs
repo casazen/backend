@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
@@ -24,14 +25,13 @@ public class PropertyPhotoServiceTests : IDisposable
 {
     private const string PublicBaseUrl = "https://storage.test/public";
 
-    private static readonly byte[] JpegBytes =
-        [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00];
+    // A whole, plain JPEG (the metadata of every photo is removed before it is stored, and a file that is not a whole image is refused).
+    private static readonly byte[] JpegBytes = ShowcaseTestImages.PhoneJpeg(orientation: 1);
 
     private static readonly byte[] PngBytes = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
 
-    private static readonly byte[] WebpBytes =
-        [0x52, 0x49, 0x46, 0x46, 0x1A, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x4C, 0x0D, 0x00, 0x00, 0x00];
+    private static readonly byte[] WebpBytes = ShowcaseTestImages.PhoneWebP();
 
     private static readonly Guid OrgId = Guid.Parse("00000000-0000-0000-0000-0000000000a1");
     private static readonly Guid OtherOrgId = Guid.Parse("00000000-0000-0000-0000-0000000000b2");
@@ -484,6 +484,73 @@ public class PropertyPhotoServiceTests : IDisposable
         await Assert.ThrowsAsync<NotFoundException>(() => CreateService(db).SetCoverAsync(property.Id, "b"));
 
         Assert.Equal(["a", "b"], (await ReloadAsync(property.Id)).PhotoUrls);
+    }
+
+    // ─── The listing photos go to the channel manager (E02/F03/US01/T02) ──────────────────────────────────────────
+
+    [Fact]
+    public async Task PropertyPhotoUpload_GpsMetadataRemoved_Test()
+    {
+        // Proof (privacy): these addresses now go to the channel manager and the OTAs, so the position, the camera and the comments of a photo
+        // never reach the bucket, whatever the type; only the picture (and the orientation of a JPEG) stays.
+        var property = await SeedPropertyAsync();
+
+        var gallery = await CreateService().AddAsync(
+            property.Id,
+            [
+                Image("camera.jpg", "image/jpeg", ShowcaseTestImages.PhoneJpeg(orientation: 6)),
+                Image("mare.png", "image/png", ShowcaseTestImages.PhonePng()),
+                Image("piscina.webp", "image/webp", ShowcaseTestImages.PhoneWebP()),
+            ]);
+
+        Assert.Equal(3, gallery.Count);
+        var stored = StoredObjects();
+        Assert.Equal(3, stored.Length);
+        foreach (var path in stored)
+        {
+            var text = System.Text.Encoding.Latin1.GetString(await File.ReadAllBytesAsync(path));
+            Assert.DoesNotContain("GPSLatitude", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("GPSLongitude", text, StringComparison.Ordinal);
+            Assert.DoesNotContain(ShowcaseTestImages.CommentText, text, StringComparison.Ordinal);
+            Assert.DoesNotContain("<script>", text, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task AddAsync_AFileThatIsNotAWholePlainImage_IsRefusedAndNothingIsStored()
+    {
+        var property = await SeedPropertyAsync();
+
+        // Starts like a JPEG and goes nowhere: the rewriting finds no picture in it.
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => CreateService().AddAsync(property.Id, [Image("rotta.jpg", "image/jpeg", [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00])]));
+
+        Assert.Equal(PropertyPhotoLimits.InvalidTypeCode, ex.Code);
+        Assert.Empty(StoredObjects());
+        Assert.Empty((await ReloadAsync(property.Id)).PhotoUrls);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_APhotoSentToTheChannelManager_MarksItsTaskToBeRemovedThere()
+    {
+        // NF-32: deleting in CasaZen removes the photo on the channels. A photo that never reached the channel manager has nothing to remove.
+        var property = await SeedPropertyAsync();
+        var gallery = await CreateService().AddAsync(property.Id, [Image("a.png", "image/png", PngBytes), Image("b.png", "image/png", PngBytes)]);
+        await using (var seed = CreateDb())
+        {
+            seed.PhotoUploadTasks.AddRange(
+                new PhotoUploadTask { OrgId = OrgId, PropertyId = property.Id, PhotoUrl = gallery[0], Status = PhotoUploadStatus.Done, OctoratePhotoId = "photo-1" },
+                new PhotoUploadTask { OrgId = OrgId, PropertyId = property.Id, PhotoUrl = gallery[1], Status = PhotoUploadStatus.Pending });
+            await seed.SaveChangesAsync();
+        }
+
+        await CreateService().DeleteAsync(property.Id, gallery[0]);
+        await CreateService().DeleteAsync(property.Id, gallery[1]);
+
+        await using var db = CreateDb();
+        var tasks = await db.PhotoUploadTasks.AsNoTracking().ToListAsync();
+        Assert.Equal(PhotoUploadStatus.RemovePending, tasks.Single(t => t.PhotoUrl == gallery[0]).Status);
+        Assert.Equal(PhotoUploadStatus.Removed, tasks.Single(t => t.PhotoUrl == gallery[1]).Status);
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────────────

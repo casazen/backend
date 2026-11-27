@@ -22,7 +22,7 @@ public class OrgCapabilityCatalogTests
 {
     private static readonly string[] CapabilityIds =
     [
-        "booking", "prices", "guests", "money", "leases", "rents", "jobs", "people", "billing", "suppliers", "settings", "security",
+        "booking", "prices", "marketing", "guests", "money", "leases", "rents", "jobs", "people", "billing", "suppliers", "settings", "security",
     ];
 
     /// <summary>The permissions of every seeded role, by context and role key (the model's seed data).</summary>
@@ -40,15 +40,16 @@ public class OrgCapabilityCatalogTests
     // ─── The twelve capabilities ────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Catalog_TheTwelveCapabilities_HaveStableIdsInTheOrderOfTheScreen()
+    public void Catalog_TheCapabilities_HaveStableIdsInTheOrderOfTheScreen()
     {
         Assert.Equal(CapabilityIds, OrgCapabilityCatalog.All.Select(c => c.Id));
-        Assert.Equal(12, OrgCapabilityCatalog.All.Select(c => c.Id).Distinct().Count());
+        Assert.Equal(CapabilityIds.Length, OrgCapabilityCatalog.All.Select(c => c.Id).Distinct().Count());
     }
 
     [Theory]
     [InlineData("booking", "short-rent")]
     [InlineData("prices", "short-rent")]
+    [InlineData("marketing", "short-rent")]
     [InlineData("guests", "short-rent")]
     [InlineData("money", "short-rent")]
     [InlineData("leases", "long-rent")]
@@ -68,14 +69,14 @@ public class OrgCapabilityCatalogTests
     public static TheoryData<OrgRole, string> ExpectedLevels => new()
     {
         //                          booking prices guests money leases rents jobs people billing suppliers settings security
-        { OrgRole.Owner,           "Y Y Y Y Y Y Y Y Y Y Y Y" },
-        { OrgRole.Admin,           "Y Y Y Y Y Y Y Y Y Y Y Y" },
-        { OrgRole.PropertyManager, "Y Y Y Y Y Y Y N N Y N N" },
+        { OrgRole.Owner,           "Y Y Y Y Y Y Y Y Y Y Y Y Y" },
+        { OrgRole.Admin,           "Y Y N Y Y Y Y Y Y Y Y Y Y" },
+        { OrgRole.PropertyManager, "Y Y N Y Y Y Y Y N N Y N N" },
         // D14: the collaborator reads the prices. Guests and interventions are the limited «Yes» (no erasure, no Alloggiati
         // declaration; no final amount, no online payment): the matrix says Yes, the words say limited.
-        { OrgRole.Collaborator,    "R R Y N N N Y N N N N N" },
+        { OrgRole.Collaborator,    "R R N Y N N N Y N N N N N" },
         // LR-01: the accountant reads the list and the register of the rents with lease.read.
-        { OrgRole.Accountant,      "R R N R R R R N R N N N" },
+        { OrgRole.Accountant,      "R R N N R R R R N R N N N" },
     };
 
     [Theory]

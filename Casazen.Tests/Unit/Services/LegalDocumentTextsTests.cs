@@ -70,7 +70,9 @@ public class LegalDocumentTextsTests
     [Fact]
     public void GetText_Terms_ShowsTheRealPlansOfTheCatalogueWithConfiguredPrices()
     {
-        var service = Service(LegalTextFixtures.CompleteConfiguration());
+        var config = LegalTextFixtures.CompleteConfiguration();
+        config["Legal:Documents:Tos:Version"] = "2026-11-v2";
+        var service = Service(config);
 
         var italian = service.GetText(LegalDocumentKind.Tos, "it")!.Html;
         var english = service.GetText(LegalDocumentKind.Tos, "en")!.Html;
@@ -529,7 +531,7 @@ public class LegalDocumentTextsTests
         if (folder != "tos")
             return;
 
-        var termsTokens = LegalDocumentTemplate.TokensIn(ReadRaw("tos", "it"));
+        var termsTokens = LegalDocumentTemplate.TokensIn(File.ReadAllText(Path.Combine(LegalTextFixtures.ShippedRoot(), "tos", "2026-11-v2.it.html")));
         foreach (var plan in PlanCatalog.All)
         {
             Assert.Contains($"Plans.{plan.Tier}.Name", termsTokens);

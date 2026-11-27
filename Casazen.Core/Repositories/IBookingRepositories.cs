@@ -40,12 +40,14 @@ public interface IBookingRepository
     Task<Booking> AddAsync(Booking booking);
 
     /// <summary>
-    /// <see cref="AddAsync(Booking)"/> for the booking of a public checkout whose guest ticked the optional "send me offers"
-    /// box (DB-03): the booking, its guest snapshot and the record of the marketing consent
+    /// <see cref="AddAsync(Booking)"/> for the booking of a public checkout that records something of the guest's privacy
+    /// history: the optional "send me offers" boxes, one record for each channel the guest ticked (DB-03, E07/F04/US01/T02), and
+    /// the soft opt-in notice that was presented. The booking, its guest snapshot and every record
     /// (<see cref="GuestConsentRecord.GuestId"/> is the booking's guest) are written in the same transaction, under the same
-    /// property lock and overlap checks. A checkout that loses the dates to a concurrent one leaves no consent behind either.
+    /// property lock and overlap checks. A checkout that loses the dates to a concurrent one leaves no record behind either.
     /// </summary>
-    Task<Booking> AddWithGuestConsentAsync(Booking booking, GuestConsentRecord consent);
+    /// <param name="consents">At least one record; each belongs to the guest of the booking.</param>
+    Task<Booking> AddWithGuestConsentsAsync(Booking booking, IReadOnlyList<GuestConsentRecord> consents);
 
     Task<Booking> UpdateAsync(Booking booking);
     Task DeleteAsync(Guid id);

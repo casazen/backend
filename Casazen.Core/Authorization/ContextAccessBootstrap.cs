@@ -26,6 +26,11 @@ public static class ContextAccessBootstrap
                 "guest.write",
                 // AM-03: carved out of property.write, guest.write and booking.write; the owner holds them all.
                 .. HostPermissions.ShortRentFine,
+                // E03/F04/US02/T01: the owner decides the identity verifications of its guests, as the seeded role 1 does.
+                HostPermissions.VerificationDecision,
+                // E50/F01/US01/T01: the owner always sets up its guest portal («Portale ospiti»), as the seeded role 1 does.
+                HostPermissions.GuestPortalManage,
+                HostPermissions.Marketing,
             ]),
         new(
             JwtRole: "LongTermLandlord",

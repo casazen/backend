@@ -148,7 +148,7 @@ public sealed partial class SupplierPaymentService
         var refundable = HeldPaymentRules.RefundableCents(payment.AmountCents, refundedCents, inProgressCents);
 
         // R4: only the supplier's part goes back; the commission is CasaZen's.
-        if (keepCommission)
+        if (keepCommission && !payment.CommissionAddedToPrice)
             refundable = Math.Min(refundable, HeldPaymentRules.ReleasableCents(payment.NetCents, refundedCents, inProgressCents));
 
         if (refundable <= 0)
@@ -604,7 +604,7 @@ public sealed partial class SupplierPaymentService
         foreach (var refund in succeeded)
         {
             cumulative += refund.AmountCents;
-            if (held)
+            if (held && !payment.CommissionAddedToPrice)
                 continue;
 
             var feeBack = SupplierCommission.FeeRefundedCents(
@@ -613,7 +613,7 @@ public sealed partial class SupplierPaymentService
             feeSoFar = feeBack;
         }
 
-        foreach (var refund in refunds.Where(r => held || r.Status != ServicePaymentRefundStatus.Succeeded))
+        foreach (var refund in refunds.Where(r => (held && !payment.CommissionAddedToPrice) || r.Status != ServicePaymentRefundStatus.Succeeded))
             refund.ApplicationFeeRefundedCents = null;
 
         if (cumulative > payment.AmountCents)
@@ -628,7 +628,8 @@ public sealed partial class SupplierPaymentService
         if (held)
         {
             status = HeldPaymentRules.StatusAfterRefunds(
-                status, payment.AmountCents, payment.NetCents, refunded, hasTransfer: payment.StripeTransferId is not null);
+                status, payment.AmountCents, payment.NetCents, refunded, hasTransfer: payment.StripeTransferId is not null,
+                supplierRefundedCents: SupplierRefundShare(payment, refunded));
         }
         else if (status is ServicePaymentStatus.Paid or ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded)
         {

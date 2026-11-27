@@ -371,7 +371,7 @@ public sealed partial class SupplierPaymentService
         var supplier = await ReadSupplierAsync(payment.SupplierOrgId, cancellationToken);
         var refunds = await LoadRefundsAsync(payment.Id, cancellationToken);
         var inProgress = (int)Math.Min(refunds.Where(IsInProgress).Sum(r => (long)r.AmountCents), int.MaxValue);
-        var expected = HeldPaymentRules.ReleasableCents(payment.NetCents, payment.RefundedCents, inProgress);
+        var expected = HeldPaymentRules.ReleasableCents(payment.NetCents, SupplierRefundShare(payment, payment.RefundedCents), inProgress);
 
         var mismatches = HeldChargeVerification.TransferMismatches(
             expected, supplier.AccountId, transfer.AmountCents, transfer.DestinationAccountId, transfer.Reversed);

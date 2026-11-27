@@ -6,6 +6,7 @@ using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
@@ -15,11 +16,17 @@ namespace Casazen.Infrastructure.Services;
 /// Stripe says it does not exist or was revoked (<see cref="StripeConnectFailure.AccountUnavailable"/>): a rate limit, a
 /// Stripe outage, a network error or a key problem throws and leaves the account, its capabilities and the payments
 /// on it untouched. Creations of one org run one at a time and carry an idempotency key bound to the org.
+/// <para>
+/// The account is created in the org's own country (<see cref="ConnectAccountCountries"/>, issue #1001): Stripe cannot change
+/// it afterwards, and the hosted form of an Italian account cannot be completed by a Swiss company. An account that is of
+/// another country than the org's and has not been submitted yet is therefore replaced; one that was submitted is kept.
+/// </para>
 /// </summary>
 public class ConnectOnboardingService(
     AppDbContext dbContext,
     IStripeConnectGateway stripeConnectGateway,
-    ILogger<ConnectOnboardingService> logger) : IConnectOnboardingService
+    ILogger<ConnectOnboardingService> logger,
+    IConfiguration? configuration = null) : IConnectOnboardingService
 {
     public async Task<ConnectStatus> GetStatusAsync(
         Guid orgId,
@@ -66,15 +73,31 @@ public class ConnectOnboardingService(
         // An instance tracked earlier in the request keeps the values read before the lock.
         await dbContext.Entry(org).ReloadAsync(cancellationToken);
 
+        var country = await ResolveAccountCountryAsync(org, cancellationToken);
+
         string? replacedAccountId = null;
         if (!string.IsNullOrWhiteSpace(org.StripeConnectedAccountId))
         {
             try
             {
                 var snapshot = await stripeConnectGateway.GetAccountAsync(org.StripeConnectedAccountId, cancellationToken);
-                await PersistSnapshotAsync(org, snapshot, cancellationToken);
-                await CommitAsync(transaction, cancellationToken);
-                return MapStatus(org);
+                if (!IsUnfinishedInOtherCountry(snapshot, country))
+                {
+                    await PersistSnapshotAsync(org, snapshot, cancellationToken);
+                    await CommitAsync(transaction, cancellationToken);
+                    return MapStatus(org);
+                }
+
+                // The country of a Stripe account never changes and its hosted form asks for the data of that country: an
+                // org of another country cannot complete it. Nothing was submitted, so no payment can be on it.
+                replacedAccountId = org.StripeConnectedAccountId;
+                logger.LogWarning(
+                    "Stripe connected account {AccountId} of org {OrgId} is in {AccountCountry} but the org is in {Country} and its onboarding was not submitted; creating a replacement in {Country}",
+                    replacedAccountId,
+                    orgId,
+                    snapshot.Country,
+                    country,
+                    country);
             }
             catch (StripeConnectException ex) when (ex.Failure == StripeConnectFailure.AccountUnavailable)
             {
@@ -93,6 +116,7 @@ public class ConnectOnboardingService(
 
         var accountId = await stripeConnectGateway.CreateExpressAccountAsync(
             connectEmail,
+            country,
             AccountCreationIdempotencyKey(orgId, replacedAccountId),
             cancellationToken);
 
@@ -106,12 +130,13 @@ public class ConnectOnboardingService(
         await CommitAsync(transaction, cancellationToken);
 
         if (replacedAccountId is null)
-            logger.LogInformation("Created Stripe Connect account {AccountId} for org {OrgId}", accountId, orgId);
+            logger.LogInformation("Created Stripe Connect account {AccountId} ({Country}) for org {OrgId}", accountId, country, orgId);
         else
         {
             logger.LogWarning(
-                "Created Stripe Connect account {AccountId} for org {OrgId}, replacing unavailable account {ReplacedAccountId}",
+                "Created Stripe Connect account {AccountId} ({Country}) for org {OrgId}, replacing account {ReplacedAccountId}",
                 accountId,
+                country,
                 orgId,
                 replacedAccountId);
         }
@@ -217,6 +242,40 @@ public class ConnectOnboardingService(
         replacedAccountId is null
             ? $"connect-account:{orgId:N}"
             : $"connect-account:{orgId:N}:replaces:{replacedAccountId}";
+
+    /// <summary>
+    /// The country a new Stripe account of the org is created in (<see cref="ConnectAccountCountries.Resolve"/>): the country of the
+    /// org's own <b>confirmed</b> fiscal profile (an unconfirmed one only holds the default), else its billing country, else the
+    /// platform default (<c>Stripe:ConnectDefaultCountry</c>). The profile is read by <c>OrgId</c> whatever the tenant of the request
+    /// is, like the other readers that act for an org.
+    /// </summary>
+    private async Task<string> ResolveAccountCountryAsync(Org org, CancellationToken cancellationToken)
+    {
+        var fiscalProfileCountry = await dbContext.OrgFiscalIssuerProfiles
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .OfOrganization(org.Id)
+            .Where(profile => profile.ConfirmedAt != null)
+            .Select(profile => profile.CountryCode)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return ConnectAccountCountries.Resolve(
+            configuration?["Stripe:ConnectDefaultCountry"],
+            fiscalProfileCountry,
+            org.BillingCountry);
+    }
+
+    /// <summary>
+    /// The linked account is of another country than <paramref name="country"/> (Stripe tells it, the org may not) and nothing was
+    /// submitted on it: no charge, no payout, no details. Such an account is replaced; an unknown country, or an account that was
+    /// submitted (it may hold money or a verified business), never is.
+    /// </summary>
+    internal static bool IsUnfinishedInOtherCountry(ConnectAccountSnapshot snapshot, string country) =>
+        !string.IsNullOrWhiteSpace(snapshot.Country)
+        && !ConnectAccountCountries.SameCountry(snapshot.Country, country)
+        && !snapshot.DetailsSubmitted
+        && !snapshot.ChargesEnabled
+        && !snapshot.PayoutsEnabled;
 
     private static async Task CommitAsync(
         Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction,

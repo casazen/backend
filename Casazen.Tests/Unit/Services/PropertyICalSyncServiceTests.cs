@@ -695,6 +695,72 @@ public class PropertyICalSyncServiceTests
         Assert.Equal(["https://live.example.com/cal.ics"], client.Requests);
     }
 
+    // ADR-002-R14, E02/F02/US01/T03: once the Octorate calendar of the channel replaced the import, the batch no longer downloads the feed;
+    // the feed and the blocks it imported are kept as they were.
+    [Fact]
+    public async Task SyncAllFeedsAsync_DeprecatedFeed_IsNotDownloaded_AndTheFeedAndItsBlocksAreKept()
+    {
+        const string ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            END:VCALENDAR
+            """;
+        var databaseName = Guid.NewGuid().ToString();
+        var client = new RoutingExternalHttpClient(new Dictionary<string, Func<string>>
+        {
+            ["https://replaced.example.com/cal.ics"] = () => ics,
+            ["https://live.example.com/cal.ics"] = () => ics,
+        });
+        await using var provider = BuildProvider(databaseName, client);
+
+        var replaced = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        await using (var seedScope = provider.CreateAsyncScope())
+        {
+            var db = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            SeedFeed(db, replaced, orgId, "https://replaced.example.com/cal.ics", channel: ICalFeedChannel.Airbnb, deprecated: true);
+            SeedBlock(db, replaced, orgId, "kept-block");
+            SeedFeed(db, Guid.NewGuid(), Guid.NewGuid(), "https://live.example.com/cal.ics");
+        }
+
+        await using (var jobScope = provider.CreateAsyncScope())
+        {
+            await jobScope.ServiceProvider.GetRequiredService<PropertyICalSyncService>().SyncAllFeedsAsync();
+        }
+
+        Assert.Equal(["https://live.example.com/cal.ics"], client.Requests);
+        await using var assertScope = provider.CreateAsyncScope();
+        var assertDb = assertScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var feed = await assertDb.PropertyICalFeeds.SingleAsync(f => f.PropertyId == replaced);
+        Assert.True(feed.Deprecated);
+        Assert.Null(feed.LastImportAt);
+        Assert.Equal("kept-block", (await assertDb.CalendarBlocks.SingleAsync(b => b.PropertyId == replaced)).ExternalUid);
+    }
+
+    [Fact]
+    public async Task HasOverlappingBlockAsync_AnOctorateBlock_TakesItsNightsLikeAnyOtherBlock()
+    {
+        // The nights the Octorate calendar holds closed are blocks without a feed: the booking checks and the public availability read them
+        // through the same occupancy rule (ADR-002-R4).
+        await using var db = CreateDb();
+        var propertyId = Guid.NewGuid();
+        db.CalendarBlocks.Add(new CalendarBlock
+        {
+            PropertyId = propertyId,
+            OrgId = Guid.NewGuid(),
+            Source = CalendarBlockSource.Octorate,
+            ExternalUid = "octorate:2026-07-10",
+            StartUtc = new DateTime(2026, 7, 10, 0, 0, 0, DateTimeKind.Utc),
+            EndUtc = new DateTime(2026, 7, 12, 0, 0, 0, DateTimeKind.Utc),
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+
+        Assert.True(await service.HasOverlappingBlockAsync(propertyId, new DateTime(2026, 7, 11), new DateTime(2026, 7, 13)));
+        Assert.False(await service.HasOverlappingBlockAsync(propertyId, new DateTime(2026, 7, 12), new DateTime(2026, 7, 14)));
+    }
+
     [Fact]
     public async Task HasOverlappingBlockAsync_ReturnsTrueWhenBlockOverlaps()
     {
@@ -735,7 +801,8 @@ public class PropertyICalSyncServiceTests
         string importUrl,
         string? lastError = null,
         DateTime? lastImportAt = null,
-        ICalFeedChannel channel = ICalFeedChannel.Other)
+        ICalFeedChannel channel = ICalFeedChannel.Other,
+        bool deprecated = false)
     {
         var feed = new PropertyICalFeed
         {
@@ -746,6 +813,8 @@ public class PropertyICalSyncServiceTests
             LastError = lastError,
             LastImportAt = lastImportAt,
             LastImportStatus = lastError is null ? null : PropertyICalImportStatus.Failure,
+            Deprecated = deprecated,
+            DeprecatedAt = deprecated ? DateTime.UtcNow : null,
         };
         db.PropertyICalFeeds.Add(feed);
         db.SaveChanges();

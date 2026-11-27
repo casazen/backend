@@ -73,10 +73,13 @@ public class AlloggiatiCodeTableService(
         limit = Math.Clamp(limit, 1, MaxSearchResults);
         var tableList = tables.Distinct().ToList();
         var code = AlloggiatiRecordRules.NormalizeCode(query);
+        var citizenshipKey = ItalianCitizenshipNames.OfficialNormalizedKey(query);
         var scope = db.AlloggiatiCodeEntries.AsNoTracking().Where(e => tableList.Contains(e.Table));
 
         var results = await scope
-            .Where(e => e.NormalizedDescription.StartsWith(key) || e.Code == code)
+            .Where(e => e.NormalizedDescription.StartsWith(key)
+                || e.Code == code
+                || (citizenshipKey != null && e.NormalizedDescription == citizenshipKey))
             .OrderBy(e => e.NormalizedDescription.Length)
             .ThenBy(e => e.NormalizedDescription)
             .Take(limit)
@@ -92,7 +95,12 @@ public class AlloggiatiCodeTableService(
                 .ToListAsync(cancellationToken));
         }
 
-        return results.Select(e => new AlloggiatiCodeEntryInfo(e.Table, e.Code, e.Description, e.Province)).ToList();
+        return results.Select(e => new AlloggiatiCodeEntryInfo(
+            e.Table,
+            e.Code,
+            e.Description,
+            e.Province,
+            e.Table == AlloggiatiCodeTable.Stati ? ItalianCitizenshipNames.LabelFor(e.NormalizedDescription) : null)).ToList();
     }
 
     public async Task<AlloggiatiCodeBook> LoadCodeBookAsync(IEnumerable<StayGuest> guests, CancellationToken cancellationToken = default)

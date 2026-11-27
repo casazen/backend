@@ -1,9 +1,9 @@
 # ADR-002: iCal import/export and sync job
 
-**Status:** Accepted (amended 2026-10-24)  
+**Status:** Accepted (amended 2026-11-03)  
 **Date:** 2026-06-19  
 **Issue:** #289  
-**Informs:** `spec-ical-calendar-sync` (US-018, Fase 1)
+**Informs:** `spec-ical-calendar-sync` (US-018, Fase 1), NF-28
 
 ## Context
 
@@ -137,3 +137,70 @@ Calendar UI groups blocks by currency:
 - Backend: iCal export includes X-CURRENCY, import preserves or defaults currency, CalendarBlock.Currency field
 - Frontend: Calendar view groups by currency
 - X-CURRENCY is non-standard but RFC 5545 allows X- properties; unlikely to break OTA parsers
+
+## Amendment 2026-11-03 (run R20261103-1506)
+
+**Why:** NF-28 (Octorate connection) requires migrating iCal-connected properties to Octorate booking import. iCal continues for unconnected properties but is deprecated for Octorate-connected ones.
+
+**Decision delta:**
+
+### iCal to Octorate Migration
+
+When property connects to Octorate (ADR-023):
+1. Mark `PropertyICalFeed.Deprecated = true`
+2. Show migration wizard prompting switch
+3. Continue reading iCal until user confirms migration
+4. After migration, iCal import stops for that property
+
+```csharp
+public class PropertyICalFeed
+{
+    // ... existing fields ...
+    public bool Deprecated { get; set; }           // Set when Octorate connected
+    public DateTime? DeprecatedAt { get; set; }
+}
+```
+
+### iCal Export Continues
+
+Export feed continues for all properties:
+- Includes Octorate bookings (read from `Booking` table)
+- Non-Octorate systems can still read CasaZen availability
+
+### Migration Wizard
+
+```typescript
+// Shown when PropertyICalFeed.Deprecated = true
+function ICalMigrationWizard({ property }) {
+    return (
+        <Dialog>
+            <DialogTitle>{t('ical.migration.title')}</DialogTitle>
+            <DialogContent>
+                <p>{t('ical.migration.description')}</p>
+                <ul>
+                    <li>{t('ical.migration.benefit1')}</li>
+                    <li>{t('ical.migration.benefit2')}</li>
+                </ul>
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={disconnectIcal}>{t('ical.migration.disconnect')}</Button>
+                <Button onClick={keepIcal}>{t('ical.migration.keepForNow')}</Button>
+            </DialogActions>
+        </Dialog>
+    );
+}
+```
+
+| ID | Priority | Requirement |
+|---|---|---|
+| ADR-002-R11 | P0 | iCal import MUST be deprecated for Octorate-connected properties: set `PropertyICalFeed.Deprecated = true` when `OctorateConnection` active |
+| ADR-002-R12 | P0 | Migration wizard MUST prompt user to disconnect iCal when Octorate connected; show benefits of Octorate sync |
+| ADR-002-R13 | P0 | iCal export MUST continue for all properties (includes Octorate bookings); Octorate import replaces iCal import only |
+| ADR-002-R14 | P1 | `ICalSyncJob` MUST skip properties where `PropertyICalFeed.Deprecated = true` |
+
+**Replaces:** None (new requirements extend existing set).
+
+**Consequences delta:**
+- Backend: `PropertyICalFeed.Deprecated` field, skip in sync job, migration trigger on Octorate connect
+- Frontend: Migration wizard, property settings shows deprecation status
+- iCal export continues working (other systems may still consume it)

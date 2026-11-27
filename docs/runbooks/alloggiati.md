@@ -22,6 +22,7 @@ CasaZen still transmits nothing, so it now says so.
 | `InviatoManualmente` (6) | The host declared the date he sent it on the portal. CasaZen holds no receipt | `POST /api/alloggiati/{id}/mark-sent-manually` |
 | `Inviato` (2) | Transmitted, with the real receipt | the future web service client only (not implemented). Database check `CK_AlloggiatiWebReports_SentRequiresReceipt` refuses it without `ConfirmationNumber` |
 | `Rifiutato` (5), `Errore` (3) | Rejected by the portal, technical error | the future web service client only |
+| `NotDue` (11) | Nothing is due: the stay is a no-show (`Bookings.NoShowAt`, NF-45), the guests never came | **Derived** by `AlloggiatiStatusRules.Effective` for the status and the guest summary of the booking, never stored. The list, the job, the alerts, the cockpit, the Home and the booking list leave a no-show out; a communication sent or declared sent anyway stays visible |
 | 1 (old `Submitted`) | Retired | Never |
 
 - **Scheduling.** `AlloggiatiReportScheduler` schedules `AlloggiatiWebReportJob` with Hangfire `Schedule` at the start
@@ -262,8 +263,10 @@ expired by time was never marked expired, so the daily job never sent a new one.
 - **Document number**: the summary returns it masked (`documentNumberMasked`, `*****` + last 3, as on the guest portal).
   "Mostra" (and "Copia tutto", and opening "Modifica ospiti") call
   `GET /api/alloggiati/{bookingId}/stay-guests/document-numbers[?position=n]` (`booking.read` on the booking and
-  `guest.read`), logged with user, booking and positions, never the numbers. A host without `guest.read` re-enters the
-  number in the form, like the guest.
+  `guest.read`), logged with user, booking and positions, never the numbers. It answers the single guests and the heads
+  and, in a stay of a property in Ticino, also the adult family or group members the police file notifies on their own
+  row, never a minor or a guest with no number stored (see `guest-notification-switzerland.md`, § 7). A host without
+  `guest.read` re-enters the number in the form, like the guest.
 
 ### Guest document scans (FD-07 open point)
 
@@ -536,3 +539,84 @@ every line is valid, `Inviato` only with the downloaded receipt, and the first r
    lines **without sending** until "Prosegui" (`MANUALEALBERGHI.pdf` p. 16-17); do not press "Prosegui" for a fake stay.
 3. Report any rejected line (portal message and field) to the developers: the open points are the characters allowed in names
    and the two-digit days of stay. If the portal wants something else, change `AlloggiatiRecordFile` and its tests together.
+
+## Invio automatico degli ospiti (E20/F01/US01)
+
+The guests of a stay reach Octorate (the channel manager that sends Alloggiati Web and ISTAT, PO-02) without the host confirming the check-in wizard, for an organization that asked for it. CasaZen still never sends to the police.
+
+### The setting (decision O1)
+
+- Organization setting `Org.AutoSendGuestsToOctorate`, **off by default**: CHK-02 wants data confirmed by the host. When it is on, the agency accepts that complete data plus a passed identity check is that confirmation.
+- Read in `GET api/properties/{id}/sender` as `autoSendGuestsToOctorate` (the same for every property of the org); changed with `PUT api/properties/{id}/sender` (field `autoSendGuestsToOctorate`, applied after the sender when the sender change went through) or with the bulk apply (`POST api/onboarding/bulk/apply`, `choice.autoSendGuestsToOctorate`, written once, only by a confirmed apply). Only the organization administrator (`OrgBillingAdmin`) changes it: another member who sends a different value gets 403 and nothing of the request is done. Who and when are kept on the org (`AutoSendGuestsToOctorateChangedByUserId`, `...ChangedAt`).
+- No new flag or configuration key: the behaviour sits under `Features:OctorateConnector` and the setting.
+
+### When a stay goes
+
+Two facts put an event in the outbox (ids and one word, never a guest's data): `StayGuestsChanged` (number 200, recorded by `StayGuestService.ReplaceAsync` in the save of the guests: guest portal or host) and `IdVerificationCompleted` (number 8, recorded when a verification ends with an Accept, by the agent in `IdentityVerificationFlowService` or by an operator in `VerificationQueueService`). `StayGuestsReadyOctorateHandler` (own registration `AddCasazenOctorateGuestAutoSend`) reads the stay as it is now and asks `StayGuestsAutoSendService`:
+
+1. the connector is on and the org's setting is on, otherwise nothing changes;
+2. the stay is of the org of the event, on Octorate (`OctorateReservationId`) and due (confirmed, checked in or checked out, not a no-show: `AlloggiatiStatusRules.IsDue`);
+3. the guests are ready: no blocking issue of `CheckInReadinessRules` (complete guests, the head's document, the names Octorate needs of a complete guest);
+4. while `Features:CheckInIdentityVerification` is on, the latest `BiometricVerificationLog` of the stay is an Accept (agent or operator); a rejection or the row that asks for a new photo is not a pass.
+
+Then it calls `ICheckInOctorateSyncService.SendGuestsAsync`, **the send of the wizard**, with every rule kept: sender must be the channel manager for `draft = false` (another sender sends nothing unless `Octorate:SendGuestsWhenSenderIsNotChannelManager`, and then only drafts), connection connected, mapping confirmed, one send at a time (advisory lock), hash of the payload (a second event sends nothing), link of each guest, "To do" after `Octorate:CheckInMaxAttempts`. A guest already sent with `draft = false` whose data changed goes again and raises the warning of a correction: an urgent "To do" on the booking (`octorate_guest_corrected_after_send`), because what went to the police may need a correction on the Alloggiati portal.
+
+A send of the same stay that is running (the wizard's confirmation, the retry job, the sweep) holds the lock: the handler then throws (`StayGuestsSendBusyException`) and the outbox dispatcher delivers the event again at its next run, so a change that arrives during a send is never consumed with no effect (the sweep could not find it: its link is newer than the change).
+
+The retry job (every 15 minutes) keeps retrying the links that are Pending or Failed and also **sweeps** the stays whose event was missed (setting turned on later, listing mapped later): the stays of the orgs that asked **arriving from yesterday to 14 days ahead** (a stay that arrived earlier and is still in progress is not chased) with a registered guest that has no link or changed after its link was last touched. A stay whose guests were all tried after their last change is not taken again: once for each stay and change. A run writes at most 50 stays, and only a stay whose guests were really tried takes one of those places: a stay that cannot go (its guests are not ready, the property is not on the channel manager, nothing to send) is looked at and never counted, so it cannot take a place from a ready one behind it; a run looks at 500 stays at most, read page by page in order of arrival.
+
+### Recognized place names (decision O2)
+
+The sandbox accepted a complete guest only with place names Octorate recognizes. `OctoratePlaceNames` reads Octorate's table (`GET /rest/v2/checkin/city/IT`, about 11,149 entries with their police codes) through the client, keeps it in memory for 24 hours (one read at a time, no table in the database) and the Italian comuni of a guest (birth, residence, place of issue of the document) are sent with the exact name of that table, found by the 9-character police code CasaZen holds (a guest with no code is found by its name only when exactly one place carries it). The create stays the proven v1.
+
+- A place the table does not know holds **that guest** back: the link says `place_not_recognized` with the fields (`ErrorFields`: `birthComune`, `residenceComune`, `documentIssuePlace`), one urgent "To do" `octorate_place_not_recognized:<fields>` is raised at once and no retry takes the guest again; the host's change of the data sends it. The "To do" is one for each booking and several guests can hold it, so it is closed only with the last write that held it (never while another guest is still held back or failing, or an arrival still failing); and when a milder cause raised it first, the reason of the place is put on it again (the item is raised to urgent with that reason), so the host always learns which place to correct.
+- States, citizenship and the country of residence are not mapped (no table of states is known to exist) and never hold a guest back: foreign guests are not affected.
+- A table that cannot be read (an Octorate error, a rate limit, a full bucket) is the typed Octorate error of the guests that need it and have no link on Octorate yet, kept on their links and retried. A guest that is on Octorate for good keeps its link exactly as it is (a lookup that failed says nothing about it: the stay does not read «write failed»), and a change of its data goes when the table can be read, found by the sweep because the guest is newer than its link.
+- The warning of a correction (`octorate_guest_corrected_after_send`) is worked out from what the link says was transmitted (a guest id, not a draft) and from the payload last tried, never from its status, so a guest held back for a place and then corrected still raises it when it goes again.
+
+### Arrival and departure
+
+`CHECKIN_END` and `CHECKOUT_END` are tracked like `NO_SHOW`: a row in `OctorateStayStateSyncs`, attempts, last error and, after the last attempt, one "To do" `octorate_stay_state_failed`, closed when a later attempt succeeds. The arrival waits for the write of the guests (`WaitingForGuests`: a link Pending, or Failed with attempts left, tried within the last 6 hours): the row stays Pending with no attempt used up and the retry job asks again; a write that has not moved for 6 hours is stuck and no longer holds it. `OctorateBookingStatePushJob` keeps the signature of E02 (jobs already queued run the new body).
+
+### Per-stay status
+
+See `GET api/alloggiati/{bookingId}/status` and `GET api/bookings/{bookingId}/compliance` (E20/F01/US01/T02): the status reads `EntrustedToChannelManager` (yellow, never green without an archived receipt) or `ChannelManagerWriteFailed`, with the sender, the state of each guest, the receipt coverage and the action `RetryOctorateWrite` (`POST api/alloggiati/{bookingId}/retry-octorate-write`, `alloggiati.submit`). A stay that owes nothing (a no-show, a request still waiting, a cancelled booking: the one definition of the Alloggiati job) reads `NotDue` with no light and no action, unless its communication was sent. The retry answers what it did in `retry` (`state` and, when nothing was tried, `reason`) and answers **409** `alloggiati_write_in_progress` while another send of the stay holds the lock.
+
+### Migration `AddOctorateGuestAutoSend`
+
+Adds `Orgs.AutoSendGuestsToOctorate` (default false), `AutoSendGuestsToOctorateChangedAt`, `AutoSendGuestsToOctorateChangedByUserId` and `StayGuestOctorateLinks.ErrorFields`. Rollback: the columns are additive; the code ignores them when the setting is off.
+
+## Receipt for several flats, five-year purge and proofs in the document archive (E20/F02/US01/T01)
+
+An agency with one police account («Gestione Appartamenti» profile) gets **one** receipt a day for all its flats, so the receipt of the Alloggiati communication names the flats it covers (decision O3, NF-43, NF-47). Nothing of the content of the PDF is read: it is the host's word, checked against the organization and the reach of the person who uploads it.
+
+### What the upload takes
+
+`POST api/compliance/archive/proofs` (`multipart/form-data`, policy `alloggiati.submit`, as before) takes the field `propertyIds` (repeat it) next to `propertyId`, `kind`, `day` and `file`:
+
+- `propertyId` is always covered, so **no list, or an empty one, is that flat alone** and never every flat of the organization;
+- the list is for `kind=AlloggiatiReceipt` only (another kind with a list is a 422 `compliance_proof_coverage_invalid`); with several flats **every one must be in Italy** (422 otherwise) and there are at most `ComplianceArchiveLimits.MaxCoveredProperties` (500) of them;
+- every flat must be one of the caller's organization **and in the reach of the caller** (a collaborator «Solo alcuni»): another organization's flat, one out of the reach and one that does not exist are the same 404 `not_found`, whichever of them is `propertyId`. Nothing is stored when one is refused;
+- 201 answers the proof with `coveredProperties` (the flat of the request first, then the others by name) and, for an Alloggiati receipt, `coveredStays`: how many stays of those flats arrived that day and are now proven by it.
+
+`GET api/compliance/archive/proofs/coverage?day=2026-11-03&propertyIds=…&propertyIds=…` (policy `booking.read`, stores nothing) is the summary the host reads before saving, «Diventano in regola: N soggiorni»: `{ day, stays, properties: [{ propertyId, propertyName, stays }] }`, with the same checks (an empty list is a 422, never «every flat»).
+
+### Which stays it proves
+
+A stay is proven by a receipt when its flat is one the receipt covers and its arrival day (Europe/Rome) is the day of the receipt, and by nothing else: the stay of another flat of the organization arriving the same day, or another day of a covered flat, stays red. The stays counted are the ones that owe the communication (`AlloggiatiStatusRules.ActiveBookingStatuses`, no no-show mark) **and that the receipt turns green**: the count of `coveredStays` and of the summary, and the deletion of the guests' documents ([gdpr.md](gdpr.md) § 3), ask the verdict of the traffic light (`IComplianceStatusService.GetStaysAReceiptTurnsGreenAsync`, `ComplianceLightRules.Alloggiati` with the receipt taken as archived), so a stay whose communication failed (`Errore`, `Rifiutato`, a guest the channel manager could not take: `ChannelManagerWriteFailed`) or was only partly accepted (`PartiallyAccepted`) is red whatever receipt exists, is not counted and keeps its documents. The traffic light, the per-stay status (`GET api/alloggiati/{bookingId}/status`) and the page of the stay read the proofs through the one reading `ManualProofCoverage`, which also counts the flat a proof was filed under when it has no line in the table below (a row older than the table, a seed): a proof always proves its own flat.
+
+### Who reads a receipt of several flats
+
+The file is about the guests of every flat it covers, so a collaborator «Solo alcuni» reads it (the list, the file, the export, the proofs of a stay, the document archive) **only when it reaches every flat of it**; one flat out of its reach keeps the whole proof out, **a flat deleted since included** (in the general archive the soft-delete filter of the statement takes a deleted flat out of the check of the reach, so `ComplianceProofArchiveSource.InReach` counts the lines of the receipt against the lines whose flat is still there and, for a limited scope, hides a receipt that covers a flat gone: the answer of the dedicated archive, which lifts the filter in its own statement and judges the deleted flat itself; the whole organization reads it in both). The whole organization finds it by any flat it covers (`GET api/compliance/archive?propertyId=`); the general archive (`GET api/documents`) shows it under the flat it was filed under.
+
+### Five-year purge
+
+The recurring job `compliance-proof-retention` (daily at 03:40 UTC, `[DisableConcurrentExecution]`, always registered, no flag) deletes the stored file and the row of every proof whose `RetainUntil` (the upload plus five years) has passed, for every organization, with the lines of its flats (cascade). A proof that is not yet due is never read for deletion. The file goes before the row; one that cannot be deleted keeps its row and the run fails at its end (Hangfire repeats it), so nothing past its time is kept in silence. The log carries counts and the cutoff day only.
+
+### Proofs in the document archive
+
+The Alloggiati receipts and the ISTAT proofs the host uploaded are listed in the general archive (`GET api/documents`, types `alloggiatiReceipt` and `istatProof`, «Prove di adempimento») and downloadable there, with `guest.read` (the Accountant does not hold it): a download is written in the log by id, never by a name. The receipts of a tourist tax declaration or payment are records of money with their own permission and are not in that list. As for every document of that archive, what belongs to a flat deleted since is not listed, counted, exported or downloaded there (the list, the count and the export are ONE statement over all the sources, and EF applies a lifted filter to the whole statement, so these two sources lift none); the history of the proofs of a deleted flat stays in the dedicated archive (`GET api/compliance/archive`), which reads them with its own statement.
+
+### Migration `AddReceiptCoverage`
+
+Creates `ManualComplianceProofProperties` (`ProofId`, `PropertyId`, `OrgId`, unique pair `(ProofId, PropertyId)`, cascade from the proof and from the flat) and backfills **one line for every existing proof**, for the flat it was filed under. Rollback: the table is additive. Dropping it (with the previous version of the code) leaves every proof proving the flat it was filed under; the other flats a receipt for several flats covered lose it, and their stays turn red again until a receipt is uploaded for them.

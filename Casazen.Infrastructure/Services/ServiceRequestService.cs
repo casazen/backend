@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Options;
@@ -57,7 +58,9 @@ public partial class ServiceRequestService(
     ISupplierFundsService? funds = null,
     IFeatureFlags? featureFlags = null,
     ServiceRequestBackupSelector? backupSelector = null,
-    ISupplierReliabilityService? reliability = null) : IServiceRequestService
+    ISupplierReliabilityService? reliability = null,
+    IDomainEventRecorder? recorder = null,
+    IOptions<SupplierPaymentsOptions>? supplierPaymentOptions = null) : IServiceRequestService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -81,6 +84,10 @@ public partial class ServiceRequestService(
 
         // Only category codes are stored (SU-03); anything else is a 422 before any lookup.
         var category = ServiceCategories.Require(command.Category);
+
+        // E24/F01/US01/T02: the price the host agreed beforehand is an amount like any other of a request (1 cent to the bound).
+        if (command.AgreedAmountCents is { } agreedAmount)
+            ServiceRequestPricing.EnsureValidAmount(agreedAmount);
 
         // IgnoreQueryFilters (tenant only): scoped by the explicit OrgId check below. command.OrgId comes from
         // OrgContextResolver, which may provision the org after the tenant filter cached a null org. The soft-delete
@@ -109,7 +116,7 @@ public partial class ServiceRequestService(
                 ServiceRequestErrorCodes.ChargeToGuestNotAllowed, ServiceRequestErrorCodes.ChargeToGuestNotAllowedMessageKey);
         }
 
-        var supplier = await db.SupplierProfiles
+        var supplier = await SupplierServiceCatalogService.SuppliersForProperty(db, command.OrgId, command.PropertyId)
             .Include(sp => sp.Org)
             .FirstOrDefaultAsync(sp => sp.OrgId == command.SupplierOrgId, cancellationToken)
             ?? throw new NotFoundException($"Supplier {command.SupplierOrgId} not found")
@@ -157,7 +164,7 @@ public partial class ServiceRequestService(
             UpdatedAt = now,
             ServiceListingId = service?.Id,
             ServiceNameSnapshot = service?.Name,
-            EstimatedAmountCents = service?.EstimatedAmountCents,
+            EstimatedAmountCents = command.AgreedAmountCents ?? service?.EstimatedAmountCents,
             ScheduledStartUtc = schedule.Start,
             ScheduledEndUtc = schedule.End,
             // Decision D8: a host's request waits for the supplier's answer for HostResponseMinutes. The deadline is recorded
@@ -189,6 +196,19 @@ public partial class ServiceRequestService(
             if (!request.AutoAccepted && backupSuppliers.Count > 0)
                 backups = AttachBackupGroup(request, backupSuppliers, slotPlanned: command.DurationMinutes is null, now);
 
+            if (supplierPaymentOptions?.Value.AddMarketplaceFeeToNewHostRequests == true)
+            {
+                var requests = backups.Select(b => b.Request).Prepend(request).ToArray();
+                var supplierIds = requests.Select(r => r.SupplierOrgId).ToArray();
+                var privateIds = await SupplierServiceCatalogService.HostOriginSupplierIds(db, request.OrgId)
+                    .Where(id => supplierIds.Contains(id)).ToHashSetAsync(cancellationToken);
+                var marketplaceRate = supplierPaymentOptions.Value.RequireCommissionPercent();
+                foreach (var item in requests)
+                    item.HostSurchargePercent = privateIds.Contains(item.SupplierOrgId) ? 0m : marketplaceRate;
+            }
+
+            // E24/F01/US01/T02: the request is on the event bus, in the save that creates it (and with it, in the same transaction, whatever else the caller keys to it).
+            RecordEvent(DomainEventType.ServiceRequestCreated, request, request.Status, ServiceRequestEventPayload.CreatedKeyPrefix);
             await repository.AddAsync(request, cancellationToken);
             await CommitAsync(transaction, cancellationToken);
         }
@@ -714,6 +734,9 @@ public partial class ServiceRequestService(
                     r.PriceLinesJson = ServiceRequestJson.Serialize(price.Lines);
                     r.FinalAmountNeedsConfirmation = needsConfirmation;
                     r.PaymentMode = plan.Mode;
+
+                    // E24/F01/US01/T02: the completion is on the event bus, in the save of the transition, once for each request.
+                    RecordEvent(DomainEventType.ServiceRequestCompleted, r, ServiceRequestStatus.Completato, ServiceRequestEventPayload.CompletedKeyPrefix);
                 },
                 cancellationToken);
         }
@@ -1196,4 +1219,12 @@ public partial class ServiceRequestService(
     }
 
     private DateTime Now() => _clock.GetUtcNow().UtcDateTime;
+
+    /// <summary>
+    /// Adds the event of a request to the outbox of the current unit of work (ADR-022-R1): the caller's save writes it with the change, or neither. The org is the request's, the
+    /// payload ids and the category (<see cref="ServiceRequestEventPayload"/>), the key <c>{prefix}:{id}</c> makes it once for each request. Nothing without a recorder (the tests
+    /// that build the service by hand).
+    /// </summary>
+    private void RecordEvent(DomainEventType type, ServiceRequest request, ServiceRequestStatus status, string keyPrefix) =>
+        recorder?.Record(type, request.Id, ServiceRequestEventPayload.Of(request, status), ServiceRequestEventPayload.KeyOf(keyPrefix, request.Id), request.OrgId);
 }

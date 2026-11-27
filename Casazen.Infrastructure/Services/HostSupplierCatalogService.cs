@@ -119,7 +119,7 @@ public sealed class HostSupplierCatalogService(
             };
 
         // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the supplier org id.
-        var supplier = await db.SupplierProfiles
+        var supplier = await SupplierServiceCatalogService.SuppliersForProperty(db, hostOrgId, propertyId)
             .AsNoTracking()
             .FirstOrDefaultAsync(sp => sp.OrgId == supplierOrgId, cancellationToken)
             ?? throw new NotFoundException($"Supplier {supplierOrgId} not found")

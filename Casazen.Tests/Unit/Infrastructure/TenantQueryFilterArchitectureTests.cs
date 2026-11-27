@@ -30,6 +30,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(OwnerUser)] = "Property owner users (ADR-011): cross-organization entities representing natural persons who own properties managed by multiple agencies (different orgs). Each OwnerUser can be linked to properties across multiple organizations. A tenant filter would incorrectly scope them to a single agency org, breaking the owner portal's ability to show properties across all agencies that manage their real estate.",
 
         // Platform reference data and platform-wide state.
+        [typeof(MarketingEventSearch)] = "Shared public event catalog keyed by municipality, country and date range. Entries contain public event names, dates, source URLs, descriptions and confidence. No property, guest or organization identifiers are stored.",
         [typeof(TouristTaxRate)] = "Platform reference data: tourist tax rates per comune, managed by admins and read by every org.",
         [typeof(CancellationPolicy)] = "Platform catalog of cancellation policies shared by the properties of every org.",
         [typeof(TerritorialRentAgreement)] = "Platform reference data: territorial rent agreements (canone concordato).",
@@ -44,6 +45,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(SeoEvent)] = "Platform analytics of the public SEO pages (SE-04): written by the anonymous events endpoint, read by admins only as totals per comune; no org and no person (no IP, user or visitor id), deleted after Seo:Events:RetentionDays.",
         [typeof(PlatformAiBudget)] = "Platform-wide AI token budget, not per org.",
         [typeof(PlatformAiSettings)] = "Platform-wide AI provider override saved from the admin panel, not per org.",
+        [typeof(PresetAgentTraining)] = "Platform-wide versions and synthetic examples for the built-in agent presets.",
         [typeof(DemoEnvironmentSetting)] = "Platform-wide demo showcase switch for the staff console, one row for the installation, not per org.",
         [typeof(PendingDomainRemoval)] = "Queue of custom domains that must leave the Vercel project (BK-17): keyed by the domain, names no org, written by the owner's domain change and read only by the platform's domain-recheck job; no endpoint lists it.",
         [typeof(ProcessedStripeEvent)] = "Platform-wide Stripe webhook idempotency keys, written by the anonymous webhook.",
@@ -56,6 +58,13 @@ public class TenantQueryFilterArchitectureTests
         [typeof(ComuneOfficialProfile)] = "Platform reference data: official MEF tourist-tax profile of a comune (ISTAT code), the same for every org.",
         [typeof(ComuneOfficialProfileVersion)] = "Platform reference data: versioned MEF acts of a comune; history is never tenant-scoped.",
         [typeof(SwissMunicipality)] = "Platform reference data: the official BFS/OFS/UST list of Swiss municipalities, the same for every org, loaded only from the official source (seed or admin import) and read by every org for Swiss properties (Country = 'CH').",
+        [typeof(SwissLocality)] = "Platform reference data: the localities of the official swisstopo directory (postal code, add-on, name, municipality), the same for every org, loaded only from the official seed and read by every org for the locality picker and the place of a Swiss property (E29/F01/US01/T01).",
+        [typeof(MarketplacePortal)] = "Platform catalog of the portals and tools of the channel manager (E09/F01, NF-54): the same for every org, cached once a day from Octorate's portal list by the refresh job and read by the marketplace of every org. It holds no org, person or booking data; which portal an org uses is MarketplaceActivation, which is tenant-owned.",
+        [typeof(MarketplacePartner)] = "Platform catalog of the marketplace partners (E09/F01, PO-11, NF-59): curated by the platform admin and read by the marketplace of every org, with the visibility by plan and country as data. It holds no tenant data; which partner an org uses is MarketplaceActivation, which is tenant-owned.",
+        [typeof(MarketplacePartnerText)] = "Platform catalog texts (Italian and English) of a marketplace partner (E09/F01, NF-59), a child of MarketplacePartner reached only through it: the same words for every org, no tenant data.",
+        [typeof(TouristTaxExemptionReason)] = "Platform reference data: the reasons of a tourist tax exemption (NF-46), seeded, the same for every org; an administrator sets their Octorate code. No org, person or stay data.",
+        [typeof(TouristTaxChannelRule)] = "Platform reference data: which channel collects the tourist tax in which comune (ADR-037-R3), added by an administrator from an official source and read for the stays of every org. No org, person or stay data.",
+        [typeof(IstatRegionRule)] = "Platform reference data: the ISTAT region table (E21/F01/US01/T01, decision O6), one row for each region and autonomous province with the system of its portal, its deadline, the statistical guest fields it requires and whether the channel manager covers it. Seeded, the same for every org, written only by the platform staff behind AdminOnly and read for the properties and stays of every org. No org, person or stay data.",
         [typeof(CfSimulatedPractice)] = "Test environments only (CF-SIM): the practices of the simulated ConcordatoFacile module, which is an outside service's data and not an org's. Written and read only by CfSimulatorService behind the anonymous api/cf-simulator endpoints (404 unless ConcordatoFacile:FormMode=Simulated, which production refuses at startup) and by SimulatedConcordatoFacileApiClient; no personal data, empty and inert with FormMode=Real.",
 
         // Supplier marketplace: the supplier acts as User.SupplierOrgId, the tenant filter uses User.OrgId.
@@ -79,7 +88,10 @@ public class TenantQueryFilterArchitectureTests
         [typeof(ShowcaseBookingHold)] = "A booking from a supplier's public showcase waiting for the customer's e-mail check (SP-10): keyed by the supplier org like ServiceCustomer (same reasons: the customer is anonymous, a supplier-only account has no User.OrgId, a host must never read it). Holds the slot for 30 minutes and the customer's data, encrypted at rest. Only the booking service, the hold reader of the planner and the expiry and repair jobs listed in ShowcaseBookingTenancyTests touch it, always with an explicit OrgId predicate (the expiry job deletes the expired ones of every supplier on purpose).",
         [typeof(ShowcaseInquiry)] = "A request on measure from a supplier's public showcase waiting for the customer's e-mail check (SP-10b): keyed by the supplier org like ServiceCustomer and ShowcaseBookingHold (same reasons: the customer is anonymous, a supplier-only account has no User.OrgId, a host must never read it). Holds what the customer typed, the words included, encrypted at rest, until the address is checked or the row lapses. Only ShowcaseInquiryService and the expiry and repair jobs listed in ShowcaseInquiryTenancyTests touch it, always with an explicit OrgId predicate (the expiry job deletes the expired ones of every supplier on purpose).",
         [typeof(ServiceRequestMessage)] = "One message of the thread of a request on measure (SP-10b), written by the customer or by the supplier: keyed by the supplier org (OrgId = ServiceRequest.SupplierOrgId) because the request belongs to the supplier and the customer is anonymous. The words are encrypted at rest and read only by the two parties of the request. Only the services listed in ShowcaseInquiryTenancyTests touch it, always with an explicit OrgId predicate; a host never reads one.",
-        [typeof(SupplierInviteRecord)] = "Admin-issued supplier invitations keyed by e-mail, before any supplier org exists.",
+        [typeof(GuestSupplierOffer)] = "Guest supplier offer simulation: explicitly scoped by the host org and property, or the supplier org for consent.",
+        [typeof(GuestSupplierOrderDocument)] = "Seller PDFs belong to an order shared with its guest. Every list, upload and download scopes through supplier membership or the stay's organization, booking and property.",
+        [typeof(GuestSupplierOrder)] = "Guest supplier order simulation: scoped to the stay token, host property or supplier membership; platform decisions are AdminOnly.",
+        [typeof(SupplierInviteRecord)] = "Supplier invitations (of an admin, or of a host for its trusted suppliers) keyed by e-mail, read by the invited supplier before its org exists.",
         [typeof(SupplierAdminAuditEntry)] = "Platform-wide audit log of the admin actions on suppliers and invites (SU-12): suspension, reactivation, invite resend and revoke. Not tenant data: written and read only by SupplierAdminService behind the AdminOnly policy.",
 
         // Invitation of new independent hosts: the invitee has no org yet and an admin's invite has none at all.
@@ -95,6 +107,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(Party)] = "Reached only through its LeaseContract (tenant-filtered and owner-verified by LeaseWorkflowService); no endpoint addresses a party by its own id.",
         [typeof(LeaseRegistration)] = "Reached only through its LeaseContract (tenant-filtered, then authorized by the controller and RliRegistrationService); the provider polling job runs without tenant.",
         [typeof(LeaseEvent)] = "Append-only log reached only through its LeaseContract (tenant-filtered and owner-verified); written by services and jobs for an already verified lease.",
+        [typeof(StayTouristTaxGuest)] = "A line of a confirmed stay tourist tax (NF-46): a position, an exemption and an amount, no person. No DbSet: reached only through its StayTouristTax (tenant-filtered, found by the booking the caller was authorized for), written and erased with it.",
     };
 
     private static readonly Guid CallerOrgId = Guid.Parse("7a3c1d52-9f0e-4b8a-8d65-2c4e1f0b9a11");

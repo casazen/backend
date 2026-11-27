@@ -17,6 +17,8 @@ public sealed record Auth0SyncResult(Auth0SyncStatus Status, string? ErrorCode =
     public const string TokenFailedCode = "auth0_management_token_failed";
     public const string RoleNotFoundCode = "auth0_role_not_found";
     public const string RateLimitedCode = "auth0_rate_limited";
+    public const string CredentialsRejectedCode = "auth0_management_credentials_rejected";
+    public const string DeleteNotAllowedCode = "auth0_delete_not_allowed";
     public const string ApiErrorCode = "auth0_management_error";
 
     public static Auth0SyncResult Synced { get; } = new(Auth0SyncStatus.Synced);

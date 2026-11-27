@@ -1,9 +1,11 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -80,7 +82,8 @@ public sealed class CheckoutPaymentSettlementService(
     BookingNotifier notifier,
     IConfiguration configuration,
     ILogger<CheckoutPaymentSettlementService> logger,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null)
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -143,6 +146,11 @@ public sealed class CheckoutPaymentSettlementService(
                 return new CheckoutPaymentSettlement(CheckoutPaymentOutcome.AlreadySettled, booking.Id);
 
             MarkCompleted(payment, paymentIntentId, eventAccountId, onPlatform);
+
+            // E08/F01/US01/T04: the payment became paid; its event is saved with the status (the Octorate handler records it on the reservation).
+            await GuestPortal.GuestHostExtraService.RecordBookingPaymentAsync(db, booking, cancellationToken);
+            await PaymentEvents.RecordSucceededAsync(
+                domainEvents, db, payment, await PaymentEvents.CurrencyOfAsync(db, booking, cancellationToken), cancellationToken);
             await paymentRepository.UpdateAsync(payment);
             return new CheckoutPaymentSettlement(CheckoutPaymentOutcome.Recorded, booking.Id);
         }
@@ -157,9 +165,31 @@ public sealed class CheckoutPaymentSettlementService(
                 .Where(b => b.Id == booking.Id)
                 .Where(CheckoutHolds.IsExpired(expiredHoldCutoff))
                 .AnyAsync(cancellationToken);
-        var datesFree = await AreDatesFreeAsync(booking, expiredHoldCutoff, checkCalendarBlocks: !validHold, cancellationToken);
+        // A booking the host entered (its payment link, E08/F01/US01/T05) is confirmed from the start: a payment that succeeds once the host
+        // cancelled it never brings it back, whatever the dates, and is refunded in full like a payment on dates that are taken.
+        var hostBooking = booking.Source == BookingSource.Manual;
+        var datesFree = !hostBooking
+                        && await AreDatesFreeAsync(booking, expiredHoldCutoff, checkCalendarBlocks: !validHold, cancellationToken);
+        if (hostBooking)
+        {
+            logger.LogWarning(
+                "Payment intent {PaymentIntentId} succeeded on host booking {BookingId} in status {Status}: refunded, the booking stays as it is",
+                paymentIntentId,
+                booking.Id,
+                booking.Status);
+        }
 
+        // E08/F01/US01/T04: a payment that confirms its booking is a payment received; one that is refunded at once (the dates are taken, the
+        // host cancelled) is not announced as one.
+        var completedNow = payment.Status != PaymentStatus.Completed;
         MarkCompleted(payment, paymentIntentId, eventAccountId, onPlatform);
+        if (completedNow && datesFree)
+        {
+            await GuestPortal.GuestHostExtraService.RecordBookingPaymentAsync(db, booking, cancellationToken);
+            await PaymentEvents.RecordSucceededAsync(
+                domainEvents, db, payment, await PaymentEvents.CurrencyOfAsync(db, booking, cancellationToken), cancellationToken);
+        }
+
         await paymentRepository.UpdateAsync(payment);
 
         if (datesFree)
@@ -172,6 +202,9 @@ public sealed class CheckoutPaymentSettlementService(
             booking.CancelledAt = null;
             booking.CancellationReason = null;
             booking.UpdatedAt = now;
+
+            // The guest's payment confirmed the stay: the event is saved with the confirmation, in the transaction of the webhook event.
+            await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingConfirmed, booking, BookingEventOrigin.Guest, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
 
             if (validHold)
@@ -191,6 +224,7 @@ public sealed class CheckoutPaymentSettlementService(
             booking.CancelledAt = now;
             booking.CancellationReason = BookingCancellationReason.DatesUnavailableAtPayment;
             booking.UpdatedAt = now;
+            await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingCancelled, booking, BookingEventOrigin.System, cancellationToken);
         }
 
         await db.SaveChangesAsync(cancellationToken);

@@ -47,7 +47,8 @@ public sealed record RentRegisterCounters(RentCounter Expected, RentCounter Coll
 /// One installment of the register. The tenant is the first tenant of the lease, by name only (D29), and the names are null
 /// once that tenant was anonymized (<c>TenantAnonymized</c>, LT-12). <c>CanRemind</c> is the answer to "can I send a reminder
 /// now": the installment is not paid nor in flight, a tenant has an email address, and the interval since the last reminder
-/// (<c>RentBilling:ReminderIntervalHours</c>) has passed.
+/// (<c>RentBilling:ReminderIntervalHours</c>) has passed. <c>CanWhatsAppRemind</c> applies the same status and interval rule,
+/// but requires a tenant phone number instead of an email address.
 /// </summary>
 public sealed record RentRegisterRow(
     Guid Id,
@@ -70,7 +71,15 @@ public sealed record RentRegisterRow(
     DateTime? PaymentRequestedAt,
     DateTime? LastReminderAt,
     int ReminderCount,
-    bool CanRemind);
+    bool CanRemind,
+    decimal RentAmount,
+    decimal CondominiumAdvanceAmount,
+    decimal CondominiumSettlementAmount,
+    decimal OtherAmount,
+    decimal AmountPaid,
+    decimal AmountOutstanding,
+    bool HasTenantPhone = false,
+    bool CanWhatsAppRemind = false);
 
 /// <summary>
 /// A page of the register. <c>OnlinePaymentsAvailable</c>: the org accepts rent online (Stripe Connect), so a reminder carries

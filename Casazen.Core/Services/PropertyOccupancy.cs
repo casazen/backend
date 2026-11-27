@@ -11,7 +11,8 @@ namespace Casazen.Core.Services;
 /// bookings): a night shown as taken is a night a booking is refused on, and the other way round.
 /// <para>
 /// A night is a calendar date. A booking takes the nights from its check-in date (included) to its check-out date
-/// (excluded); a calendar block (<see cref="CalendarBlockSource.ICalImport"/> or <see cref="CalendarBlockSource.Manual"/>)
+/// (excluded); a calendar block (<see cref="CalendarBlockSource.ICalImport"/>, <see cref="CalendarBlockSource.Manual"/> or
+/// <see cref="CalendarBlockSource.Octorate"/>, the nights the Octorate calendar holds closed)
 /// the nights from the date of its start (included) to the date of its end (excluded). The check-out day stays free for
 /// a new check-in (same-day turnover). Which bookings count (not cancelled, not an expired checkout hold, a pending
 /// "pay at the property" request does) is <see cref="CheckoutHolds.OccupiesDates"/>.

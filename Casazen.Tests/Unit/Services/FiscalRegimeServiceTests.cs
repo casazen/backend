@@ -444,9 +444,15 @@ public class FiscalRegimeServiceTests
     [Fact]
     public async Task ApplyWithholding_OtaAuto_DirectSkipped()
     {
-        var sut = CreateService(CreateDb());
+        await using var db = CreateDb();
+        var orgId = Guid.NewGuid();
+        SeedOrg(db, orgId);
+        var property = SeedProperty(db, orgId, "Italian OTA rental");
+        var otaBooking = SeedStay(db, property, new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc),
+            nights: 3, source: BookingSource.Airbnb);
+        await db.SaveChangesAsync();
+        var sut = CreateService(db);
         var otaPayment = new Payment { Amount = 100m };
-        var otaBooking = new Booking { Source = BookingSource.Airbnb };
         await sut.ApplyWithholdingOnCreateAsync(otaPayment, otaBooking, null, null);
         Assert.Equal(21m, otaPayment.OtaWithholdingTax);
         Assert.True(otaPayment.WithholdingTaxApplied);
@@ -660,6 +666,91 @@ public class FiscalRegimeServiceTests
         Assert.Equal(54.60m, bucket.Withholding);
         Assert.Equal(205.40m, bucket.Net);
         Assert.Equal(2, bucket.PayoutCount);
+    }
+
+    [Fact]
+    public async Task GetRegime_ItalianAndSwissPortfolio_CountsOnlyItalianApartment()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedOrg(db, orgId);
+        foreach (var country in new[] { "IT", "CH", "CH" })
+        {
+            var property = SeedProperty(db, orgId, $"Casa {country}");
+            property.Country = country;
+            SeedStay(db, property, new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc), nights: 3);
+        }
+        await db.SaveChangesAsync();
+
+        var snapshot = await CreateService(db).GetRegimeAsync(orgId, TaxYear);
+
+        Assert.Equal(1, snapshot.StrPropertyCount);
+        Assert.False(snapshot.RequiresPartitaIva);
+        Assert.Single(snapshot.Properties);
+        Assert.Equal(1, Assert.Single(snapshot.Taxpayers).ShortStayApartmentCount);
+    }
+
+    [Fact]
+    public async Task GetRegime_DeletedActivePropertyWithoutStays_IsNotShown()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedOrg(db, orgId);
+        var property = SeedProperty(db, orgId, "Deleted test");
+        property.IsDeleted = true;
+        property.DeletedAt = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
+        await db.SaveChangesAsync();
+
+        var snapshot = await CreateService(db).GetRegimeAsync(orgId, TaxYear);
+
+        Assert.Empty(snapshot.Properties);
+        Assert.Equal(0, snapshot.StrPropertyCount);
+        Assert.False(snapshot.RequiresPartitaIva);
+    }
+
+    [Fact]
+    public async Task GetRegime_DeletedPropertyWithHistoricalStay_StillCountsInTaxYear()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedOrg(db, orgId);
+        var property = SeedProperty(db, orgId, "Historical rental");
+        var booking = SeedStay(db, property, new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc),
+            nights: 3, source: BookingSource.Airbnb);
+        property.IsDeleted = true;
+        property.DeletedAt = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
+        await db.SaveChangesAsync();
+
+        var snapshot = await CreateService(db).GetRegimeAsync(orgId, TaxYear);
+
+        Assert.Equal(property.Id, Assert.Single(snapshot.Properties).PropertyId);
+        Assert.Equal(1, snapshot.StrPropertyCount);
+
+        var payment = new Payment { Amount = 100m };
+        await CreateService(db).ApplyWithholdingOnCreateAsync(payment, booking, null, null);
+        Assert.Equal(21m, payment.OtaWithholdingTax);
+    }
+
+    [Theory]
+    [InlineData(2026)]
+    [InlineData(2025)]
+    public async Task ApplyWithholding_SwissStay_DoesNotApplyItalianOtaWithholding(int year)
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedOrg(db, orgId);
+        var property = SeedProperty(db, orgId, "Swiss rental");
+        property.Country = "CH";
+        var booking = SeedStay(db, property, new DateTime(year, 6, 1, 0, 0, 0, DateTimeKind.Utc),
+            nights: 3, source: BookingSource.Airbnb);
+        await db.SaveChangesAsync();
+        var payment = new Payment { Amount = 100m };
+
+        await CreateService(db).ApplyWithholdingOnCreateAsync(payment, booking, null, null);
+
+        Assert.Equal(0m, payment.OtaWithholdingTax);
+        Assert.False(payment.WithholdingTaxApplied);
+        Assert.Equal(100m, payment.NetAmountAfterWithholding);
     }
 
     private static FiscalService CreateService(AppDbContext db, ShortStayFiscalOptions? options = null) =>

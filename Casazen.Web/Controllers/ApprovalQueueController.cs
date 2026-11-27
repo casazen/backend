@@ -1,6 +1,9 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.ApprovalQueue;
 using Casazen.Web.Infrastructure;
@@ -10,143 +13,182 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Approval queue for items requiring human decision before taking effect (NF-06).
+/// Approval queue for drafts awaiting a human decision. The caller needs marketing access for campaigns or approval.decide for other items.
+/// The host scope limits both listing and deciding to the caller's organization and properties. The answers contain private guest messages.
 /// </summary>
+/// <remarks>
+/// 404 <c>approval_item_not_found</c>; 409 <c>approval_item_not_pending</c> (already rejected or expired), <c>approval_origin_action_failed</c> (the action failed, the item stays
+/// pending, the extension <c>originActionError</c> says why); 422 <c>approval_edit_invalid</c>, <c>approval_rejection_reason_required</c>.
+/// </remarks>
 [ApiController]
 [Route("api/approval-queue")]
+[Authorize(Policy = CasazenPolicies.ApprovalQueueAccess)]
+[PrivateAnswer]
 public class ApprovalQueueController(
     IApprovalQueueService approvalQueueService,
     ITenantContext tenantContext,
-    ILogger<ApprovalQueueController> logger) : ControllerBase
+    IHostScopeResolver hostScopeResolver,
+    ILogger<ApprovalQueueController> logger,
+    IAuthorizationService authorization,
+    AppDbContext db) : ControllerBase
 {
     /// <summary>
-    /// Get pending approval items for the caller's organization.
+    /// Get pending approval items for the caller's organization, narrowed to the properties the caller reaches (an item with no property only for a caller who reaches every one),
+    /// oldest first, with the score, the situation and the thread key of a draft of a message.
     /// </summary>
     [HttpGet]
-    [Authorize(Policy = CasazenPolicies.PropertyRead)]
-    public async Task<ActionResult<IEnumerable<ApprovalQueueItemDto>>> GetPendingItems()
+    [ProducesResponseType(typeof(IEnumerable<ApprovalQueueItemDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IEnumerable<ApprovalQueueItemDto>>> GetPendingItems(CancellationToken cancellationToken)
+    {
+        var scope = await ResolveScopeAsync(cancellationToken);
+        if (scope.Problem is not null)
+            return scope.Problem;
+
+        var (other, marketing) = await PermissionsAsync(scope.Value!.OrgId, cancellationToken);
+        if (!other && !marketing) return Forbid();
+        var items = (await approvalQueueService.GetPendingAsync(scope.Value, cancellationToken))
+            .Where(item => item.ItemType == ApprovalItemTypes.Campaign ? marketing : other);
+
+        return Ok(items.Select(i => ApprovalQueueItemDto.From(i)));
+    }
+
+    /// <summary>
+    /// Edit the text of a pending item: the original is kept, and the approval acts with the edited one. 422 <c>approval_edit_invalid</c> for an empty text, a message longer than
+    /// 2000 characters or a campaign that is not a subject line, a blank line and a body.
+    /// </summary>
+    [HttpPut("{id}/edit")]
+    [RequestSizeLimit(262144)]
+    [ProducesResponseType(typeof(ApprovalQueueItemDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ApprovalQueueItemDto>> EditItem(Guid id, [FromBody] EditApprovalItemDto dto, CancellationToken cancellationToken)
+    {
+        var scope = await ResolveScopeAsync(cancellationToken);
+        if (scope.Problem is not null)
+            return scope.Problem;
+        var access = await CheckItemAsync(id, scope.Value!, cancellationToken);
+        if (access != null) return access;
+
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return UserIdMissing();
+
+        var item = await approvalQueueService.EditAsync(scope.Value!, id, dto.Text, userId, cancellationToken);
+
+        logger.LogInformation("User {UserId} edited approval queue item {ItemId} of type {ItemType}", userId, id, item.ItemType);
+
+        return Ok(ApprovalQueueItemDto.From(item));
+    }
+
+    /// <summary>
+    /// Approve a pending approval queue item: the action it was waiting for runs (a message goes to the guest once, a campaign is approved and scheduled when it has a time), then the
+    /// item is approved. 200 with the item and <c>originActionResult</c>; 409 <c>approval_origin_action_failed</c> when the action failed (the item stays pending and the host can edit
+    /// and try again); an item already approved answers 200 as it is and sends nothing again.
+    /// </summary>
+    [HttpPost("{id}/approve")]
+    [ProducesResponseType(typeof(ApprovalQueueItemDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ApprovalQueueItemDto>> ApproveItem(Guid id, CancellationToken cancellationToken)
+    {
+        var scope = await ResolveScopeAsync(cancellationToken);
+        if (scope.Problem is not null)
+            return scope.Problem;
+        var access = await CheckItemAsync(id, scope.Value!, cancellationToken);
+        if (access != null) return access;
+
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return UserIdMissing();
+
+        var decision = await approvalQueueService.ApproveAsync(scope.Value!, id, userId, cancellationToken);
+
+        logger.LogInformation(
+            "User {UserId} approved approval queue item {ItemId} of type {ItemType}: action {OriginAction} {State}",
+            userId,
+            id,
+            decision.Item.ItemType,
+            decision.Item.OriginAction,
+            decision.ActionState ?? "(none)");
+
+        return Ok(ApprovalQueueItemDto.From(decision.Item, decision.ActionState));
+    }
+
+    /// <summary>
+    /// Reject a pending approval queue item. The reason is mandatory (422 <c>approval_rejection_reason_required</c>, at most 500 characters) and is saved on the item; the rejection hook
+    /// of the type runs (a campaign goes back to a draft).
+    /// </summary>
+    [HttpPost("{id}/reject")]
+    [ProducesResponseType(typeof(ApprovalQueueItemDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ApprovalQueueItemDto>> RejectItem(
+        Guid id,
+        [FromBody] RejectApprovalItemDto dto,
+        CancellationToken cancellationToken)
+    {
+        var scope = await ResolveScopeAsync(cancellationToken);
+        if (scope.Problem is not null)
+            return scope.Problem;
+        var access = await CheckItemAsync(id, scope.Value!, cancellationToken);
+        if (access != null) return access;
+
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return UserIdMissing();
+
+        var item = await approvalQueueService.RejectAsync(scope.Value!, id, userId, dto.Reason, cancellationToken);
+
+        // The reason is the host's own words: it is never logged.
+        logger.LogInformation("User {UserId} rejected approval queue item {ItemId} of type {ItemType}", userId, id, item.ItemType);
+
+        return Ok(ApprovalQueueItemDto.From(item));
+    }
+
+    private async Task<(bool Other, bool Marketing)> PermissionsAsync(Guid orgId, CancellationToken ct)
+    {
+        bool other = (await authorization.AuthorizeAsync(User, CasazenPolicies.ApprovalDecide)).Succeeded;
+        bool marketing = (await authorization.AuthorizeAsync(User, CasazenPolicies.Marketing)).Succeeded;
+        if (marketing)
+        {
+            var org = await db.Orgs.AsNoTracking().SingleOrDefaultAsync(o => o.Id == orgId, ct);
+            marketing = org != null && CommercialSignup.HasCrmMarketing(org);
+        }
+        return (other, marketing);
+    }
+
+    private async Task<ActionResult?> CheckItemAsync(Guid id, HostScope scope, CancellationToken ct)
+    {
+        var (other, marketing) = await PermissionsAsync(scope.OrgId, ct);
+        if (!other && !marketing) return Forbid();
+        var type = await db.ApprovalQueueItems.Where(i => i.Id == id && i.OrgId == scope.OrgId)
+            .Select(i => i.ItemType).SingleOrDefaultAsync(ct);
+        if (type != null && !(type == ApprovalItemTypes.Campaign ? marketing : other)) return NotFound();
+        return null;
+    }
+
+    /// <summary>The caller's reach on the host data of its org: a problem (401 with no org, 403 with no reach) or the scope. Never widened.</summary>
+    private async Task<(HostScope? Value, ObjectResult? Problem)> ResolveScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = tenantContext.OrgId ?? Guid.Empty;
         if (orgId == Guid.Empty)
         {
-            return this.ApiProblem(
+            return (null, this.ApiProblem(
                 StatusCodes.Status401Unauthorized,
                 ProblemCodes.Unauthorized,
-                "OrgContextRequired");
+                "OrgContextRequired"));
         }
 
-        var items = await approvalQueueService.GetPendingAsync(orgId);
-
-        var dtos = items.Select(i => new ApprovalQueueItemDto
-        {
-            Id = i.Id,
-            ItemType = i.ItemType,
-            ItemId = i.ItemId,
-            ContentText = i.ContentText,
-            ContentVersion = i.ContentVersion,
-            IsAiGenerated = i.IsAiGenerated,
-            Status = i.Status.ToString(),
-            CreatedAt = i.CreatedAt,
-            ExpiresAt = i.ExpiresAt,
-        });
-
-        return Ok(dtos);
+        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId, cancellationToken);
+        return scope is null
+            ? (null, this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden"))
+            : (scope, null);
     }
 
-    /// <summary>
-    /// Approve a pending approval queue item.
-    /// </summary>
-    [HttpPost("{id}/approve")]
-    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
-    public async Task<ActionResult<ApprovalQueueItemDto>> ApproveItem(Guid id)
-    {
-        var userId = User.GetUserId();
-        if (string.IsNullOrEmpty(userId))
-        {
-            return this.ApiProblem(
-                StatusCodes.Status401Unauthorized,
-                ProblemCodes.Unauthorized,
-                "UserIdMissing");
-        }
-
-        var item = await approvalQueueService.ApproveAsync(id, userId);
-        if (item == null)
-        {
-            return this.ApiProblem(
-                StatusCodes.Status404NotFound,
-                ProblemCodes.NotFound,
-                "ApprovalItemNotFound");
-        }
-
-        logger.LogInformation(
-            "User {UserId} approved approval queue item {ItemId} of type {ItemType}",
-            userId,
-            id,
-            item.ItemType);
-
-        return Ok(new ApprovalQueueItemDto
-        {
-            Id = item.Id,
-            ItemType = item.ItemType,
-            ItemId = item.ItemId,
-            ContentText = item.ContentText,
-            ContentVersion = item.ContentVersion,
-            IsAiGenerated = item.IsAiGenerated,
-            Status = item.Status.ToString(),
-            ApprovedByUserId = item.ApprovedByUserId,
-            ApprovedAt = item.ApprovedAt,
-            CreatedAt = item.CreatedAt,
-            ExpiresAt = item.ExpiresAt,
-        });
-    }
-
-    /// <summary>
-    /// Reject a pending approval queue item.
-    /// </summary>
-    [HttpPost("{id}/reject")]
-    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
-    public async Task<ActionResult<ApprovalQueueItemDto>> RejectItem(
-        Guid id,
-        [FromBody] RejectApprovalItemDto dto)
-    {
-        var userId = User.GetUserId();
-        if (string.IsNullOrEmpty(userId))
-        {
-            return this.ApiProblem(
-                StatusCodes.Status401Unauthorized,
-                ProblemCodes.Unauthorized,
-                "UserIdMissing");
-        }
-
-        var item = await approvalQueueService.RejectAsync(id, userId, dto.Reason ?? "No reason provided");
-        if (item == null)
-        {
-            return this.ApiProblem(
-                StatusCodes.Status404NotFound,
-                ProblemCodes.NotFound,
-                "ApprovalItemNotFound");
-        }
-
-        logger.LogInformation(
-            "User {UserId} rejected approval queue item {ItemId} of type {ItemType}. Reason: {Reason}",
-            userId,
-            id,
-            item.ItemType,
-            dto.Reason);
-
-        return Ok(new ApprovalQueueItemDto
-        {
-            Id = item.Id,
-            ItemType = item.ItemType,
-            ItemId = item.ItemId,
-            ContentText = item.ContentText,
-            ContentVersion = item.ContentVersion,
-            IsAiGenerated = item.IsAiGenerated,
-            Status = item.Status.ToString(),
-            ApprovedByUserId = item.ApprovedByUserId,
-            ApprovedAt = item.ApprovedAt,
-            CreatedAt = item.CreatedAt,
-            ExpiresAt = item.ExpiresAt,
-        });
-    }
+    private ObjectResult UserIdMissing() =>
+        this.ApiProblem(StatusCodes.Status401Unauthorized, ProblemCodes.Unauthorized, "UserIdMissing");
 }

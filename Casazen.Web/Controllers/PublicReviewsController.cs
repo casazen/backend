@@ -12,8 +12,9 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// The verified reviews on the public booking site (DB-12a): the reviews of a property, and the page behind the link the host's email
-/// carries. Anonymous, rate limited per client IP, never indexable on the link side. The review is published when the guest sends it;
-/// nothing is written to the guest.
+/// carries. Anonymous, rate limited per client IP, never indexable on the link side. The review is published when the guest sends it,
+/// and <c>ReviewReceived</c> is recorded on the event bus in the same save (E26/F01/US01/T01, once for each review, ids only); nothing is
+/// written to the guest.
 /// </summary>
 [ApiController]
 [Route("api/public")]
@@ -79,8 +80,8 @@ public class PublicReviewsController(IOrgService orgService, IPublicReviewServic
 
     /// <summary>
     /// The guest's review: a mark from 1 to 5, an optional text, and whether the first name may be shown. Published at once, one per
-    /// booking (409 <c>review_already_submitted</c> for the second, however it comes), idempotent in effect. Same link errors as
-    /// <c>lookup</c>. Answers the review as the public reads it.
+    /// booking (409 <c>review_already_submitted</c> for the second, however it comes), idempotent in effect: one review, and one
+    /// <c>ReviewReceived</c> event. Same link errors as <c>lookup</c>. Answers the review as the public reads it.
     /// </summary>
     [HttpPost("bookings/{bookingId:guid}/review")]
     [EnableRateLimiting(RateLimitPolicies.PublicReviewSubmit)]

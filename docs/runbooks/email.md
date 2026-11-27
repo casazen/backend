@@ -94,10 +94,18 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `onsite-request-declined` | guest | the host declined the request (with the host's optional message) | `OnSiteRequestNotifier`, queued |
 | `onsite-request-expired` | guest | the host did not answer in time | `OnSiteRequestNotifier` (expiry job), queued |
 | `guest-checkin-link` | guest | self check-in link: daily job before arrival, or "send link" / reminder by the host | `GuestCheckInSendJob` or `BookingCheckInLinkController` → `GuestCheckInLinkEmailJob` (queued, outcome on the link: [alloggiati.md](alloggiati.md#guest-check-in-link-and-host-fallback-co-09)) |
+| `guest-prepare-arrival` | guest | «Prepara il tuo arrivo» (E50/F01/US03/T03, only with `Features__GuestPortal` on): the host sends the stay link again from the booking (`POST api/bookings/{id}/guest-portal/resend`); the same e-mail, with the check-in link as its second button, is what `GuestCheckInLinkEmailJob` sends in place of `guest-checkin-link` ([the section below](#the-stay-link-in-the-guest-e-mails-e50f01us03t03)) | `GuestPortalEmailService`, queued; `GuestCheckInLinkEmailJob` |
 | `guest-checkin-incomplete` | host | "Dati ospiti mancanti": guest data for Alloggiati Web still incomplete the day before arrival | `stay-alerts` job → `NotificationService`, queued, once per stay (CO-10, [hangfire.md §9](hangfire.md#9-stay-alerts-co-10)) |
 | `alloggiati-deadline` | host | Alloggiati Web communication not sent, deadline approaching | same, once per stay |
 | `alloggiati-overdue` | host | Alloggiati Web deadline passed without the communication, then at most `StayAlerts__MaxOverdueReminders` daily reminders | same |
 | `alloggiati-failed` | host | Alloggiati Web communication rejected or failed | same, once per stay |
+| `receipt-missing` | host | the Alloggiati Web communication is sent, entrusted or declared and no receipt is archived the day after (E03/F02/US02/T01); names the property and the day, no guest | same, once per stay, only with `Features__ComplianceTrafficLight` on |
+| `short-stay-at-risk` | host | a stay of one night (6-hour term) not entrusted to the channel manager arrives within a few hours | same |
+| `over-thirty-nights` | host | a stay over 30 nights, which the channel manager does not send by itself, arrives tomorrow | same |
+| `compliance-period-alert` | host | the deadline of an ISTAT (or tourist tax) month is approaching or passed with no proof, then at most `Compliance__MaxPeriodReminders` reminders (E03/F02/US02/T01) | `stay-alerts` job → `ComplianceAlertService` → `NotificationService`, queued to the address of the org, once per stage, only with `Features__ComplianceTrafficLight` on |
+| `compliance-connection-alert` | host | the police send of the channel manager is not active while a stay is coming; a second and last notice follows | same |
+| `compliance-monthly-summary` | host | on the 1st of the month at 07:00 (Rome): «October 2026: stays N, all compliant», «no stays», or what is not settled (counts and the names of the open actions, never a guest, a document, a contact, a booking code or a property), with the link to the compliance page (E03/F02/US02/T02) | `ComplianceMonthlySummaryJob` → `ComplianceMonthlySummaryService`, queued to the address of the org and its administrators, once per org and month (`ComplianceMonthlySummaryLogs`), only with `Features__ComplianceTrafficLight` on |
+| `accountant-package` | the accountant of the org (the address saved in `GET api/accountant-package/settings`, never another) | the package of the previous month is ready: who prepared it, the month, the **signed link** that downloads it (HMAC-SHA256 with `SIGNED_LINK_SECRET`, `GET {App__ApiBaseUrl}/api/public/accountant-package/{orgId}/{yyyy-MM}`, 30 days) and the last day it opens, and that the package is **not attached** (the queue has no attachments and the package holds financial data); Italian or English by the language of the org, every value HTML-encoded, never a figure, a name of a guest or an owner (E15/F01/US02/T02) | `AccountantPackageMonthlyJob` (`accountant-package-monthly`, 06:00 Rome from the day of the month the org chose, once per org and month) → `AccountantPackageDelivery`, or `POST api/accountant-package/send` («send a test», the previous month); only with `Features__AccountantPackage` on; it needs `SIGNED_LINK_SECRET`, `App__ApiBaseUrl` (https) and the e-mail provider: without them nothing is sent and the settings say `link_not_configured` / `email_not_configured` |
 | `checkout-reminder` | host | check-out day of a confirmed or checked-in stay, 20:00 property time | same, once per check-out date |
 | `property-compliance-suspended` | host | an active property lost an activation requirement (CIN, required document, safety checklist, base data) and was suspended from the booking site; the first check of a property published before CO-06 only with `Compliance__StatusCheck__NotifyOnFirstCheck=true` ([compliance.md](compliance.md#3-email-to-the-host)) | `PropertyComplianceStatusService` (request or `property-compliance-check` job), queued, once per suspension |
 | `property-mode-change-scheduled` | host | a change of rental mode (short stays ↔ long-term) was programmed: the day, what closes, how to withdraw it (PM-02, [property-rental-mode.md §8.6](property-rental-mode.md#86-e-mails-to-the-host)) | `PropertyModeService.ScheduleAsync` → `NotificationService`, queued, once per change |
@@ -161,6 +169,7 @@ Code: `Casazen.Infrastructure/Services/BookingNotifier.cs`, templates `GuestBook
 - **When.** Only on the transition to `Confirmed`, after the change is committed, by the code that made it: `CheckoutPaymentSettlementService.CompleteAsync` (payment webhook: `Confirmed` / `Reconfirmed`; SetupIntent webhook: `ConfirmedWithSavedCard`) and `OnSiteBookingRequestService.AcceptAsync`. The emails are skipped if the booking is no longer confirmed when they are prepared.
 - **Once per transition.** A duplicate webhook is skipped by the event claim (`ProcessedStripeEvents`); another event of a payment already applied is `AlreadySettled`; the SetupIntent handler locks the booking row, so a second event sees it confirmed; a second host acceptance gets 409. None of them sends anything. Tests: `BookingEmailsPostgresTests`.
 - **Guest confirmation content.** Booking code (the booking id, asked by "Le mie prenotazioni"), property, dates, nights, guests, stay, cleaning, tourist tax (only when charged, "inclusa nel totale", BK-03), total; then the payment: "Pagamento ricevuto" (online), the day of the deferred charge (`FreeRefundDeadline`, the day `DirectBookingChargeJob` charges), or "pay at the property". A late payment confirmed again (BK-04) adds a note; an accepted "pay at the property" request says the host accepted it. The standard confirmation replaces the former `guest-late-payment-confirmed` (BK-04) and `onsite-request-accepted` (BK-06) emails.
+- **The online check-in in the confirmation (E23/F02/US01/T01).** It also says where the online check-in stands, by the rule of the guest page: with the check-in already open, the link itself (button «Fai il check-in online», issued the way `guest-checkin-send` issues it, and no second email: the confirmation is the delivery; that email goes through `BookingConfirmationEmailJob`, which says on the session and in the delivery row whether the link really left: `Queued` / `Sending` until the provider accepts it, then `Sent`, or `Failed` with a code and the link taken back so that the daily job sends one); not open yet, the day the link arrives; done or not needed, nothing. [direct-booking.md § 8.2](direct-booking.md#82-lookup).
 - **Link.** `App__PublicSiteBaseUrl/book/{orgSlug}/my-bookings` ("Le mie prenotazioni": code + email). The checkout outcome page of BK-07 needs the checkout token, which only the guest's browser has, so it cannot be linked from an email.
 - **Host contact.** Only what the booking site already shows publicly in its footer: `Org.DisplayName` and `Org.ContactEmail`; without an email the guest is told to contact the host. When the opt-in public contact of BK-12 exists, `BookingNotifier` must read that instead.
 - **Host email.** To `Org.ContactEmail`: guest name, stay, amounts, payment, link to `/app/short-rent/bookings/{id}`. `BookingNotifier.AlertHostOfNewBooking` is the single place where the host learns of a new booking: it also queues the push `new-booking` to the hosts' phones (MO-04, [mobile-release.md § 9.7](mobile-release.md#97-backend-delivery-queue-batches-receipts-mo-04)), once per booking.
@@ -174,8 +183,78 @@ Code: `Casazen.Infrastructure/Services/BookingNotifier.cs`, templates `GuestBook
 
 ### Language
 
-The booking does not record the language of the checkout and guests have no preference: every email goes out in Italian (`EmailTemplates.DefaultCulture`). The English texts exist for every template (`EmailTemplatesTests` checks both files). Sending in English needs the checkout to record the language (frontend field + column on `Bookings`), not done. The exception is the org team (AM-02): the invitation and its reminder go out
+The booking does not record the language of the checkout and guests have no preference: every email goes out in Italian (`EmailTemplates.DefaultCulture`) while `Features__GuestPortal` is off (with it on, the e-mails of the guest portal are written in the language of the guest: the five languages, see below). The English texts exist for every template (`EmailTemplatesTests` checks both files). Sending in English needs the checkout to record the language (frontend field + column on `Bookings`), not done. The exception is the org team (AM-02): the invitation and its reminder go out
 in the language the inviter chose (`it`, the default, or `en`, stored on the invitation); the note to the inviter is in Italian.
+
+**The e-mails to a guest in five languages (E50/F01/US03/T02, NF-155).** `EmailTexts.de.resx`, `.fr.resx` and `.es.resx` hold the texts of every e-mail to a guest, in the order of the Italian file: the check-in link
+and its reminder, the check-in message of the portal chat, the video call of the verification, the confirmation of a booking (and the keys `Booking_*` it shares), the payment link, the cancellation link, the review
+invitation, the answer of the host and the document of the stay, plus `Layout_PoweredBy` and the shared `Guest_*` keys (`EmailTextsGuestParityTests.GuestKeyPrefixes` lists the prefixes: a new guest template adds its
+prefix there and its texts to the five files; a missing key fails the test with its name, and the three languages hold **only** the guest texts). The other e-mails of the guests (cancellation by the host or the guest, refunds,
+changes of a booking, deferred charge, lock code, new photo, «pay at the property» requests) stay in Italian, with the brand of the host (see the section above).
+- **Which language** (one code path, `GuestLanguages.ResolveForEmail`, read by `IGuestEmailLanguageProvider`): the one the guest chose on the check-in page (the latest session of the booking that holds one, or the one of
+  the link being sent), else the one of the country on the booking **only when that country has one language beyond doubt** (`GuestLanguages.OfUnambiguousCountry`: Italy `it`, Germany and Austria `de`, France `fr`, Spain
+  `es`, the United Kingdom, the United States and Ireland `en`), else the language of the host's account (`Org.DefaultLanguage`), else Italian; a code the five do not include is skipped. Any other country,
+  Switzerland included, is the host's account: it is never turned into English (`GuestLanguages.OfCountry`, which writes English for every other country, is what the review invitation, the chat message of the check-in
+  link and the scheduled messages read while the portal is off, and it does not change). **Gap:** `Booking` has no language column (no migration here) and no public booking request carries one, so a confirmation
+  written before any check-in knows the guest only by a country of that short list, else by the host's account.
+- **Flag off = today's culture.** The provider answers the culture each service has always used (Italian for the booking e-mails, Italian or English for the review invitation and the document, the language of the check-in
+  page for the check-in link) while `Features__GuestPortal` is off, and for a service built without it. The German, French and Spanish texts are to be reviewed by a native speaker before the release; no text of a guest
+  e-mail names a payment provider, a channel manager or an AI provider, in any of the five files (`GuestTexts_NameNoTechnicalSupplier`, no exception).
+- **The payment page sentence.** The payment link was written, before the portal, with the name of the payment provider in Italian and English. That sentence is kept as `Legacy_BookingPaymentLink_Secure` (not a guest
+  key, so no guest test reads it as a text of the portal): only the CasaZen e-mail of today, the one with no brand, in Italian or English, reads it, so it stays identical to the byte while the portal is off. The e-mail with
+  the brand of a host, and every language the portal added, reads `BookingPaymentLink_Secure`, the same sentence without the name, in the five languages
+  (`BookingPaymentLink_NamesNoSupplierWithTheBrand_AndIsTheEmailOfTodayWithout`).
+
+## Guest e-mails in the name of the host (E50/F01/US03/T01, NF-155, D3)
+
+Code: `Casazen.Infrastructure/Email/GuestEmailBranding.cs` (the brand, `IGuestEmailBrandingProvider`), `EmailHtmlBuilder(culture, branding)`, `EmailContent.FromName`,
+`EmailDeliveryJob.SendBrandedAsync`, `BookingConfirmationEmailJob.SendBrandedAsync`, `IEmailService.SendEmailAsync(…, replyTo, fromName)`, `ResendEmailService.BuildMessage`.
+The guest portal (casazen/backend#987) sends its e-mails to the guests with the logo, the color and the name of the host.
+
+- **Behind `Features__GuestPortal`, off by default, no new variable.** Off: `IGuestEmailBrandingProvider.ForOrgAsync` answers `null` and every guest e-mail is the CasaZen e-mail of today,
+  byte for byte (same layout, footer «CasaZen — gestione affitti brevi», sender «CasaZen», no reply-to). The same when a service is built without the provider.
+- **What the guest sees.** A header bar in the primary color of the host's showcase (`Org.ThemeColor`, the one of `GET api/public/orgs/{slug}`) with the logo (`Org.LogoUrl`, on a white
+  chip, at most 40 px high and 160 wide, the name as alt text) and the name (`Org.HostName`, else `Org.DisplayName`, else `Org.Name`); the buttons in the same color, with white or black text,
+  whichever reads better (at least 4.5 to 1); a small «powered by CasaZen» footer instead of the CasaZen one (`Layout_PoweredBy`, in the language of the e-mail: «Con tecnologia CasaZen», «Powered by CasaZen»,
+  «Propulsé par CasaZen», «Con tecnología de CasaZen»). No brand (nothing usable in it) = the CasaZen layout.
+- **The sender.** The display name of the sender is the host's name (cleaned: no quote, bracket, control or format character, no separator of an address, at most 64 characters; a name that is
+  nothing once cleaned leaves the configured one) and the answer goes to the host (`Org.ContactEmail`, only when it is one valid address: the guests already read it in the confirmation).
+  **The address of the sender is always `Email__FromAddress`**: a per-host address would need DNS verification per host (the domain stays the one verified in step 1).
+- **Which e-mails.** The templates to a guest: the confirmation, the check-in link and its reminder, the cancellation link, the cancellation, the change, the refunds, the deferred charge, the
+  payment link, the document, the review invitation, the answer of the host, the lock code, the new photo and the video call of the verification. Every other e-mail (host, staff, suppliers,
+  the pay-at-the-property requests) keeps the CasaZen layout. Each factory takes `branding = null` as its last argument.
+- **Nothing a host types can inject anything.** The brand is cleaned twice (when it is read and when the builder takes it): the logo must be an absolute `https` address with a host, no
+  credentials, no space, quote or angle bracket (otherwise it is dropped); the color exactly `#rrggbb` (otherwise the CasaZen blue); the reply-to one plain, valid address; the name as above.
+  Everything is HTML-encoded by the builder anyway. Proof: `GuestEmailBrandingTests`, `ResendEmailServiceTests.BuildMessage_FromName_IsSanitizedAndAddressUnchanged`.
+- **Jobs.** An e-mail with a sender name is queued as a **new** method (`EmailDeliveryJob.SendBrandedAsync`, or `BookingConfirmationEmailJob.SendBrandedAsync` for the confirmation that carries a
+  check-in link); the existing methods keep the signature the jobs already in the queue were created with (a test reads them by reflection). `IEmailService` has a default method with the name:
+  a sender that does not know it sends the e-mail without.
+- **A failure to read the brand** (the database) is logged with the id of the org and the e-mail goes out as the CasaZen one, never lost.
+- **Rollback:** switch `Features__GuestPortal` off; the next e-mail is the CasaZen one.
+
+## The stay link in the guest e-mails (E50/F01/US03/T03)
+
+Code: `Casazen.Infrastructure/GuestPortal/GuestStayLinkProvider.cs` (the address, for every message that carries it), `GuestPortalEmailService.cs` (the host's «send it again»),
+`EmailTemplates.GuestPrepareArrival.cs`, `GuestCheckInLinkEmail.cs`, `BookingNotifier.cs`, `CheckInLinkDeliveryService.cs`, `GuestPortalLinkController.Resend`. The stay link is the address
+`/s/{token}` of the guest portal (the stay link of E50/F01/US01/T01, `GuestPortalLinkService`). Behind `Features__GuestPortal`: **off, all of this is what it was, to the byte**.
+
+- **One place makes the address.** `IGuestStayLinkProvider.UrlAsync` is `IGuestPortalLinkService.GetOrCreateAsync` + `BuildUrl` and nothing else; a template never builds it, it is handed the address.
+  It answers `null` (and makes no link) while the flag is off, for a booking that may not have a link (a request, a cancelled booking, a no-show, a stay over by 30 days), without
+  `App__PublicSiteBaseUrl`, and when the link cannot be made (logged with the ids): the message then goes out as it always did.
+- **The confirmation** (`guest-booking-confirmed`) gets «Apri il tuo soggiorno» as its **first button**, with the fallback link under it; the notice of the check-in, the button of «Le mie prenotazioni» and the rest
+  are unchanged. No link is made for a confirmation that has no address to go to.
+- **«Prepara il tuo arrivo»** (`EmailTemplates.GuestPrepareArrival`) **replaces the e-mail of the check-in link** (`guest-checkin-link`): the same job (`GuestCheckInSendJob` → `GuestCheckInLinkEmailQueue` →
+  `GuestCheckInLinkEmailJob`), the same timing (the window of `CheckIn__SendWindowDays`, or the days of the org's booking flow), the same delivery tracking on the session (`Queued`, `Sent` and when, `Failed` and why), because
+  it is the same job that sends it. The heading and the subject are «Prepara il tuo arrivo»; the stay link is the main button and the **check-in link stays the second one** (until the portal has its check-in section,
+  dropping it would block the guests), with the request of an invoice and the end of validity of the check-in link. The reminder of the missing data (`guest-checkin-link` with `ReminderSentAt`) is **not** replaced.
+- **The chat message of the check-in link** (`CheckInLinkDeliveryService.TryChatAsync`, `EmailTemplates.GuestCheckInChatMessage`) gets a last line with the stay link. The flag of the chat link
+  (`PortalChatCheckInLink`) still decides whether the message is sent at all: with it off nothing is sent and no stay link is made.
+- **The host sends it again:** `POST api/bookings/{bookingId}/guest-portal/resend` (`booking.write` on the property, like the other endpoints that change the link; behind the flag: 404 when it is off). It queues
+  «Prepara il tuo arrivo» to the e-mail address **of the booking's guest, never one the caller gives** (the request has no body); the link is made now if the booking has none; the answer is the link as
+  `GET` gives it. 409 `guest_portal_no_guest_email` for a guest with no address to write to (an OTA booking: the host copies the link and pastes it in the chat of the portal), `guest_portal_booking_not_eligible` as for the
+  first link, `guest_portal_email_not_sent` when the queue did not take it; 404 for a booking of another org. This e-mail has **no check-in link**: asking for a new one would replace the one the guest holds
+  (`POST api/bookings/{id}/checkin/resend-link` is the endpoint for that).
+- **Logs** carry the ids of the booking, of the org and of the link; never the address of the guest, its name or a token.
 
 ## Showcase booking emails (SP-10)
 
@@ -233,7 +312,9 @@ The e-mails of a campaign (NF-24, `CampaignService.SendCampaignAsync`, Hangfire 
 guest's address in the query, on a hard-coded host (`https://app.casazen.com/unsubscribe?org=…&email=…`). Since DEB-01 (2026-10-31):
 
 - **The link is signed** (`MarketingUnsubscribeLinks`, ADR-007-R18): HMAC-SHA256 with `SIGNED_LINK_SECRET` of `emailHash + "." + expiresAt`, valid 30 days.
-  `emailHash` is the SHA-256 index of the normalized address, the one of the suppression list: **no address in any URL**. The same class checks the link in
+  `emailHash` is the index of the normalized address, the one of the suppression list: since E07/F06/US01/T02 the **keyed** HMAC-SHA256 of `ICrmContactIndex`
+  (`Crm__ContactIndexKey`), before it the plain SHA-256 (a link issued before keeps working for its 30 days and the list still honors that form;
+  [`crm-marketing.md`](crm-marketing.md) § Suppression): **no address in any URL**. The same class checks the link in
   `POST api/public/marketing/unsubscribe` (constant-time comparison), so building and checking cannot drift.
 - **In the body**: `App__PublicSiteBaseUrl/unsubscribe#orgId=…&emailHash=…&expiresAt=…&signature=…`, the values in the fragment (never sent to a server, so in no
   access log). **The page `/unsubscribe` of the web app is a frontend follow-up**: it reads the fragment and posts it unchanged as the query of
@@ -242,9 +323,16 @@ guest's address in the query, on a hard-coded host (`https://app.casazen.com/uns
   `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 2369, RFC 8058): Gmail, Yahoo and the others show their own «Unsubscribe» and post to the API
   themselves. Left out when `App__ApiBaseUrl` is not an https URL; the link in the body is still there.
 - **Variables**: `SIGNED_LINK_SECRET` (a long random secret, shared by the signed links of ADR-007-R20; the unsubscribe endpoint already needed it) and
-  `App__PublicSiteBaseUrl` on every environment that sends campaigns. Without them **no campaign e-mail leaves**: the job fails with
+  `App__PublicSiteBaseUrl` on every environment that sends campaigns. Without them (and with the module on) **no campaign e-mail leaves**: the job fails with
   `EmailConfigurationException` and Hangfire retries it. Rotating the secret invalidates the links already sent.
-- **Logs**: `CampaignService` and `PublicMarketingController` never log an address (the unsubscribe logs carry the org and the hash only).
+- **Logs**: `CampaignService`, `PublicMarketingController` and `SuppressionService` never log an address **nor the hash that stands for it** (the unsubscribe
+  logs carry the org and the source only, E07/F06/US01/T02, AC-NF95-5).
+- **Key**: the link of a campaign needs `Crm__ContactIndexKey` too (it is the key of the hash in the link, and of the check of the suppression list).
+  A campaign goes out only with `Features__CrmMarketing` on, and then the key is required at startup outside Development and Testing
+  ([`crm-marketing.md`](crm-marketing.md) § 3).
+- **Flag off**: the job is closed with the module. While `Features__CrmMarketing` is off the send of a campaign scheduled before does nothing: one
+  warning in the log, the job ends without failing (no retry, whatever the key and the secret say) and the campaign goes back to Approved, to be scheduled
+  again once the module is on ([`crm-marketing.md`](crm-marketing.md) § 7).
 
 ## Adding a new email
 
@@ -254,3 +342,12 @@ guest's address in the query, on a hard-coded host (`https://app.casazen.com/uns
 4. In a request handler, queue with `IEmailQueue.Enqueue(...)` after the data is saved; inside a Hangfire job you may call `IEmailService` directly.
 5. A booking status email goes in `BookingNotifier` (called after the commit, by the code that makes the transition, so a repeated request or webhook sends nothing).
 6. Add it to [Complete list of emails](#complete-list-of-emails).
+
+
+## Host marketing campaigns
+
+Campaigns send from the configured verified CasaZen address with the host organization�s display name. The approved delivery carries a signed unsubscribe link, RFC 8058 headers and a stable Resend idempotency key. Keep `SIGNED_LINK_SECRET` stable so previously issued unsubscribe links continue to work. Configure `App__PublicSiteBaseUrl` for the guest page and an HTTPS `App__ApiBaseUrl` for one-click email-client requests.
+
+For provider metrics, register `POST /api/webhooks/marketing/resend` on the environment�s public API and subscribe to `email.opened`, `email.clicked` and `email.bounced`. Store that endpoint�s signing secret in `Email__MarketingWebhookSecret`. Enable domain tracking in Resend for the metrics approved for the rollout. Each signed event updates a unique delivery, so repeated callbacks count once. Keep development and production webhooks and secrets separate.
+
+`Marketing__MonthlyOrganizationEmails` sets the optional monthly delivery budget per organization. Override it for an organization with `Marketing__Organizations__<org-guid>__MonthlyEmails`. Each guest already has a limit of two marketing emails per UTC calendar month, shared with newsletters. The host can lower that limit. A reserved delivery retains its slot on an uncertain provider outcome.

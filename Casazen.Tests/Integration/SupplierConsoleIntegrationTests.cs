@@ -910,6 +910,7 @@ public class SupplierConsoleIntegrationTests : IClassFixture<CasazenWebApplicati
 
         var profile = new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = org.Id,
             Email = org.ContactEmail,
             LegalName = "Test Supplier Srl",

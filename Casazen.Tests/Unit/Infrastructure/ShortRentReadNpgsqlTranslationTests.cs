@@ -1,4 +1,5 @@
 using Casazen.Core.Authorization;
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Services;
@@ -139,6 +140,15 @@ public class ShortRentReadNpgsqlTranslationTests
             true,
             new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc),
             default),
+        // E27/F01/US01/T01: the origin the host reads, as SQL on the source and the attribution of the booking.
+        ["bookings-search-origins-every"] = (db, scope) => Search(db).SearchAsync(
+            scope, new BookingSearchCriteria(Origins: [BookingOrigin.Portal, BookingOrigin.AgencySite, BookingOrigin.CasaZenSite, BookingOrigin.Manual])),
+        ["bookings-search-origin-agency-site"] = (db, scope) => Search(db).SearchAsync(
+            scope, new BookingSearchCriteria(Origins: [BookingOrigin.AgencySite])),
+        ["bookings-search-origin-casazen-site"] = (db, scope) => Search(db).SearchAsync(
+            scope, new BookingSearchCriteria(Origins: [BookingOrigin.CasaZenSite])),
+        ["bookings-counts-origins"] = (db, scope) => Search(db).CountAsync(
+            scope, new BookingSearchCriteria(Origins: [BookingOrigin.Portal, BookingOrigin.Manual])),
         ["bookings-counts-everything"] = (db, scope) => Search(db).CountAsync(scope, EveryNewCriterion),
         ["bookings-counts-plain"] = (db, scope) => Search(db).CountAsync(scope, new BookingSearchCriteria()),
         ["payments-list-page-3"] = (db, scope) => new PaymentListService(db).ListPageAsync(
@@ -194,6 +204,10 @@ public class ShortRentReadNpgsqlTranslationTests
         // The payments and the Alloggiati reports of the page.
         ["bookings-search-row-details"] = 2,
         // One aggregate statement.
+        ["bookings-search-origins-every"] = 1,
+        ["bookings-search-origin-agency-site"] = 1,
+        ["bookings-search-origin-casazen-site"] = 1,
+        ["bookings-counts-origins"] = 1,
         ["bookings-counts-everything"] = 1,
         ["bookings-counts-plain"] = 1,
         // A page past the end of nothing: the page is empty and the count is asked.

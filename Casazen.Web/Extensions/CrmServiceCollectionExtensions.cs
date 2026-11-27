@@ -1,0 +1,85 @@
+using Casazen.Core.GuestPortal;
+using Casazen.Core.Events;
+using Casazen.Core.Options;
+using Casazen.Core.Services;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Events;
+using Casazen.Infrastructure.Jobs;
+using Casazen.Infrastructure.Octorate;
+using Casazen.Infrastructure.Services;
+using Microsoft.Extensions.Options;
+
+namespace Casazen.Web.Extensions;
+
+/// <summary>
+/// The one place where the marketing module of epic E07 (CRM, consents, suppression, campaigns) is registered. Every task of the epic adds
+/// its registrations here, none in <c>ServiceCollectionExtensions</c>; <c>Program.cs</c> calls it once. Nothing here is conditional: what
+/// is not ready yet sits behind <c>Features:CrmMarketing</c> where it is used (the controllers), not by being left out of DI, so the
+/// services the always-on paths need (the keyed index, the suppression list) are there whatever the flag says.
+/// </summary>
+public static class CrmServiceCollectionExtensions
+{
+    public static IServiceCollection AddCrmMarketing(this IServiceCollection services, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        // The Crm options, validated at startup (E07/F06/US01/T01): the key of the index, the relay domains of the OTAs, the limits of the
+        // double opt-in. With the flag on, outside Development and Testing, the key is required or the application does not start.
+        services.AddOptions<CrmOptions>()
+            .BindConfiguration(CrmOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<CrmOptions>, CrmOptionsValidator>();
+
+        // The keyed index of the contacts and of the suppression list: HMAC-SHA256 keyed by Crm:ContactIndexKey.
+        services.AddSingleton<ICrmContactIndex, CrmContactIndex>();
+        services.AddScoped<MarketingGuestImport>();
+        services.AddScoped<MarketingGuestCategoryService>();
+
+        // E07/F01/US02 (NF-88, NF-89, NF-20): the matching of a guest to a CRM profile, finally registered (the profiles were never created while it
+        // was not); the one writer of the contacts, with the rules of who may be written to (CrmContactRules); and the sync that keeps both in
+        // step with the bookings of every source. The sync does nothing unless Features:CrmMarketing is on and the key of the index is set
+        // (ICrmProfileSyncService.IsAvailable, CrmProfileSyncGate): it copies contact data into tables the erasure does not reach yet.
+        services.AddScoped<IGuestMatchingService, GuestMatchingService>();
+        services.AddScoped<ICrmContactService, CrmContactService>();
+        services.AddScoped<ICrmProfileSyncService, CrmProfileSyncService>();
+
+        // The sync on the event bus (a handler of every event, it filters on the booking ones): it only shortens the delay, and a failure never
+        // fails the event. The recurring job crm-profile-sync (RecurringJobsRegistration) guarantees the result and backfills the guests with no
+        // profile.
+        services.AddScoped<IEventHandler<DomainEvent>, CrmBookingEventHandler>();
+        services.AddScoped<CrmProfileSyncJob>();
+
+        // E07/F06/US02/T02 (NF-94, CRM-07): the contact of the guest of ONE Octorate booking, read when someone needs it and stored as contacts of
+        // the CRM. Registered whatever the flags say; it reads nothing unless Crm:OctorateContactsEnabled (and the connector) is on, which the
+        // product owner turns on once the static IP addresses are registered with Octorate. The ledger is the memory of the cap per hour and of
+        // the bookings read or refused (one for the application, in memory); the handler only shortens the wait after a booking is imported.
+        services.AddSingleton<OctorateContactReadLedger>();
+        services.AddScoped<IOctorateContactsService, OctorateContactsService>();
+        services.AddScoped<IEventHandler<DomainEvent>, OctorateContactsEventHandler>();
+
+        // E07/F04/US01 (NF-90, CRM-03): the collection of the marketing consents. The double opt-in: the signed link of the confirmation e-mail
+        // (the secret of the signed links, no address in it) and the service that sends the e-mail and records the click. Not behind
+        // Features:CrmMarketing: a link already sent keeps working, and every collection point calls it.
+        services.AddSingleton<MarketingConfirmationLinks>();
+        services.AddScoped<IMarketingConfirmationService, MarketingConfirmationService>();
+
+        // E07/F04/US01/T03 (NF-90): the welcome link of a property (the QR code in the house) and the public page behind it, where a guest leaves a
+        // contact with a per-channel consent. The host's endpoints are behind the flag; the public ones are not (a printed code keeps working).
+        services.AddScoped<IPropertyWelcomeLinkService, PropertyWelcomeLinkService>();
+        services.AddScoped<IWelcomeConsentService, WelcomeConsentService>();
+
+        // E07/F04/US01/T04 (NF-90): the marketing choices of the guest of a booking, on the guest page (policy GuestSession, not behind the flag).
+        services.AddScoped<GuestMarketingPreferencesService>();
+        services.AddScoped<IGuestMarketingPreferencesService>(sp => sp.GetRequiredService<GuestMarketingPreferencesService>());
+        services.AddScoped<IPortalMarketingPreferences>(sp => sp.GetRequiredService<GuestMarketingPreferencesService>());
+
+        // E07/F01/US03 (NF-88): the profile API of the host screens. The read model decides the scope of the CRM (the profiles a caller reaches), the
+        // list, the detail and the tags; the controller behind Features:CrmMarketing is a thin layer over it.
+        services.AddScoped<ICrmProfileReadService, CrmProfileReadService>();
+
+        // E07/F01/US03/T02 (NF-88): the decisions on the merges the matching proposes (list, dismiss, merge), one lock of the org for each decision.
+        services.AddScoped<ICrmProfileMergeService, CrmProfileMergeService>();
+
+        return services;
+    }
+}

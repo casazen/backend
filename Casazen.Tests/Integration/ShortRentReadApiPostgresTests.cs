@@ -441,6 +441,7 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
             for (var i = 0; i < 30; i++)
             {
                 var property = HostScopeScenario.NewProperty(_pg.OrgId, _pg.OwnerUserId, $"Casa {i}");
+                property.CinCode = "IT058091C27G5FFZDZ";
                 db.Properties.Add(property);
                 HostScopeScenario.AddDataOf(db, property, _pg.SupplierOrgId);
             }

@@ -26,7 +26,8 @@ public class PropertyService(
     IPropertyComplianceStatusService complianceStatus,
     CinDeadlineCalendar cinDeadline,
     ILogger<PropertyService> logger,
-    TimeProvider? timeProvider = null) : IPropertyService
+    TimeProvider? timeProvider = null,
+    IPropertyImportReviewService? importReviews = null) : IPropertyService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -133,6 +134,8 @@ public class PropertyService(
         }
 
         await complianceStatus.ReevaluateAsync(updated.Id);
+        if (importReviews is not null)
+            await importReviews.RefreshAsync(updated.OrgId, updated.Id, CancellationToken.None);
         return updated;
     }
 
@@ -409,6 +412,7 @@ public class PropertyService(
             Unit = property.Unit,
             City = property.City,
             PostalCode = property.PostalCode,
+            Country = property.Country,
             Bedrooms = property.Bedrooms,
             Bathrooms = property.Bathrooms,
             MaxGuests = property.MaxGuests,
@@ -524,7 +528,7 @@ public class PropertyService(
         }
 
         var properties = await repository.GetByScopeForComplianceAsync(scope);
-        var items = properties.Select(p => new OwnerCinComplianceItem(
+        var items = properties.Where(p => CinFormat.IsRequiredForCountry(p.Country)).Select(p => new OwnerCinComplianceItem(
             PropertyId: p.Id,
             PropertyName: p.Name,
             CinCode: p.CinCode,

@@ -191,6 +191,7 @@ public class PushNotificationsPostgresTests : IClassFixture<PushNotificationsPos
             Email = supplierOrg.ContactEmail,
             LegalName = "MO04 Pulizie Srl",
             Phone = "+39 06 000000",
+            GuestPortalMarketplaceEnabled = true,
             Status = SupplierStatus.Active,
             ComuniJson = $"[\"{comune}\"]",
             CategoriesJson = "[\"cleaning\"]",

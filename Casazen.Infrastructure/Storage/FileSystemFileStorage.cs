@@ -58,7 +58,12 @@ public sealed class FileSystemFileStorage : IFileStorage
         if (File.Exists(path))
         {
             File.Delete(path);
-            _logger.LogInformation("Deleted object {Key} from local {Bucket} folder", key, bucket);
+
+            // The key of a guest's document names the org and the guest: it is never written in a log (E20/F02/US01/T02, NF-121); the line says that one was deleted, without it.
+            if (StorageKeys.IsGuestDocument(key))
+                _logger.LogDebug("Deleted an object of the guests' documents from local {Bucket} folder", bucket);
+            else
+                _logger.LogInformation("Deleted object {Key} from local {Bucket} folder", key, bucket);
         }
 
         return Task.CompletedTask;

@@ -641,6 +641,9 @@ public class SupplierRequestPaymentDto
     /// </summary>
     public bool CanRecordOffline { get; set; }
 
+    /// <summary>The commercial document breakdown only for a host purchase with explicit D21 terms.</summary>
+    public HostServiceDocumentPlan? HostDocuments { get; set; }
+
     internal static SupplierRequestPaymentDto From(SupplierJobPayment payment) => new()
     {
         Id = payment.Id,
@@ -658,6 +661,7 @@ public class SupplierRequestPaymentDto
         NeedsAmountConfirmation = payment.NeedsAmountConfirmation,
         CanRequest = payment.CanRequest,
         CanRecordOffline = payment.CanRecordOffline,
+        HostDocuments = payment.HostDocuments,
     };
 }
 

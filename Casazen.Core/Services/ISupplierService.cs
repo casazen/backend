@@ -3,6 +3,8 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
+public sealed record PropertySupplierChoices(IReadOnlyList<SupplierProfile> Suppliers, IReadOnlySet<Guid>? HostOriginIds);
+
 public interface ISupplierService
 {
     /// <summary>
@@ -167,6 +169,16 @@ public interface ISupplierService
         string? category,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Marketplace partners and the host's trusted suppliers assigned to the authorised property.</summary>
+    Task<PropertySupplierChoices> GetActiveForPropertyAsync(Guid hostOrgId, Guid propertyId,
+        IReadOnlyCollection<Casazen.Core.Suppliers.ComuneTarget> targets, string? category, CancellationToken cancellationToken = default);
+
+    /// <summary>Active suppliers covering any of the specified municipalities.</summary>
+    Task<IReadOnlyList<SupplierProfile>> GetActiveByComuniAsync(
+        IReadOnlyCollection<Casazen.Core.Suppliers.ComuneTarget> targets,
+        string? category,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Creates an admin invite record. Returns the generated invite id.</summary>
     /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
     /// Code <c>invalid_service_category</c>: one of <paramref name="categories"/> is not a
@@ -182,6 +194,26 @@ public interface ISupplierService
         IEnumerable<string>? categories,
         string? message,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Invite of a host that wants <paramref name="email"/> among its trusted suppliers (bug #977): the same invite, token, email
+    /// and registration page as an admin invite, plus the inviting org and the properties. The comune is the one of the
+    /// properties (the assigned ones first) when the official list knows it, otherwise the supplier picks it while registering.
+    /// Unlike an admin invite, the email may already have a supplier profile: its owner accepts by signing in with that email,
+    /// and accepting adds the relation instead of a new profile. The caller checks that the properties are the org's.
+    /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
+    /// Code <c>duplicate_invite</c>: this org already has a pending invite for the email.
+    /// </exception>
+    Task<SupplierInvite> CreateTrustedSupplierInviteAsync(
+        Guid hostOrgId,
+        string email,
+        IReadOnlyCollection<Guid> propertyIds,
+        CancellationToken cancellationToken = default,
+        SupplierInviteIdentity? identity = null);
+
+    Task<IReadOnlyList<SupplierIdentityReview>> ListIdentityReviewsAsync(int page, CancellationToken cancellationToken);
+    Task ResolveIdentityReviewAsync(Guid inviteId, string decision, Guid? supplierOrgId, string actor, CancellationToken cancellationToken);
 
     /// <summary>
     /// Resolves the caller's supplier org, provisioning org + profile when a Supplier user has none yet.
@@ -279,6 +311,11 @@ public record SupplierTosState(
     bool BlocksActions);
 
 public record SupplierInvite(Guid InviteId, DateTime ExpiresAt);
+
+public sealed record SupplierInviteIdentity(string? VatNumber, string? FiscalCode, string? Phone);
+public sealed record SupplierIdentityCandidate(Guid SupplierOrgId, string Name, string Email, IReadOnlyList<string> MatchedBy);
+public sealed record SupplierIdentityReview(Guid Id, string HostName, string Email, SupplierInviteIdentity Supplied,
+    DateTime ExpiresAt, IReadOnlyList<SupplierIdentityCandidate> Candidates);
 
 /// <summary>
 /// Outcome of <see cref="ISupplierService.RegisterAsync"/>. <paramref name="Claim"/> is set only for an anonymous

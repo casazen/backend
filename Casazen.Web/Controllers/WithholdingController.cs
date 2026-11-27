@@ -1,6 +1,13 @@
+using Casazen.Core.Authorization;
+using Casazen.Core.Documents;
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
+using Casazen.Web.DTOs.Fiscal;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,11 +16,12 @@ using Microsoft.EntityFrameworkCore;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// Withholding tax management (ADR-018). Calculates withholding tax on owner payments,
-/// generates F24 forms, and tracks payment reconciliation.
-/// Agency acting as sostituto d'imposta withholds 21% tax on short-term rental payments.
-/// Regulatory references: D.L. 50/2017 art. 4 (current), D.Lgs. 117/2026 artt. 207-208 (expected 1/1/2027).
-/// Every action needs <c>agency.withholding.manage</c> (DEB-01: it was the owner view, which the property manager holds).
+/// The withholding of the owners (ADR-018 amended, E06/F05/US02/T03): the evidence of the confirmed payouts of a month, the F24 data built from it, the
+/// annual Certificazione Unica data, their filing states (generated is never filed: submitted only through a controlled manual handoff, then accepted
+/// with the receipt or rejected) and the reconciliation of the obligations to the F24 and to the annual data. No rate or tax code is written here: they
+/// come from the approved rule the evidence recorded. Every action needs <c>agency.withholding.manage</c> (DEB-01); the filing states also
+/// <c>agency.owner.financial.manage</c>. Like the rest of the owner accounting every action needs an org-wide reach (E18/F01/US01/T02): the withholding of
+/// every owner of the org is read here, so a caller restricted to some properties gets 403 before anything is read.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -21,13 +29,14 @@ namespace Casazen.Web.Controllers;
 public class WithholdingController(
     AppDbContext db,
     IWithholdingService withholdingService,
+    IOwnerPayoutService payouts,
+    IStatementExportService statementExport,
     IOrgContextResolver orgContextResolver,
+    IHostScopeResolver hostScopeResolver,
+    IDocumentTexts texts,
     ILogger<WithholdingController> logger) : ControllerBase
 {
-    /// <summary>
-    /// Withholding summary for a specific month and year.
-    /// Returns aggregated withholding logs grouped by owner.
-    /// </summary>
+    /// <summary>The applicable withholding evidence of a month (the payouts paid in it and their reversals), per owner.</summary>
     /// <param name="month">Reference month (1-12).</param>
     /// <param name="year">Reference year (e.g., 2026).</param>
     [HttpGet("summary")]
@@ -36,47 +45,46 @@ public class WithholdingController(
         [FromQuery] int month,
         [FromQuery] int year)
     {
-        logger.LogInformation("Retrieving withholding summary for {Year}-{Month}", year, month);
-
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (await OrgAsync() is not { } orgId)
             return Forbid();
 
-        var logs = await db.WithholdingLogs
-            .Include(w => w.Owner)
-            .Include(w => w.Property)
-            .Where(w => w.OrgId == orgId.Value && w.Month == month && w.Year == year)
+        logger.LogInformation("Retrieving withholding summary for {Year}-{Month}", year, month);
+        var evidence = await db.TaxObligationEvidence
             .AsNoTracking()
+            .Where(e => e.OrgId == orgId && e.Decision == TaxDecision.Applicable && e.PeriodYear == year && e.PeriodMonth == month)
             .ToListAsync(HttpContext.RequestAborted);
+        var ownerIds = evidence.Select(e => e.PropertyOwnerId).Distinct().ToList();
+        var names = await db.PropertyOwners
+            .AsNoTracking()
+            .Where(o => o.OrgId == orgId && ownerIds.Contains(o.Id))
+            .ToDictionaryAsync(o => o.Id, o => $"{o.FirstName} {o.LastName}", HttpContext.RequestAborted);
 
-        var ownerSummaries = logs
-            .GroupBy(w => new { w.OwnerId, OwnerName = $"{w.Owner.FirstName} {w.Owner.LastName}" })
+        var ownerSummaries = evidence
+            .GroupBy(e => e.PropertyOwnerId)
             .Select(g => new OwnerWithholdingSummaryDto
             {
-                OwnerId = g.Key.OwnerId,
-                OwnerName = g.Key.OwnerName,
-                TotalBase = g.Sum(w => w.GrossBase),
-                TotalWithholding = g.Sum(w => w.WithholdingAmount),
-                BookingCount = g.Count()
+                OwnerId = g.Key,
+                OwnerName = names.GetValueOrDefault(g.Key, string.Empty),
+                TotalBase = g.Sum(e => e.GrossBase ?? 0m),
+                TotalWithholding = g.Sum(e => e.Amount ?? 0m),
+                PayoutCount = g.Where(e => e.ReversesEvidenceId is null).Select(e => e.OwnerPayoutId).Distinct().Count(),
             })
             .OrderBy(s => s.OwnerName)
             .ToList();
 
-        var summary = new WithholdingSummaryDto
+        return Ok(new WithholdingSummaryDto
         {
             Month = month,
             Year = year,
-            TotalBase = logs.Sum(w => w.GrossBase),
-            TotalWithholding = logs.Sum(w => w.WithholdingAmount),
-            OwnerSummaries = ownerSummaries
-        };
-
-        return Ok(summary);
+            TotalBase = ownerSummaries.Sum(s => s.TotalBase),
+            TotalWithholding = ownerSummaries.Sum(s => s.TotalWithholding),
+            OwnerSummaries = ownerSummaries,
+        });
     }
 
     /// <summary>
-    /// F24 record for a specific month and year.
-    /// Returns the F24 if it exists, or generates it if not.
+    /// The F24 record of a month; generated from the evidence when there is none yet. 422 <c>tax_no_obligations</c> (no applicable withholding in the
+    /// month: a non-applicable or Swiss decision never makes an F24), <c>f24_tax_code_mixed</c>.
     /// </summary>
     /// <param name="month">Reference month (1-12).</param>
     /// <param name="year">Reference year (e.g., 2026).</param>
@@ -87,55 +95,114 @@ public class WithholdingController(
         [FromQuery] int month,
         [FromQuery] int year)
     {
-        logger.LogInformation("Retrieving F24 for {Year}-{Month}", year, month);
-
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (await OrgAsync() is not { } orgId)
             return Forbid();
 
+        logger.LogInformation("Retrieving F24 for {Year}-{Month}", year, month);
         var f24 = await db.F24Records
-            .Where(f => f.OrgId == orgId.Value && f.ReferenceMonth == month && f.ReferenceYear == year)
-            .FirstOrDefaultAsync(HttpContext.RequestAborted);
+            .Where(f => f.OrgId == orgId && f.ReferenceMonth == month && f.ReferenceYear == year)
+            .FirstOrDefaultAsync(HttpContext.RequestAborted)
+            ?? await withholdingService.GenerateF24Async(orgId, month, year, HttpContext.RequestAborted);
+        return Ok(F24RecordDto.From(f24));
+    }
 
-        // If F24 doesn't exist, generate it
-        if (f24 is null)
-        {
-            f24 = await withholdingService.GenerateF24Async(orgId.Value, month, year, HttpContext.RequestAborted);
-        }
-
-        var dto = new F24RecordDto
-        {
-            Id = f24.Id,
-            ReferenceMonth = f24.ReferenceMonth,
-            ReferenceYear = f24.ReferenceYear,
-            TotalAmount = f24.TotalAmount,
-            TaxCode = f24.TaxCode,
-            DueDate = f24.DueDate,
-            PaidAt = f24.PaidAt,
-            IsOverdue = f24.PaidAt is null && f24.DueDate < DateTime.UtcNow,
-            CreatedAt = f24.CreatedAt
-        };
-
-        return Ok(dto);
+    /// <summary>Builds the F24 of a month again from the evidence while it is only generated. 409 <c>tax_file_already_filed</c>.</summary>
+    [HttpPost("f24/generate")]
+    [ProducesResponseType(typeof(F24RecordDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<F24RecordDto>> RegenerateF24([FromQuery] int month, [FromQuery] int year)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        return Ok(F24RecordDto.From(await withholdingService.GenerateF24Async(orgId, month, year, HttpContext.RequestAborted)));
     }
 
     /// <summary>
-    /// Reconcile F24 payment. Marks the F24 as paid.
+    /// The stored F24 data of the month as a PDF (NF-25, E06/F01/US01/T02): tax code, period, amount, due date, payment and filing state as the record
+    /// holds them, with the label that it is the data to fill the form with. It never generates the record: a month without one is 404
+    /// <c>f24_not_found</c>.
     /// </summary>
+    /// <param name="month">Reference month (1-12).</param>
+    /// <param name="year">Reference year (e.g., 2026).</param>
+    [HttpGet("f24/pdf")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> GetF24Pdf([FromQuery] int month, [FromQuery] int year)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+
+        logger.LogInformation("Exporting the F24 of {Year}-{Month} as PDF", year, month);
+        var file = await statementExport.ExportF24Async(orgId, month, year, DocumentLanguages.Current, HttpContext.RequestAborted);
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
+    /// <summary>
+    /// The F24 data of a month as a CSV or an Excel file (E18/F01/US01/T02, NF-117), next to the PDF of the stored record: one line per tax code and period with the
+    /// amount in euro and the due date (the 16th of the next month), then the breakdown per owner and payout (a reversal is a row with the opposite amounts), from the
+    /// applicable withholding evidence of the payouts paid in the month, of an Italian rule only. The data to pay with: never the form filed and never a telematic file
+    /// (payment and filing stay with the agency or its accountant). It neither generates nor changes the F24 record. <c>format</c> is <c>csv</c> or <c>xlsx</c> (400
+    /// <c>fiscal_export_invalid_format</c>); 422 <c>tax_no_obligations</c> for a month without any decision, <c>owner_period_invalid</c>. <c>Cache-Control: no-store</c>.
+    /// </summary>
+    /// <param name="year">Reference year (e.g., 2026).</param>
+    /// <param name="month">Reference month (1-12).</param>
+    /// <param name="format"><c>csv</c> or <c>xlsx</c>.</param>
+    [HttpGet("f24/{year:int}/{month:int}/export")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> ExportF24(int year, int month, [FromQuery] string? format = null)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        if (FiscalDocumentExportFormats.Parse(format) is not { } fileFormat)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, FiscalDocumentExportsController.InvalidFormatCode, "FiscalExportInvalidFormat");
+
+        var data = await withholdingService.GetF24DataAsync(orgId, year, month, HttpContext.RequestAborted);
+        var language = DocumentLanguages.Current;
+        var content = fileFormat == FiscalDocumentExportFormat.Xlsx ? F24Documents.Xlsx(data, texts, language) : F24Documents.Csv(data, texts, language);
+        logger.LogInformation(
+            "F24 data of {Year}-{Month} exported as {Format}: {Lines} tax codes, {Rows} rows of the breakdown", year, month, fileFormat, data.Lines.Count, data.Breakdown.Count);
+        Response.Headers.CacheControl = "no-store";
+        return File(
+            content,
+            FiscalDocumentExportFormats.ContentTypeOf(fileFormat),
+            F24Documents.ExportFileName(year, month, FiscalDocumentExportFormats.ExtensionOf(fileFormat)));
+    }
+
+    /// <summary>
+    /// Moves an F24 along its filing states: <c>reviewed</c>, <c>submitted</c> (with the <c>handoffReference</c> of the controlled manual handoff),
+    /// <c>accepted</c> (with the <c>receiptReference</c>) or <c>rejected</c> (with the <c>reason</c>). 409 <c>tax_filing_transition_invalid</c>; 422
+    /// <c>tax_filing_reference_required</c>.
+    /// </summary>
+    [HttpPost("f24/{f24Id:guid}/filing-state")]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [ProducesResponseType(typeof(F24RecordDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<F24RecordDto>> SetF24FilingState(Guid f24Id, [FromBody] TaxFilingCommand command)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        var record = await payouts.SetF24FilingStateAsync(orgId, f24Id, command, User.GetUserId(), HttpContext.RequestAborted);
+        return Ok(F24RecordDto.From(record));
+    }
+
+    /// <summary>Reconcile F24 payment: marks the F24 as paid (the payment, not its filing state).</summary>
     /// <param name="request">Reconciliation details.</param>
     [HttpPost("reconcile")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> Reconcile([FromBody] ReconcileF24Request request)
     {
-        logger.LogInformation("Reconciling F24 {F24Id}", request.F24Id);
-
-        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
-        if (orgId is null)
+        if (await OrgAsync() is not { } orgId)
             return Forbid();
 
+        logger.LogInformation("Reconciling F24 {F24Id}", request.F24Id);
         var f24 = await db.F24Records
-            .Where(f => f.Id == request.F24Id && f.OrgId == orgId.Value)
+            .Where(f => f.Id == request.F24Id && f.OrgId == orgId)
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
 
         if (f24 is null)
@@ -150,6 +217,190 @@ public class WithholdingController(
         await db.SaveChangesAsync(HttpContext.RequestAborted);
 
         return Ok();
+    }
+
+    /// <summary>The annual Certificazione Unica data of the year (404 while there is none).</summary>
+    [HttpGet("annual/{year:int}")]
+    [ProducesResponseType(typeof(TaxReportingDatasetDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<TaxReportingDatasetDto>> GetAnnual(int year)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        var dataset = await payouts.GetAnnualDatasetAsync(orgId, year, HttpContext.RequestAborted);
+        return dataset is null ? this.ApiProblem(StatusCodes.Status404NotFound, OwnerPayoutErrors.DatasetNotFound, "TaxDatasetNotFound") : Ok(TaxReportingDatasetDto.From(dataset));
+    }
+
+    /// <summary>
+    /// The annual Certificazione Unica data of the year as a CSV or an Excel file (E18/F01/US02/T01, NF-117, ⚖ I6, T2): one row for each recipient (an owner, or the signatory of a property
+    /// of several co-owners with their shares, or each co-owner when the mandate says per share) with the name, the fiscal code and the address, the base and the withholding in euro and what
+    /// is missing; then the stays of each, with the property (address, cadastral data, CIN), the dates and the nights. It is the data the agency stored and reviewed, never recomputed and never a
+    /// telematic file: nothing is filed by CasaZen. Behind <c>Features:TaxReportingExports</c> (404 before authentication while it is off). It names the fiscal code and the address of the owners, so
+    /// it needs <c>agency.owner.financial.manage</c> on top. <c>format</c> is <c>csv</c> or <c>xlsx</c> (400 <c>fiscal_export_invalid_format</c>); 404 <c>tax_dataset_not_found</c>; 422
+    /// <c>tax_cu_dataset_outdated</c>, <c>owner_period_invalid</c>. <c>Cache-Control: no-store</c>.
+    /// </summary>
+    /// <param name="year">Reference year (e.g., 2026).</param>
+    /// <param name="format"><c>csv</c> or <c>xlsx</c>.</param>
+    [HttpGet("annual/{year:int}/export")]
+    [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> ExportAnnual(int year, [FromQuery] string? format = null)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        if (FiscalDocumentExportFormats.Parse(format) is not { } fileFormat)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, FiscalDocumentExportsController.InvalidFormatCode, "FiscalExportInvalidFormat");
+
+        var stored = await withholdingService.GetCuDatasetAsync(orgId, year, HttpContext.RequestAborted);
+        var language = DocumentLanguages.Current;
+        var content = fileFormat == FiscalDocumentExportFormat.Xlsx
+            ? TaxReportingExports.CuXlsx(year, stored.Records, texts, language)
+            : TaxReportingExports.CuCsv(year, stored.Records, texts, language);
+        logger.LogInformation("Annual tax data of {Year} exported as {Format}: {Records} records", year, fileFormat, stored.Records.Count);
+        return Download(content, fileFormat, TaxReportingExports.CuFileName(year, FiscalDocumentExportFormats.ExtensionOf(fileFormat)));
+    }
+
+    /// <summary>
+    /// The draft «prospetto CU» of an owner for the year as a PDF (E18/F01/US02/T01): its record of the stored annual data, with a watermark that says it is a draft and never the
+    /// Certificazione Unica. Behind <c>Features:TaxReportingExports</c>; needs <c>agency.owner.financial.manage</c> on top (it prints the fiscal code and the address of the owner). 404
+    /// <c>tax_dataset_not_found</c>, <c>tax_cu_record_not_found</c> (an owner with no record, or of another org); 422 <c>tax_cu_dataset_outdated</c>. <c>Cache-Control: no-store</c>.
+    /// </summary>
+    /// <param name="year">Reference year (e.g., 2026).</param>
+    /// <param name="ownerId">The owner the record is on.</param>
+    [HttpGet("annual/{year:int}/owners/{ownerId:guid}/pdf")]
+    [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> GetCuProspectPdf(int year, Guid ownerId)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+
+        var file = await statementExport.ExportCuProspectAsync(orgId, year, ownerId, DocumentLanguages.Current, HttpContext.RequestAborted);
+        Response.Headers.CacheControl = "no-store";
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
+    /// <summary>
+    /// The data of the 770 for the year as a CSV or an Excel file (E18/F01/US02/T02, NF-117, ⚖ T2): for each month and tax code the withholding made and the F24 it was paid with (its amount, due
+    /// date, the day it was marked as paid, its filing state and its references), from the applicable withholding evidence of the payouts paid in the month and their reversals, of an Italian rule
+    /// only. The data the accountant enters in the form: never the form and never a telematic file. Behind <c>Features:TaxReportingExports</c>. <c>format</c> is <c>csv</c> or <c>xlsx</c> (400
+    /// <c>fiscal_export_invalid_format</c>); 422 <c>tax_no_obligations</c> (no decision in the year), <c>owner_period_invalid</c>. <c>Cache-Control: no-store</c>.
+    /// </summary>
+    /// <param name="year">Reference year (e.g., 2026).</param>
+    /// <param name="format"><c>csv</c> or <c>xlsx</c>.</param>
+    [HttpGet("770/{year:int}/export")]
+    [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> Export770(int year, [FromQuery] string? format = null)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        if (FiscalDocumentExportFormats.Parse(format) is not { } fileFormat)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, FiscalDocumentExportsController.InvalidFormatCode, "FiscalExportInvalidFormat");
+
+        var data = await withholdingService.Get770DataAsync(orgId, year, HttpContext.RequestAborted);
+        var language = DocumentLanguages.Current;
+        var content = fileFormat == FiscalDocumentExportFormat.Xlsx
+            ? TaxReportingExports.Tax770Xlsx(data, texts, language)
+            : TaxReportingExports.Tax770Csv(data, texts, language);
+        logger.LogInformation("770 data of {Year} exported as {Format}: {Lines} lines", year, fileFormat, data.Lines.Count);
+        return Download(content, fileFormat, TaxReportingExports.Tax770FileName(year, FiscalDocumentExportFormats.ExtensionOf(fileFormat)));
+    }
+
+    /// <summary>
+    /// The communication of the short-let contracts of the year as a CSV or an Excel file (E18/F01/US02/T02, NF-117, ⚖ T2): every qualifying short let the agency handled and did not withhold
+    /// on (the portal already withheld, or the agency neither collected nor handled the money), with the lessor, the property (address, cadastral data and CIN when stored), the duration and the
+    /// consideration; never a stay the agency withheld on. Due by 30 June of the next year: nothing is sent by CasaZen. Behind <c>Features:TaxReportingExports</c>; needs
+    /// <c>agency.owner.financial.manage</c> on top (it prints the fiscal code and the address of the lessors). <c>format</c> is <c>csv</c> or <c>xlsx</c> (400 <c>fiscal_export_invalid_format</c>); 422
+    /// <c>owner_period_invalid</c>. <c>Cache-Control: no-store</c>.
+    /// </summary>
+    /// <param name="year">Reference year (e.g., 2026).</param>
+    /// <param name="format"><c>csv</c> or <c>xlsx</c>.</param>
+    [HttpGet("contracts-communication/{year:int}/export")]
+    [FeatureGate(FeatureFlags.TaxReportingExports)]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult> ExportContractsCommunication(int year, [FromQuery] string? format = null)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        if (FiscalDocumentExportFormats.Parse(format) is not { } fileFormat)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, FiscalDocumentExportsController.InvalidFormatCode, "FiscalExportInvalidFormat");
+
+        var data = await withholdingService.GetContractsCommunicationAsync(orgId, year, HttpContext.RequestAborted);
+        var language = DocumentLanguages.Current;
+        var content = fileFormat == FiscalDocumentExportFormat.Xlsx
+            ? TaxReportingExports.ContractsXlsx(data, texts, language)
+            : TaxReportingExports.ContractsCsv(data, texts, language);
+        logger.LogInformation("Short-let contracts communication of {Year} exported as {Format}: {Contracts} contracts", year, fileFormat, data.Rows.Count);
+        return Download(content, fileFormat, TaxReportingExports.ContractsFileName(year, FiscalDocumentExportFormats.ExtensionOf(fileFormat)));
+    }
+
+    /// <summary>Builds the annual data of the year from the evidence, again while it is only generated. 422 <c>tax_no_obligations</c>; 409 <c>tax_file_already_filed</c>.</summary>
+    [HttpPost("annual/{year:int}")]
+    [ProducesResponseType(typeof(TaxReportingDatasetDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<TaxReportingDatasetDto>> GenerateAnnual(int year)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        var dataset = await payouts.GenerateAnnualDatasetAsync(orgId, year, User.GetUserId(), HttpContext.RequestAborted);
+        return Ok(TaxReportingDatasetDto.From(dataset));
+    }
+
+    /// <summary>Moves the annual data along its filing states, as the F24. 409 <c>tax_filing_transition_invalid</c>; 422 <c>tax_filing_reference_required</c>.</summary>
+    [HttpPost("annual/datasets/{datasetId:guid}/filing-state")]
+    [Authorize(Policy = CasazenPolicies.AgencyOwnerFinancialManage)]
+    [ProducesResponseType(typeof(TaxReportingDatasetDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<TaxReportingDatasetDto>> SetAnnualFilingState(Guid datasetId, [FromBody] TaxFilingCommand command)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        var dataset = await payouts.SetDatasetFilingStateAsync(orgId, datasetId, command, User.GetUserId(), HttpContext.RequestAborted);
+        return Ok(TaxReportingDatasetDto.From(dataset));
+    }
+
+    /// <summary>The obligations of each month of the year against their F24, and of the year against the annual data.</summary>
+    [HttpGet("reconciliation/{year:int}")]
+    [ProducesResponseType(typeof(TaxReconciliation), StatusCodes.Status200OK)]
+    public async Task<ActionResult<TaxReconciliation>> Reconciliation(int year)
+    {
+        if (await OrgAsync() is not { } orgId)
+            return Forbid();
+        return Ok(await payouts.ReconcileAsync(orgId, year, HttpContext.RequestAborted));
+    }
+
+    /// <summary>A file of an export as the answer: the bytes with the content type of <paramref name="format"/> and <c>Cache-Control: no-store</c> (money and personal data, built on request, never stored).</summary>
+    private FileContentResult Download(byte[] content, FiscalDocumentExportFormat format, string fileName)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return File(content, FiscalDocumentExportFormats.ContentTypeOf(format), fileName);
+    }
+
+    /// <summary>The org of the caller when it reaches the whole of it; <c>null</c> (403) for a caller restricted to some properties or without an org.</summary>
+    private async Task<Guid?> OrgAsync()
+    {
+        var ct = HttpContext.RequestAborted;
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(ct);
+        if (orgId is null)
+            return null;
+        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, ct);
+        return scope is { IsOrgWide: true } ? orgId : null;
     }
 }
 
@@ -170,7 +421,10 @@ public record OwnerWithholdingSummaryDto
     public string OwnerName { get; init; } = string.Empty;
     public decimal TotalBase { get; init; }
     public decimal TotalWithholding { get; init; }
-    public int BookingCount { get; init; }
+    public int PayoutCount { get; init; }
+
+    /// <summary>The earlier name of <see cref="PayoutCount"/>, kept for the clients that read it: the payouts, not the bookings, since E06/F05/US02/T03.</summary>
+    public int BookingCount => PayoutCount;
 }
 
 /// <summary>DTO for F24 record.</summary>
@@ -185,6 +439,53 @@ public record F24RecordDto
     public DateTime? PaidAt { get; init; }
     public bool IsOverdue { get; init; }
     public DateTime CreatedAt { get; init; }
+    public TaxFilingState FilingState { get; init; }
+    public string? RuleVersion { get; init; }
+    public string? HandoffReference { get; init; }
+    public string? ReceiptReference { get; init; }
+    public string? RejectionReason { get; init; }
+
+    public static F24RecordDto From(F24Record f24) => new()
+    {
+        Id = f24.Id,
+        ReferenceMonth = f24.ReferenceMonth,
+        ReferenceYear = f24.ReferenceYear,
+        TotalAmount = f24.TotalAmount,
+        TaxCode = f24.TaxCode,
+        DueDate = f24.DueDate,
+        PaidAt = f24.PaidAt,
+        IsOverdue = f24.PaidAt is null && f24.DueDate < DateTime.UtcNow,
+        CreatedAt = f24.CreatedAt,
+        FilingState = f24.FilingState,
+        RuleVersion = f24.RuleVersion,
+        HandoffReference = f24.HandoffReference,
+        ReceiptReference = f24.ReceiptReference,
+        RejectionReason = f24.RejectionReason,
+    };
+}
+
+/// <summary>
+/// The annual tax data with its filing state. <see cref="PayloadJson"/> holds the totals of each owner (<c>ownerId</c>, <c>grossBase</c>, <c>withheld</c>, <c>evidence</c>) and nothing else
+/// (E18/F01/US02/T01): the recipients of the Certificazione Unica (fiscal code, address) are personal data, read only by the exports that ask <c>agency.owner.financial.manage</c>.
+/// </summary>
+public sealed record TaxReportingDatasetDto(
+    Guid Id,
+    string Kind,
+    int Year,
+    decimal TotalGrossBase,
+    decimal TotalWithheld,
+    int EvidenceCount,
+    string EvidenceSha256,
+    string PayloadJson,
+    TaxFilingState FilingState,
+    string? HandoffReference,
+    string? ReceiptReference,
+    string? RejectionReason,
+    DateTime GeneratedAt)
+{
+    public static TaxReportingDatasetDto From(TaxReportingDataset d) => new(
+        d.Id, d.Kind, d.Year, d.TotalGrossBase, d.TotalWithheld, d.EvidenceCount, d.EvidenceSha256, CuDatasetPayload.TotalsJson(d.PayloadJson), d.FilingState, d.HandoffReference,
+        d.ReceiptReference, d.RejectionReason, d.GeneratedAt);
 }
 
 /// <summary>Request to reconcile F24 payment.</summary>

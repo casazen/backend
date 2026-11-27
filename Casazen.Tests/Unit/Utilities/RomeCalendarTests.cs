@@ -223,4 +223,60 @@ public class RomeCalendarTests
 
         Assert.Equal(DateOnly.Parse(expectedRomeDate, CultureInfo.InvariantCulture), RomeCalendar.DateInRome(utc));
     }
+
+    // ─── The clock of a property (E01/F04/US01/T01): the same rules in the zone of the property ───
+
+    [Theory]
+    [InlineData("Europe/Rome", "2026-11-10", "15:00", "2026-11-10T14:00:00Z")]
+    [InlineData("Europe/Rome", "2026-07-10", "15:00", "2026-07-10T13:00:00Z")]
+    [InlineData("Europe/London", "2026-11-10", "15:00", "2026-11-10T15:00:00Z")]
+    [InlineData("Europe/London", "2026-07-10", "15:00", "2026-07-10T14:00:00Z")]
+    [InlineData("America/Los_Angeles", "2026-11-10", "20:00", "2026-11-11T04:00:00Z")]
+    [InlineData("America/Los_Angeles", "2026-07-10", "20:00", "2026-07-11T03:00:00Z")]
+    public void ToUtc_InTheZoneOfAProperty_IsTheInstantTheClockOfThatZoneNames(string zoneId, string date, string time, string expectedUtc)
+    {
+        var zone = RomeCalendar.ZoneOf(zoneId);
+
+        var utc = RomeCalendar.ToUtc(DateOnly.Parse(date, CultureInfo.InvariantCulture), TimeOnly.Parse(time, CultureInfo.InvariantCulture), zone);
+
+        Assert.Equal(DateTime.Parse(expectedUtc, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal), utc);
+        Assert.Equal(DateTimeKind.Utc, utc.Kind);
+    }
+
+    /// <summary>
+    /// The two change days of Los Angeles follow the same rules as Rome's: the 2:30 that does not exist on 8 March is shifted forward by the gap
+    /// (03:30 summer time), the 1:30 that happens twice on 1 November is its first occurrence (summer time).
+    /// </summary>
+    [Theory]
+    [InlineData("2026-03-08", "02:30", "2026-03-08T10:30:00Z")]
+    [InlineData("2026-11-01", "01:30", "2026-11-01T08:30:00Z")]
+    public void ToUtc_OnTheChangeDaysOfAnotherZone_TheTimeThatDoesNotExistOrHappensTwice_HasOneAnswer(string date, string time, string expectedUtc)
+    {
+        var zone = RomeCalendar.ZoneOf("America/Los_Angeles");
+
+        var utc = RomeCalendar.ToUtc(DateOnly.Parse(date, CultureInfo.InvariantCulture), TimeOnly.Parse(time, CultureInfo.InvariantCulture), zone);
+
+        Assert.Equal(DateTime.Parse(expectedUtc, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal), utc);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("Mars/Olympus_Mons")]
+    [InlineData("not a zone")]
+    [InlineData("Europe/Rome")]
+    public void ZoneOf_AMissingOrUnknownZone_IsRome(string? zoneId)
+    {
+        Assert.Equal(RomeCalendar.TimeZone.Id, RomeCalendar.ZoneOf(zoneId).Id);
+    }
+
+    [Fact]
+    public void ToUtc_InTheRomeZone_IsTheOverloadWithNoZone()
+    {
+        var date = new DateOnly(2026, 10, 25);
+
+        foreach (var time in new[] { new TimeOnly(0, 0), new TimeOnly(2, 30), new TimeOnly(3, 0), new TimeOnly(23, 59) })
+            Assert.Equal(RomeCalendar.ToUtc(date, time), RomeCalendar.ToUtc(date, time, RomeCalendar.TimeZone));
+    }
 }

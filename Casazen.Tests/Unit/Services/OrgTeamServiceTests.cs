@@ -18,7 +18,7 @@ public class OrgTeamServiceTests
 {
     private const string OwnerId = "auth0|owner";
 
-    private readonly OrgInvitationTestKit _kit = new();
+    private readonly OrgInvitationTestKit _kit = new() { SeedAsAgency = false };
 
     private async Task<(Guid OrgId, Guid OwnerMemberId)> SeedOrgAsync(
         PlanTier tier = PlanTier.Pro,
@@ -385,6 +385,8 @@ public class OrgTeamServiceTests
         await RunAsync(t => t.RemoveAsync(orgId, memberId, OwnerId));
 
         await using var db = _kit.NewDb();
+        (await db.Orgs.SingleAsync(o => o.Id == orgId)).IsAgency = true;
+        await db.SaveChangesAsync();
         var sent = await _kit.Invitations(db).CreateAsync(new CreateOrgInvitation(
             orgId, OwnerId, "anna@example.com", "Anna", OrgRole.Collaborator, ["short-rent"]));
 

@@ -745,6 +745,7 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         var member2 = SupplierMember($"auth0|su10-supplier-{Guid.NewGuid():N}", "luca");
         var supplierProfile = new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = supplierOrg.Id,
             Email = supplierOrg.ContactEmail,
             LegalName = "SU10 Pulizie Srl",

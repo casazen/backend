@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.Text;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
@@ -55,13 +56,32 @@ public static partial class GuestMessageRules
     /// that was confirmed and not cancelled has a thread; it is open until the end of the seventh day after the check-out day
     /// (Europe/Rome).
     /// </summary>
-    public static GuestThreadState StateOf(BookingSource source, BookingStatus status, DateTime checkOutDate, DateTime nowUtc)
+    public static GuestThreadState StateOf(BookingSource source, BookingStatus status, DateTime checkOutDate, DateTime nowUtc, bool guestPortal = false)
     {
-        if (source != BookingSource.Direct || status is not (BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut))
+        if ((!guestPortal && source != BookingSource.Direct) || status is not (BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut))
             return GuestThreadState.Unavailable;
 
         return nowUtc >= ClosesAtUtc(checkOutDate) ? GuestThreadState.Closed : GuestThreadState.Open;
     }
+
+    /// <summary>
+    /// The threads that exist, in the form a query needs: the thread of a booking of the public checkout (<see cref="BookingSource.Direct"/>) that was
+    /// confirmed and not cancelled. It is the SQL twin of <see cref="StateOf"/> (which is <see cref="GuestThreadState.Unavailable"/> for every other
+    /// booking) and the one definition the three queries that read the threads of the host share: the list of the threads, the badges and the hub of
+    /// messages. A test pins it to <see cref="StateOf"/> for every source and status.
+    /// </summary>
+    public static readonly Expression<Func<GuestThread, bool>> IsThreadOfADirectBooking = thread =>
+        thread.Booking.Source == BookingSource.Direct
+        && (thread.Booking.Status == BookingStatus.Confirmed
+            || thread.Booking.Status == BookingStatus.CheckedIn
+            || thread.Booking.Status == BookingStatus.CheckedOut);
+
+    public static Expression<Func<GuestThread, bool>> EligibleThreads(bool guestPortal) =>
+        guestPortal
+            ? thread => thread.Booking.Status == BookingStatus.Confirmed
+                || thread.Booking.Status == BookingStatus.CheckedIn
+                || thread.Booking.Status == BookingStatus.CheckedOut
+            : IsThreadOfADirectBooking;
 
     /// <summary>The UTC instant from which the thread is closed: the start, in Europe/Rome, of the day after the last day to write.</summary>
     public static DateTime ClosesAtUtc(DateTime checkOutDate) =>
@@ -69,6 +89,14 @@ public static partial class GuestMessageRules
 
     /// <summary>The text as stored before redaction (line breaks normalised, control characters dropped, trimmed); <c>null</c> when it is empty.</summary>
     public static string? NormalizeText(string? text) => ReviewRules.NormalizeText(text);
+
+    /// <summary>
+    /// Who wrote a message of a direct thread, as CasaZen tells it (E05/F05/US01/T01, NF-67): <see cref="Entities.Enums.MessageOrigin.Guest"/> for a message of the guest,
+    /// <see cref="Entities.Enums.MessageOrigin.Person"/> for one of the host side. The assistant of feature E05/F05 sets <see cref="Entities.Enums.MessageOrigin.Assistant"/> and the
+    /// rule code of its message itself.
+    /// </summary>
+    public static Entities.Enums.MessageOrigin OriginOf(GuestMessageSender sender) =>
+        sender == GuestMessageSender.Host ? Entities.Enums.MessageOrigin.Person : Entities.Enums.MessageOrigin.Guest;
 
     /// <summary>
     /// The key of a send as stored: 8 to 64 letters, digits, dashes or underscores (a UUID fits); <c>null</c> when the header is

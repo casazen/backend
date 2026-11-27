@@ -49,6 +49,13 @@ public sealed class PublicOrgSiteUrls(
         }
     }
 
+    /// <summary>
+    /// The mode the org's host is really served in, the input of <see cref="HostSurfaceRules.Evaluate"/> (E40/F01/US01):
+    /// <see cref="PublicHostMode.CustomDomain"/> only for a custom domain that is verified and paid for (the one <see cref="OwnHost"/> returns
+    /// and the resolver serves), <see cref="PublicHostMode.CasazenSubdomain"/> for a served subdomain, the platform path otherwise.
+    /// </summary>
+    public PublicHostMode ServedMode(Org org) => OwnHost(org) is null ? PublicHostMode.CasazenPath : org.PublicHostMode;
+
     /// <summary>Canonical URL of the landing page; <c>null</c> only when the org has no own host and the public site is not configured.</summary>
     public string? TryLandingUrl(Org org) =>
         OwnHost(org) is { } host

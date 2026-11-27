@@ -1,5 +1,9 @@
 using System.Net;
+using Casazen.Core.DTOs;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
 using Casazen.Web.Configuration;
+using Casazen.Web.Controllers;
 using Casazen.Web.Extensions;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Builder;
@@ -10,6 +14,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
@@ -54,6 +59,27 @@ public class CorsPolicyTests
         Assert.Equal(origin, Assert.Single(response.Headers.GetValues("Access-Control-Allow-Origin")));
         Assert.Contains("authorization", response.Headers.GetValues("Access-Control-Allow-Headers").Single(), StringComparison.OrdinalIgnoreCase);
         Assert.False(response.Headers.Contains("Access-Control-Allow-Credentials"));
+    }
+
+    [Fact]
+    public async Task Get_ConfiguredOrigin_ExposesTheNameOfADownloadAndTheTruncationHeader()
+    {
+        await using var app = await StartAsync(Environments.Production, new() { ["Cors:AllowedOrigins"] = WebApp });
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/ping");
+        request.Headers.Add("Origin", WebApp);
+        using var response = await app.GetTestClient().SendAsync(request);
+
+        // A browser reads a header of another origin only when the answer exposes it: the name of the file of the CSV and Excel exports of the fiscal documents
+        // (E06/F03/US03/T01) and the header that says the calendar changes of a collaborator were cut (E08/F05/US02).
+        var exposed = response.Headers.GetValues("Access-Control-Expose-Headers")
+            .SelectMany(value => value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            .ToList();
+        Assert.Contains("Content-Disposition", exposed, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(CalendarChangesController.TruncatedHeader, exposed, StringComparer.OrdinalIgnoreCase);
+
+        // The retention hint that comes with the guest register of a Swiss property (E31/F01/US01/T01): a page on another origin reads it from the answer of the download.
+        Assert.Contains(SwissComplianceController.RetentionYearsHeader, exposed, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -120,6 +146,60 @@ public class CorsPolicyTests
         Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
     }
 
+    [Theory]
+    [InlineData("https://casazen.vercel.app")]
+    [InlineData("https://CASAZEN.vercel.app")]
+    [InlineData("https://casazen-lucalamalfa91s-projects.vercel.app")]
+    public async Task Preflight_FrontendProjectHost_IsAllowedWithoutConfiguration(string origin)
+    {
+        // Staging is the test API: it already has some configured origin, and still has to accept the frontend project.
+        await using var staging = await StartAsync("Staging", new() { ["Cors:AllowedOrigins"] = WebApp });
+        await using var production = await StartAsync(Environments.Production, new() { ["Cors:AllowedOrigins"] = WebApp });
+
+        using var stagingResponse = await PreflightAsync(staging, origin);
+        using var productionResponse = await PreflightAsync(production, origin);
+
+        Assert.Equal(origin, Assert.Single(stagingResponse.Headers.GetValues("Access-Control-Allow-Origin")));
+        Assert.Contains("authorization", stagingResponse.Headers.GetValues("Access-Control-Allow-Headers").Single(), StringComparison.OrdinalIgnoreCase);
+        Assert.False(stagingResponse.Headers.Contains("Access-Control-Allow-Credentials"));
+        Assert.Equal(origin, Assert.Single(productionResponse.Headers.GetValues("Access-Control-Allow-Origin")));
+        Assert.False(productionResponse.Headers.Contains("Access-Control-Allow-Credentials"));
+    }
+
+    [Theory]
+    [InlineData("https://casazen-git-develop-lucalamalfa91s-projects.vercel.app")]
+    [InlineData("https://casazen-21ol3cwwj-lucalamalfa91s-projects.vercel.app")]
+    public async Task Preflight_FrontendPreview_IsAllowedOnTheTestApiOnly(string origin)
+    {
+        await using var staging = await StartAsync("Staging", new() { ["Cors:AllowedOrigins"] = WebApp });
+        await using var production = await StartAsync(Environments.Production, new() { ["Cors:AllowedOrigins"] = WebApp });
+
+        using var stagingResponse = await PreflightAsync(staging, origin);
+        using var productionResponse = await PreflightAsync(production, origin);
+
+        Assert.Equal(origin, Assert.Single(stagingResponse.Headers.GetValues("Access-Control-Allow-Origin")));
+        Assert.False(stagingResponse.Headers.Contains("Access-Control-Allow-Credentials"));
+        Assert.False(productionResponse.Headers.Contains("Access-Control-Allow-Origin"));
+    }
+
+    [Theory]
+    [InlineData("https://evil.vercel.app")]
+    [InlineData("https://notcasazen.vercel.app")]
+    [InlineData("http://casazen.vercel.app")]
+    [InlineData("https://casazen.vercel.app.evil.com")]
+    [InlineData("https://evil.casazen.vercel.app")]
+    [InlineData("https://casazen-git-develop-other.vercel.app")]
+    [InlineData("https://casazen-21ol3cwwj-other-team.vercel.app")]
+    [InlineData("https://casazen-git-develop-lucalamalfa91s-projects.evil.vercel.app")]
+    public async Task Preflight_ForeignVercelHost_IsRejectedOnTheTestApi(string origin)
+    {
+        await using var app = await StartAsync("Staging", new() { ["Cors:AllowedOrigins"] = WebApp });
+
+        using var response = await PreflightAsync(app, origin);
+
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+    }
+
     [Fact]
     public async Task Preflight_LoopbackOriginInDevelopment_IsAllowedWithoutConfiguration()
     {
@@ -144,6 +224,36 @@ public class CorsPolicyTests
 
         Assert.Equal(customDomain, Assert.Single(allowed.Headers.GetValues("Access-Control-Allow-Origin")));
         Assert.False(rejected.Headers.Contains("Access-Control-Allow-Origin"));
+    }
+
+    [Fact]
+    public async Task Preflight_OwnerPortalFromAnAgencyDomainThatServesIt_IsAllowedWithoutCredentials()
+    {
+        // E40/F01/US01/T02: the real source of the agency domains, over a resolver that serves the owner portal on that domain. The origin is
+        // reflected on the owner portal only, never with credentials and never as a wildcard; a host-console path gets nothing.
+        const string agency = "https://prenota.agenzia.test";
+        var resolver = new Mock<IPublicHostResolver>();
+        resolver
+            .Setup(r => r.ResolveAsync("prenota.agenzia.test", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolveHostResponseDto
+            {
+                OrgId = Guid.NewGuid(),
+                Slug = "agenzia",
+                PublicHostMode = PublicHostMode.CustomDomain,
+                Surfaces = new ResolveHostSurfacesDto { GuestArea = true, OwnerPortal = true },
+                OwnerLoginReady = true,
+            });
+        await using var app = await StartAsync(
+            Environments.Production,
+            new() { ["Cors:AllowedOrigins"] = WebApp },
+            services => services.AddScoped<ICorsOriginSource>(_ => new OrgHostCorsOriginSource(resolver.Object)));
+
+        using var portal = await PreflightAsync(app, agency, "/api/owner-portal/properties");
+        using var hostConsole = await PreflightAsync(app, agency, "/api/properties");
+
+        Assert.Equal(agency, Assert.Single(portal.Headers.GetValues("Access-Control-Allow-Origin")));
+        Assert.False(portal.Headers.Contains("Access-Control-Allow-Credentials"));
+        Assert.False(hostConsole.Headers.Contains("Access-Control-Allow-Origin"));
     }
 
     [Fact]

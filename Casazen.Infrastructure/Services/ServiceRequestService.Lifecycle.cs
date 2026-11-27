@@ -135,6 +135,49 @@ public partial class ServiceRequestService
         return request;
     }
 
+    public async Task<ServiceRequest> RescheduleAsHostAsync(
+        Guid id,
+        Guid hostOrgId,
+        DateTime startUtc,
+        DateTime endUtc,
+        CancellationToken cancellationToken = default)
+    {
+        var request = await GetRequestOfHostOrThrow(id, hostOrgId, cancellationToken);
+
+        // Only a request nobody answered, with nothing that hangs on its time: no backup that holds the same time, no time the supplier proposed, no quote waiting.
+        // Whatever the supplier took or offered is for the host to decide with the actions it already has.
+        if (request is not { Status: ServiceRequestStatus.Richiesto, GroupId: null, ProposedStartUtc: null, QuoteSentAt: null })
+        {
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.InvalidTransition, ServiceRequestErrorCodes.CannotRescheduleMessageKey);
+        }
+
+        var start = UtcDateTime.Normalize(startUtc);
+        var end = UtcDateTime.Normalize(endUtc);
+        var length = end - start;
+        if (length <= TimeSpan.Zero
+            || length.Ticks % TimeSpan.TicksPerMinute != 0
+            || length.TotalMinutes is < SupplierServiceCatalogLimits.MinDurationMinutes or > SupplierServiceCatalogLimits.MaxDurationMinutes)
+        {
+            throw TimeInvalid();
+        }
+
+        // Under the supplier's calendar lock, as a take is: the new time must not overlap a job the supplier already took.
+        await using (var transaction = await LockSupplierCalendarAsync(request.SupplierOrgId, cancellationToken))
+        {
+            await EnsureNoOverlappingCommitmentAsync(request.SupplierOrgId, request.Id, start, end, cancellationToken);
+
+            request.ScheduledStartUtc = start;
+            request.ScheduledEndUtc = end;
+            request.UpdatedAt = Now();
+            await SaveAsync(request, "reschedule", cancellationToken);
+            await CommitAsync(transaction, cancellationToken);
+        }
+
+        logger.LogInformation("ServiceRequest {Id}: the host moved it to another time", request.Id);
+        return request;
+    }
+
     public async Task<ServiceRequest> ProposeTimeAsync(
         Guid id,
         Guid supplierOrgId,

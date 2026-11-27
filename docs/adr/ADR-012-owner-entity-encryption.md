@@ -111,3 +111,65 @@ Sum of shares for a property MUST equal 100.00 (validation).
 - Float precision: shares stored as decimal(5,2), sum validation must be exact
 
 **CI cost:** +5s for encryption and GDPR proof tests
+
+## Amendment 2026-11 (E10/F02/US02/T01): the registry facts of an owner
+
+The owner import (NF-109, ONB-06) needs a place for the facts an agency knows about an owner before any accounting policy exists. They are columns of
+`PropertyOwner`, all nullable (an owner of before the import has none):
+
+| Column | Meaning | Stored |
+|---|---|---|
+| `ExternalKey` | the code the agency gives the owner; the first thing the import matches on | clear, filtered unique index `UIX_PropertyOwners_OrgId_ExternalKey` (`OrgId`, `ExternalKey`) where the key is set |
+| `LegalName`, `EntityKind` (`NaturalPerson` 1, `LegalEntity` 2) | the name on the fiscal documents and the kind of the subject; `FirstName`/`LastName` stay the display name of the older screens | clear |
+| `TaxResidenceCountry`, `SettlementCurrency` | ISO 3166-1 alpha-2 and ISO 4217 | clear |
+| `BillingStreet`, `BillingCivic`, `BillingPostalCode`, `BillingCity`, `BillingProvince`, `BillingCountry` | the structured billing address | **encrypted** with `Casazen.PropertyOwner.Financial` since the amendment E13/F01/US01/T01 below (it was clear, like the e-mail and the phone) |
+| `VatNumber`, `Bic` | VAT number and bank identifier | **encrypted** with `Casazen.PropertyOwner.Financial`, with `FiscalCode` and `Iban` (ADR-012-R1) |
+
+- **Matching never uses a hash column.** The fiscal code and the VAT number are decrypted for the owners of one org (hundreds, not millions) and
+  compared normalized in memory; no keyed index of identifiers exists, so there is no new secret and no second copy of an identifier. An e-mail address
+  never identifies an owner (two owners may share one).
+- **Nothing is overwritten.** The import fills an empty field and reports a different value as a conflict; the IBAN, the BIC, the fiscal code, the VAT
+  number and the e-mail included.
+- **`TaxRegime` is not inferred.** A new owner keeps the default; the regime and the withholding applicable to it are configured and approved by the
+  accountant (NF-110), never concluded from the kind or the country here.
+- **This is not the fiscal profile of E06/F05/US02/T01.** That task adds the effective-dated `OwnerFiscalProfile` and the approved rule sets; these
+  columns are the registry facts the readiness checks (`registry`, `fiscalProfile`, `payment`) and the import fills, and the profile may take them over.
+- The ownership period is also the mandate period of the agency (ADR-011: the end of the mandate ends the ownership). A stored `OwnerMandate` must stay
+  inside the period of its ownership; the import refuses a row that would leave it outside.
+- Log and answer rules of ADR-012-R2 hold for the new columns: the readiness answers codes and field names, the import answers codes and ids, the
+  activity log gets counts and a hash of the file.
+
+## Amendment 2026-11 (E06/F05/US02/T01): the structured fiscal profile of an owner
+
+**Decision.** The fiscal identity an owner has for the statements, the payouts and the tax evidence is an effective-dated `OwnerFiscalProfile`, apart
+from the registry facts of `PropertyOwner`, with the approved rule set it follows (`OwnerAccountingPolicy`). It is not an invoice-recipient profile:
+CasaZen issues no agency-to-owner invoice (ADR-019 amended), so there is no SDI code or PEC.
+
+| Column | Meaning | Storage |
+|---|---|---|
+| `LegalName`, `LegalAddress` | the name and the legal address the evidence carries | **encrypted** with `Casazen.OwnerFiscalProfile` |
+| `FiscalCode`, `VatNumber`, `ForeignTaxId` | the identifiers the applicable reporting needs (an Italian fiscal code, a VAT number, a Swiss or other tax id) | **encrypted** with `Casazen.OwnerFiscalProfile` |
+| `BankAccountReference` | the account the owner is paid on | **encrypted** with `Casazen.OwnerFiscalProfile` |
+| `TaxResidenceCountry`, `TaxJurisdiction`, `SettlementCurrency`, the mandate role and dates, the recognition, expense and working-capital rules | the facts the rule set is chosen and applied with | clear |
+
+- **Purpose of its own.** `Casazen.OwnerFiscalProfile` is never shared with `Casazen.PropertyOwner.Financial`: a payload of one never reads as the other.
+- **Least privilege.** Only `agency.owner.financial.manage` (owner and administrators of the agency) reads the full values and changes a profile or a rule
+  set; `agency.owner.view` gets the values masked (the last four characters). A read of the full values is logged with the ids of the owner and of the
+  user, never a value (ADR-012-R2, R3).
+- **No inference.** Neither the country nor the kind of the owner selects a liability: a profile names its jurisdiction and its rule set, the rule set
+  must be approved by a qualified accountant and of the same jurisdiction, and anything missing blocks the financial operations with a precise code.
+- **History.** Profiles never overlap and are never edited after the fact: a change is a new profile from a date; the documents keep the rule version
+  they used.
+
+## Amendment 2026-11 (E13/F01/US01/T01): the billing address of an owner is encrypted
+
+**Decision.** The structured billing address of a `PropertyOwner` (`BillingStreet`, `BillingCivic`, `BillingPostalCode`, `BillingCity`, `BillingProvince`
+and `BillingCountry`) is personal data of a person, and the same treatment is given to a company. It is **encrypted** with `Casazen.PropertyOwner.Financial`
+(`EncryptedColumns`), like the IBAN and the fiscal code: this supersedes the «clear» of the amendment E10/F02/US02/T01 above for these columns, which the
+decisions of 2026-11-14 for the owner invoice, the QR-bill and the pain.001.09 transfer (the address is the recipient and the creditor) require.
+
+- **Columns.** They are `text` (a payload is longer than the value); the lengths of the clear text are checked on input by the import and by
+  `PUT api/owners/{id}/address`. The values stored in clear before are encrypted by the startup step (`EncryptedColumns.EncryptLegacyPlaintextAsync`).
+- **Least privilege.** `GET`/`PUT api/owners/{id}/address` need `agency.owner.financial.read` / `agency.owner.financial.manage` and an owner inside the
+  reach of the caller; the address is in no list and no log (ADR-012-R2: the logs carry the ids of the owner and of the user).
+- **Never searched.** The address is read through EF only; no query filters on it.

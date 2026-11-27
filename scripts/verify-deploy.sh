@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Verifies a Railway deployment after a push (FD-12, A9-19). Used by ci-cd.yml (verify-test / verify-prod).
+# Verifies a Railway deployment after a successful deployment-status event (FD-12, A9-19).
+# Used by verify-railway-deploy.yml (verify-test / verify-prod).
 #
 # usage: scripts/verify-deploy.sh <api-base-url> <expected-commit-sha> [timeout-seconds]
 #

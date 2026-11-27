@@ -59,6 +59,19 @@ public class RentSchedule : ITenantOwned
     [MaxLength(255)]
     public string? MandateReference { get; set; }
 
+    [MaxLength(255)]
+    public string? SepaSetupIntentId { get; set; }
+    [MaxLength(255)]
+    public string? SepaCustomerId { get; set; }
+    [MaxLength(255)]
+    public string? SepaPaymentMethodId { get; set; }
+    [MaxLength(200)]
+    public string? SepaAuthorizedByUserId { get; set; }
+    public DateTime? SepaAuthorizedAt { get; set; }
+    public int SepaSetupGeneration { get; set; }
+    public bool SepaAutomaticEnabled { get; set; }
+    public DateOnly? SepaAutomaticFrom { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

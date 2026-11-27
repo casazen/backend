@@ -22,11 +22,19 @@ namespace Casazen.Infrastructure.Data;
 /// </remarks>
 internal static class PostgresAdvisoryLocks
 {
+    internal static (Scope, string) TrustedSupplierRelation(Guid hostOrgId, Guid supplierOrgId) =>
+        (Scope.TrustedSupplierRelation, $"{hostOrgId:N}:{supplierOrgId:N}");
+
     /// <summary>First integer of the lock key: what the lock protects.</summary>
     internal enum Scope
     {
         /// <summary>Org provisioning of one user (one org per user).</summary>
         OrgProvisioningUser = 1_001,
+
+        InstitutionalSenderCutover = 21_145,
+        StorefrontChat = 1_948,
+        GuestHostExtra = 1_957,
+        TrustedSupplierRelation = 1_975,
 
         /// <summary>Allocation of one org slug (unique <c>Orgs.Slug</c>).</summary>
         OrgSlug = 1_002,
@@ -42,6 +50,9 @@ internal static class PostgresAdvisoryLocks
 
         /// <summary>Cancellation of one booking: a double click cancels and refunds once (BK-02).</summary>
         BookingCancellation = 1_006,
+
+        /// <summary>One replacement-photo request per booking across link creation, email queueing and hand-off resolution.</summary>
+        VerificationPhotoRequest = 1_954,
 
         /// <summary>
         /// Payments the host records on one booking (key: booking id, <c>bookingId.ToString("N")</c>): the idempotency key, the
@@ -151,6 +162,12 @@ internal static class PostgresAdvisoryLocks
         /// photo list at the same time, so no photo is lost (PC-04).
         /// </summary>
         PropertyPhotos = 1_074,
+
+        /// <summary>
+        /// Length-of-stay discounts of one property (key: property id): two saves of the tiers never read the stored ones at the same time, so the
+        /// unique minimum of nights and the limit of five tiers are decided on rows nobody else is changing (NF-35).
+        /// </summary>
+        PropertyStayDiscounts = 1_075,
 
         /// <summary>
         /// Service catalog of one supplier (key: supplier org id, <c>orgId.ToString("N")</c>): the changes of a supplier's
@@ -303,6 +320,12 @@ internal static class PostgresAdvisoryLocks
         ConcordatoFacileCheckout = 1_209,
 
         /// <summary>
+        /// The Openapi filing-fee checkout of one lease (key: lease id). Two clicks open one
+        /// Stripe session. Same lock shape as <see cref="ConcordatoFacileCheckout"/>.
+        /// </summary>
+        OpenapiLeaseRegistrationCheckout = 1_212,
+
+        /// <summary>
         /// The privacy acceptance of one lease for the ConcordatoFacile form (key: lease id, <c>leaseId.ToString("N")</c>): two requests at
         /// the same time write one event, not two (CF-BE).
         /// </summary>
@@ -315,6 +338,213 @@ internal static class PostgresAdvisoryLocks
         /// (LR-OVERLAP). Always taken after the row lock of the lease, never before it.
         /// </summary>
         LeasePeriod = 1_211,
+
+        /// <summary>
+        /// The refresh of the OAuth access token of one Octorate connection (key: connection id, <c>connectionId.ToString("N")</c>,
+        /// ADR-023-R2): a new access token invalidates the previous one when that was never used, so two instances never refresh the
+        /// same connection at once. The holder reads the connection again inside the lock (another one may have refreshed it) and
+        /// saves the new token before releasing it. The values 20_100 to 20_199 are the Octorate connector (epic E02).
+        /// </summary>
+        OctorateTokenRefresh = 20_111,
+
+        /// <summary>
+        /// One reservation of Octorate in one org (key: org id and reservation id, <c>orgId.ToString("N") + ":" + reservationId</c>, E02/F02/US01/T01):
+        /// the daily import, the reconciliation and the webhook handlers apply a reservation one at a time, so it is one booking and the
+        /// events of its changes are recorded once each. The import takes no other lock: a channel's reservation is a fact, it is never
+        /// refused for dates another booking holds.
+        /// </summary>
+        OctorateReservation = 20_121,
+
+        /// <summary>
+        /// One thread of an OTA conversation in one org (key: org id and Octorate thread id, <c>orgId.ToString("N") + ":" + threadId</c>,
+        /// E05/F01/US01/T02): the webhook handler, the reconciliations and the import apply a thread one at a time, so it is one row and a
+        /// message delivered by two of them at once is stored, and its event recorded, once. The values 20_500 to 20_599 are the messages hub
+        /// (epic E05).
+        /// </summary>
+        OtaMessageThread = 20_511,
+
+        /// <summary>
+        /// The mirror of one CasaZen booking on Octorate (key: booking id, <c>bookingId.ToString("N")</c>, E08/F01/US01/T03): the create and the
+        /// payments of a booking are sent one at a time, so a reservation is created once and a payment recorded once even when two deliveries
+        /// of an event, or a retry of the host, run together. A session lock (<see cref="TryAcquireSessionLockAsync"/>): held across the
+        /// commit of the attempt, the call to Octorate and the commit of its outcome; a holder that finds it taken leaves and is delivered again.
+        /// </summary>
+        OctorateBookingSync = 20_131,
+
+        /// <summary>
+        /// The import of the existing inventory of one OTA channel of one org (key: org id and channel code, <c>orgId.ToString("N") + ":" + code</c>,
+        /// E02/F01/US03, session lock held for the whole step): two commands of the same channel, from two batches or two requests, never ask
+        /// Octorate for the same room import, reservation import, calendar import or «mark connected» at once. A command that does not get the
+        /// lock leaves the channel as it is: the one that holds it is doing the work, and the next command resumes from the stamps. The number is
+        /// 20_132 because 20_131 is <see cref="OctorateBookingSync"/>, and a number belongs to one scope only.
+        /// </summary>
+        OctorateInventoryImport = 20_132,
+
+        /// <summary>
+        /// The check-in of one booking to Octorate (E03/F01/US01/T03; key: <c>{bookingId:N}:guests</c> for the send of its guests,
+        /// <c>{bookingId:N}:state:{state}</c> for the push of one state): each runs one at a time (session lock, held for the whole send), so two
+        /// runs never create the same guest twice nor push the same state twice. The values 20_131 and 20_132 belong to other scopes of the
+        /// Octorate connector (epic E02), so this one is 20_133.
+        /// </summary>
+        OctorateCheckInSync = 20_133,
+
+        /// <summary>
+        /// «Collega da CasaZen» on one OTA channel of one org (key: org id and channel code, <c>orgId.ToString("N") + ":" + code</c>, E02/F01/US03,
+        /// decision of 14/11/2026): the read of the connections of the org and the creates of the connections of the channel run one request at a
+        /// time, held until the commit, the calls to Octorate included. Two clicks, two batches or two instances never create two connections of the
+        /// same channel on one accommodation: the request that waits reads the connections again and finds the ones the first made. Not the session
+        /// lock of <see cref="OctorateInventoryImport"/>: that one leaves the channel to whoever holds it, while a «Collega» waits for its turn. The
+        /// values 20_131 to 20_133 belong to other scopes of the Octorate connector, so this one is 20_134.
+        /// </summary>
+        OctorateInventoryConnect = 20_134,
+
+        /// <summary>
+        /// The CRM profile of one guest (key: the guest id, <c>guestId.ToString("N")</c>, E07/F01/US02/T03): the sync of the booker run by the event
+        /// handler and the one run by the job can reach the same guest, with no profile yet, at the same moment. The profile is made and the guest
+        /// linked to it one sync at a time, and the second reads the link again inside the lock and uses the profile the first made, so no profile is
+        /// left with no guest. Held only while the profile is made. The values 20_600 to 20_699 are the marketing module (epic E07).
+        /// </summary>
+        CrmGuestProfile = 20_612,
+
+        /// <summary>
+        /// The CRM profiles of one org (key: org id, <c>orgId.ToString("N")</c>, E07/F01/US03): the dismissal and the merge of a proposal, and the
+        /// tags a host gives to a profile, run one at a time, so a double click merges once, two people on the same pair decide it once, and a tag
+        /// is never lost to a merge that moves the tags of the profile at the same moment. Held for the whole change, which is saved in one go.
+        /// </summary>
+        CrmProfileMerge = 20_613,
+
+        /// <summary>
+        /// One guided panel step of the Octorate activation (key: <c>step:{id:N}</c>, E10/F01/US03/T01) or one «Do it for me» request
+        /// (key: <c>assist:{id:N}</c>): the verification of a step is run by one request at a time (a session lock, held across the call to
+        /// Octorate: a holder that finds it taken returns the stored state), and a staff update of a request reads it, changes it and saves it
+        /// as one unit (a transaction lock), so two people never close the same request in two ways. The values 21_000 to 21_099 are the
+        /// activation (epic E10).
+        /// </summary>
+        OnboardingPanelAssist = 21_011,
+
+        /// <summary>
+        /// The owner portfolio of one org (key: <c>orgId.ToString("N")</c>, E10/F02/US02): the write of the owner import (the owners and the
+        /// ownership periods of the properties it names) and every change of the invitations of the owners (the confirm of a batch, a resend, a
+        /// revoke), one at a time. Two imports of the same file never create the same owner twice, and two confirms of the same preview never
+        /// send two invitations to the same owner: the second waits and then finds what the first wrote. Held until the commit.
+        /// </summary>
+        OwnerOnboarding = 21_041,
+
+        /// <summary>
+        /// The start of the activation of one channel or tool for one property (key: <c>orgId.ToString("N")</c> + ":" + <c>propertyId.ToString("N")</c> + ":" + portal
+        /// code, E09/F02/US01/T02): two clicks, or two instances, never create two connections on the channel manager for the same property and portal,
+        /// because the second waits and then finds the activation of the first. Held until the commit, the calls to the channel manager included, as the
+        /// checkout of a service is. The values 20_900 to 20_999 are the marketplace (epic E09).
+        /// </summary>
+        MarketplaceChannelActivation = 20_931,
+
+        /// <summary>
+        /// One condominium (key: condominium id): preventivo, consuntivo, rates and the prior-year balance are decided
+        /// one request at a time, so two confirms cannot issue two plans or two balances.
+        /// </summary>
+        Condominium = 21_042,
+
+        /// <summary>
+        /// The euro debit of one tenant maintenance request (key: request id). Two pays wait, then the second
+        /// joins the debit the first saved. A failed debit is a new key only after that failed row is recorded.
+        /// </summary>
+        MaintenancePayment = 21_043,
+
+        /// <summary>
+        /// The counter of the fiscal numbers of one org and series (key: <c>{orgId:N}:{series}</c>, E06/F01/US02/T02, NF-83): taken in the transaction
+        /// that saves the document, so two issues never get the same number and a rolled-back one leaves no gap. The values 1_600 to 1_699 are the
+        /// fiscal documents and the agency financial chain (epic E06).
+        /// </summary>
+        FiscalNumbering = 1_601,
+
+        /// <summary>
+        /// The owner accounting of one org (key: <c>{orgId:N}</c>, E06/F05/US02/T02, NF-110): the posting of a month, the generation of a version and
+        /// the close are taken one at a time, so two postings never post the same facts twice and a close never reads a month being posted.
+        /// </summary>
+        OwnerAccounting = 1_603,
+
+        /// <summary>
+        /// The daily run of the guest documents of one org (key: <c>{orgId:N}</c>, E12/F01/US01/T02, a session lock held for the whole run): the drafts of the stays that
+        /// ended and the automatic issue of the drafts are made by one run at a time, so two runs (a retry, a manual trigger) never make two drafts of one stay.
+        /// </summary>
+        FiscalDocumentsDueRun = 1_602,
+
+        /// <summary>
+        /// The guest documents of one booking while a change of the booking is corrected (key: <c>{bookingId:N}</c>, E12/F01/US01/T03, held until the commit): the decision
+        /// of what is left to credit and the draft of the credit note and of the new document are taken one at a time, so two events of one booking (a change and a refund
+        /// delivered together) never prepare the same credit note twice.
+        /// </summary>
+        FiscalDocumentBooking = 1_604,
+
+        /// <summary>
+        /// The SDI state of one fiscal document (key: <c>{documentId:N}</c>, E17/F01/US02/T01, held until the commit): the submission through the provider (the call to the provider
+        /// included), the outcomes the provider's webhook and the poll job record, a declaration of a document sent by hand and the start of the correction of a rejected one run one at a
+        /// time, so a double click never submits a document twice and two outcomes never apply at once. Taken <b>before</b> the numbering lock (<see cref="FiscalNumbering"/>) when both are needed.
+        /// </summary>
+        FiscalDocumentSdi = 1_620,
+
+        /// <summary>
+        /// The push of one calendar change to the channel manager (key: process id, <c>processId.ToString("N")</c>, E08/F05/US02/T01, a session lock held for the whole
+        /// run): the immediate run enqueued after a change and the recurring job that picks up what is due never send the same chunk twice, because a run that finds
+        /// the lock taken leaves and the other one does the work. The values 20_800 to 20_899 are the booking operations of the calendar workspace (epic E08).
+        /// </summary>
+        CalendarChangeProcess = 20_851,
+
+        /// <summary>
+        /// The owner stays of one property (key: <c>propertyId.ToString("N")</c>, E07/F07/US01/T01): a request, an approval, a rejection, a withdrawal, a
+        /// cancellation and the work of the reconciliation on the stays of the property are taken one at a time, so two co-owners never get the same
+        /// nights, the nights of an owner in a year are never counted twice, and a stay withdrawn while it is approved never keeps its block. Held until
+        /// the commit; the dates lock of the property is taken inside it (by the block), never the other way round.
+        /// </summary>
+        OwnerStays = 21_071,
+
+        /// <summary>
+        /// The settings of the package of the accountant of one org (key: <c>orgId.ToString("N")</c>, E15/F01/US02): saving them and recording a send (the month an e-mail was queued for) are taken one at a time and held
+        /// until the commit, so a month is sent once however many runs reach it (the job, its retry, a «send a test») and a save never lands between the check that a month was sent and the line that says so. The values
+        /// 1_650 to 1_659 are the package of the accountant (epic E15).
+        /// </summary>
+        AccountantPackage = 1_650,
+
+        /// <summary>
+        /// The self-billed invoices (TD17) of one org (key: <c>orgId.ToString("N")</c>, E17/F01/US03/T01): the drafts of a month are made one request at a time and held until
+        /// the commit, so two requests (a double click, a retry) never both find «no draft yet» for a holder, a portal and a month and make two of them.
+        /// </summary>
+        SelfBilling = 1_640,
+
+        /// <summary>
+        /// The automatic cleaning of one stay (key: <c>bookingId.ToString("N")</c>, E24/F01/US01/T02): the check that the stay has none, the creation of the service request or
+        /// of the staff activity and the <c>StayCleaning</c> row that keys it are taken one at a time and held until the commit, so the two triggers of a stay (the check-out time
+        /// and the departure the host registered) create one cleaning. The supplier's calendar lock is taken inside it (by the request), never the other way round. The values
+        /// 24_000 to 24_099 are the cleaning at check-out (epic E24).
+        /// </summary>
+        CleaningAutomation = 24_011,
+
+        /// <summary>
+        /// The reviews of one booking of a channel (key: <c>{orgId:N}:{bookingId:N}</c>, E05/F06/US01/T02): the write of a read of the channel manager and the saving of a reply or of
+        /// the host's own review are taken one at a time and held until the commit, never across the call to Octorate, so a double click, the job of the reviews and the button «Refresh»
+        /// do not undo each other's state and a reply is saved, and sent, once. The values 20_500 to 20_599 are the messages hub (epic E05); 20_511 is
+        /// <see cref="OtaMessageThread"/>, and this one is 20_541 because the neighbours of the same feature pick their own.
+        /// </summary>
+        OtaReview = 20_541,
+
+        /// <summary>
+        /// The load of the seed of the Swiss localities and municipalities (single key, E29/F01/US01/T01): instances starting together write the two
+        /// tables one at a time, and the second finds the version stamp of the first and does nothing. Held until the commit. The values 29_000 to
+        /// 29_099 are the Swiss places and the guest-registration regimes (epic E29).
+        /// </summary>
+        SwissPlacesSeed = 29_011,
+
+        PropertyImportReview = 29_026,
+
+        PropertyPreparation = 29_027,
+
+        /// <summary>
+        /// The callback, logout and web-origin lists of the SPA application of the environment in the shared Auth0 tenant (key: the client id of the application,
+        /// <c>Auth0:HostSync:ClientId</c>, E40/F01/US02/T01, NF-141): the registration and the removal of the host of an agency read the lists, write them back in one
+        /// call and read them again one at a time, held until the end (the calls to Auth0 included), so two hosts registered at once by two instances never write
+        /// each other's lists away. The values 40_000 to 40_099 are the site integration (epic E40); 40_021 is its F01/US02.
+        /// </summary>
+        Auth0HostRegistration = 40_021,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
@@ -386,7 +616,8 @@ internal static class PostgresAdvisoryLocks
         DbContext context,
         Scope scope,
         string key,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool shared = false)
     {
         if (!IsSupported(context))
             return NoLock.Instance;
@@ -396,11 +627,12 @@ internal static class PostgresAdvisoryLocks
         await context.Database.OpenConnectionAsync(cancellationToken);
         try
         {
-            var acquired = await context.Database
-                .SqlQuery<bool>($"SELECT pg_try_advisory_lock({scopeId}, {keyHash}) AS \"Value\"")
-                .SingleAsync(cancellationToken);
+            var attempt = shared
+                ? context.Database.SqlQuery<bool>($"SELECT pg_try_advisory_lock_shared({scopeId}, {keyHash}) AS \"Value\"")
+                : context.Database.SqlQuery<bool>($"SELECT pg_try_advisory_lock({scopeId}, {keyHash}) AS \"Value\"");
+            var acquired = await attempt.SingleAsync(cancellationToken);
             if (acquired)
-                return new SessionLock(context, scopeId, keyHash);
+                return new SessionLock(context, scopeId, keyHash, shared);
         }
         catch
         {
@@ -416,13 +648,16 @@ internal static class PostgresAdvisoryLocks
     internal static int Hash(string key) =>
         BinaryPrimitives.ReadInt32LittleEndian(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
 
-    private sealed class SessionLock(DbContext context, int scopeId, int keyHash) : IAsyncDisposable
+    private sealed class SessionLock(DbContext context, int scopeId, int keyHash, bool shared) : IAsyncDisposable
     {
         public async ValueTask DisposeAsync()
         {
             try
             {
-                await context.Database.ExecuteSqlAsync($"SELECT pg_advisory_unlock({scopeId}, {keyHash})");
+                if (shared)
+                    await context.Database.ExecuteSqlAsync($"SELECT pg_advisory_unlock_shared({scopeId}, {keyHash})");
+                else
+                    await context.Database.ExecuteSqlAsync($"SELECT pg_advisory_unlock({scopeId}, {keyHash})");
             }
             finally
             {

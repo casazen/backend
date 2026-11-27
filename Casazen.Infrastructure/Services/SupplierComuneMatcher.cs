@@ -12,69 +12,59 @@ public class SupplierComuneMatcher(IComuneDirectory directory) : ISupplierComune
     public async Task<bool> CoversAsync(SupplierProfile supplier, ComuneTarget target, CancellationToken cancellationToken = default) =>
         (await FilterAsync([supplier], target, cancellationToken)).Count == 1;
 
-    public async Task<IReadOnlyList<SupplierProfile>> FilterAsync(
+    public Task<IReadOnlyList<SupplierProfile>> FilterAsync(
         IReadOnlyCollection<SupplierProfile> suppliers,
         ComuneTarget target,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(suppliers);
         ArgumentNullException.ThrowIfNull(target);
+        return FilterAnyAsync(suppliers, [target], cancellationToken);
+    }
 
-        if (target.IsEmpty || suppliers.Count == 0)
+    public async Task<IReadOnlyList<SupplierProfile>> FilterAnyAsync(
+        IReadOnlyCollection<SupplierProfile> suppliers,
+        IReadOnlyCollection<ComuneTarget> targets,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(suppliers);
+        ArgumentNullException.ThrowIfNull(targets);
+
+        var relevantTargets = targets.Where(target => !target.IsEmpty).ToList();
+        if (relevantTargets.Count == 0 || suppliers.Count == 0)
             return [];
 
         var legacy = suppliers.ToDictionary(s => s.OrgId, s => ReadStrings(s.ComuniJson));
 
-        // One lookup for everything that is written as text: the target and every legacy entry of every supplier.
-        var identifiers = legacy.Values.SelectMany(v => v).ToList();
-        if (target.Name is { } name)
-            identifiers.Add(name);
+        // Resolve text identifiers for all locations and suppliers together.
+        var identifiers = legacy.Values.SelectMany(values => values)
+            .Concat(relevantTargets.Select(target => target.Name).OfType<string>());
         var resolved = await directory.ResolveAsync(identifiers, cancellationToken);
+        var targetCodes = relevantTargets
+            .Select(target => ComuneRules.NormalizeIstatCode(target.IstatCode)
+                ?? (target.Name is { } text && resolved.TryGetValue(text.Trim(), out var comune) ? comune.IstatCode : null))
+            .OfType<string>()
+            .ToHashSet(StringComparer.Ordinal);
+        var targetNames = relevantTargets.Select(target => ComuneNames.Normalize(target.Name))
+            .Where(name => name.Length > 0)
+            .ToHashSet(StringComparer.Ordinal);
 
-        var targetIstat = ComuneRules.NormalizeIstatCode(target.IstatCode)
-                          ?? (target.Name is { } targetText && resolved.TryGetValue(targetText.Trim(), out var comune) ? comune.IstatCode : null);
-        var targetName = ComuneNames.Normalize(target.Name);
-
-        var covering = new List<SupplierProfile>();
-        foreach (var supplier in suppliers)
+        return suppliers.Where(supplier =>
         {
             var written = legacy[supplier.OrgId];
             var chosen = ReadStrings(supplier.ComuneIstatCodesJson);
-
-            if (targetIstat is not null && Covers(targetIstat, chosen, written, resolved))
-                covering.Add(supplier);
-            // Not resolvable (list not imported, unknown or ambiguous name): the old comparison of the written names.
-            else if (targetName.Length > 0 && written.Any(w => ComuneNames.Normalize(w) == targetName))
-                covering.Add(supplier);
-        }
-
-        return covering;
+            return chosen.Any(targetCodes.Contains) || written.Any(entry => Covers(entry, targetCodes, targetNames, resolved));
+        }).ToList();
     }
 
     private static bool Covers(
-        string istatCode,
-        IReadOnlyList<string> chosen,
-        IReadOnlyList<string> written,
+        string entry,
+        HashSet<string> targetCodes,
+        HashSet<string> targetNames,
         IReadOnlyDictionary<string, Comune> resolved)
     {
-        if (chosen.Contains(istatCode, StringComparer.Ordinal))
-            return true;
-
-        foreach (var entry in written)
-        {
-            var trimmed = entry.Trim();
-            if (ComuneRules.IsIstatCode(trimmed))
-            {
-                if (trimmed == istatCode)
-                    return true;
-            }
-            else if (resolved.TryGetValue(trimmed, out var comune) && comune.IstatCode == istatCode)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        var trimmed = entry.Trim();
+        var code = ComuneRules.IsIstatCode(trimmed) ? trimmed : resolved.GetValueOrDefault(trimmed)?.IstatCode;
+        return (code is not null && targetCodes.Contains(code)) || targetNames.Contains(ComuneNames.Normalize(entry));
     }
 
     /// <summary>String items of a JSON array column; anything else (not an array, non-string items) is ignored.</summary>

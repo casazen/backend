@@ -113,6 +113,9 @@ public sealed record LeaseDraftParty
     /// <summary>Optional: used for the payment links and the reminders.</summary>
     public string? ContactEmail { get; init; }
 
+    /// <summary>Optional international phone number used for direct communications and WhatsApp.</summary>
+    public string? ContactPhone { get; init; }
+
     /// <summary>Step 5: the day the identity document was checked, <c>yyyy-MM-dd</c>; <c>null</c> when it was not.</summary>
     public string? DocumentsVerifiedOn { get; init; }
 }

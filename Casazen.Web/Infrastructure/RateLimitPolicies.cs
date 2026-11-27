@@ -9,6 +9,8 @@ namespace Casazen.Web.Infrastructure;
 /// </summary>
 public static class RateLimitPolicies
 {
+    public const string StorefrontChatRead = "storefront-chat-read";
+    public const string StorefrontChatWrite = "storefront-chat-write";
     /// <summary>Anonymous catalogue reads: public org, its properties, property search/detail, availability, supplier showcase.</summary>
     public const string PublicRead = "PublicRead";
 
@@ -46,6 +48,27 @@ public static class RateLimitPolicies
 
     /// <summary>Guest check-in submission (partitioned by IP and token hash).</summary>
     public const string GuestCheckInSubmit = "GuestCheckInSubmit";
+
+    /// <summary>
+    /// The opening of the self-hosted identity step and its presence challenge (<c>POST api/public/checkin/{token}/identity/open</c> and
+    /// <c>…/presence-challenge</c>, E70-E74, NF-188, NF-192): 30 a minute for each client IP and token, partitioned like <see cref="GuestCheckIn"/> (the partition
+    /// holds a hash of the <c>{token}</c>, never the token). A budget of its own, so a reload, the guided retry and a network resume of the identity step never
+    /// spend the 10 a minute of the reads of the form.
+    /// </summary>
+    public const string GuestIdentity = "GuestIdentity";
+
+    /// <summary>
+    /// The upload of a presence sequence (<c>POST api/public/checkin/{token}/presence</c>, ADR-013-R17): each call carries up to
+    /// <c>IdentityVerification:Presence:MaxSequenceBytes</c> of frames and runs the models in the request, so it is the tightest of the identity limits: 6 a minute
+    /// for each client IP and token, partitioned like <see cref="GuestCheckIn"/>.
+    /// </summary>
+    public const string GuestIdentityUpload = "GuestIdentityUpload";
+
+    /// <summary>
+    /// The guest at the door (<c>POST api/public/checkin/door/{doorToken}</c>, E22/F01/US02/T01): a booking code (or a surname) and a date open the check-in link of a stay, so it is the tightest
+    /// of the check-in limits: 5 a minute for each client IP and door token (the partition holds a hash of the <c>{doorToken}</c> of the route, never the token itself).
+    /// </summary>
+    public const string PublicDoorCheckIn = "PublicDoorCheckIn";
 
     /// <summary>Public tourist tax calculator.</summary>
     public const string PublicTouristTaxCalc = "PublicTouristTaxCalc";
@@ -162,6 +185,14 @@ public static class RateLimitPolicies
     public const string RentBankImport = "RentBankImport";
 
     /// <summary>
+    /// The import of the data that changes per property from a CSV or an Excel file (<c>POST api/onboarding/bulk/import</c>, E10/F02/US01/T02):
+    /// partitioned by <b>person</b>, since each call unzips and parses a file of up to 2 MB (20 MB once unzipped) and, without <c>dryRun</c>, writes
+    /// up to a thousand rows. An agency checks a file, corrects it and imports it: thirty calls in ten minutes leave room for that and no more than a
+    /// script could waste.
+    /// </summary>
+    public const string OnboardingBulkImport = "OnboardingBulkImport";
+
+    /// <summary>
     /// The autosave of the showcase editor (<c>PATCH api/supplier/showcase/content</c>, SP-13a). A policy of a signed-in endpoint, like
     /// <see cref="GlobalSearch"/>: it is partitioned by <b>person</b>, not by IP, because the editor saves at every pause in typing and the
     /// people of one office share an address. The body is small and bounded; the limit keeps a script from rewriting a draft in a loop.
@@ -195,4 +226,107 @@ public static class RateLimitPolicies
     /// few tries leave room for the retry after an answer 502 of Auth0.
     /// </summary>
     public const string GuestAccountDelete = "GuestAccountDelete";
+
+    /// <summary>
+    /// The anonymous calls that give, confirm or take back a marketing consent (E07/F04/US01): the page of the double opt-in link
+    /// (<c>POST api/public/marketing/confirm</c>), the welcome page of a property (<c>GET api/public/welcome/{token}</c> and <c>POST …/consent</c>), and the
+    /// choices on the guest page (<c>PUT api/public/guest/bookings/{code}/marketing</c> and <c>POST …/marketing/resend-confirmation</c>). Each
+    /// can queue an e-mail to an address somebody typed, so they are bound per client IP: 60 in ten minutes, enough for the guests of a
+    /// building that share one network scanning the code in the same hour, and no more than a script could waste. Reading the choices on the
+    /// guest page uses <see cref="PublicBookingLookup"/>.
+    /// </summary>
+    public const string PublicMarketingConsent = "PublicMarketingConsent";
+
+    /// <summary>
+    /// The simulator of the assistant (<c>POST api/assistant/simulate</c>, E05/F05/US02/T01): each call asks the AI provider twice and spends the budget of the platform, so it is
+    /// partitioned by <b>person</b> and bounded at 20 an hour, on top of the per-user and per-org limits of the AI endpoints.
+    /// </summary>
+    public const string AssistantSimulate = "AssistantSimulate";
+
+    /// <summary>
+    /// The reads and the light calls of the owner portal operations (<c>api/owner-portal/…</c>, <c>api/owner-contacts/accept</c> and, for the agency,
+    /// <c>api/owner-stays</c> and <c>api/owner-collaboration</c>, E07/F07/US01): the default of those controllers. A policy of a signed-in endpoint,
+    /// partitioned by <b>person</b>: the owners are people outside the organization, and the people of one network share an address.
+    /// </summary>
+    public const string OwnerPortalRead = "OwnerPortalRead";
+
+    /// <summary>
+    /// The invitation of a delegated contact by an owner (<c>POST api/owner-portal/contacts</c>): each call sends an e-mail to an address and with names the
+    /// owner chose, so it is tight and partitioned by <b>person</b>; next to it a cap of invitations a day counts the ones withdrawn too
+    /// (<c>OwnerCollaborationRules.MaxContactInvitationsPerDay</c>).
+    /// </summary>
+    public const string OwnerPortalInvite = "OwnerPortalInvite";
+
+    /// <summary>
+    /// What writes in the owner portal: opening a conversation and writing a message with its file (<c>POST api/owner-portal/conversations[/{id}/messages]</c>
+    /// and the same of the agency), sharing a document or a new version of it (<c>POST api/owner-collaboration/documents[/{id}/versions]</c>). Each call can read a
+    /// file of up to 10 MB, scans it and stores it, and ends in an e-mail to the other side. Partitioned by <b>person</b>.
+    /// </summary>
+    public const string OwnerPortalWrite = "OwnerPortalWrite";
+
+    /// <summary>
+    /// The download of the files of the owner portal (the file of a document, the attachment of a message, for the owner and for the agency): each call writes a
+    /// line of the download audit of the document and streams a file of up to 10 MB. Partitioned by <b>person</b>.
+    /// </summary>
+    public const string OwnerPortalDownload = "OwnerPortalDownload";
+
+    /// <summary>
+    /// The public page of the document of a stay that the guest got by e-mail (<c>POST api/public/fiscal-documents/{id}</c>, the summary, and <c>…/pdf</c>, the file, E12/F01/US02/T01): the
+    /// token is in the body, never in the address, and every link that does not open answers the same 404. Per client IP, like the other anonymous policies; a page asks once and a guest
+    /// downloads the file a few times, and the PDF is drawn only for a token that opens, so 20 a minute leave room for that and no more than a script could waste.
+    /// </summary>
+    public const string PublicFiscalDocumentDownload = "PublicFiscalDocumentDownload";
+
+    /// <summary>
+    /// The link of the package that the accountant got by e-mail (<c>GET api/public/accountant-package/{orgId}/{period}</c>, E15/F01/US02/T02): anonymous, the signature in the address, and every link that does not
+    /// open answers the same 404. Per client IP, like the other anonymous policies; each valid call streams a ZIP of up to tens of MB, and an accountant opens its link a few times, so 20 in ten minutes leave
+    /// room for that and for the people of one office behind one address, and no more than a script could waste.
+    /// </summary>
+    public const string PublicAccountantPackage = "PublicAccountantPackage";
+
+    /// <summary>
+    /// «Send a test» of the package to the accountant (<c>POST api/accountant-package/send</c>, E15/F01/US02/T02): each call makes a package, keeps it in the private storage and sends an e-mail to a third party, so
+    /// it is tight and partitioned by <b>person</b>: five in ten minutes, enough for a test and its retry.
+    /// </summary>
+    public const string AccountantPackageSend = "AccountantPackageSend";
+
+    /// <summary>
+    /// The guest portal (<c>api/public/guest-portal/{token}/…</c>, E50/F01/US01/T02, NF-152): the default of every endpoint of the portal
+    /// (<c>GuestPortalControllerBase</c>), the overview and the reads of the sections. Partitioned by client IP <b>and</b> a hash of the <c>{token}</c>
+    /// of the route, like <see cref="GuestCheckIn"/> (the partition never holds the token): 120 a minute, room for a page that reads several sections. A client
+    /// that changes the token at every request does not meet it twice, so a limit per client IP over every token (<see cref="GuestPortalIpRateLimiter"/>, 600 a
+    /// minute) is chained after it.
+    /// </summary>
+    public const string GuestPortal = "GuestPortal";
+
+    /// <summary>
+    /// What the guest writes in the portal (the later epics put it on their writing endpoints): 30 a minute for each client IP and token, partitioned
+    /// like <see cref="GuestPortal"/>.
+    /// </summary>
+    public const string GuestPortalWrite = "GuestPortalWrite";
+
+    /// <summary>
+    /// The agency's «retry» of the owner sign-in on its own domain (<c>POST api/orgs/{orgId}/domain/owner-login</c>, E40/F01/US02/T01, NF-141): with <c>Auth0HostSync</c> on each call
+    /// that finds the state not ready reads, and may write, the SPA application of the <b>shared</b> Auth0 tenant (the same Management API quota as the roles of every host) while it
+    /// holds a database connection under the advisory lock. Partitioned by <b>person</b>: five in ten minutes, enough for a retry after CasaZen fixed a scope and a second try.
+    /// </summary>
+    public const string OwnerLoginRetry = "OwnerLoginRetry";
+
+    /// <summary>
+    /// A billing administrator confirms the connection of a site (<c>POST api/orgs/{orgId}/site-connections/authorize</c>, S022, site integration plan §10.4):
+    /// each call writes a one-time code. Partitioned by <b>person</b>: ten in ten minutes, enough for a connection and its retries.
+    /// </summary>
+    public const string SiteConnectAuthorize = "SiteConnectAuthorize";
+
+    /// <summary>
+    /// The plugin exchanges its code for a credential (<c>POST api/public/site-connections/token</c>, S022): anonymous, the code and the verifier in the body,
+    /// one answer for every code that does not open. Per client IP like the other anonymous policies: twenty in ten minutes.
+    /// </summary>
+    public const string SiteConnectToken = "SiteConnectToken";
+
+    /// <summary>
+    /// The calls of a connected plugin (<c>api/site/v1/*</c>, S022 and S023): partitioned by <b>credential</b> (the connection of the scheme <c>SiteToken</c>),
+    /// so the sites behind one hosting address never share a budget: 120 a minute. A call without a valid credential is refused before the limiter.
+    /// </summary>
+    public const string SiteApi = "SiteApi";
 }

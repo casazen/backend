@@ -76,6 +76,10 @@ public partial class SupplierService(
                 var existing = await TryGetExistingSupplierRegistrationAsync(user, cancellationToken);
                 if (existing is not null)
                 {
+                    // A supplier already registered accepts the invite of a host: the host's relation is added (#977).
+                    if (tokenHash is not null)
+                        await AcceptHostInviteOfRegisteredSupplierAsync(tokenHash, accountEmail, existing.Value.Org.Id, cancellationToken);
+
                     logger.LogInformation(
                         "User {UserId} is already linked to supplier org {OrgId}; returning existing registration",
                         userId,
@@ -124,7 +128,8 @@ public partial class SupplierService(
 
         // One profile per email (SU-14, A4-22): a second registration would create the duplicate that fix-orphaned had
         // to merge. The unique index is the guarantee under concurrency (23505 below); this check answers early.
-        if (await IsSupplierEmailTakenAsync(email, cancellationToken))
+        // An invitation bound to a known organization must still be accepted by that organization after a change of contact.
+        if (invite?.IdentifiedSupplierOrgId != null || await IsSupplierEmailTakenAsync(email, cancellationToken))
             throw SupplierEmailTaken();
 
         var slug = $"supplier-{Guid.NewGuid():N}"[..30];
@@ -168,6 +173,10 @@ public partial class SupplierService(
 
         db.SupplierProfiles.Add(profile);
 
+        // The invite of a host: the new supplier is one of its trusted suppliers, in the same save (#977).
+        if (invite?.InvitedByOrgId is Guid invitingOrgId)
+            await AddTrustedSupplierAsync(invitingOrgId, org.Id, invite, cancellationToken);
+
         // Link the authenticated user to the new org so subsequent supplier endpoint
         // calls resolve the org via User.SupplierOrgId instead of falling back to
         // email lookup or auto-provisioning a duplicate.
@@ -195,8 +204,8 @@ public partial class SupplierService(
         if (invite is not null)
         {
             logger.LogInformation(
-                "Supplier org {OrgId} registered for {MaskedEmail} by accepting invite {InviteId}",
-                org.Id, LogRedaction.MaskEmail(email), invite.Id);
+                "Supplier org {OrgId} registered for {MaskedEmail} by accepting invite {InviteId} (inviting org {InvitingOrgId})",
+                org.Id, LogRedaction.MaskEmail(email), invite.Id, invite.InvitedByOrgId);
         }
         else
         {
@@ -208,6 +217,84 @@ public partial class SupplierService(
         }
 
         return new SupplierRegistrationResult(org, profile, claimTicket);
+    }
+
+    /// <summary>
+    /// A supplier already linked to its org opens the link of a host's invite (#977): the invite, still usable and for the
+    /// account's email, adds the relation with the inviting host and is used up (saved here, in the caller's transaction). The
+    /// link of an admin invite changes nothing: the account is a supplier already.
+    /// </summary>
+    private async Task AcceptHostInviteOfRegisteredSupplierAsync(
+        string tokenHash,
+        string? accountEmail,
+        Guid supplierOrgId,
+        CancellationToken cancellationToken)
+    {
+        var invite = await db.SupplierInviteRecords.FirstOrDefaultAsync(i => i.TokenHash == tokenHash, cancellationToken);
+        if (invite?.InvitedByOrgId is not Guid invitingOrgId)
+            return;
+
+        EnsureInviteUsable(invite);
+        var profileEmail = await db.SupplierProfiles.Where(p => p.OrgId == supplierOrgId)
+            .Select(p => p.Email).SingleAsync(cancellationToken);
+        if (!EmailsMatch(invite.Email, accountEmail) || !EmailsMatch(invite.Email, profileEmail) ||
+            invite.IdentifiedSupplierOrgId is { } matched && matched != supplierOrgId)
+            throw new DomainRuleException("supplier_invite_email_mismatch", "SupplierInviteEmailMismatch");
+
+        await AddTrustedSupplierAsync(invitingOrgId, supplierOrgId, invite, cancellationToken);
+        invite.IsUsed = true;
+        await db.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Supplier org {OrgId} accepted invite {InviteId}: trusted supplier of org {InvitingOrgId}",
+            supplierOrgId, invite.Id, invitingOrgId);
+    }
+
+    /// <summary>
+    /// Stages the relation of a host with one of its trusted suppliers, unless the host has it already; the caller saves. The
+    /// caller is the supplier, so the host's relations are read outside the tenant filter.
+    /// </summary>
+    private async Task AddTrustedSupplierAsync(
+        Guid hostOrgId,
+        Guid supplierOrgId,
+        SupplierInviteRecord invite,
+        CancellationToken cancellationToken)
+    {
+        // RegisterAsync owns the transaction and commits both the accepted invite and this relation.
+        await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken,
+            PostgresAdvisoryLocks.TrustedSupplierRelation(hostOrgId, supplierOrgId));
+        var relations = db.TrustedSuppliers
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(t => t.OrgId == hostOrgId);
+        var previous = await db.TrustedSuppliers
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter, AppDbContext.TrustedSupplierActiveFilter])
+            .Where(t => t.OrgId == hostOrgId && t.SupplierOrgId == supplierOrgId)
+            .OrderBy(t => t.RemovedAt != null).ThenBy(t => t.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (previous is not null)
+        {
+            if (previous.RemovedAt is not null)
+            {
+                previous.RemovedAt = null;
+                previous.AssignedPropertyIds = invite.AssignedPropertyIds?.Distinct().ToList() ?? [];
+                previous.VisibleInMarketplace = false;
+            }
+            return;
+        }
+
+        var hostOrigin = invite.HostOriginAtInvitation ?? !await db.SupplierProfiles.AnyAsync(p => p.OrgId == supplierOrgId &&
+            (p.GuestPortalMarketplaceFirstPublishedAt <= invite.CreatedAt ||
+             (p.GuestPortalMarketplaceFirstPublishedAt == null && p.GuestPortalMarketplaceEnabled)), cancellationToken);
+        var lastPriority = await relations.MaxAsync(t => (int?)t.Priority, cancellationToken);
+        db.TrustedSuppliers.Add(new TrustedSupplier
+        {
+            OrgId = hostOrgId,
+            SupplierOrgId = supplierOrgId,
+            HostOrigin = hostOrigin,
+            AssignedPropertyIds = invite.AssignedPropertyIds?.Distinct().ToList() ?? [],
+            Priority = (lastPriority ?? -1) + 1,
+            CreatedAt = DateTime.UtcNow,
+        });
     }
 
     public async Task<SupplierClaimResult> ClaimAsync(SupplierClaim claim, CancellationToken cancellationToken = default)
@@ -702,26 +789,45 @@ public partial class SupplierService(
         return count;
     }
 
-    public async Task<IReadOnlyList<SupplierProfile>> GetActiveByComuneAsync(
+    public Task<IReadOnlyList<SupplierProfile>> GetActiveByComuneAsync(
         ComuneTarget target,
         string? category,
-        CancellationToken cancellationToken = default)
-    {
-        // Filter by category code (SU-03). An unknown code is an error (422), not an empty list that hides the mistake;
-        // a supplier matches only when it declared the code (no categories = no match).
-        var categoryCode = string.IsNullOrWhiteSpace(category) ? null : ServiceCategories.Require(category);
+        CancellationToken cancellationToken = default) =>
+        GetActiveByComuniAsync([target], category, cancellationToken);
 
-        var active = await db.SupplierProfiles
+    public async Task<PropertySupplierChoices> GetActiveForPropertyAsync(Guid hostOrgId, Guid propertyId,
+        IReadOnlyCollection<ComuneTarget> targets, string? category, CancellationToken cancellationToken = default)
+    {
+        var visible = await ActiveCoveringAsync(SupplierServiceCatalogService.SuppliersForProperty(db, hostOrgId, propertyId),
+            targets, category, cancellationToken);
+        var ids = visible.Select(s => s.OrgId).ToArray();
+        var hostOrigin = await SupplierServiceCatalogService.HostOriginSupplierIds(db, hostOrgId)
+            .Where(id => ids.Contains(id)).ToHashSetAsync(cancellationToken);
+        return new PropertySupplierChoices(visible, hostOrigin);
+    }
+
+    public Task<IReadOnlyList<SupplierProfile>> GetActiveByComuniAsync(
+        IReadOnlyCollection<ComuneTarget> targets,
+        string? category,
+        CancellationToken cancellationToken = default) =>
+        ActiveCoveringAsync(db.SupplierProfiles.Where(sp => sp.GuestPortalMarketplaceEnabled), targets, category, cancellationToken);
+
+    private async Task<IReadOnlyList<SupplierProfile>> ActiveCoveringAsync(IQueryable<SupplierProfile> profiles,
+        IReadOnlyCollection<ComuneTarget> targets, string? category, CancellationToken cancellationToken)
+    {
+        // An unknown category remains a 422, including when there are no service areas.
+        var categoryCode = string.IsNullOrWhiteSpace(category) ? null : ServiceCategories.Require(category);
+        if (targets.Count == 0)
+            return [];
+
+        var active = await profiles.AsNoTracking()
             .Where(sp => sp.Status == SupplierStatus.Active)
             .ToListAsync(cancellationToken);
-
-        // By ISTAT code when the comune is known (SU-04): the supplier's chosen comuni, and what it wrote before resolved
-        // against the official list; by the written name only when the comune cannot be resolved.
-        var inComune = await comuneMatcher.FilterAsync(active, target, cancellationToken);
+        var covering = await comuneMatcher.FilterAnyAsync(active, targets, cancellationToken);
 
         return categoryCode is null
-            ? inComune.ToList()
-            : inComune.Where(sp => DeserializeStrings(sp.CategoriesJson).Contains(categoryCode, StringComparer.Ordinal)).ToList();
+            ? covering
+            : covering.Where(sp => DeserializeStrings(sp.CategoriesJson).Contains(categoryCode, StringComparer.Ordinal)).ToList();
     }
 
     public async Task<IReadOnlyList<UnmappedServiceCategory>> GetUnmappedCategoriesAsync(CancellationToken cancellationToken = default)
@@ -808,10 +914,11 @@ public partial class SupplierService(
             comuneCode = comune.IstatCode;
 
         // Invites created before SU-01 (no token hash) can no longer be accepted, and a revoked one (SU-12) does not work
-        // anymore: neither blocks a new one.
+        // anymore: neither blocks a new one. Nor does the invite of a host (#977), which is the host's.
         var existing = await db.SupplierInviteRecords
             .FirstOrDefaultAsync(
-                i => i.Email == email && i.TokenHash != null && !i.IsUsed && i.RevokedAt == null && i.ExpiresAt > DateTime.UtcNow,
+                i => i.Email == email && i.InvitedByOrgId == null && i.TokenHash != null && !i.IsUsed && i.RevokedAt == null
+                    && i.ExpiresAt > DateTime.UtcNow,
                 cancellationToken);
 
         if (existing is not null)
@@ -823,34 +930,150 @@ public partial class SupplierService(
         if (await IsSupplierEmailTakenAsync(email, cancellationToken))
             throw SupplierEmailTaken();
 
-        // The token only travels in the email; the database keeps its hash (A4-04).
-        var token = SupplierInviteTokens.Generate();
         var invite = new SupplierInviteRecord
         {
             Email = email,
-            TokenHash = SupplierInviteTokens.Hash(token),
             ComuneCode = comuneCode,
             CategoriesJson = categoryCodes is not null
                 ? JsonSerializer.Serialize(categoryCodes, JsonOpts)
                 : null,
             Message = message,
-            ExpiresAt = DateTime.UtcNow.Add(SupplierInviteTokens.Validity),
         };
+        return await IssueInviteAsync(
+            invite, comune?.Name ?? await ResolveComuneNameAsync(comuneCode, cancellationToken), cancellationToken);
+    }
+
+    public async Task<SupplierInvite> CreateTrustedSupplierInviteAsync(
+        Guid hostOrgId,
+        string email,
+        IReadOnlyCollection<Guid> propertyIds,
+        CancellationToken cancellationToken = default,
+        SupplierInviteIdentity? identity = null)
+    {
+        email = email.Trim();
+        var assigned = propertyIds.Distinct().ToList();
+        await using var transaction = await LockHostInviteAsync(hostOrgId, email, cancellationToken);
+
+        // One pending invite per host and email; an admin invite, or another host's, does not block it.
+        var duplicate = await db.SupplierInviteRecords.AnyAsync(
+            i => i.Email.ToLower() == email.ToLower() && i.InvitedByOrgId == hostOrgId && (i.TokenHash != null || i.IdentityReviewJson != null) && !i.IsUsed && i.RevokedAt == null
+                && i.ExpiresAt > DateTime.UtcNow,
+            cancellationToken);
+        if (duplicate)
+            throw new DomainConflictException(
+                SupplierAdminErrorCodes.DuplicateInvite, SupplierAdminErrorCodes.DuplicateInviteMessageKey);
+
+        var (comuneCode, comuneName) = await ResolveHostInviteComuneAsync(hostOrgId, assigned, cancellationToken);
+        var supplied = NormalizeIdentity(identity);
+        var matches = await FindIdentityMatchesAsync(email, supplied, cancellationToken);
+        var known = matches.SingleOrDefault(x => x.EmailMatch);
+        var invite = new SupplierInviteRecord
+        {
+            Email = email,
+            ComuneCode = comuneCode,
+            InvitedByOrgId = hostOrgId,
+            HostOriginAtInvitation = known?.Published != true,
+            IdentifiedSupplierOrgId = known?.Id,
+            AssignedPropertyIds = assigned.Count == 0 ? null : assigned,
+        };
+        if (matches.Any(x => !x.EmailMatch) || known != null &&
+            ((supplied.VatNumber != null && known.HasVat && !known.VatMatch) ||
+             (supplied.FiscalCode != null && known.HasFiscal && !known.FiscalMatch) ||
+             (supplied.Phone != null && known.HasPhone && !known.PhoneMatch)))
+        {
+            invite.IdentityReviewJson = JsonSerializer.Serialize(new ReviewEvidence(supplied, matches), JsonOpts);
+            invite.ExpiresAt = DateTime.UtcNow.Add(SupplierInviteTokens.Validity);
+            db.SupplierInviteRecords.Add(invite);
+            await db.SaveChangesAsync(cancellationToken);
+            if (transaction != null) await transaction.CommitAsync(cancellationToken);
+            return new SupplierInvite(invite.Id, invite.ExpiresAt);
+        }
+        return await IssueInviteAsync(invite, comuneName, cancellationToken, transaction);
+    }
+
+    /// <summary>
+    /// Gives <paramref name="invite"/> its link token and expiry, saves it and queues its email: the same for the invites of
+    /// admins and hosts. The token only travels in the email; the database keeps its hash (A4-04).
+    /// </summary>
+    private async Task<SupplierInvite> IssueInviteAsync(
+        SupplierInviteRecord invite,
+        string? comuneName,
+        CancellationToken cancellationToken,
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null)
+    {
+        var token = SupplierInviteTokens.Generate();
+        invite.TokenHash = SupplierInviteTokens.Hash(token);
+        invite.ExpiresAt = DateTime.UtcNow.Add(SupplierInviteTokens.Validity);
 
         // Rendered before saving: a missing App:PublicSiteBaseUrl is a configuration error, not an invite with a wrong link.
-        var inviteEmail = BuildInviteEmail(invite, token, comune?.Name ?? await ResolveComuneNameAsync(comuneCode, cancellationToken));
+        var inviteEmail = BuildInviteEmail(invite, token, comuneName);
 
-        db.SupplierInviteRecords.Add(invite);
+        if (db.Entry(invite).State == EntityState.Detached)
+            db.SupplierInviteRecords.Add(invite);
         await db.SaveChangesAsync(cancellationToken);
 
+        if (transaction != null)
+            await transaction.CommitAsync(cancellationToken);
         if (!emailQueue.Enqueue(invite.Email, inviteEmail, EmailTemplates.Names.SupplierInvite))
             logger.LogWarning("Supplier invite {InviteId} created but its email was not queued", invite.Id);
 
         logger.LogInformation(
-            "Admin invite {InviteId} created for {MaskedEmail}, expires {ExpiresAt}",
-            invite.Id, LogRedaction.MaskEmail(email), invite.ExpiresAt);
+            "Supplier invite {InviteId} created for {MaskedEmail} by {Inviter}, expires {ExpiresAt}",
+            invite.Id,
+            LogRedaction.MaskEmail(invite.Email),
+            invite.InvitedByOrgId is Guid hostOrgId ? $"org {hostOrgId}" : "an admin",
+            invite.ExpiresAt);
         return new SupplierInvite(invite.Id, invite.ExpiresAt);
     }
+
+    /// <summary>
+    /// The comune of a host's invite (#977), from its properties, the assigned ones first and then the oldest: the first ISTAT
+    /// code they store, else the first city the official list knows, else the first city as written (a place outside the
+    /// list, abroad for instance), as an invite created before the list kept it. 422
+    /// <c>trusted_supplier_invite_comune_missing</c> when no property names a place.
+    /// </summary>
+    private async Task<(string Code, string? Name)> ResolveHostInviteComuneAsync(
+        Guid hostOrgId,
+        IReadOnlyCollection<Guid> assigned,
+        CancellationToken cancellationToken)
+    {
+        var properties = (await db.Properties.AsNoTracking()
+                .Where(p => p.OrgId == hostOrgId)
+                .OrderBy(p => p.CreatedAt)
+                .Select(p => new { p.Id, p.ComuneIstatCode, p.City })
+                .ToListAsync(cancellationToken))
+            .OrderBy(p => assigned.Contains(p.Id) ? 0 : 1)
+            .ToList();
+
+        var istatCode = properties
+            .Select(p => p.ComuneIstatCode?.Trim())
+            .FirstOrDefault(code => !string.IsNullOrEmpty(code));
+        if (istatCode is not null)
+            return (istatCode, (await comuneDirectory.FindByIstatCodeAsync(istatCode, activeOnly: false, cancellationToken))?.Name);
+
+        var cities = properties
+            .Select(p => p.City?.Trim() ?? string.Empty)
+            .Where(city => city.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (cities.Count > 0 && await comuneDirectory.IsAvailableAsync(cancellationToken))
+        {
+            var listed = await comuneDirectory.ResolveAsync(cities, cancellationToken);
+            foreach (var city in cities)
+            {
+                if (listed.TryGetValue(city, out var comune) && comune.IsActive)
+                    return (comune.IstatCode, comune.Name);
+            }
+        }
+
+        var asWritten = cities.FirstOrDefault(city => city.Length <= HostInviteComuneMaxLength);
+        return asWritten is not null
+            ? (asWritten, null)
+            : throw new DomainRuleException("trusted_supplier_invite_comune_missing", "TrustedSupplierInviteComuneMissing");
+    }
+
+    /// <summary>The length of <see cref="SupplierInviteRecord.ComuneCode"/>.</summary>
+    private const int HostInviteComuneMaxLength = 20;
 
     public async Task<Guid?> GetOrProvisionSupplierOrgIdAsync(
         string userId,

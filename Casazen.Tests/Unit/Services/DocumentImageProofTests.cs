@@ -23,7 +23,7 @@ public class DocumentImageProofTests
         // Arrange: Create a Swiss municipality in Ticino (e.g., Lugano)
         var ticinoMunicipality = new SwissMunicipality
         {
-            MunicipalityCode = "5113", // Official BFS code for Lugano
+            MunicipalityCode = "5192", // Official BFS code for Lugano
             CantonCode = TicinoCantonCode,
             OfficialName = "Lugano",
         };
@@ -83,7 +83,7 @@ public class DocumentImageProofTests
         // This test proves the entity model allows the service layer to enforce RL 942.120 art. 6.
 
         Assert.Equal("TI", TicinoCantonCode);
-        Assert.Equal("5113", ticinoProperty.SwissMunicipalityCode);
+        Assert.Equal("5192", ticinoProperty.SwissMunicipalityCode);
         Assert.Equal(TicinoCantonCode, ticinoMunicipality.CantonCode);
 
         // The service layer MUST implement:

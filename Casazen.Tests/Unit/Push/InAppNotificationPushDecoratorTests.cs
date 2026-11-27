@@ -62,6 +62,21 @@ public class InAppNotificationPushDecoratorTests
         new(title, body, type, bookingId, PushRoutes.Booking(BookingId), serviceRequestId);
 
     [Fact]
+    public void Enqueue_AUserAudience_ForwardsThePushAndQueuesNoNotification()
+    {
+        // NF-65: the counter of the bell is a channel the user may have switched off; whoever pushes to one user writes its notification itself.
+        var rig = new Rig();
+        var payload = Payload(type: PushTypes.OtaMessage, bookingId: null);
+        var audience = PushAudience.User(Guid.NewGuid(), "auth0|host");
+
+        var answer = rig.Decorator.Enqueue("ota-msg:x:auth0|host", audience, payload);
+
+        Assert.True(answer);
+        rig.Inner.Verify(i => i.Enqueue("ota-msg:x:auth0|host", audience, payload), Times.Once);
+        Assert.Empty(rig.Jobs);
+    }
+
+    [Fact]
     public void Enqueue_ForwardsThePushAndQueuesTheNotificationWithTheSameKeyAndAudience()
     {
         var rig = new Rig();
@@ -245,6 +260,53 @@ public class InAppNotificationPushDecoratorTests
             [typeof(PushDeliveryJob), typeof(InAppNotificationJob)],
             jobs.Select(j => j.Type));
         Assert.Equal("booking:x:new", jobs.Select(j => j.Args[0]).Distinct().Single());
+    }
+
+    [Fact]
+    public void AddCasazenPush_ThePlatformStaff_GetsTheBellAboutTheRequest_AndNoPushOnAPhone()
+    {
+        // «Fallo per me» (14/11/2026): the app has no screen of the staff, so no job for the phones; the bell is queued, about the request.
+        using var provider = Wire(out var jobs);
+        using var scope = provider.CreateScope();
+        var push = scope.ServiceProvider.GetRequiredService<IPushNotificationService>();
+
+        var queued = push.Enqueue(
+            PushDeliveryKeys.AssistRequested(RequestId),
+            PushAudience.PlatformStaff(RequestId),
+            new PushNotificationPayload(string.Empty, string.Empty, PushTypes.AssistRequested, null, string.Empty));
+
+        Assert.False(queued);
+        var job = Assert.Single(jobs);
+        Assert.Equal(typeof(InAppNotificationJob), job.Type);
+        var notification = Assert.IsType<QueuedInAppNotification>(job.Args[1]);
+        Assert.Equal(
+            (PushAudienceKind.PlatformStaff, RequestId, (Guid?)RequestId, PushTypes.AssistRequested),
+            (notification.AudienceKind, notification.AudienceId, notification.EntityId, notification.Type));
+    }
+
+    [Theory]
+    [InlineData(PushTypes.DomainVerified)]
+    [InlineData(PushTypes.OwnerLoginReady)]
+    [InlineData(PushTypes.OwnerLoginFailed)]
+    public void AddCasazenPush_TheAdministratorsOfAnOrg_GetTheBellAboutTheOrg_AndNoPushOnAPhone(string type)
+    {
+        // The domain of an org (E40/F01/US02/T01): the app has no screen of it, so no job for the phones; the bell is queued, about the org, whatever the text and the route of the payload.
+        using var provider = Wire(out var jobs);
+        using var scope = provider.CreateScope();
+        var push = scope.ServiceProvider.GetRequiredService<IPushNotificationService>();
+
+        var queued = push.Enqueue(
+            PushDeliveryKeys.DomainVerified(RequestId, Now),
+            PushAudience.OrgAdmins(RequestId),
+            new PushNotificationPayload("Dominio verificato", "Il tuo dominio è attivo.", type, null, "/app/short-rent/settings/domain"));
+
+        Assert.False(queued);
+        var job = Assert.Single(jobs);
+        Assert.Equal(typeof(InAppNotificationJob), job.Type);
+        var notification = Assert.IsType<QueuedInAppNotification>(job.Args[1]);
+        Assert.Equal(
+            (PushAudienceKind.OrgAdmins, RequestId, (Guid?)RequestId, type),
+            (notification.AudienceKind, notification.AudienceId, notification.EntityId, notification.Type));
     }
 
     [Fact]

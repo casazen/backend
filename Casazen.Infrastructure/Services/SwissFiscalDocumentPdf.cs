@@ -1,0 +1,312 @@
+using System.Globalization;
+using Casazen.Core.Documents;
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Regulatory;
+using Casazen.Core.Services;
+using DocumentKind = Casazen.Core.Entities.Enums.FiscalDocumentKind;
+
+namespace Casazen.Infrastructure.Services;
+
+/// <summary>
+/// The Swiss layout of a fiscal document (NF-87, NF-113, MWSTG art. 26, E11/F01/US01/T03), chosen by <see cref="FiscalDocumentPdfs"/> when the issuer of
+/// the document is in Switzerland (its snapshot). It carries the data of art. 26: the issuer with its UID and the suffix «IVA» when it is registered, the
+/// recipient, the date and the number, the period of the stay and the property, the service line by line with its VAT rate, the VAT per rate and the
+/// total in CHF; for an issuer that is not registered, a receipt without VAT and the note «Non soggetto all'IVA».
+/// </summary>
+/// <remarks>
+/// <list type="bullet">
+/// <item><b>Nothing Italian.</b> No courtesy copy of an electronic invoice, no nature code, no stamp duty, no SDI, no Italian fiscal code: none of them
+/// exists for a Swiss document.</item>
+/// <item><b>Stored, never recomputed.</b> The lines are the stored ones (net of VAT), the VAT per rate is the stored VAT of the lines
+/// (<see cref="FiscalDocumentTotals.SummaryOf"/>), the totals are the document's.</item>
+/// <item><b>Swiss figures.</b> Amounts with the it-CH culture and its apostrophe as the thousands separator (<c>1'234.50</c>), pinned here so every platform
+/// writes the same (some write U+2019 instead).</item>
+/// <item><b>Payment.</b> «Pagata tramite il portale» when the portal collected, «Pagata» when the money is collected, «Da incassare» otherwise: never the
+/// name of a portal or of a supplier. When the portal left a tourist tax to the host (<see cref="FiscalDocumentPortalCollection"/>, FIX/BE-PORTAL-TAXLINE) the document says
+/// «Pagata tramite il portale: CHF 450.00» for what the portal collected and «Tassa di soggiorno da riscuotere in struttura: CHF 12.00» for the tax, whose line carries
+/// the same note: the total is unchanged. An owner invoice says instead whether the statement offsets it, and when it leaves an amount to pay it ends with the
+/// QR-bill of that amount (E14/F01/US01/T02).</item>
+/// <item><b>Language.</b> The labels in the language asked for (the guest's; Italian by default), from the same resource files as the Italian layout.</item>
+/// </list>
+/// </remarks>
+public static class SwissFiscalDocumentPdf
+{
+    /// <summary>The figures of a Swiss document: the it-CH culture with the apostrophe as the thousands separator and the point as the decimal one.</summary>
+    private static readonly NumberFormatInfo SwissNumbers = CreateSwissNumbers();
+
+    /// <summary>What a line outside the VAT shows in the column of the rate.</summary>
+    private const string OutsideVat = "—";
+
+    public static PdfDocumentContent Pdf(
+        FiscalDocument document,
+        FiscalIssuerSnapshot issuer,
+        IDocumentTexts texts,
+        string language,
+        FiscalDocument? credited = null,
+        string? propertyName = null,
+        OwnerInvoiceSettlement? settlement = null)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(issuer);
+        ArgumentNullException.ThrowIfNull(texts);
+
+        var registered = issuer.VatRegistered && document.Kind != DocumentKind.Receipt;
+        var currency = document.Currency;
+        var kind = FiscalDocumentPdfs.KindLabel(document.Kind, texts, language);
+        var title = document.Number is { Length: > 0 } number
+            ? texts.Get("FiscalDocPdfTitle", language, kind, number)
+            : texts.Get("FiscalDocPdfTitleDraft", language, kind);
+
+        var blocks = new List<PdfBlock>();
+        if (document.IssueDate is { } issued)
+            blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfIssueDate", language, DocumentLanguages.Day(issued))));
+        if (credited is not null)
+        {
+            blocks.Add(new PdfParagraph(texts.Get(
+                "FiscalDocPdfCredits",
+                language,
+                credited.Number ?? string.Empty,
+                credited.IssueDate is { } day ? DocumentLanguages.Day(day) : string.Empty)));
+        }
+
+        blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfIssuer", language), 3));
+        blocks.Add(new PdfParagraph(string.Join('\n', IssuerLines(issuer, texts, language))));
+        blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfRecipient", language), 3));
+        blocks.Add(new PdfParagraph(string.Join('\n', RecipientLines(document))));
+
+        var stay = StayLines(document, texts, language, propertyName).ToList();
+        if (stay.Count > 0)
+            blocks.Add(new PdfParagraph(string.Join('\n', stay)));
+
+        // The tourist tax a portal left to the host is not declared paid (FIX/BE-PORTAL-TAXLINE): its line says so, and so does the payment below.
+        var split = FiscalDocumentPortalCollection.SplitOf(document);
+        var lines = document.Lines.OrderBy(l => l.LineNumber).ToList();
+        var columns = new List<PdfTableColumn>
+        {
+            new(texts.Get("FiscalDocPdfColDescription", language), 2.8),
+            new(texts.Get("FiscalDocPdfColQuantity", language), 0.8, PdfCellAlignment.Right),
+            new(texts.Get("FiscalDocPdfColUnitPrice", language, currency), 1.2, PdfCellAlignment.Right),
+            new(texts.Get("FiscalDocPdfColTotal", language, currency), 1.2, PdfCellAlignment.Right),
+        };
+        if (registered)
+            columns.Add(new PdfTableColumn(texts.Get("FiscalDocPdfChColRate", language), 0.8, PdfCellAlignment.Right));
+
+        blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfLinesHeading", language)));
+        blocks.Add(new PdfTable(
+            columns,
+            lines.Select(l =>
+                {
+                    var cells = new List<string>
+                    {
+                        FiscalDocumentPdfs.WithToCollectNote(split, l, Description(l, texts, language), texts, language, "FiscalDocLineToCollectNoteCh"),
+                        l.Quantity.ToString("0.##", SwissNumbers),
+                        Money(l.UnitPrice),
+                        Money(l.TotalPrice),
+                    };
+                    if (registered)
+                        cells.Add(l.VatRatePercent > 0m ? Rate(l.VatRatePercent) : OutsideVat);
+                    return (IReadOnlyList<string>)cells;
+                })
+                .ToList()));
+
+        var totals = new List<IReadOnlyList<string>>();
+        if (registered)
+        {
+            // The VAT of each rate: the base, the rate and the VAT, the stored VAT of the lines of that rate.
+            var summary = VatSummaryOf(document);
+            if (summary.Count > 0)
+            {
+                blocks.Add(new PdfHeading(texts.Get("FiscalDocPdfSummaryHeading", language), 3));
+                blocks.Add(new PdfTable(
+                    [
+                        new PdfTableColumn(texts.Get("FiscalDocPdfChColRate", language), 1.0),
+                        new PdfTableColumn(texts.Get("FiscalDocPdfColTaxable", language, currency), 1.2, PdfCellAlignment.Right),
+                        new PdfTableColumn(texts.Get("FiscalDocPdfColTax", language, currency), 1.2, PdfCellAlignment.Right),
+                    ],
+                    summary.Select(s => (IReadOnlyList<string>)new[] { Rate(s.VatRatePercent), Money(s.TaxableAmount), Money(s.Tax) }).ToList()));
+            }
+
+            totals.Add([texts.Get("FiscalDocPdfTaxableBase", language), Money(document.TaxableBase)]);
+            totals.Add([texts.Get("FiscalDocPdfVatAmount", language), Money(document.VatAmount)]);
+        }
+
+        totals.Add([texts.Get("FiscalDocPdfTotal", language), Money(document.Total)]);
+        blocks.Add(new PdfTable(
+            [
+                new PdfTableColumn(texts.Get("FiscalDocPdfColItem", language), 2.4),
+                new PdfTableColumn(texts.Get("FiscalDocPdfColAmount", language, currency), 1.2, PdfCellAlignment.Right),
+            ],
+            totals));
+
+        if (!registered)
+            blocks.Add(new PdfParagraph(texts.Get("FiscalDocPdfChNotVatRegistered", language)));
+        if (document.Kind != DocumentKind.CreditNote && document.Purpose != FiscalDocumentPurpose.OwnerInvoice)
+            blocks.AddRange(PaymentBlocks(document, split, texts, language));
+
+        // An issued owner invoice that leaves an amount for the owner to pay ends with the QR-bill of that amount (E14/F01/US01/T02); offset in the statement,
+        // or without an account of the agency for a QR-bill, it says so instead.
+        PdfSwissQrBill? qrBill = null;
+        if (document.Purpose == FiscalDocumentPurpose.OwnerInvoice && document.Kind != DocumentKind.CreditNote && settlement is not null)
+        {
+            if (settlement.State == OwnerInvoiceSettlements.ToPay)
+                qrBill = QrBillOf(document, issuer, settlement.AmountDue, texts, language);
+            blocks.AddRange(FiscalDocumentPdfs.OwnerInvoicePaymentLines(document, settlement, texts, language, Money(settlement.AmountDue), qrBill is not null));
+        }
+
+        return new PdfDocumentContent(title, blocks)
+        {
+            Language = DocumentLanguages.Normalize(language) == DocumentLanguages.English ? "en-GB" : "it-CH",
+            Watermark = document.Status == FiscalDocumentStatus.Draft ? texts.Get("FiscalDocPdfDraftWatermark", language) : null,
+            QrBill = qrBill,
+        };
+    }
+
+    /// <summary>
+    /// The QR-bill of <paramref name="amountDue"/> of an owner invoice (E14/F01/US01/T02): the account the snapshot of the issuer kept (a QR-IBAN with a QR
+    /// reference made from the document, else an IBAN with a creditor reference made from its number), the agency as the creditor, the owner as the debtor
+    /// when its structured address is complete (else a box to fill in), the message «Fattura &lt;numero&gt;» (<see cref="SwissQrBill.MessageOf"/>, always in Italian,
+    /// as the guidelines leave the language of the message free and the brief names it: the payload of one document never changes with the language of the
+    /// request, only the headings of the payment part do). <c>null</c> when the issuer kept no account or the
+    /// data are not a QR-bill (a currency other than CHF and EUR, an incomplete address of the agency): the invoice then says the payment is as the manager says.
+    /// </summary>
+    internal static PdfSwissQrBill? QrBillOf(FiscalDocument document, FiscalIssuerSnapshot issuer, decimal amountDue, IDocumentTexts texts, string language)
+    {
+        if (string.IsNullOrWhiteSpace(issuer.QrBillAccount) || string.IsNullOrWhiteSpace(document.Number))
+            return null;
+
+        var account = issuer.QrBillAccount;
+        var creditor = new SwissQrBillAddress(
+            issuer.DisplayName, issuer.AddressStreet, issuer.AddressCivic, issuer.PostalCode ?? string.Empty, issuer.City ?? string.Empty, issuer.CountryCode);
+        var debtor = !string.IsNullOrWhiteSpace(document.RecipientName) && !string.IsNullOrWhiteSpace(document.RecipientPostalCode)
+                     && !string.IsNullOrWhiteSpace(document.RecipientCity) && document.RecipientCountryCode is { Length: 2 } country
+            ? new SwissQrBillAddress(
+                document.RecipientName, document.RecipientAddressStreet, document.RecipientAddressCivic, document.RecipientPostalCode, document.RecipientCity, country)
+            : null;
+        var qrAccount = IssuerBankAccounts.IsQrIban(account);
+        var data = new SwissQrBillData(
+            account,
+            creditor,
+            amountDue,
+            document.Currency,
+            debtor,
+            qrAccount ? SwissQrBill.ReferenceQrr : SwissQrBill.ReferenceScor,
+            qrAccount ? SwissQrBill.QrrReferenceOf(document.Id) : SwissQrBill.ScorReference(document.Number),
+            SwissQrBill.MessageOf(document.Number));
+        return SwissQrBill.Part(data, LabelsOf(texts, language));
+    }
+
+    /// <summary>The headings of the receipt and of the payment part in the language of the document.</summary>
+    private static PdfSwissQrBillLabels LabelsOf(IDocumentTexts texts, string language) => new(
+        texts.Get("QrBillReceipt", language),
+        texts.Get("QrBillPaymentPart", language),
+        texts.Get("QrBillAccountPayableTo", language),
+        texts.Get("QrBillReference", language),
+        texts.Get("QrBillAdditionalInformation", language),
+        texts.Get("QrBillPayableBy", language),
+        texts.Get("QrBillPayableByNameAddress", language),
+        texts.Get("QrBillCurrency", language),
+        texts.Get("QrBillAmount", language),
+        texts.Get("QrBillAcceptancePoint", language),
+        texts.Get("QrBillSeparate", language));
+
+    /// <summary>An amount of a Swiss document: two decimals, the apostrophe between the thousands (<c>1'234.50</c>).</summary>
+    public static string Money(decimal amount) => amount.ToString("N2", SwissNumbers);
+
+    /// <summary>A VAT rate of a Swiss document: <c>3.8%</c>, <c>8.1%</c>.</summary>
+    public static string Rate(decimal percent) => percent.ToString("0.##", SwissNumbers) + "%";
+
+    /// <summary>The rates of the document with their base and their stored VAT; the lines outside the VAT (the tourist tax) are not a rate.</summary>
+    internal static IReadOnlyList<FiscalDocumentVatSummary> VatSummaryOf(FiscalDocument document) =>
+        FiscalDocumentTotals.SummaryOf(FiscalDocumentService.AmountsOf(document), document.VatAmount)
+            .Where(s => s.VatRatePercent > 0m)
+            .ToList();
+
+    private static IEnumerable<string> IssuerLines(FiscalIssuerSnapshot issuer, IDocumentTexts texts, string language)
+    {
+        yield return issuer.DisplayName;
+        var street = string.Join(' ', new[] { issuer.AddressStreet, issuer.AddressCivic }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (street.Length > 0)
+            yield return street;
+        var city = string.Join(' ', new[] { issuer.PostalCode, issuer.City }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (city.Length > 0)
+            yield return $"{city} {issuer.CountryCode}".Trim();
+
+        // MWSTG art. 26: the UID followed by the suffix of the VAT register in the language of the document.
+        if (issuer.VatRegistered && !string.IsNullOrWhiteSpace(issuer.SwissVatNumber))
+            yield return texts.Get("FiscalDocPdfChVatNumber", language, issuer.SwissVatNumber);
+
+        // An owner who issues in Switzerland (⚖ C1, E17/F01/US01/T02): the co-owners and the agency it issues through.
+        foreach (var line in FiscalDocumentPdfs.OwnerIssuerLines(issuer, texts, language))
+            yield return line;
+    }
+
+    /// <summary>The recipient: the name, then the address when it has one. No Italian fiscal code or VAT number.</summary>
+    private static IEnumerable<string> RecipientLines(FiscalDocument document)
+    {
+        if (!string.IsNullOrWhiteSpace(document.RecipientName))
+            yield return document.RecipientName;
+        var street = string.Join(' ', new[] { document.RecipientAddressStreet, document.RecipientAddressCivic }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (street.Length > 0)
+            yield return street;
+        var city = string.Join(' ', new[] { document.RecipientPostalCode, document.RecipientCity, document.RecipientCountryCode }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (city.Length > 0)
+            yield return city;
+    }
+
+    /// <summary>
+    /// The period of the stay (art. 26: the date or the period of the service) and the property, when the document has them; for an owner invoice the month of
+    /// the services of the property manager (E14/F01/US01/T01).
+    /// </summary>
+    private static IEnumerable<string> StayLines(FiscalDocument document, IDocumentTexts texts, string language, string? propertyName)
+    {
+        if (FiscalDocumentPdfs.OwnerInvoicePeriodLabel(document) is { } period)
+        {
+            yield return texts.Get("FiscalDocPdfOwnerPeriod", language, period);
+            yield break;
+        }
+
+        if (document.ServicePeriodFrom is { } from && document.ServicePeriodTo is { } to)
+            yield return texts.Get("FiscalDocPdfChStayPeriod", language, DocumentLanguages.Day(from), DocumentLanguages.Day(to));
+        if (!string.IsNullOrWhiteSpace(propertyName))
+            yield return texts.Get("FiscalDocPdfChProperty", language, propertyName.Trim());
+    }
+
+    /// <summary>The description of a line; the tourist tax is always labelled as the tax outside the VAT, in the language of the document.</summary>
+    private static string Description(FiscalDocumentLine line, IDocumentTexts texts, string language) =>
+        line.LineType == FiscalLineType.TouristTax ? texts.Get("FiscalDocLineTouristTaxCh", language) : line.Description;
+
+    /// <summary>The payment state from who collected: the portal, the money collected, or still to collect. Never the name of a portal.</summary>
+    private static string PaymentLabel(FiscalDocument document, IDocumentTexts texts, string language) =>
+        document.PaymentChannel == FiscalPaymentChannel.Portal ? texts.Get("FiscalDocPdfChPaidPortal", language)
+        : document.PaymentState == FiscalDocumentPaymentState.Paid ? texts.Get("FiscalDocPdfChPaid", language)
+        : texts.Get("FiscalDocPdfChToCollect", language);
+
+    /// <summary>
+    /// The payment of the document, one bold paragraph as it always was; the document of a booking of a portal that left a tourist tax to the host (<paramref name="split"/>,
+    /// FIX/BE-PORTAL-TAXLINE) says instead what the portal collected and, in a paragraph of its own, the tax still to collect at the property: never «paid through the portal»
+    /// for the whole total. A document that bills nothing but the tax has only the second.
+    /// </summary>
+    private static IEnumerable<PdfBlock> PaymentBlocks(FiscalDocument document, PortalCollectionSplit? split, IDocumentTexts texts, string language)
+    {
+        if (split is null)
+        {
+            yield return new PdfParagraph(PaymentLabel(document, texts, language), Bold: true);
+            yield break;
+        }
+
+        if (split.PaidViaPortal > 0m)
+            yield return new PdfParagraph(texts.Get("FiscalDocPdfChPaidPortalPart", language, document.Currency, Money(split.PaidViaPortal)), Bold: true);
+
+        yield return new PdfParagraph(texts.Get("FiscalDocPdfChToCollectAtProperty", language, document.Currency, Money(split.ToCollectAtTheProperty)), Bold: true);
+    }
+
+    private static NumberFormatInfo CreateSwissNumbers()
+    {
+        var numbers = (NumberFormatInfo)CultureInfo.GetCultureInfo("it-CH").NumberFormat.Clone();
+        numbers.NumberGroupSeparator = "'";
+        numbers.NumberDecimalSeparator = ".";
+        numbers.NumberGroupSizes = [3];
+        return NumberFormatInfo.ReadOnly(numbers);
+    }
+}

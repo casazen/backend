@@ -37,7 +37,7 @@ public class UpdatePropertyRequest
     public string? Name { get; set; }
 
     /// <summary>Full description shown to guests (may be sent empty).</summary>
-    [MaxLength(2000, ErrorMessage = "PropertyDescriptionTooLong")]
+    [MaxLength(Casazen.Core.Services.ListingTextLimits.DescriptionMaxLength, ErrorMessage = "PropertyDescriptionTooLong")]
     public string? Description { get; set; }
 
     /// <summary>Street address of the property; when sent, not blank.</summary>
@@ -53,6 +53,10 @@ public class UpdatePropertyRequest
     /// <summary>Postal / ZIP code.</summary>
     [MaxLength(10, ErrorMessage = "PropertyPostalCodeTooLong")]
     public string? PostalCode { get; set; }
+
+    /// <summary>Country of an imported draft being reviewed. Other properties keep their current country.</summary>
+    [RegularExpression("^(IT|CH)$", ErrorMessage = "ValidationError")]
+    public string? Country { get; set; }
 
     /// <summary>
     /// ISTAT code (6 digits) of the comune, chosen from the official list (<c>GET /api/comuni</c>, SU-04); <c>null</c> or blank
@@ -70,6 +74,33 @@ public class UpdatePropertyRequest
             ComuneIstatCodeSent = true;
         }
     }
+
+    /// <summary>
+    /// The Swiss municipality of the property (E29/F01/US01/T02, NF-124): its BFS number from the official directory (<c>GET /api/swiss/localities</c>),
+    /// a text of one to four digits such as <c>"5192"</c> (Lugano); 400 <c>validation_error</c> otherwise. Only for a property in Switzerland (the
+    /// country after a correction of an imported draft in the same request): 422 <c>swiss_municipality_not_applicable</c> otherwise; checked against
+    /// the directory when it differs from the stored one (the number a form sends back is not checked again, as for the comune): 422
+    /// <c>swiss_municipality_unknown</c> / <c>swiss_places_unavailable</c>. <c>null</c> or empty clears it; leaving it out
+    /// keeps it. It is stored only when sent: the place the rules read without it (the one the postal code and the city give, <c>swissPlace</c> of
+    /// the record) is never stored by a save. A <c>city</c> or a <c>postalCode</c> changed <b>without</b> it clears the stored municipality, as for the
+    /// comune: the number no longer says where the property is; a corrected country clears it too.
+    /// </summary>
+    [RegularExpression(
+        Casazen.Core.Services.SwissPlaceErrorCodes.CodePattern,
+        ErrorMessage = Casazen.Core.Services.SwissPlaceErrorCodes.InvalidFormatMessageKey)]
+    public string? SwissMunicipalityCode
+    {
+        get;
+        set
+        {
+            field = value;
+            SwissMunicipalityCodeSent = true;
+        }
+    }
+
+    /// <summary>True when the body carries <see cref="SwissMunicipalityCode"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool SwissMunicipalityCodeSent { get; private set; }
 
     /// <summary>Geographic latitude in degrees, -90 to 90 (A2-33); more than 6 decimals are rounded.</summary>
     [Range(typeof(decimal), "-90", "90", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
@@ -171,6 +202,27 @@ public class UpdatePropertyRequest
             CinCodeSent = true;
         }
     }
+
+    /// <summary>
+    /// The «Numero identificativo LEAR / NO-LEAR» of the structure for the Ticino police portal (casazen/backend#979), e.g.
+    /// <c>NL-12345678</c>: spaces are ignored and the value is stored uppercase (see <c>TicinoStructureId</c>); <c>null</c> or blank clears
+    /// it; leaving it out keeps it.
+    /// </summary>
+    [MaxLength(40, ErrorMessage = Casazen.Core.Regulatory.TicinoStructureId.InvalidFormatMessageKey)]
+    [TicinoStructureId]
+    public string? TicinoStructureId
+    {
+        get;
+        set
+        {
+            field = value;
+            TicinoStructureIdSent = true;
+        }
+    }
+
+    /// <summary>True when the body carries <see cref="TicinoStructureId"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool TicinoStructureIdSent { get; private set; }
 
     /// <summary>
     /// IANA timezone identifier used for booking date calculations (e.g. <c>Europe/Rome</c>); unknown and Windows ids
@@ -347,6 +399,17 @@ public class UpdatePropertyRequest
         }
     }
 
+    /// <summary>Children (<c>No</c>, <c>OnRequest</c>, <c>Yes</c>): the structured rule the channels receive (NF-37); <c>null</c> clears the rule, leaving it out keeps it.</summary>
+    public ChildrenPolicy? ChildrenPolicy
+    {
+        get;
+        set
+        {
+            field = value;
+            ChildrenPolicySent = true;
+        }
+    }
+
     /// <summary>Quiet hours start, <c>HH:mm</c>; <c>null</c> clears it, leaving it out keeps it. Start and end are set together or cleared together (422 <c>property_quiet_hours_incomplete</c>).</summary>
     public TimeOnly? QuietHoursFrom
     {
@@ -417,6 +480,10 @@ public class UpdatePropertyRequest
     /// <summary>True when the body carries <see cref="PartiesPolicy"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool PartiesPolicySent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="ChildrenPolicy"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool ChildrenPolicySent { get; private set; }
 
     /// <summary>True when the body carries <see cref="QuietHoursFrom"/>, <c>null</c> included.</summary>
     [JsonIgnore]
@@ -504,6 +571,8 @@ public class UpdatePropertyRequest
             property.Timezone = Timezone.Trim();
         if (CinCodeSent)
             property.CinCode = CinCode;
+        if (TicinoStructureIdSent)
+            property.TicinoStructureId = Casazen.Core.Regulatory.TicinoStructureId.Normalize(TicinoStructureId);
         if (CancellationPolicyIdSent)
             property.CancellationPolicyId = CancellationPolicyId;
         if (CancellationFullRefundHours is { } fullHours)
@@ -538,6 +607,8 @@ public class UpdatePropertyRequest
             property.PetsPolicy = PetsPolicy;
         if (PartiesPolicySent)
             property.PartiesPolicy = PartiesPolicy;
+        if (ChildrenPolicySent)
+            property.ChildrenPolicy = ChildrenPolicy;
         if (QuietHoursFromSent)
             property.QuietHoursFrom = QuietHoursFrom;
         if (QuietHoursToSent)

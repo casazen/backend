@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
+using Casazen.Core.SiteProfile;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
@@ -67,6 +68,23 @@ public class PropertyListingTextController(
         return Ok(suggestion);
     }
 
+    /// <summary>Preview all seven listing fields in one of the fourteen supported languages. Nothing is saved.</summary>
+    [HttpPost("fields-suggestion")]
+    [AiRateLimit]
+    [RequestSizeLimit(MaxRequestBytes)]
+    public async Task<ActionResult<ListingTextSuggestion>> SuggestFields(
+        Guid id, [FromBody] ListingFieldsSuggestionRequest request, CancellationToken cancellationToken)
+    {
+        var (property, denied) = await AuthorizeAsync(id);
+        if (denied is not null)
+            return denied;
+        var language = ListingLanguages.Normalize(request.Language);
+        if (language is null)
+            return BadRequest(new ProblemDetails { Title = "Unsupported listing language", Status = 400 });
+        var photos = AiPhotos.Decode(request.Photos, ListingTextLimits.MaxPhotos);
+        return Ok(await listingText.SuggestFieldsAsync(property!, photos, language, request.Regenerate, cancellationToken));
+    }
+
     private async Task<(Property? Property, ActionResult? Denied)> AuthorizeAsync(Guid id)
     {
         var userId = User.FindFirst("sub")?.Value
@@ -99,5 +117,14 @@ public sealed class ListingTextSuggestionRequest
     public List<string> Photos { get; set; } = [];
 
     /// <summary>True for «Rigenera»: a new text even when one was written for the same data and photos a moment ago.</summary>
+    public bool Regenerate { get; set; }
+}
+
+public sealed class ListingFieldsSuggestionRequest
+{
+    [MaxLength(ListingTextLimits.MaxPhotos)]
+    public List<string> Photos { get; set; } = [];
+    [Required, MaxLength(2)]
+    public string Language { get; set; } = "it";
     public bool Regenerate { get; set; }
 }

@@ -28,6 +28,13 @@ using Microsoft.OpenApi.Models;
 
 using Stripe;
 
+if (args is ["--ensure-agency-test-meter", .. var modules])
+{
+    foreach (var module in modules.Length == 0 ? [AgencyUsagePricing.Base] : modules)
+        await AgencyTestMeter.EnsureAsync(module);
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Data Protection keys persisted in the database (not the ephemeral container disk): FD-07 / A9-04. Outside
@@ -84,6 +91,8 @@ builder.Services.AddCasazenOpenAccessConfiguration(builder.Configuration);
 
 // Services
 builder.Services.AddCasazenServices();
+builder.Services.AddDirectAlloggiati(builder.Environment.IsProduction() && builder.Configuration.GetValue<bool>("Alloggiati:DirectEnabled"));
+builder.Services.AddRoss1000Direct();
 builder.Services.AddScoped<IGuestService, GuestService>();
 builder.Services.AddScoped<IPropertyService, PropertyService>();
 builder.Services.AddScoped<IBookingService, BookingService>();
@@ -94,6 +103,10 @@ builder.Services.AddScoped<IWireTransferService, WireTransferService>();
 builder.Services.AddScoped<IWithholdingService, WithholdingService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddCasazenEmail(builder.Configuration, builder.Environment);
+// Fiscal documents of epic E06 (NF-81, NF-82): the invoice data of a booking and the issuer of the documents; every task of the epic registers in AddCasazenFiscalDocuments.
+builder.Services.AddCasazenFiscalDocuments(builder.Configuration);
+// The owner portal operations of feature E07/F07 (NF-111): calendar, owner stays and their background work; every task of the feature registers there.
+builder.Services.AddCasazenOwnerPortalOperations();
 // Push notifications queued on Hangfire, sent to Expo in batches, receipts read later: MO-04.
 builder.Services.AddCasazenPush(builder.Configuration);
 // Object storage (Supabase Storage via S3; filesystem only in Development/Testing): FD-07.
@@ -137,6 +150,70 @@ builder.Services.AddCasazenLongRentLeaseOperations(builder.Configuration);
 
 // OTA partner adapters with resilience patterns: registered only with Features:OtaPartnerApi on (D10, FD-20)
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
+
+// What the booking events start by themselves: the cleaning and special-request "To do", the alert of a booking from a channel (E08/F06)
+builder.Services.AddCasazenBookingOperations();
+
+// The tourist tax paid online in the guest check-in (epic E25, NF-119): the collection and the consumer of the booking events, behind Features:TouristTaxOnlinePayment.
+builder.Services.AddCasazenTouristTaxCollection();
+
+// Octorate connector (epic E02, ADR-023): its services, clients, handlers and jobs, all registered in AddCasazenOctorate.
+builder.Services.AddCasazenOctorate(builder.Configuration);
+
+// The guests of a stay written to the channel manager on their own, for the orgs that asked (epic E20, decision O1): the setting, the service and its consumer.
+builder.Services.AddCasazenOctorateGuestAutoSend();
+
+// The copy of the OTA conversations read from the channel manager (epic E05, feature F01, NF-62, NF-64): the sync service, its webhook handler,
+// the reconciliation jobs and the retention of the copy, all registered in AddMessageSync.
+builder.Services.AddMessageSync();
+
+// The hub of messages (epic E05, feature F02, NF-61, NF-64): one list and one thread model over the conversations of the channels and the direct
+// ones, and the proxy of the attachments, all registered in AddMessagesHub (the next tasks of the feature add theirs there).
+builder.Services.AddMessagesHub();
+
+// The check-in link of a stay with no e-mail address (epic E23, feature F01, NF-122): the portal chat, the contact of the guest and the host's To do, behind the flags
+// PortalChatCheckInLink and GuestContactInfo, all registered in AddCheckInLinkDelivery.
+builder.Services.AddCheckInLinkDelivery();
+
+// E05/F07/US01 (NF-71): the scheduled messages of the routines: the plan, the timeline, the dispatcher that sends, the handler of the booking events, the alerts and the jobs, all registered in AddScheduledMessages and
+// all behind Features:ScheduledMessages (off by default).
+builder.Services.AddScheduledMessages();
+
+// Who is told what and how (epic E05, feature F03, NF-65): the notification preferences of the host users with their single decision point, and the alerts
+// of the new messages of the guests that already use it, all registered in AddNotificationPreferences.
+builder.Services.AddNotificationPreferences();
+
+// The approval queue that executes (epic E05, feature F04, NF-68): the registry of the actions an approval runs, the actions of the queue itself (the draft of a message, the
+// campaign) and the alert of a new item, all registered in AddApprovalQueueActions. The assistant, the replies to reviews and epic E07 register the actions of their own item types.
+builder.Services.AddApprovalQueueActions();
+
+// The AI assistant that answers the guests' messages (epic E05, feature F05, NF-66, NF-67): the knowledge base of a property, the rules of the organization with the exceptions of a
+// property and, with the next tasks of the feature, the situations, the drafts and the gate, all registered in AddMessageAssistant and behind Features:MessageAssistant where they are used.
+builder.Services.AddMessageAssistant();
+
+// The reviews of the channels (epic E05, feature F06, NF-69, OCT-12): the read of the reviews of the bookings of Airbnb through the channel manager, the reply of the host and the
+// host's own review, the job that reads the bookings every six hours, and the reply drafts that wait in the approval queue; all registered in AddOtaReviews.
+builder.Services.AddOtaReviews();
+
+// Marketplace (epic E09, NF-54 to NF-59): the catalog of channels, tools, license functions and partners; every task of the epic registers in AddCasazenMarketplace.
+builder.Services.AddCasazenMarketplace(builder.Configuration);
+
+// Marketing module (epic E07, flag CrmMarketing): the Crm options and the keyed index of the contacts and of the suppression list, all
+// registered in AddCrmMarketing. The controllers are behind the flag; the index and the suppression list serve the always-on paths too.
+builder.Services.AddCrmMarketing(builder.Configuration);
+
+// Activation of CasaZen with Octorate (epic E10, NF-104..NF-107): the flow status and, with the next tasks, the plan and the panel steps, all
+// registered in AddCasazenOnboarding and behind Features:OctorateOnboarding where they are used.
+builder.Services.AddCasazenOnboarding(builder.Configuration);
+
+// The guest portal (epics E50-E60, casazen/backend#987): the stay link of a booking and the portal behind it, all registered in AddGuestPortal and
+// behind Features:GuestPortal where they are used (the endpoints). Its sections, next steps and policies are found by scanning Core, Infrastructure and
+// Web (AddGuestPortalRegistries): a later epic adds a class, never a line here.
+builder.Services.AddGuestPortal();
+builder.Services.AddGuestPortalRegistries(
+    typeof(Casazen.Core.GuestPortal.PortalContext).Assembly,
+    typeof(Casazen.Infrastructure.GuestPortal.PortalContextFactory).Assembly,
+    typeof(Program).Assembly);
 
 // Localization — Italian (default) and English.
 // No ResourcesPath: resource names follow the marker type's namespace, so IStringLocalizer<SharedResources>
@@ -193,6 +270,8 @@ builder.Services.AddScoped<SeoPageGenerationJob>();
 builder.Services.AddScoped<SeoContentRefreshJob>();
 builder.Services.AddScoped<SeoEventRetentionJob>();
 builder.Services.AddScoped<GuestCheckInSendJob>();
+// casazen/backend#978: the arrivals and departures the booking flow registers in the host's place.
+builder.Services.AddScoped<BookingFlowAutomationJob>();
 builder.Services.AddScoped<CheckoutHoldExpiryJob>();
 // SP-04: cancels the service requests nobody answered in time (scheduled only with Features:SupplierRequestAutoCancel on).
 builder.Services.AddScoped<ServiceRequestAutoCancelJob>();
@@ -226,6 +305,12 @@ builder.Services.Configure<Casazen.Core.Options.ComplianceOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.ComplianceOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.StayAlertOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.StayAlertOptions.SectionName));
+// ADR-022-R8: how often the time triggers of the routines are written to the outbox (Routine:EvaluationIntervalMinutes).
+builder.Services.Configure<Casazen.Core.Options.RoutineOptions>(
+    builder.Configuration.GetSection(Casazen.Core.Options.RoutineOptions.SectionName));
+// ADR-022-R15: how long the dispatched domain events stay in the outbox (EventBus:RetentionDays, never below 30).
+builder.Services.Configure<Casazen.Core.Options.EventBusOptions>(
+    builder.Configuration.GetSection(Casazen.Core.Options.EventBusOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.GuestCheckInOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.GuestCheckInOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.RliOptions>(
@@ -239,11 +324,19 @@ builder.Services.AddOptions<Casazen.Core.Options.ShortStayFiscalOptions>()
 builder.Services.Configure<ComuniOptions>(builder.Configuration.GetSection(ComuniOptions.SectionName));
 builder.Services.AddHostedService<ComuneSeedHostedService>();
 builder.Services.AddHostedService<AlloggiatiCodeTableSeedHostedService>();
+// The official Swiss localities and municipalities of swisstopo (E29/F01/US01/T01): the seed file of the deploy, loaded when the database does not have it yet.
+builder.Services.AddHostedService<SwissPlacesSeedHostedService>();
 builder.Services.AddHostedService<SeoBootstrapHostedService>();
 // Which legal documents are not published and what to configure (decision D9, docs/runbooks/legal-documents.md).
 builder.Services.AddHostedService<LegalDocumentsStartupCheck>();
+// The Italian short-let withholding rule of OwnerAccounting:ItalianShortLetRule as a draft (not approved) of every agency with owners (E18/F01/US01/T01).
+builder.Services.AddHostedService<OwnerWithholdingDraftSeedHostedService>();
 // The provider an admin saved, so the first request does not still see only the server configuration.
 builder.Services.AddHostedService<AiSettingsWarmupHostedService>();
+// E09/F01/US01/T02: with the connector on and the cache of the portal catalog still empty (a new environment), one run of the daily refresh is queued
+// at start, so the portal list does not wait for 03:30 UTC. Only where Hangfire is (it queues a job), and it never holds or stops the start.
+if (hangfireStorage is not null)
+    builder.Services.AddHostedService<MarketplacePortalBootstrapHostedService>();
 
 // API
 builder.Services.AddControllers(options => options.Filters.Add<ProblemDetailsResultFilter>())
@@ -356,6 +449,12 @@ if (PropertyComplianceCheckJob.IsRecalculateCommand(args))
 }
 
 app.LogDataProtectionKeyProtection();
+if (args.Contains(DemoOtaInboxCommand.Command, StringComparer.Ordinal))
+{
+    Environment.ExitCode = await DemoOtaInboxCommand.RunAsync(app);
+    return;
+}
+
 app.LogOpenAccess();
 
 // Swagger (must be before Authentication to allow anonymous access to swagger.json)
@@ -397,6 +496,7 @@ app.UseAuthentication();
 app.UseTenantResolution();
 // A deactivated account gets 403 account_inactive on every authenticated request, before any policy (PL-03, A1-04).
 app.UseInactiveAccountBlock();
+app.UseMiddleware<Casazen.Web.Middleware.CommercialAccessMiddleware>();
 app.UseAuthorization();
 app.UseRateLimiter();
 
@@ -422,7 +522,12 @@ if (hangfireStorage is not null)
             .LogInformation("Hangfire storage schema: {HangfireSchema}", hangfireStorage.Schema);
         using var scope = app.Services.CreateScope();
         var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
-        RecurringJobsRegistration.Configure(recurringJobManager, scope.ServiceProvider.GetRequiredService<IFeatureFlags>());
+        DirectAlloggiatiExtensions.ConfigureJobs(recurringJobManager,
+            app.Services.GetRequiredService<Casazen.Infrastructure.External.AlloggiatiTransportEnvironment>().Live);
+        RecurringJobsRegistration.Configure(
+            recurringJobManager,
+            scope.ServiceProvider.GetRequiredService<IFeatureFlags>(),
+            scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<RoutineOptions>>().Value);
     });
 }
 

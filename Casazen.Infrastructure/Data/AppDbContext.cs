@@ -1,3 +1,4 @@
+using Casazen.Core.GuestPortal;
 using Casazen.Infrastructure.Data.Configurations;
 using System.Reflection;
 using Casazen.Core.Authorization;
@@ -48,6 +49,20 @@ public class AppDbContext(
 
     /// <summary>Custom domains to remove from the Vercel project (BK-17); not tenant-owned, read by the platform job only.</summary>
     public DbSet<PendingDomainRemoval> PendingDomainRemovals { get; set; } = null!;
+
+    /// <summary>The one-time codes of the connection of a site to the org (S022, PLG-BE-CONNECT): hashes only, five minutes each.</summary>
+    public DbSet<SiteConnectionCode> SiteConnectionCodes { get; set; } = null!;
+
+    /// <summary>The sites connected to the org, the credentials of their WordPress plugin (S022, PLG-BE-CONNECT): hashes only, revocable.</summary>
+    public DbSet<SiteConnection> SiteConnections { get; set; } = null!;
+    public DbSet<PropertyActivationCredential> PropertyActivationCredentials => Set<PropertyActivationCredential>();
+
+    public DbSet<PropertyActivationCredentialAssignment> PropertyActivationCredentialAssignments => Set<PropertyActivationCredentialAssignment>();
+
+    public DbSet<OctoratePreparation> OctoratePreparations => Set<OctoratePreparation>();
+
+    public DbSet<PropertyImportReview> PropertyImportReviews => Set<PropertyImportReview>();
+
     public DbSet<Property> Properties { get; set; } = null!;
     public DbSet<PropertyOwner> PropertyOwners { get; set; } = null!;
     public DbSet<PropertyOwnership> PropertyOwnerships { get; set; } = null!;
@@ -58,10 +73,13 @@ public class AppDbContext(
     public DbSet<AgencyInvoice> AgencyInvoices { get; set; } = null!;
     public DbSet<WireBatch> WireBatches { get; set; } = null!;
     public DbSet<WireBatchStatement> WireBatchStatements { get; set; } = null!;
+    public DbSet<WireBatchPayout> WireBatchPayouts { get; set; } = null!;
     public DbSet<WithholdingLog> WithholdingLogs { get; set; } = null!;
     public DbSet<F24Record> F24Records { get; set; } = null!;
     public DbSet<OwnerInvitation> OwnerInvitations { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
+    public DbSet<GuestHostExtra> GuestHostExtras => Set<GuestHostExtra>();
+    public DbSet<GuestHostExtraOrder> GuestHostExtraOrders => Set<GuestHostExtraOrder>();
     public DbSet<Guest> Guests { get; set; } = null!;
     public DbSet<Payment> Payments { get; set; } = null!;
     public DbSet<PaymentRefund> PaymentRefunds { get; set; } = null!;
@@ -90,6 +108,27 @@ public class AppDbContext(
     public DbSet<AlloggiatiCodeTableImport> AlloggiatiCodeTableImports { get; set; } = null!;
     public DbSet<PropertyQuesturaCredentials> PropertyQuesturaCredentials { get; set; } = null!;
 
+    // Who sends the police and ISTAT communications of each property, the attempts of the Alloggiati transmission and the daily receipts
+    // of a Questura account (ADR-029, ADR-015, AW-R04, AW-R05; E03/F01/US05/T01)
+    public DbSet<PropertyComplianceSender> PropertyComplianceSenders { get; set; } = null!;
+    public DbSet<AlloggiatiSendAttempt> AlloggiatiSendAttempts { get; set; } = null!;
+    public DbSet<AlloggiatiReceipt> AlloggiatiReceipts { get; set; } = null!;
+
+    // The compliance dashboard "am I compliant?" (E03/F02/US01/T01, NF-52, NF-47): the stage of the period and connection alerts, the monthly
+    // summary already sent to an org, the log of what was sent and by whom, and the proofs a host uploads (ids, codes and keys: no guest data)
+    public DbSet<ComplianceAlertState> ComplianceAlertStates { get; set; } = null!;
+    public DbSet<ComplianceMonthlySummaryLog> ComplianceMonthlySummaryLogs { get; set; } = null!;
+    public DbSet<ComplianceSendLogEntry> ComplianceSendLogEntries { get; set; } = null!;
+    public DbSet<ManualComplianceProof> ManualComplianceProofs { get; set; } = null!;
+
+    // The flats a receipt covers: one row for each flat of the org an Alloggiati receipt is about (E20/F02/US01/T01, decision O3)
+    public DbSet<ManualComplianceProofProperty> ManualComplianceProofProperties { get; set; } = null!;
+
+    // The tracking of the police notification of the Swiss properties (E30/F02/US02/T01, NF-128): the declaration «I uploaded the file» of an arrival day and the audit of the files
+    // generated for it (no guest data)
+    public DbSet<SwissNotificationDeclaration> SwissNotificationDeclarations { get; set; } = null!;
+    public DbSet<SwissNotificationFileEvent> SwissNotificationFileEvents { get; set; } = null!;
+
     // Official ISTAT list of the comuni and the log of its imports (SU-04)
     public DbSet<Comune> Comuni { get; set; } = null!;
     public DbSet<ComuneImport> ComuneImports { get; set; } = null!;
@@ -97,8 +136,9 @@ public class AppDbContext(
     public DbSet<ComuneOfficialProfile> ComuneOfficialProfiles { get; set; } = null!;
     public DbSet<ComuneOfficialProfileVersion> ComuneOfficialProfileVersions { get; set; } = null!;
 
-    // Swiss municipalities from Ufficio federale di statistica (NF-02)
+    // Swiss municipalities and localities of the official directory of swisstopo (NF-02, E29/F01/US01/T01, NF-124)
     public DbSet<SwissMunicipality> SwissMunicipalities { get; set; } = null!;
+    public DbSet<SwissLocality> SwissLocalities { get; set; } = null!;
 
     // Swiss compliance receipts (Ticino police notifications, OTR tax reports, ADR-016)
     public DbSet<SwissComplianceReceipt> SwissComplianceReceipts { get; set; } = null!;
@@ -110,12 +150,21 @@ public class AppDbContext(
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
     public DbSet<PropertyFloorPlan> PropertyFloorPlans { get; set; } = null!;
     public DbSet<PropertyPoi> PropertyPois { get; set; } = null!;
+
+    // The content of a property on the channels of the channel manager: the state on each channel and the sending of its photos (NF-27, NF-32, NF-38)
+    public DbSet<ListingChannelState> ListingChannelStates { get; set; } = null!;
+    public DbSet<PhotoUploadTask> PhotoUploadTasks { get; set; } = null!;
+
+    // The listing data of a unit the channels ask for: its rooms with their beds and its length-of-stay discounts (NF-34, NF-35)
+    public DbSet<PropertyRoom> PropertyRooms { get; set; } = null!;
+    public DbSet<PropertyStayDiscount> PropertyStayDiscounts { get; set; } = null!;
     public DbSet<TestDataMarker> TestDataMarkers { get; set; } = null!;
     public DbSet<DemoEnvironmentSetting> DemoEnvironmentSettings { get; set; } = null!;
     public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
     public DbSet<SeoContentRevision> SeoContentRevisions { get; set; } = null!;
     public DbSet<SeoContentReviewEvent> SeoContentReviewEvents { get; set; } = null!;
     public DbSet<PlatformAiBudget> PlatformAiBudgets { get; set; } = null!;
+    public DbSet<PresetAgentTraining> PresetAgentTraining { get; set; } = null!;
     public DbSet<PlatformAiSettings> PlatformAiSettings { get; set; } = null!;
     public DbSet<PlatformInvoice> PlatformInvoices { get; set; } = null!;
     public DbSet<ProcessedStripeEvent> ProcessedStripeEvents { get; set; } = null!;
@@ -136,12 +185,28 @@ public class AppDbContext(
     /// with manual payment mode, 0% commission, and statement integration.
     /// </summary>
     public DbSet<TrustedSupplier> TrustedSuppliers { get; set; } = null!;
+    public DbSet<GuestSupplierOffer> GuestSupplierOffers => Set<GuestSupplierOffer>();
+    public DbSet<GuestSupplierOrderDocument> GuestSupplierOrderDocuments => Set<GuestSupplierOrderDocument>();
+    public DbSet<GuestSupplierOrder> GuestSupplierOrders => Set<GuestSupplierOrder>();
+
+    /// <summary>
+    /// What an organization remembers of the VAT of a cleaning company («Ricorda per questa ditta», FIX/BE-CLEANING-VAT): tenant-owned, one row for each
+    /// organization and company. Only <c>CleaningVatService</c> writes it; the readers of the cleaning VAT read it with the org named.
+    /// </summary>
+    public DbSet<SupplierVatDefault> SupplierVatDefaults { get; set; } = null!;
 
     /// <summary>
     /// Internal activities performed by staff on properties (NF-22): cleaning, maintenance, check-in assistance.
     /// Staff sees only activities within their perimeter (PropertyMemberAccess).
     /// </summary>
     public DbSet<InternalActivity> InternalActivities { get; set; } = null!;
+
+    /// <summary>
+    /// The default cleaner of a property at the check-out of its stays, with the price and the time agreed (E24/F01/US01/T01, NF-120), and the automatic cleaning
+    /// of a stay, the key of the idempotency of the automation (E24/F01/US01/T02). Both are tenant-filtered.
+    /// </summary>
+    public DbSet<PropertyCleaningSetup> PropertyCleaningSetups { get; set; } = null!;
+    public DbSet<StayCleaning> StayCleanings { get; set; } = null!;
 
     /// <summary>
     /// The supplier's agenda (SP-03): weekly working hours, time off, blocks and extra openings, and the settings row. All
@@ -223,12 +288,25 @@ public class AppDbContext(
     // Guest self-service check-in portal (US-020 / #296)
     public DbSet<GuestCheckInSession> GuestCheckInSessions { get; set; } = null!;
 
+    // Where the check-in link of a booking stands on its way to the guest: the portal chat, the e-mail, the host (E23/F01/US01/T01, T02, NF-122)
+    public DbSet<CheckInLinkDelivery> CheckInLinkDeliveries { get; set; } = null!;
+
+    /// <summary>The messages of the routines planned for each booking (E05/F07/US01/T01, NF-71).</summary>
+    public DbSet<ScheduledMessage> ScheduledMessages { get; set; } = null!;
+
     // Guest identity document images for OCR (NF-10, ADR-013-R3)
     public DbSet<DocumentImage> DocumentImages { get; set; } = null!;
 
     // Biometric verification settings and audit logs (NF-11, ADR-013)
     public DbSet<BiometricSettings> BiometricSettings { get; set; } = null!;
+
+    // Which steps of a stay CasaZen does by itself and which the host does (casazen/backend#978): one row per org.
+    public DbSet<BookingFlowSettings> BookingFlowSettings { get; set; } = null!;
     public DbSet<BiometricVerificationLog> BiometricVerificationLogs { get; set; } = null!;
+
+    // The self-hosted identity verification (E70/F01/US01/T02, NF-194, NF-195): the segments (property × format × channel) and the evidence kept for the reviewer.
+    public DbSet<IdentitySegmentSetting> IdentitySegmentSettings { get; set; } = null!;
+    public DbSet<IdentityReviewEvidence> IdentityReviewEvidences { get; set; } = null!;
 
     // Property access codes and release logs (NF-13, E06/F03/US01/T01)
     public DbSet<PropertyAccessCode> PropertyAccessCodes { get; set; } = null!;
@@ -242,6 +320,14 @@ public class AppDbContext(
 
     // The bell of the shell: one row per user and event, written next to the push of the same event (UI-12a)
     public DbSet<InAppNotification> InAppNotifications { get; set; } = null!;
+
+    // The popup alerts of a user (shown outside the wizard, «Do now» / «Remind me later») and the quiet hours that hold them back (NF-08, NF-22, ADR-025)
+    public DbSet<PopupAlert> PopupAlerts { get; set; } = null!;
+    public DbSet<UserNotificationPreferences> UserNotificationPreferences { get; set; } = null!;
+
+    // What each user chose for each kind of event, and the slot of the one-email-every-ten-minutes rule (E05/F03, NF-65)
+    public DbSet<UserNotificationChannelSetting> UserNotificationChannelSettings { get; set; } = null!;
+    public DbSet<NotificationEmailSlot> NotificationEmailSlots { get; set; } = null!;
 
     // Approval queue for items requiring human decision before taking effect (NF-06)
     public DbSet<ApprovalQueueItem> ApprovalQueueItems { get; set; } = null!;
@@ -259,11 +345,33 @@ public class AppDbContext(
     public DbSet<Party> Parties { get; set; } = null!;
     public DbSet<LeaseRegistration> LeaseRegistrations { get; set; } = null!;
     public DbSet<LeaseEvent> LeaseEvents { get; set; } = null!;
+    public DbSet<LeaseMaintenanceRequest> LeaseMaintenanceRequests { get; set; } = null!;
     public DbSet<LeaseRegistrationAuthorization> LeaseRegistrationAuthorizations { get; set; } = null!;
+
+    public DbSet<OpenapiLeaseRegistrationPayment> OpenapiLeaseRegistrationPayments { get; set; } = null!;
     public DbSet<LeaseSigner> LeaseSigners { get; set; } = null!;
     public DbSet<RentSchedule> RentSchedules { get; set; } = null!;
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
+    public DbSet<RentLedgerComponent> RentLedgerComponents { get; set; } = null!;
+    public DbSet<TenantPaymentDeclaration> TenantPaymentDeclarations { get; set; } = null!;
+    public DbSet<LeaseCondominiumTerms> LeaseCondominiumTerms { get; set; } = null!;
+    public DbSet<TenantCondominiumSettlement> TenantCondominiumSettlements { get; set; } = null!;
+    public DbSet<TenantExpenseAllocation> TenantExpenseAllocations { get; set; } = null!;
+
+    public DbSet<Condominium> Condominiums { get; set; } = null!;
+    public DbSet<CondominiumUnit> CondominiumUnits { get; set; } = null!;
+    public DbSet<CondominiumPeriod> CondominiumPeriods { get; set; } = null!;
+    public DbSet<CondominiumStatement> CondominiumStatements { get; set; } = null!;
+    public DbSet<CondominiumExpenseLine> CondominiumExpenseLines { get; set; } = null!;
+    public DbSet<CondominiumInstallment> CondominiumInstallments { get; set; } = null!;
+    public DbSet<CondominiumPriorBalance> CondominiumPriorBalances { get; set; } = null!;
+    public DbSet<CondominiumPayment> CondominiumPayments { get; set; } = null!;
+    public DbSet<CondominiumImportBatch> CondominiumImportBatches { get; set; } = null!;
+    public DbSet<CondominiumImportHouse> CondominiumImportHouses { get; set; } = null!;
+    public DbSet<CondominiumImportYear> CondominiumImportYears { get; set; } = null!;
+    public DbSet<CondominiumStatementProposal> CondominiumStatementProposals { get; set; } = null!;
     public DbSet<RentBankMovement> RentBankMovements { get; set; } = null!;
+    public DbSet<BankLinkPayment> BankLinkPayments { get; set; } = null!;
 
     // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
     public DbSet<ConcordatoFacilePurchase> ConcordatoFacilePurchases { get; set; } = null!;
@@ -281,13 +389,111 @@ public class AppDbContext(
     // CRM guest profiles for marketing and segmentation (NF-23, ADR-021)
     public DbSet<GuestCrmProfile> GuestCrmProfiles { get; set; } = null!;
 
+    // CRM contacts with origin, double opt-in, legal basis and suppression, the proposed merges of duplicate profiles and the welcome QR link of a property (NF-88, NF-89, NF-90)
+    public DbSet<GuestContact> GuestContacts { get; set; } = null!;
+    public DbSet<GuestMergeCandidate> GuestMergeCandidates { get; set; } = null!;
+    public DbSet<PropertyWelcomeLink> PropertyWelcomeLinks { get; set; } = null!;
+
+    // The personal stay link of a booking, the address of the guest portal (E50/F01/US01/T01, NF-152)
+    public DbSet<GuestStayChange> GuestStayChanges { get; set; } = null!;
+
+    public DbSet<GuestPortalLink> GuestPortalLinks { get; set; } = null!;
+
     // Marketing campaigns and segments (NF-24, ADR-014)
     public DbSet<GuestSegment> GuestSegments { get; set; } = null!;
+    public DbSet<MarketingStudioSettings> MarketingStudioSettings => Set<MarketingStudioSettings>();
+    public DbSet<MarketingAiUsage> MarketingAiUsage => Set<MarketingAiUsage>();
+    public DbSet<MarketingAsset> MarketingAssets => Set<MarketingAsset>();
+    public DbSet<MarketingEventSearch> MarketingEventSearches => Set<MarketingEventSearch>();
+    public DbSet<CampaignDelivery> CampaignDeliveries => Set<CampaignDelivery>();
     public DbSet<Campaign> Campaigns { get; set; } = null!;
 
     // Automation routines and execution log (NF-26, ADR-022)
     public DbSet<Routine> Routines { get; set; } = null!;
     public DbSet<RoutineExecution> RoutineExecutions { get; set; } = null!;
+
+    // Transactional outbox of the domain events, published on the event bus by the dispatcher (ADR-022-R1, R2)
+    public DbSet<OutboxEvent> OutboxEvents { get; set; } = null!;
+
+    // The progress of the wizards, saved on the server so that a person resumes it on any device (ADR-024)
+    public DbSet<WizardDraft> WizardDrafts { get; set; } = null!;
+
+    // The connection of an org to its Octorate account, one per environment, with its OAuth tokens encrypted (ADR-023, E02/F01/US01/T01)
+    public DbSet<OctorateConnection> OctorateConnections { get; set; } = null!;
+
+    // The listings found on the channel manager and their mapping to the CasaZen properties, and the single-use OAuth states of the
+    // consent (ADR-023, ADR-027, E02/F01/US02/T02)
+    public DbSet<OctorateListingMapping> OctorateListingMappings { get; set; } = null!;
+    public DbSet<OctorateOAuthState> OctorateOAuthStates { get; set; } = null!;
+
+    // The import of the listings that already exist on OTAs or in another channel manager (D6, E02/F01/US03): what a person declared about where the
+    // listings of a property are, the import batches, their channels and the external items done for each
+    public DbSet<OctorateInventoryIntent> OctorateInventoryIntents { get; set; } = null!;
+    public DbSet<OctorateInventoryImportBatch> OctorateInventoryImportBatches { get; set; } = null!;
+    public DbSet<OctorateInventoryImportChannel> OctorateInventoryImportChannels { get; set; } = null!;
+    public DbSet<OctorateInventoryImportItem> OctorateInventoryImportItems { get; set; } = null!;
+
+    // The mirror of the CasaZen bookings on Octorate: the state of the last operation sent for each booking (E08/F01/US01/T01, ADR-031)
+    public DbSet<OctorateBookingSync> OctorateBookingSyncs { get; set; } = null!;
+
+    // Who an invoice of a booking is made out to, one row for each booking, personal data encrypted (FIS-01, NF-81, E06/F02/US01/T01)
+    public DbSet<BookingInvoiceData> BookingInvoiceData { get; set; } = null!;
+
+    // Who issues the documents of an organization (one profile for each org) and the single issuer of each booking (FIS-02, NF-82, E06/F02/US02/T01)
+    public DbSet<OrgFiscalIssuerProfile> OrgFiscalIssuerProfiles { get; set; } = null!;
+    public DbSet<BookingDocumentIssuer> BookingDocumentIssuers { get; set; } = null!;
+
+    // The fiscal documents issued by CasaZen or imported from Octorate, their lines and the counters of their numbers (NF-83, NF-84, E06/F01/US02/T01)
+    public DbSet<FiscalDocument> FiscalDocuments { get; set; } = null!;
+    public DbSet<FiscalDocumentLine> FiscalDocumentLines { get; set; } = null!;
+    public DbSet<FiscalNumberSequence> FiscalNumberSequences { get; set; } = null!;
+
+    // How the package of the accountant is sent to the accountant, one row for each org, the address encrypted (NF-101, E15/F01/US02/T01)
+    public DbSet<AccountantPackageSettings> AccountantPackageSettings { get; set; } = null!;
+
+    // The owner accounting of the agencies: the approved rule sets and the effective-dated fiscal profiles of the owners (NF-109, NF-110, E06/F05/US02/T01)
+    public DbSet<OwnerAccountingPolicy> OwnerAccountingPolicies { get; set; } = null!;
+    public DbSet<OwnerFiscalProfile> OwnerFiscalProfiles { get; set; } = null!;
+
+    // The owner ledger and the month-end close (NF-110, E06/F05/US02/T02): the append-only lines, the statement versions, the months, the charges and the exchange rates
+    public DbSet<OwnerLedgerEntry> OwnerLedgerEntries { get; set; } = null!;
+    public DbSet<OwnerStatementVersion> OwnerStatementVersions { get; set; } = null!;
+    public DbSet<OwnerClosePeriod> OwnerClosePeriods { get; set; } = null!;
+    public DbSet<OwnerCharge> OwnerCharges { get; set; } = null!;
+    public DbSet<OwnerFxRate> OwnerFxRates { get; set; } = null!;
+
+    // The commission rules of the channels of an agency, when a reservation brings none (E13/F01/US01/T01, ⚖ R2)
+    public DbSet<OrgChannelCommissionRule> OrgChannelCommissionRules { get; set; } = null!;
+
+    // Who holds the account of a listing on a portal when it is not the organization default (E14/F01/US01/T01, ⚖ I10)
+    public DbSet<PropertyChannelAccountHolder> PropertyChannelAccountHolders { get; set; } = null!;
+
+    // The links from the owner statement versions to the invoices of the agency's external fiscal system (E06/F01/US02/T05): ids, numbers, hashes
+    public DbSet<OwnerExternalDocumentReference> OwnerExternalDocumentReferences { get; set; } = null!;
+
+    // The payouts to the owners, their append-only withholding evidence and the annual tax datasets (E06/F05/US02/T03, NF-110)
+    public DbSet<OwnerPayout> OwnerPayouts { get; set; } = null!;
+
+    // The owner portal operations (E07/F07/US01, NF-111): the rules and the requests of the owner stays; the shared documents, their versions and
+    // downloads, the delegated contacts and the inbox.
+    public DbSet<OwnerStayRule> OwnerStayRules { get; set; } = null!;
+    public DbSet<OwnerStayRequest> OwnerStayRequests { get; set; } = null!;
+    public DbSet<OwnerDocument> OwnerDocuments { get; set; } = null!;
+    public DbSet<OwnerDocumentVersion> OwnerDocumentVersions { get; set; } = null!;
+    public DbSet<OwnerDocumentDownload> OwnerDocumentDownloads { get; set; } = null!;
+    public DbSet<OwnerPortalContact> OwnerPortalContacts { get; set; } = null!;
+    public DbSet<OwnerConversation> OwnerConversations { get; set; } = null!;
+    public DbSet<OwnerMessage> OwnerMessages { get; set; } = null!;
+
+    public DbSet<TaxObligationEvidence> TaxObligationEvidence { get; set; } = null!;
+    public DbSet<TaxReportingDataset> TaxReportingDatasets { get; set; } = null!;
+
+    // What a person decided about the tax regime of the stay of a company tenant in the property of a private owner: append only (E18/F01/US03/T01, ⚖ I7)
+    public DbSet<ShortLetTaxDecision> ShortLetTaxDecisions { get; set; } = null!;
+
+    // The check-in guests and the states of a stay sent to Octorate (NF-41, NF-45, E03/F01/US01/T03): ids, hashes and codes, no personal data
+    public DbSet<StayGuestOctorateLink> StayGuestOctorateLinks { get; set; } = null!;
+    public DbSet<OctorateStayStateSync> OctorateStayStateSyncs { get; set; } = null!;
 
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
@@ -311,8 +517,76 @@ public class AppDbContext(
     public DbSet<ReviewInvite> ReviewInvites { get; set; } = null!;
 
     // The messages between the guest of a direct booking and the host: one thread per booking (DB-14a)
+    public DbSet<StorefrontChatThread> StorefrontChatThreads { get; set; } = null!;
+    public DbSet<StorefrontChatMessage> StorefrontChatMessages { get; set; } = null!;
+
     public DbSet<GuestThread> GuestThreads { get; set; } = null!;
     public DbSet<GuestMessage> GuestMessages { get; set; } = null!;
+
+    // The copy of the conversations of the guests with the channels (Airbnb, Booking.com, Vrbo, Expedia), read from the channel manager: the threads,
+    // their messages (the words encrypted), the checkpoints of the sync of each listing, and the message templates of the hosts (E05/F01/US01/T01, ADR-032)
+    public DbSet<OtaMessageThread> OtaMessageThreads { get; set; } = null!;
+    public DbSet<OtaMessage> OtaMessages { get; set; } = null!;
+    public DbSet<OtaMessageSyncState> OtaMessageSyncStates { get; set; } = null!;
+    public DbSet<MessageTemplate> MessageTemplates { get; set; } = null!;
+
+    // What the channel manager says about the reviews of a booking of a channel (Airbnb): the guest's review, the host's reply and the host's own review, with the state
+    // of each and of the read; the words are encrypted (E05/F06/US01/T01, ADR-032, NF-69). The reviews of the booking site are the Reviews above.
+    public DbSet<OtaReview> OtaReviews { get; set; } = null!;
+
+    // The assistant that answers the guests' messages (E05/F05/US01/T01, NF-66, NF-67): the knowledge base of a property and of an organization (the free text
+    // encrypted), the rules of the organization and the exceptions of a property, what it does in each situation, the lessons it proposes, the log of what it
+    // decided for each message (ids and codes only) and the changes of trust level it proposes
+    public DbSet<PropertyKnowledgeEntry> PropertyKnowledgeEntries { get; set; } = null!;
+    public DbSet<OrgAssistantRules> OrgAssistantRules { get; set; } = null!;
+    public DbSet<PropertyAssistantSettings> PropertyAssistantSettings { get; set; } = null!;
+    public DbSet<AssistantSituationSetting> AssistantSituationSettings { get; set; } = null!;
+    public DbSet<AssistantLesson> AssistantLessons { get; set; } = null!;
+    public DbSet<AssistantDecisionLog> AssistantDecisionLogs { get; set; } = null!;
+    public DbSet<AssistantTrustProposal> AssistantTrustProposals { get; set; } = null!;
+
+    // The tourist tax a host paid to a comune and the receipt of the payment: the «paid» half of the summary per comune (NF-100, REP-05)
+    public DbSet<TouristTaxRemittance> TouristTaxRemittances { get; set; } = null!;
+
+    // The tourist tax per guest (NF-46, ADR-037, E03/F01/US07/T01): the exemption reasons and the channel rules (platform reference data),
+    // the rate a host declares for a comune with no official one and the confirmed tax of a stay (tenant-owned; its lines are reached only
+    // through it)
+    public DbSet<TouristTaxExemptionReason> TouristTaxExemptionReasons { get; set; } = null!;
+    public DbSet<TouristTaxChannelRule> TouristTaxChannelRules { get; set; } = null!;
+    public DbSet<OrgTouristTaxRate> OrgTouristTaxRates { get; set; } = null!;
+    public DbSet<StayTouristTax> StayTouristTaxes { get; set; } = null!;
+
+    // The ISTAT region table (E21/F01/US01/T01, decision O6): for each region and autonomous province the system of its portal, the deadline, the statistical
+    // fields it requires and whether the channel manager covers it. Platform reference data, edited only by the staff, every seeded row «da verificare»
+    public DbSet<IstatRegionRule> IstatRegionRules { get; set; } = null!;
+
+    // The marketplace (E09/F01, NF-54): the portal catalog cached from Octorate, the partners the platform admin curates with their texts
+    // (platform data, no tenant), and what each org has activated (tenant-owned)
+    public DbSet<MarketplacePortal> MarketplacePortals { get; set; } = null!;
+    public DbSet<MarketplacePartner> MarketplacePartners { get; set; } = null!;
+    public DbSet<MarketplacePartnerText> MarketplacePartnerTexts { get; set; } = null!;
+    public DbSet<MarketplaceActivation> MarketplaceActivations { get; set; } = null!;
+
+    // The activation of CasaZen with Octorate: what the host chose to do later for each part of the plan, the flows activated on each property, the
+    // guided steps of the Octorate panel, the «Do it for me» requests, the pilot group of an agency and the per-property data (E10/F01/US01/T01, NF-104..NF-107)
+    public DbSet<OnboardingPartState> OnboardingPartStates { get; set; } = null!;
+    public DbSet<PropertyFlowActivation> PropertyFlowActivations { get; set; } = null!;
+    public DbSet<OnboardingPanelStep> OnboardingPanelSteps { get; set; } = null!;
+    public DbSet<OnboardingAssistRequest> OnboardingAssistRequests { get; set; } = null!;
+    public DbSet<OnboardingPilotMember> OnboardingPilotMembers { get; set; } = null!;
+    public DbSet<PropertyOnboardingData> PropertyOnboardingData { get; set; } = null!;
+
+    // The support vault of «Do it for me» (E20/F03/US01/T01, decision O5): the credentials support keeps for a host, every opening of them, and the
+    // regional ISTAT credentials the host enters (write-only); the values are encrypted at rest (EncryptedColumns)
+    public DbSet<SupportVaultSecret> SupportVaultSecrets { get; set; } = null!;
+    public DbSet<SupportVaultAccess> SupportVaultAccesses { get; set; } = null!;
+    public DbSet<PropertyIstatCredentials> PropertyIstatCredentials { get; set; } = null!;
+
+    // The price and the rules of each night of a property, and the changes of the calendar the host sent to the channel manager with their chunks
+    // (E08/F05/US01/T01, NF-36): dates, numbers, states and stable codes, no personal data
+    public DbSet<PropertyDayRule> PropertyDayRules { get; set; } = null!;
+    public DbSet<CalendarChangeProcess> CalendarChangeProcesses { get; set; } = null!;
+    public DbSet<CalendarChangeChunk> CalendarChangeChunks { get; set; } = null!;
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -326,9 +600,52 @@ public class AppDbContext(
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, DataProtectionModelCacheKeyFactory>();
 
+    /// <summary>Refuses a change of the evidence before anything is written (<see cref="AppendOnlyGuard"/>, E06/F05/US02/T02).</summary>
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        AppendOnlyGuard.Check(ChangeTracker);
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    /// <inheritdoc cref="SaveChanges(bool)"/>
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        AppendOnlyGuard.Check(ChangeTracker);
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.ApplyConfiguration(new GuestSupplierOfferConfiguration());
+        modelBuilder.ApplyConfiguration(new GuestSupplierOrderConfiguration());
+        modelBuilder.Entity<GuestSupplierOrderDocument>(entity =>
+        {
+            entity.HasOne<GuestSupplierOrder>().WithMany().HasForeignKey(d => d.OrderId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(d => new { d.OrderId, d.ContentHash }).IsUnique();
+        });
+
+        modelBuilder.Entity<PropertyActivationCredential>().HasIndex(p => new { p.OrgId, p.ExpiresAt });
+        modelBuilder.Entity<PropertyActivationCredentialAssignment>(assignment =>
+        {
+            assignment.HasOne<Property>().WithMany().HasForeignKey(a => a.PropertyId).OnDelete(DeleteBehavior.Cascade);
+            assignment.HasOne<PropertyActivationCredential>().WithMany().HasForeignKey(a => a.AccountId).OnDelete(DeleteBehavior.Cascade);
+            assignment.HasIndex(a => new { a.OrgId, a.PropertyId, a.Service }).IsUnique();
+        });
+
+        modelBuilder.Entity<OctoratePreparation>(row =>
+        {
+            row.HasOne<Property>().WithMany().HasForeignKey(p => p.PropertyId).OnDelete(DeleteBehavior.Cascade);
+            row.HasIndex(p => new { p.Environment, p.PropertyId }).IsUnique();
+            row.HasIndex(p => new { p.Environment, p.AccommodationId }).IsUnique();
+            row.HasIndex(p => new { p.Environment, p.BatchId });
+        });
+
+        modelBuilder.Entity<PropertyImportReview>(review =>
+        {
+            review.HasOne<Property>().WithOne().HasForeignKey<PropertyImportReview>(p => p.Id).OnDelete(DeleteBehavior.Cascade);
+            review.HasIndex(p => new { p.OrgId, p.Provider, p.SourceId }).IsUnique();
+        });
 
         modelBuilder.Entity<Property>()
             .HasMany(p => p.Bookings)
@@ -372,6 +689,15 @@ public class AppDbContext(
                 "CK_AlloggiatiWebReports_SentRequiresReceipt",
                 $"\"Status\" <> {(int)AlloggiatiWebStatus.Inviato} OR btrim(coalesce(\"ConfirmationNumber\", '')) <> ''"));
 
+        // AW-R05: the daily receipt of the account that covers the communication; a receipt removed at the end of its retention leaves
+        // the communication without it (SET NULL), never removes it.
+        modelBuilder.Entity<AlloggiatiWebReport>()
+            .HasOne<AlloggiatiReceipt>()
+            .WithMany()
+            .HasForeignKey(r => r.ReceiptId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // CO-10: the alert stages of a stay go with it.
         modelBuilder.Entity<StayAlertState>()
             .HasOne(s => s.Booking)
@@ -401,6 +727,23 @@ public class AppDbContext(
         // NF-05: marketing suppression list with SHA-256 blind index for one-click unsubscribe (ADR-007-R18, R22).
         modelBuilder.ApplyConfiguration(new SuppressionListEntryConfiguration());
 
+        // NF-88, NF-89, NF-90: the CRM contacts (value encrypted at rest, found by its keyed hash), the proposed merges of two profiles (one row for
+        // each pair) and the welcome QR link of a property (one active link for each property); each carries its org (TN-2).
+        modelBuilder.ApplyConfiguration(new GuestContactConfiguration());
+        modelBuilder.ApplyConfiguration(new GuestMergeCandidateConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyWelcomeLinkConfiguration());
+
+        // E50/F01/US01/T01 (NF-152): the stay link of a booking (the guest portal), one active link for each booking; it carries the org of the booking (TN-2).
+        modelBuilder.ApplyConfiguration(new GuestPortalLinkConfiguration());
+        modelBuilder.Entity<GuestStayChange>(entity =>
+        {
+            entity.HasOne<Booking>().WithMany().HasForeignKey(change => change.BookingId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Org>().WithMany().HasForeignKey(change => change.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(change => change.BookingId).IsUnique().HasFilter("\"ApprovedAt\" IS NULL AND \"RejectedAt\" IS NULL")
+                .HasDatabaseName("UIX_GuestStayChanges_Pending");
+            entity.Property(change => change.Currency).HasMaxLength(3);
+        });
+
         // CO-07: one safety checklist per property, going with it; its items go with the checklist. An evidence
         // document deleted by the host leaves the item without proof (SET NULL), never deletes the answer.
         modelBuilder.ApplyConfiguration(new PropertySafetyChecklistConfiguration());
@@ -410,6 +753,16 @@ public class AppDbContext(
         // DB-11a: the floor plan levels and the points of interest of a property, going with it; each carries the org of its property (TN-2).
         modelBuilder.ApplyConfiguration(new PropertyFloorPlanConfiguration());
         modelBuilder.ApplyConfiguration(new PropertyPoiConfiguration());
+
+        // NF-27, NF-32, NF-38: the state of a property on each channel of the channel manager (unique per property and channel) and the sending
+        // of its photos (unique per property and photo address); each carries the org of its property (TN-2) and goes with it.
+        modelBuilder.ApplyConfiguration(new ListingChannelStateConfiguration());
+        modelBuilder.ApplyConfiguration(new PhotoUploadTaskConfiguration());
+
+        // NF-34, NF-35: the rooms of a unit with their beds and its length-of-stay discounts (one tier for each minimum of nights); each carries
+        // the org of its property (TN-2) and goes with it.
+        modelBuilder.ApplyConfiguration(new PropertyRoomConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyStayDiscountConfiguration());
 
         modelBuilder.Entity<AlloggiatiCodeEntry>()
             .HasOne(e => e.Import)
@@ -426,13 +779,52 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new ComuneOfficialProfileConfiguration());
         modelBuilder.ApplyConfiguration(new ComuneOfficialProfileVersionConfiguration(Database.IsNpgsql()));
 
+        // E29/F01/US01/T01 (NF-124): the localities of the official swisstopo directory, one row per locality and municipality. The key starts with
+        // the postal code, so it is the index of the postal code lookups (the search, the resolver of the place of a property); the search name and
+        // the municipality have their own.
+        modelBuilder.Entity<SwissLocality>(locality =>
+        {
+            locality.HasKey(l => new { l.PostalCode, l.AddOn, l.MunicipalityCode, l.Name });
+            locality.HasIndex(l => l.NormalizedName);
+            locality.HasIndex(l => l.MunicipalityCode);
+        });
+
         // CO-14: one set of Alloggiati Web credentials per property, going with it; tenant row (TN-2).
         modelBuilder.ApplyConfiguration(new PropertyQuesturaCredentialsConfiguration());
+
+        // ADR-029, ADR-015 (E03/F01/US05/T01): the sender of each property (never two), the attempts of the Alloggiati transmission (at
+        // most one open per booking) and the daily receipts of a Questura account (one per org, account, day and mode); tenant rows (TN-2).
+        modelBuilder.ApplyConfiguration(new PropertyComplianceSenderConfiguration());
+        modelBuilder.ApplyConfiguration(new AlloggiatiSendAttemptConfiguration());
+        modelBuilder.ApplyConfiguration(new AlloggiatiReceiptConfiguration());
+
+        // NF-52, NF-47 (E03/F02/US01/T01): the alerts of a period or a connection sent once (unique per property, kind and reference), the monthly
+        // summary sent once per org and month, the log of the sends and the proofs a host uploads; tenant rows (TN-2).
+        modelBuilder.ApplyConfiguration(new ComplianceAlertStateConfiguration());
+        modelBuilder.ApplyConfiguration(new ComplianceMonthlySummaryLogConfiguration());
+        modelBuilder.ApplyConfiguration(new ComplianceSendLogEntryConfiguration());
+        modelBuilder.ApplyConfiguration(new ManualComplianceProofConfiguration());
+
+        // E20/F02/US01/T01 (decision O3): the flats a receipt covers, one row for each, with the unique pair (proof, flat); a tenant row (TN-2).
+        modelBuilder.ApplyConfiguration(new ManualComplianceProofPropertyConfiguration());
+
+        // E30/F02/US02/T01 (NF-128): the declaration «I uploaded the file» of an arrival day (one for each property, day and regime: two partial unique indexes, a null regime is the
+        // notification to the Ticino police) and the audit of the files generated for the police (a format and a number of rows, never a guest); tenant rows (TN-2).
+        modelBuilder.ApplyConfiguration(new SwissNotificationDeclarationConfiguration());
+        modelBuilder.ApplyConfiguration(new SwissNotificationFileEventConfiguration());
 
         // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
         modelBuilder.Entity<Booking>()
             .HasIndex(b => new { b.OrgId, b.BookingCode })
             .IsUnique();
+
+        // A reservation of Octorate is one booking in an org (E02/F02/US01/T01, ADR-033-R1): the key of the import, whoever imports it and
+        // however many times. Only the rows that have an Octorate id are in it; the others (null) are as many as there are bookings.
+        modelBuilder.Entity<Booking>()
+            .HasIndex(b => new { b.OrgId, b.OctorateReservationId })
+            .IsUnique()
+            .HasFilter("\"OctorateReservationId\" IS NOT NULL")
+            .HasDatabaseName(Booking.OctorateReservationIndexName);
 
         // GPS coordinates (PC-06, A2-33): 6 decimals are about 0.1 m, the old 2 decimals placed a house up to a kilometre
         // away on the map. numeric(9,6) holds -999.999999..999.999999: the API accepts only -90..90 and -180..180.
@@ -488,6 +880,14 @@ public class AppDbContext(
                 $"\"EnergyIndex\" IS NULL OR (\"EnergyClass\" IS NOT NULL AND \"EnergyIndex\" >= 0 AND \"EnergyIndex\" <= {SitePropertyProfileLimits.MaxEnergyIndex})");
         });
 
+        // E29/F02/US01/T01 (NF-125): what the host decided about notifying the guests of a Swiss property, stored as the number of the enum;
+        // null = follow the regime of the place (every row that existed before the column, and the default). The service validates it; the
+        // constraint keeps any other writer honest.
+        modelBuilder.Entity<Property>().ToTable(t => t.HasCheckConstraint(
+            "CK_Properties_GuestNotificationOverride",
+            $"\"GuestNotificationOverride\" IS NULL OR \"GuestNotificationOverride\" IN ({(int)Casazen.Core.Enums.GuestNotificationOverride.Required}, "
+            + $"{(int)Casazen.Core.Enums.GuestNotificationOverride.NotRequired})"));
+
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
 
@@ -529,6 +929,14 @@ public class AppDbContext(
             // A soft-deleted property (PC-05) frees its slug: SlugExistsInOrgAsync no longer sees it either.
             .HasFilter("\"Slug\" IS NOT NULL AND \"IsDeleted\" = false")
             .HasDatabaseName("UIX_Properties_OrgId_Slug");
+
+        // E22/F01/US02/T01: the door token of the QR code printed for the door is unique in the whole table (the public door page finds the property by
+        // it alone), and a property that never asked for the code has none. A soft-deleted property keeps its token: a printed code is never given to another.
+        modelBuilder.Entity<Property>()
+            .HasIndex(p => p.DoorToken)
+            .IsUnique()
+            .HasFilter("\"DoorToken\" IS NOT NULL")
+            .HasDatabaseName("UIX_Properties_DoorToken");
 
         modelBuilder.Entity<Booking>().HasIndex(b => b.PropertyId);
         modelBuilder.Entity<Booking>().HasIndex(b => b.GuestId);
@@ -755,6 +1163,25 @@ public class AppDbContext(
             .HasIndex(a => a.LeaseContractId);
         modelBuilder.Entity<LeaseRegistrationAuthorization>().HasIndex(a => a.OrgId);
 
+        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
+            .HasOne(p => p.LeaseContract)
+            .WithMany()
+            .HasForeignKey(p => p.LeaseContractId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
+            .HasOne(p => p.Org)
+            .WithMany()
+            .HasForeignKey(p => p.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
+            .Property(p => p.FeePercent)
+            .HasPrecision(7, 4);
+        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
+            .HasIndex(p => p.StripeCheckoutSessionId)
+            .IsUnique();
+        modelBuilder.Entity<OpenapiLeaseRegistrationPayment>()
+            .HasIndex(p => new { p.OrgId, p.LeaseContractId });
+
         modelBuilder.Entity<RentSchedule>()
             .HasOne(s => s.LeaseContract)
             .WithOne(l => l.RentSchedule)
@@ -811,9 +1238,157 @@ public class AppDbContext(
         modelBuilder.Entity<RentLedgerEntry>()
             .HasIndex(e => e.OrgId);
 
+        modelBuilder.Entity<BankLinkPayment>()
+            .HasIndex(p => p.StripePaymentIntentId)
+            .IsUnique();
+
+        modelBuilder.Entity<BankLinkPayment>()
+            .HasIndex(p => p.OrgId);
+
+        modelBuilder.Entity<BankLinkPayment>()
+            .HasIndex(p => p.CondominiumInstallmentId);
+
+        modelBuilder.Entity<BankLinkPayment>()
+            .HasOne<Org>()
+            .WithMany()
+            .HasForeignKey(p => p.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<BankLinkPayment>()
+            .HasIndex(p => p.LeaseMaintenanceRequestId);
+
+        // One open debit per maintenance request. Failed and canceled rows stay, so a retry can start the next one.
+        modelBuilder.Entity<BankLinkPayment>()
+            .HasIndex(p => p.LeaseMaintenanceRequestId)
+            .IsUnique()
+            .HasFilter("\"LeaseMaintenanceRequestId\" IS NOT NULL AND \"Status\" IN (0, 1)")
+            .HasDatabaseName("UIX_BankLinkPayments_OpenMaintenanceRequest");
+
+        modelBuilder.Entity<LeaseMaintenanceRequest>()
+            .HasOne(r => r.LeaseContract)
+            .WithMany()
+            .HasForeignKey(r => r.LeaseContractId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<LeaseMaintenanceRequest>()
+            .HasOne<Org>()
+            .WithMany()
+            .HasForeignKey(r => r.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<LeaseMaintenanceRequest>()
+            .HasIndex(r => new { r.OrgId, r.LeaseContractId, r.CreatedAt });
+
+        modelBuilder.Entity<BankLinkPayment>()
+            .HasOne<LeaseMaintenanceRequest>()
+            .WithMany()
+            .HasForeignKey(p => p.LeaseMaintenanceRequestId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         // The rent register of the long-term area (LR-01): the installments of an org by month of due date, in due date order.
         modelBuilder.Entity<RentLedgerEntry>()
             .HasIndex(e => new { e.OrgId, e.DueDate });
+
+        // CondoLedger phase 1: the parts of an installment. They go with the installment; AmountDue stays the total.
+        modelBuilder.Entity<RentLedgerComponent>()
+            .HasOne(c => c.RentLedgerEntry)
+            .WithMany(e => e.Components)
+            .HasForeignKey(c => c.RentLedgerEntryId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<RentLedgerComponent>()
+            .HasOne(c => c.Org)
+            .WithMany()
+            .HasForeignKey(c => c.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RentLedgerComponent>()
+            .Property(c => c.Amount)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<RentLedgerComponent>()
+            .Property(c => c.Kind)
+            .HasConversion<int>();
+
+        modelBuilder.Entity<RentLedgerComponent>()
+            .HasIndex(c => c.RentLedgerEntryId);
+
+        modelBuilder.Entity<RentLedgerComponent>()
+            .HasIndex(c => c.OrgId);
+
+        modelBuilder.Entity<RentLedgerComponent>()
+            .HasOne<TenantCondominiumSettlement>()
+            .WithMany()
+            .HasForeignKey(c => c.TenantSettlementId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RentLedgerComponent>()
+            .HasIndex(c => c.TenantSettlementId)
+            .IsUnique()
+            .HasFilter("\"TenantSettlementId\" IS NOT NULL");
+
+        modelBuilder.Entity<TenantPaymentDeclaration>()
+            .HasOne(d => d.LeaseContract)
+            .WithMany()
+            .HasForeignKey(d => d.LeaseContractId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<TenantPaymentDeclaration>()
+            .HasOne(d => d.RentLedgerEntry)
+            .WithMany()
+            .HasForeignKey(d => d.RentLedgerEntryId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<TenantPaymentDeclaration>()
+            .HasIndex(d => new { d.RentLedgerEntryId, d.SubmittedAt });
+
+        modelBuilder.Entity<TenantPaymentDeclaration>()
+            .HasIndex(d => d.OrgId);
+
+        // One current condominium clause per lease. The source document is optional and cleared when that document goes.
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .HasOne(t => t.LeaseContract)
+            .WithOne(l => l.CondominiumTerms)
+            .HasForeignKey<LeaseCondominiumTerms>(t => t.LeaseContractId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .HasOne(t => t.Org)
+            .WithMany()
+            .HasForeignKey(t => t.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .HasOne(t => t.SourceDocument)
+            .WithMany()
+            .HasForeignKey(t => t.SourceDocumentId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .Property(t => t.AdvanceAmount)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .Property(t => t.ExtractionConfidence)
+            .HasPrecision(5, 4);
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .Property(t => t.AdvanceMode)
+            .HasConversion<int>();
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .HasIndex(t => t.LeaseContractId)
+            .IsUnique();
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .HasIndex(t => t.OrgId);
+
+        modelBuilder.Entity<LeaseCondominiumTerms>()
+            .ToTable(t => t.HasCheckConstraint(
+                "CK_LeaseCondominiumTerms_Confidence",
+                "\"ExtractionConfidence\" IS NULL OR (\"ExtractionConfidence\" >= 0 AND \"ExtractionConfidence\" <= 1)"));
+
+        ConfigureCondominium(modelBuilder);
 
         // The credits of a bank statement confirmed as rent payments (import of the statement of the Canoni page): the fingerprint is
         // unique per org, so the same movement is imported once; the payer hashes are looked up per org to recognize who paid before.
@@ -890,6 +1465,15 @@ public class AppDbContext(
             .HasIndex(o => o.Subdomain)
             .IsUnique()
             .HasFilter("\"Subdomain\" IS NOT NULL");
+
+        // Surfaces of the agency's own domain (E40/F01/US01): the guest area and the owner portal start off and the Auth0 state NotRequested
+        // (the defaults of their types), the links follow the domain: on for the orgs that exist too, it takes effect only once the domain is
+        // verified and a surface is on. EF always writes the value of the entity: left to generate it, an explicit false would be taken for
+        // «not set» and the insert would write true in its place.
+        modelBuilder.Entity<Org>()
+            .Property(o => o.UseOwnDomainForLinks)
+            .HasDefaultValue(true)
+            .ValueGeneratedNever();
 
         modelBuilder.Entity<PlatformInvoice>()
             .HasOne(i => i.Org)
@@ -1257,6 +1841,10 @@ public class AppDbContext(
         // The lease a long-rent request is about (LR-03c): a link, set only when the landlord asks from the sheet of the contract.
         modelBuilder.ApplyConfiguration(new ServiceRequestLeaseConfiguration());
 
+        // The VAT of the company of a cleaning recharged to the owner (FIX/BE-CLEANING-VAT): the answer on the request, and what an organization remembers of a company.
+        modelBuilder.ApplyConfiguration(new ServiceRequestSupplierVatConfiguration());
+        modelBuilder.ApplyConfiguration(new SupplierVatDefaultConfiguration());
+
         // Whether an org's requests also go to backup suppliers: on for every org that exists (the rule is general), so the migration gives
         // the existing rows true. EF itself always writes the value of the entity: left to generate it, EF would take an explicit false for
         // «not set» and the insert would write the default (true) in its place, turning the rule back on for an org that switched it off.
@@ -1329,6 +1917,21 @@ public class AppDbContext(
             .HasIndex(b => new { b.FeedId, b.ExternalUid })
             .IsUnique();
 
+        // The index of the foreign key to the property, declared here so that it stays: EF drops the index of a foreign key when another index
+        // starts with the same column, filtered or not, and the filtered index below holds the Octorate blocks only. Every read of the blocks
+        // of a property (availability, calendar, export) goes through this one.
+        modelBuilder.Entity<CalendarBlock>()
+            .HasIndex(b => b.PropertyId);
+
+        // The blocks read from the Octorate calendar have no feed (E02/F02/US01/T03): the unique index on (FeedId, ExternalUid) does not cover
+        // them (a null feed is never equal to another), so their key is the property and the UID, for that source only
+        // (CalendarBlockSource.Octorate = 2).
+        modelBuilder.Entity<CalendarBlock>()
+            .HasIndex(b => new { b.PropertyId, b.ExternalUid })
+            .IsUnique()
+            .HasFilter("\"Source\" = 2")
+            .HasDatabaseName(CalendarBlock.OctorateUidIndexName);
+
         // OTA stay created from an imported block (CO-21, D7): one stay per block. Deleting the booking keeps the block,
         // which takes its nights again on its own.
         modelBuilder.Entity<CalendarBlock>()
@@ -1383,6 +1986,12 @@ public class AppDbContext(
             .HasIndex(e => e.ExportToken)
             .IsUnique();
 
+        // ─── The approval queue (NF-06, E05/F04, NF-68) ─────────────────────────────────────────────────────
+        // The list of an org reads its pending items (and the expiry job the pending ones past their time). The columns of the action, of the edit and of the
+        // rejection are plain nullable columns (an existing row keeps working: OriginActionStatus 0 is NotRequired); the words are encrypted by EncryptedColumns.
+        modelBuilder.Entity<ApprovalQueueItem>()
+            .HasIndex(i => new { i.OrgId, i.Status });
+
         modelBuilder.Entity<AppContextEntity>().HasData(
             new AppContextEntity { Key = "short-rent", DisplayName = "Affitti brevi" },
             new AppContextEntity { Key = "long-rent", DisplayName = "Affitti lungo termine" },
@@ -1408,6 +2017,13 @@ public class AppDbContext(
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.ServiceRequestWrite },
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.GuestManage },
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.AlloggiatiSubmit },
+            // E05/F04/US01/T01: the owner decides the items of the approval queue (AddApprovalDecisionAndOriginAction); the property manager's role follows the catalog.
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.ApprovalDecide },
+            // E03/F04/US02/T01: the owner decides the identity verifications of its guests (AddIdentityVerificationFields).
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.VerificationDecision },
+            // E50/F01/US01/T01: the owner always sets up its guest portal («Portale ospiti», AddGuestPortalLinks); the property manager's role follows the catalog.
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.GuestPortalManage },
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.Marketing },
             new RolePermission { RoleId = 2, PermissionKey = "property.read" },
             new RolePermission { RoleId = 2, PermissionKey = "property.write" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.read" },
@@ -1439,6 +2055,40 @@ public class AppDbContext(
         // Guest check-in session (US-020 / #296)
         modelBuilder.ApplyConfiguration(new GuestCheckInSessionConfiguration());
 
+        // E23/F01/US01/T01, T02 (NF-122): one delivery record per booking for the link of a stay that has no e-mail address; the raw token of the link is encrypted
+        // (EncryptedColumns) and the row goes with its booking.
+        modelBuilder.ApplyConfiguration(new CheckInLinkDeliveryConfiguration());
+        modelBuilder.ApplyConfiguration(new ScheduledMessageConfiguration());
+
+        // E03/F04/US02/T01: who decided a verification and why. The rows written before the columns are the agent's (Biometric = 1) with no
+        // reasons; the sentinel makes EF always write the value of the entity, so a new row is never left to the default by mistake.
+        modelBuilder.Entity<BiometricVerificationLog>()
+            .Property(l => l.Method)
+            .HasDefaultValue(VerificationMethod.Biometric)
+            .HasSentinel((VerificationMethod)(-1));
+        modelBuilder.Entity<BiometricVerificationLog>()
+            .Property(l => l.ReasonsJson)
+            .HasDefaultValueSql("'[]'::jsonb");
+
+        // E70/F01/US01/T02 (NF-194, ADR-013-R18, R19): how the self-hosted policy decided. The rows written before the columns read as the legacy path (DecisionMode
+        // Legacy, 0). The key of an attempt is unique per booking, the last line of defence of the idempotent closure (two processes, one key, one row); the rows of
+        // the legacy path have no key and the filter leaves them out. The index on the booking alone stays declared: the readers of the last row of a booking need it.
+        modelBuilder.Entity<BiometricVerificationLog>()
+            .Property(l => l.DecisionMode)
+            .HasDefaultValue(IdentityDecisionMode.Legacy);
+        modelBuilder.Entity<BiometricVerificationLog>()
+            .HasIndex(l => l.BookingId);
+        modelBuilder.Entity<BiometricVerificationLog>()
+            .HasIndex(l => new { l.BookingId, l.IdempotencyKey })
+            .IsUnique()
+            .HasFilter("\"IdempotencyKey\" IS NOT NULL")
+            .HasDatabaseName(BiometricVerificationLog.IdempotencyIndexName);
+
+        // E70/F01/US01/T02 (NF-194, NF-195): the segments and the evidence of the self-hosted verification; the tenant query filter is applied below, as to every
+        // ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new IdentitySegmentSettingConfiguration());
+        modelBuilder.ApplyConfiguration(new IdentityReviewEvidenceConfiguration());
+
         modelBuilder.ApplyConfiguration(new TerritorialRentAgreementConfiguration());
 
         modelBuilder.Entity<HighTensionAreaComune>()
@@ -1455,6 +2105,16 @@ public class AppDbContext(
 
         // ─── In-app notifications (UI-12a) ──────────────────────────────────────
         modelBuilder.ApplyConfiguration(new InAppNotificationConfiguration());
+
+        // ─── Popup alerts and the quiet hours of the users (NF-08, NF-22, ADR-025) ──────
+        // Both go with the user and with the org (ON DELETE CASCADE); the preferences are unique per (org, user).
+        modelBuilder.ApplyConfiguration(new PopupAlertConfiguration());
+        modelBuilder.ApplyConfiguration(new UserNotificationPreferencesConfiguration());
+
+        // ─── What each user chose for each kind of event, and the email slot of a conversation (E05/F03, NF-65) ──────
+        // Both go with the user and with the org (ON DELETE CASCADE); unique per (org, user, event type) and per (org, user, conversation).
+        modelBuilder.ApplyConfiguration(new UserNotificationChannelSettingConfiguration());
+        modelBuilder.ApplyConfiguration(new NotificationEmailSlotConfiguration());
 
         // ─── Verified reviews (DB-12a) ──────────────────────────────────────────
         // A review goes with its booking and its property (a property is soft-deleted, so in practice it stays for good): the host has no
@@ -1476,12 +2136,385 @@ public class AppDbContext(
 
         // A retried send with the same key loses the race on UIX_GuestMessages_ThreadId_IdempotencyKey (23505) and reads the first message.
         modelBuilder.ApplyConfiguration(new GuestMessageConfiguration());
+        StorefrontChatConfiguration.Configure(modelBuilder);
+
+        // ─── The OTA conversations, copied from the channel manager (E05/F01/US01/T01, ADR-032) ───────────────
+        // One thread per Octorate thread and organization (UIX_OtaMessageThreads_OrgId_OctorateThreadId), one message per Octorate message
+        // (UIX_OtaMessages_OrgId_OctorateMessageId) and per key of the sender's screen in a thread; the words are encrypted (EncryptedColumns).
+        // The checkpoints of the sync are one row per organization and accommodation; the templates are unique per organization, name and language.
+        modelBuilder.ApplyConfiguration(new OtaMessageThreadConfiguration());
+        modelBuilder.ApplyConfiguration(new OtaMessageConfiguration());
+        modelBuilder.ApplyConfiguration(new OtaMessageSyncStateConfiguration());
+        modelBuilder.ApplyConfiguration(new MessageTemplateConfiguration());
+
+        // The reviews of the channels (E05/F06/US01/T01, NF-69): one row per organization, booking and channel (UIX_OtaReviews_OrgId_BookingId_Channel); the words of the
+        // guest, the reply and the review of the host are encrypted (EncryptedColumns); xmin is the concurrency token, so a reply is saved, and sent, once.
+        modelBuilder.ApplyConfiguration(new OtaReviewConfiguration());
+
+        // ─── The AI assistant (E05/F05/US01/T01, NF-66, NF-67, ADR-032) ───────────────
+        // The free text of a host (the entries of the knowledge base, the lessons, the response templates) is encrypted by EncryptedColumns; the decision log holds ids
+        // and codes, never text. One rules row per organization, one exceptions row per property, one situation row per organization (or property) and situation,
+        // and one decision per incoming message (unique indexes). The rows of a property go with it (cascade) but for the decision log, which stays when its property is
+        // removed (SET NULL: it is the audit of what was sent to a guest); every OrgId foreign key restricts.
+        modelBuilder.ApplyConfiguration(new PropertyKnowledgeEntryConfiguration());
+        modelBuilder.ApplyConfiguration(new OrgAssistantRulesConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyAssistantSettingsConfiguration());
+        modelBuilder.ApplyConfiguration(new AssistantSituationSettingConfiguration());
+        modelBuilder.ApplyConfiguration(new AssistantLessonConfiguration());
+        modelBuilder.ApplyConfiguration(new AssistantDecisionLogConfiguration());
+        modelBuilder.ApplyConfiguration(new AssistantTrustProposalConfiguration());
 
         // ─── Automation routines (NF-26, ADR-022) ────────────────────────────────
         // Unique constraint on (RoutineId, EventId) ensures idempotence: a routine executes at most once per event (ADR-022-R7).
         modelBuilder.Entity<RoutineExecution>()
             .HasIndex(e => new { e.RoutineId, e.EventId })
             .IsUnique();
+
+        // ─── Transactional outbox of the domain events (ADR-022) ─────────────────
+        // A time trigger emitted twice (a restart, two overlapping runs) loses on the unique key of its org (ADR-022-R8); the events
+        // without a key are never compared. The dispatcher reads the undispatched events by OccurredAt and the cleanup the old
+        // dispatched ones: both through (DispatchedAt, OccurredAt).
+        modelBuilder.Entity<OutboxEvent>(entity =>
+        {
+            entity.HasIndex(e => new { e.OrgId, e.DedupKey })
+                .IsUnique()
+                .HasFilter("\"DedupKey\" IS NOT NULL")
+                .HasDatabaseName(OutboxEvent.DedupIndexName);
+            entity.HasIndex(e => new { e.DispatchedAt, e.OccurredAt });
+        });
+
+        // ─── Octorate connector (ADR-023) ────────────────────────────────────────
+        // One connection per org and environment: one consent covers every property the Octorate user sees (an agency's whole
+        // network), and the client acts for the org of its scope. The account id is for display and audit, not part of the key. The
+        // two token columns get the Data Protection converter from EncryptedColumns (no length: the payload is longer than the text).
+        modelBuilder.Entity<OctorateConnection>(entity =>
+        {
+            entity.HasIndex(c => new { c.OrgId, c.Environment })
+                .IsUnique()
+                .HasDatabaseName(OctorateConnection.OrgEnvironmentIndexName);
+        });
+
+        // A listing found through a connection, once per org, connection and accommodation; a property is confirmed to one listing
+        // only (partial unique index on Status = 2, OctorateMappingStatus.Confirmed). A connection with mappings is never deleted
+        // (RESTRICT); a deleted property leaves its mapping without property (SET NULL). The webhook finds the org of a notification
+        // by the accommodation code across orgs (a system read): its own index.
+        modelBuilder.Entity<OctorateListingMapping>(entity =>
+        {
+            entity.HasOne<OctorateConnection>()
+                .WithMany()
+                .HasForeignKey(m => m.ConnectionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Property>()
+                .WithMany()
+                .HasForeignKey(m => m.PropertyId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.Property(m => m.SnapshotRoomsJson).HasColumnType("jsonb");
+            entity.Property(m => m.CandidatePropertyIdsJson).HasColumnType("jsonb");
+            entity.Property(m => m.ChannelIdsJson).HasColumnType("jsonb");
+            entity.HasIndex(m => new { m.OrgId, m.ConnectionId, m.OctorateAccommodationId })
+                .IsUnique()
+                .HasDatabaseName(OctorateListingMapping.AccommodationIndexName);
+            entity.HasIndex(m => new { m.OrgId, m.PropertyId })
+                .IsUnique()
+                .HasFilter("\"Status\" = 2")
+                .HasDatabaseName(OctorateListingMapping.ConfirmedPropertyIndexName);
+            entity.HasIndex(m => new { m.OrgId, m.Status });
+            entity.HasIndex(m => m.OctorateAccommodationId);
+        });
+
+        // The import of existing OTA inventory (D6, E02/F01/US03): one current intent for each property (partial unique indexes), batches with their
+        // channels and the external items done for each connection; every row carries its org (restrict) and the tenant filter applies to all.
+        modelBuilder.ApplyConfiguration(new OctorateInventoryIntentConfiguration());
+        modelBuilder.ApplyConfiguration(new OctorateInventoryImportBatchConfiguration());
+        modelBuilder.ApplyConfiguration(new OctorateInventoryImportChannelConfiguration());
+        modelBuilder.ApplyConfiguration(new OctorateInventoryImportItemConfiguration());
+
+        // The OAuth state of a consent: only its SHA-256 is stored (char 64, unique); the expired rows are deleted by ExpiresAt.
+        modelBuilder.Entity<OctorateOAuthState>(entity =>
+        {
+            entity.Property(s => s.StateHash).IsFixedLength();
+            entity.HasIndex(s => s.StateHash)
+                .IsUnique()
+                .HasDatabaseName(OctorateOAuthState.StateHashIndexName);
+            entity.HasIndex(s => s.ExpiresAt);
+        });
+
+        // The mirror of a CasaZen booking on Octorate (E08/F01/US01/T01, ADR-031): one row per booking, gone with its booking (CASCADE);
+        // the list of the failures of an org reads (OrgId, State). The dates Octorate holds after a 409 are jsonb.
+        modelBuilder.Entity<OctorateBookingSync>(entity =>
+        {
+            entity.HasOne<Booking>()
+                .WithMany()
+                .HasForeignKey(s => s.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.Property(s => s.OctorateVersionJson).HasColumnType("jsonb");
+            entity.HasIndex(s => s.BookingId)
+                .IsUnique()
+                .HasDatabaseName(OctorateBookingSync.BookingIndexName);
+            entity.HasIndex(s => new { s.OrgId, s.State });
+        });
+
+        // ─── Invoice data and issuer of the documents (epic E06, NF-81, NF-82) ───────────────────────────────
+        // The invoice data of a booking: one row for each booking (unique BookingId), gone with the booking (cascade); the personal columns are
+        // encrypted by EncryptedColumns (no length) and xmin is the concurrency token. The tenant query filter is applied below, as to every
+        // ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new BookingInvoiceDataConfiguration());
+
+        // The profile of the issuer of an org (unique OrgId) and the single issuer of a booking (unique BookingId, cascade with the booking):
+        // the database itself refuses a second one of either (FIS-02, NF-82).
+        modelBuilder.ApplyConfiguration(new OrgFiscalIssuerProfileConfiguration());
+        modelBuilder.ApplyConfiguration(new BookingDocumentIssuerConfiguration());
+
+        // The fiscal documents (NF-83, NF-84, E06/F01/US02/T01): issued by CasaZen or imported from Octorate, kept ten years (no cascade from the
+        // booking, the guest or another document reaches them), numbered without duplicates per org and series, an Octorate document imported once;
+        // their lines (cascade with the document) and the counter of the numbers (one row per org and series).
+        modelBuilder.ApplyConfiguration(new FiscalDocumentConfiguration());
+        modelBuilder.ApplyConfiguration(new FiscalDocumentLineConfiguration());
+        modelBuilder.ApplyConfiguration(new FiscalNumberSequenceConfiguration());
+
+        // How the package of the accountant is sent (NF-101, E15/F01/US02/T01): one row for each org (unique OrgId), the address encrypted by EncryptedColumns, the day, the folders and
+        // the result bounded by check constraints. The tenant query filter is applied below, as to every ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new AccountantPackageSettingsConfiguration());
+
+        // The owner accounting (NF-109, NF-110, E06/F05/US02): the rule sets of the agency and the effective-dated fiscal profiles of the owners.
+        modelBuilder.ApplyConfiguration(new OwnerAccountingPolicyConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerFiscalProfileConfiguration());
+
+        // The versioned mandates of the owners and the commission rules of the channels (E13/F01/US01/T01).
+        modelBuilder.ApplyConfiguration(new OwnerMandateConfiguration());
+        modelBuilder.ApplyConfiguration(new OrgChannelCommissionRuleConfiguration());
+
+        // Who holds the account of a listing on a portal (E14/F01/US01/T01, ⚖ I10): one row for each property and portal, gone with the property.
+        modelBuilder.ApplyConfiguration(new PropertyChannelAccountHolderConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerLedgerEntryConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerStatementVersionConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerClosePeriodConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerChargeConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerFxRateConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerExternalDocumentReferenceConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerPayoutConfiguration());
+
+        // The payouts a wire batch pays (E16/F01/US01/T01): a payout is in one batch only (unique on the payout), the batch holds its rows.
+        modelBuilder.ApplyConfiguration(new WireBatchPayoutConfiguration());
+
+        // The owner portal operations (E07/F07/US01, NF-111). The tenant query filter is applied below, to every ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new OwnerStayRuleConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerStayRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerDocumentConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerDocumentVersionConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerDocumentDownloadConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerPortalContactConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerConversationConfiguration());
+        modelBuilder.ApplyConfiguration(new OwnerMessageConfiguration());
+        modelBuilder.ApplyConfiguration(new TaxObligationEvidenceConfiguration());
+        modelBuilder.ApplyConfiguration(new TaxReportingDatasetConfiguration());
+
+        // The decisions about the regime of the stays of a company tenant (E18/F01/US03/T01, ⚖ I7): the tenant query filter is applied below, to every ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new ShortLetTaxDecisionConfiguration());
+
+        // The invoices of the retired agency-to-owner generator stay readable and are never called compliant (E06/F01/US02/T05): the rows that exist
+        // when the column is added get the legacy code.
+        modelBuilder.Entity<AgencyInvoice>().Property(i => i.ComplianceStatus).HasDefaultValue(AgencyInvoiceCompliance.LegacyUnverified);
+
+        // A payment is recorded on its Octorate reservation once (E08/F01/US01/T01, AC-NF74-4): its transaction is unique in the org. Only
+        // the payments recorded there are in the index.
+        modelBuilder.Entity<Payment>()
+            .HasIndex(p => new { p.OrgId, p.OctorateTransactionId })
+            .IsUnique()
+            .HasFilter("\"OctorateTransactionId\" IS NOT NULL")
+            .HasDatabaseName(Payment.OctorateTransactionIndexName);
+
+        // ─── Check-in to Octorate (NF-41, NF-45, E03/F01/US01/T03) ───────────────
+        // The guests sent (one per booking and position) and the states of a stay (one per booking and state); the tenant query filter is
+        // applied below, to every ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new StayGuestOctorateLinkConfiguration());
+        modelBuilder.ApplyConfiguration(new OctorateStayStateSyncConfiguration());
+
+        // ─── Internal activities: the staff work (NF-22) and the "To do" list (ADR-026) ───
+        // An organization-level To do has no property, so the property is optional; deleting a property still deletes its
+        // activities, as when it was required. The action is stored by name (the members are appended by later tasks).
+        // The list reads the open To do rows of an org (Action set, CompletedAt null) on every page of the shell; the unique index
+        // keeps one open item per type and entity, so a second CreateAsync, even a parallel one, returns the first.
+        modelBuilder.Entity<InternalActivity>(entity =>
+        {
+            entity.HasOne(a => a.Property)
+                .WithMany()
+                .HasForeignKey(a => a.PropertyId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.Property(a => a.Action)
+                .HasConversion<string>()
+                .HasMaxLength(50);
+            // Kept on its own: the two indexes below are partial (open To do rows only), so they cannot serve the staff rows,
+            // the closed items or the cascade of an org.
+            entity.HasIndex(a => a.OrgId);
+            entity.HasIndex(a => new { a.OrgId, a.Urgency, a.Deadline })
+                .HasFilter("\"Action\" IS NOT NULL AND \"CompletedAt\" IS NULL")
+                .HasDatabaseName("IX_InternalActivities_OpenTodo");
+            entity.HasIndex(a => new { a.OrgId, a.ActivityType, a.EntityType, a.EntityId })
+                .IsUnique()
+                .HasFilter("\"Action\" IS NOT NULL AND \"CompletedAt\" IS NULL")
+                .HasDatabaseName(InternalActivity.OpenTodoIndexName);
+        });
+
+        // ─── The cleaning at check-out (E24/F01/US01, NF-120) ────────────────────────
+        // The default cleaner of a property with the price and the time agreed (one for each property), and the automatic cleaning of a stay (one for each
+        // stay: the key of the idempotency of the automation). The tenant query filter is applied below, to every ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new PropertyCleaningSetupConfiguration());
+        modelBuilder.ApplyConfiguration(new StayCleaningConfiguration());
+
+        // ─── Drafts of the wizards (ADR-024) ─────────────────────────────────────
+        // One draft per person, wizard and entity. The unique indexes are what makes two devices that save the first draft at the same
+        // moment lose to each other (the loser gets 23505 and is answered as a conflict). The database takes two NULLs for different
+        // values, so the draft of a new entity (no EntityId) has an index of its own. The anonymized rows (UserId = '') are left out of
+        // both: they all share the empty UserId, and two of them for the same org, wizard and entity would fail the retention job.
+        // xmin is the concurrency token: two parallel saves of the same version cannot both win. The index on ExpiresAt serves the
+        // retention, which reads the drafts that are over and not yet anonymized.
+        modelBuilder.Entity<WizardDraft>(entity =>
+        {
+            entity.Property(d => d.RowVersion).IsRowVersion();
+            entity.HasIndex(d => new { d.OrgId, d.UserId, d.WizardType, d.EntityId })
+                .IsUnique()
+                .HasFilter("\"EntityId\" IS NOT NULL AND \"UserId\" <> ''")
+                .HasDatabaseName(WizardDraft.ExistingEntityIndexName);
+            entity.HasIndex(d => new { d.OrgId, d.UserId, d.WizardType })
+                .IsUnique()
+                .HasFilter("\"EntityId\" IS NULL AND \"UserId\" <> ''")
+                .HasDatabaseName(WizardDraft.NewEntityIndexName);
+            entity.HasIndex(d => d.ExpiresAt)
+                .HasFilter("\"UserId\" <> ''");
+        });
+
+        // ─── Tourist tax paid to the comuni (NF-100, REP-05) ───────────────────────
+        // The «paid» half of the summary per comune. A comune can be paid in instalments, so the payments of the same comune and period are
+        // not unique: the index only serves the summary, which reads the payments of an org by comune and by the period they lie in. A
+        // fiscal proof must not disappear with a row of the org (RESTRICT), and the amount and the period are checked by the database too:
+        // a payment is above zero and starts no later than it ends.
+        modelBuilder.Entity<TouristTaxRemittance>(entity =>
+        {
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(r => r.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(r => new { r.OrgId, r.ComuneKey, r.PeriodFrom, r.PeriodTo });
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_TouristTaxRemittances_PaidAmountPositive", "\"PaidAmount\" > 0");
+                t.HasCheckConstraint("CK_TouristTaxRemittances_PeriodOrder", "\"PeriodFrom\" <= \"PeriodTo\"");
+            });
+        });
+
+        // ─── Tourist tax per guest (NF-46, ADR-037) ──────────────────────────────
+        // Reference data (exemption reasons, seeded; channel rules, never seeded), the host-declared rates and the confirmed stay record with
+        // its lines. The tenant query filter is applied below, to every ITenantOwned entity. Since E25/F01/US01/T01 (NF-119) the record also carries the
+        // collection of the tax (what the guest paid online, the intent, the refunds), with its unique intent and its check of the refunds: never a Payment row.
+        modelBuilder.ApplyConfiguration(new TouristTaxExemptionReasonConfiguration());
+        modelBuilder.ApplyConfiguration(new TouristTaxChannelRuleConfiguration());
+        modelBuilder.ApplyConfiguration(new OrgTouristTaxRateConfiguration());
+        modelBuilder.ApplyConfiguration(new StayTouristTaxConfiguration());
+        modelBuilder.ApplyConfiguration(new StayTouristTaxGuestConfiguration());
+
+        // ─── ISTAT region table (E21/F01/US01/T01, decision O6) ──────────────────
+        // Platform reference data, seeded with every row «da verificare» (coverage Unknown) and edited only by the staff, each change in the audit trail. One row
+        // for each region and for each autonomous province (two partial unique indexes), never without its https source: the database holds the checks.
+        modelBuilder.ApplyConfiguration(new IstatRegionRuleConfiguration());
+
+        // ─── Marketplace (E09/F01, NF-54, NF-56, NF-57, NF-59) ───────────────────
+        // The portals of the channel manager are platform data refreshed once a day, unique by the code Octorate gives them.
+        modelBuilder.Entity<MarketplacePortal>(entity =>
+        {
+            entity.HasIndex(p => p.PortalCode)
+                .IsUnique()
+                .HasDatabaseName(MarketplacePortal.PortalCodeIndexName);
+        });
+
+        // A partner is a row the platform admin enters: unique by its slug, read in the order of its work. Its texts go with it. The checks
+        // keep a code that is not a lowercase slug and a site that is not https out of the table, whoever writes the row.
+        modelBuilder.Entity<MarketplacePartner>(entity =>
+        {
+            entity.HasIndex(p => p.Code)
+                .IsUnique()
+                .HasDatabaseName(MarketplacePartner.CodeIndexName);
+            entity.HasIndex(p => new { p.Job, p.SortOrder });
+            entity.HasMany(p => p.Texts)
+                .WithOne()
+                .HasForeignKey(t => t.PartnerId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint(MarketplacePartner.CodeSlugCheckName, "\"Code\" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'");
+                t.HasCheckConstraint(MarketplacePartner.WebsiteHttpsCheckName, "\"WebsiteUrl\" LIKE 'https://%'");
+            });
+        });
+
+        // One row of texts per partner and language (it or en).
+        modelBuilder.Entity<MarketplacePartnerText>(entity =>
+        {
+            entity.Property(t => t.FaqJson).HasColumnType("jsonb");
+            entity.HasIndex(t => new { t.PartnerId, t.Language })
+                .IsUnique()
+                .HasDatabaseName(MarketplacePartnerText.PartnerLanguageIndexName);
+            entity.ToTable(t => t.HasCheckConstraint(MarketplacePartnerText.LanguageCheckName, "\"Language\" IN ('it', 'en')"));
+        });
+
+        // What an org activated. A channel, a tool and a licensed function are per property; a partner is the org's or, when the host declares it
+        // for one property, that property's: two partial unique indexes
+        // (the database takes two NULLs for different values, so one index would let a second org-level row in). An activation goes with its
+        // property (CASCADE; a property is soft-deleted, so in practice it stays). xmin is the concurrency token. The tenant query filter
+        // is applied below, to every ITenantOwned entity.
+        modelBuilder.Entity<MarketplaceActivation>(entity =>
+        {
+            entity.Property(a => a.RowVersion).IsRowVersion();
+            entity.HasOne<Property>()
+                .WithMany()
+                .HasForeignKey(a => a.PropertyId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(a => new { a.OrgId, a.Kind, a.TargetCode })
+                .IsUnique()
+                .HasFilter("\"PropertyId\" IS NULL")
+                .HasDatabaseName(MarketplaceActivation.OrgLevelIndexName);
+            entity.HasIndex(a => new { a.OrgId, a.PropertyId, a.Kind, a.TargetCode })
+                .IsUnique()
+                .HasFilter("\"PropertyId\" IS NOT NULL")
+                .HasDatabaseName(MarketplaceActivation.PropertyLevelIndexName);
+            entity.HasIndex(a => new { a.OrgId, a.Status });
+        });
+
+        // ─── Activation of CasaZen with Octorate (NF-104..NF-107, E10/F01/US01/T01) ─────────────────────────────
+        // The host's intents and the activation facts only: the state of a part or of a flow is derived on read. One state for each org and
+        // part, one activation for each property and flow, one panel step for each org, property, kind and channel (two NULLs are equal),
+        // one open «Do it for me» request for each org, part and property, one pilot membership and one data row for each property. The
+        // property-bound rows go with their property (cascade); every row carries its org (restrict) and the tenant filter applies to all.
+        modelBuilder.ApplyConfiguration(new OnboardingPartStateConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyFlowActivationConfiguration());
+        modelBuilder.ApplyConfiguration(new OnboardingPanelStepConfiguration());
+        modelBuilder.ApplyConfiguration(new OnboardingAssistRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new OnboardingPilotMemberConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyOnboardingDataConfiguration());
+
+        // The support vault (E20/F03/US01/T01): one credential for each org, property and kind (two NULLs are equal), the openings of each request,
+        // one ISTAT form for each property. The rows follow their org and property (cascade): the vault never outlives nor blocks their erasure.
+        modelBuilder.ApplyConfiguration(new SupportVaultSecretConfiguration());
+        modelBuilder.ApplyConfiguration(new SupportVaultAccessConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyIstatCredentialsConfiguration());
+
+        // The key an agency gives its owners (E10/F02/US02/T01): unique in the org, for the owners that have one.
+        modelBuilder.ApplyConfiguration(new PropertyOwnerConfiguration());
+
+        // ─── Per-date prices and restrictions (NF-36, E08/F05/US01/T01) ─────────────────────────────────────────────
+        // The price and the rules of a night (one row per property and stay date, the values bounded by a check constraint), and the changes of
+        // the calendar sent to the channel manager (the process the host follows and its chunks). Each row carries its org (restrict) and the
+        // tenant query filter applies to all of them, below, as to every ITenantOwned entity; the rows go with their property (cascade).
+        modelBuilder.ApplyConfiguration(new PropertyDayRuleConfiguration());
+        modelBuilder.ApplyConfiguration(new CalendarChangeProcessConfiguration());
+        modelBuilder.ApplyConfiguration(new CalendarChangeChunkConfiguration());
+
+        // The connection of a site to the org (S022, PLG-BE-CONNECT, site integration plan §10): the one-time codes and the credentials of the plugin, hashes
+        // only, with their org (cascade); one active credential for each org and site. The tenant query filter applies to both, below.
+        modelBuilder.ApplyConfiguration(new SiteConnectionCodeConfiguration());
+        modelBuilder.ApplyConfiguration(new SiteConnectionConfiguration());
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the
         // tenant one) so it composes independently: IgnoreQueryFilters([TenantQueryFilter]) (entitlement counts,
@@ -1492,11 +2525,19 @@ public class AppDbContext(
         // UI-13a: the stored search keys and their indexes (global search, docs/runbooks/global-search.md).
         SearchKeyModel.Configure(modelBuilder);
 
+        modelBuilder.Entity<GuestHostExtraOrder>().HasOne<FiscalDocument>().WithMany().HasForeignKey(x => x.SupplementToDocumentId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<GuestHostExtraOrder>().HasIndex(x => new { x.OrgId, x.BookingId });
+        modelBuilder.Entity<GuestHostExtraOrder>().HasIndex(x => new { x.OrgId, x.ExtraId });
+        modelBuilder.Entity<GuestHostExtra>().HasIndex(x => x.OrgId);
+        modelBuilder.Entity<TrustedSupplier>()
+            .HasQueryFilter(TrustedSupplierActiveFilter, supplier => supplier.RemovedAt == null);
+        modelBuilder.Entity<GuestCrmProfile>().Property(p => p.MarketingCategoryOverridesJson).HasDefaultValue("{}");
         ApplyTenantQueryFilters(modelBuilder);
     }
 
     /// <summary>Key of the global tenant query filter, for <c>IgnoreQueryFilters([TenantQueryFilter])</c>.</summary>
     public const string TenantQueryFilter = "Tenant";
+    public const string TrustedSupplierActiveFilter = "ActiveTrustedSupplier";
 
     /// <summary>
     /// Key of the global soft-delete filter on <see cref="Property"/> (PC-05), for
@@ -1507,6 +2548,179 @@ public class AppDbContext(
 
     private static readonly MethodInfo ApplyTenantQueryFilterMethod = typeof(AppDbContext)
         .GetMethod(nameof(ApplyTenantQueryFilter), BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+    private static void ConfigureCondominium(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Condominium>(entity =>
+        {
+            entity.HasOne(condominium => condominium.Org).WithMany().HasForeignKey(condominium => condominium.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(condominium => condominium.FiscalStartMonth).HasDefaultValue(6);
+            entity.HasIndex(condominium => condominium.OrgId);
+            entity.ToTable(table => table.HasCheckConstraint("CK_Condominiums_FiscalStartMonth", "\"FiscalStartMonth\" BETWEEN 1 AND 12"));
+        });
+
+        modelBuilder.Entity<CondominiumUnit>(entity =>
+        {
+            entity.HasOne(unit => unit.Condominium).WithMany(condominium => condominium.Units).HasForeignKey(unit => unit.CondominiumId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(unit => unit.Property).WithMany().HasForeignKey(unit => unit.PropertyId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(unit => unit.Org).WithMany().HasForeignKey(unit => unit.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(unit => unit.Millesimi).HasPrecision(8, 2);
+            entity.HasIndex(unit => unit.CondominiumId);
+            entity.HasIndex(unit => new { unit.OrgId, unit.PropertyId });
+        });
+
+        modelBuilder.Entity<CondominiumPeriod>(entity =>
+        {
+            entity.HasOne(period => period.Condominium).WithMany(condominium => condominium.Periods).HasForeignKey(period => period.CondominiumId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(period => period.Org).WithMany().HasForeignKey(period => period.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(period => period.Status).HasConversion<int>();
+            entity.HasIndex(period => new { period.CondominiumId, period.Label }).IsUnique();
+            entity.HasIndex(period => period.OrgId);
+            entity.ToTable(table => table.HasCheckConstraint("CK_CondominiumPeriods_Dates", "\"EndDate\" >= \"StartDate\""));
+        });
+
+        modelBuilder.Entity<CondominiumStatement>(entity =>
+        {
+            entity.HasOne(statement => statement.Period).WithMany(period => period.Statements).HasForeignKey(statement => statement.CondominiumPeriodId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(statement => statement.Org).WithMany().HasForeignKey(statement => statement.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(statement => statement.Kind).HasConversion<int>();
+            entity.Property(statement => statement.Status).HasConversion<int>();
+            entity.Property(statement => statement.TotalAmount).HasPrecision(18, 2);
+            entity.HasIndex(statement => new { statement.CondominiumPeriodId, statement.Kind, statement.RevisionNumber }).IsUnique();
+            entity.HasIndex(statement => new { statement.CondominiumPeriodId, statement.Kind })
+                .IsUnique()
+                .HasFilter("\"Status\" = 1");
+            entity.HasIndex(statement => statement.OrgId);
+        });
+
+        modelBuilder.Entity<CondominiumExpenseLine>(entity =>
+        {
+            entity.HasOne(line => line.Statement).WithMany(statement => statement.Lines).HasForeignKey(line => line.StatementId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(line => line.Unit).WithMany().HasForeignKey(line => line.CondominiumUnitId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(line => line.Org).WithMany().HasForeignKey(line => line.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(line => line.Amount).HasPrecision(18, 2);
+            entity.Property(line => line.RecoverableAmount).HasPrecision(18, 2);
+            entity.Property(line => line.RecoverablePercentage).HasPrecision(5, 2);
+            entity.Property(line => line.Confidence).HasPrecision(5, 4);
+            entity.Property(line => line.ExpenseNature).HasConversion<int>();
+            entity.Property(line => line.TenantRecoverability).HasConversion<int>();
+            entity.Property(line => line.ClassificationSource).HasConversion<int>();
+            entity.Property(line => line.ReviewStatus).HasConversion<int>();
+            entity.HasIndex(line => line.StatementId);
+            entity.HasIndex(line => line.OrgId);
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_CondominiumExpenseLines_Confidence",
+                "\"Confidence\" IS NULL OR (\"Confidence\" >= 0 AND \"Confidence\" <= 1)"));
+        });
+
+        modelBuilder.Entity<CondominiumInstallment>(entity =>
+        {
+            entity.HasOne(installment => installment.Period).WithMany(period => period.Installments).HasForeignKey(installment => installment.CondominiumPeriodId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(installment => installment.Org).WithMany().HasForeignKey(installment => installment.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(installment => installment.OrdinaryAmount).HasPrecision(18, 2);
+            entity.Property(installment => installment.PriorSettlementAmount).HasPrecision(18, 2);
+            entity.Property(installment => installment.ExtraordinaryAmount).HasPrecision(18, 2);
+            entity.Property(installment => installment.TotalAmount).HasPrecision(18, 2);
+            entity.Property(installment => installment.Status).HasConversion<int>();
+            entity.HasIndex(installment => new { installment.CondominiumPeriodId, installment.SlotIndex }).IsUnique();
+            entity.HasIndex(installment => installment.OrgId);
+        });
+
+        modelBuilder.Entity<CondominiumPriorBalance>(entity =>
+        {
+            entity.HasOne(balance => balance.Period).WithOne(period => period.PriorBalance).HasForeignKey<CondominiumPriorBalance>(balance => balance.CondominiumPeriodId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(balance => balance.SourcePeriod).WithMany().HasForeignKey(balance => balance.SourcePeriodId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(balance => balance.Org).WithMany().HasForeignKey(balance => balance.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(balance => balance.Amount).HasPrecision(18, 2);
+            entity.Property(balance => balance.Disposition).HasConversion<int>();
+            entity.HasIndex(balance => balance.CondominiumPeriodId).IsUnique();
+            entity.HasIndex(balance => balance.OrgId);
+        });
+
+        modelBuilder.Entity<CondominiumPayment>(entity =>
+        {
+            entity.HasOne(payment => payment.Period).WithMany().HasForeignKey(payment => payment.CondominiumPeriodId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(payment => payment.Installment).WithMany(installment => installment.Payments).HasForeignKey(payment => payment.CondominiumInstallmentId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(payment => payment.PriorBalance).WithMany().HasForeignKey(payment => payment.PriorBalanceId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(payment => payment.Org).WithMany().HasForeignKey(payment => payment.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(payment => payment.Amount).HasPrecision(18, 2);
+            entity.HasIndex(payment => new { payment.OrgId, payment.ExternalSourceHash })
+                .IsUnique()
+                .HasFilter("\"ExternalSourceHash\" IS NOT NULL");
+            entity.HasIndex(payment => payment.CondominiumPeriodId);
+            entity.HasIndex(payment => payment.CondominiumInstallmentId);
+        });
+
+        modelBuilder.Entity<TenantCondominiumSettlement>(entity =>
+        {
+            entity.HasOne(settlement => settlement.LeaseContract).WithMany().HasForeignKey(settlement => settlement.LeaseContractId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(settlement => settlement.Period).WithMany().HasForeignKey(settlement => settlement.CondominiumPeriodId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(settlement => settlement.Org).WithMany().HasForeignKey(settlement => settlement.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(settlement => settlement.RecoverableFinalAmount).HasPrecision(18, 2);
+            entity.Property(settlement => settlement.AdvancesAccountedAmount).HasPrecision(18, 2);
+            entity.Property(settlement => settlement.PriorTenantBalanceAmount).HasPrecision(18, 2);
+            entity.Property(settlement => settlement.SettlementAmount).HasPrecision(18, 2);
+            entity.Property(settlement => settlement.Direction).HasConversion<int>();
+            entity.Property(settlement => settlement.Disposition).HasConversion<int>();
+            entity.Property(settlement => settlement.AllocationRule).HasConversion<int>();
+            entity.Property(settlement => settlement.Status).HasConversion<int>();
+            entity.HasIndex(settlement => new { settlement.LeaseContractId, settlement.StatementId }).IsUnique();
+            entity.HasIndex(settlement => new { settlement.OrgId, settlement.CondominiumPeriodId });
+        });
+
+        modelBuilder.Entity<TenantExpenseAllocation>(entity =>
+        {
+            entity.HasOne(allocation => allocation.Settlement).WithMany(settlement => settlement.Allocations).HasForeignKey(allocation => allocation.TenantCondominiumSettlementId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(allocation => allocation.LeaseContract).WithMany().HasForeignKey(allocation => allocation.LeaseContractId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(allocation => allocation.ExpenseLine).WithMany().HasForeignKey(allocation => allocation.CondominiumExpenseLineId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(allocation => allocation.Org).WithMany().HasForeignKey(allocation => allocation.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(allocation => allocation.BaseAmount).HasPrecision(18, 2);
+            entity.Property(allocation => allocation.AllocatedAmount).HasPrecision(18, 2);
+            entity.Property(allocation => allocation.Rule).HasConversion<int>();
+            entity.Property(allocation => allocation.Status).HasConversion<int>();
+            entity.HasIndex(allocation => allocation.TenantCondominiumSettlementId);
+            entity.HasIndex(allocation => allocation.OrgId);
+        });
+
+        modelBuilder.Entity<CondominiumImportBatch>(entity =>
+        {
+            entity.HasOne(batch => batch.Org).WithMany().HasForeignKey(batch => batch.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(batch => batch.Status).HasConversion<int>();
+            entity.HasIndex(batch => new { batch.OrgId, batch.ContentHash }).IsUnique();
+        });
+
+        modelBuilder.Entity<CondominiumImportHouse>(entity =>
+        {
+            entity.HasOne(house => house.Batch).WithMany(batch => batch.Houses).HasForeignKey(house => house.BatchId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(house => house.Property).WithMany().HasForeignKey(house => house.PropertyId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(house => house.Org).WithMany().HasForeignKey(house => house.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(house => house.Status).HasConversion<int>();
+            entity.HasIndex(house => house.BatchId);
+            entity.HasIndex(house => new { house.OrgId, house.PropertyId });
+        });
+
+        modelBuilder.Entity<CondominiumImportYear>(entity =>
+        {
+            entity.HasOne(year => year.House).WithMany(house => house.Years).HasForeignKey(year => year.HouseId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(year => year.Org).WithMany().HasForeignKey(year => year.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(year => year.Cadence).HasConversion<int>();
+            entity.HasIndex(year => year.HouseId);
+        });
+
+        modelBuilder.Entity<CondominiumStatementProposal>(entity =>
+        {
+            entity.HasOne(proposal => proposal.Condominium).WithMany().HasForeignKey(proposal => proposal.CondominiumId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(proposal => proposal.Org).WithMany().HasForeignKey(proposal => proposal.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(proposal => proposal.Kind).HasConversion<int>();
+            entity.Property(proposal => proposal.Settlement).HasConversion<int>();
+            entity.Property(proposal => proposal.Status).HasConversion<int>();
+            entity.Property(proposal => proposal.OrdinaryAmount).HasPrecision(18, 2);
+            entity.Property(proposal => proposal.ExtraordinaryAmount).HasPrecision(18, 2);
+            entity.Property(proposal => proposal.FinalAmount).HasPrecision(18, 2);
+            entity.Property(proposal => proposal.Confidence).HasPrecision(5, 4);
+            entity.HasIndex(proposal => new { proposal.OrgId, proposal.CondominiumId, proposal.ContentHash });
+        });
+    }
 
     /// <summary>
     /// Global tenant query filter (AC7, TN-2): every read of an <see cref="ITenantOwned"/> entity is scoped

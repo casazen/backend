@@ -22,7 +22,9 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="CancellationRefundPolicy.EvaluateGuestRefund(Booking, DateTimeOffset, decimal)"/>, the same for the preview the guest sees
 /// and for the cancellation; <see cref="BookingCancellationService"/> checks it again under its lock (the guest's minimum is the
 /// policy's refund, DB-08h) and, when the guest cancels with the link, spends the link in the same transaction as the cancellation;
-/// an error leaves it usable until it expires.
+/// an error leaves it usable until it expires. The <c>BookingCancelled</c> event of a guest's cancellation (origin Guest,
+/// E08/F06/US01/T01) is recorded by <see cref="BookingCancellationService"/>, in the save that cancels the booking: this class cancels
+/// nothing itself, and a second record here would be a second event for the same cancellation.
 /// </remarks>
 public sealed class GuestBookingCancellationService(
     AppDbContext db,
@@ -31,7 +33,9 @@ public sealed class GuestBookingCancellationService(
     PublicSiteLinks links,
     IConfiguration configuration,
     ILogger<GuestBookingCancellationService> logger,
-    TimeProvider? timeProvider = null) : IGuestBookingCancellationService
+    TimeProvider? timeProvider = null,
+    IGuestEmailBrandingProvider? emailBranding = null,
+    IGuestEmailLanguageProvider? emailLanguage = null) : IGuestBookingCancellationService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -79,14 +83,19 @@ public sealed class GuestBookingCancellationService(
             return;
         }
 
+        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
+        var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
+        // E50/F01/US03/T02: with the guest portal on, in the language of the guest (the check-in page, the country, the account of the host); without it, in Italian as ever.
+        var culture = await emailLanguage.CultureOrAsync(booking.OrgId, booking.Id, EmailTemplates.DefaultCulture, cancellationToken: cancellationToken);
         var content = EmailTemplates.GuestCancelLink(
-            EmailTemplates.DefaultCulture,
+            culture,
             booking.Guest!.FirstName,
             booking.Property.Name,
             booking.CheckInDate,
             booking.CheckOutDate,
             cancelUrl,
-            expiresAt);
+            expiresAt,
+            branding);
 
         emailQueue.Enqueue(guestEmail, content, EmailTemplates.Names.GuestCancelLink);
 
@@ -389,8 +398,7 @@ public sealed class GuestBookingCancellationService(
             .Where(r => r.Origin == PaymentRefundOrigin.BookingCancellation && r.Payment.BookingId == bookingId)
             .ToListAsync(cancellationToken);
 
-    private static bool IsCancellableByGuest(BookingStatus status) =>
-        status is BookingStatus.Pending or BookingStatus.Confirmed or BookingStatus.CheckedIn;
+    private static bool IsCancellableByGuest(BookingStatus status) => BookingEditRules.IsCancellable(status);
 
     private async Task<Booking> LoadBookingAsync(Guid bookingId, CancellationToken cancellationToken) =>
         await db.Bookings

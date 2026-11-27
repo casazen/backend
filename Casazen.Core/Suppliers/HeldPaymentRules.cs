@@ -189,7 +189,8 @@ public static class HeldPaymentRules
         int amountCents,
         int netCents,
         int refundedCents,
-        bool hasTransfer)
+        bool hasTransfer,
+        int? supplierRefundedCents = null)
     {
         var inCycle = current is ServicePaymentStatus.Held
             or ServicePaymentStatus.TransferFailed
@@ -202,7 +203,7 @@ public static class HeldPaymentRules
         if (refundedCents >= amountCents)
             return ServicePaymentStatus.Refunded;
 
-        if (refundedCents > 0 && ReleasableCents(netCents, refundedCents, 0) == 0)
+        if (refundedCents > 0 && ReleasableCents(netCents, supplierRefundedCents ?? refundedCents, 0) == 0)
             return ServicePaymentStatus.PartiallyRefunded;
 
         return current is ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded ? ServicePaymentStatus.Held : current;

@@ -139,7 +139,8 @@ internal sealed class ServiceRequestScenario : IDisposable
         IDataProtectionProvider? dataProtection = null,
         SupplierPaymentsOptions? paymentOptions = null,
         Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null,
-        IShowcaseAlternativesService? alternatives = null)
+        IShowcaseAlternativesService? alternatives = null,
+        bool recordEvents = false)
     {
         var builder = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString());
         if (saveInterceptor is not null)
@@ -159,7 +160,8 @@ internal sealed class ServiceRequestScenario : IDisposable
             showcaseOptions,
             paymentOptions: paymentOptions,
             paymentLogger: paymentLogger,
-            alternatives: alternatives);
+            alternatives: alternatives,
+            recordEvents: recordEvents);
         var scenario = new ServiceRequestScenario(kit, clock, emails, pushes);
         await scenario.SeedWorldAsync();
         return scenario;
@@ -345,6 +347,7 @@ internal sealed class ServiceRequestScenario : IDisposable
         Db.Orgs.Add(org);
         Db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = org.Id,
             Email = "other@test.com",
             LegalName = "Other Srl",
@@ -452,6 +455,7 @@ internal sealed class ServiceRequestScenario : IDisposable
         Db.Orgs.Add(supplierOrg);
         Db.SupplierProfiles.Add(new SupplierProfile
         {
+            GuestPortalMarketplaceEnabled = true,
             OrgId = supplierOrg.Id,
             Email = "supplier@test.com",
             LegalName = "Supplier Srl",

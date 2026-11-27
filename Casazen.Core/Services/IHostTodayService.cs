@@ -58,9 +58,10 @@ public sealed record HostToday(
 
 /// <summary>
 /// A stay of the day. <paramref name="CheckIn"/> and <paramref name="Alloggiati"/> are null for a departure, which has no check-in to
-/// follow; <paramref name="Cleaning"/> is null for an arrival (SR-03b).
+/// follow; <paramref name="Alloggiati"/> is also null for a no-show, which owes no communication (NF-45); <paramref name="Cleaning"/> is
+/// null for an arrival (SR-03b).
 /// </summary>
-/// <param name="Alloggiati">Where the Alloggiati Web communication of an arriving stay stands, with its term.</param>
+/// <param name="Alloggiati">Where the Alloggiati Web communication of an arriving stay stands, with its term; null for a no-show.</param>
 /// <param name="Cleaning">The latest cleaning request tied to a leaving stay; null when it has none.</param>
 public sealed record HostTodayStay(
     HostDashboardStay Stay,
@@ -253,6 +254,32 @@ public static class HostTodoPriority
         Casazen.Core.Enums.ComplianceCockpitAction.SendAlloggiati => HostTodoAction.SendAlloggiati,
         Casazen.Core.Enums.ComplianceCockpitAction.ResolveAlloggiatiFailure => HostTodoAction.ResolveAlloggiatiFailure,
         Casazen.Core.Enums.ComplianceCockpitAction.ConfirmPropertyReady => HostTodoAction.ConfirmPropertyReady,
-        _ => throw new ArgumentOutOfRangeException(nameof(action), action, "A cockpit action without a place in the things to do."),
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(action), action, "A cockpit action without a place in the things to do: map it, or list it in CockpitActionsOutsideTheDay."),
     };
+
+    /// <summary>
+    /// The cockpit actions of the compliance traffic light (E03/F02/US01/T03, NF-52) that the list of the day does not carry: the day reads the six
+    /// older sections of the cockpit, while these items live in the new sections (identity, receipts, sends by hand, connections, periods), which the
+    /// compliance cockpit shows and the «Da fare» list (ADR-026) receives. A cockpit action is either mapped by <see cref="From"/> or listed here, so a new
+    /// one is decided on purpose: the test <c>From_EveryActionOfTheCockpit_HasAPlaceInTheThingsToDo_OrIsLeftOutOfTheDayOnPurpose</c> holds the two
+    /// against the enum.
+    /// </summary>
+    public static IReadOnlySet<Casazen.Core.Enums.ComplianceCockpitAction> CockpitActionsOutsideTheDay { get; } =
+        new HashSet<Casazen.Core.Enums.ComplianceCockpitAction>
+        {
+            Casazen.Core.Enums.ComplianceCockpitAction.VerifyIdentity,
+            Casazen.Core.Enums.ComplianceCockpitAction.UploadAlloggiatiReceipt,
+            Casazen.Core.Enums.ComplianceCockpitAction.SendAlloggiatiManually,
+            Casazen.Core.Enums.ComplianceCockpitAction.ActivateOctorateSend,
+            Casazen.Core.Enums.ComplianceCockpitAction.RenewPoliceCredentials,
+            Casazen.Core.Enums.ComplianceCockpitAction.UploadIstatProof,
+            Casazen.Core.Enums.ComplianceCockpitAction.EnterMunicipalityTaxRate,
+            Casazen.Core.Enums.ComplianceCockpitAction.DeclareTouristTax,
+            // casazen/backend#979: the police notification of the Ticino properties lives in its own section of the cockpit.
+            Casazen.Core.Enums.ComplianceCockpitAction.NotifyTicinoPolice,
+
+            // E31/F02/US01/T01: the same for the notification of the guests to the authority of a canton other than Ticino: its own section of the cockpit.
+            Casazen.Core.Enums.ComplianceCockpitAction.NotifyGuestsAuthority,
+        };
 }

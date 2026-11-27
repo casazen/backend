@@ -37,6 +37,11 @@ namespace Casazen.Core.Services;
 /// <see cref="ServiceRequestErrorCodes.LeaseMismatch"/> for one of another property); a short-rent request takes none (422
 /// <see cref="ServiceRequestErrorCodes.LeaseNotAllowed"/>). A link only: nothing of the tenant goes to the supplier.
 /// </param>
+/// <param name="AgreedAmountCents">
+/// E24/F01/US01/T02: the price the host agreed with the supplier beforehand (the cleaning at check-out of a property with a default cleaner), in cents, from 1 cent
+/// to <see cref="Casazen.Core.Suppliers.ServiceRequestLimits.MaxAmountCents"/> (422 <c>service_request_amount_invalid</c> otherwise). It is the estimated amount of the
+/// request, in place of the one of a catalog service; <c>null</c> (the default) leaves the amount to the service, as before.
+/// </param>
 public record CreateServiceRequestCommand(
     Guid OrgId,
     string UserId,
@@ -52,7 +57,8 @@ public record CreateServiceRequestCommand(
     DateTime? ScheduledStartUtc = null,
     int? DurationMinutes = null,
     bool? UseBackupSuppliers = null,
-    Guid? LeaseContractId = null);
+    Guid? LeaseContractId = null,
+    int? AgreedAmountCents = null);
 
 /// <summary>
 /// What the supplier adds when it takes a request (SP-04): a time for a request that has none, and the price it commits to.
@@ -259,6 +265,7 @@ public static class ServiceRequestErrorCodes
     public const string CannotCancelMessageKey = "ServiceRequestCannotCancel";
     public const string CannotProposeMessageKey = "ServiceRequestCannotPropose";
     public const string CannotRemindMessageKey = "ServiceRequestCannotRemind";
+    public const string CannotRescheduleMessageKey = "ServiceRequestCannotReschedule";
     public const string CannotAddPhotosMessageKey = "ServiceRequestCannotAddPhotos";
     public const string StateChangedMessageKey = "ServiceRequestStateChanged";
     public const string SlotUnavailableMessageKey = "SupplierSlotUnavailable";
@@ -304,6 +311,7 @@ public static class ServiceRequestErrorCodes
         CannotCancelMessageKey,
         CannotProposeMessageKey,
         CannotRemindMessageKey,
+        CannotRescheduleMessageKey,
         CannotAddPhotosMessageKey,
         StateChangedMessageKey,
         SlotUnavailableMessageKey,
@@ -400,6 +408,20 @@ public interface IServiceRequestService
     /// <see cref="Casazen.Core.Options.ServiceRequestOptions.RemindIntervalHours"/> hours; the supplier is told.
     /// </summary>
     Task<ServiceRequest> RemindAsync(Guid id, Guid hostOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The host moves a request of its org that nobody answered to another time (E24/F01/US01/T02: the dates of the stay of an automatic cleaning changed): only
+    /// while it is <c>Richiesto</c>, with no backup group, no proposed time and no quote waiting (422 <c>service_request_invalid_transition</c> otherwise: the host
+    /// then decides with the existing actions). The new interval is checked as a take is, under the supplier's calendar lock: it must not overlap a job the supplier
+    /// already took (409 <c>supplier_commitment_conflict</c>). The request stays as it is, with the new time; saved only if nobody changed it since it was read
+    /// (409 <c>service_request_state_changed</c>). Another org's request, and one from a supplier's showcase, is not found.
+    /// </summary>
+    Task<ServiceRequest> RescheduleAsHostAsync(
+        Guid id,
+        Guid hostOrgId,
+        DateTime startUtc,
+        DateTime endUtc,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The supplier proposes another time for a new request (SP-04). The request stays <c>Richiesto</c> with the proposal

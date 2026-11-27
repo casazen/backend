@@ -62,7 +62,10 @@ public class AddPropertyMemberAccessMigrationPostgresTests : IAsyncLifetime
         const int shortRentPropertyManager = 7;
         const int shortRentCollaborator = 9;
         var rows = new List<(int, string)>();
-        foreach (var permission in HostPermissions.ShortRentFine)
+
+        // The approval permission is one of ShortRentFine since E05/F04/US01/T01, but a later migration adds it (AddApprovalDecisionAndOriginAction):
+        // this one added the three of AM-03 and no more.
+        foreach (var permission in HostPermissions.ShortRentFine.Where(p => p != HostPermissions.ApprovalDecide))
         {
             rows.Add((shortRentOwner, permission));
             rows.Add((shortRentPropertyManager, permission));

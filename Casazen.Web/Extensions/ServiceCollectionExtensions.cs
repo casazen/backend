@@ -3,12 +3,15 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Documents;
+using Casazen.Core.Events;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.SiteConnections;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Features;
 using Casazen.Infrastructure.Http;
@@ -112,9 +115,12 @@ public static class ServiceCollectionExtensions
                         }
 
                         // The token of a guest session (DB-06a) is not a JWT: only the GuestSession scheme reads it. The sign-in
-                        // of the hosts leaves it alone, so it neither tries to validate it nor logs a failure at every call.
-                        if (context.Request.Headers.Authorization.ToString()
-                            .StartsWith("Bearer " + GuestSessionTokens.Prefix, StringComparison.OrdinalIgnoreCase))
+                        // of the hosts leaves it alone, so it neither tries to validate it nor logs a failure at every call. The same for
+                        // the credential of a connected site (czs_…, S022): only the SiteToken scheme reads it, so on a console endpoint
+                        // the request is anonymous (401).
+                        var authorization = context.Request.Headers.Authorization.ToString();
+                        if (authorization.StartsWith("Bearer " + GuestSessionTokens.Prefix, StringComparison.OrdinalIgnoreCase)
+                            || authorization.StartsWith("Bearer " + SiteConnectionTokens.CredentialPrefix, StringComparison.OrdinalIgnoreCase))
                         {
                             context.NoResult();
                         }
@@ -205,6 +211,10 @@ public static class ServiceCollectionExtensions
             // The guest of a booking site with no account (DB-06a): its own scheme, used only by the policy GuestSession.
             .AddScheme<AuthenticationSchemeOptions, GuestSessionAuthenticationHandler>(
                 GuestSessionDefaults.AuthenticationScheme,
+                _ => { })
+            // The plugin of a site connected to the org (S022): its own scheme, never the default, used only by the policy SiteConnection.
+            .AddScheme<AuthenticationSchemeOptions, SiteTokenAuthenticationHandler>(
+                SiteTokenDefaults.AuthenticationScheme,
                 _ => { });
 
         return services;
@@ -235,6 +245,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAuthorizationHandler, AgencyTierAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, AgencyPermissionAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, OwnerPortalAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, OwnerPortalHostOriginAuthorizationHandler>();
 
         // The complete policy set (TN-3): see CasazenPolicies for how to choose one.
         var builder = services.AddAuthorizationBuilder()
@@ -248,14 +259,34 @@ public static class ServiceCollectionExtensions
                 .AddAuthenticationSchemes(GuestSessionDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
                 .RequireClaim(GuestSessionDefaults.OrgIdClaim))
+            // The plugin of a site connected to the org (S022): the SiteToken scheme only, its connection, its org and the scope of the domain.
+            .AddPolicy(CasazenPolicies.SiteConnection, policy => policy
+                .AddAuthenticationSchemes(SiteTokenDefaults.AuthenticationScheme)
+                .RequireAuthenticatedUser()
+                .RequireClaim(SiteTokenDefaults.ConnectionIdClaim)
+                .RequireClaim(SiteTokenDefaults.OrgIdClaim)
+                .RequireClaim(SiteTokenDefaults.ScopeClaim, SiteTokenDefaults.DomainScope))
             // The person who books as a guest with a CasaZen account (the mobile app's guest area): a signed-in account with a subject
             // and nothing else, since a guest has no host org, no supplier link and no role. The actions check the verified email.
             .AddPolicy(CasazenPolicies.GuestAccount, policy => policy
                 .RequireAuthenticatedUser()
                 .RequireAssertion(context => !string.IsNullOrWhiteSpace(context.User.GetUserId())))
-            // Owner portal access (ADR-011): context=owner_portal claim, MUST NOT include host roles.
+            // A long-rent tenant has no host organization or host role. Each tenant-area action additionally binds the
+            // subject to a lease through the account's verified Auth0 email and the lease's tenant party.
+            .AddPolicy(CasazenPolicies.TenantAccount, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireAssertion(context => !string.IsNullOrWhiteSpace(context.User.GetUserId())))
+            // Owner portal access (ADR-011): context=owner_portal claim, MUST NOT include host roles. E40/F01/US01/T02: a call from an agency's own
+            // domain also needs that agency in the owner's agency_ids (a separate requirement, so the two are AND-ed).
             .AddPolicy(CasazenPolicies.OwnerPortal, policy =>
-                policy.Requirements.Add(new OwnerPortalRequirement()));
+            {
+                policy.Requirements.Add(new OwnerPortalRequirement());
+                policy.Requirements.Add(new OwnerPortalHostOriginRequirement());
+            });
+
+        builder.AddPolicy(CasazenPolicies.TrustedSupplierManage, policy => policy
+            .RequireAuthenticatedUser()
+            .AddRequirements(new AgencyPermissionRequirement(AgencyPermissions.SupplierManage)));
 
         foreach (var policyName in CasazenPolicies.ContextPolicies)
         {
@@ -263,6 +294,10 @@ public static class ServiceCollectionExtensions
             builder.AddPolicy(policyName, policy =>
                 policy.Requirements.Add(new ContextPermissionRequirement(contextKeys, permissionKey)));
         }
+
+        var queuePermissions = CasazenPolicies.ApprovalQueuePolicies.Select(name => CasazenPolicies.ParseContextPolicy(name).PermissionKey).ToArray();
+        builder.AddPolicy(CasazenPolicies.ApprovalQueueAccess, policy => policy.Requirements.Add(
+            new ContextPermissionRequirement([OrgRoleCatalog.ShortRent], queuePermissions[0], queuePermissions[1..])));
 
         // Agency tier policies (ADR-010): Org.PlanTier == PlanTier.Agency and, since DEB-01, the agency permission of the policy
         // held by the caller's org role (OrgRoleCatalog.AgencyPermissionsOf).
@@ -340,6 +375,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPublicSiteSearchService, PublicSiteSearchService>();
         // Host dashboard KPIs per period and iCal feeds widget (PC-16).
         services.AddScoped<IHostDashboardService, HostDashboardService>();
+        // The money reports of the host (NF-97): what came in by date, method and channel, the balances still to collect and the credits (E07/F03/US02/T01).
+        services.AddScoped<IHostCollectionsReportService, HostCollectionsReportService>();
+        // What each channel costs (NF-98, E07/F03/US02/T02): gross, commission and net, and how each channel settles its commission from the cached portal settings
+        // (CasaZen's own database: nothing is asked of Octorate).
+        services.AddScoped<IChannelCommissionSettingsProvider, Casazen.Infrastructure.Octorate.ChannelCommissionSettingsProvider>();
+        services.AddScoped<IChannelCostsReportService, ChannelCostsReportService>();
         // The host's day in one read: stays of the day, requests, things to do (SR-03). What the cockpit items lack is a service apart.
         services.AddScoped<IHostTodayService, HostTodayService>();
         services.AddScoped<IComplianceMissingService, ComplianceMissingService>();
@@ -383,6 +424,18 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DeferredChargeService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IStayAlertService, StayAlertService>();
+        // The alerts about a property that are not tied to one stay (E03/F02/US02/T01, NF-52, CHK-12): the ISTAT and tourist tax periods and the
+        // connection to the channel manager, run by the same hourly job after the stay alerts, behind Features:ComplianceTrafficLight. Who is told is
+        // a port (the audience of the preferences of NF-65, narrowed to who reaches the property); the tourist tax deadline day has no source yet (open
+        // point), so that alert stays silent; the follow-up opens the To do of a stage and raises the popup of a legal deadline within 24 hours.
+        services.AddScoped<IComplianceAlertRecipientResolver, ComplianceAlertRecipientResolver>();
+        services.AddScoped<ITouristTaxDeadlineSource, NoTouristTaxDeadlineSource>();
+        services.AddScoped<IComplianceAlertFollowUp, ComplianceAlertFollowUp>();
+        services.AddScoped<IComplianceAlertService, ComplianceAlertService>();
+        // The monthly compliance summary email of every active short-rent org (E03/F02/US02/T02, NF-52): the previous month through the coverage report of the
+        // archive, once per org and month (ComplianceMonthlySummaryLogs), to the address of the org and its administrators through the recipient port.
+        services.AddScoped<IComplianceMonthlySummaryService, ComplianceMonthlySummaryService>();
+        services.AddScoped<ComplianceMonthlySummaryJob>();
         // Approval queue for items requiring human decision before taking effect (NF-06)
         services.AddScoped<IApprovalQueueService, ApprovalQueueService>();
         // CIN deadline (CO-20, runbook cin-format.md): optional date, validated at startup; daily host alert.
@@ -394,36 +447,130 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICinDeadlineAlertService, CinDeadlineAlertService>();
         services.AddScoped<ITouristTaxService, TouristTaxService>();
         services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
+        // NF-46, ADR-037: the tourist tax of a stay guest by guest, the exemptions, the collector and the rate an org declares.
+        services.AddScoped<IStayTouristTaxService, StayTouristTaxService>();
         services.AddScoped<IGdprService, GdprService>();
         // CO-15: guest data rights and retention per category (docs/runbooks/gdpr.md); no period has a default.
         services.AddScoped<GuestDataEraser>();
         services.AddScoped<IGuestDataRetentionService, GuestDataRetentionService>();
         services.AddScoped<ILeasePartyPrivacyService, LeasePartyPrivacyService>();
-        // NF-10: Document OCR and MRZ extraction for guest check-in (ADR-009-R22, ADR-013-R10).
+        // ADR-024: the drafts of the wizards, saved on the server so that a person resumes them on any device (E01/F02/US01). Their personal
+        // half is an encrypted column (EncryptedColumns); the nightly retention (gdpr-data-retention) anonymizes the drafts past their 30 days.
+        services.AddScoped<IWizardDraftService, WizardDraftService>();
+        services.AddScoped<IWizardDraftRetentionService, WizardDraftRetentionService>();
+        // NF-10 / NF-24: reading of the identity document of the guest check-in, in memory only (ADR-009-R22, ADR-013-R6, R8, R10,
+        // E03/F04/US01/T02). The MRZ locator is stateless; the Tesseract readers bind the library installed in the image the first time a
+        // document is read and verify the SHA-256 of their language files (section MrzOcr, docs/TECHNICAL.md).
+        services.AddOptions<Casazen.Core.Options.MrzOcrOptions>()
+            .BindConfiguration(Casazen.Core.Options.MrzOcrOptions.SectionName);
+        services.AddSingleton<IMrzBandLocator, MrzImageLocator>();
+        services.AddSingleton<TesseractMrzTextReader>();
+        services.AddSingleton<IMrzTextReader>(serviceProvider => serviceProvider.GetRequiredService<TesseractMrzTextReader>());
+        services.AddSingleton<TesseractPageTextReader>();
+        services.AddSingleton<IPageTextReader>(serviceProvider => serviceProvider.GetRequiredService<TesseractPageTextReader>());
         services.AddScoped<IMrzExtractionService, MrzExtractionService>();
         services.AddScoped<IDocumentOcrService, DocumentOcrService>();
-        // NF-11: Biometric verification for guest check-in (ADR-013).
+        // E03/F01/US01/T04: the shared reading of a document photo (MRZ, then OCR, in memory only) and the host wizard "Guest check-in", which
+        // composes the guests, the tax, the sender and the check-in on Octorate (NF-40, NF-45).
+        services.AddScoped<IDocumentReadingService, DocumentReadingService>();
+        services.AddScoped<ICheckInWizardService, CheckInWizardService>();
+        // NF-11 / NF-24: Biometric verification for guest check-in (ADR-013, E03/F04/US01/T01). The three ONNX models are verified (SHA-256)
+        // and loaded once, in the background, where Features:CheckInIdentityVerification is on; without them every verification is the operator
+        // path (section Biometrics, docs/TECHNICAL.md). The large recognition model is downloaded with the client below.
+        services.AddOptions<Casazen.Core.Options.BiometricModelOptions>()
+            .BindConfiguration(Casazen.Core.Options.BiometricModelOptions.SectionName);
+        services.AddHttpClient(BiometricModelStore.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
+        services.AddSingleton<BiometricModelStore>();
+        services.AddSingleton<IBiometricModelStore>(serviceProvider => serviceProvider.GetRequiredService<BiometricModelStore>());
+        services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<BiometricModelStore>());
+        // E22/F01/US01/T01: what the models are doing, read by the non-blocking health entry "biometrics" and by GET api/admin/biometrics/status.
+        services.AddSingleton<IBiometricModelStatusReader, BiometricModelStatusReader>();
+        services.AddSingleton<IFaceDetector, FaceDetector>();
+        services.AddSingleton<IFaceEmbedder, FaceEmbedder>();
         services.AddScoped<IAntiSpoofingService, AntiSpoofingService>();
         services.AddScoped<IBiometricVerificationService, BiometricVerificationService>();
+        services.AddScoped<IActivePoseVerificationService, ActivePoseVerificationService>();
+        // E03/F04/US02/T02: the identity verification agent on top of that pipeline: the capture checks and one rule-based decision with
+        // versioned thresholds. No AI provider, no logger, no storage among its dependencies (PO-09).
+        services.AddSingleton<CaptureQualityAssessor>();
+        services.AddScoped<IIdentityVerificationAgent, IdentityVerificationAgent>();
+        // E03/F04/US02/T04: the verification of one check-in session (consent, document, selfie, operator, lock code release), behind
+        // Features:CheckInIdentityVerification like the public endpoints that call it.
+        services.AddScoped<IIdentityVerificationFlowService, IdentityVerificationFlowService>();
+        // E70/F01/US01/T01 (NF-188..NF-199): the self-hosted identity verification, its options (section IdentityVerification) and the hooks of the tasks of
+        // E70-E74, which register their services only in their own part of IdentityVerificationServiceCollectionExtensions, never here. Read at run time
+        // behind Features:CheckInIdentitySelfHosted.
+        services.AddSelfHostedIdentityVerification();
         // NF-12: Operator verification queue for manual biometric decisions (ADR-013).
         services.AddScoped<IVerificationQueueService, VerificationQueueService>();
+        // E22/F01/US01/T03: the biometric settings of an organization (the thresholds and the attempts, provisional until a platform administrator marks a
+        // calibration), read by its administrators and the staff; the flow reads the same row.
+        services.AddScoped<IBiometricSettingsService, BiometricSettingsService>();
+        // casazen/backend#978: which steps of a stay CasaZen does by itself (the check-in link, the arrival, the departure, the property ready), per org.
+        services.AddScoped<IBookingFlowSettingsService, BookingFlowSettingsService>();
+        // E03/F04/US02/T03: the immediate alert to the operators (push, e-mail, urgent "To do") when a verification needs a person.
+        services.AddScoped<IVerificationOperatorAlerts, VerificationOperatorAlerts>();
         // NF-13: Property access codes with encryption and verification gating (E06/F03/US01/T01).
         services.AddScoped<IAccessCodeService, AccessCodeService>();
         // NF-15: Swiss compliance files of the Ticino properties (ADR-016, E08): police notification XML, OTR overnight CSV and the
         // archive of the receipts the cantonal portal gives back. Used by SwissComplianceController.
         services.AddScoped<ITicinoNotificationService, TicinoNotificationService>();
+        // E31/F02/US01/T01 (NF-131): the assisted notification of the guests to the authority of a canton other than Ticino (the days to notify, the guests as data ready to copy, the
+        // declaration). The cockpit and the alerts read the days from it; the endpoints and the days are behind Features:GuestRegistrationRegimes.
+        services.AddScoped<ISwissNotificationService, SwissNotificationService>();
         services.AddScoped<IOtrTaxService, OtrTaxService>();
         services.AddScoped<ISwissComplianceReceiptService, SwissComplianceReceiptService>();
+        // E31/F01/US01/T01, NF-130 (casazen/backend#979): the guest register of a Swiss property for a period, a clean CSV table rebuilt on every request and never stored (one audit
+        // row without personal data); both of its endpoints of SwissComplianceController are behind Features:GuestRegistrationRegimes.
+        services.AddScoped<IGuestRegisterService, GuestRegisterService>();
+        // NF-126 (casazen/backend#979): the character set of the CSV of the Ticino police, GuestNotifications:TicinoCsvEncoding (windows-1252 by default,
+        // or utf-8); any other value stops the application at startup (docs/runbooks/guest-notification-switzerland.md).
+        services.AddOptions<Casazen.Core.Options.GuestNotificationOptions>()
+            .BindConfiguration(Casazen.Core.Options.GuestNotificationOptions.SectionName)
+            .Validate(
+                options => Casazen.Core.Options.GuestNotificationOptions.TryParseTicinoCsvEncoding(options.TicinoCsvEncoding, out _),
+                "GuestNotifications:TicinoCsvEncoding must be windows-1252 or utf-8 (docs/runbooks/guest-notification-switzerland.md).")
+            .ValidateOnStart();
         services.AddOptions<Casazen.Core.Options.GdprOptions>()
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         // NF-05: Marketing suppression list with blind index (SHA-256) for one-click unsubscribe (ADR-007-R18, R22).
         services.AddScoped<ISuppressionService, SuppressionService>();
         // NF-24: Marketing campaigns and guest segmentation (ADR-014).
         services.AddScoped<IConditionEvaluator, ConditionEvaluator>();
+        services.AddHttpClient<MarketingOpenEvents>(client =>
+        {
+            client.BaseAddress = new Uri("https://tourism.api.opendatahub.com/");
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddScoped<MarketingAiQuota>();
+        services.AddScoped<MarketingStudio>();
         services.AddScoped<ICampaignService, CampaignService>();
         // NF-26: Automation routines (ADR-022).
+        services.AddScoped<RoutineBookingActions>();
         services.AddScoped<IRoutineService, RoutineService>();
-        services.AddScoped<RoutineEventDispatcher>();
+        services.AddScoped<PresetAgentTrainer>();
+        // E01/F04/US01/T03: the routines of an org for the routines page (api/routines, behind Features:Routines); the engine above runs them.
+        services.AddScoped<IRoutineManagementService, RoutineManagementService>();
+        // E24/F01/US01 (NF-120, decision O11): the default cleaner of a property with the price and the time agreed (api/properties/{id}/cleaning-setup, no flag of its own), the
+        // automation of the cleaning at check-out that the routine action CreateCleaningRequest runs and the consumer of the changes of a stay follows (behind Features:Routines), and
+        // the one read of the cleanings completed with their cost that the invoicing of the owners takes (T03).
+        services.AddScoped<IPropertyCleaningSetupService, PropertyCleaningSetupService>();
+        services.AddScoped<ICleaningAutomationService, CleaningAutomationService>();
+        services.AddScoped<ICleaningCostSource, CleaningCostSource>();
+        // FIX/BE-CLEANING-VAT: the question of the VAT of a cleaning company recharged to the owner (api/service-requests/{id}/cleaning-vat, no flag).
+        services.AddScoped<ICleaningVatService, CleaningVatService>();
+        // ADR-022: domain events are recorded in the outbox of the current unit of work (R1) and published by the dispatcher on the
+        // in-process bus, which runs each handler in its own scope under the event's org (R3, R6).
+        services.AddScoped<IDomainEventRecorder, DomainEventRecorder>();
+        services.AddSingleton<IEventBus, InProcessEventBus>();
+        // NF-21: the bus is the one way an event reaches the routines of its org (E01/F01/US01/T05).
+        services.AddScoped<IEventHandler<DomainEvent>, RoutineEventHandler>();
+        // ADR-026-R4: an event whose condition is met closes the "To do" items it satisfies (E04/F01/US01/T01).
+        services.AddScoped<IEventHandler<DomainEvent>, ActivityAutoCloseHandler>();
+        // NF-08, NF-22: the popup alerts (ADR-025). The router stores an alert for a user, holds it back during the user's quiet hours
+        // unless it is a legal one, and pushes it through IPopupAlertPublisher (SignalR, registered with the push services); the job
+        // popup-alert-due (RecurringJobsRegistration) pushes the ones that fell due. The user reads them at api/me/alerts.
+        services.AddScoped<IAlertRouter, AlertRouter>();
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();
@@ -432,6 +579,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyPhotoAltService, PropertyPhotoAltService>();
         services.AddScoped<IPropertyFloorPlanService, PropertyFloorPlanService>();
         services.AddScoped<IPropertyPoiService, PropertyPoiService>();
+        // NF-34, NF-35: the rooms of a unit with their beds and its length-of-stay discounts (api/properties/{id}/rooms and /stay-discounts);
+        // the booking service reads the tiers to price a stay. Property services, not Octorate ones.
+        services.AddScoped<IPropertyRoomService, PropertyRoomService>();
+        services.AddScoped<IStayDiscountService, StayDiscountService>();
         // «Suggerisci un testo» of the wizard: the AI writes the listing from the photos, the comune and the data (api/properties/{id}/listing-text).
         services.AddScoped<IPropertyListingTextService, PropertyListingTextService>();
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
@@ -444,18 +595,43 @@ public static class ServiceCollectionExtensions
             client.Timeout = TimeSpan.FromSeconds(30);
             client.DefaultRequestHeaders.UserAgent.ParseAdd("CasaZen-ape-register/1.0");
         });
+        services.AddOptions<WhatsAppOptions>().BindConfiguration(WhatsAppOptions.SectionName);
+        services.AddHttpClient<IWhatsAppSender, WhatsAppCloudSender>(client =>
+        {
+            client.BaseAddress = new Uri("https://graph.facebook.com/");
+            client.Timeout = TimeSpan.FromSeconds(20);
+        });
         services.AddScoped<IPropertyAuthorizationService, PropertyAuthorizationService>();
         services.AddScoped<IHostResourceLookup, HostResourceLookup>();
         services.AddScoped<IAdminAccessAuditService, AdminAccessAuditService>();
         services.AddScoped<IConcordatoFacileAdminService, ConcordatoFacileAdminService>();
         // Alloggiati Web credentials of a property: write-only, encrypted at rest (CO-14, A5-30).
         services.AddScoped<IQuesturaCredentialsService, QuesturaCredentialsService>();
+        // Who sends the police and ISTAT communications of a property (stored, or the default of PO-02) through one write path, and the
+        // delegation of the Alloggiati transmission of the org (ADR-029, AW-R02, E03/F01/US05/T02). The sender switch with its checks
+        // and the endpoints sit on top of them (E03/F01/US02/T01).
+        services.AddScoped<DirectPortalRoutes>();
+        services.AddScoped<IDirectAlloggiatiRoute>(sp => sp.GetRequiredService<DirectPortalRoutes>());
+        services.AddScoped<IRoss1000DirectRoute>(sp => sp.GetRequiredService<DirectPortalRoutes>());
+        services.AddScoped<IPropertySenderStore, PropertySenderStore>();
+        services.AddScoped<IAlloggiatiDelegationService, AlloggiatiDelegationService>();
+        // The sender of a property for the host (E03/F01/US02/T01): its state, the switch with the confirmation and the delegation, the connection
+        // test against Octorate and the declaration «Activated». The sender «CasaZen sends» is not offered in this release (Questura accounts postponed).
+        services.AddScoped<IPropertySenderService, PropertySenderService>();
+        // Whether the police and ISTAT send of a property is really active (E03/F02/US01/T02, NF-52): the sender view turned into a state per
+        // communication (Active only on Octorate's word, Unknown when it is not readable), with a short memory for the status engine.
+        services.AddScoped<IComplianceConnectionHealthService, ComplianceConnectionHealthService>();
+        // The ISTAT region table and what a property gets from it (E21/F01/US01/T01, decision O6): the rows the staff keeps, and the region, deadline,
+        // required guest fields, coverage and next step of a property. Reads and writes the table only; nothing is sent to anybody.
+        services.AddScoped<IIstatRegionService, IstatRegionService>();
 
         // Multi-tenant Org boundary (US-004): tenant resolution + org/entitlement reads.
         // One instance per request: the EF filter reads it, the middleware and the org resolver write it (A1-20).
         services.AddScoped<TenantContext>();
         services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
         services.AddScoped<IRequestTenantContext>(sp => sp.GetRequiredService<TenantContext>());
+        // A scope opened outside a request (a handler of the event bus) is put under one org through the same instance (ADR-022-R6).
+        services.AddScoped<IBackgroundTenantScope>(sp => sp.GetRequiredService<TenantContext>());
         services.AddScoped<IOrgContextResolver, OrgContextResolver>();
         services.AddScoped<ISupplierOrgContextResolver, SupplierOrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();
@@ -468,6 +644,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICorsOriginSource, OrgHostCorsOriginSource>();
         // Where an org's public site lives (own host or platform path) and its canonical URLs (BK-16).
         services.AddScoped<PublicOrgSiteUrls>();
+        // The links CasaZen sends for an org, on the agency's own domain or on the CasaZen one (E40/F01/US01/T03).
+        services.AddScoped<Casazen.Infrastructure.Email.AgencyDomainLinks>();
         // Pages and sitemaps of the public site as crawlers read them (BK-15).
         services.AddScoped<Casazen.Web.Seo.IPublicSeoService, Casazen.Web.Seo.PublicSeoService>();
         services.AddScoped<IDnsTxtLookup, DnsClientTxtLookup>();
@@ -480,16 +658,37 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDomainVerificationService, DomainVerificationService>();
         services.AddScoped<IDomainRecheckService, DomainRecheckService>();
         services.TryAddSingleton(TimeProvider.System);
+        services.AddScoped<Casazen.Infrastructure.Jobs.AgencyUsageJob>();
         services.AddScoped<IOrgDomainService, OrgDomainService>();
+        // The connection of a site to the org (S022): the one-time code, its exchange for the plugin's credential, the checks of the SiteToken scheme.
+        services.AddScoped<ISiteConnectionService, SiteConnectionService>();
+        // The owner sign-in on an agency's own domain (E40/F01/US02/T01, NF-141): the registrar of the hosts in the shared Auth0 tenant (Auth0:HostSync,
+        // nothing is called without its client id or while Auth0HostSync is off) and the one place that moves the state and tells the org's administrators.
+        services.AddOptions<Auth0HostSyncOptions>().BindConfiguration(Auth0HostSyncOptions.SectionName);
+        services.AddSingleton<Auth0HostRegistrationGate>();
+        services.AddScoped<IAuth0HostRegistrar, Auth0HostRegistrar>();
+        services.AddScoped<OwnerLoginHostSync>();
         services.AddScoped<IEntitlementService, EntitlementService>();
         services.AddScoped<IStripeBillingService, StripeBillingService>();
         services.AddScoped<IBillingCheckoutService, BillingCheckoutService>();
-        // PL-13: VAT computed by Stripe Tax (no rate in code); no SDI provider is integrated in this build, so the
-        // e-invoices are issued manually (health check "einvoicing", docs/runbooks/billing-tax.md).
-        services.AddScoped<ISdiEInvoiceProvider, UnconfiguredSdiEInvoiceProvider>();
+        // PL-13: VAT computed by Stripe Tax (no rate in code); the SaaS e-invoices are issued manually (health check "einvoicing",
+        // docs/runbooks/billing-tax.md). The port to the SDI, ISdiEInvoiceProvider, is registered with the fiscal documents
+        // (AddCasazenFiscalDocuments, E17/F01/US02): the adapter of the provider when Sdi:Provider is configured, else the unconfigured one.
         services.AddScoped<IPlatformInvoiceService, PlatformInvoiceService>();
         services.AddScoped<IBillingEntryGate, BillingEntryGate>();
         services.AddScoped<IRentBillingService, RentBillingService>();
+        services.AddScoped<ITenantRentSepaService, TenantRentSepaService>();
+        services.AddScoped<CondominiumPaymentReminderService>();
+        services.AddScoped<IStripeRentSepaGateway, StripeRentSepaGateway>();
+        services.AddScoped<ICondominiumAccountingService, CondominiumAccountingService>();
+        services.AddScoped<ITenantCondominiumSettlementService, TenantCondominiumSettlementService>();
+        services.AddScoped<ITenantExpenseProposalService, TenantExpenseProposalService>();
+        services.AddScoped<ICondominiumHistoricalImportService, CondominiumHistoricalImportService>();
+        services.AddScoped<IAdministratorStatementReaderService, AdministratorStatementReaderService>();
+        services.AddScoped<IStripeBankLinkGateway, StripeBankLinkGateway>();
+        services.AddScoped<ILeaseMaintenanceService, LeaseMaintenanceService>();
+        services.AddScoped<ILeaseMaintenancePaymentApplier>(sp => sp.GetRequiredService<ILeaseMaintenanceService>());
+        services.AddScoped<IBankLinkService, BankLinkService>();
         // ConcordatoFacile one-time payment (ADR-005): Stripe Checkout with validated Price ID configuration.
         services.AddOptions<Casazen.Core.Options.ConcordatoFacileOptions>()
             .BindConfiguration(Casazen.Core.Options.ConcordatoFacileOptions.SectionName)
@@ -532,6 +731,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
+        // E22/F01/US02/T01: the QR code at the door of a property: its door token and the guest who arrives (booking code or surname, and the arrival date) getting the link of its stay.
+        services.AddScoped<IDoorCheckInService, DoorCheckInService>();
+
+        // The failed attempts of each door, counted for every client together (E22/F01/US02 post-review): in memory, per replica, so it outlives the request.
+        services.AddSingleton<IDoorCheckInFailureTracker, DoorCheckInFailureTracker>();
         // Guests of a stay and official Alloggiati code tables (CO-12).
         services.AddScoped<IAlloggiatiCodeTableService, AlloggiatiCodeTableService>();
         services.AddHttpClient<OfficialSourceDownloader>(client =>
@@ -544,7 +748,38 @@ public static class ServiceCollectionExtensions
         services.AddOptions<OfficialReferenceDataOptions>()
             .BindConfiguration(OfficialReferenceDataOptions.SectionName);
         services.AddScoped<IStayGuestService, StayGuestService>();
+        // The compliance traffic light of the cockpit "am I compliant?" and the feed of its red and yellow items into the unified To do
+        // (E03/F02/US01/T03, NF-52): the status reads facts and hands them to ComplianceLightRules, the one rule class, which returns green
+        // only with an archived proof; the feeder keeps one To do per item and closes it when the item turns green. Both are read-side of the
+        // cockpit (ComplianceWizardService.GetSummaryAsync); nothing is sent to an authority or to Octorate.
+        services.AddScoped<IComplianceStatusService, ComplianceStatusService>();
+        // The archive of the proofs CasaZen holds for those obligations and the log of what was sent (E03/F02/US03/T01, NF-47): the proofs the host
+        // uploads (private bucket, signed addresses), the line every successful send writes, the coverage report over the same rules as the light
+        // and the exports built on request. Options: Compliance:Archive (all optional, docs/runbooks/deploy-checklist.md § 2).
+        services.AddScoped<IComplianceSendLog, ComplianceSendLog>();
+        services.AddScoped<IComplianceArchiveService, ComplianceArchiveService>();
+        // E20/F02/US01/T01 (NF-47, CHK-08): the proofs are kept five years from their upload; the daily job (compliance-proof-retention) deletes the file and the row of
+        // those whose time is over. Always scheduled, nothing to configure.
+        services.AddScoped<Casazen.Infrastructure.Jobs.ComplianceProofRetentionJob>();
+        // NF-128 (casazen/backend#979): the receipts of the Ticino police, the group sheets and the parents' authorizations are kept five years from their date; the
+        // daily job (swiss-compliance-retention) deletes the file and the row of those whose time is over (never an OTR report). Always scheduled, nothing to configure.
+        services.AddSwissComplianceRetention();
+        // E20/F02/US01/T02 (NF-121, NF-16, decision O4): the photos of the identity documents and the legacy scan of a stay covered by an archived Alloggiati receipt are deleted by the
+        // daily job (guest-document-purge) and by a run queued after each receipt upload; behind Features:PurgeDocumentsAfterReceipt, off by default (the deletion cannot be undone).
+        services.AddScoped<IGuestDocumentPurgeService, GuestDocumentPurgeService>();
+        services.AddScoped<Casazen.Infrastructure.Jobs.GuestDocumentPurgeJob>();
+        services.AddScoped<IComplianceActivityFeeder, ComplianceActivityFeeder>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
+        // «Gestisci con AI» of the page of the adempimenti: asks the guests for their data (e-mail with the check-in link, chat messages the
+        // host sends, written by the AI when one is in effect) and closes the departures that are over; the rest stays the host's.
+        services.AddScoped<IAutopilotMessageWriter, AutopilotMessageWriter>();
+        services.AddScoped<IComplianceAutopilotService, ComplianceAutopilotService>();
+        // CHK-15 (E03/F05/US01/T01): the controlled passage of a host to the Octorate Cassetto Compliance. It prepares the allowlisted address
+        // and the guide and writes one line of the activity log; it never signs in to Octorate, reads an outcome or changes a compliance state.
+        // Addresses come from Octorate:FrontendBaseUrl and Octorate:ComplianceHandoff, nothing is required (the home of the panel is the default).
+        services.AddOptions<OctorateComplianceHandoffOptions>()
+            .BindConfiguration(OctorateComplianceHandoffOptions.SectionName);
+        services.AddScoped<IOctorateComplianceHandoffService, OctorateComplianceHandoffService>();
         // D.L. 145/2023 safety checklist of a short-stay property (CO-07).
         services.AddScoped<IPropertySafetyChecklistService, PropertySafetyChecklistService>();
         // Single evaluation of the activation blockers, suspension and nightly check of the published properties (CO-06).
@@ -570,13 +805,44 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRliChecklistService, RliChecklistService>();
         // Questura communication for an extra-EU tenant (LT-07): declared by the landlord, never inferred from a reminder.
         services.AddScoped<IQuesturaCommunicationService, QuesturaCommunicationService>();
-        // RLI registration (LT-01, D15): manual by default. No provider client exists yet (docs/runbooks/rli.md), so the
-        // provider path stays unavailable even with Features:RliProvider on.
+        // RLI registration (LT-01, D15): manual by default. DocuEngine files contracts that are not canone concordato
+        // when Openapi is configured (docs/runbooks/rli.md); without those settings the client refuses every call.
+        services.AddOptions<OpenapiOptions>()
+            .BindConfiguration(OpenapiOptions.SectionName);
+        services.AddHttpClient<IOpenapiDocuEngineClient, OpenapiDocuEngineClient>((sp, client) =>
+        {
+            var configured = sp.GetRequiredService<IOptions<OpenapiOptions>>().Value.BaseUrl;
+            if (Uri.TryCreate(configured, UriKind.Absolute, out var baseUri))
+                client.BaseAddress = baseUri;
+        });
+        services.AddScoped<IOpenapiRegistrationPreparation, OpenapiRegistrationPreparation>();
+        services.AddScoped<IOpenapiRegistrationPaymentGate, OpenapiRegistrationPaymentGate>();
+        services.AddScoped<IOpenapiRegistrationCheckoutService, OpenapiRegistrationCheckoutService>();
         services.AddScoped<IRliRegistrationService, RliRegistrationService>();
-        services.AddSingleton<ILeaseRegistrationProvider, UnconfiguredLeaseRegistrationProvider>();
+        services.AddSingleton<UnconfiguredLeaseRegistrationProvider>();
+        services.AddScoped<ILeaseRegistrationProvider>(sp => new OpenapiAwareLeaseRegistrationProvider(
+            sp.GetRequiredService<UnconfiguredLeaseRegistrationProvider>(),
+            sp.GetRequiredService<IOpenapiDocuEngineClient>()));
         services.AddScoped<IFiscalRegimeService, FiscalService>();
         services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
+        // NF-100: the tourist tax owed, paid and receipted per comune, over the tourist tax report above (GET /api/tourist-tax/summary).
+        services.AddScoped<ITouristTaxSummaryService, TouristTaxSummaryService>();
+        // NF-99: the document archive, a read model over the tables of its sources (GET /api/documents).
+        services.AddDocumentArchive();
+        // NF-101, E15/F01/US01/T01: the agency summary and the ZIP of the accountant (GET /api/accountant-package, behind Features:AccountantPackage), both composed of the
+        // services above and of the fiscal documents and the owner accounting; the ZIP is capped like the archive export (DocumentArchive).
+        services.AddScoped<IAgencySummaryService, AgencySummaryService>();
+        services.AddScoped<IAccountantPackageService, AccountantPackageService>();
+        // NF-101, E15/F01/US02/T01: how the package is sent to the accountant (the address, the monthly send, its day and folders): GET and PUT api/accountant-package/settings.
+        services.AddScoped<IAccountantPackageSettingsService, AccountantPackageSettingsService>();
+        // NF-101, E15/F01/US02/T02: the monthly e-mail of the package to the accountant: the package kept in the private storage, the signed link (AccountantPackageLinks, registered with the e-mail), POST
+        // api/accountant-package/send and the public link; the job (accountant-package-monthly) is registered only while Features:AccountantPackage is on.
+        services.AddScoped<IAccountantPackageDeliveryService, AccountantPackageDelivery>();
+        services.AddScoped<AccountantPackageMonthlyJob>();
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
+        // E22/F01/US02/T02: the registry of the legal texts of the guest check-in (consent to the biometric verification, notice for Ticino): the files and the manifest under
+        // LegalDocuments/checkin, drafts until approved; production serves approved versions only. Read once per process.
+        services.AddSingleton<ICheckInLegalTexts, CheckInLegalTexts>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         // AM-02: the people of an org: seats of the plan, invitations and their acceptance, the members and the hourly
         // maintenance (reminders, expiry, deletion of the closed ones).
@@ -584,6 +850,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgEmptinessChecker, OrgEmptinessChecker>();
         services.AddScoped<IOrgInvitationService, OrgInvitationService>();
         services.AddScoped<IOwnerInvitationService, OwnerInvitationService>();
+        // NF-96: the performance of an agency's properties cut by property owner, over the Home's numbers (GET /api/reports/by-owner).
+        services.AddScoped<IOwnerReportService, OwnerReportService>();
+        // ADR-011, NF-96: the owner portal (the owner's properties, and their overview and trend on the Home's numbers). It was never
+        // registered: the controller of the portal could not be built.
+        services.AddScoped<IOwnerPortalService, OwnerPortalService>();
         services.AddScoped<IOrgTeamService, OrgTeamService>();
         // AM-03: the properties each member reaches («Solo alcuni») and the member in charge of a property.
         services.AddScoped<IOrgPropertyAccessService, OrgPropertyAccessService>();
@@ -645,6 +916,18 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierComuneMatcher, SupplierComuneMatcher>();
         services.AddScoped<ISupplierPilotComuni, SupplierPilotComuni>();
         services.AddScoped<IPropertyComuneResolver, PropertyComuneResolver>();
+
+        // The official Swiss localities and municipalities of swisstopo (E29/F01/US01/T01, NF-124): the search of the locality picker and the
+        // lookup of a municipality (SwissPlacesController); the seed is loaded at startup by SwissPlacesSeedHostedService.
+        services.AddScoped<ISwissPlacesDirectory, SwissPlacesDirectory>();
+        // E29/F01/US01/T02: the one resolver of the place of a Swiss property (stored municipality, else derived from postal code and city), read by
+        // the Ticino notification, the OTR report, the year-end count of Ticino, the policy of the identity documents and the property record.
+        services.AddScoped<IPropertySwissPlaceResolver, PropertySwissPlaceResolver>();
+        // E29/F02/US01/T01 (NF-125, D3): the one resolver of the regime of the registration of the guests of a property (Italy, one of the 26 cantons, or the
+        // unknown Swiss place) and the writer of the host's setting; the endpoints are behind Features:GuestRegistrationRegimes, the readiness of a Swiss
+        // property (the municipality, the structure number of Ticino) is not.
+        services.AddScoped<IGuestRegistrationRegimeResolver, GuestRegistrationRegimeResolver>();
+        services.AddScoped<IGuestNotificationOverrideService, GuestNotificationOverrideService>();
 
         // Pilot comuni of supplier self-serve registration (SU-01, runbook suppliers.md): no default, validated at startup.
         services.AddOptions<SupplierRegistrationOptions>()
@@ -772,6 +1055,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceRequestAssistService, ServiceRequestAssistService>();
         // Internal activities performed by staff on properties (NF-22, agency tier).
         services.AddScoped<IInternalActivityService, InternalActivityService>();
+        services.AddScoped<IPropertyImportReviewService, PropertyImportReviewService>();
+        services.AddScoped<PropertyActivationServices>();
+        services.AddScoped<PropertyActivationAccounts>();
         services.AddScoped<CalendarSyncService>();
         // The supplier's answers about the "Available" events of its calendar (they occupy until answered).
         services.AddScoped<SupplierFreeEventService>();
@@ -794,6 +1080,15 @@ public static class ServiceCollectionExtensions
         // The tokens are sealed with Data Protection (the key ring in the database), so every replica reads them.
         services.AddSingleton<GuestSessionTokens>();
         services.AddScoped<IGuestSessionService, GuestSessionService>();
+        // The lock of a booking code after repeated failures of the last four digits of the phone, the other proof of the guest session (NF-143,
+        // flag WhiteLabelHost; docs/runbooks/direct-booking.md § 8.4): its two settings are checked at startup, its counters live in memory, per replica.
+        services.AddOptions<GuestPhoneLookupLockoutOptions>()
+            .Configure<IConfiguration>(GuestPhoneLookupLockoutOptions.Read)
+            .Validate(
+                options => options.IsValid(),
+                $"{GuestPhoneLookupLockoutOptions.MaxFailuresKey} and {GuestPhoneLookupLockoutOptions.WindowMinutesKey} must be at least 1.")
+            .ValidateOnStart();
+        services.AddSingleton<GuestPhoneLookupLockout>();
         // The bookings of the guest who has an account (the mobile app, GuestAccountController): the direct bookings of any site whose guest
         // has the account's verified email, and the same guest-area session opened for them (docs/runbooks/direct-booking.md § 8.6).
         services.AddScoped<IGuestAccountBookingService, GuestAccountBookingService>();
@@ -889,6 +1184,41 @@ public static class ServiceCollectionExtensions
                             (int)outcome.Result.StatusCode, retryCount, timespan.TotalSeconds);
                     }
                 });
+    }
+
+    /// <summary>
+    /// The five-year retention of the documents of the Ticino police rules (NF-128): the daily job, scoped like the other jobs. A registration test resolves
+    /// it with validated scopes.
+    /// </summary>
+    public static IServiceCollection AddSwissComplianceRetention(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.AddScoped<Casazen.Infrastructure.Jobs.SwissComplianceRetentionJob>();
+        return services;
+    }
+
+    /// <summary>
+    /// The document archive (NF-99, E07/F03/US03): the service, the sources it reads and the caps of the export (<c>DocumentArchive</c>, checked at
+    /// startup). A source is a class that knows one table and who may read it: the property documents, the files of the leases, the receipts
+    /// of the tourist tax payments and the proofs of the compliance duties the host uploaded (the Alloggiati receipts and the ISTAT proofs,
+    /// «Prove di adempimento», E20/F02/US01/T01) are here; the documents of the fiscal epic add theirs when their tasks come. The guest identity
+    /// documents and selfies are never a source.
+    /// </summary>
+    public static IServiceCollection AddDocumentArchive(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddOptions<DocumentArchiveOptions>()
+            .BindConfiguration(DocumentArchiveOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<DocumentArchiveOptions>, DocumentArchiveOptionsValidator>();
+        services.AddScoped<IDocumentArchiveSource, PropertyDocumentArchiveSource>();
+        services.AddScoped<IDocumentArchiveSource, LeaseDocumentArchiveSource>();
+        services.AddScoped<IDocumentArchiveSource, TouristTaxRemittanceArchiveSource>();
+        services.AddScoped<IDocumentArchiveSource, AlloggiatiReceiptArchiveSource>();
+        services.AddScoped<IDocumentArchiveSource, IstatProofArchiveSource>();
+        services.AddScoped<IDocumentArchiveService, DocumentArchiveService>();
+        return services;
     }
 
     public static IServiceCollection AddCasazenOtaIntegrations(this IServiceCollection services, IConfiguration configuration)

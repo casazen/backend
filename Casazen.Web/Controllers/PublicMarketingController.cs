@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Web.Infrastructure;
@@ -13,7 +14,8 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// Public (no-auth) marketing consent double opt-in and unsubscribe endpoints (NF-05, ADR-007-R17, R18, R21, R22).
-/// Verifies HMAC-signed confirmation and unsubscribe links. The logs never carry the e-mail address (DEB-01).
+/// Verifies HMAC-signed confirmation and unsubscribe links. The logs never carry the e-mail address (DEB-01) nor the hash that stands for it
+/// (E07/F06/US01/T02). <b>Not behind <c>Features:CrmMarketing</c></b>: a link already sent has to keep working whatever the flag says.
 /// </summary>
 [ApiController]
 [Route("api/public/marketing")]
@@ -21,8 +23,62 @@ namespace Casazen.Web.Controllers;
 public class PublicMarketingController(
     AppDbContext db,
     MarketingUnsubscribeLinks unsubscribeLinks,
+    ISuppressionService suppressionService,
+    IMarketingConfirmationService confirmation,
     ILogger<PublicMarketingController> logger) : ControllerBase
 {
+    /// <summary>
+    /// Confirms a marketing consent by the signed link of the double opt-in e-mail (E07/F04/US01/T01, NF-90, AC-NF90-5): the page
+    /// <c>/marketing/confirm</c> reads the values from the fragment of its address and posts them here unchanged. The link names the contact
+    /// (<c>contactId</c>), not the address, and the org is the contact's. HMAC-SHA256 of <c>contactId.expiresAt</c> with the secret of the
+    /// signed links, checked in constant time by <see cref="IMarketingConfirmationService.ConfirmAsync"/>. 200 <c>{ confirmed: true,
+    /// alreadyConfirmed }</c> (a second click changes nothing); 400 <c>contact_id_missing</c>, <c>expires_at_missing</c>,
+    /// <c>signature_missing</c>; 422 <c>invalid_timestamp</c>, <c>link_expired</c>, <c>invalid_signature</c>; 404 <c>contact_not_found</c> only
+    /// after a valid signature; 409 <c>contact_suppressed</c> (the address opted out: nothing is confirmed and the opt-out stands); 429.
+    /// The old <c>confirm-email</c> endpoint stays as it is for links already out (none was ever sent).
+    /// </summary>
+    /// <param name="contactId">The contact the link was made for.</param>
+    /// <param name="expiresAt">Link expiration timestamp in format yyyy-MM-ddTHH:mm:ssZ</param>
+    /// <param name="signature">HMAC-SHA256 signature (hex lowercase)</param>
+    [HttpPost("confirm")]
+    [EnableRateLimiting(RateLimitPolicies.PublicMarketingConsent)]
+    public async Task<IActionResult> Confirm(
+        [FromQuery] Guid contactId,
+        [FromQuery] string? expiresAt,
+        [FromQuery] string? signature)
+    {
+        if (contactId == Guid.Empty)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "contact_id_missing", "ContactIdMissing");
+
+        if (string.IsNullOrWhiteSpace(expiresAt))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "expires_at_missing", "ExpiresAtMissing");
+
+        if (string.IsNullOrWhiteSpace(signature))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "signature_missing", "SignatureMissing");
+
+        switch (await confirmation.ConfirmAsync(contactId, expiresAt, signature, HttpContext.RequestAborted))
+        {
+            case MarketingConfirmationOutcome.Confirmed:
+                return Ok(new { confirmed = true, alreadyConfirmed = false });
+            case MarketingConfirmationOutcome.AlreadyConfirmed:
+                return Ok(new { confirmed = true, alreadyConfirmed = true });
+            case MarketingConfirmationOutcome.InvalidTimestamp:
+                return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "invalid_timestamp", "InvalidTimestamp");
+            case MarketingConfirmationOutcome.LinkExpired:
+                return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "link_expired", "LinkExpired");
+            case MarketingConfirmationOutcome.NotConfigured:
+                logger.LogError("{Variable} is not configured: confirmation links cannot be checked", MarketingConfirmationLinks.SecretVariable);
+                return this.ApiProblem(StatusCodes.Status500InternalServerError, "configuration_error", "ConfigurationError");
+            case MarketingConfirmationOutcome.ContactNotFound:
+                return this.ApiProblem(StatusCodes.Status404NotFound, "contact_not_found", "ContactNotFound");
+            case MarketingConfirmationOutcome.ContactSuppressed:
+                return this.ApiProblem(StatusCodes.Status409Conflict, "contact_suppressed", "MarketingContactSuppressed");
+            default:
+                logger.LogWarning("Invalid HMAC signature for marketing confirmation: contactId={ContactId}", contactId);
+                return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "invalid_signature", "InvalidSignature");
+        }
+    }
+
     /// <summary>
     /// Confirms a guest's marketing email via HMAC-signed link (double opt-in).
     /// ADR-007-R17: HMAC-SHA256 of guestId.toLowerCase() + "." + marketingEmail.toLowerCase() + "." + expiresAt
@@ -115,9 +171,10 @@ public class PublicMarketingController(
     /// ADR-007-R18: HMAC-SHA256 of emailHash + "." + expiresAt, 30-day expiration, checked by <see cref="MarketingUnsubscribeLinks"/>,
     /// which also builds the links of the campaigns (DEB-01). It is the target of their <c>List-Unsubscribe</c> header too: a mail client
     /// posts <c>List-Unsubscribe=One-Click</c> here (RFC 8058), a body this action does not read.
-    /// ADR-007-R22: Adds to SuppressionListEntry on valid signature.
+    /// ADR-007-R22: Adds to SuppressionListEntry on valid signature, through <see cref="ISuppressionService.AddByHashAsync"/> (idempotent; it also
+    /// flags the CRM contacts with the same hash).
     /// </summary>
-    /// <param name="emailHash">SHA-256 hash of the normalized email address</param>
+    /// <param name="emailHash">Keyed hash (HMAC-SHA256) of the normalized email address; the plain SHA-256 for a link issued before E07/F06/US01/T02</param>
     /// <param name="expiresAt">Link expiration timestamp in format yyyy-MM-ddTHH:mm:ssZ</param>
     /// <param name="signature">HMAC-SHA256 signature (hex lowercase)</param>
     /// <param name="orgId">Organization ID (required to identify the tenant)</param>
@@ -143,7 +200,7 @@ public class PublicMarketingController(
             return this.ApiProblem(StatusCodes.Status400BadRequest, "org_id_missing", "OrgIdMissing");
 
         // Expiry and HMAC signature (ADR-007-R18)
-        switch (unsubscribeLinks.Verify(emailHash, expiresAt, signature))
+        switch (unsubscribeLinks.Verify(orgId, emailHash, expiresAt, signature))
         {
             case MarketingUnsubscribeCheck.Valid:
                 break;
@@ -155,45 +212,28 @@ public class PublicMarketingController(
                 logger.LogError("{Variable} is not configured: unsubscribe links cannot be checked", MarketingUnsubscribeLinks.SecretVariable);
                 return this.ApiProblem(StatusCodes.Status500InternalServerError, "configuration_error", "ConfigurationError");
             case MarketingUnsubscribeCheck.InvalidSignature:
-                logger.LogWarning(
-                    "Invalid HMAC signature for unsubscribe: orgId={OrgId}, emailHash={EmailHash}",
-                    orgId, emailHash);
+                logger.LogWarning("Invalid HMAC signature for unsubscribe: orgId={OrgId}", orgId);
                 return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "invalid_signature", "InvalidSignature");
         }
 
-        // ADR-007-R22: Add to suppression list
-        // Note: We cannot reconstruct the original email from the hash, so we store the hash directly.
-        // The suppression service expects an email, but in this case we're working with a pre-computed hash.
-        // We'll add the hash directly to the suppression list.
-        var entry = new Core.Entities.SuppressionListEntry
+        // ADR-007-R22: Add to suppression list. The address cannot be rebuilt from the hash, so the service stores the hash the link carries
+        // (keyed for a link issued since E07/F06/US01/T02, the plain SHA-256 for an older one), once, and flags the contacts with the same hash.
+        // It logs the org and the source only.
+        await suppressionService.AddByHashAsync(orgId, emailHash, "unsubscribe", HttpContext.RequestAborted);
+
+        if (expiresAt.StartsWith("v2-", StringComparison.Ordinal) && Guid.TryParseExact(expiresAt[3..], "N", out var deliveryId))
         {
-            OrgId = orgId,
-            EmailHash = emailHash,
-            Source = "unsubscribe",
-            AddedAt = DateTime.UtcNow
-        };
-
-        // Check if already suppressed (idempotent)
-        var existing = await db.SuppressionListEntries
-            .Where(e => e.OrgId == orgId && e.EmailHash == emailHash)
-            .FirstOrDefaultAsync(HttpContext.RequestAborted);
-
-        if (existing is null)
-        {
-            db.SuppressionListEntries.Add(entry);
-            await db.SaveChangesAsync(HttpContext.RequestAborted);
-
-            logger.LogInformation(
-                "Email hash added to suppression list via one-click unsubscribe: orgId={OrgId}, emailHash={EmailHash}",
-                orgId, emailHash);
+            var deliveries = db.CampaignDeliveries.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).Where(d => d.OrgId == orgId);
+            var delivery = await deliveries.SingleOrDefaultAsync(d => d.Id == deliveryId, HttpContext.RequestAborted);
+            if (delivery != null && delivery.UnsubscribedAt == null)
+            {
+                delivery.UnsubscribedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync(HttpContext.RequestAborted);
+                await db.Campaigns.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).Where(c => c.Id == delivery.CampaignId && c.OrgId == orgId).ExecuteUpdateAsync(
+                    update => update.SetProperty(c => c.UnsubscribeCount, c => deliveries.Count(d => d.CampaignId == c.Id && d.UnsubscribedAt != null)),
+                    HttpContext.RequestAborted);
+            }
         }
-        else
-        {
-            logger.LogInformation(
-                "Email hash already suppressed: orgId={OrgId}, emailHash={EmailHash}",
-                orgId, emailHash);
-        }
-
         return Ok(new { unsubscribed = true });
     }
 }

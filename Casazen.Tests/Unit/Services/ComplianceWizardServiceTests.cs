@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -43,7 +44,8 @@ public class ComplianceWizardServiceTests
     internal static ComplianceWizardService CreateService(
         AppDbContext db,
         TimeProvider? timeProvider = null,
-        IConfiguration? configuration = null)
+        IConfiguration? configuration = null,
+        bool trafficLights = false)
     {
         var alloggiati = new Mock<IAlloggiatiWebService>();
         alloggiati.Setup(a => a.IsStayDataCompleteAsync(It.IsAny<Guid>())).ReturnsAsync(false);
@@ -67,6 +69,12 @@ public class ComplianceWizardServiceTests
             NullLogger<StayLifecycleService>.Instance,
             timeProvider);
 
+        var status = new Mock<IComplianceStatusService>();
+        status.Setup(s => s.EvaluateAsync(It.IsAny<HostScope>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ComplianceStatusResult.Empty);
+        var flags = new Mock<IFeatureFlags>();
+        flags.Setup(f => f.IsEnabled(FeatureFlags.ComplianceTrafficLight)).Returns(trafficLights);
+
         return new ComplianceWizardService(
             db,
             alloggiati.Object,
@@ -74,7 +82,9 @@ public class ComplianceWizardServiceTests
             new TouristTaxQuoteService(new TouristTaxRateRepository(db), NullLogger<TouristTaxQuoteService>.Instance),
             CreateStatusService(db, configuration ?? CreateConfig(), timeProvider),
             Mock.Of<ILogger<ComplianceWizardService>>(),
-            timeProvider);
+            timeProvider,
+            status.Object,
+            featureFlags: flags.Object);
     }
 
     /// <summary>The real evaluation of the blockers (CO-06): the wizard has no copy of its own.</summary>
@@ -520,6 +530,12 @@ public class ComplianceWizardServiceTests
         });
 
         var noReport = Stay("NoReport", today);
+        // A no-show (NF-45) owes no communication: neither "to send manually" nor a failure, whatever its report says.
+        var noShow = Stay("NoShow", today);
+        noShow.NoShowAt = clock.GetUtcNow().UtcDateTime;
+        var noShowRejected = Stay("NoShowRejected", today);
+        noShowRejected.NoShowAt = clock.GetUtcNow().UtcDateTime;
+        Report(noShowRejected, AlloggiatiWebStatus.Rifiutato);
         var jobNotRunYet = Stay("JobPending", today);
         Report(jobNotRunYet, AlloggiatiWebStatus.DaInviare);
         var manual = Stay("Manual", today.AddDays(-1), BookingStatus.CheckedIn);
@@ -544,6 +560,195 @@ public class ComplianceWizardServiceTests
         Assert.Equal(ComplianceCockpitAction.SendAlloggiati, manualItem.Action);
         Assert.Equal(manual.Id, manualItem.BookingId);
         Assert.Equal(ComplianceCockpitAction.ResolveAlloggiatiFailure, summary.AlloggiatiFailures.Items.Single().Action);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Summary_TenSwissStays_DoNotCreateItalianPoliceTasks_AndItalianUnsentAndFailedStaysRemain(bool trafficLights)
+    {
+        await using var db = CreateDb($"{nameof(Summary_TenSwissStays_DoNotCreateItalianPoliceTasks_AndItalianUnsentAndFailedStaysRemain)}-{trafficLights}");
+        var italian = await SeedPropertyAsync(db);
+        italian.Country = " it ";
+        var lugano = await SeedPropertyAsync(db, italian.OrgId, city: "Lugano");
+        var ascona = await SeedPropertyAsync(db, italian.OrgId, city: "Ascona");
+        lugano.Country = "CH";
+        ascona.Country = " ch ";
+        var today = new DateTime(2026, 11, 18, 0, 0, 0, DateTimeKind.Utc);
+        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 11, 18, 8, 0, 0, TimeSpan.Zero));
+
+        Booking Stay(Property property, string name)
+        {
+            var guest = new Guest { FirstName = name, LastName = "Test", OrgId = italian.OrgId };
+            db.Guests.Add(guest);
+            var stay = BuildBooking(property, guest, today.AddDays(1), BookingStatus.CheckedIn);
+            db.Bookings.Add(stay);
+            return stay;
+        }
+
+        void Report(Booking stay, AlloggiatiWebStatus state) => db.AlloggiatiWebReports.Add(new AlloggiatiWebReport
+        {
+            OrgId = stay.OrgId,
+            BookingId = stay.Id,
+            GuestId = stay.GuestId,
+            Status = state,
+        });
+
+        for (var index = 0; index < 5; index++)
+        {
+            Stay(lugano, $"Lugano{index}");
+            var swiss = Stay(ascona, $"Ascona{index}");
+            // Even a stale Italian failure on a foreign property must not create an Italian obligation.
+            if (index == 0)
+                Report(swiss, AlloggiatiWebStatus.Rifiutato);
+        }
+        var unsent = Stay(italian, "DaInviare");
+        var rejected = Stay(italian, "Rifiutato");
+        Report(rejected, AlloggiatiWebStatus.Rifiutato);
+        var declared = Stay(italian, "Inviato");
+        Report(declared, AlloggiatiWebStatus.InviatoManualmente);
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, clock, trafficLights: trafficLights).GetSummaryAsync(new HostScope(italian.OrgId));
+
+        Assert.Equal(1, summary.AlloggiatiManualRequired.Count);
+        Assert.Equal(unsent.Id, Assert.Single(summary.AlloggiatiManualRequired.Items).BookingId);
+        Assert.Equal(1, summary.AlloggiatiFailures.Count);
+        Assert.Equal(rejected.Id, Assert.Single(summary.AlloggiatiFailures.Items).BookingId);
+        Assert.Empty(summary.ReceiptsToUpload.Items);
+        Assert.Empty(summary.ManualSendsRequired.Items);
+    }
+
+    [Fact]
+    public async Task Summary_ANoShowStay_IsInNoSectionOfTheCockpit()
+    {
+        // NF-45: the guests never came, so nothing is due: no guest data to complete, no departure to close, no communication to send.
+        await using var db = CreateDb(nameof(Summary_ANoShowStay_IsInNoSectionOfTheCockpit));
+        var property = await SeedPropertyAsync(db, complianceStatus: PropertyComplianceStatus.Active);
+        var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+        var guest = new Guest { FirstName = "Anna", LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+        db.Guests.Add(guest);
+        // Both are confirmed, arrived on the 22nd and leave today (Rome 24/09), with no guest data and no report: the one not marked is in
+        // three sections of the cockpit; the no-show is in none.
+        var expected = BuildBooking(property, guest, todayInRome, BookingStatus.Confirmed);
+        var noShow = BuildBooking(property, guest, todayInRome, BookingStatus.Confirmed);
+        noShow.NoShowAt = todayInRome.AddHours(-30);
+        db.Bookings.AddRange(expected, noShow);
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(property.OrgId));
+
+        Assert.Equal(expected.Id, Assert.Single(summary.GuestCheckInsIncomplete.Items).Id);
+        Assert.Equal(expected.Id, Assert.Single(summary.CheckoutsDue.Items).Id);
+        Assert.Equal(expected.Id, Assert.Single(summary.AlloggiatiManualRequired.Items).Id);
+        Assert.Empty(summary.AlloggiatiFailures.Items);
+    }
+
+    [Fact]
+    public async Task Summary_AStayWhosePropertyOrGuestIsGone_IsNotListed()
+    {
+        // The booking page answers 404 when the property was deleted, and the guest sheet and the Alloggiati section
+        // have nothing to open when the guest was deleted. Unfinished guest data of a stay that still opens stays listed.
+        await using var db = CreateDb(nameof(Summary_AStayWhosePropertyOrGuestIsGone_IsNotListed));
+        var property = await SeedPropertyAsync(db, complianceStatus: PropertyComplianceStatus.Active);
+        var removedProperty = await SeedPropertyAsync(db, property.OrgId, complianceStatus: PropertyComplianceStatus.Active);
+        var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+
+        var openGuest = new Guest { FirstName = "Mario", LastName = "Rossi", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+        var removedGuest = new Guest { FirstName = "Diego", LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId, IsDeleted = true };
+        var guestOfRemovedProperty = new Guest { FirstName = "Luca", LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+        db.Guests.AddRange(openGuest, removedGuest, guestOfRemovedProperty);
+
+        var open = BuildBooking(property, openGuest, todayInRome, BookingStatus.Confirmed);
+        var guestGone = BuildBooking(property, removedGuest, todayInRome, BookingStatus.Confirmed);
+        var propertyGone = BuildBooking(removedProperty, guestOfRemovedProperty, todayInRome, BookingStatus.CheckedIn);
+        db.Bookings.AddRange(open, guestGone, propertyGone);
+        removedProperty.IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(property.OrgId));
+
+        Assert.Equal(open.Id, Assert.Single(summary.GuestCheckInsIncomplete.Items).Id);
+        Assert.Equal(open.Id, Assert.Single(summary.CheckoutsDue.Items).Id);
+        Assert.Equal(open.Id, Assert.Single(summary.AlloggiatiManualRequired.Items).Id);
+        Assert.DoesNotContain(summary.AlloggiatiFailures.Items, i => i.Id == guestGone.Id || i.Id == propertyGone.Id);
+        Assert.DoesNotContain(summary.TurnoversPending.Items, i => i.Id == guestGone.Id || i.Id == propertyGone.Id);
+    }
+
+    [Fact]
+    public async Task Summary_AnEndedStayWithRequiredGuestFieldsMissing_IsNotListed_ACurrentOneIs()
+    {
+        await using var db = CreateDb(nameof(Summary_AnEndedStayWithRequiredGuestFieldsMissing_IsNotListed_ACurrentOneIs));
+        var property = await SeedPropertyAsync(db, complianceStatus: PropertyComplianceStatus.Active);
+        var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+        var currentGuest = new Guest { FirstName = "Mario", LastName = "Rossi", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+        var endedGuest = new Guest { FirstName = "Luca", LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+        var unnamed = new Guest { FirstName = " ", LastName = " ", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+        db.Guests.AddRange(currentGuest, endedGuest, unnamed);
+
+        // Still in the house, document fields missing: the Alloggiati screen is where the host completes them.
+        var current = BuildBooking(property, currentGuest, todayInRome, BookingStatus.CheckedIn);
+        // Left weeks ago with the same gap: that screen can no longer be completed.
+        var ended = BuildBooking(property, endedGuest, todayInRome.AddDays(-40), BookingStatus.CheckedIn);
+        var blank = BuildBooking(property, unnamed, todayInRome, BookingStatus.CheckedIn);
+        db.Bookings.AddRange(current, ended, blank);
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(property.OrgId));
+
+        Assert.Equal(current.Id, Assert.Single(summary.GuestCheckInsIncomplete.Items).Id);
+        Assert.Equal(current.Id, Assert.Single(summary.AlloggiatiManualRequired.Items).Id);
+        Assert.DoesNotContain(summary.GuestCheckInsIncomplete.Items, i => i.Id == ended.Id || i.Id == blank.Id);
+        Assert.DoesNotContain(summary.AlloggiatiManualRequired.Items, i => i.Id == ended.Id || i.Id == blank.Id);
+    }
+
+    [Fact]
+    public async Task Summary_APropertyMissingItsCinOrItsName_IsNotListed()
+    {
+        await using var db = CreateDb(nameof(Summary_APropertyMissingItsCinOrItsName_IsNotListed));
+        var org = new OrgEntity { Name = "Org", Slug = $"org-{Guid.NewGuid():N}" };
+        db.Orgs.Add(org);
+        await db.SaveChangesAsync();
+        var ready = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Pending);
+        var noCin = await SeedPropertyAsync(db, org.Id, cinCode: null, complianceStatus: PropertyComplianceStatus.Pending);
+        var noName = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Suspended);
+        noName.Name = "";
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db).GetSummaryAsync(new HostScope(org.Id));
+
+        Assert.Equal(ready.Id, Assert.Single(summary.PropertiesPending.Items).Id);
+        Assert.DoesNotContain(summary.PropertiesPending.Items, i => i.Id == noCin.Id || i.Id == noName.Id);
+    }
+
+    /// <summary>
+    /// E29/F02/US01/T02 (NF-129): a Swiss property has no CIN, so its essentials are its name, address and city: with them a pending (or suspended) one is listed in
+    /// the section «properties to activate», where its <c>Missing</c> names what its guest registration lacks. An Italian one without a CIN is still not listed; an active
+    /// Swiss one is not a property to activate.
+    /// </summary>
+    [Fact]
+    public async Task Summary_ASwissPropertyWithItsBaseData_IsListedWithoutACin_AnItalianOneStillNeedsIt()
+    {
+        await using var db = CreateDb(nameof(Summary_ASwissPropertyWithItsBaseData_IsListedWithoutACin_AnItalianOneStillNeedsIt));
+        var org = new OrgEntity { Name = "Org", Slug = $"org-{Guid.NewGuid():N}" };
+        db.Orgs.Add(org);
+        await db.SaveChangesAsync();
+        var swiss = await SeedPropertyAsync(db, org.Id, cinCode: null, complianceStatus: PropertyComplianceStatus.Pending);
+        var swissSuspended = await SeedPropertyAsync(db, org.Id, cinCode: null, complianceStatus: PropertyComplianceStatus.Suspended);
+        var swissActive = await SeedPropertyAsync(db, org.Id, cinCode: null, complianceStatus: PropertyComplianceStatus.Active);
+        var italianNoCin = await SeedPropertyAsync(db, org.Id, cinCode: null, complianceStatus: PropertyComplianceStatus.Pending);
+        var swissNoCity = await SeedPropertyAsync(db, org.Id, cinCode: null, complianceStatus: PropertyComplianceStatus.Pending);
+        foreach (var id in new[] { swiss.Id, swissSuspended.Id, swissActive.Id, swissNoCity.Id })
+            (await db.Properties.SingleAsync(p => p.Id == id)).Country = id == swissSuspended.Id ? " ch " : "CH";
+        (await db.Properties.SingleAsync(p => p.Id == swissNoCity.Id)).City = string.Empty;
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db).GetSummaryAsync(new HostScope(org.Id));
+
+        Assert.Equal(new[] { swiss.Id, swissSuspended.Id }.Order(), summary.PropertiesPending.Items.Select(i => i.Id).Order());
+        Assert.Equal(2, summary.PropertiesPending.Count);
+        Assert.DoesNotContain(summary.PropertiesPending.Items, i => i.Id == italianNoCin.Id || i.Id == swissActive.Id || i.Id == swissNoCity.Id);
+        Assert.All(summary.PropertiesPending.Items, i => Assert.Equal(ComplianceCockpitAction.ActivateProperty, i.Action));
     }
 
     [Fact]
@@ -593,9 +798,14 @@ public class ComplianceWizardServiceTests
         AssertTarget(Assert.Single(summary.AlloggiatiManualRequired.Items), ComplianceCockpitAction.SendAlloggiati, bookingId: departing.Id);
         AssertTarget(Assert.Single(summary.AlloggiatiFailures.Items), ComplianceCockpitAction.ResolveAlloggiatiFailure, bookingId: rejected.Id);
         AssertTarget(Assert.Single(summary.TurnoversPending.Items), ComplianceCockpitAction.ConfirmPropertyReady, bookingId: turnover.Id);
-        // Every action the clients must route is produced by one section.
+        // Every action the clients must route from these six sections is produced by one of them (the eight of CHK-12 come from the sections
+        // of the compliance status: ComplianceWizardStatusTests).
         Assert.Equal(
-            Enum.GetValues<ComplianceCockpitAction>().Order(),
+            new[]
+            {
+                ComplianceCockpitAction.ActivateProperty, ComplianceCockpitAction.CompleteGuestCheckIn, ComplianceCockpitAction.CheckOut,
+                ComplianceCockpitAction.SendAlloggiati, ComplianceCockpitAction.ResolveAlloggiatiFailure, ComplianceCockpitAction.ConfirmPropertyReady,
+            }.Order(),
             new[]
             {
                 summary.PropertiesPending,

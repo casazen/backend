@@ -74,4 +74,39 @@ public class AlloggiatiTermsTests
 
         Assert.Equal(expected, AlloggiatiStatusRules.Effective(stored, checkIn, today));
     }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData(AlloggiatiWebStatus.DaInviare, null)]
+    [InlineData(AlloggiatiWebStatus.DaInviareManualmente, null)]
+    [InlineData(AlloggiatiWebStatus.Errore, null)]
+    [InlineData(AlloggiatiWebStatus.Rifiutato, null)]
+    [InlineData(AlloggiatiWebStatus.Inviato, AlloggiatiWebStatus.Inviato)]
+    [InlineData(AlloggiatiWebStatus.InviatoManualmente, AlloggiatiWebStatus.InviatoManualmente)]
+    public void Effective_NoShow_OwesNothingUnlessTheCommunicationWasSent(AlloggiatiWebStatus? stored, AlloggiatiWebStatus? sent)
+    {
+        // NF-45: past the arrival day and the legal term, a no-show is neither "to send manually" nor a failure: not due. A communication
+        // sent or declared sent anyway stays visible.
+        var checkIn = new DateTime(2026, 7, 2, 0, 0, 0, DateTimeKind.Utc);
+        var today = new DateTime(2026, 7, 9, 0, 0, 0, DateTimeKind.Utc);
+
+        var status = AlloggiatiStatusRules.Effective(stored, checkIn, today, noShow: true);
+
+        Assert.Equal(sent ?? AlloggiatiWebStatus.NotDue, status);
+        Assert.Equal(sent is null, AlloggiatiStatusRules.IsNotDue(status));
+    }
+
+    [Theory]
+    [InlineData(BookingStatus.Pending, false, false)]
+    [InlineData(BookingStatus.Cancelled, false, false)]
+    [InlineData(BookingStatus.Confirmed, false, true)]
+    [InlineData(BookingStatus.CheckedIn, false, true)]
+    [InlineData(BookingStatus.CheckedOut, false, true)]
+    [InlineData(BookingStatus.Confirmed, true, false)]
+    public void IsDue_OnlyAConfirmedCheckedInOrCheckedOutStayThatIsNotANoShow(BookingStatus status, bool noShow, bool expected)
+    {
+        var booking = new Booking { Status = status, NoShowAt = noShow ? new DateTime(2026, 7, 2, 14, 0, 0, DateTimeKind.Utc) : null };
+
+        Assert.Equal(expected, AlloggiatiStatusRules.IsDue(booking));
+    }
 }

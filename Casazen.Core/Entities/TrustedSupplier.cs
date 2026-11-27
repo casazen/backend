@@ -34,6 +34,12 @@ public class TrustedSupplier : ITenantOwned
     /// <summary>Whether this supplier appears in the agency's marketplace.</summary>
     public bool VisibleInMarketplace { get; set; }
 
+    /// <summary>The beneficiary at first import, retained if the relationship is removed and later renewed.</summary>
+    public bool? HostOrigin { get; set; }
+
+    /// <summary>Removal ends access while retaining the original commission attribution.</summary>
+    public DateTime? RemovedAt { get; set; }
+
     /// <summary>When the trust relationship was created (UTC).</summary>
     [Required]
     public DateTime CreatedAt { get; set; }

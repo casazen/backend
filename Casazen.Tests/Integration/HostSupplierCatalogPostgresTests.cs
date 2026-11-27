@@ -32,7 +32,7 @@ public class HostSupplierCatalogPostgresTests : IClassFixture<PublicShowcaseFact
     public async Task Services_TheHostReadsThePublishedOnesOfASupplierThatCoversItsProperty_AndNothingOfTheirPublicContent()
     {
         var host = await SeedHostAsync();
-        var supplier = await PublicShowcaseTestData.SeedSupplierAsync(_factory);
+        var supplier = await PublicShowcaseTestData.SeedSupplierAsync(_factory, marketplace: true);
         var deep = await SeedServiceAsync(supplier.OrgId, "Pulizia profonda", sortOrder: 0);
         var onQuote = await SeedServiceAsync(supplier.OrgId, "Pulizia su preventivo", sortOrder: 1, priceFromCents: null, requiresQuote: true);
         await SeedServiceAsync(supplier.OrgId, "Pulizia in bozza", sortOrder: 2, status: SupplierServiceListingStatus.Draft);
@@ -75,11 +75,11 @@ public class HostSupplierCatalogPostgresTests : IClassFixture<PublicShowcaseFact
     public async Task ServicesAndSlots_AreTold_WhatTheCreationOfARequestTellsTheHost_AndTheOtherOrgsPropertyIsNotFound()
     {
         var host = await SeedHostAsync();
-        var active = await PublicShowcaseTestData.SeedSupplierAsync(_factory);
+        var active = await PublicShowcaseTestData.SeedSupplierAsync(_factory, marketplace: true);
         var service = await SeedServiceAsync(active.OrgId, "Pulizia profonda");
         var draft = await SeedServiceAsync(active.OrgId, "Pulizia in bozza", sortOrder: 1, status: SupplierServiceListingStatus.Draft);
-        var pending = await PublicShowcaseTestData.SeedSupplierAsync(_factory, status: SupplierStatus.Pending);
-        var elsewhere = await PublicShowcaseTestData.SeedSupplierAsync(_factory, comuni: """["F205"]""");
+        var pending = await PublicShowcaseTestData.SeedSupplierAsync(_factory, marketplace: true, status: SupplierStatus.Pending);
+        var elsewhere = await PublicShowcaseTestData.SeedSupplierAsync(_factory, marketplace: true, comuni: """["F205"]""");
         using var client = _factory.CreateAuthenticatedClient(host.OwnerId, Host);
         var query = $"propertyId={host.PropertyId}";
 
@@ -109,7 +109,7 @@ public class HostSupplierCatalogPostgresTests : IClassFixture<PublicShowcaseFact
     public async Task Slots_AreTheOnesTheCreationOfARequestAccepts_AndTheOneTakenIsNotOfferedAgain()
     {
         var host = await SeedHostAsync();
-        var supplier = await PublicShowcaseTestData.SeedSupplierAsync(_factory);
+        var supplier = await PublicShowcaseTestData.SeedSupplierAsync(_factory, marketplace: true);
         var service = await SeedServiceAsync(supplier.OrgId, "Pulizia profonda");
         using var client = _factory.CreateAuthenticatedClient(host.OwnerId, Host);
         var url = $"/api/suppliers/{supplier.OrgId}/services/{service.Id}/slots?propertyId={host.PropertyId}&date=2026-10-13";

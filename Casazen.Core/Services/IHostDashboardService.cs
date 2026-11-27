@@ -40,6 +40,9 @@ namespace Casazen.Core.Services;
 /// <item><b>Reports</b> (SR-10): the revenue, the occupancy and the stays of a period of up to <see cref="HostReportRules.MaxMonths"/>
 /// months cut by property or by channel, read through the code of the KPIs (the same stays, the same nights, the same rule), so
 /// the total of a report is the number of the Home for the same days.</item>
+/// <item><b>ADR and RevPAR</b> (NF-96): ADR = the revenue of the confirmed stays over their nights in the period; RevPAR = the same
+/// revenue over the available nights of the Home. Both are null, never zero, when their denominator is zero. The performance report
+/// and the trend give them per property, per channel or for the whole scope, and next to the same calendar days one year earlier.</item>
 /// </list>
 /// </remarks>
 public interface IHostDashboardService
@@ -106,6 +109,26 @@ public interface IHostDashboardService
     /// </summary>
     /// <exception cref="Exceptions.NotFoundException">As <see cref="GetRevenueByPropertyAsync"/>.</exception>
     Task<HostBookingsByChannel> GetBookingsByChannelAsync(HostScope scope, HostReportQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Occupancy, revenue, ADR and RevPAR of the Home (NF-96, <c>GET /api/reports/performance</c>), for the whole scope, per property or
+    /// per channel, and next to the same calendar days one year earlier when asked (<see cref="HostReportRules.PreviousYear"/>). The
+    /// stays, the nights and the revenue are the Home's (<see cref="StayKpiRules"/>, the occupancy of <see cref="PropertyOccupancy"/>), so
+    /// the total is the figure the Home gives for the same days. A fixed number of queries whatever the number of properties, once more
+    /// for the year before. The days are checked by <see cref="HostReportRules.CheckPeriod"/> before this is called.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException">
+    /// <see cref="HostPerformanceQuery.PropertyId"/> is not a property of the scope (or not one of <see cref="HostPerformanceQuery.PropertyIds"/>): the same 404 as <c>kpis</c>.
+    /// </exception>
+    Task<HostPerformanceReport> GetPerformanceAsync(HostScope scope, HostPerformanceQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The same figures for each week or month of the period (NF-96, <c>GET /api/reports/trend</c>), for the whole scope or one line
+    /// for each property or channel (at most <see cref="HostPerformanceRules.MaxTrendSeries"/>, the rest summed in an <c>other</c> one),
+    /// each bucket next to its days one year earlier when asked. The buckets add up to the period: same stays, same nights.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException">As <see cref="GetPerformanceAsync"/>.</exception>
+    Task<HostTrendReport> GetTrendAsync(HostScope scope, HostTrendQuery query, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The occupancy of the last 30 days, today included, of each of <paramref name="propertyIds"/> (SR-07a, the host's list of
@@ -342,6 +365,10 @@ public sealed record HostDashboardKpis(
 
 /// <summary>State of one iCal import feed (PC-11) for the dashboard widget; never its URL.</summary>
 /// <param name="LastError">Stored error code of the last sync (translated by the web layer).</param>
+/// <param name="Deprecated">
+/// The Octorate calendar of the feed's channel replaced the import (E02/F02/US01/T03): the feed is no longer synced, so a last try that gets
+/// older is expected and not a reason to look at it.
+/// </param>
 public sealed record HostDashboardIcalFeed(
     Guid FeedId,
     Guid PropertyId,
@@ -350,4 +377,5 @@ public sealed record HostDashboardIcalFeed(
     string? Label,
     DateTime? LastImportAt,
     PropertyICalImportStatus? LastImportStatus,
-    string? LastError);
+    string? LastError,
+    bool Deprecated = false);

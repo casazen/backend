@@ -1,0 +1,275 @@
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Models;
+using Casazen.Core.Services;
+using Casazen.Core.Utilities;
+using Casazen.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+
+namespace Casazen.Infrastructure.Services;
+
+/// <summary>
+/// A contributor of the billing setup that reads the setting of the issuer (E11/F01/US01/T04): <see cref="IDocumentIssuerService.GetSettingsAsync"/> is the one
+/// definition of what the issuer still has to give, so the items never drift from what <c>issuer_profile_incomplete</c> says. The service that gathers the
+/// contributors reads the setting once and hands it to every contributor of this kind (<see cref="Evaluate"/>); asked alone (<see cref="EvaluateAsync"/>) a
+/// contributor reads it itself. A contributor of another epic implements <see cref="IBillingSetupContributor"/> and nothing more.
+/// </summary>
+/// <param name="issuers">The issuer service: the setting of the organization, its missing fields and the tax rule in force.</param>
+public abstract class IssuerSetupContributor(IDocumentIssuerService issuers) : IBillingSetupContributor
+{
+    public abstract string Section { get; }
+
+    /// <summary>False when the section has nothing to do for the issuer of <paramref name="view"/> (the Swiss tourist tax of an Italian issuer): it is then not counted.</summary>
+    public virtual bool Applies(IssuerSettingsView view) => true;
+
+    /// <summary>The items missing in the setting <paramref name="view"/>, once <see cref="Applies"/> said yes.</summary>
+    public abstract IReadOnlyList<BillingSetupItem> Evaluate(IssuerSettingsView view);
+
+    public async Task<IReadOnlyList<BillingSetupItem>> EvaluateAsync(Guid orgId, CancellationToken ct)
+    {
+        var view = await issuers.GetSettingsAsync(orgId, ct);
+        return Applies(view) ? Evaluate(view) : [];
+    }
+
+    /// <summary>An item of this section.</summary>
+    protected BillingSetupItem Item(string key, string reason) => new(key, Section, reason);
+}
+
+/// <summary>
+/// The section «Chi emette» (E11/F01/US01/T04): the country (while the organization saved nothing), the legal name, the structured address and the tax ids:
+/// the Italian VAT number or fiscal code of the organization (what the regime asks, saved in its tax profile) and the Swiss UID of a registered Swiss issuer.
+/// </summary>
+public sealed class IssuerSectionContributor(IDocumentIssuerService issuers) : IssuerSetupContributor(issuers)
+{
+    public override string Section => BillingSetupSections.Issuer;
+
+    public override IReadOnlyList<BillingSetupItem> Evaluate(IssuerSettingsView view)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+
+        var missing = view.MissingFields;
+        var items = new List<BillingSetupItem>();
+
+        // No profile at all: the issuer has not even said which country it issues from.
+        if (view.Mode is null)
+            items.Add(Item(BillingSetupItemKeys.CountryMissing, BillingSetupReasons.Required));
+        if (missing.Contains(IssuerFields.LegalName))
+            items.Add(Item(BillingSetupItemKeys.LegalNameMissing, BillingSetupReasons.Required));
+        if (missing.Contains(IssuerFields.AddressStreet) || missing.Contains(IssuerFields.PostalCode)
+            || missing.Contains(IssuerFields.City) || missing.Contains(IssuerFields.Province))
+        {
+            items.Add(Item(BillingSetupItemKeys.AddressMissing, BillingSetupReasons.Required));
+        }
+
+        if (missing.Contains(IssuerFields.VatNumber))
+            items.Add(Item(BillingSetupItemKeys.VatNumberMissing, BillingSetupReasons.Required));
+        if (missing.Contains(IssuerFields.FiscalCode))
+            items.Add(Item(BillingSetupItemKeys.FiscalCodeMissing, BillingSetupReasons.Required));
+        if (missing.Contains(IssuerFields.SwissVatNumber))
+            items.Add(Item(BillingSetupItemKeys.SwissUidMissing, BillingSetupReasons.Required));
+
+        return items;
+    }
+}
+
+/// <summary>
+/// The section «IVA» (E11/F01/US01/T04): the regime (the VAT registration follows it), the FatturaPA regime code of a VAT regime, and the tax rule in force for the
+/// regime with the treatments of the stay and of the cleaning (⚖ I1, C2: they have prudent defaults, so they are never absent; what can be missing is a rule
+/// of the catalog that covers the choice, because without it nothing is issued).
+/// </summary>
+public sealed class VatSectionContributor(IDocumentIssuerService issuers) : IssuerSetupContributor(issuers)
+{
+    public override string Section => BillingSetupSections.Vat;
+
+    public override IReadOnlyList<BillingSetupItem> Evaluate(IssuerSettingsView view)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+
+        var items = new List<BillingSetupItem>();
+        if (view.MissingFields.Contains(IssuerFields.Regime))
+            items.Add(Item(BillingSetupItemKeys.RegimeMissing, BillingSetupReasons.Required));
+        if (view.MissingFields.Contains(IssuerFields.FatturaPaRegimeCode))
+            items.Add(Item(BillingSetupItemKeys.RegimeCodeMissing, BillingSetupReasons.Required));
+
+        // The regime is chosen and the catalog has no rule in force for it today: nothing would be issued with a rate nobody approved.
+        if (view.Regime is not null && view.Rule is null)
+            items.Add(Item(BillingSetupItemKeys.TaxRuleMissing, BillingSetupReasons.Unavailable));
+
+        return items;
+    }
+}
+
+/// <summary>
+/// The section «Numerazione» (E11/F01/US01/T04): both series, the one of the documents to the guests and the one of the invoices to the owners. A series that
+/// was never saved has the default (the year, <c>PM{year}</c>), which is shown but not yet confirmed: the step saves it explicitly.
+/// </summary>
+public sealed class NumberingSectionContributor(IDocumentIssuerService issuers) : IssuerSetupContributor(issuers)
+{
+    public override string Section => BillingSetupSections.Numbering;
+
+    public override IReadOnlyList<BillingSetupItem> Evaluate(IssuerSettingsView view)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+
+        var items = new List<BillingSetupItem>();
+        if (string.IsNullOrWhiteSpace(view.Issuer.GuestDocumentSeries))
+            items.Add(Item(BillingSetupItemKeys.GuestSeriesUnconfirmed, BillingSetupReasons.Unconfirmed));
+        if (string.IsNullOrWhiteSpace(view.Issuer.OwnerInvoiceSeries))
+            items.Add(Item(BillingSetupItemKeys.OwnerSeriesUnconfirmed, BillingSetupReasons.Unconfirmed));
+
+        return items;
+    }
+}
+
+/// <summary>
+/// The section «Tassa di soggiorno» (E11/F01/US01/T04), for a Swiss issuer: the portals that collect the tourist tax themselves are confirmed at least once,
+/// even to say that none does (a default of the configuration alone does not count). An Italian issuer has the municipal rules of the compliance, not this.
+/// </summary>
+public sealed class TouristTaxSectionContributor(IDocumentIssuerService issuers) : IssuerSetupContributor(issuers)
+{
+    public override string Section => BillingSetupSections.TouristTax;
+
+    public override bool Applies(IssuerSettingsView view)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        return FiscalDocumentRules.IsSwiss(view.Issuer.CountryCode);
+    }
+
+    public override IReadOnlyList<BillingSetupItem> Evaluate(IssuerSettingsView view)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+
+        return view.Issuer.PlatformCollectedTouristTaxChannelsConfirmed
+            ? []
+            : [Item(BillingSetupItemKeys.TouristTaxChannelsUnconfirmed, BillingSetupReasons.Unconfirmed)];
+    }
+}
+
+/// <summary>
+/// The section «Emissione» (E11/F01/US01/T04): the choice of the automatic issue (and of the e-mail to the guest) is made once. The profile has no «not chosen»
+/// state for a yes or no, so the choice counts as made when the step was saved while the profile of the issuer could issue (<c>ConfirmedAt</c>, which the
+/// issuer service clears whenever the profile stops being complete): until then the item <c>auto_issue_unconfirmed</c> is missing.
+/// </summary>
+public sealed class AutomationSectionContributor(IDocumentIssuerService issuers) : IssuerSetupContributor(issuers)
+{
+    public override string Section => BillingSetupSections.Automation;
+
+    public override IReadOnlyList<BillingSetupItem> Evaluate(IssuerSettingsView view)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+
+        return view.ConfirmedAt is null
+            ? [Item(BillingSetupItemKeys.AutoIssueUnconfirmed, BillingSetupReasons.Unconfirmed)]
+            : [];
+    }
+}
+
+/// <summary>
+/// The section «Italia» (E11/F01/US01/T04), only for an Italian issuer: the agreement for the free electronic conservation of the documents is confirmed, and
+/// so is the stamp duty: the reference of the virtual stamp or of the physical one, or the confirmation that the virtual stamp is paid (⚖ I4). The owner
+/// issuers and the SDI add their items to this section (E17).
+/// </summary>
+public sealed class ItalySectionContributor(IDocumentIssuerService issuers) : IssuerSetupContributor(issuers)
+{
+    public override string Section => BillingSetupSections.Italy;
+
+    public override bool Applies(IssuerSettingsView view)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        return string.Equals(view.Issuer.CountryCode, FiscalDocumentRules.Italy, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public override IReadOnlyList<BillingSetupItem> Evaluate(IssuerSettingsView view)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+
+        var items = new List<BillingSetupItem>();
+        if (!view.Issuer.ConservationAgreementConfirmed)
+            items.Add(Item(BillingSetupItemKeys.ConservationAgreementUnconfirmed, BillingSetupReasons.Unconfirmed));
+        if (string.IsNullOrWhiteSpace(view.Issuer.StampDutyReference) && !view.Issuer.VirtualStampConfirmed)
+            items.Add(Item(BillingSetupItemKeys.StampDutyUnconfirmed, BillingSetupReasons.Unconfirmed));
+
+        return items;
+    }
+}
+
+/// <summary>
+/// The owner issuers of the section «Italia» (E17/F01/US01/T01, NF-116, D12): in Italy the owner of a property issues the document of the stay, so every owner with
+/// an ownership of an Italian property that has not ended (in force or to come, on the Rome day of today: the definition of <see cref="OwnerMandatesSectionContributor"/>)
+/// needs an issuer profile that can issue (<see cref="OwnerIssuerProfileRules.MissingFields"/>: none, or one that misses a field, does not count). The item
+/// <see cref="BillingSetupItemKeys.OwnerIssuerMissing"/> carries the count of the owners still without one; an anonymized owner is not counted.
+/// </summary>
+/// <remarks>
+/// It reads for the organization of the setup, whatever the country of its own profile (a Swiss agency with Italian properties needs its owners' profiles too),
+/// names the org in every query (it may run with no tenant of its own) and returns a count, never a name. A private owner and a company count alike: both issue
+/// in their own name. An organization without such owners has nothing to look at here (<see cref="AppliesAsync"/>): the section «Italia» of a Swiss agency
+/// without Italian properties does not apply because of it.
+/// </remarks>
+public sealed class OwnerIssuerSetupContributor(AppDbContext db, IFiscalTaxRuleResolver taxRules, TimeProvider time) : IBillingSetupContributor
+{
+    public string Section => BillingSetupSections.Italy;
+
+    public async Task<bool> AppliesAsync(Guid orgId, CancellationToken ct) =>
+        (await OwnersOfItalianPropertiesAsync(orgId, time.TodayInRomeAsDateOnly(), ct)).Count > 0;
+
+    public async Task<IReadOnlyList<BillingSetupItem>> EvaluateAsync(Guid orgId, CancellationToken ct)
+    {
+        var today = time.TodayInRomeAsDateOnly();
+        var owners = await OwnersOfItalianPropertiesAsync(orgId, today, ct);
+        if (owners.Count == 0)
+            return [];
+
+        var profiles = await db.OrgFiscalIssuerProfiles
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(profile => profile.OrgId == orgId && profile.PropertyOwnerId != null && owners.Contains(profile.PropertyOwnerId.Value))
+            .ToListAsync(ct);
+        var ready = profiles
+            .Where(profile => CanIssue(profile, today))
+            .Select(profile => profile.PropertyOwnerId!.Value)
+            .ToHashSet();
+
+        var without = owners.Count(owner => !ready.Contains(owner));
+        return without == 0
+            ? []
+            : [new BillingSetupItem(BillingSetupItemKeys.OwnerIssuerMissing, Section, BillingSetupReasons.Required, without)];
+    }
+
+    /// <summary>The owners, not anonymized, with an ownership of an Italian property that has not ended on <paramref name="today"/> (in force or to come).</summary>
+    private async Task<List<Guid>> OwnersOfItalianPropertiesAsync(Guid orgId, DateOnly today, CancellationToken ct)
+    {
+        var ownerships = await db.PropertyOwnerships
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(ownership => ownership.OrgId == orgId && ownership.Property.Country == FiscalDocumentRules.Italy)
+            .Select(ownership => new { ownership.PropertyOwnerId, ownership.OwnershipEnd })
+            .ToListAsync(ct);
+        var issuing = ownerships
+            .Where(ownership => ownership.OwnershipEnd is not { } end || RomeCalendar.DateInRome(end) >= today)
+            .Select(ownership => ownership.PropertyOwnerId)
+            .Distinct()
+            .ToList();
+        if (issuing.Count == 0)
+            return [];
+
+        return await db.PropertyOwners
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(owner => owner.OrgId == orgId && owner.AnonymizedAt == null && issuing.Contains(owner.Id))
+            .Select(owner => owner.Id)
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// The profile has everything an issue of an Italian stay needs today (the regime code of the rule in force when it has none of its own): an Italian profile,
+    /// since a Swiss one (made for ⚖ C1) never issues the stay of an Italian property.
+    /// </summary>
+    private bool CanIssue(OrgFiscalIssuerProfile profile, DateOnly today)
+    {
+        if (FiscalDocumentRules.IsSwiss(profile.CountryCode))
+            return false;
+
+        var rule = taxRules.TryResolve(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, CleaningFeeTreatment.FollowsStay, today);
+        return OwnerIssuerProfileRules.MissingFields(profile, rule?.FatturaPaRegimeCode).Count == 0;
+    }
+}

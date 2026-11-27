@@ -66,6 +66,7 @@ public static class LeaseDraftFingerprint
             Field(text, $"{role}[{i}].citizenship", LeaseDraftRules.Clean(p.Citizenship)?.ToUpperInvariant());
             Field(text, $"{role}[{i}].residence", LeaseDraftRules.Clean(p.Residence));
             Field(text, $"{role}[{i}].email", LeaseDraftRules.Clean(p.ContactEmail)?.ToLowerInvariant());
+            Field(text, $"{role}[{i}].phone", LeaseDraftRules.Clean(p.ContactPhone) is { } phone ? LeaseDraftRules.NormalizePhone(phone) : null);
             Field(text, $"{role}[{i}].documents", LeaseDraftRules.ParseDate(p.DocumentsVerifiedOn)?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? LeaseDraftRules.Clean(p.DocumentsVerifiedOn));
         }
     }

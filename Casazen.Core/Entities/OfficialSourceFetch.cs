@@ -56,6 +56,12 @@ public static class OfficialSourceDatasets
     public const string TouristTax = "tourist_tax";
     public const string MefNuovaAtIndex = "mef_nuova_at_index";
     public const string MefImpostaSoggiorno = "mef_imposta_soggiorno";
+
+    /// <summary>
+    /// The seed of the Swiss localities and municipalities derived from the official directory of swisstopo (E29/F01/US01/T01): one row each time
+    /// a seed file is loaded, with its SHA-256, the version stamp the next startup compares.
+    /// </summary>
+    public const string SwisstopoLocalities = "swisstopo_localities";
 }
 
 /// <summary>Outcome keys stored on <see cref="OfficialSourceFetch.Status"/>.</summary>

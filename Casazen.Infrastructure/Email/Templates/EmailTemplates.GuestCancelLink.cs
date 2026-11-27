@@ -22,9 +22,10 @@ public static partial class EmailTemplates
         DateTime checkInDate,
         DateTime checkOutDate,
         string cancelUrl,
-        DateTime expiresAtUtc)
+        DateTime expiresAtUtc,
+        GuestEmailBranding? branding = null)
     {
-        var builder = new EmailHtmlBuilder(culture);
+        var builder = new EmailHtmlBuilder(culture, branding);
         return builder
             .Paragraph("GuestCancelLink_Greeting", guestName)
             .Paragraph("GuestCancelLink_Body", propertyName, checkInDate, checkOutDate)

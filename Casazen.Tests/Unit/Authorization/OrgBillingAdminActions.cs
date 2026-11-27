@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
+using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
@@ -10,8 +11,9 @@ namespace Casazen.Tests.Unit.Authorization;
 
 /// <summary>
 /// One routed action of the API protected by the org policy <see cref="CasazenPolicies.OrgBillingAdmin"/> (AM-00): the
-/// HTTP verb, the route template with the controller's prefix, the body type it consumes and whether an
-/// <c>[AllowAnonymous]</c> overrides the policy.
+/// HTTP verb, the route template with the controller's prefix, the body type it consumes, whether an
+/// <c>[AllowAnonymous]</c> overrides the policy, and the feature flags it is behind (<c>[FeatureGate]</c> of the class
+/// and of the method): with one of them off the action answers 404 before the authorization runs.
 /// </summary>
 internal sealed partial record OrgBillingAdminAction(
     Type Controller,
@@ -20,7 +22,8 @@ internal sealed partial record OrgBillingAdminAction(
     string RouteTemplate,
     string? ConsumedContentType,
     bool IsAnonymous,
-    IReadOnlyList<string> Policies)
+    IReadOnlyList<string> Policies,
+    IReadOnlyList<string> FeatureGates)
 {
     public string Key => $"{Controller.Name}.{Method.Name}";
 
@@ -98,7 +101,8 @@ internal static class OrgBillingAdminActions
                     route,
                     attributes.OfType<ConsumesAttribute>().FirstOrDefault()?.ContentTypes.FirstOrDefault(),
                     classAnonymous || attributes.OfType<IAllowAnonymous>().Any(),
-                    policies));
+                    policies,
+                    [.. classAttributes.Concat(attributes).OfType<FeatureGateAttribute>().Select(gate => gate.Flag).Distinct(StringComparer.Ordinal)]));
             }
         }
 

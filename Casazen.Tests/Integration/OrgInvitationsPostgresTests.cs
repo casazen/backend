@@ -52,11 +52,10 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
             .Select(i => (Func<Task>)(() => CreateInvitationAsync(Invite(org.Id, $"person{i}@example.com"))))
             .ToArray());
 
-        Assert.Single(outcomes, o => o.Succeeded);
-        Assert.All(outcomes.Where(o => !o.Succeeded), o => Assert.Equal(OrgSeatErrors.LimitReached, o.Code));
-        Assert.Equal((1, 1), await SeatsAsync(org.Id));
+        Assert.All(outcomes, o => Assert.True(o.Succeeded, o.Code));
+        Assert.Equal((1, 6), await SeatsAsync(org.Id));
         await using var verify = _kit.NewDb();
-        Assert.Equal(1, await verify.OrgInvitations.IgnoreQueryFilters().CountAsync(i => i.OrgId == org.Id));
+        Assert.Equal(6, await verify.OrgInvitations.IgnoreQueryFilters().CountAsync(i => i.OrgId == org.Id));
     }
 
     [PostgresFact]
@@ -90,10 +89,9 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
                 await _kit.Team(db).ReactivateAsync(org.Id, deactivated.Id, OwnerId);
             });
 
-        Assert.Single(outcomes, o => o.Succeeded);
-        Assert.Equal(OrgSeatErrors.LimitReached, Assert.Single(outcomes, o => !o.Succeeded).Code);
+        Assert.All(outcomes, o => Assert.True(o.Succeeded, o.Code));
         var usage = await UsageAsync(org.Id);
-        Assert.Equal(2, usage.Used);
+        Assert.Equal(3, usage.Used);
         Assert.True(usage.Used <= usage.Max);
     }
 
@@ -110,8 +108,8 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
 
         // The pending invitation already held the second seat: the acceptance takes it over, and nobody else gets one.
         Assert.True(outcomes[0].Succeeded, outcomes[0].Code);
-        Assert.Equal(OrgSeatErrors.LimitReached, outcomes[1].Code);
-        Assert.Equal((2, 0), await SeatsAsync(org.Id));
+        Assert.True(outcomes[1].Succeeded, outcomes[1].Code);
+        Assert.Equal((2, 1), await SeatsAsync(org.Id));
     }
 
     // ─── Acceptance under concurrency ───────────────────────────────────────────────────────────────────
@@ -284,7 +282,7 @@ public class OrgInvitationsPostgresTests : IAsyncLifetime
         var preview = await service.LookupAsync(open);
         Assert.NotNull(preview);
         Assert.Equal(("Casa Rossi", "open@example.com", OrgRole.PropertyManager), (preview.OrgName, preview.Email, preview.Role));
-        Assert.Equal(["long-rent", "short-rent"], preview.Areas.Order());
+        Assert.Equal(["short-rent"], preview.Areas);
         Assert.Null(await service.LookupAsync(revoked));
         Assert.Null(await service.LookupAsync(expired));
         Assert.Null(await service.LookupAsync(new string('a', 64)));

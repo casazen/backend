@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -11,46 +12,56 @@ namespace Casazen.Infrastructure.Services;
 /// <inheritdoc cref="ITrustedSupplierService" />
 public sealed class TrustedSupplierService(
     AppDbContext db,
+    ISupplierService supplierService,
     IActivityLog activityLog,
-    ILogger<TrustedSupplierService> logger,
-    TimeProvider? timeProvider = null) : ITrustedSupplierService
+    ILogger<TrustedSupplierService> logger) : ITrustedSupplierService
 {
-    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
-    private static readonly TimeSpan InvitationExpiry = TimeSpan.FromDays(7);
+    /// <summary>The length of <see cref="SupplierInviteRecord.Email"/>.</summary>
+    private const int EmailMaxLength = 255;
 
-    public Task<InviteSupplierResult> InviteSupplierAsync(Guid orgId, InviteSupplierRequest request, string actorUserId)
+    public async Task<InviteSupplierResult> InviteSupplierAsync(Guid orgId, InviteSupplierRequest request, string actorUserId)
     {
-        // For wave 2, the invitation mechanism is simplified:
-        // Generate a token and return it. The actual invitation delivery
-        // (email, notification) is handled by the caller.
-        var token = Guid.NewGuid().ToString("N");
-        var expiresAt = _clock.GetUtcNow().Add(InvitationExpiry).UtcDateTime;
+        var email = request.Email?.Trim() ?? string.Empty;
+        if (email.Length == 0 || email.Length > EmailMaxLength || !new EmailAddressAttribute().IsValid(email))
+            throw new DomainRuleException("trusted_supplier_invite_email_invalid", "TrustedSupplierInviteEmailInvalid");
+
+        // Only the org's own properties can be assigned (the tenant filter keeps the others out of the count too).
+        var propertyIds = (request.PropertyIds ?? []).Distinct().ToList();
+        if (propertyIds.Count > 0
+            && await db.Properties.CountAsync(p => p.OrgId == orgId && propertyIds.Contains(p.Id)) != propertyIds.Count)
+            throw new DomainRuleException("trusted_supplier_property_invalid", "TrustedSupplierPropertyInvalid");
+
+        // A supplier with this email that already works for the org has nothing to accept.
+        var normalized = SupplierProfileEmailIndex.Normalize(email);
+        var alreadyTrusted = await db.TrustedSuppliers
+            .Where(ts => ts.OrgId == orgId)
+            .Join(db.SupplierProfiles, ts => ts.SupplierOrgId, sp => sp.OrgId, (ts, sp) => sp.Email)
+            .AnyAsync(profileEmail => profileEmail.Trim().ToLower() == normalized);
+        if (alreadyTrusted)
+            throw new DomainConflictException("trusted_supplier_already_added", "TrustedSupplierAlreadyAdded");
+
+        // The invite, its email and its acceptance are the ones of the supplier registration (#977).
+        var invite = await supplierService.CreateTrustedSupplierInviteAsync(orgId, email, propertyIds, identity: new(request.VatNumber, request.FiscalCode, request.Phone));
 
         logger.LogInformation(
-            "Trusted supplier invitation created: OrgId={OrgId} Email={Email} Actor={Actor} Token={Token}",
-            orgId, request.Email, actorUserId, token);
-
-        return Task.FromResult(new InviteSupplierResult(token, expiresAt));
+            "Trusted supplier invite {InviteId} of org {OrgId} created by {Actor}", invite.InviteId, orgId, actorUserId);
+        return new InviteSupplierResult(invite.InviteId, invite.ExpiresAt);
     }
 
-    public async Task<TrustedSupplier> AcceptInviteAsync(AcceptSupplierInviteRequest request, string actorUserId)
-    {
-        // For wave 2, accept the invitation and create the relationship.
-        // In a real implementation, we would validate the token against stored invitations.
-        // For now, we create the relationship directly.
-
-        // Note: In production, this would validate the token, check expiry,
-        // verify the supplier org exists, and ensure no duplicate relationship exists.
-
-        throw new NotImplementedException("AcceptInviteAsync requires invitation storage mechanism");
-    }
-
-    public async Task<List<TrustedSupplier>> GetTrustedSuppliersAsync(Guid orgId)
+    public async Task<List<TrustedSupplierSummary>> GetTrustedSuppliersAsync(Guid orgId)
     {
         return await db.TrustedSuppliers
             .Where(ts => ts.OrgId == orgId)
             .OrderBy(ts => ts.Priority)
             .ThenBy(ts => ts.CreatedAt)
+            .Select(ts => new TrustedSupplierSummary(ts.Id, ts.OrgId, ts.SupplierOrgId, ts.AssignedPropertyIds,
+                ts.Priority, ts.VisibleInMarketplace, ts.CreatedAt,
+                db.SupplierProfiles.Where(p => p.OrgId == ts.SupplierOrgId).Select(p => p.LegalName).FirstOrDefault(),
+                db.GuestSupplierOffers.Where(o => o.HostOrgId == ts.OrgId && o.SupplierOrgId == ts.SupplierOrgId)
+                    .OrderBy(o => o.Id).Select(o => (bool?)o.HostOrigin).FirstOrDefault()
+                ?? ts.HostOrigin ?? !db.SupplierProfiles.Any(p => p.OrgId == ts.SupplierOrgId &&
+                    (p.GuestPortalMarketplaceFirstPublishedAt <= ts.CreatedAt ||
+                     (p.GuestPortalMarketplaceFirstPublishedAt == null && p.GuestPortalMarketplaceEnabled)))))
             .ToListAsync();
     }
 
@@ -78,10 +89,16 @@ public sealed class TrustedSupplierService(
 
     public async Task RemoveTrustedSupplierAsync(Guid orgId, Guid trustedSupplierId, string actorUserId)
     {
-        var trustedSupplier = await db.TrustedSuppliers
-            .FirstOrDefaultAsync(ts => ts.Id == trustedSupplierId && ts.OrgId == orgId);
+        var supplierOrgId = await db.TrustedSuppliers.Where(ts => ts.Id == trustedSupplierId && ts.OrgId == orgId)
+            .Select(ts => (Guid?)ts.SupplierOrgId).FirstOrDefaultAsync();
+        await using var transaction = supplierOrgId is { } supplierId
+            ? await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, CancellationToken.None,
+                PostgresAdvisoryLocks.TrustedSupplierRelation(orgId, supplierId))
+            : null;
+        var activeRelations = await db.TrustedSuppliers
+            .Where(ts => ts.OrgId == orgId && ts.SupplierOrgId == supplierOrgId).ToListAsync();
 
-        if (trustedSupplier == null)
+        if (!activeRelations.Any(ts => ts.Id == trustedSupplierId))
         {
             throw new NotFoundException($"Trusted supplier {trustedSupplierId} not found for org {orgId}")
             {
@@ -90,19 +107,30 @@ public sealed class TrustedSupplierService(
             };
         }
 
-        db.TrustedSuppliers.Remove(trustedSupplier);
-
+        // Older data can contain several active rows for the same supplier, each exposing a different property.
+        var removedAt = DateTime.UtcNow;
+        foreach (var relation in activeRelations)
+            relation.RemovedAt = removedAt;
+        var privateOffers = await db.GuestSupplierOffers.Where(o => o.HostOrgId == orgId &&
+            o.SupplierOrgId == supplierOrgId && o.HostOrigin).ToListAsync();
+        foreach (var offer in privateOffers)
+        {
+            offer.Enabled = false;
+            offer.Accepted = false;
+        }
         // Record activity event
         activityLog.Record(OrgActivity.Of(
             orgId,
             OrgActivityType.TrustedSupplierRemoved,
             actorUserId,
-            trustedSupplier.SupplierOrgId.ToString()));
+            supplierOrgId.ToString()));
 
         await db.SaveChangesAsync();
+        if (transaction is not null)
+            await transaction.CommitAsync();
 
         logger.LogInformation(
             "Trusted supplier removed: Id={Id} SupplierOrgId={SupplierOrgId} Actor={Actor}",
-            trustedSupplierId, trustedSupplier.SupplierOrgId, actorUserId);
+            trustedSupplierId, supplierOrgId, actorUserId);
     }
 }

@@ -8,7 +8,7 @@ namespace Casazen.Core.Entities;
 /// <summary>
 /// Property owner in the agency registry (ADR-012): the natural or legal person who owns a property managed
 /// by the agency. Separate from <c>OwnerUser</c> (portal access): a property owner is not necessarily a user.
-/// IBAN and fiscal code are encrypted at rest with the <c>PropertyOwnerEncryptionPurpose</c>.
+/// IBAN, BIC, fiscal code, VAT number and the structured billing address are encrypted at rest with the <c>PropertyOwnerEncryptionPurpose</c>.
 /// </summary>
 [Table("PropertyOwners")]
 public class PropertyOwner : ITenantOwned
@@ -54,6 +54,105 @@ public class PropertyOwner : ITenantOwned
 
     /// <summary>Tax regime: private natural person (withholding tax) or VAT holder (invoice).</summary>
     public OwnerTaxRegime TaxRegime { get; set; } = OwnerTaxRegime.Private;
+
+    /// <summary>
+    /// The key the agency gives the owner in its own system (E10/F02/US02/T01): the first thing the owner import matches on. Unique inside the
+    /// org (a filtered unique index, <c>null</c> for an owner without one). Not a secret and not personal data: an agency code such as
+    /// <c>PRO-0042</c>.
+    /// </summary>
+    [MaxLength(ExternalKeyMaxLength)]
+    public string? ExternalKey { get; set; }
+
+    /// <summary>
+    /// The legal name as it appears on the owner's fiscal documents: the full name of a person, the name of a company. <c>FirstName</c> and
+    /// <c>LastName</c> remain the display name of the screens that existed before the registry had a fiscal profile.
+    /// </summary>
+    [MaxLength(LegalNameMaxLength)]
+    public string? LegalName { get; set; }
+
+    /// <summary>Natural person or legal entity; <c>null</c> until declared (an owner of before the import).</summary>
+    public OwnerEntityKind? EntityKind { get; set; }
+
+    /// <summary>ISO 3166-1 alpha-2 country of the tax residence (<c>IT</c>, <c>CH</c>); <c>null</c> until declared.</summary>
+    [MaxLength(2)]
+    public string? TaxResidenceCountry { get; set; }
+
+    /// <summary>
+    /// VAT number, as the owner gave it. Encrypted at rest with the <c>PropertyOwnerEncryptionPurpose</c> like the fiscal code (ADR-012-R1);
+    /// NEVER in logs, error responses, the activity log or an answer of the onboarding (ADR-012-R2).
+    /// </summary>
+    [MaxLength(500)]
+    public string? VatNumber { get; set; }
+
+    /// <summary>
+    /// BIC/SWIFT of the bank of <see cref="Iban"/>, needed when the IBAN is outside the SEPA area. Encrypted at rest like the IBAN;
+    /// NEVER in logs or answers.
+    /// </summary>
+    [MaxLength(500)]
+    public string? Bic { get; set; }
+
+    /// <summary>ISO 4217 currency the owner is paid in (<c>EUR</c>, <c>CHF</c>); <c>null</c> until declared.</summary>
+    [MaxLength(3)]
+    public string? SettlementCurrency { get; set; }
+
+    /// <summary>
+    /// How many apartments the owner lets short outside the agency, as the owner declared them (E18/F01/US03/T01, ⚖ I8, NF-117): they count with the properties the
+    /// agency manages for the owner towards the limit of units per taxpayer (<c>ShortStayFiscal:MaxApartmentsPerTaxpayer</c>), beyond which the activity is presumed to
+    /// be a business. 0 when nothing was declared; at most <see cref="ExternalShortLetUnitsMax"/>. A count, never personal data.
+    /// </summary>
+    public int ExternalShortLetUnits { get; set; }
+
+    /// <summary>The highest <see cref="ExternalShortLetUnits"/> a person can declare: a larger number is a typing mistake, not a portfolio.</summary>
+    public const int ExternalShortLetUnitsMax = 1_000;
+
+    // The structured billing address (E13/F01/US01/T01): the recipient of the owner invoice, the debtor of the QR-bill and the creditor of a pain.001.09
+    // transfer. Encrypted at rest with the PropertyOwnerEncryptionPurpose, for a person as for a company (EncryptedColumns): the columns have no length (the
+    // payload is longer than the text), the import and PUT api/owners/{id}/address check the length of the clear text. Never searched, never logged.
+
+    /// <summary>Structured billing address: the street (without the building number); at most <see cref="BillingStreetMaxLength"/> characters. Encrypted.</summary>
+    public string? BillingStreet { get; set; }
+
+    /// <summary>Structured billing address: the building (civic) number; at most <see cref="BillingCivicMaxLength"/> characters. Encrypted.</summary>
+    public string? BillingCivic { get; set; }
+
+    /// <summary>Structured billing address: the postal code; at most <see cref="BillingPostalCodeMaxLength"/> characters. Encrypted.</summary>
+    public string? BillingPostalCode { get; set; }
+
+    /// <summary>Structured billing address: the town; at most <see cref="BillingCityMaxLength"/> characters. Encrypted.</summary>
+    public string? BillingCity { get; set; }
+
+    /// <summary>
+    /// Structured billing address: the province (the two-letter sigla in Italy) or the canton/region abroad; at most <see cref="BillingProvinceMaxLength"/>
+    /// characters. Encrypted.
+    /// </summary>
+    public string? BillingProvince { get; set; }
+
+    /// <summary>Structured billing address: ISO 3166-1 alpha-2 country. Encrypted.</summary>
+    public string? BillingCountry { get; set; }
+
+    /// <summary>The longest <see cref="BillingStreet"/> in clear.</summary>
+    public const int BillingStreetMaxLength = 200;
+
+    /// <summary>The longest <see cref="BillingCivic"/> in clear.</summary>
+    public const int BillingCivicMaxLength = 20;
+
+    /// <summary>The longest <see cref="BillingPostalCode"/> in clear.</summary>
+    public const int BillingPostalCodeMaxLength = 20;
+
+    /// <summary>The longest <see cref="BillingCity"/> in clear.</summary>
+    public const int BillingCityMaxLength = 100;
+
+    /// <summary>The longest <see cref="BillingProvince"/> in clear.</summary>
+    public const int BillingProvinceMaxLength = 50;
+
+    /// <summary>The longest <see cref="ExternalKey"/>.</summary>
+    public const int ExternalKeyMaxLength = 64;
+
+    /// <summary>The longest <see cref="LegalName"/>.</summary>
+    public const int LegalNameMaxLength = 200;
+
+    /// <summary>The name of the filtered unique index on the org and the key of the owner.</summary>
+    public const string OrgExternalKeyIndexName = "UIX_PropertyOwners_OrgId_ExternalKey";
 
     /// <summary>When the owner was created (UTC).</summary>
     public DateTime CreatedAt { get; set; }

@@ -31,8 +31,29 @@ public class PropertyCinIntegrationTests : IClassFixture<CasazenWebApplicationFa
         Assert.Equal("IT058091C27G5FFZDZ", await ReadStoredCinAsync(property.Id));
 
         var detail = await ReadJsonAsync(await client.GetAsync($"/api/properties/{property.Id}/detail"));
+        Assert.Equal("IT", detail.GetProperty("country").GetString());
         Assert.Equal("IT058091C27G5FFZDZ", detail.GetProperty("cinCode").GetString());
         Assert.Equal("Valid", detail.GetProperty("cinStatus").GetString());
+    }
+
+    [Fact]
+    public async Task GetDetail_SwissPropertyWithoutCin_ReturnsItsCountry()
+    {
+        var owner = $"auth0|cin-swiss-{Guid.NewGuid():N}";
+        var property = await _factory.SeedPropertyAsync(owner);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var stored = await db.Properties.IgnoreQueryFilters().SingleAsync(p => p.Id == property.Id);
+            stored.Country = "CH";
+            stored.CinCode = null;
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory.CreateAuthenticatedClient(owner, "PropertyOwner");
+        var detail = await client.GetFromJsonAsync<JsonElement>($"/api/properties/{property.Id}/detail");
+        Assert.Equal("CH", detail.GetProperty("country").GetString());
+        Assert.Equal(JsonValueKind.Null, detail.GetProperty("cinCode").ValueKind);
     }
 
     [Fact]

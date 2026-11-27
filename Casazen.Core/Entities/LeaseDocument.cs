@@ -5,7 +5,7 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-public enum LeaseDocumentKind { Contract, Attestation, Registration, Other }
+public enum LeaseDocumentKind { Contract, Attestation, Registration, Other, RegistrationIdentity }
 
 /// <summary>An original attachment of one lease, never a property document.</summary>
 [Table("LeaseDocuments")]

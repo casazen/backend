@@ -15,6 +15,18 @@ public sealed class QueuedPush
 
     public Guid AudienceId { get; set; }
 
+    /// <summary>The user of a <see cref="PushAudienceKind.User"/> audience; <c>null</c> for the others (and for a job queued before it existed).</summary>
+    public string? AudienceUserId { get; set; }
+
+    /// <summary>
+    /// The context of the permission the hosts of a <see cref="PushAudienceKind.PropertyHosts"/> audience must also hold (<see cref="PushAudience.RequiredPermission"/>): <c>short-rent</c>
+    /// for the alerts of the notification of the guests to the police. <c>null</c> for every other push, and for a job queued before it existed (no narrowing).
+    /// </summary>
+    public string? AudiencePermissionContext { get; set; }
+
+    /// <summary>The permission itself (<c>alloggiati.submit</c>); <c>null</c> with <see cref="AudiencePermissionContext"/>.</summary>
+    public string? AudiencePermissionKey { get; set; }
+
     public string Title { get; set; } = string.Empty;
 
     public string Body { get; set; } = string.Empty;
@@ -27,18 +39,33 @@ public sealed class QueuedPush
 
     public Guid? ServiceRequestId { get; set; }
 
-    public PushAudience ToAudience() => new(AudienceKind, AudienceId);
+    /// <summary>The item of the approval queue the push is about (<c>data.approvalItemId</c>); <c>null</c> for the others (and for a job queued before it existed).</summary>
+    public Guid? ApprovalItemId { get; set; }
+
+    /// <summary>The category of notification the app registered (<c>categoryId</c>); <c>null</c> for the others (and for a job queued before it existed).</summary>
+    public string? CategoryId { get; set; }
+
+    public PushAudience ToAudience() => new(
+        AudienceKind,
+        AudienceId,
+        AudienceUserId,
+        AudiencePermissionContext is { Length: > 0 } context && AudiencePermissionKey is { Length: > 0 } key ? new NotificationPermission(context, key) : null);
 
     public static QueuedPush From(PushAudience audience, PushNotificationPayload payload) => new()
     {
         AudienceKind = audience.Kind,
         AudienceId = audience.Id,
+        AudienceUserId = audience.UserId,
+        AudiencePermissionContext = audience.RequiredPermission?.ContextKey,
+        AudiencePermissionKey = audience.RequiredPermission?.PermissionKey,
         Title = payload.Title,
         Body = payload.Body,
         Type = payload.Type,
         Route = payload.Route,
         BookingId = payload.BookingId,
         ServiceRequestId = payload.ServiceRequestId,
+        ApprovalItemId = payload.ApprovalItemId,
+        CategoryId = payload.CategoryId,
     };
 }
 
@@ -60,9 +87,24 @@ public sealed class HangfirePushQueue(
             if (deliveryKey.Length > 200)
                 throw new ArgumentException("A delivery key has at most 200 characters.", nameof(deliveryKey));
 
+            // The app has no screen of the platform staff, nor of the domain of an org (E40/F01/US02/T01), so there is no tap to open: they are
+            // told by the bell and its live update (InAppNotificationPushDecorator), never on a phone.
+            if (audience.Kind is PushAudienceKind.PlatformStaff or PushAudienceKind.OrgAdmins)
+            {
+                logger.LogInformation(
+                    "Push {Type} (key {DeliveryKey}) not queued for {Audience}: the app has no screen for it, the bell tells them",
+                    payload.Type,
+                    deliveryKey,
+                    audience.Kind);
+                return false;
+            }
+
             // MO-03 (A6-19): a tap must open a screen that exists in the app.
             if (!PushRoutes.IsAppRoute(payload.Route))
                 throw new ArgumentException($"Push route '{payload.Route}' is not a screen of the app.", nameof(payload));
+
+            if (audience.Kind == PushAudienceKind.User && string.IsNullOrWhiteSpace(audience.UserId))
+                throw new ArgumentException("A push to one user names the user.", nameof(audience));
 
             var push = QueuedPush.From(audience, payload);
             var jobId = backgroundJobClient.Enqueue<PushDeliveryJob>(job =>

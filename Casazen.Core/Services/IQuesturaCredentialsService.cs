@@ -29,7 +29,7 @@ public interface IQuesturaCredentialsService
 }
 
 /// <summary>New Alloggiati Web credentials of a property, in clear (never logged, never returned).</summary>
-public sealed record QuesturaCredentialsInput(string Username, string Password, string WsKey)
+public sealed record QuesturaCredentialsInput(string Username, string Password, string WsKey, int? ApartmentId = null)
 {
     /// <summary>Hides the values from logs and debugger output.</summary>
     public override string ToString() => nameof(QuesturaCredentialsInput) + " { *** }";

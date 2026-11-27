@@ -38,7 +38,9 @@ public class PropertyAvailabilityController(
     /// <c>linkableBlock</c> (only a portal's reservation, not yet a stay, sits on exactly these dates: complete it with
     /// <c>blockId</c>) or <c>invalid</c> (with its <c>invalidReason</c>). <c>channel</c> (<c>Airbnb</c>, <c>BookingCom</c>,
     /// <c>Other</c>) narrows the block offered to the calendar of that portal. 400 without valid dates; 404 for a property the caller
-    /// cannot book; 422 <c>property_not_bookable_in_long_mode</c>.
+    /// cannot book; 422 <c>property_not_bookable_in_long_mode</c>. For a property mirrored on the channel manager (E08/F01/US02/T01) the answer of
+    /// Octorate is part of it: "not available" is <c>occupied</c> with a <c>channelManager</c> conflict, and <c>channelManagerChecked</c> says
+    /// whether it was asked (<c>null</c> not mirrored, <c>true</c> answered, <c>false</c> could not be asked: advice only, it never blocks).
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(HostAvailabilityDto), StatusCodes.Status200OK)]

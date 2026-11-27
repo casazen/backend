@@ -154,3 +154,40 @@ Per D-13, Swiss agency (Org.Country = "CH"):
 - Tax regime values require legal review
 
 **CI cost:** +10s for XSD validation and numbering proof tests
+
+## Amendment 2026-11 (E06/F01/US02/T05): no agency-to-owner invoice in CasaZen
+
+**Status of the owner-invoice decision: superseded.** CasaZen owner accounting produces a rendiconto (a non-fiscal, versioned management report of the
+owner ledger) and the payment statement, not an agency-to-owner tax invoice. The guest fiscal issuance of the direct bookings (FiscalDocuments,
+E06/F01/US01) is unchanged.
+
+- **Retired generator.** `AgencyInvoiceService.GenerateInvoiceAsync` and `POST api/agency-invoices/generate` answer 410
+  `owner_invoice_issuance_removed`. No agency-to-owner invoice, fiscal number or FatturaPA XML is created any more (AC-NF110-6). R4 (numbering) and
+  R6 (XML) no longer apply to owners.
+- **History.** The stored invoices are not deleted: their XML and courtesy copy stay readable, and every one is marked
+  `ComplianceStatus = legacy_unverified` (no independently verifiable delivery or schema evidence is stored); none is relabelled as compliant.
+- **External documents.** When the agency invoices its fee, its own external fiscal or accounting system issues the invoice. CasaZen links it to the
+  statement version (`OwnerExternalDocumentReference`: provider, immutable external id, number and date, an https link and the SHA-256 of the issued
+  file, `entered` or `verified`, author and time). The link has no amount, VAT, numbering or submission state of CasaZen and changes nothing of the
+  statement; only `agency.owner.financial.manage` adds, verifies or removes it; a removal keeps the row with its reason; the owners read it in the
+  portal only once the statement is published.
+- **Rendiconto.** The statement files print «Rendiconto gestionale - non è una fattura», the version, the period, the totals, the payouts and the
+  withholding evidence; they carry no fiscal series or number.
+
+## Amendment 2026-11-14 (E11/F01/US01/T01): CasaZen issues again, also agency-to-owner invoices with lines (E14); the port serves every issuer
+
+**The amendment of 2026-11 (above) is superseded** by the decisions of the product owner of 2026-11-14 (P1, P2; `fatturazione/analisi-tecnica.md` §5).
+
+- **CasaZen is always the issuer.** It issues the document of every active booking of every source (direct, manual, the portals through Octorate) and,
+  with epic E14, the invoice of the property manager to each owner, with lines (commission, services and recharges with VAT, advanced expenses outside
+  the VAT), made from a version of the owner statement: a `FiscalDocument` with the purpose `OwnerInvoice`, the same engine, numbering, PDF and XML. The
+  rendiconto stays a non-fiscal management report; the invoice to the owner is a document of its own, linked to the version.
+- **Nobody issues outside CasaZen.** The issuer modes `Octorate` and `Accountant` are retired (kept as numbers for the stored rows, refused by the API);
+  the accountant receives the exports only. A document Octorate issued is imported read-only and never locks the issuer of a booking; it is a document
+  issued elsewhere all the same, so CasaZen issues for every active booking except one that already has such a document (409): never two documents for one
+  stay.
+- **The port serves every issuer.** `ISdiEInvoiceProvider` is the one port toward the SDI for the documents of every issuer CasaZen issues for (the
+  organization today, the owners that issue in Italy with E17); the concrete adapter stays behind its own flag (`SdiSubmission`, E17) and, without
+  credentials, a document stays `to_send`.
+- **The issuer as it was.** Every issued document keeps the snapshot of its issuer and the version of the tax rule it was made with; Switzerland is a
+  country of the issuer like Italy (MWSTG art. 26 document, no XML, no SDI, no stamp duty).

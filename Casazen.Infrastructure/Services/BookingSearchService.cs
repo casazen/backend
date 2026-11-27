@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using Casazen.Core.Authorization;
+using Casazen.Core.Bookings;
 using Casazen.Core.Entities;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
@@ -152,6 +153,10 @@ public sealed class BookingSearchService(
             query = query.Where(b => sources.Contains(b.Source));
         }
 
+        // The origin the host reads (E27/F01/US01/T01, NF-123): the one rule of BookingOrigins, as a predicate. It only narrows: the scope is applied apart.
+        if (criteria.Origins is { Count: > 0 } origins)
+            query = query.Where(BookingOrigins.Matching(origins));
+
         if (criteria.CheckInStates is { Count: > 0 } states)
             query = query.Where(CheckInStateIn(states.Distinct().ToList(), nowUtc));
 
@@ -302,8 +307,8 @@ public sealed class BookingSearchService(
             booking =>
             {
                 var facts = payments[booking.Id].ToList();
-                // A communication exists for a stay that is confirmed; a request, a hold or a cancelled booking has none.
-                AlloggiatiWebStatus? alloggiati = booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut
+                // A communication exists for a stay that is confirmed; a request, a hold, a cancelled booking or a no-show (NF-45) has none.
+                AlloggiatiWebStatus? alloggiati = AlloggiatiStatusRules.IsDue(booking)
                     ? AlloggiatiStatusRules.Effective(
                         AlloggiatiStatusRules.SlotReport(reports[booking.Id].ToList(), booking.GuestId)?.Status,
                         booking.CheckInDate,

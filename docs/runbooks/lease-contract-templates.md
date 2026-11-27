@@ -583,3 +583,64 @@ per nessuno.
   condizionale nel formato dei modelli (avvertenze dei 30 giorni, deposito 0, documentazione facoltativa).
 - **TR-FU4**: mostrare l'esigenza nella scheda del contratto: il dettaglio mascherato di `GET /api/leases/{id}` non la espone, oggi sta nella bozza e
   nel contratto.
+
+## Contratti autocompilati v2 (2026-11-13)
+
+Il PDF mostrava righe da compilare a penna anche quando i dati erano già presenti in CasaZen.
+La nuova versione `2026-11-autocompilato-v2` è disponibile per `CedolareSecca`, `RegimeOrdinario`
+e `CanoneConcordato`. I file v1 restano immutati: un'approvazione della v1 non approva la v2.
+La configurazione distribuita resta invariata; per usare questi file occorre selezionare la nuova versione
+nell'ambiente e riavviare l'API, come descritto in «Provarlo e approvarlo». Non basta distribuire il codice
+lasciando `VersionId=2026-11-bozza-v1`: in quel caso viene ancora caricato il vecchio modello.
+
+Nuovi segnaposto, risolti dal contratto e dall'immobile senza consultare profili di persone estranee al contratto:
+
+| Segnaposto | Fonte |
+|---|---|
+| `locatori_residenze`, `conduttori_residenze` | `Party.Residence`, con nome e cognome di ogni parte, nell'ordine `Position` |
+| `conduttori_cittadinanze` | `Party.Citizenship` (codice paese), con nome e cognome |
+| `locatori_email`, `conduttori_email` | `Party.ContactEmail`, con nome e cognome |
+| `immobile_piano` | `Property.FloorLevel`, incluso `0` per il piano terra |
+| `immobile_superficie` | `Property.AreaSqm`, maggiore di zero |
+| `immobile_composizione` | camere da letto e bagni di `Property`; non viene presentata come numero totale dei vani |
+| `regime_fiscale` | `LeaseContract.TaxRegime`: cedolare secca o regime ordinario |
+
+Se manca il dato anche di una sola parte, il segnaposto intero è mancante: l'anteprima lo segnala
+con `[DATO MANCANTE: nome_segnaposto]`, il contratto finale risponde `422 contract_data_missing`,
+anche per caricamento del firmato e avvio della firma. Non vengono stampate righe vuote né inventati valori.
+Per contratti vecchi occorre completare residenze, cittadinanze, email, piano e superficie prima della generazione.
+I nuovi segnaposto restano facoltativi negli altri modelli: la v1 e il transitorio non cambiano.
+
+### Scostamenti della v2 da sottoporre alla revisione del testo
+
+Oltre ai segnaposto, la v2 elimina tutti i trattini da compilare, comprese le righe di firma.
+Restano le etichette e i nomi dei firmatari. Luogo e data di sottoscrizione non sono dedotti da città
+immobile, decorrenza o data corrente: la data effettiva di stipula continua a essere dichiarata nel flusso di firma.
+
+I dati che CasaZen non raccoglie non possono essere compilati automaticamente. La v2 usa queste formulazioni,
+che richiedono una revisione specifica prima di approvare questa versione:
+
+- Il numero totale dei vani è sostituito dall'indicazione esplicita di camere da letto e bagni già registrati.
+- L'alternativa arredato/non arredato rimanda alla descrizione di dotazioni e arredi nel verbale/inventario,
+  senza dichiarare uno stato di arredamento non raccolto.
+- Non si introduce un recesso convenzionale senza gravi motivi con un preavviso inventato; resta il recesso
+  per gravi motivi e il relativo termine già scritto nella v1.
+- Il bonifico resta mensile anticipato sul conto comunicato dal locatore; giorno del mese e IBAN non sono
+  inventati né copiati da conti destinati ad altri pagamenti.
+- Nei modelli 4+4 l'eventuale aggiornamento ISTAT è rinviato a separato accordo scritto, senza attribuire
+  una percentuale non concordata; i richiami nel regime fiscale sono coerenti con questo rinvio.
+- Non viene dichiarato un acconto spese non registrato; restano ripartizione, rendiconto e conguaglio.
+- Nel concordato, fascia di canone e riferimenti dell'attestazione rimandano agli allegati e all'accordo
+  territoriale: CasaZen non genera quegli allegati con questa modifica. Verificare che siano sufficienti
+  a identificare accordo, calcolo e organizzazioni attestanti prima dell'approvazione.
+
+Non sono state aggiunte scelte contrattuali alla procedura guidata con questa modifica. Se il prodotto vuole
+mantenere giorno/IBAN, percentuale ISTAT, acconto spese, recesso convenzionale o gli estremi dell'accordo
+nel testo, deve prima raccoglierli esplicitamente nel contratto, poi esporli come segnaposto; non usare
+la v2 per sottintendere condizioni che le parti avevano concordato diversamente.
+
+Per selezionare la nuova anteprima, impostare per ciascuna variante interessata
+`LeaseTemplates__Variants__<Variante>__VersionId=2026-11-autocompilato-v2` e riavviare.
+L'approvazione e i suoi riferimenti devono riguardare questa precisa versione; non copiare l'approvazione della v1.
+I test `LeaseTemplateAutofillTests.cs` verificano il PDF finale dei tre regimi con approvazione soltanto di test,
+l'assenza di campi manuali, tutti i co-locatori/co-conduttori, il piano terra e il blocco per dati mancanti.

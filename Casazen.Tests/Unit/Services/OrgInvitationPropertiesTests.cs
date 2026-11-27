@@ -30,7 +30,7 @@ public class OrgInvitationPropertiesTests
 
     private async Task<Guid> SeedOrgAsync()
     {
-        var (org, _) = await _kit.SeedOwnerOrgAsync();
+        var (org, _) = await _kit.SeedOwnerOrgAsync(rentalType: RentalType.Both);
         return org.Id;
     }
 
@@ -44,7 +44,7 @@ public class OrgInvitationPropertiesTests
     {
         await using var db = _kit.NewDb();
         return await _kit.Invitations(db).CreateAsync(
-            new CreateOrgInvitation(orgId, actor, email, "Anna Leone", role, ["short-rent"], scope, PropertyIds: propertyIds));
+            new CreateOrgInvitation(orgId, actor, email, "Anna Leone", role, ["short-rent", "long-rent"], scope, PropertyIds: propertyIds));
     }
 
     private async Task<OrgInvitationAccepted> AcceptAsync(string token, string userId = AnnaId, string email = AnnaEmail)

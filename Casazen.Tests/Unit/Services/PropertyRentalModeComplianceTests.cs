@@ -225,7 +225,7 @@ public class PropertyRentalModeComplianceTests
     {
         await using var db = CreateDb();
         var orgId = Guid.NewGuid();
-        await SeedAsync(db, RentalMode.Short, PropertyComplianceStatus.Pending, cinCode: null, orgId: orgId, name: "Casa Breve");
+        await SeedAsync(db, RentalMode.Short, PropertyComplianceStatus.Pending, cinCode: "IT058091C27G5FFZDZ", orgId: orgId, name: "Casa Breve");
         await SeedAsync(db, RentalMode.Long, PropertyComplianceStatus.Pending, cinCode: null, orgId: orgId, name: "Casa Lungo");
         await SeedAsync(db, RentalMode.Long, PropertyComplianceStatus.Suspended, cinCode: null, orgId: orgId, name: "Casa Lungo 2");
 

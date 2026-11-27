@@ -1,3 +1,4 @@
+using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Hangfire;
 using Microsoft.Extensions.Logging;
@@ -10,7 +11,27 @@ namespace Casazen.Infrastructure.Email;
 /// Where an answer to the email goes, when it is not the sender: the address of a visitor who wrote to the host through the booking
 /// site (DB-03b). <c>null</c> for every other email, which is queued exactly as before.
 /// </param>
-public sealed record EmailContent(string Subject, string HtmlBody, string? ReplyTo = null);
+public sealed record EmailContent(string Subject, string HtmlBody, string? ReplyTo = null)
+{
+    public AccountInvitationEmail? AccountInvitation { get; init; }
+
+    /// <summary>
+    /// The name the email is sent in, as the sender's display name (E50/F01/US03/T01, NF-155, D3): the name of the host, for the emails to a guest that carry the host's brand
+    /// (<see cref="Templates.EmailHtmlBuilder"/> with a <see cref="GuestEmailBranding"/>). Already cleaned: it holds no quote, no bracket, no control character and at most
+    /// <see cref="GuestEmailBranding.NameMaxLength"/> characters. Only the display name changes, never the address of the sender. <c>null</c> for every other email, which is queued
+    /// exactly as before.
+    /// </summary>
+    public string? FromName { get; init; }
+
+    /// <summary>
+    /// The check-in link this e-mail carries (E23/F02/US01/T01: the confirmation of a direct booking whose check-in is open): its delivery is the delivery of the link, so the job that
+    /// sends it (<see cref="BookingConfirmationEmailJob"/>) writes the real outcome on the session and on the delivery row of the booking. <c>null</c> for every other e-mail.
+    /// </summary>
+    public CheckInLinkEmail? CheckInLink { get; init; }
+}
+
+/// <summary>The booking and the check-in session of the link an e-mail carries (<see cref="EmailContent.CheckInLink"/>). Ids only: never the token.</summary>
+public sealed record CheckInLinkEmail(Guid BookingId, Guid SessionId);
 
 /// <summary>
 /// Queues emails for delivery in a Hangfire job (<see cref="EmailDeliveryJob"/>), so the provider is never called
@@ -52,11 +73,28 @@ public sealed class HangfireEmailQueue(
             // An email without a reply-to goes through the job it always went through, so the jobs already waiting in the queue during a
             // deploy still find their method; the reply-to has a job of its own.
             var replyTo = string.IsNullOrWhiteSpace(content.ReplyTo) ? null : content.ReplyTo.Trim();
-            var jobId = replyTo is null
-                ? backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
-                    job.SendAsync(to.Trim(), content.Subject, content.HtmlBody, template))
-                : backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
-                    job.SendWithReplyToAsync(to.Trim(), content.Subject, content.HtmlBody, template, replyTo));
+            // An e-mail to a guest with the brand of its host is sent in the host's name (E50/F01/US03/T01): the sender's display name is the host's, the address of the sender is
+            // not. Such an e-mail has jobs of its own (new methods: the jobs already waiting in the queue during a deploy keep the signature they were queued with).
+            var fromName = GuestEmailBranding.CleanName(content.FromName);
+            // The e-mail that carries a check-in link has a job of its own, which records on the session whether the link really left (E23/F02/US01/T01).
+            var jobId = content.CheckInLink is { } checkInLink
+                ? fromName is null && replyTo is null
+                    ? backgroundJobClient.Enqueue<BookingConfirmationEmailJob>(job =>
+                        job.SendAsync(to.Trim(), content.Subject, content.HtmlBody, template, checkInLink.BookingId, checkInLink.SessionId, 1))
+                    : backgroundJobClient.Enqueue<BookingConfirmationEmailJob>(job =>
+                        job.SendBrandedAsync(
+                            to.Trim(), content.Subject, content.HtmlBody, template, checkInLink.BookingId, checkInLink.SessionId, 1, replyTo, fromName))
+                : content.AccountInvitation is { } invitation
+                    ? backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
+                        job.SendAccountInvitationAsync(to.Trim(), content.Subject, content.HtmlBody, template, invitation, CancellationToken.None))
+                    : fromName is not null
+                        ? backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
+                            job.SendBrandedAsync(to.Trim(), content.Subject, content.HtmlBody, template, replyTo, fromName))
+                        : replyTo is null
+                            ? backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
+                                job.SendAsync(to.Trim(), content.Subject, content.HtmlBody, template))
+                            : backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
+                                job.SendWithReplyToAsync(to.Trim(), content.Subject, content.HtmlBody, template, replyTo));
             logger.LogInformation("Email {Template} queued (job {JobId})", template, jobId);
             return true;
         }
@@ -73,7 +111,10 @@ public sealed class HangfireEmailQueue(
 /// after the last attempt, or on a permanent error, the job is removed so the recipient and body do not stay in the
 /// Hangfire tables (each failure is logged).
 /// </summary>
-public sealed class EmailDeliveryJob(IEmailService emailService, ILogger<EmailDeliveryJob> logger)
+public sealed class EmailDeliveryJob(
+    IEmailService emailService,
+    ILogger<EmailDeliveryJob> logger,
+    Auth0InvitationLinks? invitationLinks = null)
 {
     public const int MaxAttempts = 5;
 
@@ -86,11 +127,45 @@ public sealed class EmailDeliveryJob(IEmailService emailService, ILogger<EmailDe
     public Task SendWithReplyToAsync(string to, string subject, string htmlBody, string template, string replyTo) =>
         DeliverAsync(to, subject, htmlBody, template, replyTo);
 
-    private async Task DeliverAsync(string to, string subject, string htmlBody, string template, string? replyTo)
+    /// <summary>
+    /// The same in the name of a host (E50/F01/US03/T01, NF-155): the sender's display name is <paramref name="fromName"/> and, when there is one, the answer goes to
+    /// <paramref name="replyTo"/>; the address of the sender is the configured one. The job of an email to a guest with the brand of its host. A <b>new method</b>: the signature of the
+    /// others is the one the jobs already in the queue were created with, and never changes.
+    /// </summary>
+    [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
+    public Task SendBrandedAsync(string to, string subject, string htmlBody, string template, string? replyTo, string fromName) =>
+        DeliverAsync(to, subject, htmlBody, template, replyTo, fromName);
+
+    [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
+    public async Task SendAccountInvitationAsync(
+        string to, string subject, string htmlBody, string template, AccountInvitationEmail invitation, CancellationToken cancellationToken)
     {
-        var result = replyTo is null
-            ? await emailService.SendEmailAsync(to, subject, htmlBody)
-            : await emailService.SendEmailAsync(to, subject, htmlBody, replyTo);
+        if (invitationLinks?.Enabled == true)
+        {
+            var original = EmailHtmlBuilder.Encode(invitation.Url);
+            if (!htmlBody.Contains(original, StringComparison.Ordinal))
+                throw new InvalidOperationException("The invitation link is missing from the email.");
+
+            var link = await invitationLinks.CreateAsync(to, invitation, cancellationToken);
+            if (link is null)
+            {
+                logger.LogInformation("Email {Template} skipped: invitation expired", template);
+                return;
+            }
+
+            htmlBody = htmlBody.Replace(original, EmailHtmlBuilder.Encode(link), StringComparison.Ordinal);
+        }
+
+        await DeliverAsync(to, subject, htmlBody, template, replyTo: null);
+    }
+
+    private async Task DeliverAsync(string to, string subject, string htmlBody, string template, string? replyTo, string? fromName = null)
+    {
+        var result = fromName is not null
+            ? await emailService.SendEmailAsync(to, subject, htmlBody, replyTo, fromName)
+            : replyTo is null
+                ? await emailService.SendEmailAsync(to, subject, htmlBody)
+                : await emailService.SendEmailAsync(to, subject, htmlBody, replyTo);
         if (result.Success)
         {
             logger.LogInformation("Email {Template} delivered to the provider", template);

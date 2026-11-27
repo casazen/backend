@@ -51,6 +51,14 @@ public static class CasazenPolicies
     public const string GuestSession = "GuestSession";
 
     /// <summary>
+    /// A site connected to the org, its WordPress plugin (S022, PLG-BE-CONNECT, site integration plan §10.4): a valid, active credential of the scheme
+    /// <c>SiteToken</c> (<c>Authorization: Bearer czs_…</c>, <c>SiteTokenAuthenticationHandler</c>) with its connection, its org and the scope
+    /// <c>site:domain</c>. It is not a sign-in of a person and carries no role: it opens only <c>api/site/v1/*</c>, whose actions read the connection with
+    /// <c>User.GetSiteConnection()</c> and act on its org only (never an org of the request). A sign-in of a person opens none of them (401).
+    /// </summary>
+    public const string SiteConnection = "SiteConnection";
+
+    /// <summary>
     /// The person with a CasaZen account who books as a guest (the mobile app's guest area, <c>api/guest/*</c>): any signed-in account
     /// with a subject, whatever its role, and with <b>no host org and no supplier link needed</b>, because a guest has neither. It opens
     /// only the actions that read the caller's own bookings (the direct bookings whose guest has the account's verified email address, which
@@ -58,6 +66,13 @@ public static class CasazenPolicies
     /// token (<see cref="GuestSession"/>, a code and an email with no account): that one is another scheme and opens none of these.
     /// </summary>
     public const string GuestAccount = "GuestAccount";
+
+    /// <summary>
+    /// Long-rent tenant self-service area: a signed-in account with a subject. The endpoint resolves the account's
+    /// verified Auth0 email and grants access only when it matches a non-anonymized tenant party of the requested lease.
+    /// A tenant is deliberately not made a member of the landlord's organization.
+    /// </summary>
+    public const string TenantAccount = "TenantAccount";
 
     private const string ShortRent = "RequireContext:short-rent:";
     private const string LongRent = "RequireContext:long-rent:";
@@ -92,6 +107,7 @@ public static class CasazenPolicies
     public const string PaymentRead = ShortRent + "payment.read";
     public const string PaymentWrite = ShortRent + "payment.write";
     public const string GuestRead = ShortRent + "guest.read";
+    public const string Marketing = ShortRent + HostPermissions.Marketing;
     public const string GuestWrite = ShortRent + "guest.write";
     public const string OtaRead = ShortRent + "ota.read";
     public const string OtaWrite = ShortRent + "ota.write";
@@ -119,9 +135,30 @@ public static class CasazenPolicies
 
     /// <summary>
     /// Decide on manual biometric verification (NF-12, ADR-013): approve or reject guest check-in after biometric
-    /// escalation. Owner, admins, and property managers only (NOT staff per D-08). Short-rent context.
+    /// escalation. Owner, admins, and property managers only (NOT staff per D-08). Short-rent context. The permission is
+    /// <see cref="HostPermissions.VerificationDecision"/>, seeded since E03/F04/US02/T01.
     /// </summary>
-    public const string VerificationDecision = ShortRent + "verification.decision";
+    public const string VerificationDecision = ShortRent + HostPermissions.VerificationDecision;
+
+    /// <summary>
+    /// Decide the items of the approval queue (E05/F04/US01/T01, NF-68): list them, edit a draft, approve it and reject it. Owner, administrators and
+    /// property managers; not the collaborator, who held the broad <see cref="PropertyWrite"/> that guarded the queue before. Short-rent context. The
+    /// permission is <see cref="HostPermissions.ApprovalDecide"/>; which items of the queue the caller reaches (the property of an item) is decided
+    /// by its <c>HostScope</c>, in the service.
+    /// </summary>
+    public const string ApprovalDecide = ShortRent + HostPermissions.ApprovalDecide;
+
+    public const string ApprovalQueueAccess = "ApprovalQueueAccess";
+    public static IReadOnlyList<string> ApprovalQueuePolicies { get; } = [ApprovalDecide, Marketing];
+
+    /// <summary>
+    /// «Portale ospiti» (E50/F01/US01/T01, NF-152, guest portal plan decision A7): set up the guest portal of the org (house guide, extras, suppliers and
+    /// their percentages, automatic replies, the wizard). Owner, administrators and property managers; not the collaborator nor the accountant.
+    /// Short-rent context. The permission is <see cref="HostPermissions.GuestPortalManage"/>. The link of a stay is not behind it: the endpoints of the
+    /// link ask for the permissions on the bookings (<see cref="BookingRead"/>, <see cref="BookingWrite"/>). Registered once here for the set-up
+    /// endpoints of the portal epics (E51-E59).
+    /// </summary>
+    public const string GuestPortalManage = ShortRent + HostPermissions.GuestPortalManage;
 
     /// <summary>
     /// Read a property's long-term side that is not a lease: the long-rent service requests (D2, SU-07). Long-rent
@@ -169,11 +206,18 @@ public static class CasazenPolicies
     /// <summary>Manage internal staff activities (agency B2B).</summary>
     public const string AgencyActivityManage = Agency + AgencyPermissions.ActivityManage;
 
-    /// <summary>Manage trusted suppliers (agency B2B).</summary>
-    public const string AgencySupplierManage = Agency + AgencyPermissions.SupplierManage;
+    /// <summary>Manage the organisation’s trusted suppliers on any subscription.</summary>
+    public const string TrustedSupplierManage = "host.trusted-supplier.manage";
 
     /// <summary>Invite and manage property owners (agency B2B, ADR-011-R4).</summary>
     public const string AgencyOwnerManage = Agency + AgencyPermissions.OwnerManage;
+
+    /// <summary>Full fiscal profiles of the owners, the rule sets and their approval, payouts and tax evidence (agency B2B, E06/F05/US02).</summary>
+    public const string AgencyOwnerFinancialManage = Agency + AgencyPermissions.OwnerFinancialManage;
+
+    /// <summary>Publish an approved owner statement version (agency B2B, E06/F05/US02/T02).</summary>
+    public const string AgencyStatementPublish = Agency + AgencyPermissions.StatementPublish;
+
 
     /// <summary>
     /// Owner portal access (ADR-011): checks JWT claim context=owner_portal and resolves OwnerUserId.
@@ -206,10 +250,12 @@ public static class CasazenPolicies
         SharedPropertyRead, SharedPropertyWrite,
         BookingRead, BookingWrite,
         PaymentRead, PaymentWrite,
-        GuestRead, GuestWrite,
+        GuestRead, GuestWrite, Marketing,
         OtaRead, OtaWrite,
         ServiceRequestWrite, GuestManage, AlloggiatiSubmit,
         VerificationDecision,
+        ApprovalDecide,
+        GuestPortalManage,
         LongRentPropertyRead, LongRentPropertyWrite,
         LeaseRead, LeaseCreate, LeaseSign, LeaseRegister,
         OrgMembersManage, OrgActivityRead,
@@ -227,7 +273,8 @@ public static class CasazenPolicies
         AgencyWithholdingManage,
         AgencyWireManage,
         AgencyActivityManage,
-        AgencySupplierManage,
+        AgencyOwnerFinancialManage,
+        AgencyStatementPublish,
     ];
 
     /// <summary>The agency permission an agency policy requires: <c>RequireAgencyTier:agency.wire.manage</c> needs <c>agency.wire.manage</c>.</summary>

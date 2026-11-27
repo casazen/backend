@@ -1,4 +1,5 @@
 using System.Reflection;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
@@ -137,6 +138,40 @@ public class InAppNotificationJobTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateAsync_PlatformStaff_TellsTheAdministratorsByRoleAndByMembership_EachInItsOwnOrg_AndTheirBellShowsIt()
+    {
+        // «Fallo per me» (14/11/2026): the staff is the user role Admin or a membership of the administration context. Each row carries the
+        // staff member's own org (its host org, else its supplier org), the one its bell reads; never the org of the host who asked.
+        var world = await _kit.SeedWorldAsync();
+        _kit.Db.Users.AddRange(
+            NewUser("auth0|staff-by-role", world.OtherHostOrgId, UserRole.Admin),
+            NewUser("auth0|staff-by-membership", null, UserRole.PropertyOwner, supplierOrgId: world.SupplierOrgId),
+            NewUser("auth0|staff-inactive", world.OtherHostOrgId, UserRole.Admin, active: false),
+            NewUser("auth0|staff-without-org", null, UserRole.Admin));
+        _kit.Db.UserContextMemberships.Add(new UserContextMembership { UserId = "auth0|staff-by-membership", ContextKey = "admin", RoleId = 3 });
+        await _kit.Db.SaveChangesAsync();
+        var requestId = Guid.NewGuid();
+
+        var notification = QueuedInAppNotification.From(
+            PushAudience.PlatformStaff(requestId),
+            new PushNotificationPayload(string.Empty, string.Empty, PushTypes.AssistRequested, null, string.Empty),
+            Now);
+        await _kit.Job().CreateAsync(PushDeliveryKeys.AssistRequested(requestId), notification, CancellationToken.None);
+
+        var rows = await _kit.RowsAsync();
+        Assert.Equal(
+            [("auth0|staff-by-membership", world.SupplierOrgId), ("auth0|staff-by-role", world.OtherHostOrgId)],
+            rows.Select(r => (r.UserId, r.OrgId)));
+        Assert.All(rows, row => Assert.Equal((PushTypes.AssistRequested, (Guid?)requestId), (row.Type, row.EntityId)));
+
+        // The bell of each one lists it: the row is under the org its bell reads.
+        var bell = new Casazen.Infrastructure.Services.InAppNotificationService(
+            _kit.Db, _kit.Clock, Microsoft.Extensions.Logging.Abstractions.NullLogger<Casazen.Infrastructure.Services.InAppNotificationService>.Instance);
+        foreach (var staff in new[] { "auth0|staff-by-role", "auth0|staff-by-membership" })
+            Assert.Equal(1, await bell.CountUnreadAsync(staff));
+    }
+
+    [Fact]
     public async Task CreateAsync_UnknownBookingOrProperty_WritesNothingAndDoesNotThrow()
     {
         await _kit.SeedWorldAsync();
@@ -171,14 +206,34 @@ public class InAppNotificationJobTests : IDisposable
         // The tripwire: a new PushAudienceKind is resolved into devices by PushDeliveryJob; without a case in this job its
         // notifications would silently never be written. Add the rule to InAppNotificationJob and the audience below.
         var world = await _kit.SeedWorldAsync();
+        // E03/F04/US02/T03: the manager decides the identity verifications (its short-rent role holds verification.decision).
+        _kit.Db.RolePermissions.Add(new RolePermission { RoleId = 7, PermissionKey = HostPermissions.VerificationDecision });
+        _kit.Db.UserContextMemberships.Add(new UserContextMembership
+        {
+            UserId = InAppNotificationTestKit.World.ManagerId,
+            ContextKey = OrgRoleCatalog.ShortRent,
+            RoleId = 7,
+        });
+        await _kit.Db.SaveChangesAsync();
+        // The platform staff: an administrator of CasaZen, in an org of its own.
+        _kit.Db.Users.Add(NewUser("auth0|staff", world.OtherHostOrgId, UserRole.Admin));
+        await _kit.Db.SaveChangesAsync();
         var audiences = new Dictionary<PushAudienceKind, PushAudience>
         {
             [PushAudienceKind.BookingHosts] = PushAudience.BookingHosts(world.BookingId),
             [PushAudienceKind.PropertyHosts] = PushAudience.PropertyHosts(world.PropertyId),
             [PushAudienceKind.SupplierOrg] = PushAudience.SupplierOrg(world.SupplierOrgId),
+            [PushAudienceKind.VerificationOperators] = PushAudience.VerificationOperators(world.BookingId),
+            [PushAudienceKind.PlatformStaff] = PushAudience.PlatformStaff(Guid.NewGuid()),
+            // E40/F01/US02/T01: the administrators of the org (its owner), told about the org's own domain.
+            [PushAudienceKind.OrgAdmins] = PushAudience.OrgAdmins(world.OrgId),
         };
 
-        foreach (var kind in Enum.GetValues<PushAudienceKind>())
+        // NF-65: a push to one user is the push channel of that user's choice. The counter of the bell is another channel, which the caller
+        // delivers when the user chose it, with its own key: the decorator queues no notification for it (InAppNotificationPushDecoratorTests).
+        var withoutNotificationByDesign = new HashSet<PushAudienceKind> { PushAudienceKind.User };
+
+        foreach (var kind in Enum.GetValues<PushAudienceKind>().Where(k => !withoutNotificationByDesign.Contains(k)))
         {
             Assert.True(audiences.ContainsKey(kind), $"PushAudienceKind.{kind} has no case in this test: add its rule to InAppNotificationJob.");
             await _kit.Job().CreateAsync($"key:{kind}", Queued(audiences[kind]), CancellationToken.None);

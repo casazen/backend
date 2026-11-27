@@ -235,6 +235,26 @@ public class HostTodayInterventionsTests
     }
 
     [Fact]
+    public async Task Arrivals_ANoShowOwesNoAlloggiatiCommunication_ItsRowSaysNothingOfIt()
+    {
+        // NF-45: the guests never came. The row of the stay is still on the day, but it is not "to send manually", whatever its report says.
+        var world = await SeedAsync();
+        await using var _ = world.Db;
+        var noShow = Stay(world, world.Trullo, BookingStatus.Confirmed, Day(10, 9), Day(10, 12));
+        noShow.NoShowAt = At(10, 9, 15);
+        var expected = Stay(world, world.Trullo, BookingStatus.Confirmed, Day(10, 9), Day(10, 12));
+        world.Db.Bookings.AddRange(noShow, expected);
+        world.Db.AlloggiatiWebReports.Add(Report(noShow, AlloggiatiWebStatus.DaInviareManualmente));
+        await world.Db.SaveChangesAsync();
+
+        var today = await Service(world.Db).GetTodayAsync(new HostScope(world.OrgId), new HostTodayOptions());
+
+        var byBooking = today.Arrivals.Items.Concat(today.Upcoming.Items).ToDictionary(s => s.Stay.BookingId);
+        Assert.Null(byBooking[noShow.Id].Alloggiati);
+        Assert.Equal(AlloggiatiWebStatus.DaInviareManualmente, byBooking[expected.Id].Alloggiati!.Status);
+    }
+
+    [Fact]
     public async Task Departures_HaveNoAlloggiati_AndNoCheckIn()
     {
         var world = await SeedAsync();
@@ -448,6 +468,7 @@ public class HostTodayInterventionsTests
         await using var _ = world.Db;
         // A property still to activate (the lowest priority), and a backlog of jobs to pay (the sixth) longer than the list.
         var toActivate = HostScopeScenario.NewProperty(world.OrgId, "auth0|titolare-sr03b", "Masseria");
+        toActivate.CinCode = "IT058091C27G5FFZDZ";
         world.Db.Properties.Add(toActivate);
         world.Db.ServiceRequests.AddRange(
             Enumerable.Range(0, 25).Select(i => Request(world, world.Trullo, ServiceRequestStatus.Completato)));

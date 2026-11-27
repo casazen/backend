@@ -216,6 +216,21 @@ public class RentReminderServiceTests
     }
 
     [Fact]
+    public async Task ConfigureSchedule_ASecondTime_ReplacesTheComponentsInsteadOfSeveringThem()
+    {
+        var f = await CreateAsync();
+        var first = new ConfigureRentScheduleRequest(RentCadence.Monthly, 5, 900m);
+
+        await f.Service.ConfigureScheduleAsync(f.LeaseId, first);
+        var again = await f.Service.ConfigureScheduleAsync(f.LeaseId, first with { Amount = 1_000m });
+
+        var october = again.Installments.Single(i => i.PeriodStart == new DateOnly(2026, 10, 1));
+        Assert.Equal(1_000m, october.Amount);
+        Assert.Equal(1_000m, Assert.Single(october.Components).Amount);
+        Assert.Equal(again.Installments.Count, await f.Db.RentLedgerComponents.CountAsync());
+    }
+
+    [Fact]
     public async Task SendReminder_ALeaseThatIsNotThere_IsNotFound()
     {
         var f = await CreateAsync();

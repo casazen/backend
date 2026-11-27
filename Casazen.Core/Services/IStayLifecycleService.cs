@@ -59,6 +59,37 @@ public interface IStayLifecycleService
     /// <see cref="BookingErrorCodes.CheckoutNotCompleted"/> while the stay is not checked out.
     /// </summary>
     Task<StayCheckout> ConfirmPropertyReadyAsync(Guid bookingId, string? notes, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The booking flow registers the arrival in the host's place (casazen/backend#978, <c>BookingFlowAutomationJob</c>): the same transition as
+    /// <see cref="RegisterArrivalAsync"/>, recorded as CasaZen's, with the hosts told live. A stay the host already moved (arrived, a no-show, cancelled, a day
+    /// out of the rules) is left as it is: <c>null</c>, never an error.
+    /// </summary>
+    Task<StayArrivalResult?> RegisterArrivalAutomaticallyAsync(Guid bookingId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The booking flow registers the departure in the host's place (casazen/backend#978): a check-out that declares nothing (as
+    /// <c>POST /check-out</c>), with the arrival registered first when <paramref name="registerArrival"/>, recorded as CasaZen's, with the hosts told live.
+    /// A stay whose check-out wizard the host opened, a no-show or a stay the rules refuse is left as it is: <c>null</c>.
+    /// </summary>
+    Task<Booking?> CheckOutAutomaticallyAsync(Guid bookingId, bool registerArrival, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The cleaning of a checked-out stay is done and the booking flow of the org declares the property ready then (casazen/backend#978): declared as CasaZen's,
+    /// closing the cleaning «To do» of the stay like the host's declaration, with the hosts told live. Nothing (<c>null</c>) for a stay not checked out or a flow
+    /// that does not say so; a property already declared, or one the host said was not ready yet, is left to the host.
+    /// </summary>
+    Task<StayCheckout?> DeclarePropertyReadyAutomaticallyAsync(Guid bookingId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The guests never came (NF-45, E03/F01/US01/T04): sets <see cref="Booking.NoShowAt"/>; the status stays
+    /// <see cref="BookingStatus.Confirmed"/> and no bus event is recorded. Only a confirmed booking (409
+    /// <see cref="BookingErrorCodes.NotConfirmed"/>), from its check-in day in Europe/Rome (422 <c>no_show_too_early</c>), never once the police
+    /// communication went (an Alloggiati attempt sending or accepted, or a report sent or declared sent: 409 <c>no_show_alloggiati_sent</c>).
+    /// Idempotent: a stay already marked keeps its mark and nothing is queued again. A booking on Octorate gets <c>NO_SHOW</c> after the
+    /// commit (<c>OctorateStayStateJob</c>). A late arrival registered afterwards clears the mark.
+    /// </summary>
+    Task<Booking> MarkNoShowAsync(Guid bookingId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Outcome of the arrival registration.</summary>

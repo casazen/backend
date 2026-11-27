@@ -308,6 +308,44 @@ showed "Nessuna prenotazione trovata" plus an error.
   daily job does not send a new one while an old one exists, so a link asked weeks before the arrival would be dead on
   the day.
 
+- **The link in the confirmation email (E23/F02/US01/T01, NF-122, NF-63).** The checkout tells the guest that the check-in
+  link arrives at their address, so the email that confirms the booking (`GuestBookingConfirmed`, the one template for every
+  way a direct booking becomes confirmed: paid online, late payment, saved card, request accepted by the host) says where
+  the check-in stands, by the same rule as the table above: `GuestCheckInAccessRules` is the code the guest page reads and
+  `BookingNotifier` asks (same `CheckIn:SendWindowDays`, same Europe/Rome calendar day, so the last day of the window
+  counts at any hour of the run). No new flag, no new setting, no migration: the window (3 days) and the life of the link
+  (`CheckIn:SessionLifetimeDays`, 7) are the ones the job already uses.
+
+  | `checkIn.status` when the booking is confirmed | What the email says | What the system does |
+  |---|---|---|
+  | `Open` | The button **«Fai il check-in online»** (EN: «Check in online»), the usual fallback link under it and «Il link è valido fino al …» | Issues the link the way the daily job does (`IGuestCheckInService.IssueLinkAsync`: one session, the lifetime above) and puts it in the confirmation. **No second email**: the confirmation is the delivery. The link is **«in attesa»** while the email is with the queue: the session says `LinkEmailStatus = Queued` (no `SentAt`) and `CheckInLinkDeliveries` has the row of the booking as `Email` / `Sending` with no token, both written before the email is queued. The job of the confirmation (`BookingConfirmationEmailJob`) turns them into `Sent` (with `SentAt`) when the provider accepts the email, or into `Failed` (see below). The next run of `guest-checkin-send` finds a usable link and queues nothing |
+  | `NotYetOpen` | `Il link per il check-in online ti arriverà via email il {opensOn}. Da quel giorno puoi anche richiederlo in «Le mie prenotazioni».` (the day written like the other dates of the email) | Nothing: no link, no record. The job sends the link on that day, as it always did |
+  | `Completed` or `NotApplicable` | Nothing about the check-in | Nothing |
+
+  When the link cannot be issued (an error while the session is saved) the confirmation still goes out, with no link and the
+  sentence of the day the job runs next (tomorrow on the Europe/Rome calendar; when the job would no longer select the stay
+  that day, only `Puoi richiedere il link per il check-in online in «Le mie prenotazioni».`); no session exists, so the job
+  issues and sends the link at its next run, as it does today. A link is **never «sent» when nothing left** (CO-09, A5-26):
+  when the confirmation cannot be queued (no email provider, a queue that refuses it), when the provider refuses it
+  (`LinkEmailError = rejected`), when no attempt delivers it (`not_delivered`: `BookingConfirmationEmailJob` tries up to 5
+  times, with delays of 1, 3, 10 and 30 minutes) or when the provider is not configured (`provider_not_configured`), the session
+  says `LinkEmailStatus = Failed` with the code, the delivery row says `Email` / `Failed` with the same code, and the link is
+  taken back (its session expires: nobody has it, only its hash is stored, and a usable link would stop the job from sending
+  one), so `guest-checkin-send` issues a new link and emails it, with an outcome of its own, at its next run. A link the guest
+  already opened is left alone: the email did reach them. The confirmation itself is not sent again. Without
+  `App:PublicSiteBaseUrl`, or for a guest with no address, no link is issued at all.
+  **The row follows the later links.** The row describes the link it was written for; the reminder of the missing data, a link
+  the guest asked for in «Le mie prenotazioni», the compliance autopilot and the daily job after an expiry issue other links
+  without touching it, so `GET api/bookings/{id}/checkin/link-delivery` reads an `Email` row against the newest link of the
+  booking: the state of that link's email (`Sent`, `Sending` while queued, `Failed` with its code) while it is open, and a row
+  that ended (`link_expired`) when the newest link is no longer open. It never answers `Email` / `Sent` for a link that expired
+  or was replaced.
+  Logs: `The check-in link of booking {BookingId} could not be issued for its confirmation`, `The check-in link of booking {BookingId} could not be recorded as queued with its confirmation`,
+  `Check-in link of booking {BookingId} taken back: its confirmation was not queued`, `The state of the online check-in of booking {BookingId} could not be read for its confirmation`,
+  `The outcome of the confirmation e-mail of booking {BookingId} could not be recorded on its check-in link`; never the address, the name or the link.
+  The link is in the body of the queued email (Hangfire keeps the arguments of a job, as it does for the check-in link email of the job; a failed job is deleted).
+  The host is told of the new booking (bell, pop-up, email) right after the confirmation is queued, before anything of the link is settled, and whatever happens to the request.
+
 ### 8.3 Checks
 
 1. Test mode: complete a checkout, open the confirmation email, click "Le mie prenotazioni": the page opens with the code
@@ -317,6 +355,11 @@ showed "Nessuna prenotazione trovata" plus an error.
 3. Six attempts in a row for the same email (from any IP): the sixth answers 429 with `Retry-After`.
 4. A confirmed booking arriving within 3 days: "Inviami il link" → the guest receives the check-in email; the page shows
    "link sent".
+5. Test mode, the link in the confirmation (E23/F02/US01/T01): complete a checkout for a stay that starts within 3 days → the
+   confirmation email has the button «Fai il check-in online» and the link opens the check-in; the booking page of the host
+   shows the link as sent once the email left (`link-delivery` says `Email` / `Sending` while it is queued, then `Sent`); run
+   `guest-checkin-send` from the Hangfire dashboard → no second email and no new session.
+   A stay that starts in 10 days → the confirmation says the day (arrival minus 3) and has no link.
 
 ```sql
 -- Bookings without a code: must be empty after the migration
@@ -332,7 +375,10 @@ per-address cool-down against mail bombing.
 
 Code: `Casazen.Core/Services/BookingCodes.cs`, `IGuestBookingLookupService.cs`,
 `Casazen.Infrastructure/Services/GuestBookingLookupService.cs`, `Casazen.Web/Infrastructure/GuestBookingEmailRateLimiter.cs`,
-`PublicBookingsController.cs`, `BookingNotifier.cs`, `PublicSiteLinks.GuestBookings`. Frontend:
+`PublicBookingsController.cs`, `BookingNotifier.cs`, `PublicSiteLinks.GuestBookings`; the link in the confirmation:
+`Casazen.Infrastructure/Services/GuestCheckInAccessRules.cs`, `CheckInLinkDeliveryService.RecordEmailQueuedAsync` / `RecordEmailSentAsync` / `RecordEmailFailedAsync`,
+`Casazen.Infrastructure/Email/BookingConfirmationEmailJob.cs`, `EmailTemplates.GuestBookingConfirmed` (`BookingCheckInNotice`), tests `BookingConfirmedCheckInLinkTests`
+and, on PostgreSQL, `BookingEmailsPostgresTests`. Frontend:
 `src/features/public-booking/guest-bookings-page.tsx`, `src/lib/booking-code.ts`, `checkout-outcome-page.tsx`
 (`BookingReference`). Tests: `GuestBookingLookupPostgresTests`, `BookingCodesTests`, `DirectCheckoutIntegrationTests`,
 `BookingEmailsPostgresTests`, `BookingNotifierTests`, `PublicSiteLinksTests`; vitest `guest-bookings-page.test.tsx`,
@@ -341,12 +387,13 @@ Code: `Casazen.Core/Services/BookingCodes.cs`, `IGuestBookingLookupService.cs`,
 ### 8.4 The guest's session, with no account (DB-06a)
 
 The foundation of the guest area (messages with the host, reviews… build on it). The guest proves **one booking** with its code and
-email, once, and gets a signed token with a short life instead of sending code and email at every call. No account, no password,
-no cookie, no table, no flag, no migration. The old lookup (§ 8.2) and its check-in link stay as they are.
+email (or, with `Features__WhiteLabelHost` on, the last four digits of the phone: § 8.4.1), once, and gets a signed token with a short life
+instead of sending code and proof at every call. No account, no password, no cookie, no table, no migration. The old lookup (§ 8.2) and
+its check-in link stay as they are.
 
 | Endpoint | Auth | Answers |
 |---|---|---|
-| `POST /api/public/guest/session` `{ orgSlug, bookingCode, email }` (the body of the lookup) | anonymous; 10 per 5 min per IP (`PublicGuestSession`), per email (shared with § 8.2) and per code | 200 `{ accessToken, expiresAt, bookingCode }`; 400 `validation_error`; **404 `guest_booking_not_found`** (the same for every reason); 429 `rate_limited` |
+| `POST /api/public/guest/session` `{ orgSlug, bookingCode, email }`, or with `WhiteLabelHost` on `{ orgSlug, bookingCode, phoneLast4 }` (exactly one of `email` and `phoneLast4`) | anonymous; 10 per 5 min per IP (`PublicGuestSession`, both proofs), per email (shared with § 8.2), per code, and the lock of a code after 5 failed digits (§ 8.4.1) | 200 `{ accessToken, expiresAt, bookingCode }`; 400 `validation_error`; **404 `guest_booking_not_found`** (the same for every reason); 429 `rate_limited` |
 | `GET /api/public/guest/bookings/{code}` | `Authorization: Bearer {accessToken}` (policy `GuestSession`); 30 per min per IP (`PublicBookingLookup`) | 200: the same body as the lookup; 401 (no, altered or expired token); **404 `guest_booking_not_found`**; 429 |
 
 - **The token.** Starts with `gs1.`; the rest is the payload `{ version, orgId, hash of the guest's email, end of the session }` sealed with
@@ -378,15 +425,63 @@ no cookie, no table, no flag, no migration. The old lookup (§ 8.2) and its chec
   script on the page could read the token: the site loads no third-party HTML. Short life, "Esci" and no sensitive data (exact address,
   Wi-Fi) before the check-in window are the other defences.
 
-Logs: `Rate limit exceeded: policy PublicGuestSession | GuestBookingLookupPerEmail | GuestSessionPerCode on POST …` (no email, no code, no
-IP). Nothing is logged when a session opens.
+Logs: `Rate limit exceeded: policy PublicGuestSession | GuestBookingLookupPerEmail | GuestSessionPerCode | GuestPhoneLookupLockout on POST …`
+(no email, no code, no digits, no IP). Nothing is logged when a session opens.
 
 Code: `Casazen.Core/Services/IGuestSessionService.cs`, `Casazen.Infrastructure/Services/GuestSessionService.cs`, `GuestSessionTokens.cs`,
-`GuestBookingLookupService.cs` (`LoadAsync`, `ViewOfAsync`), `Casazen.Web/Authorization/GuestSessionAuthentication.cs` (scheme, claims,
-`GetGuestSessionTicket`), `CasazenPolicies.GuestSession`, `Casazen.Web/Controllers/GuestAreaController.cs`,
-`Casazen.Web/Infrastructure/GuestSessionCodeRateLimiter.cs`. Frontend: `src/features/public-booking/guest-bookings-page.tsx` (the form,
+`GuestBookingLookupService.cs` (`LoadAsync`, `LoadByPhoneAsync`, `ViewOfAsync`), `Casazen.Web/Authorization/GuestSessionAuthentication.cs` (scheme, claims,
+`GetGuestSessionTicket`), `CasazenPolicies.GuestSession`, `Casazen.Web/Controllers/GuestAreaController.cs`, `Casazen.Web/DTOs/GuestSessionRequest.cs`,
+`Casazen.Web/Infrastructure/GuestSessionCodeRateLimiter.cs`, `GuestPhoneLookupLockout.cs`. Frontend: `src/features/public-booking/guest-bookings-page.tsx` (the form,
 "Esci" and `guest-area-slot.tsx`, where the messages of the guest hook in), `src/api/guest-session.api.ts`, `src/lib/guest-session.ts`,
-`src/queries/use-guest-session.ts`. Test: `GuestBookingLookupPostgresTests.GuestSession_…` (tenancy, uniform 404).
+`src/queries/use-guest-session.ts`. Test: `GuestBookingLookupPostgresTests.GuestSession_…` (tenancy, uniform 404) and `…PhoneVariant_…` (§ 8.4.1).
+
+#### 8.4.1 The last four digits of the phone instead of the email (NF-143, E40/F01/US03/T01)
+
+On the agency's own domain the guest can open the same session with the booking code and the **last four digits of the phone** given when
+booking, instead of the email. **Behind `Features__WhiteLabelHost`** (off by default, [`feature-flags.md`](feature-flags.md)).
+
+- **The body.** `{ orgSlug, bookingCode, phoneLast4 }`: exactly one of `email` and `phoneLast4`; `phoneLast4` is four ASCII digits
+  (`[0-9]{4}`), nothing else (no space, no sign, no other digits). Neither, both, or other digits: 400 `validation_error` with a field error
+  that names no booking (`GuestSessionProofRequired`, `GuestSessionProofExclusive`, `GuestSessionPhoneLast4Invalid`, it and en); a blank value
+  counts as not given. **With the flag off `phoneLast4` is not read**: a body without email gets the 400 of a missing email, word by word, and a
+  body with both is the email proof of always. Nothing changes for anybody.
+- **The proof.** The phone of the guest of the booking as stored (`Guests.PhoneNumber`, empty when the guest gave none), reduced to its digits:
+  its last four are compared with the typed ones **in constant time** (`GuestPhoneDigits.Matches`, `CryptographicOperations.FixedTimeEquals`).
+  Direct bookings of an active org only, as with the email; a previous slug of the org keeps working. **One path for every outcome**: the org
+  by slug, the code normalized, then ONE light query that reads only the booking id and the guest's phone — also for a site that does not
+  exist or a string that is not a code (with values no booking has) — and the same fixed-time comparison (against a placeholder that never
+  matches when the booking has no phone, i.e. fewer than four digits). The booking is loaded in full only after the digits match. A code that
+  does not exist, another site's code, a malformed code, a booking without a phone and wrong digits all get **the same 404
+  `guest_booking_not_found` as a wrong email**: same status, same body, same headers apart from the trace id, similar time.
+- **The same session.** A match opens exactly the session of the email proof: the token carries the hash of the booking's email, so the guest
+  reads the same bookings with it, and the phone is never in the token, the answer or a URL.
+- **The lock of a code** (`GuestPhoneLookupLockout`). Four digits have 10,000 values, so the phone proof has a limit of its own, per booking
+  code and whatever the IP: `GuestArea__PhoneLockout__MaxFailures` failed attempts (default **5**) within `GuestArea__PhoneLockout__WindowMinutes`
+  (default **60**, from the first attempt on the code) lock the code **for the rest of the window**: 429 `rate_limited` with `Retry-After`
+  naming the **whole window** (3600 seconds by default, never the time left), the booking not read, **even with the right digits**. A match
+  before the lock clears the count. Every attempt counts the moment it starts, so a burst of parallel attempts cannot pass the lock. **Blind to
+  existence**: the key is a SHA-256 hash of the code as typed and normalized (never the code, never the digits), computed before any lookup, so a
+  real code and a made-up one lock alike. Only the phone proof is counted and locked: **the email proof keeps its own limits**, so a guest whose
+  code is locked can still prove the booking with the email. Each value must be at least 1, or the API does not start.
+- **Counters live in memory per replica**, like the other limits of the guests: a restart, or another replica, starts from zero. The store follows
+  at most 100,000 codes at once (each entry expires with its window): a flood of made-up codes cannot grow it, and while it is full a new code is
+  refused with the same 429, never let through uncounted, until room is made. The cache makes room by dropping the entries whose window is over
+  and then the least recently used ones, so a flood of 100,000 distinct codes within one window (at the default per-IP limit, at least 833 client
+  addresses for an hour) can make it forget a lock that is still running and win 5 more attempts on one code: a known limit of the design.
+- **The limits, in order.** Per IP (`PublicGuestSession`, 10 per 5 min, both proofs), per email (the email proof only), per code
+  (`GuestSessionPerCode`, both proofs), then the lock (the phone proof only). The same 429 for all.
+- **Demo.** The showcase catalog (`DemoShowcaseCatalog`) has no guest-area scenario: a demo guest opens the session as a real one, with the code
+  of a direct demo booking and its phone.
+
+Checks (test environment, `Features__WhiteLabelHost` on):
+
+1. A direct test booking with a phone: `POST /api/public/guest/session` `{ orgSlug, bookingCode, phoneLast4 }` with its last four digits → 200 and
+   the same session as with the email (the page shows the booking).
+2. Five wrong digits on that code → five 404 identical to a wrong email; the sixth attempt, even with the right digits → 429 with
+   `Retry-After: 3600`; the email still opens it.
+3. With the flag off: a body with `phoneLast4` and no email → the 400 of a missing email.
+
+Rollback: turn `Features__WhiteLabelHost` off (the phone proof stops at once, the email proof is untouched); nothing is stored, no migration.
 
 ### 8.5 The guest cancels from the guest area (DB-08a)
 
@@ -881,9 +976,26 @@ migration. `GET api/public/stays` (the parameters of `stays`), `GET api/public/s
   no version is 422 `direct_booking_marketing_consent_unavailable` and nothing is stored.
 - Recorded on the guest of the booking (`Guest.MarketingConsent`, `MarketingConsentDate`) and in the append-only register of
   the privacy history (`GuestConsentRecord`: purpose `Marketing`, action `Granted`, **the version of the text**, source
-  `BookingCheckout`, IP, time), **in the same insert as the booking and the guest snapshot** (`IBookingRepository.AddWithGuestConsentAsync`,
+  `BookingCheckout`, IP, time), **in the same insert as the booking and the guest snapshot** (`IBookingRepository.AddWithGuestConsentsAsync`,
   under the property lock). A checkout that loses the dates to a concurrent one leaves no consent; one whose payment cannot be
   started is removed with its guest and the register rows (foreign key with cascade, BK-18 § 10).
+- **Per channel (E07/F04/US01/T02, NF-90).** The box is two: `marketingConsentEmail` and `marketingConsentWhatsApp` (both optional, default
+  `false`, never preselected); the old `marketingConsent` still works and counts as the e-mail channel. Each ticked channel is one row of
+  the register and, once the guest has a payment to complete, a **consent contact of the CRM** (origin `DirectBooking`, source
+  `BookingCheckout`, version, IP, time); the e-mail one also gets the double opt-in message ([crm-consent.md](crm-consent.md) § 3). WhatsApp
+  needs the guest's phone number: 422 `direct_booking_whatsapp_requires_phone` without one the CRM can store. `Guest.MarketingConsent`
+  is set by the e-mail channel only (the flag a host's recorded withdrawal looks at, read as a consent to the e-mail address; the withdrawal
+  also suppresses the open CRM contacts of the guest, so a WhatsApp consent is ended too, [gdpr.md](gdpr.md)). The contact
+  is made after the booking is saved and **never fails the checkout**: without the key of the contact index (`Crm__ContactIndexKey`,
+  the CRM is closed) or if it fails, the register has the consent, with its channel in the note (`channel=email`, `channel=whatsapp`), and
+  the CRM sync makes the e-mail contact later; it does not make the WhatsApp contact of a checkout (the guest gives that consent again on the
+  guest page or on the welcome page, [crm-consent.md](crm-consent.md) § 4.1).
+- **The soft opt-in notice (art. 130 c. 4, PO-07).** `GET /api/public/orgs/{slug}` carries `softOptInNoticeVersion`
+  (`Gdpr__SoftOptInNoticeVersion`, `null` while the product owner has not set it). The checkout sends back the version it showed in
+  `softOptInNoticeVersion`: when it is the current one a register row (purpose `SoftOptInNotice`, action `NoticePresented`, source
+  `BookingCheckout`, version, IP) is written in the same insert; any other version, or one when none is configured, is 409
+  `direct_booking_soft_opt_in_notice_outdated` and nothing is stored. With no notice the customer's e-mail stays service only (the contact
+  service makes it soft opt-in only for a confirmed booking with a recorded notice).
 - The host reads it in the GDPR tab and can only **withdraw** it on the guest's documented request ([gdpr.md](gdpr.md)); the
   withdrawal keeps the version of the text the guest agreed to. The tab labels the source (`GuestConsentSource`): the
   frontend needs the label for `BookingCheckout` (follow-up FE).
@@ -901,6 +1013,41 @@ migration. `GET api/public/stays` (the parameters of `stays`), `GET api/public/s
   not come from the checkout): the note "arrivo previsto alle…". It is in the data export of the guest (`GuestExportBooking.ExpectedArrivalTime`)
   and is cleared, with the special requests, when the guest is erased ([gdpr.md](gdpr.md)).
 - Rollback: deploy the previous release (it ignores the column); `Down` drops it and the values are lost.
+
+### 11.6b Where the guest came from: attribution and origin (E27/F01/US01/T01, NF-123)
+
+- `POST /api/public/bookings` accepts an optional `attribution` block `{ source, medium, campaign, referrer }` (the `utm_*` of the link the guest followed and
+  the page the guest came from). Every field is optional and **none is ever refused**: the server keeps only what passes `BookingAttribution.Sanitize` and
+  drops the rest, so a stray parameter of a link never costs the guest the booking. Stored on four new nullable columns of `Bookings`:
+  `AttributionSource` (`varchar(40)`), `AttributionMedium` (`varchar(40)`), `AttributionCampaign` (`varchar(80)`), `AttributionReferrerHost` (`varchar(255)`);
+  migration `AddBookingAttribution`, additive, **no flag**. The same migration also attributes the reservations of the booking engine that the import already made
+  (`AddBookingAttribution.BackfillSql`, below).
+- **No personal data is kept.** `source`, `medium` and `campaign` are trimmed, put in lower case and kept only when they are a token (letters and digits, and
+  `-`, `_`, `.` inside), at most the length of the column, with no more than 8 digits in a row (the separators `-`, `_`, `.` do not end the row: `333-123-4567`
+  is ten digits; a letter does) and not the form of an Italian fiscal code (six letters, two digits, a letter, two digits, a letter, three digits, a letter, with
+  the letters that stand for digits in the omocode forms; also written with separators): an e-mail address (it has an `@`), a phone number, a fiscal code, an
+  address of a page, a query or free text is dropped, never repaired and never truncated. The referrer is reduced to its **host name** (no scheme, credentials, port, path, query
+  or fragment): an IP address, a name with no dot, a scheme other than http(s) or a longer name is dropped. Nothing of it goes to the logs. The rights of the guest
+  cover it ([gdpr.md](gdpr.md)): the four values are in the export of the guest's data (`attributionSource`, `attributionMedium`, `attributionCampaign`,
+  `attributionReferrerHost`; the token of the booking engine of the agency leaves as `agency-booking-engine`, never the name of the supplier) and are cleared,
+  with the special requests, when the guest is erased or anonymized; the booking keeps its source.
+- **The origin** is what the host reads: `BookingOrigins.Of(source, attributionSource)` (`Casazen.Core/Bookings`) gives `Portal` (every channel of the
+  channel manager, with its name in `originChannel`), `AgencySite` (a direct booking whose attribution source is `agency-site`, the `utm_source` of the link the
+  agency copies from CasaZen, or `octorate-booking-engine`), `CasaZenSite` (any other direct booking) and `Manual` (entered by the host). `BookingSource` is
+  **unchanged**: the invoicing plan reasons per channel. Every booking answer (`GET /api/bookings`, `/search`, `/{id}` and the answers of the actions) has
+  `origin` and `originChannel`; `GET /api/bookings/search` and `/counts` filter with `origin=Portal&origin=AgencySite` (or comma separated, any case; 400
+  `booking_list_invalid_origin` for any other word). The raw attribution is not in the answer.
+- **The import** writes `octorate-booking-engine` on a reservation of the booking engine of the agency (the channel the import keeps direct, `270` in the
+  sandbox) when it makes the booking, and when it reads a newer version of one it made before the column existed (a booking with a reservation on Octorate and
+  no row of the mirror). A reservation CasaZen pushed itself to that channel (a booking with a row of the mirror, or its echo linked by reference) is the booking
+  CasaZen already has and is **never** attributed. **The data that exists**: the migration runs one `UPDATE` (`AddBookingAttribution.BackfillSql`) that gives
+  `octorate-booking-engine` to the bookings of the booking site (`Source` 0) that have a reservation on Octorate, no attribution and no row of the mirror: CasaZen
+  makes that row before it creates a reservation, so a reservation with none is one it did not make (the definition `HostBookingService` uses for a direct booking
+  that stays Octorate's). Nothing else changes, not even `UpdatedAt`; the read of a newer version does the same for a booking the old release imports during a
+  rolling deploy. Left as `CasaZenSite`: a booking made before the migration that has no attribution and a row of the mirror that is not the push's, which is the
+  case of a reservation of the engine that the host cancelled in CasaZen before this release (the cancellation makes a row for it,
+  `OctorateBookingCancelHandler`); telling that row from the push's needs a marker on the row.
+- Rollback: deploy the previous release (it ignores the columns); `Down` drops them and the values are lost.
 
 ### 11.7 Public coordinates (privacy)
 

@@ -8,6 +8,7 @@ using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
+using Casazen.Tests.Unit.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -25,8 +26,7 @@ public class PropertyPhotosPostgresTests : IClassFixture<CasazenWebApplicationFa
     private static readonly byte[] PngBytes = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
 
-    private static readonly byte[] JpegBytes =
-        [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00];
+    private static readonly byte[] JpegBytes = ShowcaseTestImages.PhoneJpeg(orientation: 1);
 
     private readonly CasazenWebApplicationFactory _factory;
 

@@ -40,6 +40,25 @@ public class Org
     /// </summary>
     public bool IsAgencyTierDowngraded { get; set; }
 
+    /// <summary>Issue #896: server-validated commercial draft; no paid access is granted by this field.</summary>
+    public string? CommercialSignupJson { get; set; }
+    public bool CommercialPaymentConfirmed { get; set; }
+    public string? CommercialPaidAddonsJson { get; set; }
+    public int CommercialRoomAllowance { get; set; }
+
+
+    /// <summary>Business identity, independent of billing tier. Private owners cannot invite collaborators.</summary>
+    public bool IsAgency { get; set; }
+
+    /// <summary>Account choice inherited by Italian properties without their own override. Null preserves existing defaults.</summary>
+    [ConcurrencyCheck]
+    public ComplianceSenderType? DefaultComplianceSender { get; set; }
+    [ConcurrencyCheck]
+    public DateTime? DefaultComplianceSenderChangedAt { get; set; }
+    [MaxLength(255)]
+    public string? DefaultComplianceSenderChangedByUserId { get; set; }
+
+
     [Required, MaxLength(200)]
     public string DisplayName { get; set; } = string.Empty;
 
@@ -135,6 +154,20 @@ public class Org
     /// </summary>
     public bool SupplierBackupsEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Whether the guests of the org's stays may pay the tourist tax online in the check-in, on the org's own connected account (E25/F01/US01/T01,
+    /// NF-119, the setting <c>TouristTaxOnlinePayment</c>). <b>Off by default</b>; it matters only while <c>Features:TouristTaxOnlinePayment</c> is on and the
+    /// account takes payments (<see cref="CanTakeDirectPayments"/>). Written by <c>PUT api/orgs/me/tourist-tax-settings</c>.
+    /// </summary>
+    public bool TouristTaxOnlinePaymentEnabled { get; set; }
+
+    /// <summary>
+    /// Whether the lock code is held back until the tourist tax is paid (E25/F01/US01/T01, <c>RequiredBeforeAccessCode</c>): the server holds it back
+    /// (<c>IAccessCodeService.ReleaseToGuestAsync</c>) while the stay owes a tax the guest can pay online and has not paid, and the guest page asks for the tax
+    /// first. <b>Off by default</b>: without it the tax never holds the code back. Read only while <see cref="TouristTaxOnlinePaymentEnabled"/> is on.
+    /// </summary>
+    public bool TouristTaxRequiredBeforeAccessCode { get; set; }
+
     [MaxLength(255)]
     public string ContactEmail { get; set; } = string.Empty;
 
@@ -148,6 +181,13 @@ public class Org
     /// <summary>Non-secret Stripe customer reference (billing). Set by <c>spec-saas-billing</c>.</summary>
     [MaxLength(255)]
     public string? StripeCustomerId { get; set; }
+
+    /// <summary>
+    /// Financial Connections account (<c>fca_…</c>) the landlord linked for an optional bank debit. A Stripe account id,
+    /// never an IBAN or account number. Null while the org pays by the manual bank transfer.
+    /// </summary>
+    [MaxLength(255)]
+    public string? FinancialConnectionsAccountId { get; set; }
 
     /// <summary>Stripe subscription id (<c>sub_xxx</c>) synced from platform webhooks.</summary>
     [MaxLength(255)]
@@ -290,4 +330,80 @@ public class Org
     /// <summary>Label for <c>{Subdomain}.casazen.it</c>; falls back to <see cref="Slug"/> when null.</summary>
     [MaxLength(63)]
     public string? Subdomain { get; set; }
+
+    // ─── Surfaces on the agency's own domain (E40/F01/US01, NF-140..NF-142, NF-149) ─────────
+    // The agency's choices; what is really served is decided by Casazen.Core.Services.HostSurfaceRules (flag WhiteLabelHost, a verified
+    // custom domain the org pays for, these settings). A platform subdomain never serves them.
+
+    /// <summary>The guest area (check-in, booking area) is served on the verified custom domain too (NF-140). Off by default.</summary>
+    public bool GuestAreaOnOwnDomain { get; set; }
+
+    /// <summary>The owner portal is served on the verified custom domain too (NF-140); signing in there also needs <see cref="OwnerLoginHostState"/> Ready (NF-141). Off by default.</summary>
+    public bool OwnerPortalOnOwnDomain { get; set; }
+
+    /// <summary>
+    /// The links CasaZen sends (check-in, booking area, owner invitations) are built on the agency's domain (NF-142). On by default: it takes
+    /// effect only once the domain is verified and the surface of the link is on.
+    /// </summary>
+    public bool UseOwnDomainForLinks { get; set; } = true;
+
+    /// <summary>The Auth0 registration of the custom domain for the owner sign-in (NF-141); back to NotRequested when the domain or the host mode changes.</summary>
+    [Required]
+    public OwnerLoginHostState OwnerLoginHostState { get; set; } = OwnerLoginHostState.NotRequested;
+
+    /// <summary>Longest <see cref="GtmContainerId"/> the column holds (a valid id is at most 16 characters, <c>GtmContainerIds</c>).</summary>
+    public const int GtmContainerIdMaxLength = 20;
+
+    /// <summary>The Google Tag Manager container of the agency's booking pages (NF-149), normalized by <c>GtmContainerIds</c>, or null.</summary>
+    [MaxLength(GtmContainerIdMaxLength)]
+    public string? GtmContainerId { get; set; }
+
+    // ─── Delegation of the Alloggiati transmission (AW-R02, ADR-015-R10) ─────────
+
+    /// <summary>Longest user id of the delegation columns (the Auth0 subject).</summary>
+    public const int AlloggiatiDelegationUserIdMaxLength = 255;
+
+    /// <summary>Longest <see cref="AlloggiatiDelegationTextVersion"/>.</summary>
+    public const int AlloggiatiDelegationTextVersionMaxLength = 50;
+
+    /// <summary>
+    /// When the org delegated the transmission of its Alloggiati communications to CasaZen, its tool (AW-R02: the agency or the host
+    /// stays responsible); <c>null</c> when never granted. Written only by <c>IAlloggiatiDelegationService</c>.
+    /// </summary>
+    public DateTime? AlloggiatiDelegationGrantedAt { get; set; }
+
+    /// <summary>Who granted the delegation: the Auth0 subject of the account, not a foreign key.</summary>
+    [MaxLength(AlloggiatiDelegationUserIdMaxLength)]
+    public string? AlloggiatiDelegationGrantedByUserId { get; set; }
+
+    /// <summary>The version of the delegation text accepted with the grant (a code of the legal documents), never the text itself.</summary>
+    [MaxLength(AlloggiatiDelegationTextVersionMaxLength)]
+    public string? AlloggiatiDelegationTextVersion { get; set; }
+
+    /// <summary>
+    /// When the delegation was revoked; <c>null</c> while it stands. A revocation blocks new sends, not the retrieval of the receipts of
+    /// the transmissions already acquired.
+    /// </summary>
+    public DateTime? AlloggiatiDelegationRevokedAt { get; set; }
+
+    /// <summary>Who revoked the delegation: the Auth0 subject of the account, not a foreign key.</summary>
+    [MaxLength(AlloggiatiDelegationUserIdMaxLength)]
+    public string? AlloggiatiDelegationRevokedByUserId { get; set; }
+
+    // ─── Guests written to the channel manager on their own (E20/F01/US01, decision O1) ─────────
+
+    /// <summary>
+    /// The org lets CasaZen write the guests of a stay to the channel manager as soon as their data is complete and the identity check has passed,
+    /// with no confirmation of the host (decision O1: the agency accepts that complete data plus a passed identity check is the confirmation). Off
+    /// by default: the guests then go only when the host confirms the check-in wizard. It changes nothing about who sends to the police: the
+    /// channel manager does. Written only by <c>IOrgGuestAutoSendSetting</c>.
+    /// </summary>
+    public bool AutoSendGuestsToOctorate { get; set; }
+
+    /// <summary>When <see cref="AutoSendGuestsToOctorate"/> was last changed (UTC); <c>null</c> when it never was.</summary>
+    public DateTime? AutoSendGuestsToOctorateChangedAt { get; set; }
+
+    /// <summary>Who changed <see cref="AutoSendGuestsToOctorate"/> last: the Auth0 subject of the account, not a foreign key.</summary>
+    [MaxLength(AlloggiatiDelegationUserIdMaxLength)]
+    public string? AutoSendGuestsToOctorateChangedByUserId { get; set; }
 }

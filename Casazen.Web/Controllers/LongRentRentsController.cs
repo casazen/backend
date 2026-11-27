@@ -108,6 +108,23 @@ public class LongRentRentsController(
         return Ok(await rentBilling.SendReminderAsync(installment.LeaseId, id, request?.Note, cancellationToken));
     }
 
+    /// <summary>Sends the approved reminder template automatically through WhatsApp Business.</summary>
+    [HttpPost("{id:guid}/reminder/whatsapp")]
+    [Authorize(Policy = CasazenPolicies.LeaseCreate)]
+    public async Task<ActionResult<RentWhatsAppReminderResult>> SendWhatsAppReminder(
+        Guid id, [FromBody] RentReminderRequest? request = null, CancellationToken cancellationToken = default)
+    {
+        var installment = (await register.FindInstallmentsAsync([id], cancellationToken)).SingleOrDefault();
+        if (installment is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, InstallmentNotFoundCode, "RentInstallmentNotFound");
+        var resource = await hostResources.ForPropertyAsync(installment.PropertyId, cancellationToken);
+        if (resource is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, InstallmentNotFoundCode, "RentInstallmentNotFound");
+        if (!await authorizationService.IsAuthorizedAsync(User, resource, LeaseOperations.Create))
+            return Forbid();
+        return Ok(await rentBilling.SendWhatsAppReminderAsync(installment.LeaseId, id, request?.Note, cancellationToken));
+    }
+
     /// <summary>
     /// Reminds the tenants of several installments (one to 50) with the same optional note: the same rules as the single
     /// reminder for each one, applied in the order given. An installment that cannot be reminded (too soon, no tenant address, paid,

@@ -73,10 +73,15 @@ configured provider (`ILeaseRegistrationProvider.IsConfigured`). Both are checke
 | Flag on, provider not configured | 409 `rli_provider_unavailable`, nothing recorded | registered, does nothing | manual only (`providerFilingAvailable: false`) |
 | Flag on, provider configured | 202: filing **in progress** | every 5 minutes | "Send through the provider (with delega)" next to the manual path |
 
-**There is no real provider client yet.** The registered provider is `UnconfiguredLeaseRegistrationProvider`
-(`IsConfigured = false`, every call refuses), so the provider path stays unavailable even with the flag on. RS-4 found
-the Openapi DocuEngine API publicly documented, but the lease-registration service id and its input fields are **not in
-the public specification** (`rli-esign.md` §1.3, §1.7): writing the mapping without them would invent the payload.
+**There is no real provider client for canone concordato.** The registered provider is `UnconfiguredLeaseRegistrationProvider`
+(`IsConfigured = false`, every call refuses). A contract that is **not** canone concordato (`Libero`, `Transitorio`) can
+be filed through Openapi DocuEngine when `Openapi` is configured (`Openapi__Token` or `Openapi__Email` + `Openapi__ApiKey`,
+plus `Openapi__LeaseDocumentId`). Openapi publishes one lease-registration product, not a separate non-concordato one:
+CasaZen branches on `LeaseContractType` and does not send a concordato down this path. The filing fee is the existing
+registration-tax percentage (`CedolareAdvisory:Registro:Rate`, minimum `FirstYearMinimumEur`) of the annual rent, collected
+with Stripe Checkout **before** `POST /api/leases/{id}/registration` calls DocuEngine. Without the Openapi settings the
+client is not configured and the manual path is unchanged. The service id and the field order still have to be confirmed
+with `GET /documents` (`rli-esign.md` §1.3, §1.7); `Openapi__LeaseFieldOrder` overrides the default order.
 
 ### What is needed before writing the Openapi client
 
@@ -605,3 +610,58 @@ computed), `CedolareAdvisoryConfigurationTests` (committed values and validator)
 - Storage: the receipts and the signed contracts use the private bucket configured for FD-07
   (`docs/runbooks/storage.md`); `application/pdf` must be among its allowed MIME types if a restriction was set, and
   the bucket size limit must allow 20 MB files (signed contracts).
+
+## DocuEngine: preparazione della pratica prima del pagamento (2026-11-13)
+
+Il mapping ipotizzato a 14 campi è sostituito dal contratto verificato di
+`Registrazione Contratti Affitto`, documentId `67e13cfd2cbb7e30d3d93e9d`.
+`Casazen.Core/Leases/OpenapiRegistrationSchema.json` versiona tutti i 61 campi,
+i codici opzione, gli help e la validation ottenuti dal catalogo autenticato
+`GET https://docuengine.openapi.com/documents` il 13 novembre 2026.
+I file sono ammessi in base64 secondo lo schema Search pubblico.
+
+Il wizard e la scheda contratto aprono lo stesso modulo di preparazione:
+
+1. `GET /api/leases/{id}/registration/preparation`: schema, valori precompilati,
+   versione del supplemento, riferimenti agli allegati, errori e pagamento ricevuto.
+2. `POST /api/leases/{id}/registration/preparation/documents`: PDF (anche da una
+   singola foto JPG/PNG normalizzata in PDF), massimo 20 MB per file. Sono allegati
+   privati del contratto, di tipo RegistrationIdentity; non vengono inviati alla
+   pipeline di estrazione AI. Il totale degli allegati di identità è limitato a 60 MB.
+3. `PUT /api/leases/{id}/registration/preparation`: salva anche una bozza incompleta,
+   restituisce gli errori per campo. Una versione obsoleta dà 409; riferimenti a
+   documenti di altri contratti/tenant vengono rifiutati. Non si accettano URL,
+   chiavi storage o base64 al posto degli ID degli allegati.
+4. Solo con supplemento completo e salvato si apre Stripe Checkout. Il server
+   verifica anche lo stato firmato, i file disponibili, la durata del contratto,
+   l'APE e la configurazione del prodotto prima di contattare Stripe.
+5. Dopo pagamento confermato lato server si raccoglie la delega e si invia la
+   pratica. Una pratica già pagata torna alla delega senza un secondo checkout.
+   Il parametro di rientro del browser non costituisce prova del pagamento.
+
+Cedolare: quote di possesso per ogni locatore presente. Ordinario: IBAN con
+checksum valido, codice fiscale dell'intestatario e scelta pagamento imposte.
+Ogni parte aggiuntiva richiede nome, CF e documento; ogni immobile aggiuntivo
+richiede il suo gruppo catastale completo. Il servizio supporta fino a tre
+locatori, tre conduttori e tre immobili. Il corrispettivo dei contratti di durata
+inferiore a un anno viene chiesto esplicitamente per l'intera durata. Nessuna
+quota, garanzia, clausola o numero di copie viene inventato.
+
+I campi personali del supplemento sono cifrati tramite EncryptedColumns (purpose
+`Casazen.LeaseContract.OpenapiRegistration`) e non sono salvati in localStorage.
+Le nuove letture/scritture richiedono LeaseRegister e autorizzazione sulla risorsa,
+rispondono con `Cache-Control: private, no-store`. Il supplemento e gli allegati
+RegistrationIdentity vengono eliminati insieme all'anonimizzazione delle parti.
+I contratti e le ricevute conservano il ciclo di vita già previsto dal prodotto.
+
+La migrazione `AddOpenapiRegistrationPreparation` aggiunge i campi cifrati e la
+versione su LeaseContracts e ProviderCode su LeaseRegistrations. Per le nuove
+pratiche stato e ricevuta vengono richiesti al provider salvato con la pratica,
+anche se è configurato un altro provider generico. Le pratiche preesistenti con
+ProviderCode nullo mantengono il precedente comportamento.
+
+Prima del rilascio applicare la migrazione e pubblicare backend e frontend.
+`Features__RliProvider` rimane spento per default; questa modifica non attiva il
+servizio in produzione. Un LeaseFieldOrder personalizzato diverso dal contratto
+verificato viene rifiutato prima del pagamento. La callback resta facoltativa:
+per questa integrazione è disponibile il polling di stato e ricevuta.
