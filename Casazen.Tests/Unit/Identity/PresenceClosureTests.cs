@@ -271,6 +271,50 @@ public sealed class PresenceClosureTests
         Assert.Equal((IdentityOutcomeCodes.Review, 1), (closed.IdentityOutcomeCode, closed.IdentityGuidedRetries));
     }
 
+    [Fact]
+    public async Task PresenceClosure_TooDarkInTicino_GetsTheGuidedRetry_AndTheNextAttemptIsReviewedByAPerson()
+    {
+        // Where nothing is kept (Ticino) the coherence of the two sides stays unknown, so a person decides every attempt there; but a recording that a new one can fix is still the guided
+        // retry, as in the brief (rule b comes before the document, rule c): the engine never lets the unknown coherence take the retry away.
+        await using var world = await PresenceClosureWorld.CreateAsync();
+        var session = await world.ReadyStayAsync(keepsNoDocument: true);
+        var tooDark = new PresenceEvidence(
+            new SequenceValidationReport(
+                false,
+                [new SequenceFailure(IdentityGuidanceCodes.PresenceQuality, VerificationReasons.Checks.PresenceQuality, Correctable: true)],
+                [],
+                []),
+            null,
+            null,
+            null);
+        world.Collector.Next(tooDark);
+
+        var first = await world.Flow().SubmitPresenceSequenceAsync(session, TicinoSubmission(PresenceClosureKit.NewKey(), await world.IssueChallengeAsync(session)), Ct);
+
+        Assert.Equal((PresenceStepStatus.Done, IdentityVerificationGuestResults.Retry, true), (first.Status, first.Result, first.GuidedRetryAvailable));
+        Assert.Equal([IdentityGuidanceCodes.PresenceQuality], first.Guidance);
+        Assert.Empty(await world.LogRowsAsync(session));
+        var afterTheRetry = await world.ReadBackAsync(session.Id);
+        Assert.Equal((1, 0, (DateTime?)null), (afterTheRetry.IdentityGuidedRetries, afterTheRetry.BiometricAttempts, afterTheRetry.IdentityClosedAt));
+        Assert.Empty(world.Alerts.Raised);
+
+        // The new recording is perfect, and the coherence cannot be told: a person decides, with the reason of the document.
+        var second = await world.Flow().SubmitPresenceSequenceAsync(session, TicinoSubmission(PresenceClosureKit.NewKey(), await world.IssueChallengeAsync(session)), Ct);
+
+        Assert.Equal(IdentityVerificationGuestResults.Operator, second.Result);
+        var row = Assert.Single(await world.LogRowsAsync(session));
+        Assert.Equal((BiometricOutcome.Escalate, BiometricOutcome.Escalate), (row.Outcome, row.ShadowOutcome));
+        Assert.Contains(new VerificationReason(VerificationReasons.Checks.DocumentCoherence, VerificationReasons.Results.NotRun), VerificationReasons.Parse(row.ReasonsJson));
+    }
+
+    /// <summary>The attempt of a property that keeps no document: the front and the back come again with the frames.</summary>
+    private static PresenceSubmission TicinoSubmission(string key, string token) =>
+        PresenceClosureKit.Submission(
+            key,
+            token,
+            documentPhoto: new MemoryStream(PresenceClosureKit.FrontPicture),
+            documentPhotoBack: new MemoryStream(PresenceClosureKit.BackPicture));
+
     [Theory]
     [InlineData("closed", PresenceStepStatus.AlreadyClosed)]
     [InlineData("not opened", PresenceStepStatus.ChallengeRequired)]

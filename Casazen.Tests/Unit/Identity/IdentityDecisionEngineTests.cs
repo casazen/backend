@@ -119,15 +119,126 @@ public sealed class IdentityDecisionEngineTests
         Assert.Equal(IdentityFinalDecision.Review, mixed.Final);
         Assert.Empty(mixed.Guidance);
 
-        // A correctable defect of the presence does not hide a document a person must look at anyway, nor a missing format.
-        var conflict = _engine.Decide(EvidenceBundles.WithFailure(VerificationReasons.Checks.PresenceQuality, correctable: true) with { DocumentCoherence = IdentityDocumentCoherence.IdentifyingConflict });
-        Assert.Equal(IdentityFinalDecision.Review, conflict.Final);
-        var noFormat = _engine.Decide(EvidenceBundles.WithFailure(VerificationReasons.Checks.PresenceQuality, correctable: true) with { FormatId = null });
-        Assert.Equal(IdentityFinalDecision.Review, noFormat.Final);
-
         // A correctable failure without any guidance code cannot guide a retry.
         var unguided = _engine.Decide(EvidenceBundles.WithFailures(0, new CheckOutcome(VerificationReasons.Checks.PresenceQuality, IdentityCheckStatus.Failed, true, null)));
         Assert.Equal(IdentityFinalDecision.Review, unguided.Final);
+    }
+
+    [Fact]
+    public void IdentityDecisionEngine_AGuidedRetry_PrecedesTheDocumentTheFormatAndTheAssurance_AsInTheBrief()
+    {
+        // The order of the rules is the brief's: a correctable failure of the presence is the guided retry (b) before the document (c), the similarity (d) and the format and the
+        // assurance (e) are judged. In Ticino nothing is kept to read the two sides again, so the coherence of the document is always unknown: "too dark" is still a retry there.
+        var tooDark = new CheckOutcome(VerificationReasons.Checks.PresenceQuality, IdentityCheckStatus.Failed, true, IdentityGuidanceCodes.PresenceQuality);
+        var chip = EvidenceBundles.Allowed with { RequiredAssurance = IdentityAssuranceLevels.Cryptographic };
+        var cases = new (string Name, IdentityEvidenceBundle Bundle)[]
+        {
+            ("ticino: coherence unknown", EvidenceBundles.WithFailures(0, tooDark) with { DocumentCoherence = IdentityDocumentCoherence.Unknown }),
+            ("identifying conflict", EvidenceBundles.WithFailures(0, tooDark) with { DocumentCoherence = IdentityDocumentCoherence.IdentifyingConflict }),
+            ("invalid MRZ", EvidenceBundles.WithFailures(0, tooDark) with { DocumentCoherence = IdentityDocumentCoherence.MrzInvalid }),
+            ("expired", EvidenceBundles.WithFailures(0, tooDark) with { DocumentCoherence = IdentityDocumentCoherence.Expired }),
+            ("document not complete", EvidenceBundles.WithFailures(0, tooDark) with { DocumentComplete = false }),
+            ("no format", EvidenceBundles.WithFailures(0, tooDark) with { FormatId = null }),
+            ("assurance not given", EvidenceBundles.WithFailures(0, tooDark) with { ProvidedAssurance = null }),
+            ("a chip required", EvidenceBundles.WithFailures(0, tooDark) with { Segment = chip }),
+            ("a weak match already in the bundle", EvidenceBundles.WithFailures(0, tooDark) with { Match = EvidenceBundles.Match(0.4, 0.4) }),
+        };
+
+        foreach (var (name, bundle) in cases)
+        {
+            var retry = _engine.Decide(bundle);
+            Assert.True(retry.Final == IdentityFinalDecision.GuidedRetry, $"{name}: {retry.Final}");
+            Assert.Equal([IdentityGuidanceCodes.PresenceQuality], retry.Guidance);
+            Assert.Equal(IdentityShadowDecision.Review, retry.Shadow);
+            Assert.Null(retry.OutcomeCode);
+            Assert.False(retry.ClosesTheVerification);
+
+            // After the retry the same defect is a review, with the reasons of the document, the format and the assurance next to it.
+            var after = _engine.Decide(bundle with { GuidedRetriesUsed = 1 });
+            Assert.True(after.Final == IdentityFinalDecision.Review, $"{name} after the retry: {after.Final}");
+            Assert.Equal(IdentityOutcomeCodes.Review, after.OutcomeCode);
+        }
+    }
+
+    [Fact]
+    public void IdentityDecisionEngine_AGuidedRetry_IsNeverAnApproval_WhateverTheRestOfTheEvidenceSays()
+    {
+        // Proof (security): putting the guided retry before the document, the similarity and the assurance can never let a failure of the presence through. Over every check of the
+        // presence, every state of the document, the format, the assurance, the similarity and the segment, correctable or not, before and after the retry: a failed check is never an
+        // approval and never a shadow approval; a guided retry is a decision that closes nothing, with no outcome code and the review as its shadow; and it is given once, for a correctable defect.
+        var coherences = Enum.GetValues<IdentityDocumentCoherence>();
+        var matches = new MatchSummary?[] { null, EvidenceBundles.Match(0.99, 0.99), EvidenceBundles.Match(0.5, 0.5), EvidenceBundles.Match(0.99, 0.2) };
+        var segments = new SegmentResolution?[] { EvidenceBundles.Allowed, EvidenceBundles.Observation, null };
+        var combinations = 0;
+        var retries = 0;
+
+        foreach (var check in IdentityEvidenceBundle.PresenceChecks)
+        {
+            foreach (var correctable in new[] { true, false })
+            {
+                foreach (var coherence in coherences)
+                {
+                    foreach (var complete in new[] { true, false })
+                    {
+                        foreach (var formatId in new string?[] { "it-cie-3.0", null })
+                        {
+                            foreach (var match in matches)
+                            {
+                                foreach (var segment in segments)
+                                {
+                                    foreach (var used in new[] { 0, 1 })
+                                    {
+                                        var bundle = EvidenceBundles.Perfect(segment) with
+                                        {
+                                            Presence =
+                                            [
+                                                .. EvidenceBundles.PassedPresence().Select(outcome => outcome.Check == check
+                                                    ? outcome with { Status = IdentityCheckStatus.Failed, Correctable = correctable, GuidanceCode = correctable ? IdentityGuidanceCodes.PresenceQuality : null }
+                                                    : outcome),
+                                            ],
+                                            DocumentCoherence = coherence,
+                                            DocumentComplete = complete,
+                                            FormatId = formatId,
+                                            Match = match,
+                                            GuidedRetriesUsed = used,
+                                        };
+
+                                        var decision = _engine.Decide(bundle);
+                                        combinations++;
+
+                                        var label = $"{check} correctable={correctable} {coherence} complete={complete} format={formatId} match={match?.Aggregate} segment={segment?.Mode} used={used}";
+                                        Assert.True(decision.Final != IdentityFinalDecision.AutoApproved, $"approved: {label}");
+                                        Assert.True(decision.Shadow == IdentityShadowDecision.Review, $"shadow approval: {label}");
+                                        Assert.NotEqual(BiometricOutcome.Accept, decision.LogOutcome);
+                                        Assert.NotEqual(BiometricOutcome.Accept, decision.ShadowOutcome);
+
+                                        if (decision.Final == IdentityFinalDecision.GuidedRetry)
+                                        {
+                                            retries++;
+                                            Assert.True(correctable && used == 0, $"retried a defect that is not correctable, or twice: {label}");
+                                            Assert.Null(decision.OutcomeCode);
+                                            Assert.False(decision.ClosesTheVerification);
+                                            Assert.NotEmpty(decision.Guidance);
+                                        }
+                                        else
+                                        {
+                                            Assert.NotNull(decision.OutcomeCode);
+                                            Assert.True(decision.ClosesTheVerification);
+                                            Assert.Empty(decision.Guidance);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Assert.Equal(IdentityEvidenceBundle.PresenceChecks.Count * 2 * coherences.Length * 2 * 2 * matches.Length * segments.Length * 2, combinations);
+
+        // The enumeration reaches the retry: exactly the correctable defects of the first attempt (a quarter of the cases of the retry of one check: correctable, none used).
+        Assert.Equal(combinations / 4, retries);
     }
 
     [Theory]

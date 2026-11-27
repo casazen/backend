@@ -15,9 +15,10 @@ namespace Casazen.Infrastructure.Identity;
 /// <list type="number">
 /// <item><description><b>A fault never approves.</b> The policy is not ready, or the models are not loaded: a person reviews, outcome <c>unavailable</c>. A model failed or the time was
 /// over (a check or the match that could not be made included): a person reviews, outcome <c>technical_error</c>. The reasons carry <c>processing</c>.</description></item>
-/// <item><description><b>A failure of the presence.</b> When every failure is correctable (a new recording guided by its codes can fix it), nothing else already sends the attempt
-/// to a person (the document, the format and the match are not in fault) and the guided retries used are fewer than <c>closure.guidedRetries</c>: one guided retry with the
-/// guidance codes of the failures. Otherwise a person reviews: the same correctable defects after the guided retry are reviewed with their reasons.</description></item>
+/// <item><description><b>A failure of the presence.</b> When every failure is correctable (a new recording guided by its codes can fix it, and at least one code tells the guest what to
+/// change) and the guided retries used are fewer than <c>closure.guidedRetries</c>: one guided retry with the guidance codes of the failures, whatever the document, the format and the
+/// match say: they are judged by the attempt that follows, as ever, and a guided retry is never an approval (its shadow decision is the review, it has no outcome code and closes nothing).
+/// Otherwise a person reviews: the same correctable defects after the guided retry are reviewed with their reasons.</description></item>
 /// <item><description><b>The document.</b> A coherence that is not a pass (an identifying conflict, an invalid MRZ, an expired document, or a coherence that could not be told)
 /// or a document that is not complete: review, never correctable.</description></item>
 /// <item><description><b>The similarity.</b> In the review band, under the floor, a weak frame, no portrait, or no comparison at all: review, never correctable.</description></item>
@@ -58,9 +59,10 @@ public sealed class IdentityDecisionEngine
             return Review([.. reasons, Processing(result)], IdentityOutcomeCodes.TechnicalError, mode);
         }
 
-        // b. A failure of the presence: one guided retry when a new recording can fix every failure and nothing else already sends the attempt to a person.
+        // b. A failure of the presence: one guided retry when a new recording can fix every failure and tells the guest what to change, whatever the document, the format and the
+        // match say (the order of the rules is the brief's). A guided retry decides nothing else: its shadow decision is the review and it closes nothing, and the next attempt meets
+        // the same document, format and match again.
         var failed = presence.Where(check => check.Status == IdentityCheckStatus.Failed).ToList();
-        var matchFailed = bundle.Match is { } match && !(match.State == MatchState.Ok && match.AcceptPassed);
         if (failed.Count > 0)
         {
             var guidance = failed
@@ -69,7 +71,7 @@ public sealed class IdentityDecisionEngine
                 .Where(value => value.Length > 0)
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
-            var onlyCorrectable = failed.All(check => check.Correctable) && guidance.Count > 0 && documentPassed && assurancePassed && !matchFailed;
+            var onlyCorrectable = failed.All(check => check.Correctable) && guidance.Count > 0;
             if (onlyCorrectable && bundle.GuidedRetriesUsed < bundle.GuidedRetriesAllowed)
                 return new IdentityDecision(IdentityFinalDecision.GuidedRetry, IdentityShadowDecision.Review, reasons, guidance, null, mode);
 
