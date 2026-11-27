@@ -9096,4 +9096,6 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AlloggiatiDirectSender" xml:space="preserve"><value>Per questo soggiorno CasaZen invia i dati ad Alloggiati Web. Consulta lo stato dell’invio diretto.</value></data>
   <data name="Ross1000StructureLocked" xml:space="preserve"><value>La struttura usa l’invio diretto. Mantieni lo stesso codice ROSS1000 per aggiornare le credenziali.</value></data>
   <data name="Ross1000SenderCutoverInProgress" xml:space="preserve"><value>È in corso un cambio di mittente. Riprova al termine.</value></data>
+  <data name="CheckInIdentityAlreadyClosed" xml:space="preserve"><value>La verifica dell’identità di questo check-in è chiusa: non si possono inviare altri passaggi. Puoi sempre chiedere l’aiuto di una persona.</value></data>
+  <data name="CheckInIdentityNoticeVersionUnknown" xml:space="preserve"><value>L’informativa sulla verifica dell’identità non è più quella in vigore. Ricarica la pagina e leggi il testo aggiornato.</value></data>
 </root>

@@ -4,6 +4,8 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
+using Casazen.Core.Features;
+using Casazen.Core.Identity;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -40,6 +42,8 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="VerificationHandOff"/>) answers <c>operator</c> in <b>any</b> session of it, a new link included: the daily jobs and the host replace
 /// the session, never the decision of a person. The operator opens the way again by asking for a new photo from the queue.</para>
 /// <para><b>Privacy</b>: the logs say the session, the step and the codes; never a picture, a value of the document or a name.</para>
+/// <para><b>Self-hosted session</b> (E70/F02/US01/T01, <c>Features:CheckInIdentitySelfHosted</c>, the part <c>IdentityVerificationFlowService.Session.cs</c>): the
+/// verification is opened once, bound to one guest, records the choice and is closed by its first hand-off to a person. Off, nothing of it is read or written.</para>
 /// </remarks>
 public sealed partial class IdentityVerificationFlowService(
     AppDbContext db,
@@ -58,7 +62,8 @@ public sealed partial class IdentityVerificationFlowService(
     ICheckInLegalTexts? legalTexts = null,
     IPropertySwissPlaceResolver? swissPlaces = null,
     IGuestEmailBrandingProvider? emailBranding = null,
-    IActivePoseVerificationService? activePose = null) : IIdentityVerificationFlowService
+    IActivePoseVerificationService? activePose = null,
+    IFeatureFlags? featureFlags = null) : IIdentityVerificationFlowService
 {
     /// <summary>Data Protection purpose of the encrypted picture of a document in the private bucket. Never change it: stored pictures would become unreadable.</summary>
     public const string DocumentImageContentPurpose = "Casazen.DocumentImage.Content";
@@ -80,10 +85,16 @@ public sealed partial class IdentityVerificationFlowService(
         return State(session, context);
     }
 
+    public Task<BiometricConsentResult> RecordConsentAsync(GuestCheckInSession session, bool consentGiven, string? consentVersion, CancellationToken ct)
+    {
+        return RecordConsentAsync(session, consentGiven, consentVersion, null, ct);
+    }
+
     public async Task<BiometricConsentResult> RecordConsentAsync(
         GuestCheckInSession session,
         bool consentGiven,
         string? consentVersion,
+        string? channel,
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -96,6 +107,8 @@ public sealed partial class IdentityVerificationFlowService(
         var now = UtcNow();
         if (!consentGiven)
         {
+            // E70/F02/US01/T01: on the self-hosted flow a refusal is the choice of the assisted path (and opens the step when it was not opened).
+            NoteChoice(session, context, IdentityChoices.Assisted, consentVersion, channel, now);
             session.BiometricConsentRefusedAt = now;
             session.BiometricConsentAt = null;
             session.BiometricConsentTextHash = null;
@@ -109,6 +122,9 @@ public sealed partial class IdentityVerificationFlowService(
         if (string.IsNullOrEmpty(version) || version.Length > BiometricConsentRules.VersionMaxLength)
             return new BiometricConsentResult(BiometricConsentStatus.VersionRequired, State(session, context));
 
+        // E70/F02/US01/T01: on the self-hosted flow a consent to the served version is the choice of the automatic verification (a stale version records nothing).
+        NoteChoice(session, context, IdentityChoices.Automatic, version, channel, now);
+
         if (!context.Enabled)
         {
             await DeleteStoredDocumentAsync(session, ct);
@@ -120,6 +136,14 @@ public sealed partial class IdentityVerificationFlowService(
         {
             await DeleteStoredDocumentAsync(session, ct);
             await ToOperatorAsync(session, VerificationAlertReasons.MinorExcluded, ct);
+            return new BiometricConsentResult(BiometricConsentStatus.Operator, State(session, context));
+        }
+
+        // E70/F02/US01/T01: the guest the verification is bound to left the stay: the verification never moves to somebody else, a person decides.
+        if (context.BoundGuestMissing)
+        {
+            await DeleteStoredDocumentAsync(session, ct);
+            await ToOperatorAsync(session, VerificationAlertReasons.Review, ct);
             return new BiometricConsentResult(BiometricConsentStatus.Operator, State(session, context));
         }
 
@@ -171,7 +195,9 @@ public sealed partial class IdentityVerificationFlowService(
         try
         {
             bytes = await ImageBytes.ReadAllAsync(image, MaxImageBytes, ct);
-            var consented = context.Enabled && HasCurrentConsent(session, context);
+
+            // E70/F02/US01/T01: a verification whose bound guest left the stay is not offered any more: no face is looked for and no picture is kept.
+            var consented = context.Enabled && HasCurrentConsent(session, context) && !context.BoundGuestMissing;
 
             // The face of the document is looked for only after the consent, and not on the back of a card (the photo is on the front); the MRZ
             // hints give the guidance of the reading in any case.
@@ -360,6 +386,13 @@ public sealed partial class IdentityVerificationFlowService(
             return await OperatorAsync(session, VerificationAlertReasons.MinorExcluded, policy, ct);
         }
 
+        // E70/F02/US01/T01: the bound guest left the stay: no comparison with somebody else's data, a person decides.
+        if (context.BoundGuestMissing)
+        {
+            await DeleteStoredDocumentAsync(session, ct);
+            return await OperatorAsync(session, VerificationAlertReasons.Review, policy, ct);
+        }
+
         // E22/F01/US02/T02: the text of the consent is no longer served (a registry with nothing approved in production): no selfie is compared, a person verifies.
         if (!context.ConsentTextServed)
         {
@@ -490,6 +523,16 @@ public sealed partial class IdentityVerificationFlowService(
             var reason = context.Enabled && !context.IsMinor && !context.ConsentTextServed
                 ? VerificationAlertReasons.LegalTextNotApproved
                 : VerificationAlertReasons.GuestRequest;
+
+            // E70/F02/US01/T01: on the self-hosted flow the request is the switch to the assisted path of an opened verification (the hand-off below closes it).
+            if (SelfHostedOn && session.IdentityOpenedAt is not null && session.IdentityClosedAt is null)
+            {
+                var now = UtcNow();
+                session.IdentityChoice = IdentityChoices.Assisted;
+                session.IdentityChoiceAt = now;
+                session.UpdatedAt = now;
+            }
+
             await DeleteStoredDocumentAsync(session, ct);
             await ToOperatorAsync(session, reason, ct);
         }
@@ -619,6 +662,9 @@ public sealed partial class IdentityVerificationFlowService(
     /// </summary>
     private async Task ToOperatorAsync(GuestCheckInSession session, string reason, CancellationToken ct)
     {
+        // E70/F02/US01/T01: the first hand-off of an opened self-hosted verification closes it with the code of its reason, saved with the "To do" below.
+        CloseIdentitySession(session, IdentityOutcomeOf(reason));
+
         if (session.OperatorRequestedAt is null)
         {
             // Read before the request of this session is saved: it says what the other sessions and the log already hold.
@@ -653,6 +699,10 @@ public sealed partial class IdentityVerificationFlowService(
     private async Task CloseOperatorPathAsync(GuestCheckInSession session, FlowContext context, CancellationToken ct)
     {
         await DeleteStoredDocumentAsync(session, ct);
+
+        // E70/F02/US01/T01: an opened self-hosted verification found with a person (the booking is with an operator through another session, or the attempts reach a
+        // lowered maximum) is closed: a person reviews it.
+        CloseIdentitySession(session, IdentityOutcomeCodes.Review);
         if (OnlyTheAttemptsReachTheMax(session, context))
         {
             await ToOperatorAsync(session, VerificationAlertReasons.AttemptsExhausted, ct);
@@ -712,7 +762,7 @@ public sealed partial class IdentityVerificationFlowService(
     {
         var check = ReadCheck(session);
         var minor = context.IsMinor || check?.Check.HolderIsMinor == true;
-        var offered = context.Enabled && context.ConsentTextServed && !minor && session.BiometricConsentRefusedAt is null;
+        var offered = context.Enabled && context.ConsentTextServed && !minor && session.BiometricConsentRefusedAt is null && !context.BoundGuestMissing;
         var operatorPath = InOperatorPath(session, context);
         var passed = session.BiometricOutcome == BiometricOutcome.Accept;
         var consented = HasCurrentConsent(session, context);
@@ -734,6 +784,9 @@ public sealed partial class IdentityVerificationFlowService(
                     ? IdentityVerificationSteps.Consent
                     : documentChecked ? IdentityVerificationSteps.Selfie : IdentityVerificationSteps.Document;
 
+        // E70/F02/US01/T01: the members of the self-hosted session, read only while the self-hosted flow is on (off, they keep their defaults, as before).
+        var selfHosted = SelfHostedOn;
+        var closed = selfHosted && session.IdentityClosedAt is not null;
         return new IdentityVerificationState(
             step,
             result,
@@ -746,7 +799,13 @@ public sealed partial class IdentityVerificationFlowService(
             context.DocumentNotArchived,
             context.VerifyingGuestPosition,
             check is null ? null : SidesOf(check.TwoSided, check.Front, check.Back),
-            SideNeeded(check));
+            SideNeeded(check),
+            SelfHosted: selfHosted,
+            Opened: selfHosted && session.IdentityOpenedAt is not null,
+            NoticeVersion: selfHosted ? session.IdentityNoticeVersion : null,
+            Choice: selfHosted ? session.IdentityChoice : null,
+            Closed: closed,
+            Outcome: closed ? GuestOutcomeOf(session.IdentityOutcomeCode) : null);
     }
 
     /// <summary>What every step needs: the settings of the org, the guest who verifies and whether the property keeps no document.</summary>
@@ -756,7 +815,21 @@ public sealed partial class IdentityVerificationFlowService(
 
         var booking = session.Booking;
         var guests = await stayGuests.GetForBookingAsync(booking, ct);
-        var verifying = guests.FirstOrDefault(g => AlloggiatiRecordRules.RequiresDocument(g.Type)) ?? guests.FirstOrDefault();
+
+        // E70/F02/US01/T01: a self-hosted verification bound to a guest reads that guest only, wherever an edit of the list put it; when that guest left the stay
+        // (and is not the booker, whose data are read when nobody is registered) the verification is not offered any more. Otherwise, the rule of today.
+        StayGuest? verifying;
+        var boundGuestMissing = false;
+        if (SelfHostedOn && session.IdentityGuestId is { } bound)
+        {
+            verifying = BoundGuestOf(guests, bound);
+            boundGuestMissing = verifying is null && bound != booking.GuestId;
+        }
+        else
+        {
+            verifying = guests.FirstOrDefault(g => AlloggiatiRecordRules.RequiresDocument(g.Type)) ?? guests.FirstOrDefault();
+        }
+
         var identity = verifying is null
             ? new CheckInIdentity(booking.Guest?.FirstName, booking.Guest?.LastName, DateOf(booking.Guest?.DateOfBirth), booking.Guest?.DocumentNumber, booking.Guest?.Nationality)
             : new CheckInIdentity(verifying.FirstName, verifying.LastName, DateOf(verifying.DateOfBirth), verifying.DocumentNumber, verifying.CitizenshipName);
@@ -769,7 +842,9 @@ public sealed partial class IdentityVerificationFlowService(
             IsMinor(identity.DateOfBirth),
             await DocumentNotArchivedAsync(booking.Property, ct),
             await VerificationHandOff.IsWithOperatorAsync(db, booking.Id, ct),
-            legalTexts?.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent));
+            legalTexts?.GetActiveVersion(CheckInLegalTextKinds.BiometricConsent),
+            BindingIdOf(verifying, booking),
+            boundGuestMissing);
     }
 
     /// <summary>The settings of the org, or the default of ADR-013-R13 when it has none: enabled on the Agency plan only.</summary>
@@ -1168,6 +1243,10 @@ public sealed partial class IdentityVerificationFlowService(
 
     private DateTime UtcNow() => clock.GetUtcNow().UtcDateTime;
 
+    /// <summary>
+    /// What every step needs. <see cref="VerifyingGuestId"/> is the id the opening of a self-hosted verification binds for the guest who verifies, and
+    /// <see cref="BoundGuestMissing"/> says that the guest a self-hosted verification is bound to left the stay (E70/F02/US01/T01): never true with the flow off.
+    /// </summary>
     private sealed record FlowContext(
         bool Enabled,
         VerificationPolicy Policy,
@@ -1176,7 +1255,9 @@ public sealed partial class IdentityVerificationFlowService(
         bool IsMinor,
         bool DocumentNotArchived,
         bool BookingWithOperator,
-        CheckInLegalVersion? ActiveConsentText)
+        CheckInLegalVersion? ActiveConsentText,
+        Guid VerifyingGuestId,
+        bool BoundGuestMissing)
     {
         public bool ConsentTextServed => ActiveConsentText is not null;
     }

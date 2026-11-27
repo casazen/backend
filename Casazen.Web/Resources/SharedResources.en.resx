@@ -9096,4 +9096,6 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="AlloggiatiDirectSender" xml:space="preserve"><value>CasaZen sends the guest data for this stay to Alloggiati Web. Check the direct submission status.</value></data>
   <data name="Ross1000StructureLocked" xml:space="preserve"><value>This property uses direct submission. Keep the same ROSS1000 property code when updating the credentials.</value></data>
   <data name="Ross1000SenderCutoverInProgress" xml:space="preserve"><value>A sender change is in progress. Try again once it completes.</value></data>
+  <data name="CheckInIdentityAlreadyClosed" xml:space="preserve"><value>The identity verification of this check-in is closed: no further step can be sent. You can always ask a person for help.</value></data>
+  <data name="CheckInIdentityNoticeVersionUnknown" xml:space="preserve"><value>The notice of the identity verification is no longer the current one. Reload the page and read the updated text.</value></data>
 </root>

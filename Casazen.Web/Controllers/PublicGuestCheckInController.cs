@@ -341,7 +341,9 @@ public partial class PublicGuestCheckInController(
     /// organization, a minor, or no text of the consent approved in production) nothing is recorded and the answer is <c>operator</c>. 400 <c>biometric_consent_answer_required</c> without
     /// <c>consentGiven</c>, 400 <c>biometric_consent_version_required</c> for a consent without its version (at most 50 characters), 422
     /// <c>biometric_consent_version_unknown</c> for a version the registry does not serve now (the page reads the texts again); 404 for an
-    /// unknown, expired or completed link. Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default.
+    /// unknown, expired or completed link. Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default. With
+    /// <see cref="FeatureFlags.CheckInIdentitySelfHosted"/> on too (E70/F02/US01/T01) the answer also records the choice of the guest (<c>automatic</c> or
+    /// <c>assisted</c>) and opens the identity step when <c>.../identity/open</c> was not called, with the served consent as the notice; the contract is unchanged.
     /// </summary>
     [HttpPost("{token}/biometric-consent")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
@@ -357,7 +359,10 @@ public partial class PublicGuestCheckInController(
         if (session is null)
             return NotFound();
 
-        var result = await verificationFlow.RecordConsentAsync(session, consentGiven, request.ConsentVersion, HttpContext.RequestAborted);
+        // E70/F02/US01/T01: on the self-hosted flow the answer is also the choice of the guest and may open the identity step, with the family of the browser only.
+        var result = SelfHostedIdentityOn()
+            ? await verificationFlow.RecordConsentAsync(session, consentGiven, request.ConsentVersion, RequestChannel(), HttpContext.RequestAborted)
+            : await verificationFlow.RecordConsentAsync(session, consentGiven, request.ConsentVersion, HttpContext.RequestAborted);
         if (result.Status == BiometricConsentStatus.VersionRequired)
             return this.ApiProblem(StatusCodes.Status400BadRequest, "biometric_consent_version_required", "CheckInBiometricConsentVersionRequired");
 
@@ -405,6 +410,10 @@ public partial class PublicGuestCheckInController(
         var session = await checkInService.GetSessionByTokenAsync(token);
         if (session is null)
             return NotFound();
+
+        // E70/F02/US01/T01: a closed self-hosted verification takes no new picture of the document (409 identity_already_closed, with the state).
+        if (await RefuseClosedIdentityAsync(session) is { } closed)
+            return closed;
 
         if (session.BiometricOutcome == Casazen.Core.Entities.Enums.BiometricOutcome.Accept)
             return this.ApiProblem(StatusCodes.Status409Conflict, "identity_already_verified", "CheckInIdentityAlreadyVerified");
@@ -480,6 +489,10 @@ public partial class PublicGuestCheckInController(
         if (session is null)
             return NotFound();
 
+        // E70/F02/US01/T01: a closed self-hosted verification issues no new challenge.
+        if (await RefuseClosedIdentityAsync(session) is { } closed)
+            return closed;
+
         var challenge = await verificationFlow.IssueSelfieChallengeAsync(session, HttpContext.RequestAborted);
         if (challenge is null)
             return this.ApiProblem(StatusCodes.Status409Conflict, "selfie_challenge_unavailable", "CheckInSelfieChallengeUnavailable");
@@ -519,6 +532,10 @@ public partial class PublicGuestCheckInController(
         var session = await checkInService.GetSessionByTokenAsync(token);
         if (session is null)
             return NotFound();
+
+        // E70/F02/US01/T01: a closed self-hosted verification takes no new attempt.
+        if (await RefuseClosedIdentityAsync(session) is { } closed)
+            return closed;
 
         if (selfie == null || selfie.Length == 0)
             return this.ApiProblem(StatusCodes.Status400BadRequest, "selfie_required", "CheckInSelfieRequired");
@@ -580,7 +597,8 @@ public partial class PublicGuestCheckInController(
     /// <summary>
     /// The guest asks for a person (E03/F04/US02/T04, GDPR art. 22, AC-NF51-11): at any step, also after a retry or a failed attempt. The
     /// operators who decide the verifications of the property are alerted at once; a photo of the document kept for the comparison is deleted.
-    /// 404 for an unknown, expired or completed link. Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default.
+    /// 404 for an unknown, expired or completed link. Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default. Always available, also once
+    /// a self-hosted verification is closed; on an opened one it records the switch to the assisted path (E70/F02/US01/T01).
     /// </summary>
     [HttpPost("{token}/request-operator")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
