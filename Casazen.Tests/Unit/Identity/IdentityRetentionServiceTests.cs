@@ -313,6 +313,63 @@ public sealed class IdentityRetentionServiceTests
     }
 
     [Fact]
+    public async Task IdentityRetention_ALimitOutsideTheRetentionOutOfRange_DoesNotStopTheRun()
+    {
+        // Review of S015, point 4: the run needs the three periods of IdentityVerification:Retention and nothing else of the section. A limit of the capture that is out of its range
+        // (Presence:MaxFrames) makes the section as a whole invalid for the capture, and must not make the retention skip its categories and end green with zeros.
+        await using var world = new RetentionWorld();
+        var stay = await world.StayAsync(world.OrgA);
+        var expired = await world.EvidenceAsync(world.OrgA, stay, expiresAt: Now.UtcDateTime.AddMinutes(-1));
+        var abandoned = await world.SessionAsync(world.OrgA, stay, openedAt: Now.UtcDateTime.AddHours(-25));
+        var image = await world.DocumentImageAsync(world.OrgA, stay);
+        var options = new IdentityVerificationOptions { Presence = new IdentityPresenceOptions { MaxFrames = 1 } };
+        Assert.NotEmpty(options.Validate());
+        Assert.Empty(options.ValidateRetention());
+
+        var counts = await world.Service(options: options).PurgeAsync(Now.UtcDateTime, Ct);
+
+        Assert.Equal((1, 1, 1), (counts.ExpiredEvidence, counts.AbandonedSessions, counts.AbandonedDocumentImages));
+        Assert.False(world.Storage.Objects.ContainsKey(expired.StorageKey));
+        Assert.False(world.Storage.Objects.ContainsKey(image.FrontImageUrl));
+        await using var read = world.NewContext();
+        Assert.Equal(IdentityOutcomeCodes.Abandoned, (await read.GuestCheckInSessions.IgnoreQueryFilters().AsNoTracking().SingleAsync(session => session.Id == abandoned.Id)).IdentityOutcomeCode);
+        Assert.Equal(0, world.RunLog.Last!.FailedOrgs);
+    }
+
+    [Fact]
+    public async Task IdentityRetention_ARetentionPeriodOutOfRange_FailsTheRun_AfterTheEvidenceWasPurged()
+    {
+        // Review of S015, point 4: a period of IdentityVerification:Retention out of its range means the abandoned sessions, the kept pictures, the checks of the document and the logs
+        // cannot be judged: the evidence still goes (its time is on its row) and the run is FAILED (Hangfire shows it and runs it again), never done with zeros.
+        await using var world = new RetentionWorld();
+        var stay = await world.StayAsync(world.OrgA);
+        var expired = await world.EvidenceAsync(world.OrgA, stay, expiresAt: Now.UtcDateTime.AddMinutes(-1));
+        var abandoned = await world.SessionAsync(world.OrgA, stay, openedAt: Now.UtcDateTime.AddHours(-25));
+        var image = await world.DocumentImageAsync(world.OrgA, stay);
+        var options = new IdentityVerificationOptions { Retention = new IdentityRetentionOptions { AbandonedAfterHours = 0 } };
+        Assert.NotEmpty(options.ValidateRetention());
+        var logger = new CapturingLogger<IdentityRetentionService>();
+
+        var failure = await Assert.ThrowsAsync<IdentityRetentionFailedException>(() => world.Service(logger, options).PurgeAsync(Now.UtcDateTime, Ct));
+
+        Assert.True(failure.PeriodsInvalid);
+        Assert.Equal(0, failure.FailedOrgs);
+        Assert.Contains("IdentityVerification:Retention", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("retention_config_invalid", logger.AllOutput, StringComparison.Ordinal);
+        Assert.False(world.Storage.Objects.ContainsKey(expired.StorageKey));
+        Assert.Equal(1, world.RunLog.Last!.Counts.ExpiredEvidence);
+        await using var read = world.NewContext();
+        Assert.Null((await read.GuestCheckInSessions.IgnoreQueryFilters().AsNoTracking().SingleAsync(session => session.Id == abandoned.Id)).IdentityClosedAt);
+        Assert.True(world.Storage.Objects.ContainsKey(image.FrontImageUrl));
+
+        // The same periods with the flags off: nothing of the periods is needed, the evidence goes and the run is not a failure.
+        world.Flags.Set(FeatureFlags.CheckInIdentitySelfHosted, false);
+        world.Flags.Set(FeatureFlags.CheckInIdentityReviewEvidence, false);
+        await world.EvidenceAsync(world.OrgA, stay, expiresAt: Now.UtcDateTime.AddMinutes(-2));
+        Assert.Equal(1, (await world.Service(options: options).PurgeAsync(Now.UtcDateTime, Ct)).ExpiredEvidence);
+    }
+
+    [Fact]
     public async Task IdentityRetention_TheErasureOfAGuest_DeletesItsEvidence()
     {
         // Proof (data, AC5): the GDPR erasure of a guest deletes the evidence of the verifications of its bookings (objects, rows marked erased); another guest's stays.
@@ -534,8 +591,8 @@ public sealed class IdentityRetentionServiceTests
         public AppDbContext NewContext() => new(_options);
 
         /// <summary>The service on a context of its own, as the job has it.</summary>
-        public IdentityRetentionService Service(Microsoft.Extensions.Logging.ILogger<IdentityRetentionService>? logger = null) =>
-            new(NewContext(), Storage, Flags, Options.Create(new IdentityVerificationOptions()), RunLog, Clock, logger ?? NullLogger<IdentityRetentionService>.Instance);
+        public IdentityRetentionService Service(Microsoft.Extensions.Logging.ILogger<IdentityRetentionService>? logger = null, IdentityVerificationOptions? options = null) =>
+            new(NewContext(), Storage, Flags, Options.Create(options ?? new IdentityVerificationOptions()), RunLog, Clock, logger ?? NullLogger<IdentityRetentionService>.Instance);
 
         /// <summary>A stay of a guest of <paramref name="orgId"/>, at a property of it; check-out in three days unless said.</summary>
         public async Task<Guid> StayAsync(Guid orgId, DateTime? checkOut = null)

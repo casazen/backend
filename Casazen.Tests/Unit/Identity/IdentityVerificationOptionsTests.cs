@@ -76,6 +76,27 @@ public class IdentityVerificationOptionsTests
         });
     }
 
+    [Fact]
+    public void IdentityVerificationOptions_ValidateRetention_JudgesOnlyTheThreePeriods_InTheWordsOfValidate()
+    {
+        // E73/F01/US02/T03 (review of S015): the retention needs its three periods and nothing else of the section; it names the setting, never the value, as Validate does.
+        var options = new IdentityVerificationOptions
+        {
+            Presence = new IdentityPresenceOptions { MaxFrames = 987_654 },
+            Evidence = new IdentityEvidenceOptions { RetentionHours = 4_242 },
+            Retention = new IdentityRetentionOptions { AbandonedAfterHours = 0, VerificationLogMonths = 777 },
+        };
+
+        var retention = options.ValidateRetention();
+
+        Assert.Equal(2, retention.Count);
+        Assert.StartsWith("IdentityVerification:Retention:AbandonedAfterHours ", retention[0], StringComparison.Ordinal);
+        Assert.StartsWith("IdentityVerification:Retention:VerificationLogMonths ", retention[1], StringComparison.Ordinal);
+        Assert.Equal(retention, options.Validate().Where(failure => failure.StartsWith("IdentityVerification:Retention:", StringComparison.Ordinal)));
+        Assert.DoesNotContain("777", string.Concat(retention), StringComparison.Ordinal);
+        Assert.Empty(new IdentityVerificationOptions { Presence = new IdentityPresenceOptions { MaxFrames = 1 } }.ValidateRetention());
+    }
+
     [Theory]
     [InlineData("Evidence:RetentionHours", "1", true)]
     [InlineData("Evidence:RetentionHours", "168", true)]

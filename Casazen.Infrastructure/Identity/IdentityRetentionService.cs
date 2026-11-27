@@ -35,7 +35,8 @@ namespace Casazen.Infrastructure.Identity;
 /// (<see cref="OldVerificationLogs"/>).</item>
 /// </list>
 /// Idempotent: what was done is not selected again, a second run finds nothing. A failure of one organization does not stop the others; the run is then reported failed
-/// (Hangfire runs it again). What the last run did is kept for the status of the platform administrators (<see cref="IdentityRetentionRunLog"/>).
+/// (Hangfire runs it again), and so is a run whose periods (<c>IdentityVerification:Retention</c>, the only settings it needs) are not valid: it purges the evidence and nothing else.
+/// What the last run did is kept for the status of the platform administrators (<see cref="IdentityRetentionRunLog"/>).
 /// <para><b>Privacy</b>: the log has counts, ids and the type of an exception; never a picture, a key with a name, a value of the document or a name.</para>
 /// </summary>
 public sealed class IdentityRetentionService(
@@ -60,8 +61,10 @@ public sealed class IdentityRetentionService(
 
     /// <summary>
     /// One run of the retention at <paramref name="utcNow"/>: the counts of what it deleted, per category. With both flags off only the evidence past its time is deleted (its time
-    /// is on its row, and a flag never leaves an evidence with no expiry); the other categories wait for a flag. With a section <c>IdentityVerification</c> that is not valid only
-    /// the evidence is purged (its times are on its rows); the rest waits for a valid section, with a warning.
+    /// is on its row, and a flag never leaves an evidence with no expiry); the other categories wait for a flag. The run needs the three periods of
+    /// <c>IdentityVerification:Retention</c> and nothing else of the section: a limit of the capture or of the evidence that is out of its range does not stop it. When a period
+    /// is not valid (<see cref="IdentityVerificationOptions.ValidateRetention"/>) only the evidence is purged (its times are on its rows) and the run is reported failed
+    /// (<see cref="IdentityRetentionFailedException"/>), never done with nothing deleted.
     /// </summary>
     public async Task<IdentityRetentionCounts> PurgeAsync(DateTime utcNow, CancellationToken ct)
     {
@@ -71,9 +74,10 @@ public sealed class IdentityRetentionService(
             logger.LogInformation("Identity retention: the self-hosted verification and its evidence are off; only the evidence past its time is deleted");
 
         var options = identityOptions.Value;
-        var periods = whole && options.Validate().Count == 0 ? options.Retention : null;
-        if (whole && periods is null)
-            logger.LogWarning("Identity retention: the section IdentityVerification is not valid; only the evidence is purged (retention_config_invalid)");
+        var periodsInvalid = whole && options.ValidateRetention().Count > 0;
+        var periods = whole && !periodsInvalid ? options.Retention : null;
+        if (periodsInvalid)
+            logger.LogError("Identity retention: the periods of IdentityVerification:Retention are not valid; only the evidence is purged and the run is reported failed (retention_config_invalid)");
 
         var total = IdentityRetentionCounts.None;
         var failed = 0;
@@ -99,8 +103,8 @@ public sealed class IdentityRetentionService(
             total.ExpiredEvidence, total.DecidedEvidence, total.AbandonedSessions, total.AbandonedEvidence, total.AbandonedDocumentImages, total.DocumentChecksCleared,
             total.VerificationLogsDeleted, failed);
 
-        if (failed > 0)
-            throw new IdentityRetentionFailedException(failed);
+        if (failed > 0 || periodsInvalid)
+            throw new IdentityRetentionFailedException(failed, periodsInvalid);
 
         return total;
     }
@@ -113,7 +117,7 @@ public sealed class IdentityRetentionService(
     {
         var now = clock.GetUtcNow().UtcDateTime;
         var options = identityOptions.Value;
-        var abandonedAfterHours = options.Validate().Count == 0 ? options.Retention.AbandonedAfterHours : new IdentityRetentionOptions().AbandonedAfterHours;
+        var abandonedAfterHours = options.ValidateRetention().Count == 0 ? options.Retention.AbandonedAfterHours : new IdentityRetentionOptions().AbandonedAfterHours;
 
         var overdueEvidence = await db.IdentityReviewEvidences
             .IgnoreQueryFilters()
@@ -495,9 +499,28 @@ public sealed class IdentityRetentionRunLog
     }
 }
 
-/// <summary>A run of the identity retention that could not finish for some organizations: Hangfire runs it again. The message has a count only.</summary>
-public sealed class IdentityRetentionFailedException(int failedOrgs)
-    : InvalidOperationException(string.Create(CultureInfo.InvariantCulture, $"The identity retention failed for {failedOrgs} organization(s); see the log of the run."))
+/// <summary>
+/// A run of the identity retention that could not finish: for some organizations, or because the periods of <c>IdentityVerification:Retention</c> are not valid (only the evidence
+/// was purged then). Hangfire runs it again and shows it failed: never a run done with nothing deleted. The message has a count and the name of the section only.
+/// </summary>
+public sealed class IdentityRetentionFailedException : InvalidOperationException
 {
-    public int FailedOrgs { get; } = failedOrgs;
+    public IdentityRetentionFailedException(int failedOrgs, bool periodsInvalid = false)
+        : base(MessageOf(failedOrgs, periodsInvalid))
+    {
+        FailedOrgs = failedOrgs;
+        PeriodsInvalid = periodsInvalid;
+    }
+
+    /// <summary>How many organizations the run could not finish.</summary>
+    public int FailedOrgs { get; }
+
+    /// <summary>The periods of <c>IdentityVerification:Retention</c> are not valid: the abandoned sessions, the kept pictures, the checks of the document and the logs were not touched.</summary>
+    public bool PeriodsInvalid { get; }
+
+    private static string MessageOf(int failedOrgs, bool periodsInvalid)
+    {
+        var periods = periodsInvalid ? " and the periods of IdentityVerification:Retention are not valid" : string.Empty;
+        return string.Create(CultureInfo.InvariantCulture, $"The identity retention failed for {failedOrgs} organization(s){periods}; see the log of the run.");
+    }
 }
