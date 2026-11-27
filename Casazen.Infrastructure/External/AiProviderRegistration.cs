@@ -26,7 +26,8 @@ public static class AiProviderRegistration
         services.AddScoped<DeepSeekAiProvider>();
         services.AddScoped<StubAiProvider>();
         services.AddScoped<IAiProvider, SwitchingAiProvider>();
-        services.AddScoped<ICheckInDocumentReader, CheckInDocumentAiReader>();
+        // No document reader of the check-in here: since E70/F02/US02/T01 (NF-197, ADR-013-R21) the identity document is read in the process only
+        // (LocalCheckInDocumentReader, registered with the self-hosted identity verification), never by an AI provider.
 
         services.AddHttpClient("DeepSeek", client => client.Timeout = TimeSpan.FromSeconds(30));
         // Calls with photos and a long answer (the text of a listing): a vision model takes longer.
