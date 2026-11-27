@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Casazen.Core.Entities;
@@ -29,7 +30,9 @@ namespace Casazen.Infrastructure.Services;
 /// or the log row of the decision (outcome, decision mode, shadow outcome, policy version and hash, format, channel, key, reasons, thresholds of the policy, model, duration), the
 /// outcome and the closure of the session, the perceptual hashes of the document dropped, and on an approval the event <c>IdVerificationCompleted</c>.</para>
 /// <para><b>After the commit</b>, the effects of today: an approval deletes the kept pictures, resolves the alerts and releases the lock code; a review goes through
-/// <see cref="OnReviewCommittedAsync"/> (where the evidence of the reviewer is kept, before the pictures are deleted) and is handed to the operators.</para>
+/// <see cref="OnReviewCommittedAsync"/> (where the evidence of the reviewer is kept, before the pictures are deleted) and is handed to the operators (<see cref="FinishReviewAsync"/>).
+/// They run with no token of the request (a client that drops does not make them skip), and what a failure of them leaves undone is finished, once, by the next request with the same
+/// key (<see cref="FinishInterruptedEffectsAsync"/>): the steps that can be repeated, under the lock of the row of the session.</para>
 /// <para><b>Fail closed</b>: a policy that is not usable, models that are not loaded, a model that fails, a time that is over: a person decides, never an approval; the request for a
 /// person stays open.</para>
 /// <para><b>Privacy</b>: the frames and the pictures of the document are in memory only and zeroed when the request ends (<see cref="FrameSequence.Dispose"/>, <c>ImageBytes.Zero</c>);
@@ -88,7 +91,7 @@ public sealed partial class IdentityVerificationFlowService
             throw;
         }
 
-        return await AfterCommitAsync(session, closure, buffers, ct);
+        return await AfterCommitAsync(session, closure, buffers);
     }
 
     /// <summary>
@@ -389,9 +392,15 @@ public sealed partial class IdentityVerificationFlowService
         return PresenceClosure.Decided(decision, evidence);
     }
 
-    /// <summary>f. The effects of the decision after its commit, as the legacy flow has them; then the answer, with the state of the verification after them.</summary>
-    private async Task<PresenceStepResult> AfterCommitAsync(GuestCheckInSession session, PresenceClosure closure, PresenceBuffers buffers, CancellationToken ct)
+    /// <summary>
+    /// f. The effects of the decision after its commit, as the legacy flow has them; then the answer, with the state of the verification after them. The decision is committed: the effects
+    /// are not the request's any more, so they run with no token of it (<see cref="CancellationToken.None"/>). A guest whose connection drops, a page that is closed, must neither make the
+    /// operators miss the hand-off nor leave the encrypted picture of the document in the bucket, and nobody is left to cancel them. What a failure of them leaves undone is finished by
+    /// the next request with the same key (<see cref="FinishInterruptedEffectsAsync"/>).
+    /// </summary>
+    private async Task<PresenceStepResult> AfterCommitAsync(GuestCheckInSession session, PresenceClosure closure, PresenceBuffers buffers)
     {
+        var ct = CancellationToken.None;
         switch (closure.Kind)
         {
             case PresenceClosureKind.Stale:
@@ -425,16 +434,72 @@ public sealed partial class IdentityVerificationFlowService
         }
 
         await OnReviewCommittedAsync(session, decision, buffers.Sequence, closure.Evidence, ct);
-        await DeleteStoredDocumentAsync(session, ct);
-        await ToOperatorAsync(session, AlertReasonOf(decision.OutcomeCode), ct);
+        await FinishReviewAsync(session);
         return Answered(IdentityVerificationGuestResults.Operator, [], await GetStateAsync(session, ct));
+    }
+
+    /// <summary>
+    /// The effects of a review once it is committed, every step idempotent: the kept pictures of the document go (they can be deleted again) and, when the operators are not told yet
+    /// (<see cref="GuestCheckInSession.OperatorRequestedAt"/>), they are told once (the alert and the "To do", saved with the session). It runs under the lock of the row of the session,
+    /// read again under it, so the request that decided, a twin and a request that finds a review whose effects were interrupted do the same work one after the other and the operators
+    /// are told once. A failure of the deletion does not skip the hand-off and is thrown after it: the page asks again and the replay finishes the deletion. Nothing is done for a session
+    /// that is not a review of the closure.
+    /// </summary>
+    private async Task FinishReviewAsync(GuestCheckInSession session)
+    {
+        var ct = CancellationToken.None;
+        await WithLockedPoseSessionAsync(session, false, async () =>
+        {
+            if (session.BiometricOutcome != BiometricOutcome.Escalate || session.IdentityClosedAt is null)
+                return false;
+
+            ExceptionDispatchInfo? deletion = null;
+            try
+            {
+                await DeleteStoredDocumentAsync(session, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The type only: a message could carry what was being read. The operators are told all the same, then the failure is thrown.
+                logger.LogError("Presence of session {SessionId}: the kept pictures of the document could not be deleted ({ErrorType}); the request is asked again", session.Id, ex.GetType().Name);
+                deletion = ExceptionDispatchInfo.Capture(ex);
+            }
+
+            if (session.OperatorRequestedAt is null)
+                await ToOperatorAsync(session, AlertReasonOf(session.IdentityOutcomeCode), ct);
+            else
+                await db.SaveChangesAsync(ct);
+
+            deletion?.Throw();
+            return true;
+        }, ct);
+    }
+
+    /// <summary>
+    /// What the request that decided may have left undone after its save (its connection dropped, the hand-off or the deletion failed), finished by a request that is answered again for
+    /// the same key, with the steps that can be repeated: a review is handed to the operators once and its kept pictures go (<see cref="FinishReviewAsync"/>); an approval deletes its kept
+    /// pictures. The e-mail of the lock code and the resolution of the alerts of an approval are the request's that decided, and are not repeated.
+    /// </summary>
+    private async Task FinishInterruptedEffectsAsync(GuestCheckInSession session, string result)
+    {
+        if (string.Equals(result, IdentityVerificationGuestResults.Operator, StringComparison.Ordinal))
+        {
+            await FinishReviewAsync(session);
+        }
+        else if (string.Equals(result, IdentityVerificationGuestResults.Ok, StringComparison.Ordinal))
+        {
+            await DeleteStoredDocumentAsync(session, CancellationToken.None);
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
     }
 
     /// <summary>
     /// The point between the commit of a review and its hand-off to the operators, BEFORE the kept pictures of the document are deleted: the evidence of the reviewer
     /// (E73/F01/US02/T01, ADR-013-R20, <c>Features:CheckInIdentityReviewEvidence</c>) is kept from here, from the frames of the request (<paramref name="sequence"/>, alive until the
     /// request ends and zeroed then) and the frames the server chose (<see cref="PresenceEvidence.Selection"/>). Null when the attempt stopped before (a fault, or no frame chosen).
-    /// Today it writes the line of the review: the checks that did not pass, by their codes, and the counts of the frames, never a value.
+    /// Today it writes the line of the review: the checks that did not pass, by their codes, and the counts of the frames, never a value. It runs before the request deletes the kept
+    /// pictures, but a twin of the same attempt that takes the lock of the row first finishes the hand-off (and the deletion) by itself: the evidence is taken from the frames of this
+    /// request, which only this request has, never from the kept pictures in the bucket.
     /// </summary>
     private Task OnReviewCommittedAsync(GuestCheckInSession session, IdentityDecision decision, FrameSequence? sequence, PresenceEvidence? evidence, CancellationToken ct)
     {
@@ -500,8 +565,9 @@ public sealed partial class IdentityVerificationFlowService
 
     /// <summary>
     /// The attempt of <paramref name="key"/> already answered: the last attempt of the session, or a log row of the booking with that key (the outcome of the row). Null when the key
-    /// is new. A replay runs no effect: the effects of a decision are the request's that took it (and its row and outcome, written in the one save, already put the session in the
-    /// queue of the operators).
+    /// is new. A replay does not take the effects of a decision again (the e-mail of the code, the resolution of the alerts, the evidence of the reviewer are the request's that took it);
+    /// it only finishes, once, what that request may have left undone with the steps that can be repeated (<see cref="FinishInterruptedEffectsAsync"/>), and the row and the outcome,
+    /// written in the one save, already put the session in the queue of the operators.
     /// </summary>
     private async Task<PresenceReplay?> FindReplayAsync(GuestCheckInSession session, string key, CancellationToken ct)
     {
@@ -523,10 +589,14 @@ public sealed partial class IdentityVerificationFlowService
 
     /// <summary>
     /// The answer of an attempt already answered: the same result and guidance, the state now and, for an approval, the lock code of the screen again (as a passed selfie sent again
-    /// had it: no new comparison, no new e-mail). Nothing of the frames is read.
+    /// had it: no new comparison, no new e-mail). Nothing of the frames is read; what the request that decided left undone after its save is finished first (the operators told once, the
+    /// kept pictures deleted).
     /// </summary>
     private async Task<PresenceStepResult> AnswerReplayAsync(GuestCheckInSession session, PresenceReplay replay, CancellationToken ct)
     {
+        // The request that decided may have stopped after its save: what it left undone is finished now, with the steps that can be repeated.
+        await FinishInterruptedEffectsAsync(session, replay.Result);
+
         string? code = null;
         string? held = null;
         if (string.Equals(replay.Result, IdentityVerificationGuestResults.Ok, StringComparison.Ordinal))

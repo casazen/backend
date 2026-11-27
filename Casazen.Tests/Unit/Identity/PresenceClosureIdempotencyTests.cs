@@ -3,11 +3,13 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Identity;
 using Casazen.Core.Services;
+using Casazen.Tests.Unit.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.CheckIn;
 using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -153,10 +155,10 @@ public sealed class PresenceClosureIdempotencyTests
     }
 
     [Fact]
-    public async Task PresenceClosureIdempotency_TheDecisionAlone_PutsTheSessionInTheQueueOfTheOperators()
+    public async Task PresenceClosureIdempotency_TheDecisionAloneIsInTheQueue_AndAReplayTellsTheOperatorsOnce()
     {
-        // A replay runs no effect (the effects are the request's that decided). Should the process stop between the save and the hand-off, the one save already holds what the queue
-        // of the operators reads: the session is not accepted and its outcome is the review (VerificationOperatorRules.NeedsOperator).
+        // Should the process stop between the save and the hand-off, the one save already holds what the queue of the operators reads: the session is not accepted and its outcome is the
+        // review (VerificationOperatorRules.NeedsOperator). The next request with the same key finishes the hand-off, and only once: nobody tells the operators again after it.
         await using var world = await PresenceClosureWorld.CreateAsync();
         var session = await world.ReadyStayAsync();
         var key = PresenceClosureKit.NewKey();
@@ -164,13 +166,124 @@ public sealed class PresenceClosureIdempotencyTests
         session.OperatorRequestedAt = null;
         await world.Db.SaveChangesAsync(Ct);
         world.Alerts.Raised.Clear();
+        Assert.True(VerificationOperatorRules.NeedsOperator.Compile()(await world.ReadBackAsync(session.Id)));
 
         var replay = await world.Flow().SubmitPresenceSequenceAsync(session, PresenceClosureKit.Submission(key, null), Ct);
 
         Assert.Equal((IdentityVerificationGuestResults.Operator, true), (replay.Result, replay.Replayed));
-        Assert.Empty(world.Alerts.Raised);
+        Assert.Equal([(session.Id, VerificationAlertReasons.Review)], world.Alerts.Raised);
         var saved = await world.ReadBackAsync(session.Id);
+        Assert.NotNull(saved.OperatorRequestedAt);
         Assert.True(VerificationOperatorRules.NeedsOperator.Compile()(saved));
+
+        await world.Flow().SubmitPresenceSequenceAsync(session, PresenceClosureKit.Submission(key, null), Ct);
+        Assert.Single(world.Alerts.Raised);
+        Assert.Single(await world.LogRowsAsync(session));
+        Assert.Equal(1, world.Collector.Calls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PresenceClosureIdempotency_AClientThatDropsAfterTheSave_StillGetsTheEffectsOfTheDecision(bool approval)
+    {
+        // The decision is committed, so its effects are not the request's any more: the connection drops the moment the one save is done (the token of the request is cancelled) and the operators
+        // are told (or the lock code released), the encrypted picture of the document is deleted, with no token of the request.
+        var drop = new FailingSaveInterceptor();
+        await using var world = await PresenceClosureWorld.CreateAsync(true, drop);
+        world.Segment = approval ? EvidenceBundles.Allowed : EvidenceBundles.Observation;
+        var session = await world.ReadyStayAsync();
+        var token = await world.IssueChallengeAsync(session);
+        using var dropped = new CancellationTokenSource();
+        drop.AfterSave = dropped.Cancel;
+
+        var answer = await world.Flow().SubmitPresenceSequenceAsync(session, PresenceClosureKit.Submission(PresenceClosureKit.NewKey(), token), dropped.Token);
+        drop.AfterSave = null;
+
+        Assert.True(dropped.IsCancellationRequested);
+        Assert.Equal(approval ? IdentityVerificationGuestResults.Ok : IdentityVerificationGuestResults.Operator, answer.Result);
+        Assert.Empty(world.Storage.Objects);
+        Assert.Equal(approval ? "4321" : null, answer.LockCode);
+        var saved = await world.ReadBackAsync(session.Id);
+        if (approval)
+        {
+            Assert.Equal([(session.OrgId, session.BookingId)], world.Alerts.Resolved);
+            Assert.Null(saved.OperatorRequestedAt);
+        }
+        else
+        {
+            Assert.Equal([(session.Id, VerificationAlertReasons.Review)], world.Alerts.Raised);
+            Assert.NotNull(saved.OperatorRequestedAt);
+            Assert.All(world.Alerts.RaisedWith, raisedWith => Assert.False(raisedWith.CanBeCanceled));
+        }
+    }
+
+    [Fact]
+    public async Task PresenceClosureIdempotency_AFailureOfTheHandOff_IsFinishedByTheNextRequestWithTheSameKey()
+    {
+        // The decision is committed (the row, the outcome, the place in the queue) and the hand-off throws: the operators are not told. The page asks again with the same key, on a session
+        // loaded again: the replay tells them, once, and decides nothing again.
+        await using var world = await PresenceClosureWorld.CreateAsync();
+        var session = await world.ReadyStayAsync();
+        var token = await world.IssueChallengeAsync(session);
+        var key = PresenceClosureKit.NewKey();
+        world.Alerts.FailNextRaise = new InvalidOperationException("the push provider is down");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => world.Flow().SubmitPresenceSequenceAsync(session, PresenceClosureKit.Submission(key, token), Ct));
+
+        var committed = await world.ReadBackAsync(session.Id);
+        Assert.Equal((BiometricOutcome.Escalate, (DateTime?)null), (committed.BiometricOutcome, committed.OperatorRequestedAt));
+        Assert.NotNull(committed.IdentityClosedAt);
+        Assert.Single(await world.LogRowsAsync(session));
+        Assert.Empty(world.Alerts.Raised);
+
+        await using var other = world.NewContext();
+        var reloaded = await world.LoadAsync(session.Id, other);
+        var again = await world.Flow(other).SubmitPresenceSequenceAsync(reloaded, PresenceClosureKit.Submission(key, null), Ct);
+
+        Assert.Equal((IdentityVerificationGuestResults.Operator, true), (again.Result, again.Replayed));
+        Assert.Equal([(session.Id, VerificationAlertReasons.Review)], world.Alerts.Raised);
+        Assert.NotNull((await world.ReadBackAsync(session.Id)).OperatorRequestedAt);
+        Assert.Empty(world.Storage.Objects);
+
+        await world.Flow(other).SubmitPresenceSequenceAsync(reloaded, PresenceClosureKit.Submission(key, null), Ct);
+        Assert.Single(world.Alerts.Raised);
+        Assert.Single(await world.LogRowsAsync(session));
+        Assert.Equal(1, world.Collector.Calls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PresenceClosureIdempotency_AFailureOfTheDeletion_IsFinishedByTheNextRequestWithTheSameKey(bool approval)
+    {
+        // The storage fails when the kept picture of the document is deleted. A review tells the operators all the same, then throws; an approval throws before the code is released. The page
+        // asks again with the same key: the replay deletes the picture (and the rows are marked), the operators are not told twice, the code is released.
+        await using var world = await PresenceClosureWorld.CreateAsync();
+        world.Segment = approval ? EvidenceBundles.Allowed : EvidenceBundles.Observation;
+        var session = await world.ReadyStayAsync();
+        var token = await world.IssueChallengeAsync(session);
+        var key = PresenceClosureKit.NewKey();
+        world.Storage.FailNextDelete = new InvalidOperationException("the storage is down");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => world.Flow().SubmitPresenceSequenceAsync(session, PresenceClosureKit.Submission(key, token), Ct));
+
+        Assert.NotEmpty(world.Storage.Objects);
+        Assert.Equal(approval ? BiometricOutcome.Accept : BiometricOutcome.Escalate, Assert.Single(await world.LogRowsAsync(session)).Outcome);
+        Assert.Equal(approval ? 0 : 1, world.Alerts.Raised.Count);
+        world.AccessCodes.Verify(codes => codes.ReleaseToGuestAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        await using var other = world.NewContext();
+        var reloaded = await world.LoadAsync(session.Id, other);
+        var again = await world.Flow(other).SubmitPresenceSequenceAsync(reloaded, PresenceClosureKit.Submission(key, null), Ct);
+
+        Assert.True(again.Replayed);
+        Assert.Equal(approval ? IdentityVerificationGuestResults.Ok : IdentityVerificationGuestResults.Operator, again.Result);
+        Assert.Equal(approval ? "4321" : null, again.LockCode);
+        Assert.Empty(world.Storage.Objects);
+        Assert.Equal(approval ? 0 : 1, world.Alerts.Raised.Count);
+        await using var read = world.NewContext();
+        Assert.All(await read.DocumentImages.IgnoreQueryFilters().AsNoTracking().ToListAsync(Ct), image => Assert.NotNull(image.DeletedAt));
         Assert.Single(await world.LogRowsAsync(session));
     }
 
