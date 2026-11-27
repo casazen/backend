@@ -70,4 +70,4 @@ Supabase free tier pauses after 7 days of inactivity. Use `supabase-keepalive.ym
 
 ## Release bundles
 
-When a feature spans both BE and FE (e.g., BE #165 + FE #177), they form a Release Bundle tracked in `Sessions/bundle-<epic>.md`. Both must be verified on test before either is promoted to production.
+When a feature spans both BE and FE (e.g., BE #165 + FE #177), both must be verified on test before either is promoted to production; track the bundle in the PR descriptions and in `documentazione/03-documenti-ai/consegne/` of the workspace (no `Sessions/` folder exists any more).

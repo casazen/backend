@@ -1,58 +1,74 @@
-# AGENTS.md
+# AGENTS.md — CasaZen backend
 
-## Cursor Cloud specific instructions
+> Verificato il 2026-11-27 su `develop@232b21fb`. Letto da tutti gli agenti (Claude Code tramite `CLAUDE.md`, Cursor, Codex).
+> **Questo repository è PUBBLICO** (`casazen/backend`): niente segreti, niente documenti riservati (business plan, listino, pareri legali o fiscali, contratti, dati personali o di clienti).
 
-This repository is the **CasaZen backend API** (.NET 10 + PostgreSQL). The React frontend lives in a separate repo (`casazen/frontend`).
+## Il progetto in breve
 
-### Services (this repo)
+API **.NET 10** + **PostgreSQL 16** per CasaZen: immobili, prenotazioni, ospiti, organizzazioni, affitti lunghi, adempimenti (Alloggiati, ISTAT, Svizzera), fatturazione, fornitori. Webapp e app mobile sono repository separati: `casazen/frontend` (pubblico) e `casazen/mobile` (privato).
 
-| Service | Required locally | Notes |
-|---|---|---|
-| PostgreSQL 16 | Yes | Local DB `casazen_dev` on port 5432 (`postgres` / `dev`) — see `Casazen.Web/appsettings.Development.json` |
-| CasaZen API (`Casazen.Web`) | Yes | HTTP `http://localhost:5000`, HTTPS `https://localhost:5001` |
-| Hangfire | Bundled | Uses a PostgreSQL schema per environment (`Hangfire:Schema`, default `hangfire_<SearchPath>`; see `docs/runbooks/hangfire.md`); dashboard at `/hangfire` when DB is configured |
+| Progetto | Responsabilità |
+|---|---|
+| `Casazen.Core` | entità, regole di dominio, interfacce di servizio e repository, `Features/FeatureFlags.cs` |
+| `Casazen.Infrastructure` | EF Core e migrazioni, repository, servizi, integrazioni esterne |
+| `Casazen.Web` | controller, DTO, autenticazione e policy, middleware, DI, job Hangfire |
+| `Casazen.Tests` | test unitari, di integrazione (PostgreSQL reale) e vincoli architetturali |
 
-### Environment variables / shell
+Il flusso delle dipendenze è Web → Core/Infrastructure; il dominio resta in Core. L'organizzazione (`OrgId`) e l'ambito sugli immobili sono controlli di accesso ai dati, non filtri opzionali: usa lo scope e le policy esistenti e non accettare un `OrgId` del client come autorità. Stack: Auth0 (JWT su ogni `/api`), Stripe (webhook con firma verificata), Resend (email in coda su Hangfire), Hangfire (uno schema per ambiente). Ogni funzione nuova va dietro un **feature flag** spento di default (`Features:<Nome>`, variabile `Features__<Nome>`; elenco e regole in `docs/runbooks/feature-flags.md`).
 
-`.NET` is installed under `~/.dotnet`. Ensure these are set (already in `~/.bashrc` on the Cloud VM):
+## Ambiente locale (e Cursor Cloud)
 
-```bash
-export DOTNET_ROOT="$HOME/.dotnet"
-export PATH="$HOME/.dotnet:$HOME/.dotnet/tools:$PATH"
-```
+| Servizio | Note |
+|---|---|
+| PostgreSQL 16 | database locale `casazen_dev` sulla porta 5432; stringa d'esempio in `Casazen.Web/appsettings.Development.example.json` (il file `appsettings.Development.json` non si committa) |
+| API `Casazen.Web` | `http://localhost:5000`, `https://localhost:5001`; Swagger solo in sviluppo su `/swagger` |
+| Hangfire | incluso; schema `Hangfire:Schema` o `hangfire_<SearchPath>` (`docs/runbooks/hangfire.md`) |
 
-### PostgreSQL startup
-
-PostgreSQL may not auto-start after a fresh VM boot. Before migrations or running the API:
-
-```bash
-sudo pg_ctlcluster 16 main start
-```
-
-Connection string (default): `Host=localhost;Port=5432;Database=casazen_dev;Username=postgres;Password=dev`
-
-### Common commands
-
-See `README.md` and `.github/workflows/ci-cd.yml` for canonical commands:
+Su una VM Cursor Cloud .NET sta in `~/.dotnet` (`export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$HOME/.dotnet/tools:$PATH"`) e PostgreSQL può non partire da solo: `sudo pg_ctlcluster 16 main start`.
 
 ```bash
 dotnet restore
 dotnet build --configuration Release
-dotnet ef database update --project Casazen.Infrastructure --startup-project Casazen.Web
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Port=5432;Database=casazen_dev;Username=postgres;Password=<password locale>" --project Casazen.Web
+dotnet ef database update --project Casazen.Infrastructure --startup-project Casazen.Web   # dotnet-ef 10.0.12, come i pacchetti EF
 dotnet run --project Casazen.Web
-dotnet test --configuration Release --filter "FullyQualifiedName!~PropertiesControllerIntegrationTests&FullyQualifiedName!~ApiTests&FullyQualifiedName!~UsersControllerIntegrationTests"
+```
+
+- Health: `GET /api/health/live` → 200; `/api/health/ready` e `/api/health` → 200 `degraded` se Stripe, email o Auth0 M2M non sono configurati in locale, 503 se database o Hangfire sono giù (`docs/runbooks/health-checks.md`). `GET /api/properties` senza bearer → 401.
+- Non esiste un `docker-compose.yml` alla radice (solo `observability/docker-compose.yml`). Database e hosting: `docs/INFRA.md` (da rivedere, vedi `docs/README.md`).
+- Le chiavi Auth0/Stripe/Resend dell'esempio sono segnaposto: i servizi esterni sono opzionali per gli smoke test locali.
+
+## Prima di consegnare
+
+```bash
+dotnet build --configuration Release
+dotnet test --configuration Release --no-build        # in locale si può filtrare con --filter e dirlo nel resoconto
 dotnet format --verify-no-changes
 ```
 
-### Health / smoke checks
+- La CI (`.github/workflows/ci-cd.yml`) esegue **la suite completa** in 6 shard su `postgres:16`, più il controllo dei pacchetti vulnerabili e `dotnet format`. Nessuna esclusione di classi: se un test è rosso, si ripara.
+- I test di integrazione usano PostgreSQL reale: esporta `TEST_POSTGRES_CONNECTION="Host=localhost;Port=5432;Username=postgres;Password=<password locale>"` (ogni factory crea, migra e cancella un database `it_<guid>`). Senza la variabile si usa Testcontainers (serve Docker); l'ultimo ripiego, EF InMemory, vale solo in locale e non verifica i vincoli di PostgreSQL.
+- Ogni cambio di schema ha una migrazione EF (`dotnet ef migrations add <Nome> --project Casazen.Infrastructure`), provata in locale.
+- Ogni stringa visibile ha le sue chiavi in italiano e inglese (backend: `IStringLocalizer<T>` + `.resx`; frontend: `t()`), e ogni funzione visibile a host, ospite, fornitore o staff aggiorna la **demo** (`DemoShowcaseCatalog`).
+- Insidie ricorrenti (altre in `.claude/rules/gotchas.md`): `DateTime.UtcNow` internamente; fuso dell'immobile come stringa IANA (`Europe/Rome` di default) e conversioni con `TimezoneHelper`; tutti gli endpoint `/api` richiedono il JWT Auth0 salvo quelli esplicitamente pubblici (health, prenotazione e pagine pubbliche, testi legali, webhook); i webhook rispondono entro 3 secondi e delegano a Hangfire; la firma dei webhook Stripe si verifica sempre; le aliquote dell'imposta di soggiorno stanno nelle entità `TaxRate`, mai nel codice.
 
-- `GET http://localhost:5000/api/health/live` → **200**; `/api/health/ready` (and `/api/health`) → **200** `degraded` when Stripe/email/Auth0 M2M are not configured locally, **503** when the database or Hangfire is down (`docs/runbooks/health-checks.md`)
-- `GET http://localhost:5000/api/properties` → **401** (auth gate)
-- Swagger: `http://localhost:5000/swagger`
+## Flusso di consegna
 
-### Gotchas
+- Branch `feature/<nome>`, `fix/<nome>` o `hotfix/<nome>` **da `develop`**; commit in Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`), **senza** riga `Co-Authored-By`.
+- **Mai push o merge diretto su `develop` o `main`.** Apri una PR verso `develop` (`gh pr create --base develop`): corpo con Riepilogo, Piano di prova e `Closes #N`; si ferma lì. `main` solo con una PR di rilascio e solo su richiesta esplicita dell'utente. Non si fa force-push su rami condivisi.
+- Le regole dettagliate per zona stanno in `.claude/rules/*.md` (stile del codice, conformità italiana e CIN, demo, git, GitHub Flow, infrastruttura, integrazioni, sicurezza, insidie): leggi quelle della zona che tocchi. Non contraddicono questo file; se lo fanno, vale il più restrittivo e va segnalato.
 
-- Use local PostgreSQL or Supabase per `docs/INFRA.md`. There is no root `docker-compose.yml`.
-- Integration tests run on real PostgreSQL: export `TEST_POSTGRES_CONNECTION="Host=localhost;Port=5432;Username=postgres;Password=dev"` (each web factory creates, migrates and drops its own `it_<guid>` database). CI uses a `postgres:16` service (see `ci-cd.yml`); without the variable Testcontainers is used, and InMemory only as a local fallback with a warning (`docs/TECHNICAL.md` § Testing).
-- `dotnet ef` global tool, same version as the `Microsoft.EntityFrameworkCore.*` packages (10.0.12): `dotnet tool update --global dotnet-ef --version 10.0.12` (installs it when missing). An older tool prints "The Entity Framework tools version … is older than that of the runtime" (`docs/runbooks/ci-backend.md`).
-- Auth0/Stripe/Resend keys in `appsettings.Development.json` are placeholders; external services are optional for local API smoke tests.
+## Documentazione: tienila pulita e aggiornata
+
+La documentazione di progetto sta nella cartella **`documentazione/` del workspace CasaZen** (la cartella che contiene `backend/`, `frontend/` e `mobile/`), **fuori dai repository** di proposito. `01-documenti-ufficiali/` è scritta o approvata dall'utente o da professionisti; `03-documenti-ai/` è scritta dall'AI (requisiti, punti aperti, decisioni, revisioni, integrazioni, ADR, consegne). Regole:
+
+1. **Un solo posto.** Analisi, requisiti, punti aperti, decisioni, revisioni legali e fiscali, ADR, specifiche e report vivono solo in `documentazione/`. **Non creare `.md` sparsi in questo repository** e niente log, JSON di stato, cartelle «attempt», report o appunti di sessione (sono rumore e restano nella storia git). Eccezione tecnica: `docs/runbooks/`, `docs/TECHNICAL.md`, `docs/INFRA.md`, `docs/AUTH0_SETUP.md`, `docs/compliance/guest-registration-switzerland.md` e `docs/legal-drafts/leases/` restano qui perché test C# e messaggi a runtime dipendono da loro (13 runbook, l'indice dei runbook, `TECHNICAL.md`, la pagina svizzera e le bozze dei contratti sono letti dai test; vedi `docs/README.md`): si aggiornano qui, nella stessa PR del codice.
+2. **La PR che cambia un comportamento aggiorna i documenti toccati**: lo stato dei requisiti (`documentazione/03-documenti-ai/requisiti/<area>.md`), i punti aperti (quelli chiusi vanno in `decisioni.md` con data e decisione), i runbook, **la guida utente** (`frontend/guida/**` sorgenti e `frontend/public/guida/**` pagine generate con `npm run guida:build`, più i testi `productGuide` della guida in-app in `frontend/src/i18n/locales/{it,en}.json`) e **la documentazione tecnica ufficiale** (`documentazione/01-documenti-ufficiali/documentazione-tecnica/`, sorgenti e PDF: si rigenera quando cambiano architettura, stack, integrazioni, sicurezza o moduli). Se questi due artefatti non sono ancora in `develop`, citali comunque nella PR.
+3. **Una sola fonte per argomento**: collega, non copiare. Se trovi due versioni dello stesso documento, tieni la corrente e togli l'altra.
+4. **Date assolute** (AAAA-MM-GG) e, in testa a ogni documento vivo, l'ultima verifica: `Verificato il AAAA-MM-GG su develop@<sha>` solo se hai davvero controllato i fatti contro codice o `gh`; altrimenti `Stato: NON verificato — fonte: <file>`. Non scrivere «consegnato» ciò che è specifica o placeholder.
+5. **A fine lavoro rimuovi i file temporanei** che hai creato (script, log, patch, bozze).
+6. **Documenti riservati** (business plan, listino, pareri, contratti, dati di clienti) **mai** in questo repository pubblico.
+7. I **documenti ufficiali** (`01-documenti-ufficiali/`) non si riscrivono senza richiesta dell'utente.
+8. Se una regola di questa sezione confligge con quanto trovi nel repository, **segnalalo** (nella PR o nel report) invece di scegliere in silenzio.
+
+Senza accesso al workspace (per esempio in una sandbox cloud) non inventare né ricreare documenti qui: scrivi nella PR cosa andrebbe aggiornato in `documentazione/`.
