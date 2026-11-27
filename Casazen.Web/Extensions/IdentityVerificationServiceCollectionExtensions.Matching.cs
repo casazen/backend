@@ -16,5 +16,9 @@ public static partial class IdentityVerificationServiceCollectionExtensions
         // anti-spoofing service of the check-in is.
         services.AddSingleton<PresenceFrameSelector>();
         services.AddScoped<SequenceLivenessEvaluator>();
+
+        // E72/F01/US02/T02: the comparison of the portrait of the document with the frames the server chose. Stateless: it takes the face detector and the embedder of the check-in (singletons)
+        // and the options of the models, and keeps nothing of a picture. It takes nothing of the presence: no liveness, no challenge.
+        services.AddSingleton<PresenceMatcher>();
     }
 }
