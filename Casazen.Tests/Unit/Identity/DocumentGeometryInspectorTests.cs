@@ -408,6 +408,80 @@ public class DocumentGeometryInspectorTests
         Assert.Equal(IdentityGuidanceCodes.DocumentBlur, report.Codes[^1]);
     }
 
+    // ---- a card that is not held straight: the tolerance, as measured -------------------------------------------------------------------------------------------------
+    // The detector reads the card by the straight rows and columns of its edges (no search of the angle in this slice), so it tolerates very little. These tests hold what the
+    // code really does on the generated card (480 by 303 pixels in 640 by 480, edges softened by the bilinear turn of the factory), the figures of the documentation of the
+    // inspector and of the pull request: found whole up to 0.2 degrees either way, not found from 0.35 degrees (0.25 on most of the pictures). Real photos may not behave the same.
+
+    private static IFaceDetector DetectorFor(DocumentSide side) => side == DocumentSide.Front ? new PortraitStandInDetector() : new ScriptedFaceDetector();
+
+    [Theory]
+    [InlineData(DocumentSide.Front, 0.2)]
+    [InlineData(DocumentSide.Front, -0.2)]
+    [InlineData(DocumentSide.Back, 0.2)]
+    [InlineData(DocumentSide.Back, -0.2)]
+    public void Inspect_ACardTurnedByTwoTenthsOfADegree_IsStillFoundWhole(DocumentSide side, double degrees)
+    {
+        using var upright = DocumentImageFactory.Render(Cie, side, DocumentImageFactory.WholeCard);
+        using var turned = DocumentImageFactory.Rotated(upright, degrees);
+
+        var report = Inspect(turned, DetectorFor(side), side);
+
+        Assert.True(report.CardFound);
+        Assert.True(report.EdgesVisible);
+        Assert.True(report.AspectOk);
+        Assert.Equal(0, report.RotationDegrees);
+        Assert.Empty(report.Codes);
+    }
+
+    [Theory]
+    [InlineData(DocumentSide.Front, 1)]
+    [InlineData(DocumentSide.Front, -1)]
+    [InlineData(DocumentSide.Front, 3)]
+    [InlineData(DocumentSide.Front, -3)]
+    [InlineData(DocumentSide.Back, 1)]
+    [InlineData(DocumentSide.Back, -1)]
+    [InlineData(DocumentSide.Back, 3)]
+    [InlineData(DocumentSide.Back, -3)]
+    public void Inspect_ACardTurnedByADegreeOrMore_IsNotFound(DocumentSide side, double degrees)
+    {
+        using var upright = DocumentImageFactory.Render(Cie, side, DocumentImageFactory.WholeCard);
+        using var turned = DocumentImageFactory.Rotated(upright, degrees);
+        var detector = new ScriptedFaceDetector();
+
+        var report = Inspect(turned, detector, side);
+
+        Assert.False(report.CardFound);
+        Assert.Null(report.CardBox);
+        Assert.False(report.EdgesVisible);
+        Assert.False(report.AspectOk);
+        Assert.Equal([IdentityGuidanceCodes.DocumentNotFound], report.Codes);
+        Assert.Equal(0, detector.Calls);
+    }
+
+    [Fact]
+    public void Inspect_ACardTurnedMoreThanTheTolerance_IsNeverTakenForAWholeCard()
+    {
+        // From 0.25 degrees, either way, up to 10: whatever the turn, the guest is asked for a new capture of a card that is found or not, never given a whole card of its layout.
+        foreach (var side in new[] { DocumentSide.Front, DocumentSide.Back })
+        {
+            foreach (var degrees in new[] { 0.25, 0.3, 0.35, 0.5, 1, 1.5, 2, 3, 5, 10 })
+            {
+                foreach (var sign in new[] { 1, -1 })
+                {
+                    using var upright = DocumentImageFactory.Render(Cie, side, DocumentImageFactory.WholeCard);
+                    using var turned = DocumentImageFactory.Rotated(upright, sign * degrees);
+
+                    var report = Inspect(turned, DetectorFor(side), side);
+
+                    var turn = $"{side} turned by {sign * degrees} degrees";
+                    Assert.False(report.EdgesVisible, turn);
+                    Assert.Contains(report.Codes, code => code is IdentityGuidanceCodes.DocumentNotFound or IdentityGuidanceCodes.DocumentEdgesNotVisible);
+                }
+            }
+        }
+    }
+
     // ---- the picture, the copies, the faults ----------------------------------------------------------------------------------------------------------------------
 
     [Fact]

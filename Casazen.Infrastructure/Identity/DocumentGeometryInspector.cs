@@ -19,8 +19,12 @@ namespace Casazen.Infrastructure.Identity;
 /// frame. (4) The card is the largest rectangle bounded by such rows and columns whose sides are straight edges: a side is a line of the picture when one row (or column)
 /// within a pixel or two of it has an edge pixel along three quarters of the side, so a structure inside the card (the portrait is 62% of its height) is not a side. Of the
 /// rectangles that cover at least <c>Layout.MinCardAreaShare</c>, the one with the most sides that are lines of the picture (a side that is the border of the picture is a card
-/// cut by the frame), then the one of the ratio of the format, then the largest. A full Hough transform is not needed: the card is expected within about half a degree of the
-/// axes (the guided capture keeps it straight, and the zones of the format are rectangles of the card); a card turned more than that is not found, which is a targeted guidance.
+/// cut by the frame), then the one of the ratio of the format, then the largest. There is no search of the angle in this slice (the guided capture keeps the card straight, and
+/// the zones of the format are rectangles of the card), so the tolerance is small. <b>Measured</b> (<c>DocumentGeometryInspectorTests</c>: the card of
+/// <c>DocumentImageFactory</c>, 480 by 303 pixels in a picture of 640 by 480, its edges softened by a bilinear turn as in a photo): a card turned by up to 0.2 degrees either way
+/// is found whole; from 0.35 degrees (0.25 on most of the pictures) it is not found at all, <c>document_not_found</c>, up to the 10 degrees tried (the front turned 0.25 and
+/// 0.3 degrees counter-clockwise was found as a small rectangle and asked for as <c>document_edges_not_visible</c>); never a whole card of its layout. Real photos may not
+/// behave the same, and a card that is not held straight to a fraction of a degree is asked for again: the search of the angle is a slice of its own.
 /// (5) <see cref="DocumentGeometryReport.EdgesVisible"/>, <see cref="DocumentGeometryReport.AspectOk"/> and the rotation of 0 or 90 degrees follow from the rectangle and
 /// <c>Layout</c>. (6) On a measurable card (whole, visible, of the ratio) the portrait is looked for with <c>DocumentPortrait</c>, which tries the picture upright and
 /// turned by 90, 270 and 180 degrees and keeps the turn at which the detector is surest; a card with no face to tell it takes its turn from the MRZ band of the side

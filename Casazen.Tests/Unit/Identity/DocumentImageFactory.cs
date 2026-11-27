@@ -86,6 +86,36 @@ internal static class DocumentImageFactory
     public static RasterImage TurnedHalf(RasterImage source) =>
         Remap(source, source.Width, source.Height, (x, y) => (source.Width - 1 - x, source.Height - 1 - y));
 
+    /// <summary>
+    /// The picture turned <paramref name="degrees"/> clockwise around its centre (a small angle: a card that is not held straight), bilinear, so the edges are as soft as the ones of
+    /// a photo (two or three pixels). What the turn uncovers at the border is the background of the picture, so no edge appears there.
+    /// </summary>
+    public static RasterImage Rotated(RasterImage source, double degrees)
+    {
+        var radians = degrees * Math.PI / 180.0;
+        var cos = Math.Cos(radians);
+        var sin = Math.Sin(radians);
+        var centreX = (source.Width - 1) / 2.0;
+        var centreY = (source.Height - 1) / 2.0;
+        var rgb = new byte[source.Rgb.Length];
+        for (var y = 0; y < source.Height; y++)
+        {
+            for (var x = 0; x < source.Width; x++)
+            {
+                // The pixel of the result comes from the source turned back, so the content turns clockwise (the y axis points down).
+                var dx = x - centreX;
+                var dy = y - centreY;
+                var fromX = centreX + (cos * dx) + (sin * dy);
+                var fromY = centreY - (sin * dx) + (cos * dy);
+                var at = ((y * source.Width) + x) * 3;
+                for (var channel = 0; channel < 3; channel++)
+                    rgb[at + channel] = Sample(source, fromX, fromY, channel);
+            }
+        }
+
+        return new RasterImage(source.Width, source.Height, rgb);
+    }
+
     /// <summary>The picture with every pixel <paramref name="delta"/> levels brighter (darker when negative), kept within 0 to 255.</summary>
     public static RasterImage Brightened(RasterImage source, int delta)
     {
@@ -162,6 +192,24 @@ internal static class DocumentImageFactory
 
     private static bool Near(byte[] rgb, int at, (byte R, byte G, byte B) colour) =>
         Math.Abs(rgb[at] - colour.R) <= 20 && Math.Abs(rgb[at + 1] - colour.G) <= 20 && Math.Abs(rgb[at + 2] - colour.B) <= 20;
+
+    /// <summary>One channel of the picture at a point between its pixels (bilinear); the background level outside the picture.</summary>
+    private static byte Sample(RasterImage source, double x, double y, int channel)
+    {
+        if (x < 0 || y < 0 || x > source.Width - 1 || y > source.Height - 1)
+            return BackgroundLevel;
+
+        var left = (int)x;
+        var top = (int)y;
+        var right = Math.Min(left + 1, source.Width - 1);
+        var bottom = Math.Min(top + 1, source.Height - 1);
+        var shareX = x - left;
+        var shareY = y - top;
+        double At(int column, int row) => source.Rgb[(((row * source.Width) + column) * 3) + channel];
+        var upper = (At(left, top) * (1 - shareX)) + (At(right, top) * shareX);
+        var lower = (At(left, bottom) * (1 - shareX)) + (At(right, bottom) * shareX);
+        return (byte)((upper * (1 - shareY)) + (lower * shareY) + 0.5);
+    }
 
     private static RasterImage Remap(RasterImage source, int width, int height, Func<int, int, (int X, int Y)> destination)
     {
