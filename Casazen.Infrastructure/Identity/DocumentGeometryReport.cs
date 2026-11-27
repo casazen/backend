@@ -37,8 +37,9 @@ public sealed record NormalizedBox(double X, double Y, double W, double H);
 /// </param>
 /// <param name="RotationDegrees">
 /// 0, 90, 180 or 270: how many degrees <b>clockwise</b> the picture must be turned to make the card the canonical upright landscape card (<see cref="ExifOrientation"/> is
-/// the same turn as <c>RasterImage.Oriented</c> takes it). 90 and 270 are tall cards; 180 is a card upside down. Decided on the card box, then, on a side that has the portrait, on
-/// the turn at which the face is found and, on a side that has an MRZ band, on the band. 0 when the card is not measurable (it is not asked to turn before it is whole).
+/// the same turn as <c>RasterImage.Oriented</c> takes it). 90 and 270 are tall cards; 180 is a card upside down. Decided on the card box, then, on a side that has an MRZ band and
+/// no portrait (the back), on the band, before any face (a face found on it never turns it); on a side that has the portrait, on the turn at which the face is found, and with no
+/// face on the band of the side. 0 when the card is not measurable (it is not asked to turn before it is whole).
 /// </param>
 /// <param name="PortraitInZone">
 /// A face lies in the portrait zone of the format. Null when it was not asked: the format has no portrait zone, or the card is not measurable whole yet, or the face could only

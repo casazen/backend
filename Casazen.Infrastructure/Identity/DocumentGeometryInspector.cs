@@ -27,8 +27,10 @@ namespace Casazen.Infrastructure.Identity;
 /// behave the same, and a card that is not held straight to a fraction of a degree is asked for again: the search of the angle is a slice of its own.
 /// (5) <see cref="DocumentGeometryReport.EdgesVisible"/>, <see cref="DocumentGeometryReport.AspectOk"/> and the rotation of 0 or 90 degrees follow from the rectangle and
 /// <c>Layout</c>. (6) On a measurable card (whole, visible, of the ratio) the portrait is looked for with <c>DocumentPortrait</c>, which tries the picture upright and
-/// turned by 90, 270 and 180 degrees and keeps the turn at which the detector is surest; a card with no face to tell it takes its turn from the MRZ band of the side
-/// (<c>Layout.Sides[side].MrzRegion</c>: the band is the densest text of a document, so the card is upright when the band has more edges than the opposite region).
+/// turned by 90, 270 and 180 degrees and keeps the turn at which the detector is surest. The turn of a side that carries the MRZ band and no portrait (the back) comes from the
+/// band (<c>Layout.Sides[side].MrzRegion</c>: the band is the densest text of a document, so the card is upright when the band has more edges than the opposite region) BEFORE
+/// any face: a face found on such a side is a front sent as the back or a stray detection, and only says where a portrait is (for the classifier of the side), never how the
+/// card lies. On any other side the turn is the one at which the face is found, and a card with no face to tell it takes its turn from the band of the side.
 /// (7) Glare and blur are measured with the statistics of the capture checks, on the card.
 /// </para>
 /// <para>
@@ -175,30 +177,62 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
     }
 
     /// <summary>
-    /// The turn of a measurable card, and where its portrait is. A format with a portrait zone looks for the face in the card made landscape (a tall card is turned a
-    /// quarter clockwise first): found upright, the turn is the one of the card; found at a half turn, 180 degrees more; found only sideways, the card cannot be turned
-    /// (it is not decided and the portrait is not judged). With no face, or no zone, the MRZ band of the declared side tells the turn; with neither, a landscape card is
-    /// taken as upright and a tall one is not decided.
+    /// The turn of a measurable card, and where its portrait is. A side that carries the MRZ band and no portrait (the back) is turned by its band BEFORE any face: a face found
+    /// on it (a front sent as the back, or a stray detection) only says where a portrait is, for the classifier of the side, and never how the card lies, so a face found
+    /// sideways does not leave the back undecided and one found at a half turn does not turn it. On any other side a format with a portrait zone looks for the face in the card
+    /// made landscape (a tall card is turned a quarter clockwise first): found upright, the turn is the one of the card; found at a half turn, 180 degrees more; found only
+    /// sideways, the card cannot be turned (it is not decided and the portrait is not judged). With no face, or no zone, the MRZ band of the declared side tells the turn; with
+    /// neither, a landscape card is taken as upright and a tall one is not decided.
     /// </summary>
     private Orientation ResolveOrientation(
         RasterImage image, GrayBitmap? cardGray, NormalizedBox box, bool tall, DocumentFormat format, DocumentSide declaredSide, CancellationToken cancellationToken)
     {
         var baseRotation = tall ? 90 : 0;
         var zone = PortraitZone(format);
-        if (zone is { } portraitZone && FindPortrait(image, box, tall, cancellationToken) is { } evidence)
+        var evidence = zone is null ? null : FindPortrait(image, box, tall, cancellationToken);
+        format.Layout.Sides.TryGetValue(DocumentSides.CodeOf(declaredSide), out var declaredLayout);
+
+        if (declaredLayout is { MrzRegion: { } band, Portrait: null })
+        {
+            var (bandRotation, bandDecided) = MrzBandTurn(cardGray, tall, band);
+            if (bandDecided)
+            {
+                var (bandInZone, bandFarOutside) = JudgePortrait(zone, evidence);
+                return new Orientation(bandRotation, true, bandInZone, bandFarOutside);
+            }
+        }
+
+        if (zone is not null && evidence is not null)
         {
             if (evidence.ExifOrientation is 6 or 8)
                 return new Orientation(baseRotation, false, null, false);
 
             var rotation = evidence.ExifOrientation == 3 ? (baseRotation + 180) % 360 : baseRotation;
-            var inZone = Contains(portraitZone.Region, evidence.CenterX, evidence.CenterY);
-            var farOutside = !inZone && !Overlaps(portraitZone.Region, evidence);
+            var (inZone, farOutside) = JudgePortrait(zone, evidence);
             return new Orientation(rotation, true, inZone, farOutside);
         }
 
-        format.Layout.Sides.TryGetValue(DocumentSides.CodeOf(declaredSide), out var declaredLayout);
         var (cueRotation, cueDecided) = MrzBandTurn(cardGray, tall, declaredLayout?.MrzRegion);
         return new Orientation(cueRotation, cueDecided, zone is null ? null : false, false);
+    }
+
+    /// <summary>
+    /// Where the portrait is, from the face found on the card (null when none): <c>(null, false)</c> when no side of the format has a portrait zone or the face was found only
+    /// sideways (not judged), <c>(false, false)</c> with no face, else whether the centre of the face is in the zone and whether the face is far outside it (no area in common).
+    /// </summary>
+    private static (bool? InZone, bool FarOutside) JudgePortrait((string Side, DocumentFormatRegion Region)? zone, PortraitEvidence? evidence)
+    {
+        if (zone is not { } portraitZone)
+            return (null, false);
+
+        if (evidence is null)
+            return (false, false);
+
+        if (evidence.ExifOrientation is 6 or 8)
+            return (null, false);
+
+        var inZone = Contains(portraitZone.Region, evidence.CenterX, evidence.CenterY);
+        return (inZone, !inZone && !Overlaps(portraitZone.Region, evidence));
     }
 
     /// <summary>

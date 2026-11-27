@@ -344,6 +344,66 @@ public class DocumentGeometryInspectorTests
         Assert.Empty(report.Codes);
     }
 
+    /// <summary>
+    /// A scripted detector that finds a face in the zone of the portrait only at the turn of the card it is asked about: 1 the card as it lies, 6 or 8 a quarter turn
+    /// either way (the frame is then tall), 3 a half turn. <paramref name="cardWidth"/> and <paramref name="cardHeight"/> are those of the card made landscape.
+    /// </summary>
+    private static ScriptedFaceDetector FaceFoundAtTurn(int turn, int cardWidth, int cardHeight) => turn switch
+    {
+        1 => new ScriptedFaceDetector(OnCard(InTheZone, cardWidth, cardHeight), [], [], []),
+        6 => new ScriptedFaceDetector([], OnCard(InTheZone, cardHeight, cardWidth), [], []),
+        8 => new ScriptedFaceDetector([], [], OnCard(InTheZone, cardHeight, cardWidth), []),
+        _ => new ScriptedFaceDetector([], [], [], OnCard(InTheZone, cardWidth, cardHeight)),
+    };
+
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(0, 6)]
+    [InlineData(0, 8)]
+    [InlineData(0, 3)]
+    [InlineData(90, 1)]
+    [InlineData(90, 6)]
+    [InlineData(90, 8)]
+    [InlineData(90, 3)]
+    [InlineData(180, 1)]
+    [InlineData(180, 6)]
+    [InlineData(180, 8)]
+    [InlineData(180, 3)]
+    [InlineData(270, 1)]
+    [InlineData(270, 6)]
+    [InlineData(270, 8)]
+    [InlineData(270, 3)]
+    public void Inspect_ABackThatTheDetectorFindsAFaceOn_IsTurnedByItsMrzBandAndTheFaceOnlySaysWhereAPortraitIs(int degrees, int faceTurn)
+    {
+        // Measured before the band was put first: a face found sideways (6 or 8) on an upright back made it document_orientation, and one found at a half turn (3) turned
+        // the back by 180 degrees; on a back upside down a face found upright (1) turned it back to 0. A face on the back is a front sent as the back or a stray detection.
+        using var upright = DocumentImageFactory.Render(Cie, DocumentSide.Back, DocumentImageFactory.WholeCard);
+        using var turned = Turn(upright, degrees);
+
+        var report = Inspect(turned, FaceFoundAtTurn(faceTurn, 480, 303), DocumentSide.Back);
+
+        // A face found sideways is not judged (null); found upright or at a half turn, it is in the zone the scripted detector puts it in.
+        bool? expectedPortrait = faceTurn is 6 or 8 ? null : true;
+        Assert.True(report.EdgesVisible);
+        Assert.True(report.AspectOk);
+        Assert.Equal(degrees, report.RotationDegrees);
+        Assert.Empty(report.Codes);
+        Assert.Equal(expectedPortrait, report.PortraitInZone);
+    }
+
+    [Fact]
+    public void Inspect_AFrontSentAsTheBackUpsideDown_StillShowsItsPortraitAndAsksNothingAboutIt()
+    {
+        // The band of a front means nothing, so the turn reported for it is not asserted: the picture is asked again as the wrong side. The portrait is what the classifier needs.
+        using var upright = DocumentImageFactory.Render(Cie, DocumentSide.Front, DocumentImageFactory.WholeCard);
+        using var turned = DocumentImageFactory.TurnedHalf(upright);
+
+        var report = Inspect(turned, new PortraitStandInDetector(), DocumentSide.Back);
+
+        Assert.True(report.PortraitInZone);
+        Assert.Empty(report.Codes);
+    }
+
     [Fact]
     public void Inspect_TheFaceDetector_IsAskedWithTheScoreOfTheDocumentPhoto()
     {
