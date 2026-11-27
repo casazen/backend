@@ -353,7 +353,7 @@ public sealed class PresenceSequenceValidator(
         return motion.BytesIdentical || motion.MaxMeanDifference < rules.MinPixelDifference;
     }
 
-    /// <summary>Between consecutive frames that each have one face: the centre of the face moves more than <c>maxCenterJump</c> face widths, or its width changes by more than <c>maxSizeChange</c>.</summary>
+    /// <summary>Between consecutive frames that each have one face: the centre of the face moves more than <c>maxCenterJump</c> face widths (the mean width of the two boxes, never a share of the frame), or its width changes by more than <c>maxSizeChange</c> of the first one.</summary>
     private static bool JumpsOrChangesSize(IReadOnlyList<FrameObservation> frames, IdentityContinuityPolicy rules)
     {
         for (var index = 1; index < frames.Count; index++)
