@@ -91,6 +91,10 @@ public sealed class DocumentStepRegistrationTests
         services.AddSingleton<IBiometricModelStore>(new Casazen.Tests.Unit.Services.FakeBiometricModelStore());
         services.AddSingleton(Mock.Of<IFeatureFlags>());
         services.AddSingleton(TimeProvider.System);
+
+        // E73/F01/US02/T01: the flow also takes the store of the evidence of the reviewer, which writes to the private bucket with Data Protection.
+        services.AddSingleton(Mock.Of<IFileStorage>());
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         var databaseName = $"document-step-registration-services-{Guid.NewGuid()}";
         services.AddScoped(_ => new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(databaseName).Options));
         services.AddSelfHostedIdentityVerification();

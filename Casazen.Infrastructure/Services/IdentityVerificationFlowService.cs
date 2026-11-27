@@ -52,6 +52,8 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Self-hosted presence and closure</b> (E73/F01/US01/T02, the part <c>IdentityVerificationFlowService.Sequence.cs</c>): with the flow on, the step after the document is
 /// <c>presence</c> (a challenge and a sequence of frames, decided by the versioned policy in one lock and one save, idempotent by its key) and the two-frame selfie of today is closed
 /// (its routes answer <c>presence_sequence_required</c>). Off, nothing of it runs and the selfie is the step, as before.</para>
+/// <para><b>Evidence of the reviewer</b> (E73/F01/US02/T01, <c>Features:CheckInIdentityReviewEvidence</c>): a review of the closure keeps the crop of the portrait and the frames the
+/// server chose, encrypted and for a short time, before the kept pictures of the document go (<see cref="IdentityReviewEvidenceStore"/>); never in Ticino, never on an approval.</para>
 /// </remarks>
 public sealed partial class IdentityVerificationFlowService(
     AppDbContext db,
@@ -83,7 +85,8 @@ public sealed partial class IdentityVerificationFlowService(
     FrameSequenceReader? frameReader = null,
     IPresenceEvidenceCollector? evidenceCollector = null,
     IIdentitySegmentService? segments = null,
-    IdentityDecisionEngine? decisionEngine = null) : IIdentityVerificationFlowService
+    IdentityDecisionEngine? decisionEngine = null,
+    IdentityReviewEvidenceStore? reviewEvidence = null) : IIdentityVerificationFlowService
 {
     /// <summary>Data Protection purpose of the encrypted picture of a document in the private bucket. Never change it: stored pictures would become unreadable.</summary>
     public const string DocumentImageContentPurpose = "Casazen.DocumentImage.Content";

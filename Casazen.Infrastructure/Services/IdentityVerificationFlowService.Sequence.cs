@@ -351,7 +351,7 @@ public sealed partial class IdentityVerificationFlowService
         session.UpdatedAt = now;
 
         var model = biometricModels?.FaceRecognition;
-        db.BiometricVerificationLogs.Add(new BiometricVerificationLog
+        var log = new BiometricVerificationLog
         {
             OrgId = session.OrgId,
             BookingId = session.BookingId,
@@ -373,7 +373,8 @@ public sealed partial class IdentityVerificationFlowService
             Channel = session.IdentityChannel,
             IdempotencyKey = key,
             CreatedAt = now,
-        });
+        };
+        db.BiometricVerificationLogs.Add(log);
 
         // An approval is announced on the bus in the same save as its row of the log, as the legacy path does: ids and the method only.
         if (approved)
@@ -389,7 +390,7 @@ public sealed partial class IdentityVerificationFlowService
         logger.LogInformation(
             "Presence of session {SessionId} decided: outcome={Outcome} shadow={Shadow} mode={Mode} attempt={Attempt} durationMs={DurationMs}",
             session.Id, outcomeCode, decision.Shadow, decision.Mode, attempt, durationMs);
-        return PresenceClosure.Decided(decision, evidence);
+        return PresenceClosure.Decided(decision, evidence, log.Id);
     }
 
     /// <summary>
@@ -433,7 +434,7 @@ public sealed partial class IdentityVerificationFlowService
             return Answered(IdentityVerificationGuestResults.Ok, [], await GetStateAsync(session, ct), code, held);
         }
 
-        await OnReviewCommittedAsync(session, decision, buffers.Sequence, closure.Evidence, ct);
+        await OnReviewCommittedAsync(session, decision, buffers, closure.Evidence, closure.LogId, ct);
         await FinishReviewAsync(session);
         return Answered(IdentityVerificationGuestResults.Operator, [], await GetStateAsync(session, ct));
     }
@@ -497,15 +498,23 @@ public sealed partial class IdentityVerificationFlowService
 
     /// <summary>
     /// The point between the commit of a review and its hand-off to the operators, BEFORE the kept pictures of the document are deleted: the evidence of the reviewer
-    /// (E73/F01/US02/T01, ADR-013-R20, <c>Features:CheckInIdentityReviewEvidence</c>) is kept from here, from the frames of the request (<paramref name="sequence"/>, alive until the
-    /// request ends and zeroed then) and the frames the server chose (<see cref="PresenceEvidence.Selection"/>). Null when the attempt stopped before (a fault, or no frame chosen).
-    /// Today it writes the line of the review: the checks that did not pass, by their codes, and the counts of the frames, never a value. It runs before the request deletes the kept
-    /// pictures, but a twin of the same attempt that takes the lock of the row first finishes the hand-off (and the deletion) by itself: the evidence is taken from the frames of this
-    /// request, which only this request has, never from the kept pictures in the bucket.
+    /// (E73/F01/US02/T01, ADR-013-R20, <c>Features:CheckInIdentityReviewEvidence</c>) is kept from here, from what this request holds in memory (<paramref name="buffers"/>: the frames
+    /// and the front of the document, alive until the request ends and zeroed then) and the frames the server chose (<see cref="PresenceEvidence.Selection"/>, null when the attempt
+    /// stopped before: a fault, or no frame chosen). It writes the line of the review (the checks that did not pass, by their codes, and the counts of the frames, never a value),
+    /// then hands the evidence to <see cref="IdentityReviewEvidenceStore"/>, only for a review (never an approval) and with the rule of the flow on the property (Ticino keeps
+    /// nothing). The evidence is optional: whatever fails here is logged by its type and the hand-off goes on. A twin of the same attempt that takes the lock of the row first
+    /// finishes the hand-off (and the deletion) by itself: the evidence is taken from the frames of this request, which only this request has, never from the kept pictures in the bucket.
     /// </summary>
-    private Task OnReviewCommittedAsync(GuestCheckInSession session, IdentityDecision decision, FrameSequence? sequence, PresenceEvidence? evidence, CancellationToken ct)
+    private async Task OnReviewCommittedAsync(
+        GuestCheckInSession session,
+        IdentityDecision decision,
+        PresenceBuffers buffers,
+        PresenceEvidence? evidence,
+        Guid? logId,
+        CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        var sequence = buffers.Sequence;
         var notPassed = decision.Reasons
             .Where(reason => !string.Equals(reason.Result, VerificationReasons.Results.Passed, StringComparison.Ordinal))
             .Select(reason => reason.Check)
@@ -513,7 +522,31 @@ public sealed partial class IdentityVerificationFlowService
         logger.LogInformation(
             "Presence of session {SessionId}: the review is handed to a person (outcome {Outcome}, shadow {Shadow}, checks [{Checks}], {Frames} frames, {Chosen} chosen)",
             session.Id, decision.OutcomeCode, decision.Shadow, string.Join(',', notPassed), sequence?.Frames.Count ?? 0, evidence?.Selection?.MatchIndices.Count ?? 0);
-        return Task.CompletedTask;
+
+        if (reviewEvidence is null || decision.Final != IdentityFinalDecision.Review || !reviewEvidence.EvidenceOn)
+            return;
+
+        try
+        {
+            var keepsNoDocument = await DocumentNotArchivedAsync(session.Booking.Property, ct);
+            await reviewEvidence.SaveForReviewAsync(
+                new ReviewEvidenceInput(
+                    session.OrgId,
+                    session.BookingId,
+                    session.Id,
+                    session.IdentityGuestId,
+                    logId,
+                    keepsNoDocument,
+                    buffers.Document,
+                    sequence,
+                    evidence?.Selection?.MatchIndices),
+                ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The type only: the evidence is optional and the operators must be told all the same.
+            logger.LogError("Presence of session {SessionId}: the evidence of the review was not kept ({ErrorType})", session.Id, ex.GetType().Name);
+        }
     }
 
     /// <summary>
@@ -717,14 +750,15 @@ public sealed partial class IdentityVerificationFlowService
         Decided,
     }
 
-    /// <summary>What the work under the lock ended with.</summary>
+    /// <summary>What the work under the lock ended with: for a decision, also the id of its log row (the evidence of a review is linked to it).</summary>
     private sealed record PresenceClosure(
         PresenceClosureKind Kind,
         PresenceStepStatus Status = PresenceStepStatus.Done,
         PresenceReplay? Answer = null,
         IReadOnlyList<string>? Guidance = null,
         IdentityDecision? Decision = null,
-        PresenceEvidence? Evidence = null)
+        PresenceEvidence? Evidence = null,
+        Guid? LogId = null)
     {
         public static PresenceClosure Stale { get; } = new(PresenceClosureKind.Stale, PresenceStepStatus.SessionUnavailable);
 
@@ -736,6 +770,7 @@ public sealed partial class IdentityVerificationFlowService
 
         public static PresenceClosure Retry(IReadOnlyList<string> guidance) => new(PresenceClosureKind.Retry, Guidance: guidance);
 
-        public static PresenceClosure Decided(IdentityDecision decision, PresenceEvidence? evidence) => new(PresenceClosureKind.Decided, Decision: decision, Evidence: evidence);
+        public static PresenceClosure Decided(IdentityDecision decision, PresenceEvidence? evidence, Guid logId) =>
+            new(PresenceClosureKind.Decided, Decision: decision, Evidence: evidence, LogId: logId);
     }
 }
