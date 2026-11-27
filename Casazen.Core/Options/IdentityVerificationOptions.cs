@@ -21,8 +21,8 @@ public sealed class IdentityVerificationOptions
     public string PolicyFile { get; set; } = "IdentityPolicies/identity-policy-2026.11-1.json";
 
     /// <summary>
-    /// The canonical SHA-256 of <see cref="PolicyFile"/> (64 hexadecimal characters) that a reader requires before it uses the policy; empty until
-    /// E70/F01/US02/T01 pins it.
+    /// The canonical SHA-256 of <see cref="PolicyFile"/> (64 hexadecimal characters) that a reader requires before it uses the policy; empty means no policy is
+    /// used (<c>policy_hash_not_configured</c>). The class leaves it empty; the committed <c>appsettings.json</c> pins the policy file it ships (E70/F01/US02/T01).
     /// </summary>
     public string PolicySha256 { get; set; } = string.Empty;
 
