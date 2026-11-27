@@ -448,21 +448,22 @@ public sealed partial class IdentityVerificationFlowService
     private async Task FinishReviewAsync(GuestCheckInSession session)
     {
         var ct = CancellationToken.None;
-        await WithLockedPoseSessionAsync(session, false, async () =>
+        var deletion = await WithLockedPoseSessionAsync<ExceptionDispatchInfo?>(session, null, async () =>
         {
             if (session.BiometricOutcome != BiometricOutcome.Escalate || session.IdentityClosedAt is null)
-                return false;
+                return null;
 
-            ExceptionDispatchInfo? deletion = null;
+            ExceptionDispatchInfo? failure = null;
             try
             {
                 await DeleteStoredDocumentAsync(session, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // The type only: a message could carry what was being read. The operators are told all the same, then the failure is thrown.
+                // The type only: a message could carry what was being read. The operators are told all the same; the failure is thrown once the lock is released and the hand-off is
+                // committed (a throw inside would roll the hand-off back with the transaction of the row lock).
                 logger.LogError("Presence of session {SessionId}: the kept pictures of the document could not be deleted ({ErrorType}); the request is asked again", session.Id, ex.GetType().Name);
-                deletion = ExceptionDispatchInfo.Capture(ex);
+                failure = ExceptionDispatchInfo.Capture(ex);
             }
 
             if (session.OperatorRequestedAt is null)
@@ -470,9 +471,10 @@ public sealed partial class IdentityVerificationFlowService
             else
                 await db.SaveChangesAsync(ct);
 
-            deletion?.Throw();
-            return true;
+            return failure;
         }, ct);
+
+        deletion?.Throw();
     }
 
     /// <summary>
