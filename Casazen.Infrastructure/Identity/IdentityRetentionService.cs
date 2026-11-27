@@ -28,8 +28,9 @@ namespace Casazen.Infrastructure.Identity;
 /// of its own is still using (<see cref="OverdueDocumentImages"/>) are deleted, objects and rows, with the deleter of the erasure and of the receipt (<c>DocumentImageCleaner</c>);</item>
 /// <item><b>the checks of the document</b> kept on a session (<c>DocumentCheckJson</c>: flags, hashes, the proofs of the number) are cleared
 /// <c>IdentityVerification:Retention:DocumentCheckDays</c> days after the session expired, or after its verification was closed once the session cannot be used any more;</item>
-/// <item><b>the verification logs</b> of the bookings whose check-out is older than <c>IdentityVerification:Retention:VerificationLogMonths</c> months are deleted (the readers of
-/// the outcome read only the last row of the stays in progress).</item>
+/// <item><b>the verification logs</b> of the automatic verification of the bookings whose check-out is older than <c>IdentityVerification:Retention:VerificationLogMonths</c> months
+/// are deleted; the rows of an operator are kept: they are the proof that a hand-off was answered, and the operator queue reads them with no date filter
+/// (<see cref="OldVerificationLogs"/>).</item>
 /// </list>
 /// Idempotent: what was done is not selected again, a second run finds nothing. A failure of one organization does not stop the others; the run is then reported failed
 /// (Hangfire runs it again). What the last run did is kept for the status of the platform administrators (<see cref="IdentityRetentionRunLog"/>).
@@ -373,11 +374,18 @@ public sealed class IdentityRetentionService(
         return total;
     }
 
+    /// <summary>
+    /// The rows of the automatic verification (<see cref="VerificationMethod.Biometric"/>) of the stays whose check-out is before <paramref name="checkOutBefore"/>, of
+    /// <paramref name="orgId"/> or of every organization. <b>Never a row of an operator</b> (<see cref="VerificationMethod.Operator"/>: a decision, a rejection, the new photo
+    /// asked): it is the proof that a hand-off was answered, and <c>VerificationHandOff.Unanswered</c> (the operator queue, with no date filter) reads it; without it a hand-off
+    /// refused by an operator, or left by a replaced link of a stay then approved, would wait for an operator again, long after the stay.
+    /// </summary>
     private IQueryable<BiometricVerificationLog> OldVerificationLogs(Guid? orgId, DateTime checkOutBefore)
     {
         var logs = db.BiometricVerificationLogs
             .IgnoreQueryFilters()
-            .Where(log => db.Bookings.Any(booking => booking.Id == log.BookingId && booking.OrgId == log.OrgId && booking.CheckOutDate < checkOutBefore));
+            .Where(log => log.Method == VerificationMethod.Biometric
+                          && db.Bookings.Any(booking => booking.Id == log.BookingId && booking.OrgId == log.OrgId && booking.CheckOutDate < checkOutBefore));
         return orgId is { } org ? logs.Where(log => log.OrgId == org) : logs;
     }
 

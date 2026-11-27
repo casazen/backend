@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
@@ -10,6 +11,7 @@ using Casazen.Core.Identity;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Identity;
 using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Services;
@@ -201,6 +203,44 @@ public sealed class IdentityRetentionServiceTests
         Assert.Contains(recentLogOfA.Id, left);
         Assert.Contains(logOfB.Id, left);
         Assert.Contains(crossedLogOfB.Id, left);
+    }
+
+    [Fact]
+    public async Task IdentityRetention_TheOperatorRowsOfAnOldStay_StayAsTheProofThatItsHandOffWasAnswered()
+    {
+        // Proof (data, review of S015): the retention deletes the rows of the automatic verification of the old stays and never a row of an operator, which is what tells the queue
+        // that a hand-off was answered (VerificationHandOff.Unanswered, read with no date filter). A stay an operator rejected, and a stay approved after a new link replaced the
+        // session that had handed it over, do not wait for an operator again once their logs are gone; a stay nobody answered waits before and after.
+        await using var world = new RetentionWorld();
+        var checkOut = new DateTime(2025, 10, 31, 0, 0, 0, DateTimeKind.Utc);
+        var rejected = await world.StayAsync(world.OrgA, checkOut);
+        var approved = await world.StayAsync(world.OrgA, checkOut);
+        var waiting = await world.StayAsync(world.OrgA, checkOut);
+        var handedOff = new DateTime(2025, 10, 29, 10, 0, 0, DateTimeKind.Utc);
+        await world.HandedOffSessionAsync(world.OrgA, rejected, handedOff, BiometricOutcome.Reject, GuestCheckInSessionStatus.Scaduto);
+        await world.HandedOffSessionAsync(world.OrgA, approved, handedOff.AddDays(-1), BiometricOutcome.Escalate, GuestCheckInSessionStatus.Scaduto);
+        await world.HandedOffSessionAsync(world.OrgA, approved, handedOff, BiometricOutcome.Accept, GuestCheckInSessionStatus.Completo);
+        await world.HandedOffSessionAsync(world.OrgA, waiting, handedOff, BiometricOutcome.Escalate, GuestCheckInSessionStatus.InCompilazione);
+        foreach (var stay in new[] { rejected, approved, waiting })
+            await world.LogAsync(world.OrgA, stay, VerificationMethod.Biometric, BiometricOutcome.Escalate, handedOff.AddMinutes(-30));
+
+        await world.LogAsync(world.OrgA, rejected, VerificationMethod.Operator, BiometricOutcome.Reject, handedOff.AddDays(1));
+        await world.LogAsync(world.OrgA, approved, VerificationMethod.Operator, BiometricOutcome.Accept, handedOff.AddDays(1));
+
+        // Three sessions need an operator (the rejected one, the replaced link of the approved stay, the waiting one): only the rows of an operator tell that two were answered.
+        await using (var db = world.NewContext())
+            Assert.Equal(3, await db.GuestCheckInSessions.IgnoreQueryFilters().Where(VerificationOperatorRules.NeedsOperator).CountAsync());
+
+        Assert.Equal([waiting], await world.WaitingForAnOperatorAsync(world.OrgA));
+
+        var counts = await world.Service().PurgeAsync(Now.UtcDateTime, Ct);
+
+        Assert.Equal(3, counts.VerificationLogsDeleted);
+        Assert.Equal([waiting], await world.WaitingForAnOperatorAsync(world.OrgA));
+        await using var read = world.NewContext();
+        var left = await read.BiometricVerificationLogs.IgnoreQueryFilters().AsNoTracking().ToListAsync();
+        Assert.Equal(2, left.Count);
+        Assert.All(left, log => Assert.Equal(VerificationMethod.Operator, log.Method));
     }
 
     [Fact]
@@ -558,6 +598,48 @@ public sealed class IdentityRetentionServiceTests
             db.GuestCheckInSessions.Add(session);
             await db.SaveChangesAsync();
             return session;
+        }
+
+        /// <summary>A session of the legacy path that was handed to an operator at <paramref name="handedOffAt"/> and is in the given state.</summary>
+        public async Task<GuestCheckInSession> HandedOffSessionAsync(
+            Guid orgId,
+            Guid bookingId,
+            DateTime handedOffAt,
+            BiometricOutcome outcome,
+            GuestCheckInSessionStatus status)
+        {
+            await using var db = NewContext();
+            var session = new GuestCheckInSession
+            {
+                BookingId = bookingId,
+                OrgId = orgId,
+                TokenHash = Guid.NewGuid().ToString("N"),
+                Status = status,
+                ExpiresAt = handedOffAt.AddDays(7),
+                BiometricOutcome = outcome,
+                BiometricAttempts = 1,
+                OperatorRequestedAt = handedOffAt,
+                CreatedAt = handedOffAt.AddHours(-1),
+                UpdatedAt = handedOffAt,
+            };
+            db.GuestCheckInSessions.Add(session);
+            await db.SaveChangesAsync();
+            return session;
+        }
+
+        /// <summary>
+        /// The stays of <paramref name="orgId"/> that wait for an operator: what the queue of the operators lists, which must be what the one definition of <c>Unanswered</c> selects.
+        /// </summary>
+        public async Task<List<Guid>> WaitingForAnOperatorAsync(Guid orgId)
+        {
+            await using var db = NewContext();
+            var links = new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://site.example.test" }));
+            var queue = new VerificationQueueService(
+                db, Mock.Of<IEmailQueue>(), links, Mock.Of<IGuestCheckInService>(), NullLogger<VerificationQueueService>.Instance, timeProvider: Clock);
+            var listed = (await queue.GetPendingVerificationsAsync("auth0|owner", new HostScope(orgId))).Select(item => item.BookingId).Order().ToList();
+            var unanswered = (await db.GuestCheckInSessions.IgnoreQueryFilters().Unanswered(db).Select(session => session.BookingId).Distinct().ToListAsync()).Order().ToList();
+            Assert.Equal(unanswered, listed);
+            return listed;
         }
 
         public async Task<DocumentImage> DocumentImageAsync(Guid orgId, Guid bookingId)
