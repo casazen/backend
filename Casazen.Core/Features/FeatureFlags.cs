@@ -393,7 +393,8 @@ public static class FeatureFlags
     /// are, and what CasaZen does) and whether CasaZen treats the duty as required, not required or left to the host (<c>Ask</c>): only a regime verified as an obligation to report
     /// to an authority that covers private rentals is <c>Required</c> by default, any other canton is <c>Ask</c>. It also gates the assisted notification of the other cantons
     /// (E31/F02/US01/T01, NF-131): <c>GET api/properties/{id}/swiss/notification-day</c> and <c>POST</c> and <c>DELETE …/swiss/notification-declare</c> (404 before authentication while off)
-    /// and the cockpit section <c>swissNotifications</c> (empty while off). The readiness of a Swiss property (the municipality, the structure
+    /// and the cockpit section <c>swissNotifications</c> (empty while off), and the guest register of any Swiss property (E31/F01/US01/T01, NF-130): <c>GET api/properties/{id}/swiss/guest-register</c>
+    /// and <c>…/guest-register/info</c> (404 before authentication while off). The readiness of a Swiss property (the municipality, the structure
     /// number of Ticino) is <b>not</b> behind it. It needs no variable to start. The frontend reads the key <c>guestRegistrationRegimes</c>.
     /// </summary>
     public const string GuestRegistrationRegimes = "GuestRegistrationRegimes";
