@@ -30,7 +30,8 @@
       "maxCenterJump": 0.35,
       "maxSizeChange": 0.3,
       "minPairSimilarity": 0.5,
-      "pairSamples": 5
+      "pairSamples": 5,
+      "minPixelDifference": 1
     },
     "pose": {
       "turnMinYawDegrees": 20,
