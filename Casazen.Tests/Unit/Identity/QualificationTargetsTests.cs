@@ -88,11 +88,47 @@ public sealed class QualificationTargetsTests : IDisposable
     [Fact]
     public void QualificationTargets_AnUnknownMemberOrABrokenText_IsRefused_WithoutQuotingIt()
     {
-        foreach (var text in new[] { TargetsJson(("fmrMaxx", "0.5")), "{ fmrMax: SECRET-TEXT }", "SECRET-TEXT", "null", string.Empty })
+        // The NAME of a member it does not know is text the author typed too, and the path of the parser holds it.
+        string[] texts =
+        [
+            TargetsJson(("fmrMaxx", "0.5")),
+            TargetsJson(("SECRET-MEMBER-NAME", "0.5")),
+            TargetsJson(("SECRET MEMBER NAME", "0.5")),
+            TargetsJson(("SECRET'] MEMBER[7]", "0.5")),
+            "{ fmrMax: SECRET-TEXT }",
+            "SECRET-TEXT",
+            "null",
+            string.Empty,
+        ];
+
+        foreach (var text in texts)
         {
             var exception = Assert.Throws<InvalidDataException>(() => QualificationTargets.Parse(text));
 
             Assert.DoesNotContain("SECRET", exception.Message, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void QualificationTargets_ARefusedText_NamesOnlyKnownMembers_AndTheLineCountsFromOne()
+    {
+        // (text, message): a member the file knows is written as the model writes it, whatever the letter case; any other name is "?".
+        (string Text, string Message)[] cases =
+        [
+            (TargetsJson(("fmrMaxx", "0.5")), "The qualification targets cannot be read (at $.?, line 1)."),
+            (TargetsJson(("SECRET-MEMBER-NAME", "0.5")), "The qualification targets cannot be read (at $.?, line 1)."),
+            (TargetsJson(("SECRET MEMBER NAME", "0.5")), "The qualification targets cannot be read (at $.?, line 1)."),
+            ("{\n  \"fmrMax\": 0.0001,\n  \"SECRET-MEMBER-NAME\": 1\n}", "The qualification targets cannot be read (at $.?, line 3)."),
+            ("""{ "FMRMAX": "x" }""", "The qualification targets cannot be read (at $.fmrMax, line 1)."),
+            ("{\n  \"fmrMax\": 0.0001\n  \"confidence\": 0.95\n}", "The qualification targets cannot be read (at $, line 3)."),
+            ("null", "The qualification targets cannot be read (at $, line unknown)."),
+        ];
+
+        foreach (var (text, message) in cases)
+        {
+            var exception = Assert.Throws<InvalidDataException>(() => QualificationTargets.Parse(text));
+
+            Assert.Equal(message, exception.Message);
         }
     }
 

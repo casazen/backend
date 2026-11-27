@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -35,6 +34,9 @@ public sealed record QualificationTargets(
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
+    // The members of the file as the JSON writes them: the only names a message about a file that cannot be read may carry.
+    private static readonly IReadOnlyDictionary<string, string> KnownMembers = QualificationJsonPlace.MemberNames(typeof(TargetsFile));
+
     /// <summary>The targets file that ships with the tests (<c>Fixtures/Qualification/qualification-targets.json</c>, copied to the output folder).</summary>
     public static string DefaultPath => Path.Combine(AppContext.BaseDirectory, "Fixtures", "Qualification", "qualification-targets.json");
 
@@ -46,7 +48,8 @@ public sealed record QualificationTargets(
 
     /// <summary>
     /// Reads the targets from JSON text. A missing member, a value out of its range or an unknown member throws <see cref="InvalidDataException"/>, which names
-    /// the members (never their values).
+    /// the members (never their values); a text that cannot be read at all is named by its place only: the known members and the line, counted from 1, never a
+    /// name the author typed (any other name is written <c>?</c>).
     /// </summary>
     public static QualificationTargets Parse(string json)
     {
@@ -55,12 +58,13 @@ public sealed record QualificationTargets(
         TargetsFile file;
         try
         {
-            file = JsonSerializer.Deserialize<TargetsFile>(json, Json) ?? throw new InvalidDataException("The qualification targets cannot be read (at $).");
+            file = JsonSerializer.Deserialize<TargetsFile>(json, Json) ?? throw new InvalidDataException(Unreadable("$", null));
         }
         catch (JsonException exception)
         {
-            // Only the place is kept: the message of the parser may quote the text.
-            throw new InvalidDataException(string.Create(CultureInfo.InvariantCulture, $"The qualification targets cannot be read (at {exception.Path ?? "$"})."));
+            // Only the place is kept, without a word the author typed: the message of the parser may quote the text, and its path holds the name of a member it does
+            // not know. The parser counts lines from 0.
+            throw new InvalidDataException(Unreadable(exception.Path, exception.LineNumber + 1));
         }
 
         var problems = new List<string>();
@@ -82,6 +86,11 @@ public sealed record QualificationTargets(
             throw new InvalidDataException("The qualification targets are not valid: " + string.Join(", ", problems) + ".");
 
         return targets;
+    }
+
+    private static string Unreadable(string? path, long? line)
+    {
+        return "The qualification targets cannot be read (" + QualificationJsonPlace.Describe(QualificationJsonPlace.SafePath(path, KnownMembers), line) + ").";
     }
 
     // A rate, a bound or a confidence: strictly between 0 and 1 (a criterion of exactly 0 or 1 is no criterion).

@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -121,8 +120,9 @@ public sealed record QualificationDatasetManifest(
         }
         catch (JsonException exception)
         {
-            // Only the place is kept: the message of the parser may quote the text.
-            throw new QualificationManifestFormatException(exception.Path, exception.LineNumber);
+            // Only the place is kept, and the exception writes it without a word the author typed: the message of the parser may quote the text, and its path holds
+            // the name of a member it does not know. The parser counts lines from 0.
+            throw new QualificationManifestFormatException(exception.Path, exception.LineNumber + 1);
         }
     }
 
@@ -141,19 +141,28 @@ public sealed record QualificationDatasetManifest(
     }
 }
 
-/// <summary>A manifest that is not JSON, not a manifest, or has a member this reader does not know. It names the place (JSON path, line), never the content.</summary>
+/// <summary>
+/// A manifest that is not JSON, not a manifest, or has a member this reader does not know. It names only the place and never the content, nor a name the author
+/// typed: the path is made of the members the manifest knows (written as the model writes them) and of indexes, any other name is written <c>?</c>, and the line
+/// counts from 1.
+/// </summary>
 public sealed class QualificationManifestFormatException : Exception
 {
+    // The members of the manifest as the JSON writes them: the only names a place may carry.
+    private static readonly IReadOnlyDictionary<string, string> KnownMembers = QualificationJsonPlace.MemberNames(typeof(QualificationDatasetManifest), typeof(QualificationRights), typeof(QualificationPerson), typeof(QualificationCapture), typeof(QualificationDocument), typeof(QualificationSequence));
+
+    /// <param name="jsonPath">The path the parser reported, in whatever form: only its known members and its indexes are kept (see <see cref="JsonPath"/>).</param>
+    /// <param name="line">The line of the failure, counted from 1, when the parser knows it.</param>
     public QualificationManifestFormatException(string? jsonPath, long? line)
-        : base(string.Create(CultureInfo.InvariantCulture, $"The qualification manifest cannot be read (at {jsonPath ?? "$"}, line {line?.ToString(CultureInfo.InvariantCulture) ?? "unknown"})."))
+        : base("The qualification manifest cannot be read (" + QualificationJsonPlace.Describe(QualificationJsonPlace.SafePath(jsonPath, KnownMembers), line) + ").")
     {
-        JsonPath = jsonPath;
+        JsonPath = QualificationJsonPlace.SafePath(jsonPath, KnownMembers);
         Line = line;
     }
 
-    /// <summary>The JSON path of the member that failed, such as <c>$.captures[3].document</c>.</summary>
-    public string? JsonPath { get; }
+    /// <summary>The place of the failure as a path, such as <c>$.captures[3].document</c>: known members and indexes only, <c>?</c> for any other name.</summary>
+    public string JsonPath { get; }
 
-    /// <summary>The line of the text, when the parser knows it.</summary>
+    /// <summary>The line of the text, counted from 1, when the parser knows it.</summary>
     public long? Line { get; }
 }

@@ -499,6 +499,11 @@ public sealed class QualificationManifestValidatorTests : IDisposable
             """{ "datasetId": "SECRET-DATASET-TEXT" "version": "1" }""",
             """{ "datasetId": "SECRET-DATASET-TEXT", "generalization": "SECRET-NOT-A-BOOL" }""",
             """{ "datasetId": "SECRET-DATASET-TEXT", "persons": [ { "id": "p1", "split": "test", "name": "SECRET-NAME-TEXT" } ] }""",
+
+            // The NAME of a member it does not know is text the author typed too, and the path of the parser holds it.
+            """{ "datasetId": "SECRET-DATASET-TEXT", "SECRET-MEMBER-NAME": 1 }""",
+            """{ "persons": [ { "id": "p1", "split": "test", "SECRET-NAME-MEMBER": "x" } ] }""",
+            """{ "rights": { "SECRET RIGHTS MEMBER": false } }""",
             "SECRET-NOT-JSON",
             "null",
             string.Empty,
@@ -509,8 +514,105 @@ public sealed class QualificationManifestValidatorTests : IDisposable
             var exception = Assert.Throws<QualificationManifestFormatException>(() => QualificationDatasetManifest.Parse(text));
 
             Assert.DoesNotContain("SECRET", exception.Message, StringComparison.Ordinal);
-            Assert.DoesNotContain("SECRET", exception.JsonPath ?? string.Empty, StringComparison.Ordinal);
+            Assert.DoesNotContain("SECRET", exception.JsonPath, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public void QualificationDatasetManifest_ARefusedText_NamesOnlyKnownMembersAndIndexes_AndTheLineCountsFromOne()
+    {
+        // (text, path, line): a member the manifest knows is written as the model writes it, whatever the letter case; any other name is "?"; an index is a number.
+        (string Text, string Path, long? Line)[] cases =
+        [
+            ("""{ "datasetId": "d", "SECRET-NAME": 1 }""", "$.?", 1),
+            ("{\n  \"datasetId\": \"d\",\n  \"persons\": [\n    { \"id\": \"p1\", \"SECRET-NAME\": 1 }\n  ]\n}", "$.persons[0].?", 4),
+            ("""{ "SECRET NAME": 1 }""", "$.?", 1),
+            ("""{ "persons": [ { "SECRET NAME": 1 } ] }""", "$.persons[0].?", 1),
+            ("""{ "captures": [ {}, {}, { "document": { "front": 5 } } ] }""", "$.captures[2].document.front", 1),
+            ("""{ "GENERALIZATION": "x" }""", "$.generalization", 1),
+            ("""{ "persons": 5 }""", "$.persons", 1),
+            ("{\n  \"datasetId\": \"d\"\n  \"persons\": []\n}", "$", 3),
+        ];
+
+        foreach (var (text, path, line) in cases)
+        {
+            var exception = Assert.Throws<QualificationManifestFormatException>(() => QualificationDatasetManifest.Parse(text));
+
+            Assert.Equal((path, line), (exception.JsonPath, exception.Line));
+            Assert.Equal($"The qualification manifest cannot be read (at {path}, line {line}).", exception.Message);
+        }
+
+        // A text that is not a manifest at all has no place to name.
+        var nothing = Assert.Throws<QualificationManifestFormatException>(() => QualificationDatasetManifest.Parse("null"));
+        Assert.Equal(("$", (long?)null, "The qualification manifest cannot be read (at $, line unknown)."), (nothing.JsonPath, nothing.Line, nothing.Message));
+    }
+
+    [Fact]
+    public void QualificationDatasetManifest_WhateverTheAuthorTypedAsAMemberName_NeverComesBack()
+    {
+        // The parser writes a name with special characters in brackets and does not escape it, so a name can look like part of a path.
+        string[] names =
+        [
+            "SECRET-NAME",
+            "SECRET NAME",
+            "SECRET.NAME.TEXT",
+            "SECRET'NAME",
+            "SECRET']NAME[7]",
+            "SECRET\"]NAME",
+            "SECRET\\NAME",
+            "$SECRET",
+            "[SECRET]",
+            "SECRET'].persons[0].id",
+            "persons[0].SECRET",
+            "SECRET-" + (char)0xE9,
+        ];
+
+        foreach (var name in names)
+        {
+            foreach (var template in new[] { "{ {0}: 1 }", "{ \"persons\": [ { {0}: 1 } ] }", "{ \"rights\": { {0}: false } }" })
+            {
+                var text = template.Replace("{0}", JsonSerializer.Serialize(name), StringComparison.Ordinal);
+
+                var exception = Assert.Throws<QualificationManifestFormatException>(() => QualificationDatasetManifest.Parse(text));
+
+                Assert.DoesNotContain("SECRET", exception.Message, StringComparison.Ordinal);
+                Assert.DoesNotContain("SECRET", exception.JsonPath, StringComparison.Ordinal);
+
+                // Only known members, "?" and indexes are ever written.
+                Assert.Matches(@"^\$(\.[A-Za-z]+|\.\?|\[[0-9]+\])*$", exception.JsonPath);
+            }
+        }
+    }
+
+    [Fact]
+    public void QualificationJsonPlace_SafePath_WritesOnlyKnownNamesQuestionMarksAndNumbers()
+    {
+        var known = QualificationJsonPlace.MemberNames(typeof(QualificationDatasetManifest), typeof(QualificationPerson));
+        (string? Path, string Expected)[] cases =
+        [
+            (null, "$"),
+            (string.Empty, "$"),
+            ("$", "$"),
+            ("$.persons[0].id", "$.persons[0].id"),
+            ("$.PERSONS[007].Split", "$.persons[7].split"),
+            ("$.persons[0].SECRET", "$.persons[0].?"),
+            ("$.persons[0]['SECRET NAME']", "$.persons[0].?"),
+            ("$['SECRET NAME']", "$.?"),
+            ("$.persons[0]['SECRET']NAME[7]']", "$.persons[0].?[7]"),
+            ("$.persons[0]['a']SECRET.id']", "$.persons[0].?.?"),
+            ("$.persons[0]['SECRET", "$.persons[0].?"),
+            ("$.persons[99999999999]", "$.persons"),
+            ("$.persons[-1]", "$.persons"),
+            ("$.persons[ 1 ]", "$.persons"),
+            ("$.persons[0", "$.persons"),
+            ("$.persons[", "$.persons"),
+            ("SECRET", "$"),
+            ("$.", "$.?"),
+            ("$..", "$.?.?"),
+        ];
+
+        foreach (var (path, expected) in cases)
+            Assert.Equal(expected, QualificationJsonPlace.SafePath(path, known));
     }
 
     [Fact]
