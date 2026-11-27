@@ -4,74 +4,31 @@ using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// SP-15b migration (<c>AddSupplierPaymentRefunds</c>) on real PostgreSQL: it applies and reverts; the table of the refunds keeps
-/// what the exactly-once rules rely on (one refund per number within a payment, one per Stripe refund, one per idempotency key,
-/// as many rows without them as needed); the checks refuse the rows the rules never write (an amount that is not positive cents
-/// within the bound of a service, a number below one, a negative part of the commission, a refund that succeeded without saying
-/// when, the end of a commission period without the commission it ends); nothing under a payment can be deleted; and the enums are
-/// stored as the explicit integers the code and the webhook rely on.
+/// SP-15b migration (<c>AddSupplierPaymentRefunds</c>) on real PostgreSQL, on the schema as it is now (a copy of the migrated
+/// template): the table of the refunds keeps what the exactly-once rules rely on (one refund per number within a payment, one per
+/// Stripe refund, one per idempotency key, as many rows without them as needed); the checks refuse the rows the rules never write
+/// (an amount that is not positive cents within the bound of a service, a number below one, a negative part of the commission, a
+/// refund that succeeded without saying when, the end of a commission period without the commission it ends); nothing under a
+/// payment can be deleted; and the enums are stored as the explicit integers the code and the webhook rely on. The apply and revert
+/// of the migration, and the payments that existed before it, ran when the release that carried it went to production: they are not
+/// replayed any more.
 /// </summary>
 public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
 {
-    private static readonly string[] RefundColumns =
-    [
-        "Id", "ServiceRequestPaymentId", "Sequence", "AmountCents", "Status", "Origin", "StripeRefundId", "IdempotencyKey", "FailureCode",
-        "Reason", "RequestedByUserId", "ApplicationFeeRefundedCents", "CreatedAt", "UpdatedAt", "CompletedAt",
-    ];
-
     private PostgresTestDatabase? _database;
 
-    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateAsync();
+    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateMigratedAsync();
 
     public async Task DisposeAsync()
     {
         if (_database is not null)
             await _database.DisposeAsync();
-    }
-
-    [PostgresFact]
-    public async Task Migration_AppliesAndRevertsOnARealDatabase()
-    {
-        await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
-        Assert.Equal(RefundColumns.Length, await CountColumnsAsync(db, "ServiceRequestPaymentRefunds"));
-        Assert.Equal(1, await CountColumnsAsync(db, "SupplierProfiles", "CommissionOverrideUntil"));
-        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
-
-        await db.GetService<IMigrator>().MigrateAsync(PreviousMigration(db));
-        Assert.Equal(0, await CountColumnsAsync(db, "ServiceRequestPaymentRefunds"));
-        Assert.Equal(0, await CountColumnsAsync(db, "SupplierProfiles", "CommissionOverrideUntil"));
-        Assert.Equal(0, await CountObjectsAsync(db, "pg_constraint", "conname", "CK_SupplierProfiles_CommissionOverrideUntil"));
-        // The payments of SP-15a stay.
-        Assert.True(await CountColumnsAsync(db, "ServiceRequestPayments", "RefundedCents") == 1);
-
-        await db.Database.MigrateAsync();
-        Assert.Equal(RefundColumns.Length, await CountColumnsAsync(db, "ServiceRequestPaymentRefunds"));
-    }
-
-    [PostgresFact]
-    public async Task APaymentThatExistedBeforeTheMigration_KeepsItsData_AndHasNoRefunds()
-    {
-        await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
-        await db.GetService<IMigrator>().MigrateAsync(PreviousMigration(db));
-        var parents = await SeedParentsAsync(db);
-        var payment = parents.Payment;
-
-        await db.Database.MigrateAsync();
-
-        var stored = await db.ServiceRequestPayments.AsNoTracking().SingleAsync(p => p.Id == payment);
-        Assert.Equal(ServicePaymentStatus.Paid, stored.Status);
-        Assert.Equal(6_000, stored.AmountCents);
-        Assert.Equal(0, await db.ServiceRequestPaymentRefunds.CountAsync());
     }
 
     // ─── The checks ───
@@ -229,34 +186,9 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
 
     private int _sequence;
 
-    private static string PreviousMigration(AppDbContext db)
-    {
-        var all = db.Database.GetMigrations().ToList();
-        var index = all.FindIndex(m => m.EndsWith("_AddSupplierPaymentRefunds", StringComparison.Ordinal));
-        Assert.True(index > 0, "AddSupplierPaymentRefunds migration not found.");
-        return all[index - 1];
-    }
-
-    private static async Task<int> CountColumnsAsync(AppDbContext db, string table, params string[] columns)
-    {
-        var names = columns.Length == 0 ? RefundColumns : columns;
-        return (int)await db.Database
-            .SqlQuery<long>($"SELECT count(*) AS \"Value\" FROM information_schema.columns WHERE table_name = {table} AND column_name = ANY({names})")
-            .SingleAsync();
-    }
-
-    private static async Task<int> CountObjectsAsync(AppDbContext db, string catalog, string column, string name)
-    {
-        var sql = $"SELECT count(*) AS \"Value\" FROM {catalog} WHERE {column} = {Quote(name)}";
-        return (int)await db.Database.SqlQueryRaw<long>(sql).SingleAsync();
-    }
-
-    private static string Quote(string value) => "$$" + value + "$$";
-
     private async Task<Parents> MigratedWithPaymentAsync()
     {
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
         return await SeedParentsAsync(db);
     }
 
@@ -304,10 +236,8 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
             Category = ServiceCategories.Cleaning,
         };
 
-        // Plain SQL for the orgs, the property and the request: the first test of this class seeds at the schema right before
-        // AddSupplierPaymentRefunds, and saving them through the model writes the columns that later migrations add (DB-03:
-        // HostName, PublicPhone, Subtitle on the org; MinNights, WeekendSurchargePercent on the property; Wave 3:
-        // CancellationFullRefundHours; UI-13a: the SearchKey columns), which do not exist there (42703).
+        // Plain SQL for the orgs, the property and the request (LegacyOrgRows, LegacyPropertyRows, LegacyServiceRequestRows): they
+        // name only the columns they need, so a column that a later migration adds to these tables cannot break the tests.
         await LegacyOrgRows.InsertAsync(db, hostOrg);
         await LegacyOrgRows.InsertAsync(db, supplierOrg);
         await db.Database.ExecuteSqlAsync($"""UPDATE "Orgs" SET "OrgType" = {(int)supplierOrg.OrgType} WHERE "Id" = {supplierOrg.Id}""");
@@ -330,10 +260,9 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
             PaidVia = ServicePaymentChannel.Stripe,
         };
 
-        // Plain SQL for the payment as well, for the same reason: saved through the model it writes the columns the held payments add
-        // (SP-15c-a: AuthorizationExpiresAt, CapturedAt, ...), which do not exist at the schema right before AddSupplierPaymentRefunds.
-        // Those columns are nullable or have a default, so the same statement works on the latest schema too (LineItemsJson is jsonb with
-        // a default of [], so it is left out rather than sent as text).
+        // Plain SQL for the payment as well, for the same reason: the statement names only the columns it needs. The ones that the
+        // held payments add (SP-15c-a: AuthorizationExpiresAt, CapturedAt, ...) are nullable or have a default (LineItemsJson is
+        // jsonb with a default of [], so it is left out rather than sent as text).
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "ServiceRequestPayments" (
                 "Id", "ServiceRequestId", "SupplierOrgId", "PayerKind", "PayerOrgId", "AmountCents", "Currency", "CommissionPercent",

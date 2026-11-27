@@ -3,35 +3,27 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Migrations;
 using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// SP-10 migration (<see cref="AddShowcaseBooking"/>) on real PostgreSQL: it applies and reverts (and refuses to revert while a
-/// request from a showcase exists, changing nothing), the requests of the hosts that exist before it keep their meaning, the
-/// context check refuses the rows the booking never writes — a showcase request with a property or without a customer, a host's
-/// request with a customer, a code or a place — the holds refuse a bad interval or expiry, the unique indexes say what is one
-/// booking, the foreign keys cascade or clear as designed, and the new enum values are stored as the explicit integers the
-/// mobile app and the migrations rely on.
+/// SP-10 migration (<c>AddShowcaseBooking</c>) on real PostgreSQL, on the schema as it is now (a copy of the migrated template): a row
+/// written without the new columns still satisfies the context check, which refuses the rows the booking never writes — a showcase
+/// request with a property or without a customer, a host's request with a customer, a code or a place — the holds refuse a bad
+/// interval or expiry, the unique indexes say what is one booking, the foreign keys cascade or clear as designed, and the new enum
+/// values are stored as the explicit integers the mobile app and the migrations rely on. The apply and revert of the migration, and
+/// the meaning of the requests of the hosts that existed before it, ran when the release that carried it went to production: they
+/// are not replayed any more.
 /// </summary>
 public class AddShowcaseBookingPostgresTests : IAsyncLifetime
 {
-    private static readonly string[] NewColumns =
-    [
-        "CustomerId", "LocationAccessNotes", "LocationAddress", "LocationCity", "LocationComuneIstat", "LocationFloor",
-        "LocationPostalCode", "PublicCode", "ReminderSentAt", "Source",
-    ];
-
     private PostgresTestDatabase? _database;
 
-    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateAsync();
+    public async Task InitializeAsync() => _database = await PostgresTestDatabase.CreateMigratedAsync();
 
     public async Task DisposeAsync()
     {
@@ -39,82 +31,7 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    // ─── The migration ───────────────────────────────────────────────────────────────────────────────────────────────
-
-    [PostgresFact]
-    public async Task Migration_AppliesAndRevertsOnARealDatabase()
-    {
-        await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
-        Assert.Equal(NewColumns.Length, await CountColumnsAsync(db));
-        Assert.Equal(2, await CountTablesAsync(db));
-        Assert.Equal("YES", await IsNullableAsync(db, "PropertyId"));
-        Assert.Equal(1, await CountObjectsAsync(db, "pg_constraint", "conname", "CK_ServiceRequests_Context"));
-        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
-
-        await db.GetService<IMigrator>().MigrateAsync(PreviousMigration(db));
-        Assert.Equal(0, await CountColumnsAsync(db));
-        Assert.Equal(0, await CountTablesAsync(db));
-        Assert.Equal("NO", await IsNullableAsync(db, "PropertyId"));
-        Assert.Equal(0, await CountObjectsAsync(db, "pg_constraint", "conname", "CK_ServiceRequests_Context"));
-        Assert.Equal(0, await CountObjectsAsync(db, "pg_indexes", "indexname", "UIX_ServiceRequests_SupplierOrgId_PublicCode"));
-
-        await db.Database.MigrateAsync();
-        Assert.Equal(NewColumns.Length, await CountColumnsAsync(db));
-        Assert.Equal(2, await CountTablesAsync(db));
-    }
-
-    [PostgresFact]
-    public async Task Migration_RevertRefusesWhileAShowcaseRequestExists_AndChangesNothing()
-    {
-        var parents = await MigratedWithParentsAsync();
-        var customer = await SaveCustomerAsync(parents.SupplierOrg, "revert@example.com");
-        var requestId = await SaveRequestAsync(Showcase(parents, customer));
-        await using var db = _database!.CreateContext();
-
-        // The request has no property: putting the column back to NOT NULL would invent one, so the revert stops (a foreign key
-        // violation) and the transaction of the migration undoes the part of it that already ran.
-        await Assert.ThrowsAnyAsync<Exception>(() => db.GetService<IMigrator>().MigrateAsync(PreviousMigration(db)));
-
-        await using var after = _database!.CreateContext();
-        Assert.Equal(NewColumns.Length, await CountColumnsAsync(after));
-        Assert.Equal(2, await CountTablesAsync(after));
-        Assert.Equal(1, await after.ServiceRequests.IgnoreQueryFilters().CountAsync(r => r.Id == requestId));
-        Assert.Equal(1, await after.ServiceCustomers.CountAsync(c => c.Id == customer));
-    }
-
-    [PostgresFact]
-    public async Task Migration_TheRequestsOfTheHostsThatExistBefore_KeepTheirMeaning()
-    {
-        await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
-        var (hostOrg, property, supplierOrg) = await SeedHostParentsAsync(db);
-        var shortRent = Guid.NewGuid();
-        var longRent = Guid.NewGuid();
-
-        // What the release before SP-10 writes: a short-rent request with no booking, a long-rent one, none of the new columns.
-        await db.Database.ExecuteSqlAsync($"""
-            INSERT INTO "ServiceRequests" ("Id", "OrgId", "PropertyId", "SupplierOrgId", "RentalContext", "Category", "Urgency", "Notes", "Status", "ChargeToGuest", "CreatedAt", "UpdatedAt")
-            VALUES ({shortRent}, {hostOrg}, {property}, {supplierOrg}, 0, 'cleaning', 0, '', 0, false, now(), now()),
-                   ({longRent}, {hostOrg}, {property}, {supplierOrg}, 1, 'cleaning', 0, '', 0, false, now(), now());
-            """);
-
-        await db.Database.MigrateAsync();
-
-        var stored = await db.ServiceRequests.IgnoreQueryFilters().AsNoTracking().Where(r => r.Id == shortRent || r.Id == longRent).ToListAsync();
-        Assert.Equal(2, stored.Count);
-        Assert.All(stored, request =>
-        {
-            Assert.Equal(ServiceRequestSource.Host, request.Source);
-            Assert.Equal(property, request.PropertyId);
-            Assert.Null(request.CustomerId);
-            Assert.Null(request.PublicCode);
-            Assert.Null(request.LocationCity);
-            Assert.Null(request.ReminderSentAt);
-        });
-        Assert.Contains(stored, r => r.RentalContext == ServiceRequestRentalContext.ShortRent);
-        Assert.Contains(stored, r => r.RentalContext == ServiceRequestRentalContext.LongRent);
-    }
+    // ─── The defaults of the new columns ─────────────────────────────────────────────────────────────────────────────
 
     [PostgresFact]
     public async Task ARowWrittenWithoutTheNewColumns_AfterTheMigration_StillSatisfiesTheContextCheck()
@@ -357,7 +274,6 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
     public async Task Index_TheRemindersAndTheCustomerAreIndexed()
     {
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
 
         var customer = await db.Database
             .SqlQuery<string>($"SELECT indexdef AS \"Value\" FROM pg_indexes WHERE indexname = 'IX_ServiceRequests_CustomerId'")
@@ -381,42 +297,9 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
 
     private sealed record Parents(Guid HostOrg, Guid Property, Guid SupplierOrg);
 
-    private static string PreviousMigration(AppDbContext db)
-    {
-        var all = db.Database.GetMigrations().ToList();
-        var index = all.FindIndex(m => m.EndsWith("_AddShowcaseBooking", StringComparison.Ordinal));
-        Assert.True(index > 0, "AddShowcaseBooking migration not found.");
-        return all[index - 1];
-    }
-
-    private static async Task<int> CountColumnsAsync(AppDbContext db)
-    {
-        var names = NewColumns;
-        return (int)await db.Database
-            .SqlQuery<long>($"SELECT count(*) AS \"Value\" FROM information_schema.columns WHERE table_name = 'ServiceRequests' AND column_name = ANY({names})")
-            .SingleAsync();
-    }
-
-    private static async Task<int> CountTablesAsync(AppDbContext db) =>
-        (int)await db.Database
-            .SqlQueryRaw<long>("SELECT count(*) AS \"Value\" FROM information_schema.tables WHERE table_name IN ('ServiceCustomers', 'ShowcaseBookingHolds')")
-            .SingleAsync();
-
-    private static async Task<string> IsNullableAsync(AppDbContext db, string column) =>
-        await db.Database
-            .SqlQuery<string>($"SELECT is_nullable AS \"Value\" FROM information_schema.columns WHERE table_name = 'ServiceRequests' AND column_name = {column}")
-            .SingleAsync();
-
-    private static async Task<int> CountObjectsAsync(AppDbContext db, string catalog, string column, string name)
-    {
-        var sql = $"SELECT count(*) AS \"Value\" FROM {catalog} WHERE {column} = '{name}'";
-        return (int)await db.Database.SqlQueryRaw<long>(sql).SingleAsync();
-    }
-
     private async Task<Parents> MigratedWithParentsAsync()
     {
         await using var db = _database!.CreateContext();
-        await _database!.MigrateEmptyToAsync();
         var (hostOrg, property, supplierOrg) = await SeedHostParentsAsync(db);
         return new Parents(hostOrg, property, supplierOrg);
     }
@@ -447,11 +330,9 @@ public class AddShowcaseBookingPostgresTests : IAsyncLifetime
             NightlyRate = 80m,
             IsActive = true,
         };
-        // Plain SQL for the rows that have columns added by later migrations: the first test runs at the schema before this
-        // migration, and saving the entities through the model would write the columns that do not exist there yet (42703). The
-        // orgs use LegacyOrgRows (DB-03: HostName, PublicPhone, Subtitle, and the next ones), the property LegacyPropertyRows
-        // (AM-03: ResponsibleUserId; Wave 3: CancellationFullRefundHours; DB-03: MinNights and the next ones) and the profile its
-        // own statement (SP-15a: the supplier payments columns). The parents need no CIN.
+        // Plain SQL for the parents: the orgs use LegacyOrgRows, the property LegacyPropertyRows and the profile its own statement
+        // (SupplierProfileSql), which name only the columns they need, so a column that a later migration adds to these tables
+        // cannot break the tests. The parents need no CIN.
         await LegacyOrgRows.InsertAsync(db, hostOrg);
         await LegacyOrgRows.InsertAsync(db, supplierOrg);
         await db.Database.ExecuteSqlAsync($"""UPDATE "Orgs" SET "OrgType" = {(int)supplierOrg.OrgType} WHERE "Id" = {supplierOrg.Id}""");
