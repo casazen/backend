@@ -38,8 +38,9 @@ public sealed record DocumentCoherenceContext(DateOnly CheckInDate, CheckInIdent
 /// sides) must agree: names after the normalization of the MRZ (upper case, no diacritics, apostrophes, hyphens and spaces all the same as the filler; the German
 /// transliteration too; an MRZ name field cut at its length is not a conflict), dates as dates (the printed one has its century, the MRZ one has it inferred), the
 /// document number as letters and digits. A field read on one side only is unknown, never a conflict.</item>
-/// <item><b>field_coherence</b>: the dates are possible: the birth is not after the day of the stay and not more than 120 years before it, the issue is not after
-/// the expiry.</item>
+/// <item><b>field_coherence</b>: the dates are possible (the birth is not after the day of the stay and not more than 120 years before it, the issue is not after
+/// the expiry) and what the card prints a second time agrees with the MRZ: the expiry, the sex and the nationality, each when both were read (one read on a side only
+/// adds no entry), a difference being a classic sign of an altered print.</item>
 /// <item><b>booking_consistency</b>: the flags of <see cref="MrzCheckInConsistency"/> (names, birth date, document number, nationality), as they are; the nationality
 /// is compared after the name of the state the guest typed («ITALIA») is brought to its code through the explicit table of the check-in, and stays unknown for a
 /// name that table does not have (never guessed).</item>
@@ -61,6 +62,9 @@ public sealed class DocumentCoherenceChecker
         [DocumentFormatMrzTypes.Td3] = 39,
     };
 
+    /// <summary>The fields of the card that are printed and also in the MRZ, and are not among the ones that identify the holder: compared when both were read.</summary>
+    private static readonly string[] PrintedAgainstMrz = [ZonedFieldNames.ExpiryDate, ZonedFieldNames.Sex, ZonedFieldNames.Nationality];
+
     private enum Kind
     {
         Name,
@@ -68,6 +72,7 @@ public sealed class DocumentCoherenceChecker
         Number,
         Letters,
         Other,
+        Country,
     }
 
     /// <summary>The checks of the document, in the order of <see cref="DocumentFormatChecks.All"/>.</summary>
@@ -126,6 +131,12 @@ public sealed class DocumentCoherenceChecker
             : issued > until ? DocumentCoherenceResults.Failed : DocumentCoherenceResults.Passed;
         checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.FieldCoherence, birthResult, ZonedFieldNames.BirthDate));
         checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.FieldCoherence, issueResult, ZonedFieldNames.IssueDate));
+
+        // field_coherence: what the card prints a second time, beside the MRZ. When the expiry, the sex or the nationality were read on both and differ, the print was
+        // altered or misread (a classic sign of tampering) and the check fails. A value read on one side only adds no entry: the fields that identify the holder are the
+        // ones that must be compared (side_consistency, and they are not compared twice), these are compared when both are there.
+        foreach (var name in PrintedAgainstMrz.Where(name => !identifying.Contains(name) && Comparable(name, machine, printed)))
+            checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.FieldCoherence, CompareSides(name, machine, printed, referenceMayBeCut: false), name));
 
         // booking_consistency: MrzCheckInConsistency, reused: true agrees, false disagrees, null was not compared. Only the nationality is brought to a common form
         // first (NationalityOnTheBooking): the check-in keeps the citizenship as the name of a state, which the comparison alone cannot read.
@@ -235,6 +246,8 @@ public sealed class DocumentCoherenceChecker
                 return TryDate(reference, out var first) && TryDate(other, out var second) && first == second;
             case Kind.Number:
                 return MrzCheckInConsistency.DocumentNumbersAgree(reference, other) is true;
+            case Kind.Country:
+                return string.Equals(CanonicalCountry(reference), CanonicalCountry(other), StringComparison.Ordinal);
             case Kind.Letters:
                 return string.Equals(LettersOnly(reference), LettersOnly(other), StringComparison.Ordinal);
             default:
@@ -247,6 +260,7 @@ public sealed class DocumentCoherenceChecker
         Kind.Name => NameKey(value, transliterate: false).Length > 0,
         Kind.Date => TryDate(value, out _),
         Kind.Letters => LettersOnly(value).Length > 0,
+        Kind.Country => CanonicalCountry(value) is not null,
         _ => AlphanumericOnly(value).Length > 0,
     };
 
@@ -255,9 +269,18 @@ public sealed class DocumentCoherenceChecker
         ZonedFieldNames.Surname or ZonedFieldNames.GivenNames => Kind.Name,
         ZonedFieldNames.BirthDate or ZonedFieldNames.IssueDate or ZonedFieldNames.ExpiryDate => Kind.Date,
         ZonedFieldNames.DocumentNumber => Kind.Number,
-        ZonedFieldNames.Sex or ZonedFieldNames.Nationality => Kind.Letters,
+        ZonedFieldNames.Nationality => Kind.Country,
+        ZonedFieldNames.Sex => Kind.Letters,
         _ => Kind.Other,
     };
+
+    /// <summary>Whether the MRZ and the visual zone each gave a value of the field that can be compared (a date that is a date, a country the table knows).</summary>
+    private static bool Comparable(string name, Dictionary<string, List<string>> machine, Dictionary<string, List<string>> printed)
+    {
+        var kind = KindOf(name);
+        return machine.TryGetValue(name, out var fromMachine) && Usable(kind, fromMachine[0])
+            && printed.TryGetValue(name, out var fromPrint) && fromPrint.Any(value => Usable(kind, value));
+    }
 
     /// <summary>
     /// Whether the name field of the MRZ is as long as its line allows, so a name that is shorter than the printed one may have been cut. The length is rebuilt from

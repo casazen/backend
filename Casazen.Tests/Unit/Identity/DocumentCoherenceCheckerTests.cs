@@ -35,22 +35,36 @@ public class DocumentCoherenceCheckerTests
     private static ZonedField FromMrz(string name, string value) =>
         new(name, value, DocumentSide.Back, ZonedFieldZones.Mrz, 0.95, ZonedFieldSources.Mrz);
 
-    /// <summary>What the visual zone of the specimen card shows; every argument can be changed to make the card disagree with its MRZ.</summary>
+    /// <summary>
+    /// What the visual zone of the specimen card shows; every argument can be changed to make the card disagree with its MRZ, and the sex and the nationality can be
+    /// left out (null) as when the print of them was not read.
+    /// </summary>
     private static List<ZonedField> Card(
         string surname = "ROSSI",
         string givenNames = "MARIA GIUSEPPINA",
         string birthDate = "1985-03-12",
         string documentNumber = "CA12345AA",
         string issueDate = "2022-05-15",
-        string expiryDate = "2032-03-12") =>
-    [
-        Printed(ZonedFieldNames.Surname, surname),
-        Printed(ZonedFieldNames.GivenNames, givenNames),
-        Printed(ZonedFieldNames.BirthDate, birthDate),
-        Printed(ZonedFieldNames.DocumentNumber, documentNumber),
-        Printed(ZonedFieldNames.IssueDate, issueDate),
-        Printed(ZonedFieldNames.ExpiryDate, expiryDate),
-    ];
+        string expiryDate = "2032-03-12",
+        string? sex = "F",
+        string? nationality = "ITA")
+    {
+        var fields = new List<ZonedField>
+        {
+            Printed(ZonedFieldNames.Surname, surname),
+            Printed(ZonedFieldNames.GivenNames, givenNames),
+            Printed(ZonedFieldNames.BirthDate, birthDate),
+            Printed(ZonedFieldNames.DocumentNumber, documentNumber),
+            Printed(ZonedFieldNames.IssueDate, issueDate),
+            Printed(ZonedFieldNames.ExpiryDate, expiryDate),
+        };
+        if (sex is not null)
+            fields.Add(Printed(ZonedFieldNames.Sex, sex));
+        if (nationality is not null)
+            fields.Add(Printed(ZonedFieldNames.Nationality, nationality));
+
+        return fields;
+    }
 
     private static MrzReading Reading(MrzExtractionResult? result = null) => new(result ?? IdentityTestDocuments.Mrz(), []);
 
@@ -91,6 +105,11 @@ public class DocumentCoherenceCheckerTests
         Assert.Equal(
             [ZonedFieldNames.Surname, ZonedFieldNames.GivenNames, ZonedFieldNames.BirthDate, ZonedFieldNames.DocumentNumber],
             report.Checks.Where(entry => entry.Check == DocumentFormatChecks.SideConsistency).Select(entry => entry.Field));
+
+        // The coherence judges the dates, and what the card prints a second time against the MRZ.
+        Assert.Equal(
+            [ZonedFieldNames.BirthDate, ZonedFieldNames.IssueDate, ZonedFieldNames.ExpiryDate, ZonedFieldNames.Sex, ZonedFieldNames.Nationality],
+            report.Checks.Where(entry => entry.Check == DocumentFormatChecks.FieldCoherence).Select(entry => entry.Field));
         Assert.All(report.Checks, entry => Assert.Contains(entry.Check, DocumentFormatChecks.All));
     }
 
@@ -246,11 +265,74 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_TheExpiryOfTheMrz_WinsOverTheOnePrinted()
     {
-        // The printed date is read at the local confidence; the one of the MRZ is protected by its own digit.
+        // The printed date is read at the local confidence; the one of the MRZ is protected by its own digit: it is the one that says whether the card is expired.
         var report = Checker.Check(Card(expiryDate: "2020-01-01"), Reading(), Stay, Cie, Policy);
 
         Assert.False(report.Expired);
         Assert.Equal(DocumentCoherenceResults.Passed, Result(report, DocumentFormatChecks.Expiry, ZonedFieldNames.ExpiryDate));
+
+        // But a print that says another date than the MRZ is the classic sign of an altered card: the coherence fails, and the dates are not said to be valid.
+        Assert.Equal(DocumentCoherenceResults.Failed, Result(report, DocumentFormatChecks.FieldCoherence, ZonedFieldNames.ExpiryDate));
+        Assert.Equal(DocumentCoherenceResults.Failed, report.Summary(DocumentFormatChecks.FieldCoherence));
+        Assert.False(report.DatesValid);
+        Assert.False(report.AllPassed(Cie.RequiredChecks));
+        // It is no conflict on a field that identifies the holder, and no code is raised for it.
+        Assert.False(report.IdentifyingConflict);
+        Assert.Empty(report.Codes);
+    }
+
+    [Fact]
+    public void Check_ASexPrintedDifferentlyFromTheMrz_FailsTheCoherence_ButLeavesTheDatesAlone()
+    {
+        var report = Checker.Check(Card(sex: "M"), Reading(), Stay, Cie, Policy);
+
+        Assert.Equal(DocumentCoherenceResults.Failed, Result(report, DocumentFormatChecks.FieldCoherence, ZonedFieldNames.Sex));
+        Assert.Equal(DocumentCoherenceResults.Failed, report.Summary(DocumentFormatChecks.FieldCoherence));
+        Assert.False(report.AllPassed(Cie.RequiredChecks));
+        // A sex is not a date, and not a field that identifies the holder.
+        Assert.True(report.DatesValid);
+        Assert.False(report.IdentifyingConflict);
+        Assert.Empty(report.Codes);
+    }
+
+    [Theory]
+    [InlineData("FRA", "ITA", DocumentCoherenceResults.Failed)] // the print says another state than the MRZ
+    [InlineData("ITA", "ITA", DocumentCoherenceResults.Passed)]
+    [InlineData("DEU", "D", DocumentCoherenceResults.Passed)] // the German cards write D in the MRZ and DEU in print
+    [InlineData("ITA", "D", DocumentCoherenceResults.Failed)]
+    public void Check_ANationalityPrintedDifferentlyFromTheMrz_FailsTheCoherence(string printed, string onTheCard, string expected)
+    {
+        var report = Checker.Check(Card(nationality: printed), Reading(IdentityTestDocuments.Mrz(nationality: onTheCard)), Stay, Cie, Policy);
+
+        Assert.Equal(expected, Result(report, DocumentFormatChecks.FieldCoherence, ZonedFieldNames.Nationality));
+        Assert.Equal(expected, report.Summary(DocumentFormatChecks.FieldCoherence));
+    }
+
+    [Fact]
+    public void Check_AValueReadOnOneSideOnly_AddsNoEntryToTheCoherence()
+    {
+        // The print of the sex and of the nationality was not read: there is nothing to compare, so nothing is said of them (the fields that identify the holder are
+        // the ones that must be there, and they are in side_consistency).
+        var withoutPrint = Checker.Check(Card(sex: null, nationality: null), Reading(), Stay, Cie, Policy);
+        Assert.Equal(
+            [ZonedFieldNames.BirthDate, ZonedFieldNames.IssueDate, ZonedFieldNames.ExpiryDate],
+            withoutPrint.Checks.Where(entry => entry.Check == DocumentFormatChecks.FieldCoherence).Select(entry => entry.Field));
+
+        // The MRZ was not read: the print has nothing to be compared with.
+        var withoutMrz = Checker.Check(Card(), null, Stay, Cie, Policy);
+        Assert.Equal(
+            [ZonedFieldNames.BirthDate, ZonedFieldNames.IssueDate],
+            withoutMrz.Checks.Where(entry => entry.Check == DocumentFormatChecks.FieldCoherence).Select(entry => entry.Field));
+    }
+
+    [Fact]
+    public void Check_AFieldThatIdentifiesTheHolder_IsNotComparedTwice()
+    {
+        // With the expiry among the fields that identify the holder, its difference is the identifying conflict and the coherence does not repeat it.
+        var report = Checker.Check(Card(expiryDate: "2031-03-12"), Reading(), Stay, Cie, PolicyWith("[\"surname\",\"expiryDate\"]"));
+
+        Assert.True(report.IdentifyingConflict);
+        Assert.DoesNotContain(report.Checks, entry => entry.Check == DocumentFormatChecks.FieldCoherence && entry.Field == ZonedFieldNames.ExpiryDate);
     }
 
     [Fact]
