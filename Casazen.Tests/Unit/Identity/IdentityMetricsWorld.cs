@@ -242,6 +242,23 @@ internal sealed class IdentityMetricsWorld
         return row;
     }
 
+    /// <summary>
+    /// The window the retention job of the identity verification leaves, built from the data it writes (nothing of the job is used here): the first session of a stay was left open (the
+    /// guest opened the step on <c>web:ios-safari</c> at 09:00 and went away, no format read) and the job closed it as <c>abandoned</c> at 10:40, the time of the job, not the time
+    /// of the last thing the guest did. Meanwhile the stay got a new link: its second session (<c>web:android-chrome</c>, <c>it-cie-3.0</c>) opened at 10:00, was decided by the policy at
+    /// 10:05 (a review it would have approved, 1100 ms) and approved by a person at 10:35. The time of the abandoned session, from 09:00 to 10:40, holds the row of the second one.
+    /// Everything happens on the 10th of November 2026; the row of the policy is the only one of the stay and belongs to the second session.
+    /// </summary>
+    public (GuestCheckInSession Abandoned, GuestCheckInSession Later, BiometricVerificationLog Decision) AddAbandonedBeforeALaterDecision(Guid propertyId)
+    {
+        var stay = AddStay(propertyId);
+        var abandoned = AddSession(stay, At(10, 9), At(10, 10, 40), IdentityOutcomeCodes.Abandoned, formatId: null, channel: IdentityChannels.IosSafari);
+        var later = AddSession(stay, At(10, 10), At(10, 10, 5), IdentityOutcomeCodes.Review, channel: IdentityChannels.AndroidChrome);
+        var decision = AddDecision(stay, At(10, 10, 5), BiometricOutcome.Escalate, BiometricOutcome.Accept, durationMs: 1100, channel: IdentityChannels.AndroidChrome);
+        AddOperator(stay, At(10, 10, 35), BiometricOutcome.Accept);
+        return (abandoned, later, decision);
+    }
+
     /// <summary>Another row the test builds by hand (a stay guest with a document number, for example).</summary>
     public void Add(object row) => _rows.Add(row);
 

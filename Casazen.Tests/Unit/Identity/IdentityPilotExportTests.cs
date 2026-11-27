@@ -334,6 +334,31 @@ public sealed class IdentityPilotExportTests
         }
     }
 
+    /// <summary>
+    /// The row of the file follows the same rule as the counters: the step an abandonment closed after a later session of the stay decided has no decision cells (the retention job closes
+    /// it at the time of the job, so its time holds the row of the later session), and the later step keeps its own: the shadow outcome, the time of the presence, the decision of the
+    /// person and the time of the review.
+    /// </summary>
+    [Fact]
+    public async Task IdentityPilotExport_AnAbandonedStepClosedAfterALaterDecision_HasNoDecision_AndTheLaterStepKeepsItsOwn()
+    {
+        var world = new IdentityMetricsWorld();
+        var (abandoned, later, _) = world.AddAbandonedBeforeALaterDecision(world.GrantedPropertyId);
+
+        var rows = Rows(await TextAsync(world));
+
+        var first = Assert.Single(rows, row => row["attempt_ref"] == IdentityPilotExport.AttemptRef(abandoned.Id, world.OrgId));
+        var second = Assert.Single(rows, row => row["attempt_ref"] == IdentityPilotExport.AttemptRef(later.Id, world.OrgId));
+        Assert.Equal(("abandoned", "unknown", "web:ios-safari", "2026-11-10T10:40:00.000Z"), (first["outcome_code"], first["format_id"], first["channel"], first["closed_at"]));
+        Assert.All(
+            new[] { "decision_mode", "shadow_outcome", "reason_codes", "human_outcome", "human_decided_at", "review_seconds", "duration_ms", "policy_version", "policy_hash_prefix" },
+            column => Assert.Equal(string.Empty, first[column]));
+        Assert.Equal(("review", "it-cie-3.0", "web:android-chrome"), (second["outcome_code"], second["format_id"], second["channel"]));
+        Assert.Equal(
+            ("observation", "approve", "approve", "2026-11-10T10:35:00.000Z", "1800", "1100"),
+            (second["decision_mode"], second["shadow_outcome"], second["human_outcome"], second["human_decided_at"], second["review_seconds"], second["duration_ms"]));
+    }
+
     /// <summary>Proof (security): a cell that starts with <c>=</c>, <c>+</c>, <c>-</c>, <c>@</c>, a tab or a carriage return gets a leading apostrophe, and a cell that needs quotes gets them (RFC 4180).</summary>
     [Theory]
     [InlineData("=1+1", "'=1+1")]

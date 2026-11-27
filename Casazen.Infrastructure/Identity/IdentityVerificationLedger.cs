@@ -101,9 +101,11 @@ internal sealed record IdentityLogFacts(
 /// (<see cref="IdentityOutcomeCategories.OfTerminalCode"/>); an open one is <see cref="IdentityOutcomeCategory.Abandoned"/> when it was opened more than
 /// <c>abandonedAfter</c> ago (<c>IdentityVerification:Retention:AbandonedAfterHours</c>), <see cref="IdentityOutcomeCategory.InProgress"/> otherwise. Each opened session has
 /// exactly one category.</para>
-/// <para><b>The decision of the policy.</b> A closed session is the one that wrote the row of the log: the first decision row of its booking (<c>Method = Biometric</c>, a
-/// decision mode other than <c>Legacy</c>) written between the opening and the closing of the session; a row belongs to one session only. A hand-off that decided nothing (a
-/// refusal of the consent, a minor, the assisted path) wrote none, and an open session has none.</para>
+/// <para><b>The decision of the policy.</b> A session closed by the closure of the presence step (its code is <c>auto_approved</c>, <c>review</c>, <c>technical_error</c> or
+/// <c>unavailable</c>, see <see cref="WritesADecisionRow"/>) is the one that wrote a row of the log: the first decision row of its booking (<c>Method = Biometric</c>, a
+/// decision mode other than <c>Legacy</c>) written between the opening and the closing of the session; a row belongs to one session only. A session closed with another code (a
+/// refusal of the consent, a minor, the assisted path, a format the registry does not hold, an abandonment) wrote none and never looks for one: the retention job closes an
+/// abandoned session at the time of the job, so the time between its opening and its closing can hold the row of a later session of the same booking. An open session has none.</para>
 /// <para><b>The decision of a person.</b> The first row of an operator with an outcome (<c>Method = Operator</c>, approve or reject: the row that asks the guest for a new
 /// photo is not a decision) of the same booking after the decision of the policy and before the next decision of the policy on that booking. The seconds of a review are
 /// counted from the row of the review (an escalation) to that row, so a booking handed over twice measures each review once.</para>
@@ -208,10 +210,24 @@ internal static class IdentityVerificationLedger
                 row.Id, row.BookingId, row.Method, row.DecisionMode, row.Outcome, row.ShadowOutcome, row.DurationMs, row.PolicyVersion, row.PolicyHash, null, row.CreatedAt));
     }
 
-    /// <summary>The decision row a closed session wrote: the first one of its booking inside the time of the session that no other session of the booking took.</summary>
+    /// <summary>
+    /// The sessions that wrote a decision row are the ones the closure of the presence step closed (<c>IdentityVerificationFlowService.RecordDecisionAsync</c>, the one writer of the rows of
+    /// the policy): their code is <c>auto_approved</c>, <c>review</c>, <c>technical_error</c> or <c>unavailable</c>. A session closed with any other code (the guest asked for a person or
+    /// refused the consent, a format the registry does not hold, a minor, an abandonment) wrote none: its time, from the opening to the closing, says nothing about the rows of the
+    /// booking, because an abandonment is closed at the time of the retention job, long after the guest left, and a later session of the same booking may have decided meanwhile.
+    /// </summary>
+    private static bool WritesADecisionRow(string? outcomeCode)
+    {
+        return outcomeCode is IdentityOutcomeCodes.AutoApproved or IdentityOutcomeCodes.Review or IdentityOutcomeCodes.TechnicalError or IdentityOutcomeCodes.Unavailable;
+    }
+
+    /// <summary>
+    /// The decision row a closed session wrote: the first one of its booking inside the time of the session that no other session of the booking took, and only for a session that
+    /// closed with a code that writes one (<see cref="WritesADecisionRow"/>); nothing for any other.
+    /// </summary>
     private static IdentityLogFacts? DecisionOf(IdentitySessionFacts session, List<IdentityLogFacts> decisions, HashSet<Guid> taken)
     {
-        if (session.ClosedAt is not { } closedAt)
+        if (session.ClosedAt is not { } closedAt || !WritesADecisionRow(session.OutcomeCode))
             return null;
 
         var decided = decisions.FirstOrDefault(row => !taken.Contains(row.Id) && row.CreatedAt >= session.OpenedAt && row.CreatedAt <= closedAt);

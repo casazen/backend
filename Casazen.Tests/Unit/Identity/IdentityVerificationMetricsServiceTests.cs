@@ -267,6 +267,82 @@ public sealed class IdentityVerificationMetricsServiceTests
         Assert.Equal(900, metrics.LatencyMs.P50);
     }
 
+    /// <summary>
+    /// Only the closure of the presence step writes a row of the policy, so only a session closed with its code (<c>auto_approved</c>, <c>review</c>, <c>technical_error</c>,
+    /// <c>unavailable</c>) looks for one: a session closed with any other code (the guest asked for a person or refused the consent, a format the registry does not hold, a minor, an
+    /// abandonment) never takes a row, even when the time between its opening and its closing holds one of its booking, and neither does a code that is missing or unknown.
+    /// </summary>
+    [Theory]
+    [InlineData(IdentityOutcomeCodes.AutoApproved, true)]
+    [InlineData(IdentityOutcomeCodes.Review, true)]
+    [InlineData(IdentityOutcomeCodes.TechnicalError, true)]
+    [InlineData(IdentityOutcomeCodes.Unavailable, true)]
+    [InlineData(IdentityOutcomeCodes.Assisted, false)]
+    [InlineData(IdentityOutcomeCodes.ConsentRefused, false)]
+    [InlineData(IdentityOutcomeCodes.FormatUnsupported, false)]
+    [InlineData(IdentityOutcomeCodes.MinorExcluded, false)]
+    [InlineData(IdentityOutcomeCodes.Abandoned, false)]
+    [InlineData("a_code_of_the_future", false)]
+    [InlineData(null, false)]
+    public async Task IdentityVerificationLedger_OnlyTheCodesOfTheClosureOfThePresenceStepLookForARow(string? code, bool takesTheRow)
+    {
+        var world = new IdentityMetricsWorld();
+        var stay = world.AddStay(world.GrantedPropertyId);
+        world.AddSession(stay, IdentityMetricsWorld.At(10), IdentityMetricsWorld.At(10, 10, 30), code);
+        var decision = world.AddDecision(stay, IdentityMetricsWorld.At(10, 10, 5), BiometricOutcome.Escalate, BiometricOutcome.Accept);
+        await world.SaveAsync();
+        await using var db = world.NewDb();
+
+        var records = await IdentityVerificationLedger.ReadAsync(
+            db, world.OrgWide, IdentityMetricsWorld.From, IdentityMetricsWorld.To, IdentityMetricsWorld.Now.UtcDateTime, TimeSpan.FromHours(24), withReasons: false, Ct);
+
+        Guid? expected = takesTheRow ? decision.Id : null;
+        Assert.Equal(expected, Assert.Single(records).Decided?.Id);
+    }
+
+    /// <summary>
+    /// The window the retention job leaves (E73/F01/US02/T03 closes a verification the guest left open as abandoned at the time of the job, not at the time of the guest; the data
+    /// here are the ones it writes, nothing of the job is used): the first session of a stay is closed as abandoned AFTER the second session of the same stay decided, so its time
+    /// holds the row of the second. The row is the second session's: the abandoned one has no decision and no person after it, the second keeps its shadow decision, its person, its
+    /// presence time and its review time, and the cell of the coverage of each counts what is its own.
+    /// </summary>
+    [Fact]
+    public async Task IdentityVerificationMetrics_AnAbandonedSessionClosedAfterALaterDecision_NeverTakesItsRow()
+    {
+        var world = new IdentityMetricsWorld();
+        var (abandoned, later, decision) = world.AddAbandonedBeforeALaterDecision(world.GrantedPropertyId);
+        await world.SaveAsync();
+        await using var db = world.NewDb();
+
+        var records = await IdentityVerificationLedger.ReadAsync(
+            db, world.OrgWide, IdentityMetricsWorld.From, IdentityMetricsWorld.To, IdentityMetricsWorld.Now.UtcDateTime, TimeSpan.FromHours(24), withReasons: false, Ct);
+
+        var first = Assert.Single(records, record => record.SessionId == abandoned.Id);
+        Assert.Equal(IdentityOutcomeCategory.Abandoned, first.Outcome);
+        Assert.Null(first.Decided);
+        Assert.Null(first.Human);
+        var second = Assert.Single(records, record => record.SessionId == later.Id);
+        Assert.Equal(decision.Id, second.Decided?.Id);
+        Assert.True(second.Decided!.ShadowApproved);
+        Assert.Equal(1100, second.Decided.DurationMs);
+        Assert.True(second.Human!.Approved);
+        Assert.Equal(1800, second.Human.ReviewSeconds);
+
+        var metrics = IdentityVerificationMetricsService.Summarize(records);
+
+        Assert.Equal(2, metrics.Opened);
+        Assert.Equal((Abandoned: 1, Review: 1), (metrics.Outcomes.Abandoned, metrics.Outcomes.Review));
+        Assert.Equal(new IdentityShadowVsHuman(1, 0, 0, 0), metrics.ShadowVsHuman);
+        Assert.Equal(new IdentityPercentiles(1100, 1100, 1), metrics.LatencyMs);
+        Assert.Equal(new IdentityPercentiles(1800, 1800, 1), metrics.ReviewSeconds);
+        Assert.Equal(
+            [
+                ("it-cie-3.0", IdentityChannels.AndroidChrome, 1, 0, 1),
+                (IdentityCoverageCell.UnknownFormat, IdentityChannels.IosSafari, 1, 0, 0),
+            ],
+            metrics.Coverage.Select(cell => (cell.FormatId, cell.Channel, cell.Opened, cell.AutoApproved, cell.ShadowApproved)));
+    }
+
     /// <summary>AC4: the latency and the review time are the nearest-rank percentiles of the statistics (rank <c>ceil(p * n)</c>), over the rows of the policy and over the reviews a person answered.</summary>
     [Fact]
     public async Task IdentityVerificationMetrics_LatencyAndReviewTimeAreNearestRankPercentiles()
