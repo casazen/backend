@@ -51,6 +51,14 @@ public static class CasazenPolicies
     public const string GuestSession = "GuestSession";
 
     /// <summary>
+    /// A site connected to the org, its WordPress plugin (S022, PLG-BE-CONNECT, site integration plan §10.4): a valid, active credential of the scheme
+    /// <c>SiteToken</c> (<c>Authorization: Bearer czs_…</c>, <c>SiteTokenAuthenticationHandler</c>) with its connection, its org and the scope
+    /// <c>site:domain</c>. It is not a sign-in of a person and carries no role: it opens only <c>api/site/v1/*</c>, whose actions read the connection with
+    /// <c>User.GetSiteConnection()</c> and act on its org only (never an org of the request). A sign-in of a person opens none of them (401).
+    /// </summary>
+    public const string SiteConnection = "SiteConnection";
+
+    /// <summary>
     /// The person with a CasaZen account who books as a guest (the mobile app's guest area, <c>api/guest/*</c>): any signed-in account
     /// with a subject, whatever its role, and with <b>no host org and no supplier link needed</b>, because a guest has neither. It opens
     /// only the actions that read the caller's own bookings (the direct bookings whose guest has the account's verified email address, which

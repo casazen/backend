@@ -65,7 +65,9 @@ public class AntiSpoofingService(
 
             var score = Run(model, input, settings.LivenessInputSize, timeout.Token);
             var live = score >= settings.LivenessThreshold;
-            logger.LogInformation("Liveness check: live={IsLive} score={Score:F3}", live, score);
+
+            // The outcome only, never the score: the frames of the self-hosted presence (E72/F01/US02/T01) go through here one by one, and no number of a person goes to a log (ADR-013-R17).
+            logger.LogInformation("Liveness check: live={IsLive}", live);
             return new LivenessResult(live, score);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

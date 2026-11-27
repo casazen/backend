@@ -24,6 +24,14 @@ public class TestAuthHandler(
         if (!Request.Headers.ContainsKey("Authorization"))
             return Task.FromResult(AuthenticateResult.NoResult());
 
+        // Like the JWT bearer handler of the app (AddCasazenAuthentication): the credential of a connected site (czs_…, S022) is no sign-in of a
+        // person, only the SiteToken scheme reads it, so a request that carries one is anonymous for the default scheme.
+        if (Request.Headers.Authorization.ToString()
+            .StartsWith("Bearer " + Casazen.Core.SiteConnections.SiteConnectionTokens.CredentialPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return Task.FromResult(AuthenticateResult.NoResult());
+        }
+
         var userId = Request.Headers["X-Test-User"].FirstOrDefault() ?? DefaultUserId;
         var rolesHeader = Request.Headers["X-Test-Roles"].FirstOrDefault();
         var email = Request.Headers["X-Test-Email"].FirstOrDefault();

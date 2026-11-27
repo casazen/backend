@@ -2,7 +2,9 @@ using System.Net;
 using System.Security.Cryptography;
 using Casazen.Core.Features;
 using Casazen.Core.Options;
+using Casazen.Infrastructure.Identity;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Identity;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -285,5 +287,252 @@ public sealed class BiometricModelStoreTests : IDisposable
         var options = new BiometricModelOptions { LivenessThreshold = 1.5, VerificationTimeoutMs = 10 };
 
         Assert.True(options.Validate().Count >= 2);
+    }
+
+    // ─── The optional second candidates (E72/F01/US02/T03, decision D6) ──────────────────────────────────
+
+    [Fact]
+    public async Task Store_NoCandidateConfigured_IsReady_AndEachCandidateIsNotConfigured()
+    {
+        using var store = await BundledBiometricModels.LoadAsync();
+
+        // The store is as it was: ready, no reason, the three models of the decisions loaded.
+        Assert.True(store.IsAvailable);
+        Assert.Equal(BiometricModelsState.Ready, store.Snapshot.State);
+        Assert.Null(store.Snapshot.ReasonCode);
+        Assert.Equal(3, store.Snapshot.Models.Count);
+        Assert.All(store.Snapshot.Models, model => Assert.True(model.Loaded));
+
+        // The candidates are listed apart and say that they are not configured; nothing is loaded for them.
+        Assert.Equal([BiometricModelRoles.AntiSpoofingCandidate, BiometricModelRoles.FaceRecognitionCandidate], store.Snapshot.Candidates.Select(candidate => candidate.Role));
+        Assert.All(store.Snapshot.Candidates, candidate =>
+        {
+            Assert.False(candidate.Loaded);
+            Assert.Null(candidate.WeightHash);
+            Assert.Equal(BiometricModelStatusStates.NotConfigured, candidate.FailureCode);
+        });
+        Assert.Null(store.AntiSpoofingCandidate);
+        Assert.Null(store.FaceRecognitionCandidate);
+    }
+
+    [Fact]
+    public async Task Store_ACandidateThatIsAFileWithItsRealHash_IsLoadedLikeTheThreeModels_AndNothingElseChanges()
+    {
+        var options = BundledBiometricModels.PublishedOptions();
+        options.FaceRecognitionCandidate = CandidateOf<FaceRecognitionCandidateOptions>(options.FaceRecognition, "recognition.onnx");
+        options.AntiSpoofingCandidate = CandidateOf<AntiSpoofingCandidateOptions>(options.AntiSpoofing, "antispoofing.onnx");
+        using var store = await BundledBiometricModels.LoadAsync(options);
+
+        Assert.NotNull(store.FaceRecognitionCandidate);
+        Assert.NotNull(store.AntiSpoofingCandidate);
+        Assert.Equal(options.FaceRecognition.Sha256, store.FaceRecognitionCandidate.WeightHash, ignoreCase: true);
+        Assert.All(store.Snapshot.Candidates, candidate =>
+        {
+            Assert.True(candidate.Loaded);
+            Assert.Null(candidate.FailureCode);
+            Assert.Equal("test candidate", candidate.Provenance);
+        });
+
+        // The three models of the decisions are the ones they were, and the weights hash a decision is bound to ignores the candidates.
+        Assert.True(store.IsAvailable);
+        Assert.Equal(BiometricModelsState.Ready, store.Snapshot.State);
+        Assert.Null(store.Snapshot.ReasonCode);
+        Assert.Equal(
+            [BiometricModelRoles.FaceDetector, BiometricModelRoles.AntiSpoofing, BiometricModelRoles.FaceRecognition],
+            store.Snapshot.Models.Select(model => model.Role));
+        Assert.All(store.Snapshot.Models, model => Assert.True(model.Loaded));
+        var withoutCandidates = store.Snapshot with { Candidates = [] };
+        Assert.NotNull(IdentityConfigurationFingerprint.ComputeWeightsHash(store.Snapshot));
+        Assert.Equal(IdentityConfigurationFingerprint.ComputeWeightsHash(withoutCandidates), IdentityConfigurationFingerprint.ComputeWeightsHash(store.Snapshot));
+    }
+
+    [Theory]
+    [InlineData("another hash", "hash_mismatch")]
+    [InlineData("no hash", "hash_not_configured")]
+    [InlineData("no file", "file_missing")]
+    [InlineData("a file that is not a model", "load_failed")]
+    [InlineData("no name", "config_invalid")]
+    [InlineData("no path", "config_invalid")]
+    [InlineData("a hash that is not a hash", "config_invalid")]
+    [InlineData("a path that leaves the folder", "config_invalid")]
+    [InlineData("an address that is not https", "config_invalid")]
+    [InlineData("an input size out of range", "config_invalid")]
+    [InlineData("a divisor of 0", "config_invalid")]
+    public async Task Store_ACandidateThatCannotBeUsed_IsNotLoadedWithItsCode_AndTheThreeModelsAreUntouched(string situation, string expectedCode)
+    {
+        var options = BundledBiometricModels.PublishedOptions();
+        var candidate = CandidateOf<FaceRecognitionCandidateOptions>(options.FaceRecognition, "recognition.onnx");
+        switch (situation)
+        {
+            case "another hash":
+                candidate.Sha256 = new string('B', 64);
+                break;
+            case "no hash":
+                candidate.Sha256 = string.Empty;
+                break;
+            case "no file":
+                candidate.Path = Path.Combine(_folder, "absent.onnx");
+                break;
+            case "a file that is not a model":
+                var junk = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
+                File.WriteAllBytes(Path.Combine(_folder, "junk.onnx"), junk);
+                candidate.Path = Path.Combine(_folder, "junk.onnx");
+                candidate.Sha256 = Sha256Of(junk);
+                break;
+            case "no name":
+                candidate.Name = string.Empty;
+                break;
+            case "no path":
+                candidate.Path = string.Empty;
+                break;
+            case "a hash that is not a hash":
+                candidate.Sha256 = "not-a-hash";
+                break;
+            case "a path that leaves the folder":
+                candidate.Path = "../outside.onnx";
+                break;
+            case "an address that is not https":
+                candidate.DownloadUrl = "http://models.example.test/model.onnx";
+                break;
+            case "an input size out of range":
+                candidate.InputSize = 4;
+                break;
+            default:
+                candidate.Std = 0;
+                break;
+        }
+
+        options.FaceRecognitionCandidate = candidate;
+
+        // A candidate that is wrong is its own problem: the settings of the three models are still valid, so the store is not "config_invalid".
+        Assert.Empty(options.Validate());
+        using var store = await BundledBiometricModels.LoadAsync(options);
+
+        var info = Assert.Single(store.Snapshot.Candidates, found => found.Role == BiometricModelRoles.FaceRecognitionCandidate);
+        Assert.False(info.Loaded);
+        Assert.Equal(expectedCode, info.FailureCode);
+        Assert.Null(store.FaceRecognitionCandidate);
+        Assert.Equal(
+            BiometricModelStatusStates.NotConfigured,
+            Assert.Single(store.Snapshot.Candidates, found => found.Role == BiometricModelRoles.AntiSpoofingCandidate).FailureCode);
+
+        Assert.True(store.IsAvailable);
+        Assert.Equal(BiometricModelsState.Ready, store.Snapshot.State);
+        Assert.Null(store.Snapshot.ReasonCode);
+        Assert.Equal(3, store.Snapshot.Models.Count);
+        Assert.All(store.Snapshot.Models, model => Assert.True(model.Loaded));
+        Assert.NotNull(store.FaceDetector);
+        Assert.NotNull(store.AntiSpoofing);
+        Assert.NotNull(store.FaceRecognition);
+    }
+
+    [Theory]
+    [InlineData("a crop scale out of range")]
+    [InlineData("an input size out of range")]
+    [InlineData("no name")]
+    public async Task Store_AnAntiSpoofingCandidateWithAnInvalidDescription_IsConfigInvalid_AndTheStoreIsReady(string situation)
+    {
+        var options = BundledBiometricModels.PublishedOptions();
+        var candidate = CandidateOf<AntiSpoofingCandidateOptions>(options.AntiSpoofing, "antispoofing.onnx");
+        switch (situation)
+        {
+            case "a crop scale out of range":
+                candidate.CropScale = 9;
+                break;
+            case "an input size out of range":
+                candidate.InputSize = 1000;
+                break;
+            default:
+                candidate.Name = " ";
+                break;
+        }
+
+        options.AntiSpoofingCandidate = candidate;
+        using var store = await BundledBiometricModels.LoadAsync(options);
+
+        Assert.Equal("config_invalid", Assert.Single(store.Snapshot.Candidates, found => found.Role == BiometricModelRoles.AntiSpoofingCandidate).FailureCode);
+        Assert.Null(store.AntiSpoofingCandidate);
+        Assert.True(store.IsAvailable);
+    }
+
+    [Fact]
+    public async Task Store_WhenTheThreeModelsCannotBeUsed_TheCandidatesAreNotLoaded_AndSayNothingOfTheState()
+    {
+        // The candidate is a file with its hash, but the three models are not there: the store is unavailable for its own reason and does not look at the candidates.
+        var options = new BiometricModelOptions { FaceRecognitionCandidate = CandidateOf<FaceRecognitionCandidateOptions>(new ModelFileOptions { Path = "x", Sha256 = new string('C', 64) }, "recognition.onnx") };
+        using var store = Store(options);
+
+        await store.LoadAsync(CancellationToken.None);
+
+        Assert.False(store.IsAvailable);
+        Assert.Equal(BiometricModelsState.Unavailable, store.Snapshot.State);
+        Assert.Equal(ModelFileProvisioner.HashNotConfigured, store.Snapshot.ReasonCode);
+        Assert.Empty(store.Snapshot.Candidates);
+        Assert.Null(store.FaceRecognitionCandidate);
+    }
+
+    [Fact]
+    public void Options_TheCandidates_AreNotConfiguredByDefault_AndAreValidated_OnlyWhenConfigured()
+    {
+        var options = new BiometricModelOptions();
+        Assert.False(BiometricModelOptions.IsCandidateConfigured(options.AntiSpoofingCandidate));
+        Assert.False(BiometricModelOptions.IsCandidateConfigured(options.FaceRecognitionCandidate));
+        Assert.Empty(options.ValidateAntiSpoofingCandidate());
+        Assert.Empty(options.ValidateFaceRecognitionCandidate());
+
+        // Anything of the file is "configured": a path, a hash or an address, and then the rest is asked for.
+        options.AntiSpoofingCandidate.Sha256 = new string('D', 64);
+        options.FaceRecognitionCandidate.DownloadUrl = "https://models.example.test/model.onnx";
+        Assert.True(BiometricModelOptions.IsCandidateConfigured(options.AntiSpoofingCandidate));
+        Assert.True(BiometricModelOptions.IsCandidateConfigured(options.FaceRecognitionCandidate));
+        Assert.NotEmpty(options.ValidateAntiSpoofingCandidate());
+        Assert.NotEmpty(options.ValidateFaceRecognitionCandidate());
+
+        // Their reference defaults: the way MiniFASNetV2 and SFace are run, which the candidates are described against.
+        Assert.Equal((2.7, 80), (new AntiSpoofingCandidateOptions().CropScale, new AntiSpoofingCandidateOptions().InputSize));
+        var recognition = new FaceRecognitionCandidateOptions();
+        Assert.Equal((112, 0.0, 1.0, true), (recognition.InputSize, recognition.Mean, recognition.Std, recognition.RgbOrder));
+
+        // And the three models are valid whatever the candidates are: they have their own validation.
+        Assert.Empty(options.Validate());
+    }
+
+    [Fact]
+    public void Options_ACandidateRunsWithItsOwnDescription_TheReferenceSettingsAreNotChanged()
+    {
+        var options = new BiometricModelOptions();
+        options.AntiSpoofingCandidate.CropScale = 4;
+        options.AntiSpoofingCandidate.InputSize = 128;
+        options.FaceRecognitionCandidate.InputSize = 128;
+        options.FaceRecognitionCandidate.Mean = 127.5;
+        options.FaceRecognitionCandidate.Std = 127.5;
+        options.FaceRecognitionCandidate.RgbOrder = false;
+
+        var presence = options.ForAntiSpoofingCandidate();
+        var recognition = options.ForFaceRecognitionCandidate();
+
+        Assert.Equal((4.0, 128), (presence.LivenessCropScale, presence.LivenessInputSize));
+        Assert.Equal((128, 127.5, 127.5, false), (recognition.RecognitionInputSize, recognition.RecognitionMean, recognition.RecognitionStd, recognition.RecognitionRgbOrder));
+        Assert.Equal((2.7, 80, 112, 0.0, 1.0, true), (options.LivenessCropScale, options.LivenessInputSize, options.RecognitionInputSize, options.RecognitionMean, options.RecognitionStd, options.RecognitionRgbOrder));
+    }
+
+    /// <summary>A copy of a bundled model in the temporary folder, described as a candidate (the hash of the copy is the one of the original).</summary>
+    private T CandidateOf<T>(ModelFileOptions bundled, string fileName)
+        where T : ModelFileOptions, new()
+    {
+        var target = Path.Combine(_folder, fileName);
+        var source = Path.Combine(AppContext.BaseDirectory, bundled.Path);
+        if (File.Exists(source) && !File.Exists(target))
+            File.Copy(source, target);
+
+        return new T
+        {
+            Name = "Candidate of the tests",
+            Version = "1",
+            License = "Apache-2.0",
+            Provenance = "test candidate",
+            Path = target,
+            Sha256 = bundled.Sha256,
+        };
     }
 }
