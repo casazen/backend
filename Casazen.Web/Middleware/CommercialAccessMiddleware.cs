@@ -30,6 +30,8 @@ public sealed class CommercialAccessMiddleware(RequestDelegate next)
         if (controller == "Compliance" && action == "GetSummary") module = null;
         if (controller == "ServiceRequests" && (action == "GetById" ||
             string.Equals(context.Request.Query["view"], "supplier", StringComparison.OrdinalIgnoreCase))) module = null;
+        // Connected sites (S022): only a new connection needs the module; listing and revoking never do, so a site stays revocable without it.
+        if (controller == "SiteConnections" && (action is "List" or "Revoke")) module = null;
         hostOperation |= controller is "OrgInvitations" or "OrgMembers";
         if ((hostOperation || module is not null) && context.User.Identity?.IsAuthenticated == true && tenant.OrgId is Guid orgId)
         {
