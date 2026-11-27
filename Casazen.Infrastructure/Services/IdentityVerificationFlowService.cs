@@ -202,6 +202,19 @@ public sealed partial class IdentityVerificationFlowService(
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(image);
+
+        // E71/F01/US03/T01: the document step of the self-hosted flow reads the record of the session, counts a refusal or keeps a side, and writes the record back. Two pictures of one
+        // session at the same time (a double submit, a request the network repeated) must not both read the same record and lose an update, so the step runs under the lock of the row of
+        // the session, reloaded under it, as the presence and the pose challenges do. Off, or built without the services of the step, nothing of it changes.
+        if (!DocumentStepOn)
+            return await ReadDocumentAsync(session, image, side, ct);
+
+        var unavailable = new DocumentStepResult(DocumentReading.Nothing, false, [], false, false, side, []);
+        return await WithLockedPoseSessionAsync(session, unavailable, () => ReadDocumentAsync(session, image, side, ct), ct);
+    }
+
+    private async Task<DocumentStepResult> ReadDocumentAsync(GuestCheckInSession session, Stream image, DocumentSide side, CancellationToken ct)
+    {
         var context = await ContextAsync(session, ct);
 
         byte[]? bytes = null;
@@ -334,9 +347,12 @@ public sealed partial class IdentityVerificationFlowService(
                 coherence = await CheckCoherenceAsync(session, context, selfChecks, side, mrzReading, front, back, ct);
             }
 
+            // With the self-hosted flow on, a side that is accepted is forgiven what it cost: its refusals are not counted any more and the picture last refused is forgotten.
             var storedCheck = new StoredDocumentCheck(
                 check, frontHash, now, backHash, front, back, side != DocumentSide.Single, context.VerifyingGuestPosition, proofKey,
-                Refusals: previous?.Refusals, Coherence: coherence);
+                Refusals: selfChecks is null ? previous?.Refusals : WithoutSide(previous?.Refusals, side),
+                Coherence: coherence,
+                RefusedSha256: selfChecks is null ? previous?.RefusedSha256 : WithoutSide(previous?.RefusedSha256, side));
 
             // With the self-hosted flow on the document is complete only when every side of its format passed its checks.
             if (selfChecks is not null)
@@ -1334,7 +1350,9 @@ internal sealed record StoredDocumentPicture(
 /// The members of the self-hosted document step (E71/F01/US03/T01), all optional and null in every record written before them: <c>Refusals</c> is how many pictures of each side
 /// (<c>front</c>, <c>back</c>, <c>single</c>) were refused with a guidance code, the count that ends in <c>document_unreadable</c> after
 /// <c>policy.document.maxRecapturesPerSide</c>; <c>Coherence</c> is the coherence report of the two sides as its entries (check, result and the NAME of the field: never a value),
-/// null while a side is missing or cannot be read again (nothing kept in Ticino): an unknown is never a pass.
+/// null while a side is missing or cannot be read again (nothing kept in Ticino): an unknown is never a pass. <c>RefusedSha256</c> is the SHA-256 of the picture last refused for each side,
+/// so the same file sent again (a request the network repeated, a double submit) is refused again and does not cost a second recapture; a side that is accepted forgets both its
+/// refusals and that hash. A hash of the bytes, as the one of a kept picture: never a value read.
 /// </para>
 /// </summary>
 internal sealed record StoredDocumentCheck(
@@ -1350,4 +1368,5 @@ internal sealed record StoredDocumentCheck(
     StoredPoseChallenge? Pose = null,
     StoredPresenceChallenge? Presence = null,
     IReadOnlyDictionary<string, int>? Refusals = null,
-    IReadOnlyList<DocumentCoherenceCheck>? Coherence = null);
+    IReadOnlyList<DocumentCoherenceCheck>? Coherence = null,
+    IReadOnlyDictionary<string, string>? RefusedSha256 = null);

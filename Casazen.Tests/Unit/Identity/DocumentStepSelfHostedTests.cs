@@ -151,14 +151,15 @@ public sealed class DocumentStepSelfHostedTests
     {
         await using var world = await World.CreateAsync();
         var session = await world.ConsentedStayAsync();
-        var nothing = PlainPicture();
+        var nothing = PlainPicture(200);
         var maximum = world.Policies.Snapshot.Policy!.Document.MaxRecapturesPerSide;
         Assert.True(maximum > 0);
 
-        // The picture may be captured again `maximum` times after its first refusal: every one of them is refused with its own code and counted...
+        // The picture may be captured again `maximum` times after its first refusal: every one of them (a new file each time: the same file again is not counted twice) is refused with its
+        // own code and counted...
         for (var refusal = 1; refusal <= maximum; refusal++)
         {
-            var refused = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(nothing), DocumentSide.Front, Ct);
+            var refused = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(PlainPicture(100 + refusal)), DocumentSide.Front, Ct);
             Assert.Contains(IdentityGuidanceCodes.DocumentNotFound, refused.GuidanceCodes);
             Assert.DoesNotContain(IdentityGuidanceCodes.DocumentUnreadable, refused.GuidanceCodes);
             Assert.Equal(refusal, ReadCheck(await world.ReadBackAsync(session.Id)).Refusals!["front"]);
@@ -203,6 +204,85 @@ public sealed class DocumentStepSelfHostedTests
         Assert.Equal(1, check.Refusals!["front"]);
         Assert.Equal(kept, world.Storage.Objects.Keys.ToList());
         Assert.Equal(["front"], refused.SidesReceived);
+    }
+
+    // ---- The count of the refusals: idempotent, atomic, and forgiven when the side is accepted -----------------------------------------------------------------------------
+
+    [Fact]
+    public async Task DocumentStep_TheSameRefusedFileSentAgain_IsRefusedAgainAndCountedOnce()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        var cutByTheFrame = Picture(DocumentSide.Front, new DocumentImageFactory.Placement(-100, 70, 480, 303));
+
+        var first = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(cutByTheFrame), DocumentSide.Front, Ct);
+        var again = await world.Flow().SubmitDocumentAsync(session, new MemoryStream(cutByTheFrame), DocumentSide.Front, Ct);
+
+        // A request the network repeated has the same answer and costs one recapture, not two.
+        Assert.Equal(first.GuidanceCodes, again.GuidanceCodes);
+        Assert.False(again.Acceptable);
+        Assert.Equal(1, ReadCheck(await world.ReadBackAsync(session.Id)).Refusals!["front"]);
+
+        // Another file refused is a refusal of its own, and only the last file refused is remembered: the first one, sent again after it, is counted again.
+        await world.Flow().SubmitDocumentAsync(session, new MemoryStream(PlainPicture()), DocumentSide.Front, Ct);
+        Assert.Equal(2, ReadCheck(await world.ReadBackAsync(session.Id)).Refusals!["front"]);
+        await world.Flow().SubmitDocumentAsync(session, new MemoryStream(cutByTheFrame), DocumentSide.Front, Ct);
+        Assert.Equal(3, ReadCheck(await world.ReadBackAsync(session.Id)).Refusals!["front"]);
+    }
+
+    [Fact]
+    public async Task DocumentStep_ARequestThatHoldsAnOlderRecord_DoesNotLoseTheRefusalSavedMeanwhile()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        var (otherFlow, otherSession) = await world.AnotherRequestAsync(session.Id);
+
+        // The second request loaded the session before the first one was saved: under the lock of the row it reads the record again, so both refusals are there.
+        await world.Flow().SubmitDocumentAsync(session, new MemoryStream(PlainPicture(110)), DocumentSide.Front, Ct);
+        await otherFlow.SubmitDocumentAsync(otherSession, new MemoryStream(PlainPicture(120)), DocumentSide.Front, Ct);
+
+        Assert.Equal(2, ReadCheck(await world.ReadBackAsync(session.Id)).Refusals!["front"]);
+    }
+
+    [Fact]
+    public async Task DocumentStep_TwoPicturesAtTheSameTime_AreTwoRefusals()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        var (otherFlow, otherSession) = await world.AnotherRequestAsync(session.Id);
+
+        await Task.WhenAll(
+            world.Flow().SubmitDocumentAsync(session, new MemoryStream(PlainPicture(110)), DocumentSide.Front, Ct),
+            otherFlow.SubmitDocumentAsync(otherSession, new MemoryStream(PlainPicture(120)), DocumentSide.Front, Ct));
+
+        Assert.Equal(2, ReadCheck(await world.ReadBackAsync(session.Id)).Refusals!["front"]);
+    }
+
+    [Fact]
+    public async Task DocumentStep_ASideThatIsAccepted_IsForgivenItsRefusals()
+    {
+        await using var world = await World.CreateAsync();
+        var session = await world.ConsentedStayAsync();
+        world.Zoned.Fields[DocumentSide.Front] = FrontFields();
+        var maximum = world.Policies.Snapshot.Policy!.Document.MaxRecapturesPerSide;
+
+        // Refused as many times as the side may be captured again, and then accepted: the count of that side starts again...
+        for (var refusal = 1; refusal <= maximum; refusal++)
+            await world.Flow().SubmitDocumentAsync(session, new MemoryStream(PlainPicture(100 + refusal)), DocumentSide.Front, Ct);
+
+        Assert.True((await world.Flow().SubmitDocumentAsync(session, new MemoryStream(Picture(DocumentSide.Front)), DocumentSide.Front, Ct)).DocumentStored);
+        var accepted = ReadCheck(await world.ReadBackAsync(session.Id));
+        Assert.Null(accepted.Refusals);
+        Assert.Null(accepted.RefusedSha256);
+
+        // ...so the side may be captured again as many times after it as before, and the verification is still with the guest.
+        for (var refusal = 1; refusal <= maximum; refusal++)
+            await world.Flow().SubmitDocumentAsync(session, new MemoryStream(PlainPicture(110 + refusal)), DocumentSide.Front, Ct);
+
+        var saved = await world.ReadBackAsync(session.Id);
+        Assert.Null(saved.IdentityClosedAt);
+        Assert.Equal(maximum, ReadCheck(saved).Refusals!["front"]);
+        Assert.Empty(world.Alerts);
     }
 
     // ---- AC2: a duplicated side and a wrong side ---------------------------------------------------------------------------------------------------------------------------
@@ -594,10 +674,10 @@ public sealed class DocumentStepSelfHostedTests
         return TestImages.Png(image.Width, image.Height, image.Rgb);
     }
 
-    /// <summary>A picture with no card in it: one gray level and nothing else.</summary>
-    internal static byte[] PlainPicture()
+    /// <summary>A picture with no card in it: one gray level and nothing else (another level, another file).</summary>
+    internal static byte[] PlainPicture(int level = 120)
     {
-        using var image = DocumentImageFactory.Plain(120);
+        using var image = DocumentImageFactory.Plain(level);
         return TestImages.Png(image.Width, image.Height, image.Rgb);
     }
 
@@ -653,6 +733,7 @@ public sealed class DocumentStepSelfHostedTests
         private readonly Guid _propertyId = Guid.NewGuid();
         private readonly Mock<ICheckInLegalTexts> _legalTexts = ActivePoseFlowTestVerifier.CreateRegistry();
         private readonly string _folder = Path.Combine(Path.GetTempPath(), "casazen-document-step-" + Guid.NewGuid().ToString("N"));
+        private readonly List<AppDbContext> _requests = [];
         private DocumentFormatRegistry _formats;
         private IdentityPolicyProvider _policies;
 
@@ -747,12 +828,12 @@ public sealed class DocumentStepSelfHostedTests
         }
 
         /// <summary>The flow with its services; <paramref name="wired"/> false builds it by hand without the ones of the document step, as a tool or a test of another task does.</summary>
-        public IdentityVerificationFlowService Flow(bool wired = true)
+        public IdentityVerificationFlowService Flow(bool wired = true, AppDbContext? context = null)
         {
             var zoned = Zoned;
             var inspector = new DocumentGeometryInspector(Detector, Options.Create(new BiometricModelOptions()));
             return new IdentityVerificationFlowService(
-                Db,
+                context ?? Db,
                 new ScriptedAgent(),
                 Alerts,
                 Mock.Of<IAccessCodeService>(),
@@ -837,8 +918,26 @@ public sealed class DocumentStepSelfHostedTests
             return await other.GuestCheckInSessions.AsNoTracking().IgnoreQueryFilters().SingleAsync(s => s.Id == sessionId, Ct);
         }
 
+        /// <summary>
+        /// Another request of the same session: a flow over its own context, and the session as that context loaded it NOW, so a request that is saved afterwards is not in what this one
+        /// holds (the record of the session is the one of the moment it was read).
+        /// </summary>
+        public async Task<(IdentityVerificationFlowService Flow, GuestCheckInSession Session)> AnotherRequestAsync(Guid sessionId)
+        {
+            var other = new AppDbContext(_options, null, _dataProtection);
+            _requests.Add(other);
+            var session = await other.GuestCheckInSessions
+                .Include(s => s.Booking).ThenInclude(b => b.Property)
+                .Include(s => s.Booking).ThenInclude(b => b.Guest)
+                .SingleAsync(s => s.Id == sessionId, Ct);
+            return (Flow(context: other), session);
+        }
+
         public async ValueTask DisposeAsync()
         {
+            foreach (var request in _requests)
+                await request.DisposeAsync();
+
             await Db.DisposeAsync();
             if (Directory.Exists(_folder))
                 Directory.Delete(_folder, recursive: true);

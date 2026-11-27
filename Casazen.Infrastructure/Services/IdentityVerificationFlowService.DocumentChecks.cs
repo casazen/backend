@@ -118,6 +118,11 @@ public sealed partial class IdentityVerificationFlowService
                 session, context, side, IdentityOutcomeCodes.Unavailable, VerificationAlertReasons.TechnicalError, IdentityGuidanceCodes.DocumentUnreadable, ct));
         }
 
+        // The SHA-256 of this picture: it is what a refusal remembers (the same file refused again is not counted twice) and what the check of a pair of sides compares.
+        var pictureSha256 = Sha256(bytes);
+        var policy = services.Policy;
+        Task<DocumentStepResult> Refuse(IReadOnlyList<string> codes) => RefuseDocumentAsync(session, context, side, codes, pictureSha256, policy, ct);
+
         // The format: from the MRZ as soon as one is read; before, the one of the attempt, else the card the registry holds.
         DocumentFormat? format;
         var detected = false;
@@ -132,7 +137,7 @@ public sealed partial class IdentityVerificationFlowService
                 if (!machine.CheckDigitsValid)
                 {
                     logger.LogInformation("Document step of session {SessionId}: the MRZ is doubtful and its format is not in the registry; the picture is asked again", session.Id);
-                    return Answer(await RefuseDocumentAsync(session, context, side, RejectionGuidance(assessment, mrzReading), services.Policy, ct));
+                    return Answer(await Refuse(RejectionGuidance(assessment, mrzReading)));
                 }
 
                 logger.LogInformation("Document step of session {SessionId}: the format of the document is not in the registry; a person decides", session.Id);
@@ -155,7 +160,7 @@ public sealed partial class IdentityVerificationFlowService
 
         // A side the format does not have (a card of two sides sent as one picture, a page of one side sent as the front): the guest is asked for a side of the format.
         if (!format.Sides.Contains(DocumentSides.CodeOf(side), StringComparer.Ordinal))
-            return Answer(await RefuseDocumentAsync(session, context, side, [IdentityGuidanceCodes.DocumentWrongSide], services.Policy, ct));
+            return Answer(await Refuse([IdentityGuidanceCodes.DocumentWrongSide]));
 
         DocumentPicture picture;
         try
@@ -165,7 +170,7 @@ public sealed partial class IdentityVerificationFlowService
         catch (InvalidDataException)
         {
             // Not a picture that can be decoded: «retake the picture», the guidance of the capture checks.
-            return Answer(await RefuseDocumentAsync(session, context, side, [CaptureGuidanceCodes.RetakePicture], services.Policy, ct));
+            return Answer(await Refuse([CaptureGuidanceCodes.RetakePicture]));
         }
 
         using (picture)
@@ -187,7 +192,7 @@ public sealed partial class IdentityVerificationFlowService
 
             // The side the picture shows by its content, and whether it repeats the other side: the first code, since the guest is asked for the other side either way.
             var shown = services.Sides.Classify(report, mrzReading.Result is not null, format);
-            var fingerprint = new DocumentPictureFingerprint(Sha256(bytes), hash, shown);
+            var fingerprint = new DocumentPictureFingerprint(pictureSha256, hash, shown);
             var pair = services.Sides.CheckPair(
                 side, fingerprint, OtherSideFingerprint(ReadCheck(session), side), services.Policy.Document.PerceptualDuplicateMaxDistance);
 
@@ -199,11 +204,11 @@ public sealed partial class IdentityVerificationFlowService
             codes.AddRange(assessment?.GuidanceCodes ?? []);
             var refusal = codes.Distinct(StringComparer.Ordinal).ToList();
             if (refusal.Count > 0)
-                return Answer(await RefuseDocumentAsync(session, context, side, refusal, services.Policy, ct));
+                return Answer(await Refuse(refusal));
 
             // Nothing of a document was read in a picture whose geometry is good: it is refused as it always was, and counted.
             if (reading.Method == DocumentReadingMethod.None)
-                return Answer(await RefuseDocumentAsync(session, context, side, RejectionGuidance(assessment, mrzReading), services.Policy, ct));
+                return Answer(await Refuse(RejectionGuidance(assessment, mrzReading)));
 
             var fields = await picture.ReadFieldsAsync(format, side, report, ct);
             return new DocumentPictureStep(
@@ -234,22 +239,37 @@ public sealed partial class IdentityVerificationFlowService
 
     /// <summary>
     /// Refuses a picture with its guidance <paramref name="codes"/>: nothing of it is kept and it is not an attempt, but it counts as a refusal of its side. The refusal that goes
-    /// beyond <c>policy.document.maxRecapturesPerSide</c> answers <c>document_unreadable</c> instead, and a person decides (<c>review</c>).
+    /// beyond <c>policy.document.maxRecapturesPerSide</c> answers <c>document_unreadable</c> instead, and a person decides (<c>review</c>). The same file refused again (the SHA-256
+    /// <paramref name="pictureSha256"/> is the one of the picture last refused for this side: a request the network repeated, a double submit) is refused with the same codes and is not
+    /// counted a second time. The record is read here, under the lock of the row of the session (<c>SubmitDocumentAsync</c>), so two refusals at the same time are two refusals.
     /// </summary>
     private async Task<DocumentStepResult> RefuseDocumentAsync(
         GuestCheckInSession session,
         FlowContext context,
         DocumentSide side,
         IReadOnlyList<string> codes,
+        string pictureSha256,
         IdentityDecisionPolicy policy,
         CancellationToken ct)
     {
         var now = UtcNow();
         var sideCode = DocumentSides.CodeOf(side);
         var previous = ReadCheck(session) ?? NewDocumentCheck(session, context, now);
+        if (previous.RefusedSha256 is { } lastRefused
+            && lastRefused.TryGetValue(sideCode, out var lastSha)
+            && string.Equals(lastSha, pictureSha256, StringComparison.Ordinal))
+        {
+            logger.LogInformation(
+                "Document step of session {SessionId}: the same picture of the {Side} side was refused again ({Codes}), not counted twice",
+                session.Id, sideCode, string.Join(',', codes));
+            return new DocumentStepResult(
+                DocumentReading.Nothing, false, codes, false, context.DocumentNotArchived, side, SidesOf(previous.TwoSided, previous.Front, previous.Back));
+        }
+
         var refusals = new Dictionary<string, int>(previous.Refusals ?? new Dictionary<string, int>(), StringComparer.Ordinal);
         refusals[sideCode] = refusals.GetValueOrDefault(sideCode) + 1;
-        var kept = previous with { Refusals = refusals };
+        var refused = new Dictionary<string, string>(previous.RefusedSha256 ?? new Dictionary<string, string>(), StringComparer.Ordinal) { [sideCode] = pictureSha256 };
+        var kept = previous with { Refusals = refusals, RefusedSha256 = refused };
         session.DocumentCheckJson = JsonSerializer.Serialize(kept, Json);
         session.UpdatedAt = now;
 
@@ -311,6 +331,22 @@ public sealed partial class IdentityVerificationFlowService
             TwoSided: true,
             VerifyingGuestPosition: context.VerifyingGuestPosition,
             ProofKey: session.TokenHash);
+
+    /// <summary>
+    /// The entries of a record kept for each side (<c>front</c>, <c>back</c>, <c>single</c>) without the one of <paramref name="side"/>, null when none is left: a side that was accepted
+    /// is forgiven what it cost, so the next refusals of it start from none.
+    /// </summary>
+    private static IReadOnlyDictionary<string, T>? WithoutSide<T>(IReadOnlyDictionary<string, T>? entries, DocumentSide side)
+    {
+        if (entries is null)
+            return null;
+
+        var sideCode = DocumentSides.CodeOf(side);
+        var rest = entries
+            .Where(entry => !string.Equals(entry.Key, sideCode, StringComparison.Ordinal))
+            .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
+        return rest.Count == 0 ? null : rest;
+    }
 
     /// <summary>
     /// The coherence of the sides (<see cref="DocumentCoherenceChecker"/>) as its entries, names and results only, once every side of the format is in; null before, and null when the
