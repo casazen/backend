@@ -9114,4 +9114,6 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="IdentitySegmentQualificationMismatch" xml:space="preserve"><value>The version or the hashes given are not those of the policy and the weights in force: the segment is not qualified.</value></data>
   <data name="IdentitySegmentPolicyProvisional" xml:space="preserve"><value>The policy in force is provisional: no segment can be qualified until a calibrated policy is published.</value></data>
   <data name="IdentitySegmentFingerprintUnavailable" xml:space="preserve"><value>The policy or the models are not available right now: the segment cannot be qualified.</value></data>
+  <!-- E72/F01/US01/T01 (NF-192): the presence challenge of the self-hosted identity step. The page translates the codes; these are the details of the problem (the closed verification answers with CheckInIdentityAlreadyClosed above). -->
+  <data name="CheckInPresenceChallengeUnavailable" xml:space="preserve"><value>The presence check cannot start now. You can continue with a person.</value></data>
 </root>

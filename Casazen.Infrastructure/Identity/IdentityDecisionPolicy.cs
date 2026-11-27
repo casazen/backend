@@ -84,11 +84,12 @@ public sealed record IdentitySequencePolicy(
     int DetectorMaxSide);
 
 /// <summary>What keeps a sequence from being a still picture or the splice of two people (NF-192).</summary>
-/// <param name="MaxCenterJump">The largest move of the centre of the face between two frames, as a share of the frame.</param>
-/// <param name="MaxSizeChange">The largest change of the size of the face between two frames, as a share of its size.</param>
+/// <param name="MaxCenterJump">The largest move of the centre of the face between two consecutive frames, as a share of the width of the face (the mean of the two boxes), not of the frame.</param>
+/// <param name="MaxSizeChange">The largest change of the size of the face between two consecutive frames, as a share of its size (the width of its box in the first of the two).</param>
 /// <param name="MinPairSimilarity">The least similarity between the faces of the frames sampled from the sequence, in the scale of the matcher (0 to 1).</param>
 /// <param name="PairSamples">How many pairs of frames are sampled.</param>
-public sealed record IdentityContinuityPolicy(double MaxCenterJump, double MaxSizeChange, double MinPairSimilarity, int PairSamples);
+/// <param name="MinPixelDifference">The least mean difference of the pixels, in grey levels (above 0, at most 255), that some frame must have from the first one: a sequence in which no frame is farther from the first is a still picture played again.</param>
+public sealed record IdentityContinuityPolicy(double MaxCenterJump, double MaxSizeChange, double MinPairSimilarity, int PairSamples, double MinPixelDifference);
 
 /// <summary>How far the head must turn for a move of the challenge to count, in degrees (NF-192).</summary>
 /// <param name="TurnMinYawDegrees">The least yaw of a turn to the left or to the right.</param>
