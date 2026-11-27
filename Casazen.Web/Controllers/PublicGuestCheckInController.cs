@@ -174,8 +174,14 @@ public partial class PublicGuestCheckInController(
     }
 
     /// <summary>
-    /// Reads one identity-document photo and returns the fields the guest can confirm. The photo is not stored.
-    /// A missing provider or an unreadable picture answers 200 with <c>read: false</c> so the guest can type the data.
+    /// Reads one identity-document photo and returns the fields the guest can confirm. The photo is not stored, and it is read in the process whatever the flags
+    /// (E70/F02/US02/T01). A missing provider or an unreadable picture answers 200 with <c>read: false</c> so the guest can type the data.
+    /// <para>
+    /// With the self-hosted flow on (<see cref="FeatureFlags.CheckInIdentityVerification"/> and <see cref="FeatureFlags.CheckInIdentitySelfHosted"/>, E71/F01/US03/T01) the answer
+    /// also carries <c>fields</c> (<c>name</c>, <c>value</c>, <c>side</c>, <c>zone</c>, <c>confidence</c>, <c>source</c> of every value the zones of the card gave), <c>missing</c> (the
+    /// fields of the check-in the guest has still to type) and <c>source</c> <c>local</c>. The values go to the guest who sent the photo, and only when the photo is of a guest of the
+    /// stay (a photo of anybody else answers <c>guest_mismatch</c> with none); they are never stored, logged or put in a job. With the flow off the answer is the one of before.
+    /// </para>
     /// </summary>
     [HttpPost("{token}/read-document")]
     [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
@@ -191,7 +197,19 @@ public partial class PublicGuestCheckInController(
             return this.ApiProblem(StatusCodes.Status400BadRequest, "checkin_document_missing", "CheckInDocumentMissing");
 
         await using var stream = file.OpenReadStream();
-        var read = await documentReader.ReadAsync(stream, HttpContext.RequestAborted);
+        var zonedPrefill = SelfHostedIdentityOn();
+        CheckInZonedRead? zoned = null;
+        CheckInDocumentRead read;
+        if (zonedPrefill)
+        {
+            zoned = await documentReader.ReadZonedAsync(stream, HttpContext.RequestAborted);
+            read = zoned.Read;
+        }
+        else
+        {
+            read = await documentReader.ReadAsync(stream, HttpContext.RequestAborted);
+        }
+
         if (read.Reason is "unsupported_file" or "too_large")
             return this.ApiProblem(StatusCodes.Status400BadRequest, $"checkin_document_{read.Reason}", "CheckInDocumentRejected");
 
@@ -201,11 +219,18 @@ public partial class PublicGuestCheckInController(
             var roster = await stayGuests.GetForBookingAsync(session.Booking, HttpContext.RequestAborted);
             var match = CheckInGuestMatch.Find(roster.Take(Math.Max(1, session.Booking.NumberOfGuests)).ToList(), fields);
             if (match is null)
-                return Ok(CheckInDocumentReadResponse.From(CheckInDocumentRead.Failed("guest_mismatch")));
+            {
+                var mismatch = CheckInDocumentReadResponse.From(CheckInDocumentRead.Failed("guest_mismatch"));
+                return Ok(zonedPrefill ? mismatch.WithZoned([], CheckInPrefillFields.Asked) : mismatch);
+            }
 
             response.GuestPosition = match.Value.Position;
             response.ConfirmGuest = match.Value.Confirm;
         }
+
+        // Nothing read, nothing of a guest of the stay: no value of the zones leaves, and everything asked is still to be typed.
+        if (zoned is not null)
+            response.WithZoned(read.Read && read.Fields is not null ? zoned.Fields : [], read.Read && read.Fields is not null ? zoned.Missing : CheckInPrefillFields.Asked);
 
         return Ok(response);
     }

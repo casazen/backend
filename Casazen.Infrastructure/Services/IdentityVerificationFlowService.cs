@@ -44,6 +44,9 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Privacy</b>: the logs say the session, the step and the codes; never a picture, a value of the document or a name.</para>
 /// <para><b>Self-hosted session</b> (E70/F02/US01/T01, <c>Features:CheckInIdentitySelfHosted</c>, the part <c>IdentityVerificationFlowService.Session.cs</c>): the
 /// verification is opened once, bound to one guest, records the choice and is closed by its first hand-off to a person. Off, nothing of it is read or written.</para>
+/// <para><b>Self-hosted document step</b> (E71/F01/US03/T01, the part <c>IdentityVerificationFlowService.DocumentChecks.cs</c>): on top of the reading of today every picture of the
+/// document is checked for its geometry, its side and its format, refused with a targeted code when it is not good (a refusal is not an attempt, and after
+/// <c>policy.document.maxRecapturesPerSide</c> of them a person decides), and the coherence of the sides is kept as flags. Off, nothing of it runs.</para>
 /// </remarks>
 public sealed partial class IdentityVerificationFlowService(
     AppDbContext db,
@@ -63,7 +66,12 @@ public sealed partial class IdentityVerificationFlowService(
     IPropertySwissPlaceResolver? swissPlaces = null,
     IGuestEmailBrandingProvider? emailBranding = null,
     IActivePoseVerificationService? activePose = null,
-    IFeatureFlags? featureFlags = null) : IIdentityVerificationFlowService
+    IFeatureFlags? featureFlags = null,
+    DocumentPictureAnalyzer? documentPictures = null,
+    DocumentSideClassifier? sideClassifier = null,
+    DocumentCoherenceChecker? coherenceChecker = null,
+    DocumentFormatRegistry? formats = null,
+    IdentityPolicyProvider? policies = null) : IIdentityVerificationFlowService
 {
     /// <summary>Data Protection purpose of the encrypted picture of a document in the private bucket. Never change it: stored pictures would become unreadable.</summary>
     public const string DocumentImageContentPurpose = "Casazen.DocumentImage.Content";
@@ -229,16 +237,22 @@ public sealed partial class IdentityVerificationFlowService(
                 reading = fromOcr is { HasDocumentEvidence: true } ? FromOcr(fromOcr) : DocumentReading.Nothing;
             }
 
+            // E71/F01/US03/T01: the checks of the self-hosted document step (geometry, side, format, fields), only with the flow on and after the consent: a picture with any
+            // guidance code is refused here (not stored, not an attempt) and the format of the document is known from here on. Off, nothing of it runs.
+            DocumentPictureChecks? selfChecks = null;
+            if (DocumentStepOn && consented)
+            {
+                var step = await CheckDocumentPictureAsync(session, context, bytes, side, mrzReading, reading, assessment, ct);
+                if (step.Answer is { } answer)
+                    return answer;
+
+                selfChecks = step.Checks;
+            }
+
             if (reading.Method == DocumentReadingMethod.None)
             {
                 var existing = ReadCheck(session);
-                var rejectionGuidance = (assessment?.GuidanceCodes ?? [])
-                    .Concat(CaptureGuidanceCodes.FromMrzQuality(mrzReading.Quality))
-                    .Append(CaptureGuidanceCodes.ShowWholeDocument)
-                    .Append("document_not_recognized")
-                    .Distinct(StringComparer.Ordinal)
-                    .ToList();
-                return new DocumentStepResult(reading, false, rejectionGuidance,
+                return new DocumentStepResult(reading, false, RejectionGuidance(assessment, mrzReading),
                     false, context.DocumentNotArchived, side,
                     existing is null ? [] : SidesOf(existing.TwoSided, existing.Front, existing.Back));
             }
@@ -253,7 +267,10 @@ public sealed partial class IdentityVerificationFlowService(
                 FaceOf(assessment, side),
                 QualityOf(assessment),
                 mrzReading.Result is null ? null : Check(mrzReading.Result, context.Identity),
-                DocumentNumberProof(proofKey, reading.Fields?.DocumentNumber));
+                DocumentNumberProof(proofKey, reading.Fields?.DocumentNumber),
+                selfChecks is null ? null : true,
+                selfChecks?.ClassifiedSide,
+                selfChecks?.DHash);
 
             // The attempt keeps up to two pictures: a side sent again replaces its own and leaves the other, a single picture replaces both.
             var kept = side == DocumentSide.Single ? null : previous;
@@ -302,9 +319,25 @@ public sealed partial class IdentityVerificationFlowService(
                 .ToList();
             AddMissingSideGuidance(guidance, side, mrzReading.Result is not null, mrzRead, frontGood);
 
-            session.DocumentCheckJson = JsonSerializer.Serialize(
-                new StoredDocumentCheck(check, frontHash, now, backHash, front, back, side != DocumentSide.Single, context.VerifyingGuestPosition, proofKey),
-                Json);
+            // E71/F01/US03/T01: the format the MRZ showed, and the coherence of the sides (flags only, never a value read) when both are in.
+            IReadOnlyList<DocumentCoherenceCheck>? coherence = null;
+            if (selfChecks is not null)
+            {
+                if (selfChecks.FormatDetected)
+                    session.IdentityFormatId = selfChecks.Format.Id;
+
+                coherence = await CheckCoherenceAsync(session, context, selfChecks, side, mrzReading, front, back, ct);
+            }
+
+            var storedCheck = new StoredDocumentCheck(
+                check, frontHash, now, backHash, front, back, side != DocumentSide.Single, context.VerifyingGuestPosition, proofKey,
+                Refusals: previous?.Refusals, Coherence: coherence);
+
+            // With the self-hosted flow on the document is complete only when every side of its format passed its checks.
+            if (selfChecks is not null)
+                acceptable = acceptable && DocumentComplete(session, storedCheck);
+
+            session.DocumentCheckJson = JsonSerializer.Serialize(storedCheck, Json);
             session.UpdatedAt = now;
 
             var stored = false;
@@ -414,7 +447,7 @@ public sealed partial class IdentityVerificationFlowService(
 
         // A document of two sides that still lacks its face or its MRZ does not reach the comparison: the page asks for the missing side, and no
         // attempt is spent (the attempts are the complete document and selfie tries, E22/F01/US01/T02).
-        if (!IsComplete(stored))
+        if (!DocumentComplete(session, stored))
             return Refused(SelfieStepStatus.DocumentRequired, session, policy);
 
         if (session.BiometricAttempts >= policy.MaxAttempts)
@@ -769,7 +802,7 @@ public sealed partial class IdentityVerificationFlowService(
 
         // A document of one picture counts as checked as soon as it was read (the agent says what is wrong at the selfie); a document of two sides only
         // when the face and the MRZ were found across the pictures, so a reloaded page asks for the missing side instead of the selfie.
-        var documentChecked = check is not null && IsComplete(check);
+        var documentChecked = check is not null && DocumentComplete(session, check);
 
         string? result = passed
             ? IdentityVerificationGuestResults.Ok
@@ -804,6 +837,7 @@ public sealed partial class IdentityVerificationFlowService(
             Opened: selfHosted && session.IdentityOpenedAt is not null,
             NoticeVersion: selfHosted ? session.IdentityNoticeVersion : null,
             Choice: selfHosted ? session.IdentityChoice : null,
+            FormatId: selfHosted ? session.IdentityFormatId : null,
             Closed: closed,
             Outcome: closed ? GuestOutcomeOf(session.IdentityOutcomeCode) : null);
     }
@@ -1266,8 +1300,21 @@ public sealed partial class IdentityVerificationFlowService(
 /// <summary>
 /// One picture of the attempt as the session keeps it (E22/F01/US01/T02): whether a face was found on it (null: not looked for, as on a back, or the models
 /// could not say), whether its light, glare and blur were good (null: not assessed) and, when its MRZ was read, the checks made on it. A session-scoped proof binds the number to the final submission.
+/// <para>
+/// The members of the self-hosted document step (E71/F01/US03/T01), optional and null on the legacy path and in every record written before them: <c>GeometryOk</c> is true when the
+/// picture passed the geometry of its format, the side check and the quality checks (a picture that does not is refused and never stored, so a stored picture of the self-hosted flow
+/// has it true); <c>ClassifiedSide</c> the side it showed by its content (<c>front</c>, <c>back</c> or <c>single</c>; null when it could not be told); <c>DHash</c> its difference
+/// hash, 16 hexadecimal digits, which the check of a pair of sides compares. Flags and hashes: never a value read on the document.
+/// </para>
 /// </summary>
-internal sealed record StoredDocumentPicture(bool? Face, bool? QualityOk, DocumentCheck? Mrz, string? NumberProof = null);
+internal sealed record StoredDocumentPicture(
+    bool? Face,
+    bool? QualityOk,
+    DocumentCheck? Mrz,
+    string? NumberProof = null,
+    bool? GeometryOk = null,
+    string? ClassifiedSide = null,
+    string? DHash = null);
 
 /// <summary>
 /// The checks of the document as the session keeps them (<see cref="GuestCheckInSession.DocumentCheckJson"/>): the flags across the pictures
@@ -1278,6 +1325,12 @@ internal sealed record StoredDocumentPicture(bool? Face, bool? QualityOk, Docume
 /// had when its first picture came: a session that gets a new token keeps it, so its proofs still verify; a record without it uses the token hash of the session, as before.
 /// <c>Presence</c> is the presence challenge of the self-hosted flow (E70/F01/US01/T01, <see cref="StoredPresenceChallenge"/>): null on the legacy path and in every
 /// record written before it, which reads exactly as before.
+/// <para>
+/// The members of the self-hosted document step (E71/F01/US03/T01), all optional and null in every record written before them: <c>Refusals</c> is how many pictures of each side
+/// (<c>front</c>, <c>back</c>, <c>single</c>) were refused with a guidance code, the count that ends in <c>document_unreadable</c> after
+/// <c>policy.document.maxRecapturesPerSide</c>; <c>Coherence</c> is the coherence report of the two sides as its entries (check, result and the NAME of the field: never a value),
+/// null while a side is missing or cannot be read again (nothing kept in Ticino): an unknown is never a pass.
+/// </para>
 /// </summary>
 internal sealed record StoredDocumentCheck(
     DocumentCheck Check,
@@ -1290,4 +1343,6 @@ internal sealed record StoredDocumentCheck(
     int VerifyingGuestPosition = 0,
     string? ProofKey = null,
     StoredPoseChallenge? Pose = null,
-    StoredPresenceChallenge? Presence = null);
+    StoredPresenceChallenge? Presence = null,
+    IReadOnlyDictionary<string, int>? Refusals = null,
+    IReadOnlyList<DocumentCoherenceCheck>? Coherence = null);

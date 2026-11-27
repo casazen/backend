@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using Casazen.Core.Identity;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
@@ -405,7 +406,7 @@ public class MrzExtractionService(
         var composite = document + documentCheck + birth + birthCheck + expiry + expiryCheck + personal + personalCheck;
 
         return Build(
-            "Passport", line1[..2], Letters(line1[2..5], ref corrected), line1[5..], Letters(line2[10..13], ref corrected), line2[20],
+            "Passport", DocumentFormatMrzTypes.Td3, line1[..2], Letters(line1[2..5], ref corrected), line1[5..], Letters(line2[10..13], ref corrected), line2[20],
             document, documentCheck, birth, birthCheck, expiry, expiryCheck, personalValid, composite, compositeCheck, corrected,
             today ?? TimeProvider.System.TodayInRomeAsDateOnly());
     }
@@ -435,7 +436,7 @@ public class MrzExtractionService(
         ResolveLongDocumentNumber(ref document, ref documentCheck, optional);
 
         return Build(
-            "ResidencePermit", line1[..2], Letters(line1[2..5], ref corrected), line1[5..], Letters(line2[10..13], ref corrected), line2[20],
+            "ResidencePermit", DocumentFormatMrzTypes.Td2, line1[..2], Letters(line1[2..5], ref corrected), line1[5..], Letters(line2[10..13], ref corrected), line2[20],
             document, documentCheck, birth, birthCheck, expiry, expiryCheck, true, composite, compositeCheck, corrected,
             today ?? TimeProvider.System.TodayInRomeAsDateOnly());
     }
@@ -465,7 +466,7 @@ public class MrzExtractionService(
         ResolveLongDocumentNumber(ref document, ref documentCheck, optionalFirst);
 
         return Build(
-            "IdCard", line1[..2], Letters(line1[2..5], ref corrected), line3, Letters(line2[15..18], ref corrected), line2[7],
+            "IdCard", DocumentFormatMrzTypes.Td1, line1[..2], Letters(line1[2..5], ref corrected), line3, Letters(line2[15..18], ref corrected), line2[7],
             document, documentCheck, birth, birthCheck, expiry, expiryCheck, true, composite, compositeCheck, corrected,
             today ?? TimeProvider.System.TodayInRomeAsDateOnly());
     }
@@ -490,6 +491,7 @@ public class MrzExtractionService(
     /// <summary>Builds the result of any format from the fields and the outcome of every digit; null when no field of the document has a valid digit.</summary>
     private static MrzExtractionResult? Build(
         string formatDocumentType,
+        string mrzType,
         string documentCode,
         string issuingState,
         string nameField,
@@ -520,6 +522,8 @@ public class MrzExtractionService(
         {
             DocumentType = DocumentTypeOf(documentCode, formatDocumentType),
             IssuingState = issuingState.Replace("<", string.Empty).Trim(),
+            DocumentCode = documentCode,
+            MrzType = mrzType,
             Surname = surname,
             GivenNames = givenNames,
             Nationality = nationality.Replace("<", string.Empty).Trim(),
