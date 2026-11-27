@@ -14,4 +14,10 @@ public static class SiteConnectionErrorCodes
 
     /// <summary>404: a connected site that is not one of the org.</summary>
     public const string NotFound = "site_connection_not_found";
+
+    /// <summary>
+    /// 503: the account of the plugin (S023) has no address to give: the org is not on a served domain of its own and <c>App:PublicSiteBaseUrl</c> is not configured
+    /// (Development and Testing only: elsewhere the startup fails). Never a wrong address.
+    /// </summary>
+    public const string PublicAddressNotConfigured = "site_public_address_not_configured";
 }

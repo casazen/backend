@@ -117,12 +117,12 @@ do not. Auth0 login and a Stripe payment cannot be exercised locally, hence repo
    a direct booking checkout with a Stripe **test** card that triggers 3-D Secure (`4000 0027 6000 3184`), the
    Vetrina preview, a photo upload (preview thumbnails), a PDF/CSV download, the booking site `/book/<slug>`.
 3. Look for console messages starting with `[Report Only] Refused to …`. Each one names the directive and the
-   blocked URL: add that origin to the directive in **both** rules of `vercel.json` (and to
+   blocked URL: add that origin to the directive in **every rule of `vercel.json` that carries the policy** (the five blocks of section 3 other than `/embed/v1/…`) (and to
    `src/test/vercel-headers.test.ts`) only if it is legitimate.
    - Auth0 custom domain (e.g. `login.<domain>`): add it to `frame-src` only if silent authentication by iframe is used.
    - Vercel Toolbar (comments on previews) needs `https://vercel.live`: disable the toolbar for the project instead
      of loosening the production policy.
-4. When the walk-through is clean, in both rules of `vercel.json` rename the key
+4. When the walk-through is clean, in every rule of `vercel.json` that carries it (the same five blocks) rename the key
    `Content-Security-Policy-Report-Only` to `Content-Security-Policy` and delete the separate
    `Content-Security-Policy: frame-ancestors …` entry (the full policy already contains `frame-ancestors`). Update
    `src/test/vercel-headers.test.ts` accordingly, deploy to test, repeat step 2, then promote.

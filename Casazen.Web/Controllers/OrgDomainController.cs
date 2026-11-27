@@ -47,7 +47,7 @@ public class OrgDomainController(
             return forbidden;
 
         var config = await orgDomainService.GetDomainConfigAsync(orgId, cancellationToken);
-        return config is null ? NotFound() : Ok(Map(config));
+        return config is null ? NotFound() : Ok(OrgDomainMapper.ToDto(config, localizer));
     }
 
     [HttpPost]
@@ -73,23 +73,8 @@ public class OrgDomainController(
             request.Subdomain,
             cancellationToken);
 
-        return result.Outcome switch
-        {
-            SetOrgDomainOutcome.Success when result.Config is not null => Ok(Map(result.Config)),
-            SetOrgDomainOutcome.NotFound => NotFound(),
-            SetOrgDomainOutcome.PlanRequired => StatusCode(
-                StatusCodes.Status403Forbidden,
-                new { code = "plan_required", requiredPlan = "Pro" }),
-            SetOrgDomainOutcome.Conflict => this.ApiProblem(
-                StatusCodes.Status409Conflict, DomainInUseCode, "OrgDomainInUse"),
-            SetOrgDomainOutcome.ValidationError => this.ApiProblem(
-                StatusCodes.Status400BadRequest, DomainInvalidCode, result.ErrorKey ?? "OrgDomainInvalid"),
-            SetOrgDomainOutcome.SubdomainsNotConfigured => this.ApiProblem(
-                StatusCodes.Status422UnprocessableEntity,
-                SubdomainsNotConfiguredCode,
-                "OrgDomainSubdomainsNotConfigured"),
-            _ => this.ApiProblem(StatusCodes.Status400BadRequest, DomainInvalidCode, result.ErrorKey ?? "OrgDomainInvalid"),
-        };
+        // The outcomes and their codes are one mapping, shared with the plugin of a connected site (S023): OrgDomainOutcomeResults.
+        return this.DomainFailure(result) ?? Ok(OrgDomainMapper.ToDto(result.Config!, localizer));
     }
 
     [HttpPost("verify")]
@@ -107,27 +92,7 @@ public class OrgDomainController(
             return forbidden;
 
         var result = await orgDomainService.VerifyDomainAsync(orgId, cancellationToken);
-        return result.Outcome switch
-        {
-            VerifyOrgDomainOutcome.Success when result.Verification is not null => Ok(new OrgDomainVerifyResultDto
-            {
-                DomainVerificationStatus = result.Verification.Status,
-                CustomDomain = result.Verification.CustomDomain,
-                CheckedAt = result.Verification.CheckedAt,
-                Detail = result.Verification.Detail,
-                Message = Explain(result.Verification.Detail),
-                VercelTxtHost = result.Verification.VercelTxtHost,
-                VercelTxtValue = result.Verification.VercelTxtValue,
-            }),
-            VerifyOrgDomainOutcome.NotFound => NotFound(),
-            VerifyOrgDomainOutcome.PlanRequired => StatusCode(
-                StatusCodes.Status403Forbidden,
-                new { code = "plan_required", requiredPlan = "Pro" }),
-            VerifyOrgDomainOutcome.NotConfigured => this.ApiProblem(
-                StatusCodes.Status400BadRequest, DomainNotConfiguredCode, "OrgDomainNotConfigured"),
-            _ => this.ApiProblem(
-                StatusCodes.Status400BadRequest, DomainVerificationFailedCode, "OrgDomainVerificationFailed"),
-        };
+        return this.DomainFailure(result) ?? Ok(OrgDomainMapper.ToDto(result.Verification!, localizer));
     }
 
     /// <summary>
@@ -158,16 +123,7 @@ public class OrgDomainController(
                 request.UseOwnDomainForLinks!.Value),
             cancellationToken);
 
-        return result.Outcome switch
-        {
-            SetOrgDomainSurfacesOutcome.Success when result.Config is not null => Ok(Map(result.Config)),
-            SetOrgDomainSurfacesOutcome.NotFound => NotFound(),
-            SetOrgDomainSurfacesOutcome.PlanRequired => StatusCode(
-                StatusCodes.Status403Forbidden,
-                new { code = "plan_required", requiredPlan = "Pro" }),
-            _ => this.ApiProblem(
-                StatusCodes.Status400BadRequest, DomainNotConfiguredCode, "OrgDomainNotConfigured"),
-        };
+        return this.DomainFailure(result) ?? Ok(OrgDomainMapper.ToDto(result.Config!, localizer));
     }
 
     /// <summary>
@@ -196,11 +152,9 @@ public class OrgDomainController(
         var result = await orgDomainService.RetryOwnerLoginAsync(orgId, cancellationToken);
         return result.Outcome switch
         {
-            RetryOwnerLoginOutcome.Success when result.Config is not null => Ok(Map(result.Config)),
+            RetryOwnerLoginOutcome.Success when result.Config is not null => Ok(OrgDomainMapper.ToDto(result.Config, localizer)),
             RetryOwnerLoginOutcome.NotFound => NotFound(),
-            RetryOwnerLoginOutcome.PlanRequired => StatusCode(
-                StatusCodes.Status403Forbidden,
-                new { code = "plan_required", requiredPlan = "Pro" }),
+            RetryOwnerLoginOutcome.PlanRequired => this.PlanRequired(),
             _ => this.ApiProblem(StatusCodes.Status409Conflict, DomainNotVerifiedCode, "OrgDomainNotVerified"),
         };
     }
@@ -249,73 +203,5 @@ public class OrgDomainController(
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "OrgAccessDenied");
 
         return null;
-    }
-
-    private OrgDomainConfigDto Map(OrgDomainConfig config) => new()
-    {
-        OrgId = config.OrgId,
-        PublicHostMode = config.PublicHostMode,
-        Subdomain = config.Subdomain,
-        CustomDomain = config.CustomDomain,
-        DomainVerificationStatus = config.DomainVerificationStatus,
-        CanUseCustomDomain = config.CanUseCustomDomain,
-        DnsInstructions = config.DnsInstructions is null
-            ? null
-            : new DnsInstructionsDto
-            {
-                CnameHost = config.DnsInstructions.CnameHost,
-                CnameTarget = config.DnsInstructions.CnameTarget,
-                TxtHost = config.DnsInstructions.TxtHost,
-                TxtValue = config.DnsInstructions.TxtValue,
-                SslNote = config.DnsInstructions.SslNote,
-                ARecordValues = config.DnsInstructions.ARecordValues,
-                VercelTxtHost = config.DnsInstructions.VercelTxtHost,
-                VercelTxtValue = config.DnsInstructions.VercelTxtValue,
-            },
-        PublicUrls = new PublicUrlsDto
-        {
-            PathUrl = config.PublicUrls.PathUrl,
-            SubdomainUrl = config.PublicUrls.SubdomainUrl,
-            CustomDomainUrl = config.PublicUrls.CustomDomainUrl,
-        },
-        Status = new DomainStatusDto
-        {
-            Detail = config.Status.Detail,
-            Message = Explain(config.Status.Detail),
-            CheckedAt = config.Status.CheckedAt,
-            VerifiedAt = config.Status.VerifiedAt,
-            ActivationAvailable = config.Status.ActivationAvailable,
-            AutoCheckActive = config.Status.AutoCheckActive,
-        },
-        Surfaces = config.Surfaces is not { } surfaces
-            ? null
-            : new OrgDomainSurfacesDto
-            {
-                GuestAreaOnOwnDomain = surfaces.GuestAreaOnOwnDomain,
-                OwnerPortalOnOwnDomain = surfaces.OwnerPortalOnOwnDomain,
-                UseOwnDomainForLinks = surfaces.UseOwnDomainForLinks,
-                OwnerLoginHostState = surfaces.OwnerLoginHostState,
-                OwnerLoginAutomatic = surfaces.OwnerLoginAutomatic,
-                Effective = new OrgDomainEffectiveSurfacesDto
-                {
-                    GuestArea = surfaces.Effective.GuestArea,
-                    OwnerPortal = surfaces.Effective.OwnerPortal,
-                    OwnerLoginReady = surfaces.Effective.OwnerLoginReady,
-                    LinksOnOwnDomain = surfaces.Effective.GuestLinksOnOwnDomain || surfaces.Effective.OwnerLinksOnOwnDomain,
-                },
-            },
-        Tracking = config.Tracking is not { } tracking
-            ? null
-            : new OrgDomainTrackingDto { GtmContainerId = tracking.GtmContainerId },
-    };
-
-    /// <summary>The explanation of a <see cref="DomainIssues"/> code in the language of the request; <c>null</c> without a code or for an unknown one.</summary>
-    private string? Explain(string? detail)
-    {
-        if (string.IsNullOrEmpty(detail))
-            return null;
-
-        var text = localizer[$"DomainIssue_{detail}"];
-        return text.ResourceNotFound ? null : text.Value;
     }
 }
