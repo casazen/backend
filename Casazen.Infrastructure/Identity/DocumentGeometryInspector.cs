@@ -30,8 +30,10 @@ namespace Casazen.Infrastructure.Identity;
 /// <para>
 /// <b>Numbers.</b> The numbers of the layout come from the format file (<c>aspectRatio</c>, <c>aspectTolerance</c>, <c>minCardAreaShare</c>, <c>marginMin</c> and the portrait
 /// zone), the score of the face detector from <c>Biometrics:DocumentDetectionScoreThreshold</c>, the limits of glare and blur from <see cref="CaptureQualityRules"/>.
-/// The constants below are the parameters of the edge detector (how strong an edge is, how much of a side must have one), not decisions: none of them says whether a
-/// document is accepted.
+/// The parameters of the edge detector (how strong an edge is, how much of a side must be an edge for it to be a line of the picture, how small a card is still looked for)
+/// are <see cref="DocumentGeometryRules"/>. Two of them, <see cref="DocumentGeometryRules.SideSupportMin"/> and <see cref="DocumentGeometryRules.SmallestCardSideDivisor"/>, do
+/// decide whether a card is whole or found at all, so the whole set is versioned (<see cref="DocumentGeometryRules.Version"/>, carried by every report as
+/// <see cref="DocumentGeometryReport.RulesVersion"/>) and a test holds each value next to its version: nobody can change one without changing the version.
 /// </para>
 /// <para>
 /// <b>Fail closed.</b> The inspector never approves anything. When the face models are not available <see cref="BiometricUnavailableException"/> reaches the caller (it
@@ -41,38 +43,8 @@ namespace Casazen.Infrastructure.Identity;
 /// </summary>
 public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptions<BiometricModelOptions> options)
 {
-    /// <summary>The largest value of <c>|gx| + |gy|</c> of the Sobel gradient of a picture of 8 bits (4 * 255 on each axis).</summary>
+    /// <summary>The largest value of <c>|gx| + |gy|</c> of the Sobel gradient of a picture of 8 bits (4 * 255 on each axis): a bound of the arithmetic, not a rule.</summary>
     private const int MaxGradient = 2040;
-
-    /// <summary>The gradient a pixel must have, whatever the picture, to be an edge (the Sobel gradient of a step of 10 gray levels is 40).</summary>
-    private const int EdgeFloor = 40;
-
-    /// <summary>The share of the strongest gradients of the picture (its 99th percentile) a pixel must reach to be an edge: a crisp picture raises the bar above the floor.</summary>
-    private const double EdgeRelative = 0.2;
-
-    /// <summary>The share of the pixels whose gradient the percentile above is taken on.</summary>
-    private const double PercentileShare = 0.99;
-
-    /// <summary>A pixel is on a horizontal edge when its vertical gradient is at least this many times its horizontal one (and the other way round for a vertical edge).</summary>
-    private const int DominanceFactor = 2;
-
-    /// <summary>How far, in pixels of the gray copy, the row or the column that supports a side may be from the peak of the profile (the edge of a card is a pixel or two wide).</summary>
-    private const int BandRadius = 2;
-
-    /// <summary>
-    /// The share of the length of a side that must be edge pixels, in one row (or column) within <see cref="BandRadius"/> of the side, for the side to be a line of the picture.
-    /// One row, not the union of the rows near it: pieces of edge at different heights (a line of text and the top of the portrait) are not a straight edge together.
-    /// </summary>
-    private const double SideSupportMin = 0.75;
-
-    /// <summary>The most rows (and as many columns) kept as candidates for a side of the card, the strongest first.</summary>
-    private const int MaxLineCandidates = 8;
-
-    /// <summary>A picture with a side shorter than this has no card to find.</summary>
-    private const int MinWorkingSide = 32;
-
-    /// <summary>A side of a card shorter than this part of the shorter side of the picture (an eighth) is not looked for: the zones of the format would be a few pixels wide.</summary>
-    private const int SmallestCardSideDivisor = 8;
 
     /// <summary>
     /// Inspects <paramref name="image"/>, a picture of the identity document of <paramref name="format"/> sent as <paramref name="declaredSide"/>. The numbers of the format
@@ -92,7 +64,8 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         {
             var (wholeGlare, wholeBlur) = Quality(gray);
             return new DocumentGeometryReport(
-                false, null, false, 0, false, 0, null, wholeGlare, wholeBlur, QualityCodes([IdentityGuidanceCodes.DocumentNotFound], wholeGlare, wholeBlur));
+                false, null, false, 0, false, 0, null, wholeGlare, wholeBlur, QualityCodes([IdentityGuidanceCodes.DocumentNotFound], wholeGlare, wholeBlur),
+                DocumentGeometryRules.Version);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -136,7 +109,8 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         }
 
         return new DocumentGeometryReport(
-            true, box, edgesVisible, ratio, aspectOk, orientation.Rotation, orientation.PortraitInZone, glare, blur, QualityCodes(codes, glare, blur));
+            true, box, edgesVisible, ratio, aspectOk, orientation.Rotation, orientation.PortraitInZone, glare, blur, QualityCodes(codes, glare, blur),
+            DocumentGeometryRules.Version);
     }
 
     /// <summary>The card as the rectangle found makes it: its sides in pixels of the gray copy, and which of them are lines of the picture (the others are the border of the picture).</summary>
@@ -342,7 +316,7 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
     {
         var width = gray.Width;
         var height = gray.Height;
-        if (width < MinWorkingSide || height < MinWorkingSide)
+        if (width < DocumentGeometryRules.MinWorkingSide || height < DocumentGeometryRules.MinWorkingSide)
             return null;
 
         short[]? gradientX = null;
@@ -374,12 +348,12 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
                     if (across + down < threshold)
                         continue;
 
-                    if (down >= DominanceFactor * across)
+                    if (down >= DocumentGeometryRules.DominanceFactor * across)
                     {
                         horizontal[at] = 1;
                         rowEdges[y]++;
                     }
-                    else if (across >= DominanceFactor * down)
+                    else if (across >= DocumentGeometryRules.DominanceFactor * down)
                     {
                         vertical[at] = 1;
                         columnEdges[x]++;
@@ -389,8 +363,8 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
 
             // A card smaller than the format asks for is still a card (its edges are not visible: it is too small, not missing), so the shortest side looked for is a share of
             // the picture, not of the area of the format; a line shorter than the support asked of such a side cannot be one.
-            var smallest = (double)Math.Min(width, height) / SmallestCardSideDivisor;
-            var minLine = SideSupportMin * smallest;
+            var smallest = (double)Math.Min(width, height) / DocumentGeometryRules.SmallestCardSideDivisor;
+            var minLine = DocumentGeometryRules.SideSupportMin * smallest;
             var rows = LinePositions(rowEdges, minLine);
             var columns = LinePositions(columnEdges, minLine);
             if (rows.Count == 0 || columns.Count == 0)
@@ -425,7 +399,7 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
 
     /// <summary>
     /// The Sobel gradient of the interior of the picture into <paramref name="gradientX"/> and <paramref name="gradientY"/> (the border row and column stay 0), and the value
-    /// of <c>|gx| + |gy|</c> from which a pixel is an edge: the larger of <see cref="EdgeFloor"/> and <see cref="EdgeRelative"/> of the 99th percentile of the picture.
+    /// of <c>|gx| + |gy|</c> from which a pixel is an edge: the larger of <see cref="DocumentGeometryRules.EdgeFloor"/> and <see cref="DocumentGeometryRules.EdgeRelative"/> of the 99th percentile of the picture.
     /// </summary>
     private static int Gradients(GrayBitmap gray, short[] gradientX, short[] gradientY)
     {
@@ -452,7 +426,7 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
             }
         }
 
-        var target = (int)Math.Ceiling(total * PercentileShare);
+        var target = (int)Math.Ceiling(total * DocumentGeometryRules.PercentileShare);
         var running = 0;
         var percentile = 0;
         for (var magnitude = 0; magnitude < histogram.Length; magnitude++)
@@ -465,13 +439,13 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
             }
         }
 
-        return Math.Max(EdgeFloor, (int)Math.Round(EdgeRelative * percentile));
+        return Math.Max(DocumentGeometryRules.EdgeFloor, (int)Math.Round(DocumentGeometryRules.EdgeRelative * percentile));
     }
 
     /// <summary>
     /// The rows (or columns) where a long straight edge may be: the peaks of the profile of <paramref name="counts"/> (the edge pixels of every row or column, summed with its two
-    /// neighbours since an edge is a pixel or two wide) that reach <paramref name="minimum"/> and are the highest within <see cref="BandRadius"/>, the
-    /// <see cref="MaxLineCandidates"/> strongest, in order.
+    /// neighbours since an edge is a pixel or two wide) that reach <paramref name="minimum"/> and are the highest within <see cref="DocumentGeometryRules.BandRadius"/>, the
+    /// <see cref="DocumentGeometryRules.MaxLineCandidates"/> strongest, in order.
     /// </summary>
     private static List<int> LinePositions(int[] counts, double minimum)
     {
@@ -488,7 +462,7 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
                 continue;
 
             var isPeak = true;
-            for (var near = Math.Max(0, i - BandRadius); near <= Math.Min(size - 1, i + BandRadius) && isPeak; near++)
+            for (var near = Math.Max(0, i - DocumentGeometryRules.BandRadius); near <= Math.Min(size - 1, i + DocumentGeometryRules.BandRadius) && isPeak; near++)
             {
                 if (smooth[near] > score || (smooth[near] == score && near < i))
                     isPeak = false;
@@ -501,7 +475,7 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
         return peaks
             .OrderByDescending(peak => peak.Score)
             .ThenBy(peak => peak.Position)
-            .Take(MaxLineCandidates)
+            .Take(DocumentGeometryRules.MaxLineCandidates)
             .Select(peak => peak.Position)
             .Order()
             .ToList();
@@ -539,23 +513,23 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
     }
 
     /// <summary>
-    /// The share of columns <paramref name="from"/> to <paramref name="to"/> that are edge pixels in the row that has the most of them within <see cref="BandRadius"/> of the row
+    /// The share of columns <paramref name="from"/> to <paramref name="to"/> that are edge pixels in the row that has the most of them within <see cref="DocumentGeometryRules.BandRadius"/> of the row
     /// <paramref name="y"/>: how much of a straight horizontal edge the row has there.
     /// </summary>
     private static double RowSupport(int[] rowPrefix, int width, int height, int y, int from, int to)
     {
         var best = 0;
-        for (var near = Math.Max(0, y - BandRadius); near <= Math.Min(height - 1, y + BandRadius); near++)
+        for (var near = Math.Max(0, y - DocumentGeometryRules.BandRadius); near <= Math.Min(height - 1, y + DocumentGeometryRules.BandRadius); near++)
             best = Math.Max(best, rowPrefix[(near * (width + 1)) + to + 1] - rowPrefix[(near * (width + 1)) + from]);
 
         return (double)best / (to - from + 1);
     }
 
-    /// <summary>The share of rows <paramref name="from"/> to <paramref name="to"/> that are edge pixels in the column that has the most of them within <see cref="BandRadius"/> of the column <paramref name="x"/>.</summary>
+    /// <summary>The share of rows <paramref name="from"/> to <paramref name="to"/> that are edge pixels in the column that has the most of them within <see cref="DocumentGeometryRules.BandRadius"/> of the column <paramref name="x"/>.</summary>
     private static double ColumnSupport(int[] columnPrefix, int width, int height, int x, int from, int to)
     {
         var best = 0;
-        for (var near = Math.Max(0, x - BandRadius); near <= Math.Min(width - 1, x + BandRadius); near++)
+        for (var near = Math.Max(0, x - DocumentGeometryRules.BandRadius); near <= Math.Min(width - 1, x + DocumentGeometryRules.BandRadius); near++)
             best = Math.Max(best, columnPrefix[(near * (height + 1)) + to + 1] - columnPrefix[(near * (height + 1)) + from]);
 
         return (double)best / (to - from + 1);
@@ -563,7 +537,7 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
 
     /// <summary>
     /// The best rectangle bounded by two of <paramref name="rows"/> and two of <paramref name="columns"/> (the first and the last of each are the border of the picture, a
-    /// side that runs out of the frame), or null. A side that is not the border must be a straight edge along <see cref="SideSupportMin"/> of its length; the rectangle needs a
+    /// side that runs out of the frame), or null. A side that is not the border must be a straight edge along <see cref="DocumentGeometryRules.SideSupportMin"/> of its length; the rectangle needs a
     /// horizontal and a vertical side that are lines of the picture. See <see cref="Rank"/> for what decides.
     /// </summary>
     private static CardRectangle? BestRectangle(
@@ -597,10 +571,10 @@ public sealed class DocumentGeometryInspector(IFaceDetector faceDetector, IOptio
                         if ((!topSeen && !bottomSeen) || (!leftSeen && !rightSeen))
                             continue;
 
-                        if ((topSeen && RowSupport(rowPrefix, width, height, top, left, right) < SideSupportMin)
-                            || (bottomSeen && RowSupport(rowPrefix, width, height, bottom, left, right) < SideSupportMin)
-                            || (leftSeen && ColumnSupport(columnPrefix, width, height, left, top, bottom) < SideSupportMin)
-                            || (rightSeen && ColumnSupport(columnPrefix, width, height, right, top, bottom) < SideSupportMin))
+                        if ((topSeen && RowSupport(rowPrefix, width, height, top, left, right) < DocumentGeometryRules.SideSupportMin)
+                            || (bottomSeen && RowSupport(rowPrefix, width, height, bottom, left, right) < DocumentGeometryRules.SideSupportMin)
+                            || (leftSeen && ColumnSupport(columnPrefix, width, height, left, top, bottom) < DocumentGeometryRules.SideSupportMin)
+                            || (rightSeen && ColumnSupport(columnPrefix, width, height, right, top, bottom) < DocumentGeometryRules.SideSupportMin))
                         {
                             continue;
                         }

@@ -36,7 +36,7 @@ public class DocumentSideClassifierTests
     }
 
     private static DocumentGeometryReport Geometry(bool? portraitInZone) =>
-        new(true, new NormalizedBox(0.1, 0.1, 0.8, 0.7), true, 1.58, true, 0, portraitInZone, 0, 0.4, []);
+        new(true, new NormalizedBox(0.1, 0.1, 0.8, 0.7), true, 1.58, true, 0, portraitInZone, 0, 0.4, [], DocumentGeometryRules.Version);
 
     private static DocumentPictureFingerprint Picture(string sha, ulong hash, DocumentSide? side) => new(sha, hash, side);
 

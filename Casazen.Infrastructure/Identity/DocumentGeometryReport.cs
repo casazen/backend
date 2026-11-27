@@ -51,6 +51,10 @@ public sealed record NormalizedBox(double X, double Y, double W, double H);
 /// Codes of <see cref="IdentityGuidanceCodes"/>, in this order: <c>document_not_found</c>, <c>document_edges_not_visible</c>, <c>document_layout_mismatch</c>,
 /// <c>document_orientation</c> (only when the rotation cannot be decided), <c>document_portrait_missing</c>, <c>document_glare</c>, <c>document_blur</c>. Empty: nothing to ask the guest.
 /// </param>
+/// <param name="RulesVersion">
+/// The version of the rules of the edge detector this report was made with (<see cref="DocumentGeometryRules.Version"/>). The flow keeps it with the outcome, so that a
+/// change of <see cref="DocumentGeometryRules.SideSupportMin"/> or <see cref="DocumentGeometryRules.SmallestCardSideDivisor"/> can be told from a change of the pictures.
+/// </param>
 public sealed record DocumentGeometryReport(
     bool CardFound,
     NormalizedBox? CardBox,
@@ -61,7 +65,8 @@ public sealed record DocumentGeometryReport(
     bool? PortraitInZone,
     double GlareShare,
     double BlurRatio,
-    IReadOnlyList<string> Codes)
+    IReadOnlyList<string> Codes,
+    string RulesVersion)
 {
     /// <summary>The value of <c>RasterImage.Oriented</c> that turns the picture by <see cref="RotationDegrees"/>: 1 upright, 6 a quarter turn clockwise, 3 a half turn, 8 a quarter turn counter-clockwise.</summary>
     public int ExifOrientation => RotationDegrees switch
