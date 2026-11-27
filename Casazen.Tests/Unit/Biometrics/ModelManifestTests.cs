@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using Casazen.Core.Options;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Biometrics;
@@ -15,7 +16,9 @@ public sealed class ModelManifestTests
 {
     private const long GitHubFileLimitBytes = 100_000_000;
 
-    private static readonly string[] Roles = ["face_detector", "anti_spoofing", "face_recognition", "mrz_ocr"];
+    // The two optional candidate roles (E72/F01/US02/T03) are allowed in an entry, once someone configures one; none exists while they are not configured.
+    private static readonly string[] Roles =
+        ["face_detector", "anti_spoofing", "face_recognition", "mrz_ocr", "anti_spoofing_candidate", "face_recognition_candidate"];
 
     private static readonly string[] Deliveries = ["commit", "external"];
 
@@ -158,6 +161,69 @@ public sealed class ModelManifestTests
     }
 
     [Fact]
+    public void Manifest_TheCandidateRoles_HaveNoEntryWhileTheyAreNotConfigured_AndNothingCommittedConfiguresOne()
+    {
+        // Not configured is the state of the committed application: the defaults of the options and the appsettings.json that ships.
+        var defaults = new BiometricModelOptions();
+        Assert.False(BiometricModelOptions.IsCandidateConfigured(defaults.AntiSpoofingCandidate));
+        Assert.False(BiometricModelOptions.IsCandidateConfigured(defaults.FaceRecognitionCandidate));
+        Assert.Empty(defaults.ValidateAntiSpoofingCandidate());
+        Assert.Empty(defaults.ValidateFaceRecognitionCandidate());
+
+        var published = new ConfigurationBuilder()
+            .AddJsonFile(System.IO.Path.Combine(SolutionRoot(), "Casazen.Web", "appsettings.json"), optional: false)
+            .Build()
+            .GetSection(BiometricModelOptions.SectionName)
+            .Get<BiometricModelOptions>()!;
+        Assert.False(BiometricModelOptions.IsCandidateConfigured(published.AntiSpoofingCandidate));
+        Assert.False(BiometricModelOptions.IsCandidateConfigured(published.FaceRecognitionCandidate));
+        Assert.Empty(published.Validate());
+
+        // So no entry of the manifest is a candidate, and no weight file of a candidate is committed with the models.
+        Assert.DoesNotContain(Entries(), entry => Text(entry, "role").EndsWith("_candidate", StringComparison.Ordinal) || Text(entry, "usedBy").Contains("Candidate", StringComparison.Ordinal));
+        var models = System.IO.Path.Combine(SolutionRoot(), "Casazen.Web", "MlModels");
+        Assert.DoesNotContain(
+            Directory.EnumerateFiles(models, "*", SearchOption.AllDirectories).Select(System.IO.Path.GetFileName),
+            file => file is not null && file.Contains("candidate", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Manifest_TheCandidateRolesSection_NamesEveryVariableOfTheirOptions_AndTheChecklistDocumentsEachOne()
+    {
+        var checklist = File.ReadAllText(System.IO.Path.Combine(SolutionRoot(), "docs", "runbooks", "deploy-checklist.md"));
+        using var document = JsonDocument.Parse(File.ReadAllText(ManifestPath()));
+        var section = document.RootElement.GetProperty("candidateRoles").EnumerateArray().ToList();
+
+        // The candidate settings of the options, found by reflection: a setting added to a candidate without the manifest and the checklist fails here.
+        var candidateProperties = typeof(BiometricModelOptions)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(property => property.Name.EndsWith("Candidate", StringComparison.Ordinal) && typeof(ModelFileOptions).IsAssignableFrom(property.PropertyType))
+            .ToList();
+        Assert.Equal(["AntiSpoofingCandidate", "FaceRecognitionCandidate"], candidateProperties.Select(property => property.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(candidateProperties.Count, section.Count);
+
+        foreach (var property in candidateProperties)
+        {
+            var role = Assert.Single(section, entry => Text(entry, "usedBy") == $"Biometrics:{property.Name}");
+            Assert.Contains(Text(role, "role"), Roles);
+            Assert.Equal("none", Text(role, "delivery"));
+
+            var expected = property.PropertyType
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Select(setting => $"Biometrics__{property.Name}__{setting.Name}")
+                .Order(StringComparer.Ordinal)
+                .ToList();
+            Assert.Equal(expected, role.GetProperty("variables").EnumerateArray().Select(variable => variable.GetString()!).Order(StringComparer.Ordinal));
+
+            foreach (var variable in expected)
+            {
+                Assert.NotNull(ResolveOption(variable));
+                Assert.Contains($"`{variable}`", checklist, StringComparison.Ordinal);
+            }
+        }
+    }
+
+    [Fact]
     public void Manifest_TheRecipeAndTheScriptItNames_ExistInTheRepository()
     {
         var root = SolutionRoot();
@@ -217,9 +283,11 @@ public sealed class ModelManifestTests
 
     private static bool Bool(JsonElement element, string name) => element.GetProperty(name).GetBoolean();
 
+    private static string ManifestPath() => System.IO.Path.Combine(SolutionRoot(), "Casazen.Web", "MlModels", "models.manifest.json");
+
     private static List<JsonElement> Entries()
     {
-        var path = System.IO.Path.Combine(SolutionRoot(), "Casazen.Web", "MlModels", "models.manifest.json");
+        var path = ManifestPath();
         using var document = JsonDocument.Parse(File.ReadAllText(path));
         Assert.Equal(1, document.RootElement.GetProperty("schemaVersion").GetInt32());
         return document.RootElement.GetProperty("models").EnumerateArray().Select(e => e.Clone()).ToList();

@@ -28,8 +28,9 @@ AuraFace remains an external alternative. To use it, supply its model path, name
 | `download_failed` | recognition model | the download did not end (network, status, size, timeout) | check the address and `Biometrics__DownloadTimeoutMinutes`, use a volume |
 | `path_invalid` | any model | an empty path, or one that leaves the application folder | fix `...__Path` |
 | `model_incompatible`, `load_failed` | store models | the file is not a model the pipeline can run | supply the right file (for MiniFASNet: input `1x3x80x80`, output `1x3`) |
-| `config_invalid` | the set | a value of the section `Biometrics` is out of range (the log names the setting, never a value) | fix the variable |
+| `config_invalid` | the set; a candidate | a value of the section `Biometrics` is out of range (the log names the setting, never a value). For a second candidate (below) only that candidate is not loaded: the three models are not affected | fix the variable |
 | `not_loaded` | store models | the flag was switched on after the process started: the models are loaded at start | restart the service |
+| `not_configured` | candidates only | the optional second candidate has no path, no hash and no address: there is nothing to load and nothing is wrong (the committed state) | nothing; to add one, see below |
 
 The OCR-B file (`mrz_ocr`) is only checked for being pinned and on disk (`present`): its hash is verified the first time a document is read, because
 the status runs on every health probe and never hashes a file. The visual-zone reader also verifies the bundled Italian and English files on first use.
@@ -38,6 +39,36 @@ the status runs on every health probe and never hashes a file. The visual-zone r
 
 Empty the `...__Sha256` variable (or switch `Features__CheckInIdentityVerification` off): the models are not used, every verification is the operator path,
 and `biometrics` is `degraded` (flag on) or `healthy` (flag off). Nothing else changes, because the operator path never needed the models.
+
+## Second candidate (optional plug-in point, E72/F01/US02/T03)
+
+The specification of the self-hosted verification asks to compare MiniFASNetV2 with a second local model for the presence, and SFace with a local candidate for the recognition (for example
+Intel face-reidentification-retail-0095), **only after the rights on the weights, and on their use in a SaaS, are verified**. The code holds a slot for each and **nothing more** (decision D6): no
+weight file of a candidate is in the repository, none is added by the code that holds the slot, and a candidate **never decides**.
+
+| What | How |
+|---|---|
+| Roles | `anti_spoofing_candidate` and `face_recognition_candidate` (`BiometricModelRoles`), the properties `AntiSpoofingCandidate` and `FaceRecognitionCandidate` of `IBiometricModelStore` (null unless loaded), the options `Biometrics:AntiSpoofingCandidate:*` and `Biometrics:FaceRecognitionCandidate:*` (every variable is in [`deploy-checklist.md`](deploy-checklist.md) § 2.10, and a test fails if one is not) |
+| Not configured (the committed state) | no path, no hash, no address: the role is `not_configured`, nothing is loaded, nothing changes |
+| Configured | the same proof as the three models (`ModelFileProvisioner`): the file is used only when its SHA-256 is the pinned one; otherwise it is not loaded, with the code `hash_mismatch`, `file_missing`, `hash_not_configured`, `path_invalid`, `download_failed`, `model_incompatible`, `load_failed` or `config_invalid` (the table above). It is loaded after the three models are ready, never before |
+| Ignored by | the readiness of the store (`IsAvailable`, the state and its reason), the `biometrics` health entry, `GET api/admin/biometrics/status`, the fingerprint of a decision (the weights hash is the one of the three models), the policy, and every verification. A candidate that is missing, wrong or failed changes none of them. It is listed apart in the snapshot of the store (`Candidates`) and in the status reader (`Candidates`) |
+| Comparison | `IBiometricCandidateComparison.CompareAsync`, in `Casazen.Infrastructure.Identity`, used only by the offline qualification runner (E74): for each case, a document portrait with the chosen frames (a match) or one frame (a liveness), the scores of the reference model and of the candidate on the **same inputs**, with the latency of each. The live flow does not depend on it (a test proves it) and it is never injected into a decision |
+
+**To add a candidate** (a qualification, not a deploy):
+
+1. Verify the licence of the weights and the right to use them in a SaaS. Write the record before the file goes anywhere: name, version, source and revision, licence (identifier and address), provenance of the
+   training data, size, SHA-256 and the cost. The same facts go into `...__Name`, `__Version`, `__License` and `__Provenance`, which the log of every start records.
+2. Put the file where the application finds it **without committing it**: a volume, or `...__DownloadUrl` (an `https` address of a pinned revision) in a test environment. Never a repository: the repository is public.
+3. Set the variables of the candidate: `...__Path`, `...__Sha256` and the description of the model: for the presence `...__CropScale` and `...__InputSize`; for the recognition `...__InputSize`, `...__Mean`, `...__Std`
+   and `...__RgbOrder`. Restart the service: the store loads it after the three models.
+4. Run the comparison on the cases of the qualification (the same for the reference and the candidate) and write the **comparison report**: version, provenance, licence, cost, normalization, detector, alignment, latency
+   and thresholds, and the genuine guests refused at the same false-match limit. Change a model only if it refuses fewer genuine guests at that limit; if no candidate reaches the criteria the channel stays assisted.
+5. **A candidate is never used in a production decision before a new qualification**: a new model, a new threshold or a new weights hash is a new qualification, and the segments qualified for the old fingerprint go back to
+   observation by themselves.
+
+What a candidate can be, by configuration alone: it is given the same faces as the reference (the same face detector, the same five-point alignment of the recognition models, scaled to its input size), the face is cut for the
+presence model with its `CropScale` and `InputSize`, and the anti-spoofing output has three classes with the real face in class 1. A model that needs another detector, another alignment or another output needs code and its own
+qualification.
 
 ## Thresholds per organization and the operator video call (E22/F01/US01/T03)
 
