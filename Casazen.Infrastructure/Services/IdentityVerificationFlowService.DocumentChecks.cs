@@ -22,6 +22,9 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>A picture is good or it is refused.</b> A picture with any guidance code (the geometry of its card, the side it shows or a repeated side, the quality of the capture) is refused
 /// with those codes: nothing of it is kept, it is not an attempt (<c>BiometricAttempts</c> never moves) and it counts as a refusal of its side (<c>StoredDocumentCheck.Refusals</c>). After
 /// <c>policy.document.maxRecapturesPerSide</c> refusals of one side the next refusal of it answers <c>document_unreadable</c> and a person decides (<c>review</c>).</para>
+/// <para><b>A card held crooked</b> (IDENT-TILT): the geometry of the picture finds the card at its angle up to <see cref="DocumentGeometryRules.MaxTiltDegrees"/> either way and hands the step the card levelled
+/// (<see cref="DocumentGeometryReport.RectifiedCard"/>, owned by the <see cref="DocumentPicture"/> and zeroed with it): the zones of the format, the MRZ band and the portrait are read on that card, not on
+/// the picture, so that they are where the layout puts them. A card held more crooked is a picture with the guidance code <c>document_edges_not_visible</c> like any other. Nothing changes for a card that lies straight.</para>
 /// <para><b>Fail closed.</b> A model that fails, a policy file or a registry that is not usable, a service that is not there: the verification goes to a person and nothing is approved.</para>
 /// <para><b>Privacy</b>: the log names the session, the side, the codes and the counts; never a picture, a value read, an MRZ text or a hash. The values read live in the memory of the
 /// request, are handed to the checker of the coherence and dropped; what is kept is flags, hashes and the names and results of the checks.</para>

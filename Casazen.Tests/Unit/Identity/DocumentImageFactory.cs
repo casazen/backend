@@ -74,6 +74,38 @@ internal static class DocumentImageFactory
         return new RasterImage(width, height, rgb);
     }
 
+    /// <summary>
+    /// A page of text: the whole frame is light and <paramref name="lines"/> rows of printed blocks run across it, with no border and no card. It has straight lines of edges in great number (all the
+    /// same way, as the lines of a card have) and nothing that is a rectangle: the answer for it must stay «no card», turned or not.
+    /// </summary>
+    public static RasterImage TextPage(int lines = 22, int imageWidth = Width, int imageHeight = Height)
+    {
+        var rgb = new byte[imageWidth * imageHeight * 3];
+        var canvas = new Canvas(rgb, imageWidth, imageHeight);
+        canvas.Fill(0, 0, imageWidth, imageHeight, CardLevel, CardLevel, CardLevel);
+        var pitch = imageHeight / (lines + 1);
+        for (var line = 1; line <= lines; line++)
+        {
+            for (var x = 24; x + 9 <= imageWidth - 24; x += 16)
+                canvas.Fill(x, (line * pitch) - 4, 9, 8, InkLevel, InkLevel, InkLevel);
+        }
+
+        return new RasterImage(imageWidth, imageHeight, rgb);
+    }
+
+    /// <summary>
+    /// The picture with its gray levels squeezed into <paramref name="low"/> to <paramref name="high"/>: the same card at a contrast too low for the edge detector to see an edge (a dark card on a dark
+    /// table). The steps of the picture shrink in the same proportion, a step of 80 levels of the card against its background becomes 80 * (high - low) / 255.
+    /// </summary>
+    public static RasterImage LowContrast(RasterImage source, byte low, byte high)
+    {
+        var rgb = new byte[source.Rgb.Length];
+        for (var i = 0; i < rgb.Length; i++)
+            rgb[i] = (byte)(low + (((source.Rgb[i] * (high - low)) + 127) / 255));
+
+        return new RasterImage(source.Width, source.Height, rgb);
+    }
+
     /// <summary>The picture turned a quarter clockwise (the top goes to the right): what <c>RasterImage.Oriented(6)</c> makes of it.</summary>
     public static RasterImage TurnedClockwise(RasterImage source) =>
         Remap(source, source.Height, source.Width, (x, y) => (source.Height - 1 - y, x));
@@ -282,10 +314,14 @@ internal sealed class PortraitStandInDetector : IFaceDetector
     /// <summary>How many pictures it was asked about.</summary>
     public int Calls { get; private set; }
 
+    /// <summary>The pixel arrays of the pictures it was shown, as the application held them (the tests prove the application zeroed them).</summary>
+    public List<byte[]> SeenPixels { get; } = [];
+
     public IReadOnlyList<DetectedFace> Detect(RasterImage image, double minScore, CancellationToken cancellationToken)
     {
         Calls++;
         var rgb = image.Rgb;
+        SeenPixels.Add(rgb);
         int minX = int.MaxValue, minY = int.MaxValue, maxX = -1, maxY = -1, skin = 0;
         for (var y = 0; y < image.Height; y++)
         {
