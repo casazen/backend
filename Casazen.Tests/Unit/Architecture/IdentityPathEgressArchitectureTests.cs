@@ -203,7 +203,7 @@ public class IdentityPathEgressArchitectureTests
                 $"{nameof(ZonedPrefillServices)}.{property.Name} is {Name(property.PropertyType)}, outside {IdentityNamespace}.");
             Assert.Null(Forbidden(property.PropertyType, jobsForbidden: true, modelFileDownloader: false));
         });
-        Assert.Empty(typeof(ZonedPrefillServices).GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly).Where(method => !method.IsSpecialName));
+        Assert.DoesNotContain(typeof(ZonedPrefillServices).GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly), method => !method.IsSpecialName);
 
         // The guard is not blind: a class that holds the container is named with its parameter.
         Assert.Contains(ContainerHolders(typeof(PlantedContainerHolder)), finding => finding.Contains("constructor parameter 'provider'", StringComparison.Ordinal));

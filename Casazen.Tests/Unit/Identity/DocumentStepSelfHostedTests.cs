@@ -862,7 +862,7 @@ public sealed class DocumentStepSelfHostedTests
     /// <summary>A picture with no card in it: one gray level and nothing else (another level, another file).</summary>
     internal static byte[] PlainPicture(int level = 120)
     {
-        using var image = DocumentImageFactory.Plain(level);
+        using var image = DocumentImageFactory.Plain((byte)level);
         return TestImages.Png(image.Width, image.Height, image.Rgb);
     }
 
