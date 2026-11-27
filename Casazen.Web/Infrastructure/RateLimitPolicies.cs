@@ -311,4 +311,22 @@ public static class RateLimitPolicies
     /// holds a database connection under the advisory lock. Partitioned by <b>person</b>: five in ten minutes, enough for a retry after CasaZen fixed a scope and a second try.
     /// </summary>
     public const string OwnerLoginRetry = "OwnerLoginRetry";
+
+    /// <summary>
+    /// A billing administrator confirms the connection of a site (<c>POST api/orgs/{orgId}/site-connections/authorize</c>, S022, site integration plan §10.4):
+    /// each call writes a one-time code. Partitioned by <b>person</b>: ten in ten minutes, enough for a connection and its retries.
+    /// </summary>
+    public const string SiteConnectAuthorize = "SiteConnectAuthorize";
+
+    /// <summary>
+    /// The plugin exchanges its code for a credential (<c>POST api/public/site-connections/token</c>, S022): anonymous, the code and the verifier in the body,
+    /// one answer for every code that does not open. Per client IP like the other anonymous policies: twenty in ten minutes.
+    /// </summary>
+    public const string SiteConnectToken = "SiteConnectToken";
+
+    /// <summary>
+    /// The calls of a connected plugin (<c>api/site/v1/*</c>, S022 and S023): partitioned by <b>credential</b> (the connection of the scheme <c>SiteToken</c>),
+    /// so the sites behind one hosting address never share a budget: 120 a minute. A call without a valid credential is refused before the limiter.
+    /// </summary>
+    public const string SiteApi = "SiteApi";
 }

@@ -49,6 +49,12 @@ public class AppDbContext(
 
     /// <summary>Custom domains to remove from the Vercel project (BK-17); not tenant-owned, read by the platform job only.</summary>
     public DbSet<PendingDomainRemoval> PendingDomainRemovals { get; set; } = null!;
+
+    /// <summary>The one-time codes of the connection of a site to the org (S022, PLG-BE-CONNECT): hashes only, five minutes each.</summary>
+    public DbSet<SiteConnectionCode> SiteConnectionCodes { get; set; } = null!;
+
+    /// <summary>The sites connected to the org, the credentials of their WordPress plugin (S022, PLG-BE-CONNECT): hashes only, revocable.</summary>
+    public DbSet<SiteConnection> SiteConnections { get; set; } = null!;
     public DbSet<PropertyActivationCredential> PropertyActivationCredentials => Set<PropertyActivationCredential>();
 
     public DbSet<PropertyActivationCredentialAssignment> PropertyActivationCredentialAssignments => Set<PropertyActivationCredentialAssignment>();
@@ -2504,6 +2510,11 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new PropertyDayRuleConfiguration());
         modelBuilder.ApplyConfiguration(new CalendarChangeProcessConfiguration());
         modelBuilder.ApplyConfiguration(new CalendarChangeChunkConfiguration());
+
+        // The connection of a site to the org (S022, PLG-BE-CONNECT, site integration plan §10): the one-time codes and the credentials of the plugin, hashes
+        // only, with their org (cascade); one active credential for each org and site. The tenant query filter applies to both, below.
+        modelBuilder.ApplyConfiguration(new SiteConnectionCodeConfiguration());
+        modelBuilder.ApplyConfiguration(new SiteConnectionConfiguration());
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the
         // tenant one) so it composes independently: IgnoreQueryFilters([TenantQueryFilter]) (entitlement counts,
